@@ -101,6 +101,12 @@ pub fn start_mcp_runtime_session(
     input: McpRuntimeSessionStart,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     validate_start(&input)?;
+    if input.session_source == McpRuntimeSessionSource::ManagedHost {
+        return Err(StoreError::InvalidInput {
+            detail: "managed_host runtime creation requires atomic launch-lease consumption"
+                .to_owned(),
+        });
+    }
     let registry_path = registry_db_path(runtime_home);
     let mut conn = open_registry_database(&registry_path)?;
     let generator = RandomDurableIdGenerator;
@@ -111,35 +117,9 @@ pub fn start_mcp_runtime_session(
                 detail: format!("could not generate MCP runtime session id: {error}"),
             })?;
         let tx = begin_immediate_transaction(&mut conn)?;
-        let connection = raw_agent_connection_record_from_conn(&tx, &input.connection_internal_id)?
-            .ok_or_else(|| StoreError::NotFound {
-                entity: "agent_connection",
-                id: input.connection_internal_id.clone(),
-            })?;
-        let revision = connection_integration_revision(&connection)?;
-        let inserted = tx.execute(
-            "INSERT OR IGNORE INTO mcp_runtime_sessions (
-                runtime_session_id, connection_internal_id, session_source,
-                connection_integration_revision, observed_host_executable_version,
-                process_id, process_started_at, last_observed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-            params![
-                runtime_session_id,
-                input.connection_internal_id,
-                input.session_source.as_str(),
-                revision.as_str(),
-                input.observed_host_executable_version,
-                i64::from(input.process_id),
-                input.process_started_at,
-            ],
-        )?;
-        if inserted == 1 {
-            let record = runtime_session_from_conn(&tx, &runtime_session_id)?.ok_or_else(|| {
-                StoreError::NotFound {
-                    entity: "mcp_runtime_session",
-                    id: runtime_session_id.clone(),
-                }
-            })?;
+        if let Some(record) =
+            insert_mcp_runtime_session_in_transaction(&tx, &runtime_session_id, &input, None)?
+        {
             tx.commit()?;
             return Ok(record);
         }
@@ -150,6 +130,88 @@ pub fn start_mcp_runtime_session(
         id: "generated".to_owned(),
         detail: "durable id collision retry limit was exhausted".to_owned(),
     })
+}
+
+#[cfg(test)]
+pub(crate) fn start_mcp_runtime_session_for_test(
+    runtime_home: impl AsRef<Path>,
+    input: McpRuntimeSessionStart,
+) -> StoreResult<McpRuntimeSessionRecord> {
+    if input.session_source != McpRuntimeSessionSource::ManagedHost {
+        return start_mcp_runtime_session(runtime_home, input);
+    }
+    let runtime_home = runtime_home.as_ref();
+    let connection = crate::agent_connections::agent_connection_record_read_only(
+        runtime_home,
+        &input.connection_internal_id,
+    )?
+    .ok_or_else(|| StoreError::NotFound {
+        entity: "agent_connection",
+        id: input.connection_internal_id.clone(),
+    })?;
+    let revision = connection_integration_revision(&connection)?;
+    let lease = crate::managed_launch_leases::issue_managed_mcp_launch_lease(
+        runtime_home,
+        crate::managed_launch_leases::ManagedMcpLaunchLeaseIssue {
+            connection_internal_id: connection.connection_internal_id,
+            host_kind: volicord_types::HostKind::Codex,
+            expected_integration_revision: revision.as_str().to_owned(),
+            expected_launch_fingerprint: connection.managed_fingerprint,
+        },
+    )?;
+    crate::managed_launch_leases::consume_managed_mcp_launch_lease_and_start_runtime(
+        runtime_home,
+        crate::managed_launch_leases::ManagedMcpLaunchLeaseConsumption {
+            launch_lease_id: lease.launch_lease_id,
+            connection_internal_id: lease.connection_internal_id,
+            host_kind: lease.host_kind,
+            expected_integration_revision: lease.expected_integration_revision,
+            expected_launch_fingerprint: lease.expected_launch_fingerprint,
+        },
+        input,
+    )
+}
+
+pub(crate) fn insert_mcp_runtime_session_in_transaction(
+    tx: &Connection,
+    runtime_session_id: &str,
+    input: &McpRuntimeSessionStart,
+    expected_integration_revision: Option<&str>,
+) -> StoreResult<Option<McpRuntimeSessionRecord>> {
+    validate_start(input)?;
+    let connection = raw_agent_connection_record_from_conn(tx, &input.connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: input.connection_internal_id.clone(),
+        })?;
+    let revision = connection_integration_revision(&connection)?;
+    if expected_integration_revision.is_some_and(|expected| expected != revision.as_str()) {
+        return Err(StoreError::Conflict {
+            entity: "mcp_runtime_session",
+            id: "current".to_owned(),
+            detail: "Connection integration revision changed before runtime creation".to_owned(),
+        });
+    }
+    let inserted = tx.execute(
+        "INSERT OR IGNORE INTO mcp_runtime_sessions (
+            runtime_session_id, connection_internal_id, session_source,
+            connection_integration_revision, observed_host_executable_version,
+            process_id, process_started_at, last_observed_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+        params![
+            runtime_session_id,
+            input.connection_internal_id,
+            input.session_source.as_str(),
+            revision.as_str(),
+            input.observed_host_executable_version,
+            i64::from(input.process_id),
+            input.process_started_at,
+        ],
+    )?;
+    if inserted == 0 {
+        return Ok(None);
+    }
+    runtime_session_from_conn(tx, runtime_session_id)
 }
 
 /// Reads one authoritative runtime session without consulting diagnostics.
@@ -990,7 +1052,9 @@ pub(crate) fn runtime_session_from_conn(
 fn runtime_session_from_row(row: &Row<'_>) -> rusqlite::Result<McpRuntimeSessionRecord> {
     let source = match row.get::<_, String>(2)?.as_str() {
         "managed_host" => McpRuntimeSessionSource::ManagedHost,
+        "manual_cli" => McpRuntimeSessionSource::ManualCli,
         "cli_preflight" => McpRuntimeSessionSource::CliPreflight,
+        "integration_probe" => McpRuntimeSessionSource::IntegrationProbe,
         value => {
             return Err(rusqlite::Error::FromSqlConversionFailure(
                 2,

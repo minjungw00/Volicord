@@ -113,7 +113,7 @@ mod tests {
         upsert_server_table(&mut personal, "volicord", &personal_launch()).expect("personal table");
         assert_eq!(
             personal.to_string(),
-            "[mcp_servers.volicord]\ncommand = \"/opt/volicord/bin/volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"connection_alpha\"]\n\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/srv/volicord/runtime\"\nVOLICORD_MCP_CONNECTION_ID = \"connection_alpha\"\nVOLICORD_MCP_HOST = \"codex\"\nVOLICORD_MCP_LAUNCH = \"managed_host\"\n"
+            "[mcp_servers.volicord]\ncommand = \"/opt/volicord/bin/volicord\"\nargs = [\"_host-launch\", \"codex\", \"--connection\", \"connection_alpha\"]\n\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/srv/volicord/runtime\"\n"
         );
 
         let mut shared = DocumentMut::new();
@@ -122,7 +122,7 @@ mod tests {
         upsert_server_table(&mut shared, "volicord", &shared_launch).expect("shared table");
         assert_eq!(
             shared.to_string(),
-            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"VOLICORD_HOME\"]\n"
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"_host-launch\", \"codex\", \"--discover-repository\"]\nenv_vars = [\"VOLICORD_HOME\"]\n"
         );
     }
 

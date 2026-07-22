@@ -29,11 +29,10 @@ fn stdio_workflow_metrics_record_exact_tools_list_method_outcomes_and_status_rer
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -105,11 +104,10 @@ fn stdio_diagnostics_count_validation_retry_without_storing_request_content(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -144,11 +142,10 @@ fn stdio_diagnostics_never_store_unknown_caller_tool_names() -> Result<(), Box<d
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -225,11 +222,10 @@ fn corrupt_diagnostics_store_is_nonfatal_to_managed_codex_binding() -> Result<()
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;

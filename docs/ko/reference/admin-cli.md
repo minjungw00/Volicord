@@ -617,8 +617,8 @@ EOF/종료 순서를 수행합니다. 모든 revision probe가 통과해야 집�
 점검 대상 호스트 구성에 사용된 정규 관리 시작 계약에서 파생합니다. 개인 연결 검증은 그
 계약의 정적 절대 `VOLICORD_HOME`을 사용합니다. 공유 연결 검증은 연결 작업이 선택한
 Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product Repository 루트에서
-저장소 검색을 실행합니다. CLI 전용 검증 표식은 호출에만 적용하는 진단 값이며 생성 호스트
-구성에는 포함되지 않습니다.
+저장소 검색을 실행합니다. Preflight와 self-test process는 `cli_preflight` 또는
+`manual_cli`로 남으며 managed-host 관찰을 만들지 않습니다.
 
 `ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
 `AgentToolId::LIST_PROJECTS`에 결합되며 wire 이름 투영은
@@ -729,13 +729,18 @@ Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 �
 ## 관리 Codex 구성
 
 개인 연결은 사용자 소유 관리 Codex 구성만 씁니다. 그 entry는 선택한 정규 절대
-Runtime Home을 정적 `VOLICORD_HOME`으로 결속하고 프로젝트 선택자를 담지 않으며 환경
-이름을 전달하지 않습니다. 공유 연결은 지원되는 프로젝트 소유 Codex entry를 쓰고
-`VOLICORD_HOME`만 전달하며 머신 로컬 경로나 lifecycle 좌표를 내장하지 않습니다. 생성,
+Runtime Home을 정적 `VOLICORD_HOME`으로 결속하고
+`volicord _host-launch codex --connection <connection_id>`를 호출하며 프로젝트 선택자를
+담지 않고 환경 이름을 전달하지 않습니다. 공유 연결은 지원되는 프로젝트 소유 Codex
+entry를 쓰고 `VOLICORD_HOME`만 전달하며 그 숨겨진 launcher의 저장소 검색 형태를
+호출하고 머신 로컬 경로나 lifecycle 좌표를 내장하지 않습니다. 생성,
 엄격한 검증, fingerprinting은 같은 정규 관리 시작 계약을 projection합니다. 정확한 형태,
 drift, 복구, launch 맥락, uninstall 경계는
-[Agent Connection](agent-connection.md#managed-mcp-launch-contract)이 담당합니다. 구성
-marker는 협력적 launch 경로를 선택할 뿐 credential이나 identity 증거가 아닙니다.
+[Agent Connection](agent-connection.md#managed-mcp-launch-contract)이 담당합니다. 숨겨진
+launcher는 정확한 현재 entry를 엄격하게 검증하고 한도가 있는 one-time Registry launch
+lease를 만듭니다. 정적 구성에는 lease, nonce, 재사용 가능한 secret을 넣지 않습니다.
+Lease는 협력적인 evidence integrity 상태이지 credential이나 identity
+주장이 아닙니다.
 
 ## 관리 Guard Hook 명령
 
@@ -767,6 +772,10 @@ volicord mcp --check --connection <connection_id> [--project <project_id>]
 
 이 명령은 관리 stdio만 노출합니다. 정확한 framing, lifecycle, 도구 목록, 응답
 projection은 [MCP 전송](mcp-transport.md)이 담당합니다.
+
+생성 Codex entry는 이 공개 수동 stdio 명령 대신 숨겨진 `_host-launch` 명령을 사용합니다.
+`_host-launch`는 host 소유이고 일반 help에 표시하지 않으며 별도의 관리 또는 공개 API
+표면이 아닙니다.
 
 <a id="diagnostics"></a>
 ## Diagnostics

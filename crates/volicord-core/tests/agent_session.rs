@@ -12,9 +12,7 @@ use volicord_store::{
         agent_session, bind_agent_session_runtime, observe_host_correlation,
         AgentSessionRuntimeBinding, HostCorrelationObservation,
     },
-    operational_sessions::{
-        mcp_runtime_project_session_binding, start_mcp_runtime_session, McpRuntimeSessionStart,
-    },
+    operational_sessions::{mcp_runtime_project_session_binding, McpRuntimeSessionStart},
     sqlite::registry_db_path,
 };
 use volicord_test_support::{
@@ -282,7 +280,7 @@ fn cli_preflight_and_invented_project_session_coordinates_never_authorize(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("core-agent-session-preflight")?;
     let observed_at = fixture.store()?.current_timestamp()?;
-    let runtime = start_mcp_runtime_session(
+    let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -323,7 +321,7 @@ fn hook_only_host_session_cannot_authorize_until_mcp_runtime_attach() -> Result<
         observation,
     )?
     .session_id;
-    let runtime = start_mcp_runtime_session(
+    let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -406,7 +404,7 @@ fn registry_reservation_without_mcp_project_anchor_cannot_authorize() -> Result<
             observed_at: observed_at.clone(),
         },
     )?;
-    let runtime = start_mcp_runtime_session(
+    let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),

@@ -56,7 +56,8 @@
 | `crates/volicord-store/src/diagnostic_findings/graph.rs` | Cause graph 검증, 현재 보고서 root 선택, 한도가 있는 결정적 lifecycle-aware 정확한 순회. |
 | `crates/volicord-store/src/diagnostic_findings/queries.rs` | Lifecycle-aware 정확한 식별자, 현재 보고서 projection, runtime-session occurrence, 활성 current scope 조회. |
 | `crates/volicord-store/src/diagnostic_findings/row.rs` | 내부 finding row 인코딩, 디코딩, lifecycle identity 검증. |
-| `crates/volicord-store/src/operational_sessions.rs` | 관리 runtime session, protocol milestone, revision 범위 managed MCP project session, 정확한 데이터베이스 간 binding. |
+| `crates/volicord-store/src/managed_launch_leases.rs` | 수명이 짧은 일회성 managed MCP launch lease, 현재 Connection 재검증, 결정적인 취소·만료 정리, 원자적 lease 소비와 runtime 생성을 담당합니다. |
+| `crates/volicord-store/src/operational_sessions.rs` | Runtime-session source 디코딩, protocol milestone, revision 범위 managed MCP project session, 정확한 데이터베이스 간 binding, lease 소비 밖의 직접 `managed_host` 생성 거절. |
 | `crates/volicord-store/src/workflow_records.rs` | workflow 레코드 읽기와 쓰기. |
 | `crates/volicord-store/src/core_pipeline/` | Core open, 검증, replay, commit, mutation 적용. |
 | `crates/volicord-store/src/guards.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, phase별 Guard 관찰, prompt capture, 예상 쓰기, suppression 입력. |
@@ -79,6 +80,7 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
+| `crates/volicord-cli/src/host_launch.rs` | 숨은 동일 프로세스 host launcher, 현재 Codex entry의 정확한 재검증, launch-lease 발급·정리, managed stdio로의 메모리 내 전환. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
 | `crates/volicord-cli/src/connection_command/verification/mod.rs` | Connection 검증 조율, 공유 step/report 타입, 한도가 있는 패키지 export. |
 | `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, managed-host session check. |
@@ -117,8 +119,8 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 관리형 MCP 명령, 인자, 정적 및 전달 환경 binding, 엄격한 시작 형태 검증, projection, fingerprint 입력. |
-| `crates/volicord-mcp/src/stdio.rs` | stdio 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-2025-06-18-v1` turn-metadata parsing, revision-aware message 처리, 프로세스 사전 점검. |
+| `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
+| `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio 진입 경로, 권위 있는 runtime source 선택, 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-2025-06-18-v1` turn-metadata parsing, revision-aware message 처리, 프로세스 사전 점검. |
 | `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치, wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema와 metadata를 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 revision별 wire 이름을 투영하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
@@ -133,7 +135,7 @@
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch 순서, notification, 응답 계약. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection과 schema 호환성 계약. |
 | `crates/volicord-mcp/src/tests/tool_calls.rs` | Tool dispatch, 결과, 오류, 저장소 capability 계약. |
-| `crates/volicord-mcp/src/tests/managed_host_observation.rs` | 관리 launch, routing, session binding, host 관찰 계약. |
+| `crates/volicord-mcp/src/tests/managed_host_observation.rs` | Lease 결속 managed launch, process 환경의 비권위성, runtime source routing, session binding, host 관찰 계약. |
 | `crates/volicord-mcp/src/tests/diagnostics.rs` | 진단 영속화와 workflow metric 계약. |
 | `crates/volicord-mcp/src/tests/conformance.rs` | 모듈 수준 registry 기반 protocol conformance assertion. |
 | `crates/volicord-mcp/src/tests/support.rs` | 공유 MCP 테스트 fixture와 protocol message 구성만 담당. |

@@ -721,8 +721,7 @@ mod tests {
             insert_occurrence_finding, resolve_current_finding, upsert_current_snapshot,
         },
         operational_sessions::{
-            connection_integration_revision, record_mcp_terminal_finding,
-            start_mcp_runtime_session, McpRuntimeSessionStart,
+            connection_integration_revision, record_mcp_terminal_finding, McpRuntimeSessionStart,
         },
     };
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
@@ -1141,7 +1140,7 @@ mod tests {
     #[test]
     fn diagnostics_session_lookup_success_is_independent_of_terminal_severity() {
         let fixture = CoreFixture::new("diagnostics-session-terminal-error").expect("fixture");
-        let session = start_mcp_runtime_session(
+        let session = volicord_test_support::start_test_mcp_runtime_session(
             fixture.runtime_home_path(),
             McpRuntimeSessionStart {
                 connection_internal_id: fixture.connection_id().to_owned(),

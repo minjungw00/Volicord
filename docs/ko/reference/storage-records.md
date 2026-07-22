@@ -122,10 +122,23 @@ seed가 Store에 없을 때만 missing-record finding이 유효합니다. 독립
 
 ## 권위 있는 운영 Session
 
+`managed_mcp_launch_leases`는 숨겨진 host launcher와 MCP bootstrap 사이의 Registry
+evidence-integrity 경계입니다. 각 row는 opaque lease ID, Connection, `codex` host kind,
+예상 Connection integration revision, 예상 managed launch fingerprint, 발급 및 만료 시각,
+선택적 소비 시각, 정확한 `issued`, `consumed`, `cancelled`, `expired` terminal state를
+저장합니다. 수명이 짧은 lease는 해당 `managed_host` runtime을 만드는 같은 transaction에서
+한 번만 소비합니다. Replay, 만료, Connection 불일치, revision 불일치, fingerprint 불일치,
+현재 상태가 아닌 Connection은 runtime을 만들지 않습니다. Launcher 실패는 사용하지 않은
+lease를 취소하고, 한도가 있는 cleanup은 오래된 terminal row를 만료 처리하거나 제거합니다.
+마지막 Connection을 명시적으로 제거할 때는 Connection을 지우기 전에 남은 lease inventory도
+제거합니다. Lease record는 OS actor credential이나 재사용 가능한 secret이 아닙니다.
+
 `mcp_runtime_sessions`는 Agent Connection 소유 application state입니다. Volicord는 host
 thread metadata가 생기기 전 MCP process 시작 시점에 opaque `runtime_session_id`를
-만듭니다. `session_source`는 정확히 `managed_host` 또는 `cli_preflight`입니다. CLI row는
-검사할 수 있지만 managed-host 운영 evidence 조회를 충족할 수 없습니다.
+만듭니다. `session_source`는 정확히 `managed_host`, `manual_cli`, `cli_preflight`,
+`integration_probe` 중 하나입니다. 원자적인 launch-lease 소비에 성공한 경우에만
+`managed_host`를 만들 수 있으며, 나머지 source는 검사할 수 있지만 managed-host 운영
+evidence 조회를 충족하거나 managed call을 승인할 수 없습니다.
 
 각 물리 `agent_connections` 행에는 Store가 그 행을 삽입할 때 생성한 고유하고 변경
 불가능한 opaque 통합 instance ID가 하나 있습니다. Store는 호환 등록 replay, enabled 상태와

@@ -52,7 +52,7 @@ Labels follow the canonical vocabulary in
 |---|---|---|
 | First-release value sets, `ConnectionVerificationReport`, integration revisions, authoritative operational sessions, and `ValidatedAgentSession` | `stable` | These are exact boundary contracts. |
 | Codex discovery, managed installation, verification, repair, uninstall, and drift result semantics | `stable` | Implementations may change without changing the observable contract. |
-| Adapter modules, filesystem helpers, generated launch markers, and Store query helpers | `internal` | They preserve the stable boundary but are not public surfaces. |
+| Adapter modules, filesystem helpers, the hidden launcher, and Store lease/query helpers | `internal` | They preserve the stable boundary but are not public surfaces. |
 | Human-readable verification guidance and client/host version observations | `diagnostic` | Machine-readable categories, reasons, and typed fields remain authoritative. |
 
 <a id="first-release-surface"></a>
@@ -67,7 +67,7 @@ The first release accepts only this Agent Connection surface:
 | Integration profile | `integration_profile=record` |
 | Connection intent | `personal` or `shared` |
 | Connection mode | `read_only` or `workflow` |
-| Transport | Volicord-managed stdio MCP started with `volicord mcp --stdio` |
+| Transport | Volicord-managed stdio MCP entered through the hidden host launcher; public manual stdio remains `volicord mcp --stdio` |
 | Production MCP revisions | `2024-10-07`, `2024-11-05`, `2025-03-26`, `2025-06-18`, or `2025-11-25` |
 | User-owned action delivery | CLI inbox |
 | Platform environment | `linux`, `macos`, `native_windows`, or `wsl2` |
@@ -116,26 +116,24 @@ is owned by [MCP Transport](mcp-transport.md#protocol-revision-negotiation).
 
 ## Managed MCP Launch Contract
 
-One typed managed MCP launch contract is the canonical source for the
-executable command, stdio arguments, static and forwarded environment bindings,
-the personal/shared distinction, managed provenance, strict launch-shape
-validation, canonical projection, and deterministic managed-fingerprint inputs.
+One typed managed MCP launch contract is the canonical source for the hidden
+launcher command and arguments, static and forwarded Runtime Home bindings, the
+personal/shared distinction, strict launch-shape validation, canonical
+projection, and deterministic managed-fingerprint inputs. Managed provenance
+begins only with successful one-time launch-lease consumption.
 
 A personal connection requires the selected canonical absolute Runtime Home
-and selected absolute `volicord` executable. It stores the Runtime Home and
-managed host, launch, and Connection markers as static environment values and
-forwards no parent-environment name:
+and selected absolute `volicord` executable. It invokes the hidden host-owned
+launcher, stores only the Runtime Home as process configuration, and forwards
+no parent-environment name:
 
 ```toml
 [mcp_servers.volicord]
 command = "/absolute/path/to/volicord"
-args = ["mcp", "--stdio", "--connection", "<connection_id>"]
+args = ["_host-launch", "codex", "--connection", "<connection_id>"]
 
 [mcp_servers.volicord.env]
 VOLICORD_HOME = "/absolute/runtime/home"
-VOLICORD_MCP_CONNECTION_ID = "<connection_id>"
-VOLICORD_MCP_HOST = "codex"
-VOLICORD_MCP_LAUNCH = "managed_host"
 ```
 
 A personal entry carries no project selector. Its arguments contain no
@@ -150,7 +148,7 @@ no static environment table:
 ```toml
 [mcp_servers.volicord]
 command = "volicord"
-args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+args = ["_host-launch", "codex", "--discover-repository"]
 env_vars = ["VOLICORD_HOME"]
 ```
 
@@ -161,10 +159,11 @@ environment collision, a blank or duplicate forwarded name, an incomplete
 personal binding, or a mixed personal/shared argument or environment shape is
 invalid.
 
-Generated Codex configuration is an adapter projection of this contract. CLI
-verification materializes both preflight and the stdio self-test from the same
-contract. Neither consumer adds a project selector, platform identity, or
-WSL-specific field.
+Generated Codex configuration is an adapter projection of this contract. The
+configuration contains no launch lease, nonce, reusable secret, or raw operating-
+system handle. CLI verification derives its
+public preflight and manual stdio probe commands from the same binding facts;
+neither probe is a managed-host launch.
 
 The Codex adapter parses the current TOML shape and validates a managed entry by
 reconstructing this same typed contract. Unknown launch keys, malformed values,
@@ -173,6 +172,18 @@ adapter preserves only a valid `tools.<known-tool>.approval_mode` overlay and
 excludes it from launch identity. The managed fingerprint covers the canonical
 launch projection together with host kind, scope, and server name. Formatting
 differences do not change it; a launch-semantic difference does.
+
+The hidden launcher strictly reloads the current canonical entry, verifies the
+enabled Connection and exact integration revision, and verifies that the
+entry's fingerprint equals the current stored managed fingerprint. It then
+creates one short-lived Registry launch lease and transitions in memory to the
+stdio adapter. The lease ID is not written to Codex configuration, process
+arguments, logs, or a public environment variable. MCP bootstrap atomically
+consumes the lease and creates the `managed_host` runtime session. Consumption
+requires the exact Connection, `codex` host kind, integration revision, and
+managed fingerprint captured by the launcher. A lease is single-use; replay,
+expiry, mismatch, and cancellation fail closed, and a normal launcher failure
+terminalizes any still-unused lease.
 
 <a id="connection-verification-report"></a>
 
@@ -314,7 +325,8 @@ The current Codex connection report contains these operational checks:
 | `guard_hook_execution` | A current managed Guard hook executed. | It waits for current hook activity and is blocked by `guard_files`. | Hook execution itself recorded a failure. |
 | `guard_observation` | Every required current typed hook phase was observed. | It waits for remaining phases and is blocked by `guard_hook_execution`. | A current event reports an incompatible hook contract. |
 
-The CLI MCP self-test creates only `session_source=cli_preflight`; it never
+CLI MCP preflight creates `session_source=cli_preflight`, and its manual stdio
+self-test creates `session_source=manual_cli`; neither
 satisfies `process_startup`, `host_session`, `required_tools`, or
 `tool_round_trip`. Guard uses `guard_files`, `guard_hook_execution`, and
 `guard_observation` as top-level operational checks.
@@ -478,17 +490,19 @@ for the other. When both versions exist and differ,
 both fact objects; the mismatch alone is not a fatal Connection failure.
 The explicitly selected `codex-mcp-2025-06-18-v1` profile owns MCP
 session/thread/turn metadata. Malformed MCP metadata, inconsistent nested and
-top-level thread coordinates, registered-session mismatch, and managed-marker mismatch use
+top-level thread coordinates, and registered-session mismatch use
 `host.codex.metadata_malformed`,
-`host.codex.session_thread_turn_inconsistent`,
-`host.codex.registered_session_correlation_mismatch`, and
-`host.codex.managed_marker_mismatch` respectively.
+`host.codex.session_thread_turn_inconsistent`, and
+`host.codex.registered_session_correlation_mismatch` respectively.
 
 Each MCP process start creates an opaque Registry runtime-session ID before
-host thread metadata exists. `session_source` is exactly `managed_host` or
-`cli_preflight`. Only `managed_host` can authorize an Agent Connection call.
-The runtime session retains its owning Connection and Connection integration
-revision.
+host thread metadata exists. `session_source` is exactly `managed_host`,
+`manual_cli`, `cli_preflight`, or `integration_probe`. Only atomic successful
+launch-lease consumption can create `managed_host`, and only `managed_host` can
+authorize an Agent Connection call. Public `volicord mcp --stdio` always
+records `manual_cli`; preflight and integration probes never count as managed
+host activity. The runtime session retains its owning Connection and Connection
+integration revision.
 
 After a valid initialize request, that runtime owns one session-scoped typed
 MCP selection. It retains the requested protocol string, selected production
@@ -553,8 +567,10 @@ authorization; exact replay under unchanged owner state reuses it and finishes
 the attachment. An attached MCP session cannot be rebound across a runtime
 session, Connection, project, host session, or host thread.
 
-Runtime rows are historical process observations, not leases or liveness
-claims. A crashed process may leave an apparently open row, and multiple
+Runtime rows are historical process observations, not launch leases or
+liveness claims. Launch leases exist only to authorize one bootstrap
+transition and do not turn runtime rows into liveness records. A crashed
+process may leave an apparently open row, and multiple
 cooperative Codex processes may be current concurrently. Neither condition
 blocks Guard correlation: no runtime is guessed from open rows, and different
 host sessions bind independently.
@@ -610,8 +626,8 @@ It is created only after validating all of the following current facts:
 8. the Connection mode allows the requested operation category;
 9. `ActorSource::AgentConnection` exactly names the validated Connection;
 10. a project-scoped operation exactly names the validated project;
-11. the runtime session has `session_source=managed_host`, never
-   `cli_preflight`.
+11. the runtime session has `session_source=managed_host`, never `manual_cli`,
+   `cli_preflight`, or `integration_probe`.
 
 The adapter validates the authoritative runtime and project rows on every
 project tool call before constructing Core invocation context. Executable path,
@@ -635,6 +651,8 @@ The Codex adapter owns host-specific configuration inspection and mutation:
 - install only the managed entry selected by current Connection inputs;
 - project the canonical managed MCP launch contract into Codex TOML and parse
   it strictly back into the same contract;
+- validate that exact current entry again before issuing a one-time launch
+  lease and entering managed stdio;
 - detect missing, modified, or extra managed configuration as drift;
 - report executable availability and bounded host version diagnostics;
 - repair owner-defined managed state from current canonical inputs; and
@@ -654,8 +672,10 @@ persistence never performs a second fingerprint update.
 Runtime authorization validates the current enabled Connection, project
 membership, allowed mode, managed runtime session, revision-scoped project
 session, and exact Registry/project binding. Command names, executable paths,
-version strings, environment values, and local session metadata are diagnostic
-or routing facts and do not establish actor or human identity.
+version strings, Runtime Home configuration, and local session metadata are
+diagnostic or routing facts and do not establish actor or human identity. The
+launch lease is an evidence-integrity transition coordinate, not an operating-
+system actor credential.
 
 Repair does not overwrite unrelated Codex configuration or silently change the
 selected project, Connection, intent, profile, or platform environment.

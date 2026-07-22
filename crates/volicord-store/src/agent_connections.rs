@@ -1348,6 +1348,11 @@ pub fn remove_connection_project(
               WHERE connection_internal_id = ?1",
             [&connection.connection_internal_id],
         )?;
+        tx.execute(
+            "DELETE FROM managed_mcp_launch_leases
+              WHERE connection_internal_id = ?1",
+            [&connection.connection_internal_id],
+        )?;
         let removed = tx.execute(
             "DELETE FROM agent_connections
               WHERE connection_internal_id = ?1",
@@ -2626,7 +2631,7 @@ mod tests {
         ProjectRegistration, ACTIVE_PROJECT_STATUS,
     };
     use crate::operational_sessions::{
-        mcp_runtime_session, start_mcp_runtime_session, McpRuntimeSessionRecord,
+        mcp_runtime_session, start_mcp_runtime_session_for_test, McpRuntimeSessionRecord,
         McpRuntimeSessionStart,
     };
 
@@ -5155,7 +5160,7 @@ mod tests {
         session_source: McpRuntimeSessionSource,
         process_id: u32,
     ) -> StoreResult<McpRuntimeSessionRecord> {
-        start_mcp_runtime_session(
+        start_mcp_runtime_session_for_test(
             fixture.runtime_home.path(),
             McpRuntimeSessionStart {
                 connection_internal_id: connection_internal_id.to_owned(),

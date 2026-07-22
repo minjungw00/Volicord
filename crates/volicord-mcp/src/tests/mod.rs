@@ -14,9 +14,9 @@ use std::os::unix::fs::PermissionsExt;
 
 use crate::prelude::*;
 use crate::stdio::{
-    classify_launch_origin, handle_json_rpc_message, run_stdio_with_env_marker,
-    tool_execution_error_result, ConnectionPhase, ConnectionState, McpLaunchOrigin,
-    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+    handle_json_rpc_message, run_managed_stdio_with_test_lease,
+    run_manual_stdio_with_ignored_env_marker, tool_execution_error_result, ConnectionPhase,
+    ConnectionState, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
     MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
@@ -43,7 +43,7 @@ use volicord_mcp_protocol::ToolResultField;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
-    CONNECTION_MODE_READ_ONLY, HOST_KIND_CODEX,
+    CONNECTION_MODE_READ_ONLY,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
 use volicord_store::diagnostic_findings::{

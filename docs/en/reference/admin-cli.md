@@ -668,8 +668,8 @@ the inspected host configuration. Personal verification uses that contract's
 static absolute `VOLICORD_HOME`; shared verification resolves its forwarded
 `VOLICORD_HOME` from the Runtime Home selected by the connection operation and
 runs repository discovery from the canonical Product Repository root. The
-CLI-only verification marker is an invocation overlay and is not part of
-generated host configuration.
+preflight and self-test processes remain `cli_preflight` or `manual_cli`; they
+never create managed-host observations.
 
 `ToolVerificationRole::ManagedHostRoundTrip` is bound at compile time to
 `AgentToolId::LIST_PROJECTS`, whose wire-name projection is
@@ -793,16 +793,20 @@ reinstall Guard files.
 ## Managed Codex Configuration
 
 A personal connection writes only user-owned managed Codex configuration. Its
-entry binds the selected canonical absolute Runtime Home as static
-`VOLICORD_HOME`, carries no project selector, and forwards no environment name.
+entry invokes `volicord _host-launch codex --connection <connection_id>`, binds
+the selected canonical absolute Runtime Home as static `VOLICORD_HOME`, carries
+no project selector, and forwards no environment name.
 A shared connection writes the supported project-owned Codex entry, forwards
-only `VOLICORD_HOME`, and embeds no machine-local path or lifecycle coordinate.
+only `VOLICORD_HOME`, invokes the repository-discovery form of that hidden
+launcher, and embeds no machine-local path or lifecycle coordinate.
 Generation, strict validation, and fingerprinting project the same canonical
 managed launch contract. The exact shapes, drift rules, repair, launch context,
 and uninstall boundary belong to
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract).
-Configuration markers select the cooperative launch path; they are not
-credentials or identity evidence.
+The hidden launcher strictly validates the current entry and creates a bounded
+one-time Registry launch lease. Static configuration contains no lease, nonce,
+or reusable secret. The lease is cooperative evidence-
+integrity state, not a credential or identity claim.
 
 ## Managed Guard Hook Commands
 
@@ -838,6 +842,10 @@ volicord mcp --check --connection <connection_id> [--project <project_id>]
 
 These commands expose only managed stdio. Exact framing, lifecycle, tool lists,
 and response projection belong to [MCP Transport](mcp-transport.md).
+
+The generated Codex entry uses the hidden `_host-launch` command rather than
+these public manual stdio commands. `_host-launch` is host-owned, omitted from
+normal help, and not an alternate administrative or public API surface.
 
 <a id="diagnostics"></a>
 ## Diagnostics

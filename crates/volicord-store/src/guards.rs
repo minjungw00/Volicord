@@ -3986,7 +3986,7 @@ mod tests {
         bootstrap::{
             initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
         },
-        operational_sessions::{start_mcp_runtime_session, McpRuntimeSessionStart},
+        operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
     };
     use volicord_types::McpRuntimeSessionSource;
 
@@ -4028,7 +4028,7 @@ mod tests {
         connection_id: &str,
         started_at: &str,
     ) -> StoreResult<String> {
-        Ok(start_mcp_runtime_session(
+        Ok(start_mcp_runtime_session_for_test(
             runtime_home,
             McpRuntimeSessionStart {
                 connection_internal_id: connection_id.to_owned(),

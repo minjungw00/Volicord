@@ -44,6 +44,9 @@ pub(crate) use volicord_store::{
         bind_agent_session_runtime, current_project_agent_session_coordinates,
         list_guard_installations, AgentSessionRuntimeBinding,
     },
+    managed_launch_leases::{
+        consume_managed_mcp_launch_lease_and_start_runtime, ManagedMcpLaunchLeaseConsumption,
+    },
     operational_sessions::{
         mcp_runtime_session, record_mcp_graceful_close, record_mcp_initialize_attempt,
         record_mcp_initialize_completion, record_mcp_initialized_notification,
@@ -56,6 +59,12 @@ pub(crate) use volicord_store::{
     },
     sqlite::{open_project_state_database_read_only, sqlite_database_write_capability},
     StoreError,
+};
+
+#[cfg(test)]
+pub(crate) use volicord_store::{
+    managed_launch_leases::{issue_managed_mcp_launch_lease, ManagedMcpLaunchLeaseIssue},
+    operational_sessions::connection_integration_revision,
 };
 
 #[cfg(test)]

@@ -61,6 +61,9 @@ registry 직접 순회가 matrix를 정합니다.
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
 - 권위 있는 MCP runtime-session source 분리, milestone ordering, 현재 revision,
   프로젝트 binding, diagnostics 비권위성
+- 숨은 launcher 구성의 정확한 형태, 현재 entry drift 거절, 사용하지 않은 lease의
+  결정적인 정리, 원자적인 일회성 lease 소비, replay·만료·Connection·revision·fingerprint
+  불일치 거절, process 환경과 관계없이 공개 stdio가 `manual_cli`로 남는다는 증명
 - 릴리스 상태이면서 `production_supported=true`인 manifest 항목과 프로덕션 protocol
   profile 사이의 정확한 revision 집합 일치 및 프로덕션 지원에서 추적 중인
   pre-release generation 제외

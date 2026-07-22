@@ -20,6 +20,7 @@
 | 계획, 정책, replay, 권한 | `volicord-core` | 집중된 API, Core Model, Storage Effects |
 | DDL, 엄격한 저장 레코드, transaction 효과 | `volicord-store` | Storage DDL, Records, Effects, Versioning |
 | MCP 생명주기, 디코딩, 도구 목록, projection | `volicord-mcp` | MCP Transport와 API 소유자 |
+| 관리 MCP 시작 또는 runtime source | 숨겨진 CLI launcher, MCP bootstrap, 그다음 Store session | Agent Connection, MCP Transport, Storage Records와 DDL |
 | 관리 명령 또는 CLI 받은 편지함 | `volicord-cli` | Administrative CLI와 User Action 소유자 |
 | Codex 설정 또는 검증 | Codex 어댑터와 connection 명령 | Agent Connection, Security, System Requirements |
 | 릴리스 빌드 또는 패키지 무결성 | `tests/release-integrity`, 릴리스 workflow | 검증 |

@@ -31,6 +31,10 @@ use volicord_store::{
         list_guard_installations, upsert_guard_installation, AgentSessionRuntimeBinding,
         GuardInstallationUpsert,
     },
+    managed_launch_leases::{
+        consume_managed_mcp_launch_lease_and_start_runtime, issue_managed_mcp_launch_lease,
+        ManagedMcpLaunchLeaseConsumption, ManagedMcpLaunchLeaseIssue,
+    },
     operational_sessions::{
         connection_integration_revision, start_mcp_runtime_session, McpRuntimeSessionStart,
     },
@@ -55,6 +59,44 @@ pub mod golden {
     /// Placement marker for future golden-output helpers.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct GoldenBoundary;
+}
+
+/// Starts a test runtime while preserving the managed-host lease invariant.
+pub fn start_test_mcp_runtime_session(
+    runtime_home: impl AsRef<Path>,
+    input: McpRuntimeSessionStart,
+) -> StoreResult<volicord_store::operational_sessions::McpRuntimeSessionRecord> {
+    if input.session_source != McpRuntimeSessionSource::ManagedHost {
+        return start_mcp_runtime_session(runtime_home, input);
+    }
+    let runtime_home = runtime_home.as_ref();
+    let connection =
+        agent_connection_record_read_only(runtime_home, &input.connection_internal_id)?
+            .ok_or_else(|| StoreError::NotFound {
+                entity: "agent_connection",
+                id: input.connection_internal_id.clone(),
+            })?;
+    let revision = connection_integration_revision(&connection)?;
+    let lease = issue_managed_mcp_launch_lease(
+        runtime_home,
+        ManagedMcpLaunchLeaseIssue {
+            connection_internal_id: connection.connection_internal_id,
+            host_kind: HostKind::Codex,
+            expected_integration_revision: revision.as_str().to_owned(),
+            expected_launch_fingerprint: connection.managed_fingerprint,
+        },
+    )?;
+    consume_managed_mcp_launch_lease_and_start_runtime(
+        runtime_home,
+        ManagedMcpLaunchLeaseConsumption {
+            launch_lease_id: lease.launch_lease_id,
+            connection_internal_id: lease.connection_internal_id,
+            host_kind: lease.host_kind,
+            expected_integration_revision: lease.expected_integration_revision,
+            expected_launch_fingerprint: lease.expected_launch_fingerprint,
+        },
+        input,
+    )
 }
 
 /// Non-product invocation label for local-user and negative-path test fixtures.
@@ -300,7 +342,7 @@ pub fn seed_test_agent_session(
     let host_turn_id = format!("test-turn-{sequence}");
     let store = CoreProjectStore::open(runtime_home.as_ref(), &project_id.into())?;
     let observed_at = store.current_timestamp()?;
-    let runtime_session_id = start_mcp_runtime_session(
+    let runtime_session_id = start_test_mcp_runtime_session(
         runtime_home.as_ref(),
         McpRuntimeSessionStart {
             connection_internal_id: connection_id.to_owned(),

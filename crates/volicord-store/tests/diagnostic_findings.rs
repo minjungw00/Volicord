@@ -11,8 +11,7 @@ use volicord_store::{
         MAX_DIAGNOSTIC_CAUSE_CHAIN_DEPTH,
     },
     operational_sessions::{
-        connection_integration_revision, mcp_runtime_session, start_mcp_runtime_session,
-        McpRuntimeSessionStart,
+        connection_integration_revision, mcp_runtime_session, McpRuntimeSessionStart,
     },
     sqlite::{enable_foreign_keys, registry_db_path},
     StoreError,
@@ -207,7 +206,7 @@ fn occurrence_graph_is_insert_only_without_runtime_heuristics() -> Result<(), Bo
 #[test]
 fn runtime_terminal_occurrence_is_inserted_and_linked_atomically() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-terminal-occurrence")?;
-    let runtime = start_mcp_runtime_session(
+    let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),

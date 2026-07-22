@@ -16,6 +16,7 @@ pub mod export_command;
 pub mod guard_command;
 mod guard_integration;
 pub mod host_integration;
+pub mod host_launch;
 mod managed_block;
 pub mod operational_diagnostics;
 pub mod policy_command;

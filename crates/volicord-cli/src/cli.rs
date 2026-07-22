@@ -55,6 +55,9 @@ pub enum Command {
     /// Internal managed Codex hook entry point.
     #[command(name = "_hook", hide = true)]
     Hook(HookArgs),
+    /// Internal managed MCP host launcher.
+    #[command(name = "_host-launch", hide = true)]
+    HostLaunch(HostLaunchArgs),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -68,6 +71,21 @@ impl CodexHost {
             Self::Codex => "codex",
         }
     }
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("binding")
+        .required(true)
+        .args(["connection", "discover_repository"])
+))]
+pub struct HostLaunchArgs {
+    #[arg(value_enum)]
+    pub host: CodexHost,
+    #[arg(long, value_parser = nonempty_string, conflicts_with = "discover_repository")]
+    pub connection: Option<String>,
+    #[arg(long, conflicts_with = "connection")]
+    pub discover_repository: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

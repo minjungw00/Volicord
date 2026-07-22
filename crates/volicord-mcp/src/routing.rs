@@ -832,7 +832,7 @@ mod repository_discovery_tests {
             .expect("shared repository launch");
         assert_eq!(
             launch.args(),
-            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+            ["_host-launch", "codex", "--discover-repository"]
         );
 
         let first_resolution = RepositoryDiscoveryResolution::resolve(

@@ -30,8 +30,8 @@ the same Core and stdio boundary.
 - Moving or replacing the project requires owner-defined verification or repair.
 - Connection records do not grant operating-system permission or prove user
   identity.
-- Configuration markers, client/host versions, paths, and process observations
-  do not prove actor or binary identity.
+- A launch lease, client/host versions, paths, and process observations do not
+  prove actor or binary identity.
 - The CLI inbox remains the only UserAction resolution channel.
 
 Exact fields and commands belong to

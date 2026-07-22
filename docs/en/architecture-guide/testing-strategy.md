@@ -65,6 +65,10 @@ Durable tests should cover, as applicable:
 - MCP rejection of hidden context and CLI-only UserAction resolution;
 - authoritative MCP runtime-session source separation, milestone ordering,
   current revisions, project binding, and diagnostics non-authority;
+- exact hidden-launcher configuration, current-entry drift rejection,
+  deterministic cleanup of unused leases, atomic one-time lease consumption,
+  replay/expiry/Connection/revision/fingerprint rejection, and proof that
+  public stdio remains `manual_cli` regardless of process environment;
 - exact revision-set parity between released `production_supported=true`
   manifest entries and production protocol profiles, with tracked pre-release
   generations excluded from production support;

@@ -10,11 +10,7 @@ use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_output;
 use crate::tool_registry::{CanonicalContent, CanonicalToolResult};
 use crate::util::*;
-use crate::{
-    MANAGED_MCP_LAUNCH_VALUE, VOLICORD_HOME_ENV, VOLICORD_MCP_CONNECTION_ID_ENV,
-    VOLICORD_MCP_HOST_ENV, VOLICORD_MCP_LAUNCH_ENV, VOLICORD_MCP_VERIFICATION_ENV,
-    VOLICORD_MCP_VERIFICATION_VALUE,
-};
+use crate::VOLICORD_HOME_ENV;
 use sha2::{Digest, Sha256};
 use volicord_host_contract::{CodexMcpCorrelation, CodexMcpTurnMetadataV1, HostContractErrorCode};
 use volicord_types::{HostKind, ManagedMcpClientInfo};
@@ -35,14 +31,16 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StdioRunOptions {
-    launch_origin: McpLaunchOrigin,
+    session_source: McpRuntimeSessionSource,
+    managed_lease: Option<ManagedMcpLaunchLeaseConsumption>,
     observed_host_executable_version: Option<String>,
 }
 
 impl Default for StdioRunOptions {
     fn default() -> Self {
         Self {
-            launch_origin: McpLaunchOrigin::ManualCli,
+            session_source: McpRuntimeSessionSource::ManualCli,
+            managed_lease: None,
             observed_host_executable_version: None,
         }
     }
@@ -58,25 +56,30 @@ where
     R: BufRead,
     W: Write,
 {
-    reject_invalid_managed_marker(options.launch_origin)?;
-    let mut state = ConnectionState::for_launch_origin(options.launch_origin);
+    let mut state = ConnectionState::for_session_source(options.session_source);
     let process_started_at = authoritative_observation_timestamp();
-    let source = if options.launch_origin == McpLaunchOrigin::ManagedHost {
-        McpRuntimeSessionSource::ManagedHost
-    } else {
-        McpRuntimeSessionSource::CliPreflight
+    let runtime_start = McpRuntimeSessionStart {
+        connection_internal_id: adapter.context.connection_internal_id.as_str().to_owned(),
+        session_source: options.session_source,
+        observed_host_executable_version: options.observed_host_executable_version,
+        process_id: std::process::id(),
+        process_started_at,
     };
-    let runtime_session = start_mcp_runtime_session(
-        &adapter.runtime_home,
-        McpRuntimeSessionStart {
-            connection_internal_id: adapter.context.connection_internal_id.as_str().to_owned(),
-            session_source: source,
-            observed_host_executable_version: options.observed_host_executable_version,
-            process_id: std::process::id(),
-            process_started_at,
-        },
-    )
-    .map_err(McpAdapterError::Store)?;
+    let runtime_session = if let Some(lease) = options.managed_lease {
+        if options.session_source != McpRuntimeSessionSource::ManagedHost {
+            return Err(McpAdapterError::Environment(
+                "managed launch lease requires session_source=managed_host".to_owned(),
+            ));
+        }
+        consume_managed_mcp_launch_lease_and_start_runtime(
+            &adapter.runtime_home,
+            lease,
+            runtime_start,
+        )
+    } else {
+        start_mcp_runtime_session(&adapter.runtime_home, runtime_start)
+    };
+    let runtime_session = runtime_session.map_err(McpAdapterError::Store)?;
     state.runtime_session_id = runtime_session.runtime_session_id;
 
     let transport_result = (|| {
@@ -300,16 +303,6 @@ pub fn run_stdio_from_env(
     validate_mcp_project_allowlist(&runtime_home, connection_id, &project_allowlist)?;
     let context = McpConnectionContext::resolve(&runtime_home, connection_id)?
         .with_project_allowlist(project_allowlist);
-    let connection = agent_connection_record_read_only(&runtime_home, connection_id)
-        .map_err(McpAdapterError::Store)?
-        .ok_or_else(|| {
-            McpAdapterError::Environment(format!(
-                "MCP Agent Connection disappeared during startup: {connection_id}"
-            ))
-        })?;
-    let launch_origin =
-        classify_launch_origin(process_env_var, connection_id, Some(&connection.host_kind));
-    reject_invalid_managed_marker(launch_origin)?;
     let adapter = McpAdapter::new(runtime_home, context);
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -318,7 +311,8 @@ pub fn run_stdio_from_env(
         stdin.lock(),
         stdout.lock(),
         StdioRunOptions {
-            launch_origin,
+            session_source: McpRuntimeSessionSource::ManualCli,
+            managed_lease: None,
             observed_host_executable_version,
         },
     )
@@ -336,13 +330,6 @@ pub fn run_stdio_discover_repository_from_env(
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     let runtime_home = resolve_repository_discovery_runtime_home(process_env_var, &current_dir)?;
     let resolution = RepositoryDiscoveryResolution::resolve(&runtime_home, &current_dir, host)?;
-    let launch_origin = classify_launch_origin_with_repository_discovery(
-        process_env_var,
-        resolution.context.connection_internal_id.as_str(),
-        Some(resolution.host.as_str()),
-        true,
-    );
-    reject_invalid_managed_marker(launch_origin)?;
     let adapter = McpAdapter::new(runtime_home, resolution.context);
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -351,47 +338,31 @@ pub fn run_stdio_discover_repository_from_env(
         stdin.lock(),
         stdout.lock(),
         StdioRunOptions {
-            launch_origin,
+            session_source: McpRuntimeSessionSource::ManualCli,
+            managed_lease: None,
             observed_host_executable_version,
         },
     )
 }
 
-fn reject_invalid_managed_marker(launch_origin: McpLaunchOrigin) -> Result<(), McpAdapterError> {
-    if launch_origin == McpLaunchOrigin::InvalidManagedMarker {
-        return Err(McpAdapterError::Host(McpHostError::ManagedMarkerMismatch));
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod managed_marker_protocol_order_tests {
-    use super::*;
-
-    #[test]
-    fn shared_repository_launch_is_codex_provenance_but_not_session_correlation() {
-        assert_eq!(
-            classify_launch_origin_with_repository_discovery(
-                |_| None,
-                "connection.alpha",
-                Some(HostKind::Codex.as_str()),
-                true,
-            ),
-            McpLaunchOrigin::ManagedHost
-        );
-        assert_eq!(
-            classify_launch_origin_with_repository_discovery(
-                |name| {
-                    (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient-not-a-binding"))
-                },
-                "connection.alpha",
-                Some(HostKind::Codex.as_str()),
-                true,
-            ),
-            McpLaunchOrigin::ManagedHost,
-            "an ambient CODEX_THREAD_ID must not become a second provenance or binding input"
-        );
-    }
+/// Runs managed stdio only through an in-memory one-time launch-lease claim.
+pub fn run_managed_stdio(
+    adapter: McpAdapter,
+    managed_lease: ManagedMcpLaunchLeaseConsumption,
+    observed_host_executable_version: Option<String>,
+) -> Result<(), McpAdapterError> {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    run_stdio_with_options(
+        adapter,
+        stdin.lock(),
+        stdout.lock(),
+        StdioRunOptions {
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            managed_lease: Some(managed_lease),
+            observed_host_executable_version,
+        },
+    )
 }
 
 /// Resolves the explicit Runtime Home required by repository discovery.
@@ -424,7 +395,52 @@ where
 }
 
 #[cfg(test)]
-pub(crate) fn run_stdio_with_env_marker<R, W, F>(
+pub(crate) fn run_managed_stdio_with_test_lease<R, W>(
+    adapter: McpAdapter,
+    reader: R,
+    writer: W,
+) -> Result<(), McpAdapterError>
+where
+    R: BufRead,
+    W: Write,
+{
+    let connection = agent_connection_record_read_only(
+        &adapter.runtime_home,
+        adapter.context.connection_internal_id.as_str(),
+    )
+    .map_err(McpAdapterError::Store)?
+    .ok_or_else(|| McpAdapterError::Environment("test Connection disappeared".to_owned()))?;
+    let revision = connection_integration_revision(&connection).map_err(McpAdapterError::Store)?;
+    let lease = issue_managed_mcp_launch_lease(
+        &adapter.runtime_home,
+        ManagedMcpLaunchLeaseIssue {
+            connection_internal_id: connection.connection_internal_id.clone(),
+            host_kind: HostKind::Codex,
+            expected_integration_revision: revision.as_str().to_owned(),
+            expected_launch_fingerprint: connection.managed_fingerprint.clone(),
+        },
+    )
+    .map_err(McpAdapterError::Store)?;
+    run_stdio_with_options(
+        adapter,
+        reader,
+        writer,
+        StdioRunOptions {
+            session_source: McpRuntimeSessionSource::ManagedHost,
+            managed_lease: Some(ManagedMcpLaunchLeaseConsumption {
+                launch_lease_id: lease.launch_lease_id,
+                connection_internal_id: lease.connection_internal_id,
+                host_kind: lease.host_kind,
+                expected_integration_revision: lease.expected_integration_revision,
+                expected_launch_fingerprint: lease.expected_launch_fingerprint,
+            }),
+            observed_host_executable_version: None,
+        },
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn run_manual_stdio_with_ignored_env_marker<R, W, F>(
     adapter: McpAdapter,
     reader: R,
     writer: W,
@@ -435,16 +451,8 @@ where
     W: Write,
     F: Fn(&str) -> Option<OsString>,
 {
-    let launch_origin = classify_launch_origin_for_adapter(&adapter, &env_var);
-    run_stdio_with_options(
-        adapter,
-        reader,
-        writer,
-        StdioRunOptions {
-            launch_origin,
-            observed_host_executable_version: None,
-        },
-    )
+    let _ = env_var;
+    run_stdio(adapter, reader, writer)
 }
 
 /// Runs MCP startup validation from process environment.
@@ -506,14 +514,6 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     resolve_shared_runtime_home(env_var, current_dir).map_err(McpAdapterError::from)
-}
-
-fn mcp_verification_launch<F>(env_var: F) -> bool
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    env_var(VOLICORD_MCP_VERIFICATION_ENV)
-        .is_some_and(|value| value.to_str() == Some(VOLICORD_MCP_VERIFICATION_VALUE))
 }
 
 #[cfg(test)]
@@ -582,119 +582,6 @@ mod repository_discovery_runtime_home_tests {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum McpLaunchOrigin {
-    CliVerification,
-    ManagedHost,
-    ManualCli,
-    InvalidManagedMarker,
-    Unknown,
-}
-
-impl McpLaunchOrigin {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::CliVerification => "cli_verification",
-            Self::ManagedHost => MANAGED_MCP_LAUNCH_VALUE,
-            Self::ManualCli => "manual_cli",
-            Self::InvalidManagedMarker => "invalid_managed_marker",
-            Self::Unknown => "unknown",
-        }
-    }
-}
-
-pub(crate) fn classify_launch_origin<F>(
-    env_var: F,
-    connection_id: &str,
-    expected_host_kind: Option<&str>,
-) -> McpLaunchOrigin
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    classify_launch_origin_with_repository_discovery(
-        env_var,
-        connection_id,
-        expected_host_kind,
-        false,
-    )
-}
-
-fn classify_launch_origin_with_repository_discovery<F>(
-    env_var: F,
-    connection_id: &str,
-    expected_host_kind: Option<&str>,
-    repository_discovery_launch: bool,
-) -> McpLaunchOrigin
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    if mcp_verification_launch(&env_var) {
-        return McpLaunchOrigin::CliVerification;
-    }
-
-    let launch = env_text(&env_var, VOLICORD_MCP_LAUNCH_ENV);
-    let host = env_text(&env_var, VOLICORD_MCP_HOST_ENV);
-    let marker_connection_id = env_text(&env_var, VOLICORD_MCP_CONNECTION_ID_ENV);
-    let volicord_marker_present = [
-        VOLICORD_MCP_LAUNCH_ENV,
-        VOLICORD_MCP_HOST_ENV,
-        VOLICORD_MCP_CONNECTION_ID_ENV,
-    ]
-    .into_iter()
-    .any(|name| env_var(name).is_some());
-    if !volicord_marker_present {
-        return if repository_discovery_launch
-            && expected_host_kind == Some(HostKind::Codex.as_str())
-        {
-            McpLaunchOrigin::ManagedHost
-        } else {
-            McpLaunchOrigin::ManualCli
-        };
-    }
-
-    let Some(expected_host_kind) = expected_host_kind else {
-        return McpLaunchOrigin::InvalidManagedMarker;
-    };
-    if expected_host_kind != HostKind::Codex.as_str() {
-        return McpLaunchOrigin::InvalidManagedMarker;
-    }
-
-    if launch.as_deref() == Some(MANAGED_MCP_LAUNCH_VALUE)
-        && host.as_deref() == Some(expected_host_kind)
-        && marker_connection_id.as_deref() == Some(connection_id)
-    {
-        McpLaunchOrigin::ManagedHost
-    } else {
-        McpLaunchOrigin::InvalidManagedMarker
-    }
-}
-
-#[cfg(test)]
-fn classify_launch_origin_for_adapter<F>(adapter: &McpAdapter, env_var: &F) -> McpLaunchOrigin
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    let host_kind = agent_connection_record_read_only(
-        &adapter.runtime_home,
-        adapter.context.connection_internal_id.as_str(),
-    )
-    .ok()
-    .flatten()
-    .map(|connection| connection.host_kind);
-    classify_launch_origin(
-        env_var,
-        adapter.context.connection_internal_id.as_str(),
-        host_kind.as_deref(),
-    )
-}
-
-fn env_text<F>(env_var: &F, name: &str) -> Option<String>
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    env_var(name).and_then(|value| value.into_string().ok())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConnectionPhase {
     AwaitingInitialize,
     AwaitingInitialized,
@@ -738,7 +625,7 @@ impl Default for ConnectionState {
             mcp_session: None,
             runtime_session_id: String::new(),
             managed_stdio_binding_active: false,
-            launch_origin: McpLaunchOrigin::Unknown.as_str(),
+            launch_origin: "unknown",
             status_method_call_count: 0,
             terminal_finding_recorded: false,
             pending_finding: None,
@@ -785,10 +672,10 @@ impl ConnectionState {
         })
     }
 
-    fn for_launch_origin(launch_origin: McpLaunchOrigin) -> Self {
-        let pending_codex = launch_origin == McpLaunchOrigin::ManagedHost;
+    fn for_session_source(session_source: McpRuntimeSessionSource) -> Self {
+        let pending_codex = session_source == McpRuntimeSessionSource::ManagedHost;
         Self {
-            launch_origin: launch_origin.as_str(),
+            launch_origin: session_source.as_str(),
             codex_binding: if pending_codex {
                 CodexManagedBinding::Pending
             } else {

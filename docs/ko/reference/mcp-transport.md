@@ -14,14 +14,16 @@ Core 메서드, Codex 구성, 연결 검증, 저장 효과는 각각의 집중 �
 | `volicord mcp --stdio`, 초기화, `tools/list`, `tools/call`, 응답 wrapping | `stable` |
 | 권위 있는 runtime-session lifecycle milestone | `stable` |
 | stable 프로세스와 메서드 집합에 나열하지 않은 pre-1.0 추가 표면 | `beta` |
-| 관리 시작 marker와 생성 구성 세부사항 | `internal` |
+| 숨겨진 관리 launcher, launch lease, 생성 구성 세부사항 | `internal` |
 | Host 실행 파일 version, MCP client name/version, best-effort protocol metric | `diagnostic` |
 
 ## 프로세스 모델
 
-`volicord mcp --stdio`는 관리 Codex 구성이 시작하는 자식 프로세스입니다. stdin과
-stdout으로 줄 단위 JSON-RPC를 교환하며 TCP, HTTP, Unix domain socket 또는 그 밖의
-네트워크 listener를 열지 않습니다.
+관리 Codex 구성은 숨겨진 `volicord _host-launch codex` entry를 시작하며, 이 entry는
+lease를 소비한 뒤 같은 프로세스에서 stdio adapter로 전환합니다. 공개
+`volicord mcp --stdio` entry는 수동 stdio 표면입니다. 두 경로 모두 stdin과 stdout으로
+줄 단위 JSON-RPC를 교환하며 TCP, HTTP, Unix domain socket 또는 그 밖의 네트워크
+listener를 열지 않습니다.
 
 ```text
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
@@ -45,26 +47,29 @@ Home과 정규 Git 작업 트리에서 Connection과 프로젝트를 해결합�
 생성 형태와 엄격한 parsing은
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract)이 담당합니다.
 
-Connection 사전 점검과 CLI stdio 핸드셰이크는 같은 계약에서 프로세스 시작을 구체화합니다.
-구체화 과정은 상속한 일반 프로세스 환경 변수를 보존하고, Volicord 소유 관리 MCP 변수를
-제거한 뒤 정적 값을 적용합니다. 전달할 각 이름은 명시적인 검증 입력으로 해석하며,
-마지막에 CLI 전용 진단 표식을 적용합니다. 따라서 개인 연결 검증은 계약에 이미 들어 있는
+Connection 사전 점검과 CLI stdio 핸드셰이크는 같은 binding 계약에서 공개 프로세스
+시작을 파생합니다. 구체화 과정은 상속한 일반 프로세스 환경 변수를 보존하고 명시적인
+process 구성만 적용합니다. 전달할 각 이름은
+명시적인 검증 입력으로 해석합니다. 따라서 개인 연결 검증은 계약에 이미 들어 있는
 정적 Runtime Home을 사용합니다. 공유 연결 검증은 저장소에 보이는 구성을 이식 가능한
 형태로 유지하면서 작업이 선택한 Runtime Home을 전달 대상 `VOLICORD_HOME`으로 사용합니다.
 공유 저장소 검색은 정규 Product Repository 루트에서 실행하고, 개인 연결 검증은 결속된
 식별자를 사용하므로 작업 디렉터리를 통한 저장소 검색에 의존하지 않습니다.
 
-MCP 요청을 읽기 전에 어댑터는 Volicord가 생성한 관리 시작/구성 맥락에서 정확한 등록
-Connection을 해결합니다. Connection 활성 상태, 선택한 프로젝트의 현재 membership,
+MCP 요청을 읽기 전에 숨겨진 launcher는 정규 관리 구성에서 정확한 등록 Connection을
+해결합니다. Connection 활성 상태, 선택한 프로젝트의 현재 membership,
 Runtime Home/Product Repository 분리, 현재 `StorageManifest`, 필요한 저장 읽기 가능성을
-검증합니다. 관리 시작 marker는 협력적인 process source를 분류하지만 client, host,
-actor, human identity를 증명하지 않습니다. 손상된 기록, 모호한 선택, 사용할 수 없는
-저장소에는 [실패 모델](failure-model.md)을 적용합니다.
+검증합니다. 엄격한 현재 entry, integration revision, managed fingerprint가 일치한 뒤에만
+한도가 있고 한 번 쓰는 launch lease를 만듭니다. 손상된 기록, 모호한 선택, 사용할 수 없는 저장소에는
+[실패 모델](failure-model.md)을 적용합니다.
 
-시작 시 해당 관리 Connection을 해결한 직후 현재 Connection integration revision과
-`managed_host` 또는 `cli_preflight` source를 포함한 Registry runtime session을 기록합니다.
-Executable path, host version, client version은 diagnostic으로 남으며, 관리 호출 권한은
-아래의 현재 session 및 프로젝트 binding으로 성립합니다.
+MCP bootstrap은 그 lease를 정확히 한 번 소비하고 같은 Store transaction에서
+`managed_host` Registry runtime session을 만듭니다. Replay, 만료, 취소, Connection
+불일치, revision 불일치, fingerprint 불일치가 있는 lease는 runtime을 만들지 않습니다.
+공개 stdio는 `manual_cli`, `--check`는 `cli_preflight`, 전용 integration probe는
+`integration_probe`를 만듭니다. Executable path, host version, client version은
+diagnostic으로 남으며, 관리 호출 권한은 아래의 현재 session 및 프로젝트 binding으로
+성립합니다.
 
 ## MCP wire 동작
 
@@ -194,10 +199,11 @@ host가 독립적으로 소유하는 fixture 목록입니다. 현재 `codex` fix
 파생하지 않습니다. 배포된 client 계열이 서로 다른 revision을 요구하면 독립적으로 고정한
 `codex` fixture 여러 개를 함께 둘 수 있습니다.
 
-두 matrix 모두 CLI probe 증거입니다. Host 호환성 fixture 통과는 검토된 요청 형태가 이
+두 matrix 모두 CLI probe 증거입니다. `cli_preflight`, `manual_cli`,
+`integration_probe` runtime source는 managed check에서 제외됩니다. Host 호환성 fixture 통과는 검토된 요청 형태가 이
 서버에서 동작함을 보여 주지만 관리 Codex process가 실행되었음을 보여 주지는 않습니다.
-Source가 `managed_host`인 실제 process가 기록한 lifecycle 관찰만 managed-host 운영 check를
-충족할 수 있습니다.
+Launch lease 소비에 성공해 source가 `managed_host`로 생성된 runtime의 lifecycle 관찰만
+managed-host 운영 check를 충족할 수 있습니다.
 
 ## 버전이 지정된 Codex Host 계약
 
@@ -218,9 +224,10 @@ name입니다. Command-hook 상관관계에는 thread 좌표가 없습니다.
 
 프로세스는 Agent Connection을 해결한 뒤 thread metadata를 검증하거나 protocol message를
 읽기 전에 Registry runtime session을 만듭니다. 이 row는 Volicord가 생성한 process
-launch, Connection, `managed_host` 또는 `cli_preflight` source, 현재 Connection 통합
-revision, process ID, process 시작 시각을 식별합니다. CLI preflight row는
-managed-host 운영 check를 충족하지 않습니다.
+launch, Connection, 정확한 `managed_host`, `manual_cli`, `cli_preflight`,
+`integration_probe` 중 하나의 source, 현재 Connection 통합 revision, process ID,
+process 시작 시각을 식별합니다. 원자적인 launch-lease 소비만 `managed_host`를 만들며
+나머지 source는 모두 managed-host 운영 check와 권한에서 제외됩니다.
 
 어댑터는 한도가 있는 `clientInfo.name`, `clientInfo.version`, `protocolVersion`을 파싱하는
 즉시 시도된 client와 요청 revision으로 영속 기록하며, 이후 initialize 검증이 실패해도 이
@@ -253,9 +260,10 @@ Registry를 열기 전에 발생한 실패는 stderr에 한도가 있는
 finding을 영속합니다. Terminal 실패는 두 번째 자유 형식 실패 객체로 저장하지 않고
 finding ID로 연결합니다.
 
-연결 검증은 별도의 `cli_preflight` process를 시작하고 같은 정규 role 담당 도구, 현재
-`volicord.list_projects`를 안전한 읽기 전용 self-test 왕복으로 호출합니다. 이 process는 server 표면을 검증하지만
-그 lifecycle 사실은 `managed_host` 운영 check를 충족하거나 Connection 호출을 승인할 수
+연결 검증은 별도의 preflight와 수동 stdio probe process를 시작하고 같은 정규 role 담당
+도구, 현재 `volicord.list_projects`를 안전한 읽기 전용 self-test 왕복으로 호출합니다.
+이 process들은 server 표면을 검증하지만 그 lifecycle 사실은 `managed_host` 운영 check를
+충족하거나 Connection 호출을 승인할 수
 없습니다. CLI 검증이 성공해도 관리 `host_session`, `tools/list`, 도구 왕복 관찰을
 꾸며내지 않습니다.
 

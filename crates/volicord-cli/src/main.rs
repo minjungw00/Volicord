@@ -22,6 +22,7 @@ use volicord_cli::{
     export_command::{run_export_command, ExportCommandError},
     guard_command::{run_guard_command, GuardCommandError},
     host_integration::{MANAGED_WRAPPER_ENV, MANAGED_WRAPPER_VALUE},
+    host_launch::{run_host_launch, HostLaunchBinding},
     policy_command::{run_policy_command, PolicyCommandError},
     project_context::{run_project_command, ProjectCommandError},
     setup_command::CommandOutcome,
@@ -56,6 +57,14 @@ fn main() {
         Err(CliError::McpRepositoryStdio { host }) => {
             if let Err(error) = volicord_mcp::run_stdio_discover_repository_from_env(host, None) {
                 eprintln!("{}", volicord_mcp::bootstrap_diagnostic_envelope(&error));
+                process::exit(1);
+            }
+        }
+        Err(CliError::HostLaunch { host, binding }) => {
+            if let Err(error) =
+                run_host_launch(host, binding, |name| env::var_os(name), &current_dir)
+            {
+                eprintln!("error: managed host launch failed: {error}");
                 process::exit(1);
             }
         }
@@ -126,6 +135,15 @@ where
             require_setup_completed(&env_var, current_dir)?;
             guard_command_outcome(run_guard_command(options, env_var, current_dir)?)
         }
+        CliCommand::HostLaunch(options) => Err(CliError::HostLaunch {
+            host: match options.host {
+                volicord_cli::cli::CodexHost::Codex => volicord_types::HostKind::Codex,
+            },
+            binding: options.connection.map_or(
+                HostLaunchBinding::DiscoverRepository,
+                HostLaunchBinding::Connection,
+            ),
+        }),
         CliCommand::Connection(options) => {
             let mut connection_process = ProductionConnectionProcess;
             run_connection_command(options, current_dir, &mut connection_process)
@@ -297,6 +315,10 @@ enum CliError {
     McpRepositoryStdio {
         host: volicord_types::HostKind,
     },
+    HostLaunch {
+        host: volicord_types::HostKind,
+        binding: HostLaunchBinding,
+    },
 }
 
 impl CliError {
@@ -327,6 +349,9 @@ impl fmt::Display for CliError {
                 "MCP stdio requested through {} repository discovery",
                 host.as_str()
             ),
+            Self::HostLaunch { host, .. } => {
+                write!(formatter, "managed {} host launch requested", host.as_str())
+            }
         }
     }
 }
@@ -477,5 +502,62 @@ mod tests {
 
         assert!(matches!(error, CliError::Usage(_)));
         assert!(error.to_string().contains("unrecognized subcommand"));
+    }
+
+    #[test]
+    fn hidden_host_launcher_requires_exactly_one_binding() {
+        let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let personal = run_cli(
+            [
+                "volicord",
+                "_host-launch",
+                "codex",
+                "--connection",
+                "connection_alpha",
+            ],
+            |_| None,
+            cwd,
+        )
+        .expect_err("launcher dispatch should leave process-owned stdio to main");
+        assert_eq!(
+            personal,
+            CliError::HostLaunch {
+                host: volicord_types::HostKind::Codex,
+                binding: HostLaunchBinding::Connection("connection_alpha".to_owned()),
+            }
+        );
+
+        let shared = run_cli(
+            ["volicord", "_host-launch", "codex", "--discover-repository"],
+            |_| None,
+            cwd,
+        )
+        .expect_err("launcher dispatch should leave process-owned stdio to main");
+        assert_eq!(
+            shared,
+            CliError::HostLaunch {
+                host: volicord_types::HostKind::Codex,
+                binding: HostLaunchBinding::DiscoverRepository,
+            }
+        );
+
+        for invalid in [
+            vec!["volicord", "_host-launch", "codex"],
+            vec![
+                "volicord",
+                "_host-launch",
+                "codex",
+                "--connection",
+                "connection_alpha",
+                "--discover-repository",
+            ],
+        ] {
+            assert!(matches!(
+                run_cli(invalid, |_| None, cwd),
+                Err(CliError::Usage(_))
+            ));
+        }
+        let help = run_cli(["volicord", "--help"], |_| None, cwd).expect("help");
+        assert!(!help.contains("_host-launch"));
     }
 }

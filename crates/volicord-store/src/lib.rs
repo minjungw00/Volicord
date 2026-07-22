@@ -18,6 +18,7 @@ pub mod evidence_capture;
 pub mod export;
 pub mod guards;
 pub mod inspection;
+pub mod managed_launch_leases;
 pub mod operational_diagnostics;
 pub mod operational_sessions;
 pub mod runtime_home;

@@ -33,10 +33,7 @@ pub use managed_launch::{
     is_managed_mcp_launch_environment_name, LaunchEnvironment, ManagedMcpBinding,
     ManagedMcpInvocationPurpose, ManagedMcpLaunchError, ManagedMcpLaunchSpec,
     ManagedMcpMaterializationInput, ManagedMcpWorkingDirectory, MaterializedManagedMcpLaunch,
-    RuntimeHomeBinding, MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES, MANAGED_MCP_LAUNCH_VALUE,
-    MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES, VOLICORD_HOME_ENV, VOLICORD_MCP_CONNECTION_ID_ENV,
-    VOLICORD_MCP_HOST_ENV, VOLICORD_MCP_LAUNCH_ENV, VOLICORD_MCP_VERIFICATION_ENV,
-    VOLICORD_MCP_VERIFICATION_VALUE,
+    RuntimeHomeBinding, MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES, VOLICORD_HOME_ENV,
 };
 pub use routing::{
     McpConnectionContext, McpConnectionStartupInspection, McpProjectAvailability,
@@ -44,7 +41,7 @@ pub use routing::{
 };
 pub use stdio::{
     preflight_check, resolve_repository_discovery_runtime_home, resolve_runtime_home,
-    resolve_runtime_home_from_env, run_preflight_check_from_env, run_stdio,
+    resolve_runtime_home_from_env, run_managed_stdio, run_preflight_check_from_env, run_stdio,
     run_stdio_discover_repository_from_env, run_stdio_from_env,
 };
 pub use tool_registry::{

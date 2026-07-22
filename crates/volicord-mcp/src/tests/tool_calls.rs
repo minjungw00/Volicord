@@ -851,11 +851,10 @@ fn stdio_pending_user_action_returns_cli_inbox_recovery() -> Result<(), Box<dyn 
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let values = stdio_responses(&output)?;
@@ -906,11 +905,10 @@ fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let values = stdio_responses(&output)?;

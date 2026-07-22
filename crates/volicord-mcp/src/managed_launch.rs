@@ -14,41 +14,21 @@ use sha2::{Digest, Sha256};
 use volicord_types::{HostKind, HostScope};
 
 pub const VOLICORD_HOME_ENV: &str = "VOLICORD_HOME";
-pub const VOLICORD_MCP_LAUNCH_ENV: &str = "VOLICORD_MCP_LAUNCH";
-pub const VOLICORD_MCP_HOST_ENV: &str = "VOLICORD_MCP_HOST";
-pub const VOLICORD_MCP_CONNECTION_ID_ENV: &str = "VOLICORD_MCP_CONNECTION_ID";
-pub const VOLICORD_MCP_VERIFICATION_ENV: &str = "VOLICORD_MCP_VERIFICATION";
-pub const MANAGED_MCP_LAUNCH_VALUE: &str = "managed_host";
-pub const VOLICORD_MCP_VERIFICATION_VALUE: &str = "1";
+pub const MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES: [&str; 1] = [VOLICORD_HOME_ENV];
 
-pub const MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES: [&str; 4] = [
-    VOLICORD_HOME_ENV,
-    VOLICORD_MCP_LAUNCH_ENV,
-    VOLICORD_MCP_HOST_ENV,
-    VOLICORD_MCP_CONNECTION_ID_ENV,
-];
-
-pub const MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES: [&str; 5] = [
-    VOLICORD_HOME_ENV,
-    VOLICORD_MCP_LAUNCH_ENV,
-    VOLICORD_MCP_HOST_ENV,
-    VOLICORD_MCP_CONNECTION_ID_ENV,
-    VOLICORD_MCP_VERIFICATION_ENV,
+const OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES: [&str; 4] = [
+    "VOLICORD_MCP_LAUNCH",
+    "VOLICORD_MCP_HOST",
+    "VOLICORD_MCP_CONNECTION_ID",
+    "VOLICORD_MCP_VERIFICATION",
 ];
 
 const MCP_COMMAND: &str = "volicord";
 const FINGERPRINT_DOMAIN: &[u8] = b"volicord.codex-managed-configuration\0";
 
 pub fn is_managed_mcp_launch_environment_name(name: &str) -> bool {
-    matches!(
-        name,
-        VOLICORD_HOME_ENV
-            | VOLICORD_MCP_LAUNCH_ENV
-            | VOLICORD_MCP_HOST_ENV
-            | VOLICORD_MCP_CONNECTION_ID_ENV
-    )
+    name == VOLICORD_HOME_ENV
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeHomeBinding {
     path: String,
@@ -200,13 +180,6 @@ impl ManagedMcpInvocationPurpose {
                 .transpose()?,
         })
     }
-
-    const fn is_cli_verification(&self) -> bool {
-        matches!(
-            self,
-            Self::CliStdioHandshake | Self::CliPreflightCheck { .. }
-        )
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -274,7 +247,8 @@ impl MaterializedManagedMcpLaunch {
     }
 
     fn apply_process_context(&self, command: &mut Command) {
-        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+        command.env_remove(VOLICORD_HOME_ENV);
+        for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES {
             command.env_remove(name);
         }
         command.env_remove("VOLICORD_MCP_PROJECT_ID");
@@ -305,30 +279,16 @@ impl ManagedMcpLaunchSpec {
         let connection_id = nonblank(connection_id.into(), "connection ID")?;
 
         let args = vec![
-            "mcp".to_owned(),
-            "--stdio".to_owned(),
+            "_host-launch".to_owned(),
+            HostKind::Codex.as_str().to_owned(),
             "--connection".to_owned(),
             connection_id.clone(),
         ];
 
-        let static_values = BTreeMap::from([
-            (
-                VOLICORD_HOME_ENV.to_owned(),
-                runtime_home.as_str().to_owned(),
-            ),
-            (
-                VOLICORD_MCP_CONNECTION_ID_ENV.to_owned(),
-                connection_id.clone(),
-            ),
-            (
-                VOLICORD_MCP_HOST_ENV.to_owned(),
-                HostKind::Codex.as_str().to_owned(),
-            ),
-            (
-                VOLICORD_MCP_LAUNCH_ENV.to_owned(),
-                MANAGED_MCP_LAUNCH_VALUE.to_owned(),
-            ),
-        ]);
+        let static_values = BTreeMap::from([(
+            VOLICORD_HOME_ENV.to_owned(),
+            runtime_home.as_str().to_owned(),
+        )]);
 
         Ok(Self {
             command: command.to_owned(),
@@ -350,11 +310,9 @@ impl ManagedMcpLaunchSpec {
         Ok(Self {
             command: MCP_COMMAND.to_owned(),
             args: vec![
-                "mcp".to_owned(),
-                "--stdio".to_owned(),
-                "--discover-repository".to_owned(),
-                "--host".to_owned(),
+                "_host-launch".to_owned(),
                 host_kind.as_str().to_owned(),
+                "--discover-repository".to_owned(),
             ],
             environment: LaunchEnvironment::try_new(
                 BTreeMap::new(),
@@ -380,20 +338,16 @@ impl ManagedMcpLaunchSpec {
             },
         };
 
-        let expected = if let [mcp, stdio, discover, host_flag, host] = candidate.args.as_slice() {
-            if mcp != "mcp"
-                || stdio != "--stdio"
-                || discover != "--discover-repository"
-                || host_flag != "--host"
-            {
+        let expected = if let [launcher, host, discover] = candidate.args.as_slice() {
+            if launcher != "_host-launch" || discover != "--discover-repository" {
                 return Err(ManagedMcpLaunchError::invalid_shape());
             }
             let host_kind = HostKind::from_str(host)
                 .map_err(|_| ManagedMcpLaunchError::new("managed MCP launch host must be codex"))?;
             Self::shared_repository(host_kind)?
         } else if candidate.args.len() == 4
-            && candidate.args[0] == "mcp"
-            && candidate.args[1] == "--stdio"
+            && candidate.args[0] == "_host-launch"
+            && candidate.args[1] == HostKind::Codex.as_str()
             && candidate.args[2] == "--connection"
         {
             let connection_id = candidate.args[3].as_str();
@@ -496,13 +450,6 @@ impl ManagedMcpLaunchSpec {
             })?;
             environment.insert(name.clone(), value.clone());
         }
-        if input.purpose.is_cli_verification() {
-            environment.insert(
-                VOLICORD_MCP_VERIFICATION_ENV.to_owned(),
-                OsString::from(VOLICORD_MCP_VERIFICATION_VALUE),
-            );
-        }
-
         let args = invocation_args(&self.binding, &self.args, &input.purpose)?;
         Ok(MaterializedManagedMcpLaunch {
             command: self.command.clone(),
@@ -520,8 +467,8 @@ fn invocation_args(
     purpose: &ManagedMcpInvocationPurpose,
 ) -> Result<Vec<String>, ManagedMcpLaunchError> {
     match purpose {
-        ManagedMcpInvocationPurpose::ManagedStdio
-        | ManagedMcpInvocationPurpose::CliStdioHandshake => Ok(stdio_args.to_vec()),
+        ManagedMcpInvocationPurpose::ManagedStdio => Ok(stdio_args.to_vec()),
+        ManagedMcpInvocationPurpose::CliStdioHandshake => Ok(manual_stdio_args(binding)),
         ManagedMcpInvocationPurpose::CliPreflightCheck {
             connection_id,
             project_id,
@@ -548,6 +495,24 @@ fn invocation_args(
             }
             Ok(args)
         }
+    }
+}
+
+fn manual_stdio_args(binding: &ManagedMcpBinding) -> Vec<String> {
+    match binding {
+        ManagedMcpBinding::Personal { connection_id, .. } => vec![
+            "mcp".to_owned(),
+            "--stdio".to_owned(),
+            "--connection".to_owned(),
+            connection_id.clone(),
+        ],
+        ManagedMcpBinding::SharedRepository { host_kind } => vec![
+            "mcp".to_owned(),
+            "--stdio".to_owned(),
+            "--discover-repository".to_owned(),
+            "--host".to_owned(),
+            host_kind.as_str().to_owned(),
+        ],
     }
 }
 
@@ -679,12 +644,9 @@ mod tests {
             spec.canonical_projection(),
             serde_json::json!({
                 "command": "/opt/volicord/bin/volicord",
-                "args": ["mcp", "--stdio", "--connection", "connection_alpha"],
+                "args": ["_host-launch", "codex", "--connection", "connection_alpha"],
                 "env": {
-                    "VOLICORD_HOME": "/srv/volicord/runtime",
-                    "VOLICORD_MCP_CONNECTION_ID": "connection_alpha",
-                    "VOLICORD_MCP_HOST": "codex",
-                    "VOLICORD_MCP_LAUNCH": "managed_host"
+                    "VOLICORD_HOME": "/srv/volicord/runtime"
                 }
             })
         );
@@ -705,7 +667,7 @@ mod tests {
             spec.canonical_projection(),
             serde_json::json!({
                 "command": "volicord",
-                "args": ["mcp", "--stdio", "--discover-repository", "--host", "codex"],
+                "args": ["_host-launch", "codex", "--discover-repository"],
                 "env_vars": ["VOLICORD_HOME"]
             })
         );
@@ -837,7 +799,7 @@ mod tests {
             .expect("shared repository launch");
         let mut shared_env = shared.environment().static_values().clone();
         shared_env.insert(
-            VOLICORD_MCP_CONNECTION_ID_ENV.to_owned(),
+            "VOLICORD_MCP_CONNECTION_ID".to_owned(),
             "connection_local".to_owned(),
         );
         assert!(ManagedMcpLaunchSpec::try_from_host_projection(
@@ -852,11 +814,9 @@ mod tests {
         assert!(ManagedMcpLaunchSpec::try_from_host_projection(
             personal.command().to_owned(),
             vec![
-                "mcp".to_owned(),
-                "--stdio".to_owned(),
-                "--discover-repository".to_owned(),
-                "--host".to_owned(),
+                "_host-launch".to_owned(),
                 "codex".to_owned(),
+                "--discover-repository".to_owned(),
             ],
             personal.environment().static_values().clone(),
             Vec::new(),
@@ -887,7 +847,10 @@ mod tests {
         );
 
         let mut command = Command::new(materialized.command());
-        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+        for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES
+            .into_iter()
+            .chain([VOLICORD_HOME_ENV, "VOLICORD_MCP_PROJECT_ID"])
+        {
             command.env(name, "ambient-decoy");
         }
         materialized.apply_process_context(&mut command);
@@ -901,7 +864,13 @@ mod tests {
                 "static contract value must replace an ambient {name}"
             );
         }
-        for name in ["VOLICORD_MCP_PROJECT_ID", VOLICORD_MCP_VERIFICATION_ENV] {
+        for name in [
+            "VOLICORD_MCP_PROJECT_ID",
+            "VOLICORD_MCP_LAUNCH",
+            "VOLICORD_MCP_HOST",
+            "VOLICORD_MCP_CONNECTION_ID",
+            "VOLICORD_MCP_VERIFICATION",
+        ] {
             assert_eq!(
                 command
                     .get_envs()
@@ -935,9 +904,15 @@ mod tests {
             first.environment().get(VOLICORD_HOME_ENV),
             Some(&OsString::from("/selected/runtime-home"))
         );
-        assert_eq!(first.args(), spec.args());
+        assert_eq!(
+            first.args(),
+            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+        );
         let mut command = Command::new(first.command());
-        for name in MANAGED_MCP_PROCESS_ENVIRONMENT_NAMES {
+        for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES
+            .into_iter()
+            .chain([VOLICORD_HOME_ENV, "VOLICORD_MCP_PROJECT_ID"])
+        {
             command.env(name, "ambient-decoy");
         }
         first.apply_process_context(&mut command);
@@ -948,17 +923,11 @@ mod tests {
                 .and_then(|(_, value)| value),
             Some(OsStr::new("/selected/runtime-home"))
         );
-        assert_eq!(
-            command
-                .get_envs()
-                .find(|(candidate, _)| *candidate == OsStr::new(VOLICORD_MCP_VERIFICATION_ENV))
-                .and_then(|(_, value)| value),
-            Some(OsStr::new(VOLICORD_MCP_VERIFICATION_VALUE))
-        );
         for name in [
-            VOLICORD_MCP_LAUNCH_ENV,
-            VOLICORD_MCP_HOST_ENV,
-            VOLICORD_MCP_CONNECTION_ID_ENV,
+            "VOLICORD_MCP_LAUNCH",
+            "VOLICORD_MCP_HOST",
+            "VOLICORD_MCP_CONNECTION_ID",
+            "VOLICORD_MCP_VERIFICATION",
             "VOLICORD_MCP_PROJECT_ID",
         ] {
             assert_eq!(
@@ -1004,7 +973,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_invocations_add_the_diagnostic_marker_after_contract_materialization() {
+    fn cli_invocations_use_public_manual_commands_without_provenance_environment() {
         let spec = personal();
         let materialize = |purpose| {
             spec.materialize(ManagedMcpMaterializationInput::new(
@@ -1016,22 +985,27 @@ mod tests {
         };
 
         let managed = materialize(ManagedMcpInvocationPurpose::ManagedStdio);
-        assert!(!managed
-            .environment()
-            .contains_key(VOLICORD_MCP_VERIFICATION_ENV));
-        for verification in [
-            materialize(ManagedMcpInvocationPurpose::CliStdioHandshake),
-            materialize(
-                ManagedMcpInvocationPurpose::cli_preflight_check("connection_alpha", None)
-                    .expect("preflight purpose"),
-            ),
-        ] {
-            assert_eq!(
-                verification
-                    .environment()
-                    .get(VOLICORD_MCP_VERIFICATION_ENV),
-                Some(&OsString::from(VOLICORD_MCP_VERIFICATION_VALUE))
-            );
+        assert_eq!(
+            managed.args(),
+            ["_host-launch", "codex", "--connection", "connection_alpha"]
+        );
+        let handshake = materialize(ManagedMcpInvocationPurpose::CliStdioHandshake);
+        assert_eq!(
+            handshake.args(),
+            ["mcp", "--stdio", "--connection", "connection_alpha"]
+        );
+        let preflight = materialize(
+            ManagedMcpInvocationPurpose::cli_preflight_check("connection_alpha", None)
+                .expect("preflight purpose"),
+        );
+        assert_eq!(
+            preflight.args(),
+            ["mcp", "--check", "--connection", "connection_alpha"]
+        );
+        for invocation in [managed, handshake, preflight] {
+            for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES {
+                assert!(!invocation.environment().contains_key(name));
+            }
         }
     }
 

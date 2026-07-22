@@ -15,14 +15,16 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 | `volicord mcp --stdio`, initialization, `tools/list`, `tools/call`, and response wrapping | `stable` |
 | Authoritative runtime-session lifecycle milestones | `stable` |
 | Pre-1.0 additions not listed in the stable process and method set | `beta` |
-| Managed launch markers and generated configuration details | `internal` |
+| Hidden managed launcher, launch leases, and generated configuration details | `internal` |
 | Host executable version, MCP client name/version, and best-effort protocol metrics | `diagnostic` |
 
 ## Process Model
 
-`volicord mcp --stdio` is a child process started by managed Codex
-configuration. It exchanges line-delimited JSON-RPC through stdin and stdout
-and opens no TCP, HTTP, Unix-domain socket, or other network listener.
+The hidden `volicord _host-launch codex` entry is started by managed Codex
+configuration and transitions in the same process to the stdio adapter after
+lease consumption. The public `volicord mcp --stdio` entry is the manual stdio
+surface. Both exchange line-delimited JSON-RPC through stdin and stdout and
+open no TCP, HTTP, Unix-domain socket, or other network listener.
 
 ```text
 volicord mcp --stdio --connection <connection_id> [--project <project_id>]
@@ -48,11 +50,11 @@ forwards the parent value only in shared configuration, which embeds no
 machine-local path. Exact generated shapes and strict parsing belong to
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract).
 
-Connection preflight and the CLI stdio handshake materialize their process
-launches from that same contract. Materialization preserves ordinary inherited
-process variables, removes Volicord-owned managed-MCP variables, applies static
-values, resolves every forwarded name from explicit verification input, and
-then applies the CLI-only diagnostic marker. Personal verification therefore
+Connection preflight and the CLI stdio handshake derive their public process
+launches from that same binding contract. Materialization preserves ordinary
+inherited process variables, applies only explicit process configuration, and
+resolves every forwarded name from
+explicit verification input. Personal verification therefore
 uses the static Runtime Home already in its contract. Shared verification uses
 the operation-selected Runtime Home as the forwarded `VOLICORD_HOME` while the
 repository-visible configuration remains portable. Shared repository discovery
@@ -60,20 +62,24 @@ runs from the canonical Product Repository root; personal verification uses
 its bound identifiers without a repository-discovery working-directory
 dependency.
 
-Before reading MCP requests, the adapter resolves the exact registered
-Connection from the Volicord-generated managed launch/configuration context and
+Before reading MCP requests, the hidden launcher resolves the exact registered
+Connection from the canonical managed configuration and
 validates that it is enabled, its selected projects are current members, the
 Runtime Home and Product Repository are separated, the `StorageManifest` is
-current, and required storage is readable. Managed launch markers classify the
-cooperative process source but do not prove client, host, actor, or human
-identity. Corrupt records, ambiguous selection, and unavailable storage use the
+current, and required storage is readable. It creates a bounded one-time launch
+lease only after the strict current entry, integration revision, and managed
+fingerprint match.
+Corrupt records, ambiguous selection, and unavailable storage use the
 [Failure Model](failure-model.md).
 
-After startup resolves that managed Connection, it immediately records a
-Registry runtime session with the current Connection integration revision and
-the `managed_host` or `cli_preflight` source. Executable path, host version, and
-client version remain diagnostics; managed-call authorization is established
-from the current session and project bindings described below.
+MCP bootstrap consumes that lease exactly once and creates the `managed_host`
+Registry runtime session in the same Store transaction. A replayed, expired,
+cancelled, Connection-mismatched, revision-mismatched, or fingerprint-mismatched
+lease creates no runtime. Public stdio creates `manual_cli`; `--check` creates
+`cli_preflight`; a dedicated integration probe uses `integration_probe`.
+Executable path, host version, and client version remain diagnostics;
+managed-call authorization is established from the current session and project
+bindings described below.
 
 ## MCP Wire Behavior
 
@@ -222,11 +228,12 @@ server's preferred or newest profile. Multiple independently
 pinned `codex` fixtures may coexist when deployed client families require
 different revisions.
 
-Both matrices are CLI probe evidence. A passing host-compatibility fixture
+Both matrices are CLI probe evidence. Their `cli_preflight`, `manual_cli`, or
+`integration_probe` runtime sources remain excluded from managed checks. A passing host-compatibility fixture
 shows that the reviewed request shape works against this server; it does not
-show that a managed Codex process ran. Only lifecycle observations recorded by
-an actual process with source `managed_host` can satisfy managed-host
-operational checks.
+show that a managed Codex process ran. Only lifecycle observations from a
+runtime created by successful launch-lease consumption with source
+`managed_host` can satisfy managed-host operational checks.
 
 ## Versioned Codex Host Contracts
 
@@ -250,10 +257,11 @@ binding.
 
 After resolving the Agent Connection, the process creates a Registry runtime
 session before validating thread metadata or reading a protocol message. The
-row identifies this Volicord-generated process launch, its Connection,
-`managed_host` or `cli_preflight` source, current connection integration
-revision, process ID, and process-start time. A CLI preflight row never
-satisfies a managed-host operational check.
+row identifies this Volicord-generated process launch, its Connection, one of
+the exact `managed_host`, `manual_cli`, `cli_preflight`, or `integration_probe`
+sources, current connection integration revision, process ID, and process-start
+time. Only atomic launch-lease consumption creates `managed_host`; every other
+source is excluded from managed-host operational checks and authorization.
 
 As soon as it parses bounded `clientInfo.name`, `clientInfo.version`, and
 `protocolVersion`, the adapter durably records them as the attempted client and
@@ -292,10 +300,11 @@ exists, findings are persisted with its exact Connection, integration
 revision, and runtime-session coordinates; terminal failures are linked by
 finding ID rather than stored as a second free-form failure object.
 
-Connection verification starts a separate `cli_preflight` process and calls
+Connection verification starts separate preflight and manual stdio probe
+processes and calls
 the same canonical role owner, currently `volicord.list_projects`, for its
-safe read-only self-test round trip. That
-process validates the server surface, but its lifecycle facts cannot satisfy a
+safe read-only self-test round trip. Those processes validate the server
+surface, but their lifecycle facts cannot satisfy a
 `managed_host` operational check or authorize a Connection call. Successful
 CLI verification does not fabricate managed `host_session`, `tools/list`, or
 tool-round-trip observations.

@@ -28,7 +28,7 @@ personal 연결은 사용자 소유 Codex 구성을 변경합니다. shared 연�
 - 한 프로세스가 connection이나 project 경계를 묵시적으로 넘을 수 없습니다.
 - project 이동 또는 교체에는 owner-defined 검증이나 repair가 필요합니다.
 - 연결 레코드는 운영체제 권한을 부여하거나 사용자 신원을 증명하지 않습니다.
-- 구성 marker, client/host version, 경로, process 관찰은 actor나 binary identity를
+- Launch lease, client/host version, 경로, process 관찰은 actor나 binary identity를
   증명하지 않습니다.
 - CLI 받은 편지함만 UserAction을 해결합니다.
 

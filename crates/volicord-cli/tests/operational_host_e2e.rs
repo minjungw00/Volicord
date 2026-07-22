@@ -40,7 +40,7 @@ use volicord_store::inspection::{
 };
 use volicord_store::operational_sessions::{
     connection_integration_revision, current_managed_runtime_sessions,
-    latest_current_managed_runtime_session, start_mcp_runtime_session, McpRuntimeSessionStart,
+    latest_current_managed_runtime_session, McpRuntimeSessionStart,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
@@ -1025,7 +1025,7 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     let manifest = guard_manifest_from_json(&snapshot.guard_installations[0].manifest_json)?;
     assert_current_guard_projection(&fixture, &manifest)?;
 
-    let abandoned = start_mcp_runtime_session(
+    let abandoned = volicord_test_support::start_test_mcp_runtime_session(
         &fixture.runtime_home,
         McpRuntimeSessionStart {
             connection_internal_id: connection_id.clone(),

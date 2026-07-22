@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use volicord_store::{
     operational_sessions::{
         record_mcp_initialize_attempt, record_mcp_initialize_completion,
-        record_mcp_initialized_notification, start_mcp_runtime_session, McpRuntimeSessionStart,
+        record_mcp_initialized_notification, McpRuntimeSessionStart,
     },
     schema::{
         current_storage_manifest, current_storage_manifest_json, generated_schema_metadata,
@@ -28,10 +28,10 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 47);
-    assert_eq!(metadata.columns.len(), 542);
-    assert_eq!(metadata.indexes.len(), 72);
-    assert_eq!(metadata.constraints.len(), 42);
+    assert_eq!(metadata.tables.len(), 48);
+    assert_eq!(metadata.columns.len(), 551);
+    assert_eq!(metadata.indexes.len(), 73);
+    assert_eq!(metadata.constraints.len(), 43);
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -45,6 +45,33 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert!(agent_connection_columns.contains(&"integration_instance_id"));
     assert!(!agent_connection_columns.contains(&"last_verification_status"));
     assert!(!agent_connection_columns.contains(&"last_user_actions_json"));
+    let launch_lease_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::Registry
+                && column.table == "managed_mcp_launch_leases"
+        })
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        launch_lease_columns,
+        [
+            "launch_lease_id",
+            "connection_internal_id",
+            "host_kind",
+            "expected_integration_revision",
+            "expected_launch_fingerprint",
+            "issued_at",
+            "expires_at",
+            "consumed_at",
+            "terminal_state",
+        ]
+    );
+    assert!(metadata.indexes.iter().any(|index| {
+        index.database == StorageDatabaseKind::Registry
+            && index.name == "idx_managed_mcp_launch_leases_cleanup"
+    }));
     let host_session_columns = metadata
         .columns
         .iter()
@@ -202,11 +229,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:64ee728f06ecc5d2632b154db06b4b246cdf69dd82fe03c0e5203ec6964cd7b5"
+        "sha256:9834ff83627bbde8afba9f5c17cf710bf47fa7b2811215a04077097d89e2e704"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:33b80ce4794cee24b0165480abf2c1175ceff210fe0ff87c2ddffc78f5db0d78"
+        "sha256:fe125d5b51a6930762bbdce1c87e851d17518ce840fd941cad859cdd65ffc31a"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -240,12 +267,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:64ee728f06ecc5d2632b154db06b4b246cdf69dd82fe03c0e5203ec6964cd7b5\",",
+            "{\"canonical_ddl_digest\":\"sha256:9834ff83627bbde8afba9f5c17cf710bf47fa7b2811215a04077097d89e2e704\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:33b80ce4794cee24b0165480abf2c1175ceff210fe0ff87c2ddffc78f5db0d78\"}"
+            "\"integrity_constraints_digest\":\"sha256:fe125d5b51a6930762bbdce1c87e851d17518ce840fd941cad859cdd65ffc31a\"}"
         )
     );
     Ok(())
@@ -787,7 +814,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
 fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("storage-runtime-verification-tool-constraints")?;
-    let runtime = start_mcp_runtime_session(
+    let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),

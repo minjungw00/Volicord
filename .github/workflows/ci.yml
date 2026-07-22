@@ -100,6 +100,12 @@ jobs:
       - name: Check operational session storage
         run: cargo test --locked -p volicord-store --test operational_sessions
 
+      - name: Check managed launch leases
+        run: cargo test --locked -p volicord-store managed_launch_leases::tests
+
+      - name: Check managed host launcher
+        run: cargo test --locked -p volicord-cli --test operational_host_e2e
+
       - name: Check Guard manifest projection
         run: cargo test --locked -p volicord-cli manifest_preserves_policy_and_runtime_command_forms_without_status_state --lib
 

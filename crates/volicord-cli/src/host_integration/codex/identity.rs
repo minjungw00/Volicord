@@ -470,7 +470,7 @@ mod tests {
 
     fn personal_text(extra: &str) -> String {
         format!(
-            "[mcp_servers.volicord]\ncommand = \"/opt/volicord/bin/volicord\"\nargs = [\"mcp\", \"--stdio\", \"--connection\", \"connection_alpha\"]\n{extra}\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/srv/volicord/runtime\"\nVOLICORD_MCP_CONNECTION_ID = \"connection_alpha\"\nVOLICORD_MCP_HOST = \"codex\"\nVOLICORD_MCP_LAUNCH = \"managed_host\"\n"
+            "[mcp_servers.volicord]\ncommand = \"/opt/volicord/bin/volicord\"\nargs = [\"_host-launch\", \"codex\", \"--connection\", \"connection_alpha\"]\n{extra}\n[mcp_servers.volicord.env]\nVOLICORD_HOME = \"/srv/volicord/runtime\"\n"
         )
     }
 
@@ -538,7 +538,7 @@ mod tests {
         );
 
         let shared = entry(
-            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"mcp\", \"--stdio\", \"--discover-repository\", \"--host\", \"codex\"]\nenv_vars = [\"VOLICORD_HOME\"]\n",
+            "[mcp_servers.volicord]\ncommand = \"volicord\"\nargs = [\"_host-launch\", \"codex\", \"--discover-repository\"]\nenv_vars = [\"VOLICORD_HOME\"]\n",
         );
         let shared = parse_codex_managed_identity(&shared)
             .expect("shared managed identity")
@@ -551,7 +551,7 @@ mod tests {
     fn formatting_and_valid_tool_approval_do_not_change_launch_identity() {
         let compact = entry(&personal_text(""));
         let formatted = entry(
-            "[mcp_servers.volicord]\nargs=[\"mcp\",\"--stdio\",\"--connection\",\"connection_alpha\"]\ncommand='/opt/volicord/bin/volicord'\n\n[mcp_servers.volicord.env]\nVOLICORD_MCP_LAUNCH='managed_host'\nVOLICORD_MCP_HOST='codex'\nVOLICORD_MCP_CONNECTION_ID='connection_alpha'\nVOLICORD_HOME='/srv/volicord/runtime'\n\n[mcp_servers.volicord.tools.\"volicord.status\"]\napproval_mode='auto'\n",
+            "[mcp_servers.volicord]\nargs=[\"_host-launch\",\"codex\",\"--connection\",\"connection_alpha\"]\ncommand='/opt/volicord/bin/volicord'\n\n[mcp_servers.volicord.env]\nVOLICORD_HOME='/srv/volicord/runtime'\n\n[mcp_servers.volicord.tools.\"volicord.status\"]\napproval_mode='auto'\n",
         );
         assert_eq!(
             codex_managed_identity_fingerprint(HostScope::User, "volicord", &compact),

@@ -11,8 +11,8 @@ managed Codex configuration, and the stdio MCP child process.
 | Product Repository | The canonical Git work tree containing user product files and explicitly managed project configuration. |
 | Volicord Runtime Home | Local registry, project state, authoritative operational sessions, structured diagnostic findings, and runtime-owned artifacts. |
 | Volicord installation | The selected `volicord` executable and its build identity. It is not the Runtime Home. |
-| Managed Codex configuration | User- or project-owned configuration that starts the exact managed stdio process. It is not Core authority. |
-| `volicord mcp --stdio` | One local child process bound to one current Agent Connection. It is not a network service. |
+| Managed Codex configuration | User- or project-owned configuration that starts the exact hidden host launcher. It contains no reusable launch authority and is not Core authority. |
+| Hidden host launcher and stdio adapter | One local process that validates current managed configuration, consumes a one-time launch lease, and binds managed stdio to one current Agent Connection. It is not a network service. |
 
 ## Product Repository
 
@@ -62,11 +62,20 @@ forwards only `VOLICORD_HOME` without embedding a machine-local Runtime Home
 path or lifecycle coordinate. Both are projections of the one canonical
 managed launch contract defined by
 [Agent Connection](agent-connection.md#managed-mcp-launch-contract). The
-personal command, arguments, environment, and managed launch provenance select
-the registered Connection at startup without a project selector; current
+personal hidden-launcher command, arguments, and Runtime Home binding select the
+registered Connection at startup without a project selector; current
 project associations come from Store-owned Connection Project memberships. The
 shared launch resolves its Connection and project through repository discovery.
-These values are cooperative launch context, not identity credentials.
+The static configuration contains no lease, nonce, reusable secret, or raw handle.
+These values are cooperative launch context, not identity
+credentials.
+
+The hidden launcher reloads and strictly validates that exact current entry,
+Connection revision, and fingerprint before it creates a short-lived Registry
+lease. It passes the lease only through the in-memory transition to MCP
+bootstrap. Store consumes it exactly once and creates the `managed_host`
+runtime atomically. This is an evidence-integrity boundary, not an OS actor-
+identity or adversarial security guarantee.
 
 The stored managed fingerprint identifies the Volicord-managed host
 configuration that setup, repair, staged activation, or another explicit
@@ -174,7 +183,9 @@ filesystem contents, or unrestricted path discovery.
 
 ## Baseline MCP Process
 
-The supported process is `volicord mcp --stdio`. It reads JSON-RPC from stdin
+Managed configuration starts the hidden host launcher, which enters the stdio
+adapter in the same process after lease consumption. The public manual process
+is `volicord mcp --stdio`. The adapter reads JSON-RPC from stdin
 and writes responses to stdout. It opens no TCP, HTTP, Unix-domain socket, or
 other network transport listener. Exact startup, binding, and protocol behavior
 belongs to [MCP Transport](mcp-transport.md).
@@ -214,8 +225,9 @@ is never an operational authority source.
 
 - Product Repository writes still require the applicable Core authority.
 - Runtime Home write access is not Product Repository write permission.
-- Managed configuration and its launch markers select cooperative routing
-  context; they do not supply a user decision, Write Ticket, or human identity.
+- Managed configuration selects cooperative routing context, while the one-time
+  lease preserves source evidence across bootstrap; neither supplies a user
+  decision, Write Ticket, OS actor identity, or human identity.
 - A validated operational session establishes locally observed cooperative
   session ownership and current project authorization. It does not establish
   client, actor, operating-system-user, or human identity.

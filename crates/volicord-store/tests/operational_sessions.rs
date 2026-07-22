@@ -28,8 +28,7 @@ use volicord_store::{
         mcp_runtime_session, mcp_runtime_session_for_process, record_mcp_initialize_attempt,
         record_mcp_initialize_completion, record_mcp_initialized_notification,
         record_mcp_terminal_finding, record_mcp_tools_list,
-        record_mcp_verification_tool_observation, start_mcp_runtime_session,
-        McpRuntimeSessionStart,
+        record_mcp_verification_tool_observation, McpRuntimeSessionStart,
     },
     sqlite::registry_db_path,
 };
@@ -63,7 +62,7 @@ fn prompt_correlation(session: &str, turn: &str) -> HostNativeCorrelation {
 }
 
 fn start(fixture: &CoreFixture, source: McpRuntimeSessionSource) -> Result<String, Box<dyn Error>> {
-    Ok(start_mcp_runtime_session(
+    Ok(volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -867,7 +866,7 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
 #[test]
 fn phase_zero_rejections_mutate_neither_project_nor_registry() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("operational-phase-zero-no-mutation")?;
-    let runtime = start_mcp_runtime_session(
+    let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),

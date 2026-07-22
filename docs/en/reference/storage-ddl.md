@@ -483,10 +483,62 @@ BEGIN
   SELECT RAISE(ABORT, 'diagnostic current identity is immutable');
 END;
 
+CREATE TABLE managed_mcp_launch_leases (
+  launch_lease_id TEXT PRIMARY KEY CHECK (
+    length(launch_lease_id) = 53
+    AND substr(launch_lease_id, 1, 17) = 'mcp_launch_lease_'
+    AND substr(launch_lease_id, 26, 1) = '-'
+    AND substr(launch_lease_id, 31, 1) = '-'
+    AND substr(launch_lease_id, 36, 1) = '-'
+    AND substr(launch_lease_id, 41, 1) = '-'
+    AND substr(launch_lease_id, 18, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 27, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 32, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 37, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 42, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 32, 1) = '4'
+    AND substr(launch_lease_id, 37, 1) GLOB '[89ab]'
+  ),
+  connection_internal_id TEXT NOT NULL,
+  host_kind TEXT NOT NULL CHECK (host_kind = 'codex'),
+  expected_integration_revision TEXT NOT NULL CHECK (
+    length(expected_integration_revision) = 71
+    AND substr(expected_integration_revision, 1, 7) = 'sha256:'
+    AND substr(expected_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  expected_launch_fingerprint TEXT NOT NULL CHECK (
+    length(CAST(expected_launch_fingerprint AS BLOB)) BETWEEN 1 AND 1024
+  ),
+  issued_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  terminal_state TEXT NOT NULL CHECK (
+    terminal_state IN ('issued', 'consumed', 'cancelled', 'expired')
+  ),
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE RESTRICT,
+  CHECK (expires_at > issued_at),
+  CHECK (
+    (terminal_state = 'consumed' AND consumed_at IS NOT NULL)
+    OR (terminal_state <> 'consumed' AND consumed_at IS NULL)
+  ),
+  CHECK (consumed_at IS NULL OR consumed_at >= issued_at),
+  CHECK (consumed_at IS NULL OR consumed_at < expires_at)
+);
+
+CREATE INDEX idx_managed_mcp_launch_leases_cleanup
+  ON managed_mcp_launch_leases (
+    connection_internal_id, terminal_state, expires_at
+  );
+
+
 CREATE TABLE mcp_runtime_sessions (
   runtime_session_id TEXT PRIMARY KEY,
   connection_internal_id TEXT NOT NULL,
-  session_source TEXT NOT NULL CHECK (session_source IN ('managed_host', 'cli_preflight')),
+  session_source TEXT NOT NULL CHECK (
+    session_source IN ('managed_host', 'manual_cli', 'cli_preflight', 'integration_probe')
+  ),
   connection_integration_revision TEXT NOT NULL CHECK (
     length(connection_integration_revision) = 71
     AND substr(connection_integration_revision, 1, 7) = 'sha256:'
@@ -648,11 +700,13 @@ Registry constraints:
 - The integration generation distinguishes revisions within one physical Connection instance, while `integration_instance_id` distinguishes physical deletion and recreation. They are Store-owned local lifecycle and correlation coordinates, and callers cannot select either value.
 - `agent_connections.verification_report_json` is SQL null when no completed report exists. A non-null value stores one strict canonical `ConnectionVerificationReport`, including its derived status and actions; absent optional members are omitted rather than encoded as explicit null. Store does not persist those components independently.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
+- `managed_mcp_launch_leases` stores short-lived, one-time hidden-launcher authority. Its expected Connection, `codex` host kind, integration revision, and managed launch fingerprint must still be current when Store atomically changes `issued` to `consumed` and inserts the `managed_host` runtime. Replay, expiry, mismatch, or cancellation cannot create a runtime. Bounded cleanup expires or removes old rows. The lease is an evidence-integrity coordinate, not an OS actor credential.
 - `diagnostic_findings.lifecycle` is exactly `occurrence` or `current_state`. Occurrence rows have no current identity or status fields and are immutable. Current rows require a full 64-character lowercase identity digest, a validated `sha256:<64 lowercase hex>` `current_subject_identity`, scope kind and complete scope identity, active/resolved status, no runtime-session coordinate, and an ID exactly equal to `finding.current.sha256:` plus that digest. Active rows have no `resolved_at`; resolved rows require it. The unique digest index, active-scope index, lifecycle checks, and identity update trigger enforce those physical distinctions. The trigger keeps the subject identity immutable while allowing `subject_json` to change as replaceable safe presentation. `facts_json` remains a valid JSON object bounded to 16,384 bytes; `subject_json` and `actions_json` are likewise bounded typed representations.
 - `diagnostic_cause_edges` stores unique finding-to-cause pairs with foreign keys on both ends. `diagnostic_cause_edges_acyclic` rejects an insert that would close a directed cycle, while the cause-side index supports deterministic reverse and bounded traversal. Replacing a current-state finding deletes its prior outgoing edges and inserts the replacement edges in the same immediate transaction as the row replacement; any failure preserves the prior row and edge set.
 - `mcp_runtime_sessions.attempted_client_name` and `attempted_client_version` form the bounded parsed client pair. `requested_protocol_version` is client input; `selected_protocol_version` is the server-selected initialize result; `negotiated_protocol_version` is present only with handshake completion and must equal the selected revision. `initialize_completed_at` and `tools_list_observed_at` are distinct milestones. The bounded MCP tool name `verification_tool_name` and `verification_tool_observed_at` form an exact null-or-present pair; the observation requires the initialized notification and cannot precede it. `terminal_finding_id` is a same-runtime foreign key to one structured error finding and is mutually exclusive with graceful close.
+- `mcp_runtime_sessions.session_source` is exactly `managed_host`, `manual_cli`, `cli_preflight`, or `integration_probe`. Only the lease-consumption transaction may insert `managed_host`; managed-session lookups exclude the other three values.
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, required hook phases, exact `host_contract_profile`, and deterministic `host_contract_digest`. The current Guard selection is `codex-hooks-v1`. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.
-- Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding and Guard Installation before `mcp_runtime_sessions` and then `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
+- Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding and Guard Installation, then `mcp_runtime_sessions`, then `managed_mcp_launch_leases`, and finally `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
 
 ## Project `state.sqlite`
 

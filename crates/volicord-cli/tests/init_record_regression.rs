@@ -40,8 +40,7 @@ use volicord_store::{
     guards::{agent_session, bind_agent_session_runtime, AgentSessionRuntimeBinding},
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
     operational_sessions::{
-        connection_integration_revision, mcp_runtime_session, start_mcp_runtime_session,
-        McpRuntimeSessionStart,
+        connection_integration_revision, mcp_runtime_session, McpRuntimeSessionStart,
     },
 };
 use volicord_test_support::TempRuntimeHome;
@@ -980,7 +979,7 @@ fn seed_managed_project_session(
     process_id: u32,
     host_session_id: &str,
 ) -> Result<(String, String), Box<dyn Error>> {
-    let runtime = start_mcp_runtime_session(
+    let runtime = volicord_test_support::start_test_mcp_runtime_session(
         runtime_home,
         McpRuntimeSessionStart {
             connection_internal_id: connection_internal_id.to_owned(),
@@ -1351,8 +1350,8 @@ fn assert_codex_config_is_user_owned(
     assert_eq!(
         toml_string_array(entry, "args")?,
         [
-            "mcp",
-            "--stdio",
+            "_host-launch",
+            "codex",
             "--connection",
             connection.connection_internal_id.as_str(),
         ]
@@ -1361,19 +1360,10 @@ fn assert_codex_config_is_user_owned(
     let environment = entry["env"]
         .as_table()
         .ok_or("personal Codex environment should be a table")?;
-    assert_eq!(environment.len(), 4);
+    assert_eq!(environment.len(), 1);
     assert_eq!(
         environment["VOLICORD_HOME"].as_str(),
         process.runtime_home.to_str()
-    );
-    assert_eq!(
-        environment["VOLICORD_MCP_CONNECTION_ID"].as_str(),
-        Some(connection.connection_internal_id.as_str())
-    );
-    assert_eq!(environment["VOLICORD_MCP_HOST"].as_str(), Some("codex"));
-    assert_eq!(
-        environment["VOLICORD_MCP_LAUNCH"].as_str(),
-        Some("managed_host")
     );
     Ok(())
 }
@@ -1393,7 +1383,7 @@ fn assert_codex_config_is_shared(
     assert_eq!(entry["command"].as_str(), Some("volicord"));
     assert_eq!(
         toml_string_array(entry, "args")?,
-        ["mcp", "--stdio", "--discover-repository", "--host", "codex",]
+        ["_host-launch", "codex", "--discover-repository"]
     );
     assert_eq!(toml_string_array(entry, "env_vars")?, ["VOLICORD_HOME"]);
     assert!(entry.get("env").is_none());

@@ -115,124 +115,31 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
-fn mcp_launch_origin_classifies_verification_managed_manual_and_invalid() {
-    fn classified(markers: &[(&str, String)], host_kind: Option<&str>) -> McpLaunchOrigin {
-        classify_launch_origin(
-            |name| {
-                markers
-                    .iter()
-                    .find(|(marker, _)| *marker == name)
-                    .map(|(_, value)| OsString::from(value))
-            },
-            "conn_alpha",
-            host_kind,
-        )
-    }
-
-    fn markers(values: &[(&'static str, &str)]) -> Vec<(&'static str, String)> {
-        values
-            .iter()
-            .map(|(name, value)| (*name, (*value).to_owned()))
-            .collect()
-    }
-
-    assert_eq!(McpLaunchOrigin::Unknown.as_str(), "unknown");
-    assert_eq!(
-        classify_launch_origin(
-            |name| (name == "VOLICORD_MCP_VERIFICATION").then(|| OsString::from("1")),
-            "conn_alpha",
-            Some("codex"),
-        ),
-        McpLaunchOrigin::CliVerification
-    );
-    assert_eq!(
-        classify_launch_origin(|_| None, "conn_alpha", Some("codex")),
-        McpLaunchOrigin::ManualCli
-    );
-    assert_eq!(
-        classify_launch_origin(
-            |name| (name == "CODEX_THREAD_ID").then(|| OsString::from("ambient_thread")),
-            "conn_alpha",
-            Some("codex"),
-        ),
-        McpLaunchOrigin::ManualCli,
-        "an ambient host-native marker is not managed launch correlation evidence"
-    );
-    let valid_codex = markers(&[
-        ("VOLICORD_MCP_LAUNCH", "managed_host"),
-        ("VOLICORD_MCP_HOST", "codex"),
-        ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-    ]);
-    assert_eq!(
-        classified(&valid_codex, Some("codex")),
-        McpLaunchOrigin::ManagedHost
-    );
-    let invalid_cases = vec![
-        (
-            "wrong launch",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "manual"),
-                ("VOLICORD_MCP_HOST", "codex"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("CODEX_THREAD_ID", "thread_alpha"),
-            ]),
-            Some("codex"),
-        ),
-        (
-            "wrong host",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "unsupported"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_alpha"),
-                ("CODEX_THREAD_ID", "thread_alpha"),
-            ]),
-            Some("codex"),
-        ),
-        (
-            "wrong connection",
-            markers(&[
-                ("VOLICORD_MCP_LAUNCH", "managed_host"),
-                ("VOLICORD_MCP_HOST", "codex"),
-                ("VOLICORD_MCP_CONNECTION_ID", "conn_beta"),
-                ("CODEX_THREAD_ID", "thread_alpha"),
-            ]),
-            Some("codex"),
-        ),
-    ];
-
-    for (label, marker_set, host_kind) in invalid_cases {
-        assert_eq!(
-            classified(&marker_set, host_kind),
-            McpLaunchOrigin::InvalidManagedMarker,
-            "{label}"
-        );
-    }
-    for ambient in ["", "thread alpha", &"a".repeat(257)] {
-        let mut with_ambient = valid_codex.clone();
-        with_ambient.push(("CODEX_THREAD_ID", ambient.to_owned()));
-        assert_eq!(
-            classified(&with_ambient, Some("codex")),
-            McpLaunchOrigin::ManagedHost,
-            "ambient CODEX_THREAD_ID is not a binding input"
-        );
-    }
-}
-
-#[cfg(unix)]
-#[test]
-fn non_utf8_managed_marker_is_invalid_instead_of_manual() {
-    use std::os::unix::ffi::OsStringExt;
-
-    assert_eq!(
-        classify_launch_origin(
-            |name| {
-                (name == "VOLICORD_MCP_LAUNCH").then(|| OsString::from_vec(vec![0xff, 0xfe]))
-            },
-            "conn_alpha",
-            Some("codex"),
-        ),
-        McpLaunchOrigin::InvalidManagedMarker
-    );
+fn public_stdio_ignores_former_managed_markers_and_records_manual_cli() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-former-markers-are-manual")?;
+    let input = Cursor::new(Vec::<u8>::new());
+    let mut output = Vec::new();
+    run_manual_stdio_with_ignored_env_marker(
+        project_bound_adapter(&fixture)?,
+        BufReader::new(input),
+        &mut output,
+        |name| match name {
+            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
+            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
+            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
+            "VOLICORD_MCP_VERIFICATION" => Some(OsString::from("1")),
+            _ => None,
+        },
+    )?;
+    let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
+    let source = registry.query_row(
+        "SELECT session_source FROM mcp_runtime_sessions ORDER BY process_started_at DESC LIMIT 1",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    assert_eq!(source, "manual_cli");
+    Ok(())
 }
 
 #[test]
@@ -242,18 +149,7 @@ fn managed_codex_launch_stays_effect_free_until_exact_call_binding() -> Result<(
     let input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
-        adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "CODEX_THREAD_ID" => Some(OsString::from("ambient_not_binding")),
-            _ => None,
-        },
-    )?;
+    run_managed_stdio_with_test_lease(adapter, BufReader::new(input), &mut output)?;
 
     assert!(output.is_empty());
     assert_eq!(read_only_table_count(&fixture, "host_sessions")?, 0);
@@ -271,17 +167,7 @@ fn managed_codex_tools_list_buffers_metrics_until_call_binding() -> Result<(), B
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
-        adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            _ => None,
-        },
-    )?;
+    run_managed_stdio_with_test_lease(adapter, BufReader::new(input), &mut output)?;
 
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 2);
@@ -313,16 +199,10 @@ fn managed_stdio_records_authoritative_protocol_milestones_with_future_client_da
         ),
     ])?);
     let mut output = Vec::new();
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            _ => None,
-        },
     )?;
     assert_eq!(stdio_responses(&output)?.len(), 3);
     let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
@@ -413,11 +293,10 @@ fn successful_non_designated_read_only_tools_do_not_record_round_trip_evidence(
         ),
     ])?);
     let mut output = Vec::new();
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -450,11 +329,10 @@ fn failed_designated_tool_call_does_not_record_round_trip_evidence() -> Result<(
         ),
     ])?);
     let mut output = Vec::new();
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -477,16 +355,10 @@ fn failed_initialize_retains_attempted_client_and_requested_revision() -> Result
     initialize["params"]["clientInfo"]["name"] = json!("future-client");
     initialize["params"]["clientInfo"]["version"] = json!("2099.7");
     let mut output = Vec::new();
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(Cursor::new(json_lines(&[initialize])?)),
         &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            _ => None,
-        },
     )?;
     assert!(stdio_responses(&output)?[0]["error"].is_object());
     let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
@@ -543,17 +415,7 @@ fn managed_stdio_tool_call_records_bounded_metrics() -> Result<(), Box<dyn Error
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
-        adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            _ => None,
-        },
-    )?;
+    run_managed_stdio_with_test_lease(adapter, BufReader::new(input), &mut output)?;
 
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 3);
@@ -605,11 +467,10 @@ fn managed_codex_new_client_version_uses_protocol_and_call_binding() -> Result<(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -672,11 +533,10 @@ fn managed_codex_binding_allows_new_turn_and_rejects_session_or_thread_rebind(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;
@@ -738,18 +598,7 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
-        adapter,
-        BufReader::new(input),
-        &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "CODEX_THREAD_ID" => Some(OsString::from("ambient ignored value")),
-            _ => None,
-        },
-    )?;
+    run_managed_stdio_with_test_lease(adapter, BufReader::new(input), &mut output)?;
 
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 2);
@@ -832,11 +681,10 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
     ])?);
     let mut output = Vec::new();
 
-    run_stdio_with_env_marker(
+    run_managed_stdio_with_test_lease(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| managed_codex_stdio_env(&fixture, name),
     )?;
 
     let responses = stdio_responses(&output)?;

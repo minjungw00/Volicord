@@ -5,7 +5,6 @@ pub enum McpHostError {
     MalformedNativeMetadata,
     SessionThreadTurnInconsistent,
     RegisteredSessionCorrelationMismatch,
-    ManagedMarkerMismatch,
 }
 
 impl fmt::Display for McpHostError {
@@ -18,7 +17,6 @@ impl fmt::Display for McpHostError {
             Self::RegisteredSessionCorrelationMismatch => {
                 "managed Codex metadata conflicts with the registered session correlation"
             }
-            Self::ManagedMarkerMismatch => "managed Codex launch markers are inconsistent",
         })
     }
 }

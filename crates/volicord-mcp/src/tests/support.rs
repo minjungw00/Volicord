@@ -129,15 +129,6 @@ pub(super) fn project_bound_adapter(fixture: &CoreFixture) -> Result<McpAdapter,
     Ok(McpAdapter::new(fixture.runtime_home_path(), context))
 }
 
-pub(super) fn managed_codex_stdio_env(fixture: &CoreFixture, name: &str) -> Option<OsString> {
-    match name {
-        "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-        "VOLICORD_MCP_HOST" => Some(OsString::from(HOST_KIND_CODEX)),
-        "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-        _ => None,
-    }
-}
-
 pub(super) fn install_record_guard(fixture: &CoreFixture) -> Result<(), Box<dyn Error>> {
     let repo_root = fixture.product_repo_path();
     let guard_installation_id = "guard_installation_mcp_record";

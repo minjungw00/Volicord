@@ -29,7 +29,8 @@ Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니�
 ```mermaid
 flowchart LR
   host["MCP 호스트 / Agent Connection"]
-  mcp["volicord mcp --stdio"]
+  launcher["volicord _host-launch<br/>(숨은 bootstrap)"]
+  mcp["volicord-mcp stdio 어댑터"]
   cli["volicord 관리 CLI"]
   inbox["volicord inbox"]
   core["volicord-core"]
@@ -37,7 +38,8 @@ flowchart LR
   runtime["Volicord Runtime Home"]
   product["Product Repository"]
 
-  host --> mcp --> core
+  host --> launcher --> mcp --> core
+  launcher -. 엄격한 구성 재검증과 일회성 launch lease .-> store
   mcp -. 시작 및 세션 검증 .-> store
   cli --> store
   inbox --> core
@@ -47,11 +49,14 @@ flowchart LR
   host -. 공개 API 밖의 제품 파일 도구 .-> product
 ```
 
-`volicord-mcp` 어댑터 라이브러리는 시작 검사, Agent Connection 맥락, session 검증,
+숨은 launcher와 `volicord-mcp` 어댑터 라이브러리는 시작 검사, Agent Connection 맥락, session 검증,
 요청 시점 project routing을 위해 Store를 직접 사용할 수 있습니다.
 이 직접 Store
 사용은 공개 Volicord 메서드 의미를 구현하는 다른 경로가 아닙니다. 공개 메서드
 실행은 Core를 통과합니다.
+Launcher는 원래 프로세스 안에서 현재 관리 구성을 다시 검증하고 수명이 짧은
+Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘깁니다. 공개
+`volicord mcp --stdio` 진입점은 수동 전송이며 항상 `manual_cli`를 기록합니다.
 
 `Product Repository`는 별도의 제품 파일 경계로 남습니다. 공개 Volicord 메서드는
 담당 문서가 정의한 호환성, 관찰, 판단, 증거, 아티팩트 링크를 기록합니다. 제품
@@ -64,13 +69,13 @@ flowchart LR
 |---|---|
 | `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 정규 `AgentToolId` catalog와 wire 이름 투영. |
 | `crates/volicord-host-contract` | 의존성이 안전한 버전 지정 Codex wire contract parsing, 결정적인 contract identity, 한도 있는 host 값과 error, source별 MCP·prompt-hook·tool-hook 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
-| `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
+| `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
-| `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 선택한 Connection 보고서 표시, lifecycle-aware 정확한 lookup 표시, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
+| `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 선택한 Connection 보고서 표시, lifecycle-aware 정확한 lookup 표시, 숨은 동일 프로세스 managed-host launcher, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
 | `crates/volicord-platform-fs` | 프로세스 target 및 플랫폼 관찰, 네이티브 Linux/WSL2 분류, WSL2 배포판 검증 및 파일시스템 관찰, 플랫폼 고유 파일시스템 이름 공간 연산, 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 시작이나 Codex 구성 정책은 담당하지 않습니다. |
 | `crates/volicord-platform-process` | 한도가 있는 플랫폼별 자식 프로세스 격리와 비차단 자식 파이프 준비 상태를 위한 내부 안전 파사드. 저수준 Unix 프로세스 그룹, Windows Job Object, 파이프 폴링 primitive를 담당합니다. |
 | `crates/volicord-mcp-protocol` | 정확한 MCP 리비전 파싱, 검토된 폐쇄형 프로덕션 레지스트리, 메시지·도구·스키마 기능 선언, 결정론적인 지원 리비전 순서, 별도로 선택하는 서버 선호 리비전을 담당하는 호스트 독립 내부 크레이트. 추적 중인 사전 릴리스 메타데이터는 프로덕션 레지스트리 밖에 둡니다. |
-| `crates/volicord-mcp` | 정규 관리 launch 계약, 시작 검증, registry가 구동하는 실행 가능한 protocol 적합성, Volicord 도구 담당자가 제공하는 정규 도구 모델 사용, revision별 `tools/list` 및 `tools/call` projection, 관리형 stdio lifecycle과 프레이밍, Core 호출, typed protocol profile 사용을 위한 MCP 어댑터 라이브러리. |
+| `crates/volicord-mcp` | 정규 관리 launch 구성 계약, 메모리 내 launch-lease 소비, 시작 검증, registry가 구동하는 실행 가능한 protocol 적합성, Volicord 도구 담당자가 제공하는 정규 도구 모델 사용, revision별 `tools/list` 및 `tools/call` projection, stdio lifecycle과 프레이밍, Core 호출, typed protocol profile 사용을 위한 MCP 어댑터 라이브러리. |
 | `crates/volicord-test-support` | 재사용 가능한 구현 테스트 fixture만 담당합니다. 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정을 제공하며 제품 동작 assertion이나 계약은 담당하지 않습니다. |
 | `tests/conformance` | Core 쪽 API, 공유 픽스처, 버전별 오프라인 MCP 명세 입력을 통한 기준 범위 교차 메서드 시나리오. 고정된 upstream 입력은 런타임 지원을 정의하지 않습니다. |
 | `tests/integration` | MCP, Core, Store, Agent Connection session, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
@@ -151,8 +156,8 @@ runtime/project session을 검증하고 typed `ValidatedAgentSession`을 Core에
 | Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
 | Store 커밋 경계 | Core 메서드 계획 코드는 읽기 전용, 효과 없음, dry-run, 스테이징, 커밋 분기를 고릅니다. Store는 정상 커밋된 Core 변이를 트랜잭션 경계에서 적용하고, 아티팩트 스테이징을 정상 Core 변이 커밋과 분리합니다. Core 권한 의미는 Core 담당 문서에, 정확한 저장소 기록과 효과는 저장소 담당 문서에 남습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [요청 생명주기](request-lifecycle.md), [Core 모델](../reference/core-model.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md). |
 | MCP 프로토콜 프로필 및 적합성 경계 | `volicord-mcp-protocol`은 폐쇄형 리비전 타입 집합, 검토된 프로덕션 프로필, 메시지·도구·스키마 기능 선언, 명시적 순회 순서, 서버 선호 리비전을 담당합니다. 일반 실행 적합성 테스트와 CLI 서버 probe는 이 프로덕션 registry를 직접 순회합니다. `xtask`는 이와 독립적으로 릴리스된 manifest 프로덕션 지원과 같은 컴파일된 registry의 정확한 일치를 강제합니다. Host 호환성 fixture는 독립적으로 고정하며 서버 선호값이나 revision 적합성을 담당하지 않습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md), [MCP 전송](../reference/mcp-transport.md). |
-| MCP 어댑터 경계 | `volicord mcp --stdio`가 공개 전송 진입 경로입니다. `volicord-types`는 Core 소유 도구에 `MethodName`을 재사용하고 운영 verification role을 컴파일 시점에 결합하는 폐쇄형 `AgentToolId` identity catalog를 제공합니다. `volicord-mcp`는 정규 registry를 이 identity로 식별하고 revision별 도구 소유권을 나누지 않은 채 선택한 profile을 통해 wire 이름, 정의, 결과를 투영합니다. 이 어댑터는 Runtime Home과 Agent Connection 맥락도 해석하고 시작 및 세션 정보를 검증합니다. 연결 mode에 맞는 도구를 노출하고 허용된 프로젝트를 선택하며, `tools/call` 이름을 `AgentToolId`로 파싱하고 로컬 호출 정보를 도출한 뒤 Core를 호출하고 Core JSON을 MCP 콘텐츠로 감쌉니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
-| 관리 CLI와 Codex 어댑터 | CLI는 Codex 설정 탐색, 관리 entry 설치 및 검증, dependency-aware 검증 정책, 결정론적 진단 root 선택, 선택한 Connection 보고서의 concise/verbose/JSON 표시, lifecycle-aware finding 및 runtime-session lookup 출력, 복구, 제거, stdio MCP 실행을 담당합니다. Lookup 성공 여부는 저장된 finding severity와 독립적입니다. Codex 어댑터는 허용된 도구 승인 overlay만 보존하면서 정규 관리 시작 계약을 Codex TOML로 변환하고 다시 읽습니다. Linux나 WSL2를 분류하지 않으며 런타임 권한을 발급하지 않습니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
+| MCP 어댑터 경계 | `volicord mcp --stdio`가 공개 수동 전송 진입 경로이며 숨은 launcher의 메모리 내 lease claim만 `managed_host` runtime을 만들 수 있습니다. `volicord-types`는 Core 소유 도구에 `MethodName`을 재사용하고 운영 verification role을 컴파일 시점에 결합하는 폐쇄형 `AgentToolId` identity catalog를 제공합니다. `volicord-mcp`는 정규 registry를 이 identity로 식별하고 revision별 도구 소유권을 나누지 않은 채 선택한 profile을 통해 wire 이름, 정의, 결과를 투영합니다. 이 어댑터는 Runtime Home과 Agent Connection 맥락도 해석하고 시작 및 세션 정보를 검증합니다. 연결 mode에 맞는 도구를 노출하고 허용된 프로젝트를 선택하며, `tools/call` 이름을 `AgentToolId`로 파싱하고 로컬 호출 정보를 도출한 뒤 Core를 호출하고 Core JSON을 MCP 콘텐츠로 감쌉니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
+| 관리 CLI와 Codex 어댑터 | CLI는 Codex 설정 탐색, 관리 entry 설치 및 검증, dependency-aware 검증 정책, 결정론적 진단 root 선택, 선택한 Connection 보고서의 concise/verbose/JSON 표시, lifecycle-aware finding 및 runtime-session lookup 출력, 복구, 제거, 숨은 동일 프로세스 host launcher를 담당합니다. Launcher는 일회성 Store lease를 발급하기 전에 현재 entry를 정확히 다시 검증하며 lease 자료를 구성, 인자, 환경, 출력에 두지 않습니다. Lookup 성공 여부는 저장된 finding severity와 독립적입니다. Codex 어댑터는 허용된 도구 승인 overlay만 보존하면서 정규 관리 시작 계약을 Codex TOML로 변환하고 다시 읽습니다. Linux나 WSL2를 분류하지 않습니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
 | 릴리스 무결성 | 일반 점검은 모든 게시 Volicord target, 패키지와 checksum 연속성, workflow 형태를 다룹니다. 선택적 실제 Codex smoke는 현재 구성과 행동을 관찰하지만 릴리스 게이트나 런타임 신뢰 입력이 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
 | 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 프로세스 target과 kernel을 관찰하고 네이티브 Linux와 WSL2를 구분하며 `/etc/os-release`를 통해 WSL2 배포판을 검증하고 target 경로 제한 집행에 필요한 파일시스템 관찰을 제공합니다. 또한 플랫폼 고유 이름 공간 primitive와 정규 읽기 전용 Git common-directory/worktree 탐색을 격리합니다. 어떤 파일을 관리할지, 교체나 쓰기를 승인할지, 복구가 무엇을 뜻할지는 결정하지 않습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
 | 플랫폼 프로세스 파사드 | `volicord-platform-process`는 한도가 있는 자식 프로세스 격리와 자식 파이프 준비 상태를 위한 안전한 API를 노출합니다. 저수준 프로세스 그룹, Windows Job Object, 비차단 파이프 설정, 파이프 폴링을 담당합니다. `volicord-cli`는 MCP 감독 정책, 생명주기 기한, 프로토콜 프레이밍, 교환 진행 상태, 진단 책임을 유지합니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |

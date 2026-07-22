@@ -45,7 +45,7 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 |---|---|---|
 | 최초 릴리스 값 집합, `ConnectionVerificationReport`, 통합 revision, 권위 있는 운영 session, `ValidatedAgentSession` | `stable` | 정확한 경계 계약입니다. |
 | Codex 탐색, 관리 설치, 검증, repair, 제거, drift 결과 의미 | `stable` | 관찰 가능한 계약을 유지하면서 구현을 바꿀 수 있습니다. |
-| 어댑터 모듈, 파일시스템 helper, 생성된 시작 marker, Store query helper | `internal` | 안정된 경계를 보존하지만 공개 표면은 아닙니다. |
+| 어댑터 모듈, 파일시스템 helper, 숨겨진 launcher, Store lease/query helper | `internal` | 안정된 경계를 보존하지만 공개 표면은 아닙니다. |
 | 사람이 읽는 검증 안내와 client/host version 관찰 | `diagnostic` | Machine-readable 범주, 사유, typed 필드가 권위 있는 값입니다. |
 
 <a id="first-release-surface"></a>
@@ -103,24 +103,22 @@ generation에 속하므로 initialize 협상에 들어가지 않습니다. 정�
 
 ## 관리형 MCP 시작 계약
 
-하나의 typed 관리형 MCP 시작 계약이 실행 명령, stdio 인자, 정적 및 전달 환경
-binding, 개인/공유 구분, 관리 provenance, 엄격한 시작 형태 검증, 정규 projection,
-결정적 managed fingerprint 입력의 정규 출처입니다.
+하나의 typed 관리형 MCP 시작 계약이 숨겨진 launcher 명령과 인자, 정적 및 전달
+Runtime Home binding, 개인/공유 구분, 엄격한 시작 형태 검증, 정규 projection,
+결정적 managed fingerprint 입력의 정규 출처입니다. 관리 provenance는 one-time launch
+lease 소비에 성공한 경우에만 시작됩니다.
 
 개인 연결에는 선택한 정규 절대 Runtime Home과 선택한 절대 `volicord` 실행 파일이
-필요합니다. Runtime Home과 관리 host, launch, Connection marker를 정적 환경 값으로
+필요합니다. 숨겨진 host 소유 launcher를 호출하고, 프로세스 구성으로는 Runtime Home만
 저장하며 부모 환경 이름은 전달하지 않습니다.
 
 ```toml
 [mcp_servers.volicord]
 command = "/absolute/path/to/volicord"
-args = ["mcp", "--stdio", "--connection", "<connection_id>"]
+args = ["_host-launch", "codex", "--connection", "<connection_id>"]
 
 [mcp_servers.volicord.env]
 VOLICORD_HOME = "/absolute/runtime/home"
-VOLICORD_MCP_CONNECTION_ID = "<connection_id>"
-VOLICORD_MCP_HOST = "codex"
-VOLICORD_MCP_LAUNCH = "managed_host"
 ```
 
 개인 entry는 프로젝트 선택자를 담지 않습니다. 인자에는 `--project`가 없고 정적
@@ -134,7 +132,7 @@ membership으로 남습니다.
 ```toml
 [mcp_servers.volicord]
 command = "volicord"
-args = ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+args = ["_host-launch", "codex", "--discover-repository"]
 env_vars = ["VOLICORD_HOME"]
 ```
 
@@ -143,9 +141,10 @@ env_vars = ["VOLICORD_HOME"]
 있는 개인 entry, 정적 환경과 전달 환경의 이름 충돌, 비어 있거나 중복된 전달 이름,
 불완전한 개인 binding, 개인/공유 인자 또는 환경 형태의 혼합은 유효하지 않습니다.
 
-생성 Codex 구성은 어댑터가 이 계약을 projection한 결과입니다. CLI 검증의 사전
-점검과 stdio 자체 검사는 모두 같은 계약을 구체화합니다. 어느 소비 경로도 프로젝트
-선택자, 플랫폼 identity, WSL 전용 필드를 추가하지 않습니다.
+생성 Codex 구성은 어댑터가 이 계약을 projection한 결과입니다. 이 구성에는 launch
+lease, nonce, 재사용 가능한 secret, raw OS handle을 넣지
+않습니다. CLI 검증은 같은 binding 사실에서 공개 preflight와 수동 stdio probe 명령을
+파생하며, 두 probe 모두 managed-host launch가 아닙니다.
 
 Codex 어댑터는 현재 TOML 형태를 parsing하고 같은 typed 계약을 다시 구성하여 관리
 entry를 검증합니다. 알 수 없는 launch key, 잘못된 값, 비정규 형태는 두 번째 허용
@@ -154,6 +153,17 @@ entry를 검증합니다. 알 수 없는 launch key, 잘못된 값, 비정규 �
 제외합니다. Managed fingerprint는 정규 launch projection과 host kind, scope, server
 name을 포함합니다. 서식 차이는 fingerprint를 바꾸지 않지만 launch 의미가 달라지면
 바뀝니다.
+
+숨겨진 launcher는 현재 정규 entry를 엄격하게 다시 읽고, 활성 Connection과 정확한
+integration revision, entry fingerprint와 현재 저장된 managed fingerprint의 일치를
+검증합니다. 그 뒤 수명이 짧은 Registry launch lease 하나를 만들고 메모리 안에서 stdio
+adapter로 전환합니다. Lease ID는 Codex 구성, 프로세스 인자, 로그, 공개 환경 변수에
+기록하지 않습니다. MCP bootstrap은 lease를 원자적으로 한 번 소비하면서
+`managed_host` runtime session을 만듭니다. 소비할 때 launcher가 포착한 정확한
+Connection, `codex` host kind, integration revision, managed fingerprint가 모두
+일치해야 합니다. Lease는 한 번만 사용할 수 있으며 replay, 만료, 불일치, 취소는
+fail closed하고, 정상적인 launcher 실패는 아직 쓰지 않은 lease를 terminal state로
+전환합니다.
 
 <a id="connection-verification-report"></a>
 
@@ -283,7 +293,8 @@ Blocked check의 원인이 실패한 prerequisite와 일치하지 않거나 depe
 | `guard_hook_execution` | 현재 managed Guard hook이 실행되었습니다. | 현재 hook 활동을 기다리며 `guard_files` 실패가 막을 수 있습니다. | Hook 실행 자체가 실패를 기록했습니다. |
 | `guard_observation` | 현재 필수 typed hook phase를 모두 관찰했습니다. | 남은 phase를 기다리며 `guard_hook_execution` 실패가 막을 수 있습니다. | 현재 event가 incompatible hook contract를 보고했습니다. |
 
-CLI MCP self-test는 `session_source=cli_preflight`만 만듭니다. 따라서
+CLI MCP preflight는 `session_source=cli_preflight`를 만들고 수동 stdio self-test는
+`session_source=manual_cli`를 만듭니다. 따라서 둘 다
 `process_startup`, `host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다.
 Guard는 최상위 운영 check로 `guard_files`, `guard_hook_execution`,
 `guard_observation`을 사용합니다. 엄격한 Guard manifest는
@@ -416,15 +427,17 @@ version입니다. 보고서와 finding은 둘을 서로 대신 사용하지 않�
 warning evidence를 기록하며, 이 불일치만으로 Connection을 치명적 실패로 만들지 않습니다.
 명시적으로 선택한 `codex-mcp-2025-06-18-v1` profile이 MCP session/thread/turn
 metadata를 소유합니다. 잘못된 MCP metadata, 중첩 및 최상위 thread 좌표 불일치, 등록
-session 불일치, managed marker 불일치는 각각 `host.codex.metadata_malformed`,
+session 불일치는 각각 `host.codex.metadata_malformed`,
 `host.codex.session_thread_turn_inconsistent`,
-`host.codex.registered_session_correlation_mismatch`,
-`host.codex.managed_marker_mismatch`를 사용합니다.
+`host.codex.registered_session_correlation_mismatch`를 사용합니다.
 
 각 MCP process 시작은 host thread metadata가 생기기 전에 불투명 Registry runtime
-session ID를 만듭니다. `session_source`는 정확히 `managed_host` 또는
-`cli_preflight`입니다. `managed_host`만 Agent Connection 호출을 승인할 수 있습니다.
-Runtime session은 소유 Connection과 Connection 통합 revision을 보관합니다.
+session ID를 만듭니다. `session_source`는 정확히 `managed_host`, `manual_cli`,
+`cli_preflight`, `integration_probe` 중 하나입니다. Launch lease를 원자적으로 소비한
+경우에만 `managed_host`를 만들 수 있고, `managed_host`만 Agent Connection 호출을
+승인할 수 있습니다. 공개 `volicord mcp --stdio`는 항상 `manual_cli`를 기록하며
+preflight와 integration probe는 managed-host 활동으로 계산하지 않습니다. Runtime
+session은 소유 Connection과 Connection 통합 revision을 보관합니다.
 
 유효한 initialize 요청 뒤 해당 runtime은 session 범위의 typed MCP selection 하나를
 소유합니다. 이 값은 요청 protocol 문자열, 선택한 프로덕션 profile, exact match 또는 서버
@@ -478,7 +491,9 @@ unbound로 남을 수 있지만 권한은 아닙니다. 마지막 attach 전 중
 완료합니다. 붙인 MCP session은 다른 runtime session, Connection, 프로젝트, host session,
 host thread에 다시 결속할 수 없습니다.
 
-Runtime row는 lease나 liveness 주장이 아니라 process의 이력 관찰입니다. Crash한 process는
+Runtime row는 launch lease나 liveness 주장이 아니라 process의 이력 관찰입니다. Launch
+lease는 bootstrap 전환 하나만 승인하며 runtime row를 liveness 기록으로 바꾸지 않습니다.
+Crash한 process는
 열린 것처럼 보이는 row를 남길 수 있고 여러 협력적 Codex process가 동시에 현재 상태일 수
 있습니다. 어느 경우도 Guard 상관관계를 막지 않습니다. 열린 row에서 runtime을 추측하지
 않고 서로 다른 host session은 독립적으로 결속합니다.
@@ -528,7 +543,8 @@ struct ValidatedAgentSession {
 8. Connection mode가 요청한 operation category를 허용합니다.
 9. `ActorSource::AgentConnection`이 검증된 Connection을 정확히 이름 붙입니다.
 10. 프로젝트 범위 operation이 검증된 프로젝트를 정확히 이름 붙입니다.
-11. Runtime session의 `session_source=managed_host`이며 `cli_preflight`가 아닙니다.
+11. Runtime session의 `session_source=managed_host`이며 `manual_cli`, `cli_preflight`,
+    `integration_probe`가 아닙니다.
 
 어댑터는 프로젝트 도구를 호출할 때마다 Core 호출 맥락을 만들기 전에 권위 있는 runtime
 및 프로젝트 row를 검증합니다. Executable path, host version, client version은 이 권한
@@ -551,6 +567,8 @@ Codex 어댑터는 host별 구성 조사와 변경을 담당합니다.
 - 현재 Connection 입력이 선택한 관리 entry만 설치
 - 정규 관리형 MCP 시작 계약을 Codex TOML로 projection하고 같은 계약으로 엄격하게
   다시 parsing
+- one-time launch lease를 발급하고 관리 stdio에 들어가기 전에 그 정확한 현재 entry를
+  다시 검증
 - 누락되거나 변경되거나 추가된 관리 구성을 drift로 탐지
 - executable 가용성과 제한된 host version diagnostic 보고
 - 현재 정규 입력으로 담당 문서가 정의한 관리 상태 repair
@@ -567,8 +585,9 @@ Connection record에서만 시작하며 해당 record의 정확한 integration r
 
 Runtime 권한은 현재 활성 Connection, 프로젝트 membership, 허용 mode, 관리 runtime
 session, revision 범위 프로젝트 session, 정확한 Registry/프로젝트 binding을 검증합니다.
-Command name, executable path, version string, 환경 값, 로컬 session metadata는 diagnostic
-또는 routing 사실이며 actor나 human identity를 성립시키지 않습니다.
+Command name, executable path, version string, Runtime Home 구성, 로컬 session metadata는
+diagnostic 또는 routing 사실이며 actor나 human identity를 성립시키지 않습니다. Launch
+lease는 evidence integrity를 위한 전환 좌표이지 OS actor credential이 아닙니다.
 
 Repair는 관련 없는 Codex 구성을 덮어쓰거나 선택한 프로젝트, Connection, intent,
 profile, 플랫폼 환경을 암묵적으로 바꾸지 않습니다. `workflow`와 `read_only` 모두에서

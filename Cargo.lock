@@ -1004,6 +1004,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "volicord-host-contract",
  "volicord-platform-fs",
  "volicord-test-support",

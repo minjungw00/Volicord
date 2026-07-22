@@ -14,10 +14,14 @@ const PROJECT_REVISION_DOMAIN: &str = "volicord.project-integration-revision";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpRuntimeSessionSource {
-    /// MCP process launched from a registered managed host.
+    /// MCP process authorized by a consumed managed-host launch lease.
     ManagedHost,
-    /// MCP process launched by the CLI verification or preflight path.
+    /// MCP process launched through the public manual stdio command.
+    ManualCli,
+    /// MCP process launched by the CLI preflight path.
     CliPreflight,
+    /// MCP process launched by a dedicated integration probe.
+    IntegrationProbe,
 }
 
 impl McpRuntimeSessionSource {
@@ -25,8 +29,32 @@ impl McpRuntimeSessionSource {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ManagedHost => "managed_host",
+            Self::ManualCli => "manual_cli",
             Self::CliPreflight => "cli_preflight",
+            Self::IntegrationProbe => "integration_probe",
         }
+    }
+}
+
+#[cfg(test)]
+mod runtime_session_source_tests {
+    use super::McpRuntimeSessionSource;
+
+    #[test]
+    fn runtime_session_sources_have_exact_current_values() {
+        assert_eq!(
+            McpRuntimeSessionSource::ManagedHost.as_str(),
+            "managed_host"
+        );
+        assert_eq!(McpRuntimeSessionSource::ManualCli.as_str(), "manual_cli");
+        assert_eq!(
+            McpRuntimeSessionSource::CliPreflight.as_str(),
+            "cli_preflight"
+        );
+        assert_eq!(
+            McpRuntimeSessionSource::IntegrationProbe.as_str(),
+            "integration_probe"
+        );
     }
 }
 

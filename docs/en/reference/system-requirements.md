@@ -165,8 +165,10 @@ shape and validates the managed entry's command, arguments, and personal static
 or shared forwarded Runtime Home binding against the canonical managed launch
 contract. The platform filesystem boundary separately validates the process
 target, platform classification, configuration target path, and filesystem
-prerequisites. Managed launch markers are cooperative routing context, not
-credentials. Empty and absent environment values are distinct.
+prerequisites. The hidden launcher revalidates that entry before creating a
+short-lived one-time Registry lease; only successful lease consumption can
+create a managed-host runtime. Empty and absent environment values are
+distinct.
 
 Executable, configuration, process, client, and version observations are
 diagnostic or setup facts. Runtime authorization validates the current
@@ -231,20 +233,22 @@ currently owned entry and refuses a changed or unowned entry.
 
 ## Managed MCP Environment Requirements
 
-The managed process uses stdio exclusively for the public MCP transport. It
-must receive its binding from the canonical managed launch context. A personal
-entry carries its Connection and selected canonical absolute Runtime Home as
-static values, carries no project selector, and forwards no environment name.
+The managed process uses stdio exclusively for MCP transport. It receives its
+binding through the canonical hidden launcher. A personal entry carries its
+Connection and selected canonical absolute Runtime Home as static values,
+carries no project selector, and forwards no environment name.
 Its authoritative repository associations remain the Connection's Store-owned
 project memberships. Repository-portable shared discovery forwards only
 `VOLICORD_HOME` and resolves a registered current clone without embedding
 machine-local IDs or paths. Missing, empty, conflicting, or unrecognized
 required launch context is rejected; it is not guessed from another
-Connection. The host and profile markers select this cooperative path but do
-not authorize a tool call.
+Connection. The one-time lease preserves the validated Connection, host,
+integration revision, and managed fingerprint across bootstrap but does not
+authorize a tool call by itself.
 
-On initialize, MCP records one managed-host runtime session with bounded client
-name/version and optional host version diagnostics. On each project tool call,
+Before initialize, MCP atomically consumes that lease and records one
+managed-host runtime session with bounded client name/version and optional host
+version diagnostics. On each project tool call,
 it records or selects the project session and validates current Connection
 enablement, membership, mode, runtime/project session ownership, and both
 integration revisions before constructing Core context. Compatibility for a

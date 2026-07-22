@@ -228,6 +228,8 @@ pub enum DurableIdKind {
     AgentSession,
     /// Store-generated MCP Runtime Session ids.
     McpRuntimeSession,
+    /// Store-generated managed MCP launch-lease ids.
+    ManagedMcpLaunchLease,
     /// Producer-generated immutable diagnostic occurrence ids.
     DiagnosticOccurrence,
     /// Store-generated physical Agent Connection integration-instance ids.
@@ -275,6 +277,7 @@ impl DurableIdKind {
             Self::Event => "evt_",
             Self::AgentSession => "session_",
             Self::McpRuntimeSession => "mcp_runtime_",
+            Self::ManagedMcpLaunchLease => "mcp_launch_lease_",
             Self::DiagnosticOccurrence => "finding.occurrence_",
             Self::ConnectionIntegrationInstance => "connection_instance_",
             Self::GuardInstallation => "guard_installation_",
@@ -307,6 +310,7 @@ impl fmt::Display for DurableIdKind {
             Self::Event => "event",
             Self::AgentSession => "agent_session",
             Self::McpRuntimeSession => "mcp_runtime_session",
+            Self::ManagedMcpLaunchLease => "managed_mcp_launch_lease",
             Self::DiagnosticOccurrence => "diagnostic_occurrence",
             Self::ConnectionIntegrationInstance => "connection_integration_instance",
             Self::GuardInstallation => "guard_installation",

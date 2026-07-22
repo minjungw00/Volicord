@@ -333,10 +333,62 @@ BEGIN
   SELECT RAISE(ABORT, 'diagnostic current identity is immutable');
 END;
 
+CREATE TABLE managed_mcp_launch_leases (
+  launch_lease_id TEXT PRIMARY KEY CHECK (
+    length(launch_lease_id) = 53
+    AND substr(launch_lease_id, 1, 17) = 'mcp_launch_lease_'
+    AND substr(launch_lease_id, 26, 1) = '-'
+    AND substr(launch_lease_id, 31, 1) = '-'
+    AND substr(launch_lease_id, 36, 1) = '-'
+    AND substr(launch_lease_id, 41, 1) = '-'
+    AND substr(launch_lease_id, 18, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 27, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 32, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 37, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 42, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(launch_lease_id, 32, 1) = '4'
+    AND substr(launch_lease_id, 37, 1) GLOB '[89ab]'
+  ),
+  connection_internal_id TEXT NOT NULL,
+  host_kind TEXT NOT NULL CHECK (host_kind = 'codex'),
+  expected_integration_revision TEXT NOT NULL CHECK (
+    length(expected_integration_revision) = 71
+    AND substr(expected_integration_revision, 1, 7) = 'sha256:'
+    AND substr(expected_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  expected_launch_fingerprint TEXT NOT NULL CHECK (
+    length(CAST(expected_launch_fingerprint AS BLOB)) BETWEEN 1 AND 1024
+  ),
+  issued_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  terminal_state TEXT NOT NULL CHECK (
+    terminal_state IN ('issued', 'consumed', 'cancelled', 'expired')
+  ),
+  FOREIGN KEY (connection_internal_id)
+    REFERENCES agent_connections (connection_internal_id)
+    ON DELETE RESTRICT,
+  CHECK (expires_at > issued_at),
+  CHECK (
+    (terminal_state = 'consumed' AND consumed_at IS NOT NULL)
+    OR (terminal_state <> 'consumed' AND consumed_at IS NULL)
+  ),
+  CHECK (consumed_at IS NULL OR consumed_at >= issued_at),
+  CHECK (consumed_at IS NULL OR consumed_at < expires_at)
+);
+
+CREATE INDEX idx_managed_mcp_launch_leases_cleanup
+  ON managed_mcp_launch_leases (
+    connection_internal_id, terminal_state, expires_at
+  );
+
+
 CREATE TABLE mcp_runtime_sessions (
   runtime_session_id TEXT PRIMARY KEY,
   connection_internal_id TEXT NOT NULL,
-  session_source TEXT NOT NULL CHECK (session_source IN ('managed_host', 'cli_preflight')),
+  session_source TEXT NOT NULL CHECK (
+    session_source IN ('managed_host', 'manual_cli', 'cli_preflight', 'integration_probe')
+  ),
   connection_integration_revision TEXT NOT NULL CHECK (
     length(connection_integration_revision) = 71
     AND substr(connection_integration_revision, 1, 7) = 'sha256:'

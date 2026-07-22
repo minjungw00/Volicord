@@ -203,7 +203,6 @@ impl McpDiagnostic {
             Self::Host(McpHostError::RegisteredSessionCorrelationMismatch) => {
                 "host.codex.registered_session_correlation_mismatch"
             }
-            Self::Host(McpHostError::ManagedMarkerMismatch) => "host.codex.managed_marker_mismatch",
             Self::Transport(McpTransportDiagnostic::IoFailure) => "mcp.transport.io_failed",
             Self::Unexpected => volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
         }
@@ -214,8 +213,7 @@ impl McpDiagnostic {
             Self::JsonRpc(_) | Self::Transport(_) => "transport",
             Self::Lifecycle(McpLifecycleDiagnostic::InitializeRequired)
             | Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize)
-            | Self::Protocol(_)
-            | Self::Host(McpHostError::ManagedMarkerMismatch) => "initialize",
+            | Self::Protocol(_) => "initialize",
             Self::Lifecycle(McpLifecycleDiagnostic::InitializationBatchForbidden)
             | Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationMissing)
             | Self::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid)
@@ -340,9 +338,6 @@ impl McpDiagnostic {
             }
             Self::Host(McpHostError::RegisteredSessionCorrelationMismatch) => {
                 "Codex metadata did not match the registered session correlation"
-            }
-            Self::Host(McpHostError::ManagedMarkerMismatch) => {
-                "managed Codex launch markers were inconsistent"
             }
             Self::Transport(McpTransportDiagnostic::IoFailure) => {
                 "managed stdio transport I/O failed"
@@ -594,7 +589,6 @@ mod tests {
             McpDiagnostic::Host(McpHostError::MalformedNativeMetadata),
             McpDiagnostic::Host(McpHostError::SessionThreadTurnInconsistent),
             McpDiagnostic::Host(McpHostError::RegisteredSessionCorrelationMismatch),
-            McpDiagnostic::Host(McpHostError::ManagedMarkerMismatch),
             McpDiagnostic::Transport(McpTransportDiagnostic::IoFailure),
             McpDiagnostic::Unexpected,
         ];
@@ -641,14 +635,11 @@ mod tests {
     #[test]
     fn bootstrap_failure_is_one_bounded_shared_finding_envelope() {
         let envelope = bootstrap_diagnostic_envelope(&McpAdapterError::Host(
-            McpHostError::ManagedMarkerMismatch,
+            McpHostError::MalformedNativeMetadata,
         ));
         assert!(envelope.starts_with("VOLICORD_DIAGNOSTIC_V1 {"));
         assert!(envelope.len() <= volicord_types::MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES);
         let finding = volicord_types::parse_bootstrap_diagnostic_envelope(&envelope).unwrap();
-        assert_eq!(
-            finding.code().as_str(),
-            "host.codex.managed_marker_mismatch"
-        );
+        assert_eq!(finding.code().as_str(), "host.codex.metadata_malformed");
     }
 }

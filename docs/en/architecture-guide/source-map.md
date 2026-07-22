@@ -56,7 +56,8 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/diagnostic_findings/graph.rs` | Cause-graph validation, current-report root selection, and bounded deterministic lifecycle-aware exact traversal. |
 | `crates/volicord-store/src/diagnostic_findings/queries.rs` | Lifecycle-aware exact identifier, current-report projection, runtime-session occurrence, and active-current-scope queries. |
 | `crates/volicord-store/src/diagnostic_findings/row.rs` | Internal finding row encoding, decoding, and lifecycle identity validation. |
-| `crates/volicord-store/src/operational_sessions.rs` | Managed runtime sessions, protocol milestones, revision-scoped managed MCP project sessions, and exact cross-database bindings. |
+| `crates/volicord-store/src/managed_launch_leases.rs` | Short-lived one-time managed MCP launch leases, current-Connection revalidation, deterministic cancellation/expiry cleanup, and atomic lease-consumption/runtime creation. |
+| `crates/volicord-store/src/operational_sessions.rs` | Runtime-session source decoding, protocol milestones, revision-scoped managed MCP project sessions, exact cross-database bindings, and rejection of direct `managed_host` creation outside lease consumption. |
 | `crates/volicord-store/src/workflow_records.rs` | Workflow record reads and writes. |
 | `crates/volicord-store/src/core_pipeline/` | Core-open, validation, replay, commit, and mutation application. |
 | `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
@@ -79,6 +80,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
+| `crates/volicord-cli/src/host_launch.rs` | Hidden same-process host launcher, exact current Codex entry revalidation, launch-lease issue/cleanup, and in-memory transition into managed stdio. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
 | `crates/volicord-cli/src/connection_command/verification/mod.rs` | Connection verification coordinator, shared step/report types, and bounded package exports. |
 | `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, and managed-host session checks. |
@@ -117,8 +119,8 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared managed MCP command, arguments, static and forwarded environment bindings, strict launch-shape validation, projection, and fingerprint inputs. |
-| `crates/volicord-mcp/src/stdio.rs` | stdio lifecycle and framing, typed initialization-profile selection, explicit `codex-mcp-2025-06-18-v1` turn-metadata parsing, revision-aware message handling, and process preflight. |
+| `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared hidden-launcher command and arguments, Runtime Home environment binding, strict launch-shape validation, public manual probe materialization, projection, and fingerprint inputs. |
+| `crates/volicord-mcp/src/stdio.rs` | Public manual stdio and in-memory lease-bound managed stdio entry paths, authoritative runtime-source selection, lifecycle and framing, typed initialization-profile selection, explicit `codex-mcp-2025-06-18-v1` turn-metadata parsing, revision-aware message handling, and process preflight. |
 | `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch, and wrapping. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed schemas and metadata into canonical tool definitions/results, plus revision-specific wire-name projection through the selected protocol profile. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |
@@ -133,7 +135,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch ordering, notification, and response contracts. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection and schema compatibility contracts. |
 | `crates/volicord-mcp/src/tests/tool_calls.rs` | Tool dispatch, result, error, and storage-capability contracts. |
-| `crates/volicord-mcp/src/tests/managed_host_observation.rs` | Managed launch, routing, session binding, and host-observation contracts. |
+| `crates/volicord-mcp/src/tests/managed_host_observation.rs` | Lease-bound managed launch, process-environment non-authority, runtime-source routing, session binding, and host-observation contracts. |
 | `crates/volicord-mcp/src/tests/diagnostics.rs` | Diagnostic persistence and workflow-metric contracts. |
 | `crates/volicord-mcp/src/tests/conformance.rs` | Module-level registry-driven protocol conformance assertions. |
 | `crates/volicord-mcp/src/tests/support.rs` | Shared MCP test fixture and protocol-message construction only. |

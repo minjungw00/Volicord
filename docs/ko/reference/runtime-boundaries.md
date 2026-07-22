@@ -11,8 +11,8 @@
 | Product Repository | 사용자 제품 파일과 명시적인 관리 프로젝트 구성을 담는 정규 Git 작업 트리입니다. |
 | Volicord Runtime Home | 로컬 registry, 프로젝트 상태, 권위 있는 운영 session, 구조화된 diagnostic finding, 런타임 소유 아티팩트입니다. |
 | Volicord 설치 | 선택한 `volicord` 실행 파일과 build identity입니다. Runtime Home이 아닙니다. |
-| 관리 Codex 구성 | 정확한 관리 stdio 프로세스를 시작하는 사용자 또는 프로젝트 소유 구성입니다. Core 권한이 아닙니다. |
-| `volicord mcp --stdio` | 현재 Agent Connection 하나에 결속된 로컬 자식 프로세스 하나입니다. 네트워크 서비스가 아닙니다. |
+| 관리 Codex 구성 | 정확한 숨겨진 host launcher를 시작하는 사용자 또는 프로젝트 소유 구성입니다. 재사용 가능한 launch 권한을 담지 않으며 Core 권한이 아닙니다. |
+| 숨겨진 host launcher와 stdio adapter | 현재 관리 구성을 검증하고 one-time launch lease를 소비해 관리 stdio를 현재 Agent Connection 하나에 결속하는 로컬 프로세스 하나입니다. 네트워크 서비스가 아닙니다. |
 
 ## Product Repository
 
@@ -56,11 +56,18 @@ WSL2에서는 정규 Linux 형태의 경로만으로 충분하지 않습니다. 
 `VOLICORD_HOME`으로 쓰며 전달 환경 이름을 두지 않습니다. 공유 연결은 프로젝트 소유
 구성에서 `VOLICORD_HOME`만 전달하고 머신 로컬 Runtime Home 경로나 lifecycle 좌표를
 내장하지 않습니다. 두 형태 모두 [Agent Connection](agent-connection.md#managed-mcp-launch-contract)이
-정의한 하나의 정규 관리 시작 계약에서 projection합니다. 개인 명령, 인자, 환경,
-관리 시작 provenance는 프로젝트 선택자 없이 시작 시 등록된 Connection을 선택하며,
+정의한 하나의 정규 관리 시작 계약에서 projection합니다. 개인 hidden-launcher 명령,
+인자, Runtime Home binding은 프로젝트 선택자 없이 시작 시 등록된 Connection을 선택하며,
 현재 프로젝트 연결 관계는 Store가 소유하는 Connection Project membership에서 가져옵니다.
-공유 시작은 저장소 검색으로 Connection과 프로젝트를 해석합니다. 이 값은 협력적인 시작
-맥락이며 identity credential이 아닙니다.
+공유 시작은 저장소 검색으로 Connection과 프로젝트를 해석합니다. 정적 구성에는 lease,
+nonce, 재사용 가능한 secret, raw handle을 넣지 않습니다. 이 값은
+협력적인 시작 맥락이며 identity credential이 아닙니다.
+
+숨겨진 launcher는 수명이 짧은 Registry lease를 만들기 전에 그 정확한 현재 entry,
+Connection revision, fingerprint를 다시 읽고 엄격하게 검증합니다. Lease는 MCP
+bootstrap으로 이어지는 메모리 안의 전환으로만 전달합니다. Store는 lease를 정확히 한 번
+소비하면서 `managed_host` runtime을 원자적으로 만듭니다. 이는 evidence-integrity
+경계이며 OS actor identity나 adversarial security 보장이 아닙니다.
 
 저장된 managed fingerprint는 setup, repair, staged activation 또는 다른 명시적
 configuration 담당 경로가 마지막으로 적용에 성공했거나 채택한 Volicord 관리 host
@@ -157,7 +164,9 @@ Runtime Home finding은 `runtime_home.path.missing`,
 
 ## 기준 MCP 프로세스
 
-지원 프로세스는 `volicord mcp --stdio`입니다. stdin에서 JSON-RPC를 읽고 stdout에
+관리 구성은 숨겨진 host launcher를 시작하며, 이 launcher는 lease를 소비한 뒤 같은
+프로세스에서 stdio adapter로 들어갑니다. 공개 수동 프로세스는
+`volicord mcp --stdio`입니다. Adapter는 stdin에서 JSON-RPC를 읽고 stdout에
 응답을 씁니다. TCP, HTTP, Unix domain socket 또는 그 밖의 네트워크 전송 listener를
 열지 않습니다. 정확한 시작, binding, protocol 동작은 [MCP 전송](mcp-transport.md)이
 담당합니다.
@@ -193,7 +202,8 @@ crash 뒤 열린 것처럼 남은 row와 concurrent process가 Guard 상관관�
 
 - Product Repository 쓰기에는 계속 해당 Core 권한이 필요합니다.
 - Runtime Home 쓰기 접근은 Product Repository 쓰기 권한이 아닙니다.
-- 관리 구성과 시작 marker는 협력적 routing 맥락을 선택하며 사용자 판단, 쓰기 티켓,
+- 관리 구성은 협력적 routing 맥락을 선택하고 one-time lease는 bootstrap을 가로질러
+  source evidence를 보존합니다. 어느 쪽도 사용자 판단, 쓰기 티켓, OS actor identity,
   human identity를 공급하지 않습니다.
 - 검증된 운영 session은 로컬에서 관찰한 협력적 session 소유권과 현재 프로젝트 권한을
   성립시킵니다. Client, actor, 운영체제 사용자, human identity를 성립시키지는 않습니다.
