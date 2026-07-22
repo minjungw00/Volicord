@@ -126,10 +126,14 @@ that runtime's Connection and integration revision. The current-Connection
 convenience query filters the exact Connection scope to its current integration
 revision. These Registry findings remain separate from bounded
 non-authority counters in `diagnostics.sqlite`. A current Connection report
-starts from the finding IDs explicitly referenced by its checks, loads their
-bounded cause chains, and includes an otherwise independent current finding
-only when that report operation deliberately selects it. It does not bulk-load
-every finding stored for the same revision.
+starts from the finding IDs explicitly referenced by its checks and resolves
+their bounded cause chains through a provenance-bearing overlay. The overlay
+uses an inline current-evaluation finding before Store lookup, then resolves an
+explicitly persisted seed from occurrence or active current-state rows. A
+missing-record finding is valid only when such an explicitly persisted seed is
+absent from the Store. The report includes an otherwise independent current
+finding only when that report operation deliberately selects it, and it does
+not bulk-load every finding stored for the same revision.
 
 ## Authoritative Operational Sessions
 

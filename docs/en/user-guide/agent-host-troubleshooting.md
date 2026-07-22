@@ -20,12 +20,18 @@ Do not delete configuration, Runtime Home data, or the repository to clear a
 diagnostic. Preserve JSON output when escalating a reproducible failure, but do
 not include credentials or private payloads.
 
+`connection status` is already a complete read-only evaluation: it calculates
+current findings, resolves inline and persisted causes, and renders the same
+roots in concise, verbose, and JSON output without writing the Runtime Home.
+Use `connection verify` only when the optional active executable, preflight,
+and MCP probes are needed.
+
 ## Use The Stable Finding Code
 
 In `volicord doctor --json`, read `findings[].code` and
 `findings[].actions[].code`. In Connection status or verification JSON, read
 `root_cause_ids`, match those IDs in `findings`, and use the top-level
-`actions[].code` and `actions[].root_cause_ids`. Retain the persisted finding ID,
+`actions[].code` and `actions[].root_cause_ids`. Retain the emitted finding ID,
 runtime-session ID when present, and namespaced diagnostic code. Do not
 classify a failure from the English summary, SQLite message, path wording, or
 stderr excerpt.
@@ -90,11 +96,18 @@ available by exact ID even though it is no longer referenced by the current
 Connection report.
 
 After repairing a managed configuration, Guard artifact or installation,
-repository trust, integration revision, or verification-tool observation,
-rerun active verification. The successful owner check explicitly resolves any
-prior active condition no longer observed. Current reports then include only
-active findings selected by failed or blocked checks; use `diagnostics show`
-with the retained exact ID when resolved history is needed.
+repository trust, integration revision, or verification-tool observation, run
+read-only status to evaluate the current state. Run active verification only
+when new executable, preflight, or MCP probe evidence is needed; it may
+reconcile persisted current snapshots. Current reports include findings
+selected by failed or blocked checks; use `diagnostics show` with the retained
+exact ID when persisted resolved history is needed.
+
+`diagnostics.finding_record_missing` means a reference explicitly identified
+as persisted has no Store row. It does not represent a current finding that
+status calculated inline. Follow its storage recovery action only for that
+genuine persisted-record absence; do not run verification merely to make an
+inline cause appear.
 
 ## Command Is Not Available
 

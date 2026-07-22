@@ -19,12 +19,17 @@ volicord connection status codex --repo "<repo>" --json
 진단을 없애려고 구성, Runtime Home 데이터, 저장소를 삭제하지 않습니다. 재현 가능한
 실패를 전달할 때 JSON 출력을 보존하되 자격 증명이나 비공개 payload는 포함하지 않습니다.
 
+`connection status`는 이미 완전한 읽기 전용 평가입니다. 현재 finding을 계산하고 inline 및
+영속 원인을 해석하며 Runtime Home에 쓰지 않고 concise, verbose, JSON 출력에서 같은 root를
+표시합니다. 선택적인 활성 executable, preflight, MCP probe가 필요할 때만
+`connection verify`를 사용합니다.
+
 ## 안정 Finding Code 사용
 
 `volicord doctor --json`에서는 `findings[].code`와 `findings[].actions[].code`를
 확인합니다. Connection status 또는 verification JSON에서는 `root_cause_ids`를 읽고
 `findings`에서 같은 ID를 찾은 뒤 최상위 `actions[].code`와
-`actions[].root_cause_ids`를 사용합니다. 영속 finding ID, 값이 있으면 runtime-session ID,
+`actions[].root_cause_ids`를 사용합니다. 출력된 finding ID, 값이 있으면 runtime-session ID,
 namespaced diagnostic code를 함께 보존합니다. 영어 summary, SQLite 메시지, 경로 문구,
 stderr 발췌로 실패를 분류하지 않습니다.
 
@@ -82,10 +87,16 @@ snapshot을 반환하고 `active` 또는 `resolved`로 표시하며, 해소된 s
 이상 참조하지 않아도 정확한 ID로 계속 조회할 수 있습니다.
 
 관리 구성, Guard artifact 또는 installation, Product Repository trust, integration revision,
-verification-tool 관찰을 복구한 뒤 활성 검증을 다시 실행합니다. 성공한 담당 check는 더 이상
-관찰되지 않는 이전 active condition을 명시적으로 해소합니다. 그 뒤 현재 보고서에는 failed
-또는 blocked check가 선택한 active finding만 들어갑니다. 해소된 이력이 필요하면 보존한
-정확한 ID로 `diagnostics show`를 실행합니다.
+verification-tool 관찰을 복구한 뒤 읽기 전용 status로 현재 상태를 평가합니다. 새로운
+executable, preflight, MCP probe evidence가 필요할 때만 활성 검증을 실행합니다. 활성 검증은
+영속된 current snapshot을 reconcile할 수 있습니다. 현재 보고서에는 failed 또는 blocked
+check가 선택한 finding이 들어갑니다. 영속된 해소 이력이 필요하면 보존한 정확한 ID로
+`diagnostics show`를 실행합니다.
+
+`diagnostics.finding_record_missing`은 영속 reference라고 명시된 ID에 Store row가 없다는
+뜻입니다. Status가 inline으로 계산한 current finding을 나타내지 않습니다. 실제로 영속
+record가 없을 때만 그 storage 복구 action을 따르며, inline 원인을 표시하기 위해 verification을
+실행하지 않습니다.
 
 ## 명령을 사용할 수 없음
 

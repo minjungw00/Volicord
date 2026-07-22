@@ -598,12 +598,15 @@ Installation ID, 통과한 `mode_transition` check 하나, 현재 `reload_host` 
 제거 check와 `apply_removal` action을 사용하며 typed `planned_changes`로 계획을
 보고하고 아무것도 변경하지 않습니다.
 
-`volicord connection status`는 읽기 전용입니다. 현재 관리 구성, 신뢰, Guard audit,
-통합 revision, managed-host session 관찰을 마지막 활성 executable/MCP server probe와
-함께 projection합니다. Process를 시작하지 않으며 파일, timestamp, 보고서, action,
-관찰, 데이터베이스 row를 바꾸지 않습니다.
+`volicord connection status`는 완전한 읽기 전용 평가입니다. 현재 관리 구성, 신뢰,
+Guard audit, 통합 revision, managed-host session 관찰을 마지막 활성 executable/MCP
+server probe와 함께 평가하고 check, finding, root, action을 메모리에서 조립합니다.
+Process를 시작하지 않으며 파일, timestamp, 보고서, action, 관찰, 데이터베이스 row를
+바꾸지 않습니다. 이 status 보고서를 구체화하거나 설명하는 데 활성 검증은 필요하지
+않습니다.
 
-`volicord connection verify`는 `codex`를 활성 탐색하고 version 명령을 실행한 뒤
+`volicord connection verify`는 선택적으로 실행하는 활성 probe 작업입니다. `codex`를
+탐색하고 version 명령을 실행한 뒤
 `volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. 서버 conformance
 matrix는 프로덕션 지원 protocol profile마다 독립된 stdio process 하나를 실행합니다.
 각 revision에서 `initialize`, initialized notification, `tools/list`, 고정 schema와 필수
@@ -845,10 +848,19 @@ condition은 활성화하거나 갱신하고, 복구 또는 새로운 성공 관
 소유의 이전 active condition은 명시적으로 해소합니다. 같은 condition이 다시 나타나면 같은
 key와 ID를 재활성화합니다.
 
-Connection status 및 verification 보고서는 check가 명시적으로 참조한 현재 finding ID,
-그 한도가 있는 cause chain, 작업이 의도적으로 선택한 독립 현재 finding만 읽습니다. 같은
-revision에 저장되어 있어도 해소됐거나 관련 없는 finding은 현재 보고서에 다시 나타나지
-않습니다. 정확한 ID를 지정한 `diagnostics show`는 occurrence 또는 최신 current-state
+Connection status와 verification은 같은 finding overlay와 report assembler를 사용합니다.
+Overlay는 현재 평가가 계산한 finding을 ID로 보관하고, 명시적인 영속 finding seed를
+식별하며, 각 reference의 provenance를 기록합니다. 해석할 때 inline finding을 먼저 확인한
+뒤 Store를 확인합니다. 따라서 한도가 있는 graph 하나에 inline current finding, 영속된
+불변 occurrence, 영속된 active current-state finding을 함께 담을 수 있습니다. 영속
+reference라고 명시됐지만 Store row가 없을 때만 `diagnostics.finding_record_missing`이
+됩니다. 계산한 inline finding은 이 diagnostic이나
+`action.diagnostics.rebuild_current_observations`를 만들지 않습니다.
+
+보고서는 check가 명시적으로 참조한 finding ID, 그 한도가 있는 cause chain, 작업이
+의도적으로 선택한 독립 현재 finding만 선택합니다. 같은 revision에 저장되어 있어도
+해소됐거나 관련 없는 finding은 현재 보고서에 다시 나타나지 않습니다. 정확한 ID를 지정한
+`diagnostics show`는 occurrence 또는 최신 current-state
 snapshot을 반환하며 `active` 또는 `resolved` 상태와 `resolved_at`을 포함합니다.
 `diagnostics session`은 변경할 수 없는 runtime 발생 관찰 조회를 유지합니다. 찾은 record는
 severity나 terminal condition과 관계없이 성공합니다.

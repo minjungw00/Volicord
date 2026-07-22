@@ -2,17 +2,6 @@
 
 use super::*;
 
-pub(super) fn persisted_diagnostic_finding(
-    runtime_home: &Path,
-    finding_id: &DiagnosticFindingId,
-) -> Result<Option<DiagnosticFinding>, ConnectionCommandError> {
-    Ok(
-        reportable_diagnostic_findings_by_ids(runtime_home, std::slice::from_ref(finding_id))?
-            .into_iter()
-            .next(),
-    )
-}
-
 pub(super) fn diagnostic_occurrence_for_runtime_code(
     runtime_home: &Path,
     runtime_session_id: &str,
@@ -150,10 +139,10 @@ pub(super) struct HostBoundaryFindings {
     pub(super) managed_config: Vec<DiagnosticFindingId>,
     pub(super) project_trust: Vec<DiagnosticFindingId>,
     pub(super) tool_round_trip: Vec<DiagnosticFindingId>,
+    pub(super) current: Vec<volicord_types::CurrentDiagnosticFinding>,
 }
 
-pub(super) fn persist_host_boundary_findings(
-    runtime_home: &Path,
+pub(super) fn host_boundary_findings(
     connection: &AgentConnectionRecord,
     host: &Verification,
     current_sessions: &[McpRuntimeSessionRecord],
@@ -162,7 +151,6 @@ pub(super) fn persist_host_boundary_findings(
 ) -> Result<HostBoundaryFindings, ConnectionCommandError> {
     let mut findings = HostBoundaryFindings::default();
     let observed_at = current_timestamp();
-    let mut current = Vec::new();
     if let Some(diagnostic) = host.managed_config_diagnostic {
         let subject = ManagedConfigurationTarget::for_connection(
             &connection.connection_internal_id,
@@ -178,7 +166,7 @@ pub(super) fn persist_host_boundary_findings(
             observed_at.clone(),
         )?;
         findings.managed_config.push(finding.id().clone());
-        current.push(finding);
+        findings.current.push(finding);
     }
     if let Some(trust) = host.project_trust.as_ref() {
         if let Some(diagnostic) = TrustDiagnostic::from_status(trust.status) {
@@ -201,7 +189,7 @@ pub(super) fn persist_host_boundary_findings(
                 observed_at.clone(),
             )?;
             findings.project_trust.push(finding.id().clone());
-            current.push(finding);
+            findings.current.push(finding);
         }
     }
     if current_sessions.is_empty() {
@@ -216,7 +204,7 @@ pub(super) fn persist_host_boundary_findings(
             let observed_revision =
                 IntegrationRevision::parse(latest.connection_integration_revision.clone())
                     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-            current.push(current_connection_finding(
+            findings.current.push(current_connection_finding(
                 connection,
                 OperationalDiagnostic::Revision(RevisionDiagnostic::IntegrationStale),
                 &subject,
@@ -256,25 +244,14 @@ pub(super) fn persist_host_boundary_findings(
             observed_at.clone(),
         )?;
         findings.tool_round_trip.push(finding.id().clone());
-        current.push(finding);
+        findings.current.push(finding);
     }
-    let scope = volicord_types::DiagnosticScope::try_new(
-        volicord_types::DiagnosticScopeKind::Connection,
-        &connection.connection_internal_id,
-    )
-    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    reconcile_current_findings_for_scope(
-        runtime_home,
-        &scope,
-        &[
-            CurrentOperationalOwner::ManagedConfiguration,
-            CurrentOperationalOwner::Trust,
-            CurrentOperationalOwner::HostRevision,
-            CurrentOperationalOwner::VerificationTool,
-        ],
-        &current,
-        observed_at,
-    )?;
+    findings
+        .current
+        .sort_by(|left, right| left.id().cmp(right.id()));
+    findings
+        .current
+        .dedup_by(|left, right| left.id() == right.id());
     Ok(findings)
 }
 
@@ -390,11 +367,11 @@ pub(super) fn persist_peer_path_mismatch_findings(
 pub(super) struct GuardBoundaryFindings {
     pub(super) files: Vec<DiagnosticFindingId>,
     pub(super) observation: Vec<DiagnosticFindingId>,
+    pub(super) current: Vec<volicord_types::CurrentDiagnosticFinding>,
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn persist_guard_boundary_findings(
-    runtime_home: &Path,
+pub(super) fn guard_boundary_findings(
     connection: &AgentConnectionRecord,
     audit: &GuardAuditFacts,
     installation_ids: &[String],
@@ -404,7 +381,6 @@ pub(super) fn persist_guard_boundary_findings(
     prompt_capture_observed: bool,
     observation_revision_mismatch_installation_ids: &[String],
     observed_at: UtcTimestamp,
-    persist_findings: bool,
 ) -> Result<GuardBoundaryFindings, ConnectionCommandError> {
     let mut findings = GuardBoundaryFindings::default();
     let mut current = Vec::new();
@@ -570,20 +546,7 @@ pub(super) fn persist_guard_boundary_findings(
         .collect::<BTreeMap<_, _>>()
         .into_values()
         .collect::<Vec<_>>();
-    if persist_findings {
-        let scope = volicord_types::DiagnosticScope::try_new(
-            volicord_types::DiagnosticScopeKind::Connection,
-            &connection.connection_internal_id,
-        )
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        reconcile_current_findings_for_scope(
-            runtime_home,
-            &scope,
-            &[CurrentOperationalOwner::Guard],
-            &current,
-            observed_at,
-        )?;
-    }
+    findings.current = current;
     Ok(findings)
 }
 

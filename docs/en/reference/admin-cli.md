@@ -645,13 +645,16 @@ pending removal check and `apply_removal` action only when an actual removal is
 planned; it reports that plan through typed `planned_changes` and performs no
 mutation.
 
-`volicord connection status` is read-only. It projects current managed
-configuration, trust, Guard audit, integration revision, and managed-host
-session observations together with the last active executable and MCP-server
-probe. It neither launches a process nor changes files, timestamps, reports,
-actions, observations, or database rows.
+`volicord connection status` is a complete read-only evaluation. It evaluates
+current managed configuration, trust, Guard audit, integration revision, and
+managed-host session observations together with the last active executable and
+MCP-server probe, and assembles the checks, findings, roots, and actions in
+memory. It neither launches a process nor changes files, timestamps, reports,
+actions, observations, or database rows. Active verification is not required
+to materialize or explain this status report.
 
-`volicord connection verify` actively discovers `codex`, runs the version
+`volicord connection verify` is the optional active-probe operation. It
+discovers `codex`, runs the version
 command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test. The
 server-conformance matrix runs one independent stdio process for every
 production-supported protocol profile. Each revision performs `initialize`,
@@ -924,11 +927,22 @@ resolves previously active owned conditions omitted after repair or a fresh
 successful observation. Reappearance of the same condition reactivates the
 same key and ID.
 
-Connection status and verification reports load only current finding IDs
-explicitly referenced by their checks, their bounded cause chains, and any
-independent current finding deliberately selected by the operation. Resolved
-or otherwise unrelated findings stored for the same revision do not reappear
-in the current report. `diagnostics show` by exact ID returns either an
+Connection status and verification use the same finding overlay and report
+assembler. The overlay keys findings calculated by the current evaluation by
+ID, identifies explicit persisted finding seeds, and records provenance for
+each reference. Resolution checks an inline finding first and then the Store;
+the resulting bounded graph may combine inline current findings, persisted
+immutable occurrences, and persisted active current-state findings. Only an
+explicitly persisted reference whose Store row is absent becomes
+`diagnostics.finding_record_missing`. A calculated inline finding never
+produces that diagnostic or
+`action.diagnostics.rebuild_current_observations`.
+
+Reports select only finding IDs explicitly referenced by their checks, their
+bounded cause chains, and any independent current finding deliberately
+selected by the operation. Resolved or otherwise unrelated findings stored for
+the same revision do not reappear in the current report. `diagnostics show` by
+exact ID returns either an
 occurrence or the latest current-state snapshot, including `active` or
 `resolved` state and `resolved_at`. `diagnostics session` retains immutable
 runtime-occurrence inspection. A found record succeeds regardless of its

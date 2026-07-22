@@ -25,7 +25,8 @@ pub use facts::{
 };
 pub(crate) use persistence::{reconcile_current_findings_for_scope, CurrentOperationalOwner};
 pub(crate) use projection::{
-    current_connection_finding, current_report_findings, occurrence_finding,
+    current_connection_finding, current_report_findings, current_report_findings_with_overlay,
+    occurrence_finding, DiagnosticFindingOverlay,
 };
 pub(crate) use subjects::guard_artifact_kind;
 pub use subjects::{

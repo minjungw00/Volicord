@@ -14,10 +14,7 @@ use volicord_mcp::ManagedMcpInvocationPurpose;
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
-    diagnostic_findings::{
-        diagnostic_occurrences_for_runtime_session, diagnostic_root_cause_ids,
-        insert_occurrence_finding, reportable_diagnostic_findings_by_ids,
-    },
+    diagnostic_findings::{diagnostic_occurrences_for_runtime_session, insert_occurrence_finding},
     guards::{guard_observation_summary, list_guard_installations},
     operational_sessions::{
         connection_integration_revision, current_managed_runtime_sessions,
@@ -27,10 +24,10 @@ use volicord_store::{
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
     ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
-    ConnectionVerificationReport, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource,
-    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, GuardManagedArtifact, IntegrationRevision, UtcTimestamp,
-    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode, DiagnosticDomain,
+    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
+    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
+    IntegrationRevision, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 #[cfg(test)]
 use volicord_types::{AgentToolId, ConnectionStatus};
@@ -44,15 +41,17 @@ use crate::host_integration::{
     verification::{HostExecutableStatus, ManagedConfigStatus, ProjectTrustStatus, Verification},
     HostAdapter, HostKind, HostPlan, HostScope,
 };
+#[cfg(test)]
+use crate::operational_diagnostics::current_report_findings;
 use crate::operational_diagnostics::{
-    current_connection_finding, current_report_findings, guard_artifact_kind,
-    reconcile_current_findings_for_scope, CurrentOperationalOwner, GuardArtifactFacts,
-    GuardDiagnostic, GuardEventFacts, GuardEventSubject, GuardInstallationFacts,
-    GuardInstallationSubject, GuardManagedArtifactSubject, GuardPhaseFacts, GuardPhaseSubject,
-    IntegrationRevisionFacts, IntegrationRevisionSubject, ManagedConfigurationFacts,
-    ManagedConfigurationTarget, OperationalCheckState, OperationalDiagnostic, RevisionDiagnostic,
-    ToolVerificationDiagnostic, TrustDiagnostic, TrustFacts, TrustSubject, VerificationToolFacts,
-    VerificationToolSubject,
+    current_connection_finding, current_report_findings_with_overlay, guard_artifact_kind,
+    reconcile_current_findings_for_scope, CurrentOperationalOwner, DiagnosticFindingOverlay,
+    GuardArtifactFacts, GuardDiagnostic, GuardEventFacts, GuardEventSubject,
+    GuardInstallationFacts, GuardInstallationSubject, GuardManagedArtifactSubject, GuardPhaseFacts,
+    GuardPhaseSubject, IntegrationRevisionFacts, IntegrationRevisionSubject,
+    ManagedConfigurationFacts, ManagedConfigurationTarget, OperationalCheckState,
+    OperationalDiagnostic, RevisionDiagnostic, ToolVerificationDiagnostic, TrustDiagnostic,
+    TrustFacts, TrustSubject, VerificationToolFacts, VerificationToolSubject,
 };
 
 use super::{
@@ -77,7 +76,7 @@ use guard_checks::*;
 use host_checks::*;
 pub(in crate::connection_command) use mcp_checks::mcp_server_check;
 use mcp_checks::mcp_server_finding_ids;
-use report_inputs::canonical_verification_report;
+use report_inputs::{assemble_connection_evaluation, canonical_verification_evaluation};
 pub(in crate::connection_command) use report_inputs::{
     connection_metadata_failure_report, current_status_report, effective_connection_report,
 };
@@ -87,6 +86,13 @@ pub(in crate::connection_command) enum StepStatus {
     Passed,
     Failed,
     Pending,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ConnectionCheckEvaluation {
+    pub(super) checks: Vec<ConnectionCheck>,
+    pub(super) inline_findings: Vec<CurrentDiagnosticFinding>,
+    pub(super) persisted_finding_seed_ids: Vec<DiagnosticFindingId>,
 }
 
 impl StepStatus {
@@ -248,15 +254,27 @@ pub(in crate::connection_command) fn verify_connection(
         McpVerification::not_run()
     };
     persist_process_diagnostics(runtime_home, connection, &mut preflight, &mut handshake)?;
-    let report =
-        canonical_verification_report(runtime_home, connection, &host, &preflight, &handshake)?;
-    let (findings, integration_revision) =
-        current_report_findings(runtime_home, connection, &report)?;
-    Ok(VerificationReport {
-        report,
-        findings,
-        integration_revision,
-    })
+    let evaluation =
+        canonical_verification_evaluation(runtime_home, connection, &host, &preflight, &handshake)?;
+    let scope = volicord_types::DiagnosticScope::try_new(
+        volicord_types::DiagnosticScopeKind::Connection,
+        &connection.connection_internal_id,
+    )
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    reconcile_current_findings_for_scope(
+        runtime_home,
+        &scope,
+        &[
+            CurrentOperationalOwner::ManagedConfiguration,
+            CurrentOperationalOwner::Trust,
+            CurrentOperationalOwner::HostRevision,
+            CurrentOperationalOwner::VerificationTool,
+            CurrentOperationalOwner::Guard,
+        ],
+        &evaluation.inline_findings,
+        evaluation.metadata.evaluated_at.clone(),
+    )?;
+    assemble_connection_evaluation(runtime_home, connection, evaluation)
 }
 
 fn current_timestamp() -> UtcTimestamp {

@@ -2,6 +2,181 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ConnectionEvaluationKind {
+    Status,
+    Verify,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ConnectionEvaluationEvidence {
+    CurrentStatus {
+        managed_config: ManagedConfigStatus,
+        host_executable: HostExecutableStatus,
+    },
+    ActiveVerification {
+        managed_config: ManagedConfigStatus,
+        host_executable: HostExecutableStatus,
+        preflight: StepStatus,
+        mcp_server: StepStatus,
+    },
+}
+
+impl ConnectionEvaluationEvidence {
+    const fn kind(&self) -> ConnectionEvaluationKind {
+        match self {
+            Self::CurrentStatus { .. } => ConnectionEvaluationKind::Status,
+            Self::ActiveVerification { .. } => ConnectionEvaluationKind::Verify,
+        }
+    }
+
+    fn validate(&self) -> Result<(), ConnectionCommandError> {
+        let labels = match self {
+            Self::CurrentStatus {
+                managed_config,
+                host_executable,
+            } => vec![managed_config.as_str(), host_executable.as_str()],
+            Self::ActiveVerification {
+                managed_config,
+                host_executable,
+                preflight,
+                mcp_server,
+            } => vec![
+                managed_config.as_str(),
+                host_executable.as_str(),
+                preflight.as_str(),
+                mcp_server.as_str(),
+            ],
+        };
+        if labels.iter().any(|label| label.is_empty()) {
+            return Err(ConnectionCommandError::runtime(
+                "connection evaluation evidence contains an empty typed state",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ConnectionEvaluationMetadata {
+    pub(super) kind: ConnectionEvaluationKind,
+    pub(super) evaluated_at: UtcTimestamp,
+    pub(super) integration_revision: IntegrationRevision,
+}
+
+/// Complete current-domain result before selected-Connection report assembly.
+#[derive(Debug)]
+pub(super) struct ConnectionEvaluation {
+    pub(super) checks: Vec<ConnectionCheck>,
+    pub(super) inline_findings: Vec<CurrentDiagnosticFinding>,
+    pub(super) persisted_finding_seed_ids: Vec<DiagnosticFindingId>,
+    pub(super) evidence: ConnectionEvaluationEvidence,
+    pub(super) actions: Vec<ConnectionAction>,
+    pub(super) metadata: ConnectionEvaluationMetadata,
+}
+
+impl ConnectionEvaluation {
+    fn try_new(
+        checks: Vec<ConnectionCheck>,
+        mut inline_findings: Vec<CurrentDiagnosticFinding>,
+        persisted_finding_seed_ids: Vec<DiagnosticFindingId>,
+        evidence: ConnectionEvaluationEvidence,
+        metadata: ConnectionEvaluationMetadata,
+    ) -> Result<Self, ConnectionCommandError> {
+        if evidence.kind() != metadata.kind {
+            return Err(ConnectionCommandError::runtime(
+                "connection evaluation evidence does not match its metadata",
+            ));
+        }
+        evidence.validate()?;
+        inline_findings.sort_by(|left, right| left.id().cmp(right.id()));
+        inline_findings.dedup_by(|left, right| left.id() == right.id());
+        let inline_ids = inline_findings
+            .iter()
+            .map(|finding| finding.id().clone())
+            .collect::<BTreeSet<_>>();
+        let mut persisted_finding_seed_ids = persisted_finding_seed_ids
+            .into_iter()
+            .chain(
+                checks
+                    .iter()
+                    .flat_map(|check| check.cause_finding_ids().iter().cloned())
+                    .chain(inline_findings.iter().flat_map(|finding| {
+                        finding
+                            .snapshot()
+                            .causes()
+                            .iter()
+                            .map(|cause| cause.finding_id().clone())
+                    })),
+            )
+            .filter(|finding_id| !inline_ids.contains(finding_id))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        persisted_finding_seed_ids.sort();
+        Ok(Self {
+            checks,
+            inline_findings,
+            persisted_finding_seed_ids,
+            evidence,
+            actions: Vec::new(),
+            metadata,
+        })
+    }
+
+    pub(super) fn finding_overlay(&self) -> DiagnosticFindingOverlay {
+        let mut overlay = DiagnosticFindingOverlay::default();
+        overlay.extend_inline_current(&self.inline_findings);
+        let mut persisted = DiagnosticFindingOverlay::default();
+        persisted.extend_persisted_seeds(self.persisted_finding_seed_ids.iter().cloned());
+        overlay.merge(persisted);
+        debug_assert_eq!(overlay.inline_findings().len(), self.inline_findings.len());
+        debug_assert_eq!(
+            overlay.persisted_finding_seed_ids().len(),
+            self.persisted_finding_seed_ids.len()
+        );
+        overlay
+    }
+}
+
+pub(super) fn assemble_connection_evaluation(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    mut evaluation: ConnectionEvaluation,
+) -> Result<VerificationReport, ConnectionCommandError> {
+    if evaluation.evidence.kind() != evaluation.metadata.kind {
+        return Err(ConnectionCommandError::runtime(
+            "connection evaluation evidence changed before report assembly",
+        ));
+    }
+    evaluation.evidence.validate()?;
+    let overlay = evaluation.finding_overlay();
+    let (findings, integration_revision) = current_report_findings_with_overlay(
+        runtime_home,
+        connection,
+        &evaluation.checks,
+        &overlay,
+    )?;
+    evaluation.checks = finalize_check_graph(evaluation.checks, &findings)?;
+    evaluation.actions = actions_for_checks(&evaluation.checks)?;
+    let report = ConnectionVerificationReport::try_new(
+        evaluation.metadata.evaluated_at,
+        evaluation.checks,
+        evaluation.actions,
+    )
+    .map_err(ConnectionCommandError::from)?;
+    if integration_revision != evaluation.metadata.integration_revision {
+        return Err(ConnectionCommandError::runtime(
+            "connection integration revision changed during evaluation assembly",
+        ));
+    }
+    Ok(VerificationReport {
+        report,
+        findings,
+        integration_revision,
+    })
+}
+
 pub(in crate::connection_command) fn effective_connection_report(
     connection: &AgentConnectionRecord,
 ) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
@@ -32,21 +207,20 @@ pub(in crate::connection_command) fn connection_metadata_failure_report(
         .map_err(ConnectionCommandError::from)
 }
 
-pub(super) fn canonical_verification_report(
+pub(super) fn canonical_verification_evaluation(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     host: &Verification,
     preflight: &VerificationStep,
     handshake: &McpVerification,
-) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
+) -> Result<ConnectionEvaluation, ConnectionCommandError> {
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
     persist_peer_path_mismatch_findings(runtime_home, connection, host, &current_sessions)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
-    let host_findings = persist_host_boundary_findings(
-        runtime_home,
+    let host_findings = host_boundary_findings(
         connection,
         host,
         &current_sessions,
@@ -73,16 +247,26 @@ pub(super) fn canonical_verification_report(
         runtime_home,
         &connection.connection_internal_id,
     )?;
-    checks.extend(guard_checks_for_connection(
-        runtime_home,
-        connection,
-        &projects,
-        true,
-    )?);
-    checks = finalize_check_graph(runtime_home, checks)?;
-    let actions = actions_for_checks(&checks)?;
-    ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)
-        .map_err(ConnectionCommandError::from)
+    let guard = guard_checks_for_connection(runtime_home, connection, &projects)?;
+    checks.extend(guard.checks);
+    let mut inline_findings = host_findings.current;
+    inline_findings.extend(guard.inline_findings);
+    ConnectionEvaluation::try_new(
+        checks,
+        inline_findings,
+        guard.persisted_finding_seed_ids,
+        ConnectionEvaluationEvidence::ActiveVerification {
+            managed_config: host.managed_config,
+            host_executable: host.host_executable,
+            preflight: preflight.status,
+            mcp_server: handshake.step.status,
+        },
+        ConnectionEvaluationMetadata {
+            kind: ConnectionEvaluationKind::Verify,
+            evaluated_at: current_timestamp(),
+            integration_revision: current_revision,
+        },
+    )
 }
 
 pub(in crate::connection_command) fn current_status_host_diagnostic(
@@ -117,15 +301,30 @@ pub(in crate::connection_command) fn current_status_report(
     host_plan: Option<&HostPlan>,
     projects: &[ConnectionProjectRecord],
     process: &impl ConnectionProcess,
-) -> Result<(Option<Verification>, ConnectionVerificationReport), ConnectionCommandError> {
+) -> Result<VerificationReport, ConnectionCommandError> {
     let current_host =
         current_status_host_diagnostic(runtime_home, connection, host_plan, projects, process)?;
     let persisted = connection.verification_report()?;
     let Some(mut host) = current_host else {
-        return Ok((
-            None,
-            persisted.unwrap_or(effective_connection_report(connection)?),
-        ));
+        let report = persisted.unwrap_or(effective_connection_report(connection)?);
+        return assemble_connection_evaluation(
+            runtime_home,
+            connection,
+            ConnectionEvaluation::try_new(
+                report.checks().to_vec(),
+                Vec::new(),
+                Vec::new(),
+                ConnectionEvaluationEvidence::CurrentStatus {
+                    managed_config: ManagedConfigStatus::Unknown,
+                    host_executable: HostExecutableStatus::NotChecked,
+                },
+                ConnectionEvaluationMetadata {
+                    kind: ConnectionEvaluationKind::Status,
+                    evaluated_at: current_timestamp(),
+                    integration_revision: connection_integration_revision(connection)?,
+                },
+            )?,
+        );
     };
     let stored_executable = persisted
         .as_ref()
@@ -202,92 +401,23 @@ pub(in crate::connection_command) fn current_status_report(
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
-    let mut tool_round_trip_causes = Vec::new();
-    for session in current_sessions.iter().filter(|session| {
-        session.verification_tool_observed_at.is_some()
-            && session.verification_tool_name.as_deref()
-                != Some(super::super::managed_host_round_trip_tool().wire_name())
-    }) {
-        let subject = VerificationToolSubject::for_runtime_session(
-            &connection.connection_internal_id,
-            &session.runtime_session_id,
-        )
-        .map_err(ConnectionCommandError::runtime)?;
-        let projected = current_connection_finding(
-            connection,
-            OperationalDiagnostic::ToolVerification(
-                ToolVerificationDiagnostic::DesignationMismatch,
-            ),
-            &subject,
-            &VerificationToolFacts::new(
-                super::super::managed_host_round_trip_tool().wire_name(),
-                session
-                    .verification_tool_name
-                    .as_deref()
-                    .expect("filtered verification-tool observation has a name"),
-            ),
-            OperationalCheckState::Failed,
-            current_timestamp(),
-        )?;
-        if persisted_diagnostic_finding(runtime_home, projected.id())?.is_some() {
-            tool_round_trip_causes.push(projected.id().clone());
-        }
-    }
-    let managed_config_causes = host
-        .managed_config_diagnostic
-        .map(|diagnostic| {
-            let subject = ManagedConfigurationTarget::for_connection(
-                &connection.connection_internal_id,
-                Path::new(&connection.config_target),
-            )
-            .map_err(ConnectionCommandError::runtime)?;
-            current_connection_finding(
-                connection,
-                OperationalDiagnostic::ManagedConfig(diagnostic),
-                &subject,
-                &ManagedConfigurationFacts::from_status(host.managed_config),
-                OperationalCheckState::Failed,
-                current_timestamp(),
-            )
-            .map(|finding| finding.id().clone())
-        })
-        .transpose()?
-        .into_iter()
-        .collect();
-    let project_trust_causes = host
-        .project_trust
-        .as_ref()
-        .and_then(|trust| {
-            TrustDiagnostic::from_status(trust.status).map(|diagnostic| (trust, diagnostic))
-        })
-        .map(|(trust, diagnostic)| {
-            let subject = TrustSubject::for_repository(
-                &connection.connection_internal_id,
-                Path::new(&trust.repo_root),
-            )
-            .map_err(ConnectionCommandError::runtime)?;
-            let check_state = if trust.status == ProjectTrustStatus::Malformed {
-                OperationalCheckState::Failed
-            } else {
-                OperationalCheckState::Pending
-            };
-            current_connection_finding(
-                connection,
-                OperationalDiagnostic::Trust(diagnostic),
-                &subject,
-                &TrustFacts::from_status(trust.status),
-                check_state,
-                current_timestamp(),
-            )
-            .map(|finding| finding.id().clone())
-        })
-        .transpose()?
-        .into_iter()
-        .collect();
+    let host_findings = host_boundary_findings(
+        connection,
+        &host,
+        &current_sessions,
+        latest_session.as_ref(),
+        &current_revision,
+    )?;
     let mut checks = vec![
-        with_direct_causes(managed_config_check(&host)?, managed_config_causes)?,
+        with_direct_causes(
+            managed_config_check(&host)?,
+            host_findings.managed_config.clone(),
+        )?,
         stored_mcp,
-        with_direct_causes(project_trust_check(&host)?, project_trust_causes)?,
+        with_direct_causes(
+            project_trust_check(&host)?,
+            host_findings.project_trust.clone(),
+        )?,
     ];
     checks.push(stored_executable.unwrap_or(canonical_check(
         ConnectionCheckKind::HostExecutable,
@@ -302,16 +432,28 @@ pub(in crate::connection_command) fn current_status_report(
         current_revision.as_str(),
         &current_sessions,
         latest_session.as_ref(),
-        &tool_round_trip_causes,
+        &host_findings.tool_round_trip,
     )?);
-    checks.extend(guard_checks_for_connection(
+    let guard = guard_checks_for_connection(runtime_home, connection, projects)?;
+    checks.extend(guard.checks);
+    let mut inline_findings = host_findings.current;
+    inline_findings.extend(guard.inline_findings);
+    assemble_connection_evaluation(
         runtime_home,
         connection,
-        projects,
-        false,
-    )?);
-    checks = finalize_check_graph(runtime_home, checks)?;
-    let actions = actions_for_checks(&checks)?;
-    let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)?;
-    Ok((Some(host), report))
+        ConnectionEvaluation::try_new(
+            checks,
+            inline_findings,
+            guard.persisted_finding_seed_ids,
+            ConnectionEvaluationEvidence::CurrentStatus {
+                managed_config: host.managed_config,
+                host_executable: host.host_executable,
+            },
+            ConnectionEvaluationMetadata {
+                kind: ConnectionEvaluationKind::Status,
+                evaluated_at: current_timestamp(),
+                integration_revision: current_revision,
+            },
+        )?,
+    )
 }

@@ -29,8 +29,8 @@ pub(super) fn with_direct_causes(
 }
 
 pub(super) fn finalize_check_graph(
-    runtime_home: &Path,
     checks: Vec<ConnectionCheck>,
+    findings: &[DiagnosticFinding],
 ) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
     let mut rooted = Vec::with_capacity(checks.len());
     for check in checks {
@@ -41,12 +41,15 @@ pub(super) fn finalize_check_graph(
         {
             let mut roots = BTreeSet::new();
             for finding_id in check.cause_finding_ids() {
-                if persisted_diagnostic_finding(runtime_home, finding_id)?.is_some() {
-                    roots.extend(diagnostic_root_cause_ids(
-                        runtime_home,
-                        std::slice::from_ref(finding_id),
-                        MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
-                    )?);
+                if findings.iter().any(|finding| finding.id() == finding_id) {
+                    roots.extend(
+                        volicord_types::diagnostic_root_cause_ids(
+                            findings,
+                            std::slice::from_ref(finding_id),
+                            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+                        )
+                        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+                    );
                 } else {
                     roots.insert(finding_id.clone());
                 }

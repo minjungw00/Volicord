@@ -113,9 +113,12 @@ Finding은 명시적 ID별, runtime occurrence session별, 정확한 active curr
 revision도 있어야 합니다. 현재 Connection 편의 조회는 정확한 Connection scope를 현재
 integration revision으로 걸러냅니다. 이 Registry finding은 `diagnostics.sqlite`의
 한도가 있는 비권한 counter와 구분됩니다. 현재 Connection 보고서는 check가 명시적으로
-참조한 finding ID에서 시작해 한도가 있는 cause chain을 읽으며, 독립적인 현재 finding은
-해당 보고서 작업이 의도적으로 선택한 경우에만 포함합니다. 같은 revision에 저장된 모든
-finding을 한꺼번에 읽지 않습니다.
+참조한 finding ID에서 시작해 provenance를 담은 overlay로 한도가 있는 cause chain을
+해석합니다. Overlay는 현재 평가의 inline finding을 Store 조회보다 먼저 사용한 뒤 명시적인
+영속 seed를 occurrence 또는 active current-state row에서 해석합니다. 이런 명시적인 영속
+seed가 Store에 없을 때만 missing-record finding이 유효합니다. 독립적인 현재 finding은 해당
+보고서 작업이 의도적으로 선택한 경우에만 포함하며, 같은 revision에 저장된 모든 finding을
+한꺼번에 읽지 않습니다.
 
 ## 권위 있는 운영 Session
 

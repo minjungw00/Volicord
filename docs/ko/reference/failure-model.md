@@ -162,10 +162,15 @@ encoding에서 `DiagnosticSubjectIdentity`를 구성하며, 별도의 안전한 
 제공합니다. Typed subject namespace는 그 정규 encoding에 직접 포함되므로 서로 다른 subject
 family의 표시 text가 같아도 identity가 하나로 합쳐지지 않습니다. Path를 담는 subject는 opaque
 identity를 파생하기 전에 filesystem alias를 정규화하며 그 정규 path byte를 저장하지 않습니다.
-활성 검증은 담당자별 완전한 관찰 집합을 reconcile합니다. 관찰한 condition은 활성화하거나
-갱신하고, 이전에는 active였지만 그 집합에서 빠진 담당 condition은 명시적으로 해소합니다. 현재
-보고서는 failed 또는 blocked check가 선택한 active current finding과 그 한도가 있는 cause
-chain만 읽습니다.
+선택적인 활성 검증은 담당자별 완전한 관찰 집합을 reconcile합니다. 관찰한 condition은
+활성화하거나 갱신하고, 이전에는 active였지만 그 집합에서 빠진 담당 condition은 명시적으로
+해소합니다.
+
+현재 보고서는 명시적인 provenance를 가진 overlay로 선택한 ID를 해석합니다. 현재 평가가
+계산한 inline finding을 Store 조회보다 먼저 사용합니다. 그다음 명시적인 영속 seed를 불변
+occurrence 또는 active current-state row에서 해석하며, 같은 한도 있는 cause graph를 이어갈
+수 있습니다. 명시적인 영속 reference인데 Store row가 없을 때만
+`diagnostics.finding_record_missing`이 되며, 계산한 inline finding은 이 치환을 받지 않습니다.
 
 Safe facts는 저장하거나 렌더링하기 전에 한도를 검증합니다. Typed projection은 민감한
 key를 가리고 text 크기, collection 크기, nesting depth를 제한합니다. Raw environment map,

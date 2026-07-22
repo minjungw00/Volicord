@@ -1501,7 +1501,10 @@ fn guard_failures_are_current_and_structured() -> Result<(), Box<dyn Error>> {
         |row| row.get(0),
     )?;
     assert!(persistence_findings > 0);
+    drop(registry);
 
+    let content_before_status = fixture.content_snapshot()?;
+    let diagnostics_before_status = fixture.diagnostic_registry_snapshot()?;
     let status = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let report = assert_connection_report(&status, 1, "status", "failed")?;
     assert_check(
@@ -1510,6 +1513,66 @@ fn guard_failures_are_current_and_structured() -> Result<(), Box<dyn Error>> {
         "failed",
         Some("guard_observation_failed"),
     );
+    let guard_finding = report["findings"]
+        .as_array()
+        .and_then(|findings| {
+            findings
+                .iter()
+                .find(|finding| finding["code"] == "guard.observation.incompatible")
+        })
+        .ok_or("inline Guard incompatibility finding")?;
+    let guard_finding_id = guard_finding["id"]
+        .as_str()
+        .ok_or("inline Guard finding ID")?
+        .to_owned();
+    assert!(report["root_cause_ids"]
+        .as_array()
+        .is_some_and(|roots| roots
+            .iter()
+            .any(|root| root.as_str() == Some(guard_finding_id.as_str()))));
+    assert!(!report["findings"]
+        .as_array()
+        .is_some_and(|findings| findings
+            .iter()
+            .any(|finding| finding["code"] == "diagnostics.finding_record_missing")));
+    assert!(!serde_json::to_string(&report)?
+        .contains("action.diagnostics.rebuild_current_observations"));
+
+    let concise = fixture.run_connection("status", FUTURE_VERSION, false)?;
+    assert_eq!(concise.status.code(), Some(1));
+    assert!(concise.stderr.is_empty());
+    let concise = String::from_utf8(concise.stdout)?;
+    assert!(concise.contains("guard.observation.incompatible"));
+    assert!(concise.contains(&format!("Finding: {guard_finding_id}")));
+
+    let verbose = fixture.run_connection_verbose("status", FUTURE_VERSION)?;
+    assert_eq!(verbose.status.code(), Some(1));
+    assert!(verbose.stderr.is_empty());
+    let verbose = String::from_utf8(verbose.stdout)?;
+    assert!(verbose.contains("Code: guard.observation.incompatible"));
+    assert!(verbose.contains(&format!("[root] {guard_finding_id}")));
+
+    assert_status_reads_read_only_registry(&fixture, FUTURE_VERSION)?;
+    assert_eq!(fixture.content_snapshot()?, content_before_status);
+    assert_eq!(
+        fixture.diagnostic_registry_snapshot()?,
+        diagnostics_before_status,
+        "status changed diagnostic counts or current snapshot timestamps"
+    );
+
+    let cli_preflight_before_verify = fixture.cli_preflight_session_count()?;
+    let verify = fixture.run_connection("verify", FUTURE_VERSION, true)?;
+    let verify_report = assert_connection_report(&verify, 1, "verify", "failed")?;
+    let verify_guard_finding = verify_report["findings"]
+        .as_array()
+        .and_then(|findings| {
+            findings
+                .iter()
+                .find(|finding| finding["code"] == "guard.observation.incompatible")
+        })
+        .ok_or("verified Guard incompatibility finding")?;
+    assert_eq!(verify_guard_finding["id"], guard_finding_id);
+    assert!(fixture.cli_preflight_session_count()? > cli_preflight_before_verify);
     Ok(())
 }
 
@@ -1521,6 +1584,13 @@ struct OperationalFixture {
     path_dir: PathBuf,
     repo_root: PathBuf,
     shared: bool,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct DiagnosticRegistrySnapshot {
+    occurrence_count: i64,
+    current_count: i64,
+    current_timestamps: Vec<(String, String, Option<String>)>,
 }
 
 impl OperationalFixture {
@@ -2194,6 +2264,40 @@ impl OperationalFixture {
         }
         Ok(snapshot)
     }
+
+    fn diagnostic_registry_snapshot(&self) -> Result<DiagnosticRegistrySnapshot, Box<dyn Error>> {
+        let registry = rusqlite::Connection::open(self.runtime_home.join("registry.sqlite"))?;
+        let occurrence_count = registry.query_row(
+            "SELECT COUNT(*) FROM diagnostic_findings WHERE lifecycle = 'occurrence'",
+            [],
+            |row| row.get(0),
+        )?;
+        let current_count = registry.query_row(
+            "SELECT COUNT(*) FROM diagnostic_findings WHERE lifecycle = 'current'",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut statement = registry.prepare(
+            "SELECT finding_id, observed_at, resolved_at FROM diagnostic_findings WHERE lifecycle = 'current' ORDER BY finding_id",
+        )?;
+        let current_timestamps = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(DiagnosticRegistrySnapshot {
+            occurrence_count,
+            current_count,
+            current_timestamps,
+        })
+    }
+
+    fn cli_preflight_session_count(&self) -> Result<i64, Box<dyn Error>> {
+        let registry = rusqlite::Connection::open(self.runtime_home.join("registry.sqlite"))?;
+        Ok(registry.query_row(
+            "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE session_source = 'cli_preflight'",
+            [],
+            |row| row.get(0),
+        )?)
+    }
 }
 
 struct LiveMcpChild {
@@ -2328,6 +2432,54 @@ fn assert_platform_script_permissions(manifest: &GuardManifest) {
 
 #[cfg(not(unix))]
 fn assert_platform_script_permissions(_manifest: &GuardManifest) {}
+
+#[cfg(unix)]
+fn assert_status_reads_read_only_registry(
+    fixture: &OperationalFixture,
+    version: &str,
+) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fn collect_permissions(
+        path: &Path,
+        output: &mut Vec<(PathBuf, fs::Permissions, bool)>,
+    ) -> Result<(), Box<dyn Error>> {
+        let metadata = fs::metadata(path)?;
+        let is_dir = metadata.is_dir();
+        output.push((path.to_path_buf(), metadata.permissions(), is_dir));
+        if is_dir {
+            for entry in fs::read_dir(path)? {
+                collect_permissions(&entry?.path(), output)?;
+            }
+        }
+        Ok(())
+    }
+
+    let mut original_permissions = Vec::new();
+    collect_permissions(&fixture.runtime_home, &mut original_permissions)?;
+    for (path, permissions, is_dir) in &original_permissions {
+        let mut read_only = permissions.clone();
+        read_only.set_mode(if *is_dir { 0o555 } else { 0o444 });
+        fs::set_permissions(path, read_only)?;
+    }
+    let status_result = fixture.run_connection("status", version, true);
+    for (path, permissions, _) in &original_permissions {
+        fs::set_permissions(path, permissions.clone())?;
+    }
+    let status = status_result?;
+    assert_connection_report(&status, 1, "status", "failed")?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn assert_status_reads_read_only_registry(
+    fixture: &OperationalFixture,
+    version: &str,
+) -> Result<(), Box<dyn Error>> {
+    let status = fixture.run_connection("status", version, true)?;
+    assert_connection_report(&status, 1, "status", "failed")?;
+    Ok(())
+}
 
 fn assert_connection_report(
     output: &Output,

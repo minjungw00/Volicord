@@ -6,8 +6,7 @@ pub(super) fn guard_checks_for_connection(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     projects: &[ConnectionProjectRecord],
-    persist_findings: bool,
-) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
+) -> Result<ConnectionCheckEvaluation, ConnectionCommandError> {
     let mut installations = Vec::new();
     for project in projects {
         installations.extend(list_guard_installations(
@@ -129,8 +128,7 @@ pub(super) fn guard_checks_for_connection(
         .as_ref()
         .map(UtcTimestamp::to_canonical_string);
 
-    let guard_findings = persist_guard_boundary_findings(
-        runtime_home,
+    let guard_findings = guard_boundary_findings(
         connection,
         &audit,
         &installation_ids,
@@ -140,10 +138,9 @@ pub(super) fn guard_checks_for_connection(
         prompt_capture_observed,
         &observation_revision_mismatch_installation_ids,
         current_timestamp(),
-        persist_findings,
     )?;
 
-    block_failed_dependencies(vec![
+    let checks = block_failed_dependencies(vec![
         with_direct_causes(
             canonical_check(
                 ConnectionCheckKind::GuardFiles,
@@ -226,5 +223,10 @@ pub(super) fn guard_checks_for_connection(
             )?,
             guard_findings.observation,
         )?,
-    ])
+    ])?;
+    Ok(ConnectionCheckEvaluation {
+        checks,
+        inline_findings: guard_findings.current,
+        persisted_finding_seed_ids: Vec::new(),
+    })
 }

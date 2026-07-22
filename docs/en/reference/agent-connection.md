@@ -360,7 +360,8 @@ check and one verification action. Reading that projection does not persist it.
 
 The administrative CLI projects init, add, status, verify, mode, and remove
 through the current schema-2 `DiagnosticReport`. It carries the canonical
-checks, bounded findings and cause edges loaded through Store APIs, derived
+checks, bounded findings and cause edges resolved from the current evaluation
+overlay and Store APIs, derived
 root IDs, one deduplicated typed action per root, Connection context,
 operation-specific result details, and report limits. Concise, verbose, and
 JSON output are projections of this same report and identify the same roots.
@@ -368,8 +369,12 @@ No renderer derives a cause or remediation category from summary prose, and no
 projection re-exposes a fact redacted by `DiagnosticFinding`.
 
 A current Connection report selects findings from the exact IDs referenced by
-its `failed` and `blocked` checks and then loads only their bounded cause
-chains. An independent current finding appears only when the operation
+its `failed` and `blocked` checks and then resolves only their bounded cause
+chains. Resolution uses an inline finding from the current evaluation before
+an explicitly persisted Store seed, while retaining explicit provenance for
+each reference. The combined graph may contain inline current findings,
+persisted immutable occurrences, and persisted active current-state findings.
+An independent current finding appears only when the operation
 deliberately selects it; the report never treats every stored finding on the
 same integration revision as current. CLI-owned current-state operational
 findings bind each closed diagnostic value to one immutable definition and use
@@ -395,18 +400,21 @@ failed or blocked check's current projection.
 The JSON projection includes `generated_at` as the report time and the exact
 current integration revision in Connection context when one exists. The
 persisted verification `checked_at` remains the observation time for that
-verification and is not repeated as a competing top-level time. Status may
-rebuild an in-memory current projection from stored active-probe facts and
+verification and is not repeated as a competing top-level time. Status builds
+a complete in-memory current evaluation from stored active-probe facts and
 current observations, but that read does not persist the projection or modify
-any timestamp. A referenced finding row that is absent is represented as the
-typed `diagnostics.finding_record_missing` observation and directs the operator
-to rebuild current observations; rendering does not fabricate the missing
-domain facts.
+any timestamp. It needs no verification run to make an inline cause
+reportable. Only a reference explicitly classified as persisted whose Store
+row is absent is represented as the typed
+`diagnostics.finding_record_missing` observation; rendering does not fabricate
+the missing domain facts. An inline finding is returned as the actual cause
+and never receives missing-record substitution or
+`action.diagnostics.rebuild_current_observations` guidance.
 
-Active verification captures the exact typed Connection integration revision
-before it plans or probes. Store persists the resulting report only when that
-same revision is still current, using one immediate Registry transaction for
-the comparison and report replacement. The write changes only
+Optional active verification captures the exact typed Connection integration
+revision before it plans or probes. Store persists the resulting report only
+when that same revision is still current, using one immediate Registry
+transaction for the comparison and report replacement. The write changes only
 `verification_report_json` and the ordinary row update timestamp. A revision
 conflict leaves the existing report and every owner field unchanged and
 requires verification to be rerun. Verification observes managed

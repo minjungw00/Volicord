@@ -429,15 +429,13 @@ fn command_connection_status(
     }
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
-    let (_, report) = current_status_report(
+    let evaluation = current_status_report(
         &runtime_home,
         &connection,
         Some(&host_plan),
         &projects,
         process,
     )?;
-    let (findings, integration_revision) =
-        current_report_findings(&runtime_home, &connection, &report)?;
     let report = ConnectionCommandReport::from_verification(
         CommandOperation::Status,
         None,
@@ -450,9 +448,9 @@ fn command_connection_status(
             &selected_project.project.repo_root,
             &connection.config_target,
         ),
-        &report,
+        &evaluation.report,
     )
-    .with_diagnostic_findings(findings, Some(integration_revision));
+    .with_diagnostic_findings(evaluation.findings, Some(evaluation.integration_revision));
     let rendered = render_command_report(connection_output_format(&parsed), &report)?;
     command_output_result(rendered.status, rendered.output)
 }

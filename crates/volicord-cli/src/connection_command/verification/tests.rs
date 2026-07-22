@@ -998,3 +998,215 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
             .expect("resolved projection");
     assert!(resolved_findings.is_empty());
 }
+
+#[test]
+fn inline_current_finding_resolves_before_store_without_missing_record_substitution() {
+    let fixture = CoreFixture::new("inline-current-diagnostic-overlay").expect("fixture");
+    let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+    )
+    .expect("connection lookup")
+    .expect("connection");
+    let subject = GuardEventSubject::for_connection(
+        fixture.connection_id(),
+        "guard_event_inline_incompatible",
+    )
+    .expect("subject");
+    let inline = current_connection_finding(
+        &connection,
+        OperationalDiagnostic::Guard(GuardDiagnostic::IncompatibleObservation),
+        &subject,
+        &GuardEventFacts::default(),
+        OperationalCheckState::Failed,
+        UtcTimestamp::parse("2026-07-23T01:02:03Z").expect("time"),
+    )
+    .expect("inline finding");
+    let check = with_direct_causes(
+        canonical_check(
+            ConnectionCheckKind::GuardObservation,
+            ConnectionCheckStatus::Failed,
+            "guard_observation_failed",
+            "A current Guard event reported an incompatible hook contract",
+            None,
+            None,
+        )
+        .expect("check"),
+        vec![inline.id().clone()],
+    )
+    .expect("check cause");
+    let mut overlay = DiagnosticFindingOverlay::default();
+    overlay.insert_inline_current(&inline);
+
+    let (findings, _) = current_report_findings_with_overlay(
+        fixture.runtime_home_path(),
+        &connection,
+        &[check],
+        &overlay,
+    )
+    .expect("overlay projection");
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].id(), inline.id());
+    assert_eq!(
+        findings[0].code().as_str(),
+        "guard.observation.incompatible"
+    );
+    assert_ne!(
+        findings[0].code().as_str(),
+        "diagnostics.finding_record_missing"
+    );
+}
+
+#[test]
+fn mixed_inline_and_persisted_causes_form_one_bounded_graph() {
+    let fixture = CoreFixture::new("mixed-current-diagnostic-overlay").expect("fixture");
+    let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+    )
+    .expect("connection lookup")
+    .expect("connection");
+    let observed_at = UtcTimestamp::parse("2026-07-23T02:03:04Z").expect("time");
+    let persisted_root = OccurrenceDiagnosticFinding::try_new(
+        DiagnosticFindingData::try_new(
+            DiagnosticCode::parse("guard.contract.persisted_root").expect("code"),
+            DiagnosticDomain::parse("guard").expect("domain"),
+            DiagnosticStage::parse("guard_observation").expect("stage"),
+            DiagnosticSeverity::Error,
+            DiagnosticSource::parse("verification_test").expect("source"),
+            DiagnosticSubject::try_new("guard_event", "persisted-root").expect("subject"),
+            DiagnosticFacts::empty(),
+            observed_at.clone(),
+        )
+        .expect("data")
+        .with_connection_id(AgentConnectionId::new(fixture.connection_id()))
+        .expect("connection")
+        .with_integration_revision(connection_integration_revision(&connection).expect("revision")),
+        None,
+    )
+    .expect("persisted root");
+    insert_occurrence_finding(fixture.runtime_home_path(), &persisted_root).expect("persist root");
+
+    let subject = GuardEventSubject::for_connection(
+        fixture.connection_id(),
+        "guard_event_inline_with_persisted_cause",
+    )
+    .expect("subject");
+    let inline = current_connection_finding(
+        &connection,
+        OperationalDiagnostic::Guard(GuardDiagnostic::IncompatibleObservation),
+        &subject,
+        &GuardEventFacts::default(),
+        OperationalCheckState::Failed,
+        observed_at,
+    )
+    .expect("inline finding");
+    let inline = volicord_types::CurrentDiagnosticFinding::try_new(
+        inline.key().clone(),
+        inline
+            .snapshot()
+            .clone()
+            .with_causes(vec![DiagnosticCause::new(persisted_root.id())])
+            .expect("cause"),
+    )
+    .expect("inline with cause");
+    let check = with_direct_causes(
+        canonical_check(
+            ConnectionCheckKind::GuardObservation,
+            ConnectionCheckStatus::Failed,
+            "guard_observation_failed",
+            "A current Guard event reported an incompatible hook contract",
+            None,
+            None,
+        )
+        .expect("check"),
+        vec![inline.id().clone()],
+    )
+    .expect("check cause");
+    let mut overlay = DiagnosticFindingOverlay::default();
+    overlay.insert_inline_current(&inline);
+    overlay.insert_persisted_seed(persisted_root.id());
+    let (findings, _) = current_report_findings_with_overlay(
+        fixture.runtime_home_path(),
+        &connection,
+        &[check],
+        &overlay,
+    )
+    .expect("mixed graph");
+
+    assert_eq!(findings.len(), 2);
+    assert_eq!(
+        volicord_types::diagnostic_root_cause_ids(
+            &findings,
+            std::slice::from_ref(inline.id()),
+            MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+        )
+        .expect("roots"),
+        vec![persisted_root.id()]
+    );
+}
+
+#[test]
+fn explicitly_persisted_reference_deleted_from_store_gets_missing_record_finding() {
+    let fixture = CoreFixture::new("deleted-persisted-diagnostic-overlay").expect("fixture");
+    let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+    )
+    .expect("connection lookup")
+    .expect("connection");
+    let persisted = OccurrenceDiagnosticFinding::try_new(
+        DiagnosticFindingData::try_new(
+            DiagnosticCode::parse("guard.contract.deleted_cause").expect("code"),
+            DiagnosticDomain::parse("guard").expect("domain"),
+            DiagnosticStage::parse("guard_observation").expect("stage"),
+            DiagnosticSeverity::Error,
+            DiagnosticSource::parse("verification_test").expect("source"),
+            DiagnosticSubject::try_new("guard_event", "deleted-cause").expect("subject"),
+            DiagnosticFacts::empty(),
+            UtcTimestamp::parse("2026-07-23T03:04:05Z").expect("time"),
+        )
+        .expect("data"),
+        None,
+    )
+    .expect("finding");
+    insert_occurrence_finding(fixture.runtime_home_path(), &persisted).expect("persist finding");
+    let registry_path = volicord_store::sqlite::registry_db_path(fixture.runtime_home_path());
+    let registry = rusqlite::Connection::open(registry_path).expect("registry");
+    registry
+        .execute(
+            "DELETE FROM diagnostic_findings WHERE finding_id = ?1",
+            [persisted.id().as_str()],
+        )
+        .expect("delete persisted cause");
+    drop(registry);
+
+    let check = with_direct_causes(
+        canonical_check(
+            ConnectionCheckKind::GuardObservation,
+            ConnectionCheckStatus::Failed,
+            "guard_observation_failed",
+            "A persisted Guard cause was deleted",
+            None,
+            None,
+        )
+        .expect("check"),
+        vec![persisted.id()],
+    )
+    .expect("check cause");
+    let mut overlay = DiagnosticFindingOverlay::default();
+    overlay.insert_persisted_seed(persisted.id());
+    let (findings, _) = current_report_findings_with_overlay(
+        fixture.runtime_home_path(),
+        &connection,
+        &[check],
+        &overlay,
+    )
+    .expect("missing projection");
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].id(), &persisted.id());
+    assert_eq!(
+        findings[0].code().as_str(),
+        "diagnostics.finding_record_missing"
+    );
+}

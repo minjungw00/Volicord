@@ -321,15 +321,19 @@ action을 만들지 않으며 blocker의 repair action을 먼저 제공합니다
 않습니다.
 
 관리 CLI는 init, add, status, verify, mode, remove를 현재 schema 2
-`DiagnosticReport`로 projection합니다. 정규 check, Store API로 읽은 한도 있는 finding과
-cause edge, 계산한 root ID, root마다 중복 제거한 typed action 하나, Connection context,
+`DiagnosticReport`로 projection합니다. 정규 check, 현재 평가 overlay와 Store API에서
+해석한 한도 있는 finding과 cause edge, 계산한 root ID, root마다 중복 제거한 typed action
+하나, Connection context,
 operation별 result detail, report limit을 담습니다. Concise, verbose, JSON 출력은 같은
 report의 projection이며 같은 root를 식별합니다. 렌더러는 summary 산문에서 cause나
 remediation category를 만들지 않고 `DiagnosticFinding`이 가린 fact를 다시 노출하지
 않습니다.
 
 현재 Connection 보고서는 `failed` 및 `blocked` check가 참조한 정확한 ID에서 finding을
-선택하고 그 finding의 한도가 있는 cause chain만 읽습니다. 독립적인 현재 finding은 작업이
+선택하고 그 finding의 한도가 있는 cause chain만 해석합니다. 각 reference의 provenance를
+명시적으로 유지하면서 현재 평가의 inline finding을 먼저 사용하고, 그다음 명시적인 영속
+Store seed를 사용합니다. 결합한 graph에는 inline current finding, 영속된 불변 occurrence,
+영속된 active current-state finding을 함께 담을 수 있습니다. 독립적인 현재 finding은 작업이
 의도적으로 선택한 경우에만 나타나며, 같은 integration revision에 저장된 모든 finding을
 현재 상태로 취급하지 않습니다. CLI 소유 현재 상태 운영 finding은 typed subject로 정확한
 managed-config target, Product Repository trust, Guard 관리 artifact, Guard phase, Guard
@@ -351,13 +355,16 @@ condition은 명시적으로 해소합니다. 해소된 current finding은 정�
 JSON projection은 `generated_at`을 report 시각으로 담고, 값이 있으면 Connection
 context에 정확한 현재 integration revision을 담습니다. 영속 verification의 `checked_at`은
 해당 verification 관찰 시각으로 남으며 경쟁하는 두 번째 최상위 시각으로 반복하지
-않습니다. Status는 저장된 active-probe fact와 현재 관찰에서 메모리 안의 최신 projection을
-다시 만들 수 있지만, 이 읽기는 projection을 영속하거나 timestamp를 바꾸지 않습니다.
-참조된 finding row가 없으면 typed `diagnostics.finding_record_missing` 관찰로 표시하고 현재
-관찰을 다시 만들도록 안내합니다. 렌더링 과정에서 누락된 domain fact를 꾸며 내지 않습니다.
+않습니다. Status는 저장된 active-probe fact와 현재 관찰에서 메모리 안의 완전한 현재 평가를
+만들지만, 이 읽기는 projection을 영속하거나 timestamp를 바꾸지 않습니다. Inline 원인을
+보고 가능하게 만드는 데 verification 실행이 필요하지 않습니다. 영속 reference라고
+명시됐지만 Store row가 없을 때만 typed `diagnostics.finding_record_missing` 관찰로
+표시합니다. 렌더링 과정에서 누락된 domain fact를 꾸며 내지 않습니다. Inline finding은
+실제 원인으로 반환하며 missing-record 치환이나
+`action.diagnostics.rebuild_current_observations` 안내를 만들지 않습니다.
 
-활성 검증은 plan이나 probe를 시작하기 전에 정확한 typed Connection integration revision을
-확보합니다. Store는 같은 revision이 여전히 현재 상태일 때만 비교와 보고서 교체를 immediate
+선택적인 활성 검증은 plan이나 probe를 시작하기 전에 정확한 typed Connection integration
+revision을 확보합니다. Store는 같은 revision이 여전히 현재 상태일 때만 비교와 보고서 교체를 immediate
 Registry transaction 하나에서 수행합니다. 이 쓰기는 `verification_report_json`과 일반 row
 갱신 timestamp만 바꿉니다. Revision 충돌이 나면 기존 보고서와 모든 소유자 field를 그대로
 두고 검증을 다시 실행하도록 요구합니다. 검증은 관리 configuration을 관찰할 뿐 새로 계획한

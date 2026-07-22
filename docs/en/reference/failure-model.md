@@ -182,12 +182,18 @@ identity encoding, and supplies a separate safe display projection. Typed
 subject namespaces are part of that canonical encoding, so equal display text
 in different subject families does not collapse to one identity. A
 path-bearing subject canonicalizes filesystem aliases before deriving the
-opaque identity and never persists those canonical path bytes. Active
+opaque identity and never persists those canonical path bytes. Optional active
 verification reconciles each complete owner observation set: observed
 conditions are activated or refreshed and previously active owned conditions
-omitted from that set are explicitly resolved. A current report reads only
-active current findings selected by its failed or blocked checks and their
-bounded cause chains.
+omitted from that set are explicitly resolved.
+
+A current report resolves its selected IDs through an explicit-provenance
+overlay. An inline finding calculated by the current evaluation takes
+precedence over Store lookup. An explicitly persisted seed is then resolved
+from immutable occurrences or active current-state rows and may extend the
+same bounded cause graph. Only an explicitly persisted reference with no Store
+row becomes `diagnostics.finding_record_missing`; a calculated inline finding
+never receives that substitution.
 
 Safe facts are bounded before storage or rendering. Their typed projection
 redacts sensitive keys and limits text size, collection size, and nesting
