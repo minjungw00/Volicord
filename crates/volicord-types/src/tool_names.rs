@@ -242,11 +242,23 @@ mod tests {
 
     #[test]
     fn unknown_agent_tool_wire_names_are_rejected() {
-        assert_eq!(
-            AgentToolId::from_wire_name("volicord.unknown"),
-            Err(AgentToolIdParseError)
-        );
-        assert!(AgentToolId::from_wire_name(MethodName::ResolveUserAction.as_str()).is_err());
+        for unknown in [
+            "",
+            "volicord.unknown",
+            "volicord/list_projects",
+            "volicord.list-projects",
+            "VOLICORD.list_projects",
+            " volicord.list_projects",
+            "volicord.list_projects ",
+            "volicord.list_projects\0ignored",
+            MethodName::ResolveUserAction.as_str(),
+        ] {
+            assert_eq!(
+                AgentToolId::from_wire_name(unknown),
+                Err(AgentToolIdParseError),
+                "{unknown:?}"
+            );
+        }
     }
 
     #[test]

@@ -179,7 +179,7 @@ fn manifest_only_production_revision_fails_parity() {
 }
 
 #[test]
-fn rejects_duplicate_protocol_strings() {
+fn rejects_duplicate_revision() {
     let mut revisions = all_revisions();
     revisions.push(revisions[0].clone());
     let fixture = fixture(&revisions, None, None);
@@ -274,7 +274,7 @@ fn manifest_parser_rejects_a_generic_unknown_field() {
 }
 
 #[test]
-fn manifest_parser_requires_production_support_metadata_for_every_revision() {
+fn manifest_parser_rejects_a_missing_required_current_field() {
     let fixture = fixture(&all_revisions(), None, None);
     let manifest_path = fixture.path().join("manifest.toml");
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");

@@ -569,6 +569,23 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
             [occurrence_id],
         )
         .is_err());
+    assert!(registry
+        .execute(
+            "UPDATE diagnostic_findings SET lifecycle = 'current_state' WHERE finding_id = ?1",
+            [occurrence_id],
+        )
+        .is_err());
+    assert!(insert(
+        "finding.occurrence_00000000-0000-4000-8000-000000000003",
+        "retired_lifecycle",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .is_err());
     assert!(insert(
         "finding.occurrence_00000000-0000-4000-8000-000000000002",
         "occurrence",
@@ -576,6 +593,17 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         None,
         None,
         None,
+        None,
+        None,
+    )
+    .is_err());
+    assert!(insert(
+        "finding.occurrence_00000000-0000-4000-8000-000000000004",
+        "occurrence",
+        None,
+        None,
+        None,
+        Some("active"),
         None,
         None,
     )
@@ -613,6 +641,63 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         None,
     )
     .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "e".repeat(64)),
+        "current_state",
+        None,
+        Some("connection"),
+        Some("opaque connection identity"),
+        Some("active"),
+        None,
+        None,
+    )
+    .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "f".repeat(64)),
+        "current_state",
+        Some(&"a".repeat(64)),
+        Some("connection"),
+        Some("opaque connection identity"),
+        Some("active"),
+        None,
+        None,
+    )
+    .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "e".repeat(64)),
+        "current_state",
+        Some(&"e".repeat(64)),
+        Some("connection"),
+        Some("opaque connection identity"),
+        Some("active"),
+        Some("2026-07-22T00:00:01Z"),
+        None,
+    )
+    .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "f".repeat(64)),
+        "current_state",
+        Some(&"f".repeat(64)),
+        Some("connection"),
+        Some(""),
+        Some("active"),
+        None,
+        None,
+    )
+    .is_err());
+    assert_eq!(
+        insert(
+            &format!("finding.current.sha256:{}", "0".repeat(64)),
+            "current_state",
+            Some(&"0".repeat(64)),
+            Some("project"),
+            Some("opaque project identity"),
+            Some("resolved"),
+            Some("2026-07-22T00:00:01Z"),
+            None,
+        )?,
+        1
+    );
     assert!(insert(
         &format!("finding.current.sha256:{}", "d".repeat(64)),
         "current_state",

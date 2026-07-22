@@ -153,7 +153,7 @@ fn current_finding(
 }
 
 #[test]
-fn occurrence_graph_round_trips_without_runtime_heuristics() -> Result<(), Box<dyn Error>> {
+fn occurrence_graph_is_insert_only_without_runtime_heuristics() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-occurrence-round-trip")?;
     let first = occurrence(&fixture, "first", Vec::new())?;
     let repeated_observation = occurrence(&fixture, "first", Vec::new())?;
@@ -182,6 +182,18 @@ fn occurrence_graph_round_trips_without_runtime_heuristics() -> Result<(), Box<d
             [first.id().as_str()],
         )
         .is_err());
+    assert!(conn
+        .execute(
+            "UPDATE diagnostic_findings
+                SET lifecycle = 'current_state',
+                    current_identity_digest = ?2,
+                    diagnostic_scope_kind = 'connection',
+                    diagnostic_scope_identity = 'forbidden-upsert',
+                    current_state_status = 'active'
+              WHERE finding_id = ?1",
+            [first.id().as_str(), &"a".repeat(64)],
+        )
+        .is_err());
     Ok(())
 }
 
@@ -199,6 +211,31 @@ fn runtime_terminal_occurrence_is_inserted_and_linked_atomically() -> Result<(),
         },
     )?;
     let finding = runtime_occurrence(&fixture, &runtime.runtime_session_id)?;
+
+    let current = current_finding(
+        &fixture,
+        current_key(&fixture, "runtime-terminal-current"),
+        "must_not_link",
+        OBSERVED,
+        Vec::new(),
+    )?;
+    upsert_current_snapshot(fixture.runtime_home_path(), &current)?;
+    let conn = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
+    enable_foreign_keys(&conn)?;
+    assert!(conn
+        .execute(
+            "UPDATE mcp_runtime_sessions SET terminal_finding_id = ?2
+              WHERE runtime_session_id = ?1",
+            [runtime.runtime_session_id.as_str(), current.id().as_str()],
+        )
+        .is_err());
+    assert!(
+        mcp_runtime_session(fixture.runtime_home_path(), &runtime.runtime_session_id)?
+            .ok_or("unlinked runtime")?
+            .terminal_finding_id
+            .is_none()
+    );
+
     insert_and_link_runtime_terminal_occurrence(fixture.runtime_home_path(), &finding)?;
 
     let linked = mcp_runtime_session(fixture.runtime_home_path(), &runtime.runtime_session_id)?
@@ -278,6 +315,37 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     assert!(graph_ids.contains(&changed.id().to_string()));
     assert!(graph_ids.contains(&second_cause.id().to_string()));
     assert!(!graph_ids.contains(&first_cause.id().to_string()));
+
+    let missing =
+        DiagnosticFindingId::parse("finding.occurrence_00000000-0000-4000-8000-000000000099")?;
+    let rejected = current_finding(
+        &fixture,
+        key.clone(),
+        "invalid_refresh",
+        "2026-07-21T02:04:05Z",
+        vec![DiagnosticCause::new(missing.clone())],
+    )?;
+    assert!(upsert_current_snapshot(fixture.runtime_home_path(), &rejected).is_err());
+    let preserved = diagnostic_findings_by_ids(
+        fixture.runtime_home_path(),
+        std::slice::from_ref(changed.id()),
+    )?;
+    assert_eq!(preserved.len(), 1);
+    assert_eq!(preserved[0].facts().data()["actual"], "content_mismatch");
+    let preserved_graph = bounded_diagnostic_graph_from_seeds(
+        fixture.runtime_home_path(),
+        std::slice::from_ref(changed.id()),
+        1,
+    )?;
+    let preserved_ids = preserved_graph
+        .entries
+        .iter()
+        .map(|entry| entry.finding.id().clone())
+        .collect::<Vec<_>>();
+    assert!(preserved_ids.contains(changed.id()));
+    assert!(preserved_ids.contains(&second_cause.id()));
+    assert!(!preserved_ids.contains(&first_cause.id()));
+    assert!(!preserved_ids.contains(&missing));
 
     let scope = key.scope().clone();
     assert_eq!(

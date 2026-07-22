@@ -13,6 +13,7 @@ use volicord_mcp_protocol::{
     JsonRpcBatching, McpProtocolProfile, McpRevisionStatus, ProtocolRegistry,
 };
 use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_types::ToolVerificationRole;
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
@@ -23,10 +24,11 @@ fn every_production_profile_executes_the_wire_conformance_case() {
     })
     .expect("all production MCP profiles should satisfy wire conformance");
 
-    assert_eq!(
-        executed.len(),
-        ProtocolRegistry::production().oldest_to_newest().len()
-    );
+    let expected = ProtocolRegistry::production()
+        .oldest_to_newest()
+        .map(|profile| profile.revision().as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(executed, expected);
 }
 
 #[test]
@@ -131,15 +133,16 @@ fn exercise_lifecycle_tools_and_round_trip(
     schema: &Value,
 ) -> TestResult {
     let fixture = CoreFixture::new(&format!("protocol-tools-{}", profile.revision()))?;
+    let verification_tool = ToolVerificationRole::ManagedHostRoundTrip.tool();
     let responses = run_exchange(
         &fixture,
         &[
-            tools_call(1, AgentToolId::LIST_PROJECTS.wire_name(), json!({})),
+            tools_call(1, verification_tool.wire_name(), json!({})),
             initialize_request(2, profile.revision().as_str()),
-            tools_call(3, AgentToolId::LIST_PROJECTS.wire_name(), json!({})),
+            tools_call(3, verification_tool.wire_name(), json!({})),
             notification("notifications/initialized", json!({})),
             request(4, "tools/list", json!({})),
-            tools_call(5, AgentToolId::LIST_PROJECTS.wire_name(), json!({})),
+            tools_call(5, verification_tool.wire_name(), json!({})),
             initialize_request(6, profile.revision().as_str()),
         ],
     )?;
@@ -170,7 +173,7 @@ fn exercise_lifecycle_tools_and_round_trip(
             profile.revision()
         );
     }
-    assert!(names.contains(AgentToolId::LIST_PROJECTS.wire_name()));
+    assert!(names.contains(verification_tool.wire_name()));
 
     for tool in tools {
         validate_definition(schema, "Tool", tool).map_err(|error| {

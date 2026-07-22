@@ -199,6 +199,10 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
             "2025-11-25"
         ])
     );
+    assert_eq!(
+        mcp_details["self_test"]["safe_read_only_tool"],
+        managed_host_round_trip_tool().wire_name()
+    );
     assert!(mcp_details["self_test"]["conformance"]
         .as_array()
         .is_some_and(|probes| probes.len() == 5
@@ -304,6 +308,14 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
     assert_eq!(
         session.verification_tool_name.as_deref(),
         Some(managed_host_round_trip_tool().wire_name())
+    );
+    assert_eq!(
+        session
+            .verification_tool_name
+            .as_deref()
+            .map(AgentToolId::from_wire_name)
+            .transpose()?,
+        Some(managed_host_round_trip_tool())
     );
     assert!(session.verification_tool_observed_at.is_some());
     Ok(())

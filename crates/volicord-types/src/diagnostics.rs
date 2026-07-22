@@ -2874,6 +2874,13 @@ mod tests {
 
     impl DiagnosticFactSource for SafeFacts {}
 
+    #[derive(Serialize)]
+    struct IdentityOrderFacts {
+        values: HashMap<String, String>,
+    }
+
+    impl DiagnosticFactSource for IdentityOrderFacts {}
+
     #[allow(clippy::too_many_arguments)]
     fn current_key(
         scope_kind: DiagnosticScopeKind,
@@ -2907,11 +2914,28 @@ mod tests {
             "guard_managed_artifact",
             ".volicord/hooks/pre-commit",
         );
+        let independently_constructed = current_key(
+            DiagnosticScopeKind::Connection,
+            "connection:opaque-01",
+            "guard.managed_file.missing",
+            "guard",
+            "guard_files",
+            "administrative_cli",
+            "guard_managed_artifact",
+            ".volicord/hooks/pre-commit",
+        );
         assert_eq!(
             baseline.canonical_identity_bytes(),
-            baseline.clone().canonical_identity_bytes()
+            independently_constructed.canonical_identity_bytes()
         );
-        assert_eq!(baseline.finding_id(), baseline.clone().finding_id());
+        assert_eq!(
+            baseline.identity_digest(),
+            independently_constructed.identity_digest()
+        );
+        assert_eq!(
+            baseline.finding_id(),
+            independently_constructed.finding_id()
+        );
 
         let variants = [
             current_key(
@@ -2996,51 +3020,165 @@ mod tests {
             ),
         ];
         for variant in variants {
+            assert_ne!(
+                baseline.canonical_identity_bytes(),
+                variant.canonical_identity_bytes()
+            );
             assert_ne!(baseline.identity_digest(), variant.identity_digest());
             assert_ne!(baseline.finding_id(), variant.finding_id());
         }
     }
 
     #[test]
-    fn current_diagnostic_ids_are_collision_safe_opaque_and_fixed_length() {
-        let dotted = current_key(
-            DiagnosticScopeKind::Connection,
-            "연결::opaque!?/".repeat(24).as_str(),
-            "a.b_c",
-            "test",
-            "verification",
-            "test_runner",
-            "managed_path",
-            "긴/경로/subject with punctuation!?[]{}",
-        );
-        let underscored = current_key(
-            DiagnosticScopeKind::Connection,
-            "연결::opaque!?/".repeat(24).as_str(),
-            "a_b.c",
-            "test",
-            "verification",
-            "test_runner",
-            "managed_path",
-            "긴/경로/subject with punctuation!?[]{}",
-        );
-        let dotted_id = dotted.finding_id();
-        let underscored_id = underscored.finding_id();
-        assert_ne!(dotted_id, underscored_id);
+    fn current_diagnostic_ids_preserve_long_opaque_coordinates_without_leaking_them() {
+        let coordinates = [
+            (
+                DiagnosticScopeKind::Connection,
+                format!("connection::{}", "연결!?/[]{}".repeat(48)),
+            ),
+            (
+                DiagnosticScopeKind::Project,
+                format!("project::{}", "프로젝트!?/[]{}".repeat(40)),
+            ),
+        ];
+        let subject = "managed/path/.volicord/긴-경로/subject with punctuation!?[]{}";
+        let mut ids = Vec::new();
+
+        for (scope_kind, scope_identity) in coordinates {
+            assert!(scope_identity.len() <= MAX_DIAGNOSTIC_SCOPE_IDENTITY_BYTES);
+            let dotted = current_key(
+                scope_kind,
+                &scope_identity,
+                "a.b_c",
+                "test",
+                "verification",
+                "test_runner",
+                "managed_path",
+                subject,
+            );
+            let underscored = current_key(
+                scope_kind,
+                &scope_identity,
+                "a_b.c",
+                "test",
+                "verification",
+                "test_runner",
+                "managed_path",
+                subject,
+            );
+            assert!(dotted
+                .canonical_identity_bytes()
+                .windows("a.b_c".len())
+                .any(|window| window == b"a.b_c"));
+            assert!(underscored
+                .canonical_identity_bytes()
+                .windows("a_b.c".len())
+                .any(|window| window == b"a_b.c"));
+            assert_ne!(
+                dotted.canonical_identity_bytes(),
+                underscored.canonical_identity_bytes()
+            );
+            assert_ne!(dotted.identity_digest(), underscored.identity_digest());
+
+            for key in [&dotted, &underscored] {
+                let id = key.finding_id();
+                assert_eq!(id.as_str().len(), CURRENT_DIAGNOSTIC_ID_PREFIX.len() + 64);
+                let suffix = id
+                    .as_str()
+                    .strip_prefix(CURRENT_DIAGNOSTIC_ID_PREFIX)
+                    .unwrap();
+                assert!(suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')));
+                for private_fragment in [
+                    "connection::",
+                    "project::",
+                    "연결",
+                    "프로젝트",
+                    "managed_path",
+                    ".volicord",
+                    "긴-경로",
+                ] {
+                    assert!(!id.as_str().contains(private_fragment));
+                }
+                ids.push(id);
+            }
+        }
+
+        let unique = ids.iter().collect::<BTreeSet<_>>();
+        assert_eq!(unique.len(), ids.len());
+    }
+
+    #[test]
+    fn current_identity_is_independent_of_map_cause_and_action_construction_order() {
+        let key = || {
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:construction-order",
+                "test.construction_order",
+                "test",
+                "verification",
+                "test_runner",
+                "managed_artifact",
+                "opaque-subject",
+            )
+        };
+        let cause_a = DiagnosticCause::new(DiagnosticFindingId::parse("finding.cause_a").unwrap());
+        let cause_b = DiagnosticCause::new(DiagnosticFindingId::parse("finding.cause_b").unwrap());
+        let action_a = DiagnosticAction::try_new(
+            DiagnosticCode::parse("action.test.alpha").unwrap(),
+            "Apply alpha repair",
+        )
+        .unwrap();
+        let action_b = DiagnosticAction::try_new(
+            DiagnosticCode::parse("action.test.beta").unwrap(),
+            "Apply beta repair",
+        )
+        .unwrap();
+        let mut first_values = HashMap::new();
+        first_values.insert("alpha".to_owned(), "one".to_owned());
+        first_values.insert("beta".to_owned(), "two".to_owned());
+        let mut second_values = HashMap::new();
+        second_values.insert("beta".to_owned(), "two".to_owned());
+        second_values.insert("alpha".to_owned(), "one".to_owned());
+        let first_snapshot = CurrentDiagnosticSnapshot::try_new(
+            DiagnosticSeverity::Warning,
+            DiagnosticFacts::project(&IdentityOrderFacts {
+                values: first_values,
+            })
+            .unwrap(),
+            timestamp(),
+        )
+        .unwrap()
+        .with_causes(vec![cause_b.clone(), cause_a.clone()])
+        .unwrap()
+        .with_actions(vec![action_b.clone(), action_a.clone()])
+        .unwrap();
+        let second_snapshot = CurrentDiagnosticSnapshot::try_new(
+            DiagnosticSeverity::Warning,
+            DiagnosticFacts::project(&IdentityOrderFacts {
+                values: second_values,
+            })
+            .unwrap(),
+            timestamp(),
+        )
+        .unwrap()
+        .with_causes(vec![cause_a, cause_b])
+        .unwrap()
+        .with_actions(vec![action_a, action_b])
+        .unwrap();
+        let first = CurrentDiagnosticFinding::try_new(key(), first_snapshot).unwrap();
+        let second = CurrentDiagnosticFinding::try_new(key(), second_snapshot).unwrap();
+
         assert_eq!(
-            dotted_id.as_str().len(),
-            CURRENT_DIAGNOSTIC_ID_PREFIX.len() + 64
+            first.key().canonical_identity_bytes(),
+            second.key().canonical_identity_bytes()
         );
-        let suffix = dotted_id
-            .as_str()
-            .strip_prefix(CURRENT_DIAGNOSTIC_ID_PREFIX)
-            .unwrap();
-        assert!(suffix
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')));
-        assert!(!dotted_id.as_str().contains("연결"));
-        assert!(!dotted_id.as_str().contains("managed_path"));
-        assert!(!dotted_id.as_str().contains("경로"));
-        assert!(!dotted_id.as_str().contains("a.b_c"));
+        assert_eq!(first.identity_digest(), second.identity_digest());
+        assert_eq!(first.id(), second.id());
+        assert_eq!(first.snapshot().facts(), second.snapshot().facts());
+        assert_eq!(first.snapshot().causes(), second.snapshot().causes());
+        assert_eq!(first.snapshot().actions(), second.snapshot().actions());
     }
 
     #[test]
@@ -3066,6 +3204,12 @@ mod tests {
         let second =
             OccurrenceDiagnosticFinding::try_new_with_generator(data, None, &generator).unwrap();
         assert_ne!(first.id(), second.id());
+        assert!(first.id().as_str().starts_with("finding.occurrence_"));
+        assert!(second.id().as_str().starts_with("finding.occurrence_"));
+        assert!(!first
+            .id()
+            .as_str()
+            .starts_with(CURRENT_DIAGNOSTIC_ID_PREFIX));
         assert_eq!(first.data().code(), second.data().code());
         assert_eq!(first.data().subject(), second.data().subject());
     }

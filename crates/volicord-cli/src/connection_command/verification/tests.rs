@@ -1,4 +1,6 @@
+use volicord_store::diagnostic_findings::insert_occurrence_finding;
 use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_types::{DiagnosticCause, DiagnosticFindingData, OccurrenceDiagnosticFinding};
 
 use super::*;
 
@@ -850,8 +852,57 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
         observed_at.clone(),
     )
     .expect("second projection");
+    let root = OccurrenceDiagnosticFinding::try_new(
+        DiagnosticFindingData::try_new(
+            DiagnosticCode::parse("guard.managed_file.root_cause").expect("root code"),
+            DiagnosticDomain::parse("guard").expect("root domain"),
+            DiagnosticStage::parse("guard_files").expect("root stage"),
+            DiagnosticSeverity::Error,
+            DiagnosticSource::parse("verification_test").expect("root source"),
+            DiagnosticSubject::try_new("guard_owner", "root-cause").expect("root subject"),
+            DiagnosticFacts::empty(),
+            observed_at.clone(),
+        )
+        .expect("root data")
+        .with_connection_id(AgentConnectionId::new(fixture.connection_id()))
+        .expect("root connection")
+        .with_integration_revision(
+            connection_integration_revision(&connection).expect("connection revision"),
+        ),
+        None,
+    )
+    .expect("root occurrence");
+    insert_occurrence_finding(fixture.runtime_home_path(), &root).expect("persist root cause");
+    let second = volicord_types::CurrentDiagnosticFinding::try_new(
+        second.key().clone(),
+        second
+            .snapshot()
+            .clone()
+            .with_causes(vec![DiagnosticCause::new(root.id())])
+            .expect("root cause edge"),
+    )
+    .expect("second projection with cause");
+    let unrelated_history = OccurrenceDiagnosticFinding::try_new(
+        DiagnosticFindingData::try_new(
+            DiagnosticCode::parse("guard.history.unrelated").expect("history code"),
+            DiagnosticDomain::parse("guard").expect("history domain"),
+            DiagnosticStage::parse("guard_files").expect("history stage"),
+            DiagnosticSeverity::Warning,
+            DiagnosticSource::parse("verification_test").expect("history source"),
+            DiagnosticSubject::try_new("history", "unrelated-occurrence").expect("history subject"),
+            DiagnosticFacts::empty(),
+            observed_at.clone(),
+        )
+        .expect("history data"),
+        None,
+    )
+    .expect("unrelated occurrence");
+    insert_occurrence_finding(fixture.runtime_home_path(), &unrelated_history)
+        .expect("persist unrelated occurrence");
     let first_id = first.id().clone();
     let second_id = second.id().clone();
+    let root_id = root.id();
+    let unrelated_history_id = unrelated_history.id();
     let scope = first.key().scope().clone();
     reconcile_current_findings_for_scope(
         fixture.runtime_home_path(),
@@ -906,7 +957,7 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
     .expect("report");
     let (findings, _) = current_report_findings(fixture.runtime_home_path(), &connection, &report)
         .expect("projection");
-    let mut expected_ids = vec![first_id.clone(), second_id.clone()];
+    let mut expected_ids = vec![first_id.clone(), root_id.clone(), second_id.clone()];
     expected_ids.sort();
     assert_eq!(
         findings
@@ -915,12 +966,24 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
             .collect::<Vec<_>>(),
         expected_ids
     );
-    assert_eq!(findings[0].code(), findings[1].code());
-    assert_ne!(findings[0].subject(), findings[1].subject());
-    assert_ne!(findings[0].facts(), findings[1].facts());
+    let first_finding = findings
+        .iter()
+        .find(|finding| finding.id() == &first_id)
+        .expect("first selected current finding");
+    let second_finding = findings
+        .iter()
+        .find(|finding| finding.id() == &second_id)
+        .expect("second selected current finding");
+    assert_eq!(first_finding.code(), second_finding.code());
+    assert_ne!(first_finding.subject(), second_finding.subject());
+    assert_ne!(first_finding.facts(), second_finding.facts());
+    assert_eq!(second_finding.causes()[0].finding_id(), &root_id);
     assert!(!findings
         .iter()
         .any(|finding| finding.id() == &historical_id));
+    assert!(!findings
+        .iter()
+        .any(|finding| finding.id() == &unrelated_history_id));
 
     reconcile_current_findings_for_scope(
         fixture.runtime_home_path(),
