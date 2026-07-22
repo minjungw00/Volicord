@@ -186,20 +186,24 @@ authority from arbitrary filesystem proximity.
 
 The Registry owns process lifecycle milestones, structured runtime diagnostic
 findings and cause edges, terminal-finding links, and cross-project runtime/host
-session reservations. Each project database owns its project Agent Session and
-host session/thread/turn correlation. MCP retains those native coordinates
-until an actual project is selected; the Store then derives the project
-session coordinate from the Connection, current project integration revision,
-and native session. Because SQLite cannot enforce a foreign key between those
-separate database files, a valid Guard observation may first create an unbound
-project session. The first actual managed MCP tool call correlated through the
-same host-native session first validates the current managed runtime without
-mutation, then establishes or validates the exact unbound project anchor. Only
-after project ownership validation commits does the Registry revalidate the
-current owner facts and reserve cross-project uniqueness with the exact project revision. A
-final project transaction attaches that runtime to the anchor. Project
-ownership conflicts leave no Registry reservation. An unbound project anchor
-and a Registry reservation without project attachment are independently
+session reservations. Each project database owns normalized host sessions,
+turns, hook tool invocations, Guard observations, and MCP-only session
+anchors. The explicitly selected `codex-mcp-2025-06-18-v1` profile supplies
+session/thread/turn correlation. The separately selected `codex-hooks-v1`
+profile supplies prompt session/turn or tool session/turn/tool-use/tool-name
+correlation; command hooks have no thread coordinate.
+
+MCP retains its typed native coordinates until an actual project is selected;
+Store then derives the local project session coordinate from the Connection,
+current project integration revision, and native session. A Guard observation
+can establish shared normalized host rows but cannot establish the MCP-only
+thread or runtime anchor. The first actual managed MCP tool call validates the
+current managed runtime without mutation and creates or validates that exact
+anchor. Only after project ownership validation commits does the Registry
+revalidate current owner facts and reserve cross-project uniqueness with the
+exact project revision. A final project transaction attaches the runtime.
+Project ownership conflicts leave no Registry reservation. An unbound MCP
+anchor and a Registry reservation without project attachment are independently
 non-authoritative. Exact replay under unchanged owner state repairs an
 interrupted final attach. A process row is not a lease or liveness signal, so a
 crashed apparently open row and concurrent processes never select or block

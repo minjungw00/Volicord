@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 volicord-core = { path = "../volicord-core" }
+volicord-host-contract = { path = "../volicord-host-contract" }
 volicord-mcp-protocol = { path = "../volicord-mcp-protocol" }
 volicord-platform-fs = { path = "../volicord-platform-fs" }
 volicord-store = { path = "../volicord-store" }

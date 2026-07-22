@@ -804,12 +804,9 @@ CREATE INDEX idx_authority_events_state_version
   ON authority_events (project_id, state_version, event_seq);
 CREATE INDEX idx_authority_events_hash_chain
   ON authority_events (project_id, previous_event_hash, event_hash);
-CREATE TABLE agent_sessions (
+CREATE TABLE host_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
-  runtime_session_id TEXT CHECK (
-    runtime_session_id IS NULL OR length(trim(runtime_session_id)) > 0
-  ),
   connection_internal_id TEXT NOT NULL,
   project_integration_revision TEXT NOT NULL CHECK (
     length(project_integration_revision) = 71
@@ -817,8 +814,6 @@ CREATE TABLE agent_sessions (
     AND substr(project_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
   ),
   host_session_id TEXT NOT NULL CHECK (length(trim(host_session_id)) > 0),
-  host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
-  last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
   first_observed_at TEXT NOT NULL,
   last_observed_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id),
@@ -827,17 +822,75 @@ CREATE TABLE agent_sessions (
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
-CREATE TRIGGER agent_sessions_project_integration_revision_immutable
-BEFORE UPDATE OF project_integration_revision ON agent_sessions
+CREATE TRIGGER host_sessions_project_integration_revision_immutable
+BEFORE UPDATE OF project_integration_revision ON host_sessions
 BEGIN
-  SELECT RAISE(ABORT, 'agent_sessions.project_integration_revision is immutable');
+  SELECT RAISE(ABORT, 'host_sessions.project_integration_revision is immutable');
 END;
+
+CREATE TABLE host_turns (
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL CHECK (length(trim(host_turn_id)) > 0),
+  first_observed_at TEXT NOT NULL,
+  last_observed_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_id, host_turn_id),
+  UNIQUE (project_id, session_id, connection_internal_id, host_turn_id),
+  CHECK (last_observed_at >= first_observed_at),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES host_sessions (project_id, session_id, connection_internal_id)
+);
+
+CREATE TABLE host_tool_invocations (
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL,
+  host_tool_use_id TEXT NOT NULL CHECK (length(trim(host_tool_use_id)) > 0),
+  host_tool_name TEXT NOT NULL CHECK (length(trim(host_tool_name)) > 0),
+  first_observed_at TEXT NOT NULL,
+  last_observed_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_id, host_tool_use_id),
+  UNIQUE (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ),
+  CHECK (last_observed_at >= first_observed_at),
+  FOREIGN KEY (project_id, session_id, connection_internal_id, host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id)
+);
+
+CREATE TABLE managed_mcp_sessions (
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  runtime_session_id TEXT CHECK (
+    runtime_session_id IS NULL OR length(trim(runtime_session_id)) > 0
+  ),
+  connection_internal_id TEXT NOT NULL,
+  host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
+  last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
+  first_observed_at TEXT NOT NULL,
+  last_observed_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_id),
+  CHECK (last_observed_at >= first_observed_at),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES host_sessions (project_id, session_id, connection_internal_id),
+  FOREIGN KEY (project_id, session_id, connection_internal_id, last_host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id)
+);
 
 CREATE TABLE guard_events (
   project_id TEXT NOT NULL,
   guard_event_id TEXT NOT NULL,
   session_id TEXT,
   connection_internal_id TEXT NOT NULL,
+  correlation_kind TEXT CHECK (
+    correlation_kind IN ('codex_hook_prompt', 'codex_hook_tool')
+  ),
+  host_turn_id TEXT,
+  host_tool_use_id TEXT,
+  host_tool_name TEXT,
   guard_installation_id TEXT NOT NULL,
   policy_hash TEXT NOT NULL CHECK (
     length(policy_hash) = 71
@@ -857,9 +910,42 @@ CREATE TABLE guard_events (
   occurred_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, guard_event_id),
+  CHECK (
+    (
+      correlation_kind IS NULL
+      AND session_id IS NULL
+      AND host_turn_id IS NULL
+      AND host_tool_use_id IS NULL
+      AND host_tool_name IS NULL
+    )
+    OR (
+      correlation_kind = 'codex_hook_prompt'
+      AND event_kind = 'prompt_capture'
+      AND session_id IS NOT NULL
+      AND host_turn_id IS NOT NULL
+      AND host_tool_use_id IS NULL
+      AND host_tool_name IS NULL
+    )
+    OR (
+      correlation_kind = 'codex_hook_tool'
+      AND event_kind IN ('pre_tool', 'post_tool')
+      AND session_id IS NOT NULL
+      AND host_turn_id IS NOT NULL
+      AND host_tool_use_id IS NOT NULL
+      AND host_tool_name IS NOT NULL
+    )
+  ),
+  CHECK (contract_status != 'compatible' OR correlation_kind IS NOT NULL),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id, host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id),
+  FOREIGN KEY (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ) REFERENCES host_tool_invocations (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  )
 );
 
 CREATE TABLE prompt_captures (
@@ -867,6 +953,7 @@ CREATE TABLE prompt_captures (
   prompt_capture_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL,
   capture_kind TEXT NOT NULL,
   prompt_sha256 TEXT NOT NULL,
   prompt_text TEXT,
@@ -874,8 +961,8 @@ CREATE TABLE prompt_captures (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, prompt_capture_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id, host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id)
 );
 
 CREATE TABLE unrecorded_changes (
@@ -883,6 +970,10 @@ CREATE TABLE unrecorded_changes (
   unrecorded_change_id TEXT NOT NULL,
   session_id TEXT,
   connection_internal_id TEXT NOT NULL,
+  correlation_kind TEXT CHECK (correlation_kind = 'codex_hook_tool'),
+  host_turn_id TEXT,
+  host_tool_use_id TEXT,
+  host_tool_name TEXT,
   task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('unresolved', 'resolved')),
   confidence TEXT NOT NULL CHECK (confidence IN ('confirmed', 'suspected')),
@@ -895,6 +986,22 @@ CREATE TABLE unrecorded_changes (
   resolved_by_actor_source TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, unrecorded_change_id),
+  CHECK (
+    (
+      correlation_kind IS NULL
+      AND session_id IS NULL
+      AND host_turn_id IS NULL
+      AND host_tool_use_id IS NULL
+      AND host_tool_name IS NULL
+    )
+    OR (
+      correlation_kind = 'codex_hook_tool'
+      AND session_id IS NOT NULL
+      AND host_turn_id IS NOT NULL
+      AND host_tool_use_id IS NOT NULL
+      AND host_tool_name IS NOT NULL
+    )
+  ),
   CHECK (
     (
       status = 'unresolved'
@@ -910,18 +1017,27 @@ CREATE TABLE unrecorded_changes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
+  FOREIGN KEY (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ) REFERENCES host_tool_invocations (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 
-CREATE INDEX idx_agent_sessions_connection
-  ON agent_sessions (project_id, connection_internal_id);
-CREATE UNIQUE INDEX idx_agent_sessions_runtime_binding
-  ON agent_sessions (project_id, runtime_session_id)
+CREATE INDEX idx_host_sessions_connection
+  ON host_sessions (project_id, connection_internal_id, last_observed_at);
+CREATE INDEX idx_host_turns_session
+  ON host_turns (project_id, session_id, last_observed_at);
+CREATE INDEX idx_host_tool_invocations_session
+  ON host_tool_invocations (project_id, session_id, last_observed_at);
+CREATE INDEX idx_managed_mcp_sessions_runtime
+  ON managed_mcp_sessions (project_id, runtime_session_id, last_observed_at);
+CREATE UNIQUE INDEX idx_managed_mcp_sessions_runtime_binding
+  ON managed_mcp_sessions (project_id, runtime_session_id)
   WHERE runtime_session_id IS NOT NULL;
-CREATE INDEX idx_agent_sessions_runtime_revision
-  ON agent_sessions (project_id, runtime_session_id, project_integration_revision, last_observed_at);
 CREATE INDEX idx_guard_events_session
   ON guard_events (project_id, session_id, occurred_at);
 CREATE INDEX idx_guard_events_connection
@@ -941,8 +1057,12 @@ CREATE INDEX idx_unrecorded_changes_task
 CREATE TABLE expected_writes (
   project_id TEXT NOT NULL,
   expected_write_id TEXT NOT NULL,
-  session_id TEXT,
+  session_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
+  correlation_kind TEXT NOT NULL CHECK (correlation_kind = 'codex_hook_tool'),
+  host_turn_id TEXT NOT NULL,
+  host_tool_use_id TEXT NOT NULL,
+  host_tool_name TEXT NOT NULL,
   guard_installation_id TEXT,
   pre_tool_guard_event_id TEXT NOT NULL,
   host_invocation_id TEXT,
@@ -977,8 +1097,13 @@ CREATE TABLE expected_writes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
+  FOREIGN KEY (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ) REFERENCES host_tool_invocations (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 

@@ -3,19 +3,16 @@
   "transcript_path": "/tmp/volicord-fixtures/codex-session-001.jsonl",
   "cwd": "/repo",
   "hook_event_name": "PostToolUse",
-  "model": "gpt-5.5",
-  "permission_mode": "default",
-  "turn_id": "turn-001",
+  "turn_id": "turn-tool-001",
   "tool_name": "Bash",
-  "tool_use_id": "toolu-bash-write-001",
+  "tool_use_id": "toolu-bash-001",
   "tool_input": {
-    "command": "touch src/lib.rs"
+    "command": "cargo test -p volicord-host-contract"
   },
   "tool_response": {
     "success": true,
     "exit_code": 0,
     "stdout": "",
     "stderr": ""
-  },
-  "changed_paths": ["src/lib.rs"]
+  }
 }

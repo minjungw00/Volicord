@@ -1058,7 +1058,7 @@ fn insert_project_unrecorded_change(
         project_id,
         UnrecordedChangeInsert {
             unrecorded_change_id: unrecorded_change_id.clone(),
-            session_id: None,
+            correlation: None,
             connection_internal_id: CONNECTION_ID.to_owned(),
             task_id,
             confidence: UnrecordedChangeConfidence::Confirmed.as_str().to_owned(),

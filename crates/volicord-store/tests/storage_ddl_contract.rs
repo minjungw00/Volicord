@@ -28,10 +28,10 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 44);
-    assert_eq!(metadata.columns.len(), 510);
-    assert_eq!(metadata.indexes.len(), 70);
-    assert_eq!(metadata.constraints.len(), 39);
+    assert_eq!(metadata.tables.len(), 47);
+    assert_eq!(metadata.columns.len(), 542);
+    assert_eq!(metadata.indexes.len(), 72);
+    assert_eq!(metadata.constraints.len(), 42);
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -45,29 +45,40 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert!(agent_connection_columns.contains(&"integration_instance_id"));
     assert!(!agent_connection_columns.contains(&"last_verification_status"));
     assert!(!agent_connection_columns.contains(&"last_user_actions_json"));
-    let agent_session_columns = metadata
+    let host_session_columns = metadata
         .columns
         .iter()
         .filter(|column| {
-            column.database == StorageDatabaseKind::ProjectState && column.table == "agent_sessions"
+            column.database == StorageDatabaseKind::ProjectState && column.table == "host_sessions"
         })
         .collect::<Vec<_>>();
-    assert!(agent_session_columns
+    assert!(host_session_columns
         .iter()
-        .any(|column| column.name == "runtime_session_id" && !column.not_null));
-    assert!(agent_session_columns
+        .any(|column| column.name == "project_integration_revision" && column.not_null));
+    assert!(host_session_columns
         .iter()
         .any(|column| column.name == "first_observed_at" && column.not_null));
-    assert!(!agent_session_columns
-        .iter()
-        .any(|column| column.name == "started_at"));
+    assert!(!metadata.columns.iter().any(|column| {
+        column.database == StorageDatabaseKind::ProjectState && column.table == "agent_sessions"
+    }));
     assert!(metadata.indexes.iter().any(|index| {
         index.database == StorageDatabaseKind::ProjectState
-            && index.table == "agent_sessions"
-            && index.name == "idx_agent_sessions_runtime_binding"
+            && index.table == "managed_mcp_sessions"
+            && index.name == "idx_managed_mcp_sessions_runtime_binding"
             && index.unique
             && index.partial
     }));
+    for table in [
+        "host_turns",
+        "host_tool_invocations",
+        "managed_mcp_sessions",
+    ] {
+        assert!(metadata.tables.iter().any(|relation| {
+            relation.database == StorageDatabaseKind::ProjectState
+                && relation.name == table
+                && relation.relation_kind == GeneratedRelationKind::Table
+        }));
+    }
     assert!(metadata.indexes.iter().any(|index| {
         index.database == StorageDatabaseKind::Registry
             && index.table == "agent_connections"
@@ -167,7 +178,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert!(metadata.tables.iter().any(|relation| {
         relation.database == StorageDatabaseKind::ProjectState
-            && relation.name == "agent_sessions_project_integration_revision_immutable"
+            && relation.name == "host_sessions_project_integration_revision_immutable"
             && relation.relation_kind == GeneratedRelationKind::Trigger
     }));
     for database in [
@@ -191,11 +202,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:cbdf4b340610f50e313c8773b78130e30549437d35fb7f9ddb42f107b22ae7c1"
+        "sha256:64ee728f06ecc5d2632b154db06b4b246cdf69dd82fe03c0e5203ec6964cd7b5"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:18f19c77b57696b8a013ae83a2f7f1e46c24a547cd606d4a622a0b4b42fbda8f"
+        "sha256:33b80ce4794cee24b0165480abf2c1175ceff210fe0ff87c2ddffc78f5db0d78"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -229,12 +240,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:cbdf4b340610f50e313c8773b78130e30549437d35fb7f9ddb42f107b22ae7c1\",",
+            "{\"canonical_ddl_digest\":\"sha256:64ee728f06ecc5d2632b154db06b4b246cdf69dd82fe03c0e5203ec6964cd7b5\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:18f19c77b57696b8a013ae83a2f7f1e46c24a547cd606d4a622a0b4b42fbda8f\"}"
+            "\"integrity_constraints_digest\":\"sha256:33b80ce4794cee24b0165480abf2c1175ceff210fe0ff87c2ddffc78f5db0d78\"}"
         )
     );
     Ok(())

@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use volicord_host_contract::HostContractProfileId;
 use volicord_store::agent_connections::AgentConnectionRecord;
 use volicord_store::guards::{
     upsert_guard_installation, GuardInstallationRecord, GuardInstallationUpsert,
@@ -57,6 +58,8 @@ pub(crate) fn guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: ManifestHostKind::Codex,
         integration_profile: IntegrationProfile::Record,
+        host_contract_profile: HostContractProfileId::CodexHooksV1.as_str().to_owned(),
+        host_contract_digest: HostContractProfileId::CodexHooksV1.contract_digest(),
         policy_hash: plan.policy_hash.clone(),
         integration_revision,
         runtime_commands: plan.runtime_commands.clone(),
@@ -238,6 +241,7 @@ fn require_wrapper_comment(
 mod tests {
     use std::{collections::BTreeSet, fs, path::PathBuf};
 
+    use volicord_host_contract::HostContractProfileId;
     use volicord_store::agent_connections::agent_connection_record_read_only;
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::{
@@ -329,6 +333,14 @@ mod tests {
         .expect("fixture connection");
         let manifest_text = guard_manifest_json(&connection, fixture.project_id(), &plan)?;
         let manifest = guard_manifest_from_json(&manifest_text)?;
+        assert_eq!(
+            manifest.host_contract_profile,
+            HostContractProfileId::CodexHooksV1.as_str()
+        );
+        assert_eq!(
+            manifest.host_contract_digest,
+            HostContractProfileId::CodexHooksV1.contract_digest()
+        );
         assert_eq!(manifest.runtime_commands, plan.runtime_commands);
         assert_eq!(
             manifest

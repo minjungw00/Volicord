@@ -214,7 +214,7 @@ matrix. The current `codex` fixture uses the
 reviewed Codex initialize request shape with `clientInfo.name` set to
 `codex-mcp-client`, the `Codex` title, an empty current capability object, and
 the independently pinned revision `2025-06-18`. Its one tool call carries valid
-Codex native thread/session/turn correlation metadata. It executes
+`codex-mcp-2025-06-18-v1` session/thread/turn metadata. It executes
 `tools/list` and the tool selected by
 `ToolVerificationRole::ManagedHostRoundTrip`, currently
 `volicord.list_projects`, and it never derives its requested revision from the
@@ -227,6 +227,24 @@ shows that the reviewed request shape works against this server; it does not
 show that a managed Codex process ran. Only lifecycle observations recorded by
 an actual process with source `managed_host` can satisfy managed-host
 operational checks.
+
+## Versioned Codex Host Contracts
+
+Managed Codex wire input is decoded through an explicitly selected host
+contract profile. `codex-mcp-2025-06-18-v1` owns `tools/call` `_meta` and
+requires the native session, thread, and turn plus equality between the
+top-level `threadId` and nested `x-codex-turn-metadata.thread_id`.
+`codex-hooks-v1` separately owns command-hook envelopes. Its
+`UserPromptSubmit` correlation is session plus turn, while `PreToolUse` and
+`PostToolUse` correlation is session, turn, tool-use ID, and canonical tool
+name. Command-hook correlation has no thread coordinate.
+
+The two profiles are not inferred from payload shape and their typed
+correlations are not interchangeable. Both accept unknown additive fields,
+retain only bounded contract-owned presentation and tool values, and return
+bounded typed failures without retaining the complete input. Managed MCP also
+requires the parsed session and thread to match the registered managed runtime
+binding.
 
 ## Authoritative Lifecycle Recording
 
@@ -300,26 +318,29 @@ and do not establish client, host, actor, or human identity.
 
 ## Per-Call Session Authorization
 
-A valid Guard observation may create or update a project `agent_sessions` row
-before any MCP runtime is known. That row stores no fabricated or sentinel
-runtime coordinate. Before an actual project is selected, MCP runtime state
-retains only the exact native session, thread, and turn metadata; it does not
-derive or search for a Connection-only internal session coordinate. After
-project selection, the Store resolves the current project integration revision
-and derives the project Agent Session ID from the Connection, that exact
-revision, and the native session. For the first actual managed `tools/call`,
-the Store first validates the current managed runtime without mutation. It then
-establishes or validates an unbound project Agent Session anchor with the exact
-Connection, native session, thread, project revision, and current Guard
-ownership. Only after that project transaction commits does the Store
-revalidate the current owner facts and reserve the exact Registry
+A valid Guard observation establishes normalized project `host_sessions` and
+`host_turns` rows. Tool phases also establish `host_tool_invocations`. Guard
+does not create `managed_mcp_sessions`, does not select a runtime from open
+process rows, and does not synthesize a thread. Before an actual project is
+selected, MCP runtime state retains only the exact `CodexMcpCorrelation`; it
+does not derive or search for a Connection-only internal session coordinate.
+After project selection, Store resolves the current project integration
+revision and derives the project Agent Session ID from the Connection, that
+exact revision, and the native session.
+
+For the first actual managed `tools/call`, Store validates the current managed
+runtime without mutation, establishes the normalized host session and turn,
+and creates or validates the MCP-only `managed_mcp_sessions` anchor with the
+exact Connection, native session, thread, project revision, current Guard
+ownership, and latest turn. Only after that project transaction commits does
+Store revalidate current owner facts and reserve the exact Registry
 runtime/project/revision/host-session binding. A final project transaction
 attaches that runtime to the same anchor. A deterministic project ownership
-conflict therefore creates no Registry reservation. An unbound anchor is not
-authority, and a Registry reservation without the matching project attachment
-is not authority. If the final project write is interrupted, an identical call
-under unchanged owner state reuses the reservation and finishes the attachment.
-CLI preflight never performs this binding.
+conflict therefore creates no Registry reservation. An unbound MCP anchor is
+not authority, and a Registry reservation without the matching project
+attachment is not authority. If the final project write is interrupted, an
+identical call under unchanged owner state reuses the reservation and finishes
+the attachment. CLI preflight never performs this binding.
 
 Project Agent Session validation therefore precedes Registry runtime
 reservation. Authorization requires both the completed project attachment and
@@ -327,16 +348,17 @@ the exact completed Registry binding.
 
 Before constructing Core invocation context for a project tool, the adapter
 validates the authoritative current Registry runtime session, the exact
-`mcp_runtime_project_session_bindings` row, and the project `agent_sessions`
-row. The Connection must exist and be enabled; the project must exist and
+`mcp_runtime_project_session_bindings` row, and the project
+`managed_mcp_sessions` row joined to its `host_sessions` owner. The Connection
+must exist and be enabled; the project must exist and
 remain a Connection Project; the runtime session must be a current
 `managed_host` session owned by that Connection; and the project session must
 be non-null-bound to the same runtime, Connection, project, and host session.
 The Registry binding revision and project row revision must be identical, and
 both integration revisions must match their current Connection and project
 inputs. The current Connection mode must allow the requested operation
-category. An unbound Guard-only session retains Guard history but cannot
-authorize a tool call. Every real mode transition advances the Store-owned
+category. Hook-only host rows retain Guard history but cannot authorize a tool
+call. Every real mode transition advances the Store-owned
 Connection integration generation, so runtime sessions, project Agent Sessions,
 and Guard events from every earlier generation remain historical even if the
 Connection later returns to the same mode value.

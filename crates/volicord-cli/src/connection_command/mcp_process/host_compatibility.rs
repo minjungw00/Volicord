@@ -55,7 +55,7 @@ impl HostCompatibilityFixture {
 // family requires a separately reviewed revision or initialize shape.
 const HOST_COMPATIBILITY_FIXTURES: [HostCompatibilityFixture; 1] = [HostCompatibilityFixture {
     profile: HostCompatibilityProfile::Codex,
-    fixture_id: "codex-0.108.0-alpha.12-2025-06-18",
+    fixture_id: "codex-mcp-2025-06-18-v1",
     revision: McpProtocolRevision::V20250618,
     client_name: "codex-mcp-client",
     client_title: "Codex",

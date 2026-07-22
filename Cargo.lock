@@ -755,6 +755,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml"
+version = "0.8.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
+dependencies = [
+ "serde",
+ "serde_spanned",
+ "toml_datetime",
+ "toml_edit",
+]
+
+[[package]]
 name = "toml_datetime"
 version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -862,6 +874,7 @@ dependencies = [
  "sha2",
  "toml_edit",
  "volicord-core",
+ "volicord-host-contract",
  "volicord-mcp",
  "volicord-mcp-protocol",
  "volicord-platform-fs",
@@ -892,8 +905,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "volicord-host-contract",
  "volicord-store",
  "volicord-test-support",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-host-contract"
+version = "0.9.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml",
  "volicord-types",
 ]
 
@@ -921,6 +946,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "volicord-core",
+ "volicord-host-contract",
  "volicord-mcp-protocol",
  "volicord-platform-fs",
  "volicord-store",
@@ -978,6 +1004,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "volicord-host-contract",
  "volicord-platform-fs",
  "volicord-test-support",
  "volicord-types",
@@ -990,6 +1017,7 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "tempfile",
+ "volicord-host-contract",
  "volicord-store",
  "volicord-types",
 ]

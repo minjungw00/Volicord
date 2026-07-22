@@ -4,6 +4,7 @@ use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::*;
 use crate::util::*;
+use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 
 /// Minimal MCP adapter marker for validating dependency direction.
@@ -60,9 +61,7 @@ impl OwnedAgentSessionCoordinates {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedAgentSessionBinding {
     pub(crate) runtime_session_id: String,
-    pub(crate) host_session_id: String,
-    pub(crate) host_thread_id: String,
-    pub(crate) host_turn_id: String,
+    pub(crate) correlation: CodexMcpCorrelation,
 }
 
 impl McpDerivedInvocationContext {
@@ -1036,9 +1035,7 @@ impl McpAdapter {
                     runtime_session_id: binding.runtime_session_id.clone(),
                     connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
                     guard_installation_id,
-                    host_session_id: binding.host_session_id.clone(),
-                    host_thread_id: binding.host_thread_id.clone(),
-                    host_turn_id: binding.host_turn_id.clone(),
+                    correlation: binding.correlation.clone(),
                     observed_at,
                 },
             )
@@ -1050,7 +1047,7 @@ impl McpAdapter {
                 project_id.as_str(),
                 self.context.connection_internal_id.as_str(),
                 guard_installation_id.as_deref(),
-                &binding.host_session_id,
+                &HostNativeCorrelation::CodexMcp(binding.correlation.clone()),
             )
             .map_err(McpAdapterError::Store)?
             .session_id

@@ -288,9 +288,12 @@ CLI MCP self-test는 `session_source=cli_preflight`만 만듭니다. 따라서
 Guard는 최상위 운영 check로 `guard_files`, `guard_hook_execution`,
 `guard_observation`을 사용합니다. 엄격한 Guard manifest는
 현재 policy hash, integration revision, typed runtime command, 전체 Volicord 관리 artifact
-기대값, 필수 hook phase를 담당합니다. Policy command와 runtime command는 typed invocation
-하나에서 나온 서로 다른 projection입니다. Audit은 각 관리 artifact를 정규 현재 기대값과
-비교하고, Guard 관찰은 모든 필수 phase의 호환되는 현재 event를 요구합니다.
+기대값, 필수 hook phase를 담당합니다. 또한 정확한 `host_contract_profile`과 결정적인
+`host_contract_digest`를 지정하며, 현재 값은 `codex-hooks-v1`과 검토된 계약 identity를
+선택합니다. Policy command와 runtime command는 typed invocation 하나에서 나온 서로 다른
+projection입니다. Audit은 profile이나 digest가 이 정확한 선택과 다르면 manifest를 거부하고,
+각 관리 artifact를 정규 현재 기대값과 비교하며, 모든 필수 phase의 호환되는 현재 event를
+요구합니다.
 
 기록한 verification 도구 이름이 다르면 `tool_round_trip`은 절대 통과하지 않습니다.
 Check는 `tool_round_trip_designation_mismatch`로 실패하고 활성 검증은
@@ -404,8 +407,9 @@ Integration generation은 해당 물리 instance 안에서 0으로 시작하고 
 version입니다. 보고서와 finding은 둘을 서로 대신 사용하지 않습니다. 두 version이 모두
 있고 서로 다르면 `host.codex.peer_version_differs_from_path_probe`가 두 사실 객체를 담은
 warning evidence를 기록하며, 이 불일치만으로 Connection을 치명적 실패로 만들지 않습니다.
-잘못된 native metadata, 일관되지 않은 session/thread/turn 좌표, 등록 session 불일치,
-managed marker 불일치는 각각 `host.codex.metadata_malformed`,
+명시적으로 선택한 `codex-mcp-2025-06-18-v1` profile이 MCP session/thread/turn
+metadata를 소유합니다. 잘못된 MCP metadata, 중첩 및 최상위 thread 좌표 불일치, 등록
+session 불일치, managed marker 불일치는 각각 `host.codex.metadata_malformed`,
 `host.codex.session_thread_turn_inconsistent`,
 `host.codex.registered_session_correlation_mismatch`,
 `host.codex.managed_marker_mismatch`를 사용합니다.
@@ -426,24 +430,32 @@ selection을 만들며 process 사이에서 profile을 공유하거나 상속하
 
 프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
 fingerprint와 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적
-부재를 더합니다. 프로젝트 Agent Session은 이 revision, 결정적인 revision 범위 session
-ID, Connection, host session/thread/latest turn, 최초/마지막 관찰 시각을 보관합니다.
-Store는 프로젝트를 결정하고 현재 Guard ownership을 검증한 뒤에만 Connection internal ID,
-정확한 프로젝트 통합 revision, 정확한 host-native session ID에 domain-separated digest를
-적용해 내부 ID를 도출합니다. 호출자는 완성된 내부 ID를 제공할 수 없습니다. 저장된
-프로젝트 revision은 변경할 수 없습니다. 이후 Connection mode generation, 물리 Connection
-재생성, 프로젝트 정책 revision, Guard ownership revision이 생기면 같은 native session에도
-서로 다른 프로젝트 Agent Session row를 만들고 이전 row는 이력으로 남깁니다. Guard
-관찰은 runtime binding이 null인 session을 만들 수 있습니다. 해당 host session의 첫 실제
-managed MCP 도구 호출은 먼저 현재 managed runtime을 변경 없이 검증하고, 정확한 프로젝트
-Agent Session anchor를 만들거나 검증한 뒤, Registry에서 정확한 데이터베이스 간 binding을
-예약하면서 현재 소유자 입력을 다시 검증합니다. 마지막 프로젝트 transaction에서만 runtime을
-붙입니다. 프로젝트 anchor에서 확인한 Connection, 프로젝트, Guard Installation, revision,
-native session, thread, 기존 runtime 충돌은 새 Registry binding을 남기지 않습니다. 이후
-Registry 예약이 실패하면 프로젝트 anchor가 unbound로 남을 수 있지만 권한은 아닙니다.
-마지막 attach 전 중단으로 남은 Registry 예약도 권한이 아니며, 소유자 상태가 바뀌지 않은
-정확한 replay가 그 예약을 재사용해 attach를 완료합니다. 붙인 session은 다른 runtime
-session, Connection, 프로젝트, host session, host thread에 다시 결속할 수 없습니다.
+부재를 더합니다. `host_sessions`는 revision 범위 로컬 session ID, Connection, 정확한
+native session, 관찰 시각을 보관합니다. `host_turns`는 두 계약 source가 함께 쓰는 turn을
+보관하고, `host_tool_invocations`는 hook tool-use ID와 정규 tool name을 보관합니다. Store는
+프로젝트를 결정하고 현재 Guard ownership을 검증한 뒤에만 Connection internal ID, 정확한
+프로젝트 통합 revision, 정확한 native session에 domain-separated digest를 적용해 로컬
+session ID를 도출합니다. 호출자는 완성된 로컬 ID를 제공할 수 없고 저장된 프로젝트
+revision은 변경할 수 없습니다.
+
+`codex-hooks-v1` parser는 `UserPromptSubmit`에 `CodexHookPromptCorrelation`을,
+`PreToolUse`와 `PostToolUse`에 `CodexHookToolCorrelation`을 만듭니다. Prompt 상관관계에는
+session과 turn만 필요합니다. Tool 상관관계에는 tool-use ID와 정규 tool name도 필요합니다.
+어떤 hook phase에도 thread 좌표가 없습니다. 반면 `codex-mcp-2025-06-18-v1` parser는
+session, thread, turn이 모두 필요한 `CodexMcpCorrelation`을 만듭니다. Store phase check와
+SQL discriminator는 source가 교차되거나 불완전한 조합을 거부합니다.
+
+Guard 관찰은 정규화한 host, turn, tool row를 만들 수 있지만 MCP 전용
+`managed_mcp_sessions` row는 만들지 않습니다. 해당 host session의 첫 실제 managed MCP
+도구 호출은 먼저 현재 managed runtime을 변경 없이 검증하고, 정확한 MCP anchor를 만들거나
+검증한 뒤, Registry에서 데이터베이스 간 binding을 예약하면서 현재 소유자 입력을 다시
+검증합니다. 마지막 프로젝트 transaction에서만 runtime을 붙입니다. MCP anchor에서 확인한
+Connection, 프로젝트, Guard Installation, revision, native session, thread, 기존 runtime
+충돌은 새 Registry binding을 남기지 않습니다. 이후 Registry 예약이 실패하면 anchor가
+unbound로 남을 수 있지만 권한은 아닙니다. 마지막 attach 전 중단으로 남은 Registry 예약도
+권한이 아니며, 소유자 상태가 바뀌지 않은 정확한 replay가 그 예약을 재사용해 attach를
+완료합니다. 붙인 MCP session은 다른 runtime session, Connection, 프로젝트, host session,
+host thread에 다시 결속할 수 없습니다.
 
 Runtime row는 lease나 liveness 주장이 아니라 process의 이력 관찰입니다. Crash한 process는
 열린 것처럼 보이는 row를 남길 수 있고 여러 협력적 Codex process가 동시에 현재 상태일 수

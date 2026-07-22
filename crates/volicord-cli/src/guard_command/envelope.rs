@@ -2,10 +2,9 @@ use std::{path::Path, str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
+use volicord_host_contract::{CodexHooksV1, HostNativeCorrelation};
 use volicord_store::bootstrap::ProjectRecord;
-use volicord_types::{
-    validate_managed_host_native_session_id, GuardHookPhase, HostKind, IntegrationProfile,
-};
+use volicord_types::{GuardHookPhase, HostKind, IntegrationProfile};
 
 use super::{
     args::{GuardInput, GuardOptions},
@@ -16,9 +15,7 @@ use super::{
 pub(super) struct GuardEnvelope {
     pub(super) event_id: String,
     pub(super) session_id: Option<String>,
-    pub(super) host_session_id: String,
-    pub(super) host_thread_id: String,
-    pub(super) host_turn_id: String,
+    pub(super) correlation: HostNativeCorrelation,
     pub(super) connection_id: String,
     pub(super) guard_installation_id: Option<String>,
     pub(super) host_kind: String,
@@ -38,7 +35,7 @@ pub(super) fn event_path_field<'a>(event: &'a Value, paths: &[&[&str]]) -> Optio
 }
 
 pub(super) fn guard_envelope(
-    _phase: GuardHookPhase,
+    phase: GuardHookPhase,
     options: &GuardOptions,
     input: &GuardInput,
     _project: &ProjectRecord,
@@ -96,20 +93,29 @@ pub(super) fn guard_envelope(
             })
             .unwrap_or_else(|| DEFAULT_INTEGRATION_PROFILE.to_owned()),
     )?;
-    let host_session_id = managed_native_session_id(&host_kind, &input.raw_value)?.to_owned();
-    let host_thread_id =
-        consistent_exact_event_string(&input.raw_value, &[&["thread_id"]], "native thread id")?
-            .to_owned();
-    let host_turn_id =
-        consistent_exact_event_string(&input.raw_value, &[&["turn_id"]], "native turn id")?
-            .to_owned();
-    for value in [&host_session_id, &host_thread_id, &host_turn_id] {
-        validate_managed_host_native_session_id(value).map_err(|error| {
-            GuardCommandError::Usage(format!(
-                "managed Codex event has invalid correlation metadata: {error}"
-            ))
-        })?;
+    if host_kind != "codex" {
+        return Err(GuardCommandError::Usage(
+            "host-hook command requires the codex host contract profile".to_owned(),
+        ));
     }
+    let hook_event = CodexHooksV1.parse(&input.raw_value).map_err(|error| {
+        GuardCommandError::Usage(format!(
+            "Codex hook payload violates codex-hooks-v1: {error}"
+        ))
+    })?;
+    let expected_event_name = match phase {
+        GuardHookPhase::PromptCapture => "UserPromptSubmit",
+        GuardHookPhase::PreTool => "PreToolUse",
+        GuardHookPhase::PostTool => "PostToolUse",
+    };
+    if hook_event.event_name() != expected_event_name {
+        return Err(GuardCommandError::Usage(format!(
+            "Codex hook event {} does not match Guard phase {}",
+            hook_event.event_name(),
+            phase.as_str()
+        )));
+    }
+    let correlation = hook_event.correlation();
     let occurred_at = event_timestamp_or_now(
         &input.raw_value,
         &[&["occurred_at"], &["timestamp"], &["time"]],
@@ -127,9 +133,7 @@ pub(super) fn guard_envelope(
     Ok(GuardEnvelope {
         event_id: String::new(),
         session_id: None,
-        host_session_id,
-        host_thread_id,
-        host_turn_id,
+        correlation,
         connection_id,
         guard_installation_id,
         host_kind,
@@ -140,56 +144,6 @@ pub(super) fn guard_envelope(
 
 pub(super) fn is_managed_builtin_host(host_kind: &str) -> bool {
     host_kind == "codex"
-}
-
-pub(super) fn managed_native_session_id<'a>(
-    host_kind: &str,
-    event: &'a Value,
-) -> Result<&'a str, GuardCommandError> {
-    if host_kind != "codex" {
-        return Err(GuardCommandError::Usage(
-            "managed native session extraction requires codex".to_owned(),
-        ));
-    }
-    let paths: &[&[&str]] = &[&["session_id"]];
-    consistent_exact_event_string(event, paths, "native session id")
-}
-
-fn consistent_exact_event_string<'a>(
-    event: &'a Value,
-    paths: &[&[&str]],
-    label: &str,
-) -> Result<&'a str, GuardCommandError> {
-    let mut selected = None;
-    for path in paths {
-        let Some(value) = value_at(event, path) else {
-            continue;
-        };
-        let Some(value) = value.as_str() else {
-            return Err(GuardCommandError::Usage(format!(
-                "managed host event {label} must be a string"
-            )));
-        };
-        if value.is_empty() {
-            return Err(GuardCommandError::Usage(format!(
-                "managed host event requires a non-empty {label}"
-            )));
-        }
-        if let Some(selected) = selected {
-            if selected != value {
-                return Err(GuardCommandError::Usage(format!(
-                    "managed host event contains inconsistent {label} fields"
-                )));
-            }
-        } else {
-            selected = Some(value);
-        }
-    }
-    selected.ok_or_else(|| {
-        GuardCommandError::Usage(format!(
-            "managed host event requires an exact {label} field"
-        ))
-    })
 }
 
 fn normalize_host_kind(value: String) -> Result<String, GuardCommandError> {
@@ -299,38 +253,23 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn builtin_parser_retains_only_the_exact_native_session_coordinate() {
-        let codex = json!({
-            "session_id": "native.session:1",
-            "thread_id": "different.subagent.thread"
-        });
+    fn selected_hook_profile_uses_source_specific_coordinates() {
+        let event = CodexHooksV1
+            .parse(&json!({
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "native.session:1",
+                "turn_id": "native.turn:1",
+                "prompt": "continue"
+            }))
+            .expect("current Codex hook profile should parse");
         assert_eq!(
-            managed_native_session_id("codex", &codex).expect("valid Codex identity should parse"),
+            event.correlation().session_id().as_str(),
             "native.session:1"
         );
-    }
-
-    #[test]
-    fn builtin_native_fields_and_internal_overrides_fail_closed() {
-        for event in [json!({ "session_id": "native with space" }), json!({})] {
-            assert!(
-                managed_native_session_id("codex", &event)
-                    .map(validate_managed_host_native_session_id)
-                    .is_err()
-                    || managed_native_session_id("codex", &event)
-                        .is_ok_and(|value| validate_managed_host_native_session_id(value).is_err())
-            );
-        }
-
-        let different_thread = json!({
-            "session_id": "native-a",
-            "thread_id": "native-b"
-        });
-        assert_eq!(
-            managed_native_session_id("codex", &different_thread)
-                .expect("thread identifiers do not replace the root session binding"),
-            "native-a"
-        );
+        assert!(matches!(
+            event.correlation(),
+            HostNativeCorrelation::CodexHookPrompt(_)
+        ));
     }
 
     #[test]

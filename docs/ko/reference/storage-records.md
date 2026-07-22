@@ -9,7 +9,7 @@
 | 위치 | 목적 |
 |---|---|
 | `registry.sqlite` | Runtime Home identity, 설치 profile, 프로젝트, alias, Agent Connection, 명시적 프로젝트 membership, 정규 연결 검증 보고서, 구조화된 진단 finding, 권위 있는 MCP runtime session |
-| 프로젝트 `state.sqlite` | 프로젝트 로컬 Core 상태, replay, authority event, UserAction, evidence, artifact, continuity, 프로젝트 Agent Session, Guard 관찰, 조정 |
+| 프로젝트 `state.sqlite` | 프로젝트 로컬 Core 상태, replay, authority event, UserAction, evidence, artifact, continuity, 정규화한 host 상관관계, managed MCP project session, Guard 관찰, 조정 |
 | artifact store | 영속 artifact row가 참조하는 bytes와 안전 notice |
 | `diagnostics.sqlite` | 제한된 비권한 operability counter |
 
@@ -55,8 +55,8 @@ Registry 기록에는 다음이 포함됩니다.
   producer
 - `UserActionRequest`, immutable `UserActionResolution`, project continuity
 - 조정에 쓰는 expected write, Guard 관찰, prompt 관찰, unrecorded change
-- Registry runtime binding보다 먼저 생길 수 있고 host session/thread/latest-turn 상관관계,
-  최초/마지막 관찰, 현재 프로젝트 통합 revision을 보관하는 프로젝트 Agent Session
+- 정규화한 host session, turn, hook tool invocation과 필수 thread를 보관하고 Registry
+  runtime binding보다 먼저 생길 수 있는 managed MCP project session
 
 Prompt 관련 Guard 기록은 관찰일 뿐입니다. UserAction resolution, 사용자 답,
 verification basis, 권한 출처가 아닙니다.
@@ -168,20 +168,30 @@ MCP 호환 ASCII 이름이어야 하고 관찰 timestamp는 initialized notifica
 protocol 성공을 내보내지 않습니다.
 Best-effort diagnostics는 분리되어 있으며 정상적인 도구 결과를 실패시킬 수 없습니다.
 
-프로젝트 `agent_sessions`는 프로젝트 로컬 상관관계 projection입니다. 각 row는 Connection을
-이름 붙이고 현재 workflow-policy fingerprint와 Guard ownership pair를 더한 프로젝트 통합
-revision을 보관하며, workflow와 Guard 상관관계에 필요한 결정적 revision 범위 session
-ID, host session, thread, latest turn, 최초/마지막 관찰을 유지합니다. Store는 Connection
-internal ID, 저장된 정확한 프로젝트 통합 revision, 정확한 native host session으로 이 ID를
-도출합니다. 프로젝트 revision은 변경할 수 없으며 현재 revision이 바뀌면 이력 row를
-갱신하지 않고 새 row를 만듭니다. Guard 관찰은
-`runtime_session_id=NULL`인 row를 만들 수 있습니다. 빈 값, sentinel, 조작한 runtime,
-CLI-preflight runtime으로 이 상태를 나타내지 않습니다. 복합 프로젝트 foreign key는 하위
-Guard row가 session을 다른 Connection과 조합하지 못하게 합니다.
+프로젝트 host 상관관계는 source에 따라 정규화합니다. `host_sessions`는 Connection, 정확한
+native host session, 변경할 수 없는 프로젝트 integration revision, 최초/마지막 관찰 시각을
+저장합니다. Store는 Connection internal ID, 정확한 revision, native session으로 revision
+범위 로컬 session ID를 도출합니다. `host_turns`는 그 로컬 session의 정확한 turn을
+기록합니다. `host_tool_invocations`는 정확한 session 및 turn 아래 hook tool-use ID와 정규
+tool name을 기록합니다. 같은 tool-use ID를 다른 turn이나 tool name에 다시 쓰면 거부합니다.
+
+호환 event의 `guard_events.correlation_kind`는 `codex_hook_prompt` 또는
+`codex_hook_tool`입니다. `prompt_capture`는 session과 turn을 요구하고 tool-use field를
+금지합니다. `pre_tool`과 `post_tool`은 session, turn, tool-use ID, 정규 tool name을 모두
+요구합니다. Prompt capture는 정확한 host turn을 참조하고, expected write는 정확한 host
+tool invocation을 참조하며, 상관관계가 있는 unrecorded change도 같은 invocation을
+참조합니다. Rust 입력은 해당 `HostNativeCorrelation` variant를 운반하고, SQL check와 복합
+foreign key는 불완전하거나 phase 또는 Connection이 교차된 형태를 거부합니다. 어떤 hook
+record에도 host-thread field가 없습니다.
+
+`managed_mcp_sessions`는 별도의 MCP 전용 프로젝트 anchor입니다. 정규화한 host session과
+최신 host turn을 참조하고 host thread를 요구하며 선택적인 Registry runtime attachment를
+갖습니다. Guard 관찰은 이 row를 만들지 않습니다. 빈 값, sentinel, 조작한 runtime,
+CLI-preflight runtime으로 attach되지 않은 MCP anchor를 나타내지 않습니다.
 
 동일한 host session의 첫 실제 managed MCP 도구 호출은 순서가 정해진 네 단계를 사용합니다.
 Store는 현재 `managed_host` runtime과 그 Connection revision을 변경 없이 검증합니다. 그다음
-immediate 프로젝트 transaction에서 unbound Agent Session anchor를 만들거나 검증하고
+immediate 프로젝트 transaction에서 unbound `managed_mcp_sessions` anchor를 만들거나 검증하고
 Connection, native session, thread, 변경 불가능한 revision, 기존 runtime 충돌을 모두
 거부합니다. 이 commit 뒤에만 immediate Registry transaction이 runtime, Connection,
 프로젝트 membership, 현재 프로젝트 identity, 정확한 anchor 좌표를 다시 검증하고
@@ -197,17 +207,17 @@ Core를 승인할 수 없습니다. 소유자 상태가 바뀌지 않은 정확�
 attach를 완료합니다. 예약은 프로젝트 row와 같은 정확한 프로젝트 통합 revision을 저장하고
 권한 검증은 두 값이 같은지 확인합니다. Runtime, Connection, 프로젝트, revision,
 host-session Registry claim이 다르면 실패합니다. 프로젝트의 partial index는 null이 아닌
-runtime attach를 유일하게 만들면서 Guard-first 또는 MCP-first unbound anchor를 여러 개
-허용합니다.
+runtime attach를 유일하게 만들면서 unbound MCP anchor를 여러 개 허용합니다.
 
-현재 Registry binding과 정확히 일치하는 attached 프로젝트 row만 Core를 승인할 수
-있습니다. Unbound row는 Guard event와 prompt capture를 보관할 수 있습니다. Runtime row
-자체는 process의 이력 관찰이므로 crash한 row가 열린 것처럼 남거나 현재 row 여러 개가
+현재 Registry binding과 정확히 일치하는 attached `managed_mcp_sessions` row만 Core를
+승인할 수 있습니다. Hook 전용 정규화 row는 Guard event와 prompt capture를 보관할 수
+있지만 managed 호출을 승인할 수 없습니다. Runtime row 자체는 process의 이력 관찰이므로
+crash한 row가 열린 것처럼 남거나 현재 row 여러 개가
 동시에 존재해도 Guard 상관관계를 막거나 대신 선택되지 않습니다.
 
 Runtime 권한은 이 현재 기록을 직접 읽습니다. 활성 Connection, 현재 Connection Project
 membership, 그 Connection의 `session_source=managed_host` nonterminal runtime session, 같은 runtime
-session·Connection·프로젝트 소유의 프로젝트 Agent Session만 허용합니다. 저장된
+session·Connection·프로젝트 소유의 프로젝트 managed MCP session만 허용합니다. 저장된
 Connection과 프로젝트 통합 revision은 현재 담당 입력에서 도출한 revision과 같아야
 합니다. Connection mode는 요청한 operation category를 허용해야 합니다.
 `cli_preflight` row, diagnostic version 필드, best-effort diagnostics는 이 경계를 충족할 수
@@ -296,8 +306,11 @@ projection만 읽을 수 있습니다.
 Registry의 각 `guard_installations` row는 안정적인 설치/소유자 identity, 정규
 `manifest_json`, 생성/갱신 timestamp만 유지합니다. Manifest는 엄격하고 소유자에
 결속되며 정확한 policy hash, integration revision, typed runtime command, 전체
-Volicord managed-file 기대값, 필수 typed hook phase를 담습니다. File audit과 필수 phase
-관찰은 이 manifest와 현재 소유자가 일치하는 사실에서 현재 Guard check를 파생합니다.
+Volicord managed-file 기대값, 필수 typed hook phase, `host_contract_profile`,
+`host_contract_digest`를 담습니다. 현재 Guard profile은 명시적으로 `codex-hooks-v1`이며,
+audit은 들어온 payload에서 parser를 선택하지 않고 그 profile의 결정적인 검토 digest를
+요구합니다. File audit과 필수 phase 관찰은 이 manifest와 현재 소유자가 일치하는 사실에서
+현재 Guard check를 파생합니다.
 
 Policy command와 runtime command는 의도적으로 서로 다른 projection입니다. 정규 policy
 command에는 `--policy-hash`가 없고, 그 policy를 hash한 뒤 runtime command에
@@ -306,7 +319,11 @@ runtime command를 사용합니다. Audit은 공유 소유자 field와 command s
 비교하며 두 전체 command 객체의 동등성을 비교하지 않습니다.
 
 프로젝트 `guard_events`는 모든 관찰을 Guard 설치, policy hash, integration revision,
-typed hook phase, contract status에 결속합니다. 현재의 compatible event만
+typed hook phase, contract status에 결속합니다. `UserPromptSubmit`은 session/turn
+상관관계를 가진 `prompt_capture`가 됩니다. `PreToolUse`와 `PostToolUse`는
+session/turn/tool-use/tool-name 상관관계를 가진 `pre_tool`과 `post_tool`이 됩니다. 어떤
+경우에도 thread 좌표를 요구하거나 저장하지 않습니다. 정규 tool name을 포함한 같은 typed
+tool 상관관계가 관련 pre/post record에서 일치해야 합니다. 현재의 compatible event만
 `guard_observation`을 도출하며 이전 hash나 revision은 이력을 유지하되 현재 check를
 충족하지 못합니다. 현재 malformed 또는 incompatible event가 있으면 이 check는
 실패합니다. Prompt capture는 별도 설치 상태가 아니라 같은 관찰 summary의 사실입니다.

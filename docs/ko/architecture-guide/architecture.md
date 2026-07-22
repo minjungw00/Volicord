@@ -63,6 +63,7 @@ flowchart LR
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
 | `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 정규 `AgentToolId` catalog와 wire 이름 투영. |
+| `crates/volicord-host-contract` | 의존성이 안전한 버전 지정 Codex wire contract parsing, 결정적인 contract identity, 한도 있는 host 값과 error, source별 MCP·prompt-hook·tool-hook 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 선택한 Connection 보고서 표시, lifecycle-aware 정확한 lookup 표시, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
@@ -86,6 +87,10 @@ flowchart LR
   한도와 민감정보 제거를 적용하는 projection, 정규 tool identity catalog를 담당합니다.
   각 도메인 크레이트는 폐쇄형 세부 code 집합과 오류를 finding으로 빠짐없이 변환하는
   책임을 유지합니다.
+- `volicord-host-contract`는 저수준 공유 타입과 범용 serialization 및 hashing에만
+  의존합니다. Store, CLI, MCP는 명시적인 `codex-hooks-v1` 또는
+  `codex-mcp-2025-06-18-v1` parser와 typed 상관관계를 사용합니다. 이 크레이트는 Store,
+  Core, CLI, MCP에 의존하지 않습니다.
 - `volicord-store`는 공유 타입과 저장된 소유자 경로 검증에 쓰는 읽기 전용 정규 Git
   layout primitive에 의존하고 지속 저장 메커니즘을 담당합니다. Core, CLI, MCP 어댑터
   크레이트에는 의존하지 않습니다.
@@ -119,7 +124,9 @@ flowchart LR
 
 ## 정규 릴리스 경계
 
-경계 어댑터는 담당 문서가 정의한 현재 입력을 하나의 정규 내부 모델로 디코딩합니다.
+경계 어댑터는 담당 문서가 정의한 현재 입력을 하나의 정규 내부 모델로 디코딩합니다. Codex
+wire 경계는 버전이 지정된 `volicord-host-contract` profile을 명시적으로 선택하며 field
+형태에서 profile을 추론하거나 MCP 상관관계를 hook 상관관계로 재사용하지 않습니다.
 Core와 Store는 호스트 설정 문법, 셸 문법, 생성 wrapper, 플랫폼 명령 문자열에 따라
 분기하지 않습니다. Store는 매니페스트와 정규 SQL digest가 현재 릴리스 계약과
 일치하는 데이터베이스만 엽니다. Codex 어댑터는 Codex 구성의 parsing과 직렬화,
@@ -140,6 +147,7 @@ runtime/project session을 검증하고 typed `ValidatedAgentSession`을 Core에
 | CLI 운영 진단 | `volicord-cli`는 불변 운영 definition, 폐쇄형 typed subject와 facts, typed action 선택, 담당자 범위 current-condition 영속화를 `operational_diagnostics`에 둡니다. 별도의 Connection 검증 패키지는 host, MCP, Guard check와 dependency graph 평가 및 보고서 입력을 조율하고, typed 관찰을 finding으로 투영합니다. Store는 lifecycle 및 조회 구현 담당을 유지합니다. | [소스 지도](source-map.md), [실패 모델](../reference/failure-model.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |
 | 진단 영속화와 조회 | `volicord-store`는 추가 전용 occurrence, 교체 가능한 current snapshot, cause graph 검증 및 순회, lifecycle-aware 정확한 lookup 및 graph API, 현재 보고서 projection, 내부 row 인코딩을 분리합니다. 정확한 read는 occurrence/current lifecycle, active/resolved 상태, 해소 시각을 유지하고, 보고 가능한 read는 적격 occurrence와 active current finding만 projection합니다. | [소스 지도](source-map.md), [저장소](../reference/storage.md), [저장소 레코드](../reference/storage-records.md), [실패 모델](../reference/failure-model.md). |
 | Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리를 담당합니다. CLI와 MCP 어댑터는 Core 주변의 프로세스, 설정, 전송, 처리 경로, 렌더링 경계를 담당합니다. Core는 어느 어댑터 계층에도 의존하지 않습니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |
+| Codex host-wire 계약 | `volicord-host-contract`는 서로 다른 버전 지정 MCP metadata와 command-hook decoder, 결정적인 profile digest, 한도 있는 값과 failure, 서로 바꿔 쓸 수 없는 상관관계 타입을 담당합니다. MCP는 session/thread/turn을 제공하고 prompt hook은 session/turn을 제공하며 tool hook은 tool-use ID와 정규 tool name도 제공합니다. Store는 decode 뒤 정규화와 phase 제약을 담당합니다. | [소스 맵](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [저장소 레코드](../reference/storage-records.md), [실패 모델](../reference/failure-model.md). |
 | Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
 | Store 커밋 경계 | Core 메서드 계획 코드는 읽기 전용, 효과 없음, dry-run, 스테이징, 커밋 분기를 고릅니다. Store는 정상 커밋된 Core 변이를 트랜잭션 경계에서 적용하고, 아티팩트 스테이징을 정상 Core 변이 커밋과 분리합니다. Core 권한 의미는 Core 담당 문서에, 정확한 저장소 기록과 효과는 저장소 담당 문서에 남습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [요청 생명주기](request-lifecycle.md), [Core 모델](../reference/core-model.md), [저장소](../reference/storage.md), [저장 효과](../reference/storage-effects.md). |
 | MCP 프로토콜 프로필 및 적합성 경계 | `volicord-mcp-protocol`은 폐쇄형 리비전 타입 집합, 검토된 프로덕션 프로필, 메시지·도구·스키마 기능 선언, 명시적 순회 순서, 서버 선호 리비전을 담당합니다. 일반 실행 적합성 테스트와 CLI 서버 probe는 이 프로덕션 registry를 직접 순회합니다. `xtask`는 이와 독립적으로 릴리스된 manifest 프로덕션 지원과 같은 컴파일된 registry의 정확한 일치를 강제합니다. Host 호환성 fixture는 독립적으로 고정하며 서버 선호값이나 revision 적합성을 담당하지 않습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md), [MCP 전송](../reference/mcp-transport.md). |

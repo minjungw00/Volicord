@@ -76,7 +76,7 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
         PROJECT_ID,
         UnrecordedChangeInsert {
             unrecorded_change_id: "unrecorded_core_metrics_first_write".to_owned(),
-            session_id: None,
+            correlation: None,
             connection_internal_id: CONNECTION_ID.to_owned(),
             task_id: Some(task_id.clone()),
             confidence: UnrecordedChangeConfidence::Confirmed.as_str().to_owned(),

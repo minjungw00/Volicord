@@ -1,0 +1,18 @@
+[package]
+name = "volicord-host-contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+volicord-types = { path = "../volicord-types" }
+
+[dev-dependencies]
+toml = "0.8"
+
+[lib]
+path = "src/lib.rs"

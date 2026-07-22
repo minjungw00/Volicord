@@ -168,6 +168,11 @@ pub fn test_guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: HostKind::Codex,
         integration_profile: IntegrationProfile::Record,
+        host_contract_profile: volicord_host_contract::HostContractProfileId::CodexHooksV1
+            .as_str()
+            .to_owned(),
+        host_contract_digest: volicord_host_contract::HostContractProfileId::CodexHooksV1
+            .contract_digest(),
         policy_hash: typed_policy_hash,
         integration_revision,
         runtime_commands,
@@ -313,9 +318,14 @@ pub fn seed_test_agent_session(
             runtime_session_id: runtime_session_id.clone(),
             connection_internal_id: connection_id.to_owned(),
             guard_installation_id: guard_installation_id.map(str::to_owned),
-            host_session_id: host_session_id.clone(),
-            host_thread_id: host_thread_id.clone(),
-            host_turn_id: host_turn_id.clone(),
+            correlation: volicord_host_contract::CodexMcpCorrelation {
+                session_id: volicord_host_contract::HostSessionId::parse(host_session_id.clone())
+                    .expect("valid test host session"),
+                thread_id: volicord_host_contract::HostThreadId::parse(host_thread_id.clone())
+                    .expect("valid test host thread"),
+                turn_id: volicord_host_contract::HostTurnId::parse(host_turn_id.clone())
+                    .expect("valid test host turn"),
+            },
             observed_at,
         },
     )?

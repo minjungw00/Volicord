@@ -187,8 +187,8 @@ Host 호환성은 protocol registry projection도 전체 revision 매트릭스�
 host가 독립적으로 소유하는 fixture 목록입니다. 현재 `codex` fixture는
 `clientInfo.name`이 `codex-mcp-client`이고 title이
 `Codex`이며 현재의 빈 capability 객체를 사용하는 검토된 Codex initialize 요청 형태와,
-독립적으로 고정한 revision `2025-06-18`을 사용합니다. 도구 호출 하나에는 유효한 Codex
-native thread/session/turn correlation metadata를 담습니다. `tools/list`와
+독립적으로 고정한 revision `2025-06-18`을 사용합니다. 도구 호출 하나에는 유효한
+`codex-mcp-2025-06-18-v1` session/thread/turn metadata를 담습니다. `tools/list`와
 `ToolVerificationRole::ManagedHostRoundTrip`이 선택한 도구(현재
 `volicord.list_projects`)를 실행하며, 요청 revision을 서버의 선호 또는 최신 profile에서
 파생하지 않습니다. 배포된 client 계열이 서로 다른 revision을 요구하면 독립적으로 고정한
@@ -198,6 +198,21 @@ native thread/session/turn correlation metadata를 담습니다. `tools/list`와
 서버에서 동작함을 보여 주지만 관리 Codex process가 실행되었음을 보여 주지는 않습니다.
 Source가 `managed_host`인 실제 process가 기록한 lifecycle 관찰만 managed-host 운영 check를
 충족할 수 있습니다.
+
+## 버전이 지정된 Codex Host 계약
+
+관리 Codex wire 입력은 명시적으로 선택한 host contract profile로 decode합니다.
+`codex-mcp-2025-06-18-v1`은 `tools/call` `_meta`를 소유하며 native session, thread,
+turn과 최상위 `threadId` 및 중첩
+`x-codex-turn-metadata.thread_id`의 동일성을 요구합니다. `codex-hooks-v1`은 command-hook
+envelope를 별도로 소유합니다. `UserPromptSubmit` 상관관계는 session과 turn이고,
+`PreToolUse` 및 `PostToolUse` 상관관계는 session, turn, tool-use ID, 정규 tool
+name입니다. Command-hook 상관관계에는 thread 좌표가 없습니다.
+
+두 profile은 payload 모양에서 추론하지 않으며 typed 상관관계를 서로 바꾸어 쓸 수 없습니다.
+둘 다 알 수 없는 추가 field를 허용하지만 계약이 소유하는 presentation 값과 tool 값만 한도
+안에서 보관하고, 전체 입력을 유지하지 않는 한도 있는 typed failure를 반환합니다. 관리 MCP는
+파싱한 session과 thread가 등록된 managed runtime binding과 일치하는지도 요구합니다.
 
 ## 권위 있는 Lifecycle 기록
 
@@ -259,36 +274,40 @@ graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보�
 
 ## 호출별 Session 권한
 
-유효한 Guard 관찰은 MCP runtime을 아직 모르는 상태에서 프로젝트 `agent_sessions` row를
-생성하거나 갱신할 수 있습니다. 이 row에는 조작한 값이나 sentinel runtime 좌표를 저장하지
-않습니다. 실제 프로젝트를 선택하기 전 MCP runtime 상태는 정확한 native session, thread,
-turn metadata만 유지하고 Connection만으로 내부 session 좌표를 도출하거나 검색하지
-않습니다. 프로젝트를 선택한 뒤 Store가 현재 프로젝트 통합 revision을 결정하고 Connection,
-그 정확한 revision, native session으로 프로젝트 Agent Session ID를 도출합니다. 첫 실제
-managed `tools/call`에서 Store는 먼저 현재 managed runtime을 변경 없이 검증합니다. 그다음
-정확한 Connection, native session, thread, 프로젝트 revision, 현재 Guard 소유권에 맞는
-unbound 프로젝트 Agent Session anchor를 만들거나 검증합니다. 이 프로젝트 transaction이
-commit된 뒤에만 Store가 현재 소유자 사실을 다시 검증하고 정확한 Registry
+유효한 Guard 관찰은 정규화한 프로젝트 `host_sessions`와 `host_turns` row를 만듭니다.
+Tool phase는 `host_tool_invocations`도 만듭니다. Guard는 `managed_mcp_sessions`를 만들지
+않고, 열린 process row에서 runtime을 선택하지 않으며, thread를 합성하지 않습니다. 실제
+프로젝트를 선택하기 전 MCP runtime 상태는 정확한 `CodexMcpCorrelation`만 유지하고
+Connection만으로 내부 session 좌표를 도출하거나 검색하지 않습니다. 프로젝트를 선택한 뒤
+Store가 현재 프로젝트 통합 revision을 결정하고 Connection, 그 정확한 revision, native
+session으로 프로젝트 Agent Session ID를 도출합니다.
+
+첫 실제 managed `tools/call`에서 Store는 먼저 현재 managed runtime을 변경 없이 검증하고,
+정규화한 host session과 turn을 만든 뒤, 정확한 Connection, native session, thread,
+프로젝트 revision, 현재 Guard 소유권, 최신 turn에 맞는 MCP 전용
+`managed_mcp_sessions` anchor를 만들거나 검증합니다. 이 프로젝트 transaction이 commit된
+뒤에만 Store가 현재 소유자 사실을 다시 검증하고 정확한 Registry
 runtime/project/revision/host-session binding을 예약합니다. 마지막 프로젝트 transaction은
 같은 anchor에 그 runtime을 붙입니다. 따라서 결정적인 프로젝트 소유권 충돌은 Registry
-예약을 만들지 않습니다. Unbound anchor는 권한이 아니며, 일치하는 프로젝트 attach가 없는
-Registry 예약도 권한이 아닙니다. 마지막 프로젝트 쓰기가 중단되면 소유자 상태가 바뀌지
-않은 동일 호출이 예약을 재사용해 attach를 완료합니다. CLI preflight는 이 binding을
-수행하지 않습니다.
+예약을 만들지 않습니다. 결속되지 않은 MCP anchor는 권한이 아니며, 일치하는 프로젝트
+attach가 없는 Registry 예약도 권한이 아닙니다. 마지막 프로젝트 쓰기가 중단되면 소유자
+상태가 바뀌지 않은 동일 호출이 예약을 재사용해 attach를 완료합니다. CLI preflight는 이
+binding을 수행하지 않습니다.
 
 따라서 프로젝트 Agent Session 검증은 Registry runtime 예약보다 먼저 수행됩니다. 권한에는
 완료된 프로젝트 attachment와 정확히 완료된 Registry binding이 모두 필요합니다.
 
 프로젝트 도구의 Core 호출 맥락을 만들기 전에 어댑터는 권위 있는 현재 Registry runtime
-session, 정확한 `mcp_runtime_project_session_bindings` row, 프로젝트 `agent_sessions` row를
-검증합니다. Connection이 존재하고 활성 상태여야 하며 프로젝트가 존재하고 Connection
+session, 정확한 `mcp_runtime_project_session_bindings` row, 그 `host_sessions` 소유자와
+join한 프로젝트 `managed_mcp_sessions` row를 검증합니다. Connection이 존재하고 활성
+상태여야 하며 프로젝트가 존재하고 Connection
 Project로 남아 있어야 합니다. Runtime session은 해당 Connection 소유의 현재
 `managed_host` session이어야 합니다. 프로젝트 session은 null이 아닌 runtime binding을
 가지고 동일한 runtime, Connection, 프로젝트, host session에 속해야 합니다. Registry
 binding revision과 프로젝트 row revision이 서로 같아야 하고, 두 통합 revision은 현재
 Connection과 프로젝트 입력에 일치해야 합니다. 현재 Connection mode가 요청한 operation
-category를 허용해야 합니다. 결속되지 않은 Guard-only session은 Guard 이력을
-보관하지만 도구 호출을 승인할 수 없습니다. 실제 mode 전환마다 Store 소유 Connection
+category를 허용해야 합니다. Hook 전용 host row는 Guard 이력을 보관하지만 도구 호출을
+승인할 수 없습니다. 실제 mode 전환마다 Store 소유 Connection
 integration generation이 증가하므로, 이전 모든 generation의 runtime session, 프로젝트
 Agent Session, Guard event는 나중에 Connection이 같은 mode 값으로 돌아가더라도 이력으로
 남습니다.

@@ -169,21 +169,25 @@ allowlist 또는 명시적으로 선택한 구성원입니다. 임의의 파일�
 
 Registry는 process lifecycle milestone, 구조화된 runtime diagnostic finding과 cause edge,
 terminal-finding 연결, 프로젝트 간 runtime/host session 예약을 담당합니다. 각 프로젝트
-데이터베이스는 프로젝트 Agent Session과 host
-session/thread/turn 상관관계를 담당합니다. MCP는 실제 프로젝트를 선택할 때까지 이 native
-좌표를 유지하고, 그 뒤 Store가 Connection, 현재 프로젝트 통합 revision, native session으로
-프로젝트 session 좌표를 도출합니다. 분리된 데이터베이스 파일 사이에는 SQLite foreign key를
-집행할 수 없으므로 유효한 Guard 관찰은 먼저 unbound 프로젝트 session을 만들 수 있습니다.
-동일한 host-native session 상관관계로 연결된 첫 실제 managed MCP 도구 호출은 먼저 현재
-managed runtime을 변경 없이 검증하고 정확한 unbound 프로젝트 anchor를 만들거나
-검증합니다. 프로젝트 소유권 검증이 commit된 뒤에만 Registry가 현재 소유자 사실을 다시
-검증하고 정확한 프로젝트 revision과 함께 프로젝트 간 uniqueness를 예약합니다. 마지막 프로젝트 transaction에서 그 runtime을
-anchor에 붙입니다. 프로젝트 소유권 충돌은 Registry 예약을 남기지 않습니다. Unbound
-프로젝트 anchor와 프로젝트 attach가 없는 Registry 예약은 각각 권한 효력이 없습니다.
-소유자 상태가 바뀌지 않은 정확한 replay는 중단된 마지막 attach를 복구합니다. Process row는
-lease나 liveness signal이 아니므로 crash 뒤 열린 것처럼 남은 row와 concurrent process가
-Guard 상관관계를 선택하거나 막지 않습니다. `diagnostics.sqlite`는 분리된 best-effort
-carrier이며 운영 권한 출처로 사용하지 않습니다.
+데이터베이스는 정규화한 host session, turn, hook tool invocation, Guard observation, MCP
+전용 session anchor를 담당합니다. 명시적으로 선택한 `codex-mcp-2025-06-18-v1` profile은
+session/thread/turn 상관관계를 제공합니다. 별도로 선택한 `codex-hooks-v1` profile은 prompt의
+session/turn 또는 tool의 session/turn/tool-use/tool-name 상관관계를 제공하며 command
+hook에는 thread 좌표가 없습니다.
+
+MCP는 실제 프로젝트를 선택할 때까지 typed native 좌표를 유지하고, 그 뒤 Store가
+Connection, 현재 프로젝트 통합 revision, native session으로 로컬 프로젝트 session 좌표를
+도출합니다. Guard 관찰은 공유하는 정규화 host row를 만들 수 있지만 MCP 전용 thread나
+runtime anchor를 만들 수 없습니다. 첫 실제 managed MCP 도구 호출은 현재 managed runtime을
+변경 없이 검증하고 정확한 anchor를 만들거나 검증합니다. 프로젝트 소유권 검증이 commit된
+뒤에만 Registry가 현재 소유자 사실을 다시 검증하고 정확한 프로젝트 revision과 함께
+프로젝트 간 uniqueness를 예약합니다. 마지막 프로젝트 transaction에서 runtime을 붙입니다.
+프로젝트 소유권 충돌은 Registry 예약을 남기지 않습니다. Unbound MCP anchor와 프로젝트
+attach가 없는 Registry 예약은 각각 권한 효력이 없습니다. 소유자 상태가 바뀌지 않은 정확한
+replay는 중단된 마지막 attach를 복구합니다. Process row는 lease나 liveness signal이 아니므로
+crash 뒤 열린 것처럼 남은 row와 concurrent process가 Guard 상관관계를 선택하거나 막지
+않습니다. `diagnostics.sqlite`는 분리된 best-effort carrier이며 운영 권한 출처로 사용하지
+않습니다.
 
 ## 위치와 권한 경계
 

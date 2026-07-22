@@ -251,7 +251,7 @@ fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     let before_version = read_only_state_version(&fixture)?;
     let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let adapter = adapter(&fixture)?;
-    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_sessions = read_only_table_count(&fixture, "host_sessions")?;
     let _guard = make_project_state_readonly(&fixture)?;
 
     let response =
@@ -260,7 +260,7 @@ fn mcp_status_does_not_advance_state_version() -> Result<(), Box<dyn Error>> {
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(read_only_state_version(&fixture)?, before_version);
     assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
+        read_only_table_count(&fixture, "host_sessions")?,
         before_sessions
     );
     assert_eq!(
@@ -1444,7 +1444,7 @@ fn invented_session_coordinates_do_not_authorize_or_insert_a_project_session(
     let context =
         McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
     let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
-    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_sessions = read_only_table_count(&fixture, "host_sessions")?;
 
     let error = adapter
         .call_tool_for_session(
@@ -1461,7 +1461,7 @@ fn invented_session_coordinates_do_not_authorize_or_insert_a_project_session(
         .to_string()
         .contains("agent_runtime_session_not_current"));
     assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
+        read_only_table_count(&fixture, "host_sessions")?,
         before_sessions
     );
     Ok(())

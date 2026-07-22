@@ -16,9 +16,9 @@ use crate::{
     VOLICORD_MCP_VERIFICATION_VALUE,
 };
 use sha2::{Digest, Sha256};
+use volicord_host_contract::{CodexMcpCorrelation, CodexMcpTurnMetadataV1, HostContractErrorCode};
 use volicord_types::{HostKind, ManagedMcpClientInfo};
 
-const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
 const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord.codex-mcp-thread-binding\0";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
 pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
@@ -707,9 +707,7 @@ enum CodexManagedBinding {
     Pending,
     Bound {
         thread_digest: [u8; 32],
-        host_session_id: String,
-        host_thread_id: String,
-        host_turn_id: String,
+        correlation: CodexMcpCorrelation,
     },
 }
 
@@ -778,20 +776,12 @@ impl NegotiatedMcpSession {
 
 impl ConnectionState {
     fn managed_agent_session_binding(&self) -> Option<ManagedAgentSessionBinding> {
-        let CodexManagedBinding::Bound {
-            host_session_id,
-            host_thread_id,
-            host_turn_id,
-            ..
-        } = &self.codex_binding
-        else {
+        let CodexManagedBinding::Bound { correlation, .. } = &self.codex_binding else {
             return None;
         };
         Some(ManagedAgentSessionBinding {
             runtime_session_id: self.runtime_session_id.clone(),
-            host_session_id: host_session_id.clone(),
-            host_thread_id: host_thread_id.clone(),
-            host_turn_id: host_turn_id.clone(),
+            correlation: correlation.clone(),
         })
     }
 
@@ -1578,9 +1568,7 @@ fn bind_codex_managed_tool_call(
             let mut candidate = state.clone();
             candidate.codex_binding = CodexManagedBinding::Bound {
                 thread_digest: binding.thread_digest,
-                host_session_id: binding.host_session_id,
-                host_thread_id: binding.host_thread_id,
-                host_turn_id: binding.host_turn_id,
+                correlation: binding.correlation,
             };
             candidate.managed_stdio_binding_active = true;
             validate_managed_stdio_session_ownership(adapter, &candidate)
@@ -1590,13 +1578,12 @@ fn bind_codex_managed_tool_call(
         }
         CodexManagedBinding::Bound {
             thread_digest,
-            host_session_id,
-            host_turn_id,
+            correlation,
             ..
-        } if *host_session_id == binding.host_session_id
+        } if correlation.session_id == binding.correlation.session_id
             && *thread_digest == binding.thread_digest =>
         {
-            *host_turn_id = binding.host_turn_id;
+            correlation.turn_id = binding.correlation.turn_id;
             Ok(())
         }
         CodexManagedBinding::Bound { .. } => {
@@ -1609,59 +1596,30 @@ fn bind_codex_managed_tool_call(
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodexManagedCallBinding {
     thread_digest: [u8; 32],
-    host_session_id: String,
-    host_thread_id: String,
-    host_turn_id: String,
+    correlation: CodexMcpCorrelation,
 }
 
 fn codex_managed_call_binding(
     params: &Map<String, Value>,
     connection_internal_id: &str,
 ) -> Result<CodexManagedCallBinding, McpHostError> {
-    let metadata = params
-        .get("_meta")
-        .and_then(Value::as_object)
-        .ok_or(McpHostError::MalformedNativeMetadata)?;
-    let flat_thread_id = metadata
-        .get("threadId")
-        .and_then(Value::as_str)
-        .ok_or(McpHostError::MalformedNativeMetadata)?;
-    let turn_metadata = metadata
-        .get(CODEX_TURN_METADATA_KEY)
-        .and_then(Value::as_object)
-        .ok_or(McpHostError::MalformedNativeMetadata)?;
-    let native_session_id = codex_turn_metadata_id(turn_metadata, "session_id")?;
-    let nested_thread_id = codex_turn_metadata_id(turn_metadata, "thread_id")?;
-    let turn_id = codex_turn_metadata_id(turn_metadata, "turn_id")?;
-    validate_managed_host_native_session_id(flat_thread_id)
-        .map_err(|_| McpHostError::MalformedNativeMetadata)?;
-    if flat_thread_id != nested_thread_id {
-        return Err(McpHostError::SessionThreadTurnInconsistent);
-    }
+    let correlation = CodexMcpTurnMetadataV1
+        .parse_tools_call_params(params)
+        .map_err(|error| match error.code() {
+            HostContractErrorCode::InconsistentCorrelation => {
+                McpHostError::SessionThreadTurnInconsistent
+            }
+            _ => McpHostError::MalformedNativeMetadata,
+        })?;
     let thread_digest = codex_thread_correlation_digest(
         connection_internal_id,
-        native_session_id,
-        nested_thread_id,
+        correlation.session_id.as_str(),
+        correlation.thread_id.as_str(),
     );
     Ok(CodexManagedCallBinding {
         thread_digest,
-        host_session_id: native_session_id.to_owned(),
-        host_thread_id: nested_thread_id.to_owned(),
-        host_turn_id: turn_id.to_owned(),
+        correlation,
     })
-}
-
-fn codex_turn_metadata_id<'a>(
-    metadata: &'a Map<String, Value>,
-    field: &str,
-) -> Result<&'a str, McpHostError> {
-    let value = metadata
-        .get(field)
-        .and_then(Value::as_str)
-        .ok_or(McpHostError::MalformedNativeMetadata)?;
-    validate_managed_host_native_session_id(value)
-        .map_err(|_| McpHostError::MalformedNativeMetadata)?;
-    Ok(value)
 }
 
 fn codex_thread_correlation_digest(
@@ -1682,6 +1640,8 @@ fn codex_thread_correlation_digest(
 #[cfg(test)]
 mod codex_call_binding_tests {
     use super::*;
+
+    const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
 
     fn valid_params() -> Map<String, Value> {
         json!({
@@ -1707,7 +1667,7 @@ mod codex_call_binding_tests {
     fn exact_codex_call_metadata_accepts_extensions_and_has_stable_bindings() {
         let first = codex_managed_call_binding(&valid_params(), "connection.alpha")
             .expect("exact metadata should bind");
-        assert_eq!(first.host_session_id, "session.alpha");
+        assert_eq!(first.correlation.session_id.as_str(), "session.alpha");
         let replay = codex_managed_call_binding(&valid_params(), "connection.alpha")
             .expect("same metadata should replay");
         assert_eq!(first, replay);
@@ -1716,10 +1676,10 @@ mod codex_call_binding_tests {
         next_turn["_meta"][CODEX_TURN_METADATA_KEY]["turn_id"] = json!("turn.beta");
         let next = codex_managed_call_binding(&next_turn, "connection.alpha")
             .expect("turn changes do not change the session/thread binding");
-        assert_eq!(next.host_session_id, first.host_session_id);
+        assert_eq!(next.correlation.session_id, first.correlation.session_id);
         assert_eq!(next.thread_digest, first.thread_digest);
-        assert_eq!(next.host_thread_id, first.host_thread_id);
-        assert_eq!(next.host_turn_id, "turn.beta");
+        assert_eq!(next.correlation.thread_id, first.correlation.thread_id);
+        assert_eq!(next.correlation.turn_id.as_str(), "turn.beta");
     }
 
     #[test]
@@ -3290,12 +3250,7 @@ fn validate_managed_stdio_session_ownership(
     if !state.managed_stdio_binding_active {
         return Ok(());
     }
-    let CodexManagedBinding::Bound {
-        host_session_id,
-        host_thread_id,
-        ..
-    } = &state.codex_binding
-    else {
+    let CodexManagedBinding::Bound { correlation, .. } = &state.codex_binding else {
         return Err(McpAdapterError::Environment(
             "managed_host_session_correlation_invalid: active managed stdio binding has no host-native session correlation"
                 .to_owned(),
@@ -3312,18 +3267,7 @@ fn validate_managed_stdio_session_ownership(
                 .to_owned(),
         )
     })?;
-    validate_managed_host_native_session_id(host_session_id).map_err(|_| {
-        McpAdapterError::Environment(
-            "managed_host_session_correlation_invalid: active managed stdio binding has invalid host-native session correlation"
-                .to_owned(),
-        )
-    })?;
-    validate_managed_host_native_session_id(host_thread_id).map_err(|_| {
-        McpAdapterError::Environment(
-            "managed_host_session_correlation_invalid: active managed stdio binding has invalid host-native thread correlation"
-                .to_owned(),
-        )
-    })?;
+    let _validated_correlation = correlation;
 
     Ok(())
 }

@@ -5183,9 +5183,14 @@ mod tests {
                 runtime_session_id: runtime_session_id.to_owned(),
                 connection_internal_id: connection_internal_id.to_owned(),
                 guard_installation_id: Some(guard_installation_id.to_owned()),
-                host_session_id: host_session_id.to_owned(),
-                host_thread_id: format!("thread.{host_session_id}"),
-                host_turn_id: format!("turn.{host_session_id}"),
+                correlation: volicord_host_contract::CodexMcpCorrelation {
+                    session_id: volicord_host_contract::HostSessionId::parse(host_session_id)
+                        .expect("valid test host session"),
+                    thread_id: volicord_host_contract::HostThreadId::parse("native.thread.fixture")
+                        .expect("valid test host thread"),
+                    turn_id: volicord_host_contract::HostTurnId::parse("native.turn.fixture")
+                        .expect("valid test host turn"),
+                },
                 observed_at: observed_at.to_owned(),
             },
         )

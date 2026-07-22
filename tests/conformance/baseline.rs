@@ -3889,7 +3889,7 @@ fn insert_unrecorded_change_fixture(
         fixture.project_id(),
         UnrecordedChangeInsert {
             unrecorded_change_id: format!("unrecorded_change_{suffix}"),
-            session_id: None,
+            correlation: None,
             connection_internal_id: fixture.connection_id().to_owned(),
             task_id: Some(task_id.to_owned()),
             confidence: "confirmed".to_owned(),

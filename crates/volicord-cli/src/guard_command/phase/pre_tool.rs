@@ -229,7 +229,7 @@ fn expected_write_candidate(
     Ok(Some(ExpectedWriteCandidate {
         insert: ExpectedWriteInsert {
             expected_write_id,
-            session_id: envelope.session_id.clone(),
+            correlation: envelope.correlation.clone(),
             connection_internal_id: envelope.connection_id.clone(),
             guard_installation_id: envelope.guard_installation_id.clone(),
             pre_tool_guard_event_id: envelope.event_id.clone(),

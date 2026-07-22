@@ -100,12 +100,11 @@ an integer, compare versions, inspect field presence to select a decoder, or
 try another profile. The exact open result and failure category remain with
 [Storage Versioning](storage-versioning.md).
 
-Adding revision-scoped project Agent Session identities changes both schema
-digests: Registry bindings gain `project_integration_revision`, and project
-Agent Session revisions become SQL-immutable. A Runtime Home carrying the
-immediately prior schema manifest is rejected as an unsupported storage profile
-with explicit reinitialization guidance. Store does not add the column, rewrite
-historical session IDs, or synthesize values in place.
+The current project schema normalizes source-aware host correlation into
+`host_sessions`, `host_turns`, `host_tool_invocations`, and the MCP-only
+`managed_mcp_sessions` table. Their constraints and the phase-discriminated
+Guard columns are part of both current schema digests. Strict open accepts only
+the complete current manifest identity.
 
 ## Canonical SQL Sources
 
@@ -652,7 +651,7 @@ Registry constraints:
 - `diagnostic_findings.lifecycle` is exactly `occurrence` or `current_state`. Occurrence rows have no current identity or status fields and are immutable. Current rows require a full 64-character lowercase identity digest, a validated `sha256:<64 lowercase hex>` `current_subject_identity`, scope kind and complete scope identity, active/resolved status, no runtime-session coordinate, and an ID exactly equal to `finding.current.sha256:` plus that digest. Active rows have no `resolved_at`; resolved rows require it. The unique digest index, active-scope index, lifecycle checks, and identity update trigger enforce those physical distinctions. The trigger keeps the subject identity immutable while allowing `subject_json` to change as replaceable safe presentation. `facts_json` remains a valid JSON object bounded to 16,384 bytes; `subject_json` and `actions_json` are likewise bounded typed representations.
 - `diagnostic_cause_edges` stores unique finding-to-cause pairs with foreign keys on both ends. `diagnostic_cause_edges_acyclic` rejects an insert that would close a directed cycle, while the cause-side index supports deterministic reverse and bounded traversal. Replacing a current-state finding deletes its prior outgoing edges and inserts the replacement edges in the same immediate transaction as the row replacement; any failure preserves the prior row and edge set.
 - `mcp_runtime_sessions.attempted_client_name` and `attempted_client_version` form the bounded parsed client pair. `requested_protocol_version` is client input; `selected_protocol_version` is the server-selected initialize result; `negotiated_protocol_version` is present only with handshake completion and must equal the selected revision. `initialize_completed_at` and `tools_list_observed_at` are distinct milestones. The bounded MCP tool name `verification_tool_name` and `verification_tool_observed_at` form an exact null-or-present pair; the observation requires the initialized notification and cannot precede it. `terminal_finding_id` is a same-runtime foreign key to one structured error finding and is mutually exclusive with graceful close.
-- `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, and required hook phases. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.
+- `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, required hook phases, exact `host_contract_profile`, and deterministic `host_contract_digest`. The current Guard selection is `codex-hooks-v1`. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.
 - Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding and Guard Installation before `mcp_runtime_sessions` and then `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
 
 ## Project `state.sqlite`
@@ -1467,12 +1466,9 @@ CREATE INDEX idx_authority_events_state_version
   ON authority_events (project_id, state_version, event_seq);
 CREATE INDEX idx_authority_events_hash_chain
   ON authority_events (project_id, previous_event_hash, event_hash);
-CREATE TABLE agent_sessions (
+CREATE TABLE host_sessions (
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
-  runtime_session_id TEXT CHECK (
-    runtime_session_id IS NULL OR length(trim(runtime_session_id)) > 0
-  ),
   connection_internal_id TEXT NOT NULL,
   project_integration_revision TEXT NOT NULL CHECK (
     length(project_integration_revision) = 71
@@ -1480,8 +1476,6 @@ CREATE TABLE agent_sessions (
     AND substr(project_integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
   ),
   host_session_id TEXT NOT NULL CHECK (length(trim(host_session_id)) > 0),
-  host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
-  last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
   first_observed_at TEXT NOT NULL,
   last_observed_at TEXT NOT NULL,
   PRIMARY KEY (project_id, session_id),
@@ -1490,17 +1484,75 @@ CREATE TABLE agent_sessions (
   FOREIGN KEY (project_id) REFERENCES project_state (project_id)
 );
 
-CREATE TRIGGER agent_sessions_project_integration_revision_immutable
-BEFORE UPDATE OF project_integration_revision ON agent_sessions
+CREATE TRIGGER host_sessions_project_integration_revision_immutable
+BEFORE UPDATE OF project_integration_revision ON host_sessions
 BEGIN
-  SELECT RAISE(ABORT, 'agent_sessions.project_integration_revision is immutable');
+  SELECT RAISE(ABORT, 'host_sessions.project_integration_revision is immutable');
 END;
+
+CREATE TABLE host_turns (
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL CHECK (length(trim(host_turn_id)) > 0),
+  first_observed_at TEXT NOT NULL,
+  last_observed_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_id, host_turn_id),
+  UNIQUE (project_id, session_id, connection_internal_id, host_turn_id),
+  CHECK (last_observed_at >= first_observed_at),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES host_sessions (project_id, session_id, connection_internal_id)
+);
+
+CREATE TABLE host_tool_invocations (
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  connection_internal_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL,
+  host_tool_use_id TEXT NOT NULL CHECK (length(trim(host_tool_use_id)) > 0),
+  host_tool_name TEXT NOT NULL CHECK (length(trim(host_tool_name)) > 0),
+  first_observed_at TEXT NOT NULL,
+  last_observed_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_id, host_tool_use_id),
+  UNIQUE (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ),
+  CHECK (last_observed_at >= first_observed_at),
+  FOREIGN KEY (project_id, session_id, connection_internal_id, host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id)
+);
+
+CREATE TABLE managed_mcp_sessions (
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  runtime_session_id TEXT CHECK (
+    runtime_session_id IS NULL OR length(trim(runtime_session_id)) > 0
+  ),
+  connection_internal_id TEXT NOT NULL,
+  host_thread_id TEXT NOT NULL CHECK (length(trim(host_thread_id)) > 0),
+  last_host_turn_id TEXT NOT NULL CHECK (length(trim(last_host_turn_id)) > 0),
+  first_observed_at TEXT NOT NULL,
+  last_observed_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, session_id),
+  CHECK (last_observed_at >= first_observed_at),
+  FOREIGN KEY (project_id, session_id, connection_internal_id)
+    REFERENCES host_sessions (project_id, session_id, connection_internal_id),
+  FOREIGN KEY (project_id, session_id, connection_internal_id, last_host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id)
+);
 
 CREATE TABLE guard_events (
   project_id TEXT NOT NULL,
   guard_event_id TEXT NOT NULL,
   session_id TEXT,
   connection_internal_id TEXT NOT NULL,
+  correlation_kind TEXT CHECK (
+    correlation_kind IN ('codex_hook_prompt', 'codex_hook_tool')
+  ),
+  host_turn_id TEXT,
+  host_tool_use_id TEXT,
+  host_tool_name TEXT,
   guard_installation_id TEXT NOT NULL,
   policy_hash TEXT NOT NULL CHECK (
     length(policy_hash) = 71
@@ -1520,9 +1572,42 @@ CREATE TABLE guard_events (
   occurred_at TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, guard_event_id),
+  CHECK (
+    (
+      correlation_kind IS NULL
+      AND session_id IS NULL
+      AND host_turn_id IS NULL
+      AND host_tool_use_id IS NULL
+      AND host_tool_name IS NULL
+    )
+    OR (
+      correlation_kind = 'codex_hook_prompt'
+      AND event_kind = 'prompt_capture'
+      AND session_id IS NOT NULL
+      AND host_turn_id IS NOT NULL
+      AND host_tool_use_id IS NULL
+      AND host_tool_name IS NULL
+    )
+    OR (
+      correlation_kind = 'codex_hook_tool'
+      AND event_kind IN ('pre_tool', 'post_tool')
+      AND session_id IS NOT NULL
+      AND host_turn_id IS NOT NULL
+      AND host_tool_use_id IS NOT NULL
+      AND host_tool_name IS NOT NULL
+    )
+  ),
+  CHECK (contract_status != 'compatible' OR correlation_kind IS NOT NULL),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id, host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id),
+  FOREIGN KEY (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ) REFERENCES host_tool_invocations (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  )
 );
 
 CREATE TABLE prompt_captures (
@@ -1530,6 +1615,7 @@ CREATE TABLE prompt_captures (
   prompt_capture_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL,
   capture_kind TEXT NOT NULL,
   prompt_sha256 TEXT NOT NULL,
   prompt_text TEXT,
@@ -1537,8 +1623,8 @@ CREATE TABLE prompt_captures (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, prompt_capture_id),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id)
+  FOREIGN KEY (project_id, session_id, connection_internal_id, host_turn_id)
+    REFERENCES host_turns (project_id, session_id, connection_internal_id, host_turn_id)
 );
 
 CREATE TABLE unrecorded_changes (
@@ -1546,6 +1632,10 @@ CREATE TABLE unrecorded_changes (
   unrecorded_change_id TEXT NOT NULL,
   session_id TEXT,
   connection_internal_id TEXT NOT NULL,
+  correlation_kind TEXT CHECK (correlation_kind = 'codex_hook_tool'),
+  host_turn_id TEXT,
+  host_tool_use_id TEXT,
+  host_tool_name TEXT,
   task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('unresolved', 'resolved')),
   confidence TEXT NOT NULL CHECK (confidence IN ('confirmed', 'suspected')),
@@ -1558,6 +1648,22 @@ CREATE TABLE unrecorded_changes (
   resolved_by_actor_source TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (project_id, unrecorded_change_id),
+  CHECK (
+    (
+      correlation_kind IS NULL
+      AND session_id IS NULL
+      AND host_turn_id IS NULL
+      AND host_tool_use_id IS NULL
+      AND host_tool_name IS NULL
+    )
+    OR (
+      correlation_kind = 'codex_hook_tool'
+      AND session_id IS NOT NULL
+      AND host_turn_id IS NOT NULL
+      AND host_tool_use_id IS NOT NULL
+      AND host_tool_name IS NOT NULL
+    )
+  ),
   CHECK (
     (
       status = 'unresolved'
@@ -1573,18 +1679,27 @@ CREATE TABLE unrecorded_changes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
+  FOREIGN KEY (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ) REFERENCES host_tool_invocations (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 
-CREATE INDEX idx_agent_sessions_connection
-  ON agent_sessions (project_id, connection_internal_id);
-CREATE UNIQUE INDEX idx_agent_sessions_runtime_binding
-  ON agent_sessions (project_id, runtime_session_id)
+CREATE INDEX idx_host_sessions_connection
+  ON host_sessions (project_id, connection_internal_id, last_observed_at);
+CREATE INDEX idx_host_turns_session
+  ON host_turns (project_id, session_id, last_observed_at);
+CREATE INDEX idx_host_tool_invocations_session
+  ON host_tool_invocations (project_id, session_id, last_observed_at);
+CREATE INDEX idx_managed_mcp_sessions_runtime
+  ON managed_mcp_sessions (project_id, runtime_session_id, last_observed_at);
+CREATE UNIQUE INDEX idx_managed_mcp_sessions_runtime_binding
+  ON managed_mcp_sessions (project_id, runtime_session_id)
   WHERE runtime_session_id IS NOT NULL;
-CREATE INDEX idx_agent_sessions_runtime_revision
-  ON agent_sessions (project_id, runtime_session_id, project_integration_revision, last_observed_at);
 CREATE INDEX idx_guard_events_session
   ON guard_events (project_id, session_id, occurred_at);
 CREATE INDEX idx_guard_events_connection
@@ -1604,8 +1719,12 @@ CREATE INDEX idx_unrecorded_changes_task
 CREATE TABLE expected_writes (
   project_id TEXT NOT NULL,
   expected_write_id TEXT NOT NULL,
-  session_id TEXT,
+  session_id TEXT NOT NULL,
   connection_internal_id TEXT NOT NULL,
+  correlation_kind TEXT NOT NULL CHECK (correlation_kind = 'codex_hook_tool'),
+  host_turn_id TEXT NOT NULL,
+  host_tool_use_id TEXT NOT NULL,
+  host_tool_name TEXT NOT NULL,
   guard_installation_id TEXT,
   pre_tool_guard_event_id TEXT NOT NULL,
   host_invocation_id TEXT,
@@ -1640,8 +1759,13 @@ CREATE TABLE expected_writes (
     )
   ),
   FOREIGN KEY (project_id) REFERENCES project_state (project_id),
-  FOREIGN KEY (project_id, session_id, connection_internal_id)
-    REFERENCES agent_sessions (project_id, session_id, connection_internal_id),
+  FOREIGN KEY (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ) REFERENCES host_tool_invocations (
+    project_id, session_id, connection_internal_id, host_turn_id,
+    host_tool_use_id, host_tool_name
+  ),
   FOREIGN KEY (project_id, task_id) REFERENCES tasks (project_id, task_id)
 );
 
@@ -1696,7 +1820,7 @@ Project-state constraints:
   values require checked addition and representability; overflow or an
   unrepresentable value rejects before any row, floor, event, replay, or
   state-version effect.
-- Store reads that derive the latest Agent Session or Guard event strict-parse and normalize the
+- Store reads that derive the latest managed MCP session or Guard event strict-parse and normalize the
   applicable RFC 3339 timestamps and compare the UTC instants at nanosecond
   precision. SQLite `julianday()`, timestamp-text order, row order, and opaque
   IDs must not determine authority order. Equal maximum instants form a
@@ -1773,8 +1897,8 @@ Project-state constraints:
   operation category, optional verification basis, and optional canonical
   `git_workspace_context_json`. Replay rows are not caller authority and do not
   bypass current connection, Git workspace, or User Channel requirements.
-- `agent_sessions`, `guard_events`, `prompt_captures`, `expected_writes`, and `unrecorded_changes` are project-local Codex Record Guard and reconciliation records. They repeat `connection_internal_id` for connection scoping and use project-local keys so records do not leak across projects. `agent_sessions.runtime_session_id` remains null for Guard-only anchors, after a later Registry reservation failure, and between a successful Registry reservation and an interrupted final project attachment. None of those null states is authorization. `first_observed_at` and `last_observed_at` bound the Guard/MCP observation history, and the partial unique index applies only after runtime attachment.
-- `guard_events` binds every observation to a required typed hook phase, Guard installation, exact policy hash, and integration revision. Only current-owned `compatible` events satisfy a required phase; current `malformed` or `incompatible` events fail the Guard observation check, and older hashes or revisions do not satisfy it. `decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`; these values record local host decision requests, not OS-level enforcement proof.
+- `host_sessions`, `host_turns`, and `host_tool_invocations` normalize project-local host correlation. Composite keys preserve project, Connection, session, turn, tool-use, and tool-name ownership. A tool-use ID cannot be rebound to another turn or tool name. `managed_mcp_sessions` alone stores a required `host_thread_id` and optional `runtime_session_id`; the partial unique index applies only after runtime attachment. A null runtime after Registry reservation failure or before final project attachment is not authorization.
+- `guard_events` binds every observation to a required typed hook phase, Guard installation, exact policy hash, and integration revision. `correlation_kind=codex_hook_prompt` is valid only for `prompt_capture` with session and turn present and tool fields absent. `correlation_kind=codex_hook_tool` is valid only for `pre_tool` or `post_tool` with session, turn, tool-use ID, and tool name present. A compatible event must have one of those exact shapes. Hook rows have no thread column. Only current-owned `compatible` events satisfy a required phase; current `malformed` or `incompatible` events fail the Guard observation check, and older hashes or revisions do not satisfy it. `decision` is constrained to `allow`, `deny`, `warn`, or `inject_context`; these values record local host decision requests, not OS-level enforcement proof.
 - `expected_writes.status` is constrained to `pending` or `matched`, and `path_policy` is constrained to `exact_paths`. Matched rows must carry the matched Guard observation event, matched paths JSON, and `matched_at`; pending rows must not carry those matched fields.
 - `unrecorded_changes.status` is constrained to `unresolved` or `resolved`. Resolved rows must carry resolution JSON, `resolved_at`, and `resolved_by_actor_source`; unresolved rows must not carry those resolution fields.
 

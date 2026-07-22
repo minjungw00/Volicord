@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn maintained_post_tool_fixtures_read_tool_response_success_and_exit_code() {
         let fixture = include_str!(
-            "../../tests/fixtures/host_contracts/codex/events/post_tool_bash_write.json"
+            "../../../../tests/conformance/codex-host/hooks-v1/post-tool-use-bash.json"
         );
         let event: Value = serde_json::from_str(fixture).expect("fixture JSON");
         let observation = tool_observation(&event, Path::new("/repo"));

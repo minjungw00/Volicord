@@ -7,12 +7,16 @@ use std::{
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::Deserialize;
 use serde_json::Value;
+use volicord_host_contract::{
+    CanonicalToolName, CodexHookPromptCorrelation, CodexHookToolCorrelation, CodexMcpCorrelation,
+    HostContractProfileId, HostNativeCorrelation, HostSessionId, HostToolUseId, HostTurnId,
+};
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_types::{
     canonical_json_sha256, guard_manifest_from_json, guard_manifest_matches_owner_binding,
-    project_agent_session_id, validate_managed_host_native_session_id, GuardDecision,
-    GuardHookContractStatus, GuardHookPhase, GuardManifestOwnerBinding, IntegrationRevision,
-    ProjectIntegrationRevisionBasis, PromptCaptureStatus, UnrecordedChangeStatus, UtcTimestamp,
+    project_agent_session_id, GuardDecision, GuardHookContractStatus, GuardHookPhase,
+    GuardManifestOwnerBinding, IntegrationRevision, ProjectIntegrationRevisionBasis,
+    PromptCaptureStatus, UnrecordedChangeStatus, UtcTimestamp,
 };
 
 use crate::{
@@ -61,14 +65,12 @@ pub struct GuardInstallationRecord {
     pub updated_at: String,
 }
 
-/// Idempotent project Agent Session observation from Guard metadata.
+/// Idempotent normalized host-correlation observation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentSessionObservation {
+pub struct HostCorrelationObservation {
     pub connection_internal_id: String,
     pub guard_installation_id: Option<String>,
-    pub host_session_id: String,
-    pub host_thread_id: String,
-    pub host_turn_id: String,
+    pub correlation: HostNativeCorrelation,
     pub observed_at: String,
 }
 
@@ -78,9 +80,7 @@ pub struct AgentSessionRuntimeBinding {
     pub runtime_session_id: String,
     pub connection_internal_id: String,
     pub guard_installation_id: Option<String>,
-    pub host_session_id: String,
-    pub host_thread_id: String,
-    pub host_turn_id: String,
+    pub correlation: CodexMcpCorrelation,
     pub observed_at: String,
 }
 
@@ -90,6 +90,18 @@ pub struct ProjectAgentSessionCoordinates {
     pub session_id: String,
     pub project_integration_revision: String,
     pub guard_installation_id: Option<String>,
+}
+
+/// Normalized host session row shared by hook and MCP observations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostSessionRecord {
+    pub project_id: String,
+    pub session_id: String,
+    pub connection_internal_id: String,
+    pub project_integration_revision: String,
+    pub host_session_id: String,
+    pub first_observed_at: String,
+    pub last_observed_at: String,
 }
 
 /// Agent Session row stored in project `state.sqlite`.
@@ -111,7 +123,7 @@ pub struct AgentSessionRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardEventInsert {
     pub guard_event_id: String,
-    pub session_id: Option<String>,
+    pub correlation: Option<HostNativeCorrelation>,
     pub connection_internal_id: String,
     pub guard_installation_id: String,
     pub policy_hash: String,
@@ -131,6 +143,7 @@ pub struct GuardEventRecord {
     pub project_id: String,
     pub guard_event_id: String,
     pub session_id: Option<String>,
+    pub correlation: Option<HostNativeCorrelation>,
     pub connection_internal_id: String,
     pub guard_installation_id: String,
     pub policy_hash: String,
@@ -169,7 +182,7 @@ enum StoredRunWriteTicketEffectKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromptCaptureInsert {
     pub prompt_capture_id: String,
-    pub session_id: String,
+    pub correlation: HostNativeCorrelation,
     pub connection_internal_id: String,
     pub capture_kind: String,
     pub prompt_sha256: String,
@@ -184,6 +197,7 @@ pub struct PromptCaptureRecord {
     pub project_id: String,
     pub prompt_capture_id: String,
     pub session_id: String,
+    pub correlation: HostNativeCorrelation,
     pub connection_internal_id: String,
     pub capture_kind: String,
     pub prompt_sha256: String,
@@ -196,7 +210,7 @@ pub struct PromptCaptureRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedWriteInsert {
     pub expected_write_id: String,
-    pub session_id: Option<String>,
+    pub correlation: HostNativeCorrelation,
     pub connection_internal_id: String,
     pub guard_installation_id: Option<String>,
     pub pre_tool_guard_event_id: String,
@@ -227,7 +241,8 @@ pub struct ExpectedWriteMatch {
 pub struct ExpectedWriteRecord {
     pub project_id: String,
     pub expected_write_id: String,
-    pub session_id: Option<String>,
+    pub session_id: String,
+    pub correlation: HostNativeCorrelation,
     pub connection_internal_id: String,
     pub guard_installation_id: Option<String>,
     pub pre_tool_guard_event_id: String,
@@ -253,8 +268,13 @@ pub struct ExpectedWriteRecord {
 struct ExpectedWriteRaw {
     project_id: String,
     expected_write_id: String,
-    session_id: Option<String>,
+    session_id: String,
     connection_internal_id: String,
+    host_session_id: String,
+    correlation_kind: String,
+    host_turn_id: String,
+    host_tool_use_id: String,
+    host_tool_name: String,
     guard_installation_id: Option<String>,
     pre_tool_guard_event_id: String,
     host_invocation_id: Option<String>,
@@ -279,7 +299,7 @@ struct ExpectedWriteRaw {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnrecordedChangeInsert {
     pub unrecorded_change_id: String,
-    pub session_id: Option<String>,
+    pub correlation: Option<HostNativeCorrelation>,
     pub connection_internal_id: String,
     pub task_id: Option<String>,
     pub confidence: String,
@@ -312,6 +332,7 @@ pub struct UnrecordedChangeRecord {
     pub project_id: String,
     pub unrecorded_change_id: String,
     pub session_id: Option<String>,
+    pub correlation: Option<HostNativeCorrelation>,
     pub connection_internal_id: String,
     pub task_id: Option<String>,
     pub status: String,
@@ -545,19 +566,14 @@ pub fn current_project_agent_session_coordinates(
     project_id: &str,
     connection_internal_id: &str,
     asserted_guard_installation_id: Option<&str>,
-    host_session_id: &str,
+    correlation: &HostNativeCorrelation,
 ) -> StoreResult<ProjectAgentSessionCoordinates> {
     validate_identifier("project_id", project_id)?;
     validate_identifier("connection_internal_id", connection_internal_id)?;
     if let Some(guard_installation_id) = asserted_guard_installation_id {
         validate_identifier("guard_installation_id", guard_installation_id)?;
     }
-    validate_managed_host_native_session_id(host_session_id).map_err(|_| {
-        StoreError::InvalidInput {
-            detail: "host_session_id must be valid host-native session correlation metadata"
-                .to_owned(),
-        }
-    })?;
+    let host_session_id = correlation.session_id().as_str();
     let runtime_home = runtime_home.as_ref();
     let connection = agent_connection_record_read_only(runtime_home, connection_internal_id)?
         .ok_or_else(|| StoreError::NotFound {
@@ -669,13 +685,13 @@ pub fn current_project_agent_session_coordinates(
     })
 }
 
-/// Creates or updates one unbound project Agent Session from Guard observation metadata.
-pub fn observe_agent_session(
+/// Creates or updates normalized host session, turn, and optional tool records.
+pub fn observe_host_correlation(
     runtime_home: impl AsRef<Path>,
     project_id: &str,
-    input: AgentSessionObservation,
-) -> StoreResult<AgentSessionRecord> {
-    validate_agent_session_observation(&input)?;
+    input: HostCorrelationObservation,
+) -> StoreResult<HostSessionRecord> {
+    validate_host_correlation_observation(&input)?;
     let runtime_home = runtime_home.as_ref().to_path_buf();
     let observed_at = canonical_agent_session_observed_at(&input.observed_at)?;
     let coordinates = current_project_agent_session_coordinates(
@@ -683,20 +699,15 @@ pub fn observe_agent_session(
         project_id,
         &input.connection_internal_id,
         input.guard_installation_id.as_deref(),
-        &input.host_session_id,
+        &input.correlation,
     )?;
-    establish_agent_session_anchor(
+    establish_host_correlation(
         &runtime_home,
         project_id,
         &coordinates,
-        AgentSessionAnchorInput {
-            requested_runtime_session_id: None,
-            connection_internal_id: &input.connection_internal_id,
-            host_session_id: &input.host_session_id,
-            host_thread_id: &input.host_thread_id,
-            host_turn_id: &input.host_turn_id,
-            observed_at: &observed_at,
-        },
+        &input.connection_internal_id,
+        &input.correlation,
+        &observed_at,
     )
 }
 
@@ -707,6 +718,7 @@ pub fn bind_agent_session_runtime(
     input: AgentSessionRuntimeBinding,
 ) -> StoreResult<AgentSessionRecord> {
     validate_agent_session_runtime_binding(&input)?;
+    let correlation = &input.correlation;
     let runtime_home = runtime_home.as_ref().to_path_buf();
     let observed_at = canonical_agent_session_observed_at(&input.observed_at)?;
 
@@ -735,10 +747,18 @@ pub fn bind_agent_session_runtime(
         project_id,
         &input.connection_internal_id,
         input.guard_installation_id.as_deref(),
-        &input.host_session_id,
+        &HostNativeCorrelation::CodexMcp(input.correlation.clone()),
     )?;
 
-    // Phase 1: establish the exact project-local anchor without attaching runtime authority.
+    // Phase 1: establish normalized host records and the exact MCP-only anchor.
+    establish_host_correlation(
+        &runtime_home,
+        project_id,
+        &coordinates,
+        &input.connection_internal_id,
+        &HostNativeCorrelation::CodexMcp(input.correlation.clone()),
+        &observed_at,
+    )?;
     establish_agent_session_anchor(
         &runtime_home,
         project_id,
@@ -746,9 +766,7 @@ pub fn bind_agent_session_runtime(
         AgentSessionAnchorInput {
             requested_runtime_session_id: Some(&input.runtime_session_id),
             connection_internal_id: &input.connection_internal_id,
-            host_session_id: &input.host_session_id,
-            host_thread_id: &input.host_thread_id,
-            host_turn_id: &input.host_turn_id,
+            correlation,
             observed_at: &observed_at,
         },
     )?;
@@ -762,7 +780,7 @@ pub fn bind_agent_session_runtime(
             project_id,
             asserted_guard_installation_id: input.guard_installation_id.as_deref(),
             expected_coordinates: &coordinates,
-            host_session_id: &input.host_session_id,
+            correlation,
             bound_at: &observed_at,
         },
     )?;
@@ -774,8 +792,7 @@ pub fn bind_agent_session_runtime(
         &coordinates,
         &input.runtime_session_id,
         &input.connection_internal_id,
-        &input.host_session_id,
-        &input.host_thread_id,
+        correlation,
     )
 }
 
@@ -783,10 +800,241 @@ pub fn bind_agent_session_runtime(
 struct AgentSessionAnchorInput<'a> {
     requested_runtime_session_id: Option<&'a str>,
     connection_internal_id: &'a str,
-    host_session_id: &'a str,
-    host_thread_id: &'a str,
-    host_turn_id: &'a str,
+    correlation: &'a CodexMcpCorrelation,
     observed_at: &'a str,
+}
+
+fn establish_host_correlation(
+    runtime_home: &Path,
+    project_id: &str,
+    coordinates: &ProjectAgentSessionCoordinates,
+    connection_internal_id: &str,
+    correlation: &HostNativeCorrelation,
+    observed_at: &str,
+) -> StoreResult<HostSessionRecord> {
+    let mut project = open_guard_project(runtime_home, project_id, connection_internal_id)?;
+    let tx = begin_immediate_transaction(&mut project.conn)?;
+    let host_session_id = correlation.session_id().as_str();
+    if let Some(existing) =
+        host_session_from_conn(&tx, &project.project.project_id, &coordinates.session_id)?
+    {
+        if existing.connection_internal_id != connection_internal_id
+            || existing.project_integration_revision != coordinates.project_integration_revision
+            || existing.host_session_id != host_session_id
+        {
+            return Err(StoreError::Conflict {
+                entity: "host_session",
+                id: coordinates.session_id.clone(),
+                detail: "host session is already bound to different owner coordinates".to_owned(),
+            });
+        }
+        let existing_first = strict_stored_timestamp(
+            "host_sessions",
+            &existing.session_id,
+            "first_observed_at",
+            &existing.first_observed_at,
+        )?;
+        let existing_last = strict_stored_timestamp(
+            "host_sessions",
+            &existing.session_id,
+            "last_observed_at",
+            &existing.last_observed_at,
+        )?;
+        let observation = UtcTimestamp::parse(observed_at).expect("validated observation");
+        let first = if observation < existing_first {
+            observed_at
+        } else {
+            existing.first_observed_at.as_str()
+        };
+        let last = if observation >= existing_last {
+            observed_at
+        } else {
+            existing.last_observed_at.as_str()
+        };
+        tx.execute(
+            "UPDATE host_sessions
+                SET first_observed_at = ?3, last_observed_at = ?4
+              WHERE project_id = ?1 AND session_id = ?2",
+            params![
+                project.project.project_id,
+                coordinates.session_id,
+                first,
+                last
+            ],
+        )?;
+    } else {
+        tx.execute(
+            "INSERT INTO host_sessions (
+                project_id, session_id, connection_internal_id,
+                project_integration_revision, host_session_id,
+                first_observed_at, last_observed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![
+                project.project.project_id,
+                coordinates.session_id,
+                connection_internal_id,
+                coordinates.project_integration_revision,
+                host_session_id,
+                observed_at,
+            ],
+        )?;
+    }
+
+    let existing_turn: Option<(String, String, String)> = tx
+        .query_row(
+            "SELECT connection_internal_id, first_observed_at, last_observed_at
+               FROM host_turns
+              WHERE project_id = ?1 AND session_id = ?2 AND host_turn_id = ?3",
+            params![
+                project.project.project_id,
+                coordinates.session_id,
+                correlation.turn_id().as_str()
+            ],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    if let Some((existing_connection, existing_first, existing_last)) = existing_turn {
+        if existing_connection != connection_internal_id {
+            return Err(StoreError::Conflict {
+                entity: "host_turn",
+                id: correlation.turn_id().as_str().to_owned(),
+                detail: "host turn is already bound to another Connection".to_owned(),
+            });
+        }
+        let first = earlier_timestamp(
+            "host_turns",
+            correlation.turn_id().as_str(),
+            &existing_first,
+            observed_at,
+        )?;
+        let last = later_timestamp(
+            "host_turns",
+            correlation.turn_id().as_str(),
+            &existing_last,
+            observed_at,
+        )?;
+        tx.execute(
+            "UPDATE host_turns
+                SET first_observed_at = ?4, last_observed_at = ?5
+              WHERE project_id = ?1 AND session_id = ?2 AND host_turn_id = ?3",
+            params![
+                project.project.project_id,
+                coordinates.session_id,
+                correlation.turn_id().as_str(),
+                first,
+                last,
+            ],
+        )?;
+    } else {
+        tx.execute(
+            "INSERT INTO host_turns (
+                project_id, session_id, connection_internal_id, host_turn_id,
+                first_observed_at, last_observed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            params![
+                project.project.project_id,
+                coordinates.session_id,
+                connection_internal_id,
+                correlation.turn_id().as_str(),
+                observed_at,
+            ],
+        )?;
+    }
+
+    if let HostNativeCorrelation::CodexHookTool(tool) = correlation {
+        let existing_tool: Option<(String, String, String)> = tx
+            .query_row(
+                "SELECT host_turn_id, host_tool_name, last_observed_at
+                   FROM host_tool_invocations
+                  WHERE project_id = ?1 AND session_id = ?2 AND host_tool_use_id = ?3",
+                params![
+                    project.project.project_id,
+                    coordinates.session_id,
+                    tool.tool_use_id.as_str()
+                ],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        if let Some((turn_id, tool_name, last_observed_at)) = existing_tool {
+            if turn_id != tool.turn_id.as_str() || tool_name != tool.tool_name.as_str() {
+                return Err(StoreError::Conflict {
+                    entity: "host_tool_invocation",
+                    id: tool.tool_use_id.as_str().to_owned(),
+                    detail: "tool-use ID is already bound to a different turn or tool name"
+                        .to_owned(),
+                });
+            }
+            let last = later_timestamp(
+                "host_tool_invocations",
+                tool.tool_use_id.as_str(),
+                &last_observed_at,
+                observed_at,
+            )?;
+            tx.execute(
+                "UPDATE host_tool_invocations
+                    SET last_observed_at = ?4
+                  WHERE project_id = ?1 AND session_id = ?2 AND host_tool_use_id = ?3",
+                params![
+                    project.project.project_id,
+                    coordinates.session_id,
+                    tool.tool_use_id.as_str(),
+                    last,
+                ],
+            )?;
+        } else {
+            tx.execute(
+                "INSERT INTO host_tool_invocations (
+                    project_id, session_id, connection_internal_id, host_turn_id,
+                    host_tool_use_id, host_tool_name, first_observed_at, last_observed_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                params![
+                    project.project.project_id,
+                    coordinates.session_id,
+                    connection_internal_id,
+                    tool.turn_id.as_str(),
+                    tool.tool_use_id.as_str(),
+                    tool.tool_name.as_str(),
+                    observed_at,
+                ],
+            )?;
+        }
+    }
+    tx.commit()?;
+    host_session_by_conn(
+        &project.conn,
+        &project.project.project_id,
+        &coordinates.session_id,
+    )
+}
+
+fn earlier_timestamp<'a>(
+    entity: &'static str,
+    id: &str,
+    existing: &'a str,
+    candidate: &'a str,
+) -> StoreResult<&'a str> {
+    let existing_value = strict_stored_timestamp(entity, id, "first_observed_at", existing)?;
+    let candidate_value = UtcTimestamp::parse(candidate).expect("validated observation");
+    Ok(if candidate_value < existing_value {
+        candidate
+    } else {
+        existing
+    })
+}
+
+fn later_timestamp<'a>(
+    entity: &'static str,
+    id: &str,
+    existing: &'a str,
+    candidate: &'a str,
+) -> StoreResult<&'a str> {
+    let existing_value = strict_stored_timestamp(entity, id, "last_observed_at", existing)?;
+    let candidate_value = UtcTimestamp::parse(candidate).expect("validated observation");
+    Ok(if candidate_value >= existing_value {
+        candidate
+    } else {
+        existing
+    })
 }
 
 fn establish_agent_session_anchor(
@@ -801,7 +1049,7 @@ fn establish_agent_session_anchor(
         let attached_session_id = tx
             .query_row(
                 "SELECT session_id
-                   FROM agent_sessions
+                   FROM managed_mcp_sessions
                   WHERE project_id = ?1 AND runtime_session_id = ?2",
                 params![project.project.project_id, runtime_session_id],
                 |row| row.get::<_, String>(0),
@@ -823,8 +1071,8 @@ fn establish_agent_session_anchor(
         agent_session_from_conn(&tx, &project.project.project_id, &coordinates.session_id)?
     {
         if existing.connection_internal_id != input.connection_internal_id
-            || existing.host_session_id != input.host_session_id
-            || existing.host_thread_id != input.host_thread_id
+            || existing.host_session_id != input.correlation.session_id.as_str()
+            || existing.host_thread_id != input.correlation.thread_id.as_str()
         {
             return Err(StoreError::Conflict {
                 entity: "agent_session",
@@ -853,13 +1101,13 @@ fn establish_agent_session_anchor(
             });
         }
         let existing_first = strict_stored_timestamp(
-            "agent_sessions",
+            "managed_mcp_sessions",
             &existing.session_id,
             "first_observed_at",
             &existing.first_observed_at,
         )?;
         let existing_last = strict_stored_timestamp(
-            "agent_sessions",
+            "managed_mcp_sessions",
             &existing.session_id,
             "last_observed_at",
             &existing.last_observed_at,
@@ -871,7 +1119,7 @@ fn establish_agent_session_anchor(
             existing.first_observed_at.as_str()
         };
         let (last_host_turn_id, last_observed_at) = if observation >= existing_last {
-            (input.host_turn_id, input.observed_at)
+            (input.correlation.turn_id.as_str(), input.observed_at)
         } else {
             (
                 existing.last_host_turn_id.as_str(),
@@ -879,7 +1127,7 @@ fn establish_agent_session_anchor(
             )
         };
         tx.execute(
-            "UPDATE agent_sessions
+            "UPDATE managed_mcp_sessions
                 SET last_host_turn_id = ?3,
                     first_observed_at = ?4,
                     last_observed_at = ?5
@@ -894,19 +1142,16 @@ fn establish_agent_session_anchor(
         )?;
     } else {
         tx.execute(
-            "INSERT INTO agent_sessions (
+            "INSERT INTO managed_mcp_sessions (
                 project_id, session_id, runtime_session_id, connection_internal_id,
-                project_integration_revision, host_session_id, host_thread_id,
-                last_host_turn_id, first_observed_at, last_observed_at
-            ) VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+                host_thread_id, last_host_turn_id, first_observed_at, last_observed_at
+            ) VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6, ?6)",
             params![
                 project.project.project_id,
                 coordinates.session_id,
                 input.connection_internal_id,
-                coordinates.project_integration_revision,
-                input.host_session_id,
-                input.host_thread_id,
-                input.host_turn_id,
+                input.correlation.thread_id.as_str(),
+                input.correlation.turn_id.as_str(),
                 input.observed_at,
             ],
         )?;
@@ -926,8 +1171,7 @@ fn attach_agent_session_runtime(
     coordinates: &ProjectAgentSessionCoordinates,
     runtime_session_id: &str,
     connection_internal_id: &str,
-    host_session_id: &str,
-    host_thread_id: &str,
+    correlation: &CodexMcpCorrelation,
 ) -> StoreResult<AgentSessionRecord> {
     let mut project = open_guard_project(runtime_home, project_id, connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
@@ -939,8 +1183,8 @@ fn attach_agent_session_runtime(
                 detail: "validated project Agent Session anchor is no longer present".to_owned(),
             })?;
     if existing.connection_internal_id != connection_internal_id
-        || existing.host_session_id != host_session_id
-        || existing.host_thread_id != host_thread_id
+        || existing.host_session_id != correlation.session_id.as_str()
+        || existing.host_thread_id != correlation.thread_id.as_str()
         || existing.project_integration_revision != coordinates.project_integration_revision
     {
         return Err(StoreError::Conflict {
@@ -961,7 +1205,7 @@ fn attach_agent_session_runtime(
         }
         None => {
             tx.execute(
-                "UPDATE agent_sessions
+                "UPDATE managed_mcp_sessions
                     SET runtime_session_id = ?3
                   WHERE project_id = ?1 AND session_id = ?2 AND runtime_session_id IS NULL",
                 params![
@@ -1017,12 +1261,13 @@ pub fn agent_session_matches_current_integration(
         Err(StoreError::Conflict { .. } | StoreError::NotFound { .. }) => return Ok(false),
         Err(error) => return Err(error),
     };
+    let correlation = decoded_codex_mcp_correlation(session)?;
     let coordinates = match current_project_agent_session_coordinates(
         runtime_home,
         &session.project_id,
         &session.connection_internal_id,
         guard_installation_id,
-        &session.host_session_id,
+        &correlation,
     ) {
         Ok(coordinates) => coordinates,
         Err(StoreError::Conflict { .. } | StoreError::NotFound { .. }) => return Ok(false),
@@ -1060,13 +1305,20 @@ pub fn insert_guard_event(
                 .to_owned(),
         });
     }
+    let correlation_fields = input
+        .correlation
+        .as_ref()
+        .map(|correlation| {
+            guard_correlation_fields(
+                runtime_home,
+                project_id,
+                &input.connection_internal_id,
+                Some(&input.guard_installation_id),
+                correlation,
+            )
+        })
+        .transpose()?;
     let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
-    validate_optional_session_scope(
-        &project.conn,
-        &project.project.project_id,
-        input.session_id.as_deref(),
-        &input.connection_internal_id,
-    )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO guard_events (
@@ -1074,6 +1326,10 @@ pub fn insert_guard_event(
             guard_event_id,
             session_id,
             connection_internal_id,
+            correlation_kind,
+            host_turn_id,
+            host_tool_use_id,
+            host_tool_name,
             guard_installation_id,
             policy_hash,
             integration_revision,
@@ -1085,12 +1341,27 @@ pub fn insert_guard_event(
             occurred_at,
             metadata_json
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+            ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+        )",
         params![
             project.project.project_id,
             input.guard_event_id,
-            input.session_id,
+            correlation_fields
+                .as_ref()
+                .map(|fields| fields.session_id.as_str()),
             input.connection_internal_id,
+            input.correlation.as_ref().map(HostNativeCorrelation::kind),
+            correlation_fields
+                .as_ref()
+                .map(|fields| fields.host_turn_id.as_str()),
+            correlation_fields
+                .as_ref()
+                .and_then(|fields| fields.host_tool_use_id.as_deref()),
+            correlation_fields
+                .as_ref()
+                .and_then(|fields| fields.host_tool_name.as_deref()),
             input.guard_installation_id,
             input.policy_hash,
             input.integration_revision,
@@ -1110,6 +1381,49 @@ pub fn insert_guard_event(
         &project.project.project_id,
         &input.guard_event_id,
     )
+}
+
+#[derive(Debug)]
+struct GuardCorrelationFields {
+    session_id: String,
+    host_turn_id: String,
+    host_tool_use_id: Option<String>,
+    host_tool_name: Option<String>,
+}
+
+fn guard_correlation_fields(
+    runtime_home: &Path,
+    project_id: &str,
+    connection_internal_id: &str,
+    guard_installation_id: Option<&str>,
+    correlation: &HostNativeCorrelation,
+) -> StoreResult<GuardCorrelationFields> {
+    let (host_turn_id, host_tool_use_id, host_tool_name) = match correlation {
+        HostNativeCorrelation::CodexHookPrompt(value) => (value.turn_id.as_str(), None, None),
+        HostNativeCorrelation::CodexHookTool(value) => (
+            value.turn_id.as_str(),
+            Some(value.tool_use_id.as_str()),
+            Some(value.tool_name.as_str()),
+        ),
+        HostNativeCorrelation::CodexMcp(_) => {
+            return Err(StoreError::InvalidInput {
+                detail: "Guard records require Codex hook correlation".to_owned(),
+            })
+        }
+    };
+    let coordinates = current_project_agent_session_coordinates(
+        runtime_home,
+        project_id,
+        connection_internal_id,
+        guard_installation_id,
+        correlation,
+    )?;
+    Ok(GuardCorrelationFields {
+        session_id: coordinates.session_id,
+        host_turn_id: host_turn_id.to_owned(),
+        host_tool_use_id: host_tool_use_id.map(str::to_owned),
+        host_tool_name: host_tool_name.map(str::to_owned),
+    })
 }
 
 /// Reads one project-scoped guard event row.
@@ -1181,13 +1495,15 @@ pub fn insert_prompt_capture(
     input: PromptCaptureInsert,
 ) -> StoreResult<PromptCaptureRecord> {
     validate_prompt_capture_insert(&input)?;
-    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
-    validate_session_scope(
-        &project.conn,
-        &project.project.project_id,
-        &input.session_id,
+    let runtime_home = runtime_home.as_ref();
+    let fields = guard_correlation_fields(
+        runtime_home,
+        project_id,
         &input.connection_internal_id,
+        None,
+        &input.correlation,
     )?;
+    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO prompt_captures (
@@ -1195,18 +1511,20 @@ pub fn insert_prompt_capture(
             prompt_capture_id,
             session_id,
             connection_internal_id,
+            host_turn_id,
             capture_kind,
             prompt_sha256,
             prompt_text,
             captured_at,
             metadata_json
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             project.project.project_id,
             input.prompt_capture_id,
-            input.session_id,
+            fields.session_id,
             input.connection_internal_id,
+            fields.host_turn_id,
             input.capture_kind,
             input.prompt_sha256,
             input.prompt_text,
@@ -1251,6 +1569,11 @@ pub fn insert_expected_write(
     input: ExpectedWriteInsert,
 ) -> StoreResult<ExpectedWriteRecord> {
     validate_expected_write_insert(&input)?;
+    let HostNativeCorrelation::CodexHookTool(_) = &input.correlation else {
+        return Err(StoreError::InvalidInput {
+            detail: "expected writes require Codex hook tool correlation".to_owned(),
+        });
+    };
     let expected_paths_json =
         serde_json::to_string(&input.expected_paths).map_err(|error| StoreError::InvalidInput {
             detail: format!("expected paths cannot be serialized: {error}"),
@@ -1261,13 +1584,15 @@ pub fn insert_expected_write(
                 detail: format!("write-ticket IDs cannot be serialized: {error}"),
             }
         })?;
-    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
-    validate_optional_session_scope(
-        &project.conn,
-        &project.project.project_id,
-        input.session_id.as_deref(),
+    let runtime_home = runtime_home.as_ref();
+    let fields = guard_correlation_fields(
+        runtime_home,
+        project_id,
         &input.connection_internal_id,
+        input.guard_installation_id.as_deref(),
+        &input.correlation,
     )?;
+    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT OR IGNORE INTO expected_writes (
@@ -1275,6 +1600,10 @@ pub fn insert_expected_write(
             expected_write_id,
             session_id,
             connection_internal_id,
+            correlation_kind,
+            host_turn_id,
+            host_tool_use_id,
+            host_tool_name,
             guard_installation_id,
             pre_tool_guard_event_id,
             host_invocation_id,
@@ -1291,12 +1620,18 @@ pub fn insert_expected_write(
             expires_at,
             metadata_json
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 'pending', ?16, ?17, ?18)",
+        VALUES (
+          ?1, ?2, ?3, ?4, 'codex_hook_tool', ?5, ?6, ?7, ?8, ?9,
+          ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, 'pending', ?19, ?20, ?21
+        )",
         params![
             project.project.project_id,
             input.expected_write_id,
-            input.session_id,
+            fields.session_id,
             input.connection_internal_id,
+            fields.host_turn_id,
+            fields.host_tool_use_id,
+            fields.host_tool_name,
             input.guard_installation_id,
             input.pre_tool_guard_event_id,
             input.host_invocation_id,
@@ -1356,35 +1691,25 @@ pub fn list_pending_expected_writes(
     };
     let mut stmt = project.conn.prepare(
         "SELECT
-            project_id,
-            expected_write_id,
-            session_id,
-            connection_internal_id,
-            guard_installation_id,
-            pre_tool_guard_event_id,
-            host_invocation_id,
-            tool_name,
-            command_kind,
-            path_policy,
-            expected_paths_json,
-            task_id,
-            change_unit_id,
-            write_ticket_ids_json,
-            basis_state_version,
-            status,
-            matched_post_tool_guard_event_id,
-            matched_paths_json,
-            created_at,
-            expires_at,
-            matched_at,
-            metadata_json
-         FROM expected_writes
-        WHERE project_id = ?1
-          AND connection_internal_id = ?2
-          AND status = 'pending'
-        ORDER BY volicord_utc_seconds(created_at) DESC,
-                 volicord_utc_subsec_nanos(created_at) DESC,
-                 expected_write_id DESC",
+            e.project_id, e.expected_write_id, e.session_id, e.connection_internal_id,
+            h.host_session_id, e.correlation_kind, e.host_turn_id,
+            e.host_tool_use_id, e.host_tool_name, e.guard_installation_id,
+            e.pre_tool_guard_event_id, e.host_invocation_id, e.tool_name,
+            e.command_kind, e.path_policy, e.expected_paths_json, e.task_id,
+            e.change_unit_id, e.write_ticket_ids_json, e.basis_state_version,
+            e.status, e.matched_post_tool_guard_event_id, e.matched_paths_json,
+            e.created_at, e.expires_at, e.matched_at, e.metadata_json
+         FROM expected_writes AS e
+         JOIN host_sessions AS h
+           ON h.project_id = e.project_id
+          AND h.session_id = e.session_id
+          AND h.connection_internal_id = e.connection_internal_id
+        WHERE e.project_id = ?1
+          AND e.connection_internal_id = ?2
+          AND e.status = 'pending'
+        ORDER BY volicord_utc_seconds(e.created_at) DESC,
+                 volicord_utc_subsec_nanos(e.created_at) DESC,
+                 e.expected_write_id DESC",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -1409,34 +1734,24 @@ pub fn list_expected_writes_for_connection(
     };
     let mut stmt = project.conn.prepare(
         "SELECT
-            project_id,
-            expected_write_id,
-            session_id,
-            connection_internal_id,
-            guard_installation_id,
-            pre_tool_guard_event_id,
-            host_invocation_id,
-            tool_name,
-            command_kind,
-            path_policy,
-            expected_paths_json,
-            task_id,
-            change_unit_id,
-            write_ticket_ids_json,
-            basis_state_version,
-            status,
-            matched_post_tool_guard_event_id,
-            matched_paths_json,
-            created_at,
-            expires_at,
-            matched_at,
-            metadata_json
-         FROM expected_writes
-        WHERE project_id = ?1
-          AND connection_internal_id = ?2
-        ORDER BY volicord_utc_seconds(created_at) DESC,
-                 volicord_utc_subsec_nanos(created_at) DESC,
-                 expected_write_id DESC",
+            e.project_id, e.expected_write_id, e.session_id, e.connection_internal_id,
+            h.host_session_id, e.correlation_kind, e.host_turn_id,
+            e.host_tool_use_id, e.host_tool_name, e.guard_installation_id,
+            e.pre_tool_guard_event_id, e.host_invocation_id, e.tool_name,
+            e.command_kind, e.path_policy, e.expected_paths_json, e.task_id,
+            e.change_unit_id, e.write_ticket_ids_json, e.basis_state_version,
+            e.status, e.matched_post_tool_guard_event_id, e.matched_paths_json,
+            e.created_at, e.expires_at, e.matched_at, e.metadata_json
+         FROM expected_writes AS e
+         JOIN host_sessions AS h
+           ON h.project_id = e.project_id
+          AND h.session_id = e.session_id
+          AND h.connection_internal_id = e.connection_internal_id
+        WHERE e.project_id = ?1
+          AND e.connection_internal_id = ?2
+        ORDER BY volicord_utc_seconds(e.created_at) DESC,
+                 volicord_utc_subsec_nanos(e.created_at) DESC,
+                 e.expected_write_id DESC",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -1463,36 +1778,26 @@ pub fn list_expected_writes_matched_by_post_event(
     };
     let mut stmt = project.conn.prepare(
         "SELECT
-            project_id,
-            expected_write_id,
-            session_id,
-            connection_internal_id,
-            guard_installation_id,
-            pre_tool_guard_event_id,
-            host_invocation_id,
-            tool_name,
-            command_kind,
-            path_policy,
-            expected_paths_json,
-            task_id,
-            change_unit_id,
-            write_ticket_ids_json,
-            basis_state_version,
-            status,
-            matched_post_tool_guard_event_id,
-            matched_paths_json,
-            created_at,
-            expires_at,
-            matched_at,
-            metadata_json
-         FROM expected_writes
-        WHERE project_id = ?1
-          AND connection_internal_id = ?2
-          AND status = 'matched'
-          AND matched_post_tool_guard_event_id = ?3
-        ORDER BY volicord_utc_seconds(matched_at) DESC,
-                 volicord_utc_subsec_nanos(matched_at) DESC,
-                 expected_write_id DESC",
+            e.project_id, e.expected_write_id, e.session_id, e.connection_internal_id,
+            h.host_session_id, e.correlation_kind, e.host_turn_id,
+            e.host_tool_use_id, e.host_tool_name, e.guard_installation_id,
+            e.pre_tool_guard_event_id, e.host_invocation_id, e.tool_name,
+            e.command_kind, e.path_policy, e.expected_paths_json, e.task_id,
+            e.change_unit_id, e.write_ticket_ids_json, e.basis_state_version,
+            e.status, e.matched_post_tool_guard_event_id, e.matched_paths_json,
+            e.created_at, e.expires_at, e.matched_at, e.metadata_json
+         FROM expected_writes AS e
+         JOIN host_sessions AS h
+           ON h.project_id = e.project_id
+          AND h.session_id = e.session_id
+          AND h.connection_internal_id = e.connection_internal_id
+        WHERE e.project_id = ?1
+          AND e.connection_internal_id = ?2
+          AND e.status = 'matched'
+          AND e.matched_post_tool_guard_event_id = ?3
+        ORDER BY volicord_utc_seconds(e.matched_at) DESC,
+                 volicord_utc_subsec_nanos(e.matched_at) DESC,
+                 e.expected_write_id DESC",
     )?;
     let rows = stmt.query_map(
         params![
@@ -1575,13 +1880,21 @@ pub fn insert_unrecorded_change(
     input: UnrecordedChangeInsert,
 ) -> StoreResult<UnrecordedChangeRecord> {
     validate_unrecorded_change_insert(&input)?;
+    let runtime_home = runtime_home.as_ref();
+    let fields = input
+        .correlation
+        .as_ref()
+        .map(|correlation| {
+            guard_correlation_fields(
+                runtime_home,
+                project_id,
+                &input.connection_internal_id,
+                None,
+                correlation,
+            )
+        })
+        .transpose()?;
     let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
-    validate_optional_session_scope(
-        &project.conn,
-        &project.project.project_id,
-        input.session_id.as_deref(),
-        &input.connection_internal_id,
-    )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO unrecorded_changes (
@@ -1589,6 +1902,10 @@ pub fn insert_unrecorded_change(
             unrecorded_change_id,
             session_id,
             connection_internal_id,
+            correlation_kind,
+            host_turn_id,
+            host_tool_use_id,
+            host_tool_name,
             task_id,
             status,
             confidence,
@@ -1598,12 +1915,23 @@ pub fn insert_unrecorded_change(
             detected_at,
             metadata_json
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, 'unresolved', ?6, ?7, ?8, ?9, ?10, ?11)",
+        VALUES (
+          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+          'unresolved', ?10, ?11, ?12, ?13, ?14, ?15
+        )",
         params![
             project.project.project_id,
             input.unrecorded_change_id,
-            input.session_id,
+            fields.as_ref().map(|fields| fields.session_id.as_str()),
             input.connection_internal_id,
+            input.correlation.as_ref().map(HostNativeCorrelation::kind),
+            fields.as_ref().map(|fields| fields.host_turn_id.as_str()),
+            fields
+                .as_ref()
+                .and_then(|fields| fields.host_tool_use_id.as_deref()),
+            fields
+                .as_ref()
+                .and_then(|fields| fields.host_tool_name.as_deref()),
             input.task_id,
             input.confidence,
             input.summary,
@@ -1723,28 +2051,23 @@ pub fn list_unresolved_unrecorded_changes(
     };
     let mut stmt = project.conn.prepare(
         "SELECT
-            project_id,
-            unrecorded_change_id,
-            session_id,
-            connection_internal_id,
-            task_id,
-            status,
-            confidence,
-            summary,
-            observed_paths_json,
-            detection_json,
-            resolution_json,
-            detected_at,
-            resolved_at,
-            resolved_by_actor_source,
-            metadata_json
-         FROM unrecorded_changes
-        WHERE project_id = ?1
-          AND status = 'unresolved'
-          AND (?2 IS NULL OR connection_internal_id = ?2)
-        ORDER BY volicord_utc_seconds(detected_at),
-                 volicord_utc_subsec_nanos(detected_at),
-                 unrecorded_change_id",
+            u.project_id, u.unrecorded_change_id, u.session_id,
+            u.connection_internal_id, h.host_session_id, u.correlation_kind,
+            u.host_turn_id, u.host_tool_use_id, u.host_tool_name, u.task_id,
+            u.status, u.confidence, u.summary, u.observed_paths_json,
+            u.detection_json, u.resolution_json, u.detected_at, u.resolved_at,
+            u.resolved_by_actor_source, u.metadata_json
+         FROM unrecorded_changes AS u
+         LEFT JOIN host_sessions AS h
+           ON h.project_id = u.project_id
+          AND h.session_id = u.session_id
+          AND h.connection_internal_id = u.connection_internal_id
+        WHERE u.project_id = ?1
+          AND u.status = 'unresolved'
+          AND (?2 IS NULL OR u.connection_internal_id = ?2)
+        ORDER BY volicord_utc_seconds(u.detected_at),
+                 volicord_utc_subsec_nanos(u.detected_at),
+                 u.unrecorded_change_id",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -1897,36 +2220,32 @@ pub fn post_tool_guard_events_for_session_since(
     };
     let mut stmt = project.conn.prepare(
         "SELECT
-                project_id,
-                guard_event_id,
-                session_id,
-                connection_internal_id,
-                guard_installation_id,
-                policy_hash,
-                integration_revision,
-                event_kind,
-                contract_status,
-                decision,
-                subject_json,
-                result_json,
-                occurred_at,
-                metadata_json
-           FROM guard_events
-          WHERE project_id = ?1
-            AND session_id = ?2
-            AND connection_internal_id = ?3
-            AND event_kind = 'post_tool'
+                e.project_id, e.guard_event_id, e.session_id,
+                e.connection_internal_id, e.correlation_kind, h.host_session_id,
+                e.host_turn_id, e.host_tool_use_id, e.host_tool_name,
+                e.guard_installation_id, e.policy_hash, e.integration_revision,
+                e.event_kind, e.contract_status, e.decision, e.subject_json,
+                e.result_json, e.occurred_at, e.metadata_json
+           FROM guard_events AS e
+           LEFT JOIN host_sessions AS h
+             ON h.project_id = e.project_id
+            AND h.session_id = e.session_id
+            AND h.connection_internal_id = e.connection_internal_id
+          WHERE e.project_id = ?1
+            AND e.session_id = ?2
+            AND e.connection_internal_id = ?3
+            AND e.event_kind = 'post_tool'
             AND (
-              volicord_utc_seconds(occurred_at) > volicord_utc_seconds(?4)
+              volicord_utc_seconds(e.occurred_at) > volicord_utc_seconds(?4)
               OR (
-                volicord_utc_seconds(occurred_at) = volicord_utc_seconds(?4)
-                AND volicord_utc_subsec_nanos(occurred_at)
+                volicord_utc_seconds(e.occurred_at) = volicord_utc_seconds(?4)
+                AND volicord_utc_subsec_nanos(e.occurred_at)
                     >= volicord_utc_subsec_nanos(?4)
               )
             )
-          ORDER BY volicord_utc_seconds(occurred_at) DESC,
-                   volicord_utc_subsec_nanos(occurred_at) DESC,
-                   guard_event_id DESC
+          ORDER BY volicord_utc_seconds(e.occurred_at) DESC,
+                   volicord_utc_subsec_nanos(e.occurred_at) DESC,
+                   e.guard_event_id DESC
           LIMIT ?5",
     )?;
     let rows = stmt.query_map(
@@ -2069,22 +2388,26 @@ fn latest_agent_session(
     };
     let mut stmt = project.conn.prepare(
         "SELECT
-                project_id,
-                session_id,
-                runtime_session_id,
-                connection_internal_id,
-                project_integration_revision,
-                host_session_id,
-                host_thread_id,
-                last_host_turn_id,
-                first_observed_at,
-                last_observed_at
-             FROM agent_sessions
-            WHERE project_id = ?1
-              AND connection_internal_id = ?2
-            ORDER BY volicord_utc_seconds(last_observed_at) DESC,
-                     volicord_utc_subsec_nanos(last_observed_at) DESC,
-                     session_id DESC
+                m.project_id,
+                m.session_id,
+                m.runtime_session_id,
+                m.connection_internal_id,
+                h.project_integration_revision,
+                h.host_session_id,
+                m.host_thread_id,
+                m.last_host_turn_id,
+                min(h.first_observed_at, m.first_observed_at),
+                max(h.last_observed_at, m.last_observed_at)
+             FROM managed_mcp_sessions AS m
+             JOIN host_sessions AS h
+               ON h.project_id = m.project_id
+              AND h.session_id = m.session_id
+              AND h.connection_internal_id = m.connection_internal_id
+            WHERE m.project_id = ?1
+              AND m.connection_internal_id = ?2
+            ORDER BY volicord_utc_seconds(max(h.last_observed_at, m.last_observed_at)) DESC,
+                     volicord_utc_subsec_nanos(max(h.last_observed_at, m.last_observed_at)) DESC,
+                     m.session_id DESC
             LIMIT 2",
     )?;
     let rows = stmt.query_map(
@@ -2097,13 +2420,13 @@ fn latest_agent_session(
         .collect::<StoreResult<Vec<_>>>()?;
     if records.len() > 1 {
         let first = strict_stored_timestamp(
-            "agent_sessions",
+            "managed_mcp_sessions",
             &records[0].session_id,
             "last_observed_at",
             &records[0].last_observed_at,
         )?;
         let second = strict_stored_timestamp(
-            "agent_sessions",
+            "managed_mcp_sessions",
             &records[1].session_id,
             "last_observed_at",
             &records[1].last_observed_at,
@@ -2132,6 +2455,10 @@ fn latest_guard_events(
                 guard_event_id,
                 session_id,
                 connection_internal_id,
+                correlation_kind,
+                host_turn_id,
+                host_tool_use_id,
+                host_tool_name,
                 guard_installation_id,
                 policy_hash,
                 integration_revision,
@@ -2155,24 +2482,20 @@ fn latest_guard_events(
              WHERE utc_seconds = latest_seconds.value
         )
         SELECT
-            project_id,
-            guard_event_id,
-            session_id,
-            connection_internal_id,
-            guard_installation_id,
-            policy_hash,
-            integration_revision,
-            event_kind,
-            contract_status,
-            decision,
-            subject_json,
-            result_json,
-            occurred_at,
-            metadata_json
-          FROM candidates, latest_seconds, latest_instant
-         WHERE utc_seconds = latest_seconds.value
-           AND utc_subsec_nanos = latest_instant.value
-         ORDER BY guard_event_id DESC",
+            c.project_id, c.guard_event_id, c.session_id, c.connection_internal_id,
+            c.correlation_kind, h.host_session_id, c.host_turn_id,
+            c.host_tool_use_id, c.host_tool_name, c.guard_installation_id,
+            c.policy_hash, c.integration_revision, c.event_kind, c.contract_status,
+            c.decision, c.subject_json, c.result_json, c.occurred_at, c.metadata_json
+          FROM candidates AS c
+          LEFT JOIN host_sessions AS h
+            ON h.project_id = c.project_id
+           AND h.session_id = c.session_id
+           AND h.connection_internal_id = c.connection_internal_id,
+               latest_seconds, latest_instant
+         WHERE c.utc_seconds = latest_seconds.value
+           AND c.utc_subsec_nanos = latest_instant.value
+         ORDER BY c.guard_event_id DESC",
     )?;
     let rows = stmt.query_map(
         params![project.project.project_id, connection_internal_id],
@@ -2351,10 +2674,13 @@ fn validate_guard_installation_upsert(input: &GuardInstallationUpsert) -> StoreR
     validate_identifier("guard_installation_id", &input.guard_installation_id)?;
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
     validate_identifier("project_id", &input.project_id)?;
-    guard_manifest_from_json(&input.manifest_json).map_err(|_| StoreError::InvalidInput {
-        detail: "guard_installations.manifest_json must be one canonical current Guard manifest"
-            .to_owned(),
-    })?;
+    let manifest =
+        guard_manifest_from_json(&input.manifest_json).map_err(|_| StoreError::InvalidInput {
+            detail:
+                "guard_installations.manifest_json must be one canonical current Guard manifest"
+                    .to_owned(),
+        })?;
+    validate_current_guard_host_contract(&manifest)?;
     Ok(())
 }
 
@@ -2378,6 +2704,7 @@ fn validate_guard_installation_binding(
                 "guard_installations.manifest_json must be one canonical current Guard manifest"
                     .to_owned(),
         })?;
+    validate_current_guard_host_contract(&manifest)?;
     let manifest_value = serde_json::to_value(manifest).map_err(|_| StoreError::InvalidInput {
         detail: "Guard manifest cannot be represented as canonical JSON".to_owned(),
     })?;
@@ -2454,49 +2781,36 @@ fn project_git_info_exclude_path(repo_root: &Path) -> std::io::Result<Option<Pat
         .map(|layout| layout.map(|layout| layout.common_dir.join("info").join("exclude")))
 }
 
-fn validate_agent_session_observation(input: &AgentSessionObservation) -> StoreResult<()> {
-    validate_agent_session_metadata(
+fn validate_host_correlation_observation(input: &HostCorrelationObservation) -> StoreResult<()> {
+    if matches!(&input.correlation, HostNativeCorrelation::CodexMcp(_)) {
+        return Err(StoreError::InvalidInput {
+            detail: "hook observation cannot use managed MCP correlation".to_owned(),
+        });
+    }
+    validate_host_correlation_metadata(
         &input.connection_internal_id,
         input.guard_installation_id.as_deref(),
-        &input.host_session_id,
-        &input.host_thread_id,
-        &input.host_turn_id,
         &input.observed_at,
     )
 }
 
 fn validate_agent_session_runtime_binding(input: &AgentSessionRuntimeBinding) -> StoreResult<()> {
     validate_identifier("runtime_session_id", &input.runtime_session_id)?;
-    validate_agent_session_metadata(
+    validate_host_correlation_metadata(
         &input.connection_internal_id,
         input.guard_installation_id.as_deref(),
-        &input.host_session_id,
-        &input.host_thread_id,
-        &input.host_turn_id,
         &input.observed_at,
     )
 }
 
-fn validate_agent_session_metadata(
+fn validate_host_correlation_metadata(
     connection_internal_id: &str,
     guard_installation_id: Option<&str>,
-    host_session_id: &str,
-    host_thread_id: &str,
-    host_turn_id: &str,
     observed_at: &str,
 ) -> StoreResult<()> {
     validate_identifier("connection_internal_id", connection_internal_id)?;
     if let Some(guard_installation_id) = guard_installation_id {
         validate_identifier("guard_installation_id", guard_installation_id)?;
-    }
-    for (field, value) in [
-        ("host_session_id", host_session_id),
-        ("host_thread_id", host_thread_id),
-        ("host_turn_id", host_turn_id),
-    ] {
-        validate_managed_host_native_session_id(value).map_err(|_| StoreError::InvalidInput {
-            detail: format!("{field} must be valid host-native session correlation metadata"),
-        })?;
     }
     validate_timestamp_text("observed_at", observed_at)
 }
@@ -2511,9 +2825,6 @@ fn canonical_agent_session_observed_at(observed_at: &str) -> StoreResult<String>
 
 fn validate_guard_event_insert(input: &GuardEventInsert) -> StoreResult<()> {
     validate_identifier("guard_event_id", &input.guard_event_id)?;
-    if let Some(session_id) = &input.session_id {
-        validate_identifier("session_id", session_id)?;
-    }
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
     validate_identifier("guard_installation_id", &input.guard_installation_id)?;
     volicord_types::PolicyHash::parse(input.policy_hash.clone()).map_err(|_| {
@@ -2528,6 +2839,28 @@ fn validate_guard_event_insert(input: &GuardEventInsert) -> StoreResult<()> {
     })?;
     validate_guard_hook_phase("event_kind", &input.event_kind)?;
     validate_guard_hook_contract_status(&input.contract_status)?;
+    let correlation_matches_phase = matches!(
+        (input.event_kind.as_str(), input.correlation.as_ref()),
+        (
+            "prompt_capture",
+            Some(HostNativeCorrelation::CodexHookPrompt(_))
+        ) | (
+            "pre_tool" | "post_tool",
+            Some(HostNativeCorrelation::CodexHookTool(_))
+        )
+    );
+    if input.correlation.is_some() && !correlation_matches_phase {
+        return Err(StoreError::InvalidInput {
+            detail: "Guard event phase and host correlation kind do not match".to_owned(),
+        });
+    }
+    if input.contract_status == GuardHookContractStatus::Compatible.as_str()
+        && !correlation_matches_phase
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "compatible Guard event requires phase-specific hook correlation".to_owned(),
+        });
+    }
     validate_guard_decision(&input.decision)?;
     validate_json_object("guard_events.subject_json", &input.subject_json)?;
     validate_json_object("guard_events.result_json", &input.result_json)?;
@@ -2537,7 +2870,14 @@ fn validate_guard_event_insert(input: &GuardEventInsert) -> StoreResult<()> {
 
 fn validate_prompt_capture_insert(input: &PromptCaptureInsert) -> StoreResult<()> {
     validate_identifier("prompt_capture_id", &input.prompt_capture_id)?;
-    validate_identifier("session_id", &input.session_id)?;
+    if !matches!(
+        &input.correlation,
+        HostNativeCorrelation::CodexHookPrompt(_)
+    ) {
+        return Err(StoreError::InvalidInput {
+            detail: "prompt capture requires Codex prompt-hook correlation".to_owned(),
+        });
+    }
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
     validate_identifier("capture_kind", &input.capture_kind)?;
     validate_identifier("prompt_sha256", &input.prompt_sha256)?;
@@ -2550,8 +2890,10 @@ fn validate_prompt_capture_insert(input: &PromptCaptureInsert) -> StoreResult<()
 
 fn validate_expected_write_insert(input: &ExpectedWriteInsert) -> StoreResult<()> {
     validate_identifier("expected_write_id", &input.expected_write_id)?;
-    if let Some(session_id) = &input.session_id {
-        validate_identifier("session_id", session_id)?;
+    if !matches!(&input.correlation, HostNativeCorrelation::CodexHookTool(_)) {
+        return Err(StoreError::InvalidInput {
+            detail: "expected write requires Codex tool-hook correlation".to_owned(),
+        });
     }
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
     if let Some(guard_installation_id) = &input.guard_installation_id {
@@ -2596,8 +2938,14 @@ fn validate_expected_write_path_policy(value: &str) -> StoreResult<()> {
 
 fn validate_unrecorded_change_insert(input: &UnrecordedChangeInsert) -> StoreResult<()> {
     validate_identifier("unrecorded_change_id", &input.unrecorded_change_id)?;
-    if let Some(session_id) = &input.session_id {
-        validate_identifier("session_id", session_id)?;
+    if input
+        .correlation
+        .as_ref()
+        .is_some_and(|value| !matches!(value, HostNativeCorrelation::CodexHookTool(_)))
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "unrecorded change correlation must be a Codex tool hook".to_owned(),
+        });
     }
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
     if let Some(task_id) = &input.task_id {
@@ -2790,47 +3138,30 @@ fn decode_canonical_string_array(text: &str) -> Result<Vec<String>, ()> {
 fn current_guard_manifest(
     installation: &GuardInstallationRecord,
 ) -> StoreResult<volicord_types::GuardManifest> {
-    guard_manifest_from_json(&installation.manifest_json).map_err(|_| StoreError::InvalidInput {
-        detail: "guard_installations.manifest_json must be one canonical current Guard manifest"
-            .to_owned(),
-    })
+    let manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
+        StoreError::InvalidInput {
+            detail:
+                "guard_installations.manifest_json must be one canonical current Guard manifest"
+                    .to_owned(),
+        }
+    })?;
+    validate_current_guard_host_contract(&manifest)?;
+    Ok(manifest)
 }
 
-fn validate_session_scope(
-    conn: &Connection,
-    project_id: &str,
-    session_id: &str,
-    connection_internal_id: &str,
+fn validate_current_guard_host_contract(
+    manifest: &volicord_types::GuardManifest,
 ) -> StoreResult<()> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*)
-           FROM agent_sessions
-          WHERE project_id = ?1
-            AND session_id = ?2
-            AND connection_internal_id = ?3",
-        params![project_id, session_id, connection_internal_id],
-        |row| row.get(0),
-    )?;
-    if count == 1 {
+    let profile = HostContractProfileId::CodexHooksV1;
+    if manifest.host_contract_profile == profile.as_str()
+        && manifest.host_contract_digest == profile.contract_digest()
+    {
         Ok(())
     } else {
-        Err(StoreError::NotFound {
-            entity: "agent_session",
-            id: session_id.to_owned(),
+        Err(StoreError::InvalidInput {
+            detail: "guard_installations.manifest_json selects a stale host contract".to_owned(),
         })
     }
-}
-
-fn validate_optional_session_scope(
-    conn: &Connection,
-    project_id: &str,
-    session_id: Option<&str>,
-    connection_internal_id: &str,
-) -> StoreResult<()> {
-    if let Some(session_id) = session_id {
-        validate_session_scope(conn, project_id, session_id, connection_internal_id)?;
-    }
-    Ok(())
 }
 
 pub(crate) fn guard_installation_from_conn(
@@ -2890,19 +3221,23 @@ pub(crate) fn agent_session_from_conn(
 ) -> StoreResult<Option<AgentSessionRecord>> {
     conn.query_row(
         "SELECT
-            project_id,
-            session_id,
-            runtime_session_id,
-            connection_internal_id,
-            project_integration_revision,
-            host_session_id,
-            host_thread_id,
-            last_host_turn_id,
-            first_observed_at,
-            last_observed_at
-         FROM agent_sessions
-        WHERE project_id = ?1
-          AND session_id = ?2",
+            m.project_id,
+            m.session_id,
+            m.runtime_session_id,
+            m.connection_internal_id,
+            h.project_integration_revision,
+            h.host_session_id,
+            m.host_thread_id,
+            m.last_host_turn_id,
+            min(h.first_observed_at, m.first_observed_at),
+            max(h.last_observed_at, m.last_observed_at)
+         FROM managed_mcp_sessions AS m
+         JOIN host_sessions AS h
+           ON h.project_id = m.project_id
+          AND h.session_id = m.session_id
+          AND h.connection_internal_id = m.connection_internal_id
+        WHERE m.project_id = ?1
+          AND m.session_id = ?2",
         params![project_id, session_id],
         agent_session_from_row,
     )
@@ -2939,7 +3274,11 @@ fn agent_session_from_row(row: &Row<'_>) -> rusqlite::Result<AgentSessionRecord>
 
 fn validate_decoded_agent_session(session: AgentSessionRecord) -> StoreResult<AgentSessionRecord> {
     let corrupt = |field| {
-        StoreError::corrupt_owner_state_value("agent_sessions", session.session_id.clone(), field)
+        StoreError::corrupt_owner_state_value(
+            "managed_mcp_sessions",
+            session.session_id.clone(),
+            field,
+        )
     };
     for (field, value) in [
         ("project_id", session.project_id.as_str()),
@@ -2966,21 +3305,114 @@ fn validate_decoded_agent_session(session: AgentSessionRecord) -> StoreResult<Ag
     }
     IntegrationRevision::parse(session.project_integration_revision.clone())
         .map_err(|_| corrupt("project_integration_revision"))?;
-    for (field, value) in [
-        ("host_session_id", &session.host_session_id),
-        ("host_thread_id", &session.host_thread_id),
-        ("last_host_turn_id", &session.last_host_turn_id),
-    ] {
-        validate_managed_host_native_session_id(value).map_err(|_| corrupt(field))?;
-    }
+    decoded_codex_mcp_correlation(&session)?;
     let first = strict_stored_timestamp(
-        "agent_sessions",
+        "managed_mcp_sessions",
         &session.session_id,
         "first_observed_at",
         &session.first_observed_at,
     )?;
     let last = strict_stored_timestamp(
-        "agent_sessions",
+        "managed_mcp_sessions",
+        &session.session_id,
+        "last_observed_at",
+        &session.last_observed_at,
+    )?;
+    if last < first {
+        return Err(corrupt("last_observed_at"));
+    }
+    Ok(session)
+}
+
+fn decoded_codex_mcp_correlation(
+    session: &AgentSessionRecord,
+) -> StoreResult<HostNativeCorrelation> {
+    let corrupt = |field| {
+        StoreError::corrupt_owner_state_value(
+            "managed_mcp_sessions",
+            session.session_id.clone(),
+            field,
+        )
+    };
+    Ok(HostNativeCorrelation::CodexMcp(CodexMcpCorrelation {
+        session_id: HostSessionId::parse(session.host_session_id.clone())
+            .map_err(|_| corrupt("host_session_id"))?,
+        thread_id: volicord_host_contract::HostThreadId::parse(session.host_thread_id.clone())
+            .map_err(|_| corrupt("host_thread_id"))?,
+        turn_id: HostTurnId::parse(session.last_host_turn_id.clone())
+            .map_err(|_| corrupt("last_host_turn_id"))?,
+    }))
+}
+
+fn host_session_from_conn(
+    conn: &Connection,
+    project_id: &str,
+    session_id: &str,
+) -> StoreResult<Option<HostSessionRecord>> {
+    conn.query_row(
+        "SELECT project_id, session_id, connection_internal_id,
+                project_integration_revision, host_session_id,
+                first_observed_at, last_observed_at
+           FROM host_sessions
+          WHERE project_id = ?1 AND session_id = ?2",
+        params![project_id, session_id],
+        |row| {
+            Ok(HostSessionRecord {
+                project_id: row.get(0)?,
+                session_id: row.get(1)?,
+                connection_internal_id: row.get(2)?,
+                project_integration_revision: row.get(3)?,
+                host_session_id: row.get(4)?,
+                first_observed_at: row.get(5)?,
+                last_observed_at: row.get(6)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(StoreError::from)
+    .and_then(|record| record.map(validate_decoded_host_session).transpose())
+}
+
+fn host_session_by_conn(
+    conn: &Connection,
+    project_id: &str,
+    session_id: &str,
+) -> StoreResult<HostSessionRecord> {
+    host_session_from_conn(conn, project_id, session_id)?.ok_or_else(|| StoreError::NotFound {
+        entity: "host_session",
+        id: session_id.to_owned(),
+    })
+}
+
+fn validate_decoded_host_session(session: HostSessionRecord) -> StoreResult<HostSessionRecord> {
+    let corrupt = |field| {
+        StoreError::corrupt_owner_state_value("host_sessions", session.session_id.clone(), field)
+    };
+    validate_identifier("project_id", &session.project_id).map_err(|_| corrupt("project_id"))?;
+    validate_identifier("session_id", &session.session_id).map_err(|_| corrupt("session_id"))?;
+    validate_identifier("connection_internal_id", &session.connection_internal_id)
+        .map_err(|_| corrupt("connection_internal_id"))?;
+    IntegrationRevision::parse(session.project_integration_revision.clone())
+        .map_err(|_| corrupt("project_integration_revision"))?;
+    HostSessionId::parse(session.host_session_id.clone())
+        .map_err(|_| corrupt("host_session_id"))?;
+    let expected = project_agent_session_id(
+        &session.connection_internal_id,
+        &session.project_integration_revision,
+        &session.host_session_id,
+    )
+    .map_err(|_| corrupt("session_id"))?;
+    if expected != session.session_id {
+        return Err(corrupt("session_id"));
+    }
+    let first = strict_stored_timestamp(
+        "host_sessions",
+        &session.session_id,
+        "first_observed_at",
+        &session.first_observed_at,
+    )?;
+    let last = strict_stored_timestamp(
+        "host_sessions",
         &session.session_id,
         "last_observed_at",
         &session.last_observed_at,
@@ -2998,23 +3430,32 @@ fn guard_event_from_conn(
 ) -> StoreResult<Option<GuardEventRecord>> {
     conn.query_row(
         "SELECT
-            project_id,
-            guard_event_id,
-            session_id,
-            connection_internal_id,
-            guard_installation_id,
-            policy_hash,
-            integration_revision,
-            event_kind,
-            contract_status,
-            decision,
-            subject_json,
-            result_json,
-            occurred_at,
-            metadata_json
-         FROM guard_events
-        WHERE project_id = ?1
-          AND guard_event_id = ?2",
+            e.project_id,
+            e.guard_event_id,
+            e.session_id,
+            e.connection_internal_id,
+            e.correlation_kind,
+            h.host_session_id,
+            e.host_turn_id,
+            e.host_tool_use_id,
+            e.host_tool_name,
+            e.guard_installation_id,
+            e.policy_hash,
+            e.integration_revision,
+            e.event_kind,
+            e.contract_status,
+            e.decision,
+            e.subject_json,
+            e.result_json,
+            e.occurred_at,
+            e.metadata_json
+         FROM guard_events AS e
+         LEFT JOIN host_sessions AS h
+           ON h.project_id = e.project_id
+          AND h.session_id = e.session_id
+          AND h.connection_internal_id = e.connection_internal_id
+        WHERE e.project_id = ?1
+          AND e.guard_event_id = ?2",
         params![project_id, guard_event_id],
         guard_event_from_row,
     )
@@ -3034,22 +3475,76 @@ fn guard_event_by_conn(
 }
 
 fn guard_event_from_row(row: &Row<'_>) -> rusqlite::Result<GuardEventRecord> {
+    let correlation = decode_hook_correlation(
+        row.get(4)?,
+        row.get(5)?,
+        row.get(6)?,
+        row.get(7)?,
+        row.get(8)?,
+    )?;
     Ok(GuardEventRecord {
         project_id: row.get(0)?,
         guard_event_id: row.get(1)?,
         session_id: row.get(2)?,
         connection_internal_id: row.get(3)?,
-        guard_installation_id: row.get(4)?,
-        policy_hash: row.get(5)?,
-        integration_revision: row.get(6)?,
-        event_kind: row.get(7)?,
-        contract_status: row.get(8)?,
-        decision: row.get(9)?,
-        subject_json: row.get(10)?,
-        result_json: row.get(11)?,
-        occurred_at: row.get(12)?,
-        metadata_json: row.get(13)?,
+        correlation,
+        guard_installation_id: row.get(9)?,
+        policy_hash: row.get(10)?,
+        integration_revision: row.get(11)?,
+        event_kind: row.get(12)?,
+        contract_status: row.get(13)?,
+        decision: row.get(14)?,
+        subject_json: row.get(15)?,
+        result_json: row.get(16)?,
+        occurred_at: row.get(17)?,
+        metadata_json: row.get(18)?,
     })
+}
+
+fn decode_hook_correlation(
+    kind: Option<String>,
+    host_session_id: Option<String>,
+    host_turn_id: Option<String>,
+    host_tool_use_id: Option<String>,
+    host_tool_name: Option<String>,
+) -> rusqlite::Result<Option<HostNativeCorrelation>> {
+    let invalid = || {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid persisted host correlation",
+            )
+            .into(),
+        )
+    };
+    match (
+        kind.as_deref(),
+        host_session_id,
+        host_turn_id,
+        host_tool_use_id,
+        host_tool_name,
+    ) {
+        (None, None, None, None, None) => Ok(None),
+        (Some("codex_hook_prompt"), Some(session), Some(turn), None, None) => Ok(Some(
+            HostNativeCorrelation::CodexHookPrompt(CodexHookPromptCorrelation {
+                session_id: HostSessionId::parse(session).map_err(|_| invalid())?,
+                turn_id: HostTurnId::parse(turn).map_err(|_| invalid())?,
+            }),
+        )),
+        (Some("codex_hook_tool"), Some(session), Some(turn), Some(tool_use), Some(tool_name)) => {
+            Ok(Some(HostNativeCorrelation::CodexHookTool(
+                CodexHookToolCorrelation {
+                    session_id: HostSessionId::parse(session).map_err(|_| invalid())?,
+                    turn_id: HostTurnId::parse(turn).map_err(|_| invalid())?,
+                    tool_use_id: HostToolUseId::parse(tool_use).map_err(|_| invalid())?,
+                    tool_name: CanonicalToolName::parse(tool_name).map_err(|_| invalid())?,
+                },
+            )))
+        }
+        _ => Err(invalid()),
+    }
 }
 
 fn prompt_capture_from_conn(
@@ -3059,18 +3554,24 @@ fn prompt_capture_from_conn(
 ) -> StoreResult<Option<PromptCaptureRecord>> {
     conn.query_row(
         "SELECT
-            project_id,
-            prompt_capture_id,
-            session_id,
-            connection_internal_id,
-            capture_kind,
-            prompt_sha256,
-            prompt_text,
-            captured_at,
-            metadata_json
-         FROM prompt_captures
-        WHERE project_id = ?1
-          AND prompt_capture_id = ?2",
+            p.project_id,
+            p.prompt_capture_id,
+            p.session_id,
+            p.connection_internal_id,
+            h.host_session_id,
+            p.host_turn_id,
+            p.capture_kind,
+            p.prompt_sha256,
+            p.prompt_text,
+            p.captured_at,
+            p.metadata_json
+         FROM prompt_captures AS p
+         JOIN host_sessions AS h
+           ON h.project_id = p.project_id
+          AND h.session_id = p.session_id
+          AND h.connection_internal_id = p.connection_internal_id
+        WHERE p.project_id = ?1
+          AND p.prompt_capture_id = ?2",
         params![project_id, prompt_capture_id],
         prompt_capture_from_row,
     )
@@ -3092,16 +3593,25 @@ fn prompt_capture_by_conn(
 }
 
 fn prompt_capture_from_row(row: &Row<'_>) -> rusqlite::Result<PromptCaptureRecord> {
+    let correlation = decode_hook_correlation(
+        Some("codex_hook_prompt".to_owned()),
+        Some(row.get(4)?),
+        Some(row.get(5)?),
+        None,
+        None,
+    )?
+    .expect("prompt capture correlation is required by SQL");
     Ok(PromptCaptureRecord {
         project_id: row.get(0)?,
         prompt_capture_id: row.get(1)?,
         session_id: row.get(2)?,
         connection_internal_id: row.get(3)?,
-        capture_kind: row.get(4)?,
-        prompt_sha256: row.get(5)?,
-        prompt_text: row.get(6)?,
-        captured_at: row.get(7)?,
-        metadata_json: row.get(8)?,
+        correlation,
+        capture_kind: row.get(6)?,
+        prompt_sha256: row.get(7)?,
+        prompt_text: row.get(8)?,
+        captured_at: row.get(9)?,
+        metadata_json: row.get(10)?,
     })
 }
 
@@ -3113,31 +3623,40 @@ fn expected_write_from_conn(
     let raw = conn
         .query_row(
             "SELECT
-            project_id,
-            expected_write_id,
-            session_id,
-            connection_internal_id,
-            guard_installation_id,
-            pre_tool_guard_event_id,
-            host_invocation_id,
-            tool_name,
-            command_kind,
-            path_policy,
-            expected_paths_json,
-            task_id,
-            change_unit_id,
-            write_ticket_ids_json,
-            basis_state_version,
-            status,
-            matched_post_tool_guard_event_id,
-            matched_paths_json,
-            created_at,
-            expires_at,
-            matched_at,
-            metadata_json
-         FROM expected_writes
-        WHERE project_id = ?1
-          AND expected_write_id = ?2",
+            e.project_id,
+            e.expected_write_id,
+            e.session_id,
+            e.connection_internal_id,
+            h.host_session_id,
+            e.correlation_kind,
+            e.host_turn_id,
+            e.host_tool_use_id,
+            e.host_tool_name,
+            e.guard_installation_id,
+            e.pre_tool_guard_event_id,
+            e.host_invocation_id,
+            e.tool_name,
+            e.command_kind,
+            e.path_policy,
+            e.expected_paths_json,
+            e.task_id,
+            e.change_unit_id,
+            e.write_ticket_ids_json,
+            e.basis_state_version,
+            e.status,
+            e.matched_post_tool_guard_event_id,
+            e.matched_paths_json,
+            e.created_at,
+            e.expires_at,
+            e.matched_at,
+            e.metadata_json
+         FROM expected_writes AS e
+         JOIN host_sessions AS h
+           ON h.project_id = e.project_id
+          AND h.session_id = e.session_id
+          AND h.connection_internal_id = e.connection_internal_id
+        WHERE e.project_id = ?1
+          AND e.expected_write_id = ?2",
             params![project_id, expected_write_id],
             expected_write_raw_from_row,
         )
@@ -3164,24 +3683,29 @@ fn expected_write_raw_from_row(row: &Row<'_>) -> rusqlite::Result<ExpectedWriteR
         expected_write_id: row.get(1)?,
         session_id: row.get(2)?,
         connection_internal_id: row.get(3)?,
-        guard_installation_id: row.get(4)?,
-        pre_tool_guard_event_id: row.get(5)?,
-        host_invocation_id: row.get(6)?,
-        tool_name: row.get(7)?,
-        command_kind: row.get(8)?,
-        path_policy: row.get(9)?,
-        expected_paths_json: row.get(10)?,
-        task_id: row.get(11)?,
-        change_unit_id: row.get(12)?,
-        write_ticket_ids_json: row.get(13)?,
-        basis_state_version: row.get(14)?,
-        status: row.get(15)?,
-        matched_post_tool_guard_event_id: row.get(16)?,
-        matched_paths_json: row.get(17)?,
-        created_at: row.get(18)?,
-        expires_at: row.get(19)?,
-        matched_at: row.get(20)?,
-        metadata_json: row.get(21)?,
+        host_session_id: row.get(4)?,
+        correlation_kind: row.get(5)?,
+        host_turn_id: row.get(6)?,
+        host_tool_use_id: row.get(7)?,
+        host_tool_name: row.get(8)?,
+        guard_installation_id: row.get(9)?,
+        pre_tool_guard_event_id: row.get(10)?,
+        host_invocation_id: row.get(11)?,
+        tool_name: row.get(12)?,
+        command_kind: row.get(13)?,
+        path_policy: row.get(14)?,
+        expected_paths_json: row.get(15)?,
+        task_id: row.get(16)?,
+        change_unit_id: row.get(17)?,
+        write_ticket_ids_json: row.get(18)?,
+        basis_state_version: row.get(19)?,
+        status: row.get(20)?,
+        matched_post_tool_guard_event_id: row.get(21)?,
+        matched_paths_json: row.get(22)?,
+        created_at: row.get(23)?,
+        expires_at: row.get(24)?,
+        matched_at: row.get(25)?,
+        metadata_json: row.get(26)?,
     })
 }
 
@@ -3206,10 +3730,20 @@ fn expected_write_from_raw(raw: ExpectedWriteRaw) -> StoreResult<ExpectedWriteRe
         .map(decode_canonical_string_array)
         .transpose()
         .map_err(|_| corrupt("matched_paths_json"))?;
+    let correlation = decode_hook_correlation(
+        Some(raw.correlation_kind.clone()),
+        Some(raw.host_session_id.clone()),
+        Some(raw.host_turn_id.clone()),
+        Some(raw.host_tool_use_id.clone()),
+        Some(raw.host_tool_name.clone()),
+    )
+    .map_err(StoreError::from)?
+    .ok_or_else(|| corrupt("correlation_kind"))?;
     Ok(ExpectedWriteRecord {
         project_id: raw.project_id,
         expected_write_id: raw.expected_write_id,
         session_id: raw.session_id,
+        correlation,
         connection_internal_id: raw.connection_internal_id,
         guard_installation_id: raw.guard_installation_id,
         pre_tool_guard_event_id: raw.pre_tool_guard_event_id,
@@ -3239,24 +3773,33 @@ fn unrecorded_change_from_conn(
 ) -> StoreResult<Option<UnrecordedChangeRecord>> {
     conn.query_row(
         "SELECT
-            project_id,
-            unrecorded_change_id,
-            session_id,
-            connection_internal_id,
-            task_id,
-            status,
-            confidence,
-            summary,
-            observed_paths_json,
-            detection_json,
-            resolution_json,
-            detected_at,
-            resolved_at,
-            resolved_by_actor_source,
-            metadata_json
-         FROM unrecorded_changes
-        WHERE project_id = ?1
-          AND unrecorded_change_id = ?2",
+            u.project_id,
+            u.unrecorded_change_id,
+            u.session_id,
+            u.connection_internal_id,
+            h.host_session_id,
+            u.correlation_kind,
+            u.host_turn_id,
+            u.host_tool_use_id,
+            u.host_tool_name,
+            u.task_id,
+            u.status,
+            u.confidence,
+            u.summary,
+            u.observed_paths_json,
+            u.detection_json,
+            u.resolution_json,
+            u.detected_at,
+            u.resolved_at,
+            u.resolved_by_actor_source,
+            u.metadata_json
+         FROM unrecorded_changes AS u
+         LEFT JOIN host_sessions AS h
+           ON h.project_id = u.project_id
+          AND h.session_id = u.session_id
+          AND h.connection_internal_id = u.connection_internal_id
+        WHERE u.project_id = ?1
+          AND u.unrecorded_change_id = ?2",
         params![project_id, unrecorded_change_id],
         unrecorded_change_from_row,
     )
@@ -3281,22 +3824,30 @@ fn unrecorded_change_by_conn(
 }
 
 fn unrecorded_change_from_row(row: &Row<'_>) -> rusqlite::Result<UnrecordedChangeRecord> {
+    let correlation = decode_hook_correlation(
+        row.get(5)?,
+        row.get(4)?,
+        row.get(6)?,
+        row.get(7)?,
+        row.get(8)?,
+    )?;
     Ok(UnrecordedChangeRecord {
         project_id: row.get(0)?,
         unrecorded_change_id: row.get(1)?,
         session_id: row.get(2)?,
+        correlation,
         connection_internal_id: row.get(3)?,
-        task_id: row.get(4)?,
-        status: row.get(5)?,
-        confidence: row.get(6)?,
-        summary: row.get(7)?,
-        observed_paths_json: row.get(8)?,
-        detection_json: row.get(9)?,
-        resolution_json: row.get(10)?,
-        detected_at: row.get(11)?,
-        resolved_at: row.get(12)?,
-        resolved_by_actor_source: row.get(13)?,
-        metadata_json: row.get(14)?,
+        task_id: row.get(9)?,
+        status: row.get(10)?,
+        confidence: row.get(11)?,
+        summary: row.get(12)?,
+        observed_paths_json: row.get(13)?,
+        detection_json: row.get(14)?,
+        resolution_json: row.get(15)?,
+        detected_at: row.get(16)?,
+        resolved_at: row.get(17)?,
+        resolved_by_actor_source: row.get(18)?,
+        metadata_json: row.get(19)?,
     })
 }
 
@@ -3408,6 +3959,8 @@ pub(crate) fn test_guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: HostKind::Codex,
         integration_profile: IntegrationProfile::Record,
+        host_contract_profile: HostContractProfileId::CodexHooksV1.as_str().to_owned(),
+        host_contract_digest: HostContractProfileId::CodexHooksV1.contract_digest(),
         policy_hash: typed_policy_hash,
         integration_revision,
         runtime_commands,
@@ -3439,6 +3992,37 @@ mod tests {
 
     const TEST_POLICY_HASH: &str =
         "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+    fn mcp_correlation(session: &str, thread: &str, turn: &str) -> CodexMcpCorrelation {
+        CodexMcpCorrelation {
+            session_id: HostSessionId::parse(session).expect("valid test session"),
+            thread_id: volicord_host_contract::HostThreadId::parse(thread)
+                .expect("valid test thread"),
+            turn_id: HostTurnId::parse(turn).expect("valid test turn"),
+        }
+    }
+
+    fn prompt_correlation(session: &str, turn: &str) -> HostNativeCorrelation {
+        HostNativeCorrelation::CodexHookPrompt(CodexHookPromptCorrelation {
+            session_id: HostSessionId::parse(session).expect("valid test session"),
+            turn_id: HostTurnId::parse(turn).expect("valid test turn"),
+        })
+    }
+
+    fn tool_correlation(
+        session: &str,
+        turn: &str,
+        tool_use: &str,
+        tool_name: &str,
+    ) -> HostNativeCorrelation {
+        HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+            session_id: HostSessionId::parse(session).expect("valid test session"),
+            turn_id: HostTurnId::parse(turn).expect("valid test turn"),
+            tool_use_id: HostToolUseId::parse(tool_use).expect("valid test tool use"),
+            tool_name: CanonicalToolName::parse(tool_name).expect("valid test tool name"),
+        })
+    }
+
     fn start_guard_runtime(
         runtime_home: &Path,
         connection_id: &str,
@@ -3458,6 +4042,89 @@ mod tests {
     }
 
     #[test]
+    fn rust_and_sql_reject_invalid_guard_correlation_shapes() -> Result<(), Box<dyn Error>> {
+        let prompt = prompt_correlation("session_shape", "turn_shape");
+        let tool = tool_correlation("session_shape", "turn_shape", "tool_use_shape", "Bash");
+        let event =
+            |event_kind: &str, correlation: Option<HostNativeCorrelation>| GuardEventInsert {
+                guard_event_id: "guard_event_shape".to_owned(),
+                correlation,
+                connection_internal_id: "conn_shape".to_owned(),
+                guard_installation_id: "guard_shape".to_owned(),
+                policy_hash: TEST_POLICY_HASH.to_owned(),
+                integration_revision: TEST_POLICY_HASH.to_owned(),
+                event_kind: event_kind.to_owned(),
+                contract_status: GuardHookContractStatus::Compatible.as_str().to_owned(),
+                decision: GuardDecision::Allow.as_str().to_owned(),
+                subject_json: "{}".to_owned(),
+                result_json: "{}".to_owned(),
+                occurred_at: "2026-07-23T00:00:00Z".to_owned(),
+                metadata_json: "{}".to_owned(),
+            };
+        assert!(validate_guard_event_insert(&event("pre_tool", Some(prompt))).is_err());
+        assert!(validate_guard_event_insert(&event("prompt_capture", Some(tool))).is_err());
+        assert!(validate_guard_event_insert(&event("pre_tool", None)).is_err());
+
+        let fixture = GuardFixture::new("guard-correlation-sql-shape")?;
+        fixture.add_project_connection("project_shape", "conn_shape", "repo-shape")?;
+        let project = project_record_for_execution(fixture.runtime_home.path(), "project_shape")?
+            .expect("fixture project");
+        let conn = open_project_state_database(&project.state_db_path)?;
+        let invalid = conn.execute(
+            "INSERT INTO guard_events (
+                project_id, guard_event_id, session_id, connection_internal_id,
+                correlation_kind, host_turn_id, host_tool_use_id, host_tool_name,
+                guard_installation_id, policy_hash, integration_revision, event_kind,
+                contract_status, decision, subject_json, result_json, occurred_at, metadata_json
+             ) VALUES (
+                'project_shape', 'guard_event_invalid_shape', NULL, 'conn_shape',
+                'codex_hook_tool', NULL, NULL, NULL,
+                'guard_shape', ?1, ?1, 'prompt_capture',
+                'compatible', 'allow', '{}', '{}', '2026-07-23T00:00:00Z', '{}'
+             )",
+            [TEST_POLICY_HASH],
+        );
+        assert!(
+            invalid.is_err(),
+            "SQL must reject an invalid nullable correlation shape"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reused_tool_use_id_cannot_change_turn_or_tool_name() -> Result<(), Box<dyn Error>> {
+        let fixture = GuardFixture::new("guard-tool-correlation-conflict")?;
+        fixture.add_project_connection("project_tool", "conn_tool", "repo-tool")?;
+        let observe = |correlation| {
+            observe_host_correlation(
+                fixture.runtime_home.path(),
+                "project_tool",
+                HostCorrelationObservation {
+                    connection_internal_id: "conn_tool".to_owned(),
+                    guard_installation_id: None,
+                    correlation,
+                    observed_at: "2026-07-23T00:00:00Z".to_owned(),
+                },
+            )
+        };
+        observe(tool_correlation(
+            "session_tool",
+            "turn_tool",
+            "tool_use_reused",
+            "Bash",
+        ))?;
+        let error = observe(tool_correlation(
+            "session_tool",
+            "turn_tool",
+            "tool_use_reused",
+            "apply_patch",
+        ))
+        .expect_err("one tool-use ID cannot change tool name");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        Ok(())
+    }
+
+    #[test]
     fn exact_replay_finishes_an_interrupted_final_runtime_attachment() -> Result<(), Box<dyn Error>>
     {
         let fixture = GuardFixture::new("guard-runtime-attach-replay")?;
@@ -3468,12 +4135,22 @@ mod tests {
             "2026-07-19T00:00:00Z",
         )?;
         let observed_at = "2026-07-19T00:00:01Z";
+        let correlation = mcp_correlation("session_guard_a", "thread_guard_a", "turn_guard_a");
         let coordinates = current_project_agent_session_coordinates(
             fixture.runtime_home.path(),
             "project_guard_a",
             "conn_guard_a",
             None,
-            "session_guard_a",
+            &HostNativeCorrelation::CodexMcp(correlation.clone()),
+        )?;
+
+        establish_host_correlation(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            &coordinates,
+            "conn_guard_a",
+            &HostNativeCorrelation::CodexMcp(correlation.clone()),
+            observed_at,
         )?;
 
         establish_agent_session_anchor(
@@ -3483,9 +4160,7 @@ mod tests {
             AgentSessionAnchorInput {
                 requested_runtime_session_id: Some(&runtime_session_id),
                 connection_internal_id: "conn_guard_a",
-                host_session_id: "session_guard_a",
-                host_thread_id: "thread_guard_a",
-                host_turn_id: "turn_guard_a",
+                correlation: &correlation,
                 observed_at,
             },
         )?;
@@ -3497,7 +4172,7 @@ mod tests {
                 project_id: "project_guard_a",
                 asserted_guard_installation_id: None,
                 expected_coordinates: &coordinates,
-                host_session_id: "session_guard_a",
+                correlation: &correlation,
                 bound_at: observed_at,
             },
         )?;
@@ -3525,9 +4200,7 @@ mod tests {
                 runtime_session_id: runtime_session_id.clone(),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
-                host_session_id: "session_guard_a".to_owned(),
-                host_thread_id: "thread_guard_a".to_owned(),
-                host_turn_id: "turn_guard_a".to_owned(),
+                correlation: correlation.clone(),
                 observed_at: observed_at.to_owned(),
             },
         )?;
@@ -3540,7 +4213,7 @@ mod tests {
             .expect("fixture project");
         let project_conn = open_project_state_database(&project.state_db_path)?;
         let project_count: i64 = project_conn.query_row(
-            "SELECT COUNT(*) FROM agent_sessions WHERE session_id = ?1",
+            "SELECT COUNT(*) FROM managed_mcp_sessions WHERE session_id = ?1",
             [&coordinates.session_id],
             |row| row.get(0),
         )?;
@@ -3560,9 +4233,11 @@ mod tests {
                 runtime_session_id,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
-                host_session_id: "session_guard_a".to_owned(),
-                host_thread_id: "thread_guard_changed".to_owned(),
-                host_turn_id: "turn_guard_changed".to_owned(),
+                correlation: mcp_correlation(
+                    "session_guard_a",
+                    "thread_guard_changed",
+                    "turn_guard_changed",
+                ),
                 observed_at: "2026-07-19T00:00:02Z".to_owned(),
             },
         )
@@ -3588,12 +4263,21 @@ mod tests {
             "2026-07-19T00:00:00Z",
         )?;
         let observed_at = "2026-07-19T00:00:01Z";
+        let correlation = mcp_correlation("session_guard_a", "thread_guard_a", "turn_guard_a");
         let prior_coordinates = current_project_agent_session_coordinates(
             fixture.runtime_home.path(),
             "project_guard_a",
             "conn_guard_a",
             None,
-            "session_guard_a",
+            &HostNativeCorrelation::CodexMcp(correlation.clone()),
+        )?;
+        establish_host_correlation(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            &prior_coordinates,
+            "conn_guard_a",
+            &HostNativeCorrelation::CodexMcp(correlation.clone()),
+            observed_at,
         )?;
         establish_agent_session_anchor(
             fixture.runtime_home.path(),
@@ -3602,9 +4286,7 @@ mod tests {
             AgentSessionAnchorInput {
                 requested_runtime_session_id: Some(&runtime_session_id),
                 connection_internal_id: "conn_guard_a",
-                host_session_id: "session_guard_a",
-                host_thread_id: "thread_guard_a",
-                host_turn_id: "turn_guard_a",
+                correlation: &correlation,
                 observed_at,
             },
         )?;
@@ -3632,7 +4314,7 @@ mod tests {
                 project_id: "project_guard_a",
                 asserted_guard_installation_id: None,
                 expected_coordinates: &prior_coordinates,
-                host_session_id: "session_guard_a",
+                correlation: &correlation,
                 bound_at: observed_at,
             },
         )
@@ -3661,9 +4343,11 @@ mod tests {
                 runtime_session_id,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
-                host_session_id: "session_guard_a".to_owned(),
-                host_thread_id: "thread_guard_a".to_owned(),
-                host_turn_id: "turn_guard_current".to_owned(),
+                correlation: mcp_correlation(
+                    "session_guard_a",
+                    "thread_guard_a",
+                    "turn_guard_current",
+                ),
                 observed_at: "2026-07-19T00:00:02Z".to_owned(),
             },
         )?;
@@ -3712,6 +4396,7 @@ mod tests {
             "2026-06-30T00:00:00Z",
         )?;
         let host_session_id = "session_guard_a";
+        let mcp_correlation = mcp_correlation(host_session_id, "thread_guard_a", "turn_guard_a");
         let session = bind_agent_session_runtime(
             fixture.runtime_home.path(),
             "project_guard_a",
@@ -3719,21 +4404,34 @@ mod tests {
                 runtime_session_id,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: Some("guard_installation_a".to_owned()),
-                host_session_id: host_session_id.to_owned(),
-                host_thread_id: "thread_guard_a".to_owned(),
-                host_turn_id: "turn_guard_a".to_owned(),
+                correlation: mcp_correlation,
                 observed_at: "2026-06-30T00:02:00Z".to_owned(),
             },
         )?;
         let session_id = session.session_id.clone();
         assert_eq!(session.session_id, session_id);
+        let tool_correlation =
+            tool_correlation(host_session_id, "turn_guard_tool_a", "tool_call_a", "shell");
+        let prompt_correlation = prompt_correlation(host_session_id, "turn_guard_prompt_a");
+        for correlation in [&tool_correlation, &prompt_correlation] {
+            observe_host_correlation(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                HostCorrelationObservation {
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    guard_installation_id: Some("guard_installation_a".to_owned()),
+                    correlation: correlation.clone(),
+                    observed_at: "2026-06-30T00:02:30Z".to_owned(),
+                },
+            )?;
+        }
 
         let event = insert_guard_event(
             fixture.runtime_home.path(),
             "project_guard_a",
             GuardEventInsert {
                 guard_event_id: "guard_event_a".to_owned(),
-                session_id: Some(session_id.clone()),
+                correlation: Some(tool_correlation.clone()),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: "guard_installation_a".to_owned(),
                 policy_hash: TEST_POLICY_HASH.to_owned(),
@@ -3754,7 +4452,7 @@ mod tests {
             "project_guard_a",
             PromptCaptureInsert {
                 prompt_capture_id: "prompt_capture_a".to_owned(),
-                session_id: session_id.clone(),
+                correlation: prompt_correlation,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 capture_kind: "user_prompt".to_owned(),
                 prompt_sha256: "sha256:abc123".to_owned(),
@@ -3774,7 +4472,7 @@ mod tests {
             "project_guard_a",
             ExpectedWriteInsert {
                 expected_write_id: "expected_write_a".to_owned(),
-                session_id: Some(session_id.clone()),
+                correlation: tool_correlation.clone(),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: Some("guard_installation_a".to_owned()),
                 pre_tool_guard_event_id: "guard_event_a".to_owned(),
@@ -3825,7 +4523,7 @@ mod tests {
             "project_guard_a",
             UnrecordedChangeInsert {
                 unrecorded_change_id: "unrecorded_change_a".to_owned(),
-                session_id: Some(session_id.clone()),
+                correlation: Some(tool_correlation),
                 connection_internal_id: "conn_guard_a".to_owned(),
                 task_id: None,
                 confidence: "confirmed".to_owned(),
@@ -3944,9 +4642,7 @@ mod tests {
                 runtime_session_id,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: None,
-                host_session_id: "session_guard_a".to_owned(),
-                host_thread_id: "thread_guard_a".to_owned(),
-                host_turn_id: "turn_guard_a".to_owned(),
+                correlation: mcp_correlation("session_guard_a", "thread_guard_a", "turn_guard_a"),
                 observed_at: "2026-06-30T01:00:00Z".to_owned(),
             },
         )?
@@ -3956,7 +4652,7 @@ mod tests {
             "project_guard_a",
             UnrecordedChangeInsert {
                 unrecorded_change_id: "unrecorded_change_a".to_owned(),
-                session_id: Some(session_id.clone()),
+                correlation: None,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 task_id: None,
                 confidence: "confirmed".to_owned(),
@@ -3983,13 +4679,13 @@ mod tests {
             "project_guard_b",
             GuardEventInsert {
                 guard_event_id: "guard_event_cross".to_owned(),
-                session_id: None,
+                correlation: None,
                 connection_internal_id: "conn_guard_a".to_owned(),
                 guard_installation_id: "guard_installation_a".to_owned(),
                 policy_hash: TEST_POLICY_HASH.to_owned(),
                 integration_revision,
                 event_kind: "pre_tool".to_owned(),
-                contract_status: "compatible".to_owned(),
+                contract_status: "incompatible".to_owned(),
                 decision: "deny".to_owned(),
                 subject_json: "{}".to_owned(),
                 result_json: "{}".to_owned(),
@@ -4075,12 +4771,33 @@ mod tests {
                             suffix: &str,
                             contract_status: &str|
          -> StoreResult<GuardEventRecord> {
+            let correlation = match phase {
+                GuardHookPhase::PromptCapture => {
+                    prompt_correlation("session_guard_observation", &format!("turn_{suffix}"))
+                }
+                GuardHookPhase::PreTool | GuardHookPhase::PostTool => tool_correlation(
+                    "session_guard_observation",
+                    &format!("turn_{suffix}"),
+                    &format!("tool_use_{suffix}"),
+                    "Read",
+                ),
+            };
+            observe_host_correlation(
+                fixture.runtime_home.path(),
+                "project_guard_a",
+                HostCorrelationObservation {
+                    connection_internal_id: "conn_guard_a".to_owned(),
+                    guard_installation_id: Some("guard_installation_a".to_owned()),
+                    correlation: correlation.clone(),
+                    observed_at: "2026-07-18T00:00:00Z".to_owned(),
+                },
+            )?;
             insert_guard_event(
                 fixture.runtime_home.path(),
                 "project_guard_a",
                 GuardEventInsert {
                     guard_event_id: format!("guard_event_{suffix}"),
-                    session_id: None,
+                    correlation: Some(correlation),
                     connection_internal_id: "conn_guard_a".to_owned(),
                     guard_installation_id: "guard_installation_a".to_owned(),
                     policy_hash: policy_hash.to_owned(),

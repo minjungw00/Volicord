@@ -1,0 +1,9 @@
+{
+  "session_id": "codex-session-001",
+  "transcript_path": "/tmp/volicord-fixtures/codex-session-001.jsonl",
+  "cwd": "/repo",
+  "hook_event_name": "UserPromptSubmit",
+  "turn_id": "turn-prompt-001",
+  "prompt": "Inspect the current task and continue.",
+  "reviewed_additive_field": true
+}

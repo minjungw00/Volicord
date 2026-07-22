@@ -686,8 +686,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1330,8 +1330,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1506,8 +1506,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1522,6 +1522,7 @@ documents:
     category meanings and machine-readable identifiers
   - structural rejection versus policy non-allow boundary
   - unavailable versus degraded and rejected versus corrupt boundaries
+  - bounded versioned host-contract rejection without cross-profile inference or raw-payload retention
   - fail-closed persisted authority, policy, and typed-data corruption handling
   - shared bounded `DiagnosticFinding` fields, safe-fact projection, cause-graph integrity, and
     pre-Registry `VOLICORD_DIAGNOSTIC_V1` stderr envelope
@@ -1606,8 +1607,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1630,7 +1631,7 @@ documents:
     Repository, and external MCP host configuration
   - managed MCP and host-hook child-process binding to the Runtime Home selected by init
   - authoritative MCP runtime-session ownership across Registry and Project databases
-  - project-selected revision-scoped Agent Session correlation boundary
+  - project-selected normalized hook correlation and thread-bearing managed MCP session boundary
   - Runtime Home-local Connection integration-instance and generation coordinates without host or actor identity meaning
   - clone-portable shared host configuration Runtime Home forwarding boundary
   - ordinary MCP server term versus Volicord product, implementation, CLI, and adapter labels
@@ -1686,8 +1687,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -1713,6 +1714,7 @@ documents:
   - MCP creation or resume of UserAction requests without resolution authority
   - Runtime Home forwarding, connection binding, project selection, and repository discovery
   - native host session retention before project-selected Agent Session derivation
+  - explicit versioned Codex MCP metadata profile and separation from command-hook correlation
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -2534,8 +2536,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2551,10 +2553,10 @@ documents:
   - Agent Connection, project membership, and Codex binding records
   - immutable Store-owned Connection integration-instance identity and physical recreation boundary
   - single nullable canonical Agent Connection verification report persistence
-  - authoritative MCP runtime sessions, integration revisions, unbound Guard-first project sessions, and runtime attachment ownership
+  - authoritative MCP runtime sessions, integration revisions, normalized source-aware host correlation, MCP-only project sessions, and runtime attachment ownership
   - immutable occurrence findings, subject-aware current-state finding upserts, atomic cause-edge replacement,
     current-report selection, current-coordinate queries, and MCP terminal-finding links
-  - revision-scoped immutable project Agent Session identity and Registry binding revision
+  - revision-scoped immutable host-session identity and Registry binding revision
   - workflow, replay, operation-result, Write Ticket, Guard observation, and suppression records
   - evidence-capture intent, receipt, source-claim, producer, Run, and artifact relationships
   - strict UserAction request and immutable CLI resolution records
@@ -2570,8 +2572,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2587,10 +2589,10 @@ documents:
   - canonical SQL source ownership and the `GeneratedSchemaMetadata` documentation projection
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
-  - Agent Connection, Connection Projects, Codex Record Guard configuration state, and retained observation tables
+  - Agent Connection, Connection Projects, Codex Record Guard configuration state, normalized host-correlation tables, and retained observations
   - structured diagnostic finding lifecycle, atomic cause-edge replacement, and MCP runtime-session terminal-link constraints
   - strict immutable and unique Agent Connection integration-instance column and update guard
-  - immutable project Agent Session revision and revision-bearing runtime binding constraints
+  - immutable host-session revision and revision-bearing managed MCP runtime-binding constraints
   - verified-command and verified-tool receipt pairing and project-scoped exclusive host-invocation source-claim constraints
   - canonical SQLite indexes, views, foreign keys, and constraints
   - physical canonical-time-floor and cross-row commit timestamp constraints
@@ -2693,8 +2695,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-23'
+  last_verified_on: '2026-07-23'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -2721,6 +2723,7 @@ documents:
   - Codex configuration-target discovery, install, verify, repair, uninstall, drift, launch-context,
     and diagnostic responsibilities
   - deterministic connection/session/revision audit basis as a local lifecycle and correlation coordinate
+  - versioned Codex MCP and hook contract selection, exact Guard contract profile/digest, and phase-specific source correlation
   - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
   - compatibility from current managed configuration and observed protocol, tool, safe-call, and Guard behavior
   - report-contained connection actions without an independent persisted status or action array

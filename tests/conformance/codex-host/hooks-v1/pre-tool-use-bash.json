@@ -1,0 +1,12 @@
+{
+  "session_id": "codex-session-001",
+  "transcript_path": "/tmp/volicord-fixtures/codex-session-001.jsonl",
+  "cwd": "/repo",
+  "hook_event_name": "PreToolUse",
+  "turn_id": "turn-tool-001",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu-bash-001",
+  "tool_input": {
+    "command": "cargo test -p volicord-host-contract"
+  }
+}

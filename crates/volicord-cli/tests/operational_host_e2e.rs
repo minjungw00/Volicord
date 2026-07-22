@@ -19,6 +19,9 @@ use serde_json::{json, Value};
 use support::binary_fixture::{run_child, ChildStdin};
 use support::json::adapter_tool_response;
 use toml_edit::DocumentMut;
+use volicord_host_contract::{
+    CodexHookPromptCorrelation, HostNativeCorrelation, HostSessionId, HostTurnId,
+};
 use volicord_mcp::{
     ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
     ManagedMcpWorkingDirectory, VOLICORD_HOME_ENV,
@@ -56,6 +59,13 @@ const CODEX_VERSION_ENV: &str = "VOLICORD_TEST_CODEX_VERSION";
 const EARLY_EXIT_STDERR_BYTES: usize = 3 * 1024;
 const CODEX_COMPATIBILITY_VERSION: &str = "0.108.0-alpha.12";
 const CODEX_COMPATIBILITY_REVISION: &str = "2025-06-18";
+
+fn host_session_correlation(session_id: &str) -> HostNativeCorrelation {
+    HostNativeCorrelation::CodexHookPrompt(CodexHookPromptCorrelation {
+        session_id: HostSessionId::parse(session_id).expect("valid test session"),
+        turn_id: HostTurnId::parse("turn.session-coordinate").expect("valid test turn"),
+    })
+}
 
 fn managed_host_round_trip_tool() -> AgentToolId {
     ToolVerificationRole::ManagedHostRoundTrip.tool()
@@ -439,7 +449,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
         &project_id,
         &connection_id,
         Some(workflow_manifest.guard_installation_id.as_str()),
-        reused_native_session,
+        &host_session_correlation(reused_native_session),
     )?
     .session_id;
     assert_connection_report(
@@ -565,7 +575,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
         &project_id,
         &connection_id,
         Some(read_only_manifest.guard_installation_id.as_str()),
-        reused_native_session,
+        &host_session_correlation(reused_native_session),
     )?
     .session_id;
     assert_ne!(read_only_session_id, workflow_session_id);
@@ -617,7 +627,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
         &project_id,
         &connection_id,
         Some(current_workflow_manifest.guard_installation_id.as_str()),
-        reused_native_session,
+        &host_session_correlation(reused_native_session),
     )?
     .session_id;
     assert_ne!(current_workflow_session_id, read_only_session_id);
@@ -637,7 +647,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     )?;
     let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
     let revision_scoped_rows: i64 = project_state.query_row(
-        "SELECT COUNT(*) FROM agent_sessions WHERE host_session_id = ?1",
+        "SELECT COUNT(*) FROM host_sessions WHERE host_session_id = ?1",
         [reused_native_session],
         |row| row.get(0),
     )?;
@@ -690,9 +700,14 @@ fn assert_unbound_agent_session(
     fixture: &OperationalFixture,
     session_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let session = agent_session(&fixture.runtime_home, &fixture.project_id(), session_id)?
-        .expect("current Guard observation must create its revision-scoped Agent Session");
-    assert!(session.runtime_session_id.is_none());
+    assert!(agent_session(&fixture.runtime_home, &fixture.project_id(), session_id)?.is_none());
+    let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
+    let host_session_count: i64 = project_state.query_row(
+        "SELECT COUNT(*) FROM host_sessions WHERE session_id = ?1",
+        [session_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(host_session_count, 1);
     Ok(())
 }
 
@@ -718,14 +733,14 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
         &project_id,
         &connection_id,
         Some(manifest.guard_installation_id.as_str()),
-        reused_native_session,
+        &host_session_correlation(reused_native_session),
     )?
     .session_id;
     let repository_before = fixture.repository_snapshot()?;
     let project_state_path = fixture.project_state_db_path();
     let project_state = rusqlite::Connection::open(&project_state_path)?;
     let agent_sessions_before: i64 =
-        project_state.query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?;
+        project_state.query_row("SELECT COUNT(*) FROM host_sessions", [], |row| row.get(0))?;
     let guard_events_before: i64 =
         project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
     assert!(agent_sessions_before > 0);
@@ -767,7 +782,7 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
     }
     let project_state = rusqlite::Connection::open(project_state_path)?;
     let agent_sessions_after: i64 =
-        project_state.query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?;
+        project_state.query_row("SELECT COUNT(*) FROM host_sessions", [], |row| row.get(0))?;
     let guard_events_after: i64 =
         project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
     assert_eq!(agent_sessions_after, agent_sessions_before);
@@ -797,14 +812,14 @@ fn connection_removal_after_operational_observations() -> Result<(), Box<dyn Err
         &project_id,
         &recreated_connection_id,
         Some(recreated_manifest.guard_installation_id.as_str()),
-        reused_native_session,
+        &host_session_correlation(reused_native_session),
     )?
     .session_id;
     assert_ne!(recreated_session_id, historical_session_id);
     assert!(agent_session(&fixture.runtime_home, &project_id, &historical_session_id,)?.is_some());
     let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
     let recreated_rows: i64 = project_state.query_row(
-        "SELECT COUNT(*) FROM agent_sessions WHERE host_session_id = ?1",
+        "SELECT COUNT(*) FROM host_sessions WHERE host_session_id = ?1",
         [reused_native_session],
         |row| row.get(0),
     )?;
@@ -873,7 +888,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
         &project_id,
         &connection_id,
         Some(manifest.guard_installation_id.as_str()),
-        native_session,
+        &host_session_correlation(native_session),
     )?
     .session_id;
     let agent_session_before =
@@ -1134,14 +1149,18 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
         NATIVE_SESSION_1000,
     )?;
     fixture.run_current_guard_phases(&manifest, NATIVE_SESSION_1000)?;
-    let project_state = rusqlite::Connection::open(fixture.project_state_db_path())?;
-    let runtime_after_guard: Option<String> = project_state.query_row(
-        "SELECT runtime_session_id FROM agent_sessions WHERE host_session_id = ?1",
-        [NATIVE_SESSION_1000],
-        |row| row.get(0),
-    )?;
-    assert!(runtime_after_guard.is_some());
-    drop(project_state);
+    let current_session_id = current_project_agent_session_coordinates(
+        &fixture.runtime_home,
+        &project_id,
+        &connection_id,
+        Some(manifest.guard_installation_id.as_str()),
+        &host_session_correlation(NATIVE_SESSION_1000),
+    )?
+    .session_id;
+    assert!(
+        agent_session(&fixture.runtime_home, &project_id, &current_session_id,)?
+            .is_some_and(|session| session.runtime_session_id.is_some())
+    );
     let completed_again = fixture.run_connection("status", NEXT_FUTURE_VERSION, true)?;
     assert_connection_report(&completed_again, 0, "status", "complete")?;
 
@@ -1673,16 +1692,11 @@ impl OperationalFixture {
             project_id,
             connection_id,
             Some(manifest.guard_installation_id.as_str()),
-            native_session,
+            &host_session_correlation(native_session),
         )?
         .session_id;
+        assert!(agent_session(&self.runtime_home, project_id, &current_session_id)?.is_none());
         let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
-        let unbound_runtime: Option<String> = project_state.query_row(
-            "SELECT runtime_session_id FROM agent_sessions WHERE session_id = ?1",
-            [&current_session_id],
-            |row| row.get(0),
-        )?;
-        assert!(unbound_runtime.is_none());
         let guard_history_before: (i64, i64) = (
             project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?,
             project_state
@@ -1722,7 +1736,7 @@ impl OperationalFixture {
         assert_eq!(responses[2]["result"]["isError"], false);
         let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
         let bound_runtime: Option<String> = project_state.query_row(
-            "SELECT runtime_session_id FROM agent_sessions WHERE session_id = ?1",
+            "SELECT runtime_session_id FROM managed_mcp_sessions WHERE session_id = ?1",
             [&current_session_id],
             |row| row.get(0),
         )?;
@@ -1899,9 +1913,10 @@ impl OperationalFixture {
             (
                 GuardHookPhase::PreTool,
                 json!({
+                    "hook_event_name": "PreToolUse",
                     "session_id": native_session,
-                    "thread_id": NATIVE_THREAD,
-                    "turn_id": "future.turn.pre",
+                    "turn_id": "future.turn.tool",
+                    "tool_use_id": "future.tool-use.read",
                     "tool_name": "Read",
                     "tool_input": {"path": self.repo_root.join("README.md")}
                 }),
@@ -1909,9 +1924,10 @@ impl OperationalFixture {
             (
                 GuardHookPhase::PostTool,
                 json!({
+                    "hook_event_name": "PostToolUse",
                     "session_id": native_session,
-                    "thread_id": NATIVE_THREAD,
-                    "turn_id": "future.turn.post",
+                    "turn_id": "future.turn.tool",
+                    "tool_use_id": "future.tool-use.read",
                     "tool_name": "Read",
                     "tool_input": {"path": self.repo_root.join("README.md")},
                     "tool_response": {"success": true}
@@ -1920,8 +1936,8 @@ impl OperationalFixture {
             (
                 GuardHookPhase::PromptCapture,
                 json!({
+                    "hook_event_name": "UserPromptSubmit",
                     "session_id": native_session,
-                    "thread_id": NATIVE_THREAD,
                     "turn_id": "future.turn.prompt",
                     "prompt": "Observe current Guard behavior."
                 }),

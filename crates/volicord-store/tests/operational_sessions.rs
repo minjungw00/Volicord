@@ -4,6 +4,11 @@ use std::{
     thread,
 };
 
+use volicord_host_contract::{
+    CodexHookPromptCorrelation, CodexMcpCorrelation, HostNativeCorrelation, HostSessionId,
+    HostThreadId, HostTurnId,
+};
+
 use volicord_store::{
     agent_connections::{
         add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
@@ -14,7 +19,7 @@ use volicord_store::{
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
     guards::{
         agent_session, bind_agent_session_runtime, current_project_agent_session_coordinates,
-        observe_agent_session, AgentSessionObservation, AgentSessionRuntimeBinding,
+        observe_host_correlation, AgentSessionRuntimeBinding, HostCorrelationObservation,
     },
     operational_sessions::{
         current_managed_mcp_runtime_session_for_connection, current_managed_runtime_sessions,
@@ -41,6 +46,21 @@ const INIT: &str = "2026-07-18T00:00:01Z";
 const INITIALIZED: &str = "2026-07-18T00:00:02Z";
 const TOOLS: &str = "2026-07-18T00:00:03Z";
 const SAFE: &str = "2026-07-18T00:00:04Z";
+
+fn mcp_correlation(session: &str, thread: &str, turn: &str) -> CodexMcpCorrelation {
+    CodexMcpCorrelation {
+        session_id: HostSessionId::parse(session).expect("valid test session"),
+        thread_id: HostThreadId::parse(thread).expect("valid test thread"),
+        turn_id: HostTurnId::parse(turn).expect("valid test turn"),
+    }
+}
+
+fn prompt_correlation(session: &str, turn: &str) -> HostNativeCorrelation {
+    HostNativeCorrelation::CodexHookPrompt(CodexHookPromptCorrelation {
+        session_id: HostSessionId::parse(session).expect("valid test session"),
+        turn_id: HostTurnId::parse(turn).expect("valid test turn"),
+    })
+}
 
 fn start(fixture: &CoreFixture, source: McpRuntimeSessionSource) -> Result<String, Box<dyn Error>> {
     Ok(start_mcp_runtime_session(
@@ -149,7 +169,7 @@ fn agent_session_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
             .join(fixture.project_id())
             .join("state.sqlite"),
     )?;
-    Ok(project_state.query_row("SELECT COUNT(*) FROM agent_sessions", [], |row| row.get(0))?)
+    Ok(project_state.query_row("SELECT COUNT(*) FROM host_sessions", [], |row| row.get(0))?)
 }
 
 fn runtime_project_binding_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
@@ -407,9 +427,11 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
             runtime_session_id: runtime.clone(),
             connection_internal_id: other_connection.to_owned(),
             guard_installation_id: None,
-            host_session_id: other_host_session.to_owned(),
-            host_thread_id: "host.thread.other".to_owned(),
-            host_turn_id: "host.turn.other".to_owned(),
+            correlation: mcp_correlation(
+                other_host_session,
+                "host.thread.other",
+                "host.turn.other",
+            ),
             observed_at: INIT.to_owned(),
         }
     )
@@ -419,7 +441,11 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
         fixture.project_id(),
         other_connection,
         None,
-        other_host_session,
+        &HostNativeCorrelation::CodexMcp(mcp_correlation(
+            other_host_session,
+            "host.thread.other",
+            "host.turn.other",
+        )),
     )?;
     assert!(agent_session(
         fixture.runtime_home_path(),
@@ -481,9 +507,7 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         runtime_session_id: runtime_session_id.to_owned(),
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
-        host_session_id: host_session_id.to_owned(),
-        host_thread_id: "host.thread.shared".to_owned(),
-        host_turn_id: turn.to_owned(),
+        correlation: mcp_correlation(host_session_id, "host.thread.shared", turn),
         observed_at: INIT.to_owned(),
     };
     bind_agent_session_runtime(
@@ -502,7 +526,11 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         second_project,
         fixture.connection_id(),
         None,
-        host_session_id,
+        &HostNativeCorrelation::CodexMcp(mcp_correlation(
+            host_session_id,
+            "host.thread.shared",
+            "host.turn.second",
+        )),
     )?;
     let unbound = agent_session(
         fixture.runtime_home_path(),
@@ -537,12 +565,10 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("operational-guard-first-binding")?;
     let host_session_id = "host.session.guard-first";
-    let observation = |turn: &str, observed_at: &str| AgentSessionObservation {
+    let observation = |turn: &str, observed_at: &str| HostCorrelationObservation {
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
-        host_session_id: host_session_id.to_owned(),
-        host_thread_id: "host.thread.guard-first".to_owned(),
-        host_turn_id: turn.to_owned(),
+        correlation: prompt_correlation(host_session_id, turn),
         observed_at: observed_at.to_owned(),
     };
     let binding =
@@ -550,20 +576,23 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
             runtime_session_id: runtime_session_id.to_owned(),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_session_id: host_session_id.to_owned(),
-            host_thread_id: "host.thread.guard-first".to_owned(),
-            host_turn_id: turn.to_owned(),
+            correlation: mcp_correlation(host_session_id, "host.thread.guard-first", turn),
             observed_at: observed_at.to_owned(),
         };
 
-    let unbound = observe_agent_session(
+    let unbound = observe_host_correlation(
         fixture.runtime_home_path(),
         fixture.project_id(),
         observation("host.turn.guard", START),
     )?;
     let session_id = unbound.session_id.clone();
-    assert_eq!(unbound.runtime_session_id, None);
     assert_eq!(unbound.first_observed_at, START);
+    assert!(agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        &session_id,
+    )?
+    .is_none());
     assert!(mcp_runtime_project_session_binding(
         fixture.runtime_home_path(),
         fixture.project_id(),
@@ -607,7 +636,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
         .join("state.sqlite");
     let project_state = rusqlite::Connection::open(project_state_path)?;
     let immutable = project_state.execute(
-        "UPDATE agent_sessions
+        "UPDATE host_sessions
             SET project_integration_revision = ?2
           WHERE session_id = ?1",
         rusqlite::params![&session_id, format!("sha256:{}", "f".repeat(64))],
@@ -637,15 +666,13 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
             "host.thread.concurrent-b",
         ),
     ] {
-        observe_agent_session(
+        observe_host_correlation(
             fixture.runtime_home_path(),
             fixture.project_id(),
-            AgentSessionObservation {
+            HostCorrelationObservation {
                 connection_internal_id: fixture.connection_id().to_owned(),
                 guard_installation_id: None,
-                host_session_id: host_session.to_owned(),
-                host_thread_id: thread.to_owned(),
-                host_turn_id: format!("{thread}.guard"),
+                correlation: prompt_correlation(host_session, &format!("{thread}.guard")),
                 observed_at: START.to_owned(),
             },
         )?;
@@ -656,9 +683,7 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
                 runtime_session_id: runtime.clone(),
                 connection_internal_id: fixture.connection_id().to_owned(),
                 guard_installation_id: None,
-                host_session_id: host_session.to_owned(),
-                host_thread_id: thread.to_owned(),
-                host_turn_id: format!("{thread}.mcp"),
+                correlation: mcp_correlation(host_session, thread, &format!("{thread}.mcp")),
                 observed_at: INIT.to_owned(),
             },
         )?;
@@ -672,9 +697,11 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
             runtime_session_id: runtime_c,
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_session_id: host_session_c.to_owned(),
-            host_thread_id: "host.thread.concurrent-c".to_owned(),
-            host_turn_id: "host.turn.concurrent-c".to_owned(),
+            correlation: mcp_correlation(
+                host_session_c,
+                "host.thread.concurrent-c",
+                "host.turn.concurrent-c",
+            ),
             observed_at: INIT.to_owned(),
         },
     )?;
@@ -692,15 +719,13 @@ fn concurrent_runtimes_claiming_one_project_session_produce_one_winner(
     let fixture = CoreFixture::new("operational-concurrent-single-session-claim")?;
     let host_session = "host.session.concurrent-claim";
     let host_thread = "host.thread.concurrent-claim";
-    let unbound = observe_agent_session(
+    let unbound = observe_host_correlation(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        AgentSessionObservation {
+        HostCorrelationObservation {
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_session_id: host_session.to_owned(),
-            host_thread_id: host_thread.to_owned(),
-            host_turn_id: "host.turn.guard".to_owned(),
+            correlation: prompt_correlation(host_session, "host.turn.guard"),
             observed_at: START.to_owned(),
         },
     )?;
@@ -724,9 +749,7 @@ fn concurrent_runtimes_claiming_one_project_session_produce_one_winner(
                     runtime_session_id,
                     connection_internal_id,
                     guard_installation_id: None,
-                    host_session_id: host_session.to_owned(),
-                    host_thread_id: host_thread.to_owned(),
-                    host_turn_id: "host.turn.mcp".to_owned(),
+                    correlation: mcp_correlation(host_session, host_thread, "host.turn.mcp"),
                     observed_at: INIT.to_owned(),
                 },
             )
@@ -769,9 +792,7 @@ fn managed_binding_replay_is_idempotent_and_conflicting_runtime_fails() -> Resul
         runtime_session_id: runtime_session_id.to_owned(),
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
-        host_session_id: host_session.to_owned(),
-        host_thread_id: "host.thread.recovery".to_owned(),
-        host_turn_id: turn.to_owned(),
+        correlation: mcp_correlation(host_session, "host.thread.recovery", turn),
         observed_at: INIT.to_owned(),
     };
     let attached = bind_agent_session_runtime(
@@ -806,7 +827,11 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
         fixture.project_id(),
         fixture.connection_id(),
         None,
-        host_session,
+        &HostNativeCorrelation::CodexMcp(mcp_correlation(
+            host_session,
+            "host.thread.preflight",
+            "host.turn.preflight",
+        )),
     )?;
     assert!(bind_agent_session_runtime(
         fixture.runtime_home_path(),
@@ -815,9 +840,11 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
             runtime_session_id: runtime,
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_session_id: host_session.to_owned(),
-            host_thread_id: "host.thread.preflight".to_owned(),
-            host_turn_id: "host.turn.preflight".to_owned(),
+            correlation: mcp_correlation(
+                host_session,
+                "host.thread.preflight",
+                "host.turn.preflight",
+            ),
             observed_at: INIT.to_owned(),
         },
     )
@@ -855,9 +882,11 @@ fn phase_zero_rejections_mutate_neither_project_nor_registry() -> Result<(), Box
             runtime_session_id: runtime.runtime_session_id.clone(),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: guard_installation_id.map(str::to_owned),
-            host_session_id: "host.session.phase-zero".to_owned(),
-            host_thread_id: "host.thread.phase-zero".to_owned(),
-            host_turn_id: "host.turn.phase-zero".to_owned(),
+            correlation: mcp_correlation(
+                "host.session.phase-zero",
+                "host.thread.phase-zero",
+                "host.turn.phase-zero",
+            ),
             observed_at: observed_at.to_owned(),
         };
     let project_count = agent_session_count(&fixture)?;

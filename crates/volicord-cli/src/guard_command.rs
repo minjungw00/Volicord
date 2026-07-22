@@ -21,7 +21,7 @@ use volicord_store::{
     },
     guards::{
         current_project_agent_session_coordinates, guard_event, guard_installation,
-        insert_guard_event, observe_agent_session, AgentSessionObservation, GuardEventInsert,
+        insert_guard_event, observe_host_correlation, GuardEventInsert, HostCorrelationObservation,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
@@ -52,8 +52,7 @@ mod write_ticket;
 
 use args::{guard_options, read_guard_input, GuardInput, GuardOptions};
 use envelope::{
-    event_path_field, event_string, guard_envelope, is_managed_builtin_host,
-    managed_native_session_id, GuardEnvelope,
+    event_path_field, event_string, guard_envelope, is_managed_builtin_host, GuardEnvelope,
 };
 use phase::{pre_tool::persist_expected_write, GuardPhaseResult};
 use prompt_capture::handle_prompt_capture;
@@ -319,7 +318,7 @@ fn record_guard_hook_contract_failure(
         &project.project_id,
         GuardEventInsert {
             guard_event_id: event_id,
-            session_id: None,
+            correlation: None,
             connection_internal_id: connection_id.to_owned(),
             guard_installation_id: guard_installation_id.to_owned(),
             policy_hash: manifest.policy_hash.as_str().to_owned(),
@@ -719,18 +718,16 @@ fn bind_guard_envelope(
         &project.project_id,
         &envelope.connection_id,
         envelope.guard_installation_id.as_deref(),
-        &envelope.host_session_id,
+        &envelope.correlation,
     )?;
     envelope.guard_installation_id = coordinates.guard_installation_id;
-    let session = observe_agent_session(
+    let session = observe_host_correlation(
         runtime_home,
         &project.project_id,
-        AgentSessionObservation {
+        HostCorrelationObservation {
             connection_internal_id: envelope.connection_id.clone(),
             guard_installation_id: envelope.guard_installation_id.clone(),
-            host_session_id: envelope.host_session_id.clone(),
-            host_thread_id: envelope.host_thread_id.clone(),
-            host_turn_id: envelope.host_turn_id.clone(),
+            correlation: envelope.correlation.clone(),
             observed_at: envelope.occurred_at.clone(),
         },
     )?;
@@ -827,7 +824,7 @@ fn persist_guard_event(
     )?;
     let input = GuardEventInsert {
         guard_event_id: envelope.event_id.clone(),
-        session_id: envelope.session_id.clone(),
+        correlation: Some(envelope.correlation.clone()),
         connection_internal_id: envelope.connection_id.clone(),
         guard_installation_id: guard_installation_id.to_owned(),
         policy_hash: manifest.policy_hash.as_str().to_owned(),
@@ -847,7 +844,7 @@ fn persist_guard_event(
     };
     if let Some(existing) = guard_event(runtime_home, &project.project_id, &envelope.event_id)? {
         if guard_event_record_payload_sha256(&existing)?
-            == guard_event_insert_payload_sha256(&input)?
+            == guard_event_insert_payload_sha256(&input, envelope.session_id.as_deref())?
         {
             return Ok(());
         }
@@ -892,8 +889,7 @@ fn protect_managed_guard_input(
     if !is_managed_builtin_host(&envelope.host_kind) {
         return Ok(input);
     }
-    let native_session_id =
-        managed_native_session_id(&envelope.host_kind, &input.raw_value)?.to_owned();
+    let native_session_id = envelope.correlation.session_id().as_str().to_owned();
     let managed_session_id = envelope.session_id.as_deref().ok_or_else(|| {
         GuardCommandError::Runtime(
             "managed host event has no canonical managed session binding".to_owned(),
@@ -1224,9 +1220,10 @@ fn canonical_value_sha256(value: &Value) -> String {
 
 fn guard_event_insert_payload_sha256(
     input: &GuardEventInsert,
+    session_id: Option<&str>,
 ) -> Result<String, GuardCommandError> {
     guard_event_payload_sha256(GuardEventPayload {
-        session_id: input.session_id.as_deref(),
+        session_id,
         connection_id: &input.connection_internal_id,
         guard_installation_id: &input.guard_installation_id,
         event_kind: &input.event_kind,

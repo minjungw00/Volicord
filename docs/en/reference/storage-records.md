@@ -9,7 +9,7 @@ and canonical SQL remain with [Storage DDL](storage-ddl.md).
 | Location | Purpose |
 |---|---|
 | `registry.sqlite` | Runtime Home identity, installation profile, projects, aliases, Agent Connections, explicit project memberships, canonical connection verification reports, structured diagnostic findings, and authoritative MCP runtime sessions. |
-| project `state.sqlite` | Project-local Core state, replay, authority events, UserAction, evidence, artifacts, continuity, project Agent Sessions, Guard observations, and reconciliation. |
+| project `state.sqlite` | Project-local Core state, replay, authority events, UserAction, evidence, artifacts, continuity, normalized host correlation, managed MCP project sessions, Guard observations, and reconciliation. |
 | artifact store | Bytes and safe notices referenced by persistent artifact rows. |
 | `diagnostics.sqlite` | Bounded non-authority operability counters. |
 
@@ -60,9 +60,9 @@ Project-state records include:
 - `UserActionRequest`, immutable `UserActionResolution`, and project continuity;
 - expected writes, Guard observations, prompt observations, and unrecorded
   changes used by reconciliation;
-- project Agent Sessions that may precede their Registry runtime binding,
-  retain host session/thread/latest-turn correlation plus first/last
-  observations, and carry the current project integration revision.
+- normalized host sessions, turns, and hook tool invocations, plus managed MCP
+  project sessions that retain their required thread and may precede their
+  Registry runtime binding.
 
 Prompt-related Guard records are observations only. They are not a UserAction
 resolution, user answer, verification basis, or authority source.
@@ -191,24 +191,35 @@ for a current enabled `managed_host` runtime and current Connection revision;
 authoritative Store write fails. Best-effort diagnostics remain separate and
 cannot make an otherwise valid tool result fail.
 
-Project `agent_sessions` are the project-local correlation projection. Each
-row names one Connection, carries a project integration revision that adds the
-current workflow-policy fingerprint and Guard ownership pair, and keeps the
-deterministic revision-scoped session ID, host session, thread, latest turn,
-and first/last observations needed for workflow and Guard correlation. Store
-derives that ID from the Connection internal ID, exact stored project
-integration revision, and exact native host session. The project revision is
-immutable; current revision changes create a new row and never rewrite the
-historical row. A Guard
-observation can create the row with `runtime_session_id=NULL`; no empty,
-sentinel, fabricated, or CLI-preflight runtime represents that state.
-Composite project foreign keys prevent a downstream Guard row from pairing a
-session with another Connection.
+Project host correlation is normalized by source. `host_sessions` names the
+Connection, exact native host session, immutable project integration revision,
+and first/last observation times. Store derives its revision-scoped local
+session ID from the Connection internal ID, exact revision, and native session.
+`host_turns` records exact turns for that local session.
+`host_tool_invocations` records a hook tool-use ID and canonical tool name
+under its exact session and turn. Reusing a tool-use ID with another turn or
+tool name is rejected.
+
+`guard_events.correlation_kind` is `codex_hook_prompt` or
+`codex_hook_tool` when the event is compatible. `prompt_capture` requires a
+session and turn and forbids tool-use fields. `pre_tool` and `post_tool`
+require session, turn, tool-use ID, and canonical tool name. Prompt captures
+reference the exact host turn; expected writes reference the exact host tool
+invocation; correlated unrecorded changes do the same. Rust inputs carry the
+corresponding `HostNativeCorrelation` variant, and SQL checks plus composite
+foreign keys reject incomplete, cross-phase, and cross-Connection shapes.
+None of these hook records has a host-thread field.
+
+`managed_mcp_sessions` is the separate MCP-only project anchor. It references
+the normalized host session and latest host turn, requires a host thread, and
+has an optional Registry runtime attachment. A Guard observation never creates
+this row. Empty, sentinel, fabricated, or CLI-preflight runtime coordinates do
+not represent an unattached MCP anchor.
 
 The first actual managed MCP tool call for the same host session uses four
 ordered stages. Store validates the current `managed_host` runtime and its
 Connection revision without mutation. In an immediate project transaction it
-then creates or validates an unbound Agent Session anchor and rejects any
+then creates or validates an unbound `managed_mcp_sessions` anchor and rejects any
 Connection, native-session, thread, immutable-revision, or existing-runtime
 conflict. Only after that commit does an immediate Registry transaction
 revalidate the runtime, Connection, project membership, current project
@@ -227,19 +238,20 @@ state reuses that reservation and completes the attachment. The reservation
 stores the same exact project integration revision as the project row, and
 authorization validates that match. Conflicting runtime, Connection, project,
 revision, or host-session Registry claims fail. A partial project index makes
-non-null runtime attachment unique while allowing any number of unbound
-Guard-first or MCP-first anchors.
+non-null runtime attachment unique while allowing any number of unbound MCP
+anchors.
 
-Only an attached project row with an exact current Registry binding can
-authorize Core. Unbound rows can retain Guard events and prompt captures.
-Runtime rows themselves are historical process observations: a crashed row
+Only an attached `managed_mcp_sessions` row with an exact current Registry
+binding can authorize Core. Hook-only normalized rows can retain Guard events
+and prompt captures but cannot authorize a managed call. Runtime rows
+themselves are historical process observations: a crashed row
 may remain apparently open, and concurrent current rows may coexist without
 blocking or selecting Guard correlation.
 
 Runtime authorization reads these current records directly. It accepts only an
 enabled Connection, a current Connection Project membership, a
 `session_source=managed_host` nonterminal runtime session for that Connection, and a
-project Agent Session owned by the same runtime session, Connection, and
+project managed MCP session owned by the same runtime session, Connection, and
 project. The stored Connection and project integration revisions must equal the
 revisions derived from current owner inputs. The Connection mode must allow the
 requested operation category. `cli_preflight` rows, diagnostic version fields,
@@ -335,7 +347,10 @@ Each Registry `guard_installations` row retains only stable installation and
 owner identity, canonical `manifest_json`, and creation/update timestamps. The
 manifest is strict and owner-bound. It carries the exact policy hash,
 integration revision, typed runtime commands, complete Volicord-managed file
-expectations, and required typed hook phases. File audit and required-phase
+expectations, required typed hook phases, `host_contract_profile`, and
+`host_contract_digest`. The current Guard profile is explicitly
+`codex-hooks-v1`; audit requires its deterministic reviewed digest rather than
+choosing a parser from an incoming payload. File audit and required-phase
 observation derive the current Guard checks from this manifest and current
 owner-matched facts.
 
@@ -348,6 +363,11 @@ command objects for equality.
 
 Project `guard_events` bind every observation to the Guard installation,
 policy hash, integration revision, typed hook phase, and contract status.
+`UserPromptSubmit` becomes `prompt_capture` with session/turn correlation.
+`PreToolUse` and `PostToolUse` become `pre_tool` and `post_tool` with
+session/turn/tool-use/tool-name correlation. They never require or store a
+thread coordinate. The same typed tool correlation, including canonical tool
+name, must match across related pre/post records.
 Current compatible events derive `guard_observation`; older hashes or revisions
 remain historical and cannot satisfy it. A current malformed or incompatible
 event makes that check fail. Prompt capture remains a fact within the same

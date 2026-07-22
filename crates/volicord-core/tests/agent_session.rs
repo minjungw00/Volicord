@@ -2,17 +2,20 @@ use std::error::Error;
 
 use rusqlite::params;
 use volicord_core::{CoreService, InvocationContext};
+use volicord_host_contract::{
+    CodexHookPromptCorrelation, CodexMcpCorrelation, HostNativeCorrelation, HostSessionId,
+    HostThreadId, HostTurnId,
+};
 use volicord_store::{
     agent_connections::{set_connection_enabled, CONNECTION_MODE_READ_ONLY},
     guards::{
-        agent_session, bind_agent_session_runtime, observe_agent_session, AgentSessionObservation,
-        AgentSessionRuntimeBinding,
+        agent_session, bind_agent_session_runtime, observe_host_correlation,
+        AgentSessionRuntimeBinding, HostCorrelationObservation,
     },
     operational_sessions::{
         mcp_runtime_project_session_binding, start_mcp_runtime_session, McpRuntimeSessionStart,
     },
     sqlite::registry_db_path,
-    StoreError,
 };
 use volicord_test_support::{
     core_fixtures::CoreFixture, seed_test_agent_session, transition_test_connection_mode,
@@ -21,6 +24,21 @@ use volicord_types::{
     ActorSource, AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, FailureCategory,
     McpRuntimeSessionSource, OperationCategory, ProjectId,
 };
+
+fn mcp_correlation(session: &str, thread: &str, turn: &str) -> CodexMcpCorrelation {
+    CodexMcpCorrelation {
+        session_id: HostSessionId::parse(session).expect("valid test session"),
+        thread_id: HostThreadId::parse(thread).expect("valid test thread"),
+        turn_id: HostTurnId::parse(turn).expect("valid test turn"),
+    }
+}
+
+fn prompt_correlation(session: &str, turn: &str) -> HostNativeCorrelation {
+    HostNativeCorrelation::CodexHookPrompt(CodexHookPromptCorrelation {
+        session_id: HostSessionId::parse(session).expect("valid test session"),
+        turn_id: HostTurnId::parse(turn).expect("valid test turn"),
+    })
+}
 
 #[test]
 fn current_managed_session_authorizes_and_derives_deterministic_audit_basis(
@@ -288,26 +306,24 @@ fn cli_preflight_and_invented_project_session_coordinates_never_authorize(
 }
 
 #[test]
-fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
-) -> Result<(), Box<dyn Error>> {
+fn hook_only_host_session_cannot_authorize_until_mcp_runtime_attach() -> Result<(), Box<dyn Error>>
+{
     let fixture = CoreFixture::new("core-agent-session-guard-first")?;
     let host_session = "host.session.guard-first";
     let observed_at = fixture.store()?.current_timestamp()?;
-    let observation = AgentSessionObservation {
+    let observation = HostCorrelationObservation {
         connection_internal_id: fixture.connection_id().to_owned(),
         guard_installation_id: None,
-        host_session_id: host_session.to_owned(),
-        host_thread_id: "host.thread.guard-first".to_owned(),
-        host_turn_id: "host.turn.guard-first".to_owned(),
+        correlation: prompt_correlation(host_session, "host.turn.guard-first"),
         observed_at: observed_at.clone(),
     };
-    let project_session_id = observe_agent_session(
+    let project_session_id = observe_host_correlation(
         fixture.runtime_home_path(),
         fixture.project_id(),
         observation,
     )?
     .session_id;
-    let conflicting_runtime = start_mcp_runtime_session(
+    let runtime = start_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -318,29 +334,12 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
         },
     )?;
     let service = CoreService::new(fixture.runtime_home_path());
-    let conflict = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        AgentSessionRuntimeBinding {
-            runtime_session_id: conflicting_runtime.runtime_session_id.clone(),
-            connection_internal_id: fixture.connection_id().to_owned(),
-            guard_installation_id: None,
-            host_session_id: host_session.to_owned(),
-            host_thread_id: "host.thread.conflicting".to_owned(),
-            host_turn_id: "host.turn.conflicting".to_owned(),
-            observed_at: observed_at.clone(),
-        },
-    )
-    .expect_err("a conflicting host thread must fail before Registry reservation");
-    assert!(matches!(conflict, StoreError::Conflict { .. }));
-    let still_unbound = agent_session(
+    assert!(agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
         &project_session_id,
     )?
-    .expect("Guard-created project session");
-    assert_eq!(still_unbound.host_thread_id, "host.thread.guard-first");
-    assert!(still_unbound.runtime_session_id.is_none());
+    .is_none());
     assert!(mcp_runtime_project_session_binding(
         fixture.runtime_home_path(),
         fixture.project_id(),
@@ -351,40 +350,28 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
         .validate_agent_session(
             AgentConnectionId::new(fixture.connection_id()),
             ProjectId::new(fixture.project_id()),
-            AgentRuntimeSessionId::new(&conflicting_runtime.runtime_session_id),
+            AgentRuntimeSessionId::new(&runtime.runtime_session_id),
             AgentSessionId::new(&project_session_id),
             OperationCategory::Read,
         )
-        .expect_err("an unbound Guard-created session cannot authorize");
-    assert_eq!(error.reason(), "agent_project_session_unbound");
+        .expect_err("hook-only host records cannot authorize as a managed MCP session");
+    assert_eq!(error.reason(), "agent_project_session_not_current");
 
-    let correct_runtime = start_mcp_runtime_session(
-        fixture.runtime_home_path(),
-        McpRuntimeSessionStart {
-            connection_internal_id: fixture.connection_id().to_owned(),
-            session_source: McpRuntimeSessionSource::ManagedHost,
-            observed_host_executable_version: None,
-            process_id: std::process::id(),
-            process_started_at: observed_at.clone(),
-        },
-    )?;
     let attached = bind_agent_session_runtime(
         fixture.runtime_home_path(),
         fixture.project_id(),
         AgentSessionRuntimeBinding {
-            runtime_session_id: correct_runtime.runtime_session_id.clone(),
+            runtime_session_id: runtime.runtime_session_id.clone(),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_session_id: host_session.to_owned(),
-            host_thread_id: "host.thread.guard-first".to_owned(),
-            host_turn_id: "host.turn.correct".to_owned(),
+            correlation: mcp_correlation(host_session, "host.thread.mcp", "host.turn.correct"),
             observed_at,
         },
     )?;
     assert_eq!(attached.session_id, project_session_id);
     assert_eq!(
         attached.runtime_session_id.as_deref(),
-        Some(correct_runtime.runtime_session_id.as_str())
+        Some(runtime.runtime_session_id.as_str())
     );
     let registry = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
     let binding_count: i64 = registry.query_row(
@@ -396,7 +383,7 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
     service.validate_agent_session(
         AgentConnectionId::new(fixture.connection_id()),
         ProjectId::new(fixture.project_id()),
-        AgentRuntimeSessionId::new(correct_runtime.runtime_session_id),
+        AgentRuntimeSessionId::new(runtime.runtime_session_id),
         AgentSessionId::new(project_session_id),
         OperationCategory::Read,
     )?;
@@ -404,20 +391,18 @@ fn guard_created_unbound_session_cannot_authorize_until_exact_runtime_attach(
 }
 
 #[test]
-fn registry_reservation_without_project_attachment_cannot_authorize() -> Result<(), Box<dyn Error>>
+fn registry_reservation_without_mcp_project_anchor_cannot_authorize() -> Result<(), Box<dyn Error>>
 {
     let fixture = CoreFixture::new("core-agent-session-reservation-only")?;
     let observed_at = fixture.store()?.current_timestamp()?;
     let host_session_id = "host.session.reservation-only";
-    let session = observe_agent_session(
+    let session = observe_host_correlation(
         fixture.runtime_home_path(),
         fixture.project_id(),
-        AgentSessionObservation {
+        HostCorrelationObservation {
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_session_id: host_session_id.to_owned(),
-            host_thread_id: "host.thread.reservation-only".to_owned(),
-            host_turn_id: "host.turn.reservation-only".to_owned(),
+            correlation: prompt_correlation(host_session_id, "host.turn.reservation-only"),
             observed_at: observed_at.clone(),
         },
     )?;
@@ -457,8 +442,8 @@ fn registry_reservation_without_project_attachment_cannot_authorize() -> Result<
             AgentSessionId::new(&session.session_id),
             OperationCategory::Read,
         )
-        .expect_err("a Registry-only reservation cannot authorize Core");
-    assert_eq!(error.reason(), "agent_project_session_unbound");
+        .expect_err("a Registry reservation without an MCP project anchor cannot authorize Core");
+    assert_eq!(error.reason(), "agent_project_session_not_current");
 
     let attached = bind_agent_session_runtime(
         fixture.runtime_home_path(),
@@ -467,9 +452,11 @@ fn registry_reservation_without_project_attachment_cannot_authorize() -> Result<
             runtime_session_id: runtime.runtime_session_id.clone(),
             connection_internal_id: fixture.connection_id().to_owned(),
             guard_installation_id: None,
-            host_session_id: host_session_id.to_owned(),
-            host_thread_id: "host.thread.reservation-only".to_owned(),
-            host_turn_id: "host.turn.reservation-only".to_owned(),
+            correlation: mcp_correlation(
+                host_session_id,
+                "host.thread.reservation-only",
+                "host.turn.reservation-only",
+            ),
             observed_at,
         },
     )?;

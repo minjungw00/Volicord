@@ -320,10 +320,13 @@ satisfies `process_startup`, `host_session`, `required_tools`, or
 `guard_observation` as top-level operational checks.
 The strict Guard manifest owns the current policy hash, integration revision,
 typed runtime commands, complete Volicord-managed artifact expectations, and
-required hook phases. Policy and runtime commands are distinct projections of
-one typed invocation. Audit compares every managed artifact with its canonical
-current expectation, and Guard observation requires compatible current events
-for every required phase.
+required hook phases. It also names the exact `host_contract_profile` and
+deterministic `host_contract_digest`; the current values select
+`codex-hooks-v1` and its reviewed contract identity. Policy and runtime
+commands are distinct projections of one typed invocation. Audit rejects a
+manifest whose profile or digest differs from that exact selection, compares
+every managed artifact with its canonical current expectation, and requires
+compatible current events for every required phase.
 
 A recorded verification-tool name mismatch never passes `tool_round_trip`.
 The check fails with `tool_round_trip_designation_mismatch`, and active
@@ -465,8 +468,9 @@ Codex executable path and version. Reports and findings never substitute one
 for the other. When both versions exist and differ,
 `host.codex.peer_version_differs_from_path_probe` records warning evidence with
 both fact objects; the mismatch alone is not a fatal Connection failure.
-Malformed native metadata, inconsistent session/thread/turn coordinates,
-registered-session mismatch, and managed-marker mismatch use
+The explicitly selected `codex-mcp-2025-06-18-v1` profile owns MCP
+session/thread/turn metadata. Malformed MCP metadata, inconsistent nested and
+top-level thread coordinates, registered-session mismatch, and managed-marker mismatch use
 `host.codex.metadata_malformed`,
 `host.codex.session_thread_turn_inconsistent`,
 `host.codex.registered_session_correlation_mismatch`, and
@@ -491,30 +495,38 @@ new selection; profiles are not shared or inherited across processes.
 
 The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint and current Guard installation
-identity/policy hash, or explicit absence of Guard ownership. A project Agent
-Session retains that revision, a deterministic revision-scoped session ID,
-Connection, host session/thread/latest turn, and first/last observation times.
-The Store derives the internal ID with a domain-separated digest over the
-Connection internal ID, exact project integration revision, and exact
-host-native session ID only after resolving the project and validating current
-Guard ownership. Callers cannot supply the complete internal ID. The stored
-project revision is immutable: a later Connection mode generation, physical
-Connection recreation, project-policy revision, or Guard ownership revision
-creates a different project Agent Session row for the same native session and
-leaves the earlier row as history.
-A Guard observation may create it with a null runtime binding. The first actual
-managed MCP tool call for that host session validates the current managed
-runtime without mutation, establishes or validates the exact project Agent
-Session anchor, revalidates the current owner inputs while reserving the exact
-cross-database binding, and only then attaches its runtime in a final project
-transaction. Connection, project, Guard Installation, revision, native-session,
-thread, or existing-runtime conflicts detected against the project anchor
-leave no new Registry binding. The project anchor may remain unbound if a later
-Registry reservation fails, but it is not authorization. A Registry reservation
-left by interruption before final attachment is also not authorization; exact
-replay under unchanged owner state reuses it and finishes the attachment. An
-attached session cannot be rebound across a runtime session, Connection,
-project, host session, or host thread.
+identity/policy hash, or explicit absence of Guard ownership. `host_sessions`
+retains the revision-scoped local session ID, Connection, exact native session,
+and observation times. `host_turns` retains turns shared by both contract
+sources. `host_tool_invocations` retains hook tool-use IDs and canonical tool
+names. Store derives the local session ID with a domain-separated digest over
+the Connection internal ID, exact project integration revision, and exact
+native session only after resolving the project and validating current Guard
+ownership. Callers cannot supply the complete local ID, and the stored project
+revision is immutable.
+
+The `codex-hooks-v1` parser yields `CodexHookPromptCorrelation` for
+`UserPromptSubmit` and `CodexHookToolCorrelation` for `PreToolUse` and
+`PostToolUse`. Prompt correlation requires only session and turn. Tool
+correlation additionally requires tool-use ID and canonical tool name. No hook
+phase has a thread coordinate. The `codex-mcp-2025-06-18-v1` parser instead
+yields `CodexMcpCorrelation`, for which session, thread, and turn are required.
+Store phase checks and SQL discriminators reject cross-source or incomplete
+combinations.
+
+A Guard observation may create normalized host, turn, and tool rows but never
+creates the MCP-only `managed_mcp_sessions` row. The first actual managed MCP
+tool call validates the current managed runtime without mutation, establishes
+or validates that exact MCP anchor, revalidates current owner inputs while
+reserving the cross-database binding, and only then attaches its runtime in a
+final project transaction. Connection, project, Guard Installation, revision,
+native-session, thread, or existing-runtime conflicts detected against the MCP
+anchor leave no new Registry binding. The anchor may remain unbound if a later
+Registry reservation fails, but it is not authorization. A Registry
+reservation left by interruption before final attachment is also not
+authorization; exact replay under unchanged owner state reuses it and finishes
+the attachment. An attached MCP session cannot be rebound across a runtime
+session, Connection, project, host session, or host thread.
 
 Runtime rows are historical process observations, not leases or liveness
 claims. A crashed process may leave an apparently open row, and multiple

@@ -80,7 +80,7 @@ fn record_prompt_capture(
             &project.project_id,
             PromptCaptureInsert {
                 prompt_capture_id: capture_id.clone(),
-                session_id: session_id.clone(),
+                correlation: envelope.correlation.clone(),
                 connection_internal_id: envelope.connection_id.clone(),
                 capture_kind: event_string(&input.raw_value, &[&["capture_kind"]])
                     .unwrap_or_else(|| "user_prompt".to_owned()),

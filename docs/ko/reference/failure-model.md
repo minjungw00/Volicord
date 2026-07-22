@@ -51,6 +51,19 @@ diagnostic입니다.
 잘못되었거나 알려지지 않은 경우는 `Corrupt`가 아니라 `Rejected`이며 지원되는
 형태로 추정하지 않습니다.
 
+### 버전이 지정된 host contract 거부
+
+Codex wire 입력은 명시적으로 선택한 profile로만 decode합니다.
+`codex-mcp-2025-06-18-v1`과 `codex-hooks-v1`은 별도 계약이며, 한 계약의 실패를 다른
+계약으로 다시 시도하거나 재해석하거나 다른 계약의 field로 보완하지 않습니다. 필수 field가
+없거나 유효하지 않은 경우, 예상하지 않은 event 값, 일관되지 않은 MCP thread 좌표, 계약의
+크기 또는 depth 한도를 넘은 입력은 Store 또는 policy 평가 전에 `Rejected`입니다.
+
+Typed host-contract error는 닫힌 error code와 정적인 field label만 보관합니다. 전체 hook
+payload, MCP metadata, tool input, tool response를 보관하거나 투영하지 않습니다. Hook
+failure는 session, environment, runtime state에서 thread 좌표를 만들어 내지 않습니다. 등록된
+managed-session 상관관계는 profile decode가 성공한 뒤에도 독립된 MCP 권한 check로 남습니다.
+
 활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
 아래에서 정의하는 다섯 가지 상태 모델로 보고합니다. 실행 파일을 찾거나 실행하지 못한
 경우 일반 실패 범주 경계에서는 `Unavailable`, 연결 보고서에서는 실패한

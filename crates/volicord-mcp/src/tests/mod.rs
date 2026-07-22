@@ -36,6 +36,9 @@ use crate::{
     },
 };
 use volicord_core::CoreBoundary;
+use volicord_host_contract::{
+    CodexMcpCorrelation, HostNativeCorrelation, HostSessionId, HostThreadId, HostTurnId,
+};
 use volicord_mcp_protocol::ToolResultField;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,

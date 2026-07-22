@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+volicord-host-contract = { path = "../volicord-host-contract" }
 volicord-store = { path = "../volicord-store" }
 volicord-types = { path = "../volicord-types" }
 rusqlite = { version = "0.32", features = ["bundled"] }

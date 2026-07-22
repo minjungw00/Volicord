@@ -21,9 +21,13 @@ pub(super) fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error
         McpAdapter::new(fixture.runtime_home_path(), context).with_managed_agent_session_binding(
             ManagedAgentSessionBinding {
                 runtime_session_id: session.runtime_session_id.as_str().to_owned(),
-                host_session_id: session.host_session_id,
-                host_thread_id: session.host_thread_id,
-                host_turn_id: session.host_turn_id,
+                correlation: volicord_host_contract::CodexMcpCorrelation {
+                    session_id: volicord_host_contract::HostSessionId::parse(
+                        session.host_session_id,
+                    )?,
+                    thread_id: volicord_host_contract::HostThreadId::parse(session.host_thread_id)?,
+                    turn_id: volicord_host_contract::HostTurnId::parse(session.host_turn_id)?,
+                },
             },
         ),
     )
@@ -106,9 +110,13 @@ pub(super) fn adapter_for_additional_connection(
         McpAdapter::new(fixture.runtime_home_path(), context).with_managed_agent_session_binding(
             ManagedAgentSessionBinding {
                 runtime_session_id: session.runtime_session_id.as_str().to_owned(),
-                host_session_id: session.host_session_id,
-                host_thread_id: session.host_thread_id,
-                host_turn_id: session.host_turn_id,
+                correlation: volicord_host_contract::CodexMcpCorrelation {
+                    session_id: volicord_host_contract::HostSessionId::parse(
+                        session.host_session_id,
+                    )?,
+                    thread_id: volicord_host_contract::HostThreadId::parse(session.host_thread_id)?,
+                    turn_id: volicord_host_contract::HostTurnId::parse(session.host_turn_id)?,
+                },
             },
         ),
     )

@@ -3,11 +3,12 @@
 use std::{path::Path, str::FromStr};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
+use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation, HostSessionId};
 use volicord_types::{
-    project_agent_session_id, validate_managed_host_native_session_id,
-    ConnectionIntegrationRevisionBasis, DurableIdGenerator, DurableIdKind, IntegrationRevision,
-    ManagedMcpClientInfo, McpRuntimeSessionSource, OccurrenceDiagnosticFinding,
-    RandomDurableIdGenerator, ToolVerificationRole, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
+    project_agent_session_id, ConnectionIntegrationRevisionBasis, DurableIdGenerator,
+    DurableIdKind, IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource,
+    OccurrenceDiagnosticFinding, RandomDurableIdGenerator, ToolVerificationRole, UtcTimestamp,
+    DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::{
@@ -227,7 +228,7 @@ pub(crate) struct McpRuntimeProjectSessionReservation<'a> {
     pub project_id: &'a str,
     pub asserted_guard_installation_id: Option<&'a str>,
     pub expected_coordinates: &'a crate::guards::ProjectAgentSessionCoordinates,
-    pub host_session_id: &'a str,
+    pub correlation: &'a CodexMcpCorrelation,
     pub bound_at: &'a str,
 }
 
@@ -243,9 +244,10 @@ pub(crate) fn reserve_mcp_runtime_project_session(
         project_id,
         asserted_guard_installation_id,
         expected_coordinates,
-        host_session_id,
+        correlation,
         bound_at,
     } = input;
+    let host_session_id = correlation.session_id.as_str();
     validate_timestamp("bound_at", bound_at)?;
     for (field, value) in [
         ("runtime_session_id", runtime_session_id),
@@ -255,12 +257,6 @@ pub(crate) fn reserve_mcp_runtime_project_session(
     ] {
         validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)?;
     }
-    validate_managed_host_native_session_id(host_session_id).map_err(|_| {
-        StoreError::InvalidInput {
-            detail: "host_session_id must be valid host-native session correlation metadata"
-                .to_owned(),
-        }
-    })?;
     let runtime_home = runtime_home.as_ref();
     let path = registry_db_path(runtime_home);
     let mut conn = open_registry_database(path)?;
@@ -311,7 +307,7 @@ pub(crate) fn reserve_mcp_runtime_project_session(
         project_id,
         connection_internal_id,
         asserted_guard_installation_id,
-        host_session_id,
+        &HostNativeCorrelation::CodexMcp(correlation.clone()),
     )?;
     if coordinates != *expected_coordinates {
         return Err(StoreError::Conflict {
@@ -480,7 +476,7 @@ pub fn mcp_runtime_project_session_binding(
                 validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)
                     .map_err(|_| corrupt(field))?;
             }
-            validate_managed_host_native_session_id(&record.host_session_id)
+            HostSessionId::parse(record.host_session_id.clone())
                 .map_err(|_| corrupt("host_session_id"))?;
             if project_agent_session_id(
                 &record.connection_internal_id,

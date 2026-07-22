@@ -1,0 +1,16 @@
+{
+  "session_id": "codex-session-001",
+  "transcript_path": "/tmp/volicord-fixtures/codex-session-001.jsonl",
+  "cwd": "/repo",
+  "hook_event_name": "PostToolUse",
+  "turn_id": "turn-tool-002",
+  "tool_name": "mcp__volicord__volicord_status",
+  "tool_use_id": "toolu-mcp-001",
+  "tool_input": {
+    "detail": "workflow"
+  },
+  "tool_response": {
+    "isError": false,
+    "content": []
+  }
+}

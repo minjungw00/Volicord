@@ -61,15 +61,14 @@ pub(crate) use volicord_store::{
 #[cfg(test)]
 pub(crate) use volicord_store::guards::guard_health_record;
 pub(crate) use volicord_types::{
-    mcp_request_schema, mcp_response_schema, validate_managed_host_native_session_id, ActorSource,
-    AgentConnectionId, AgentConnectionMode, AgentRuntimeSessionId, AgentSessionId,
-    AuthorityReceipt, CheckCloseRequest, CloseTaskRequest, EffectKind, ErrorCode,
-    GetOperationResultRequest, IdempotencyKey, IntakeRequest, IntegrationProfile,
-    McpAuthoritativeRefreshFailure, McpCheckCloseArguments, McpCloseTaskArguments,
-    McpGetOperationResultArguments, McpIntakeArguments, McpMutationEffectSummary,
-    McpMutationFullResponse, McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
-    McpMutationResponseBudgetExceeded, McpMutationSummaryResponse, McpMutationWorkflowResponse,
-    McpPostEffectFailureCode, McpPrepareEvidenceCaptureArguments,
+    mcp_request_schema, mcp_response_schema, ActorSource, AgentConnectionId, AgentConnectionMode,
+    AgentRuntimeSessionId, AgentSessionId, AuthorityReceipt, CheckCloseRequest, CloseTaskRequest,
+    EffectKind, ErrorCode, GetOperationResultRequest, IdempotencyKey, IntakeRequest,
+    IntegrationProfile, McpAuthoritativeRefreshFailure, McpCheckCloseArguments,
+    McpCloseTaskArguments, McpGetOperationResultArguments, McpIntakeArguments,
+    McpMutationEffectSummary, McpMutationFullResponse, McpMutationPostEffectFailure,
+    McpMutationProjectionErrorCode, McpMutationResponseBudgetExceeded, McpMutationSummaryResponse,
+    McpMutationWorkflowResponse, McpPostEffectFailureCode, McpPrepareEvidenceCaptureArguments,
     McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteArguments, McpPrepareWriteCompactResult,
     McpReconcileChangesArguments, McpReconcileChangesCompactResult, McpRecordRunArguments,
     McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult, McpRequestUserActionArguments,

@@ -28,6 +28,7 @@ use volicord_cli::{
     },
     policy_command::run_policy_command,
 };
+use volicord_host_contract::{CodexMcpCorrelation, HostSessionId, HostThreadId, HostTurnId};
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
 use volicord_store::{
     agent_connections::{
@@ -1017,9 +1018,11 @@ fn seed_project_session_on_runtime(
             runtime_session_id: runtime_session_id.to_owned(),
             connection_internal_id: connection_internal_id.to_owned(),
             guard_installation_id: Some(guard_installation_id.to_owned()),
-            host_session_id: host_session_id.to_owned(),
-            host_thread_id: format!("thread.{host_session_id}"),
-            host_turn_id: format!("turn.{host_session_id}"),
+            correlation: CodexMcpCorrelation {
+                session_id: HostSessionId::parse(host_session_id)?,
+                thread_id: HostThreadId::parse("native.thread.fixture")?,
+                turn_id: HostTurnId::parse("native.turn.fixture")?,
+            },
             observed_at: observed_at.to_owned(),
         },
     )?

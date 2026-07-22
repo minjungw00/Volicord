@@ -59,7 +59,7 @@ fn mcp_check_reports_readwrite_effective_tool_mode() -> Result<(), Box<dyn Error
 fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-check-no-mutate")?;
     let before_version = read_only_state_version(&fixture)?;
-    let before_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_sessions = read_only_table_count(&fixture, "host_sessions")?;
     let before_invocations = read_only_table_count(&fixture, "tool_invocations")?;
 
     let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
@@ -67,7 +67,7 @@ fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
     assert_report_line(&report, "project_state_write: passed");
     assert_eq!(read_only_state_version(&fixture)?, before_version);
     assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
+        read_only_table_count(&fixture, "host_sessions")?,
         before_sessions
     );
     assert_eq!(
@@ -256,7 +256,7 @@ fn managed_codex_launch_stays_effect_free_until_exact_call_binding() -> Result<(
     )?;
 
     assert!(output.is_empty());
-    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
+    assert_eq!(read_only_table_count(&fixture, "host_sessions")?, 0);
     assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
     Ok(())
 }
@@ -286,7 +286,7 @@ fn managed_codex_tools_list_buffers_metrics_until_call_binding() -> Result<(), B
     let responses = stdio_responses(&output)?;
     assert_eq!(responses.len(), 2);
     assert!(responses[1]["result"]["tools"].is_array());
-    assert_eq!(read_only_table_count(&fixture, "agent_sessions")?, 0);
+    assert_eq!(read_only_table_count(&fixture, "host_sessions")?, 0);
     assert!(read_diagnostic_session(fixture.runtime_home_path(), None)?.is_none());
     Ok(())
 }
@@ -714,7 +714,7 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
     let fixture = CoreFixture::new("mcp-stdio-invalid-marker-watch-skip")?;
     let adapter = project_bound_adapter(&fixture)?;
     let before_state_version = read_only_state_version(&fixture)?;
-    let before_agent_sessions = read_only_table_count(&fixture, "agent_sessions")?;
+    let before_agent_sessions = read_only_table_count(&fixture, "host_sessions")?;
     let before_tool_invocations = read_only_table_count(&fixture, "tool_invocations")?;
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),
@@ -757,7 +757,7 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
     assert!(!serde_json::to_string(&responses)?.contains("thread invalid marker"));
     assert_eq!(read_only_state_version(&fixture)?, before_state_version);
     assert_eq!(
-        read_only_table_count(&fixture, "agent_sessions")?,
+        read_only_table_count(&fixture, "host_sessions")?,
         before_agent_sessions
     );
     assert_eq!(
@@ -851,7 +851,11 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
         fixture.project_id(),
         fixture.connection_id(),
         None,
-        rejected_session_id,
+        &HostNativeCorrelation::CodexMcp(CodexMcpCorrelation {
+            session_id: HostSessionId::parse(rejected_session_id)?,
+            thread_id: HostThreadId::parse("native.thread.rejected")?,
+            turn_id: HostTurnId::parse("turn.rejected")?,
+        }),
     )?
     .session_id;
     assert!(
@@ -863,7 +867,11 @@ fn invalid_tool_shapes_do_not_bind_and_a_later_exact_codex_call_recovers(
         fixture.project_id(),
         fixture.connection_id(),
         None,
-        accepted_session_id,
+        &HostNativeCorrelation::CodexMcp(CodexMcpCorrelation {
+            session_id: HostSessionId::parse(accepted_session_id)?,
+            thread_id: HostThreadId::parse("native.thread.accepted-after-recovery")?,
+            turn_id: HostTurnId::parse("turn.accepted")?,
+        }),
     )?
     .session_id;
     assert!(

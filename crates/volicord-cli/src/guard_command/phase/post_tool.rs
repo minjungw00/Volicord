@@ -654,7 +654,7 @@ fn record_unrecorded_changes(
         &context.project.project_id,
         UnrecordedChangeInsert {
             unrecorded_change_id: change_id.clone(),
-            session_id: context.envelope.session_id.clone(),
+            correlation: Some(context.envelope.correlation.clone()),
             connection_internal_id: context.envelope.connection_id.clone(),
             task_id: context.summary.active_task_id.clone(),
             confidence: context.confidence.as_str().to_owned(),
@@ -1633,7 +1633,7 @@ fn fallback_expected_write_candidates(
     };
     records
         .iter()
-        .filter(|record| record.session_id.as_deref() == Some(session_id))
+        .filter(|record| record.session_id == session_id)
         .filter(|record| !require_missing_host_invocation_id || record.host_invocation_id.is_none())
         .cloned()
         .collect()
@@ -1643,7 +1643,7 @@ fn expected_write_session_matches(record: &ExpectedWriteRecord, envelope: &Guard
     envelope
         .session_id
         .as_deref()
-        .is_none_or(|session_id| record.session_id.as_deref() == Some(session_id))
+        .is_none_or(|session_id| record.session_id == session_id)
 }
 
 fn host_invocation_id_from_observation(observation: &ToolObservation) -> Option<String> {

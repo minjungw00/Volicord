@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/call",
+  "params": {
+    "name": "volicord.status",
+    "arguments": {
+      "detail": "workflow"
+    },
+    "_meta": {
+      "threadId": "codex-thread-001",
+      "x-codex-turn-metadata": {
+        "session_id": "codex-session-001",
+        "thread_id": "codex-thread-001",
+        "turn_id": "turn-mcp-001",
+        "reviewed_additive_field": true
+      },
+      "reviewed_additive_field": true
+    }
+  }
+}
