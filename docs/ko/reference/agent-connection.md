@@ -331,12 +331,13 @@ remediation category를 만들지 않고 `DiagnosticFinding`이 가린 fact를 �
 현재 상태로 취급하지 않습니다. CLI 소유 현재 상태 운영 finding은 typed subject로 정확한
 managed-config target, Product Repository trust, Guard 관리 artifact, Guard phase, Guard
 Installation, Guard event, integration revision, verification tool을 식별하고, 각 폐쇄형
-diagnostic 값을 불변 definition 하나에 연결합니다. 각 subject는 scope, 정규 identity byte,
-안전한 표시 projection을 담당합니다. Path를 담는 subject는 filesystem alias를 정규화한 뒤
-불투명하고 path를 노출하지 않는 reference를 만듭니다. 각 `CurrentDiagnosticKey`에는 완전한
-Connection scope, 전체 code, domain, stage, source, subject kind와 reference가 들어갑니다.
-안정적인 ID는 이 완전한 key의 고정된 전체 digest이므로 artifact나 phase가 둘이면 diagnostic
-code가 같아도 finding 둘을 유지하고, 주체 하나를 다시 관찰하면 그 snapshot만 갱신합니다.
+diagnostic 값을 불변 definition 하나에 연결합니다. 각 subject는 scope, typed versioned 정규
+identity encoding과 opaque subject identity, 별도의 안전한 표시 projection을 담당합니다. Path를
+담는 subject는 filesystem alias를 정규화한 뒤 opaque identity를 파생하며 정규 path byte를
+저장하지 않습니다. 각 `CurrentDiagnosticKey`에는 완전한 Connection scope, 전체 code, domain,
+stage, source, opaque subject identity가 들어갑니다. 안정적인 ID는 이 완전한 key의 고정된 전체
+digest이므로 artifact나 phase가 둘이면 diagnostic code가 같아도 finding 둘을 유지하고, 주체
+하나를 다시 관찰하면 안전한 표시 projection을 포함한 그 snapshot만 갱신합니다.
 
 활성 검증은 CLI 담당자별 완전한 관찰 집합을 reconcile합니다. 계속 관찰된 condition은
 활성화하거나 갱신하고, 복구 성공, 호환 revision, 새로운 관찰 뒤 집합에서 빠진 이전 active

@@ -298,6 +298,14 @@ CREATE TABLE diagnostic_findings (
       AND current_identity_digest NOT GLOB '*[^0-9a-f]*'
     )
   ),
+  current_subject_identity TEXT CHECK (
+    current_subject_identity IS NULL
+    OR (
+      length(current_subject_identity) = 71
+      AND substr(current_subject_identity, 1, 7) = 'sha256:'
+      AND substr(current_subject_identity, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
   diagnostic_scope_kind TEXT CHECK (
     diagnostic_scope_kind IS NULL
     OR diagnostic_scope_kind IN ('connection', 'project', 'runtime_home', 'installation', 'process')
@@ -381,6 +389,7 @@ CREATE TABLE diagnostic_findings (
     (
       lifecycle = 'occurrence'
       AND current_identity_digest IS NULL
+      AND current_subject_identity IS NULL
       AND diagnostic_scope_kind IS NULL
       AND diagnostic_scope_identity IS NULL
       AND current_state_status IS NULL
@@ -389,6 +398,7 @@ CREATE TABLE diagnostic_findings (
     OR (
       lifecycle = 'current_state'
       AND current_identity_digest IS NOT NULL
+      AND current_subject_identity IS NOT NULL
       AND diagnostic_scope_kind IS NOT NULL
       AND diagnostic_scope_identity IS NOT NULL
       AND current_state_status IS NOT NULL
@@ -461,13 +471,13 @@ BEFORE UPDATE OF
   finding_id,
   lifecycle,
   current_identity_digest,
+  current_subject_identity,
   diagnostic_scope_kind,
   diagnostic_scope_identity,
   code,
   domain,
   stage,
-  source,
-  subject_json
+  source
 ON diagnostic_findings
 WHEN OLD.lifecycle = 'current_state'
 BEGIN
@@ -639,7 +649,7 @@ Registry constraints:
 - The integration generation distinguishes revisions within one physical Connection instance, while `integration_instance_id` distinguishes physical deletion and recreation. They are Store-owned local lifecycle and correlation coordinates, and callers cannot select either value.
 - `agent_connections.verification_report_json` is SQL null when no completed report exists. A non-null value stores one strict canonical `ConnectionVerificationReport`, including its derived status and actions; absent optional members are omitted rather than encoded as explicit null. Store does not persist those components independently.
 - `connection_projects` is the explicit project allowlist for one Agent Connection. It stores membership with `connection_internal_id` and `project_internal_id`. Deleting a project or connection that still has membership is restricted.
-- `diagnostic_findings.lifecycle` is exactly `occurrence` or `current_state`. Occurrence rows have no current identity or status fields and are immutable. Current rows require a full 64-character lowercase identity digest, scope kind and complete scope identity, active/resolved status, no runtime-session coordinate, and an ID exactly equal to `finding.current.sha256:` plus that digest. Active rows have no `resolved_at`; resolved rows require it. The unique digest index, active-scope index, lifecycle checks, and identity update trigger enforce those physical distinctions. `facts_json` remains a valid JSON object bounded to 16,384 bytes; `subject_json` and `actions_json` are likewise bounded typed representations.
+- `diagnostic_findings.lifecycle` is exactly `occurrence` or `current_state`. Occurrence rows have no current identity or status fields and are immutable. Current rows require a full 64-character lowercase identity digest, a validated `sha256:<64 lowercase hex>` `current_subject_identity`, scope kind and complete scope identity, active/resolved status, no runtime-session coordinate, and an ID exactly equal to `finding.current.sha256:` plus that digest. Active rows have no `resolved_at`; resolved rows require it. The unique digest index, active-scope index, lifecycle checks, and identity update trigger enforce those physical distinctions. The trigger keeps the subject identity immutable while allowing `subject_json` to change as replaceable safe presentation. `facts_json` remains a valid JSON object bounded to 16,384 bytes; `subject_json` and `actions_json` are likewise bounded typed representations.
 - `diagnostic_cause_edges` stores unique finding-to-cause pairs with foreign keys on both ends. `diagnostic_cause_edges_acyclic` rejects an insert that would close a directed cycle, while the cause-side index supports deterministic reverse and bounded traversal. Replacing a current-state finding deletes its prior outgoing edges and inserts the replacement edges in the same immediate transaction as the row replacement; any failure preserves the prior row and edge set.
 - `mcp_runtime_sessions.attempted_client_name` and `attempted_client_version` form the bounded parsed client pair. `requested_protocol_version` is client input; `selected_protocol_version` is the server-selected initialize result; `negotiated_protocol_version` is present only with handshake completion and must equal the selected revision. `initialize_completed_at` and `tools_list_observed_at` are distinct milestones. The bounded MCP tool name `verification_tool_name` and `verification_tool_observed_at` form an exact null-or-present pair; the observation requires the initialized notification and cannot precede it. `terminal_finding_id` is a same-runtime foreign key to one structured error finding and is mutually exclusive with graceful close.
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, and required hook phases. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.

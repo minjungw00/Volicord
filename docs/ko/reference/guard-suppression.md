@@ -146,12 +146,13 @@ projection하지 않습니다. File, manifest, wrapper, 호환되지 않는 관�
 
 현재 상태 Guard 진단은 정확한 관리 artifact, installation, 필수 phase 또는 호환되지 않는
 event를 typed subject로 사용합니다. 안정적인 ID는 Connection scope, code, domain, stage,
-source, typed subject kind와 reference를 모두 담은 완전한 `CurrentDiagnosticKey`의 고정된 전체
-digest입니다. 이 ID에는 관리 경로가 들어가지 않습니다. 따라서 같은 Guard code가 여러
-영향받는 artifact나 phase를 충돌 없이 식별할 수 있습니다. 같은 주체를 다시 관찰하면 그
-finding의 안전한 facts, 관찰 시각, revision 좌표, cause edge를 갱신하며 오래된 현재 상태
-사본을 추가하지 않습니다. Connection 보고서는 현재 check가 참조한 Guard finding과 그
-한도가 있는 cause chain만 포함합니다.
+source, opaque typed subject identity를 모두 담은 완전한 `CurrentDiagnosticKey`의 고정된 전체
+digest입니다. Identity token과 ID에는 관리 경로가 들어가지 않습니다. 별도의 subject kind와
+reference는 안전한 snapshot 표시입니다. 따라서 같은 Guard code가 여러 영향받는 artifact나
+phase를 충돌 없이 식별할 수 있습니다. 같은 주체를 다시 관찰하면 그 finding의 안전한 subject
+표시, facts, 관찰 시각, revision 좌표, cause edge를 갱신하며 오래된 현재 상태 사본을 추가하지
+않습니다. Connection 보고서는 현재 check가 참조한 Guard finding과 그 한도가 있는 cause
+chain만 포함합니다.
 
 Guard 검증은 typed 관찰의 완전한 집합을 reconcile합니다. 복구한 artifact 또는
 installation, 새로 관찰한 필수 phase, 호환되는 현재 event, 지원되는 prompt-capture 경계,

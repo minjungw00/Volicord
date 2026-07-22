@@ -11,7 +11,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
-| `crates/volicord-types/src/diagnostics.rs` | Lifecycle-specific occurrence/current finding types, `CurrentDiagnosticKey` canonical identity and fixed digest ID derivation, shared read-only `DiagnosticFinding` and `DiagnosticReport` types, stable namespaced-code validation, bounded redacting projection of typed owner facts, cause-graph validation, and unexpected-failure fallback. |
+| `crates/volicord-types/src/diagnostics.rs` | Lifecycle-specific occurrence/current finding types, opaque `DiagnosticSubjectIdentity`, `CurrentDiagnosticKey` canonical identity and fixed digest ID derivation, shared read-only `DiagnosticFinding` and `DiagnosticReport` types, stable namespaced-code validation, bounded redacting projection of typed owner facts, cause-graph validation, and unexpected-failure fallback. |
 | `crates/volicord-types/src/platform.rs` | Shared platform-environment and platform-path types. |
 | `crates/volicord-types/src/host_configuration.rs` | Shared connection-intent and host-scope configuration types. |
 | `crates/volicord-types/src/connection_verification.rs` | Canonical connection status, check, action, and verification-report types. |
@@ -81,7 +81,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/connection_command/verification/report_inputs.rs` | Active verification and current-status report input assembly. |
 | `crates/volicord-cli/src/operational_diagnostics/mod.rs` | Typed operational-diagnostic module facade and bounded internal exports. |
 | `crates/volicord-cli/src/operational_diagnostics/definitions.rs` | Immutable CLI operational-diagnostic definitions and exhaustive closed diagnostic-value mappings. |
-| `crates/volicord-cli/src/operational_diagnostics/subjects.rs` | Closed typed operational subjects, canonical identity bytes, scope ownership, and safe display projection. |
+| `crates/volicord-cli/src/operational_diagnostics/subjects.rs` | Closed typed operational subjects, subject-family canonical encoding and opaque identity derivation, scope ownership, and separate safe display projection. |
 | `crates/volicord-cli/src/operational_diagnostics/facts.rs` | Typed bounded operational fact projections. |
 | `crates/volicord-cli/src/operational_diagnostics/actions.rs` | Recommended-action selection from diagnostic definitions, typed facts, and typed check state. |
 | `crates/volicord-cli/src/operational_diagnostics/projection.rs` | Current and occurrence finding construction plus explicit active-current report projection. |

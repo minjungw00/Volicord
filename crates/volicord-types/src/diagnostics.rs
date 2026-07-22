@@ -65,7 +65,9 @@ pub const MAX_DIAGNOSTIC_SCOPE_IDENTITY_BYTES: usize = 1_024;
 
 const CURRENT_DIAGNOSTIC_ID_PREFIX: &str = "finding.current.sha256:";
 const CURRENT_DIAGNOSTIC_KEY_DOMAIN: &[u8] = b"volicord.diagnostic.current-key";
-const CURRENT_DIAGNOSTIC_KEY_VERSION: u16 = 1;
+const CURRENT_DIAGNOSTIC_KEY_VERSION: u16 = 2;
+const DIAGNOSTIC_SUBJECT_IDENTITY_PREFIX: &str = "sha256:";
+const DIAGNOSTIC_SUBJECT_IDENTITY_HEX_BYTES: usize = 64;
 
 const REDACTED_VALUE: &str = "[redacted]";
 const DEPTH_LIMIT_VALUE: &str = "[depth limit]";
@@ -392,6 +394,78 @@ impl DiagnosticSubject {
     /// Returns the bounded safe subject reference.
     pub fn reference(&self) -> &str {
         &self.reference
+    }
+}
+
+/// Opaque stable semantic identity for one diagnostic subject.
+///
+/// The token contains only a domain-separated SHA-256 digest of canonical
+/// bytes owned by the typed subject family. It is distinct from the bounded
+/// safe [`DiagnosticSubject`] presentation.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
+#[serde(transparent)]
+pub struct DiagnosticSubjectIdentity(String);
+
+impl DiagnosticSubjectIdentity {
+    /// Derives one opaque identity token from owner-provided canonical bytes.
+    pub fn from_canonical_bytes(canonical_identity_bytes: &[u8]) -> Self {
+        Self(format!(
+            "{DIAGNOSTIC_SUBJECT_IDENTITY_PREFIX}{}",
+            lowercase_digest(&Sha256::digest(canonical_identity_bytes))
+        ))
+    }
+
+    /// Validates one persisted opaque subject identity token.
+    pub fn parse_persisted(value: impl Into<String>) -> Result<Self, DiagnosticError> {
+        let value = value.into();
+        let Some(digest) = value.strip_prefix(DIAGNOSTIC_SUBJECT_IDENTITY_PREFIX) else {
+            return Err(invalid(
+                "diagnostic subject identity must use the sha256 algorithm",
+            ));
+        };
+        if digest.len() != DIAGNOSTIC_SUBJECT_IDENTITY_HEX_BYTES
+            || !digest
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        {
+            return Err(invalid(
+                "diagnostic subject identity must contain exactly 64 lowercase hexadecimal SHA-256 characters",
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the validated opaque token spelling.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Returns the canonical token bytes used by current-key encoding.
+    pub fn canonical_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl<'de> Deserialize<'de> for DiagnosticSubjectIdentity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::parse_persisted(String::deserialize(deserializer)?).map_err(de::Error::custom)
+    }
+}
+
+impl fmt::Display for DiagnosticSubjectIdentity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for DiagnosticSubjectIdentity {
+    type Err = DiagnosticError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse_persisted(value)
     }
 }
 
@@ -1256,7 +1330,7 @@ pub struct CurrentDiagnosticKey {
     domain: DiagnosticDomain,
     stage: DiagnosticStage,
     source: DiagnosticSource,
-    subject: DiagnosticSubject,
+    subject_identity: DiagnosticSubjectIdentity,
 }
 
 impl CurrentDiagnosticKey {
@@ -1267,7 +1341,7 @@ impl CurrentDiagnosticKey {
         domain: DiagnosticDomain,
         stage: DiagnosticStage,
         source: DiagnosticSource,
-        subject: DiagnosticSubject,
+        subject_identity: DiagnosticSubjectIdentity,
     ) -> Self {
         Self {
             scope,
@@ -1275,7 +1349,7 @@ impl CurrentDiagnosticKey {
             domain,
             stage,
             source,
-            subject,
+            subject_identity,
         }
     }
 
@@ -1304,9 +1378,9 @@ impl CurrentDiagnosticKey {
         &self.source
     }
 
-    /// Returns the canonical typed subject identity.
-    pub fn subject(&self) -> &DiagnosticSubject {
-        &self.subject
+    /// Returns the opaque semantic subject identity.
+    pub fn subject_identity(&self) -> &DiagnosticSubjectIdentity {
+        &self.subject_identity
     }
 
     /// Returns the versioned, domain-separated, length-prefixed canonical identity bytes.
@@ -1320,8 +1394,7 @@ impl CurrentDiagnosticKey {
         push_length_prefixed(&mut bytes, self.domain.as_str().as_bytes());
         push_length_prefixed(&mut bytes, self.stage.as_str().as_bytes());
         push_length_prefixed(&mut bytes, self.source.as_str().as_bytes());
-        push_length_prefixed(&mut bytes, self.subject.kind().as_bytes());
-        push_length_prefixed(&mut bytes, self.subject.reference().as_bytes());
+        push_length_prefixed(&mut bytes, self.subject_identity.canonical_bytes());
         bytes
     }
 
@@ -1365,6 +1438,7 @@ impl CurrentDiagnosticStatus {
 /// Replaceable observation fields for one current diagnostic key.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CurrentDiagnosticSnapshot {
+    subject: DiagnosticSubject,
     severity: DiagnosticSeverity,
     facts: DiagnosticFacts,
     causes: Vec<DiagnosticCause>,
@@ -1381,6 +1455,7 @@ pub struct CurrentDiagnosticSnapshot {
 impl CurrentDiagnosticSnapshot {
     /// Creates one active current snapshot without actions, causes, or correlation coordinates.
     pub fn try_new(
+        subject: DiagnosticSubject,
         severity: DiagnosticSeverity,
         facts: DiagnosticFacts,
         observed_at: UtcTimestamp,
@@ -1388,6 +1463,7 @@ impl CurrentDiagnosticSnapshot {
         validate_timestamp("current diagnostic observed_at", &observed_at)?;
         facts.validate_size()?;
         Ok(Self {
+            subject,
             severity,
             facts,
             causes: Vec::new(),
@@ -1400,6 +1476,11 @@ impl CurrentDiagnosticSnapshot {
             status: CurrentDiagnosticStatus::Active,
             resolved_at: None,
         })
+    }
+
+    /// Returns the bounded safe subject presentation.
+    pub fn subject(&self) -> &DiagnosticSubject {
+        &self.subject
     }
 
     /// Adds and canonically orders outgoing causes.
@@ -1595,7 +1676,7 @@ impl CurrentDiagnosticFinding {
             stage: self.key.stage.clone(),
             severity: self.snapshot.severity,
             source: self.key.source.clone(),
-            subject: self.key.subject.clone(),
+            subject: self.snapshot.subject.clone(),
             facts: self.snapshot.facts.clone(),
             causes: self.snapshot.causes.clone(),
             actions: self.snapshot.actions.clone(),
@@ -2889,17 +2970,39 @@ mod tests {
         domain: &str,
         stage: &str,
         source: &str,
-        subject_kind: &str,
-        subject_identity: &str,
+        subject_namespace: &str,
+        subject_identity_input: &str,
     ) -> CurrentDiagnosticKey {
+        let subject_identity = DiagnosticSubjectIdentity::from_canonical_bytes(
+            format!("volicord.test-subject:{subject_namespace}:{subject_identity_input}")
+                .as_bytes(),
+        );
         CurrentDiagnosticKey::new(
             DiagnosticScope::try_new(scope_kind, scope_identity).unwrap(),
             DiagnosticCode::parse(code).unwrap(),
             DiagnosticDomain::parse(domain).unwrap(),
             DiagnosticStage::parse(stage).unwrap(),
             DiagnosticSource::parse(source).unwrap(),
-            DiagnosticSubject::try_new(subject_kind, subject_identity).unwrap(),
+            subject_identity,
         )
+    }
+
+    #[test]
+    fn diagnostic_subject_identity_validates_exact_persisted_token_spelling() {
+        let identity = DiagnosticSubjectIdentity::from_canonical_bytes(b"owner canonical bytes");
+        assert_eq!(identity.as_str().len(), "sha256:".len() + 64);
+        assert_eq!(
+            DiagnosticSubjectIdentity::parse_persisted(identity.as_str()).unwrap(),
+            identity
+        );
+        for invalid in [
+            "sha512:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+        ] {
+            assert!(DiagnosticSubjectIdentity::parse_persisted(invalid).is_err());
+        }
     }
 
     #[test]
@@ -3074,6 +3177,10 @@ mod tests {
                 .canonical_identity_bytes()
                 .windows("a_b.c".len())
                 .any(|window| window == b"a_b.c"));
+            assert!(!dotted
+                .canonical_identity_bytes()
+                .windows(subject.len())
+                .any(|window| window == subject.as_bytes()));
             assert_ne!(
                 dotted.canonical_identity_bytes(),
                 underscored.canonical_identity_bytes()
@@ -3110,6 +3217,56 @@ mod tests {
     }
 
     #[test]
+    fn current_finding_id_uses_subject_identity_not_safe_presentation() {
+        let key = current_key(
+            DiagnosticScopeKind::Connection,
+            "connection:subject-presentation",
+            "test.subject_presentation",
+            "test",
+            "projection",
+            "test_runner",
+            "managed_path",
+            "/private/canonical/path",
+        );
+        let first = CurrentDiagnosticFinding::try_new(
+            key.clone(),
+            CurrentDiagnosticSnapshot::try_new(
+                DiagnosticSubject::try_new("managed_path", "redacted-primary").unwrap(),
+                DiagnosticSeverity::Warning,
+                DiagnosticFacts::empty(),
+                timestamp(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let second = CurrentDiagnosticFinding::try_new(
+            key,
+            CurrentDiagnosticSnapshot::try_new(
+                DiagnosticSubject::try_new("managed_path", "redacted-updated").unwrap(),
+                DiagnosticSeverity::Warning,
+                DiagnosticFacts::empty(),
+                timestamp(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(first.id(), second.id());
+        assert_ne!(first.snapshot().subject(), second.snapshot().subject());
+
+        let other_namespace = current_key(
+            DiagnosticScopeKind::Connection,
+            "connection:subject-presentation",
+            "test.subject_presentation",
+            "test",
+            "projection",
+            "test_runner",
+            "repository_trust",
+            "/private/canonical/path",
+        );
+        assert_ne!(first.id(), &other_namespace.finding_id());
+    }
+
+    #[test]
     fn current_identity_is_independent_of_map_cause_and_action_construction_order() {
         let key = || {
             current_key(
@@ -3142,6 +3299,7 @@ mod tests {
         second_values.insert("beta".to_owned(), "two".to_owned());
         second_values.insert("alpha".to_owned(), "one".to_owned());
         let first_snapshot = CurrentDiagnosticSnapshot::try_new(
+            DiagnosticSubject::try_new("managed_artifact", "first display").unwrap(),
             DiagnosticSeverity::Warning,
             DiagnosticFacts::project(&IdentityOrderFacts {
                 values: first_values,
@@ -3155,6 +3313,7 @@ mod tests {
         .with_actions(vec![action_b.clone(), action_a.clone()])
         .unwrap();
         let second_snapshot = CurrentDiagnosticSnapshot::try_new(
+            DiagnosticSubject::try_new("managed_artifact", "second display").unwrap(),
             DiagnosticSeverity::Warning,
             DiagnosticFacts::project(&IdentityOrderFacts {
                 values: second_values,
@@ -3176,6 +3335,7 @@ mod tests {
         );
         assert_eq!(first.identity_digest(), second.identity_digest());
         assert_eq!(first.id(), second.id());
+        assert_ne!(first.snapshot().subject(), second.snapshot().subject());
         assert_eq!(first.snapshot().facts(), second.snapshot().facts());
         assert_eq!(first.snapshot().causes(), second.snapshot().causes());
         assert_eq!(first.snapshot().actions(), second.snapshot().actions());

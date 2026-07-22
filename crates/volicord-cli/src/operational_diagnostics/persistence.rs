@@ -231,6 +231,7 @@ mod tests {
 
         assert_eq!(pre.key().code(), post.key().code());
         assert_ne!(pre.id(), post.id());
-        assert_ne!(pre.key().subject(), post.key().subject());
+        assert_ne!(pre.key().subject_identity(), post.key().subject_identity());
+        assert_ne!(pre.snapshot().subject(), post.snapshot().subject());
     }
 }

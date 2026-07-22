@@ -11,7 +11,7 @@
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
-| `crates/volicord-types/src/diagnostics.rs` | Lifecycle별 occurrence/current finding 타입, `CurrentDiagnosticKey` 정규 identity와 고정 digest ID 파생, 공유 read-only `DiagnosticFinding` 및 `DiagnosticReport` 타입, 안정적인 네임스페이스 code 검증, 담당 크레이트의 typed fact에 한도와 민감정보 제거를 적용하는 projection, cause graph 검증, 예기치 않은 실패 대체 표현. |
+| `crates/volicord-types/src/diagnostics.rs` | Lifecycle별 occurrence/current finding 타입, opaque `DiagnosticSubjectIdentity`, `CurrentDiagnosticKey` 정규 identity와 고정 digest ID 파생, 공유 read-only `DiagnosticFinding` 및 `DiagnosticReport` 타입, 안정적인 네임스페이스 code 검증, 담당 크레이트의 typed fact에 한도와 민감정보 제거를 적용하는 projection, cause graph 검증, 예기치 않은 실패 대체 표현. |
 | `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
 | `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
 | `crates/volicord-types/src/connection_verification.rs` | 정규 connection 상태, check, action, 검증 보고서 타입. |
@@ -81,7 +81,7 @@
 | `crates/volicord-cli/src/connection_command/verification/report_inputs.rs` | 능동 검증과 current-status 보고서 입력 조립. |
 | `crates/volicord-cli/src/operational_diagnostics/mod.rs` | Typed 운영 diagnostic module facade와 한도가 있는 내부 export. |
 | `crates/volicord-cli/src/operational_diagnostics/definitions.rs` | 불변 CLI 운영 diagnostic definition과 전체 폐쇄형 diagnostic 값 매핑. |
-| `crates/volicord-cli/src/operational_diagnostics/subjects.rs` | 폐쇄형 typed 운영 subject, 정규 identity byte, scope 소유권, 안전한 표시 projection. |
+| `crates/volicord-cli/src/operational_diagnostics/subjects.rs` | 폐쇄형 typed 운영 subject, subject family별 정규 encoding과 opaque identity 파생, scope 소유권, 별도의 안전한 표시 projection. |
 | `crates/volicord-cli/src/operational_diagnostics/facts.rs` | 한도가 있는 typed 운영 fact projection. |
 | `crates/volicord-cli/src/operational_diagnostics/actions.rs` | Diagnostic definition, typed facts, typed check state에 따른 권장 action 선택. |
 | `crates/volicord-cli/src/operational_diagnostics/projection.rs` | Current 및 occurrence finding 구성과 명시적인 active-current 보고서 projection. |

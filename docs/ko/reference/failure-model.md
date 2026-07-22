@@ -112,26 +112,39 @@ facts, 0개 이상의 cause reference와 권장 action, 관찰 timestamp, 적용
 
 `CurrentDiagnosticFinding`은 불변 `CurrentDiagnosticKey`와 교체 가능한
 `CurrentDiagnosticSnapshot`으로 구성됩니다. Key에는 scope kind와 완전한 opaque scope
-identity, 전체 diagnostic code, domain, stage, source, 완전한 subject kind와 reference가
-포함됩니다. 정규 identity는 domain separation과 version을 포함하고 모든 가변 구성 요소에
-길이 prefix를 붙인 binary encoding입니다. ID는 이 encoding의 전체 SHA-256 digest를 사용한
-정확한 `finding.current.sha256:<64 lowercase hex>` 형식입니다. 따라서 identity 차이를 모두
-보존하면서 path 및 기타 scope·subject text를 ID 밖에 둡니다.
+identity, 전체 diagnostic code, domain, stage, source, 하나의
+`DiagnosticSubjectIdentity`가 포함됩니다. 이 subject identity는 typed subject 담당자가
+domain separation, version, 길이 prefix를 적용한 정규 identity byte에서만 파생하는 검증된
+opaque `sha256:<64 lowercase hex>` token입니다. 표시 문자열이 아니며 원래 path, installation
+identifier, event identifier, 그 밖의 identity 입력을 노출하지 않습니다. Current key의 정규
+identity는 별도의 domain separation과 version을 사용하며, 완전한 subject identity token을
+포함한 모든 가변 구성 요소에 길이 prefix를 붙인 binary encoding입니다. ID는 이 encoding의
+전체 SHA-256 digest를 사용한 정확한 `finding.current.sha256:<64 lowercase hex>` 형식입니다.
+따라서 identity 차이를 모두 보존하면서 path와 그 밖의 subject identity 입력을 ID 밖에
+둡니다.
 
-같은 key를 다시 관찰하면 severity, facts, actions, correlation 좌표, 관찰 시각, 나가는 cause
-edge만 교체하고 resolved condition을 다시 active로 전환합니다. Identity field는 비교만 하며
-갱신하지 않습니다. 명시적 resolution은 `resolved_at`을 기록하고 현재 action과 나가는 cause를
-제거하되 마지막 safe facts를 유지하며 active-current report에서는 해당 row를 제외합니다.
-명시적 ID read는 resolved snapshot도 반환할 수 있습니다. Read는 저장된 key에서 current
-digest와 ID를 다시 계산하고 불일치하면 영속 상태 corruption으로 처리합니다.
+교체 가능한 snapshot은 severity, facts, actions, correlation 좌표, integration revision, 관찰
+시각, 나가는 cause edge, active 또는 resolved 상태와 함께 안전한 `DiagnosticSubject` 표시를
+담습니다. 같은 key를 다시 관찰하면 이 안전한 표시 subject와 다른 snapshot field를 교체하고
+resolved condition을 다시 active로 전환할 수 있습니다. `DiagnosticSubjectIdentity`를 포함한
+identity field는 비교만 하며 갱신하지 않습니다. Redaction, 형식, 그 밖의 안전한 표시
+세부사항만 바뀌어도 finding ID는 바뀌지 않습니다. 명시적 resolution은 `resolved_at`을
+기록하고 현재 action과 나가는 cause를 제거하되 마지막 안전한 subject와 facts를 유지하며
+active-current report에서는 해당 row를 제외합니다. 명시적 ID read는 resolved snapshot도
+반환할 수 있습니다. Read는 안전한 표시 subject와 독립적으로 저장된 subject identity에서
+key를 복원하고 current digest와 ID를 다시 계산하며, 불일치하면 영속 상태 corruption으로
+처리합니다.
 
 CLI 소유 운영 diagnostic은 code, domain, stage, source, 기본 severity, summary를 담는 불변
-definition 하나를 가집니다. 폐쇄형 typed subject는 scope, 정규 identity byte, 안전한 표시
-projection을 담당합니다. Path를 담는 subject는 불투명하고 path를 노출하지 않는 reference를
-만들기 전에 filesystem alias를 정규화합니다. 활성 검증은 담당자별 완전한 관찰 집합을
-reconcile합니다. 관찰한 condition은 활성화하거나 갱신하고, 이전에는 active였지만 그 집합에서
-빠진 담당 condition은 명시적으로 해소합니다. 현재 보고서는 failed 또는 blocked check가
-선택한 active current finding과 그 한도가 있는 cause chain만 읽습니다.
+definition 하나를 가집니다. 폐쇄형 typed subject는 scope를 담당하고, 자체 정규 identity
+encoding에서 `DiagnosticSubjectIdentity`를 구성하며, 별도의 안전한 표시 projection을
+제공합니다. Typed subject namespace는 그 정규 encoding에 직접 포함되므로 서로 다른 subject
+family의 표시 text가 같아도 identity가 하나로 합쳐지지 않습니다. Path를 담는 subject는 opaque
+identity를 파생하기 전에 filesystem alias를 정규화하며 그 정규 path byte를 저장하지 않습니다.
+활성 검증은 담당자별 완전한 관찰 집합을 reconcile합니다. 관찰한 condition은 활성화하거나
+갱신하고, 이전에는 active였지만 그 집합에서 빠진 담당 condition은 명시적으로 해소합니다. 현재
+보고서는 failed 또는 blocked check가 선택한 active current finding과 그 한도가 있는 cause
+chain만 읽습니다.
 
 Safe facts는 저장하거나 렌더링하기 전에 한도를 검증합니다. Typed projection은 민감한
 key를 가리고 text 크기, collection 크기, nesting depth를 제한합니다. Raw environment map,
@@ -140,7 +153,8 @@ fact가 아닙니다. Producer는 이런 입력을 finding에 옮기는 대신 �
 제공해야 합니다.
 
 Registry는 공유 finding을 구조화된 column과 한도가 있는 subject, facts, action JSON으로
-저장합니다. Cause reference는 별도 edge입니다. 모든 edge는 기존 finding을 가리켜야 하며,
+저장합니다. Current-state row는 검증된 opaque subject identity token도 저장하며 occurrence
+row는 저장하지 않습니다. Cause reference는 별도 edge입니다. 모든 edge는 기존 finding을 가리켜야 하며,
 중복 edge와 self edge는 거부하고, 검증된 graph 삽입과 Registry constraint가 cycle을
 거부하며, 한도가 있는 traversal은 결정적입니다. Finding graph 삽입은 transaction
 하나입니다. 유효하지 않은 node, 없는 cause, 중복 edge, cycle이 있으면 부분 graph나

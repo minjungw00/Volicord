@@ -7,7 +7,8 @@ use volicord_types::{
     DiagnosticCode, DiagnosticDomain, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingData,
     DiagnosticFindingId, DiagnosticFindingLifecycle, DiagnosticOccurrenceId, DiagnosticScope,
     DiagnosticScopeKind, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
-    IntegrationRevision, OccurrenceDiagnosticFinding, ProjectId, UtcTimestamp,
+    DiagnosticSubjectIdentity, IntegrationRevision, OccurrenceDiagnosticFinding, ProjectId,
+    UtcTimestamp,
 };
 
 use crate::{StoreError, StoreResult};
@@ -20,6 +21,7 @@ pub(super) struct PreparedFinding {
     pub(super) projection: DiagnosticFinding,
     lifecycle: DiagnosticFindingLifecycle,
     current_identity_digest: Option<String>,
+    current_subject_identity: Option<String>,
     scope_kind: Option<DiagnosticScopeKind>,
     scope_identity: Option<String>,
     current_status: Option<CurrentDiagnosticStatus>,
@@ -39,6 +41,7 @@ impl PreparedFinding {
             None,
             None,
             None,
+            None,
         )
     }
 
@@ -47,6 +50,7 @@ impl PreparedFinding {
             finding.to_diagnostic_finding(),
             DiagnosticFindingLifecycle::CurrentState,
             Some(finding.identity_digest().to_owned()),
+            Some(finding.key().subject_identity().as_str().to_owned()),
             Some(finding.key().scope().kind()),
             Some(finding.key().scope().identity().to_owned()),
             Some(finding.snapshot().status()),
@@ -62,6 +66,7 @@ impl PreparedFinding {
         projection: DiagnosticFinding,
         lifecycle: DiagnosticFindingLifecycle,
         current_identity_digest: Option<String>,
+        current_subject_identity: Option<String>,
         scope_kind: Option<DiagnosticScopeKind>,
         scope_identity: Option<String>,
         current_status: Option<CurrentDiagnosticStatus>,
@@ -83,6 +88,7 @@ impl PreparedFinding {
             projection,
             lifecycle,
             current_identity_digest,
+            current_subject_identity,
             scope_kind,
             scope_identity,
             current_status,
@@ -142,7 +148,7 @@ pub(super) fn insert_prepared_finding(
     let finding = &item.projection;
     tx.execute(
         "INSERT INTO diagnostic_findings (
-            finding_id, lifecycle, current_identity_digest,
+            finding_id, lifecycle, current_identity_digest, current_subject_identity,
             diagnostic_scope_kind, diagnostic_scope_identity,
             current_state_status, resolved_at,
             code, domain, stage, severity, source,
@@ -151,12 +157,13 @@ pub(super) fn insert_prepared_finding(
             integration_revision, observed_at
          ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-            ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+            ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
          )",
         params![
             finding.id().as_str(),
             item.lifecycle.as_str(),
             item.current_identity_digest.as_deref(),
+            item.current_subject_identity.as_deref(),
             item.scope_kind.map(DiagnosticScopeKind::as_str),
             item.scope_identity.as_deref(),
             item.current_status.map(CurrentDiagnosticStatus::as_str),
@@ -199,19 +206,21 @@ pub(super) fn replace_current_snapshot(
     )?;
     tx.execute(
         "UPDATE diagnostic_findings
-            SET severity = ?2,
-                facts_json = ?3,
-                actions_json = ?4,
-                correlation_id = ?5,
-                connection_internal_id = ?6,
-                project_internal_id = ?7,
-                integration_revision = ?8,
-                observed_at = ?9,
+            SET subject_json = ?2,
+                severity = ?3,
+                facts_json = ?4,
+                actions_json = ?5,
+                correlation_id = ?6,
+                connection_internal_id = ?7,
+                project_internal_id = ?8,
+                integration_revision = ?9,
+                observed_at = ?10,
                 current_state_status = 'active',
                 resolved_at = NULL
           WHERE finding_id = ?1 AND lifecycle = 'current_state'",
         params![
             finding.id().as_str(),
+            prepared.subject_json,
             severity_str(finding.severity()),
             prepared.facts_json,
             prepared.actions_json,
@@ -242,7 +251,7 @@ pub(super) fn insert_outgoing_causes(
 }
 
 const FINDING_SELECT: &str = "SELECT
-    finding_id, lifecycle, current_identity_digest,
+    finding_id, lifecycle, current_identity_digest, current_subject_identity,
     diagnostic_scope_kind, diagnostic_scope_identity,
     current_state_status, resolved_at,
     code, domain, stage, severity, source,
@@ -255,6 +264,7 @@ struct StoredFindingRaw {
     finding_id: String,
     lifecycle: String,
     current_identity_digest: Option<String>,
+    current_subject_identity: Option<String>,
     scope_kind: Option<String>,
     scope_identity: Option<String>,
     current_status: Option<String>,
@@ -320,24 +330,25 @@ fn stored_finding_raw_from_row(
         finding_id,
         lifecycle: row.get(1)?,
         current_identity_digest: row.get(2)?,
-        scope_kind: row.get(3)?,
-        scope_identity: row.get(4)?,
-        current_status: row.get(5)?,
-        resolved_at: row.get(6)?,
-        code: row.get(7)?,
-        domain: row.get(8)?,
-        stage: row.get(9)?,
-        severity: row.get(10)?,
-        source: row.get(11)?,
-        subject_json: row.get(12)?,
-        facts_json: row.get(13)?,
-        actions_json: row.get(14)?,
-        correlation_id: row.get(15)?,
-        connection_id: row.get(16)?,
-        project_id: row.get(17)?,
-        runtime_session_id: row.get(18)?,
-        integration_revision: row.get(19)?,
-        observed_at: row.get(20)?,
+        current_subject_identity: row.get(3)?,
+        scope_kind: row.get(4)?,
+        scope_identity: row.get(5)?,
+        current_status: row.get(6)?,
+        resolved_at: row.get(7)?,
+        code: row.get(8)?,
+        domain: row.get(9)?,
+        stage: row.get(10)?,
+        severity: row.get(11)?,
+        source: row.get(12)?,
+        subject_json: row.get(13)?,
+        facts_json: row.get(14)?,
+        actions_json: row.get(15)?,
+        correlation_id: row.get(16)?,
+        connection_id: row.get(17)?,
+        project_id: row.get(18)?,
+        runtime_session_id: row.get(19)?,
+        integration_revision: row.get(20)?,
+        observed_at: row.get(21)?,
         causes,
     })
 }
@@ -347,6 +358,7 @@ fn decode_stored_finding(raw: StoredFindingRaw) -> StoreResult<StoredFinding> {
     match raw.lifecycle.as_str() {
         "occurrence" => {
             if raw.current_identity_digest.is_some()
+                || raw.current_subject_identity.is_some()
                 || raw.scope_kind.is_some()
                 || raw.scope_identity.is_some()
                 || raw.current_status.is_some()
@@ -362,12 +374,20 @@ fn decode_stored_finding(raw: StoredFindingRaw) -> StoreResult<StoredFinding> {
                 .map_err(|_| corrupt_value(&raw.finding_id, "finding"))
         }
         "current_state" => {
-            let (Some(digest), Some(scope_kind), Some(scope_identity), Some(status)) = (
+            let (
+                Some(digest),
+                Some(subject_identity),
+                Some(scope_kind),
+                Some(scope_identity),
+                Some(status),
+            ) = (
                 raw.current_identity_digest.as_deref(),
+                raw.current_subject_identity.as_deref(),
                 raw.scope_kind.as_deref(),
                 raw.scope_identity.as_deref(),
                 raw.current_status.as_deref(),
-            ) else {
+            )
+            else {
                 return Err(corrupt_value(&raw.finding_id, "lifecycle"));
             };
             if raw.runtime_session_id.is_some() {
@@ -377,13 +397,15 @@ fn decode_stored_finding(raw: StoredFindingRaw) -> StoreResult<StoredFinding> {
                 .ok_or_else(|| corrupt_value(&raw.finding_id, "diagnostic_scope_kind"))?;
             let scope = DiagnosticScope::try_new(scope_kind, scope_identity.to_owned())
                 .map_err(|_| corrupt_value(&raw.finding_id, "diagnostic_scope_identity"))?;
+            let subject_identity = DiagnosticSubjectIdentity::parse_persisted(subject_identity)
+                .map_err(|_| corrupt_value(&raw.finding_id, "current_subject_identity"))?;
             let key = CurrentDiagnosticKey::new(
                 scope,
                 data.code().clone(),
                 data.domain().clone(),
                 data.stage().clone(),
                 data.source().clone(),
-                data.subject().clone(),
+                subject_identity,
             );
             if digest != key.identity_digest() || raw.finding_id != key.finding_id().as_str() {
                 return Err(corrupt_value(&raw.finding_id, "current_identity_digest"));
@@ -400,6 +422,7 @@ fn decode_stored_finding(raw: StoredFindingRaw) -> StoreResult<StoredFinding> {
                 .transpose()
                 .map_err(|_| corrupt_value(&raw.finding_id, "resolved_at"))?;
             let mut snapshot = CurrentDiagnosticSnapshot::try_new(
+                data.subject().clone(),
                 data.severity(),
                 data.facts().clone(),
                 data.observed_at().clone(),

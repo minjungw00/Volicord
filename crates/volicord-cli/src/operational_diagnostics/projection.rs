@@ -59,10 +59,11 @@ where
             .expect("operational definition stage is statically valid"),
         DiagnosticSource::parse(definition.source())
             .expect("operational definition source is statically valid"),
-        subject.safe_display_subject().clone(),
+        subject.subject_identity().clone(),
     );
     let revision = connection_integration_revision(connection)?;
     let snapshot = CurrentDiagnosticSnapshot::try_new(
+        subject.safe_display_subject().clone(),
         definition.severity(),
         project_facts(definition, facts)
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,

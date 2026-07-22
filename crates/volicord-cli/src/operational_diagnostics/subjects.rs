@@ -6,9 +6,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use sha2::{Digest, Sha256};
 use volicord_types::{
-    DiagnosticScope, DiagnosticScopeKind, DiagnosticSubject, GuardHookPhase, GuardManagedArtifact,
+    DiagnosticScope, DiagnosticScopeKind, DiagnosticSubject, DiagnosticSubjectIdentity,
+    GuardHookPhase, GuardManagedArtifact,
 };
 
 const SUBJECT_IDENTITY_DOMAIN: &[u8] = b"volicord.operational-diagnostic-subject";
@@ -21,34 +21,34 @@ mod sealed {
 /// Scope, canonical identity, and safe report projection owned by a typed subject.
 pub trait OperationalSubject: sealed::Sealed {
     fn scope(&self) -> &DiagnosticScope;
-    fn canonical_identity_bytes(&self) -> &[u8];
+    fn subject_identity(&self) -> &DiagnosticSubjectIdentity;
     fn safe_display_subject(&self) -> &DiagnosticSubject;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SubjectIdentity {
     scope: DiagnosticScope,
-    canonical_identity_bytes: Vec<u8>,
+    subject_identity: DiagnosticSubjectIdentity,
     safe_display_subject: DiagnosticSubject,
 }
 
 impl SubjectIdentity {
     fn opaque_path(
         connection_id: &str,
-        kind: &'static str,
+        identity_namespace: &'static str,
         identity_prefix: &[u8],
+        display_kind: &'static str,
         display_prefix: &str,
         path: &Path,
     ) -> Result<Self, String> {
         let canonical = canonical_identity_path(path)?;
         let mut identity = identity_prefix.to_vec();
         push_length_prefixed(&mut identity, canonical.as_os_str().as_encoded_bytes());
-        let canonical_identity_bytes = canonical_subject_bytes(kind, &identity);
-        let reference = format!(
-            "{display_prefix}.sha256:{}",
-            lowercase_sha256(&canonical_identity_bytes)
+        let subject_identity = DiagnosticSubjectIdentity::from_canonical_bytes(
+            &canonical_subject_bytes(identity_namespace, &identity),
         );
-        Self::new(connection_id, kind, canonical_identity_bytes, reference)
+        let reference = format!("{display_prefix}.{}", subject_identity.as_str());
+        Self::new(connection_id, subject_identity, display_kind, reference)
     }
 
     fn stable_reference(
@@ -61,33 +61,36 @@ impl SubjectIdentity {
         push_length_prefixed(&mut identity, reference.as_bytes());
         Self::new(
             connection_id,
+            DiagnosticSubjectIdentity::from_canonical_bytes(&canonical_subject_bytes(
+                kind, &identity,
+            )),
             kind,
-            canonical_subject_bytes(kind, &identity),
             reference,
         )
     }
 
     fn new(
         connection_id: &str,
-        kind: &'static str,
-        canonical_identity_bytes: Vec<u8>,
+        subject_identity: DiagnosticSubjectIdentity,
+        display_kind: &'static str,
         safe_reference: impl Into<String>,
     ) -> Result<Self, String> {
         Ok(Self {
             scope: DiagnosticScope::try_new(DiagnosticScopeKind::Connection, connection_id)
                 .map_err(|error| error.to_string())?,
-            canonical_identity_bytes,
-            safe_display_subject: DiagnosticSubject::try_new(kind, safe_reference)
+            subject_identity,
+            safe_display_subject: DiagnosticSubject::try_new(display_kind, safe_reference)
                 .map_err(|error| error.to_string())?,
         })
     }
 
     fn installation(reference: &str) -> Result<Self, String> {
-        let identity = canonical_subject_bytes("installation", reference.as_bytes());
         Ok(Self {
             scope: DiagnosticScope::try_new(DiagnosticScopeKind::Installation, reference)
                 .map_err(|error| error.to_string())?,
-            canonical_identity_bytes: identity,
+            subject_identity: DiagnosticSubjectIdentity::from_canonical_bytes(
+                &canonical_subject_bytes("installation", reference.as_bytes()),
+            ),
             safe_display_subject: DiagnosticSubject::try_new("installation", reference)
                 .map_err(|error| error.to_string())?,
         })
@@ -106,8 +109,8 @@ macro_rules! typed_subject {
                 &self.0.scope
             }
 
-            fn canonical_identity_bytes(&self) -> &[u8] {
-                &self.0.canonical_identity_bytes
+            fn subject_identity(&self) -> &DiagnosticSubjectIdentity {
+                &self.0.subject_identity
             }
 
             fn safe_display_subject(&self) -> &DiagnosticSubject {
@@ -135,6 +138,7 @@ impl ManagedConfigurationTarget {
             "managed_config_target",
             b"managed_configuration_target",
             "managed_config_target",
+            "managed_config_target",
             path.as_ref(),
         )
         .map(Self)
@@ -147,6 +151,7 @@ impl ProductRepositorySubject {
             connection_id,
             "product_repository",
             b"product_repository",
+            "product_repository",
             "product_repository",
             path.as_ref(),
         )
@@ -165,6 +170,7 @@ impl GuardManagedArtifactSubject {
             connection_id,
             "guard_managed_artifact",
             artifact_kind.as_bytes(),
+            "guard_managed_artifact",
             &format!("guard_managed_artifact.{artifact_kind}"),
             path.as_ref(),
         )
@@ -267,8 +273,30 @@ impl TrustSubject {
         connection_id: &str,
         repository_path: impl AsRef<Path>,
     ) -> Result<Self, String> {
-        ProductRepositorySubject::for_connection(connection_id, repository_path)
-            .map(|repository| Self(repository.0))
+        let canonical = canonical_identity_path(repository_path.as_ref())?;
+        let mut trust_identity = b"repository_trust".to_vec();
+        push_length_prefixed(
+            &mut trust_identity,
+            canonical.as_os_str().as_encoded_bytes(),
+        );
+        let subject_identity = DiagnosticSubjectIdentity::from_canonical_bytes(
+            &canonical_subject_bytes("repository_trust", &trust_identity),
+        );
+        let mut display_identity = b"product_repository".to_vec();
+        push_length_prefixed(
+            &mut display_identity,
+            canonical.as_os_str().as_encoded_bytes(),
+        );
+        let display_token = DiagnosticSubjectIdentity::from_canonical_bytes(
+            &canonical_subject_bytes("product_repository", &display_identity),
+        );
+        SubjectIdentity::new(
+            connection_id,
+            subject_identity,
+            "product_repository",
+            format!("product_repository.{}", display_token.as_str()),
+        )
+        .map(Self)
     }
 }
 
@@ -293,13 +321,6 @@ fn canonical_subject_bytes(kind: &str, identity: &[u8]) -> Vec<u8> {
 fn push_length_prefixed(output: &mut Vec<u8>, value: &[u8]) {
     output.extend_from_slice(&(value.len() as u64).to_be_bytes());
     output.extend_from_slice(value);
-}
-
-fn lowercase_sha256(value: &[u8]) -> String {
-    Sha256::digest(value)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
 }
 
 fn canonical_identity_path(path: &Path) -> Result<PathBuf, String> {
@@ -362,9 +383,24 @@ fn lexical_normalize(path: &Path) -> Result<PathBuf, String> {
 
 #[cfg(test)]
 mod tests {
-    use volicord_types::GuardHookPhase;
+    use volicord_types::{
+        CurrentDiagnosticKey, DiagnosticCode, DiagnosticDomain, DiagnosticFindingId,
+        DiagnosticSource, DiagnosticStage, GuardHookPhase,
+    };
 
     use super::*;
+
+    fn current_finding_id(subject: &impl OperationalSubject) -> DiagnosticFindingId {
+        CurrentDiagnosticKey::new(
+            subject.scope().clone(),
+            DiagnosticCode::parse("test.subject_identity").expect("code"),
+            DiagnosticDomain::parse("test").expect("domain"),
+            DiagnosticStage::parse("projection").expect("stage"),
+            DiagnosticSource::parse("subject_test").expect("source"),
+            subject.subject_identity().clone(),
+        )
+        .finding_id()
+    }
 
     #[test]
     fn canonical_path_aliases_have_one_identity_and_safe_projection() {
@@ -379,10 +415,8 @@ mod tests {
         )
         .expect("alias subject");
 
-        assert_eq!(
-            canonical.canonical_identity_bytes(),
-            alias.canonical_identity_bytes()
-        );
+        assert_eq!(canonical.subject_identity(), alias.subject_identity());
+        assert_eq!(current_finding_id(&canonical), current_finding_id(&alias));
         assert_eq!(
             canonical.safe_display_subject(),
             alias.safe_display_subject()
@@ -401,10 +435,51 @@ mod tests {
             GuardPhaseSubject::for_connection("connection_subject", GuardHookPhase::PostTool)
                 .expect("post-tool subject");
 
-        assert_ne!(
-            pre.canonical_identity_bytes(),
-            post.canonical_identity_bytes()
-        );
+        assert_ne!(pre.subject_identity(), post.subject_identity());
         assert_ne!(pre.safe_display_subject(), post.safe_display_subject());
+    }
+
+    #[test]
+    fn equal_safe_display_text_in_distinct_subject_namespaces_has_distinct_identity() {
+        let repository = ProductRepositorySubject::for_connection(
+            "connection_subject",
+            "/tmp/volicord-subject/repository",
+        )
+        .expect("repository subject");
+        let trust =
+            TrustSubject::for_repository("connection_subject", "/tmp/volicord-subject/repository")
+                .expect("trust subject");
+
+        assert_eq!(
+            repository.safe_display_subject(),
+            trust.safe_display_subject()
+        );
+        assert_ne!(repository.subject_identity(), trust.subject_identity());
+        assert_ne!(current_finding_id(&repository), current_finding_id(&trust));
+    }
+
+    #[test]
+    fn distinct_canonical_paths_have_opaque_distinct_identity_and_finding_ids() {
+        let first_path = "/tmp/volicord-subject/first/private.toml";
+        let second_path = "/tmp/volicord-subject/second/private.toml";
+        let first = ManagedConfigurationTarget::for_connection("connection_subject", first_path)
+            .expect("first path subject");
+        let second = ManagedConfigurationTarget::for_connection("connection_subject", second_path)
+            .expect("second path subject");
+
+        assert_ne!(first.subject_identity(), second.subject_identity());
+        let first_id = current_finding_id(&first);
+        let second_id = current_finding_id(&second);
+        assert_ne!(first_id, second_id);
+        for opaque in [
+            first.subject_identity().as_str(),
+            second.subject_identity().as_str(),
+            first_id.as_str(),
+            second_id.as_str(),
+        ] {
+            assert!(!opaque.contains(first_path));
+            assert!(!opaque.contains(second_path));
+            assert!(!opaque.contains("private.toml"));
+        }
     }
 }

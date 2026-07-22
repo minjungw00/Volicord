@@ -23,8 +23,9 @@ use volicord_types::{
     CurrentDiagnosticSnapshot, CurrentDiagnosticStatus, DiagnosticAction, DiagnosticCause,
     DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFindingData,
     DiagnosticFindingId, DiagnosticScope, DiagnosticScopeKind, DiagnosticSeverity,
-    DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationRevision,
-    McpRuntimeSessionSource, OccurrenceDiagnosticFinding, ProjectId, UtcTimestamp,
+    DiagnosticSource, DiagnosticStage, DiagnosticSubject, DiagnosticSubjectIdentity,
+    IntegrationRevision, McpRuntimeSessionSource, OccurrenceDiagnosticFinding, ProjectId,
+    UtcTimestamp,
 };
 
 const OBSERVED: &str = "2026-07-21T01:02:03Z";
@@ -122,18 +123,22 @@ fn current_key(fixture: &CoreFixture, subject_reference: &str) -> CurrentDiagnos
         DiagnosticDomain::parse("guard").expect("domain"),
         DiagnosticStage::parse("guard_files").expect("stage"),
         DiagnosticSource::parse("store_test").expect("source"),
-        DiagnosticSubject::try_new("guard_managed_artifact", subject_reference).expect("subject"),
+        DiagnosticSubjectIdentity::from_canonical_bytes(
+            format!("volicord.store-test.guard-managed-artifact:{subject_reference}").as_bytes(),
+        ),
     )
 }
 
 fn current_finding(
     fixture: &CoreFixture,
     key: CurrentDiagnosticKey,
+    display_reference: &str,
     actual: &str,
     observed_at: &str,
     causes: Vec<DiagnosticCause>,
 ) -> Result<CurrentDiagnosticFinding, Box<dyn Error>> {
     let snapshot = CurrentDiagnosticSnapshot::try_new(
+        DiagnosticSubject::try_new("guard_managed_artifact", display_reference)?,
         DiagnosticSeverity::Error,
         DiagnosticFacts::project(&SafeFacts {
             expected: "present",
@@ -215,6 +220,7 @@ fn runtime_terminal_occurrence_is_inserted_and_linked_atomically() -> Result<(),
     let current = current_finding(
         &fixture,
         current_key(&fixture, "runtime-terminal-current"),
+        "runtime-terminal-current",
         "must_not_link",
         OBSERVED,
         Vec::new(),
@@ -288,6 +294,7 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     let first = current_finding(
         &fixture,
         key.clone(),
+        "guard-a-redacted-primary",
         "missing",
         "2026-07-21T01:02:03Z",
         vec![DiagnosticCause::new(first_cause.id())],
@@ -296,10 +303,12 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     let changed = current_finding(
         &fixture,
         key.clone(),
+        "guard-a-redacted-updated",
         "content_mismatch",
         "2026-07-21T02:03:04Z",
         vec![DiagnosticCause::new(second_cause.id())],
     )?;
+    assert_eq!(first.id(), changed.id());
     upsert_current_snapshot(fixture.runtime_home_path(), &changed)?;
 
     let graph = bounded_diagnostic_graph_from_seeds(
@@ -321,6 +330,7 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     let rejected = current_finding(
         &fixture,
         key.clone(),
+        "guard-a-invalid-refresh",
         "invalid_refresh",
         "2026-07-21T02:04:05Z",
         vec![DiagnosticCause::new(missing.clone())],
@@ -331,6 +341,10 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         std::slice::from_ref(changed.id()),
     )?;
     assert_eq!(preserved.len(), 1);
+    assert_eq!(
+        preserved[0].subject().reference(),
+        "guard-a-redacted-updated"
+    );
     assert_eq!(preserved[0].facts().data()["actual"], "content_mismatch");
     let preserved_graph = bounded_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),
@@ -365,6 +379,10 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         resolved.snapshot().facts().data()["actual"],
         "content_mismatch"
     );
+    assert_eq!(
+        resolved.snapshot().subject().reference(),
+        "guard-a-redacted-updated"
+    );
     assert!(resolved.snapshot().actions().is_empty());
     assert!(resolved.snapshot().causes().is_empty());
     assert!(active_current_findings_for_scope(fixture.runtime_home_path(), &scope)?.is_empty());
@@ -385,6 +403,7 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     let reactivated = current_finding(
         &fixture,
         key,
+        "guard-a-redacted-reactivated",
         "missing_again",
         "2026-07-21T04:05:06Z",
         vec![DiagnosticCause::new(first_cause.id())],
@@ -400,6 +419,10 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
     assert_eq!(
         active[0].snapshot().facts().data()["actual"],
         "missing_again"
+    );
+    assert_eq!(
+        active[0].snapshot().subject().reference(),
+        "guard-a-redacted-reactivated"
     );
     assert_eq!(
         reportable_diagnostic_findings_by_ids(
@@ -419,6 +442,7 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
     let current = current_finding(
         &fixture,
         current_key(&fixture, ".volicord/guard-a.json"),
+        "guard-a-safe-display",
         "missing",
         OBSERVED,
         Vec::new(),
@@ -433,17 +457,34 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
             [current.id().as_str()],
         )
         .is_err());
+    assert!(conn
+        .execute(
+            "UPDATE diagnostic_findings SET current_subject_identity = ?2 WHERE finding_id = ?1",
+            [current.id().as_str(), &format!("sha256:{}", "0".repeat(64))],
+        )
+        .is_err());
+    let persisted_subject_identity: String = conn.query_row(
+        "SELECT current_subject_identity FROM diagnostic_findings WHERE finding_id = ?1",
+        [current.id().as_str()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(
+        persisted_subject_identity,
+        current.key().subject_identity().as_str()
+    );
+    assert!(!persisted_subject_identity.contains(".volicord/guard-a.json"));
 
     let expected = current_finding(
         &fixture,
         current_key(&fixture, ".volicord/expected-identity.json"),
+        "expected-safe-display",
         "expected",
         "2026-07-21T02:03:04Z",
         Vec::new(),
     )?;
     conn.execute(
         "INSERT INTO diagnostic_findings (
-            finding_id, lifecycle, current_identity_digest,
+            finding_id, lifecycle, current_identity_digest, current_subject_identity,
             diagnostic_scope_kind, diagnostic_scope_identity,
             current_state_status, resolved_at,
             code, domain, stage, severity, source,
@@ -451,7 +492,7 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
             connection_internal_id, project_internal_id, runtime_session_id,
             integration_revision, observed_at
          )
-         SELECT ?1, lifecycle, ?2,
+         SELECT ?1, lifecycle, ?2, current_subject_identity,
                 diagnostic_scope_kind, diagnostic_scope_identity,
                 current_state_status, resolved_at,
                 code, domain, stage, severity, source,
@@ -471,15 +512,15 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
         [expected.id().as_str()],
         |row| row.get(0),
     )?;
-    assert!(mismatched_subject.contains("guard-a.json"));
-    assert!(!mismatched_subject.contains("expected-identity.json"));
+    assert!(mismatched_subject.contains("guard-a-safe-display"));
+    assert!(!mismatched_subject.contains("expected-safe-display"));
 
     let corrupt_digest = "f".repeat(64);
     let corrupt_id =
         DiagnosticFindingId::parse(format!("finding.current.sha256:{corrupt_digest}"))?;
     conn.execute(
         "INSERT INTO diagnostic_findings (
-            finding_id, lifecycle, current_identity_digest,
+            finding_id, lifecycle, current_identity_digest, current_subject_identity,
             diagnostic_scope_kind, diagnostic_scope_identity,
             current_state_status, resolved_at,
             code, domain, stage, severity, source,
@@ -487,7 +528,7 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
             connection_internal_id, project_internal_id, runtime_session_id,
             integration_revision, observed_at
          )
-         SELECT ?1, lifecycle, ?2,
+         SELECT ?1, lifecycle, ?2, current_subject_identity,
                 diagnostic_scope_kind, diagnostic_scope_identity,
                 current_state_status, resolved_at,
                 code, domain, stage, severity, source,

@@ -837,8 +837,9 @@ mod tests {
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
     use volicord_types::{
         ActorSource, AgentConnectionId, CurrentDiagnosticFinding, CurrentDiagnosticKey,
-        CurrentDiagnosticSnapshot, DiagnosticScope, DiagnosticScopeKind, IntegrationProfile,
-        JudgmentKind, MethodName, ObservationConfidence, OperationCategory, ProjectId,
+        CurrentDiagnosticSnapshot, DiagnosticScope, DiagnosticScopeKind, DiagnosticSubjectIdentity,
+        IntegrationProfile, JudgmentKind, MethodName, ObservationConfidence, OperationCategory,
+        ProjectId,
     };
 
     use crate::cli::DiagnosticsWorkflowMetricsArgs;
@@ -943,12 +944,15 @@ mod tests {
             DiagnosticDomain::parse("configuration").expect("domain"),
             DiagnosticStage::parse("managed_configuration").expect("stage"),
             DiagnosticSource::parse("administrative_cli").expect("source"),
-            DiagnosticSubject::try_new("managed_config_target", "/bounded/current/config.toml")
-                .expect("subject"),
+            DiagnosticSubjectIdentity::from_canonical_bytes(
+                b"volicord.test.managed-config:/canonical/private/config.toml",
+            ),
         );
         let finding_id = key.finding_id();
         let make_finding = |observed_state: &'static str, observed_at: &'static str| {
             CurrentDiagnosticSnapshot::try_new(
+                DiagnosticSubject::try_new("managed_config_target", "/bounded/current/config.toml")
+                    .expect("subject"),
                 DiagnosticSeverity::Error,
                 DiagnosticFacts::project(&CurrentLookupFacts { observed_state }).expect("facts"),
                 UtcTimestamp::parse(observed_at).expect("time"),

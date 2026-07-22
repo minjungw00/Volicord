@@ -72,19 +72,23 @@ resolution, user answer, verification basis, or authority source.
 `diagnostic_findings` stores both explicit lifecycles and never infers one from
 `runtime_session_id`. Every row has `lifecycle`; a current-state row also has
 the full `current_identity_digest`, `diagnostic_scope_kind`, complete
-`diagnostic_scope_identity`, `current_state_status`, and optional
-`resolved_at`. Shared columns hold the namespaced code, domain, stage,
-severity, source, bounded typed subject and safe fact JSON, bounded actions,
-applicable correlation coordinates, and canonical observation time. Store
-validates the lifecycle type and serialized byte bounds before opening a write
-transaction. It never stores an environment dump, raw request, unrestricted
-stderr, credential, or unbounded fact object.
+`diagnostic_scope_identity`, validated opaque `current_subject_identity`,
+`current_state_status`, and optional `resolved_at`. The subject identity uses
+the exact `sha256:<64 lowercase hex>` token and never stores its canonical path
+or other owner input bytes. Shared columns hold the namespaced code, domain,
+stage, severity, source, bounded safe subject presentation and safe fact JSON,
+bounded actions, applicable correlation coordinates, and canonical observation
+time. Store validates the lifecycle type, subject identity token, and
+serialized byte bounds before opening a write transaction. It never stores an
+environment dump, raw request, unrestricted stderr, credential, canonical
+subject input bytes, or unbounded fact object.
 
 `insert_occurrence_finding` and `insert_occurrence_finding_graph` accept only
 `OccurrenceDiagnosticFinding` values and insert immutable rows with generated
 opaque occurrence IDs. `upsert_current_snapshot` accepts only
 `CurrentDiagnosticFinding`, derives its ID from the complete key, compares all
-persisted identity fields, and updates only snapshot fields. It atomically
+persisted identity fields including `current_subject_identity`, and updates
+only snapshot fields, including the safe subject presentation. It atomically
 replaces outgoing causes and always leaves the condition active. Validation,
 missing-cause, identity, or cycle failure preserves the previous snapshot.
 
@@ -92,7 +96,9 @@ missing-cause, identity, or cycle failure preserves the previous snapshot.
 `resolved_at`, clears actions and outgoing causes, and retains facts and other
 last-observed snapshot data. `active_current_findings_for_scope` returns only
 active rows. `diagnostic_findings_by_ids` can return resolved projections and
-recomputes every current digest and ID before returning data; a mismatch is
+reconstructs each current key from the persisted subject identity rather than
+the safe subject presentation, then recomputes every current digest and ID
+before returning data; a malformed subject identity or any mismatch is
 persisted-data corruption. `reportable_diagnostic_findings_by_ids` admits only
 immutable occurrences and active current-state rows; resolved current-state
 rows are excluded as current-report seeds but remain available through exact

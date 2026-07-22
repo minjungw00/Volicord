@@ -782,18 +782,20 @@ diagnostic으로 받아들입니다. 집중 host 담당 문서는 지원하지 �
 code를 정의하지 않으므로 CLI도 이를 만들어 내지 않습니다.
 
 이 CLI 소유 운영 finding은 현재 상태 snapshot입니다. `CurrentDiagnosticKey`에는 완전한
-Connection scope, code, domain, stage, source, 정규 typed subject kind와 reference가 들어가며
-opaque ID는 이 key의 고정된 전체 digest입니다. 따라서 관리 artifact나 Guard phase 두 곳에서
-같은 code가 실패해도 서로 다른 ID를 가집니다. 같은 주체에 활성 검증을 반복하면 ID를
-보존하면서 안전한 facts, 관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로
-갱신합니다. Runtime, process, protocol 발생형 finding은 insert-only로 남으며 이 현재 상태
-경로로 덮어쓸 수 없습니다.
+Connection scope, code, domain, stage, source, opaque typed subject identity가 들어가며 opaque
+ID는 이 key의 고정된 전체 digest입니다. 안전한 subject kind와 reference는 교체 가능한
+snapshot 표시로 남습니다. 따라서 관리 artifact나 Guard phase 두 곳에서 같은 code가 실패해도
+서로 다른 ID를 가집니다. 같은 주체에 활성 검증을 반복하면 ID를 보존하면서 안전한 subject
+표시, facts, 관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로 갱신합니다. Runtime,
+process, protocol 발생형 finding은 insert-only로 남으며 이 현재 상태 경로로 덮어쓸 수
+없습니다.
 
 각 폐쇄형 운영 diagnostic 값은 code, domain, stage, source, 기본 severity, summary를 담는
-불변 definition 하나를 가집니다. 각 subject type은 scope, 정규 identity byte, 안전한 표시
-projection을 담당합니다. Path를 담는 subject는 filesystem alias를 정규화하고 불투명하며
-path를 노출하지 않는 reference만 표시합니다. Action은 렌더링한 산문이 아니라 definition,
-typed facts, typed check state에서 선택합니다.
+불변 definition 하나를 가집니다. 각 subject type은 scope, typed versioned 정규 identity
+encoding과 opaque subject identity, 별도의 안전한 표시 projection을 담당합니다. Path를 담는
+subject는 filesystem alias를 정규화한 뒤 그 identity를 파생하며 정규 path byte를 저장하지
+않습니다. Action은 렌더링한 산문이 아니라 definition, typed facts, typed check state에서
+선택합니다.
 
 활성 검증은 CLI 담당자마다 완전한 관찰 집합을 reconcile합니다. 관찰한 모든 current
 condition은 활성화하거나 갱신하고, 복구 또는 새로운 성공 관찰 뒤 집합에서 빠진 담당자

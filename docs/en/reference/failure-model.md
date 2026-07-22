@@ -123,31 +123,45 @@ insert-only whether or not runtime correlation is present.
 `CurrentDiagnosticFinding` consists of an immutable `CurrentDiagnosticKey` and
 a replaceable `CurrentDiagnosticSnapshot`. The key includes the scope kind and
 complete opaque scope identity, full diagnostic code, domain, stage, source,
-and complete subject kind and reference. Its canonical identity is a
-domain-separated, versioned binary encoding in which every variable component
-is length-prefixed. The ID is exactly
+and one `DiagnosticSubjectIdentity`. That subject identity is a validated,
+opaque `sha256:<64 lowercase hex>` token derived only from the typed subject
+owner's domain-separated, versioned, length-prefixed canonical identity bytes.
+It is not a display string and does not expose the original path, installation
+identifier, event identifier, or other identity input. The current-key
+canonical identity is a separate domain-separated, versioned binary encoding
+in which every variable component, including the complete subject identity
+token, is length-prefixed. The ID is exactly
 `finding.current.sha256:<64 lowercase hex>`, using the full SHA-256 digest of
 that encoding. This preserves all identity distinctions while keeping paths
-and other scope or subject text out of the ID.
+and other subject identity inputs out of the ID.
 
-Re-observing the same key replaces only severity, facts, actions, correlation
-coordinates, observation time, and outgoing cause edges, and reactivates a
-resolved condition. Identity fields are compared and never updated. Explicit
-resolution records `resolved_at`, removes current actions and outgoing causes,
-retains the last safe facts, and excludes the row from active-current reports.
-Explicit ID reads may still return that resolved snapshot. A read recomputes
-the current digest and ID from the stored key and treats any mismatch as
-corrupt persisted state.
+The replaceable snapshot carries the safe `DiagnosticSubject` presentation in
+addition to severity, facts, actions, correlation coordinates, integration
+revision, observation time, outgoing cause edges, and active or resolved
+state. Re-observing the same key may replace that safe display subject and the
+other snapshot fields and reactivates a resolved condition. Identity fields,
+including `DiagnosticSubjectIdentity`, are compared and never updated.
+Changing only redaction, formatting, or another safe presentation detail does
+not change the finding ID. Explicit resolution records `resolved_at`, removes
+current actions and outgoing causes, retains the last safe subject and facts,
+and excludes the row from active-current reports. Explicit ID reads may still
+return that resolved snapshot. A read reconstructs the key from the stored
+subject identity independently of the safe display subject, recomputes the
+current digest and ID, and treats any mismatch as corrupt persisted state.
 
 A CLI-owned operational diagnostic has one immutable definition for its code,
 domain, stage, source, default severity, and summary. Its closed typed subject
-owns the scope, canonical identity bytes, and safe display projection; a
-path-bearing subject canonicalizes filesystem aliases before deriving an
-opaque path-free reference. Active verification reconciles each complete
-owner observation set: observed conditions are activated or refreshed and
-previously active owned conditions omitted from that set are explicitly
-resolved. A current report reads only active current findings selected by its
-failed or blocked checks and their bounded cause chains.
+owns the scope, constructs `DiagnosticSubjectIdentity` from its own canonical
+identity encoding, and supplies a separate safe display projection. Typed
+subject namespaces are part of that canonical encoding, so equal display text
+in different subject families does not collapse to one identity. A
+path-bearing subject canonicalizes filesystem aliases before deriving the
+opaque identity and never persists those canonical path bytes. Active
+verification reconciles each complete owner observation set: observed
+conditions are activated or refreshed and previously active owned conditions
+omitted from that set are explicitly resolved. A current report reads only
+active current findings selected by its failed or blocked checks and their
+bounded cause chains.
 
 Safe facts are bounded before storage or rendering. Their typed projection
 redacts sensitive keys and limits text size, collection size, and nesting
@@ -157,7 +171,9 @@ must supply a bounded safe summary instead of moving those inputs into a
 finding.
 
 The Registry stores each shared finding as structured columns plus bounded
-subject, facts, and action JSON. Cause references are separate edges. Every
+safe subject, facts, and action JSON. A current-state row additionally stores
+its validated opaque subject identity token; occurrence rows do not. Cause
+references are separate edges. Every
 edge must resolve to an existing finding, duplicate and self edges are
 rejected, cycles are rejected by validated graph insertion and the Registry
 constraint, and bounded traversal is deterministic. Inserting a finding graph

@@ -855,20 +855,22 @@ invent one.
 
 These CLI-owned operational findings are current-state snapshots. Their
 `CurrentDiagnosticKey` contains the complete Connection scope, code, domain,
-stage, source, and canonical typed subject kind and reference; the opaque ID is
-the fixed full digest of that key. Same-code failures on two managed artifacts
-or Guard phases therefore have distinct IDs. Repeating active verification for
-the same subject preserves its ID and atomically refreshes its safe facts,
-observation time, revision coordinates, and outgoing cause edges. Runtime-,
+stage, source, and opaque typed subject identity; the opaque ID is the fixed
+full digest of that key. The safe subject kind and reference remain replaceable
+snapshot presentation. Same-code failures on two managed artifacts or Guard
+phases therefore have distinct IDs. Repeating active verification for the same
+subject preserves its ID and atomically refreshes its safe subject presentation,
+facts, observation time, revision coordinates, and outgoing cause edges. Runtime-,
 process-, and protocol-occurrence findings remain insert-only and cannot be
 overwritten through this current-state path.
 
 Each closed operational diagnostic value has one immutable definition for its
 code, domain, stage, source, default severity, and summary. Each subject type
-owns its scope, canonical identity bytes, and safe display projection;
-path-bearing subjects canonicalize filesystem aliases and expose only an
-opaque path-free reference. Actions are selected from the definition, typed
-facts, and typed check state rather than rendered prose.
+owns its scope, typed versioned canonical identity encoding and opaque subject
+identity, and a separate safe display projection; path-bearing subjects
+canonicalize filesystem aliases before deriving that identity and do not
+persist the canonical path bytes. Actions are selected from the definition,
+typed facts, and typed check state rather than rendered prose.
 
 Active verification reconciles a complete observation set for each CLI owner.
 It activates or refreshes every observed current condition and explicitly

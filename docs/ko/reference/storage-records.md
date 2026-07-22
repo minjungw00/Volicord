@@ -66,25 +66,30 @@ verification basis, 권한 출처가 아닙니다.
 `diagnostic_findings`는 두 lifecycle을 명시적으로 저장하며 `runtime_session_id`에서
 lifecycle을 추론하지 않습니다. 모든 row에는 `lifecycle`이 있고, current-state row에는
 전체 `current_identity_digest`, `diagnostic_scope_kind`, 완전한
-`diagnostic_scope_identity`, `current_state_status`, 선택적인 `resolved_at`도 있습니다.
-공유 column에는 namespaced code, domain, stage, severity, source, 한도가 있는 typed subject와
-안전한 fact JSON, 한도가 있는 action, 적용 가능한 correlation 좌표, 정규 관찰 시각을
-저장합니다. Store는 쓰기 transaction을 열기 전에 lifecycle type과 직렬화 byte 한도를
-검증합니다. 환경 dump, 원본 request, 제한 없는 stderr, credential, 한도 없는 fact object는
-저장하지 않습니다.
+`diagnostic_scope_identity`, 검증된 opaque `current_subject_identity`,
+`current_state_status`, 선택적인 `resolved_at`도 있습니다. Subject identity는 정확한
+`sha256:<64 lowercase hex>` token을 사용하며 정규 path나 그 밖의 담당자 입력 byte를 저장하지
+않습니다. 공유 column에는 namespaced code, domain, stage, severity, source, 한도가 있는 안전한
+subject 표시와 안전한 fact JSON, 한도가 있는 action, 적용 가능한 correlation 좌표, 정규 관찰
+시각을 저장합니다. Store는 쓰기 transaction을 열기 전에 lifecycle type, subject identity
+token, 직렬화 byte 한도를 검증합니다. 환경 dump, 원본 request, 제한 없는 stderr, credential,
+정규 subject 입력 byte, 한도 없는 fact object는 저장하지 않습니다.
 
 `insert_occurrence_finding`과 `insert_occurrence_finding_graph`는
 `OccurrenceDiagnosticFinding`만 받아 생성된 opaque occurrence ID를 가진 불변 row를
 삽입합니다. `upsert_current_snapshot`은 `CurrentDiagnosticFinding`만 받고 완전한 key에서
-ID를 파생하며 저장된 identity field 전체를 비교한 뒤 snapshot field만 갱신합니다. 나가는
-cause를 원자적으로 교체하고 condition은 항상 active가 됩니다. 검증, 원인 부재, identity,
-cycle 실패가 발생하면 이전 snapshot을 보존합니다.
+ID를 파생하며 `current_subject_identity`를 포함한 저장된 identity field 전체를 비교한 뒤
+안전한 subject 표시를 포함한 snapshot field만 갱신합니다. 나가는 cause를 원자적으로
+교체하고 condition은 항상 active가 됩니다. 검증, 원인 부재, identity, cycle 실패가 발생하면
+이전 snapshot을 보존합니다.
 
 `resolve_current_finding`은 `CurrentDiagnosticKey`로 row를 지정해 `resolved_at`을 기록하고
 action 및 나가는 cause를 비우며 facts와 마지막 관찰 snapshot data는 유지합니다.
 `active_current_findings_for_scope`는 active row만 반환합니다.
 `diagnostic_findings_by_ids`는 resolved projection도 반환할 수 있고, data를 반환하기 전에
-모든 current digest와 ID를 다시 계산합니다. 불일치는 persisted-data corruption입니다.
+안전한 subject 표시가 아니라 저장된 subject identity에서 각 current key를 복원한 뒤 모든
+current digest와 ID를 다시 계산합니다. 잘못된 subject identity나 불일치는 persisted-data
+corruption입니다.
 `reportable_diagnostic_findings_by_ids`는 변경할 수 없는 occurrence와 active current-state
 row만 받습니다. Resolved current-state row는 current-report seed에서 제외되지만 정확한 ID
 조회로 계속 읽을 수 있습니다. Registry update trigger도 current identity column과

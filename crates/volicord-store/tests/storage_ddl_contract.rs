@@ -29,7 +29,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 44);
-    assert_eq!(metadata.columns.len(), 509);
+    assert_eq!(metadata.columns.len(), 510);
     assert_eq!(metadata.indexes.len(), 70);
     assert_eq!(metadata.constraints.len(), 39);
     let agent_connection_columns = metadata
@@ -99,6 +99,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         "finding_id",
         "lifecycle",
         "current_identity_digest",
+        "current_subject_identity",
         "diagnostic_scope_kind",
         "diagnostic_scope_identity",
         "current_state_status",
@@ -190,11 +191,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:0ec75de7551143888cc341b1522608a4ee92578e4bc25f8f665a755e3f07a84a"
+        "sha256:cbdf4b340610f50e313c8773b78130e30549437d35fb7f9ddb42f107b22ae7c1"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:6e75934161b7db16e3219937e0b7183c79faaf3c51800650d1f10e9d956affd7"
+        "sha256:18f19c77b57696b8a013ae83a2f7f1e46c24a547cd606d4a622a0b4b42fbda8f"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -228,12 +229,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:0ec75de7551143888cc341b1522608a4ee92578e4bc25f8f665a755e3f07a84a\",",
+            "{\"canonical_ddl_digest\":\"sha256:cbdf4b340610f50e313c8773b78130e30549437d35fb7f9ddb42f107b22ae7c1\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:6e75934161b7db16e3219937e0b7183c79faaf3c51800650d1f10e9d956affd7\"}"
+            "\"integrity_constraints_digest\":\"sha256:18f19c77b57696b8a013ae83a2f7f1e46c24a547cd606d4a622a0b4b42fbda8f\"}"
         )
     );
     Ok(())
@@ -517,6 +518,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
     let insert = |id: &str,
                   lifecycle: &str,
                   digest: Option<&str>,
+                  subject_identity: Option<&str>,
                   scope_kind: Option<&str>,
                   scope_identity: Option<&str>,
                   status: Option<&str>,
@@ -524,22 +526,23 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
                   runtime_session_id: Option<&str>| {
         registry.execute(
             "INSERT INTO diagnostic_findings (
-                finding_id, lifecycle, current_identity_digest,
+                finding_id, lifecycle, current_identity_digest, current_subject_identity,
                 diagnostic_scope_kind, diagnostic_scope_identity,
                 current_state_status, resolved_at,
                 code, domain, stage, severity, source,
                 subject_json, facts_json, actions_json,
                 runtime_session_id, observed_at
              ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
                 'store.lifecycle_test', 'store', 'test', 'error', 'store_test',
                 '{\"kind\":\"test_case\",\"reference\":\"subject\"}', '{}', '[]',
-                ?8, '2026-07-22T00:00:00Z'
+                ?9, '2026-07-22T00:00:00Z'
              )",
             params![
                 id,
                 lifecycle,
                 digest,
+                subject_identity,
                 scope_kind,
                 scope_identity,
                 status,
@@ -554,6 +557,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         insert(
             occurrence_id,
             "occurrence",
+            None,
             None,
             None,
             None,
@@ -584,12 +588,14 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         None,
         None,
         None,
+        None,
     )
     .is_err());
     assert!(insert(
         "finding.occurrence_00000000-0000-4000-8000-000000000002",
         "occurrence",
         Some(&"a".repeat(64)),
+        None,
         None,
         None,
         None,
@@ -603,7 +609,22 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         None,
         None,
         None,
+        None,
         Some("active"),
+        None,
+        None,
+    )
+    .is_err());
+
+    let subject_identity = format!("sha256:{}", "1".repeat(64));
+    assert!(insert(
+        "finding.occurrence_00000000-0000-4000-8000-000000000005",
+        "occurrence",
+        None,
+        Some(&subject_identity),
+        None,
+        None,
+        None,
         None,
         None,
     )
@@ -616,6 +637,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
             &current_id,
             "current_state",
             Some(&digest),
+            Some(&subject_identity),
             Some("connection"),
             Some("opaque connection identity"),
             Some("active"),
@@ -624,16 +646,24 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         )?,
         1
     );
-    assert!(registry
-        .execute(
+    assert_eq!(
+        registry.execute(
             "UPDATE diagnostic_findings SET subject_json = '{\"kind\":\"test_case\",\"reference\":\"other\"}' WHERE finding_id = ?1",
             [&current_id],
+        )?,
+        1
+    );
+    assert!(registry
+        .execute(
+            "UPDATE diagnostic_findings SET current_subject_identity = ?2 WHERE finding_id = ?1",
+            params![&current_id, format!("sha256:{}", "2".repeat(64))],
         )
         .is_err());
     assert!(insert(
         &format!("finding.current.sha256:{}", "c".repeat(64)),
         "current_state",
         Some(&"c".repeat(64)),
+        Some(&subject_identity),
         Some("connection"),
         Some("opaque connection identity"),
         Some("resolved"),
@@ -645,6 +675,31 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         &format!("finding.current.sha256:{}", "e".repeat(64)),
         "current_state",
         None,
+        Some(&subject_identity),
+        Some("connection"),
+        Some("opaque connection identity"),
+        Some("active"),
+        None,
+        None,
+    )
+    .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "9".repeat(64)),
+        "current_state",
+        Some(&"9".repeat(64)),
+        None,
+        Some("connection"),
+        Some("opaque connection identity"),
+        Some("active"),
+        None,
+        None,
+    )
+    .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "8".repeat(64)),
+        "current_state",
+        Some(&"8".repeat(64)),
+        Some("sha256:invalid"),
         Some("connection"),
         Some("opaque connection identity"),
         Some("active"),
@@ -656,6 +711,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         &format!("finding.current.sha256:{}", "f".repeat(64)),
         "current_state",
         Some(&"a".repeat(64)),
+        Some(&subject_identity),
         Some("connection"),
         Some("opaque connection identity"),
         Some("active"),
@@ -667,6 +723,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         &format!("finding.current.sha256:{}", "e".repeat(64)),
         "current_state",
         Some(&"e".repeat(64)),
+        Some(&subject_identity),
         Some("connection"),
         Some("opaque connection identity"),
         Some("active"),
@@ -678,6 +735,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         &format!("finding.current.sha256:{}", "f".repeat(64)),
         "current_state",
         Some(&"f".repeat(64)),
+        Some(&subject_identity),
         Some("connection"),
         Some(""),
         Some("active"),
@@ -690,6 +748,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
             &format!("finding.current.sha256:{}", "0".repeat(64)),
             "current_state",
             Some(&"0".repeat(64)),
+            Some(&subject_identity),
             Some("project"),
             Some("opaque project identity"),
             Some("resolved"),
@@ -702,6 +761,7 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
         &format!("finding.current.sha256:{}", "d".repeat(64)),
         "current_state",
         Some(&"d".repeat(64)),
+        Some(&subject_identity),
         Some("connection"),
         Some("opaque connection identity"),
         Some("active"),

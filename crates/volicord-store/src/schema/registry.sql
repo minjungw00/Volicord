@@ -147,6 +147,14 @@ CREATE TABLE diagnostic_findings (
       AND current_identity_digest NOT GLOB '*[^0-9a-f]*'
     )
   ),
+  current_subject_identity TEXT CHECK (
+    current_subject_identity IS NULL
+    OR (
+      length(current_subject_identity) = 71
+      AND substr(current_subject_identity, 1, 7) = 'sha256:'
+      AND substr(current_subject_identity, 8) NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
   diagnostic_scope_kind TEXT CHECK (
     diagnostic_scope_kind IS NULL
     OR diagnostic_scope_kind IN ('connection', 'project', 'runtime_home', 'installation', 'process')
@@ -230,6 +238,7 @@ CREATE TABLE diagnostic_findings (
     (
       lifecycle = 'occurrence'
       AND current_identity_digest IS NULL
+      AND current_subject_identity IS NULL
       AND diagnostic_scope_kind IS NULL
       AND diagnostic_scope_identity IS NULL
       AND current_state_status IS NULL
@@ -238,6 +247,7 @@ CREATE TABLE diagnostic_findings (
     OR (
       lifecycle = 'current_state'
       AND current_identity_digest IS NOT NULL
+      AND current_subject_identity IS NOT NULL
       AND diagnostic_scope_kind IS NOT NULL
       AND diagnostic_scope_identity IS NOT NULL
       AND current_state_status IS NOT NULL
@@ -310,13 +320,13 @@ BEFORE UPDATE OF
   finding_id,
   lifecycle,
   current_identity_digest,
+  current_subject_identity,
   diagnostic_scope_kind,
   diagnostic_scope_identity,
   code,
   domain,
   stage,
-  source,
-  subject_json
+  source
 ON diagnostic_findings
 WHEN OLD.lifecycle = 'current_state'
 BEGIN
