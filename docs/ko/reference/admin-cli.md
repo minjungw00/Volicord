@@ -607,7 +607,7 @@ Installation ID, 통과한 `mode_transition` check 하나, 현재 `reload_host` 
 `volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. 서버 conformance
 matrix는 프로덕션 지원 protocol profile마다 독립된 stdio process 하나를 실행합니다.
 각 revision에서 `initialize`, initialized notification, `tools/list`, 고정 schema와 필수
-도구 검증, `ToolVerificationRole::ManagedHostRoundTrip`에서 해석한 도구 호출 정확히 하나,
+도구 검증, `ToolVerificationRole::ManagedHostRoundTrip`에 결합된 도구 호출 정확히 하나,
 계약에 정한 정상
 EOF/종료 순서를 수행합니다. 모든 revision probe가 통과해야 집계 `mcp_server` check가
 통과합니다. 사전 점검과 자체 검사의 프로세스 시작 구체화는 모두
@@ -617,8 +617,11 @@ Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product 
 저장소 검색을 실행합니다. CLI 전용 검증 표식은 호출에만 적용하는 진단 값이며 생성 호스트
 구성에는 포함되지 않습니다.
 
-이 role은 현재 `volicord.list_projects`로 해석됩니다. CLI는 첫 번째 읽기 전용 도구를
-선택하거나 독립적인 지정 도구 문자열을 유지하지 않습니다. Self-test는 이와 별도로 독립적으로 고정한 host 호환성 fixture를 실행합니다. 현재
+`ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
+`AgentToolId::LIST_PROJECTS`에 결합되며 wire 이름 투영은
+`volicord.list_projects`입니다. CLI는 첫 번째 읽기 전용 도구를 선택하거나 독립적인 지정
+도구 문자열을 유지하지 않습니다. Self-test는 이와 별도로 독립적으로 고정한 host 호환성
+fixture를 실행합니다. 현재
 `codex` fixture는 검토된 Codex initialize `clientInfo` 및 capability 형태를 사용하고,
 정확한 revision `2025-06-18`을 요청하며, `volicord.list_projects` 호출 하나에 유효한
 native session correlation metadata를 보냅니다. 이 fixture는 서버의 선호 profile에서
@@ -778,11 +781,13 @@ detail과 verbose 출력도 같은 정확한 이름을 노출합니다. 한도 �
 diagnostic으로 받아들입니다. 집중 host 담당 문서는 지원하지 않는 현재 host revision
 code를 정의하지 않으므로 CLI도 이를 만들어 내지 않습니다.
 
-이 CLI 소유 운영 finding은 Connection, code, 정규 typed subject를 key로 하는 현재 상태
-snapshot입니다. 관리 artifact나 Guard phase 두 곳에서 같은 code가 실패해도 서로 다른
-opaque ID를 가집니다. 같은 주체에 활성 검증을 반복하면 ID를 보존하면서 안전한 facts,
-관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로 갱신합니다. Runtime, process,
-protocol 발생형 finding은 insert-only로 남으며 이 현재 상태 경로로 덮어쓸 수 없습니다.
+이 CLI 소유 운영 finding은 현재 상태 snapshot입니다. `CurrentDiagnosticKey`에는 완전한
+Connection scope, code, domain, stage, source, 정규 typed subject kind와 reference가 들어가며
+opaque ID는 이 key의 고정된 전체 digest입니다. 따라서 관리 artifact나 Guard phase 두 곳에서
+같은 code가 실패해도 서로 다른 ID를 가집니다. 같은 주체에 활성 검증을 반복하면 ID를
+보존하면서 안전한 facts, 관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로
+갱신합니다. Runtime, process, protocol 발생형 finding은 insert-only로 남으며 이 현재 상태
+경로로 덮어쓸 수 없습니다.
 
 각 폐쇄형 운영 diagnostic 값은 code, domain, stage, source, 기본 severity, summary를 담는
 불변 definition 하나를 가집니다. 각 subject type은 scope, 정규 identity byte, 안전한 표시

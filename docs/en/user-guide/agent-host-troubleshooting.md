@@ -36,6 +36,11 @@ as the code; do not collapse same-code Guard artifacts, phases, repositories,
 or managed-config targets into one incident. The opaque current-state ID does
 not reproduce a managed path.
 
+A current-state ID is `finding.current.sha256:<64 lowercase hex>`, derived from
+the complete scope, code, domain, stage, source, and typed subject identity.
+Do not reconstruct it from readable Connection, code, or subject text; retain
+and reuse the exact emitted ID.
+
 Use the code family to choose the focused recovery:
 
 | Code family | Recovery boundary |

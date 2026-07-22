@@ -66,7 +66,7 @@ the public method execution path.
 
 | Workspace member | Guide-level role |
 |---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, canonical `AgentToolId` catalog and wire-name projection, identifier, canonical-hash, platform, host-configuration, and structured diagnostic-envelope implementation types. |
+| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; common diagnostic report types; and the canonical `AgentToolId` catalog and wire-name projection. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, host/MCP/Guard verification checks, dependency-graph policy, finding projection, common diagnostic-report presentation, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
@@ -74,7 +74,7 @@ the public method execution path.
 | `crates/volicord-platform-process` | Internal safe facade for bounded platform-specific child-process containment and nonblocking child-pipe readiness. It owns low-level Unix process-group, Windows Job Object, and pipe-polling primitives. |
 | `crates/volicord-mcp-protocol` | Host-independent internal owner of exact MCP revision parsing, the closed reviewed production registry, message/tool/schema feature declarations, deterministic supported-revision ordering, and the separately selected preferred server revision. Tracked pre-release metadata remains outside the production registry. |
 | `crates/volicord-mcp` | MCP adapter library for the canonical managed-launch contract, startup validation, registry-driven executable protocol conformance, consumption of the canonical tool model supplied by Volicord tool owners, revision-specific `tools/list` and `tools/call` projection, managed stdio lifecycle and framing, Core invocation, and consumption of typed protocol profiles. |
-| `crates/volicord-test-support` | Disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, Agent Connection setup, and other helpers shared by implementation tests. |
+| `crates/volicord-test-support` | Reusable implementation-test fixtures only: disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, and Agent Connection setup. It owns no product-behavior assertions or contracts. |
 | `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs, shared fixtures, and versioned offline MCP specification inputs. Pinned upstream inputs do not define runtime support. |
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection session, operation-category, and public schema snapshot tests. |
 | `tests/release-integrity` | Generic five-target coverage, version consistency, canonical text bytes, package shape, packaged-binary identity, checksum output, and release-workflow structure. It owns no production runtime behavior. |
@@ -85,10 +85,12 @@ the public method execution path.
 The durable dependency direction is:
 
 - `volicord-types` sits at the shared type boundary and has no internal
-  product-crate dependencies. It owns the single cross-crate diagnostic
-  envelope, stable namespaced-code validation, and bounded redacting projection
-  of typed owner facts. Domain crates retain their closed detailed code sets and
-  exhaustive error-to-finding conversions.
+  product-crate dependencies. It owns lifecycle-specific diagnostic inputs,
+  current-key identity and digest derivation, the shared read-only finding and
+  report projections, stable namespaced-code validation, bounded redacting
+  projection of typed owner facts, and the canonical tool-identity catalog.
+  Domain crates retain their closed detailed code sets and exhaustive
+  error-to-finding conversions.
 - `volicord-store` depends on shared types and the read-only canonical Git
   layout primitive used to validate stored owner paths. It owns persistence
   mechanics and does not depend on Core, CLI, or MCP adapter crates.
@@ -145,7 +147,7 @@ The failure, storage, and Agent Connection contracts remain in
 
 | Boundary | Overview responsibility | Detail and contract routes |
 |---|---|---|
-| Shared diagnostic envelope | `volicord-types` owns the dependency-safe finding, cause, action, and report representation used across implementation crates. Each domain owner maps its closed typed failures and facts into that representation; persistence, verification, and rendering stay with their existing owners instead of creating another general envelope. | [Source Map](source-map.md), [Testing Strategy](testing-strategy.md), [Failure Model](../reference/failure-model.md), and [Security](../reference/security.md). |
+| Shared diagnostic envelope | `volicord-types` owns the lifecycle-specific finding inputs, current-key identity and digest derivation, and dependency-safe read-only finding, cause, action, and report representation used across implementation crates. Each domain owner maps its closed typed failures and facts into that representation; persistence, verification, and rendering stay with their existing owners instead of creating another general envelope. | [Source Map](source-map.md), [Testing Strategy](testing-strategy.md), [Failure Model](../reference/failure-model.md), and [Security](../reference/security.md). |
 | CLI operational diagnostics | `volicord-cli` keeps immutable operational definitions, closed typed subjects and facts, typed action selection, and owner-scoped current-condition persistence in `operational_diagnostics`. The separate Connection verification package coordinates host, MCP, and Guard checks, dependency-graph evaluation, report inputs, and projection of those typed observations into findings. Store remains the lifecycle and query implementation owner. | [Source Map](source-map.md), [Failure Model](../reference/failure-model.md), [Administrative CLI](../reference/admin-cli.md), and [Agent Connection](../reference/agent-connection.md). |
 | Diagnostic persistence and queries | `volicord-store` separates insert-only occurrences, replaceable current snapshots, cause-graph validation and traversal, lifecycle-explicit lookup APIs, and internal row encoding. Callers select occurrence history, reportable identifiers, runtime-session occurrences, or active current scope explicitly; no broad query silently mixes those lifecycles. | [Source Map](source-map.md), [Storage](../reference/storage.md), [Storage Records](../reference/storage-records.md), and [Failure Model](../reference/failure-model.md). |
 | Core and adapters | Core owns adapter-independent public method handling. CLI and MCP adapters own process, setup, transport, routing, and rendering boundaries around Core. Core does not depend on either adapter layer. | [Request Lifecycle](request-lifecycle.md), [Implementation Design Patterns](design-patterns.md), [Core and adapter dependency boundary](decisions/core-adapter-boundary.md), [API Methods](../reference/api/methods.md), [MCP Transport](../reference/mcp-transport.md), and [Administrative CLI](../reference/admin-cli.md). |

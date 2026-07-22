@@ -375,9 +375,11 @@ Guard managed artifact, Guard phase, Guard Installation, Guard event,
 integration revision, or verification tool. Each subject owns its scope,
 canonical identity bytes, and safe display projection. Path-bearing subjects
 canonicalize filesystem aliases before producing an opaque path-free
-reference. Stable IDs therefore keep the same diagnostic code on two artifacts
-or phases as two findings, while re-observing one subject refreshes only its
-snapshot.
+reference. Each `CurrentDiagnosticKey` includes the complete Connection scope,
+full code, domain, stage, source, and subject kind and reference. Its stable ID
+is the full fixed digest of that complete key, so the same diagnostic code on
+two artifacts or phases remains two findings while re-observing one subject
+refreshes only its snapshot.
 
 Active verification reconciles each complete CLI owner observation set. It
 activates or refreshes the conditions still observed and explicitly resolves

@@ -43,7 +43,9 @@ metadata를 보존한 다음, 후보 전체를 검증한 뒤에만 fixture를 �
 `cargo test -p volicord-mcp --test protocol_conformance`가 확인합니다. 일반 runner는
 `ProtocolRegistry::production().oldest_to_newest()`를 직접 순회하므로 프로덕션 profile을
 추가하면 같은 집중 case가 자동으로 matrix에 들어갑니다. Manifest는 검토된 upstream 및
-지원 사실만 기록하며 실행 가능한 테스트가 수행되었는지는 기록하지 않습니다.
+지원 사실만 기록하며 실행 가능한 테스트가 수행되었는지는 기록하지 않습니다. Runner는
+별도의 conformance revision 배열이나 revision별 coverage boolean을 소유하지 않으며
+registry 직접 순회가 matrix를 정합니다.
 
 ## 필수 경계 coverage
 
@@ -74,9 +76,11 @@ metadata를 보존한 다음, 후보 전체를 검증한 뒤에만 fixture를 �
 - 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정하며 revision 적합성을
   대신하지 않는 Codex host fixture, CLI conformance evidence와 실제 `managed_host`
   관찰의 분리
-- typed diagnostic code와 한도 및 민감정보 제거가 적용된 fact, finding 및 cause의
-  transaction 영속화, 결정론적 root, dependency에 따른 `Blocked` check, 보고서 하나를
-  사용하는 동등한 concise·verbose·lossless JSON projection
+- lifecycle별 진단 구성 및 Store API, 변경할 수 없는 occurrence 삽입, 완전한 current key
+  digest와 영속 ID 검증, current snapshot identity 불변성, 해소와 재활성화,
+  active/reportable filtering, 명시적 report seed와 한도가 있는 cause chain, typed
+  diagnostic code와 한도 및 민감정보 제거가 적용된 fact, 결정론적 root, dependency에 따른
+  `Blocked` check, 보고서 하나를 사용하는 동등한 concise·verbose·lossless JSON projection
 - Guard manifest의 exact shape와 owner binding, hash가 없는 policy command와 hash에
   결속된 runtime command의 구분, wrapper/file drift, 플랫폼 독립적인 script executable
   기대값, 현재 소유권의 hook 관찰, 이전 event 제외

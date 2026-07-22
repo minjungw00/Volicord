@@ -129,6 +129,12 @@ not represented as manifest metadata or an upstream or third-party MCP
 certification. A tracked pre-release revision does not become
 production-supported merely by being pinned.
 
+There is no separate conformance-coverage boolean or conformance revision
+array. The executable coverage set is the direct
+`ProtocolRegistry::production().oldest_to_newest()` iteration. `xtask` reads
+that registry through `volicord-mcp-protocol` for manifest parity and does not
+depend on the `volicord-mcp` runtime adapter, Core, Store, or platform crates.
+
 The request's string `protocolVersion` is the requested revision. An exact
 member of this closed set selects the same profile and the initialize result
 returns the same revision. Any other string that belongs to the

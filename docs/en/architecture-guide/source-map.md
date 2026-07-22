@@ -11,7 +11,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
-| `crates/volicord-types/src/diagnostics.rs` | Shared `DiagnosticFinding` and `DiagnosticReport` envelope, stable namespaced-code validation, bounded redacting projection of typed owner facts, cause-graph validation, and unexpected-failure fallback. |
+| `crates/volicord-types/src/diagnostics.rs` | Lifecycle-specific occurrence/current finding types, `CurrentDiagnosticKey` canonical identity and fixed digest ID derivation, shared read-only `DiagnosticFinding` and `DiagnosticReport` types, stable namespaced-code validation, bounded redacting projection of typed owner facts, cause-graph validation, and unexpected-failure fallback. |
 | `crates/volicord-types/src/platform.rs` | Shared platform-environment and platform-path types. |
 | `crates/volicord-types/src/host_configuration.rs` | Shared connection-intent and host-scope configuration types. |
 | `crates/volicord-types/src/connection_verification.rs` | Canonical connection status, check, action, and verification-report types. |
@@ -133,12 +133,13 @@ product contract; use the focused Reference document for exact behavior.
 | `tests/conformance/` | Cross-method conformance scenarios. |
 | `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed `production_supported` and `pre_release_only` facts, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
 | `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and release-workflow integrity tests. |
-| `crates/volicord-test-support/` | Disposable Runtime Home, repository, Store-facing setup and inspection, intentional corruption/malformed-storage fixtures, and request helpers; implementation-test modules do not embed storage SQL. |
+| `crates/volicord-test-support/` | Reusable fixtures only: disposable Runtime Home, repository, Store-facing setup and inspection, intentional corruption/malformed-storage setup, and request helpers. Product-behavior assertions stay in owner-specific tests, and implementation-test modules do not embed storage SQL. |
 
 ## Repository Maintenance Tooling
 
 | Path | Responsibility |
 |---|---|
+| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary: `volicord-mcp-protocol` supplies production profiles without pulling in `volicord-mcp`, Core, Store, or platform crates. |
 | `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
 | `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
 | `xtask/src/mcp_spec/validation.rs` | Offline metadata, immutable-pin, checksum, artifact, schema, ordering, and registry-parity validation. |

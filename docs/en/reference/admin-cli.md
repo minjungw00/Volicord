@@ -656,7 +656,7 @@ command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test. The
 server-conformance matrix runs one independent stdio process for every
 production-supported protocol profile. Each revision performs `initialize`,
 the initialized notification, `tools/list`, pinned-schema and required-tool
-validation, exactly one call to the tool resolved from
+validation, exactly one call to the tool bound to
 `ToolVerificationRole::ManagedHostRoundTrip`, and the
 contracted graceful EOF/shutdown sequence. The aggregate `mcp_server` check
 passes only when every revision probe passes. Preflight and self-test launch
@@ -668,8 +668,10 @@ runs repository discovery from the canonical Product Repository root. The
 CLI-only verification marker is an invocation overlay and is not part of
 generated host configuration.
 
-The role currently resolves to `volicord.list_projects`; the CLI does not
-select the first read-only tool or carry an independent designated-tool string.
+`ToolVerificationRole::ManagedHostRoundTrip` is bound at compile time to
+`AgentToolId::LIST_PROJECTS`, whose wire-name projection is
+`volicord.list_projects`; the CLI does not select the first read-only tool or
+carry an independent designated-tool string.
 The self-test separately runs independently pinned host-compatibility fixtures.
 The current `codex` fixture uses the reviewed Codex initialize `clientInfo` and
 capability shape, requests exact revision `2025-06-18`, sends valid native
@@ -851,13 +853,15 @@ future Codex version text remains diagnostic and accepted; the focused host
 owner defines no unsupported-current-host-revision code, so the CLI does not
 invent one.
 
-These CLI-owned operational findings are current-state snapshots keyed by the
-Connection, code, and canonical typed subject. Same-code failures on two
-managed artifacts or Guard phases have distinct opaque IDs. Repeating active
-verification for the same subject preserves its ID and atomically refreshes
-its safe facts, observation time, revision coordinates, and outgoing cause
-edges. Runtime-, process-, and protocol-occurrence findings remain insert-only
-and cannot be overwritten through this current-state path.
+These CLI-owned operational findings are current-state snapshots. Their
+`CurrentDiagnosticKey` contains the complete Connection scope, code, domain,
+stage, source, and canonical typed subject kind and reference; the opaque ID is
+the fixed full digest of that key. Same-code failures on two managed artifacts
+or Guard phases therefore have distinct IDs. Repeating active verification for
+the same subject preserves its ID and atomically refreshes its safe facts,
+observation time, revision coordinates, and outgoing cause edges. Runtime-,
+process-, and protocol-occurrence findings remain insert-only and cannot be
+overwritten through this current-state path.
 
 Each closed operational diagnostic value has one immutable definition for its
 code, domain, stage, source, default severity, and summary. Each subject type

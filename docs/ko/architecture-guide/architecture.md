@@ -62,7 +62,7 @@ flowchart LR
 
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 정규 `AgentToolId` catalog와 wire 이름 투영, 식별자, 정규 해시, 플랫폼, 호스트 구성, 구조화 진단 모델 구현 타입. |
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 공통 진단 report 타입, 정규 `AgentToolId` catalog와 wire 이름 투영. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, finding projection, 공통 진단 보고서 표시, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
@@ -70,7 +70,7 @@ flowchart LR
 | `crates/volicord-platform-process` | 한도가 있는 플랫폼별 자식 프로세스 격리와 비차단 자식 파이프 준비 상태를 위한 내부 안전 파사드. 저수준 Unix 프로세스 그룹, Windows Job Object, 파이프 폴링 primitive를 담당합니다. |
 | `crates/volicord-mcp-protocol` | 정확한 MCP 리비전 파싱, 검토된 폐쇄형 프로덕션 레지스트리, 메시지·도구·스키마 기능 선언, 결정론적인 지원 리비전 순서, 별도로 선택하는 서버 선호 리비전을 담당하는 호스트 독립 내부 크레이트. 추적 중인 사전 릴리스 메타데이터는 프로덕션 레지스트리 밖에 둡니다. |
 | `crates/volicord-mcp` | 정규 관리 launch 계약, 시작 검증, registry가 구동하는 실행 가능한 protocol 적합성, Volicord 도구 담당자가 제공하는 정규 도구 모델 사용, revision별 `tools/list` 및 `tools/call` projection, 관리형 stdio lifecycle과 프레이밍, Core 호출, typed protocol profile 사용을 위한 MCP 어댑터 라이브러리. |
-| `crates/volicord-test-support` | 구현 테스트가 공유하는 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정, 기타 도우미. |
+| `crates/volicord-test-support` | 재사용 가능한 구현 테스트 fixture만 담당합니다. 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정을 제공하며 제품 동작 assertion이나 계약은 담당하지 않습니다. |
 | `tests/conformance` | Core 쪽 API, 공유 픽스처, 버전별 오프라인 MCP 명세 입력을 통한 기준 범위 교차 메서드 시나리오. 고정된 upstream 입력은 런타임 지원을 정의하지 않습니다. |
 | `tests/integration` | MCP, Core, Store, Agent Connection session, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
 | `tests/release-integrity` | 일반 target 다섯 개 범위, 버전 일치, 기준 텍스트 바이트, 패키지 형태, 패키징한 binary identity, checksum 출력, 릴리스 workflow 구조. 운영 런타임 동작을 담당하지 않습니다. |
@@ -81,10 +81,11 @@ flowchart LR
 오래 유지될 의존 방향은 아래와 같습니다.
 
 - `volicord-types`는 공유 타입 경계에 있으며 내부 제품 크레이트 의존성이 없습니다.
-  크레이트 사이에서 공통으로 쓰는 단일 진단 구조, 안정적인 네임스페이스 코드
-  검증, 담당 크레이트의 타입이 지정된 사실에 한도와 민감정보 제거를 적용하는
-  투영을 담당합니다. 각 도메인 크레이트는 폐쇄형 세부 코드 집합과 오류를 진단
-  항목으로 빠짐없이 변환하는 책임을 유지합니다.
+  Lifecycle별 진단 입력, current key identity와 digest 파생, 공유 read-only finding과
+  report projection, 안정적인 네임스페이스 코드 검증, 담당 크레이트의 typed fact에
+  한도와 민감정보 제거를 적용하는 projection, 정규 tool identity catalog를 담당합니다.
+  각 도메인 크레이트는 폐쇄형 세부 code 집합과 오류를 finding으로 빠짐없이 변환하는
+  책임을 유지합니다.
 - `volicord-store`는 공유 타입과 저장된 소유자 경로 검증에 쓰는 읽기 전용 정규 Git
   layout primitive에 의존하고 지속 저장 메커니즘을 담당합니다. Core, CLI, MCP 어댑터
   크레이트에는 의존하지 않습니다.
@@ -135,7 +136,7 @@ runtime/project session을 검증하고 typed `ValidatedAgentSession`을 Core에
 
 | 경계 | 개요 책임 | 세부 사항과 계약 경로 |
 |---|---|---|
-| 공유 진단 구조 | `volicord-types`는 구현 크레이트가 함께 쓰는 의존성 안전한 진단 항목, 원인, 권장 조치, 보고서 표현을 담당합니다. 각 도메인 담당자는 폐쇄형 typed 오류와 사실을 이 표현으로 변환합니다. 지속 저장, 검증, 렌더링은 일반 진단 구조를 하나 더 만들지 않고 기존 담당 경계에 남습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md), [실패 모델](../reference/failure-model.md), [보안](../reference/security.md). |
+| 공유 진단 구조 | `volicord-types`는 lifecycle별 finding 입력, current key identity와 digest 파생, 구현 크레이트가 함께 쓰는 의존성 안전한 read-only finding, cause, action, report 표현을 담당합니다. 각 도메인 담당자는 폐쇄형 typed 오류와 사실을 이 표현으로 변환합니다. 지속 저장, 검증, 렌더링은 일반 진단 구조를 하나 더 만들지 않고 기존 담당 경계에 남습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md), [실패 모델](../reference/failure-model.md), [보안](../reference/security.md). |
 | CLI 운영 진단 | `volicord-cli`는 불변 운영 definition, 폐쇄형 typed subject와 facts, typed action 선택, 담당자 범위 current-condition 영속화를 `operational_diagnostics`에 둡니다. 별도의 Connection 검증 패키지는 host, MCP, Guard check와 dependency graph 평가 및 보고서 입력을 조율하고, typed 관찰을 finding으로 투영합니다. Store는 lifecycle 및 조회 구현 담당을 유지합니다. | [소스 지도](source-map.md), [실패 모델](../reference/failure-model.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |
 | 진단 영속화와 조회 | `volicord-store`는 추가 전용 occurrence, 교체 가능한 current snapshot, cause graph 검증 및 순회, lifecycle이 명시된 조회 API, 내부 row 인코딩을 분리합니다. 호출자는 occurrence 이력, 보고 가능한 식별자, runtime session occurrence, 활성 current scope를 명시적으로 선택하며 어떤 광범위 조회도 lifecycle을 암묵적으로 섞지 않습니다. | [소스 지도](source-map.md), [저장소](../reference/storage.md), [저장소 레코드](../reference/storage-records.md), [실패 모델](../reference/failure-model.md). |
 | Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리를 담당합니다. CLI와 MCP 어댑터는 Core 주변의 프로세스, 설정, 전송, 처리 경로, 렌더링 경계를 담당합니다. Core는 어느 어댑터 계층에도 의존하지 않습니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |

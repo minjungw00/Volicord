@@ -85,7 +85,10 @@ action 및 나가는 cause를 비우며 facts와 마지막 관찰 snapshot data�
 `active_current_findings_for_scope`는 active row만 반환합니다.
 `diagnostic_findings_by_ids`는 resolved projection도 반환할 수 있고, data를 반환하기 전에
 모든 current digest와 ID를 다시 계산합니다. 불일치는 persisted-data corruption입니다.
-Registry update trigger도 current identity column과 occurrence row를 보호합니다.
+`reportable_diagnostic_findings_by_ids`는 변경할 수 없는 occurrence와 active current-state
+row만 받습니다. Resolved current-state row는 current-report seed에서 제외되지만 정확한 ID
+조회로 계속 읽을 수 있습니다. Registry update trigger도 current identity column과
+occurrence row를 보호합니다.
 
 `diagnostic_cause_edges`는 finding에서 원인 finding으로 향하는 edge 하나를 저장합니다.
 양쪽 끝은 기존 finding을 가리켜야 하고 composite primary key가 중복을 거부하며, insert

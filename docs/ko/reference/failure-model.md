@@ -101,6 +101,10 @@ facts, 0개 이상의 cause reference와 권장 action, 관찰 timestamp, 적용
 좌표를 담습니다. Domain 담당자는 closed code vocabulary와 오류를 finding으로 변환하는
 규칙을 계속 담당합니다.
 
+`DiagnosticFinding` 자체는 쓰기 가능한 lifecycle 입력이 아닙니다. Store mutation은 삽입에
+`OccurrenceDiagnosticFinding`, snapshot 활성화 또는 갱신에
+`CurrentDiagnosticFinding`, 명시적 해소에 `CurrentDiagnosticKey`를 받습니다.
+
 `OccurrenceDiagnosticFinding`은 runtime, process, protocol 또는 그 밖의 event 성격 관찰
 하나를 기록합니다. 각 occurrence에는 새로 생성한 opaque `DiagnosticOccurrenceId`가
 부여됩니다. 동일한 diagnostic data를 반복해도 ID가 다르고 서로 독립적인 불변 row가

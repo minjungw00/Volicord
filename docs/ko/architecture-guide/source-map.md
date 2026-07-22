@@ -11,7 +11,7 @@
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
-| `crates/volicord-types/src/diagnostics.rs` | 공유 `DiagnosticFinding`과 `DiagnosticReport` 구조, 안정적인 네임스페이스 코드 검증, 담당 크레이트의 타입이 지정된 사실에 한도와 민감정보 제거를 적용하는 투영, 원인 그래프 검증, 예기치 않은 실패 대체 표현. |
+| `crates/volicord-types/src/diagnostics.rs` | Lifecycle별 occurrence/current finding 타입, `CurrentDiagnosticKey` 정규 identity와 고정 digest ID 파생, 공유 read-only `DiagnosticFinding` 및 `DiagnosticReport` 타입, 안정적인 네임스페이스 code 검증, 담당 크레이트의 typed fact에 한도와 민감정보 제거를 적용하는 projection, cause graph 검증, 예기치 않은 실패 대체 표현. |
 | `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
 | `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
 | `crates/volicord-types/src/connection_verification.rs` | 정규 connection 상태, check, action, 검증 보고서 타입. |
@@ -133,12 +133,13 @@
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
 | `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 `production_supported`와 `pre_release_only` 사실, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
 | `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 릴리스 workflow 무결성 테스트. |
-| `crates/volicord-test-support/` | 일회용 Runtime Home, repository, Store 쪽 설정 및 검사, 의도적인 손상·비정상 저장소 fixture, 요청 도우미. 구현 테스트 모듈은 저장소 SQL을 직접 포함하지 않습니다. |
+| `crates/volicord-test-support/` | 재사용 fixture만 담당합니다. 일회용 Runtime Home, repository, Store 쪽 설정 및 검사, 의도적인 손상·비정상 저장소 설정, 요청 도우미를 제공합니다. 제품 동작 assertion은 owner별 test에 남고 구현 테스트 모듈은 저장소 SQL을 직접 포함하지 않습니다. |
 
 ## 저장소 유지보수 도구
 
 | 경로 | 책임 |
 |---|---|
+| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-mcp-protocol`에서 프로덕션 profile을 받으며 `volicord-mcp`, Core, Store, platform crate를 끌어오지 않습니다. |
 | `xtask/src/mcp_spec/mod.rs` | MCP 명세 유지보수 facade와 명령 진입점. |
 | `xtask/src/mcp_spec/manifest.rs` | 엄격한 고정 manifest 모델, parsing, 결정론적 rendering. |
 | `xtask/src/mcp_spec/validation.rs` | 오프라인 metadata, 변경 불가능한 pin, checksum, artifact, schema, ordering, registry 일치 검증. |

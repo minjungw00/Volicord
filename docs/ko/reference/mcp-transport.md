@@ -117,6 +117,12 @@ protocol profile을 제공해야 합니다. 오프라인 명세 gate는 릴리�
 이 결과는 upstream 또는 제3자의 MCP 인증이 아닙니다. Pre-release revision은 추적을 위해
 고정했다는 이유만으로 프로덕션 지원 대상이 되지 않습니다.
 
+별도의 conformance coverage boolean이나 conformance revision 배열은 없습니다. 실행
+coverage 집합은 `ProtocolRegistry::production().oldest_to_newest()`를 직접 순회한
+결과입니다. `xtask`는 manifest 일치 검증을 위해 `volicord-mcp-protocol`을 통해 이
+registry를 읽으며 `volicord-mcp` runtime adapter, Core, Store, platform crate에 의존하지
+않습니다.
+
 요청의 문자열 `protocolVersion`은 요청 revision입니다. 이 닫힌 집합의 정확한 구성원을
 요청하면 같은 profile을 선택하고 initialize 결과도 같은 revision을 반환합니다. 초기화 기반
 protocol 형태에 속하지만 이 집합에 없는 다른 문자열에는 서버의 선호 counter-offer인

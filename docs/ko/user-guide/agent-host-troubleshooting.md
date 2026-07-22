@@ -33,6 +33,10 @@ Code뿐 아니라 `subject.kind`와 `subject.reference`도 비교합니다. Code
 artifact, phase, repository, managed-config target을 문제 하나로 합치지 않습니다. Opaque
 현재 상태 ID는 관리 경로를 그대로 드러내지 않습니다.
 
+현재 상태 ID는 완전한 scope, code, domain, stage, source, typed subject identity에서 파생한
+`finding.current.sha256:<64 lowercase hex>`입니다. 사람이 읽을 수 있는 Connection, code,
+subject text에서 이 ID를 다시 만들지 말고 출력된 정확한 ID를 보존해 재사용합니다.
+
 Code 계열에 따라 집중 복구 경계를 선택합니다.
 
 | Code 계열 | 복구 경계 |

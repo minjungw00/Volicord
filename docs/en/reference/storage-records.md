@@ -93,8 +93,11 @@ missing-cause, identity, or cycle failure preserves the previous snapshot.
 last-observed snapshot data. `active_current_findings_for_scope` returns only
 active rows. `diagnostic_findings_by_ids` can return resolved projections and
 recomputes every current digest and ID before returning data; a mismatch is
-persisted-data corruption. Current identity columns and occurrence rows are
-also protected by Registry update triggers.
+persisted-data corruption. `reportable_diagnostic_findings_by_ids` admits only
+immutable occurrences and active current-state rows; resolved current-state
+rows are excluded as current-report seeds but remain available through exact
+ID lookup. Current identity columns and occurrence rows are also protected by
+Registry update triggers.
 
 `diagnostic_cause_edges` stores one directed finding-to-cause edge. Both ends
 must name existing findings, the composite primary key rejects duplicates, and

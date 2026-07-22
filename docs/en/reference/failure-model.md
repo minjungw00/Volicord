@@ -109,6 +109,11 @@ recommended actions, an observation timestamp, and applicable correlation
 coordinates. Domain owners retain their closed code vocabularies and
 error-to-finding conversion rules.
 
+`DiagnosticFinding` itself is not a writable lifecycle input. Store mutation
+accepts `OccurrenceDiagnosticFinding` for insertion,
+`CurrentDiagnosticFinding` for snapshot activation or refresh, and
+`CurrentDiagnosticKey` for explicit resolution.
+
 `OccurrenceDiagnosticFinding` records one runtime, process, protocol, or other
 event-like observation. Each occurrence receives a newly generated opaque
 `DiagnosticOccurrenceId`; repeating identical diagnostic data creates a

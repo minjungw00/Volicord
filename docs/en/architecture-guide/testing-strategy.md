@@ -46,7 +46,9 @@ Executable wire conformance is an independent gate:
 iterates `ProtocolRegistry::production().oldest_to_newest()` directly, so adding
 a production profile automatically adds the same focused case to the matrix.
 The manifest records reviewed upstream and support facts; it does not record
-whether executable tests ran.
+whether executable tests ran. The runner owns no separate conformance revision
+array or per-revision coverage boolean; direct registry iteration defines the
+matrix.
 
 ## Required Boundary Coverage
 
@@ -81,9 +83,13 @@ Durable tests should cover, as applicable:
   production protocol registry and do not substitute for revision conformance,
   with CLI conformance evidence kept separate from actual `managed_host`
   observations;
-- typed diagnostic codes and bounded/redacted facts, transactional finding and
-  cause persistence, deterministic roots, dependency-driven `Blocked` checks,
-  and equivalent concise, verbose, and lossless JSON projections of one report;
+- lifecycle-specific diagnostic construction and Store APIs, immutable
+  occurrence insertion, complete-current-key digest and persisted-ID
+  validation, current snapshot identity immutability, resolution and
+  reactivation, active/reportable filtering, explicit report seeds and bounded
+  cause chains, typed diagnostic codes and bounded/redacted facts,
+  deterministic roots, dependency-driven `Blocked` checks, and equivalent
+  concise, verbose, and lossless JSON projections of one report;
 - Guard manifest exact-shape and owner binding, hash-free policy commands versus
   hash-bound runtime commands, wrapper/file drift, platform-independent script
   executable expectations, current-owned hook observations, and older-event

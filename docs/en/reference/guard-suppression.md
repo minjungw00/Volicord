@@ -155,13 +155,14 @@ No action is selected by parsing a human summary.
 
 Current-state Guard diagnostics use the exact managed artifact, installation,
 required phase, or incompatible event as their typed subject. Their stable ID
-contains only a bounded digest of that canonical subject, not a managed path.
-The same Guard code can therefore identify several affected artifacts or
-phases without collision. A repeated observation of one subject refreshes that
-finding's safe facts, observation time, revision coordinates, and cause edges;
-it does not append another stale current-state copy. A Connection report
-includes only the Guard findings referenced by its current checks and their
-bounded cause chains.
+is the full fixed digest of the complete `CurrentDiagnosticKey`: Connection
+scope, code, domain, stage, source, and the typed subject kind and reference.
+It contains no managed path. The same Guard code can therefore identify
+several affected artifacts or phases without collision. A repeated observation
+of one subject refreshes that finding's safe facts, observation time, revision
+coordinates, and cause edges; it does not append another stale current-state
+copy. A Connection report includes only the Guard findings referenced by its
+current checks and their bounded cause chains.
 
 Guard verification reconciles its complete typed observation set. A repaired
 artifact or installation, newly observed required phase, compatible current
