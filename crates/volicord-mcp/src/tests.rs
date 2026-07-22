@@ -41,7 +41,9 @@ use volicord_store::agent_connections::{
     CONNECTION_MODE_READ_ONLY, HOST_KIND_CODEX,
 };
 use volicord_store::bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS};
-use volicord_store::diagnostic_findings::diagnostic_findings_for_runtime_session;
+use volicord_store::diagnostic_findings::{
+    diagnostic_findings_by_ids, diagnostic_occurrences_for_runtime_session,
+};
 use volicord_store::diagnostics::{
     diagnostics_db_path, read_diagnostic_session, read_workflow_metric_aggregates,
     WorkflowMetricAggregateRow,
@@ -2006,10 +2008,12 @@ fn failed_initialize_retains_attempted_client_and_requested_revision() -> Result
     assert!(runtime.negotiated_protocol_version.is_none());
     assert!(runtime.initialize_completed_at.is_none());
     let terminal_id = runtime.terminal_finding_id.ok_or("terminal finding")?;
-    let terminal = volicord_store::diagnostic_findings::diagnostic_finding(
+    let terminal = diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
-        &volicord_types::DiagnosticFindingId::parse(terminal_id)?,
+        &[volicord_types::DiagnosticFindingId::parse(terminal_id)?],
     )?
+    .into_iter()
+    .next()
     .ok_or("persisted terminal finding")?;
     assert_eq!(
         terminal.code().as_str(),
@@ -2261,14 +2265,19 @@ fn invalid_codex_call_metadata_has_zero_durable_or_core_effect() -> Result<(), B
             .ok_or("managed runtime for malformed host metadata")?;
     assert!(runtime.verification_tool_name.is_none());
     assert!(runtime.verification_tool_observed_at.is_none());
-    let findings = diagnostic_findings_for_runtime_session(
+    let findings = diagnostic_occurrences_for_runtime_session(
         fixture.runtime_home_path(),
         &runtime.runtime_session_id,
     )?;
     assert!(findings
         .iter()
-        .any(|finding| finding.code().as_str() == "host.codex.metadata_malformed"));
-    let persisted_findings = serde_json::to_string(&findings)?;
+        .any(|finding| finding.data().code().as_str() == "host.codex.metadata_malformed"));
+    let persisted_findings = serde_json::to_string(
+        &findings
+            .iter()
+            .map(|finding| finding.to_diagnostic_finding())
+            .collect::<Vec<_>>(),
+    )?;
     assert!(!persisted_findings.contains("thread invalid marker"));
     assert!(!persisted_findings.contains(CODEX_TEST_SESSION_ID));
     assert!(!persisted_findings.contains(CODEX_TEST_THREAD_ID));
@@ -3254,13 +3263,13 @@ fn initialization_batches_are_rejected_without_selecting_a_profile_for_every_cov
         assert!(runtime.initialize_completed_at.is_none());
         assert!(runtime.initialized_notification_at.is_none());
         assert!(runtime.tools_list_observed_at.is_none());
-        assert!(diagnostic_findings_for_runtime_session(
+        assert!(diagnostic_occurrences_for_runtime_session(
             fixture.runtime_home_path(),
             &runtime_session_id,
         )?
         .iter()
         .any(|finding| {
-            finding.code().as_str() == "mcp.lifecycle.initialization_batch_forbidden"
+            finding.data().code().as_str() == "mcp.lifecycle.initialization_batch_forbidden"
         }));
     }
     Ok(())
@@ -3331,7 +3340,7 @@ fn ready_2025_03_26_session_batches_operations_in_order_and_omits_notifications(
     assert!(runtime.initialized_notification_at.is_some());
     assert!(runtime.tools_list_observed_at.is_some());
     assert!(runtime.graceful_close_at.is_some());
-    assert!(diagnostic_findings_for_runtime_session(
+    assert!(diagnostic_occurrences_for_runtime_session(
         fixture.runtime_home_path(),
         &runtime_session_id,
     )?
@@ -3384,15 +3393,15 @@ fn non_batching_profiles_reject_ready_operation_batches_without_tool_observation
         assert!(runtime.initialized_notification_at.is_some());
         assert!(runtime.tools_list_observed_at.is_none());
         assert!(runtime.graceful_close_at.is_some());
-        let findings = diagnostic_findings_for_runtime_session(
+        let findings = diagnostic_occurrences_for_runtime_session(
             fixture.runtime_home_path(),
             &runtime_session_id,
         )?;
         assert!(findings
             .iter()
-            .any(|finding| finding.code().as_str() == "mcp.json_rpc.invalid_request"));
+            .any(|finding| finding.data().code().as_str() == "mcp.json_rpc.invalid_request"));
         assert!(!findings.iter().any(|finding| {
-            finding.code().as_str() == "mcp.lifecycle.initialization_batch_forbidden"
+            finding.data().code().as_str() == "mcp.lifecycle.initialization_batch_forbidden"
         }));
     }
     Ok(())
@@ -3513,14 +3522,16 @@ fn ready_batch_with_initialize_is_rejected_before_a_sibling_operation() -> Resul
         Some("2025-03-26")
     );
     assert!(runtime.tools_list_observed_at.is_none());
-    let findings =
-        diagnostic_findings_for_runtime_session(fixture.runtime_home_path(), &runtime_session_id)?;
+    let findings = diagnostic_occurrences_for_runtime_session(
+        fixture.runtime_home_path(),
+        &runtime_session_id,
+    )?;
     assert!(findings.iter().any(|finding| {
-        finding.code().as_str() == "mcp.lifecycle.initialization_batch_forbidden"
+        finding.data().code().as_str() == "mcp.lifecycle.initialization_batch_forbidden"
     }));
     assert!(!findings
         .iter()
-        .any(|finding| finding.code().as_str() == "mcp.lifecycle.duplicate_initialize"));
+        .any(|finding| finding.data().code().as_str() == "mcp.lifecycle.duplicate_initialize"));
     Ok(())
 }
 

@@ -420,8 +420,7 @@ mod tests {
             McpProtocolFailureKind::UnsupportedProtocolRevision,
             "selected revision did not match",
         )
-        .to_diagnostic_finding(McpProcessDiagnosticContext {
-            finding_id: "finding.runtime_process.unsupported".to_owned(),
+        .to_diagnostic_data(McpProcessDiagnosticContext {
             observed_at: UtcTimestamp::parse("2026-07-22T01:02:03Z").unwrap(),
             connection_id: "connection_test".to_owned(),
             integration_revision: IntegrationRevision::parse(format!("sha256:{}", "0".repeat(64)))

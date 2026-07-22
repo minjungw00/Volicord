@@ -1,6 +1,6 @@
 use crate::adapter::*;
 use crate::diagnostics::{
-    finding_for_diagnostic, production_supported_revisions, JsonRpcDiagnostic, McpDiagnostic,
+    data_for_diagnostic, production_supported_revisions, JsonRpcDiagnostic, McpDiagnostic,
     McpDiagnosticContext, McpLifecycleDiagnostic, McpProtocolDiagnostic, McpToolCallDiagnostic,
     McpToolDiscoveryDiagnostic,
 };
@@ -728,7 +728,6 @@ pub(crate) struct ConnectionState {
     pub(crate) launch_origin: &'static str,
     status_method_call_count: u64,
     terminal_finding_recorded: bool,
-    finding_sequence: u64,
     pending_finding: Option<McpDiagnostic>,
     codex_binding: CodexManagedBinding,
     deferred_tools_list_serialized_bytes: Option<u64>,
@@ -744,7 +743,6 @@ impl Default for ConnectionState {
             launch_origin: McpLaunchOrigin::Unknown.as_str(),
             status_method_call_count: 0,
             terminal_finding_recorded: false,
-            finding_sequence: 0,
             pending_finding: None,
             codex_binding: CodexManagedBinding::NotApplicable,
             deferred_tools_list_serialized_bytes: None,
@@ -1451,19 +1449,9 @@ fn record_current_session_finding(
     let runtime = mcp_runtime_session(&adapter.runtime_home, &state.runtime_session_id)
         .map_err(McpAdapterError::Store)?
         .ok_or_else(|| McpAdapterError::Protocol("MCP runtime session disappeared".to_owned()))?;
-    state.finding_sequence = state.finding_sequence.saturating_add(1);
-    let finding_id = if terminal {
-        format!("finding.{}.terminal", state.runtime_session_id)
-    } else {
-        format!(
-            "finding.{}.observation{}",
-            state.runtime_session_id, state.finding_sequence
-        )
-    };
-    let finding = finding_for_diagnostic(
+    let data = data_for_diagnostic(
         diagnostic,
-        McpDiagnosticContext {
-            finding_id,
+        &McpDiagnosticContext {
             observed_at: UtcTimestamp::parse(&authoritative_observation_timestamp()).map_err(
                 |_| McpAdapterError::Protocol("diagnostic timestamp is invalid".to_owned()),
             )?,
@@ -1485,12 +1473,21 @@ fn record_current_session_finding(
     .map_err(|error| {
         McpAdapterError::Protocol(format!("structured diagnostic finding is invalid: {error}"))
     })?;
+    let finding = OccurrenceDiagnosticFinding::try_new(
+        data,
+        Some(AgentRuntimeSessionId::new(state.runtime_session_id.clone())),
+    )
+    .map_err(|error| {
+        McpAdapterError::Protocol(format!(
+            "structured diagnostic occurrence is invalid: {error}"
+        ))
+    })?;
     if terminal {
         record_mcp_terminal_finding(&adapter.runtime_home, &finding)
             .map_err(McpAdapterError::Store)?;
         state.terminal_finding_recorded = true;
     } else {
-        insert_diagnostic_finding(&adapter.runtime_home, &finding)
+        insert_occurrence_finding(&adapter.runtime_home, &finding)
             .map_err(McpAdapterError::Store)?;
     }
     Ok(())

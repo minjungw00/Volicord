@@ -139,6 +139,27 @@ CREATE TABLE diagnostic_findings (
     AND substr(finding_id, -1, 1) GLOB '[a-z0-9]'
     AND finding_id NOT GLOB '*[^a-z0-9_.:-]*'
   ),
+  lifecycle TEXT NOT NULL CHECK (lifecycle IN ('occurrence', 'current_state')),
+  current_identity_digest TEXT CHECK (
+    current_identity_digest IS NULL
+    OR (
+      length(current_identity_digest) = 64
+      AND current_identity_digest NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  diagnostic_scope_kind TEXT CHECK (
+    diagnostic_scope_kind IS NULL
+    OR diagnostic_scope_kind IN ('connection', 'project', 'runtime_home', 'installation', 'process')
+  ),
+  diagnostic_scope_identity TEXT CHECK (
+    diagnostic_scope_identity IS NULL
+    OR length(CAST(diagnostic_scope_identity AS BLOB)) BETWEEN 1 AND 1024
+  ),
+  current_state_status TEXT CHECK (
+    current_state_status IS NULL
+    OR current_state_status IN ('active', 'resolved')
+  ),
+  resolved_at TEXT,
   code TEXT NOT NULL CHECK (
     length(CAST(code AS BLOB)) BETWEEN 3 AND 192
     AND instr(code, '.') > 1
@@ -204,6 +225,29 @@ CREATE TABLE diagnostic_findings (
   CHECK (
     runtime_session_id IS NULL
     OR (connection_internal_id IS NOT NULL AND integration_revision IS NOT NULL)
+  ),
+  CHECK (
+    (
+      lifecycle = 'occurrence'
+      AND current_identity_digest IS NULL
+      AND diagnostic_scope_kind IS NULL
+      AND diagnostic_scope_identity IS NULL
+      AND current_state_status IS NULL
+      AND resolved_at IS NULL
+    )
+    OR (
+      lifecycle = 'current_state'
+      AND current_identity_digest IS NOT NULL
+      AND diagnostic_scope_kind IS NOT NULL
+      AND diagnostic_scope_identity IS NOT NULL
+      AND current_state_status IS NOT NULL
+      AND runtime_session_id IS NULL
+      AND finding_id = 'finding.current.sha256:' || current_identity_digest
+      AND (
+        (current_state_status = 'active' AND resolved_at IS NULL)
+        OR (current_state_status = 'resolved' AND resolved_at IS NOT NULL)
+      )
+    )
   )
 );
 
@@ -222,12 +266,15 @@ CREATE TABLE diagnostic_cause_edges (
 
 CREATE INDEX idx_diagnostic_findings_runtime_session
   ON diagnostic_findings (runtime_session_id, observed_at, finding_id)
-  WHERE runtime_session_id IS NOT NULL;
-CREATE INDEX idx_diagnostic_findings_current_connection
+  WHERE lifecycle = 'occurrence' AND runtime_session_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_diagnostic_findings_current_identity
+  ON diagnostic_findings (current_identity_digest)
+  WHERE lifecycle = 'current_state';
+CREATE INDEX idx_diagnostic_findings_active_current_scope
   ON diagnostic_findings (
-    connection_internal_id, integration_revision, observed_at, finding_id
+    diagnostic_scope_kind, diagnostic_scope_identity, observed_at, finding_id
   )
-  WHERE connection_internal_id IS NOT NULL AND integration_revision IS NOT NULL;
+  WHERE lifecycle = 'current_state' AND current_state_status = 'active';
 CREATE INDEX idx_diagnostic_findings_project
   ON diagnostic_findings (project_internal_id, observed_at, finding_id)
   WHERE project_internal_id IS NOT NULL;
@@ -249,6 +296,31 @@ BEGIN
     )
     SELECT 1 FROM causes WHERE finding_id = NEW.finding_id
   ) THEN RAISE(ABORT, 'diagnostic cause cycle') END;
+END;
+
+CREATE TRIGGER diagnostic_occurrence_findings_immutable
+BEFORE UPDATE ON diagnostic_findings
+WHEN OLD.lifecycle = 'occurrence'
+BEGIN
+  SELECT RAISE(ABORT, 'diagnostic occurrence findings are immutable');
+END;
+
+CREATE TRIGGER diagnostic_current_identity_immutable
+BEFORE UPDATE OF
+  finding_id,
+  lifecycle,
+  current_identity_digest,
+  diagnostic_scope_kind,
+  diagnostic_scope_identity,
+  code,
+  domain,
+  stage,
+  source,
+  subject_json
+ON diagnostic_findings
+WHEN OLD.lifecycle = 'current_state'
+BEGIN
+  SELECT RAISE(ABORT, 'diagnostic current identity is immutable');
 END;
 
 CREATE TABLE mcp_runtime_sessions (

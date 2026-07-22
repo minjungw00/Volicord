@@ -31,9 +31,9 @@ use volicord_store::{
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, DiagnosticCode, DiagnosticDomain, DiagnosticFacts,
-    DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
     DiagnosticSubject, IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource,
-    UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
+    OccurrenceDiagnosticFinding, UtcTimestamp, LIST_PROJECTS_TOOL_NAME,
 };
 
 const START: &str = "2026-07-18T00:00:00Z";
@@ -116,14 +116,13 @@ fn complete(
 fn terminal_finding(
     fixture: &CoreFixture,
     runtime_session_id: &str,
-    finding_id: &str,
+    _finding_id: &str,
     code: &str,
     observed_at: &str,
-) -> Result<DiagnosticFinding, Box<dyn Error>> {
+) -> Result<OccurrenceDiagnosticFinding, Box<dyn Error>> {
     let runtime = mcp_runtime_session(fixture.runtime_home_path(), runtime_session_id)?
         .ok_or("runtime session")?;
-    Ok(DiagnosticFinding::try_new(
-        DiagnosticFindingId::parse(finding_id)?,
+    let data = DiagnosticFindingData::try_new(
         DiagnosticCode::parse(code)?,
         DiagnosticDomain::parse("mcp")?,
         DiagnosticStage::parse("transport")?,
@@ -134,10 +133,13 @@ fn terminal_finding(
         UtcTimestamp::parse(observed_at)?,
     )?
     .with_connection_id(AgentConnectionId::new(runtime.connection_internal_id))?
-    .with_runtime_session_id(AgentRuntimeSessionId::new(runtime_session_id))?
     .with_integration_revision(IntegrationRevision::parse(
         runtime.connection_integration_revision,
-    )?))
+    )?);
+    Ok(OccurrenceDiagnosticFinding::try_new(
+        data,
+        Some(AgentRuntimeSessionId::new(runtime_session_id)),
+    )?)
 }
 
 fn agent_session_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
@@ -334,7 +336,7 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
     let fatal_record = record_mcp_terminal_finding(fixture.runtime_home_path(), &finding)?;
     assert_eq!(
         fatal_record.terminal_finding_id.as_deref(),
-        Some("finding.protocol_eof")
+        Some(finding.id().as_str())
     );
     assert!(fatal_record.graceful_close_at.is_none());
 

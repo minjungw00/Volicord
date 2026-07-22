@@ -28,9 +28,9 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 42);
-    assert_eq!(metadata.columns.len(), 503);
-    assert_eq!(metadata.indexes.len(), 69);
+    assert_eq!(metadata.tables.len(), 44);
+    assert_eq!(metadata.columns.len(), 509);
+    assert_eq!(metadata.indexes.len(), 70);
     assert_eq!(metadata.constraints.len(), 39);
     let agent_connection_columns = metadata
         .columns
@@ -97,6 +97,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         .collect::<Vec<_>>();
     for required in [
         "finding_id",
+        "lifecycle",
+        "current_identity_digest",
+        "diagnostic_scope_kind",
+        "diagnostic_scope_identity",
+        "current_state_status",
+        "resolved_at",
         "code",
         "domain",
         "stage",
@@ -110,6 +116,30 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         "observed_at",
     ] {
         assert!(finding_columns.contains(&required), "missing {required}");
+    }
+    assert!(metadata.indexes.iter().any(|index| {
+        index.database == StorageDatabaseKind::Registry
+            && index.table == "diagnostic_findings"
+            && index.name == "idx_diagnostic_findings_current_identity"
+            && index.unique
+            && index.partial
+    }));
+    assert!(metadata.indexes.iter().any(|index| {
+        index.database == StorageDatabaseKind::Registry
+            && index.table == "diagnostic_findings"
+            && index.name == "idx_diagnostic_findings_active_current_scope"
+            && !index.unique
+            && index.partial
+    }));
+    for trigger in [
+        "diagnostic_occurrence_findings_immutable",
+        "diagnostic_current_identity_immutable",
+    ] {
+        assert!(metadata.tables.iter().any(|relation| {
+            relation.database == StorageDatabaseKind::Registry
+                && relation.name == trigger
+                && relation.relation_kind == GeneratedRelationKind::Trigger
+        }));
     }
     let runtime_columns = metadata
         .columns
@@ -160,11 +190,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:3786b445765cc41fdc643e7837a65b21ce361ceaa846feb347ecd8318f535150"
+        "sha256:0ec75de7551143888cc341b1522608a4ee92578e4bc25f8f665a755e3f07a84a"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:8b334c33827cb8158200cf5769da60f58dc528e35eb54057ed4c53aae0a8d085"
+        "sha256:6e75934161b7db16e3219937e0b7183c79faaf3c51800650d1f10e9d956affd7"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -198,12 +228,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:3786b445765cc41fdc643e7837a65b21ce361ceaa846feb347ecd8318f535150\",",
+            "{\"canonical_ddl_digest\":\"sha256:0ec75de7551143888cc341b1522608a4ee92578e4bc25f8f665a755e3f07a84a\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:8b334c33827cb8158200cf5769da60f58dc528e35eb54057ed4c53aae0a8d085\"}"
+            "\"integrity_constraints_digest\":\"sha256:6e75934161b7db16e3219937e0b7183c79faaf3c51800650d1f10e9d956affd7\"}"
         )
     );
     Ok(())
@@ -478,6 +508,122 @@ fn canonical_constraints_remain_executable() -> Result<(), Box<dyn Error>> {
         [],
     );
     assert!(duplicate.is_err());
+    Ok(())
+}
+
+#[test]
+fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), Box<dyn Error>> {
+    let registry = canonical_registry()?;
+    let insert = |id: &str,
+                  lifecycle: &str,
+                  digest: Option<&str>,
+                  scope_kind: Option<&str>,
+                  scope_identity: Option<&str>,
+                  status: Option<&str>,
+                  resolved_at: Option<&str>,
+                  runtime_session_id: Option<&str>| {
+        registry.execute(
+            "INSERT INTO diagnostic_findings (
+                finding_id, lifecycle, current_identity_digest,
+                diagnostic_scope_kind, diagnostic_scope_identity,
+                current_state_status, resolved_at,
+                code, domain, stage, severity, source,
+                subject_json, facts_json, actions_json,
+                runtime_session_id, observed_at
+             ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                'store.lifecycle_test', 'store', 'test', 'error', 'store_test',
+                '{\"kind\":\"test_case\",\"reference\":\"subject\"}', '{}', '[]',
+                ?8, '2026-07-22T00:00:00Z'
+             )",
+            params![
+                id,
+                lifecycle,
+                digest,
+                scope_kind,
+                scope_identity,
+                status,
+                resolved_at,
+                runtime_session_id,
+            ],
+        )
+    };
+
+    let occurrence_id = "finding.occurrence_00000000-0000-4000-8000-000000000001";
+    assert_eq!(
+        insert(
+            occurrence_id,
+            "occurrence",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )?,
+        1
+    );
+    assert!(registry
+        .execute(
+            "UPDATE diagnostic_findings SET facts_json = '{\"changed\":true}' WHERE finding_id = ?1",
+            [occurrence_id],
+        )
+        .is_err());
+    assert!(insert(
+        "finding.occurrence_00000000-0000-4000-8000-000000000002",
+        "occurrence",
+        Some(&"a".repeat(64)),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .is_err());
+
+    let digest = "b".repeat(64);
+    let current_id = format!("finding.current.sha256:{digest}");
+    assert_eq!(
+        insert(
+            &current_id,
+            "current_state",
+            Some(&digest),
+            Some("connection"),
+            Some("opaque connection identity"),
+            Some("active"),
+            None,
+            None,
+        )?,
+        1
+    );
+    assert!(registry
+        .execute(
+            "UPDATE diagnostic_findings SET subject_json = '{\"kind\":\"test_case\",\"reference\":\"other\"}' WHERE finding_id = ?1",
+            [&current_id],
+        )
+        .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "c".repeat(64)),
+        "current_state",
+        Some(&"c".repeat(64)),
+        Some("connection"),
+        Some("opaque connection identity"),
+        Some("resolved"),
+        None,
+        None,
+    )
+    .is_err());
+    assert!(insert(
+        &format!("finding.current.sha256:{}", "d".repeat(64)),
+        "current_state",
+        Some(&"d".repeat(64)),
+        Some("connection"),
+        Some("opaque connection identity"),
+        Some("active"),
+        None,
+        Some("runtime_not_allowed"),
+    )
+    .is_err());
     Ok(())
 }
 

@@ -16,10 +16,12 @@ use std::{
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckStatus,
-    ConnectionStatus, IntegrationRevision, JsonObject, ProjectId, UtcTimestamp,
+    ConnectionStatus, DurableIdGenerator, DurableIdKind, IntegrationRevision, JsonObject,
+    ProjectId, RandomDurableIdGenerator, UtcTimestamp,
 };
 
 /// The only current JSON representation version for [`DiagnosticReport`].
@@ -58,6 +60,12 @@ pub const MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH: usize = 32;
 pub const MAX_DIAGNOSTIC_LIMITS: usize = 32;
 /// Maximum serialized byte length of one complete report.
 pub const MAX_DIAGNOSTIC_REPORT_BYTES: usize = 1024 * 1024;
+/// Maximum UTF-8 byte length of one current diagnostic scope identity.
+pub const MAX_DIAGNOSTIC_SCOPE_IDENTITY_BYTES: usize = 1_024;
+
+const CURRENT_DIAGNOSTIC_ID_PREFIX: &str = "finding.current.sha256:";
+const CURRENT_DIAGNOSTIC_KEY_DOMAIN: &[u8] = b"volicord.diagnostic.current-key";
+const CURRENT_DIAGNOSTIC_KEY_VERSION: u16 = 1;
 
 const REDACTED_VALUE: &str = "[redacted]";
 const DEPTH_LIMIT_VALUE: &str = "[depth limit]";
@@ -790,7 +798,888 @@ impl DiagnosticAction {
     }
 }
 
-/// One shared structured diagnostic finding.
+/// Persisted lifecycle of one structured diagnostic finding.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticFindingLifecycle {
+    /// One immutable event-like observation.
+    Occurrence,
+    /// One replaceable snapshot for a stable current diagnostic key.
+    CurrentState,
+}
+
+impl DiagnosticFindingLifecycle {
+    /// Returns the exact persisted lifecycle spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Occurrence => "occurrence",
+            Self::CurrentState => "current_state",
+        }
+    }
+}
+
+/// Closed scope kinds accepted by a current diagnostic key.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticScopeKind {
+    /// One Agent Connection.
+    Connection,
+    /// One registered project.
+    Project,
+    /// One Volicord Runtime Home.
+    RuntimeHome,
+    /// One Volicord installation.
+    Installation,
+    /// One executable process.
+    Process,
+}
+
+impl DiagnosticScopeKind {
+    /// Returns the exact canonical and persisted scope spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Connection => "connection",
+            Self::Project => "project",
+            Self::RuntimeHome => "runtime_home",
+            Self::Installation => "installation",
+            Self::Process => "process",
+        }
+    }
+}
+
+/// Typed scope coordinate for one current diagnostic condition.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
+pub struct DiagnosticScope {
+    kind: DiagnosticScopeKind,
+    identity: String,
+}
+
+impl DiagnosticScope {
+    /// Validates one complete diagnostic scope coordinate.
+    pub fn try_new(
+        kind: DiagnosticScopeKind,
+        identity: impl Into<String>,
+    ) -> Result<Self, DiagnosticError> {
+        let identity = identity.into();
+        validate_bounded_text(
+            "diagnostic scope identity",
+            &identity,
+            MAX_DIAGNOSTIC_SCOPE_IDENTITY_BYTES,
+        )?;
+        Ok(Self { kind, identity })
+    }
+
+    /// Returns the scope kind.
+    pub const fn kind(&self) -> DiagnosticScopeKind {
+        self.kind
+    }
+
+    /// Returns the complete opaque scope identity.
+    pub fn identity(&self) -> &str {
+        &self.identity
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticScopeWire {
+    kind: DiagnosticScopeKind,
+    identity: String,
+}
+
+impl<'de> Deserialize<'de> for DiagnosticScope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = DiagnosticScopeWire::deserialize(deserializer)?;
+        Self::try_new(wire.kind, wire.identity).map_err(de::Error::custom)
+    }
+}
+
+/// Immutable definition, subject, observation, and correlation data for an occurrence.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiagnosticFindingData {
+    code: DiagnosticCode,
+    domain: DiagnosticDomain,
+    stage: DiagnosticStage,
+    severity: DiagnosticSeverity,
+    source: DiagnosticSource,
+    subject: DiagnosticSubject,
+    facts: DiagnosticFacts,
+    causes: Vec<DiagnosticCause>,
+    actions: Vec<DiagnosticAction>,
+    observed_at: UtcTimestamp,
+    correlation_id: Option<String>,
+    connection_id: Option<AgentConnectionId>,
+    project_id: Option<ProjectId>,
+    integration_revision: Option<IntegrationRevision>,
+}
+
+impl DiagnosticFindingData {
+    /// Constructs validated diagnostic data without actions, causes, or correlation coordinates.
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        code: DiagnosticCode,
+        domain: DiagnosticDomain,
+        stage: DiagnosticStage,
+        severity: DiagnosticSeverity,
+        source: DiagnosticSource,
+        subject: DiagnosticSubject,
+        facts: DiagnosticFacts,
+        observed_at: UtcTimestamp,
+    ) -> Result<Self, DiagnosticError> {
+        validate_timestamp("diagnostic finding observed_at", &observed_at)?;
+        facts.validate_size()?;
+        Ok(Self {
+            code,
+            domain,
+            stage,
+            severity,
+            source,
+            subject,
+            facts,
+            causes: Vec::new(),
+            actions: Vec::new(),
+            observed_at,
+            correlation_id: None,
+            connection_id: None,
+            project_id: None,
+            integration_revision: None,
+        })
+    }
+
+    /// Adds and canonically orders outgoing cause edges.
+    pub fn with_causes(mut self, causes: Vec<DiagnosticCause>) -> Result<Self, DiagnosticError> {
+        self.causes = canonical_diagnostic_causes(causes)?;
+        Ok(self)
+    }
+
+    /// Adds and canonically orders remediation actions.
+    pub fn with_actions(mut self, actions: Vec<DiagnosticAction>) -> Result<Self, DiagnosticError> {
+        self.actions = canonical_diagnostic_actions(actions)?;
+        Ok(self)
+    }
+
+    /// Adds a bounded general correlation identifier.
+    pub fn with_correlation_id(
+        mut self,
+        correlation_id: impl Into<String>,
+    ) -> Result<Self, DiagnosticError> {
+        let correlation_id = correlation_id.into();
+        validate_stable_identifier("diagnostic correlation id", &correlation_id)?;
+        self.correlation_id = Some(correlation_id);
+        Ok(self)
+    }
+
+    /// Adds Agent Connection correlation.
+    pub fn with_connection_id(
+        mut self,
+        connection_id: AgentConnectionId,
+    ) -> Result<Self, DiagnosticError> {
+        validate_correlation_value("diagnostic connection id", connection_id.as_str())?;
+        self.connection_id = Some(connection_id);
+        Ok(self)
+    }
+
+    /// Adds project correlation.
+    pub fn with_project_id(mut self, project_id: ProjectId) -> Result<Self, DiagnosticError> {
+        validate_correlation_value("diagnostic project id", project_id.as_str())?;
+        self.project_id = Some(project_id);
+        Ok(self)
+    }
+
+    /// Adds typed integration-revision correlation.
+    pub fn with_integration_revision(mut self, revision: IntegrationRevision) -> Self {
+        self.integration_revision = Some(revision);
+        self
+    }
+
+    /// Returns the stable namespaced diagnostic code.
+    pub fn code(&self) -> &DiagnosticCode {
+        &self.code
+    }
+
+    /// Returns the owner domain.
+    pub fn domain(&self) -> &DiagnosticDomain {
+        &self.domain
+    }
+
+    /// Returns the observation stage.
+    pub fn stage(&self) -> &DiagnosticStage {
+        &self.stage
+    }
+
+    /// Returns the severity.
+    pub const fn severity(&self) -> DiagnosticSeverity {
+        self.severity
+    }
+
+    /// Returns the producer source.
+    pub fn source(&self) -> &DiagnosticSource {
+        &self.source
+    }
+
+    /// Returns the typed subject.
+    pub fn subject(&self) -> &DiagnosticSubject {
+        &self.subject
+    }
+
+    /// Returns bounded safe facts.
+    pub fn facts(&self) -> &DiagnosticFacts {
+        &self.facts
+    }
+
+    /// Returns outgoing causes in canonical order.
+    pub fn causes(&self) -> &[DiagnosticCause] {
+        &self.causes
+    }
+
+    /// Returns remediation actions in canonical order.
+    pub fn actions(&self) -> &[DiagnosticAction] {
+        &self.actions
+    }
+
+    /// Returns the observation time.
+    pub fn observed_at(&self) -> &UtcTimestamp {
+        &self.observed_at
+    }
+
+    /// Returns the optional general correlation ID.
+    pub fn correlation_id(&self) -> Option<&str> {
+        self.correlation_id.as_deref()
+    }
+
+    /// Returns optional Agent Connection correlation.
+    pub fn connection_id(&self) -> Option<&AgentConnectionId> {
+        self.connection_id.as_ref()
+    }
+
+    /// Returns optional project correlation.
+    pub fn project_id(&self) -> Option<&ProjectId> {
+        self.project_id.as_ref()
+    }
+
+    /// Returns optional integration-revision correlation.
+    pub fn integration_revision(&self) -> Option<&IntegrationRevision> {
+        self.integration_revision.as_ref()
+    }
+
+    /// Projects this data into the shared read-only report shape.
+    ///
+    /// Persistence callers must use a lifecycle-specific finding type instead.
+    pub fn to_read_projection(
+        &self,
+        id: DiagnosticFindingId,
+        runtime_session_id: Option<AgentRuntimeSessionId>,
+    ) -> DiagnosticFinding {
+        self.to_projection(id, runtime_session_id)
+    }
+
+    fn to_projection(
+        &self,
+        id: DiagnosticFindingId,
+        runtime_session_id: Option<AgentRuntimeSessionId>,
+    ) -> DiagnosticFinding {
+        DiagnosticFinding {
+            id,
+            code: self.code.clone(),
+            domain: self.domain.clone(),
+            stage: self.stage.clone(),
+            severity: self.severity,
+            source: self.source.clone(),
+            subject: self.subject.clone(),
+            facts: self.facts.clone(),
+            causes: self.causes.clone(),
+            actions: self.actions.clone(),
+            observed_at: self.observed_at.clone(),
+            correlation_id: self.correlation_id.clone(),
+            connection_id: self.connection_id.clone(),
+            project_id: self.project_id.clone(),
+            runtime_session_id,
+            integration_revision: self.integration_revision.clone(),
+        }
+    }
+}
+
+/// Strict generated ID for one immutable diagnostic occurrence.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
+#[serde(transparent)]
+pub struct DiagnosticOccurrenceId(String);
+
+impl DiagnosticOccurrenceId {
+    /// Parses one canonical generated diagnostic occurrence ID.
+    pub fn parse(value: impl Into<String>) -> Result<Self, DiagnosticError> {
+        let value = value.into();
+        let prefix = DurableIdKind::DiagnosticOccurrence.prefix();
+        let Some(suffix) = value.strip_prefix(prefix) else {
+            return Err(invalid(
+                "diagnostic occurrence id must use the generated occurrence prefix",
+            ));
+        };
+        validate_uuid_version_four_suffix("diagnostic occurrence id", suffix)?;
+        Ok(Self(value))
+    }
+
+    /// Generates one new opaque durable occurrence ID.
+    pub fn generate(generator: &dyn DurableIdGenerator) -> Result<Self, DiagnosticError> {
+        let value = generator
+            .generate(DurableIdKind::DiagnosticOccurrence)
+            .map_err(|error| {
+                invalid(format!(
+                    "could not generate diagnostic occurrence id: {error}"
+                ))
+            })?;
+        Self::parse(value)
+    }
+
+    /// Returns the canonical generated spelling.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn finding_id(&self) -> DiagnosticFindingId {
+        DiagnosticFindingId::parse(self.0.clone())
+            .expect("generated diagnostic occurrence IDs are stable finding IDs")
+    }
+}
+
+impl<'de> Deserialize<'de> for DiagnosticOccurrenceId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::parse(String::deserialize(deserializer)?).map_err(de::Error::custom)
+    }
+}
+
+impl fmt::Display for DiagnosticOccurrenceId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// One immutable diagnostic event observation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OccurrenceDiagnosticFinding {
+    id: DiagnosticOccurrenceId,
+    data: DiagnosticFindingData,
+    runtime_session_id: Option<AgentRuntimeSessionId>,
+}
+
+impl OccurrenceDiagnosticFinding {
+    /// Creates one occurrence with a newly generated opaque durable ID.
+    pub fn try_new(
+        data: DiagnosticFindingData,
+        runtime_session_id: Option<AgentRuntimeSessionId>,
+    ) -> Result<Self, DiagnosticError> {
+        Self::try_new_with_generator(data, runtime_session_id, &RandomDurableIdGenerator)
+    }
+
+    /// Creates one occurrence with the supplied durable-ID generator.
+    pub fn try_new_with_generator(
+        data: DiagnosticFindingData,
+        runtime_session_id: Option<AgentRuntimeSessionId>,
+        generator: &dyn DurableIdGenerator,
+    ) -> Result<Self, DiagnosticError> {
+        let id = DiagnosticOccurrenceId::generate(generator)?;
+        Self::from_persisted_parts(id, data, runtime_session_id)
+    }
+
+    /// Reconstructs one occurrence from its validated persisted parts.
+    #[doc(hidden)]
+    pub fn from_persisted_parts(
+        id: DiagnosticOccurrenceId,
+        data: DiagnosticFindingData,
+        runtime_session_id: Option<AgentRuntimeSessionId>,
+    ) -> Result<Self, DiagnosticError> {
+        if runtime_session_id.is_some()
+            && (data.connection_id().is_none() || data.integration_revision().is_none())
+        {
+            return Err(invalid(
+                "runtime-correlated diagnostic occurrence requires Connection and integration revision coordinates",
+            ));
+        }
+        let finding_id = id.finding_id();
+        if data
+            .causes()
+            .iter()
+            .any(|cause| cause.finding_id() == &finding_id)
+        {
+            return Err(invalid(format!(
+                "diagnostic finding {finding_id} cannot cause itself"
+            )));
+        }
+        Ok(Self {
+            id,
+            data,
+            runtime_session_id,
+        })
+    }
+
+    /// Returns the opaque occurrence ID.
+    pub fn occurrence_id(&self) -> &DiagnosticOccurrenceId {
+        &self.id
+    }
+
+    /// Returns the ID in the shared finding-ID type.
+    pub fn id(&self) -> DiagnosticFindingId {
+        self.id.finding_id()
+    }
+
+    /// Returns immutable occurrence data.
+    pub fn data(&self) -> &DiagnosticFindingData {
+        &self.data
+    }
+
+    /// Returns optional runtime-session correlation.
+    pub fn runtime_session_id(&self) -> Option<&AgentRuntimeSessionId> {
+        self.runtime_session_id.as_ref()
+    }
+
+    /// Projects this occurrence into the shared read-only report shape.
+    pub fn to_diagnostic_finding(&self) -> DiagnosticFinding {
+        self.data
+            .to_projection(self.id(), self.runtime_session_id.clone())
+    }
+}
+
+/// Complete immutable identity for one replaceable current diagnostic condition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurrentDiagnosticKey {
+    scope: DiagnosticScope,
+    code: DiagnosticCode,
+    domain: DiagnosticDomain,
+    stage: DiagnosticStage,
+    source: DiagnosticSource,
+    subject: DiagnosticSubject,
+}
+
+impl CurrentDiagnosticKey {
+    /// Constructs one complete current diagnostic identity.
+    pub fn new(
+        scope: DiagnosticScope,
+        code: DiagnosticCode,
+        domain: DiagnosticDomain,
+        stage: DiagnosticStage,
+        source: DiagnosticSource,
+        subject: DiagnosticSubject,
+    ) -> Self {
+        Self {
+            scope,
+            code,
+            domain,
+            stage,
+            source,
+            subject,
+        }
+    }
+
+    /// Returns the diagnostic scope.
+    pub fn scope(&self) -> &DiagnosticScope {
+        &self.scope
+    }
+
+    /// Returns the complete diagnostic code identity.
+    pub fn code(&self) -> &DiagnosticCode {
+        &self.code
+    }
+
+    /// Returns the owner domain identity.
+    pub fn domain(&self) -> &DiagnosticDomain {
+        &self.domain
+    }
+
+    /// Returns the stage identity.
+    pub fn stage(&self) -> &DiagnosticStage {
+        &self.stage
+    }
+
+    /// Returns the producer identity.
+    pub fn source(&self) -> &DiagnosticSource {
+        &self.source
+    }
+
+    /// Returns the canonical typed subject identity.
+    pub fn subject(&self) -> &DiagnosticSubject {
+        &self.subject
+    }
+
+    /// Returns the versioned, domain-separated, length-prefixed canonical identity bytes.
+    pub fn canonical_identity_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        push_length_prefixed(&mut bytes, CURRENT_DIAGNOSTIC_KEY_DOMAIN);
+        bytes.extend_from_slice(&CURRENT_DIAGNOSTIC_KEY_VERSION.to_be_bytes());
+        push_length_prefixed(&mut bytes, self.scope.kind().as_str().as_bytes());
+        push_length_prefixed(&mut bytes, self.scope.identity().as_bytes());
+        push_length_prefixed(&mut bytes, self.code.as_str().as_bytes());
+        push_length_prefixed(&mut bytes, self.domain.as_str().as_bytes());
+        push_length_prefixed(&mut bytes, self.stage.as_str().as_bytes());
+        push_length_prefixed(&mut bytes, self.source.as_str().as_bytes());
+        push_length_prefixed(&mut bytes, self.subject.kind().as_bytes());
+        push_length_prefixed(&mut bytes, self.subject.reference().as_bytes());
+        bytes
+    }
+
+    /// Returns the full lowercase SHA-256 digest of the canonical identity bytes.
+    pub fn identity_digest(&self) -> String {
+        lowercase_digest(&Sha256::digest(self.canonical_identity_bytes()))
+    }
+
+    /// Returns the only valid path-opaque finding ID for this key.
+    pub fn finding_id(&self) -> DiagnosticFindingId {
+        DiagnosticFindingId::parse(format!(
+            "{CURRENT_DIAGNOSTIC_ID_PREFIX}{}",
+            self.identity_digest()
+        ))
+        .expect("current diagnostic digest IDs satisfy the stable identifier contract")
+    }
+}
+
+/// Active or resolved state of one persisted current diagnostic snapshot.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CurrentDiagnosticStatus {
+    /// The condition is currently observed.
+    Active,
+    /// The condition was explicitly resolved.
+    Resolved,
+}
+
+impl CurrentDiagnosticStatus {
+    /// Returns the exact persisted status spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Resolved => "resolved",
+        }
+    }
+}
+
+/// Replaceable observation fields for one current diagnostic key.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CurrentDiagnosticSnapshot {
+    severity: DiagnosticSeverity,
+    facts: DiagnosticFacts,
+    causes: Vec<DiagnosticCause>,
+    actions: Vec<DiagnosticAction>,
+    correlation_id: Option<String>,
+    connection_id: Option<AgentConnectionId>,
+    project_id: Option<ProjectId>,
+    integration_revision: Option<IntegrationRevision>,
+    observed_at: UtcTimestamp,
+    status: CurrentDiagnosticStatus,
+    resolved_at: Option<UtcTimestamp>,
+}
+
+impl CurrentDiagnosticSnapshot {
+    /// Creates one active current snapshot without actions, causes, or correlation coordinates.
+    pub fn try_new(
+        severity: DiagnosticSeverity,
+        facts: DiagnosticFacts,
+        observed_at: UtcTimestamp,
+    ) -> Result<Self, DiagnosticError> {
+        validate_timestamp("current diagnostic observed_at", &observed_at)?;
+        facts.validate_size()?;
+        Ok(Self {
+            severity,
+            facts,
+            causes: Vec::new(),
+            actions: Vec::new(),
+            correlation_id: None,
+            connection_id: None,
+            project_id: None,
+            integration_revision: None,
+            observed_at,
+            status: CurrentDiagnosticStatus::Active,
+            resolved_at: None,
+        })
+    }
+
+    /// Adds and canonically orders outgoing causes.
+    pub fn with_causes(mut self, causes: Vec<DiagnosticCause>) -> Result<Self, DiagnosticError> {
+        self.causes = canonical_diagnostic_causes(causes)?;
+        Ok(self)
+    }
+
+    /// Adds and canonically orders current remediation actions.
+    pub fn with_actions(mut self, actions: Vec<DiagnosticAction>) -> Result<Self, DiagnosticError> {
+        self.actions = canonical_diagnostic_actions(actions)?;
+        Ok(self)
+    }
+
+    /// Adds a bounded general correlation ID.
+    pub fn with_correlation_id(
+        mut self,
+        correlation_id: impl Into<String>,
+    ) -> Result<Self, DiagnosticError> {
+        let correlation_id = correlation_id.into();
+        validate_stable_identifier("diagnostic correlation id", &correlation_id)?;
+        self.correlation_id = Some(correlation_id);
+        Ok(self)
+    }
+
+    /// Adds Agent Connection correlation.
+    pub fn with_connection_id(
+        mut self,
+        connection_id: AgentConnectionId,
+    ) -> Result<Self, DiagnosticError> {
+        validate_correlation_value("diagnostic connection id", connection_id.as_str())?;
+        self.connection_id = Some(connection_id);
+        Ok(self)
+    }
+
+    /// Adds project correlation.
+    pub fn with_project_id(mut self, project_id: ProjectId) -> Result<Self, DiagnosticError> {
+        validate_correlation_value("diagnostic project id", project_id.as_str())?;
+        self.project_id = Some(project_id);
+        Ok(self)
+    }
+
+    /// Adds typed integration-revision correlation.
+    pub fn with_integration_revision(mut self, revision: IntegrationRevision) -> Self {
+        self.integration_revision = Some(revision);
+        self
+    }
+
+    /// Marks a reconstructed snapshot resolved at the supplied canonical time.
+    #[doc(hidden)]
+    pub fn with_persisted_state(
+        mut self,
+        status: CurrentDiagnosticStatus,
+        resolved_at: Option<UtcTimestamp>,
+    ) -> Result<Self, DiagnosticError> {
+        match (status, resolved_at.as_ref()) {
+            (CurrentDiagnosticStatus::Active, None) => {}
+            (CurrentDiagnosticStatus::Resolved, Some(value)) => {
+                validate_timestamp("current diagnostic resolved_at", value)?;
+                if !self.actions.is_empty() || !self.causes.is_empty() {
+                    return Err(invalid(
+                        "resolved current diagnostics cannot retain actions or outgoing causes",
+                    ));
+                }
+            }
+            _ => {
+                return Err(invalid(
+                    "current diagnostic status and resolved_at do not correspond",
+                ))
+            }
+        }
+        self.status = status;
+        self.resolved_at = resolved_at;
+        Ok(self)
+    }
+
+    /// Returns the severity.
+    pub const fn severity(&self) -> DiagnosticSeverity {
+        self.severity
+    }
+
+    /// Returns bounded safe facts.
+    pub fn facts(&self) -> &DiagnosticFacts {
+        &self.facts
+    }
+
+    /// Returns outgoing causes in canonical order.
+    pub fn causes(&self) -> &[DiagnosticCause] {
+        &self.causes
+    }
+
+    /// Returns current remediation actions in canonical order.
+    pub fn actions(&self) -> &[DiagnosticAction] {
+        &self.actions
+    }
+
+    /// Returns the optional general correlation ID.
+    pub fn correlation_id(&self) -> Option<&str> {
+        self.correlation_id.as_deref()
+    }
+
+    /// Returns optional Agent Connection correlation.
+    pub fn connection_id(&self) -> Option<&AgentConnectionId> {
+        self.connection_id.as_ref()
+    }
+
+    /// Returns optional project correlation.
+    pub fn project_id(&self) -> Option<&ProjectId> {
+        self.project_id.as_ref()
+    }
+
+    /// Returns optional integration-revision correlation.
+    pub fn integration_revision(&self) -> Option<&IntegrationRevision> {
+        self.integration_revision.as_ref()
+    }
+
+    /// Returns the observation time.
+    pub fn observed_at(&self) -> &UtcTimestamp {
+        &self.observed_at
+    }
+
+    /// Returns active or resolved state.
+    pub const fn status(&self) -> CurrentDiagnosticStatus {
+        self.status
+    }
+
+    /// Returns resolution time for a resolved snapshot.
+    pub fn resolved_at(&self) -> Option<&UtcTimestamp> {
+        self.resolved_at.as_ref()
+    }
+}
+
+/// One current diagnostic key and its replaceable snapshot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CurrentDiagnosticFinding {
+    key: CurrentDiagnosticKey,
+    snapshot: CurrentDiagnosticSnapshot,
+    id: DiagnosticFindingId,
+    identity_digest: String,
+}
+
+impl CurrentDiagnosticFinding {
+    /// Constructs a current finding and derives its ID solely from the complete key.
+    pub fn try_new(
+        key: CurrentDiagnosticKey,
+        snapshot: CurrentDiagnosticSnapshot,
+    ) -> Result<Self, DiagnosticError> {
+        let id = key.finding_id();
+        if snapshot
+            .causes()
+            .iter()
+            .any(|cause| cause.finding_id() == &id)
+        {
+            return Err(invalid(format!(
+                "diagnostic finding {id} cannot cause itself"
+            )));
+        }
+        let identity_digest = key.identity_digest();
+        Ok(Self {
+            key,
+            snapshot,
+            id,
+            identity_digest,
+        })
+    }
+
+    /// Returns the derived path-opaque finding ID.
+    pub fn id(&self) -> &DiagnosticFindingId {
+        &self.id
+    }
+
+    /// Returns the full current identity digest.
+    pub fn identity_digest(&self) -> &str {
+        &self.identity_digest
+    }
+
+    /// Returns the immutable current key.
+    pub fn key(&self) -> &CurrentDiagnosticKey {
+        &self.key
+    }
+
+    /// Returns the replaceable snapshot.
+    pub fn snapshot(&self) -> &CurrentDiagnosticSnapshot {
+        &self.snapshot
+    }
+
+    /// Projects this current finding into the shared read-only report shape.
+    pub fn to_diagnostic_finding(&self) -> DiagnosticFinding {
+        DiagnosticFinding {
+            id: self.id.clone(),
+            code: self.key.code.clone(),
+            domain: self.key.domain.clone(),
+            stage: self.key.stage.clone(),
+            severity: self.snapshot.severity,
+            source: self.key.source.clone(),
+            subject: self.key.subject.clone(),
+            facts: self.snapshot.facts.clone(),
+            causes: self.snapshot.causes.clone(),
+            actions: self.snapshot.actions.clone(),
+            observed_at: self.snapshot.observed_at.clone(),
+            correlation_id: self.snapshot.correlation_id.clone(),
+            connection_id: self.snapshot.connection_id.clone(),
+            project_id: self.snapshot.project_id.clone(),
+            runtime_session_id: None,
+            integration_revision: self.snapshot.integration_revision.clone(),
+        }
+    }
+}
+
+fn canonical_diagnostic_causes(
+    mut causes: Vec<DiagnosticCause>,
+) -> Result<Vec<DiagnosticCause>, DiagnosticError> {
+    if causes.len() > MAX_DIAGNOSTIC_CAUSES {
+        return Err(invalid(format!(
+            "diagnostic finding has more than {MAX_DIAGNOSTIC_CAUSES} causes"
+        )));
+    }
+    causes.sort();
+    if causes.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(invalid("diagnostic finding contains a duplicate cause"));
+    }
+    Ok(causes)
+}
+
+fn canonical_diagnostic_actions(
+    mut actions: Vec<DiagnosticAction>,
+) -> Result<Vec<DiagnosticAction>, DiagnosticError> {
+    if actions.len() > MAX_DIAGNOSTIC_ACTIONS {
+        return Err(invalid(format!(
+            "diagnostic finding has more than {MAX_DIAGNOSTIC_ACTIONS} actions"
+        )));
+    }
+    actions.sort_by(|left, right| {
+        left.code
+            .cmp(&right.code)
+            .then_with(|| left.summary.cmp(&right.summary))
+    });
+    if actions.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(invalid("diagnostic finding contains a duplicate action"));
+    }
+    Ok(actions)
+}
+
+fn push_length_prefixed(output: &mut Vec<u8>, value: &[u8]) {
+    output.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    output.extend_from_slice(value);
+}
+
+fn lowercase_digest(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut value = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        value.push(HEX[(byte >> 4) as usize] as char);
+        value.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    value
+}
+
+fn validate_uuid_version_four_suffix(field: &str, value: &str) -> Result<(), DiagnosticError> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 36
+        || bytes[8] != b'-'
+        || bytes[13] != b'-'
+        || bytes[18] != b'-'
+        || bytes[23] != b'-'
+        || bytes[14] != b'4'
+        || !matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
+        || bytes.iter().enumerate().any(|(index, byte)| {
+            !matches!(index, 8 | 13 | 18 | 23) && !matches!(byte, b'0'..=b'9' | b'a'..=b'f')
+        })
+    {
+        Err(invalid(format!(
+            "{field} must contain one canonical lowercase UUIDv4 suffix"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+/// Shared read-only diagnostic projection used by reports and lookup output.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct DiagnosticFinding {
     id: DiagnosticFindingId,
@@ -1984,6 +2873,202 @@ mod tests {
     }
 
     impl DiagnosticFactSource for SafeFacts {}
+
+    #[allow(clippy::too_many_arguments)]
+    fn current_key(
+        scope_kind: DiagnosticScopeKind,
+        scope_identity: &str,
+        code: &str,
+        domain: &str,
+        stage: &str,
+        source: &str,
+        subject_kind: &str,
+        subject_identity: &str,
+    ) -> CurrentDiagnosticKey {
+        CurrentDiagnosticKey::new(
+            DiagnosticScope::try_new(scope_kind, scope_identity).unwrap(),
+            DiagnosticCode::parse(code).unwrap(),
+            DiagnosticDomain::parse(domain).unwrap(),
+            DiagnosticStage::parse(stage).unwrap(),
+            DiagnosticSource::parse(source).unwrap(),
+            DiagnosticSubject::try_new(subject_kind, subject_identity).unwrap(),
+        )
+    }
+
+    #[test]
+    fn current_diagnostic_key_encoding_is_deterministic_and_complete() {
+        let baseline = current_key(
+            DiagnosticScopeKind::Connection,
+            "connection:opaque-01",
+            "guard.managed_file.missing",
+            "guard",
+            "guard_files",
+            "administrative_cli",
+            "guard_managed_artifact",
+            ".volicord/hooks/pre-commit",
+        );
+        assert_eq!(
+            baseline.canonical_identity_bytes(),
+            baseline.clone().canonical_identity_bytes()
+        );
+        assert_eq!(baseline.finding_id(), baseline.clone().finding_id());
+
+        let variants = [
+            current_key(
+                DiagnosticScopeKind::Project,
+                "connection:opaque-01",
+                "guard.managed_file.missing",
+                "guard",
+                "guard_files",
+                "administrative_cli",
+                "guard_managed_artifact",
+                ".volicord/hooks/pre-commit",
+            ),
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:opaque-02",
+                "guard.managed_file.missing",
+                "guard",
+                "guard_files",
+                "administrative_cli",
+                "guard_managed_artifact",
+                ".volicord/hooks/pre-commit",
+            ),
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:opaque-01",
+                "guard.managed_file.changed",
+                "guard",
+                "guard_files",
+                "administrative_cli",
+                "guard_managed_artifact",
+                ".volicord/hooks/pre-commit",
+            ),
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:opaque-01",
+                "guard.managed_file.missing",
+                "host",
+                "guard_files",
+                "administrative_cli",
+                "guard_managed_artifact",
+                ".volicord/hooks/pre-commit",
+            ),
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:opaque-01",
+                "guard.managed_file.missing",
+                "guard",
+                "host_observation",
+                "administrative_cli",
+                "guard_managed_artifact",
+                ".volicord/hooks/pre-commit",
+            ),
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:opaque-01",
+                "guard.managed_file.missing",
+                "guard",
+                "guard_files",
+                "guard_audit",
+                "guard_managed_artifact",
+                ".volicord/hooks/pre-commit",
+            ),
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:opaque-01",
+                "guard.managed_file.missing",
+                "guard",
+                "guard_files",
+                "administrative_cli",
+                "managed_file",
+                ".volicord/hooks/pre-commit",
+            ),
+            current_key(
+                DiagnosticScopeKind::Connection,
+                "connection:opaque-01",
+                "guard.managed_file.missing",
+                "guard",
+                "guard_files",
+                "administrative_cli",
+                "guard_managed_artifact",
+                ".volicord/hooks/commit-msg",
+            ),
+        ];
+        for variant in variants {
+            assert_ne!(baseline.identity_digest(), variant.identity_digest());
+            assert_ne!(baseline.finding_id(), variant.finding_id());
+        }
+    }
+
+    #[test]
+    fn current_diagnostic_ids_are_collision_safe_opaque_and_fixed_length() {
+        let dotted = current_key(
+            DiagnosticScopeKind::Connection,
+            "연결::opaque!?/".repeat(24).as_str(),
+            "a.b_c",
+            "test",
+            "verification",
+            "test_runner",
+            "managed_path",
+            "긴/경로/subject with punctuation!?[]{}",
+        );
+        let underscored = current_key(
+            DiagnosticScopeKind::Connection,
+            "연결::opaque!?/".repeat(24).as_str(),
+            "a_b.c",
+            "test",
+            "verification",
+            "test_runner",
+            "managed_path",
+            "긴/경로/subject with punctuation!?[]{}",
+        );
+        let dotted_id = dotted.finding_id();
+        let underscored_id = underscored.finding_id();
+        assert_ne!(dotted_id, underscored_id);
+        assert_eq!(
+            dotted_id.as_str().len(),
+            CURRENT_DIAGNOSTIC_ID_PREFIX.len() + 64
+        );
+        let suffix = dotted_id
+            .as_str()
+            .strip_prefix(CURRENT_DIAGNOSTIC_ID_PREFIX)
+            .unwrap();
+        assert!(suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')));
+        assert!(!dotted_id.as_str().contains("연결"));
+        assert!(!dotted_id.as_str().contains("managed_path"));
+        assert!(!dotted_id.as_str().contains("경로"));
+        assert!(!dotted_id.as_str().contains("a.b_c"));
+    }
+
+    #[test]
+    fn repeated_occurrences_receive_distinct_generated_ids() {
+        let generator = crate::SequenceDurableIdGenerator::new([
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+        ]);
+        let data = DiagnosticFindingData::try_new(
+            DiagnosticCode::parse("test.repeated_occurrence").unwrap(),
+            DiagnosticDomain::parse("test").unwrap(),
+            DiagnosticStage::parse("verification").unwrap(),
+            DiagnosticSeverity::Warning,
+            DiagnosticSource::parse("test_runner").unwrap(),
+            DiagnosticSubject::try_new("operation", "same-subject").unwrap(),
+            DiagnosticFacts::empty(),
+            timestamp(),
+        )
+        .unwrap();
+        let first =
+            OccurrenceDiagnosticFinding::try_new_with_generator(data.clone(), None, &generator)
+                .unwrap();
+        let second =
+            OccurrenceDiagnosticFinding::try_new_with_generator(data, None, &generator).unwrap();
+        assert_ne!(first.id(), second.id());
+        assert_eq!(first.data().code(), second.data().code());
+        assert_eq!(first.data().subject(), second.data().subject());
+    }
 
     fn finding(id: &str) -> DiagnosticFinding {
         DiagnosticFinding::try_new(

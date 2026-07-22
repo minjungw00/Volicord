@@ -99,26 +99,40 @@ guess, or silently replace the data while classifying the failure.
 
 ## Structured Diagnostic Findings
 
-The shared `DiagnosticFinding` is the product-wide structured diagnostic unit.
-It carries a bounded stable finding ID, namespaced code, domain, stage,
-severity, producer source, typed subject, safe projected facts, zero or more
-cause references and recommended actions, an observation timestamp, and
-optional correlation, Connection, project, runtime-session, and integration
-revision coordinates. Domain owners retain their closed code vocabularies and
+`DiagnosticFinding` is the shared read-only report projection. A producer must
+choose `DiagnosticFindingLifecycle::Occurrence` or
+`DiagnosticFindingLifecycle::CurrentState` explicitly and construct the
+matching lifecycle type; runtime-session presence never selects a lifecycle.
+Both forms carry a namespaced code, domain, stage, severity, producer source,
+typed subject, safe projected facts, zero or more cause references and
+recommended actions, an observation timestamp, and applicable correlation
+coordinates. Domain owners retain their closed code vocabularies and
 error-to-finding conversion rules.
 
-Persisted findings have two distinct lifecycles. An occurrence finding records
-one runtime, process, protocol, or other event-like observation and uses the
-insert-only finding path; a runtime-correlated occurrence is immutable. A
-current-state operational finding is a replaceable snapshot of one exact
-subject. Its stable ID combines the Connection coordinate and diagnostic code
-with a bounded lowercase digest of the canonical subject kind and reference.
-The exact subject remains in the typed `subject` value and is not exposed in
-the ID, so two subjects with the same code remain distinct without leaking a
-managed path. Re-observing that subject replaces its facts, actions,
-observation time, revision coordinates, and outgoing cause edges atomically.
-The current-state upsert rejects both an incoming runtime-session finding and
-an attempt to replace an existing runtime-session finding.
+`OccurrenceDiagnosticFinding` records one runtime, process, protocol, or other
+event-like observation. Each occurrence receives a newly generated opaque
+`DiagnosticOccurrenceId`; repeating identical diagnostic data creates a
+different ID and an independent immutable row. Occurrence graph insertion is
+insert-only whether or not runtime correlation is present.
+
+`CurrentDiagnosticFinding` consists of an immutable `CurrentDiagnosticKey` and
+a replaceable `CurrentDiagnosticSnapshot`. The key includes the scope kind and
+complete opaque scope identity, full diagnostic code, domain, stage, source,
+and complete subject kind and reference. Its canonical identity is a
+domain-separated, versioned binary encoding in which every variable component
+is length-prefixed. The ID is exactly
+`finding.current.sha256:<64 lowercase hex>`, using the full SHA-256 digest of
+that encoding. This preserves all identity distinctions while keeping paths
+and other scope or subject text out of the ID.
+
+Re-observing the same key replaces only severity, facts, actions, correlation
+coordinates, observation time, and outgoing cause edges, and reactivates a
+resolved condition. Identity fields are compared and never updated. Explicit
+resolution records `resolved_at`, removes current actions and outgoing causes,
+retains the last safe facts, and excludes the row from active-current reports.
+Explicit ID reads may still return that resolved snapshot. A read recomputes
+the current digest and ID from the stored key and treats any mismatch as
+corrupt persisted state.
 
 Safe facts are bounded before storage or rendering. Their typed projection
 redacts sensitive keys and limits text size, collection size, and nesting

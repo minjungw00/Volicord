@@ -92,23 +92,34 @@ migration, 추정, 암묵적 교체하면 안 됩니다.
 
 ## 구조화된 Diagnostic Finding
 
-공유 `DiagnosticFinding`은 제품 전체에서 사용하는 구조화된 diagnostic 단위입니다.
-한도가 있는 안정적인 finding ID, namespaced code, domain, stage, severity, producer source,
-typed subject, 안전하게 projection한 facts, 0개 이상의 cause reference와 권장 action,
-관찰 timestamp, 선택적인 correlation, Connection, project, runtime-session, integration
-revision 좌표를 담습니다. Domain 담당자는 closed code vocabulary와 오류를 finding으로
-변환하는 규칙을 계속 담당합니다.
+`DiagnosticFinding`은 공유 read-only report projection입니다. Producer는
+`DiagnosticFindingLifecycle::Occurrence` 또는
+`DiagnosticFindingLifecycle::CurrentState`를 명시적으로 선택하고 해당 lifecycle type을
+구성해야 합니다. Runtime-session 존재 여부로 lifecycle을 고르지 않습니다. 두 형태 모두
+namespaced code, domain, stage, severity, producer source, typed subject, 안전하게 projection한
+facts, 0개 이상의 cause reference와 권장 action, 관찰 timestamp, 적용 가능한 correlation
+좌표를 담습니다. Domain 담당자는 closed code vocabulary와 오류를 finding으로 변환하는
+규칙을 계속 담당합니다.
 
-영속 finding에는 서로 다른 두 lifecycle이 있습니다. 발생형 finding은 runtime, process,
-protocol 또는 그 밖의 event 성격 관찰 하나를 기록하며 insert-only finding 경로를
-사용합니다. Runtime과 상관된 발생형 finding은 변경할 수 없습니다. 현재 상태 운영
-finding은 정확한 주체 하나에 대한 교체 가능한 snapshot입니다. 안정적인 ID는 Connection
-좌표와 diagnostic code에 정규 subject kind 및 reference의 한도가 있는 소문자 digest를
-결합합니다. 정확한 주체는 typed `subject` 값에 남고 ID에 노출되지 않으므로 같은 code를
-가진 서로 다른 주체를 구분하면서 관리 경로를 누출하지 않습니다. 같은 주체를 다시
-관찰하면 facts, actions, 관찰 시각, revision 좌표, 나가는 cause edge를 원자적으로
-교체합니다. 현재 상태 upsert는 입력 finding에 runtime session이 있거나 기존 runtime-session
-finding을 교체하려는 경우를 모두 거부합니다.
+`OccurrenceDiagnosticFinding`은 runtime, process, protocol 또는 그 밖의 event 성격 관찰
+하나를 기록합니다. 각 occurrence에는 새로 생성한 opaque `DiagnosticOccurrenceId`가
+부여됩니다. 동일한 diagnostic data를 반복해도 ID가 다르고 서로 독립적인 불변 row가
+생깁니다. Runtime correlation 유무와 관계없이 occurrence graph 삽입은 insert-only입니다.
+
+`CurrentDiagnosticFinding`은 불변 `CurrentDiagnosticKey`와 교체 가능한
+`CurrentDiagnosticSnapshot`으로 구성됩니다. Key에는 scope kind와 완전한 opaque scope
+identity, 전체 diagnostic code, domain, stage, source, 완전한 subject kind와 reference가
+포함됩니다. 정규 identity는 domain separation과 version을 포함하고 모든 가변 구성 요소에
+길이 prefix를 붙인 binary encoding입니다. ID는 이 encoding의 전체 SHA-256 digest를 사용한
+정확한 `finding.current.sha256:<64 lowercase hex>` 형식입니다. 따라서 identity 차이를 모두
+보존하면서 path 및 기타 scope·subject text를 ID 밖에 둡니다.
+
+같은 key를 다시 관찰하면 severity, facts, actions, correlation 좌표, 관찰 시각, 나가는 cause
+edge만 교체하고 resolved condition을 다시 active로 전환합니다. Identity field는 비교만 하며
+갱신하지 않습니다. 명시적 resolution은 `resolved_at`을 기록하고 현재 action과 나가는 cause를
+제거하되 마지막 safe facts를 유지하며 active-current report에서는 해당 row를 제외합니다.
+명시적 ID read는 resolved snapshot도 반환할 수 있습니다. Read는 저장된 key에서 current
+digest와 ID를 다시 계산하고 불일치하면 영속 상태 corruption으로 처리합니다.
 
 Safe facts는 저장하거나 렌더링하기 전에 한도를 검증합니다. Typed projection은 민감한
 key를 가리고 text 크기, collection 크기, nesting depth를 제한합니다. Raw environment map,

@@ -7,7 +7,8 @@ use volicord_store::{
     agent_connections::{agent_connection_record, list_connection_projects_for_diagnostics},
     bootstrap::project_record_by_repo_root_read_only,
     diagnostic_findings::{
-        diagnostic_cause_chain, diagnostic_finding, diagnostic_findings_for_runtime_session,
+        bounded_diagnostic_graph_from_seeds, diagnostic_findings_by_ids,
+        diagnostic_occurrences_for_runtime_session,
     },
     diagnostics::{
         current_diagnostics_storage_manifest, read_workflow_metric_aggregates,
@@ -94,7 +95,11 @@ where
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let finding_id = DiagnosticFindingId::parse(options.finding_id.clone())
         .map_err(|error| DiagnosticsCommandError::Usage(error.to_string()))?;
-    let report = if let Some(finding) = diagnostic_finding(&runtime_home, &finding_id)? {
+    let report = if let Some(finding) =
+        diagnostic_findings_by_ids(&runtime_home, std::slice::from_ref(&finding_id))?
+            .into_iter()
+            .next()
+    {
         let findings = cause_chain_findings(&runtime_home, std::slice::from_ref(&finding))?;
         let roots = volicord_types::diagnostic_root_cause_ids(
             &findings,
@@ -143,7 +148,10 @@ where
         mcp_runtime_session(&runtime_home, &options.runtime_session_id)?
     {
         let direct =
-            diagnostic_findings_for_runtime_session(&runtime_home, &options.runtime_session_id)?;
+            diagnostic_occurrences_for_runtime_session(&runtime_home, &options.runtime_session_id)?
+                .into_iter()
+                .map(|finding| finding.to_diagnostic_finding())
+                .collect::<Vec<_>>();
         let findings = cause_chain_findings(&runtime_home, &direct)?;
         let terminal_id = session
             .terminal_finding_id
@@ -231,9 +239,9 @@ fn cause_chain_findings(
 ) -> Result<Vec<DiagnosticFinding>, DiagnosticsCommandError> {
     let mut findings = BTreeMap::new();
     for finding in direct {
-        let chain = diagnostic_cause_chain(
+        let chain = bounded_diagnostic_graph_from_seeds(
             runtime_home,
-            finding.id(),
+            std::slice::from_ref(finding.id()),
             MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
         )?;
         for entry in chain.entries {
@@ -824,13 +832,14 @@ mod tests {
         WorkflowMetricEvent, WorkflowMetricKind, WorkflowMetricOutcome,
     };
     use volicord_store::{
-        diagnostic_findings::upsert_current_diagnostic_finding,
+        diagnostic_findings::upsert_current_snapshot,
         operational_sessions::connection_integration_revision,
     };
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
     use volicord_types::{
-        ActorSource, AgentConnectionId, IntegrationProfile, JudgmentKind, MethodName,
-        ObservationConfidence, OperationCategory, ProjectId,
+        ActorSource, AgentConnectionId, CurrentDiagnosticFinding, CurrentDiagnosticKey,
+        CurrentDiagnosticSnapshot, DiagnosticScope, DiagnosticScopeKind, IntegrationProfile,
+        JudgmentKind, MethodName, ObservationConfidence, OperationCategory, ProjectId,
     };
 
     use crate::cli::DiagnosticsWorkflowMetricsArgs;
@@ -928,32 +937,34 @@ mod tests {
                 .expect("connection lookup")
                 .expect("connection");
         let revision = connection_integration_revision(&connection).expect("revision");
-        let finding_id =
-            DiagnosticFindingId::parse("finding.current.lookup.stable").expect("finding ID");
+        let key = CurrentDiagnosticKey::new(
+            DiagnosticScope::try_new(DiagnosticScopeKind::Connection, fixture.connection_id())
+                .expect("scope"),
+            DiagnosticCode::parse("managed_config.command.drift").expect("code"),
+            DiagnosticDomain::parse("configuration").expect("domain"),
+            DiagnosticStage::parse("managed_configuration").expect("stage"),
+            DiagnosticSource::parse("administrative_cli").expect("source"),
+            DiagnosticSubject::try_new("managed_config_target", "/bounded/current/config.toml")
+                .expect("subject"),
+        );
+        let finding_id = key.finding_id();
         let make_finding = |observed_state: &'static str, observed_at: &'static str| {
-            DiagnosticFinding::try_new(
-                finding_id.clone(),
-                DiagnosticCode::parse("managed_config.command.drift").expect("code"),
-                DiagnosticDomain::parse("configuration").expect("domain"),
-                DiagnosticStage::parse("managed_configuration").expect("stage"),
+            CurrentDiagnosticSnapshot::try_new(
                 DiagnosticSeverity::Error,
-                DiagnosticSource::parse("administrative_cli").expect("source"),
-                DiagnosticSubject::try_new("managed_config_target", "/bounded/current/config.toml")
-                    .expect("subject"),
                 DiagnosticFacts::project(&CurrentLookupFacts { observed_state }).expect("facts"),
                 UtcTimestamp::parse(observed_at).expect("time"),
             )
-            .and_then(|finding| {
-                finding.with_connection_id(AgentConnectionId::new(fixture.connection_id()))
+            .and_then(|snapshot| {
+                snapshot.with_connection_id(AgentConnectionId::new(fixture.connection_id()))
             })
-            .map(|finding| finding.with_integration_revision(revision.clone()))
+            .map(|snapshot| snapshot.with_integration_revision(revision.clone()))
+            .and_then(|snapshot| CurrentDiagnosticFinding::try_new(key.clone(), snapshot))
             .expect("finding")
         };
         let original = make_finding("missing", "2026-07-22T01:02:03Z");
         let latest = make_finding("drift", "2026-07-22T02:03:04Z");
-        upsert_current_diagnostic_finding(fixture.runtime_home_path(), &original)
-            .expect("initial snapshot");
-        upsert_current_diagnostic_finding(fixture.runtime_home_path(), &latest)
+        upsert_current_snapshot(fixture.runtime_home_path(), &original).expect("initial snapshot");
+        upsert_current_snapshot(fixture.runtime_home_path(), &latest)
             .expect("replacement snapshot");
 
         let error = run_diagnostics_command(

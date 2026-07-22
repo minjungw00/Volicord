@@ -69,23 +69,32 @@ resolution, user answer, verification basis, or authority source.
 
 ## Structured Diagnostic Findings
 
-`diagnostic_findings` is the durable Registry representation of the shared
-typed `DiagnosticFinding` model. Each row stores its stable finding ID,
-namespaced code, domain, stage, severity, source, bounded typed subject and safe
-fact JSON, bounded actions, optional correlation ID, applicable Connection,
-project, runtime-session, and integration-revision coordinates, and canonical
-observation time. Store validates the shared type and serialized byte bounds
-before opening a write transaction. It never stores an environment dump, raw
-request, unrestricted stderr, credential, or unbounded fact object.
+`diagnostic_findings` stores both explicit lifecycles and never infers one from
+`runtime_session_id`. Every row has `lifecycle`; a current-state row also has
+the full `current_identity_digest`, `diagnostic_scope_kind`, complete
+`diagnostic_scope_identity`, `current_state_status`, and optional
+`resolved_at`. Shared columns hold the namespaced code, domain, stage,
+severity, source, bounded typed subject and safe fact JSON, bounded actions,
+applicable correlation coordinates, and canonical observation time. Store
+validates the lifecycle type and serialized byte bounds before opening a write
+transaction. It never stores an environment dump, raw request, unrestricted
+stderr, credential, or unbounded fact object.
 
-Store exposes separate persistence paths for the two finding lifecycles.
-Occurrence findings, including runtime, process, and protocol observations,
-use insert-only graph insertion. Current-state operational findings use a
-subject-aware stable ID and `upsert_current_diagnostic_finding`. That operation
-rejects any incoming or existing runtime-session finding and, in one immediate
-Registry transaction, replaces the current row data and all of its outgoing
-cause edges. A validation, missing-cause, or cycle failure rolls back both the
-row replacement and edge replacement, preserving the prior snapshot.
+`insert_occurrence_finding` and `insert_occurrence_finding_graph` accept only
+`OccurrenceDiagnosticFinding` values and insert immutable rows with generated
+opaque occurrence IDs. `upsert_current_snapshot` accepts only
+`CurrentDiagnosticFinding`, derives its ID from the complete key, compares all
+persisted identity fields, and updates only snapshot fields. It atomically
+replaces outgoing causes and always leaves the condition active. Validation,
+missing-cause, identity, or cycle failure preserves the previous snapshot.
+
+`resolve_current_finding` addresses the row by `CurrentDiagnosticKey`, records
+`resolved_at`, clears actions and outgoing causes, and retains facts and other
+last-observed snapshot data. `active_current_findings_for_scope` returns only
+active rows. `diagnostic_findings_by_ids` can return resolved projections and
+recomputes every current digest and ID before returning data; a mismatch is
+persisted-data corruption. Current identity columns and occurrence rows are
+also protected by Registry update triggers.
 
 `diagnostic_cause_edges` stores one directed finding-to-cause edge. Both ends
 must name existing findings, the composite primary key rejects duplicates, and
@@ -95,11 +104,11 @@ leaves neither a partial finding set nor a dangling edge. Cause queries order
 by depth and finding ID, reject a requested depth above 32, return at most 128
 distinct findings, and report when the selected depth cut off another edge.
 
-Finding reads are available by ID, by runtime session, and by the exact current
-Connection integration revision. A finding with `runtime_session_id` must also
-carry that runtime's Connection and integration revision. The current-
-Connection query does not reinterpret findings from a prior integration
-revision as current. These Registry findings remain separate from bounded
+Finding reads are available by explicit ID, by runtime occurrence session, and
+by exact active current scope. A runtime-correlated occurrence must also carry
+that runtime's Connection and integration revision. The current-Connection
+convenience query filters the exact Connection scope to its current integration
+revision. These Registry findings remain separate from bounded
 non-authority counters in `diagnostics.sqlite`. A current Connection report
 starts from the finding IDs explicitly referenced by its checks, loads their
 bounded cause chains, and includes an otherwise independent current finding

@@ -26,7 +26,7 @@ use volicord_mcp::{
 };
 use volicord_store::agent_connections::{agent_connection_record, AgentConnectionRecord};
 use volicord_store::diagnostic_findings::{
-    diagnostic_finding, diagnostic_findings_for_runtime_session,
+    diagnostic_findings_by_ids, diagnostic_occurrences_for_runtime_session,
 };
 use volicord_store::guards::{
     agent_session, agent_session_matches_current_integration,
@@ -1093,11 +1093,14 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
         .and_then(|check| check.pointer("/details/runtime_session_id"))
         .and_then(Value::as_str)
         .ok_or("host-session runtime ID")?;
-    let mismatch_id = DiagnosticFindingId::parse(format!(
-        "finding.{runtime_session_id}.peer_path_version_mismatch"
-    ))?;
-    let mismatch = diagnostic_finding(&fixture.runtime_home, &mismatch_id)?
-        .ok_or("peer/PATH mismatch finding")?;
+    let mismatch =
+        diagnostic_occurrences_for_runtime_session(&fixture.runtime_home, runtime_session_id)?
+            .into_iter()
+            .map(|finding| finding.to_diagnostic_finding())
+            .find(|finding| {
+                finding.code().as_str() == "host.codex.peer_version_differs_from_path_probe"
+            })
+            .ok_or("peer/PATH mismatch finding")?;
     assert_eq!(
         mismatch.code().as_str(),
         "host.codex.peer_version_differs_from_path_probe"
@@ -1296,8 +1299,11 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
             .as_str()
             .ok_or("MCP early-exit finding ID")?,
     )?;
-    let finding = diagnostic_finding(&early_exit.runtime_home, &finding_id)?
-        .ok_or("persisted MCP early-exit finding")?;
+    let finding =
+        diagnostic_findings_by_ids(&early_exit.runtime_home, std::slice::from_ref(&finding_id))?
+            .into_iter()
+            .next()
+            .ok_or("persisted MCP early-exit finding")?;
     let facts = finding.facts().data();
     assert_eq!(facts.get("exit_code"), Some(&json!(23)));
     assert_eq!(facts.get("bounded_stderr_truncated"), Some(&json!(true)));
@@ -1947,14 +1953,14 @@ impl OperationalFixture {
         let connection_id = self.connection_id();
         let runtime = latest_current_managed_runtime_session(&self.runtime_home, &connection_id)?
             .ok_or("latest managed runtime session")?;
-        let findings = diagnostic_findings_for_runtime_session(
+        let findings = diagnostic_occurrences_for_runtime_session(
             &self.runtime_home,
             &runtime.runtime_session_id,
         )?;
         assert!(
             findings
                 .iter()
-                .any(|finding| finding.code().as_str() == code),
+                .any(|finding| finding.data().code().as_str() == code),
             "missing {code} finding in {findings:?}"
         );
         Ok(())

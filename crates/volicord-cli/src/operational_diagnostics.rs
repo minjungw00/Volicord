@@ -1,16 +1,16 @@
 //! Typed findings for Volicord-owned administrative and integration boundaries.
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use volicord_store::{
-    diagnostic_findings::upsert_current_diagnostic_finding,
+    diagnostic_findings::upsert_current_snapshot,
     operational_sessions::connection_integration_revision,
 };
 use volicord_types::{
-    AgentConnectionId, DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticError,
-    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
-    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
-    IntegrationRevision, UtcTimestamp,
+    AgentConnectionId, CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticSnapshot,
+    DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticError, DiagnosticFactSource,
+    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingData, DiagnosticFindingId,
+    DiagnosticScope, DiagnosticScopeKind, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, GuardManagedArtifact, IntegrationRevision, UtcTimestamp,
 };
 
 use crate::{
@@ -466,6 +466,24 @@ pub fn operational_diagnostic_finding(
     facts: &OperationalDiagnosticFacts,
     observed_at: UtcTimestamp,
 ) -> Result<DiagnosticFinding, DiagnosticError> {
+    operational_diagnostic_data(
+        diagnostic,
+        subject_kind,
+        subject_reference,
+        facts,
+        observed_at,
+    )
+    .and_then(|data| Ok(data.to_read_projection(DiagnosticFindingId::parse(finding_id)?, None)))
+}
+
+/// Creates lifecycle-neutral operational data for an explicit persistence choice.
+pub(crate) fn operational_diagnostic_data(
+    diagnostic: OperationalDiagnostic,
+    subject_kind: &'static str,
+    subject_reference: impl Into<String>,
+    facts: &OperationalDiagnosticFacts,
+    observed_at: UtcTimestamp,
+) -> Result<DiagnosticFindingData, DiagnosticError> {
     let actions = diagnostic
         .actions()
         .iter()
@@ -473,8 +491,7 @@ pub fn operational_diagnostic_finding(
             DiagnosticAction::try_new(DiagnosticCode::parse(action.code())?, action.summary())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    DiagnosticFinding::try_new(
-        DiagnosticFindingId::parse(finding_id)?,
+    DiagnosticFindingData::try_new(
         DiagnosticCode::parse(diagnostic.code())?,
         DiagnosticDomain::parse(diagnostic.domain())?,
         DiagnosticStage::parse(diagnostic.stage())?,
@@ -506,32 +523,50 @@ pub(crate) fn persist_connection_operational_finding(
     facts: &OperationalDiagnosticFacts,
     observed_at: UtcTimestamp,
 ) -> Result<DiagnosticFindingId, ConnectionCommandError> {
-    let subject_reference = subject_reference.into();
-    let subject = DiagnosticSubject::try_new(subject_kind, subject_reference.clone())
+    let subject = DiagnosticSubject::try_new(subject_kind, subject_reference.into())
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    let finding_id = connection_operational_finding_id(connection, diagnostic, &subject)?;
+    let key = connection_operational_key(connection, diagnostic, &subject)?;
     let revision = connection_integration_revision(connection)?;
-    let finding = operational_diagnostic_finding(
-        diagnostic,
-        finding_id.to_string(),
-        subject_kind,
-        subject_reference,
-        facts,
+    let actions = diagnostic
+        .actions()
+        .iter()
+        .map(|action| {
+            DiagnosticAction::try_new(DiagnosticCode::parse(action.code())?, action.summary())
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let snapshot = CurrentDiagnosticSnapshot::try_new(
+        diagnostic.severity(),
+        DiagnosticFacts::project(&ProjectedOperationalDiagnosticFacts {
+            summary: diagnostic.summary(),
+            observed_state: facts.observed_state,
+            artifact_kind: &facts.artifact_kind,
+            guard_phase: &facts.guard_phase,
+            expected_revision: &facts.expected_revision,
+            observed_revision: &facts.observed_revision,
+            expected_tool_name: &facts.expected_tool_name,
+            observed_tool_name: &facts.observed_tool_name,
+        })
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
         observed_at,
     )
-    .and_then(|finding| {
-        finding.with_connection_id(AgentConnectionId::new(
+    .and_then(|snapshot| snapshot.with_actions(actions))
+    .and_then(|snapshot| {
+        snapshot.with_connection_id(AgentConnectionId::new(
             connection.connection_internal_id.clone(),
         ))
     })
-    .map(|finding| {
-        finding.with_integration_revision(
+    .map(|snapshot| {
+        snapshot.with_integration_revision(
             IntegrationRevision::parse(revision.as_str().to_owned())
                 .expect("stored connection revision is valid"),
         )
     })
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    upsert_current_diagnostic_finding(runtime_home, &finding)?;
+    let finding = CurrentDiagnosticFinding::try_new(key, snapshot)
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let finding_id = finding.id().clone();
+    upsert_current_snapshot(runtime_home, &finding)?;
     Ok(finding_id)
 }
 
@@ -540,39 +575,35 @@ pub(crate) fn connection_operational_finding_id(
     diagnostic: OperationalDiagnostic,
     subject: &DiagnosticSubject,
 ) -> Result<DiagnosticFindingId, ConnectionCommandError> {
-    current_operational_finding_id(
-        &connection.connection_internal_id,
-        diagnostic.code(),
-        subject,
-    )
+    connection_operational_key(connection, diagnostic, subject).map(|key| key.finding_id())
 }
 
-fn current_operational_finding_id(
-    connection_internal_id: &str,
-    diagnostic_code: &str,
+fn connection_operational_key(
+    connection: &volicord_store::agent_connections::AgentConnectionRecord,
+    diagnostic: OperationalDiagnostic,
     subject: &DiagnosticSubject,
-) -> Result<DiagnosticFindingId, ConnectionCommandError> {
-    let id_suffix = diagnostic_code.replace('.', "_");
-    let subject_digest = current_subject_identity_digest(subject);
-    DiagnosticFindingId::parse(format!(
-        "finding.{}.{}.{}",
-        connection_internal_id, id_suffix, subject_digest
-    ))
-    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+) -> Result<CurrentDiagnosticKey, ConnectionCommandError> {
+    operational_key_for_connection_id(&connection.connection_internal_id, diagnostic, subject)
 }
 
-fn current_subject_identity_digest(subject: &DiagnosticSubject) -> String {
-    let mut digest = Sha256::new();
-    digest.update(b"volicord.current-diagnostic-subject\0");
-    digest.update(subject.kind().as_bytes());
-    digest.update(b"\0");
-    digest.update(subject.reference().as_bytes());
-    let digest = digest.finalize();
-    let mut suffix = String::with_capacity(32);
-    for byte in digest.iter().take(16) {
-        suffix.push_str(&format!("{byte:02x}"));
-    }
-    suffix
+fn operational_key_for_connection_id(
+    connection_id: &str,
+    diagnostic: OperationalDiagnostic,
+    subject: &DiagnosticSubject,
+) -> Result<CurrentDiagnosticKey, ConnectionCommandError> {
+    Ok(CurrentDiagnosticKey::new(
+        DiagnosticScope::try_new(DiagnosticScopeKind::Connection, connection_id)
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticCode::parse(diagnostic.code())
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticDomain::parse(diagnostic.domain())
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticStage::parse(diagnostic.stage())
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticSource::parse("administrative_cli")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        subject.clone(),
+    ))
 }
 
 pub(crate) fn guard_artifact_kind(artifact: GuardManagedArtifact) -> String {
@@ -727,7 +758,7 @@ mod tests {
 
     #[test]
     fn current_operational_ids_are_subject_aware_bounded_and_path_opaque() {
-        let code = GuardDiagnostic::ManagedFileMissing.code();
+        let diagnostic = OperationalDiagnostic::Guard(GuardDiagnostic::ManagedFileMissing);
         let first = DiagnosticSubject::try_new(
             "guard_managed_artifact",
             "/private/work/product/.volicord/guard-a.json",
@@ -738,12 +769,18 @@ mod tests {
             "/private/work/product/.volicord/guard-b.json",
         )
         .expect("second subject");
-        let first_id = current_operational_finding_id("conn_0123456789abcdef", code, &first)
-            .expect("first finding id");
-        let repeated_id = current_operational_finding_id("conn_0123456789abcdef", code, &first)
-            .expect("repeated finding id");
-        let second_id = current_operational_finding_id("conn_0123456789abcdef", code, &second)
-            .expect("second finding id");
+        let first_id =
+            operational_key_for_connection_id("conn_0123456789abcdef", diagnostic, &first)
+                .expect("first key")
+                .finding_id();
+        let repeated_id =
+            operational_key_for_connection_id("conn_0123456789abcdef", diagnostic, &first)
+                .expect("repeated key")
+                .finding_id();
+        let second_id =
+            operational_key_for_connection_id("conn_0123456789abcdef", diagnostic, &second)
+                .expect("second key")
+                .finding_id();
 
         assert_eq!(first_id, repeated_id);
         assert_ne!(first_id, second_id);
@@ -760,11 +797,15 @@ mod tests {
 
     #[test]
     fn same_code_guard_phases_keep_exact_distinct_subjects() {
-        let code = GuardDiagnostic::RequiredPhaseNotObserved.code();
+        let diagnostic = OperationalDiagnostic::Guard(GuardDiagnostic::RequiredPhaseNotObserved);
         let pre_tool = DiagnosticSubject::try_new("guard_phase", "pre_tool").expect("phase");
         let post_tool = DiagnosticSubject::try_new("guard_phase", "post_tool").expect("phase");
-        let pre_id = current_operational_finding_id("conn_phase", code, &pre_tool).expect("id");
-        let post_id = current_operational_finding_id("conn_phase", code, &post_tool).expect("id");
+        let pre_id = operational_key_for_connection_id("conn_phase", diagnostic, &pre_tool)
+            .expect("key")
+            .finding_id();
+        let post_id = operational_key_for_connection_id("conn_phase", diagnostic, &post_tool)
+            .expect("key")
+            .finding_id();
 
         assert_ne!(pre_id, post_id);
         assert_eq!(pre_tool.reference(), "pre_tool");
@@ -826,17 +867,21 @@ mod tests {
 
         assert_ne!(pre_id, post_id);
         assert_eq!(pre_id, repeated_pre_id);
-        let pre = volicord_store::diagnostic_findings::diagnostic_finding(
+        let pre = volicord_store::diagnostic_findings::diagnostic_findings_by_ids(
             fixture.runtime_home_path(),
-            &pre_id,
+            std::slice::from_ref(&pre_id),
         )
         .expect("pre lookup")
+        .into_iter()
+        .next()
         .expect("pre finding");
-        let post = volicord_store::diagnostic_findings::diagnostic_finding(
+        let post = volicord_store::diagnostic_findings::diagnostic_findings_by_ids(
             fixture.runtime_home_path(),
-            &post_id,
+            std::slice::from_ref(&post_id),
         )
         .expect("post lookup")
+        .into_iter()
+        .next()
         .expect("post finding");
         assert_eq!(pre.subject().reference(), "pre_tool");
         assert_eq!(post.subject().reference(), "post_tool");
@@ -918,11 +963,13 @@ mod tests {
         .expect("changed revision finding");
 
         assert_eq!(first_id, repeated_id);
-        let current = volicord_store::diagnostic_findings::diagnostic_finding(
+        let current = volicord_store::diagnostic_findings::diagnostic_findings_by_ids(
             fixture.runtime_home_path(),
-            &first_id,
+            std::slice::from_ref(&first_id),
         )
         .expect("finding lookup")
+        .into_iter()
+        .next()
         .expect("finding");
         assert_eq!(
             current.facts().data()["expected_revision"],

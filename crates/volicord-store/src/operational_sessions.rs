@@ -5,15 +5,15 @@ use std::{path::Path, str::FromStr};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use volicord_types::{
     project_agent_session_id, validate_managed_host_native_session_id,
-    ConnectionIntegrationRevisionBasis, DiagnosticFinding, DurableIdGenerator, DurableIdKind,
-    IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource, RandomDurableIdGenerator,
-    UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
+    ConnectionIntegrationRevisionBasis, DurableIdGenerator, DurableIdKind, IntegrationRevision,
+    ManagedMcpClientInfo, McpRuntimeSessionSource, OccurrenceDiagnosticFinding,
+    RandomDurableIdGenerator, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::{
     agent_connections::{raw_agent_connection_record_from_conn, AgentConnectionRecord},
     bootstrap::raw_project_record_from_conn,
-    diagnostic_findings::insert_and_link_mcp_runtime_session_terminal_finding,
+    diagnostic_findings::insert_and_link_runtime_terminal_occurrence,
     sqlite::{
         begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
         registry_db_path,
@@ -725,7 +725,7 @@ pub fn record_mcp_verification_tool_observation(
 /// Atomically inserts and links one structured terminal finding.
 pub fn record_mcp_terminal_finding(
     runtime_home: impl AsRef<Path>,
-    finding: &DiagnosticFinding,
+    finding: &OccurrenceDiagnosticFinding,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     let runtime_session_id = finding
         .runtime_session_id()
@@ -733,7 +733,7 @@ pub fn record_mcp_terminal_finding(
         .ok_or_else(|| StoreError::InvalidInput {
             detail: "terminal finding requires runtime_session_id".to_owned(),
         })?;
-    insert_and_link_mcp_runtime_session_terminal_finding(&runtime_home, finding)?;
+    insert_and_link_runtime_terminal_occurrence(&runtime_home, finding)?;
     mcp_runtime_session(runtime_home, runtime_session_id)?.ok_or_else(|| StoreError::NotFound {
         entity: "mcp_runtime_session",
         id: runtime_session_id.to_owned(),

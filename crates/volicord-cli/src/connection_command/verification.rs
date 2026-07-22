@@ -13,8 +13,9 @@ use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
     diagnostic_findings::{
-        diagnostic_cause_chain, diagnostic_finding, diagnostic_root_cause_ids,
-        insert_diagnostic_finding,
+        bounded_diagnostic_graph_from_seeds, diagnostic_findings_by_ids,
+        diagnostic_occurrences_for_runtime_session, diagnostic_root_cause_ids,
+        insert_occurrence_finding,
     },
     guards::{guard_observation_summary, list_guard_installations},
     operational_sessions::{
@@ -44,7 +45,7 @@ use crate::host_integration::{
     HostAdapter, HostKind, HostPlan, HostScope,
 };
 use crate::operational_diagnostics::{
-    connection_operational_finding_id, guard_artifact_kind, operational_diagnostic_finding,
+    connection_operational_finding_id, guard_artifact_kind, operational_diagnostic_data,
     persist_connection_operational_finding, GuardDiagnostic, OperationalDiagnostic,
     OperationalDiagnosticFacts, RevisionDiagnostic, ToolVerificationDiagnostic, TrustDiagnostic,
 };
@@ -250,10 +251,10 @@ pub(in crate::connection_command) fn diagnostic_projection_for_connection(
         if findings.contains_key(&finding_id) {
             continue;
         }
-        if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
-            let chain = diagnostic_cause_chain(
+        if persisted_diagnostic_finding(runtime_home, &finding_id)?.is_some() {
+            let chain = bounded_diagnostic_graph_from_seeds(
                 runtime_home,
-                &finding_id,
+                std::slice::from_ref(&finding_id),
                 MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
             )?;
             for entry in chain.entries {
@@ -277,6 +278,29 @@ pub(in crate::connection_command) fn diagnostic_projection_for_connection(
         findings.into_values().collect(),
         connection_integration_revision(connection)?,
     ))
+}
+
+fn persisted_diagnostic_finding(
+    runtime_home: &Path,
+    finding_id: &DiagnosticFindingId,
+) -> Result<Option<DiagnosticFinding>, ConnectionCommandError> {
+    Ok(
+        diagnostic_findings_by_ids(runtime_home, std::slice::from_ref(finding_id))?
+            .into_iter()
+            .next(),
+    )
+}
+
+fn diagnostic_occurrence_for_runtime_code(
+    runtime_home: &Path,
+    runtime_session_id: &str,
+    code: &str,
+) -> Result<Option<volicord_types::OccurrenceDiagnosticFinding>, ConnectionCommandError> {
+    Ok(
+        diagnostic_occurrences_for_runtime_session(runtime_home, runtime_session_id)?
+            .into_iter()
+            .find(|finding| finding.data().code().as_str() == code),
+    )
 }
 
 #[derive(Serialize)]
@@ -410,19 +434,9 @@ fn persist_process_finding(
         .transpose()?
         .flatten();
     let observed_at = current_timestamp();
-    let finding_id = runtime.as_ref().map_or_else(
-        || {
-            format!(
-                "finding.process.{}",
-                observed_at.to_canonical_string().to_ascii_lowercase()
-            )
-        },
-        |runtime| format!("finding.{}.supervisor", runtime.runtime_session_id),
-    );
     let revision = connection_integration_revision(connection)?;
     let finding = failure
-        .to_diagnostic_finding(McpProcessDiagnosticContext {
-            finding_id,
+        .to_diagnostic_data(McpProcessDiagnosticContext {
             observed_at,
             connection_id: connection.connection_internal_id.clone(),
             integration_revision: revision,
@@ -450,10 +464,17 @@ fn persist_process_finding(
                 .and_then(|runtime| runtime.attempted_client_version.clone()),
         })
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    insert_diagnostic_finding(runtime_home, &finding)?;
+    let finding = volicord_types::OccurrenceDiagnosticFinding::try_new(
+        finding,
+        runtime
+            .as_ref()
+            .map(|runtime| AgentRuntimeSessionId::new(runtime.runtime_session_id.clone())),
+    )
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    volicord_store::diagnostic_findings::insert_occurrence_finding(runtime_home, &finding)?;
     Ok(McpPersistedDiagnostic {
         finding_id: finding.id().to_string(),
-        code: finding.code().to_string(),
+        code: finding.data().code().to_string(),
     })
 }
 
@@ -617,13 +638,18 @@ fn persist_host_boundary_findings(
                 .as_deref()
                 .is_some_and(|observed| observed != expected_tool_name)
     }) {
-        let finding_id = tool_designation_mismatch_finding_id(session)?;
-        if diagnostic_finding(runtime_home, &finding_id)?.is_none() {
-            let finding = operational_diagnostic_finding(
+        let existing = diagnostic_occurrence_for_runtime_code(
+            runtime_home,
+            &session.runtime_session_id,
+            ToolVerificationDiagnostic::DesignationMismatch.code(),
+        )?;
+        let finding_id = if let Some(existing) = existing {
+            existing.id()
+        } else {
+            let data = operational_diagnostic_data(
                 OperationalDiagnostic::ToolVerification(
                     ToolVerificationDiagnostic::DesignationMismatch,
                 ),
-                finding_id.to_string(),
                 "runtime_session",
                 &session.runtime_session_id,
                 &OperationalDiagnosticFacts {
@@ -633,37 +659,32 @@ fn persist_host_boundary_findings(
                 },
                 current_timestamp(),
             )
-            .and_then(|finding| {
-                finding
-                    .with_connection_id(AgentConnectionId::new(
-                        connection.connection_internal_id.clone(),
-                    ))?
-                    .with_runtime_session_id(AgentRuntimeSessionId::new(
-                        session.runtime_session_id.clone(),
-                    ))
+            .and_then(|data| {
+                data.with_connection_id(AgentConnectionId::new(
+                    connection.connection_internal_id.clone(),
+                ))
             })
-            .map(|finding| {
-                finding.with_integration_revision(
+            .map(|data| {
+                data.with_integration_revision(
                     IntegrationRevision::parse(session.connection_integration_revision.clone())
                         .expect("persisted runtime session revision is valid"),
                 )
             })
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-            insert_diagnostic_finding(runtime_home, &finding)?;
-        }
+            let finding = volicord_types::OccurrenceDiagnosticFinding::try_new(
+                data,
+                Some(AgentRuntimeSessionId::new(
+                    session.runtime_session_id.clone(),
+                )),
+            )
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+            let finding_id = finding.id();
+            insert_occurrence_finding(runtime_home, &finding)?;
+            finding_id
+        };
         findings.tool_round_trip.push(finding_id);
     }
     Ok(findings)
-}
-
-fn tool_designation_mismatch_finding_id(
-    session: &McpRuntimeSessionRecord,
-) -> Result<DiagnosticFindingId, ConnectionCommandError> {
-    DiagnosticFindingId::parse(format!(
-        "finding.{}.verification_tool_designation_mismatch",
-        session.runtime_session_id
-    ))
-    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
 
 fn managed_config_check(host: &Verification) -> Result<ConnectionCheck, ConnectionCommandError> {
@@ -1071,12 +1092,13 @@ fn persist_peer_path_mismatch_findings(
         if peer_version == path_version {
             continue;
         }
-        let finding_id = DiagnosticFindingId::parse(format!(
-            "finding.{}.peer_path_version_mismatch",
-            session.runtime_session_id
-        ))
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
+        if diagnostic_occurrence_for_runtime_code(
+            runtime_home,
+            &session.runtime_session_id,
+            "host.codex.peer_version_differs_from_path_probe",
+        )?
+        .is_some()
+        {
             continue;
         }
         let facts = DiagnosticFacts::project(&PeerPathMismatchFacts {
@@ -1092,8 +1114,7 @@ fn persist_peer_path_mismatch_findings(
             },
         })
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        let finding = DiagnosticFinding::try_new(
-            finding_id,
+        let data = volicord_types::DiagnosticFindingData::try_new(
             DiagnosticCode::parse("host.codex.peer_version_differs_from_path_probe")
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
             DiagnosticDomain::parse("host")
@@ -1108,23 +1129,26 @@ fn persist_peer_path_mismatch_findings(
             facts,
             current_timestamp(),
         )
-        .and_then(|finding| {
-            finding
-                .with_connection_id(AgentConnectionId::new(
-                    connection.connection_internal_id.clone(),
-                ))?
-                .with_runtime_session_id(AgentRuntimeSessionId::new(
-                    session.runtime_session_id.clone(),
-                ))
+        .and_then(|data| {
+            data.with_connection_id(AgentConnectionId::new(
+                connection.connection_internal_id.clone(),
+            ))
         })
-        .map(|finding| {
-            finding.with_integration_revision(
+        .map(|data| {
+            data.with_integration_revision(
                 IntegrationRevision::parse(session.connection_integration_revision.clone())
                     .expect("persisted runtime session has a validated integration revision"),
             )
         })
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        insert_diagnostic_finding(runtime_home, &finding)?;
+        let finding = volicord_types::OccurrenceDiagnosticFinding::try_new(
+            data,
+            Some(AgentRuntimeSessionId::new(
+                session.runtime_session_id.clone(),
+            )),
+        )
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        insert_occurrence_finding(runtime_home, &finding)?;
     }
     Ok(())
 }
@@ -1951,7 +1975,7 @@ fn finalize_check_graph(
         {
             let mut roots = BTreeSet::new();
             for finding_id in check.cause_finding_ids() {
-                if diagnostic_finding(runtime_home, finding_id)?.is_some() {
+                if persisted_diagnostic_finding(runtime_home, finding_id)?.is_some() {
                     roots.extend(diagnostic_root_cause_ids(
                         runtime_home,
                         std::slice::from_ref(finding_id),
@@ -2281,9 +2305,12 @@ pub(in crate::connection_command) fn current_status_report(
             && session.verification_tool_name.as_deref()
                 != Some(super::managed_host_round_trip_tool_name())
     }) {
-        let finding_id = tool_designation_mismatch_finding_id(session)?;
-        if diagnostic_finding(runtime_home, &finding_id)?.is_some() {
-            tool_round_trip_causes.push(finding_id);
+        if let Some(finding) = diagnostic_occurrence_for_runtime_code(
+            runtime_home,
+            &session.runtime_session_id,
+            ToolVerificationDiagnostic::DesignationMismatch.code(),
+        )? {
+            tool_round_trip_causes.push(finding.id());
         }
     }
     let managed_config_causes = host

@@ -2,10 +2,9 @@ use std::time::Duration;
 
 use serde::Serialize;
 use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, DiagnosticAction, DiagnosticCode, DiagnosticDomain,
-    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
-    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationRevision,
-    UtcTimestamp,
+    AgentConnectionId, DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource,
+    DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, IntegrationRevision, UtcTimestamp,
 };
 
 pub(super) const MAX_CAPTURED_STDERR_BYTES: usize = 2 * 1024;
@@ -457,10 +456,10 @@ impl McpProcessFailure {
         }
     }
 
-    pub fn to_diagnostic_finding(
+    pub fn to_diagnostic_data(
         &self,
         context: McpProcessDiagnosticContext,
-    ) -> Result<DiagnosticFinding, volicord_types::DiagnosticError> {
+    ) -> Result<DiagnosticFindingData, volicord_types::DiagnosticError> {
         let (io_detail, protocol_detail, json_rpc_error_code, missing_tools, stderr) = match self {
             Self::Spawn { io_detail, .. } => (Some(io_detail), None, None, &[][..], None),
             Self::PipeAcquisition {
@@ -541,8 +540,7 @@ impl McpProcessFailure {
             .runtime_session_id
             .as_deref()
             .unwrap_or(context.connection_id.as_str());
-        let mut finding = DiagnosticFinding::try_new(
-            DiagnosticFindingId::parse(context.finding_id)?,
+        let data = DiagnosticFindingData::try_new(
             DiagnosticCode::parse(self.diagnostic_code())?,
             DiagnosticDomain::parse(if self.diagnostic_code().starts_with("mcp.") {
                 "mcp"
@@ -568,11 +566,7 @@ impl McpProcessFailure {
         .with_actions(vec![self.recommended_action()?])?
         .with_connection_id(AgentConnectionId::new(context.connection_id))?
         .with_integration_revision(context.integration_revision);
-        if let Some(runtime_session_id) = context.runtime_session_id {
-            finding =
-                finding.with_runtime_session_id(AgentRuntimeSessionId::new(runtime_session_id))?;
-        }
-        Ok(finding)
+        Ok(data)
     }
 
     fn recommended_action(&self) -> Result<DiagnosticAction, volicord_types::DiagnosticError> {
@@ -657,7 +651,6 @@ impl McpProcessFailure {
 
 #[derive(Debug, Clone)]
 pub struct McpProcessDiagnosticContext {
-    pub finding_id: String,
     pub observed_at: UtcTimestamp,
     pub connection_id: String,
     pub integration_revision: IntegrationRevision,

@@ -2,15 +2,16 @@ use std::path::Path;
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use volicord_store::diagnostic_findings::{diagnostic_finding, insert_diagnostic_finding};
+use volicord_store::diagnostic_findings::{diagnostic_findings_by_ids, insert_occurrence_finding};
 use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
     ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
     ConnectionVerificationReport, DiagnosticAction, DiagnosticCode, DiagnosticDomain,
-    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
-    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationRevision,
-    UtcTimestamp, MAX_DIAGNOSTIC_FACT_BYTES, MAX_DIAGNOSTIC_FACT_STRING_BYTES,
+    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingData,
+    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    IntegrationRevision, OccurrenceDiagnosticFinding, UtcTimestamp, MAX_DIAGNOSTIC_FACT_BYTES,
+    MAX_DIAGNOSTIC_FACT_STRING_BYTES,
 };
 
 use super::{render_command_report, CommandConnection, CommandOperation, ConnectionCommandReport};
@@ -147,6 +148,23 @@ fn matrix_finding(
             .unwrap(),
         None => finding,
     }
+}
+
+fn matrix_occurrence(finding: &DiagnosticFinding) -> OccurrenceDiagnosticFinding {
+    let data = DiagnosticFindingData::try_new(
+        finding.code().clone(),
+        finding.domain().clone(),
+        finding.stage().clone(),
+        finding.severity(),
+        finding.source().clone(),
+        finding.subject().clone(),
+        finding.facts().clone(),
+        finding.observed_at().clone(),
+    )
+    .and_then(|data| data.with_causes(finding.causes().to_vec()))
+    .and_then(|data| data.with_actions(finding.actions().to_vec()))
+    .expect("matrix occurrence data");
+    OccurrenceDiagnosticFinding::try_new(data, None).expect("matrix occurrence")
 }
 
 #[derive(Clone, Copy)]
@@ -865,7 +883,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
 
     let fixture = CoreFixture::new("diagnostic-failure-matrix").unwrap();
     for scenario in scenarios {
-        let id = format!("finding.matrix.{}", scenario.name);
+        let mut id = format!("finding.matrix.{}", scenario.name);
         let mut facts = ProjectionFacts::actual_expected(
             "the typed diagnostic matrix scenario was observed",
             scenario.name,
@@ -885,10 +903,17 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             },
             scenario.finding_action,
         );
-        insert_diagnostic_finding(fixture.runtime_home_path(), &root).unwrap();
+        let occurrence = matrix_occurrence(&root);
+        let root = occurrence.to_diagnostic_finding();
+        id = root.id().to_string();
+        insert_occurrence_finding(fixture.runtime_home_path(), &occurrence).unwrap();
         assert_eq!(
-            diagnostic_finding(fixture.runtime_home_path(), root.id()).unwrap(),
-            Some(root.clone()),
+            diagnostic_findings_by_ids(
+                fixture.runtime_home_path(),
+                std::slice::from_ref(root.id()),
+            )
+            .unwrap(),
+            vec![root.clone()],
             "{} did not round-trip through Registry persistence",
             scenario.name
         );

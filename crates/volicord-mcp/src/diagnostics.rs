@@ -4,8 +4,8 @@ use crate::{
 };
 use volicord_types::{
     DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
-    DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-    DiagnosticSubject, IntegrationRevision,
+    DiagnosticFinding, DiagnosticFindingData, DiagnosticFindingId, DiagnosticSeverity,
+    DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationRevision,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -389,7 +389,6 @@ impl McpDiagnostic {
 
 #[derive(Debug, Clone)]
 pub(crate) struct McpDiagnosticContext {
-    pub(crate) finding_id: String,
     pub(crate) observed_at: UtcTimestamp,
     pub(crate) connection_id: Option<String>,
     pub(crate) integration_revision: Option<String>,
@@ -426,8 +425,20 @@ impl DiagnosticFactSource for McpDiagnosticFacts<'_> {}
 
 pub(crate) fn finding_for_diagnostic(
     diagnostic: McpDiagnostic,
+    finding_id: impl Into<String>,
     context: McpDiagnosticContext,
 ) -> Result<DiagnosticFinding, volicord_types::DiagnosticError> {
+    let data = data_for_diagnostic(diagnostic, &context)?;
+    Ok(data.to_read_projection(
+        DiagnosticFindingId::parse(finding_id)?,
+        context.runtime_session_id.map(AgentRuntimeSessionId::new),
+    ))
+}
+
+pub(crate) fn data_for_diagnostic(
+    diagnostic: McpDiagnostic,
+    context: &McpDiagnosticContext,
+) -> Result<DiagnosticFindingData, volicord_types::DiagnosticError> {
     let facts = DiagnosticFacts::project(&McpDiagnosticFacts {
         summary: diagnostic.safe_summary(),
         requested_revision: &context.requested_revision,
@@ -455,8 +466,7 @@ pub(crate) fn finding_for_diagnostic(
         "operation"
     };
     let (action_code, action_summary) = diagnostic.recommended_action();
-    let mut finding = DiagnosticFinding::try_new(
-        DiagnosticFindingId::parse(context.finding_id)?,
+    let mut data = DiagnosticFindingData::try_new(
         DiagnosticCode::parse(diagnostic.code())?,
         DiagnosticDomain::parse(match diagnostic {
             McpDiagnostic::Host(_) => "host",
@@ -468,26 +478,22 @@ pub(crate) fn finding_for_diagnostic(
         DiagnosticSource::parse("mcp_stdio")?,
         DiagnosticSubject::try_new(subject_kind, subject_reference)?,
         facts,
-        context.observed_at,
+        context.observed_at.clone(),
     )?
     .with_actions(vec![DiagnosticAction::try_new(
         DiagnosticCode::parse(action_code)?,
         action_summary,
     )?])?;
-    if let Some(connection_id) = context.connection_id {
-        finding = finding.with_connection_id(AgentConnectionId::new(connection_id))?;
+    if let Some(connection_id) = &context.connection_id {
+        data = data.with_connection_id(AgentConnectionId::new(connection_id.clone()))?;
     }
-    if let Some(runtime_session_id) = context.runtime_session_id {
-        finding =
-            finding.with_runtime_session_id(AgentRuntimeSessionId::new(runtime_session_id))?;
-    }
-    if let Some(revision) = context.integration_revision {
-        finding = finding.with_integration_revision(
-            IntegrationRevision::parse(revision)
+    if let Some(revision) = &context.integration_revision {
+        data = data.with_integration_revision(
+            IntegrationRevision::parse(revision.clone())
                 .map_err(|_| diagnostic_model_error("invalid integration revision"))?,
         );
     }
-    Ok(finding)
+    Ok(data)
 }
 
 fn diagnostic_model_error(message: &str) -> volicord_types::DiagnosticError {
@@ -522,8 +528,8 @@ fn bootstrap_envelope_for_diagnostic(
 ) -> Result<String, volicord_types::DiagnosticError> {
     let finding = finding_for_diagnostic(
         diagnostic,
+        "finding.mcp.bootstrap",
         McpDiagnosticContext {
-            finding_id: "finding.mcp.bootstrap".to_owned(),
             observed_at,
             connection_id: None,
             integration_revision: None,
@@ -601,8 +607,8 @@ mod tests {
     fn codex_2025_06_18_failure_facts_identify_unsupported_version_without_prose() {
         let finding = finding_for_diagnostic(
             McpDiagnostic::Protocol(McpProtocolDiagnostic::UnsupportedVersion),
+            "finding.runtime_test.unsupported",
             McpDiagnosticContext {
-                finding_id: "finding.runtime_test.unsupported".to_owned(),
                 observed_at: UtcTimestamp::parse("2026-07-22T01:02:03Z").unwrap(),
                 connection_id: Some("connection_test".to_owned()),
                 integration_revision: None,

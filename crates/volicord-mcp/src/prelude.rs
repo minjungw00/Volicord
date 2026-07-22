@@ -33,7 +33,7 @@ pub(crate) use volicord_store::{
         runtime_home_record_read_only, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
-    diagnostic_findings::insert_diagnostic_finding,
+    diagnostic_findings::insert_occurrence_finding,
     diagnostics::{
         record_diagnostic_event, record_workflow_metric_event, start_diagnostic_session,
         DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
@@ -77,15 +77,15 @@ pub(crate) use volicord_types::{
     McpRuntimeSessionSource, McpStageArtifactArguments, McpStageArtifactCompactResult,
     McpStatusArguments, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
     McpToolIssueCode, McpUpdateScopeArguments, MethodName, MethodOperationCategory,
-    MutationDetailLevel, NextActionSummary, OperationCategory, OperationResultRef,
-    PrepareEvidenceCaptureRequest, PrepareEvidenceCaptureResult, PrepareWriteRequest,
-    PrepareWriteResult, ProjectId, ReconcileChangesRequest, ReconcileChangesResult, RecordId,
-    RecordRunRequest, RecordRunResult, RequestId, RequestUserActionRequest,
-    RequestUserActionResponse, RequestUserActionResult, RequiredNullable, StageArtifactRequest,
-    StageArtifactResult, StateRecordKind, StateRecordRef, StatusDetailLevel, StatusRequest, TaskId,
-    ToolEnvelope, ToolResultBase, UpdateScopeRequest, UserActionRequestId, UserActionStatus,
-    UtcTimestamp, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES,
-    MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
+    MutationDetailLevel, NextActionSummary, OccurrenceDiagnosticFinding, OperationCategory,
+    OperationResultRef, PrepareEvidenceCaptureRequest, PrepareEvidenceCaptureResult,
+    PrepareWriteRequest, PrepareWriteResult, ProjectId, ReconcileChangesRequest,
+    ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult, RequestId,
+    RequestUserActionRequest, RequestUserActionResponse, RequestUserActionResult, RequiredNullable,
+    StageArtifactRequest, StageArtifactResult, StateRecordKind, StateRecordRef, StatusDetailLevel,
+    StatusRequest, TaskId, ToolEnvelope, ToolResultBase, UpdateScopeRequest, UserActionRequestId,
+    UserActionStatus, UtcTimestamp, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
 };
 
 pub(crate) use crate::constants::*;

@@ -63,21 +63,29 @@ verification basis, 권한 출처가 아닙니다.
 
 ## 구조화된 진단 Finding
 
-`diagnostic_findings`는 공유 typed `DiagnosticFinding` 모델을 Registry에 영속하는
-표현입니다. 각 row에는 안정적인 finding ID, namespaced code, domain, stage, severity,
-source, 한도가 있는 typed subject와 안전한 fact JSON, 한도가 있는 action, 선택적인
-correlation ID, 해당하는 Connection·project·runtime-session·integration-revision 좌표,
-정규 관찰 시각을 저장합니다. Store는 쓰기 transaction을 열기 전에 공유 type과 직렬화
-byte 한도를 검증합니다. 환경 dump, 원본 request, 제한 없는 stderr, credential, 한도 없는
-fact object는 저장하지 않습니다.
+`diagnostic_findings`는 두 lifecycle을 명시적으로 저장하며 `runtime_session_id`에서
+lifecycle을 추론하지 않습니다. 모든 row에는 `lifecycle`이 있고, current-state row에는
+전체 `current_identity_digest`, `diagnostic_scope_kind`, 완전한
+`diagnostic_scope_identity`, `current_state_status`, 선택적인 `resolved_at`도 있습니다.
+공유 column에는 namespaced code, domain, stage, severity, source, 한도가 있는 typed subject와
+안전한 fact JSON, 한도가 있는 action, 적용 가능한 correlation 좌표, 정규 관찰 시각을
+저장합니다. Store는 쓰기 transaction을 열기 전에 lifecycle type과 직렬화 byte 한도를
+검증합니다. 환경 dump, 원본 request, 제한 없는 stderr, credential, 한도 없는 fact object는
+저장하지 않습니다.
 
-Store는 두 finding lifecycle에 서로 다른 영속 경로를 제공합니다. Runtime, process,
-protocol 관찰을 포함한 발생형 finding은 insert-only graph 삽입을 사용합니다. 현재 상태
-운영 finding은 주체를 구분하는 안정적인 ID와 `upsert_current_diagnostic_finding`을
-사용합니다. 이 작업은 입력 또는 기존 runtime-session finding을 거부하고 immediate
-Registry transaction 하나에서 현재 row 데이터와 그 row에서 나가는 모든 cause edge를
-교체합니다. 검증, 원인 부재 또는 cycle 실패가 발생하면 row와 edge 교체를 모두 rollback해
-이전 snapshot을 보존합니다.
+`insert_occurrence_finding`과 `insert_occurrence_finding_graph`는
+`OccurrenceDiagnosticFinding`만 받아 생성된 opaque occurrence ID를 가진 불변 row를
+삽입합니다. `upsert_current_snapshot`은 `CurrentDiagnosticFinding`만 받고 완전한 key에서
+ID를 파생하며 저장된 identity field 전체를 비교한 뒤 snapshot field만 갱신합니다. 나가는
+cause를 원자적으로 교체하고 condition은 항상 active가 됩니다. 검증, 원인 부재, identity,
+cycle 실패가 발생하면 이전 snapshot을 보존합니다.
+
+`resolve_current_finding`은 `CurrentDiagnosticKey`로 row를 지정해 `resolved_at`을 기록하고
+action 및 나가는 cause를 비우며 facts와 마지막 관찰 snapshot data는 유지합니다.
+`active_current_findings_for_scope`는 active row만 반환합니다.
+`diagnostic_findings_by_ids`는 resolved projection도 반환할 수 있고, data를 반환하기 전에
+모든 current digest와 ID를 다시 계산합니다. 불일치는 persisted-data corruption입니다.
+Registry update trigger도 current identity column과 occurrence row를 보호합니다.
 
 `diagnostic_cause_edges`는 finding에서 원인 finding으로 향하는 edge 하나를 저장합니다.
 양쪽 끝은 기존 finding을 가리켜야 하고 composite primary key가 중복을 거부하며, insert
@@ -87,10 +95,10 @@ dangling edge를 남기지 않습니다. 원인 조회는 depth와 finding ID �
 넘는 요청 depth를 거부하며, 서로 다른 finding을 최대 128개 반환하고 선택한 depth 때문에
 추가 edge를 자른 경우 이를 표시합니다.
 
-Finding은 ID별, runtime session별, 정확한 현재 Connection integration revision별로 읽을
-수 있습니다. `runtime_session_id`가 있는 finding에는 해당 runtime의 Connection과
-integration revision도 있어야 합니다. 현재 Connection 조회는 이전 integration revision의
-finding을 현재 finding으로 해석하지 않습니다. 이 Registry finding은 `diagnostics.sqlite`의
+Finding은 명시적 ID별, runtime occurrence session별, 정확한 active current scope별로 읽을
+수 있습니다. Runtime과 상관된 occurrence에는 해당 runtime의 Connection과 integration
+revision도 있어야 합니다. 현재 Connection 편의 조회는 정확한 Connection scope를 현재
+integration revision으로 걸러냅니다. 이 Registry finding은 `diagnostics.sqlite`의
 한도가 있는 비권한 counter와 구분됩니다. 현재 Connection 보고서는 check가 명시적으로
 참조한 finding ID에서 시작해 한도가 있는 cause chain을 읽으며, 독립적인 현재 finding은
 해당 보고서 작업이 의도적으로 선택한 경우에만 포함합니다. 같은 revision에 저장된 모든

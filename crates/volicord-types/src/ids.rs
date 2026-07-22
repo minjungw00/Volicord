@@ -228,6 +228,8 @@ pub enum DurableIdKind {
     AgentSession,
     /// Store-generated MCP Runtime Session ids.
     McpRuntimeSession,
+    /// Producer-generated immutable diagnostic occurrence ids.
+    DiagnosticOccurrence,
     /// Store-generated physical Agent Connection integration-instance ids.
     ConnectionIntegrationInstance,
     /// Core-generated host-hook installation ids.
@@ -273,6 +275,7 @@ impl DurableIdKind {
             Self::Event => "evt_",
             Self::AgentSession => "session_",
             Self::McpRuntimeSession => "mcp_runtime_",
+            Self::DiagnosticOccurrence => "finding.occurrence_",
             Self::ConnectionIntegrationInstance => "connection_instance_",
             Self::GuardInstallation => "guard_installation_",
             Self::GuardEvent => "guard_event_",
@@ -304,6 +307,7 @@ impl fmt::Display for DurableIdKind {
             Self::Event => "event",
             Self::AgentSession => "agent_session",
             Self::McpRuntimeSession => "mcp_runtime_session",
+            Self::DiagnosticOccurrence => "diagnostic_occurrence",
             Self::ConnectionIntegrationInstance => "connection_integration_instance",
             Self::GuardInstallation => "guard_installation",
             Self::GuardEvent => "guard_event",

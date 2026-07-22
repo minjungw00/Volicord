@@ -275,6 +275,27 @@ CREATE TABLE diagnostic_findings (
     AND substr(finding_id, -1, 1) GLOB '[a-z0-9]'
     AND finding_id NOT GLOB '*[^a-z0-9_.:-]*'
   ),
+  lifecycle TEXT NOT NULL CHECK (lifecycle IN ('occurrence', 'current_state')),
+  current_identity_digest TEXT CHECK (
+    current_identity_digest IS NULL
+    OR (
+      length(current_identity_digest) = 64
+      AND current_identity_digest NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
+  diagnostic_scope_kind TEXT CHECK (
+    diagnostic_scope_kind IS NULL
+    OR diagnostic_scope_kind IN ('connection', 'project', 'runtime_home', 'installation', 'process')
+  ),
+  diagnostic_scope_identity TEXT CHECK (
+    diagnostic_scope_identity IS NULL
+    OR length(CAST(diagnostic_scope_identity AS BLOB)) BETWEEN 1 AND 1024
+  ),
+  current_state_status TEXT CHECK (
+    current_state_status IS NULL
+    OR current_state_status IN ('active', 'resolved')
+  ),
+  resolved_at TEXT,
   code TEXT NOT NULL CHECK (
     length(CAST(code AS BLOB)) BETWEEN 3 AND 192
     AND instr(code, '.') > 1
@@ -340,6 +361,29 @@ CREATE TABLE diagnostic_findings (
   CHECK (
     runtime_session_id IS NULL
     OR (connection_internal_id IS NOT NULL AND integration_revision IS NOT NULL)
+  ),
+  CHECK (
+    (
+      lifecycle = 'occurrence'
+      AND current_identity_digest IS NULL
+      AND diagnostic_scope_kind IS NULL
+      AND diagnostic_scope_identity IS NULL
+      AND current_state_status IS NULL
+      AND resolved_at IS NULL
+    )
+    OR (
+      lifecycle = 'current_state'
+      AND current_identity_digest IS NOT NULL
+      AND diagnostic_scope_kind IS NOT NULL
+      AND diagnostic_scope_identity IS NOT NULL
+      AND current_state_status IS NOT NULL
+      AND runtime_session_id IS NULL
+      AND finding_id = 'finding.current.sha256:' || current_identity_digest
+      AND (
+        (current_state_status = 'active' AND resolved_at IS NULL)
+        OR (current_state_status = 'resolved' AND resolved_at IS NOT NULL)
+      )
+    )
   )
 );
 
@@ -358,12 +402,15 @@ CREATE TABLE diagnostic_cause_edges (
 
 CREATE INDEX idx_diagnostic_findings_runtime_session
   ON diagnostic_findings (runtime_session_id, observed_at, finding_id)
-  WHERE runtime_session_id IS NOT NULL;
-CREATE INDEX idx_diagnostic_findings_current_connection
+  WHERE lifecycle = 'occurrence' AND runtime_session_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_diagnostic_findings_current_identity
+  ON diagnostic_findings (current_identity_digest)
+  WHERE lifecycle = 'current_state';
+CREATE INDEX idx_diagnostic_findings_active_current_scope
   ON diagnostic_findings (
-    connection_internal_id, integration_revision, observed_at, finding_id
+    diagnostic_scope_kind, diagnostic_scope_identity, observed_at, finding_id
   )
-  WHERE connection_internal_id IS NOT NULL AND integration_revision IS NOT NULL;
+  WHERE lifecycle = 'current_state' AND current_state_status = 'active';
 CREATE INDEX idx_diagnostic_findings_project
   ON diagnostic_findings (project_internal_id, observed_at, finding_id)
   WHERE project_internal_id IS NOT NULL;
@@ -385,6 +432,31 @@ BEGIN
     )
     SELECT 1 FROM causes WHERE finding_id = NEW.finding_id
   ) THEN RAISE(ABORT, 'diagnostic cause cycle') END;
+END;
+
+CREATE TRIGGER diagnostic_occurrence_findings_immutable
+BEFORE UPDATE ON diagnostic_findings
+WHEN OLD.lifecycle = 'occurrence'
+BEGIN
+  SELECT RAISE(ABORT, 'diagnostic occurrence findings are immutable');
+END;
+
+CREATE TRIGGER diagnostic_current_identity_immutable
+BEFORE UPDATE OF
+  finding_id,
+  lifecycle,
+  current_identity_digest,
+  diagnostic_scope_kind,
+  diagnostic_scope_identity,
+  code,
+  domain,
+  stage,
+  source,
+  subject_json
+ON diagnostic_findings
+WHEN OLD.lifecycle = 'current_state'
+BEGIN
+  SELECT RAISE(ABORT, 'diagnostic current identity is immutable');
 END;
 
 CREATE TABLE mcp_runtime_sessions (
@@ -552,7 +624,7 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_project
 - Integration generation은 물리 Connection instance 하나 안의 revision을 구분하고 `integration_instance_id`는 물리 삭제와 재생성을 구분합니다. 두 값은 Store 소유 로컬 lifecycle 및 상관관계 좌표이며 호출자가 선택할 수 없습니다.
 - `agent_connections.verification_report_json`은 완료된 보고서가 없으면 SQL null입니다. Null이 아닌 값은 파생 상태와 action을 포함하는 엄격한 정규 `ConnectionVerificationReport` 하나를 저장하며 값이 없는 선택 구성원은 명시적 null 대신 생략합니다. Store는 그 구성 요소를 독립적으로 영속 저장하지 않습니다.
 - `connection_projects`는 Agent Connection 하나에 대한 명시적 프로젝트 허용 목록입니다. `connection_internal_id`와 `project_internal_id`로 멤버십을 저장합니다. 아직 멤버십이 남은 프로젝트나 연결 삭제는 제한됩니다.
-- `diagnostic_findings`는 공유 typed finding 전체 형태를 엄격한 물리 column에 저장합니다. `facts_json`은 16,384 byte 이하의 유효한 JSON object이며 `subject_json`과 `actions_json`도 한도가 있는 typed 표현입니다. Runtime과 상관된 row에는 Connection과 integration-revision 좌표가 필요하며 현재 상태 upsert로 변경할 수 없습니다. Insert-only row는 발생형 finding을 나타내고, runtime에 속하지 않는 현재 상태 row는 주체를 구분하는 안정적인 ID 아래에서 교체할 수 있습니다. 현재 Connection 및 runtime-session index는 관찰 시각과 finding ID에 따른 결정적 순서를 제공합니다.
+- `diagnostic_findings.lifecycle`은 정확히 `occurrence` 또는 `current_state`입니다. Occurrence row에는 current identity 및 status field가 없고 변경할 수 없습니다. Current row에는 64자 소문자 전체 identity digest, scope kind와 완전한 scope identity, active/resolved status가 필요하고 runtime-session 좌표가 없어야 하며, ID는 정확히 `finding.current.sha256:`와 해당 digest를 이어 붙인 값이어야 합니다. Active row에는 `resolved_at`이 없고 resolved row에는 반드시 있어야 합니다. Unique digest index, active-scope index, lifecycle check, identity update trigger가 이 물리적 구분을 강제합니다. `facts_json`은 계속 16,384 byte 이하의 유효한 JSON object이며 `subject_json`과 `actions_json`도 한도가 있는 typed 표현입니다.
 - `diagnostic_cause_edges`는 양 끝에 foreign key가 있는 고유한 finding-to-cause 쌍을 저장합니다. `diagnostic_cause_edges_acyclic`은 방향성 cycle을 완성하는 insert를 거부하고, cause-side index는 결정적인 역방향 조회와 제한된 순회를 지원합니다. 현재 상태 finding을 교체할 때는 이전 outgoing edge를 삭제하고 대체 edge를 row 교체와 같은 immediate transaction에서 삽입하며, 실패하면 이전 row와 edge 집합을 보존합니다.
 - `mcp_runtime_sessions.attempted_client_name`과 `attempted_client_version`은 한도가 있는 파싱된 client 쌍입니다. `requested_protocol_version`은 client 입력이고 `selected_protocol_version`은 server가 선택한 initialize 결과이며, `negotiated_protocol_version`은 handshake 완료와 함께 있을 때만 존재하고 선택 revision과 같아야 합니다. `initialize_completed_at`과 `tools_list_observed_at`은 서로 다른 milestone입니다. 한도가 있는 MCP 도구 이름 `verification_tool_name`과 `verification_tool_observed_at`은 정확한 null-or-present 쌍이며 observation에는 initialized notification이 필요하고 그보다 앞설 수 없습니다. `terminal_finding_id`는 같은 runtime의 구조화된 error finding 하나를 가리키는 foreign key이며 graceful close와 함께 있을 수 없습니다.
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase에 결속됩니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 모든 필수 phase의 호환되는 현재 소유 `guard_events`를 요구합니다. 이 협력적 check는 OS 수준 집행이나 쓰기 방지를 제공하지 않습니다.
