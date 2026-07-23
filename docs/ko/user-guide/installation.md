@@ -283,5 +283,21 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 `VOLICORD_HOME`을 호스트 시작 환경이 제공해야 합니다. 저장소에서 보이는 설정은 그
 값을 전달하며 머신 로컬 Runtime Home 경로를 내장하지 않습니다.
 
+Init이 `review_required_by_setup`을 보고하면 host에서 activation을 마칩니다.
+
+1. 해당 저장소에서 Codex를 restart 또는 reload합니다.
+2. Codex hook UI 또는 `/hooks`로 현재 프로젝트 hook definition을 review합니다.
+3. 새 conversation을 시작합니다.
+4. `Run the Volicord integration verification.`을 요청합니다.
+5. 현재 connection status를 읽습니다.
+
+In-chat agent는 `volicord.list_projects`,
+`volicord.begin_integration_verification`, 반환된 `volicord.guard_probe`,
+`volicord.get_integration_verification`을 이 순서로 사용해야 합니다. Tool이 노출되지
+않으면 managed MCP가 unavailable이라고 보고합니다. Raw stdio, 직접 작성한 Codex
+`_meta`, resource, resource template, CLI preflight를 proof로 대신하지 않습니다.
+`volicord connection verify`는 선택적인 diagnostic이며 host 소유 hook review나
+managed in-chat evidence를 대신하지 않습니다.
+
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../user-guide/agent-host-setup.md)을 봅니다.

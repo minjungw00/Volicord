@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn host_effect_preserves_canonical_action_kind_and_instruction() {
         let action = ConnectionAction::try_new(
-            ConnectionActionKind::InspectCodexProtocol,
+            ConnectionActionKind::InspectRuntimeSession,
             "Inspect the Codex protocol failure",
         )
         .expect("canonical host action");
@@ -395,7 +395,12 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&effect.actions[0]).expect("action JSON"),
             serde_json::json!({
-                "id": "inspect_codex_protocol",
+                "id": "inspect_runtime_session",
+                "owner": "agent",
+                "channel": "documentation",
+                "prerequisites": ["host_reload"],
+                "completes_checks": ["managed_capability_proof", "managed_session_health"],
+                "root_finding_ids": [],
                 "instruction": "Inspect the Codex protocol failure",
             })
         );

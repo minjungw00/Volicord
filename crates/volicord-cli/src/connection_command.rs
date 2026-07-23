@@ -1880,22 +1880,13 @@ mod persisted_metadata_tests {
                 .and_then(|finding| finding["id"].as_str())
                 .expect("current typed finding")
         };
-        let guard_root = finding_id_for_code("guard.manifest.mismatch");
+        let _guard_root = finding_id_for_code("guard.manifest.mismatch");
         let managed_config_root = finding_id_for_code("managed_config.entry.missing");
+        assert_eq!(output["actions"].as_array().map(Vec::len), Some(1));
+        assert_eq!(output["actions"][0]["id"], "repair_managed_configuration");
         assert_eq!(
-            output["actions"],
-            serde_json::json!([
-                {
-                    "code": "action.guard.repair",
-                    "summary": "Repair the current Guard installation",
-                    "root_cause_ids": [guard_root]
-                },
-                {
-                    "code": "action.managed_config.repair",
-                    "summary": "Repair the managed host configuration",
-                    "root_cause_ids": [managed_config_root]
-                }
-            ])
+            output["actions"][0]["root_cause_ids"],
+            serde_json::json!([managed_config_root])
         );
         Ok(())
     }

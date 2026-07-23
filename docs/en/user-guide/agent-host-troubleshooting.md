@@ -131,6 +131,26 @@ identifiers. Never select a repository by scanning neighboring directories.
 Keep the scope selector consistent. A shared connection must use `--shared` on
 `init`, `status`, `verify`, and `remove`; a personal connection omits it.
 
+## Read The Activation State First
+
+Use `activation_state` to choose the stage, then read
+`hook_activation_state` without turning missing evidence into a trust claim:
+
+| State | Next typed action |
+|---|---|
+| `configured` or `host_reload_required` | `reload_host` |
+| `hook_review_required_or_unknown` with setup change | `review_hooks` |
+| `hook_review_required_or_unknown` with explicit disabled/incompatible evidence | `inspect_hook_contract` |
+| `mcp_observation_required` | `run_mcp_verification` or `inspect_runtime_session` when the latest attempt failed |
+| `guard_verification_required` | `run_guard_probe` |
+| `failed` managed configuration | `repair_managed_configuration` or `reinstall_current_build` as reported |
+
+`unknown` means hook activation has not been established. It does not mean
+untrusted or disabled. `project_trust` is a separate check and applies only
+when the host exposes that concern. Compare `latest_attempt` and
+`latest_complete_proof` by their roles, keep the verification ID, and report
+actual MCP peer information separately from the PATH executable probe.
+
 ## `action_required`
 
 `action_required` is a structured next step, not an unexplained success or
@@ -214,8 +234,8 @@ generation. In all three cases, retain `attempted_client_name` and
 `attempted_client_version` and use
 `action.mcp.use_supported_protocol_revision`. With no older complete proof,
 ordinary concise output shows the applicable bounded facts, failed
-`required_tools`, and blocked `tool_round_trip` check. In verbose output, keep
-requested, selected, and
+`managed_session_health`, and blocked `managed_capability_proof` check. In
+verbose output, keep requested, selected, and
 negotiated revisions distinct, and keep actual MCP peer `clientInfo` distinct
 from the PATH executable probe.
 
@@ -228,10 +248,11 @@ negotiation facts are owned by [MCP Transport](../reference/mcp-transport.md).
 
 For `mcp.tool_verification.designation_mismatch`, compare only
 `facts.data.expected_tool_name` with `facts.data.observed_tool_name`. Then run
-the expected tool through the current managed Codex connection. The current
-expected tool is `volicord.list_projects`; a successful call to another
-read-only tool such as `volicord.status`, `volicord.get_operation_result`, or
-`volicord.check_close` does not satisfy managed-host round-trip verification.
+the canonical in-chat sequence through the current managed Codex connection.
+Its first tool is `volicord.list_projects`; a successful isolated call to
+another read-only tool such as `volicord.status`,
+`volicord.get_operation_result`, or `volicord.check_close` does not satisfy
+managed-host capability and Guard verification.
 
 If `managed_peer.client_info.version` differs from
 `host_executable_probe.version`, first confirm which Codex process and PATH are
@@ -242,12 +263,14 @@ do not replace one version with the other when reporting it.
 
 Stay in the same current managed Codex chat and native turn:
 
-1. Call `volicord.begin_integration_verification`, supplying
+1. For `Run the Volicord integration verification.`, call
+   `volicord.list_projects` and select the exact project.
+2. Call `volicord.begin_integration_verification`, supplying
    `project_selector` only when the Connection has more than one eligible
    project.
-2. Copy the returned `verification_id` into the returned
+3. Copy the returned `verification_id` into the returned
    `volicord.guard_probe` call.
-3. Call `volicord.get_integration_verification` with that same ID.
+4. Call `volicord.get_integration_verification` with that same ID.
 
 A passing result shows `status=passed` and matched prompt, pre-tool, and
 post-tool phases. If it remains `active`, follow `next_action` before the
@@ -261,14 +284,19 @@ state first. Volicord reports trust requirements but does not click, edit,
 approve, automate, or bypass Codex trust controls. Do not modify MCP trust
 configuration to force this check.
 
+If Volicord tools are absent, report the managed MCP connection unavailable.
+Do not start raw stdio, hand-author Codex `_meta`, or treat MCP resources,
+resource templates, `connection verify`, or CLI preflight as proof that the
+managed host exposed tools.
+
 ## Codex Loaded No Tools
 
-Confirm that Codex trusts the exact project and has reloaded the current
-`.codex/config.toml`. Check that the managed command points to the intended
-`volicord` binary and Runtime Home. Then run the current canonical verification
-tool, `volicord.list_projects`, from the Codex tool list and perform
-administrative verification again. Another read-only tool can help diagnose
-the connection but does not create the designated round-trip evidence.
+If the separate `project_trust` check applies, complete that host-owned action.
+In every case, confirm that Codex reloaded current `.codex/config.toml` and that
+the managed command points to the intended `volicord` binary and Runtime Home.
+Then issue the canonical verification request in a new conversation. Another
+read-only tool can help diagnose the connection but does not create the
+complete managed and Guard evidence.
 
 Configuration presence does not prove active tool discovery. If the current
 session still has no tools, preserve the diagnostics and start a fresh Codex

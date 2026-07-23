@@ -133,10 +133,84 @@ fn test_host_session_checks(
 }
 
 fn check_for(checks: &[ConnectionCheck], id: ConnectionCheckKind) -> &ConnectionCheck {
+    let id = match id {
+        ConnectionCheckKind::ProcessStartup => ConnectionCheckKind::HostReload,
+        ConnectionCheckKind::HostSession => ConnectionCheckKind::ManagedSessionHealth,
+        ConnectionCheckKind::RequiredTools | ConnectionCheckKind::ToolRoundTrip => {
+            ConnectionCheckKind::ManagedCapabilityProof
+        }
+        ConnectionCheckKind::GuardFiles | ConnectionCheckKind::GuardObservation => {
+            ConnectionCheckKind::GuardHookExecution
+        }
+        id => id,
+    };
     checks
         .iter()
         .find(|check| check.id() == id)
         .expect("expected connection check")
+}
+
+#[test]
+fn changed_hook_definition_resets_activation_to_the_host_owned_workflow() {
+    let passed = |id, details| {
+        canonical_check(
+            id,
+            ConnectionCheckStatus::Passed,
+            "passed",
+            "passed",
+            details,
+            Some("2026-07-18T00:00:00Z"),
+        )
+        .unwrap()
+    };
+    let current = ConnectionVerificationReport::try_new(
+        current_timestamp(),
+        vec![
+            passed(ConnectionCheckKind::ManagedConfig, None),
+            passed(ConnectionCheckKind::HostReload, None),
+            passed(
+                ConnectionCheckKind::HookSourceActivation,
+                Some(json!({"activation_state": "effective_by_observation"})),
+            ),
+            passed(ConnectionCheckKind::ManagedSessionHealth, None),
+            passed(ConnectionCheckKind::ManagedCapabilityProof, None),
+            passed(ConnectionCheckKind::GuardHookExecution, None),
+            passed(ConnectionCheckKind::GuardVerification, None),
+        ],
+        Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        current.hook_activation_state(),
+        HookActivationState::EffectiveByObservation
+    );
+    assert!(!current
+        .actions()
+        .iter()
+        .any(|action| action.id() == ConnectionActionKind::ReviewHooks));
+
+    let changed = report_with_hook_review_required(&current).unwrap();
+    assert_eq!(
+        changed.hook_activation_state(),
+        HookActivationState::ReviewRequiredBySetup
+    );
+    assert_eq!(
+        changed.activation_state(),
+        volicord_types::ConnectionActivationState::HostReloadRequired
+    );
+    assert_eq!(
+        changed
+            .actions()
+            .iter()
+            .map(ConnectionAction::id)
+            .collect::<Vec<_>>(),
+        vec![
+            ConnectionActionKind::ReloadHost,
+            ConnectionActionKind::ReviewHooks,
+            ConnectionActionKind::RunGuardProbe,
+            ConnectionActionKind::RunMcpVerification,
+        ]
+    );
 }
 
 #[test]
@@ -363,11 +437,11 @@ fn latest_attempt_health_is_not_hidden_by_an_older_complete_proof() {
     );
     assert_eq!(
         check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
-        ConnectionCheckStatus::Passed
+        ConnectionCheckStatus::Blocked
     );
     assert_eq!(
         check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
-        ConnectionCheckStatus::Passed
+        ConnectionCheckStatus::Blocked
     );
 }
 
@@ -445,7 +519,7 @@ fn managed_config_failure_blocks_process_and_protocol_checks() {
         )
         .unwrap(),
         canonical_check(
-            ConnectionCheckKind::ProcessStartup,
+            ConnectionCheckKind::HostReload,
             ConnectionCheckStatus::Pending,
             "process_startup_not_observed",
             "Process startup has not been observed",
@@ -454,7 +528,7 @@ fn managed_config_failure_blocks_process_and_protocol_checks() {
         )
         .unwrap(),
         canonical_check(
-            ConnectionCheckKind::HostSession,
+            ConnectionCheckKind::ManagedSessionHealth,
             ConnectionCheckStatus::Pending,
             "host_session_not_observed",
             "Initialize has not been observed",
@@ -463,19 +537,10 @@ fn managed_config_failure_blocks_process_and_protocol_checks() {
         )
         .unwrap(),
         canonical_check(
-            ConnectionCheckKind::RequiredTools,
+            ConnectionCheckKind::ManagedCapabilityProof,
             ConnectionCheckStatus::Pending,
             "required_tools_not_observed",
             "Tools have not been observed",
-            None,
-            None,
-        )
-        .unwrap(),
-        canonical_check(
-            ConnectionCheckKind::ToolRoundTrip,
-            ConnectionCheckStatus::Pending,
-            "tool_round_trip_not_observed",
-            "Tool call has not been observed",
             None,
             None,
         )
@@ -496,22 +561,17 @@ fn managed_config_failure_blocks_process_and_protocol_checks() {
         assert_eq!(check.status(), ConnectionCheckStatus::Blocked);
         assert_eq!(check.cause_finding_ids(), std::slice::from_ref(&root));
     }
-    for id in [
-        ConnectionCheckKind::RequiredTools,
-        ConnectionCheckKind::ToolRoundTrip,
-    ] {
-        assert_eq!(
-            check_for(&checks, id).status(),
-            ConnectionCheckStatus::Pending
-        );
-    }
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::ManagedCapabilityProof).status(),
+        ConnectionCheckStatus::Blocked
+    );
     assert_eq!(
         actions_for_checks(&checks)
             .unwrap()
             .iter()
             .map(ConnectionAction::id)
             .collect::<Vec<_>>(),
-        vec![ConnectionActionKind::RepairManagedConfig]
+        vec![ConnectionActionKind::RepairManagedConfiguration]
     );
 }
 
@@ -520,11 +580,11 @@ fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
     let root = DiagnosticFindingId::parse("finding.guard_file_failure").unwrap();
     let checks = block_failed_dependencies(vec![
         canonical_check(
-            ConnectionCheckKind::GuardFiles,
+            ConnectionCheckKind::HookSourceActivation,
             ConnectionCheckStatus::Failed,
-            "guard_files_failed",
-            "Guard file integrity failed",
-            None,
+            "hook_source_contract_failed",
+            "Hook source contract failed",
+            Some(json!({"activation_state": "disabled"})),
             None,
         )
         .unwrap()
@@ -540,10 +600,10 @@ fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
         )
         .unwrap(),
         canonical_check(
-            ConnectionCheckKind::GuardObservation,
+            ConnectionCheckKind::GuardVerification,
             ConnectionCheckStatus::Pending,
-            "guard_observation_pending",
-            "Guard phases are not observed",
+            "guard_verification_pending",
+            "Guard correlation is not verified",
             None,
             None,
         )
@@ -556,7 +616,7 @@ fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
         ConnectionCheckStatus::Blocked
     );
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::GuardObservation).status(),
+        check_for(&checks, ConnectionCheckKind::GuardVerification).status(),
         ConnectionCheckStatus::Blocked
     );
     assert_eq!(
@@ -565,7 +625,7 @@ fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
             .iter()
             .map(ConnectionAction::id)
             .collect::<Vec<_>>(),
-        vec![ConnectionActionKind::RepairGuard]
+        vec![ConnectionActionKind::InspectHookContract]
     );
 }
 
@@ -590,19 +650,16 @@ fn actual_current_protocol_incompatibility_fails_only_demonstrated_checks() {
         ConnectionCheckStatus::Failed
     );
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
-        ConnectionCheckStatus::Failed
+        check_for(&checks, ConnectionCheckKind::ManagedCapabilityProof).status(),
+        ConnectionCheckStatus::Blocked,
     );
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
-        ConnectionCheckStatus::Blocked
-    );
-    assert_eq!(
-        serde_json::to_value(actions_for_checks(&checks).expect("protocol action")).unwrap(),
-        json!([{
-            "id": "inspect_codex_protocol",
-            "instruction": "Inspect the recorded Codex protocol failure, repair the incompatible configuration or behavior, then verify again",
-        }])
+        actions_for_checks(&checks)
+            .expect("protocol action")
+            .iter()
+            .map(ConnectionAction::id)
+            .collect::<Vec<_>>(),
+        vec![ConnectionActionKind::InspectRuntimeSession]
     );
 }
 
@@ -635,7 +692,7 @@ fn initialize_failure_blocks_tools_list_and_tool_round_trip() {
         ConnectionCheckStatus::Failed
     );
     let required = check_for(&checks, ConnectionCheckKind::RequiredTools);
-    assert_eq!(required.status(), ConnectionCheckStatus::Failed);
+    assert_eq!(required.status(), ConnectionCheckStatus::Blocked);
     assert_eq!(
         required.cause_finding_ids(),
         &[DiagnosticFindingId::parse("finding.initialize_failed").unwrap()]
@@ -673,12 +730,8 @@ fn tool_discovery_failure_blocks_the_tool_call() {
         ConnectionCheckStatus::Failed
     );
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
-        ConnectionCheckStatus::Failed
-    );
-    assert_eq!(
-        check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
-        ConnectionCheckStatus::Blocked
+        check_for(&checks, ConnectionCheckKind::ManagedCapabilityProof).status(),
+        ConnectionCheckStatus::Blocked,
     );
 }
 
@@ -717,7 +770,10 @@ fn successful_cli_self_test_without_host_observation_is_action_required() {
             .iter()
             .map(ConnectionAction::id)
             .collect::<Vec<_>>(),
-        vec![ConnectionActionKind::ObserveCodex]
+        vec![
+            ConnectionActionKind::ReloadHost,
+            ConnectionActionKind::RunMcpVerification,
+        ]
     );
 }
 
@@ -793,9 +849,8 @@ fn aggregation_and_actions_are_deterministic() {
     assert_eq!(
         first.iter().map(ConnectionAction::id).collect::<Vec<_>>(),
         vec![
-            ConnectionActionKind::InstallOrRepairCodex,
-            ConnectionActionKind::RepairGuard,
-            ConnectionActionKind::RepairManagedConfig,
+            ConnectionActionKind::ReinstallCurrentBuild,
+            ConnectionActionKind::RepairManagedConfiguration,
         ]
     );
     let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, first.clone())

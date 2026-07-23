@@ -481,7 +481,11 @@ pub(crate) fn upsert_guard_installation_in_transaction(
             connection_internal_id = excluded.connection_internal_id,
             project_internal_id = excluded.project_internal_id,
             manifest_json = excluded.manifest_json,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            updated_at = CASE
+                WHEN guard_installations.manifest_json <> excluded.manifest_json
+                THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ELSE guard_installations.updated_at
+            END",
         params![
             &input.guard_installation_id,
             runtime_home_id,
@@ -2228,6 +2232,16 @@ pub fn guard_observation_summary(
             AND guard_installation_id = ?3
             AND policy_hash = ?4
             AND integration_revision = ?5
+            AND (
+              volicord_utc_seconds(occurred_at)
+                  > volicord_utc_seconds(?6)
+              OR (
+                volicord_utc_seconds(occurred_at)
+                    = volicord_utc_seconds(?6)
+                AND volicord_utc_subsec_nanos(occurred_at)
+                    >= volicord_utc_subsec_nanos(?6)
+              )
+            )
           ORDER BY volicord_utc_seconds(occurred_at),
                    volicord_utc_subsec_nanos(occurred_at),
                    guard_event_id",
@@ -2239,6 +2253,7 @@ pub fn guard_observation_summary(
             installation.guard_installation_id,
             manifest.policy_hash.as_str(),
             manifest.integration_revision.as_str(),
+            installation.updated_at,
         ],
         |row| {
             Ok((
@@ -4869,7 +4884,7 @@ mod tests {
                     connection_internal_id: "conn_guard_a".to_owned(),
                     guard_installation_id: Some("guard_installation_a".to_owned()),
                     correlation: correlation.clone(),
-                    observed_at: "2026-07-18T00:00:00Z".to_owned(),
+                    observed_at: "2000-01-02T00:00:00Z".to_owned(),
                 },
             )?;
             insert_guard_event(
@@ -4887,13 +4902,21 @@ mod tests {
                     decision: "allow".to_owned(),
                     subject_json: "{}".to_owned(),
                     result_json: "{}".to_owned(),
-                    occurred_at: "2026-07-18T00:00:00Z".to_owned(),
+                    occurred_at: "2000-01-02T00:00:00Z".to_owned(),
                     metadata_json: "{}".to_owned(),
                 },
             )
         };
 
         let old = upsert(OLD_POLICY_HASH)?;
+        open_registry_database(registry_db_path(fixture.runtime_home.path()))?.execute(
+            "UPDATE guard_installations
+                SET updated_at = '2000-01-01T00:00:00Z'
+              WHERE guard_installation_id = 'guard_installation_a'",
+            [],
+        )?;
+        let old = guard_installation(fixture.runtime_home.path(), &old.guard_installation_id)?
+            .expect("guard installation after timestamp fixture setup");
         for phase in GuardHookPhase::REQUIRED {
             insert_phase(
                 OLD_POLICY_HASH,
@@ -4906,12 +4929,29 @@ mod tests {
             guard_observation_summary(fixture.runtime_home.path(), "project_guard_a", &old,)?
                 .all_required_phases_observed()
         );
+        let unchanged = upsert(OLD_POLICY_HASH)?;
+        assert_eq!(unchanged.updated_at, old.updated_at);
+        assert!(guard_observation_summary(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            &unchanged,
+        )?
+        .all_required_phases_observed());
 
         let current = upsert(CURRENT_POLICY_HASH)?;
         let pending =
             guard_observation_summary(fixture.runtime_home.path(), "project_guard_a", &current)?;
         assert!(pending.observed_phases.is_empty());
         assert!(!pending.all_required_phases_observed());
+        open_registry_database(registry_db_path(fixture.runtime_home.path()))?.execute(
+            "UPDATE guard_installations
+                SET updated_at = '2000-01-01T00:00:00Z'
+              WHERE guard_installation_id = 'guard_installation_a'",
+            [],
+        )?;
+        let current =
+            guard_installation(fixture.runtime_home.path(), &current.guard_installation_id)?
+                .expect("current guard installation after timestamp fixture setup");
 
         for phase in GuardHookPhase::REQUIRED {
             insert_phase(
@@ -4941,6 +4981,30 @@ mod tests {
             ["guard_event_malformed_current"]
         );
         assert!(!failed.all_required_phases_observed());
+
+        let changed_manifest = current.manifest_json.replace(
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        );
+        assert_ne!(changed_manifest, current.manifest_json);
+        let changed_definition = upsert_guard_installation(
+            fixture.runtime_home.path(),
+            GuardInstallationUpsert {
+                guard_installation_id: "guard_installation_a".to_owned(),
+                connection_internal_id: "conn_guard_a".to_owned(),
+                project_id: "project_guard_a".to_owned(),
+                manifest_json: changed_manifest,
+            },
+        )?;
+        assert_ne!(changed_definition.updated_at, current.updated_at);
+        let reset = guard_observation_summary(
+            fixture.runtime_home.path(),
+            "project_guard_a",
+            &changed_definition,
+        )?;
+        assert!(reset.observed_phases.is_empty());
+        assert!(reset.incompatible_event_ids.is_empty());
+        assert!(!reset.all_required_phases_observed());
         Ok(())
     }
 

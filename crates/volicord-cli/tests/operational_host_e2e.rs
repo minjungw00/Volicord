@@ -156,8 +156,12 @@ fn verification_tool_designation_mismatch_is_typed() -> Result<(), Box<dyn Error
     let report = assert_connection_report(&output, 1, "verify", "failed")?;
     let check = report["checks"]
         .as_array()
-        .and_then(|checks| checks.iter().find(|check| check["id"] == "tool_round_trip"))
-        .ok_or("mismatched tool_round_trip check")?;
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "managed_capability_proof")
+        })
+        .ok_or("mismatched managed_capability_proof check")?;
     assert_eq!(check["status"], "failed");
     assert_eq!(check["code"], "tool_round_trip_designation_mismatch");
     assert_eq!(
@@ -374,7 +378,6 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
         let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
         let partial_report = assert_connection_report(&partial_status, 1, "status", "failed")?;
         assert_check(&partial_report, "host_session", "failed", None);
-        assert_check(&partial_report, "required_tools", "failed", None);
         assert_check(&partial_report, "tool_round_trip", "blocked", None);
 
         fixture.run_successful_managed_mcp(
@@ -565,7 +568,6 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
 
     let pending = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let pending = assert_connection_report(&pending, 0, "status", "action_required")?;
-    assert_check(&pending, "guard_files", "passed", None);
     assert_check(&pending, "guard_observation", "pending", None);
     assert_check(&pending, "host_session", "pending", None);
     assert_check(&pending, "required_tools", "pending", None);
@@ -622,7 +624,6 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     );
     let pending = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let pending = assert_connection_report(&pending, 0, "status", "action_required")?;
-    assert_check(&pending, "guard_files", "passed", None);
     assert_check(&pending, "guard_observation", "pending", None);
 
     let workflow_tools = fixture.run_managed_tools_list_names(&connection_id)?;
@@ -943,7 +944,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
         "failed",
         Some("managed_config_mismatch"),
     );
-    assert_check(&report, "guard_files", "passed", None);
+    assert_check(&report, "guard_hook_execution", "blocked", None);
     let after_verify = fixture.registry_snapshot();
     assert_eq!(fs::read(&config_target)?, config_f_old);
     assert_eq!(
@@ -1057,7 +1058,6 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     let complete = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let complete_report = assert_connection_report(&complete, 0, "status", "complete")?;
     for check_id in [
-        "guard_files",
         "guard_observation",
         "guard_verification",
         "host_session",
@@ -1082,8 +1082,12 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     assert!(guard_verification["details"]["matched_post_tool_event_id"].is_string());
     let round_trip = complete_report["checks"]
         .as_array()
-        .and_then(|checks| checks.iter().find(|check| check["id"] == "tool_round_trip"))
-        .ok_or("tool_round_trip check")?;
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "managed_capability_proof")
+        })
+        .ok_or("managed_capability_proof check")?;
     assert_eq!(
         round_trip["details"]["verification_tool"]["expected_tool_identity"],
         managed_host_round_trip_tool().wire_name()
@@ -1108,7 +1112,10 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     let human = String::from_utf8(human.stdout)?;
     assert!(human.starts_with("Codex connection is ready.\n\n"));
     assert!(human.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
-    assert!(human.contains("Mode: workflow\nChecks: "));
+    assert!(human.contains("Mode: workflow\n"));
+    assert!(human.contains("Activation: complete\n"));
+    assert!(human.contains("Hook activation: effective_by_observation\n"));
+    assert!(human.contains("Checks: "));
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(!human.contains(check["id"].as_str().expect("check id")));
     }
@@ -1136,7 +1143,11 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     }
     let runtime_session_id = changed_report["checks"]
         .as_array()
-        .and_then(|checks| checks.iter().find(|check| check["id"] == "host_session"))
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "managed_session_health")
+        })
         .and_then(|check| check.pointer("/details/runtime_session_id"))
         .and_then(Value::as_str)
         .ok_or("host-session runtime ID")?;
@@ -1193,9 +1204,9 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     let tampered_report = assert_connection_report(&tampered, 1, "status", "failed")?;
     assert_check(
         &tampered_report,
-        "guard_files",
+        "guard_hook_execution",
         "failed",
-        Some("guard_files_failed"),
+        Some("guard_hook_execution_failed"),
     );
     Ok(())
 }
@@ -1248,12 +1259,12 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
             }),
         ])?,
     )?;
-    tools_list.assert_failed_status("required_tools", "required_tools_current_attempt_failed")?;
+    tools_list.assert_failed_status("host_session", "host_session_current_attempt_failed")?;
     tools_list.assert_latest_runtime_finding("mcp.tools.protocol_error")?;
 
     let safe_call = OperationalFixture::initialized("operational-safe-call-failure")?;
     safe_call.run_safe_tool_storage_failure()?;
-    safe_call.assert_failed_status("required_tools", "required_tools_current_attempt_failed")?;
+    safe_call.assert_failed_status("host_session", "host_session_current_attempt_failed")?;
     safe_call.assert_latest_runtime_finding("mcp.tool_call.safe_read_only_failed")?;
 
     let missing_tools = OperationalFixture::initialized("operational-missing-tools")?;
@@ -1270,7 +1281,7 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
     );
     fs::rename(&displaced, &state_db)?;
     result?;
-    missing_tools.assert_failed_status("required_tools", "required_tools_missing")?;
+    missing_tools.assert_failed_status("host_session", "host_session_current_attempt_failed")?;
     Ok(())
 }
 
@@ -1532,9 +1543,9 @@ fn guard_failures_are_current_and_structured() -> Result<(), Box<dyn Error>> {
     let report = assert_connection_report(&status, 1, "status", "failed")?;
     assert_check(
         &report,
-        "guard_observation",
+        "guard_hook_execution",
         "failed",
-        Some("guard_observation_failed"),
+        Some("guard_hook_execution_failed"),
     );
     let guard_finding = report["findings"]
         .as_array()
@@ -2749,10 +2760,12 @@ fn assert_canonical_connection_command_shape(report: &Value) {
     let object = report.as_object().expect("connection report object");
     let expected = BTreeSet::from([
         "actions",
+        "activation_state",
         "checks",
         "connection",
         "findings",
         "generated_at",
+        "hook_activation_state",
         "limits",
         "operation",
         "operation_details",
@@ -2786,17 +2799,25 @@ fn assert_canonical_connection_command_shape(report: &Value) {
         );
     }
     assert_eq!(report["schema_version"], 2);
+    assert!(report["activation_state"].is_string());
+    assert!(report["hook_activation_state"].is_string());
     assert!(report["operation_details"]["dry_run"].is_boolean());
     assert_eq!(report["limits"].as_array().map(Vec::len), Some(3));
 }
 
 fn assert_check(report: &Value, id: &str, status: &str, expected_code: Option<&str>) {
+    let current_id = match id {
+        "host_session" => "managed_session_health",
+        "required_tools" | "tool_round_trip" => "managed_capability_proof",
+        "guard_files" | "guard_observation" => "guard_hook_execution",
+        _ => id,
+    };
     let check = report["checks"]
         .as_array()
         .expect("checks")
         .iter()
-        .find(|check| check["id"] == id)
-        .unwrap_or_else(|| panic!("missing check {id}: {report}"));
+        .find(|check| check["id"] == current_id)
+        .unwrap_or_else(|| panic!("missing check {current_id}: {report}"));
     assert_eq!(check["status"], status, "unexpected check {id}: {check}");
     if let Some(expected) = expected_code {
         assert_eq!(

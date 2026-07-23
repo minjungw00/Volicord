@@ -98,8 +98,22 @@ Durable tests should cover, as applicable:
   projections of their respective selected-Connection or exact-lookup report;
 - Guard manifest exact-shape and owner binding, hash-free policy commands versus
   hash-bound runtime commands, wrapper/file drift, platform-independent script
-  executable expectations, current-owned hook observations, and older-event
-  exclusion;
+  executable expectations, current-definition hook hashes, unchanged-manifest
+  observation preservation, changed-definition invalidation, current-owned
+  hook observations, and older-event exclusion;
+- exact `HookActivationState` evidence precedence including unknown, setup
+  review, current-definition observation, policy management, invocation bypass,
+  and explicit disabled states, with no synthetic trusted state;
+- `ConnectionActivationState` transitions through configured, reload, hook
+  review/unknown, managed MCP observation, Guard verification, complete, and
+  failed, with `project_trust` kept independent;
+- fixed typed action IDs, owners, channels, prerequisites, completed checks,
+  root-finding ordering, and strict rejection of inconsistent action metadata;
+- init output ordering for reload, hook review, new conversation, canonical
+  request, and status, with CLI verify described as optional diagnostic only;
+- generated AGENTS, Codex rule, and MCP server instructions preserving the
+  canonical request, four-tool sequence, unavailable path, and prohibition on
+  raw stdio, hand-authored `_meta`, and resource discovery as proof;
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;
 - Guard observation and unrecorded-change suppression outcomes; and

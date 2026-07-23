@@ -207,6 +207,89 @@ pub(in crate::connection_command) fn connection_metadata_failure_report(
         .map_err(ConnectionCommandError::from)
 }
 
+pub(in crate::connection_command) fn report_with_hook_review_required(
+    current: &ConnectionVerificationReport,
+) -> Result<ConnectionVerificationReport, ConnectionCommandError> {
+    let reset = [
+        (
+            ConnectionCheckKind::HostReload,
+            "host_reload_required_after_hook_change",
+            "Restart or reload Codex so it reads the current project hook definition",
+        ),
+        (
+            ConnectionCheckKind::ManagedSessionHealth,
+            "managed_session_required_after_hook_change",
+            "A new managed Codex conversation is required after the hook definition changed",
+        ),
+        (
+            ConnectionCheckKind::ManagedCapabilityProof,
+            "managed_capability_proof_required_after_hook_change",
+            "The new managed Codex conversation has not completed current capability proof",
+        ),
+        (
+            ConnectionCheckKind::GuardHookExecution,
+            "guard_hook_execution_required_after_hook_change",
+            "The changed project hook definition has not executed",
+        ),
+        (
+            ConnectionCheckKind::GuardVerification,
+            "guard_verification_required_after_hook_change",
+            "The first-party correlated Guard verification has not completed for the changed hook definition",
+        ),
+    ]
+    .into_iter()
+    .map(|(kind, code, summary)| (kind, (code, summary)))
+    .collect::<BTreeMap<_, _>>();
+    let mut checks = Vec::with_capacity(current.checks().len());
+    for check in current.checks() {
+        if check.id() == ConnectionCheckKind::HookSourceActivation {
+            let mut details = check
+                .details()
+                .map(ConnectionCheckDetails::as_object)
+                .cloned()
+                .unwrap_or_default();
+            details.insert(
+                "activation_state".to_owned(),
+                Value::String(
+                    HookActivationState::ReviewRequiredBySetup
+                        .as_str()
+                        .to_owned(),
+                ),
+            );
+            checks.push(ConnectionCheck::try_new(
+                ConnectionCheckKind::HookSourceActivation,
+                ConnectionCheckStatus::Pending,
+                Vec::new(),
+                Some("hook_source_review_required_by_setup".to_owned()),
+                "Current setup changed the project hook definition; host-owned review is required",
+                Some(ConnectionCheckDetails::try_new(details)?),
+                None,
+            )?);
+        } else if let Some((code, summary)) = reset.get(&check.id()) {
+            checks.push(ConnectionCheck::try_new(
+                check.id(),
+                ConnectionCheckStatus::Pending,
+                Vec::new(),
+                Some((*code).to_owned()),
+                *summary,
+                check.details().cloned(),
+                None,
+            )?);
+        } else {
+            checks.push(check.clone());
+        }
+    }
+    let checks = block_failed_dependencies(checks)?;
+    let actions = actions_for_checks(&checks)?;
+    ConnectionVerificationReport::try_new_with_hook_activation(
+        current.checked_at().clone(),
+        checks,
+        HookActivationState::ReviewRequiredBySetup,
+        actions,
+    )
+    .map_err(ConnectionCommandError::from)
+}
+
 pub(super) fn canonical_verification_evaluation(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,

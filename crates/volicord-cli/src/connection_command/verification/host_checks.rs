@@ -167,21 +167,21 @@ pub(super) fn host_session_checks(
     let process_started_at =
         attempt.map(|session| session.process_started_at.to_canonical_string());
     let process_startup = canonical_check(
-        ConnectionCheckKind::ProcessStartup,
+        ConnectionCheckKind::HostReload,
         if attempt.is_some() {
             ConnectionCheckStatus::Passed
         } else {
             ConnectionCheckStatus::Pending
         },
         if attempt.is_some() {
-            "process_startup_observed"
+            "host_reload_observed"
         } else {
-            "process_startup_not_observed"
+            "host_reload_required"
         },
         if attempt.is_some() {
-            "A current managed host started the configured Volicord MCP process"
+            "Codex loaded the current managed connection revision"
         } else {
-            "Managed host process startup has not been observed"
+            "Codex has not loaded the current managed connection revision"
         },
         Some(attempt_details()?),
         process_started_at.as_deref(),
@@ -224,66 +224,12 @@ pub(super) fn host_session_checks(
     };
     let host_session = with_direct_causes(
         canonical_check(
-            ConnectionCheckKind::HostSession,
+            ConnectionCheckKind::ManagedSessionHealth,
             session_status,
             session_code,
             session_summary,
             Some(attempt_details()?),
             session_observed_at.as_deref(),
-        )?,
-        milestone_terminal_cause_ids(attempt),
-    )?;
-
-    let (tools_status, tools_code, tools_summary, tools_observed_at) = match complete_proof {
-        Some(proof) => (
-            ConnectionCheckStatus::Passed,
-            "required_tools_present",
-            "One current-revision managed-host session completed same-session required-tool validation",
-            proof
-                .milestones()
-                .required_tools_validated_at
-                .as_ref()
-                .map(UtcTimestamp::to_canonical_string),
-        ),
-        None => match attempt {
-            Some(session) if session.required_tools_present == Some(false) => (
-                ConnectionCheckStatus::Failed,
-                "required_tools_missing",
-                "The latest current managed-host attempt returned a tools/list result missing required tools",
-                session
-                    .tools_list_observed_at
-                    .as_ref()
-                    .map(UtcTimestamp::to_canonical_string),
-            ),
-            Some(session) if session.terminally_failed() => (
-                ConnectionCheckStatus::Failed,
-                "required_tools_current_attempt_failed",
-                "The latest current managed-host attempt failed without a complete capability proof",
-                Some(session.last_observed_at.to_canonical_string()),
-            ),
-            Some(session) => (
-                ConnectionCheckStatus::Pending,
-                "required_tools_not_observed",
-                "No current-revision managed-host session has completed same-session required-tool validation",
-                Some(session.last_observed_at.to_canonical_string()),
-            ),
-            None => (
-                ConnectionCheckStatus::Pending,
-                "required_tools_not_observed",
-                "No current-revision managed-host session has completed same-session required-tool validation",
-                None,
-            ),
-        },
-    };
-    let required_tools_details = proof_details()?.unwrap_or(attempt_details()?);
-    let required_tools = with_direct_causes(
-        canonical_check(
-            ConnectionCheckKind::RequiredTools,
-            tools_status,
-            tools_code,
-            tools_summary,
-            Some(required_tools_details),
-            tools_observed_at.as_deref(),
         )?,
         milestone_terminal_cause_ids(attempt),
     )?;
@@ -302,6 +248,14 @@ pub(super) fn host_session_checks(
                 .milestones()
                 .verification_tool_observed_at
                 .as_ref()
+                .map(UtcTimestamp::to_canonical_string),
+        ),
+        None if attempt.is_some_and(|session| session.required_tools_present == Some(false)) => (
+            ConnectionCheckStatus::Failed,
+            "managed_capability_required_tools_missing",
+            "The latest current managed-host attempt is missing required Volicord tools",
+            attempt
+                .and_then(|session| session.tools_list_observed_at.as_ref())
                 .map(UtcTimestamp::to_canonical_string),
         ),
         None if designation_mismatch => (
@@ -333,7 +287,7 @@ pub(super) fn host_session_checks(
     round_trip_causes.dedup();
     let tool_round_trip = with_direct_causes(
         canonical_check(
-            ConnectionCheckKind::ToolRoundTrip,
+            ConnectionCheckKind::ManagedCapabilityProof,
             round_trip_status,
             round_trip_code,
             round_trip_summary,
@@ -342,12 +296,7 @@ pub(super) fn host_session_checks(
         )?,
         round_trip_causes,
     )?;
-    block_failed_dependencies(vec![
-        process_startup,
-        host_session,
-        required_tools,
-        tool_round_trip,
-    ])
+    block_failed_dependencies(vec![process_startup, host_session, tool_round_trip])
 }
 
 pub(super) fn verify_host_plan(

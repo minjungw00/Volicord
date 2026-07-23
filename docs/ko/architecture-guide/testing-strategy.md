@@ -88,7 +88,20 @@ registry 직접 순회가 matrix를 정합니다.
   동등한 사람용 및 JSON projection
 - Guard manifest의 exact shape와 owner binding, hash가 없는 policy command와 hash에
   결속된 runtime command의 구분, wrapper/file drift, 플랫폼 독립적인 script executable
-  기대값, 현재 소유권의 hook 관찰, 이전 event 제외
+  기대값, 현재 definition hook hash, 바뀌지 않은 manifest의 관찰 보존, 바뀐 definition의
+  무효화, 현재 소유권의 hook 관찰, 이전 event 제외
+- Unknown, setup review, 현재 definition 관찰, policy 관리, 호출별 bypass, 명시적
+  disabled를 포함한 정확한 `HookActivationState` 근거 우선순위와 합성 trusted 상태 부재
+- `project_trust`를 독립적으로 유지하면서 configured, reload, hook review/unknown,
+  managed MCP observation, Guard verification, complete, failed를 지나는
+  `ConnectionActivationState` 전환
+- 고정 typed action ID, owner, channel, prerequisite, 완료 check, root-finding 순서와
+  일치하지 않는 action metadata의 엄격한 거부
+- Reload, hook review, 새 conversation, 정규 요청, status의 init 출력 순서 및 CLI verify가
+  선택적 diagnostic일 뿐이라는 문구
+- 정규 요청, 네 tool sequence, unavailable 경로, raw stdio, 직접 작성한 `_meta`, resource
+  discovery를 proof로 쓰지 않는다는 경계를 보존하는 생성 AGENTS, Codex rule, MCP server
+  instruction
 - 안정적인 identity를 유지하는 반복 Guard 초기화와 관련 없는 repository content 보존
 - Guard 관찰과 미기록 변경 suppression 결과
 - Codex 구성 drift와 행동 probe 실패 보고

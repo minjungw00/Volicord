@@ -275,6 +275,28 @@ fallback은 환경 dump를 허용하지 않으며 두 번째 diagnostic model을
 영속 전에 담당 문서가 정의한 typed construction 경로에서 만들어졌고, 그 결과로
 저장된 값 자체가 선언된 전체 계약을 통과할 때만 유효합니다.
 
+### Activation condition을 합치지 않기
+
+Connection activation은 다음 구분을 보존합니다.
+
+- `unknown`은 권위 있는 hook 상태와 현재 definition 관찰이 없다는 뜻입니다.
+  `disabled`, failure, untrusted와 같지 않습니다.
+- `review_required_by_setup`은 setup이 definition을 바꿔 host review가 남았다는
+  뜻이며 configuration failure가 아닙니다.
+- `bypassed_for_invocation`은 호출에 한정된 명시적 host 근거이며 지속적인 activation이
+  아닙니다.
+- `disabled`에는 명시적 host 근거가 필요하며 `inspect_hook_contract`로 routing합니다.
+- 이전 `latest_complete_proof`가 남아 있어도 현재 managed session이 terminal이면
+  failure입니다.
+- 현재 Guard 상관관계가 없으면 pending이며 prerequisite가 통과한 뒤에만
+  `run_guard_probe`로 routing합니다.
+
+Failed 및 blocked check는 typed root finding ID를 유지합니다. Remediation은 닫힌
+connection action `reload_host`, `review_hooks`, `run_mcp_verification`,
+`run_guard_probe`, `inspect_hook_contract`, `repair_managed_configuration`,
+`inspect_runtime_session`, `reinstall_current_build`에서 고르며 렌더러가 산문에서 action을
+추론하지 않습니다. Project/configuration trust는 hook-source activation과 분리합니다.
+
 ## 효과와 응답 처리 경로
 
 실패 범주 자체는 상태 변경, 재시도 가능성, HTTP 또는 JSON-RPC 상태, CLI 종료

@@ -86,6 +86,14 @@ Core 권한 보장을 암시하면 안 됩니다.
 가능성은 [시스템 요구사항](../reference/system-requirements.md), 운영 session과 행동 검증
 의미는 [Agent Connection](../reference/agent-connection.md#validated-agent-session)으로 보냅니다.
 
+First-party in-chat workflow에는 정확한 사용자 문구
+`Run the Volicord integration verification.`을 사용합니다. CLI preflight, raw stdio,
+resource discovery, configuration 존재, 과거 Guard event를 “connected”, “trusted”,
+“verified”인 managed integration이라고 설명하지 않습니다. Configuration 적용, host
+reload 필요, hook review 필요, 현재 관찰로 hook 효과 확인, managed MCP 관찰,
+Guard verification 필요, complete 가운데 어떤 typed 상태를 아는지 말합니다. Project
+trust와 프로젝트 로컬 hook activation은 서로 다른 주장입니다.
+
 Volicord가 사용자 소유 판단을 대신한다고 설명하지 않습니다. Volicord는 사용자의
 판단이 필요한 경계를 기록하고, 경로를 잡고, 보존하고, 보여 주는 데 도움을 줄 수
 있지만 판단은 사용자에게 남습니다.

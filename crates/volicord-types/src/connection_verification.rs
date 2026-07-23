@@ -47,6 +47,130 @@ pub enum ConnectionStatus {
     Failed,
 }
 
+/// Current activation of the project-local host hook source.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum HookActivationState {
+    /// The host exposes no authoritative state and no decisive current event exists.
+    Unknown,
+    /// Current setup created or changed the hook definition.
+    ReviewRequiredBySetup,
+    /// A current-definition event was observed for the current installation and revision.
+    EffectiveByObservation,
+    /// Current host evidence identifies a managed policy source.
+    ManagedByPolicy,
+    /// One invocation explicitly bypassed hook trust without proving persisted activation.
+    BypassedForInvocation,
+    /// Current host configuration explicitly disables hooks.
+    Disabled,
+}
+
+/// Decisive host-owned hook evidence, when the host exposes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HostHookActivationEvidence {
+    ManagedByPolicy,
+    BypassedForInvocation,
+    Disabled,
+}
+
+/// Typed inputs used to derive project-local hook-source activation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HookActivationEvidence {
+    pub setup_changed_definition: bool,
+    pub host: Option<HostHookActivationEvidence>,
+    pub current_definition_event_observed: bool,
+}
+
+impl HookActivationState {
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::ReviewRequiredBySetup => "review_required_by_setup",
+            Self::EffectiveByObservation => "effective_by_observation",
+            Self::ManagedByPolicy => "managed_by_policy",
+            Self::BypassedForInvocation => "bypassed_for_invocation",
+            Self::Disabled => "disabled",
+        }
+    }
+
+    fn from_stable_str(value: &str) -> Option<Self> {
+        match value {
+            "unknown" => Some(Self::Unknown),
+            "review_required_by_setup" => Some(Self::ReviewRequiredBySetup),
+            "effective_by_observation" => Some(Self::EffectiveByObservation),
+            "managed_by_policy" => Some(Self::ManagedByPolicy),
+            "bypassed_for_invocation" => Some(Self::BypassedForInvocation),
+            "disabled" => Some(Self::Disabled),
+            _ => None,
+        }
+    }
+
+    /// Derives activation without inventing a persisted host trust state.
+    pub const fn from_evidence(evidence: HookActivationEvidence) -> Self {
+        if matches!(evidence.host, Some(HostHookActivationEvidence::Disabled)) {
+            Self::Disabled
+        } else if evidence.setup_changed_definition {
+            Self::ReviewRequiredBySetup
+        } else if matches!(
+            evidence.host,
+            Some(HostHookActivationEvidence::ManagedByPolicy)
+        ) {
+            Self::ManagedByPolicy
+        } else if matches!(
+            evidence.host,
+            Some(HostHookActivationEvidence::BypassedForInvocation)
+        ) {
+            Self::BypassedForInvocation
+        } else if evidence.current_definition_event_observed {
+            Self::EffectiveByObservation
+        } else {
+            Self::Unknown
+        }
+    }
+}
+
+/// Current stage of the Agent Connection activation workflow.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionActivationState {
+    /// Managed configuration exists, but no later activation stage is yet decisive.
+    Configured,
+    /// The managed host must reload the current configuration.
+    HostReloadRequired,
+    /// Hook review is required or hook-source activation remains unknown.
+    HookReviewRequiredOrUnknown,
+    /// Current managed-host MCP session and capability evidence is incomplete.
+    McpObservationRequired,
+    /// The first-party correlated Guard verification remains incomplete.
+    GuardVerificationRequired,
+    /// Every current activation check is complete.
+    Complete,
+    /// A required activation or diagnostic check failed.
+    Failed,
+}
+
+impl ConnectionActivationState {
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Configured => "configured",
+            Self::HostReloadRequired => "host_reload_required",
+            Self::HookReviewRequiredOrUnknown => "hook_review_required_or_unknown",
+            Self::McpObservationRequired => "mcp_observation_required",
+            Self::GuardVerificationRequired => "guard_verification_required",
+            Self::Complete => "complete",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 impl ConnectionStatus {
     /// Returns the stable serialized spelling.
     pub const fn as_str(self) -> &'static str {
@@ -105,10 +229,18 @@ pub enum ConnectionCheckKind {
     McpServer,
     /// The managed host started the configured Volicord MCP process.
     ProcessStartup,
+    /// A managed-host process loaded the current connection revision.
+    HostReload,
+    /// Project-local hook-source activation is known or requires a bounded host action.
+    HookSourceActivation,
     /// A current managed-host session completed initialization.
     HostSession,
+    /// The latest current managed-host attempt is healthy.
+    ManagedSessionHealth,
     /// A current managed host exposes every required tool.
     RequiredTools,
+    /// One current session completed the full managed capability proof.
+    ManagedCapabilityProof,
     /// A current managed host completed the designated safe tool call.
     ToolRoundTrip,
     /// Project trust is satisfied or not separately applicable.
@@ -133,16 +265,20 @@ pub enum ConnectionCheckKind {
 
 impl ConnectionCheckKind {
     /// Every current check kind in canonical serialized-spelling order.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 22] = [
         Self::ConnectionRemoval,
         Self::DiagnosticLookup,
         Self::GuardFiles,
         Self::GuardHookExecution,
         Self::GuardObservation,
         Self::GuardVerification,
+        Self::HookSourceActivation,
         Self::HostExecutable,
+        Self::HostReload,
         Self::HostSession,
+        Self::ManagedCapabilityProof,
         Self::ManagedConfig,
+        Self::ManagedSessionHealth,
         Self::McpServer,
         Self::ModeTransition,
         Self::ProcessStartup,
@@ -163,8 +299,12 @@ impl ConnectionCheckKind {
             Self::HostExecutable => "host_executable",
             Self::McpServer => "mcp_server",
             Self::ProcessStartup => "process_startup",
+            Self::HostReload => "host_reload",
+            Self::HookSourceActivation => "hook_source_activation",
             Self::HostSession => "host_session",
+            Self::ManagedSessionHealth => "managed_session_health",
             Self::RequiredTools => "required_tools",
+            Self::ManagedCapabilityProof => "managed_capability_proof",
             Self::ToolRoundTrip => "tool_round_trip",
             Self::ProjectTrust => "project_trust",
             Self::GuardFiles => "guard_files",
@@ -181,12 +321,15 @@ impl ConnectionCheckKind {
     /// Returns the canonical prerequisite edges for this check kind.
     pub const fn dependencies(self) -> &'static [Self] {
         match self {
-            Self::McpServer | Self::ProcessStartup => &[Self::ManagedConfig],
+            Self::McpServer | Self::ProcessStartup | Self::HostReload => &[Self::ManagedConfig],
+            Self::HookSourceActivation => &[Self::HostReload],
             Self::HostSession => &[Self::ProcessStartup],
+            Self::ManagedSessionHealth => &[Self::HostReload],
             Self::ToolRoundTrip => &[Self::RequiredTools],
-            Self::GuardHookExecution => &[Self::GuardFiles],
+            Self::ManagedCapabilityProof => &[Self::ManagedSessionHealth],
+            Self::GuardHookExecution => &[Self::HookSourceActivation],
             Self::GuardObservation => &[Self::GuardHookExecution],
-            Self::GuardVerification => &[Self::GuardObservation],
+            Self::GuardVerification => &[Self::GuardHookExecution],
             Self::VerificationNotRun
             | Self::DiagnosticLookup
             | Self::ManagedConfig
@@ -479,60 +622,48 @@ impl ConnectionCheck {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionActionKind {
-    /// Run active connection verification.
-    RunVerification,
-    /// Apply planned setup changes.
-    ApplySetup,
-    /// Satisfy the host's project-trust requirement.
-    HostTrustRequired,
-    /// Repair the Volicord-managed host configuration.
-    RepairManagedConfig,
-    /// Install or repair the Codex executable.
-    InstallOrRepairCodex,
-    /// Repair the Volicord MCP server or its storage preflight.
-    RepairMcpServer,
     /// Reload the managed host against current configuration.
     ReloadHost,
-    /// Produce current managed-host and Guard observations.
-    ObserveCodex,
-    /// Inspect and repair an observed Codex protocol failure.
-    InspectCodexProtocol,
-    /// Repair the Volicord Guard integration.
-    RepairGuard,
-    /// Apply a planned connection membership or removal change.
-    ApplyRemoval,
+    /// Review the current project hook definition in the host UI.
+    ReviewHooks,
+    /// Run the managed in-chat MCP verification workflow.
+    RunMcpVerification,
+    /// Execute the Guard probe returned by the first-party verification workflow.
+    RunGuardProbe,
+    /// Inspect an incompatible or disabled hook contract.
+    InspectHookContract,
+    /// Repair or recreate the Volicord-managed host configuration.
+    RepairManagedConfiguration,
+    /// Inspect the latest current-revision managed runtime session.
+    InspectRuntimeSession,
+    /// Reinstall the current Volicord build and regenerate its managed integration.
+    ReinstallCurrentBuild,
 }
 
 impl ConnectionActionKind {
     /// Every current action kind in canonical serialized-spelling order.
-    pub const ALL: [Self; 11] = [
-        Self::ApplyRemoval,
-        Self::ApplySetup,
-        Self::HostTrustRequired,
-        Self::InspectCodexProtocol,
-        Self::InstallOrRepairCodex,
-        Self::ObserveCodex,
+    pub const ALL: [Self; 8] = [
+        Self::InspectHookContract,
+        Self::InspectRuntimeSession,
+        Self::ReinstallCurrentBuild,
         Self::ReloadHost,
-        Self::RepairGuard,
-        Self::RepairManagedConfig,
-        Self::RepairMcpServer,
-        Self::RunVerification,
+        Self::RepairManagedConfiguration,
+        Self::ReviewHooks,
+        Self::RunGuardProbe,
+        Self::RunMcpVerification,
     ];
 
     /// Returns the stable serialized spelling.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::RunVerification => "run_verification",
-            Self::ApplySetup => "apply_setup",
-            Self::HostTrustRequired => "host_trust_required",
-            Self::RepairManagedConfig => "repair_managed_config",
-            Self::InstallOrRepairCodex => "install_or_repair_codex",
-            Self::RepairMcpServer => "repair_mcp_server",
             Self::ReloadHost => "reload_host",
-            Self::ObserveCodex => "observe_codex",
-            Self::InspectCodexProtocol => "inspect_codex_protocol",
-            Self::RepairGuard => "repair_guard",
-            Self::ApplyRemoval => "apply_removal",
+            Self::ReviewHooks => "review_hooks",
+            Self::RunMcpVerification => "run_mcp_verification",
+            Self::RunGuardProbe => "run_guard_probe",
+            Self::InspectHookContract => "inspect_hook_contract",
+            Self::RepairManagedConfiguration => "repair_managed_configuration",
+            Self::InspectRuntimeSession => "inspect_runtime_session",
+            Self::ReinstallCurrentBuild => "reinstall_current_build",
         }
     }
 }
@@ -549,11 +680,64 @@ impl Ord for ConnectionActionKind {
     }
 }
 
+/// Owner expected to perform one current connection action.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionActionOwner {
+    User,
+    Host,
+    Volicord,
+    Agent,
+}
+
+impl ConnectionActionOwner {
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Host => "host",
+            Self::Volicord => "volicord",
+            Self::Agent => "agent",
+        }
+    }
+}
+
+/// Channel in which one current connection action is performed.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionActionChannel {
+    Cli,
+    CodexUi,
+    McpTool,
+    Documentation,
+}
+
+impl ConnectionActionChannel {
+    /// Returns the stable serialized spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cli => "cli",
+            Self::CodexUi => "codex_ui",
+            Self::McpTool => "mcp_tool",
+            Self::Documentation => "documentation",
+        }
+    }
+}
+
 /// One bounded user instruction produced by connection verification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ConnectionAction {
     id: ConnectionActionKind,
+    owner: ConnectionActionOwner,
+    channel: ConnectionActionChannel,
+    prerequisites: Vec<ConnectionCheckKind>,
+    completes_checks: Vec<ConnectionCheckKind>,
+    root_finding_ids: Vec<DiagnosticFindingId>,
     instruction: String,
 }
 
@@ -561,6 +745,11 @@ pub struct ConnectionAction {
 #[serde(deny_unknown_fields)]
 struct ConnectionActionWire {
     id: ConnectionActionKind,
+    owner: ConnectionActionOwner,
+    channel: ConnectionActionChannel,
+    prerequisites: Vec<ConnectionCheckKind>,
+    completes_checks: Vec<ConnectionCheckKind>,
+    root_finding_ids: Vec<DiagnosticFindingId>,
     instruction: String,
 }
 
@@ -570,7 +759,28 @@ impl<'de> Deserialize<'de> for ConnectionAction {
         D: Deserializer<'de>,
     {
         let wire = ConnectionActionWire::deserialize(deserializer)?;
-        Self::try_new(wire.id, wire.instruction).map_err(de::Error::custom)
+        let supplied_prerequisites = wire.prerequisites.clone();
+        let supplied_completes_checks = wire.completes_checks.clone();
+        let supplied_root_finding_ids = wire.root_finding_ids.clone();
+        let action = Self::try_new_with_context(
+            wire.id,
+            wire.owner,
+            wire.channel,
+            wire.prerequisites,
+            wire.completes_checks,
+            wire.root_finding_ids,
+            wire.instruction,
+        )
+        .map_err(de::Error::custom)?;
+        if supplied_prerequisites != action.prerequisites
+            || supplied_completes_checks != action.completes_checks
+            || supplied_root_finding_ids != action.root_finding_ids
+        {
+            return Err(de::Error::custom(
+                "connection action check and root references are not unique and canonically ordered",
+            ));
+        }
+        Ok(action)
     }
 }
 
@@ -580,14 +790,108 @@ impl ConnectionAction {
         id: ConnectionActionKind,
         instruction: impl Into<String>,
     ) -> Result<Self, ConnectionVerificationError> {
+        let (owner, channel, prerequisites, completes_checks) = canonical_action_context(id);
+        Self::try_new_with_context(
+            id,
+            owner,
+            channel,
+            prerequisites.to_vec(),
+            completes_checks.to_vec(),
+            Vec::new(),
+            instruction,
+        )
+    }
+
+    /// Validates and constructs one action with explicit current root findings.
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new_with_context(
+        id: ConnectionActionKind,
+        owner: ConnectionActionOwner,
+        channel: ConnectionActionChannel,
+        mut prerequisites: Vec<ConnectionCheckKind>,
+        mut completes_checks: Vec<ConnectionCheckKind>,
+        mut root_finding_ids: Vec<DiagnosticFindingId>,
+        instruction: impl Into<String>,
+    ) -> Result<Self, ConnectionVerificationError> {
         let instruction = instruction.into();
         validate_text("action instruction", &instruction)?;
-        Ok(Self { id, instruction })
+        prerequisites.sort();
+        prerequisites.dedup();
+        completes_checks.sort();
+        completes_checks.dedup();
+        root_finding_ids.sort();
+        root_finding_ids.dedup();
+        let (
+            canonical_owner,
+            canonical_channel,
+            canonical_prerequisites,
+            canonical_completes_checks,
+        ) = canonical_action_context(id);
+        if owner != canonical_owner
+            || channel != canonical_channel
+            || prerequisites != canonical_prerequisites
+            || completes_checks != canonical_completes_checks
+        {
+            return Err(invalid(
+                "connection action owner, channel, prerequisites, or completed checks do not match its stable ID",
+            ));
+        }
+        if prerequisites.len() > MAX_CONNECTION_CHECK_DEPENDENCIES
+            || completes_checks.len() > MAX_CONNECTION_CHECK_DEPENDENCIES
+        {
+            return Err(invalid("connection action has too many check references"));
+        }
+        if root_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
+            return Err(invalid("connection action has too many root findings"));
+        }
+        Ok(Self {
+            id,
+            owner,
+            channel,
+            prerequisites,
+            completes_checks,
+            root_finding_ids,
+            instruction,
+        })
     }
 
     /// Returns the stable action ID.
     pub const fn id(&self) -> ConnectionActionKind {
         self.id
+    }
+
+    pub const fn owner(&self) -> ConnectionActionOwner {
+        self.owner
+    }
+
+    pub const fn channel(&self) -> ConnectionActionChannel {
+        self.channel
+    }
+
+    pub fn prerequisites(&self) -> &[ConnectionCheckKind] {
+        &self.prerequisites
+    }
+
+    pub fn completes_checks(&self) -> &[ConnectionCheckKind] {
+        &self.completes_checks
+    }
+
+    pub fn root_finding_ids(&self) -> &[DiagnosticFindingId] {
+        &self.root_finding_ids
+    }
+
+    /// Replaces root findings while preserving the action's typed owner and check contract.
+    pub fn with_root_finding_ids(
+        mut self,
+        mut root_finding_ids: Vec<DiagnosticFindingId>,
+    ) -> Result<Self, ConnectionVerificationError> {
+        root_finding_ids.sort();
+        root_finding_ids.dedup();
+        if root_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
+            return Err(invalid("connection action has too many root findings"));
+        }
+        self.root_finding_ids = root_finding_ids;
+        Ok(self)
     }
 
     /// Returns the user-visible instruction.
@@ -596,10 +900,84 @@ impl ConnectionAction {
     }
 }
 
+fn canonical_action_context(
+    id: ConnectionActionKind,
+) -> (
+    ConnectionActionOwner,
+    ConnectionActionChannel,
+    &'static [ConnectionCheckKind],
+    &'static [ConnectionCheckKind],
+) {
+    match id {
+        ConnectionActionKind::ReloadHost => (
+            ConnectionActionOwner::User,
+            ConnectionActionChannel::CodexUi,
+            &[ConnectionCheckKind::ManagedConfig],
+            &[ConnectionCheckKind::HostReload],
+        ),
+        ConnectionActionKind::ReviewHooks => (
+            ConnectionActionOwner::User,
+            ConnectionActionChannel::CodexUi,
+            &[ConnectionCheckKind::HostReload],
+            &[ConnectionCheckKind::HookSourceActivation],
+        ),
+        ConnectionActionKind::RunMcpVerification => (
+            ConnectionActionOwner::Agent,
+            ConnectionActionChannel::McpTool,
+            &[ConnectionCheckKind::HookSourceActivation],
+            &[
+                ConnectionCheckKind::ManagedCapabilityProof,
+                ConnectionCheckKind::ManagedSessionHealth,
+            ],
+        ),
+        ConnectionActionKind::RunGuardProbe => (
+            ConnectionActionOwner::Agent,
+            ConnectionActionChannel::McpTool,
+            &[ConnectionCheckKind::ManagedCapabilityProof],
+            &[
+                ConnectionCheckKind::GuardHookExecution,
+                ConnectionCheckKind::GuardVerification,
+            ],
+        ),
+        ConnectionActionKind::InspectHookContract => (
+            ConnectionActionOwner::User,
+            ConnectionActionChannel::CodexUi,
+            &[],
+            &[ConnectionCheckKind::HookSourceActivation],
+        ),
+        ConnectionActionKind::RepairManagedConfiguration => (
+            ConnectionActionOwner::Volicord,
+            ConnectionActionChannel::Cli,
+            &[],
+            &[ConnectionCheckKind::ManagedConfig],
+        ),
+        ConnectionActionKind::InspectRuntimeSession => (
+            ConnectionActionOwner::Agent,
+            ConnectionActionChannel::Documentation,
+            &[ConnectionCheckKind::HostReload],
+            &[
+                ConnectionCheckKind::ManagedCapabilityProof,
+                ConnectionCheckKind::ManagedSessionHealth,
+            ],
+        ),
+        ConnectionActionKind::ReinstallCurrentBuild => (
+            ConnectionActionOwner::Volicord,
+            ConnectionActionChannel::Cli,
+            &[],
+            &[
+                ConnectionCheckKind::GuardHookExecution,
+                ConnectionCheckKind::ManagedConfig,
+            ],
+        ),
+    }
+}
+
 /// Canonical serialized result of connection verification.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct ConnectionVerificationReport {
     status: ConnectionStatus,
+    activation_state: ConnectionActivationState,
+    hook_activation_state: HookActivationState,
     checked_at: UtcTimestamp,
     checks: Vec<ConnectionCheck>,
     root_cause_ids: Vec<DiagnosticFindingId>,
@@ -610,6 +988,8 @@ pub struct ConnectionVerificationReport {
 #[serde(deny_unknown_fields)]
 struct ConnectionVerificationReportWire {
     status: ConnectionStatus,
+    activation_state: ConnectionActivationState,
+    hook_activation_state: HookActivationState,
     checked_at: UtcTimestamp,
     checks: Vec<ConnectionCheck>,
     root_cause_ids: Vec<DiagnosticFindingId>,
@@ -624,6 +1004,8 @@ impl<'de> Deserialize<'de> for ConnectionVerificationReport {
         let wire = ConnectionVerificationReportWire::deserialize(deserializer)?;
         Self::from_canonical_parts(
             wire.status,
+            wire.activation_state,
+            wire.hook_activation_state,
             wire.checked_at,
             wire.checks,
             wire.root_cause_ids,
@@ -643,8 +1025,41 @@ impl ConnectionVerificationReport {
         checks.sort_by_key(|check| check.id);
         actions.sort_by_key(|action| action.id);
         let status = aggregate_status(&checks);
+        let hook_activation_state = derive_hook_activation_state(&checks);
+        let activation_state = derive_activation_state(&checks, hook_activation_state);
         let root_cause_ids = aggregate_root_causes(&checks);
-        Self::from_canonical_parts(status, checked_at, checks, root_cause_ids, actions)
+        Self::from_canonical_parts(
+            status,
+            activation_state,
+            hook_activation_state,
+            checked_at,
+            checks,
+            root_cause_ids,
+            actions,
+        )
+    }
+
+    /// Constructs a report with operation-local hook activation evidence.
+    pub fn try_new_with_hook_activation(
+        checked_at: UtcTimestamp,
+        mut checks: Vec<ConnectionCheck>,
+        hook_activation_state: HookActivationState,
+        mut actions: Vec<ConnectionAction>,
+    ) -> Result<Self, ConnectionVerificationError> {
+        checks.sort_by_key(|check| check.id);
+        actions.sort_by_key(|action| action.id);
+        let status = aggregate_status(&checks);
+        let activation_state = derive_activation_state(&checks, hook_activation_state);
+        let root_cause_ids = aggregate_root_causes(&checks);
+        Self::from_canonical_parts(
+            status,
+            activation_state,
+            hook_activation_state,
+            checked_at,
+            checks,
+            root_cause_ids,
+            actions,
+        )
     }
 
     /// Synthesizes the canonical projection for a connection not yet verified.
@@ -663,8 +1078,8 @@ impl ConnectionVerificationReport {
                 None,
             )?],
             vec![ConnectionAction::try_new(
-                ConnectionActionKind::RunVerification,
-                "Run connection verification to observe current host behavior",
+                ConnectionActionKind::RunMcpVerification,
+                "In a new managed Codex conversation, request `Run the Volicord integration verification.`",
             )?],
         )
     }
@@ -672,6 +1087,14 @@ impl ConnectionVerificationReport {
     /// Returns the derived aggregate status.
     pub const fn status(&self) -> ConnectionStatus {
         self.status
+    }
+
+    pub const fn activation_state(&self) -> ConnectionActivationState {
+        self.activation_state
+    }
+
+    pub const fn hook_activation_state(&self) -> HookActivationState {
+        self.hook_activation_state
     }
 
     /// Returns the report construction or projection time.
@@ -696,6 +1119,8 @@ impl ConnectionVerificationReport {
 
     fn from_canonical_parts(
         status: ConnectionStatus,
+        activation_state: ConnectionActivationState,
+        hook_activation_state: HookActivationState,
         checked_at: UtcTimestamp,
         checks: Vec<ConnectionCheck>,
         root_cause_ids: Vec<DiagnosticFindingId>,
@@ -719,6 +1144,11 @@ impl ConnectionVerificationReport {
                 "connection report status does not match its checks",
             ));
         }
+        if activation_state != derive_activation_state(&checks, hook_activation_state) {
+            return Err(invalid(
+                "connection report activation_state does not match its typed checks",
+            ));
+        }
         let derived_roots = aggregate_root_causes(&checks);
         if root_cause_ids != derived_roots {
             return Err(invalid(
@@ -727,6 +1157,8 @@ impl ConnectionVerificationReport {
         }
         let report = Self {
             status,
+            activation_state,
+            hook_activation_state,
             checked_at,
             checks,
             root_cause_ids,
@@ -742,6 +1174,63 @@ impl ConnectionVerificationReport {
         }
         Ok(report)
     }
+}
+
+fn derive_hook_activation_state(checks: &[ConnectionCheck]) -> HookActivationState {
+    checks
+        .iter()
+        .find(|check| check.id == ConnectionCheckKind::HookSourceActivation)
+        .and_then(|check| check.details.as_ref())
+        .and_then(|details| details.as_object().get("activation_state"))
+        .and_then(Value::as_str)
+        .and_then(HookActivationState::from_stable_str)
+        .unwrap_or(HookActivationState::Unknown)
+}
+
+fn derive_activation_state(
+    checks: &[ConnectionCheck],
+    hook_activation_state: HookActivationState,
+) -> ConnectionActivationState {
+    if checks.iter().any(|check| {
+        matches!(
+            check.status,
+            ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
+        )
+    }) {
+        return ConnectionActivationState::Failed;
+    }
+    let passed = |kind| {
+        checks
+            .iter()
+            .find(|check| check.id == kind)
+            .is_some_and(|check| {
+                matches!(
+                    check.status,
+                    ConnectionCheckStatus::Passed | ConnectionCheckStatus::NotApplicable
+                )
+            })
+    };
+    if !passed(ConnectionCheckKind::ManagedConfig) {
+        return ConnectionActivationState::Configured;
+    }
+    if !passed(ConnectionCheckKind::HostReload) {
+        return ConnectionActivationState::HostReloadRequired;
+    }
+    if !matches!(
+        hook_activation_state,
+        HookActivationState::EffectiveByObservation | HookActivationState::ManagedByPolicy
+    ) {
+        return ConnectionActivationState::HookReviewRequiredOrUnknown;
+    }
+    if !passed(ConnectionCheckKind::ManagedSessionHealth)
+        || !passed(ConnectionCheckKind::ManagedCapabilityProof)
+    {
+        return ConnectionActivationState::McpObservationRequired;
+    }
+    if !passed(ConnectionCheckKind::GuardVerification) {
+        return ConnectionActivationState::GuardVerificationRequired;
+    }
+    ConnectionActivationState::Complete
 }
 
 fn aggregate_status(checks: &[ConnectionCheck]) -> ConnectionStatus {
@@ -1086,10 +1575,10 @@ mod tests {
 
     #[test]
     fn every_current_check_kind_round_trips_exact_json() {
-        assert_eq!(ConnectionCheckKind::ALL.len(), 18);
+        assert_eq!(ConnectionCheckKind::ALL.len(), 22);
         assert_eq!(
             ConnectionCheckKind::GuardVerification.dependencies(),
-            &[ConnectionCheckKind::GuardObservation]
+            &[ConnectionCheckKind::GuardHookExecution]
         );
         let expected = [
             "connection_removal",
@@ -1098,9 +1587,13 @@ mod tests {
             "guard_hook_execution",
             "guard_observation",
             "guard_verification",
+            "hook_source_activation",
             "host_executable",
+            "host_reload",
             "host_session",
+            "managed_capability_proof",
             "managed_config",
+            "managed_session_health",
             "mcp_server",
             "mode_transition",
             "process_startup",
@@ -1123,17 +1616,14 @@ mod tests {
     #[test]
     fn every_current_action_kind_round_trips_exact_json() {
         let expected = [
-            "apply_removal",
-            "apply_setup",
-            "host_trust_required",
-            "inspect_codex_protocol",
-            "install_or_repair_codex",
-            "observe_codex",
+            "inspect_hook_contract",
+            "inspect_runtime_session",
+            "reinstall_current_build",
             "reload_host",
-            "repair_guard",
-            "repair_managed_config",
-            "repair_mcp_server",
-            "run_verification",
+            "repair_managed_configuration",
+            "review_hooks",
+            "run_guard_probe",
+            "run_mcp_verification",
         ];
         for (kind, expected) in ConnectionActionKind::ALL.into_iter().zip(expected) {
             assert_eq!(serde_json::to_value(kind).unwrap(), json!(expected));
@@ -1147,26 +1637,30 @@ mod tests {
     #[test]
     fn action_instruction_validation_is_strict() {
         let action = ConnectionAction::try_new(
-            ConnectionActionKind::InspectCodexProtocol,
+            ConnectionActionKind::InspectRuntimeSession,
             "Inspect the Codex protocol failure",
         )
         .expect("bounded action");
         assert_eq!(
             serde_json::to_value(&action).unwrap(),
             json!({
-                "id": "inspect_codex_protocol",
+                "id": "inspect_runtime_session",
+                "owner": "agent",
+                "channel": "documentation",
+                "prerequisites": ["host_reload"],
+                "completes_checks": ["managed_capability_proof", "managed_session_health"],
+                "root_finding_ids": [],
                 "instruction": "Inspect the Codex protocol failure",
             })
         );
 
         for instruction in ["", "invalid\0instruction"] {
             assert!(
-                ConnectionAction::try_new(ConnectionActionKind::ObserveCodex, instruction,)
-                    .is_err()
+                ConnectionAction::try_new(ConnectionActionKind::ReviewHooks, instruction,).is_err()
             );
         }
         assert!(ConnectionAction::try_new(
-            ConnectionActionKind::ObserveCodex,
+            ConnectionActionKind::ReviewHooks,
             "x".repeat(MAX_CONNECTION_TEXT_BYTES + 1),
         )
         .is_err());
@@ -1182,30 +1676,249 @@ mod tests {
                 .keys()
                 .map(String::as_str)
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["id", "instruction"])
+            BTreeSet::from([
+                "channel",
+                "completes_checks",
+                "id",
+                "instruction",
+                "owner",
+                "prerequisites",
+                "root_finding_ids",
+            ])
         );
-        assert_eq!(schema["required"], json!(["id", "instruction"]));
+        assert_eq!(schema["required"].as_array().map(Vec::len), Some(7));
         assert_eq!(schema["additionalProperties"], json!(false));
 
         for rejected in [
             json!({
-                "id": "repair_mcp_server",
+                "id": "repair_managed_configuration",
                 "instruction": "Repair the MCP server",
                 "command": "volicord connection verify",
             }),
             json!({
-                "id": "repair_mcp_server",
+                "id": "repair_managed_configuration",
                 "instruction": "Repair the MCP server",
                 "command": null,
             }),
             json!({
-                "id": "repair_mcp_server",
+                "id": "repair_managed_configuration",
                 "instruction": "Repair the MCP server",
                 "adapter_action": "verify",
             }),
         ] {
             assert!(serde_json::from_value::<ConnectionAction>(rejected).is_err());
         }
+
+        let action = ConnectionAction::try_new(
+            ConnectionActionKind::RunGuardProbe,
+            "Run the current Guard probe",
+        )
+        .unwrap();
+        let mut noncanonical = serde_json::to_value(action).unwrap();
+        noncanonical["completes_checks"] = json!(["guard_verification", "guard_hook_execution"]);
+        assert!(serde_json::from_value::<ConnectionAction>(noncanonical).is_err());
+    }
+
+    #[test]
+    fn hook_activation_evidence_keeps_unknown_disabled_and_bypass_distinct() {
+        let evidence = |host, observed| HookActivationEvidence {
+            setup_changed_definition: false,
+            host,
+            current_definition_event_observed: observed,
+        };
+        assert_eq!(
+            HookActivationState::from_evidence(evidence(None, false)),
+            HookActivationState::Unknown
+        );
+        assert_eq!(
+            HookActivationState::from_evidence(evidence(None, true)),
+            HookActivationState::EffectiveByObservation
+        );
+        assert_eq!(
+            HookActivationState::from_evidence(evidence(
+                Some(HostHookActivationEvidence::Disabled),
+                true,
+            )),
+            HookActivationState::Disabled
+        );
+        assert_eq!(
+            HookActivationState::from_evidence(evidence(
+                Some(HostHookActivationEvidence::BypassedForInvocation),
+                true,
+            )),
+            HookActivationState::BypassedForInvocation
+        );
+        assert!(
+            serde_json::from_value::<HookActivationState>(json!("trusted")).is_err(),
+            "the host does not expose authoritative persisted hook trust"
+        );
+    }
+
+    fn activation_check(
+        id: ConnectionCheckKind,
+        status: ConnectionCheckStatus,
+        hook: Option<HookActivationState>,
+    ) -> ConnectionCheck {
+        let details = hook.map(|state| {
+            ConnectionCheckDetails::try_new(serde_json::Map::from_iter([(
+                "activation_state".to_owned(),
+                json!(state.as_str()),
+            )]))
+            .unwrap()
+        });
+        ConnectionCheck::try_new(
+            id,
+            status,
+            Vec::new(),
+            Some(format!("{}_state", id.as_str())),
+            format!("{} state", id.as_str()),
+            details,
+            None,
+        )
+        .unwrap()
+    }
+
+    fn activation_report(
+        host_reload: ConnectionCheckStatus,
+        hook: HookActivationState,
+        session: ConnectionCheckStatus,
+        capability: ConnectionCheckStatus,
+        guard_execution: ConnectionCheckStatus,
+        guard_verification: ConnectionCheckStatus,
+    ) -> ConnectionVerificationReport {
+        ConnectionVerificationReport::try_new(
+            timestamp(),
+            vec![
+                activation_check(
+                    ConnectionCheckKind::ManagedConfig,
+                    ConnectionCheckStatus::Passed,
+                    None,
+                ),
+                activation_check(ConnectionCheckKind::HostReload, host_reload, None),
+                activation_check(
+                    ConnectionCheckKind::HookSourceActivation,
+                    match hook {
+                        HookActivationState::EffectiveByObservation
+                        | HookActivationState::ManagedByPolicy => ConnectionCheckStatus::Passed,
+                        HookActivationState::Disabled => ConnectionCheckStatus::Failed,
+                        HookActivationState::Unknown
+                        | HookActivationState::ReviewRequiredBySetup
+                        | HookActivationState::BypassedForInvocation => {
+                            ConnectionCheckStatus::Pending
+                        }
+                    },
+                    Some(hook),
+                ),
+                activation_check(ConnectionCheckKind::ManagedSessionHealth, session, None),
+                activation_check(
+                    ConnectionCheckKind::ManagedCapabilityProof,
+                    capability,
+                    None,
+                ),
+                activation_check(
+                    ConnectionCheckKind::GuardHookExecution,
+                    guard_execution,
+                    None,
+                ),
+                activation_check(
+                    ConnectionCheckKind::GuardVerification,
+                    guard_verification,
+                    None,
+                ),
+            ],
+            Vec::new(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn activation_state_transitions_are_derived_from_typed_checks() {
+        let pending = ConnectionCheckStatus::Pending;
+        let passed = ConnectionCheckStatus::Passed;
+        assert_eq!(
+            activation_report(
+                pending,
+                HookActivationState::Unknown,
+                pending,
+                pending,
+                pending,
+                pending,
+            )
+            .activation_state(),
+            ConnectionActivationState::HostReloadRequired
+        );
+        assert_eq!(
+            activation_report(
+                passed,
+                HookActivationState::Unknown,
+                pending,
+                pending,
+                pending,
+                pending,
+            )
+            .activation_state(),
+            ConnectionActivationState::HookReviewRequiredOrUnknown
+        );
+        assert_eq!(
+            activation_report(
+                passed,
+                HookActivationState::EffectiveByObservation,
+                pending,
+                pending,
+                pending,
+                pending,
+            )
+            .activation_state(),
+            ConnectionActivationState::McpObservationRequired
+        );
+        assert_eq!(
+            activation_report(
+                passed,
+                HookActivationState::EffectiveByObservation,
+                passed,
+                passed,
+                passed,
+                pending,
+            )
+            .activation_state(),
+            ConnectionActivationState::GuardVerificationRequired
+        );
+        assert_eq!(
+            activation_report(
+                passed,
+                HookActivationState::EffectiveByObservation,
+                passed,
+                passed,
+                passed,
+                passed,
+            )
+            .activation_state(),
+            ConnectionActivationState::Complete
+        );
+    }
+
+    #[test]
+    fn project_trust_not_applicable_does_not_activate_project_hooks() {
+        let mut report = activation_report(
+            ConnectionCheckStatus::Passed,
+            HookActivationState::Unknown,
+            ConnectionCheckStatus::Pending,
+            ConnectionCheckStatus::Pending,
+            ConnectionCheckStatus::Pending,
+            ConnectionCheckStatus::Pending,
+        );
+        let mut checks = report.checks().to_vec();
+        checks.push(activation_check(
+            ConnectionCheckKind::ProjectTrust,
+            ConnectionCheckStatus::NotApplicable,
+            None,
+        ));
+        report = ConnectionVerificationReport::try_new(timestamp(), checks, Vec::new()).unwrap();
+        assert_eq!(
+            report.activation_state(),
+            ConnectionActivationState::HookReviewRequiredOrUnknown
+        );
+        assert_eq!(report.hook_activation_state(), HookActivationState::Unknown);
     }
 
     #[test]
@@ -1257,6 +1970,8 @@ mod tests {
         .unwrap();
         let expected = json!({
             "status": "complete",
+            "activation_state": "configured",
+            "hook_activation_state": "unknown",
             "checked_at": "2026-07-18T00:00:00Z",
             "checks": [{
                 "id": "mcp_server",
@@ -1269,6 +1984,11 @@ mod tests {
             "root_cause_ids": [],
             "actions": [{
                 "id": "reload_host",
+                "owner": "user",
+                "channel": "codex_ui",
+                "prerequisites": ["managed_config"],
+                "completes_checks": ["host_reload"],
+                "root_finding_ids": [],
                 "instruction": "Reload the host",
             }]
         });
@@ -1457,8 +2177,8 @@ mod tests {
                 ),
             ],
             vec![
-                action(ConnectionActionKind::RunVerification),
-                action(ConnectionActionKind::ApplyRemoval),
+                action(ConnectionActionKind::RunMcpVerification),
+                action(ConnectionActionKind::InspectHookContract),
             ],
         )
         .unwrap();
@@ -1473,8 +2193,8 @@ mod tests {
                 .map(ConnectionAction::id)
                 .collect::<Vec<_>>(),
             vec![
-                ConnectionActionKind::ApplyRemoval,
-                ConnectionActionKind::RunVerification,
+                ConnectionActionKind::InspectHookContract,
+                ConnectionActionKind::RunMcpVerification,
             ]
         );
 
@@ -1498,7 +2218,7 @@ mod tests {
         assert_eq!(report.checks()[0].status(), ConnectionCheckStatus::Pending);
         assert_eq!(
             report.actions()[0].id(),
-            ConnectionActionKind::RunVerification
+            ConnectionActionKind::RunMcpVerification
         );
     }
 

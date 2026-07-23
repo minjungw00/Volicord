@@ -463,11 +463,12 @@ transaction Store loads and validates the revision owner fields, compares the
 current revision, and updates only `verification_report_json` and the ordinary
 row update timestamp. A mismatch is a conflict with no write. This boundary
 allows explicit replacement of a malformed stored report but does not repair
-malformed metadata or other owner state. An action containing any member other
-than `id` and `instruction` is one such malformed report; strict reads reject
-it, while active verification may replace the whole report under the unchanged
-revision. Verification therefore cannot adopt managed configuration or change
-the Connection integration revision.
+malformed metadata or other owner state. An action with missing or unknown
+typed members, noncanonical check/root references, or owner/channel/check
+metadata inconsistent with its ID is one such malformed report; strict reads
+reject it, while active verification may replace the whole report under the
+unchanged revision. Verification therefore cannot adopt managed configuration
+or change the Connection integration revision.
 
 Store validates the shared report type before write and after read, including
 closed values, bounds, deterministic ordering, duplicate rejection, and the

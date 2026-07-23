@@ -58,6 +58,19 @@ pub(crate) struct GuardIntegrationPlan {
     pub(crate) required_hook_phases: Vec<GuardHookPhase>,
 }
 
+impl GuardIntegrationPlan {
+    pub(crate) fn hook_definition_changed(&self) -> bool {
+        self.generated_files.iter().any(|file| {
+            file.artifact == GuardManagedArtifact::HostHookConfig
+                && matches!(
+                    file.status,
+                    crate::guard_integration::FilePlanStatus::PlannedCreate
+                        | crate::guard_integration::FilePlanStatus::PlannedUpdate
+                )
+        })
+    }
+}
+
 pub(crate) struct GuardIntegrationPlanRequest<'a> {
     pub(crate) host_kind: HostKind,
     pub(crate) profile: IntegrationProfile,
@@ -411,7 +424,7 @@ fn guard_hooks_unsupported_message(
 
 fn agents_guidance_block() -> String {
     format!(
-        "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Treat Volicord's recorded scope and user-owned decisions as authoritative.\n- Do not modify Product Repository files outside an active compatible write authorization.\n- Do not infer, resolve, or record user-owned judgments on the user's behalf.\n- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.\n- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.\n- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.\n{GUIDANCE_END_MARKER}\n"
+        "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Treat Volicord's recorded scope and user-owned decisions as authoritative.\n- Do not modify Product Repository files outside an active compatible write authorization.\n- Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.\n- For the request `Run the Volicord integration verification.`, call `volicord.list_projects`, `volicord.begin_integration_verification`, the returned `volicord.guard_probe`, and `volicord.get_integration_verification`, in that order.\n- Only that first-party workflow proves current MCP and Guard correlation. Manual stdio and CLI MCP preflight are diagnostic and are not managed-host evidence.\n- If Volicord tools are not exposed, report the managed MCP connection as unavailable. Do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as tool proof; use read-only connection status or MCP preflight only for diagnosis.\n- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.\n- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.\n- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.\n{GUIDANCE_END_MARKER}\n"
     )
 }
 
@@ -420,12 +433,15 @@ mod tests {
     use std::fs;
 
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::IntegrationProfile;
+    use volicord_types::{GuardManagedArtifact, IntegrationProfile};
 
     use super::{
         plan_guard_integration, validate_generated_guard_plan, GuardIntegrationPlanRequest,
     };
-    use crate::host_integration::{ConnectionIntent, HostKind};
+    use crate::{
+        guard_integration::apply_guard_integration,
+        host_integration::{ConnectionIntent, HostKind},
+    };
     use volicord_mcp::ManagedMcpLaunchSpec;
 
     #[test]
@@ -454,6 +470,92 @@ mod tests {
         assert!(error
             .to_string()
             .contains("does not preserve the policy/runtime command projection contract"));
+        Ok(())
+    }
+
+    #[test]
+    fn generated_host_guidance_preserves_the_canonical_verification_boundary(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("guard-plan-verification-guidance")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let volicord_command = fixture.runtime_home_path().join("bin/volicord");
+        let mcp_entry = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)?;
+        let plan = plan_guard_integration(GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Record,
+            runtime_home: fixture.runtime_home_path(),
+            volicord_command: &volicord_command,
+            repo_root: &repo_root,
+            connection_id: fixture.connection_id(),
+            guard_installation_id: "guard_verification_guidance",
+            mcp_entry: &mcp_entry,
+            connection_intent: ConnectionIntent::Shared,
+        })?;
+
+        let agents = plan
+            .generated_files
+            .iter()
+            .find(|file| file.artifact == GuardManagedArtifact::AgentsManagedBlock)
+            .expect("managed AGENTS guidance");
+        for required in [
+            "Run the Volicord integration verification.",
+            "`volicord.list_projects`",
+            "`volicord.begin_integration_verification`",
+            "`volicord.guard_probe`",
+            "`volicord.get_integration_verification`",
+            "raw stdio",
+            "Codex `_meta`",
+            "resources/list",
+            "not managed-host evidence",
+            "user-owned trust judgments",
+        ] {
+            assert!(agents.content.contains(required));
+        }
+
+        let codex_rule = plan
+            .generated_files
+            .iter()
+            .find(|file| file.artifact == GuardManagedArtifact::HostRuleInstruction)
+            .expect("managed Codex rule guidance");
+        for required in [
+            "Hook review and trust remain user/host owned",
+            "Run the Volicord integration verification.",
+            "volicord.list_projects, volicord.begin_integration_verification, volicord.guard_probe, volicord.get_integration_verification",
+            "raw stdio",
+            "Codex _meta",
+        ] {
+            assert!(codex_rule.content.contains(required));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn hook_definition_change_detection_is_exact_for_create_and_replay(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = CoreFixture::new("guard-plan-hook-definition-change")?;
+        let repo_root = fixture.product_repo_path();
+        fs::create_dir_all(repo_root.join(".git"))?;
+        let volicord_command = fixture.runtime_home_path().join("bin/volicord");
+        let mcp_entry = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)?;
+        let request = || GuardIntegrationPlanRequest {
+            host_kind: HostKind::Codex,
+            profile: IntegrationProfile::Record,
+            runtime_home: fixture.runtime_home_path(),
+            volicord_command: &volicord_command,
+            repo_root: &repo_root,
+            connection_id: fixture.connection_id(),
+            guard_installation_id: "guard_hook_definition_change",
+            mcp_entry: &mcp_entry,
+            connection_intent: ConnectionIntent::Shared,
+        };
+
+        let create = plan_guard_integration(request())?;
+        assert!(create.hook_definition_changed());
+        apply_guard_integration(create)?;
+
+        let replay = plan_guard_integration(request())?;
+        assert!(!replay.hook_definition_changed());
         Ok(())
     }
 }

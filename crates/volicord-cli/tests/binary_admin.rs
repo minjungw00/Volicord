@@ -35,6 +35,35 @@ const CONNECTION_LIST_TEXT_HEADER: &str =
 
 type SqliteMasterRow = (String, String, Option<String>);
 
+fn assert_current_action_shape(action: &Value) {
+    let action = action.as_object().expect("typed action object");
+    assert_eq!(
+        action.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "channel",
+            "completes_checks",
+            "id",
+            "instruction",
+            "owner",
+            "prerequisites",
+            "root_cause_ids",
+        ])
+    );
+    assert!(matches!(
+        action["id"].as_str(),
+        Some(
+            "reload_host"
+                | "review_hooks"
+                | "run_mcp_verification"
+                | "run_guard_probe"
+                | "inspect_hook_contract"
+                | "repair_managed_configuration"
+                | "inspect_runtime_session"
+                | "reinstall_current_build"
+        )
+    ));
+}
+
 const ROOT_HELP: &str = "Local Volicord administration and managed stdio MCP
 
 Usage: volicord
@@ -273,6 +302,7 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
             "connection_membership",
             "guard_managed_file",
             "guard_registry_setup",
+            "hook_definition",
             "managed_host_configuration",
             "project_registration",
             "runtime_home_initialization",
@@ -296,10 +326,12 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
         .as_array()
         .expect("typed actions")
         .iter()
-        .map(|action| action["code"].as_str().expect("action code"))
+        .map(|action| action["id"].as_str().expect("action id"))
         .collect::<Vec<_>>();
-    assert!(action_ids.contains(&"action.connection.apply_setup"));
-    assert!(action_ids.contains(&"action.host.observe_activity"));
+    assert!(action_ids.contains(&"reload_host"));
+    assert!(action_ids.contains(&"review_hooks"));
+    assert!(action_ids.contains(&"run_mcp_verification"));
+    assert!(action_ids.contains(&"run_guard_probe"));
     assert!(!fixture.runtime_home.join("registry.sqlite").exists());
     assert!(!fixture.codex_home.join("config.toml").exists());
     assert!(directory_contents(&fixture.repo_root)?.is_empty());
@@ -1116,15 +1148,7 @@ fn connection_verify_replaces_a_command_bearing_report_without_changing_connecti
     let generated: Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(generated["operation"], "verify");
     for action in generated["actions"].as_array().expect("generated actions") {
-        assert_eq!(
-            action
-                .as_object()
-                .expect("action object")
-                .keys()
-                .map(String::as_str)
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["code", "root_cause_ids", "summary"])
-        );
+        assert_current_action_shape(action);
     }
     assert!(!serde_json::to_string(&generated)?.contains("volicord connection verify"));
 
@@ -1338,7 +1362,7 @@ fn fresh_init_without_host_observation_is_action_required_and_exit_zero(
     assert!(value["checks"].as_array().is_some_and(|checks| {
         checks
             .iter()
-            .any(|check| check["id"] == "host_session" && check["status"] == "pending")
+            .any(|check| check["id"] == "host_reload" && check["status"] == "pending")
     }));
     Ok(())
 }
@@ -1354,7 +1378,9 @@ fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     let text = stdout(&output)?;
     assert!(text.starts_with("Volicord setup was applied and needs one more step.\n\n"));
     assert!(text.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
-    assert!(text.contains("Mode: workflow\nChecks: "));
+    assert!(text.contains("Mode: workflow\nActivation: "));
+    assert!(text.contains("\nHook activation: "));
+    assert!(text.contains("\nChecks: "));
     assert!(text.contains("Waiting\n"));
     assert!(text.contains("Next\n"));
     assert!(text.contains("volicord connection status codex --repo"));
@@ -1474,7 +1500,9 @@ fn connection_remove_human_output_reports_complete_connection_removal() -> Resul
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
     assert!(text.starts_with("Connection membership and Connection record were removed.\n\n"));
-    assert!(text.contains("Mode: workflow\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"));
+    assert!(text.contains(
+        "Mode: workflow\nActivation: configured\nHook activation: unknown\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
+    ));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Connection removed:"));
     assert!(!text.contains("--verbose"));
@@ -1501,9 +1529,7 @@ fn connection_remove_dry_run_has_no_registry_host_or_repository_effect(
     assert!(report["checks"].as_array().is_some_and(|checks| checks
         .iter()
         .any(|check| check["id"] == "connection_removal")));
-    assert!(report["actions"].as_array().is_some_and(|actions| actions
-        .iter()
-        .any(|action| action["code"] == "action.connection.apply_removal")));
+    assert_eq!(report["actions"].as_array().map(Vec::len), Some(0));
     assert_eq!(fixture.registry_snapshot(), registry_before);
     assert_eq!(directory_contents(&fixture.runtime_home)?, runtime_before);
     assert_eq!(directory_contents(&fixture.codex_home)?, host_before);
@@ -1512,7 +1538,8 @@ fn connection_remove_dry_run_has_no_registry_host_or_repository_effect(
 }
 
 #[test]
-fn connection_add_dry_run_preserves_setup_check_and_action_kinds() -> Result<(), Box<dyn Error>> {
+fn connection_add_dry_run_preserves_setup_check_and_activation_actions(
+) -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-add-dry-run-kinds")?;
     fixture.install_codex_executable()?;
     assert_eq!(fixture.run(false)?.status.code(), Some(0));
@@ -1526,9 +1553,9 @@ fn connection_add_dry_run_preserves_setup_check_and_action_kinds() -> Result<(),
     assert!(report["checks"]
         .as_array()
         .is_some_and(|checks| checks.iter().any(|check| check["id"] == "setup_plan")));
-    assert!(report["actions"].as_array().is_some_and(|actions| actions
-        .iter()
-        .any(|action| action["code"] == "action.connection.apply_setup")));
+    assert!(report["actions"]
+        .as_array()
+        .is_some_and(|actions| actions.iter().any(|action| action["id"] == "review_hooks")));
     Ok(())
 }
 
@@ -1555,7 +1582,7 @@ fn connection_add_operational_failure_is_one_stdout_document_and_exit_one(
 }
 
 #[test]
-fn connection_mode_preserves_transition_check_and_reload_action_kinds() -> Result<(), Box<dyn Error>>
+fn connection_mode_preserves_transition_check_and_typed_reload_action() -> Result<(), Box<dyn Error>>
 {
     let fixture = IsolatedInitFixture::new("binary-mode-kinds")?;
     fixture.install_codex_executable()?;
@@ -1567,10 +1594,7 @@ fn connection_mode_preserves_transition_check_and_reload_action_kinds() -> Resul
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(report["checks"][0]["id"], "mode_transition");
-    assert_eq!(
-        report["actions"][0]["code"],
-        "action.host.reload_after_configuration_change"
-    );
+    assert_eq!(report["actions"][0]["id"], "reload_host");
     Ok(())
 }
 
@@ -1775,7 +1799,9 @@ fn membership_only_remove_human_output_reports_connection_retention() -> Result<
     assert!(text.starts_with(
         "Connection membership was removed; the shared Connection remains in use.\n\n"
     ));
-    assert!(text.contains("Mode: workflow\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"));
+    assert!(text.contains(
+        "Mode: workflow\nActivation: configured\nHook activation: unknown\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
+    ));
     assert!(!text.contains("Result:"));
     assert!(!text.contains("Remaining project count:"));
     assert!(!text.contains("--verbose"));
@@ -1798,15 +1824,7 @@ fn failed_verify_json_is_one_stdout_document_and_empty_stderr() -> Result<(), Bo
     assert!(value["operation_details"].get("result").is_none());
     assert!(value["operation_details"].get("planned_changes").is_none());
     for action in value["actions"].as_array().expect("verification actions") {
-        assert_eq!(
-            action
-                .as_object()
-                .expect("action object")
-                .keys()
-                .map(String::as_str)
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["code", "root_cause_ids", "summary"])
-        );
+        assert_current_action_shape(action);
     }
     assert!(!stdout(&output)?.contains("volicord connection verify"));
 

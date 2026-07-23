@@ -169,11 +169,17 @@ fail closed하고, 정상적인 launcher 실패는 아직 쓰지 않은 lease를
 
 ## `ConnectionVerificationReport`
 
-작은 보고서 하나가 정규 직렬화 연결 검증 상태입니다.
+보고서 하나가 정규 직렬화 Connection 및 activation 상태입니다.
 
 ```yaml
 ConnectionVerificationReport:
   status: complete | action_required | failed
+  activation_state: configured | host_reload_required |
+    hook_review_required_or_unknown | mcp_observation_required |
+    guard_verification_required | complete | failed
+  hook_activation_state: unknown | review_required_by_setup |
+    effective_by_observation | managed_by_policy |
+    bypassed_for_invocation | disabled
   checked_at: UtcTimestamp
   checks: ConnectionCheck[]
   root_cause_ids: DiagnosticFindingId[]
@@ -191,6 +197,11 @@ ConnectionCheck:
 
 ConnectionAction:
   id: ConnectionActionKind
+  owner: user | host | volicord | agent
+  channel: cli | codex_ui | mcp_tool | documentation
+  prerequisites: ConnectionCheckKind[]
+  completes_checks: ConnectionCheckKind[]
+  root_finding_ids: DiagnosticFindingId[]
   instruction: string
 ```
 
@@ -212,27 +223,67 @@ Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로
 
 `ConnectionCheckKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
 `connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`,
-`guard_observation`, `guard_verification`, `host_executable`, `host_session`, `managed_config`, `mcp_server`,
-`mode_transition`, `process_startup`, `project_trust`, `required_tools`,
-`runtime_session_lookup`, `setup_plan`, `tool_round_trip`, `verification_not_run`입니다. 운영 검증은 아래 표에서
-적용되는 check를 사용합니다.
+`guard_observation`, `guard_verification`, `hook_source_activation`,
+`host_executable`, `host_reload`, `host_session`, `managed_capability_proof`,
+`managed_config`, `managed_session_health`, `mcp_server`, `mode_transition`,
+`process_startup`, `project_trust`, `required_tools`,
+`runtime_session_lookup`, `setup_plan`, `tool_round_trip`,
+`verification_not_run`입니다. 운영 검증은 아래 표에서 적용되는 check를 사용합니다.
 보고서 부재와 관리 명령 계획은 나머지 이름 붙은 kind를 사용합니다.
 `diagnostic_lookup`과 `runtime_session_lookup`은 한도가 있는 해당 관리 diagnostic
 operation에서만 사용하며, 어댑터가 임의로 정한 check ID는 받지 않습니다.
 
 `ConnectionActionKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
-`apply_removal`, `apply_setup`, `host_trust_required`,
-`inspect_codex_protocol`, `install_or_repair_codex`, `observe_codex`,
-`reload_host`, `repair_guard`, `repair_managed_config`, `repair_mcp_server`,
-`run_verification`입니다. `HostPlan`, `HostEffect`, 검증 보고서, 명령 보고서는 정규
-`ConnectionAction` 계약을 직접 사용합니다. 이 직접 계약에서 `observe_codex`와
-`inspect_codex_protocol`은 `reload_host`와 서로 다른 행동으로 유지됩니다.
+`inspect_hook_contract`, `inspect_runtime_session`, `reinstall_current_build`,
+`reload_host`, `repair_managed_configuration`, `review_hooks`,
+`run_guard_probe`, `run_mcp_verification`입니다. `HostPlan`, `HostEffect`, 검증
+보고서, 명령 보고서는 이 정규 typed `ConnectionAction` 계약을 직접 사용합니다.
 
-Connection action은 안정적인 kind와 사용자 지시로 의미 있는 작업을 표현하며 실행 가능한
-셸 텍스트를 포함하지 않습니다. JSON 소비자는 action 내용을 실행하지 않고 action ID와
-지시를 보고서 사실로 사용합니다. 완전한 현재 selector 좌표가 있으면 사람용 렌더러가 typed
+Connection action은 안정적인 kind, owner, channel, prerequisite, 완료 의도 check,
+root finding, 사용자 지시로 의미 있는 작업을 표현하며 실행 가능한 셸 텍스트를 포함하지
+않습니다. JSON 소비자는 action 내용을 실행하지 않고 이 구성원을 보고서 사실로 사용합니다.
+완전한 현재 selector 좌표가 있으면 사람용 렌더러가 typed
 현재 CLI 호출 맥락에서 실행 안내를 구성합니다. 렌더러가 담당하는 이 안내는 action JSON이나
 영속 보고서에 복사하지 않습니다.
+
+### Hook activation 근거
+
+`HookActivationState`는 Volicord가 근거를 특정할 수 있는 상태만 보고합니다.
+
+| 상태 | 필요한 근거 |
+|---|---|
+| `unknown` | 권위 있는 host 상태도 없고 현재 hook definition에 맞는 호환 event도 없습니다. 관찰 부재는 trust 판정이 아닙니다. |
+| `review_required_by_setup` | Setup이 프로젝트 로컬 hook definition을 만들거나 바꿨습니다. 이전 definition이 실행된 적이 있어도 host review를 다시 해야 합니다. |
+| `effective_by_observation` | 현재 설치 definition, policy hash, integration revision, installation 경계에 맞는 호환 Guard event가 있습니다. |
+| `managed_by_policy` | Host가 현재 hook activation이 policy로 관리된다고 명시적으로 보고합니다. |
+| `bypassed_for_invocation` | Host가 호출 한 번에 한정된 bypass를 명시적으로 보고합니다. 지속적인 activation이 아닙니다. |
+| `disabled` | Host가 hook source가 disabled라고 명시적으로 보고합니다. |
+
+우선순위는 명시적인 disabled 근거, setup definition 변경, policy 관리, 호출별 bypass,
+현재 definition 관찰, `unknown` 순입니다. 의도적으로 `trusted` hook 상태는 두지 않습니다.
+Project 또는 configuration trust는 host/user가 소유하는 별도 관심사이며
+`project_trust`로 표현합니다. Hook activation에서 trust를 추론하지 않고 trust로 hook
+activation을 증명하지도 않습니다.
+
+Guard 관찰은 현재 installation definition 경계 이후에 발생하고 policy hash,
+integration revision, installation이 일치할 때만 current입니다. Byte가 같은 definition
+내용을 다시 적용하면 이 경계를 유지합니다. 관리 definition 내용이 바뀌면 경계를
+전진시키므로 이전 event가 새 definition의 효과를 증명할 수 없습니다. 보고서는 현재 hook
+definition content hash와 주변 prompt/pre/post phase detail을 분리해 보여 줍니다.
+
+### Connection activation 진행 상태
+
+`ConnectionActivationState`는 다음 순서로 파생합니다.
+
+1. 필수 check가 failed 또는 blocked이면 `failed`
+2. `managed_config`가 미완료이면 `configured`
+3. `host_reload`가 미완료이면 `host_reload_required`
+4. hook 상태가 `effective_by_observation` 또는 `managed_by_policy`가 아니면
+   `hook_review_required_or_unknown`
+5. `managed_session_health` 또는 `managed_capability_proof`가 미완료이면
+   `mcp_observation_required`
+6. `guard_verification`이 미완료이면 `guard_verification_required`
+7. 그 밖에는 `complete`
 
 보고서의 모든 check는 그 보고서에 필수입니다. 최상위 상태는 check에서 파생됩니다.
 
@@ -254,29 +305,21 @@ Connection action은 안정적인 kind와 사용자 지시로 의미 있는 작�
 사용합니다.
 
 ```text
-managed_config -> process_startup -> host_session
-required_tools -> tool_round_trip
-managed_config -> mcp_server
-guard_files -> guard_hook_execution -> guard_observation -> guard_verification
+managed_config -> host_reload -> hook_source_activation
+host_reload -> managed_session_health -> managed_capability_proof
+hook_source_activation -> guard_hook_execution -> guard_verification
 ```
 
-`host_session`은 managed host의 `initialize` check이고, `required_tools`는 managed host의
-`tools/list` check이며, `tool_round_trip`은 정규 verification role 도구 호출 check입니다.
-`ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
-`AgentToolId::LIST_PROJECTS`에 결합되며, 영속 이름과 MCP wire 이름으로는
-`volicord.list_projects`를 투영합니다. CLI probe, MCP runtime, Store 관찰, 검증 보고서
-비교는 모두 같은 typed identity를 사용합니다. `process_startup`과 `host_session`은 고정된
+`project_trust`는 독립적으로 평가합니다. Host 소유 prerequisite를 설명할 수는 있지만
+`hook_source_activation`에 합치지 않습니다. `managed_session_health`는 고정된
 `latest_attempt` role, 즉 현재 revision의 `managed_host` runtime 가운데 가장 최신 항목을
-사용합니다. `required_tools`와 `tool_round_trip`은 고정된 `latest_complete_proof` role,
-즉 initialize, initialized notification, `tools/list`, required-tool validation, 정규
-verification-tool 호출을 runtime 하나에서 모두 완료한 가장 최신 항목을 사용합니다. 서로
-다른 session의 milestone을 조합하지 않습니다. Managed-host 시도가 없으면 네 check 모두
-`pending`입니다. 최신 시도가 terminal failure로 끝나면 현재 managed-session health는
-실패합니다. 더 오래된 완전한 proof가 capability check를 통과시킬 수는 있지만 별도 role로
-표시되며 현재 실패를 숨길 수 없습니다. 완전한 proof가 없으면 capability readiness는 최신
-시도 자체의 관찰에 따라 pending 또는 failed로 남습니다. Managed configuration 실패는
-`mcp_server`와 현재 시도의 process/session chain을 막습니다. Guard file integrity 실패는
-hook 실행, phase 관찰, 상관관계가 확인된 통합 검증을 막습니다.
+사용합니다. `managed_capability_proof`는 별도 `latest_complete_proof` role, 즉 runtime
+하나에서 initialize, initialized notification, `tools/list`, required-tool validation,
+지정된 safe tool call을 모두 완료한 가장 최신 항목을 사용합니다. 서로 다른 session의
+milestone을 조합하지 않습니다. 최신 attempt가 terminal failure이면 현재 session health는
+실패합니다. 더 오래된 complete proof는 별도 role로 보이지만 현재 실패를 숨길 수 없습니다.
+실제 MCP peer `clientInfo`와 별도로 probe한 PATH executable/version도 서로 다른 보고서
+사실로 유지합니다.
 
 `failed`와 `blocked` check만 `cause_finding_ids`를 가질 수 있습니다. `blocked` check는
 실패했거나 blocked인 prerequisite의 독립 root finding ID를 정규 정렬하고 합친 집합을
@@ -286,27 +329,25 @@ Blocked check의 원인이 실패한 prerequisite와 일치하지 않거나 depe
 
 현재 Codex 연결 보고서에는 다음 운영 check가 들어갑니다.
 
-| Check ID | 성공 관찰 | 대기 또는 적용 규칙 | 자체 실패 |
-|---|---|---|---|
-| `managed_config` | 선택한 대상에 정규 managed entry가 있습니다. | 모든 managed Connection에 적용됩니다. | 필수 entry가 없거나 malformed이거나 다른 entry가 소유하거나 변경되었거나 조사할 수 없습니다. |
-| `host_executable` | `PATH`에서 `codex`를 찾았고 version 명령이 성공했습니다. | 읽기 전용 status 경로에 이전 active probe가 없으면 기다립니다. | 탐색 또는 version 명령이 실패했습니다. |
-| `mcp_server` | CLI self-test가 preflight와 전체 MCP exchange를 통과했습니다. | Active verification을 기다리며 managed configuration 실패가 막을 수 있습니다. | Self-test 자체가 process, Store 또는 protocol 실패를 관찰했습니다. |
-| `process_startup` | 현재 managed host가 구성된 MCP process를 시작했습니다. | Managed-host 사용을 기다리며 managed configuration 실패가 막을 수 있습니다. | Typed host 관찰이 없으면 managed-host startup 실패를 주장하지 않으며, 관찰 부재는 대기로 남습니다. |
-| `host_session` | `latest_attempt`가 `initialize`와 initialized notification을 완료했습니다. | 현재 revision의 가장 최신 managed-host 시도를 기다리며 `process_startup` 실패가 막을 수 있습니다. | 해당 최신 시도에 terminal protocol finding이 연결되어 있습니다. |
-| `required_tools` | `latest_complete_proof`가 실제 `tools/list` inventory와 같은 session의 required-tool validation을 기록했습니다. | 완전한 proof가 없으면 기다리며 현재 시도의 session check에는 의존하지 않습니다. | 완전한 proof가 없는 상태에서 최신 시도가 required set 누락을 반환했거나 terminal failure로 끝났습니다. |
-| `tool_round_trip` | 같은 `latest_complete_proof`가 required-tool validation 뒤 `verification_tool_name=volicord.list_projects`와 관찰 시각을 기록했습니다. | 완전한 proof를 기다리며 `required_tools`만 prerequisite로 둡니다. | 완전한 proof가 없는 상태에서 최신 시도의 정규 호출이 실패했거나 현재 정규 담당 도구와 다른 이름을 사용했습니다. |
-| `project_trust` | Project trust가 충족되었습니다. | 일반 trust 또는 reload action은 `pending`이고, 별도 trust check가 없는 scope는 `not_applicable`입니다. | Trust configuration이 malformed 또는 모순 상태입니다. |
-| `guard_files` | 현재 Guard manifest의 모든 file 기대값이 일치합니다. | Guard가 Connection profile에 포함될 때 적용됩니다. | Managed file, manifest, wrapper, ownership 또는 executable integrity check가 실패했습니다. |
-| `guard_hook_execution` | 현재 managed Guard hook이 실행되었습니다. | 현재 hook 활동을 기다리며 `guard_files` 실패가 막을 수 있습니다. | Hook 실행 자체가 실패를 기록했습니다. |
-| `guard_observation` | 현재 필수 typed hook phase를 모두 관찰했습니다. | 남은 phase를 기다리며 `guard_hook_execution` 실패가 막을 수 있습니다. | 현재 event가 incompatible hook contract를 보고했습니다. |
-| `guard_verification` | 한도가 있는 run 하나에서 같은 현재 managed runtime, native session, turn의 MCP acknowledgement와 prompt, pre-tool, post-tool 관찰을 상관관계로 확인했습니다. | 완료된 현재 run을 기다리며 `guard_observation` 실패가 막을 수 있습니다. | 가장 최신 run이 현재 runtime, Guard Installation, policy, revision 또는 hook-contract 소유권과 더 이상 일치하지 않습니다. |
+| Check ID | 현재 역할 |
+|---|---|
+| `managed_config` | 선택한 대상에 정규 managed entry가 있습니다. |
+| `host_reload` | 현재 revision의 managed-host attempt가 host가 현재 configuration을 읽었음을 보여 줍니다. |
+| `hook_source_activation` | Typed hook activation 상태와 현재 definition hash를 담고 주변 phase 관찰은 detail로 유지합니다. |
+| `managed_session_health` | Terminal protocol failure를 포함해 `latest_attempt`를 보고합니다. |
+| `managed_capability_proof` | 별도 `latest_complete_proof`와 같은 session의 capability milestone을 보고합니다. |
+| `guard_hook_execution` | 현재 definition hook 실행과 managed-file integrity를 보고하며 주변 phase 관찰은 한도 있는 detail로 유지합니다. |
+| `guard_verification` | Verification ID와 같은 turn의 managed MCP 및 prompt/pre/post Guard 상관관계를 보고합니다. |
+| `project_trust` | Hook 상태를 바꾸지 않고 별도로 확인할 수 있는 project/configuration trust 적용 여부를 보고합니다. |
+| `host_executable` | 별도로 probe한 PATH executable과 version을 diagnostic으로 보고합니다. |
+| `mcp_server` | CLI가 소유한 MCP preflight/self-test 사실을 diagnostic으로만 보고합니다. |
 
 CLI MCP preflight는 읽기 전용이며 runtime session을 만들지 않습니다. 수동 stdio
 self-test는 일회용 명령별 Runtime Home에만 `session_source=manual_cli`를 만듭니다.
-따라서 preflight와 이 일회용 증거는 `process_startup`, `host_session`, `required_tools`,
-`tool_round_trip`을 충족할 수 없습니다.
-Guard는 최상위 운영 check로 `guard_files`, `guard_hook_execution`,
-`guard_observation`, `guard_verification`을 사용합니다. 엄격한 Guard manifest는
+따라서 preflight와 이 일회용 증거는 `managed_session_health`,
+`managed_capability_proof`, `guard_verification`을 충족할 수 없습니다. MCP resource와
+resource template도 tool 노출을 증명하지 않습니다. Guard는 집중 activation check로
+`guard_hook_execution`과 `guard_verification`을 사용합니다. 엄격한 Guard manifest는
 현재 policy hash, integration revision, typed runtime command, 전체 Volicord 관리 artifact
 기대값, 필수 hook phase를 담당합니다. 또한 정확한 `host_contract_profile`과 결정적인
 `host_contract_digest`를 지정하며, 현재 값은 `codex-hooks-v1`과 검토된 계약 identity를
@@ -315,12 +356,10 @@ projection입니다. Audit은 profile이나 digest가 이 정확한 선택과 �
 각 관리 artifact를 정규 현재 기대값과 비교하며, 모든 필수 phase의 호환되는 현재 event를
 요구합니다.
 
-기록한 verification 도구 이름이 다르면 `tool_round_trip`은 절대 통과하지 않습니다.
-Check는 `tool_round_trip_designation_mismatch`로 실패하고 활성 검증은
-`mcp.tool_verification.designation_mismatch`를 영속합니다. 제한된 facts에는 정확한
-`expected_tool_name`과 `observed_tool_name`을 노출하며 JSON check detail과 verbose 출력도
-정확한 기대 이름과 관찰 이름을 표시합니다. 이전 revision, non-managed runtime row, milestone
-부재, 서로 다른 session에 나뉜 쌍은 현재의 정확한 쌍을 대신할 수 없습니다.
+기록한 verification 도구 이름이 다르면 `managed_capability_proof`는 절대 통과하지
+않습니다. 한도 있는 fact에는 정확한 기대 이름과 관찰 이름을 노출합니다. 이전 revision,
+non-managed runtime row, milestone 부재, 서로 다른 session에 나뉜 milestone은 대신할 수
+없습니다.
 
 제한 안의 모든 Codex version은 이 동작 check를 거칩니다. PATH executable version은
 managed runtime session을 선택하거나 제외하는 기준이 아닙니다.
@@ -329,12 +368,29 @@ managed runtime session을 선택하거나 제외하는 기준이 아닙니다.
 가용성, protocol/host version, capability 관찰, 관찰 timestamp는 check 사실에 두며
 별도 공개 또는 영속 상태 enum을 만들지 않습니다.
 
+각 action ID의 owner, channel, prerequisite, 완료 의도 check metadata는 고정되어
+있습니다.
+
+| ID | Owner/channel | Prerequisite | 완료 의도 check |
+|---|---|---|---|
+| `reload_host` | `user` / `codex_ui` | `managed_config` | `host_reload` |
+| `review_hooks` | `user` / `codex_ui` | `host_reload` | `hook_source_activation` |
+| `run_mcp_verification` | `agent` / `mcp_tool` | `hook_source_activation` | `managed_session_health`, `managed_capability_proof` |
+| `run_guard_probe` | `agent` / `mcp_tool` | `managed_capability_proof` | `guard_hook_execution`, `guard_verification` |
+| `inspect_hook_contract` | `user` / `codex_ui` | 없음 | `hook_source_activation` |
+| `repair_managed_configuration` | `volicord` / `cli` | 없음 | `managed_config` |
+| `inspect_runtime_session` | `agent` / `documentation` | `host_reload` | `managed_session_health`, `managed_capability_proof` |
+| `reinstall_current_build` | `volicord` / `cli` | 없음 | `managed_config`, `guard_hook_execution` |
+
+엄격한 생성과 decoding은 ID와 맞지 않는 action metadata를 거부합니다.
+`root_finding_ids`는 action을 현재 독립 원인과 연결합니다.
+
 사용자 지시는 이 보고서의 `actions`에만 둡니다. Root finding과 현재 check 상태에서
 만들고 안정적인 ID 순서로 정렬해 중복을 제거합니다. Blocked downstream check는 관찰
 action을 만들지 않으며 blocker의 repair action을 먼저 제공합니다. 여러 symptom에서 나온
 동등한 action은 안정적인 action 하나로 합칩니다. 다시 불러오기와 최초 사용 action은
-실제 Codex 활동을 관찰해야 한다고 명시합니다. `guard_files` check가 통과했다면 Guard
-파일 재설치를 요청하지 않습니다. Registry 저장소는 독립된 검증 상태나 action 배열을
+실제 Codex 활동을 관찰해야 한다고 명시합니다. `guard_hook_execution` check가
+통과했다면 Guard 재설치를 요청하지 않습니다. Registry 저장소는 독립된 검증 상태나 action 배열을
 저장하지 않습니다. 완료된 영속 보고서가 없는 연결은
 `verification_not_run` pending check 하나와 검증 action 하나를 포함하는 합성
 `status=action_required` 보고서로 projection합니다. 읽었다는 이유로 이를 저장하지
@@ -390,10 +446,11 @@ Registry transaction 하나에서 수행합니다. 이 쓰기는 `verification_r
 두고 검증을 다시 실행하도록 요구합니다. 검증은 관리 configuration을 관찰할 뿐 새로 계획한
 managed fingerprint를 적용하거나 채택하거나 기록하지 않습니다.
 
-영속 action에 `id`와 `instruction` 이외의 구성원이 있으면 현재 보고서 형태가 잘못된
-것이며 엄격한 읽기에서 거부합니다. 활성 검증은 같은 revision 보호 교체 경계를 통해 이런
-잘못된 보고서를 교체할 수 있지만 관련 없는 Connection 소유자 상태는 바꾸지 않습니다.
-JSON을 제자리에서 다시 쓰거나 다른 decoder를 사용하는 경로는 없습니다.
+영속 action에 필수 typed 구성원이 없거나, 알 수 없는 구성원이 있거나, reference 순서가
+비정규이거나, metadata가 ID와 일치하지 않으면 현재 보고서 형태가 잘못된 것이며 엄격한
+읽기에서 거부합니다. 활성 검증은 같은 revision 보호 교체 경계를 통해 이런 보고서를
+교체할 수 있지만 관련 없는 Connection 소유자 상태는 바꾸지 않습니다. JSON을 제자리에서
+다시 쓰거나 다른 decoder를 사용하는 경로는 없습니다.
 
 운영 호환성은 현재 관리 구성과 어댑터가 실제로 관찰한 protocol, 도구 목록, 필수 도구,
 안전 호출, Guard 동작으로 판단합니다. `complete`는 적용되는 모든 필수 check가 통과하고

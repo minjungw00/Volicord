@@ -120,6 +120,25 @@ volicord connection verify codex --repo "<repo>"
 범위 선택자를 일관되게 유지합니다. 공유 연결은 `init`, `status`, `verify`,
 `remove`에 `--shared`를 사용하고 개인 연결은 이를 뺍니다.
 
+## Activation 상태부터 읽기
+
+먼저 `activation_state`로 단계를 고르고, 근거 부재를 trust 주장으로 바꾸지 않으면서
+`hook_activation_state`를 읽습니다.
+
+| 상태 | 다음 typed action |
+|---|---|
+| `configured` 또는 `host_reload_required` | `reload_host` |
+| Setup 변경이 있는 `hook_review_required_or_unknown` | `review_hooks` |
+| 명시적인 disabled/incompatible 근거가 있는 `hook_review_required_or_unknown` | `inspect_hook_contract` |
+| `mcp_observation_required` | `run_mcp_verification`, 최신 attempt가 실패했다면 `inspect_runtime_session` |
+| `guard_verification_required` | `run_guard_probe` |
+| Managed configuration 때문에 `failed` | 보고된 `repair_managed_configuration` 또는 `reinstall_current_build` |
+
+`unknown`은 hook activation이 성립하지 않았다는 뜻입니다. Untrusted 또는 disabled를
+뜻하지 않습니다. `project_trust`는 별도 check이며 host가 그 관심사를 노출할 때만
+적용됩니다. `latest_attempt`와 `latest_complete_proof`는 role로 비교하고 verification
+ID를 보존하며 실제 MCP peer 정보와 PATH executable probe를 분리해 보고합니다.
+
 ## `action_required`
 
 `action_required`는 구조화된 다음 단계이며 설명 없는 성공이나 치명적 실패가 아닙니다.
@@ -194,8 +213,8 @@ pending 또는 failed로 유지하고 여러 session entry의 milestone을 조�
 generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_name`과
 `attempted_client_version`을 보존하고
 `action.mcp.use_supported_protocol_revision`을 사용합니다. 더 오래된 complete proof가
-없다면 일반 concise 출력에는 적용되는 제한된 사실, failed `required_tools`, blocked
-`tool_round_trip` check가 나옵니다. Verbose
+없다면 일반 concise 출력에는 적용되는 제한된 사실, failed
+`managed_session_health`, blocked `managed_capability_proof` check가 나옵니다. Verbose
 출력에서는 requested, selected, negotiated revision을 구분하고 실제 MCP peer
 `clientInfo`와 PATH executable probe도 구분합니다.
 
@@ -207,10 +226,10 @@ generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_
 
 `mcp.tool_verification.designation_mismatch`이면
 `facts.data.expected_tool_name`과 `facts.data.observed_tool_name`만 비교합니다. 그런 다음
-현재 관리 Codex 연결을 통해 expected 도구를 실행합니다. 현재 expected 도구는
+현재 관리 Codex 연결을 통해 정규 in-chat sequence를 실행합니다. 첫 tool은
 `volicord.list_projects`이며 `volicord.status`, `volicord.get_operation_result`,
-`volicord.check_close` 같은 다른 읽기 전용 도구 호출이 성공해도 managed-host 왕복 검증을
-충족하지 않습니다.
+`volicord.check_close` 같은 다른 읽기 전용 도구를 따로 호출해 성공해도 managed-host
+capability와 Guard verification을 충족하지 않습니다.
 
 `managed_peer.client_info.version`과 `host_executable_probe.version`이 다르면 먼저
 활성 Codex 프로세스와 PATH를 확인합니다. 이 warning은 유용한 evidence지만 그 자체로
@@ -220,10 +239,12 @@ generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_
 
 같은 현재 managed Codex 채팅과 native turn을 유지합니다.
 
-1. `volicord.begin_integration_verification`을 호출합니다. Connection에 적격 프로젝트가
+1. `Run the Volicord integration verification.` 요청에서는
+   `volicord.list_projects`를 호출해 정확한 프로젝트를 선택합니다.
+2. `volicord.begin_integration_verification`을 호출합니다. Connection에 적격 프로젝트가
    둘 이상일 때만 `project_selector`를 제공합니다.
-2. 반환된 `verification_id`를 반환된 `volicord.guard_probe` 호출에 넣습니다.
-3. 같은 ID로 `volicord.get_integration_verification`을 호출합니다.
+3. 반환된 `verification_id`를 반환된 `volicord.guard_probe` 호출에 넣습니다.
+4. 같은 ID로 `volicord.get_integration_verification`을 호출합니다.
 
 통과 결과는 `status=passed`와 일치한 prompt, pre-tool, post-tool phase를 표시합니다.
 `active`로 남으면 5분 window가 만료되기 전에 `next_action`을 따릅니다. `failed` 또는
@@ -236,13 +257,18 @@ Codex가 도구를 노출하지 않거나 프로젝트를 trust하지 않은 상
 자동화·우회하지 않습니다. 이 check를 강제로 통과시키려고 MCP trust configuration을
 변경하지 않습니다.
 
+Volicord tool이 없으면 managed MCP connection이 unavailable이라고 보고합니다. Raw
+stdio를 시작하거나 Codex `_meta`를 직접 만들거나 MCP resource, resource template,
+`connection verify`, CLI preflight를 managed host가 tool을 노출했다는 proof로 취급하지
+않습니다.
+
 ## Codex에서 도구가 보이지 않음
 
-Codex가 정확한 프로젝트를 신뢰하고 현재 `.codex/config.toml`을 다시 읽었는지
-확인합니다. 관리 명령이 의도한 `volicord` 실행 파일과 Runtime Home을 가리키는지
-확인합니다. 그런 다음 Codex 도구 목록에서 현재 정규 검증 도구인
-`volicord.list_projects`를 실행하고 관리 검증을 다시 수행합니다. 다른 읽기 전용 도구는
-연결 진단에는 도움이 되지만 지정된 왕복 evidence를 만들지 않습니다.
+별도 `project_trust` check가 적용되면 그 host 소유 action을 완료합니다. 모든 경우에
+Codex가 현재 `.codex/config.toml`을 다시 읽었는지, 관리 명령이 의도한 `volicord` 실행
+파일과 Runtime Home을 가리키는지 확인합니다. 그런 다음 새 conversation에서 정규 검증
+요청을 보냅니다. 다른 읽기 전용 도구는 연결 진단에는 도움이 되지만 완전한 managed 및
+Guard evidence를 만들지 않습니다.
 
 구성이 있다고 활성 도구 검색이 증명되지는 않습니다. 현재 세션에 도구가 계속 없다면
 진단을 보존하고 같은 관리 연결에서 새 Codex 세션을 시작합니다.

@@ -183,6 +183,36 @@ struct DiagnosticMatrixScenario {
     is_root: bool,
 }
 
+fn typed_action_id_for_diagnostic(code: &str) -> &'static str {
+    if code == "action.host.reload_after_configuration_change" {
+        "reload_host"
+    } else if code.starts_with("action.host.") {
+        "inspect_runtime_session"
+    } else if code.starts_with("action.managed_config.")
+        || code.starts_with("action.storage.")
+        || code.starts_with("action.store.")
+        || code.starts_with("action.runtime_home.")
+    {
+        "repair_managed_configuration"
+    } else if code == "action.guard.trigger_phase" {
+        "run_guard_probe"
+    } else if code.starts_with("action.guard.") {
+        "inspect_hook_contract"
+    } else if code.starts_with("action.process.")
+        || code.starts_with("action.mcp.")
+        || code.starts_with("action.protocol.")
+    {
+        "inspect_runtime_session"
+    } else if code.starts_with("action.internal.")
+        || code.starts_with("action.connection.reinstall")
+        || code.starts_with("action.installation.")
+    {
+        "reinstall_current_build"
+    } else {
+        "repair_managed_configuration"
+    }
+}
+
 impl DiagnosticMatrixScenario {
     #[allow(clippy::too_many_arguments)]
     const fn failure(
@@ -499,16 +529,20 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
     assert_eq!(
         json["actions"],
         json!([{
-            "code": "action.mcp.use_supported_protocol_revision",
-            "summary": "Configure the client to request a production-supported protocol revision",
+            "id": "inspect_runtime_session",
+            "owner": "agent",
+            "channel": "documentation",
+            "prerequisites": ["host_reload"],
+            "completes_checks": ["managed_capability_proof", "managed_session_health"],
             "root_cause_ids": [id],
+            "instruction": "Configure the client to request a production-supported protocol revision",
         }])
     );
     assert!(concise.contains("Actual MCP client: codex 0.42.0"));
     assert!(concise.contains("Requested protocol: 2024-11-05"));
     assert!(concise.contains("Supported protocols: 2025-06-18, 2025-11-25"));
     assert!(concise.contains("Blocked checks: tool_round_trip"));
-    assert!(concise.contains("action.mcp.use_supported_protocol_revision"));
+    assert!(concise.contains("inspect_runtime_session"));
     assert!(!concise.contains("inspect the failure"));
     for expected in [
         "Requested protocol: 2024-11-05",
@@ -608,7 +642,11 @@ fn failure_scenarios_have_exact_lossless_root_projections() {
         let (concise, verbose, json) = projections(&report);
         assert_same_roots(&concise, &verbose, &json, &[id]);
         assert_eq!(json["findings"][0]["code"], code, "{name}");
-        assert_eq!(json["actions"][0]["code"], action_code, "{name}");
+        assert_eq!(
+            json["actions"][0]["id"],
+            typed_action_id_for_diagnostic(action_code),
+            "{name}"
+        );
         assert_eq!(
             json["findings"][0]["facts"]["data"]["observation_state"],
             "observed"
@@ -628,10 +666,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
     const PROCESS_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::HostSession];
     const HOST_SESSION_BLOCKED: &[ConnectionCheckKind] = &[];
     const TOOLS_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::ToolRoundTrip];
-    const GUARD_BLOCKED: &[ConnectionCheckKind] = &[
-        ConnectionCheckKind::GuardHookExecution,
-        ConnectionCheckKind::GuardObservation,
-    ];
+    const GUARD_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::GuardVerification];
 
     let scenarios = [
         DiagnosticMatrixScenario::failure(
@@ -959,7 +994,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             "guard.managed_file.integrity_failed",
             "guard",
             Some("action.guard.repair"),
-            ConnectionCheckKind::GuardFiles,
+            ConnectionCheckKind::GuardHookExecution,
             GUARD_BLOCKED,
             None,
             "action.guard.repair",
@@ -971,7 +1006,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             Some("action.guard.trigger_phase"),
             ConnectionCheckKind::GuardObservation,
             ConnectionCheckStatus::Pending,
-            Some(ConnectionActionKind::ObserveCodex),
+            Some(ConnectionActionKind::RunMcpVerification),
             Some("action.host.observe_activity"),
         ),
         DiagnosticMatrixScenario::observation(
@@ -991,7 +1026,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             None,
             ConnectionCheckKind::McpServer,
             &[],
-            Some(ConnectionActionKind::RepairMcpServer),
+            Some(ConnectionActionKind::ReinstallCurrentBuild),
             "action.mcp.repair_server",
         ),
     ];
@@ -1133,8 +1168,17 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
 
         match scenario.report_action {
             Some(expected) => {
-                assert_eq!(json["actions"].as_array().map(Vec::len), Some(1));
-                assert_eq!(json["actions"][0]["code"], expected, "{}", scenario.name);
+                assert_eq!(
+                    json["actions"].as_array().map(Vec::len),
+                    Some(1),
+                    "{}",
+                    scenario.name
+                );
+                let expected_id = scenario
+                    .connection_action
+                    .map(ConnectionActionKind::as_str)
+                    .unwrap_or_else(|| typed_action_id_for_diagnostic(expected));
+                assert_eq!(json["actions"][0]["id"], expected_id, "{}", scenario.name);
             }
             None => assert_eq!(json["actions"], json!([]), "{}", scenario.name),
         }
@@ -1215,7 +1259,7 @@ fn pending_and_complete_reports_are_exact() {
         )],
         Vec::new(),
         vec![ConnectionAction::try_new(
-            ConnectionActionKind::ObserveCodex,
+            ConnectionActionKind::RunMcpVerification,
             "Restart or reload Codex and use the connection",
         )
         .unwrap()],
@@ -1225,7 +1269,7 @@ fn pending_and_complete_reports_are_exact() {
     assert_eq!(json["status"], "action_required");
     assert_eq!(json["checks"][0]["status"], "pending");
     assert!(concise.contains("Checks: 0 ready, 0 blocked, 1 waiting, 0 failed"));
-    assert!(concise.contains("action.host.observe_activity"));
+    assert!(concise.contains("run_mcp_verification"));
     assert!(
         verbose.contains("Actual MCP peer: none observed") || !verbose.contains("Actual MCP peer:")
     );
@@ -1245,7 +1289,7 @@ fn pending_and_complete_reports_are_exact() {
     let (concise, verbose, json) = projections(&complete);
     assert_eq!(
         concise,
-        "Verification completed: 1 ready.\n\nOperation: active verification\nEvidence class: active_verification\nSide effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\nDoes not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts\n\nRepository: /workspace/product\nMode: workflow\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
+        "Verification completed: 1 ready.\n\nOperation: active verification\nEvidence class: active_verification\nSide effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\nDoes not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts\n\nRepository: /workspace/product\nMode: workflow\nActivation: host_reload_required\nHook activation: unknown\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
     );
     assert_eq!(json["status"], "complete");
     assert_eq!(json["root_cause_ids"], json!([]));

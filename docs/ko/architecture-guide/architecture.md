@@ -144,6 +144,31 @@ runtime/project session을 검증하고 typed `ValidatedAgentSession`을 Core에
 [저장소 버전 관리](../reference/storage-versioning.md),
 [Agent Connection](../reference/agent-connection.md)이 담당합니다.
 
+### Activation-state 소유권
+
+Activation은 기존 경계를 가로지르는 typed projection 하나입니다.
+
+```text
+host/config 조사 + Store session/event 근거
+  -> volicord-cli 집중 check와 typed action
+  -> volicord-types ConnectionVerificationReport
+  -> concise / verbose / JSON projection
+```
+
+`volicord-types`는 `HookActivationState`, `ConnectionActivationState`, 집중 check
+dependency, 고정 action metadata를 담당합니다. `volicord-cli`는 현재 managed
+configuration, host reload, hook source, session, capability, Guard, 별도 project-trust
+근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존합니다. 바뀌지 않은
+manifest는 현재 관찰의 적격성을 유지하고 관리 definition 내용이 바뀌면 이전 event를
+무효화합니다. `volicord-mcp`와 생성 host guidance는 정규 first-party in-chat 요청과
+tool sequence를 담당합니다. Renderer는 typed 상태를 소비하며 summary 산문을 분류하지
+않습니다.
+
+Host가 제공한 disabled, policy-managed, invocation-bypass 근거는 typed host evidence
+경계를 통해서만 받습니다. 이 근거가 없으면 Volicord는 현재 definition에 맞는 호환 event로
+hook 효과를 성립시키거나 `unknown`을 보고할 수 있을 뿐 trust 상태를 만들 수 없습니다.
+Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니다.
+
 ## 오래 유지될 구현 경계
 
 | 경계 | 개요 책임 | 세부 사항과 계약 경로 |

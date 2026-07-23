@@ -295,5 +295,23 @@ nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible
 configuration forwards that value and does not embed a machine-local Runtime
 Home path.
 
+If init reports `review_required_by_setup`, finish activation in the host:
+
+1. restart or reload Codex in this repository;
+2. review the current project hook definition in the Codex hook UI or with
+   `/hooks`;
+3. start a new conversation;
+4. ask `Run the Volicord integration verification.`;
+5. read the current connection status.
+
+The in-chat agent must use `volicord.list_projects`,
+`volicord.begin_integration_verification`, the returned
+`volicord.guard_probe`, and `volicord.get_integration_verification` in that
+order. If the tools are not exposed, report managed MCP unavailable. Do not
+substitute raw stdio, hand-authored Codex `_meta`, resources, resource
+templates, or CLI preflight as proof. `volicord connection verify` remains an
+optional diagnostic and does not replace host-owned hook review or managed
+in-chat evidence.
+
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../user-guide/agent-host-setup.md).

@@ -35,7 +35,8 @@ use volicord_types::{
     ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode, DiagnosticDomain,
     DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
     DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
-    IntegrationRevision, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    HookActivationEvidence, HookActivationState, IntegrationRevision, UtcTimestamp,
+    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 #[cfg(test)]
 use volicord_types::{AgentToolId, ConnectionStatus};
@@ -89,6 +90,7 @@ use mcp_checks::mcp_server_finding_ids;
 use report_inputs::{assemble_connection_evaluation, canonical_verification_evaluation};
 pub(in crate::connection_command) use report_inputs::{
     connection_metadata_failure_report, current_status_report, effective_connection_report,
+    report_with_hook_review_required,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

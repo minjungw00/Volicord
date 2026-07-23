@@ -134,7 +134,14 @@ pub(crate) fn plan_codex_rule_file(
         command_lines.push(command_text);
         hook_scripts.push(script);
     }
-    let mut body = String::from("prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n");
+    let mut body = String::from(
+        "# Hook review and trust remain user/host owned.\n\
+# Manual stdio and CLI preflight are diagnostic, not managed-host evidence.\n\
+# Canonical verification request: Run the Volicord integration verification.\n\
+# Agent sequence: volicord.list_projects, volicord.begin_integration_verification, volicord.guard_probe, volicord.get_integration_verification.\n\
+# If tools are unavailable, report managed MCP unavailable; do not synthesize raw stdio or Codex _meta.\n\
+prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n",
+    );
     for script in hook_scripts {
         body.push_str("        ");
         body.push_str(&starlark_string(script));

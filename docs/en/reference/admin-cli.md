@@ -223,15 +223,30 @@ applicable to the selected Connection or profile. The aggregate remains
 `failed` when any check is failed or blocked, `action_required` when no such
 check exists and at least one is pending, and `complete` otherwise.
 
-The concise renderer includes `host_session`, `required_tools`, and
-`tool_round_trip` activity only when the corresponding canonical check is
-pending. It may group the exact pending subset as Codex session or tool
-activity; passed, failed, blocked, not-applicable, and absent checks are not repeated under `Waiting`.
-A pending `guard_observation` is presented as Guard hook activity with known
-missing phases. The renderer does not change, remove, reorder, or persist
-canonical checks or actions. Dry-run prose groups planned-change counts by the
-typed `PlannedConnectionChangeKind`; it does not infer ownership from target
-paths.
+The concise renderer always names `activation_state` and
+`hook_activation_state`. Pending focused checks may be grouped as managed
+session, capability, or Guard activity; passed, failed, blocked,
+not-applicable, and absent checks are not repeated under `Waiting`. Ambient
+Guard phases remain details of `hook_source_activation` or
+`guard_hook_execution`, not additional top-level readiness checks. The
+renderer does not change, remove, reorder, or persist canonical checks or
+actions. Dry-run prose groups planned-change counts by the typed
+`PlannedConnectionChangeKind`; it does not infer ownership from target paths.
+
+When applied `init` creates or changes the project hook definition, it reports
+`hook_activation_state=review_required_by_setup` and prints this exact
+host-owned sequence:
+
+1. restart or reload Codex in the repository;
+2. review the current project hook definition in the Codex hook UI or with
+   `/hooks`;
+3. start a new conversation;
+4. request `Run the Volicord integration verification.`;
+5. read current connection status.
+
+`volicord connection verify` is an optional diagnostic after setup. It actively
+checks CLI-owned configuration and transport facts, but cannot replace
+managed-host or correlated Guard evidence.
 
 Blocked checks contribute to the blocked count but do not produce a waiting
 observation or downstream observation action. Root selection and action
@@ -315,6 +330,12 @@ DiagnosticReport:
   schema_version: 2
   operation: init | add | status | verify | mode | remove
   status: complete | action_required | failed
+  activation_state: configured | host_reload_required |
+    hook_review_required_or_unknown | mcp_observation_required |
+    guard_verification_required | complete | failed
+  hook_activation_state: unknown | review_required_by_setup |
+    effective_by_observation | managed_by_policy |
+    bypassed_for_invocation | disabled
   generated_at: timestamp
   connection: DiagnosticConnectionContext | null
   checks: ConnectionCheck[]
@@ -593,7 +614,9 @@ RemovalResult:
   remaining_project_count: integer
 
 PlannedConnectionChange:
-  kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | connection_membership
+  kind: runtime_home_initialization | project_registration |
+    managed_host_configuration | hook_definition | guard_managed_file |
+    guard_registry_setup | connection_membership
   operation: create | update | remove | register | rebind
   target: string
 ```
@@ -636,8 +659,9 @@ labels.
 `checks` use the canonical [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)
 member type and ordering. `findings`, `root_cause_ids`, and schema-2 `actions`
 use the shared failure-model contract. Every JSON report action contains
-exactly `code`, `summary`, and `root_cause_ids`. Human output may group pending
-checks but does not recompute causes or actions from prose. Operation-aware
+exactly `id`, `owner`, `channel`, `prerequisites`, `completes_checks`,
+`root_cause_ids`, and `instruction`. Human output may group pending checks but
+does not recompute causes or actions from prose. Operation-aware
 executable follow-up guidance is generated separately from the current typed
 host, repository, Runtime Home, scope, and output-selection coordinates.
 
@@ -651,9 +675,10 @@ passed `mode_transition` check, exactly one current `reload_host` action, and
 Successful applied removal reports a passed `connection_removal` check,
 `status=complete`, and exact `membership_removed`, `connection_removed`, and
 `remaining_project_count` facts inside `RemovalResult`. A removal dry run has a
-pending removal check and `apply_removal` action only when an actual removal is
-planned; it reports that plan through typed `planned_changes` and performs no
-mutation.
+pending removal check only when an actual removal is planned; it reports that
+plan through typed `planned_changes` and performs no mutation. Removal
+application guidance remains operation-specific and is not a connection
+activation action.
 
 `volicord connection status` is a complete read-only evaluation. It evaluates
 current managed configuration, trust, Guard audit, integration revision, and
@@ -787,30 +812,30 @@ diagnostic: verification does not apply or adopt it and never changes
 `managed_fingerprint`. Server-conformance and host-compatibility results are
 CLI probe evidence only. Even a passing `codex` compatibility fixture is not
 an observation of an actual managed Codex process and does not create
-`host_session`, `required_tools`, or `tool_round_trip` evidence. Only a runtime
+`managed_session_health` or `managed_capability_proof` evidence. Only a runtime
 session whose source is `managed_host` can supply those observations. The
 newest current-revision managed session is fixed as `latest_attempt` for
-process and initialize health. Required tools and round trip pass only from the
-newest `latest_complete_proof` whose initialize, initialized notification,
-`tools/list`, required-tool validation, and canonical verification call all
-completed in that same session. A newer partial or failed attempt and an older
-proof remain separate role-bearing evidence; neither fills milestones in the
-other.
+session health. Capability proof passes only from the newest
+`latest_complete_proof` whose initialize, initialized notification,
+`tools/list`, required-tool validation, and designated safe call all completed
+in that same session. A newer partial or failed attempt and an older proof
+remain separate role-bearing evidence; neither fills milestones in the other.
 
 `volicord init` and `volicord connection add` keep a successfully written valid
 setup even when a later operational check fails. They do not roll back managed
 configuration because Codex is unavailable or the self-test fails. A fresh
 valid setup with no managed-host observation is `action_required` and includes
-the typed reload and first-use actions required to obtain those observations.
+the typed `reload_host`, `review_hooks`, `run_mcp_verification`, and
+`run_guard_probe` actions required by its current stage.
 These setup commands apply or adopt host configuration before committing its
 managed fingerprint, complete owner-coherent Registry and Guard state, derive
 the final Connection revision, and only then verify the current configuration
 and observed host behavior and conditionally persist the report.
 
 Actions are an ordered, deduplicated list derived from pending and failed
-checks. Reload and first-use instructions state that actual Codex activity must
-be observed. A passing `guard_files` check never produces an instruction to
-reinstall Guard files.
+checks. Each carries its fixed owner, channel, prerequisites, intended checks,
+and current root finding IDs. A passing `guard_hook_execution` check never
+produces `reinstall_current_build`.
 
 <a id="external-host-configuration"></a>
 ## Managed Codex Configuration

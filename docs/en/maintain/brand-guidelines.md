@@ -89,6 +89,15 @@ environment and setup applicability to
 session and behavioral verification meaning to
 [Agent Connection](../reference/agent-connection.md#validated-agent-session).
 
+Use the exact user-facing request `Run the Volicord integration verification.`
+for the first-party in-chat workflow. Do not describe CLI preflight, raw stdio,
+resource discovery, configuration presence, or an old Guard event as a
+“connected,” “trusted,” or “verified” managed integration. Say which typed
+state is known: configuration applied, host reload required, hook review
+required, hook effective by current observation, managed MCP observed, Guard
+verification required, or complete. Project trust and project-local hook
+activation are separate claims.
+
 Do not describe Volicord as making user-owned judgments. Volicord can help
 record, route, preserve, or show the boundary where the user's judgment is
 needed, but the judgment remains user-owned.

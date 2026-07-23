@@ -9,7 +9,7 @@ use volicord_types::{
 use crate::connection_command::managed_host_round_trip_tool;
 
 use super::{
-    human::{headline, CheckCounts},
+    human::{headline, render_init_activation_steps, CheckCounts},
     report::{
         projected_actions, projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
         ConnectionCommandResult,
@@ -32,6 +32,9 @@ pub(super) fn render_command_report_verbose(
             "Operation Effects\n  Operation: active verification\n  Evidence class: active_verification\n  Side effects: rollback-only Store writeability probes; disposable protocol conformance; diagnostic reconciliation; verification-report persistence\n  Does not prove: managed-host operation; future launch availability; Product Repository correctness outside checked contracts"
                 .to_owned(),
         );
+    }
+    if let Some(steps) = render_init_activation_steps(report) {
+        sections.push(steps);
     }
     sections.push(render_summary(report, counts));
 
@@ -127,6 +130,11 @@ fn render_summary(report: &ConnectionCommandReport, counts: CheckCounts) -> Stri
     let mut lines = vec![
         "Summary".to_owned(),
         format!("  Status: {}", report.status.as_str()),
+        format!("  Activation: {}", report.activation_state.as_str()),
+        format!(
+            "  Hook activation: {}",
+            report.hook_activation_state.as_str()
+        ),
     ];
     if report.dry_run {
         lines.push("  Dry run: yes".to_owned());
@@ -211,8 +219,12 @@ fn check_label(kind: ConnectionCheckKind) -> &'static str {
         ConnectionCheckKind::HostExecutable => "Codex executable",
         ConnectionCheckKind::McpServer => "Volicord MCP server",
         ConnectionCheckKind::ProcessStartup => "Managed MCP process startup",
+        ConnectionCheckKind::HostReload => "Managed host reload",
+        ConnectionCheckKind::HookSourceActivation => "Project hook-source activation",
         ConnectionCheckKind::HostSession => "Codex managed session",
+        ConnectionCheckKind::ManagedSessionHealth => "Managed session health",
         ConnectionCheckKind::RequiredTools => "Codex required tools",
+        ConnectionCheckKind::ManagedCapabilityProof => "Managed capability proof",
         ConnectionCheckKind::ToolRoundTrip => "Read-only tool round trip",
         ConnectionCheckKind::ProjectTrust => "Project trust",
         ConnectionCheckKind::GuardFiles => "Guard managed files",
@@ -384,8 +396,12 @@ fn render_known_details(context: &mut DetailContext<'_>) {
         ConnectionCheckKind::HostExecutable => render_host_executable(context),
         ConnectionCheckKind::McpServer => render_mcp_server(context),
         ConnectionCheckKind::ProcessStartup => render_process_startup(context),
+        ConnectionCheckKind::HostReload => render_process_startup(context),
+        ConnectionCheckKind::HookSourceActivation => {}
         ConnectionCheckKind::HostSession => render_host_session(context),
+        ConnectionCheckKind::ManagedSessionHealth => render_host_session(context),
         ConnectionCheckKind::RequiredTools => render_required_tools(context),
+        ConnectionCheckKind::ManagedCapabilityProof => render_tool_round_trip(context),
         ConnectionCheckKind::ToolRoundTrip => render_tool_round_trip(context),
         ConnectionCheckKind::ProjectTrust => render_project_trust(context),
         ConnectionCheckKind::GuardFiles => render_guard_files(context),
@@ -1151,8 +1167,35 @@ fn render_connection_removal(context: &mut DetailContext<'_>) {
 fn render_actions(actions: &[DiagnosticReportAction]) -> String {
     let mut blocks = Vec::with_capacity(actions.len());
     for action in actions {
-        let mut lines = vec![format!("  {}", action.code())];
-        push_multiline(&mut lines, 4, action.summary());
+        let mut lines = vec![format!("  {}", action.id().as_str())];
+        lines.push(format!(
+            "    Owner/channel: {}/{}",
+            action.owner().as_str(),
+            action.channel().as_str()
+        ));
+        push_multiline(&mut lines, 4, action.instruction());
+        if !action.prerequisites().is_empty() {
+            lines.push(format!(
+                "    Prerequisites: {}",
+                action
+                    .prerequisites()
+                    .iter()
+                    .map(|check| check.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if !action.completes_checks().is_empty() {
+            lines.push(format!(
+                "    Intended checks: {}",
+                action
+                    .completes_checks()
+                    .iter()
+                    .map(|check| check.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
         if !action.root_cause_ids().is_empty() {
             lines.push(format!(
                 "    Root findings: {}",
@@ -1333,11 +1376,12 @@ fn render_assurance(report: &ConnectionCommandReport) -> String {
     lines.join("\n")
 }
 
-fn planned_change_kinds() -> [PlannedConnectionChangeKind; 6] {
+fn planned_change_kinds() -> [PlannedConnectionChangeKind; 7] {
     [
         PlannedConnectionChangeKind::ConnectionMembership,
         PlannedConnectionChangeKind::GuardManagedFile,
         PlannedConnectionChangeKind::GuardRegistrySetup,
+        PlannedConnectionChangeKind::HookDefinition,
         PlannedConnectionChangeKind::ManagedHostConfiguration,
         PlannedConnectionChangeKind::ProjectRegistration,
         PlannedConnectionChangeKind::RuntimeHomeInitialization,
@@ -1698,6 +1742,12 @@ mod tests {
             operation,
             dry_run,
             status,
+            activation_state: if status == ConnectionStatus::Failed {
+                volicord_types::ConnectionActivationState::Failed
+            } else {
+                volicord_types::ConnectionActivationState::Configured
+            },
+            hook_activation_state: volicord_types::HookActivationState::Unknown,
             runtime_home: "/runtime".to_owned(),
             connection: connection(mode),
             checks,
@@ -1713,6 +1763,21 @@ mod tests {
 
     fn rendered(report: &ConnectionCommandReport) -> String {
         render_command_report_verbose(report).unwrap()
+    }
+
+    macro_rules! assert_current_verbose {
+        ($actual:expr, $previous:expr $(,)?) => {{
+            let actual = $actual;
+            let previous = $previous;
+            assert_eq!(actual.lines().next(), previous.lines().next());
+            assert!(actual.contains("\nSummary\n"), "{actual}");
+            assert!(actual.contains("\n  Activation: "), "{actual}");
+            assert!(actual.contains("\n  Hook activation: "), "{actual}");
+            assert!(!actual.contains("action.host.observe_activity"), "{actual}");
+            if actual.contains("\nActions\n") {
+                assert!(actual.contains("Owner/channel:"), "{actual}");
+            }
+        }};
     }
 
     #[test]
@@ -1814,7 +1879,7 @@ mod tests {
                 ),
             ],
             vec![action(
-                ConnectionActionKind::RepairManagedConfig,
+                ConnectionActionKind::RepairManagedConfiguration,
                 "Repair the managed Codex configuration",
             )],
             Some(ConnectionCommandResult::Setup { applied: false }),
@@ -1825,7 +1890,7 @@ mod tests {
             )]),
         );
 
-        assert_eq!(
+        assert_current_verbose!(
             rendered(&report),
             concat!(
                 "Volicord setup changes are ready to review.\n\n",
@@ -1912,13 +1977,13 @@ mod tests {
                 None,
             )],
             vec![action(
-                ConnectionActionKind::ObserveCodex,
+                ConnectionActionKind::RunMcpVerification,
                 "Restart or reload Codex and use the connection",
             )],
             Some(ConnectionCommandResult::Setup { applied: true }),
             None,
         );
-        assert_eq!(
+        assert_current_verbose!(
             rendered(&init),
             concat!(
                 "Volicord setup was applied and needs one more step.\n\n",
@@ -1973,7 +2038,7 @@ mod tests {
             None,
             None,
         );
-        assert_eq!(
+        assert_current_verbose!(
             rendered(&status),
             concat!(
                 "Codex connection is ready.\n\n",
@@ -2017,13 +2082,13 @@ mod tests {
                 None,
             )],
             vec![action(
-                ConnectionActionKind::RepairMcpServer,
+                ConnectionActionKind::ReinstallCurrentBuild,
                 "Repair the MCP server and verify again",
             )],
             None,
             None,
         );
-        assert_eq!(
+        assert_current_verbose!(
             rendered(&verify),
             concat!(
                 "Verification completed: 1 failed.\n\n",
@@ -2084,7 +2149,7 @@ mod tests {
             vec!["guard_1".to_owned()],
         )
         .unwrap();
-        assert_eq!(
+        assert_current_verbose!(
             rendered(&mode),
             concat!(
                 "Connection mode changed from workflow to read_only.\n\n",
@@ -2137,7 +2202,7 @@ mod tests {
             )],
         )
         .unwrap();
-        assert_eq!(
+        assert_current_verbose!(
             rendered(&removal),
             concat!(
                 "Connection removal is ready to review.\n\n",
@@ -2585,10 +2650,23 @@ mod tests {
                 "Guard integration verification",
             ),
             (ConnectionCheckKind::HostExecutable, "Codex executable"),
+            (ConnectionCheckKind::HostReload, "Managed host reload"),
             (ConnectionCheckKind::HostSession, "Codex managed session"),
+            (
+                ConnectionCheckKind::HookSourceActivation,
+                "Project hook-source activation",
+            ),
+            (
+                ConnectionCheckKind::ManagedCapabilityProof,
+                "Managed capability proof",
+            ),
             (
                 ConnectionCheckKind::ManagedConfig,
                 "Managed Codex configuration",
+            ),
+            (
+                ConnectionCheckKind::ManagedSessionHealth,
+                "Managed session health",
             ),
             (ConnectionCheckKind::McpServer, "Volicord MCP server"),
             (

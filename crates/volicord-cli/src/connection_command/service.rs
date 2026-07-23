@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use volicord_types::{ConnectionAction, ConnectionActionKind};
 
+use super::verification::report_with_hook_review_required;
 use super::*;
 
 pub(super) struct InitProvisioningRequest<'a> {
@@ -377,6 +378,7 @@ fn apply_init_provisioning(
     process: &mut impl ConnectionProcess,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
     validate_init_connection_expectation(&plan)?;
+    let setup_changed_hook_definition = plan.integration.hook_definition_changed();
     let runtime_home_id = runtime_home_id_for_path(&plan.runtime_home)
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     initialize_runtime_home(&plan.runtime_home, &runtime_home_id, ADMIN_METADATA_JSON)?;
@@ -676,7 +678,7 @@ fn apply_init_provisioning(
         }
     }
     let expected_integration_revision = connection_integration_revision(&connection)?;
-    let verification = migration_post_transition_step(
+    let mut verification = migration_post_transition_step(
         &plan,
         &superseded_integrations,
         is_integration_migration,
@@ -689,6 +691,9 @@ fn apply_init_provisioning(
             process,
         ),
     )?;
+    if setup_changed_hook_definition {
+        verification.report = report_with_hook_review_required(&verification.report)?;
+    }
     connection = migration_post_transition_step(
         &plan,
         &superseded_integrations,
@@ -1157,7 +1162,7 @@ fn migration_partial_application(
         "retry_arguments": retry_arguments,
     });
     let actions = ConnectionAction::try_new(
-        ConnectionActionKind::ApplySetup,
+        ConnectionActionKind::RepairManagedConfiguration,
         "Resolve the reported setup conflict, then rerun the same init migration using the retry arguments in the failed check details",
     )
     .map(|action| vec![action])

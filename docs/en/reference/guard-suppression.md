@@ -149,6 +149,21 @@ The Codex adapter exclusively owns `hookSpecificOutput`,
 `permissionDecision`, `additionalContext`, stderr, and exit-code projection.
 Core-facing types and Store records do not encode Codex process-exit behavior.
 
+Hook occurrence and hook activation are separate projections.
+`hook_source_activation` may become `effective_by_observation` only from a
+compatible event owned by the current Guard Installation, policy hash,
+integration revision, and current hook-definition boundary. Reapplying an
+unchanged manifest preserves the boundary; changing managed definition content
+advances it and invalidates earlier occurrence evidence. Host-reported
+`disabled`, `managed_by_policy`, and `bypassed_for_invocation` states remain
+explicit and distinct. Missing evidence remains `unknown`, never an inferred
+trust decision.
+
+Prompt, pre-tool, and post-tool observations are ambient phase details. They
+support hook-execution diagnosis but are not independent proof of managed MCP
+capability or correlated Guard verification. Project/configuration trust is a
+separate host/user-owned check.
+
 For `PreToolUse` and `PostToolUse`, the managed hook matcher includes the exact
 Codex-native name `mcp__volicord__guard_probe`. That name is generated from the
 canonical `AgentToolId::GUARD_PROBE` wire identity; it is not an independently
@@ -198,10 +213,11 @@ missing or malformed field category and static field label, Guard Installation
 ID, integration revision, and Guard event ID when available. They never include
 complete prompts, tool inputs, tool responses, parser prose, or unrestricted
 stderr.
-File, manifest, wrapper, and incompatible-observation failures use
-`action.guard.repair`; an unobserved required phase uses
-`action.guard.trigger_phase`. Prompt-capture codes retain their focused actions.
-No action is selected by parsing a human summary.
+File, manifest, wrapper, and incompatible-observation findings project to the
+typed connection actions `inspect_hook_contract` or
+`reinstall_current_build` according to their typed condition. A missing
+current observation projects to `run_guard_probe` only after its prerequisites
+are complete. No action is selected by parsing a human summary.
 
 Current-state Guard diagnostics use the exact managed artifact, installation,
 required phase, or incompatible event as their typed subject. Their stable ID
@@ -229,7 +245,7 @@ selection consumes that definition, typed facts, and typed check state.
 Connection verification uses this explicit Guard dependency graph:
 
 ```text
-Guard file integrity -> Guard hook execution -> Guard phase observation -> correlated integration verification
+hook_source_activation -> guard_hook_execution -> guard_verification
 ```
 
 Each check has exactly one of five statuses. `passed` means the check completed
@@ -239,9 +255,10 @@ user-triggered event has not occurred and no failed prerequisite prevents it.
 not run or be observed because a prerequisite finding failed.
 `not_applicable` means the check does not apply to the Connection or profile.
 
-A Guard file-integrity failure makes that check `failed` and makes hook
-execution, phase observation, and correlated integration verification
-`blocked` by the same resolved root finding. The report does not request
+A Guard managed-file or current-definition failure makes
+`guard_hook_execution` fail or remain blocked and blocks
+`guard_verification` by the same resolved root finding. Ambient phase
+observations remain details of those focused checks. The report does not request
 downstream observation while a prerequisite check is blocked. Root selection follows typed finding cause edges, retains independent
 roots in deterministic order, and does not inspect summaries. The complete
 check graph and aggregate report status are owned by

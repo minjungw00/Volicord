@@ -74,10 +74,7 @@ pub(super) fn block_failed_dependencies(
             .collect::<BTreeMap<_, _>>();
         let mut changed = false;
         for check in &mut checks {
-            if matches!(
-                check.status(),
-                ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable
-            ) {
+            if matches!(check.status(), ConnectionCheckStatus::NotApplicable) {
                 continue;
             }
             let causes = check
@@ -97,6 +94,11 @@ pub(super) fn block_failed_dependencies(
             if causes.is_empty() {
                 continue;
             }
+            if check.status() == ConnectionCheckStatus::Blocked
+                && check.cause_finding_ids() == causes
+            {
+                continue;
+            }
             *check = check.clone().blocked_by(causes)?;
             changed = true;
         }
@@ -112,76 +114,118 @@ pub(super) fn block_failed_dependencies(
 pub(super) fn actions_for_checks(
     checks: &[ConnectionCheck],
 ) -> Result<Vec<ConnectionAction>, ConnectionCommandError> {
-    let mut actions = BTreeMap::<ConnectionActionKind, &str>::new();
+    let mut actions =
+        BTreeMap::<ConnectionActionKind, (&str, BTreeSet<DiagnosticFindingId>)>::new();
+    let mut add =
+        |kind: ConnectionActionKind, instruction: &'static str, check: &ConnectionCheck| {
+            let entry = actions
+                .entry(kind)
+                .or_insert_with(|| (instruction, BTreeSet::new()));
+            entry.1.extend(check.cause_finding_ids().iter().cloned());
+        };
     for check in checks {
         match (check.id(), check.status()) {
             (ConnectionCheckKind::ManagedConfig, ConnectionCheckStatus::Failed) => {
-                actions.insert(
-                    ConnectionActionKind::RepairManagedConfig,
-                    "Repair or recreate the Volicord-managed Codex MCP entry",
-                );
-            }
-            (ConnectionCheckKind::HostExecutable, ConnectionCheckStatus::Failed) => {
-                actions.insert(
-                    ConnectionActionKind::InstallOrRepairCodex,
-                    "Install or repair Codex so `codex --version` succeeds on PATH",
-                );
-            }
-            (ConnectionCheckKind::McpServer, ConnectionCheckStatus::Failed) => {
-                actions.insert(
-                    ConnectionActionKind::RepairMcpServer,
-                    "Repair the Volicord MCP configuration or storage error and verify again",
-                );
-            }
-            (ConnectionCheckKind::ProjectTrust, ConnectionCheckStatus::Pending) => {
-                actions.insert(
-                    ConnectionActionKind::HostTrustRequired,
-                    "Trust the project in Codex, then restart or reload Codex",
+                add(
+                    ConnectionActionKind::RepairManagedConfiguration,
+                    "Run the current Volicord setup command to repair or recreate the managed Codex configuration",
+                    check,
                 );
             }
             (
-                ConnectionCheckKind::HostSession
-                | ConnectionCheckKind::RequiredTools
-                | ConnectionCheckKind::ToolRoundTrip
-                | ConnectionCheckKind::GuardObservation
-                | ConnectionCheckKind::GuardVerification,
-                ConnectionCheckStatus::Pending,
-            ) => {
-                actions.insert(
-                    ConnectionActionKind::ObserveCodex,
-                    "In the managed Codex chat, begin integration verification, call the returned Guard probe, then read the verification result",
-                );
-            }
-            (
-                ConnectionCheckKind::HostSession
-                | ConnectionCheckKind::RequiredTools
-                | ConnectionCheckKind::ToolRoundTrip
-                | ConnectionCheckKind::GuardObservation
-                | ConnectionCheckKind::GuardVerification,
+                ConnectionCheckKind::HostExecutable | ConnectionCheckKind::McpServer,
                 ConnectionCheckStatus::Failed,
             ) => {
-                actions.insert(
-                    ConnectionActionKind::InspectCodexProtocol,
-                    "Inspect the recorded Codex protocol failure, repair the incompatible configuration or behavior, then verify again",
+                add(
+                    ConnectionActionKind::ReinstallCurrentBuild,
+                    "Reinstall the current Volicord build, regenerate the managed integration, and inspect the separate Codex PATH probe",
+                    check,
                 );
             }
-            (ConnectionCheckKind::GuardFiles, ConnectionCheckStatus::Failed) => {
-                actions.insert(
-                    ConnectionActionKind::RepairGuard,
-                    "Repair the Volicord Guard integration and verify the connection again",
+            (
+                ConnectionCheckKind::HostReload | ConnectionCheckKind::ProjectTrust,
+                ConnectionCheckStatus::Pending,
+            ) => {
+                add(
+                    ConnectionActionKind::ReloadHost,
+                    "Restart or reload Codex in this repository after completing any separately applicable project-trust step",
+                    check,
+                );
+            }
+            (ConnectionCheckKind::HookSourceActivation, ConnectionCheckStatus::Pending) => {
+                add(
+                    ConnectionActionKind::ReviewHooks,
+                    "Review the current project hook definition in the Codex hook UI or with `/hooks`; Volicord does not approve hook trust",
+                    check,
+                );
+            }
+            (
+                ConnectionCheckKind::HookSourceActivation | ConnectionCheckKind::GuardHookExecution,
+                ConnectionCheckStatus::Failed,
+            ) => {
+                add(
+                    ConnectionActionKind::InspectHookContract,
+                    "Inspect the current hook definition, explicit disabled state, and recorded contract facts before changing host-owned trust",
+                    check,
+                );
+            }
+            (
+                ConnectionCheckKind::ManagedSessionHealth
+                | ConnectionCheckKind::ManagedCapabilityProof,
+                ConnectionCheckStatus::Pending,
+            ) => {
+                add(
+                    ConnectionActionKind::RunMcpVerification,
+                    "Start a new managed Codex conversation and request `Run the Volicord integration verification.`",
+                    check,
+                );
+            }
+            (
+                ConnectionCheckKind::ManagedSessionHealth
+                | ConnectionCheckKind::ManagedCapabilityProof,
+                ConnectionCheckStatus::Failed,
+            ) => {
+                add(
+                    ConnectionActionKind::InspectRuntimeSession,
+                    "Inspect the latest attempt and latest complete-proof runtime sessions, including actual MCP peer and PATH-probe facts",
+                    check,
+                );
+            }
+            (
+                ConnectionCheckKind::GuardHookExecution | ConnectionCheckKind::GuardVerification,
+                ConnectionCheckStatus::Pending,
+            ) => {
+                add(
+                    ConnectionActionKind::RunGuardProbe,
+                    "Call the `volicord.guard_probe` returned by `volicord.begin_integration_verification`, then call `volicord.get_integration_verification`",
+                    check,
+                );
+            }
+            (ConnectionCheckKind::GuardVerification, ConnectionCheckStatus::Failed) => {
+                add(
+                    ConnectionActionKind::InspectRuntimeSession,
+                    "Inspect the failed correlated integration-verification record and its current managed runtime session",
+                    check,
                 );
             }
             _ => {}
         }
     }
-    if actions.contains_key(&ConnectionActionKind::RepairManagedConfig) {
-        actions.remove(&ConnectionActionKind::ObserveCodex);
-        actions.remove(&ConnectionActionKind::InspectCodexProtocol);
+    if actions.contains_key(&ConnectionActionKind::RepairManagedConfiguration) {
+        actions.retain(|kind, _| {
+            matches!(
+                kind,
+                ConnectionActionKind::RepairManagedConfiguration
+                    | ConnectionActionKind::ReinstallCurrentBuild
+            )
+        });
     }
     actions
         .into_iter()
-        .map(|(id, instruction)| {
-            ConnectionAction::try_new(id, instruction).map_err(ConnectionCommandError::from)
+        .map(|(id, (instruction, roots))| {
+            ConnectionAction::try_new(id, instruction)?
+                .with_root_finding_ids(roots.into_iter().collect())
+                .map_err(ConnectionCommandError::from)
         })
         .collect()
 }

@@ -1122,9 +1122,9 @@ fn assert_unavailable_codex_verification(
         "host_executable_not_found"
     );
     assert_eq!(check("mcp_server")["status"], "failed");
-    assert_eq!(check("host_session")["status"], "pending");
-    assert_eq!(check("required_tools")["status"], "pending");
-    assert_eq!(check("tool_round_trip")["status"], "pending");
+    assert_eq!(check("host_reload")["status"], "pending");
+    assert_eq!(check("managed_session_health")["status"], "pending");
+    assert_eq!(check("managed_capability_proof")["status"], "pending");
     Ok(())
 }
 

@@ -314,6 +314,30 @@ contract. A default is valid only when it was established before persistence by
 the owner-defined typed construction path and the resulting stored value itself
 passes the complete declared contract.
 
+### Activation conditions are not interchangeable
+
+Connection activation preserves these distinctions:
+
+- `unknown` means authoritative hook state and current-definition observation
+  are absent; it is not `disabled`, failed, or untrusted.
+- `review_required_by_setup` means setup changed the definition and host review
+  is outstanding; it is not a configuration failure.
+- `bypassed_for_invocation` is explicit invocation-local host evidence; it is
+  not durable activation.
+- `disabled` requires explicit host evidence and routes to
+  `inspect_hook_contract`.
+- a terminal current managed session is a failure even if an older
+  `latest_complete_proof` remains available.
+- a missing current Guard correlation is pending and routes to
+  `run_guard_probe` only after prerequisites pass.
+
+Failures and blocked checks retain typed root finding IDs. Remediation is chosen
+from the closed connection actions `reload_host`, `review_hooks`,
+`run_mcp_verification`, `run_guard_probe`, `inspect_hook_contract`,
+`repair_managed_configuration`, `inspect_runtime_session`, and
+`reinstall_current_build`; renderers do not infer an action from prose.
+Project/configuration trust remains separate from hook-source activation.
+
 ## Effects and response routing
 
 The failure category does not by itself define state mutation, retryability,

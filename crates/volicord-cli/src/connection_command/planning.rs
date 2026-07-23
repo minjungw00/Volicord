@@ -15,16 +15,18 @@ pub(super) enum PlannedConnectionChangeKind {
     RuntimeHomeInitialization,
     ProjectRegistration,
     ManagedHostConfiguration,
+    HookDefinition,
     GuardManagedFile,
     GuardRegistrySetup,
     ConnectionMembership,
 }
 
 impl PlannedConnectionChangeKind {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::ConnectionMembership,
         Self::GuardManagedFile,
         Self::GuardRegistrySetup,
+        Self::HookDefinition,
         Self::ManagedHostConfiguration,
         Self::ProjectRegistration,
         Self::RuntimeHomeInitialization,
@@ -35,6 +37,7 @@ impl PlannedConnectionChangeKind {
             Self::RuntimeHomeInitialization => "runtime_home_initialization",
             Self::ProjectRegistration => "project_registration",
             Self::ManagedHostConfiguration => "managed_host_configuration",
+            Self::HookDefinition => "hook_definition",
             Self::GuardManagedFile => "guard_managed_file",
             Self::GuardRegistrySetup => "guard_registry_setup",
             Self::ConnectionMembership => "connection_membership",
@@ -164,7 +167,11 @@ pub(super) fn plan_init_changes(input: InitPlannedChanges<'_>) -> Vec<PlannedCon
     for file in &input.integration.generated_files {
         if let Some(operation) = generated_file_operation(file.status) {
             changes.push(PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::GuardManagedFile,
+                if file.artifact == volicord_types::GuardManagedArtifact::HostHookConfig {
+                    PlannedConnectionChangeKind::HookDefinition
+                } else {
+                    PlannedConnectionChangeKind::GuardManagedFile
+                },
                 operation,
                 canonical_guard_target(input.repo_root, &file.path),
             ));
@@ -239,6 +246,7 @@ mod tests {
             "connection_membership",
             "guard_managed_file",
             "guard_registry_setup",
+            "hook_definition",
             "managed_host_configuration",
             "project_registration",
             "runtime_home_initialization",

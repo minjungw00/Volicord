@@ -209,13 +209,30 @@ profile에 적용되지 않음을 뜻합니다. Check 하나라도 failed 또는
 `failed`이고, 그런 check 없이 pending이 하나 이상이면 `action_required`이며, 그 밖에는
 `complete`입니다.
 
-간결한 렌더러는 `host_session`, `required_tools`, `tool_round_trip`에 대응하는 정규
-check가 pending일 때만 해당 활동을 포함합니다. 현재 pending인 일부만 Codex session 또는
-도구 활동으로 묶을 수 있으며 passed, failed, blocked, not-applicable, 부재 check는 `Waiting` 아래에 반복하지
-않습니다. Pending `guard_observation`은 알고 있는 누락 phase와 함께 Guard hook 활동으로
-보여 줍니다. 렌더러는 정규 check나 action을 변경, 제거, 재정렬, 영속하지 않습니다.
-Dry run 산문은 typed `PlannedConnectionChangeKind`별로 계획 변경 수를 묶으며 target
-path에서 소유권을 추론하지 않습니다. Blocked check는 blocked 개수에는 포함하지만 대기
+간결한 렌더러는 `activation_state`와 `hook_activation_state`를 항상 이름 붙여
+표시합니다. Pending 집중 check는 managed session, capability, Guard 활동으로 묶을 수
+있으며 passed, failed, blocked, not-applicable, 부재 check는 `Waiting` 아래에 반복하지
+않습니다. 주변 Guard phase는 `hook_source_activation` 또는 `guard_hook_execution`의
+detail로 유지하며 별도 최상위 readiness check가 아닙니다. 렌더러는 정규 check나 action을
+변경, 제거, 재정렬, 영속하지 않습니다. Dry run 산문은 typed
+`PlannedConnectionChangeKind`별로 계획 변경 수를 묶으며 target path에서 소유권을
+추론하지 않습니다.
+
+적용한 `init`이 프로젝트 hook definition을 만들거나 바꾸면
+`hook_activation_state=review_required_by_setup`을 보고하고 다음 host 소유 sequence를
+정확히 표시합니다.
+
+1. 해당 저장소에서 Codex를 restart 또는 reload합니다.
+2. Codex hook UI 또는 `/hooks`로 현재 프로젝트 hook definition을 review합니다.
+3. 새 conversation을 시작합니다.
+4. `Run the Volicord integration verification.`을 요청합니다.
+5. 현재 connection status를 읽습니다.
+
+`volicord connection verify`는 setup 뒤 선택적으로 쓰는 diagnostic입니다. CLI 소유
+configuration 및 transport fact를 능동적으로 확인하지만 managed-host 또는 상관관계가
+확인된 Guard 근거를 대신할 수 없습니다.
+
+Blocked check는 blocked 개수에는 포함하지만 대기
 관찰이나 downstream 관찰 action을 만들지 않습니다. Root 선택과 action 중복 제거는
 finding ID, cause edge, typed action code만 사용하며 렌더러는 summary 산문으로 분류하지
 않습니다. 간결한 개수 표시는 값이 0인 항목을 포함해 네 범주를 항상 모두 표시합니다.
@@ -289,6 +306,12 @@ DiagnosticReport:
   schema_version: 2
   operation: init | add | status | verify | mode | remove
   status: complete | action_required | failed
+  activation_state: configured | host_reload_required |
+    hook_review_required_or_unknown | mcp_observation_required |
+    guard_verification_required | complete | failed
+  hook_activation_state: unknown | review_required_by_setup |
+    effective_by_observation | managed_by_policy |
+    bypassed_for_invocation | disabled
   generated_at: timestamp
   connection: DiagnosticConnectionContext | null
   checks: ConnectionCheck[]
@@ -553,7 +576,9 @@ RemovalResult:
   remaining_project_count: integer
 
 PlannedConnectionChange:
-  kind: runtime_home_initialization | project_registration | managed_host_configuration | guard_managed_file | guard_registry_setup | connection_membership
+  kind: runtime_home_initialization | project_registration |
+    managed_host_configuration | hook_definition | guard_managed_file |
+    guard_registry_setup | connection_membership
   operation: create | update | remove | register | rebind
   target: string
 ```
@@ -590,9 +615,10 @@ No-op 항목은 내보내지 않으며 안정적인 `kind` 표기, `operation`, 
 
 `checks`는 정규 [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)의
 구성원 type과 순서를 사용합니다. `findings`, `root_cause_ids`, schema 2 `actions`는 공유
-failure-model 계약을 사용합니다. 각 JSON report action은 정확히 `code`, `summary`,
-`root_cause_ids`를 포함합니다. 사람용 출력은 pending check를 묶어 보여 줄 수 있지만
-산문에서 cause나 action을 다시 계산하지 않습니다. 작업별 실행 안내는 현재 typed 호스트,
+failure-model 계약을 사용합니다. 각 JSON report action은 정확히 `id`, `owner`,
+`channel`, `prerequisites`,
+`completes_checks`, `root_cause_ids`, `instruction`을 포함합니다. 사람용 출력은 pending
+check를 묶어 보여 줄 수 있지만 산문에서 cause나 action을 다시 계산하지 않습니다. 작업별 실행 안내는 현재 typed 호스트,
 저장소, Runtime Home, 범위, 출력 선택 좌표에서 별도로 생성합니다.
 
 Mode no-op은 `changed=false`, 같은 이전/현재 mode와 revision, 빈 Guard Installation
@@ -604,8 +630,8 @@ Installation ID, 통과한 `mode_transition` check 하나, 현재 `reload_host` 
 적용에 성공한 제거는 통과한 `connection_removal` check, `status=complete`, 정확한
 `membership_removed`, `connection_removed`, `remaining_project_count` 사실을
 `RemovalResult` 안에 보고합니다. 제거 dry run은 실제 제거 계획이 있을 때만 pending
-제거 check와 `apply_removal` action을 사용하며 typed `planned_changes`로 계획을
-보고하고 아무것도 변경하지 않습니다.
+제거 check를 사용하며 typed `planned_changes`로 계획을 보고하고 아무것도 변경하지
+않습니다. 제거 적용 안내는 operation별 안내이며 connection activation action이 아닙니다.
 
 `volicord connection status`는 완전한 읽기 전용 평가입니다. 현재 관리 구성, 신뢰,
 Guard audit, 통합 revision, managed-host session 관찰을 마지막 활성 executable/MCP
@@ -724,26 +750,27 @@ Connection의 정확한 typed integration revision을 확보하고, immediate Re
 diagnostic으로만 남습니다. 검증은 이를 적용하거나 채택하지 않으며
 `managed_fingerprint`를 바꾸지 않습니다. 서버 conformance와 host 호환성 결과는 CLI
 probe 증거일 뿐입니다. `codex` 호환성 fixture가 통과해도 실제 관리 Codex process를
-관찰한 것이 아니며 `host_session`, `required_tools`, `tool_round_trip` 증거를 만들지
-않습니다. Source가 `managed_host`인 runtime session만 해당 관찰을 제공할 수 있습니다.
-현재 revision에서 가장 최신인 managed session을 process와 initialize health의 고정
-`latest_attempt`로 선택합니다. Required tools와 round trip은 initialize, initialized
-notification, `tools/list`, required-tool validation, 정규 verification 호출을 같은 session에서
-모두 완료한 가장 최신 `latest_complete_proof`에서만 통과합니다. 더 최신인 partial/failed
-attempt와 더 오래된 proof는 서로 다른 role evidence로 남고 서로의 milestone을 채우지
-않습니다.
+관찰한 것이 아니며 `managed_session_health` 또는 `managed_capability_proof` 근거를
+만들지 않습니다. Source가 `managed_host`인 runtime session만 해당 관찰을 제공할 수
+있습니다. 현재 revision에서 가장 최신인 managed session을 session health의 고정
+`latest_attempt`로 선택합니다. Capability proof는 initialize, initialized notification,
+`tools/list`, required-tool validation, 지정된 safe call을 같은 session에서 모두 완료한
+가장 최신 `latest_complete_proof`에서만 통과합니다. 더 최신인 partial/failed attempt와
+더 오래된 proof는 서로 다른 role evidence로 남고 서로의 milestone을 채우지 않습니다.
 
 `volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
 유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리
 구성을 rollback하지 않습니다. Managed-host 관찰이 아직 없는 새 유효 설정은
-`action_required`이며, 관찰을 얻는 데 필요한 typed reload/first-use action을 담습니다.
+`action_required`이며 현재 단계에 필요한 typed `reload_host`, `review_hooks`,
+`run_mcp_verification`, `run_guard_probe` action을 담습니다.
 이 setup 명령은 host configuration을 적용하거나 채택한 뒤 managed fingerprint를 commit하고,
 소유자와 일관된 Registry/Guard 상태를 완성하며, 최종 Connection revision을 파생한 다음에만
 현재 구성과 관찰한 host 동작을 검증하고 조건부로 보고서를 영속합니다.
 
-Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 제거된 목록입니다. 다시
-불러오기와 최초 사용 지시는 실제 Codex 활동을 관찰해야 한다고 명시합니다.
-`guard_files` check가 통과했다면 Guard 파일 재설치를 지시하지 않습니다.
+Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 제거된 목록입니다. 각
+action은 고정 owner, channel, prerequisite, 완료 의도 check, 현재 root finding ID를
+담습니다. `guard_hook_execution` check가 통과했다면 `reinstall_current_build`를 만들지
+않습니다.
 
 <a id="external-host-configuration"></a>
 ## 관리 Codex 구성

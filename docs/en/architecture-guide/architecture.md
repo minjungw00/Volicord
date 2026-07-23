@@ -156,6 +156,33 @@ The failure, storage, and Agent Connection contracts remain in
 [Storage Versioning](../reference/storage-versioning.md),
 [Agent Connection](../reference/agent-connection.md).
 
+### Activation-state ownership
+
+Activation is one typed projection across existing boundaries:
+
+```text
+host/config inspection + Store session/event evidence
+  -> volicord-cli focused checks and typed actions
+  -> volicord-types ConnectionVerificationReport
+  -> concise / verbose / JSON projections
+```
+
+`volicord-types` owns `HookActivationState`,
+`ConnectionActivationState`, focused check dependencies, and fixed action
+metadata. `volicord-cli` collects current managed configuration, host reload,
+hook-source, session, capability, Guard, and separate project-trust evidence.
+`volicord-store` preserves the Guard definition boundary: unchanged manifests
+retain current observation eligibility and changed managed definition content
+invalidates earlier events. `volicord-mcp` and generated host guidance own the
+canonical first-party in-chat request and tool sequence. Renderers consume
+typed state; they do not classify summary prose.
+
+Host-provided disabled, policy-managed, or invocation-bypass evidence is
+accepted only through the typed host evidence boundary. In its absence,
+Volicord can establish hook effectiveness from a compatible event for the
+current definition or report `unknown`; it cannot manufacture a trust state.
+Core authorization remains separate and still validates every managed MCP call.
+
 ## Durable implementation boundaries
 
 | Boundary | Overview responsibility | Detail and contract routes |

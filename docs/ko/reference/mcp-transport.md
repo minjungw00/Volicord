@@ -401,6 +401,19 @@ Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지
 <a id="in-chat-integration-verification-schemas"></a>
 ### 채팅 내 통합 검증 스키마
 
+정규 사용자 요청은 `Run the Volicord integration verification.`입니다. Agent는
+`volicord.list_projects`로 정확한 프로젝트를 선택한 뒤
+`volicord.begin_integration_verification`, 반환된 `volicord.guard_probe`,
+`volicord.get_integration_verification`을 이 순서로 호출하고 반환된 각
+`next_action`을 따릅니다. 이 first-party sequence만 현재 managed MCP와 Guard
+상관관계 근거를 만들 수 있습니다.
+
+Volicord tool이 노출되지 않으면 agent는 managed MCP connection이 unavailable이라고
+보고합니다. Raw stdio를 시작하거나 Codex `_meta`를 직접 만들거나 `resources/list`,
+resource template, CLI preflight, connection status를 managed tool availability의
+proof로 취급하지 않습니다. 이 표면은 읽기 전용 diagnostic으로 남습니다. Hook review와
+project/configuration trust는 user/host가 소유합니다.
+
 Connection-integration 도구 세 개는 MCP adapter 작업이며 Core method나 Task 작업 흐름이
 아닙니다. 정확한 현재 managed-host 좌표 안에서 멱등이고 공개 형태는 다음과 같습니다.
 

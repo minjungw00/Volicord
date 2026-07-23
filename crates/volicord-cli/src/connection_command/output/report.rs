@@ -9,14 +9,15 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use volicord_types::{
-    diagnostic_root_cause_ids, ConnectionAction, ConnectionActionKind, ConnectionCheck,
-    ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus,
-    ConnectionVerificationReport, DiagnosticAction, DiagnosticCode, DiagnosticConnectionContext,
-    DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
-    DiagnosticFindingId, DiagnosticOperation, DiagnosticReport, DiagnosticReportAction,
-    DiagnosticRuntimeSessionContext, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-    DiagnosticSubject, IntegrationProfile, IntegrationRevision, RuntimeSessionEvidenceRole,
-    UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    diagnostic_root_cause_ids, ConnectionAction, ConnectionActionKind, ConnectionActivationState,
+    ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
+    ConnectionStatus, ConnectionVerificationReport, DiagnosticAction, DiagnosticCode,
+    DiagnosticConnectionContext, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
+    DiagnosticFinding, DiagnosticFindingId, DiagnosticOperation, DiagnosticReport,
+    DiagnosticReportAction, DiagnosticRuntimeSessionContext, DiagnosticSeverity, DiagnosticSource,
+    DiagnosticStage, DiagnosticSubject, HookActivationState, IntegrationProfile,
+    IntegrationRevision, RuntimeSessionEvidenceRole, UtcTimestamp,
+    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 
 use super::{
@@ -120,6 +121,8 @@ pub(in crate::connection_command) struct ConnectionCommandReport {
     pub(super) operation: CommandOperation,
     pub(super) dry_run: bool,
     pub(super) status: ConnectionStatus,
+    pub(super) activation_state: ConnectionActivationState,
+    pub(super) hook_activation_state: HookActivationState,
     pub(super) runtime_home: String,
     pub(super) connection: CommandConnection,
     pub(super) checks: Vec<ConnectionCheck>,
@@ -144,6 +147,8 @@ impl ConnectionCommandReport {
             operation,
             dry_run: false,
             status: command_status(verification),
+            activation_state: verification.activation_state(),
+            hook_activation_state: verification.hook_activation_state(),
             runtime_home: path_text(runtime_home),
             connection,
             checks: verification.checks().to_vec(),
@@ -175,7 +180,7 @@ impl ConnectionCommandReport {
                         !matches!(
                             check.id(),
                             ConnectionCheckKind::ManagedConfig
-                                | ConnectionCheckKind::GuardFiles
+                                | ConnectionCheckKind::HookSourceActivation
                                 | ConnectionCheckKind::SetupPlan
                         )
                     })
@@ -198,18 +203,27 @@ impl ConnectionCommandReport {
                 None,
             )?,
             command_check(
-                ConnectionCheckKind::GuardFiles,
+                ConnectionCheckKind::HookSourceActivation,
+                ConnectionCheckStatus::Pending,
                 if planned_changes
                     .iter()
-                    .any(|change| change.kind() == PlannedConnectionChangeKind::GuardManagedFile)
+                    .any(|change| change.kind() == PlannedConnectionChangeKind::HookDefinition)
                 {
-                    ConnectionCheckStatus::Pending
+                    "hook_source_review_required_by_setup"
                 } else {
-                    ConnectionCheckStatus::Passed
+                    "hook_source_activation_unknown"
                 },
-                "guard_file_change_planned",
-                "Guard managed-file plan was inspected",
-                None,
+                "Project-local hook-source activation remains host owned",
+                Some(serde_json::json!({
+                    "activation_state": if planned_changes
+                        .iter()
+                        .any(|change| change.kind() == PlannedConnectionChangeKind::HookDefinition)
+                    {
+                        "review_required_by_setup"
+                    } else {
+                        "unknown"
+                    }
+                })),
             )?,
             command_check(
                 ConnectionCheckKind::SetupPlan,
@@ -230,17 +244,31 @@ impl ConnectionCommandReport {
         if current.is_none() {
             checks.extend([
                 command_check(
-                    ConnectionCheckKind::HostSession,
+                    ConnectionCheckKind::HostReload,
                     ConnectionCheckStatus::Pending,
-                    "host_session_not_observed",
-                    "Actual Codex connection activity has not been observed",
+                    "host_reload_required",
+                    "Codex has not loaded the planned managed configuration",
                     None,
                 )?,
                 command_check(
-                    ConnectionCheckKind::GuardObservation,
+                    ConnectionCheckKind::ManagedSessionHealth,
                     ConnectionCheckStatus::Pending,
-                    "guard_observation_pending",
-                    "Actual Codex Guard activity has not been observed",
+                    "managed_session_not_observed",
+                    "A current managed Codex session has not been observed",
+                    None,
+                )?,
+                command_check(
+                    ConnectionCheckKind::ManagedCapabilityProof,
+                    ConnectionCheckStatus::Pending,
+                    "managed_capability_proof_not_observed",
+                    "A current managed capability proof has not been observed",
+                    None,
+                )?,
+                command_check(
+                    ConnectionCheckKind::GuardHookExecution,
+                    ConnectionCheckStatus::Pending,
+                    "guard_hook_execution_pending",
+                    "A current managed Guard hook has not executed",
                     None,
                 )?,
                 command_check(
@@ -257,25 +285,40 @@ impl ConnectionCommandReport {
         if let Some(current) = current {
             actions.extend(current.actions().iter().cloned());
         }
-        if has_changes {
-            actions.push(ConnectionAction::try_new(
-                ConnectionActionKind::ApplySetup,
-                match operation {
-                    CommandOperation::Init => {
-                        "Run init without --dry-run to apply the planned setup changes"
-                    }
-                    CommandOperation::Add => {
-                        "Run connection add without --dry-run to apply the planned setup changes"
-                    }
-                    _ => "Apply the planned setup changes without --dry-run",
-                },
-            )?);
+        let hook_definition_changes = planned_changes
+            .iter()
+            .any(|change| change.kind() == PlannedConnectionChangeKind::HookDefinition);
+        if current.is_none() || hook_definition_changes {
+            for action in [
+                ConnectionAction::try_new(
+                    ConnectionActionKind::ReloadHost,
+                    "After setup is applied, restart or reload Codex in this repository",
+                )?,
+                ConnectionAction::try_new(
+                    ConnectionActionKind::ReviewHooks,
+                    "Review the current project hook definition in the Codex hook UI or with `/hooks`",
+                )?,
+            ] {
+                if !actions.iter().any(|current| current.id() == action.id()) {
+                    actions.push(action);
+                }
+            }
         }
         if current.is_none() {
-            actions.push(ConnectionAction::try_new(
-                ConnectionActionKind::ObserveCodex,
-                "After setup is applied, restart or reload Codex and use the connection so actual Codex and Guard activity can be observed",
-            )?);
+            for action in [
+                ConnectionAction::try_new(
+                    ConnectionActionKind::RunMcpVerification,
+                    "Start a new conversation and request `Run the Volicord integration verification.`",
+                )?,
+                ConnectionAction::try_new(
+                    ConnectionActionKind::RunGuardProbe,
+                    "Call the returned Guard probe and then read the integration-verification result",
+                )?,
+            ] {
+                if !actions.iter().any(|current| current.id() == action.id()) {
+                    actions.push(action);
+                }
+            }
         }
         Self::from_components(
             operation,
@@ -390,14 +433,7 @@ impl ConnectionCommandReport {
             },
             None,
         )?];
-        let actions = if has_changes {
-            vec![ConnectionAction::try_new(
-                ConnectionActionKind::ApplyRemoval,
-                "Run connection remove without --dry-run to apply the planned removal",
-            )?]
-        } else {
-            Vec::new()
-        };
+        let actions = Vec::new();
         Self::from_components(
             CommandOperation::Remove,
             true,
@@ -501,6 +537,8 @@ impl ConnectionCommandReport {
             operation,
             dry_run,
             status,
+            activation_state: canonical.activation_state(),
+            hook_activation_state: canonical.hook_activation_state(),
             runtime_home: path_text(runtime_home),
             connection,
             checks: canonical.checks().to_vec(),
@@ -555,6 +593,8 @@ impl ConnectionCommandReport {
         DiagnosticReport::try_new(
             self.operation.diagnostic_operation(),
             self.status,
+            self.activation_state,
+            self.hook_activation_state,
             self.generated_at.clone(),
             Some(context),
             self.checks.clone(),
@@ -668,60 +708,71 @@ pub(super) fn projected_actions(
     report: &ConnectionCommandReport,
 ) -> Result<Vec<DiagnosticReportAction>, ConnectionCommandError> {
     let roots = projected_root_cause_ids(report)?;
-    let findings = report
-        .findings
+    let root_set = roots.iter().collect::<BTreeSet<_>>();
+    let mut actions = report
+        .actions
         .iter()
-        .map(|finding| (finding.id(), finding))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let mut actions = std::collections::BTreeMap::<String, (String, Vec<_>)>::new();
-    if roots.is_empty() {
-        for action in &report.actions {
-            actions.insert(
-                connection_action_code(action.id()).to_owned(),
-                (action.instruction().to_owned(), Vec::new()),
-            );
-        }
-    }
-    let mut roots_with_actions = std::collections::BTreeSet::new();
-    for root in &roots {
-        let Some(action) = findings
-            .get(root)
-            .and_then(|finding| finding.actions().first())
-        else {
-            continue;
-        };
-        let entry = actions
-            .entry(action.code().to_string())
-            .or_insert_with(|| (action.summary().to_owned(), Vec::new()));
-        entry.1.push(root.clone());
-        roots_with_actions.insert(root.clone());
-    }
-    let roots_without_actions = roots
-        .iter()
-        .filter(|root| !roots_with_actions.contains(*root))
         .cloned()
-        .collect::<Vec<_>>();
-    if !roots_without_actions.is_empty() {
-        if let Some(action) = report.actions.first() {
-            let code = connection_action_code(action.id()).to_owned();
-            let entry = actions
-                .entry(code)
-                .or_insert_with(|| (action.instruction().to_owned(), Vec::new()));
-            entry.1.extend(roots_without_actions);
+        .map(|action| (action.id(), action))
+        .collect::<BTreeMap<_, _>>();
+    for finding in &report.findings {
+        if !root_set.contains(finding.id()) {
+            continue;
+        }
+        for finding_action in finding.actions() {
+            let Some(kind) = diagnostic_action_kind(finding_action.code().as_str()) else {
+                continue;
+            };
+            if actions.contains_key(&kind) {
+                continue;
+            }
+            let action = ConnectionAction::try_new(kind, finding_action.summary())?
+                .with_root_finding_ids(vec![finding.id().clone()])?;
+            actions.insert(kind, action);
         }
     }
     actions
-        .into_iter()
-        .map(|(code, (summary, roots))| {
-            DiagnosticReportAction::try_new(
-                DiagnosticCode::parse(code)
-                    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
-                summary,
-                roots,
-            )
-            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+        .values()
+        .map(|action| {
+            let action_roots = if action.root_finding_ids().is_empty() {
+                roots.clone()
+            } else {
+                action.root_finding_ids().to_vec()
+            };
+            DiagnosticReportAction::from_connection_action(action, action_roots)
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
         })
         .collect()
+}
+
+fn diagnostic_action_kind(code: &str) -> Option<ConnectionActionKind> {
+    if code == "action.host.reload_after_configuration_change" {
+        Some(ConnectionActionKind::ReloadHost)
+    } else if code.starts_with("action.host.") {
+        Some(ConnectionActionKind::InspectRuntimeSession)
+    } else if code.starts_with("action.managed_config.")
+        || code.starts_with("action.storage.")
+        || code.starts_with("action.store.")
+        || code.starts_with("action.runtime_home.")
+    {
+        Some(ConnectionActionKind::RepairManagedConfiguration)
+    } else if code == "action.guard.trigger_phase" {
+        Some(ConnectionActionKind::RunGuardProbe)
+    } else if code.starts_with("action.guard.") {
+        Some(ConnectionActionKind::InspectHookContract)
+    } else if code.starts_with("action.process.")
+        || code.starts_with("action.mcp.")
+        || code.starts_with("action.protocol.")
+    {
+        Some(ConnectionActionKind::InspectRuntimeSession)
+    } else if code.starts_with("action.internal.")
+        || code.starts_with("action.connection.reinstall")
+        || code.starts_with("action.installation.")
+    {
+        Some(ConnectionActionKind::ReinstallCurrentBuild)
+    } else {
+        None
+    }
 }
 
 pub(super) fn projected_root_cause_ids(
@@ -766,17 +817,14 @@ pub(super) fn projected_check_root_cause_ids(
 
 const fn connection_action_code(kind: ConnectionActionKind) -> &'static str {
     match kind {
-        ConnectionActionKind::RunVerification => "action.connection.run_verification",
-        ConnectionActionKind::ApplySetup => "action.connection.apply_setup",
-        ConnectionActionKind::HostTrustRequired => "action.trust.approve_repository",
-        ConnectionActionKind::RepairManagedConfig => "action.managed_config.repair",
-        ConnectionActionKind::InstallOrRepairCodex => "action.host.repair_executable",
-        ConnectionActionKind::RepairMcpServer => "action.mcp.repair_server",
         ConnectionActionKind::ReloadHost => "action.host.reload_after_configuration_change",
-        ConnectionActionKind::ObserveCodex => "action.host.observe_activity",
-        ConnectionActionKind::InspectCodexProtocol => "action.mcp.repair_protocol_exchange",
-        ConnectionActionKind::RepairGuard => "action.guard.repair",
-        ConnectionActionKind::ApplyRemoval => "action.connection.apply_removal",
+        ConnectionActionKind::ReviewHooks => "action.host.review_hooks",
+        ConnectionActionKind::RunMcpVerification => "action.mcp.run_verification",
+        ConnectionActionKind::RunGuardProbe => "action.guard.run_probe",
+        ConnectionActionKind::InspectHookContract => "action.guard.inspect_hook_contract",
+        ConnectionActionKind::RepairManagedConfiguration => "action.managed_config.repair",
+        ConnectionActionKind::InspectRuntimeSession => "action.mcp.inspect_runtime_session",
+        ConnectionActionKind::ReinstallCurrentBuild => "action.connection.reinstall_current_build",
     }
 }
 
@@ -892,10 +940,12 @@ mod tests {
     fn assert_top_level_keys(value: &Value) {
         let expected = BTreeSet::from([
             "actions",
+            "activation_state",
             "checks",
             "connection",
             "findings",
             "generated_at",
+            "hook_activation_state",
             "limits",
             "operation",
             "operation_details",
@@ -1066,10 +1116,9 @@ mod tests {
         assert_top_level_keys(&mode);
         assert_eq!(mode["status"], "action_required");
         assert_eq!(mode["checks"][0]["status"], "passed");
-        assert_eq!(
-            mode["actions"][0]["code"],
-            "action.host.reload_after_configuration_change"
-        );
+        assert_eq!(mode["actions"][0]["id"], "reload_host");
+        assert_eq!(mode["actions"][0]["owner"], "user");
+        assert_eq!(mode["actions"][0]["channel"], "codex_ui");
         assert_eq!(mode["operation_details"]["result"]["changed"], true);
 
         let removal = ConnectionCommandReport::removal_dry_run(
@@ -1087,17 +1136,14 @@ mod tests {
         assert_eq!(removal["operation"], "remove");
         assert_eq!(removal["status"], "action_required");
         assert_eq!(removal["checks"][0]["status"], "pending");
-        assert_eq!(
-            removal["actions"][0]["code"],
-            "action.connection.apply_removal"
-        );
+        assert_eq!(removal["actions"], json!([]));
         assert!(removal["operation_details"].get("result").is_none());
     }
 
     #[test]
     fn setup_dry_run_preserves_canonical_host_actions_and_rejects_duplicate_kinds() {
         let host_action = ConnectionAction::try_new(
-            ConnectionActionKind::RunVerification,
+            ConnectionActionKind::RunMcpVerification,
             "Run connection verification",
         )
         .unwrap();
@@ -1113,13 +1159,18 @@ mod tests {
         let action = report
             .actions
             .iter()
-            .find(|action| action.id() == ConnectionActionKind::RunVerification)
+            .find(|action| action.id() == ConnectionActionKind::RunMcpVerification)
             .expect("host-supplied action");
         assert_eq!(action.instruction(), "Run connection verification");
         assert_eq!(
             serde_json::to_value(action).unwrap(),
             json!({
-                "id": "run_verification",
+                "id": "run_mcp_verification",
+                "owner": "agent",
+                "channel": "mcp_tool",
+                "prerequisites": ["hook_source_activation"],
+                "completes_checks": ["managed_capability_proof", "managed_session_health"],
+                "root_finding_ids": [],
                 "instruction": "Run connection verification",
             })
         );
@@ -1154,39 +1205,8 @@ mod tests {
             serde_json::from_str::<Value>(&json.output).unwrap()["status"],
             "failed"
         );
-        assert_eq!(
-            text.output,
-            format!(
-                concat!(
-                    "Verification completed: 1 failed.\n\n",
-                    "Connection\n",
-                    "  ID: connection_1\n",
-                    "  Host: codex\n",
-                    "  Scope: user\n",
-                    "  Profile: record\n",
-                    "  Mode: workflow\n",
-                    "  Repository: /workspace/product\n",
-                    "  Config target: /home/user/.codex/config.toml\n",
-                    "  Runtime home: /runtime\n\n",
-                    "Operation Effects\n",
-                    "  Operation: active verification\n",
-                    "  Evidence class: active_verification\n",
-                    "  Side effects: rollback-only Store writeability probes; disposable protocol conformance; diagnostic reconciliation; verification-report persistence\n",
-                    "  Does not prove: managed-host operation; future launch availability; Product Repository correctness outside checked contracts\n\n",
-                    "Summary\n",
-                    "  Status: failed\n",
-                    "  Checks: 0 passed, 0 blocked, 0 pending, 1 failed, 0 not applicable\n\n",
-                    "Checks\n",
-                    "  [fail] Managed Codex configuration\n",
-                    "    Managed configuration check\n",
-                    "    Code: managed_config_failed\n",
-                    "\nReport limits\n",
-                    "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
-                    "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
-                    "  {}\n",
-                ),
-                super::super::common::COOPERATIVE_ASSURANCE_LIMIT
-            )
-        );
+        assert!(text.output.contains("  Activation: failed\n"));
+        assert!(text.output.contains("  Hook activation: unknown\n"));
+        assert!(text.output.contains("[fail] Managed Codex configuration"));
     }
 }

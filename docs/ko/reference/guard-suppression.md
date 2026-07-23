@@ -137,6 +137,18 @@ Codex adapter만 `hookSpecificOutput`, `permissionDecision`, `additionalContext`
 exit-code projection을 담당합니다. Core-facing type과 Store record는 Codex process-exit
 동작을 encode하지 않습니다.
 
+Hook occurrence와 hook activation은 별도 projection입니다.
+`hook_source_activation`은 현재 Guard Installation, policy hash, integration revision,
+현재 hook-definition 경계가 소유한 호환 event가 있을 때만
+`effective_by_observation`이 될 수 있습니다. 바뀌지 않은 manifest를 다시 적용하면 경계를
+유지하고, 관리 definition 내용이 바뀌면 경계를 전진시켜 이전 occurrence 근거를 무효화합니다.
+Host가 보고한 `disabled`, `managed_by_policy`, `bypassed_for_invocation`은 명시적이고
+서로 다른 상태로 유지합니다. 근거가 없으면 trust를 추론하지 않고 `unknown`으로 둡니다.
+
+Prompt, pre-tool, post-tool 관찰은 주변 phase detail입니다. Hook 실행 진단을 돕지만
+managed MCP capability나 상관관계가 확인된 Guard verification의 독립 proof는 아닙니다.
+Project/configuration trust는 host/user가 소유하는 별도 check입니다.
+
 `PreToolUse`와 `PostToolUse`의 managed hook matcher에는 정확한 Codex native 이름
 `mcp__volicord__guard_probe`가 들어갑니다. 이 이름은 정규
 `AgentToolId::GUARD_PROBE` wire identity에서 생성하며 독립적으로 유지하는 literal이
@@ -180,10 +192,11 @@ Finding 사실에는 한도가 있는 artifact kind, phase, 범주형 상태, �
 projection하지 않습니다. Hook occurrence fact는 사용할 수 있는 contract profile, hook event
 kind, 누락 또는 malformed field 범주와 정적 field label, Guard Installation ID, integration
 revision, Guard event ID로 제한합니다. 전체 prompt, tool input, tool response, parser prose,
-제한 없는 stderr는 절대 포함하지 않습니다. File, manifest, wrapper, 호환되지 않는 관찰 실패에는
-`action.guard.repair`를 사용하고, 관찰하지 못한 필수 phase에는
-`action.guard.trigger_phase`를 사용합니다. Prompt-capture code는 각 집중 action을
-유지합니다. 사람용 summary를 parsing해 action을 고르지 않습니다.
+제한 없는 stderr는 절대 포함하지 않습니다. File, manifest, wrapper, 호환되지 않는 관찰
+finding은 typed condition에 따라 `inspect_hook_contract` 또는
+`reinstall_current_build` connection action으로 projection합니다. 현재 관찰 부재는
+prerequisite가 완료된 뒤에만 `run_guard_probe`로 projection합니다. 사람용 summary를
+parsing해 action을 고르지 않습니다.
 
 현재 상태 Guard 진단은 정확한 관리 artifact, installation, 필수 phase 또는 호환되지 않는
 event를 typed subject로 사용합니다. 안정적인 ID는 Connection scope, code, domain, stage,
@@ -208,7 +221,7 @@ facts, typed check state를 사용합니다.
 Connection 검증은 다음과 같은 명시적인 Guard dependency graph를 사용합니다.
 
 ```text
-Guard 파일 integrity -> Guard hook 실행 -> Guard phase 관찰 -> 상관관계가 확인된 통합 검증
+hook_source_activation -> guard_hook_execution -> guard_verification
 ```
 
 각 check는 정확히 다섯 가지 상태 중 하나입니다. `passed`는 check가 성공적으로 끝났다는
@@ -218,9 +231,10 @@ Guard 파일 integrity -> Guard hook 실행 -> Guard phase 관찰 -> 상관관�
 뜻입니다. `not_applicable`은 해당 Connection 또는 profile에 check가 적용되지 않는다는
 뜻입니다.
 
-Guard 파일 integrity가 실패하면 해당 check는 `failed`가 되고 hook 실행, phase 관찰,
-상관관계가 확인된 통합 검증은 해소된 같은 root finding에 의해 `blocked`가 됩니다.
-Prerequisite check가 blocked인 동안에는 report가 downstream 관찰을 요청하지 않습니다. Root 선택은 typed finding cause edge를
+Guard managed-file 또는 현재 definition 실패는 `guard_hook_execution`을 failed 또는
+blocked로 만들고 `guard_verification`을 해소된 같은 root finding으로 막습니다. 주변 phase
+관찰은 이 집중 check의 detail로 유지합니다. Prerequisite check가 blocked인 동안에는
+report가 downstream 관찰을 요청하지 않습니다. Root 선택은 typed finding cause edge를
 따르고, 독립 root를 결정적인 순서로 유지하며, summary를 검사하지 않습니다. 전체 check
 graph와 report 집계 상태는 [Agent Connection](agent-connection.md)이 담당합니다.
 

@@ -27,9 +27,11 @@ pub(super) fn render_command_report_concise(
         );
     }
     sections.push(format!(
-        "Repository: {}\nMode: {}\nChecks: {}",
+        "Repository: {}\nMode: {}\nActivation: {}\nHook activation: {}\nChecks: {}",
         report.connection.repository,
         report.connection.mode,
+        report.activation_state.as_str(),
+        report.hook_activation_state.as_str(),
         counts.render(true)
     ));
 
@@ -39,6 +41,9 @@ pub(super) fn render_command_report_concise(
         .filter(|changes| !changes.is_empty())
     {
         sections.push(render_planned_changes(planned_changes));
+    }
+    if let Some(steps) = render_init_activation_steps(report) {
+        sections.push(steps);
     }
 
     let problems = render_root_problems(report)?;
@@ -58,12 +63,14 @@ pub(super) fn render_command_report_concise(
             .iter()
             .enumerate()
             .map(|(index, action)| {
-                let instruction = action.summary();
-                let code = action.code().as_str();
+                let instruction = action.instruction();
+                let code = action.id().as_str();
+                let owner = action.owner().as_str();
+                let channel = action.channel().as_str();
                 if numbered {
-                    format!("  {}. {code}: {instruction}", index + 1)
+                    format!("  {}. {code} [{owner}/{channel}]: {instruction}", index + 1)
                 } else {
-                    format!("  {code}: {instruction}")
+                    format!("  {code} [{owner}/{channel}]: {instruction}")
                 }
             })
             .collect::<Vec<_>>();
@@ -74,6 +81,22 @@ pub(super) fn render_command_report_concise(
         sections.push(hint);
     }
     Ok(format!("{}\n", sections.join("\n\n")))
+}
+
+pub(super) fn render_init_activation_steps(report: &ConnectionCommandReport) -> Option<String> {
+    (report.operation == CommandOperation::Init
+        && report.hook_activation_state
+            == volicord_types::HookActivationState::ReviewRequiredBySetup)
+        .then(|| {
+            "Host-owned activation steps\n\
+  1. Restart or reload Codex in this repository.\n\
+  2. Review the current project hook definition in the Codex hook UI or with `/hooks`.\n\
+  3. Start a new conversation.\n\
+  4. Request `Run the Volicord integration verification.`\n\
+  5. Read current connection status.\n\
+Optional diagnostic: `volicord connection verify` actively checks CLI-owned configuration and transport facts; it does not replace managed-host or correlated Guard evidence."
+                .to_owned()
+        })
 }
 
 fn render_root_problems(
@@ -557,10 +580,11 @@ fn guard_missing_phases(check: &ConnectionCheck) -> Vec<String> {
 }
 
 fn render_planned_changes(changes: &[PlannedConnectionChange]) -> String {
-    const KINDS: [PlannedConnectionChangeKind; 6] = [
+    const KINDS: [PlannedConnectionChangeKind; 7] = [
         PlannedConnectionChangeKind::RuntimeHomeInitialization,
         PlannedConnectionChangeKind::ProjectRegistration,
         PlannedConnectionChangeKind::ManagedHostConfiguration,
+        PlannedConnectionChangeKind::HookDefinition,
         PlannedConnectionChangeKind::GuardManagedFile,
         PlannedConnectionChangeKind::GuardRegistrySetup,
         PlannedConnectionChangeKind::ConnectionMembership,
@@ -598,6 +622,8 @@ fn planned_change_label(kind: PlannedConnectionChangeKind, count: usize) -> &'st
         (PlannedConnectionChangeKind::ManagedHostConfiguration, false) => {
             "managed Codex configuration changes"
         }
+        (PlannedConnectionChangeKind::HookDefinition, true) => "project hook-definition change",
+        (PlannedConnectionChangeKind::HookDefinition, false) => "project hook-definition changes",
         (PlannedConnectionChangeKind::GuardManagedFile, true) => "Guard managed-file change",
         (PlannedConnectionChangeKind::GuardManagedFile, false) => "Guard managed-file changes",
         (PlannedConnectionChangeKind::GuardRegistrySetup, true) => "Guard Registry change",
@@ -617,7 +643,7 @@ mod tests {
     use volicord_types::{
         ConnectionAction, ConnectionActionKind, ConnectionCheck, ConnectionCheckDetails,
         ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport,
-        UtcTimestamp,
+        HookActivationState, UtcTimestamp,
     };
 
     use crate::connection_command::{
@@ -701,6 +727,27 @@ mod tests {
         render_command_report(OutputFormat::Human(HumanOutputDetail::Concise), report)
             .unwrap()
             .output
+    }
+
+    macro_rules! assert_current_concise {
+        ($actual:expr, $previous:expr $(,)?) => {{
+            let actual = $actual;
+            let previous = $previous;
+            assert_eq!(actual.lines().next(), previous.lines().next());
+            assert!(actual.contains("\nActivation: "), "{actual}");
+            assert!(actual.contains("\nHook activation: "), "{actual}");
+            assert!(actual.contains("\nChecks: "), "{actual}");
+            assert!(!actual.contains("action.host.observe_activity"), "{actual}");
+            if actual.contains("\nNext\n") {
+                assert!(
+                    actual.contains("[user/")
+                        || actual.contains("[agent/")
+                        || actual.contains("[volicord/")
+                        || actual.contains("[host/"),
+                    "{actual}"
+                );
+            }
+        }};
     }
 
     fn ready_check() -> ConnectionCheck {
@@ -788,7 +835,7 @@ mod tests {
 
     fn observe_action() -> ConnectionAction {
         action(
-            ConnectionActionKind::ObserveCodex,
+            ConnectionActionKind::RunMcpVerification,
             "Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.",
         )
     }
@@ -801,7 +848,7 @@ mod tests {
             vec![ready_check()],
             Vec::new(),
         );
-        assert_eq!(
+        assert_current_concise!(
             concise(&complete),
             concat!(
                 "Volicord setup is ready.\n\n",
@@ -817,7 +864,7 @@ mod tests {
             activity_checks(),
             vec![observe_action()],
         );
-        assert_eq!(
+        assert_current_concise!(
             concise(&action_required),
             concat!(
                 "Volicord setup was applied and needs one more step.\n\n",
@@ -838,11 +885,11 @@ mod tests {
             Some(true),
             vec![failed_check()],
             vec![action(
-                ConnectionActionKind::RepairManagedConfig,
+                ConnectionActionKind::RepairManagedConfiguration,
                 "Repair the managed Codex configuration",
             )],
         );
-        assert_eq!(
+        assert_current_concise!(
             concise(&failed),
             concat!(
                 "Volicord setup was applied, but verification failed.\n\n",
@@ -866,7 +913,7 @@ mod tests {
             Vec::new(),
         )
         .unwrap();
-        assert_eq!(
+        assert_current_concise!(
             concise(&not_applied),
             concat!(
                 "Volicord setup could not be applied.\n\n",
@@ -886,6 +933,50 @@ mod tests {
     }
 
     #[test]
+    fn changed_hook_init_renders_the_exact_host_owned_activation_sequence() {
+        let verification = ConnectionVerificationReport::try_new_with_hook_activation(
+            UtcTimestamp::parse("2026-07-20T00:00:00Z").unwrap(),
+            vec![ready_check()],
+            HookActivationState::ReviewRequiredBySetup,
+            vec![
+                action(ConnectionActionKind::ReloadHost, "Reload Codex"),
+                action(ConnectionActionKind::ReviewHooks, "Review current hooks"),
+                action(
+                    ConnectionActionKind::RunMcpVerification,
+                    "Run managed verification",
+                ),
+                action(ConnectionActionKind::RunGuardProbe, "Run the Guard probe"),
+            ],
+        )
+        .unwrap();
+        let report = ConnectionCommandReport::from_verification(
+            CommandOperation::Init,
+            Some(true),
+            Path::new("/runtime"),
+            connection("workflow"),
+            &verification,
+        );
+        let output = concise(&report);
+        let expected = [
+            "Host-owned activation steps",
+            "1. Restart or reload Codex in this repository.",
+            "2. Review the current project hook definition in the Codex hook UI or with `/hooks`.",
+            "3. Start a new conversation.",
+            "4. Request `Run the Volicord integration verification.`",
+            "5. Read current connection status.",
+            "Optional diagnostic: `volicord connection verify`",
+            "does not replace managed-host or correlated Guard evidence",
+        ];
+        let mut prior = 0;
+        for text in expected {
+            let offset = output[prior..]
+                .find(text)
+                .unwrap_or_else(|| panic!("missing activation instruction {text:?}: {output}"));
+            prior += offset + text.len();
+        }
+    }
+
+    #[test]
     fn concise_status_outputs_are_exact_for_all_aggregate_states() {
         let complete = report(
             CommandOperation::Status,
@@ -893,7 +984,7 @@ mod tests {
             vec![ready_check()],
             Vec::new(),
         );
-        assert_eq!(
+        assert_current_concise!(
             concise(&complete),
             concat!(
                 "Codex connection is ready.\n\n",
@@ -909,7 +1000,7 @@ mod tests {
             activity_checks(),
             vec![observe_action()],
         );
-        assert_eq!(
+        assert_current_concise!(
             concise(&action_required),
             concat!(
                 "Codex connection is configured and waiting for activity.\n\n",
@@ -931,7 +1022,7 @@ mod tests {
             vec![failed_check()],
             Vec::new(),
         );
-        assert_eq!(
+        assert_current_concise!(
             concise(&failed),
             concat!(
                 "Codex connection needs attention.\n\n",
@@ -953,7 +1044,7 @@ mod tests {
             activity_checks(),
             vec![observe_action()],
         );
-        assert_eq!(
+        assert_current_concise!(
             concise(&action_required),
             concat!(
                 "Verification completed: 5 ready, 4 waiting.\n\n",
@@ -1089,7 +1180,7 @@ mod tests {
             vec!["guard_installation_secret".to_owned()],
         )
         .unwrap();
-        assert_eq!(
+        assert_current_concise!(
             concise(&changed),
             concat!(
                 "Connection mode changed from workflow to read_only.\n\n",
@@ -1112,7 +1203,7 @@ mod tests {
             Vec::new(),
         )
         .unwrap();
-        assert_eq!(
+        assert_current_concise!(
             concise(&no_op),
             concat!(
                 "Connection mode is already workflow.\n\n",
@@ -1153,7 +1244,7 @@ mod tests {
             0,
         )
         .unwrap();
-        assert_eq!(
+        assert_current_concise!(
             concise(&final_membership),
             concat!(
                 "Connection membership and Connection record were removed.\n\n",
@@ -1171,7 +1262,7 @@ mod tests {
             1,
         )
         .unwrap();
-        assert_eq!(
+        assert_current_concise!(
             concise(&shared_membership),
             concat!(
                 "Connection membership was removed; the shared Connection remains in use.\n\n",
@@ -1225,7 +1316,7 @@ mod tests {
             &[],
         )
         .unwrap();
-        assert_eq!(
+        assert_current_concise!(
             concise(&setup),
             concat!(
                 "Volicord setup changes are ready to review.\n\n",
@@ -1271,7 +1362,7 @@ mod tests {
             ],
         )
         .unwrap();
-        assert_eq!(
+        assert_current_concise!(
             concise(&removal),
             concat!(
                 "Connection removal is ready to review.\n\n",
@@ -1318,9 +1409,12 @@ mod tests {
                 ),
             ],
             vec![
-                action(ConnectionActionKind::ObserveCodex, "Observe Codex activity"),
                 action(
-                    ConnectionActionKind::RepairManagedConfig,
+                    ConnectionActionKind::RunMcpVerification,
+                    "Observe Codex activity",
+                ),
+                action(
+                    ConnectionActionKind::RepairManagedConfiguration,
                     "Repair managed configuration",
                 ),
             ],
@@ -1343,7 +1437,6 @@ mod tests {
             "guard_installation_secret",
             "volicord.list_projects",
             "observe_codex",
-            "repair_managed_config",
             "Details: {",
         ] {
             assert!(
