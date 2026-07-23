@@ -42,6 +42,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-platform-process/src/lib.rs` | Safe APIs and deterministic error categories for bounded child-process containment, command configuration, attachment, process-tree termination, and nonblocking child-pipe polling. |
 | `crates/volicord-platform-process/src/unix.rs` | Unix process-group containment and nonblocking pipe primitives. |
 | `crates/volicord-platform-process/src/windows.rs` | Private Windows Job Object ownership and anonymous-pipe readiness primitives. |
+| `crates/volicord-test-process/src/lib.rs` | Safe `BoundedCommand`, `ProcessDeadline`, bounded capture/output, classified failure, single-supervisor stdio pumping, process-tree termination, direct-child reaping, and bounded cleanup for repository tests and smoke harnesses. |
 
 ## Store
 
@@ -148,13 +149,14 @@ product contract; use the focused Reference document for exact behavior.
 | `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed `production_supported` and `pre_release_only` facts, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
 | `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and release-workflow integrity tests. |
 | `crates/volicord-test-support/` | Reusable fixtures only: disposable Runtime Home, repository, Store-facing setup and inspection, intentional corruption/malformed-storage setup, and request helpers. Product-behavior assertions stay in owner-specific tests, and implementation-test modules do not embed storage SQL. |
+| `crates/volicord-test-process/tests/` | Cross-platform bounded child execution, stdin, failure, timeout, truncation, concurrent stream, descendant-held pipe, cleanup, process containment, path, argument, and environment coverage. Native Unix and Windows cases exercise the platform containment selected by `volicord-platform-process`. |
 
 ## Repository Maintenance Tooling
 
 | Path | Responsibility |
 |---|---|
-| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary: `volicord-mcp-protocol` supplies production profiles and the preferred server revision without pulling in `volicord-mcp`, Core, Store, CLI, or platform crates. |
-| `xtask/src/release_binary_smoke.rs` | Single cross-platform release-binary smoke owner: disposable Git Product Repository, Runtime Home, and fake `codex`; public `init` JSON decoding; public `mcp serve` JSON-RPC lifecycle; preferred-revision selection; representative tool assertions; bounded process I/O, timeout, reaping, and cleanup. |
+| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary: `volicord-mcp-protocol` supplies production profiles and the preferred server revision, and `volicord-test-process` supplies bounded child execution without pulling in `volicord-mcp`, Core, Store, CLI, or host integration crates. |
+| `xtask/src/release_binary_smoke.rs` | Single cross-platform release-binary smoke orchestration owner: disposable Git Product Repository, Runtime Home, and fake `codex`; public `init` JSON decoding; public `mcp serve` JSON-RPC lifecycle; preferred-revision selection; representative tool assertions; and release-specific process bounds supplied to `volicord-test-process`. |
 | `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
 | `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
 | `xtask/src/mcp_spec/validation.rs` | Offline metadata, immutable-pin, checksum, artifact, schema, ordering, and registry-parity validation. |

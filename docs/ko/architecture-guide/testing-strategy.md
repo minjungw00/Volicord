@@ -17,6 +17,12 @@
 합니다. fixture는 parser 또는 구현 동작만 증명하며 실제 Codex 설치의 행동이나 플랫폼
 지원을 증명하지 않습니다.
 
+`volicord-test-process`는 저장소 테스트와 스모크 하네스가 공유하는 한도 있는 자식
+프로세스 실행을 담당합니다. `volicord-platform-process`가 담당하는 프로세스 그룹,
+Windows Job Object, 비차단 파이프 primitive를 조합하며 해당 OS 구현을 복제하지
+않습니다. 제품 MCP 감독 정책, 프로토콜 프레이밍, lifecycle 진행 상태, 진단은 계속
+`volicord-cli`가 담당합니다.
+
 ## 고정된 MCP 명세 입력
 
 `tests/conformance/mcp-spec/`은 결정론적인 MCP 적합성 작업에 필요한 최소한의 버전별
@@ -114,6 +120,10 @@ registry 직접 순회가 matrix를 정합니다.
 - 안정적인 identity를 유지하는 반복 Guard 초기화와 관련 없는 repository content 보존
 - Guard 관찰과 미기록 변경 suppression 결과
 - Codex 구성 drift와 행동 probe 실패 보고
+- 성공, stdin 전달, 0이 아닌 종료, 시간 초과, 결정론적 stdout/stderr truncation,
+  동시 stream, 자손이 유지하는 pipe, stdin 쓰기 실패 후 정리, 반복 정리, 네이티브
+  Unix 프로세스 그룹, 네이티브 Windows Job Object, 공백이 있는 경로와 인자, 명시적
+  환경 추가·제거를 아우르는 재사용 가능한 한도 테스트 자식 실행
 
 운영 상호운용성 coverage는 제한 안의 임의 version 문자열을 받고, initialize와 도구 목록
 milestone을 실행하며, 필수 도구와 안전한 읽기 전용 호출, Guard artifact와 필수 phase 관찰,
@@ -133,7 +143,11 @@ Home, Codex home, 가짜 `codex` 실행 파일을 만들고 공개 `volicord ini
 `volicord mcp serve --connection <connection-id>`를 시작합니다. Protocol
 registry의 선호 서버 리비전을 요청하고 initialization과 `tools/list`를 완료한 뒤,
 한 곳에서 관리하는 대표 공개 도구 검증 집합을 검사합니다. 프로세스 I/O,
-종료, stderr 맥락, fixture 정리에는 한도가 있습니다.
+종료, stderr 맥락, fixture 정리는 `volicord-test-process`를 통해 한도를 둡니다.
+
+스모크 하네스는 릴리스별 조율과 기록 검증을 `xtask`에 유지합니다. 생명주기와
+수집 한도는 재사용 가능한 한도 자식 실행을 담당하는 공유 테스트 프로세스 경계에
+전달합니다.
 
 일반 CI는 로컬 `volicord` 바이너리를 빌드해 이 하네스에 전달합니다. 네이티브
 릴리스 matrix의 각 항목도 이미 빌드한 정확한 Linux, macOS, Windows 릴리스

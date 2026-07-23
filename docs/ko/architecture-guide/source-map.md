@@ -42,6 +42,7 @@
 | `crates/volicord-platform-process/src/lib.rs` | 한도가 있는 자식 프로세스 격리, 명령 설정, 연결, 프로세스 트리 종료, 비차단 자식 파이프 폴링을 위한 안전한 API와 안정적으로 분류된 오류 범주. |
 | `crates/volicord-platform-process/src/unix.rs` | Unix 프로세스 그룹 격리와 비차단 파이프 primitive. |
 | `crates/volicord-platform-process/src/windows.rs` | 비공개 Windows Job Object 소유권과 익명 파이프 준비 상태 primitive. |
+| `crates/volicord-test-process/src/lib.rs` | 저장소 테스트와 스모크 하네스를 위한 안전한 `BoundedCommand`, `ProcessDeadline`, 한도 있는 수집·출력, 분류된 실패, 단일 supervisor stdio 처리, 프로세스 트리 종료, 직접 자식 회수, 한도 있는 정리. |
 
 ## Store
 
@@ -148,13 +149,14 @@
 | `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 `production_supported`와 `pre_release_only` 사실, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
 | `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 릴리스 workflow 무결성 테스트. |
 | `crates/volicord-test-support/` | 재사용 fixture만 담당합니다. 일회용 Runtime Home, repository, Store 쪽 설정 및 검사, 의도적인 손상·비정상 저장소 설정, 요청 도우미를 제공합니다. 제품 동작 assertion은 owner별 test에 남고 구현 테스트 모듈은 저장소 SQL을 직접 포함하지 않습니다. |
+| `crates/volicord-test-process/tests/` | 플랫폼 공통 한도 자식 실행, stdin, 실패, 시간 초과, truncation, 동시 stream, 자손이 유지하는 pipe, 정리, 프로세스 격리, 경로, 인자, 환경 coverage. 네이티브 Unix와 Windows case는 `volicord-platform-process`가 선택한 플랫폼 격리를 실행합니다. |
 
 ## 저장소 유지보수 도구
 
 | 경로 | 책임 |
 |---|---|
-| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-mcp-protocol`에서 프로덕션 profile과 선호 서버 리비전을 받으며 `volicord-mcp`, Core, Store, CLI, platform crate를 끌어오지 않습니다. |
-| `xtask/src/release_binary_smoke.rs` | 하나뿐인 플랫폼 공통 릴리스 바이너리 스모크 담당 소스. 폐기 가능한 Git Product Repository, Runtime Home, 가짜 `codex`, 공개 `init` JSON 역직렬화, 공개 `mcp serve` JSON-RPC lifecycle, 선호 리비전 선택, 대표 도구 검증, 한도 있는 프로세스 I/O·시간 제한·자식 프로세스 회수·정리를 담당합니다. |
+| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-mcp-protocol`에서 프로덕션 profile과 선호 서버 리비전을 받고 `volicord-test-process`에서 한도 있는 자식 실행을 받으며 `volicord-mcp`, Core, Store, CLI, host integration 크레이트를 끌어오지 않습니다. |
+| `xtask/src/release_binary_smoke.rs` | 하나뿐인 플랫폼 공통 릴리스 바이너리 스모크 orchestration 담당 소스. 폐기 가능한 Git Product Repository, Runtime Home, 가짜 `codex`, 공개 `init` JSON 역직렬화, 공개 `mcp serve` JSON-RPC lifecycle, 선호 리비전 선택, 대표 도구 검증, `volicord-test-process`에 전달하는 릴리스별 프로세스 한도를 담당합니다. |
 | `xtask/src/mcp_spec/mod.rs` | MCP 명세 유지보수 facade와 명령 진입점. |
 | `xtask/src/mcp_spec/manifest.rs` | 엄격한 고정 manifest 모델, parsing, 결정론적 rendering. |
 | `xtask/src/mcp_spec/validation.rs` | 오프라인 metadata, 변경 불가능한 pin, checksum, artifact, schema, ordering, registry 일치 검증. |

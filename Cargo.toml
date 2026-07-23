@@ -9,6 +9,7 @@ members = [
     "crates/volicord-mcp",
     "crates/volicord-platform-fs",
     "crates/volicord-platform-process",
+    "crates/volicord-test-process",
     "crates/volicord-test-support",
     "tests/conformance",
     "tests/agent-evaluation",

@@ -1,0 +1,20 @@
+[package]
+name = "volicord-test-process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+volicord-platform-process = { path = "../volicord-platform-process" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dev-dependencies]
+rustix = { version = "1", features = ["process"] }
+
+[[test]]
+name = "test_process_fixture"
+path = "tests/test_process_fixture.rs"
+harness = false

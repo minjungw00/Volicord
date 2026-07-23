@@ -74,6 +74,7 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 선택한 Connection 보고서 표시, lifecycle-aware 정확한 lookup 표시, 숨은 동일 프로세스 managed-host launcher, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 관리 바이너리와 재사용 명령 모듈. |
 | `crates/volicord-platform-fs` | 프로세스 target 및 플랫폼 관찰, 네이티브 Linux/WSL2 분류, WSL2 배포판 검증 및 파일시스템 관찰, 플랫폼 고유 파일시스템 이름 공간 연산, 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 시작이나 Codex 구성 정책은 담당하지 않습니다. |
 | `crates/volicord-platform-process` | 한도가 있는 플랫폼별 자식 프로세스 격리와 비차단 자식 파이프 준비 상태를 위한 내부 안전 파사드. 저수준 Unix 프로세스 그룹, Windows Job Object, 파이프 폴링 primitive를 담당합니다. |
+| `crates/volicord-test-process` | 저장소 테스트와 스모크 하네스에서 한도 있는 자식 프로세스 실행을 담당하는 게시 비활성 내부 경계. `volicord-platform-process` primitive를 하나의 기한, 동시 한도 stdio 수집, 프로세스 트리 종료, 직접 자식 회수, 한도 있는 정리로 조합하며 제품 프로세스 정책은 담당하지 않습니다. |
 | `crates/volicord-mcp-protocol` | 정확한 MCP 리비전 파싱, 검토된 폐쇄형 프로덕션 레지스트리, 메시지·도구·스키마 기능 선언, 결정론적인 지원 리비전 순서, 별도로 선택하는 서버 선호 리비전을 담당하는 호스트 독립 내부 크레이트. 추적 중인 사전 릴리스 메타데이터는 프로덕션 레지스트리 밖에 둡니다. |
 | `crates/volicord-mcp` | 정규 관리 launch 구성 계약, 메모리 내 launch-lease 소비, 시작 검증, registry가 구동하는 실행 가능한 protocol 적합성, Volicord 도구 담당자가 제공하는 정규 도구 모델 사용, revision별 `tools/list` 및 `tools/call` projection, stdio lifecycle과 프레이밍, Core 호출, typed protocol profile 사용을 위한 MCP 어댑터 라이브러리. |
 | `crates/volicord-test-support` | 재사용 가능한 구현 테스트 fixture만 담당합니다. 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정을 제공하며 제품 동작 assertion이나 계약은 담당하지 않습니다. |
@@ -111,6 +112,10 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 - `volicord-platform-process`는 내부 제품 크레이트에 의존하지 않습니다. MCP 감독
   정책, 기한, 프레이밍, 진행 상태, 진단을 담당하지 않으며 로컬 오케스트레이션
   계층에 안전한 자식 프로세스 격리와 파이프 폴링 primitive를 제공합니다.
+- `volicord-test-process`는 `volicord-platform-process`와 범용 테스트
+  인프라에만 의존합니다. 저장소 테스트와 스모크 하네스가 OS primitive를 한도
+  있는 테스트 자식 실행으로 재사용하게 합니다. 제품 MCP 감독 정책, lifecycle
+  기한, 프레이밍, 진행 상태, 진단은 계속 `volicord-cli`가 담당합니다.
 - `volicord-platform-fs`는 내부 제품 크레이트에 의존하지 않습니다. 현재 프로세스
   target과 플랫폼, WSL2 배포판 identity와 경로 파일시스템, 플랫폼 고유 이름 공간
   연산, 읽기 전용 Git layout identity primitive의 안전한 관찰을 담당합니다. Store와
@@ -120,10 +125,11 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
   위해서만 구현 크레이트를 조합합니다.
 - `xtask`는 제품 런타임 밖의 저장소 유지보수 도구로 남습니다. MCP 명세 checker와
   릴리스 바이너리 스모크 하네스는 컴파일된 프로덕션 profile과 선호 서버 리비전을
-  얻기 위해 `volicord-mcp-protocol`에 의존합니다. 스모크 하네스는 전달받은
-  `volicord` 프로세스를 실행하며 MCP 어댑터, Core, Store, CLI, host integration,
-  platform runtime 크레이트를 링크하지 않습니다. 일반 검사는 오프라인으로
-  실행되고, 명시적으로 호출한 명세 sync 명령만 네트워크를 사용합니다.
+  얻기 위해 `volicord-mcp-protocol`에 의존하고, 한도 있는 자식 실행에는
+  `volicord-test-process`를 재사용합니다. 스모크 하네스는 전달받은 `volicord`
+  프로세스를 실행하며 MCP 어댑터, Core, Store, CLI, host integration 크레이트를
+  링크하지 않습니다. 일반 검사는 오프라인으로 실행되고, 명시적으로 호출한 명세
+  sync 명령만 네트워크를 사용합니다.
 
 정확한 Cargo 의존 간선은 Cargo 매니페스트가 담당합니다. 정확한 소스 배치는 소스
 지도가 담당합니다.
@@ -190,6 +196,7 @@ Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니
 | 릴리스 무결성 | 일반 점검은 모든 게시 Volicord target, 패키지와 checksum 연속성, workflow 형태를 다룹니다. 일반 CI와 네이티브 릴리스 matrix의 모든 항목은 각 작업에서 빌드한 정확한 바이너리에 같은 플랫폼 공통 `xtask` 스모크 하네스를 실행합니다. 이 하네스는 공개 수동 stdio를 실행하며 선택적 실제 Codex 관찰 및 managed-host 증거와 구분됩니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
 | 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 프로세스 target과 kernel을 관찰하고 네이티브 Linux와 WSL2를 구분하며 `/etc/os-release`를 통해 WSL2 배포판을 검증하고 target 경로 제한 집행에 필요한 파일시스템 관찰을 제공합니다. 또한 플랫폼 고유 이름 공간 primitive와 정규 읽기 전용 Git common-directory/worktree 탐색을 격리합니다. 어떤 파일을 관리할지, 교체나 쓰기를 승인할지, 복구가 무엇을 뜻할지는 결정하지 않습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
 | 플랫폼 프로세스 파사드 | `volicord-platform-process`는 한도가 있는 자식 프로세스 격리와 자식 파이프 준비 상태를 위한 안전한 API를 노출합니다. 저수준 프로세스 그룹, Windows Job Object, 비차단 파이프 설정, 파이프 폴링을 담당합니다. `volicord-cli`는 MCP 감독 정책, 생명주기 기한, 프로토콜 프레이밍, 교환 진행 상태, 진단 책임을 유지합니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |
+| 테스트 프로세스 경계 | `volicord-test-process`는 저장소 테스트와 스모크 하네스가 재사용하는 한도 있는 자식 프로세스 실행을 담당합니다. 프로세스를 시작하기 전에 플랫폼 격리를 만들고, 하나의 lifecycle 기한 안에서 한도 있는 stdio를 함께 처리하며, 시간 초과나 실패 시 프로세스 트리를 종료하고, 직접 자식을 회수하고, 마지막 파이프 정리 시간을 제한합니다. Volicord 제품 API를 노출하지 않으며 제품 프로세스 정책은 `volicord-cli`에 남습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md). |
 | 테스트와 검증 | 구현 테스트는 담당 문서가 정의한 사실을 적절한 계층에서 검증합니다. MCP 모듈 테스트는 lifecycle, batching, protocol projection, tool call, managed-host observation, diagnostics, conformance 계약별로 나누며 공유 설정은 그 assertion과 분리합니다. MCP 프로덕션 지원에는 고정 manifest의 릴리스 항목과 프로덕션 profile이 필요하며 가벼운 checker가 정확한 집합 일치를 강제합니다. 독립적인 registry 기반 적합성 테스트는 모든 프로덕션 profile의 실제 wire 동작을 실행합니다. 추적 중인 pre-release schema는 프로덕션 순회 밖에 있고 저장소 로컬 적합성 범위는 외부 인증이 아닙니다. 테스트, 픽스처, 생성 스냅샷, 문서 점검은 제품 계약 담당 문서가 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
 
 ## 세부 경로

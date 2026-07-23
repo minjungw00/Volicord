@@ -26,7 +26,15 @@ impl ProcessContainment {
     }
 }
 
-pub(crate) fn configure_pipe<T>(_pipe: &T) -> Result<(), PlatformProcessError> {
+pub(crate) fn configure_read_pipe<T>(_pipe: &T) -> Result<(), PlatformProcessError> {
+    configure_pipe()
+}
+
+pub(crate) fn configure_write_pipe<T>(_pipe: &T) -> Result<(), PlatformProcessError> {
+    configure_pipe()
+}
+
+fn configure_pipe() -> Result<(), PlatformProcessError> {
     Err(PlatformProcessError::unsupported(
         PlatformProcessOperation::ConfigurePipe,
         "bounded child-pipe polling is unavailable on this platform",

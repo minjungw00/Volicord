@@ -55,7 +55,15 @@ impl ProcessContainment {
     }
 }
 
-pub(crate) fn configure_pipe(pipe: impl AsFd) -> Result<(), PlatformProcessError> {
+pub(crate) fn configure_read_pipe(pipe: impl AsFd) -> Result<(), PlatformProcessError> {
+    configure_pipe(pipe)
+}
+
+pub(crate) fn configure_write_pipe(pipe: impl AsFd) -> Result<(), PlatformProcessError> {
+    configure_pipe(pipe)
+}
+
+fn configure_pipe(pipe: impl AsFd) -> Result<(), PlatformProcessError> {
     let flags = fcntl_getfl(&pipe).map_err(configure_pipe_error)?;
     fcntl_setfl(pipe, flags | OFlags::NONBLOCK).map_err(configure_pipe_error)?;
     Ok(())

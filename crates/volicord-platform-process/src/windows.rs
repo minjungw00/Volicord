@@ -13,7 +13,7 @@ use windows_sys::Win32::{
             SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         },
-        Pipes::PeekNamedPipe,
+        Pipes::{PeekNamedPipe, SetNamedPipeHandleState, PIPE_NOWAIT},
     },
 };
 
@@ -147,8 +147,31 @@ impl ProcessContainment {
     }
 }
 
-pub(crate) fn configure_pipe<T>(_pipe: &T) -> Result<(), PlatformProcessError> {
+pub(crate) fn configure_read_pipe<T>(_pipe: &T) -> Result<(), PlatformProcessError> {
     Ok(())
+}
+
+#[allow(unsafe_code)]
+pub(crate) fn configure_write_pipe<T: AsRawHandle>(pipe: &T) -> Result<(), PlatformProcessError> {
+    let handle = pipe.as_raw_handle() as HANDLE;
+    let mut mode = PIPE_NOWAIT;
+    // SAFETY: `handle` is borrowed from a live child-stdin pipe and has the
+    // write access required by `SetNamedPipeHandleState`. `mode` is a valid
+    // aligned input for the duration of the call. The API changes only the
+    // handle's wait mode and neither stores the pointer nor takes ownership.
+    let configured =
+        unsafe { SetNamedPipeHandleState(handle, &mut mode, ptr::null_mut(), ptr::null_mut()) };
+    if configured == 0 {
+        Err(PlatformProcessError::operating_system(
+            PlatformProcessOperation::ConfigurePipe,
+            format!(
+                "failed to configure the child stdin pipe for bounded writes: {}",
+                io::Error::last_os_error()
+            ),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 #[allow(unsafe_code)]

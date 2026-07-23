@@ -1014,6 +1014,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "volicord-test-process"
+version = "0.9.1"
+dependencies = [
+ "rustix",
+ "tempfile",
+ "volicord-platform-process",
+]
+
+[[package]]
 name = "volicord-test-support"
 version = "0.9.1"
 dependencies = [
@@ -1303,6 +1312,7 @@ dependencies = [
  "tempfile",
  "toml_edit",
  "volicord-mcp-protocol",
+ "volicord-test-process",
 ]
 
 [[package]]

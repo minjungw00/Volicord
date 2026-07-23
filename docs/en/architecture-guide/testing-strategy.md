@@ -17,6 +17,12 @@ Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
 prove behavior of a real Codex installation or platform support.
 
+`volicord-test-process` owns bounded child execution shared by repository tests
+and smoke harnesses. It composes the process-group, Windows Job Object, and
+nonblocking pipe primitives owned by `volicord-platform-process`; it does not
+duplicate those OS implementations. Product MCP supervision policy, protocol
+framing, lifecycle progress, and diagnostics remain owned by `volicord-cli`.
+
 ## Pinned MCP Specification Inputs
 
 `tests/conformance/mcp-spec/` owns the minimal versioned upstream schemas and
@@ -131,7 +137,12 @@ Durable tests should cover, as applicable:
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;
 - Guard observation and unrecorded-change suppression outcomes; and
-- Codex configuration drift and behavior-probe failure reporting.
+- Codex configuration drift and behavior-probe failure reporting;
+- reusable bounded test child execution across success, stdin delivery,
+  nonzero exit, timeout, deterministic stdout/stderr truncation, simultaneous
+  streams, descendant-held pipes, stdin-write failure cleanup, repeated
+  cleanup, native Unix process groups, native Windows Job Objects, paths and
+  arguments containing spaces, and explicit environment addition/removal.
 
 Operational interoperability coverage accepts arbitrary bounded version
 strings, exercises initialize and tool-list milestones, checks required tools
@@ -152,7 +163,12 @@ Repository, Runtime Home, Codex home, and fake `codex` executable; runs public
 `volicord mcp serve --connection <connection-id>`. It requests the protocol
 registry's preferred server revision, completes initialization and
 `tools/list`, and checks one canonical representative public-tool assertion
-set. Process I/O, termination, stderr context, and fixture cleanup are bounded.
+set. Process I/O, termination, stderr context, and fixture cleanup are bounded
+through `volicord-test-process`.
+
+The smoke harness keeps release-specific orchestration and transcript
+validation in `xtask`. It supplies its lifecycle and capture limits to the
+shared test-process boundary, which owns the reusable bounded child execution.
 
 Ordinary CI builds a local `volicord` binary and passes that file to this
 harness. Every native release matrix entry passes the exact Linux, macOS, or

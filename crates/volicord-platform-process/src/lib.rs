@@ -172,17 +172,17 @@ impl ProcessContainment {
 
 /// Configures a child stdout pipe for bounded polling.
 pub fn configure_child_stdout_pipe(pipe: &ChildStdout) -> Result<(), PlatformProcessError> {
-    platform::configure_pipe(pipe)
+    platform::configure_read_pipe(pipe)
 }
 
 /// Configures a child stderr pipe for bounded polling.
 pub fn configure_child_stderr_pipe(pipe: &ChildStderr) -> Result<(), PlatformProcessError> {
-    platform::configure_pipe(pipe)
+    platform::configure_read_pipe(pipe)
 }
 
 /// Configures a child stdin pipe for bounded writes.
 pub fn configure_child_stdin_pipe(pipe: &ChildStdin) -> Result<(), PlatformProcessError> {
-    platform::configure_pipe(pipe)
+    platform::configure_write_pipe(pipe)
 }
 
 /// Reads currently available child stdout bytes without waiting indefinitely.

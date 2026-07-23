@@ -79,6 +79,7 @@ the public method execution path.
 | `crates/volicord-cli` | Local `volicord` administrative binary and reusable command modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, host/MCP/Guard verification checks, dependency-graph policy, selected-Connection report presentation, lifecycle-aware exact lookup presentation, the hidden same-process managed-host launcher, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
 | `crates/volicord-platform-fs` | Internal safe facade for process-target and platform observation, native Linux/WSL2 classification, WSL2 distribution validation and filesystem observation, platform-native filesystem namespace operations, and read-only canonical Git common-directory/worktree snapshots. It does not own managed launch or Codex configuration policy. |
 | `crates/volicord-platform-process` | Internal safe facade for bounded platform-specific child-process containment and nonblocking child-pipe readiness. It owns low-level Unix process-group, Windows Job Object, and pipe-polling primitives. |
+| `crates/volicord-test-process` | Internal publish-disabled boundary for bounded child execution in repository tests and smoke harnesses. It composes `volicord-platform-process` primitives into one deadline, concurrent bounded stdio capture, process-tree termination, direct-child reaping, and bounded cleanup without owning product process policy. |
 | `crates/volicord-mcp-protocol` | Host-independent internal owner of exact MCP revision parsing, the closed reviewed production registry, message/tool/schema feature declarations, deterministic supported-revision ordering, and the separately selected preferred server revision. Tracked pre-release metadata remains outside the production registry. |
 | `crates/volicord-mcp` | MCP adapter library for the canonical managed-launch configuration contract, in-memory launch-lease consumption, startup validation, registry-driven executable protocol conformance, consumption of the canonical tool model supplied by Volicord tool owners, revision-specific `tools/list` and `tools/call` projection, stdio lifecycle and framing, Core invocation, and consumption of typed protocol profiles. |
 | `crates/volicord-test-support` | Reusable implementation-test fixtures only: disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, and Agent Connection setup. It owns no product-behavior assertions or contracts. |
@@ -119,6 +120,11 @@ The durable dependency direction is:
   supplies safe child-process containment and pipe-polling primitives to local
   orchestration layers without owning MCP supervision policy, deadlines,
   framing, progress, or diagnostics.
+- `volicord-test-process` depends on `volicord-platform-process` and
+  general-purpose test infrastructure only. It turns those OS primitives into
+  bounded test child execution for repository tests and smoke harnesses.
+  Product MCP supervision policy, lifecycle deadlines, framing, progress, and
+  diagnostics remain in `volicord-cli`.
 - `volicord-platform-fs` has no internal product-crate dependencies. It owns
   safe observation of the current process target and platform, WSL2
   distribution identity and path filesystem, platform-native namespace
@@ -130,9 +136,10 @@ The durable dependency direction is:
 - `xtask` remains repository maintenance tooling outside product runtime. Its
   MCP specification checker and release-binary smoke harness depend on
   `volicord-mcp-protocol` for the compiled production profiles and preferred
-  server revision. The smoke harness executes the supplied `volicord` process;
-  it does not link the MCP adapter, Core, Store, CLI, host integration, or
-  platform runtime crates. Ordinary checks remain offline; only the explicitly
+  server revision, while the smoke harness reuses `volicord-test-process` for
+  bounded child execution. The smoke harness executes the supplied `volicord`
+  process; it does not link the MCP adapter, Core, Store, CLI, or host
+  integration crates. Ordinary checks remain offline; only the explicitly
   invoked specification sync command uses the network.
 
 Exact Cargo dependency edges remain with the Cargo manifests. Exact source
@@ -205,6 +212,7 @@ Core authorization remains separate and still validates every managed MCP call.
 | Release integrity | Generic checks cover every published Volicord target, package and checksum continuity, and workflow shape. Ordinary CI and every native release matrix entry run the same cross-platform `xtask` smoke harness against the exact binary built for that job. The harness exercises public manual stdio and remains separate from optional real-Codex observation and managed-host evidence. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
 | Platform filesystem facade | `volicord-platform-fs` observes the process target and kernel, distinguishes native Linux from WSL2, validates the WSL2 distribution through `/etc/os-release`, and supplies path-filesystem observations for target-path restriction enforcement. It also isolates platform-native namespace primitives and canonical read-only Git common-directory/worktree discovery. It does not decide which files are managed, whether a replacement or write is authorized, or what recovery means. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
 | Platform process facade | `volicord-platform-process` exposes safe bounded child-process containment and child-pipe readiness APIs. It owns low-level process groups, Windows Job Objects, nonblocking pipe configuration, and pipe polling. `volicord-cli` retains MCP supervision policy, lifecycle deadlines, protocol framing, exchange progress, and diagnostics. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), and [Agent Connection](../reference/agent-connection.md). |
+| Test process boundary | `volicord-test-process` owns reusable bounded child execution for repository tests and smoke harnesses. It creates platform containment before spawn, pumps bounded stdio under one lifecycle deadline, terminates the process tree on timeout or failure, reaps the direct child, and bounds final pipe cleanup. It exposes no Volicord product API, and product process policy remains in `volicord-cli`. | [Source Map](source-map.md) and [Testing Strategy](testing-strategy.md). |
 | Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. MCP module tests are partitioned by lifecycle, batching, protocol projection, tool calls, managed-host observation, diagnostics, and conformance contracts, with shared setup isolated from those assertions. MCP production support requires a pinned released manifest entry and a production profile with exact set parity enforced by the lightweight checker. The independent registry-driven conformance test executes actual wire behavior for every production profile. Tracked pre-release schemas remain outside production iteration, and local conformance is not external certification. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
 
 ## Detail routes

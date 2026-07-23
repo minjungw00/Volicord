@@ -3,19 +3,18 @@ use serde_json::Value;
 use std::{
     collections::BTreeSet,
     env, fs,
-    io::{self, Read, Write},
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
-    sync::mpsc::{self, Receiver},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use volicord_mcp_protocol::ProtocolRegistry;
+use volicord_test_process::{
+    BoundedCapture, BoundedCommand, BoundedProcessFailureKind, BoundedProcessOutput,
+    ProcessDeadline,
+};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(90);
 const MCP_TIMEOUT: Duration = Duration::from_secs(15);
-const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
-const PIPE_COMPLETION_TIMEOUT: Duration = Duration::from_secs(2);
+const PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const STDOUT_LIMIT_BYTES: usize = 1024 * 1024;
 const STDERR_LIMIT_BYTES: usize = 8 * 1024;
 
@@ -86,56 +85,45 @@ fn run_in_fixture(binary: &Path, root: &Path) -> Result<ReleaseBinarySmokeReport
     create_fake_codex(binary, &fake_bin)?;
     let fixture_path = prepend_path(&fake_bin)?;
 
-    let mut help = Command::new(binary);
-    help.arg("--help");
-    require_success(
+    execute_smoke_process(
         "release binary --help",
-        run_process(help, None, COMMAND_TIMEOUT, "release binary --help")?,
+        smoke_command(binary, COMMAND_TIMEOUT)
+            .arg("--help")
+            .require_success(true),
     )?;
 
-    let mut init = Command::new(binary);
-    init.args(["init", "--host", "codex", "--repo"])
+    let init = smoke_command(binary, COMMAND_TIMEOUT)
+        .args(["init", "--host", "codex", "--repo"])
         .arg(&repository)
         .args(["--profile", "record", "--home"])
         .arg(&runtime_home)
         .arg("--mcp-command")
         .arg(binary)
         .arg("--json");
-    configure_fixture_command(
-        &mut init,
-        &repository,
-        &runtime_home,
-        &codex_home,
-        &fixture_path,
-    );
-    let init_output = require_success(
-        "volicord init",
-        run_process(init, None, COMMAND_TIMEOUT, "volicord init")?,
-    )?;
-    let connection_id = parse_connection_id(&init_output.stdout)?;
+    let init =
+        configure_fixture_command(init, &repository, &runtime_home, &codex_home, &fixture_path);
+    let init_output = execute_smoke_process("volicord init", init.require_success(true))?;
+    let connection_id = parse_connection_id(init_output.stdout())?;
 
     let revision = ProtocolRegistry::production()
         .preferred_server_profile()
         .revision()
         .as_str();
     let input = mcp_input(revision)?;
-    let mut serve = Command::new(binary);
-    serve
+    let serve = smoke_command(binary, MCP_TIMEOUT)
         .args(["mcp", "serve", "--connection"])
-        .arg(&connection_id);
-    configure_fixture_command(
-        &mut serve,
+        .arg(&connection_id)
+        .stdin(input);
+    let serve = configure_fixture_command(
+        serve,
         &repository,
         &runtime_home,
         &codex_home,
         &fixture_path,
     );
-    let serve_output = require_success(
-        "volicord mcp serve",
-        run_process(serve, Some(input), MCP_TIMEOUT, "volicord mcp serve")?,
-    )?;
-    let tool_count = validate_mcp_transcript(&serve_output.stdout, revision)
-        .with_context(|| format!("validate MCP stdout\n{}", serve_output.context()))?;
+    let serve_output = execute_smoke_process("volicord mcp serve", serve.require_success(true))?;
+    let tool_count = validate_mcp_transcript(serve_output.stdout(), revision)
+        .with_context(|| format!("validate MCP stdout\n{}", process_context(&serve_output)))?;
 
     Ok(ReleaseBinarySmokeReport {
         binary: binary.to_path_buf(),
@@ -155,16 +143,13 @@ fn resolve_binary(binary: &Path) -> Result<PathBuf> {
 }
 
 fn initialize_git_repository(repository: &Path) -> Result<()> {
-    let mut command = Command::new("git");
-    command.arg("init").arg("--quiet").arg(repository);
-    require_success(
+    execute_smoke_process(
         "git init for disposable Product Repository",
-        run_process(
-            command,
-            None,
-            COMMAND_TIMEOUT,
-            "git init for disposable Product Repository",
-        )?,
+        smoke_command("git", COMMAND_TIMEOUT)
+            .arg("init")
+            .arg("--quiet")
+            .arg(repository)
+            .require_success(true),
     )
     .map(|_| ())
 }
@@ -199,23 +184,23 @@ fn prepend_path(directory: &Path) -> Result<std::ffi::OsString> {
 }
 
 fn configure_fixture_command(
-    command: &mut Command,
+    command: BoundedCommand,
     repository: &Path,
     runtime_home: &Path,
     codex_home: &Path,
     path: &std::ffi::OsStr,
-) {
+) -> BoundedCommand {
     command
         .current_dir(repository)
         .env("VOLICORD_HOME", runtime_home)
         .env("CODEX_HOME", codex_home)
-        .env("PATH", path);
+        .env("PATH", path)
 }
 
-fn parse_connection_id(stdout: &CapturedStream) -> Result<String> {
-    stdout.require_complete("volicord init stdout")?;
-    let document: Value = serde_json::from_slice(&stdout.bytes)
-        .with_context(|| format!("parse volicord init JSON\n{}", stdout.render()))?;
+fn parse_connection_id(stdout: &BoundedCapture) -> Result<String> {
+    require_complete(stdout, "volicord init stdout")?;
+    let document: Value = serde_json::from_slice(stdout.bytes())
+        .with_context(|| format!("parse volicord init JSON\n{}", stdout.render_lossy()))?;
     document
         .pointer("/connection/connection_id")
         .and_then(Value::as_str)
@@ -259,9 +244,9 @@ fn mcp_input(revision: &str) -> Result<Vec<u8>> {
     Ok(input)
 }
 
-fn validate_mcp_transcript(stdout: &CapturedStream, requested_revision: &str) -> Result<usize> {
-    stdout.require_complete("MCP stdout")?;
-    let text = std::str::from_utf8(&stdout.bytes).context("MCP stdout was not UTF-8")?;
+fn validate_mcp_transcript(stdout: &BoundedCapture, requested_revision: &str) -> Result<usize> {
+    require_complete(stdout, "MCP stdout")?;
+    let text = std::str::from_utf8(stdout.bytes()).context("MCP stdout was not UTF-8")?;
     let mut initialize = None;
     let mut tools_list = None;
 
@@ -330,233 +315,42 @@ fn insert_response(slot: &mut Option<Value>, message: Value, label: &str) -> Res
     Ok(())
 }
 
-fn require_success(label: &str, output: ProcessOutput) -> Result<ProcessOutput> {
-    if output.status.success() {
-        Ok(output)
-    } else {
-        bail!("{label} failed\n{}", output.context())
-    }
+fn smoke_command(program: impl AsRef<std::ffi::OsStr>, timeout: Duration) -> BoundedCommand {
+    BoundedCommand::new(
+        program,
+        ProcessDeadline::new(timeout, PROCESS_CLEANUP_TIMEOUT),
+        STDOUT_LIMIT_BYTES,
+        STDERR_LIMIT_BYTES,
+    )
 }
 
-fn run_process(
-    mut command: Command,
-    stdin: Option<Vec<u8>>,
-    timeout: Duration,
-    label: &str,
-) -> Result<ProcessOutput> {
-    command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .with_context(|| format!("failed to launch {label}"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("{label} stdout pipe was unavailable"))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| anyhow!("{label} stderr pipe was unavailable"))?;
-    let stdout = capture_stream(stdout, STDOUT_LIMIT_BYTES);
-    let stderr = capture_stream(stderr, STDERR_LIMIT_BYTES);
-
-    let write_result = match (stdin, child.stdin.take()) {
-        (Some(input), Some(mut child_stdin)) => child_stdin.write_all(&input),
-        (Some(_), None) => Err(io::Error::other("stdin pipe was unavailable")),
-        (None, _) => Ok(()),
-    };
-    if let Err(error) = write_result {
-        let _ = child.kill();
-        let _ = child.wait();
-        let captured = collect_streams(stdout, stderr, label);
-        return match captured {
-            Ok(captured) => Err(anyhow!(
-                "failed to write {label} stdin: {error}\n{}",
-                captured.context()
-            )),
-            Err(capture_error) => Err(anyhow!(
-                "failed to write {label} stdin: {error}; {capture_error}"
-            )),
-        };
-    }
-
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() < timeout => {
-                let remaining = timeout.saturating_sub(started.elapsed());
-                thread::park_timeout(PROCESS_POLL_INTERVAL.min(remaining));
-            }
-            Ok(None) => {
-                let kill_error = child.kill().err();
-                let reap = child.wait();
-                let captured = collect_streams(stdout, stderr, label);
-                let mut message = format!("{label} timed out after {timeout:?}");
-                if let Some(error) = kill_error {
-                    message.push_str(&format!("; termination reported: {error}"));
-                }
-                match reap {
-                    Ok(status) => {
-                        message.push_str(&format!("; reaped with status {status}"));
-                    }
-                    Err(error) => {
-                        message.push_str(&format!("; reaping failed: {error}"));
-                    }
-                }
-                match captured {
-                    Ok(captured) => message.push_str(&format!("\n{}", captured.context())),
-                    Err(error) => {
-                        message.push_str(&format!("; pipe collection failed: {error}"));
-                    }
-                }
-                bail!(message);
-            }
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let captured = collect_streams(stdout, stderr, label);
-                return match captured {
-                    Ok(captured) => Err(anyhow!(
-                        "failed to poll {label}: {error}\n{}",
-                        captured.context()
-                    )),
-                    Err(capture_error) => {
-                        Err(anyhow!("failed to poll {label}: {error}; {capture_error}"))
-                    }
-                };
-            }
+fn execute_smoke_process(label: &str, command: BoundedCommand) -> Result<BoundedProcessOutput> {
+    command.run().map_err(|failure| {
+        if failure.kind() == BoundedProcessFailureKind::Spawn {
+            anyhow!("failed to launch {label}: {failure}")
+        } else {
+            anyhow!("{label} failed: {failure}")
         }
-    };
-
-    let captured = collect_streams(stdout, stderr, label)?;
-    Ok(ProcessOutput {
-        status,
-        stdout: captured.stdout,
-        stderr: captured.stderr,
     })
 }
 
-fn capture_stream<R>(mut reader: R, limit: usize) -> Receiver<io::Result<CapturedStream>>
-where
-    R: Read + Send + 'static,
-{
-    let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || {
-        let mut captured = CapturedStream::default();
-        let mut buffer = [0_u8; 4096];
-        let result = loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => break Ok(captured),
-                Ok(read) => captured.push(&buffer[..read], limit),
-                Err(error) => break Err(error),
-            }
-        };
-        let _ = sender.send(result);
-    });
-    receiver
-}
-
-fn collect_streams(
-    stdout: Receiver<io::Result<CapturedStream>>,
-    stderr: Receiver<io::Result<CapturedStream>>,
-    label: &str,
-) -> Result<CapturedOutput> {
-    let stdout = receive_stream(stdout, label, "stdout")?;
-    let stderr = receive_stream(stderr, label, "stderr")?;
-    Ok(CapturedOutput { stdout, stderr })
-}
-
-fn receive_stream(
-    receiver: Receiver<io::Result<CapturedStream>>,
-    label: &str,
-    stream: &str,
-) -> Result<CapturedStream> {
-    receiver
-        .recv_timeout(PIPE_COMPLETION_TIMEOUT)
-        .with_context(|| format!("{label} {stream} did not close within the cleanup timeout"))?
-        .with_context(|| format!("read {label} {stream}"))
-}
-
-#[derive(Debug)]
-struct ProcessOutput {
-    status: ExitStatus,
-    stdout: CapturedStream,
-    stderr: CapturedStream,
-}
-
-impl ProcessOutput {
-    fn context(&self) -> String {
-        format!(
-            "status: {}\nstdout:\n{}\nstderr:\n{}",
-            self.status,
-            self.stdout.render(),
-            self.stderr.render()
-        )
+fn require_complete(capture: &BoundedCapture, label: &str) -> Result<()> {
+    if capture.is_truncated() {
+        bail!(
+            "{label} exceeded the capture limit by {} bytes",
+            capture.omitted_bytes()
+        );
     }
+    Ok(())
 }
 
-#[derive(Debug)]
-struct CapturedOutput {
-    stdout: CapturedStream,
-    stderr: CapturedStream,
-}
-
-impl CapturedOutput {
-    fn context(&self) -> String {
-        format!(
-            "stdout:\n{}\nstderr:\n{}",
-            self.stdout.render(),
-            self.stderr.render()
-        )
-    }
-}
-
-#[derive(Debug, Default)]
-struct CapturedStream {
-    bytes: Vec<u8>,
-    omitted_bytes: usize,
-}
-
-impl CapturedStream {
-    fn push(&mut self, bytes: &[u8], limit: usize) {
-        let remaining = limit.saturating_sub(self.bytes.len());
-        let retained = remaining.min(bytes.len());
-        self.bytes.extend_from_slice(&bytes[..retained]);
-        self.omitted_bytes += bytes.len() - retained;
-    }
-
-    fn require_complete(&self, label: &str) -> Result<()> {
-        if self.omitted_bytes == 0 {
-            Ok(())
-        } else {
-            bail!(
-                "{label} exceeded the capture limit by {} bytes",
-                self.omitted_bytes
-            )
-        }
-    }
-
-    fn render(&self) -> String {
-        let mut text = String::from_utf8_lossy(&self.bytes).into_owned();
-        if self.omitted_bytes != 0 {
-            text.push_str(&format!(
-                "\n[{} additional byte(s) omitted]",
-                self.omitted_bytes
-            ));
-        }
-        text
-    }
-
-    #[cfg(test)]
-    fn from_text(text: &str) -> Self {
-        Self {
-            bytes: text.as_bytes().to_vec(),
-            omitted_bytes: 0,
-        }
-    }
+fn process_context(output: &BoundedProcessOutput) -> String {
+    format!(
+        "status: {}\nstdout:\n{}\nstderr:\n{}",
+        output.status(),
+        output.stdout().render_lossy(),
+        output.stderr().render_lossy()
+    )
 }
 
 #[cfg(test)]
@@ -565,7 +359,7 @@ mod tests {
 
     const HANG_FIXTURE_ENV: &str = "VOLICORD_XTASK_HANG_FIXTURE";
 
-    fn transcript(revision: &str, tools: &[&str]) -> CapturedStream {
+    fn transcript(revision: &str, tools: &[&str]) -> BoundedCapture {
         let initialize = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -580,7 +374,7 @@ mod tests {
             "id": 2,
             "result": {"tools": tools}
         });
-        CapturedStream::from_text(&format!("{initialize}\n{tools_list}\n"))
+        BoundedCapture::from_bytes(format!("{initialize}\n{tools_list}\n"), STDOUT_LIMIT_BYTES)
     }
 
     #[test]
@@ -617,24 +411,23 @@ mod tests {
     #[test]
     fn nonzero_serve_exit_is_reported() {
         let current_test = env::current_exe().expect("current test executable");
-        let mut command = Command::new(current_test);
-        command.arg("--unsupported-release-smoke-argument");
-        let output = run_process(
-            command,
-            None,
-            Duration::from_secs(5),
+        let error = execute_smoke_process(
             "nonzero serve fixture",
+            smoke_command(current_test, Duration::from_secs(5))
+                .arg("--unsupported-release-smoke-argument")
+                .require_success(true),
         )
-        .expect("capture nonzero fixture");
-        let error = require_success("volicord mcp serve", output)
-            .expect_err("nonzero serve status must fail");
-        assert!(error.to_string().contains("volicord mcp serve failed"));
+        .expect_err("nonzero serve status must fail");
+        assert!(error.to_string().contains("nonzero serve fixture failed"));
     }
 
     #[test]
     fn malformed_init_json_is_rejected() {
-        let error = parse_connection_id(&CapturedStream::from_text("{not-json\n"))
-            .expect_err("malformed init JSON must fail");
+        let error = parse_connection_id(&BoundedCapture::from_bytes(
+            "{not-json\n",
+            STDOUT_LIMIT_BYTES,
+        ))
+        .expect_err("malformed init JSON must fail");
         assert!(error.to_string().contains("parse volicord init JSON"));
     }
 
@@ -643,11 +436,14 @@ mod tests {
         let revision = "preferred-test-revision";
         let tools = EXPECTED_PUBLIC_TOOLS;
         let mut transcript = transcript(revision, tools);
-        let text = String::from_utf8(transcript.bytes).expect("fixture UTF-8");
-        transcript = CapturedStream::from_text(&text.replace(
-            &format!("\"protocolVersion\":\"{revision}\""),
-            "\"protocolVersion\":17",
-        ));
+        let text = String::from_utf8(transcript.into_bytes()).expect("fixture UTF-8");
+        transcript = BoundedCapture::from_bytes(
+            text.replace(
+                &format!("\"protocolVersion\":\"{revision}\""),
+                "\"protocolVersion\":17",
+            ),
+            STDOUT_LIMIT_BYTES,
+        );
         let error = validate_mcp_transcript(&transcript, revision)
             .expect_err("malformed initialize result must fail");
         assert!(error
@@ -690,24 +486,18 @@ mod tests {
     #[test]
     fn mcp_process_timeout_terminates_and_reaps_the_child() {
         let current_test = env::current_exe().expect("current test executable");
-        let mut command = Command::new(current_test);
-        command
+        let failure = smoke_command(current_test, Duration::from_millis(100))
             .args([
                 "--ignored",
                 "--exact",
                 "release_binary_smoke::tests::bounded_process_hang_fixture",
             ])
-            .env(HANG_FIXTURE_ENV, "1");
-        let error = run_process(
-            command,
-            None,
-            Duration::from_millis(100),
-            "MCP timeout fixture",
-        )
-        .expect_err("hanging child must time out");
-        let message = error.to_string();
-        assert!(message.contains("timed out"));
-        assert!(message.contains("reaped with status"));
+            .env(HANG_FIXTURE_ENV, "1")
+            .run()
+            .expect_err("hanging child must time out");
+        assert_eq!(failure.kind(), BoundedProcessFailureKind::Timeout);
+        assert!(failure.status().is_some());
+        assert!(failure.cleanup_detail().is_none());
     }
 
     #[test]
@@ -715,7 +505,7 @@ mod tests {
     fn bounded_process_hang_fixture() {
         if env::var_os(HANG_FIXTURE_ENV).is_some() {
             loop {
-                thread::park();
+                std::thread::park();
             }
         }
     }
