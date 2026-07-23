@@ -162,11 +162,18 @@ Runtime Home finding은 `runtime_home.path.missing`,
 사실만 남기며 환경 dump, 전체 환경 값, 파일시스템 내용, 제한 없는 경로 탐색 결과를
 남기지 않습니다.
 
+`volicord mcp preflight`는 선택한 Runtime Home의 읽기 경계 안에 머뭅니다. 파일을
+만들거나 write transaction을 열거나 runtime session을 시작하지 않고 정규 관리 구성,
+Registry, project 상태, protocol profile, 도구 schema, host contract를 읽습니다. 활성
+연결 검증은 별도 경계입니다. 선택한 store에 rollback 전용 쓰기 가능성 probe를 수행할 수
+있고, protocol conformance session은 명령 뒤 제거되는 일회용 Runtime Home과 Product
+Repository에만 만듭니다.
+
 ## 기준 MCP 프로세스
 
 관리 구성은 숨겨진 host launcher를 시작하며, 이 launcher는 lease를 소비한 뒤 같은
 프로세스에서 stdio adapter로 들어갑니다. 공개 수동 프로세스는
-`volicord mcp --stdio`입니다. Adapter는 stdin에서 JSON-RPC를 읽고 stdout에
+`volicord mcp serve`입니다. Adapter는 stdin에서 JSON-RPC를 읽고 stdout에
 응답을 씁니다. TCP, HTTP, Unix domain socket 또는 그 밖의 네트워크 전송 listener를
 열지 않습니다. 정확한 시작, binding, protocol 동작은 [MCP 전송](mcp-transport.md)이
 담당합니다.

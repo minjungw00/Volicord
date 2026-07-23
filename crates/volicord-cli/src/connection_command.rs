@@ -13,7 +13,8 @@ use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
 use volicord_store::{
     agent_connections::{
         activate_staged_connection, add_connection_project, agent_connection_record,
-        complete_pending_host_cleanup, connection_metadata_has_pending_host_cleanup,
+        agent_connection_record_read_only, complete_pending_host_cleanup,
+        connection_metadata_has_pending_host_cleanup,
         connection_metadata_has_pending_host_cleanup_for_project, ensure_agent_connection,
         ensure_staged_agent_connection, list_agent_connections,
         list_agent_connections_for_diagnostics, list_connection_projects,
@@ -56,7 +57,11 @@ use crate::guard_integration::{
     GuardIntegrationPlanRequest,
 };
 use crate::host_integration::{
-    codex::{CodexAdapter, CodexEnvironment, CodexExistingPlanRequest},
+    codex::{
+        managed_identity_evaluation_for_plan, CodexAdapter, CodexEnvironment,
+        CodexExistingPlanRequest,
+    },
+    verification::ManagedConfigStatus,
     ConnectionIntent, HostAdapter, HostConfigError, HostKind, HostPlan, HostPlanRequest,
     HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ProjectContext,
 };
@@ -1235,6 +1240,50 @@ fn existing_host_plan(
             mode: &connection.mode,
         })
         .map_err(Into::into)
+}
+
+/// Validates the read-only canonical managed entry used by public MCP preflight.
+pub fn validate_mcp_preflight_managed_entry(
+    runtime_home: &Path,
+    connection_id: &str,
+    project_id: Option<&str>,
+) -> Result<(), ConnectionCommandError> {
+    let connection =
+        agent_connection_record_read_only(runtime_home, connection_id)?.ok_or_else(|| {
+            ConnectionCommandError::runtime(format!("connection {connection_id} is not registered"))
+        })?;
+    let projects = list_connection_projects_read_only(runtime_home, connection_id)?;
+    let selected_project = match project_id {
+        Some(project_id) => projects
+            .iter()
+            .find(|project| project.project_id == project_id)
+            .ok_or_else(|| {
+                ConnectionCommandError::runtime(format!(
+                    "project {project_id} is outside connection {connection_id} project allowlist"
+                ))
+            })?,
+        None => projects.first().ok_or_else(|| {
+            ConnectionCommandError::runtime(format!(
+                "connection {connection_id} has no connected projects"
+            ))
+        })?,
+    };
+    let process = ProductionConnectionProcess;
+    let plan = existing_host_plan(&connection, runtime_home, &process, Some(selected_project))?;
+    if connection.managed_fingerprint != plan.fingerprint {
+        return Err(ConnectionCommandError::runtime(
+            "canonical managed MCP entry fingerprint does not match the registered Connection",
+        ));
+    }
+    let evaluation = managed_identity_evaluation_for_plan(&plan)?;
+    if evaluation.status != ManagedConfigStatus::Match {
+        return Err(ConnectionCommandError::runtime(format!(
+            "canonical managed MCP entry validation failed: {} ({})",
+            evaluation.status.as_str(),
+            evaluation.details
+        )));
+    }
+    Ok(())
 }
 
 fn stable_id(prefix: &str, parts: &[&str]) -> String {

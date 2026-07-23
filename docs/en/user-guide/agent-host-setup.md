@@ -15,7 +15,7 @@ The first release has one managed host and one profile:
 - new connections start in `workflow` unless
   `volicord connection add --read-only` is selected; later setup preserves an
   established `workflow` or `read_only` mode
-- managed `volicord mcp --stdio` transport
+- managed stdio MCP transport through the generated hidden launcher
 
 Create or repair a shared setup:
 
@@ -104,10 +104,10 @@ and authoritative managed runtime/project sessions.
 For a direct process preflight, use the exact stored identifiers:
 
 ```sh
-volicord mcp --check --connection "<connection_id>" --project "<project_id>"
+volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
-Normal managed operation starts `volicord mcp --stdio` with the launch context
+Normal managed operation starts through the hidden launcher with the launch context
 supplied by the generated Codex configuration. Its markers are cooperative
 routing inputs, not credentials. Do not infer a personal Connection from cwd or
 scan for a nearby repository.

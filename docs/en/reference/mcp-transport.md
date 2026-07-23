@@ -12,7 +12,8 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 
 | Surface | Stability |
 |---|---|
-| `volicord mcp --stdio`, initialization, `tools/list`, `tools/call`, and response wrapping | `stable` |
+| `volicord mcp serve`, initialization, `tools/list`, `tools/call`, and response wrapping | `stable` |
+| `volicord mcp preflight` read-only inspection and output contract | `stable` |
 | Authoritative runtime-session lifecycle milestones | `stable` |
 | Pre-1.0 additions not listed in the stable process and method set | `beta` |
 | Hidden managed launcher, launch leases, and generated configuration details | `internal` |
@@ -22,14 +23,15 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 
 The hidden `volicord _host-launch codex` entry is started by managed Codex
 configuration and transitions in the same process to the stdio adapter after
-lease consumption. The public `volicord mcp --stdio` entry is the manual stdio
+lease consumption. The public `volicord mcp serve` entry is the manual stdio
 surface. Both exchange line-delimited JSON-RPC through stdin and stdout and
 open no TCP, HTTP, Unix-domain socket, or other network listener.
 
 ```text
-volicord mcp --stdio --connection <connection_id> [--project <project_id>]
-volicord mcp --stdio --discover-repository --host codex
-volicord mcp --check --connection <connection_id> [--project <project_id>]
+volicord mcp serve --connection <connection_id> [--project <project_id>]
+volicord mcp serve --discover-repository --host codex
+volicord mcp preflight --connection <connection_id> [--project <project_id>] [--verbose | --json]
+volicord mcp preflight --discover-repository --host codex [--verbose | --json]
 ```
 
 The `--connection` process form accepts an explicit `--project` for current
@@ -39,7 +41,13 @@ Connection Project memberships. Repository discovery is only for the canonical
 shared Codex entry and resolves the Connection and project from the exact
 Runtime Home and canonical Git work tree. It does not infer a connection from
 cwd alone, scan nearby repositories, or accept another host selector.
-`--check` performs preflight without entering the stdio loop.
+`mcp preflight` validates the canonical managed entry and reads the selected
+Registry, Connection, projects, protocol profiles, tool schemas, and host
+contract without entering the stdio loop. It performs no writeability probe,
+creates no runtime session or finding, and succeeds against readable read-only
+SQLite databases and filesystems. Its JSON projection declares
+`side_effects: []`, evidence class `read_only_preflight`, and writeability
+`not_checked` with `requires_active_verification`.
 
 ## Environment And Startup
 
@@ -75,8 +83,10 @@ Corrupt records, ambiguous selection, and unavailable storage use the
 MCP bootstrap consumes that lease exactly once and creates the `managed_host`
 Registry runtime session in the same Store transaction. A replayed, expired,
 cancelled, Connection-mismatched, revision-mismatched, or fingerprint-mismatched
-lease creates no runtime. Public stdio creates `manual_cli`; `--check` creates
-`cli_preflight`; a dedicated integration probe uses `integration_probe`.
+lease creates no runtime. Public `mcp serve` always creates `manual_cli`; no
+public flag or environment variable can select `managed_host`. A dedicated
+integration probe uses `integration_probe`. Read-only preflight creates no
+runtime.
 Executable path, host version, and client version remain diagnostics;
 managed-call authorization is established from the current session and project
 bindings described below.
@@ -202,8 +212,9 @@ initialization-batch rejection, profile-selected operation-phase batching or
 rejection, invalid lifecycle behavior, and EOF/shutdown. Initialization
 batching is rejected for every production profile.
 
-Connection verification gives each production profile a separate stdio
-process and exact request. The probe completes `initialize`,
+Connection verification gives each production profile a separate `mcp serve`
+process and exact request in a fresh disposable Runtime Home and Product
+Repository. The probe completes `initialize`,
 `notifications/initialized`, `tools/list`, validation against that revision's
 pinned schema, current-mode required-tool validation, exactly one
 call to the tool selected by `ToolVerificationRole::ManagedHostRoundTrip`, and
@@ -229,8 +240,9 @@ server's preferred or newest profile. Multiple independently
 pinned `codex` fixtures may coexist when deployed client families require
 different revisions.
 
-Both matrices are CLI probe evidence. Their `cli_preflight`, `manual_cli`, or
-`integration_probe` runtime sources remain excluded from managed checks. A passing host-compatibility fixture
+Both matrices are CLI probe evidence. Their disposable `manual_cli` or
+`integration_probe` runtime sources remain excluded from managed checks and
+are removed with the verification fixture. A passing host-compatibility fixture
 shows that the reviewed request shape works against this server; it does not
 show that a managed Codex process ran. Only lifecycle observations from a
 runtime created by successful launch-lease consumption with source
@@ -256,7 +268,7 @@ binding.
 
 ## Authoritative Lifecycle Recording
 
-After resolving the Agent Connection, the process creates a Registry runtime
+After `mcp serve` or the hidden launcher resolves the Agent Connection, the process creates a Registry runtime
 session before validating thread metadata or reading a protocol message. The
 row identifies this Volicord-generated process launch, its Connection, one of
 the exact `managed_host`, `manual_cli`, `cli_preflight`, or `integration_probe`
@@ -303,14 +315,15 @@ exists, findings are persisted with its exact Connection, integration
 revision, and runtime-session coordinates; terminal failures are linked by
 finding ID rather than stored as a second free-form failure object.
 
-Connection verification starts separate preflight and manual stdio probe
-processes and calls
-the same canonical role owner, currently `volicord.list_projects`, for its
-safe read-only self-test round trip. Those processes validate the server
-surface, but their lifecycle facts cannot satisfy a
-`managed_host` operational check or authorize a Connection call. Successful
-CLI verification does not fabricate managed `host_session`, `tools/list`, or
-tool-round-trip observations.
+Connection verification performs read-only preflight against the selected
+Runtime Home, then starts manual stdio probe processes only in a disposable
+per-command fixture. It calls the same canonical role owner, currently
+`volicord.list_projects`, for its safe read-only self-test round trip. The
+fixture processes validate the server surface, but their lifecycle facts
+cannot satisfy a `managed_host` operational check or authorize a Connection
+call. They create no session or finding in the selected user Runtime Home.
+Successful CLI verification does not fabricate managed `host_session`,
+`tools/list`, or tool-round-trip observations.
 
 Runtime rows are durable process-launch observations, not liveness records.
 A process that exits before linking a terminal finding or recording graceful close may

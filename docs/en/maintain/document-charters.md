@@ -44,7 +44,7 @@ Document: [Root README](../../../README.md)
   references, or exact security guarantee wording.
 - Beginner concept rule: Introduce first-read meanings before workflow prose or
   diagrams depend on Volicord-specific terms such as `Volicord Runtime Home`,
-  `Agent Connection`, `volicord mcp --stdio`, and `User Channel`.
+  `Agent Connection`, `volicord mcp serve`, and `User Channel`.
 - Acceptable diagrams: Guide-level user workflow and local component maps.
   The root README should include both, with surrounding prose that naturally
   explains what each diagram shows and what it omits. Avoid presenting a

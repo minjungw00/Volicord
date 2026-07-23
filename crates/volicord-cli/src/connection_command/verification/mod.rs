@@ -13,7 +13,9 @@ use serde_json::{json, Value};
 use volicord_mcp::ManagedMcpInvocationPurpose;
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::{
-    agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
+    agent_connections::{
+        list_connection_projects_read_only, AgentConnectionRecord, ConnectionProjectRecord,
+    },
     diagnostic_findings::{diagnostic_occurrences_for_runtime_session, insert_occurrence_finding},
     guards::{guard_observation_summary, list_guard_installations},
     integration_verification::{
@@ -25,6 +27,7 @@ use volicord_store::{
         latest_managed_runtime_session, mcp_runtime_session_for_process, McpRuntimeSessionRecord,
         McpSessionEvidenceSelection, McpSessionMilestones,
     },
+    sqlite::{registry_db_path, sqlite_database_write_capability},
 };
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
@@ -193,13 +196,15 @@ pub(in crate::connection_command) struct McpPreflightDiagnostics {
 }
 
 impl McpPreflightDiagnostics {
-    pub(in crate::connection_command) fn from_preflight_report(
-        report: &BTreeMap<String, String>,
-    ) -> Option<Self> {
+    pub(in crate::connection_command) fn from_preflight_report(report: &Value) -> Option<Self> {
         Some(Self {
-            storage_read: report.get("project_state_read")?.to_owned(),
-            storage_write: report.get("project_state_write")?.to_owned(),
-            effective_tool_mode: report.get("effective_tool_mode")?.to_owned(),
+            storage_read: report.get("project_state_read")?.as_str()?.to_owned(),
+            storage_write: report
+                .get("writeability")?
+                .get("status")?
+                .as_str()?
+                .to_owned(),
+            effective_tool_mode: report.get("effective_tool_mode")?.as_str()?.to_owned(),
         })
     }
 
@@ -246,6 +251,20 @@ pub(in crate::connection_command) fn verify_connection(
         &connection.connection_internal_id,
         &connection.mode,
     );
+    if preflight.status == StepStatus::Passed {
+        match verify_selected_store_writeability(runtime_home, connection, project_id) {
+            Ok(()) => {
+                if let Some(diagnostics) = preflight.preflight_diagnostics.as_mut() {
+                    diagnostics.storage_write = "passed".to_owned();
+                }
+            }
+            Err(details) => {
+                preflight =
+                    VerificationStep::failed_with_code("mcp_storage_writeability_failed", details)
+                        .with_preflight_diagnostics(preflight.preflight_diagnostics);
+            }
+        }
+    }
     let mut handshake = if preflight.status == StepStatus::Passed {
         let handshake_launch = materialize_connection_invocation(
             &host_plan.entry,
@@ -282,6 +301,46 @@ pub(in crate::connection_command) fn verify_connection(
         evaluation.metadata.evaluated_at.clone(),
     )?;
     assemble_connection_evaluation(runtime_home, connection, evaluation)
+}
+
+fn verify_selected_store_writeability(
+    runtime_home: &Path,
+    connection: &AgentConnectionRecord,
+    selected_project_id: Option<&str>,
+) -> Result<(), String> {
+    match sqlite_database_write_capability(registry_db_path(runtime_home)) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err("Registry writeability probe reported read-only storage".to_owned())
+        }
+        Err(error) => return Err(format!("Registry writeability probe failed: {error}")),
+    }
+    let projects =
+        list_connection_projects_read_only(runtime_home, &connection.connection_internal_id)
+            .map_err(|error| {
+                format!("failed to read Connection projects for writeability probe: {error}")
+            })?;
+    for project in projects
+        .into_iter()
+        .filter(|project| selected_project_id.is_none_or(|selected| project.project_id == selected))
+    {
+        match sqlite_database_write_capability(&project.project.state_db_path) {
+            Ok(true) => {}
+            Ok(false) => {
+                return Err(format!(
+                    "project {} writeability probe reported read-only storage",
+                    project.project_id
+                ))
+            }
+            Err(error) => {
+                return Err(format!(
+                    "project {} writeability probe failed: {error}",
+                    project.project_id
+                ))
+            }
+        }
+    }
+    Ok(())
 }
 
 fn current_timestamp() -> UtcTimestamp {

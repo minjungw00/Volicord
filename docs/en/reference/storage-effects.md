@@ -338,6 +338,19 @@ mode, metadata, memberships, Guard manifests, runtime sessions, or project
 Agent Sessions. A revision conflict has no Registry effect.
 `volicord connection status` remains read-only and does not use this mutation.
 
+Before conformance, active verification probes Registry and selected project
+writeability with bounded SQLite transactions that always roll back. The probe
+may acquire write locks and therefore is an active storage operation, but it
+does not retain schema objects or rows. Protocol and host-compatibility
+conformance creates `manual_cli` sessions and possible findings only in a fresh
+disposable per-command Runtime Home; disposal removes that fixture. It creates
+no conformance session or finding in the selected user Runtime Home.
+
+`volicord mcp preflight` opens the selected Registry and project databases
+read-only. It does not probe writeability, create or update a runtime session,
+persist a finding, reconcile diagnostics, or write either the Runtime Home or
+Product Repository. Its JSON `side_effects` is therefore an empty array.
+
 <a id="connection-integration-verification-effects"></a>
 ## Connection-Integration Verification Effects
 

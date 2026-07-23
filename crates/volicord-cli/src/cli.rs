@@ -42,7 +42,7 @@ pub enum Command {
     Connection(ConnectionArgs),
     /// Manage registered Product Repositories.
     Project(ProjectArgs),
-    /// Run managed stdio MCP or its preflight check.
+    /// Inspect or manually serve the local stdio MCP adapter.
     Mcp(McpArgs),
     /// Export local authority records.
     Export(ExportArgs),
@@ -258,6 +258,9 @@ pub enum ConnectionCommand {
     /// Show current connection state.
     Status(ConnectionSelectArgs),
     /// Verify current managed configuration and stdio startup.
+    #[command(
+        long_about = "Actively verify managed configuration and stdio startup.\n\nEffects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, and verification-report persistence. This does not prove managed-host operation or future availability."
+    )]
     Verify(ConnectionSelectArgs),
     /// Set the exposed connection tool mode.
     Mode(ConnectionModeArgs),
@@ -402,22 +405,44 @@ pub struct ProjectForgetArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(group(
-    ArgGroup::new("mcp_mode")
-        .args(["stdio", "check", "version"])
-        .required(true)
-        .multiple(false)
-))]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 pub struct McpArgs {
-    #[arg(long)]
-    pub stdio: bool,
-    #[arg(long)]
-    pub check: bool,
-    #[arg(short = 'V', long = "version", exclusive = true)]
-    pub version: bool,
+    #[command(subcommand)]
+    pub command: McpCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum McpCommand {
+    /// Inspect the canonical MCP launch and read surfaces without side effects.
+    #[command(
+        long_about = "Inspect the canonical managed entry, Registry, project state, protocol profiles, tool schemas, and host contracts.\n\nSide effects: none. Writeability is not checked and requires active verification."
+    )]
+    Preflight(McpPreflightArgs),
+    /// Run the manual stdio MCP server.
+    #[command(
+        long_about = "Run the manual stdio MCP server.\n\nEffects: may create and update a manual_cli runtime session, lifecycle observations, and a terminal finding in the selected Runtime Home. This command can never create a managed_host session."
+    )]
+    Serve(McpBindingArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct McpPreflightArgs {
+    #[command(flatten)]
+    pub binding: McpBindingArgs,
+    #[command(flatten)]
+    pub output: ConnectionReportOutputArgs,
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("binding")
+        .required(true)
+        .args(["connection", "discover_repository"])
+))]
+pub struct McpBindingArgs {
     #[arg(
         long,
-        requires_all = ["stdio", "host"],
+        requires = "host",
         conflicts_with_all = ["connection", "project"]
     )]
     pub discover_repository: bool,
@@ -426,7 +451,7 @@ pub struct McpArgs {
     #[arg(
         long,
         value_parser = nonempty_string,
-        required_unless_present_any = ["discover_repository", "version"]
+        conflicts_with = "discover_repository"
     )]
     pub connection: Option<String>,
     #[arg(long, value_parser = nonempty_string, requires = "connection")]
@@ -722,7 +747,7 @@ mod tests {
                 "--profile",
                 "detective",
             ],
-            vec!["volicord", "mcp", "--stdio", "--local-http"],
+            vec!["volicord", "mcp", "serve", "--local-http"],
         ] {
             Cli::try_parse_from(args)
                 .expect_err("noncanonical values and transports must be rejected");
@@ -735,15 +760,17 @@ mod tests {
             .expect_err("version must conflict with commands in the clap declaration");
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
 
-        let mcp_error = Cli::try_parse_from([
-            "volicord",
-            "mcp",
-            "--version",
-            "--connection",
-            "connection_example",
-        ])
-        .expect_err("the MCP version mode must reject transport arguments");
-        assert_eq!(mcp_error.kind(), clap::error::ErrorKind::ArgumentConflict);
+        for old_flag in ["--stdio", "--check"] {
+            let mcp_error = Cli::try_parse_from([
+                "volicord",
+                "mcp",
+                old_flag,
+                "--connection",
+                "connection_example",
+            ])
+            .expect_err("removed MCP mode flags must be rejected");
+            assert_eq!(mcp_error.kind(), clap::error::ErrorKind::UnknownArgument);
+        }
     }
 
     #[test]

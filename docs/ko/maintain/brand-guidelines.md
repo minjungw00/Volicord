@@ -54,7 +54,7 @@ CLI 출력에 태그라인을 넣지 않습니다.
   상태 권한 역할을 공개 Volicord 제품 정체성으로 합치지 않습니다.
 - `volicord`는 관리 CLI 식별자입니다. 정확한 CLI 동작은 [관리 CLI](../reference/admin-cli.md)가
   담당합니다.
-- `volicord mcp --stdio`는 로컬 MCP 어댑터 프로세스 식별자입니다. 정확한 MCP 프로세스, 전송,
+- `volicord mcp serve`는 공개 수동 MCP 어댑터 프로세스 식별자입니다. 정확한 MCP 프로세스, 전송,
   응답 래핑 동작은 [MCP 전송](../reference/mcp-transport.md)이 담당합니다.
 - `Volicord Runtime Home`은 제품 라벨입니다. 정확한 런타임 위치와 저장소 경계
   동작은 [런타임 경계](../reference/runtime-boundaries.md)가 담당합니다.

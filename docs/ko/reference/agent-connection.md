@@ -60,7 +60,7 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 | Integration profile | `integration_profile=record` |
 | 연결 의도 | `personal` 또는 `shared` |
 | Connection mode | `read_only` 또는 `workflow` |
-| 전송 | `volicord mcp --stdio`로 시작하는 Volicord 관리형 stdio MCP |
+| 전송 | 숨겨진 host launcher로 시작하는 Volicord 관리형 stdio MCP. 공개 수동 stdio는 `volicord mcp serve` |
 | 프로덕션 MCP revision | `2024-10-07`, `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25` 중 하나 |
 | 사용자 소유 행동 전달 | CLI inbox |
 | 플랫폼 환경 | `linux`, `macos`, `native_windows`, `wsl2` |
@@ -301,9 +301,10 @@ Blocked check의 원인이 실패한 prerequisite와 일치하지 않거나 depe
 | `guard_observation` | 현재 필수 typed hook phase를 모두 관찰했습니다. | 남은 phase를 기다리며 `guard_hook_execution` 실패가 막을 수 있습니다. | 현재 event가 incompatible hook contract를 보고했습니다. |
 | `guard_verification` | 한도가 있는 run 하나에서 같은 현재 managed runtime, native session, turn의 MCP acknowledgement와 prompt, pre-tool, post-tool 관찰을 상관관계로 확인했습니다. | 완료된 현재 run을 기다리며 `guard_observation` 실패가 막을 수 있습니다. | 가장 최신 run이 현재 runtime, Guard Installation, policy, revision 또는 hook-contract 소유권과 더 이상 일치하지 않습니다. |
 
-CLI MCP preflight는 `session_source=cli_preflight`를 만들고 수동 stdio self-test는
-`session_source=manual_cli`를 만듭니다. 따라서 둘 다
-`process_startup`, `host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다.
+CLI MCP preflight는 읽기 전용이며 runtime session을 만들지 않습니다. 수동 stdio
+self-test는 일회용 명령별 Runtime Home에만 `session_source=manual_cli`를 만듭니다.
+따라서 preflight와 이 일회용 증거는 `process_startup`, `host_session`, `required_tools`,
+`tool_round_trip`을 충족할 수 없습니다.
 Guard는 최상위 운영 check로 `guard_files`, `guard_hook_execution`,
 `guard_observation`, `guard_verification`을 사용합니다. 엄격한 Guard manifest는
 현재 policy hash, integration revision, typed runtime command, 전체 Volicord 관리 artifact
@@ -318,7 +319,7 @@ projection입니다. Audit은 profile이나 digest가 이 정확한 선택과 �
 Check는 `tool_round_trip_designation_mismatch`로 실패하고 활성 검증은
 `mcp.tool_verification.designation_mismatch`를 영속합니다. 제한된 facts에는 정확한
 `expected_tool_name`과 `observed_tool_name`을 노출하며 JSON check detail과 verbose 출력도
-정확한 기대 이름과 관찰 이름을 표시합니다. 이전 revision, CLI preflight row, milestone
+정확한 기대 이름과 관찰 이름을 표시합니다. 이전 revision, non-managed runtime row, milestone
 부재, 서로 다른 session에 나뉜 쌍은 현재의 정확한 쌍을 대신할 수 없습니다.
 
 제한 안의 모든 Codex version은 이 동작 check를 거칩니다. PATH executable version은
@@ -443,8 +444,9 @@ session 불일치는 각각 `host.codex.metadata_malformed`,
 session ID를 만듭니다. `session_source`는 정확히 `managed_host`, `manual_cli`,
 `cli_preflight`, `integration_probe` 중 하나입니다. Launch lease를 원자적으로 소비한
 경우에만 `managed_host`를 만들 수 있고, `managed_host`만 Agent Connection 호출을
-승인할 수 있습니다. 공개 `volicord mcp --stdio`는 항상 `manual_cli`를 기록하며
-preflight와 integration probe는 managed-host 활동으로 계산하지 않습니다. Runtime
+승인할 수 있습니다. 공개 `volicord mcp serve`는 항상 `manual_cli`를 기록하고
+preflight는 session을 만들지 않으며 integration probe는 managed-host 활동으로 계산하지
+않습니다. Runtime
 session은 소유 Connection과 Connection 통합 revision을 보관합니다.
 
 유효한 initialize 요청 뒤 해당 runtime은 session 범위의 typed MCP selection 하나를
@@ -669,7 +671,7 @@ membership이 없는 비활성 과거 Connection과 그 connection 전체 runtim
 비신뢰 대상:
 
 - 외부 host/client 입력
-- CLI-preflight, 오래됨, 닫힘, revision 불일치 session
+- 수동, integration-probe, 오래됨, 닫힘, revision 불일치 session
 - 다른 프로젝트, runtime, Connection의 session
 - 수동으로 변경한 구성
 - identity 주장으로 쓰는 client/host version과 process metadata

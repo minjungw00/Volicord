@@ -13,7 +13,7 @@
 - `scope=personal` 또는 `scope=shared`
 - 새 연결은 `volicord connection add --read-only`를 선택하지 않으면 `workflow`로
   시작하며, 이후 설정은 기존 `workflow` 또는 `read_only` mode를 보존
-- 관리 `volicord mcp --stdio` 전송
+- 생성된 숨겨진 launcher를 통한 관리 stdio MCP 전송
 
 공유 설정을 만들거나 복구합니다.
 
@@ -99,11 +99,11 @@ volicord connection list --repo "<repo>"
 직접 프로세스 사전 점검에는 정확한 저장 식별자를 사용합니다.
 
 ```sh
-volicord mcp --check --connection "<connection_id>" --project "<project_id>"
+volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
 일반 관리 동작에서는 생성된 Codex 구성이 launch 맥락을 제공해
-`volicord mcp --stdio`를 시작합니다. Marker는 협력적 routing 입력일 뿐 credential이
+숨겨진 launcher를 통해 관리 MCP를 시작합니다. Marker는 협력적 routing 입력일 뿐 credential이
 아닙니다. cwd에서 personal Connection을 추론하거나 주변 저장소를 검색하지 않습니다.
 
 ## UserAction 경계

@@ -25,38 +25,42 @@ fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result
         fixture.connection_id(),
         None,
     )?;
-    assert!(report.contains(&format!("connection_id: {}", fixture.connection_id())));
-    assert!(report.contains("mode: workflow"));
-    assert!(report.contains("allowed_projects: 1"));
-    assert!(report.contains("available_projects: 1"));
-    assert!(report.contains("registry_read: passed"));
-    assert!(report.contains("project_state_read: passed"));
-    assert!(report.contains("project_state_write: passed"));
-    assert!(report.contains("effective_tool_mode: workflow"));
-    assert!(report.contains("tools_list_schema_validation: passed"));
-    assert!(report.contains("tool_naming_style: dotted_namespace"));
+    assert_eq!(report.connection_id, fixture.connection_id());
+    assert_eq!(report.mode, "workflow");
+    assert_eq!(report.allowed_projects, 1);
+    assert_eq!(report.available_projects, 1);
+    assert_eq!(report.registry_read, "passed");
+    assert_eq!(report.project_state_read, "passed");
+    assert_eq!(report.writeability.status, "not_checked");
+    assert_eq!(
+        report.writeability.requirement,
+        "requires_active_verification"
+    );
+    assert_eq!(report.effective_tool_mode, "requires_active_verification");
+    assert_eq!(report.tools_list_schema_validation, "passed");
+    assert_eq!(report.tool_naming_style, "dotted_namespace");
     Ok(())
 }
 
 #[test]
-fn mcp_check_reports_readwrite_effective_tool_mode() -> Result<(), Box<dyn Error>> {
+fn mcp_preflight_defers_writeability_and_effective_tool_mode() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-check-readwrite-mode")?;
 
     let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
 
-    assert_report_line(&report, "registry_read: passed");
-    assert_report_line(&report, "project_state_read: passed");
-    assert_report_line(&report, "project_state_write: passed");
-    assert_report_line(&report, "effective_tool_mode: workflow");
-    assert_report_line(&report, "tools_list_schema_validation: passed");
-    assert_report_line(&report, "tool_naming_style: dotted_namespace");
-    assert_report_line(&report, "project[0].state_read: passed");
-    assert_report_line(&report, "project[0].state_write: passed");
+    assert_eq!(report.registry_read, "passed");
+    assert_eq!(report.project_state_read, "passed");
+    assert_eq!(report.writeability.status, "not_checked");
+    assert_eq!(report.effective_tool_mode, "requires_active_verification");
+    assert_eq!(report.tools_list_schema_validation, "passed");
+    assert_eq!(report.tool_naming_style, "dotted_namespace");
+    assert_eq!(report.projects[0].state_read, "passed");
+    assert_eq!(report.projects[0].state_write, "not_checked");
     Ok(())
 }
 
 #[test]
-fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
+fn mcp_preflight_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-check-no-mutate")?;
     let before_version = read_only_state_version(&fixture)?;
     let before_sessions = read_only_table_count(&fixture, "host_sessions")?;
@@ -64,7 +68,7 @@ fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
 
     let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
 
-    assert_report_line(&report, "project_state_write: passed");
+    assert_eq!(report.writeability.status, "not_checked");
     assert_eq!(read_only_state_version(&fixture)?, before_version);
     assert_eq!(
         read_only_table_count(&fixture, "host_sessions")?,
@@ -78,25 +82,24 @@ fn mcp_check_does_not_mutate_project_state() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn mcp_check_reports_readonly_project_state() -> Result<(), Box<dyn Error>> {
+fn mcp_preflight_succeeds_with_readonly_project_state() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-check-readonly-state")?;
     let _guard = make_project_state_readonly(&fixture)?;
 
     let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
 
-    assert_report_line(&report, "registry_read: passed");
-    assert_report_line(&report, "project_state_read: passed");
-    assert_report_line(&report, "project_state_write: readonly");
-    assert_report_line(&report, "effective_tool_mode: read_only_degraded");
-    assert_report_line(&report, "tools_list_schema_validation: passed");
-    assert_report_line(&report, "tool_naming_style: dotted_namespace");
-    assert_report_line(&report, "project[0].state_read: passed");
-    assert_report_line(&report, "project[0].state_write: readonly");
-    assert!(!report.contains("attempt to write a readonly database"));
+    assert_eq!(report.registry_read, "passed");
+    assert_eq!(report.project_state_read, "passed");
+    assert_eq!(report.writeability.status, "not_checked");
+    assert_eq!(report.effective_tool_mode, "requires_active_verification");
+    assert_eq!(report.tools_list_schema_validation, "passed");
+    assert_eq!(report.tool_naming_style, "dotted_namespace");
+    assert_eq!(report.projects[0].state_read, "passed");
+    assert_eq!(report.projects[0].state_write, "not_checked");
     Ok(())
 }
 #[test]
-fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>> {
+fn runtime_tool_mode_still_degrades_on_readonly_storage() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-check-readonly-tool-mode")?;
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
@@ -104,7 +107,7 @@ fn mcp_check_reports_readonly_degraded_tool_mode() -> Result<(), Box<dyn Error>>
     let report = preflight_report_for_fixture(&fixture, Some(fixture.project_id()))?;
     let names = tool_names(&adapter.tools()?);
 
-    assert_report_line(&report, "effective_tool_mode: read_only_degraded");
+    assert_eq!(report.effective_tool_mode, "requires_active_verification");
     assert!(names.contains(&AgentToolId::STATUS.wire_name()));
     assert!(names.contains(&AgentToolId::GET_OPERATION_RESULT.wire_name()));
     assert!(names.contains(&AgentToolId::REQUEST_USER_ACTION.wire_name()));

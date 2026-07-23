@@ -181,11 +181,20 @@ Installation findings use `installation.executable.missing`,
 facts only; they do not retain environment dumps, full environment values,
 filesystem contents, or unrestricted path discovery.
 
+`volicord mcp preflight` stays inside the selected Runtime Home's read boundary:
+it reads the canonical managed configuration, Registry, project state,
+protocol profiles, tool schemas, and host contracts without creating files,
+opening a write transaction, or starting a runtime session. Active connection
+verification is a different boundary. It may perform rollback-only
+writeability probes in the selected stores and creates its protocol-conformance
+sessions only in a disposable Runtime Home and Product Repository removed
+after the command.
+
 ## Baseline MCP Process
 
 Managed configuration starts the hidden host launcher, which enters the stdio
 adapter in the same process after lease consumption. The public manual process
-is `volicord mcp --stdio`. The adapter reads JSON-RPC from stdin
+is `volicord mcp serve`. The adapter reads JSON-RPC from stdin
 and writes responses to stdout. It opens no TCP, HTTP, Unix-domain socket, or
 other network transport listener. Exact startup, binding, and protocol behavior
 belongs to [MCP Transport](mcp-transport.md).

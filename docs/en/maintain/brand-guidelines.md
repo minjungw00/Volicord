@@ -53,7 +53,7 @@ into operational Reference contracts, error messages, or routine CLI output.
   identity.
 - `volicord` is the administrative CLI identifier. Exact CLI behavior belongs to
   [Administrative CLI](../reference/admin-cli.md).
-- `volicord mcp --stdio` is the local MCP adapter process identifier. Exact MCP process,
+- `volicord mcp serve` is the public manual MCP adapter process identifier. Exact MCP process,
   transport, and response-wrapping behavior belongs to [MCP Transport](../reference/mcp-transport.md).
 - `Volicord Runtime Home` is a product label. Exact runtime location and
   repository-boundary behavior belongs to [Runtime Boundaries](../reference/runtime-boundaries.md).

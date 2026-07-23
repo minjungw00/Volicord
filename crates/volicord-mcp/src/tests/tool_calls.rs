@@ -154,8 +154,9 @@ fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<
         fixture.connection_id(),
         Some(fixture.project_id()),
     )?;
-    assert!(report.contains("available_projects: 1"));
-    assert!(report.contains("project[0].available: true"));
+    assert_eq!(report.available_projects, 1);
+    assert!(report.projects[0].available);
+    assert_eq!(report.projects[0].state_write, "not_checked");
 
     let input = Cursor::new(json_lines(&[
         initialize_request(1, json!({})),

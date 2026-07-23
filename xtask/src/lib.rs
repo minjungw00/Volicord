@@ -3813,23 +3813,48 @@ fn validate_doctor_command(args: &[String]) -> std::result::Result<(), String> {
 }
 
 fn validate_mcp_command(args: &[String]) -> std::result::Result<(), String> {
-    if is_help_only(args)
-        || matches!(args, [option] if matches!(option.as_str(), "-V" | "--version"))
-    {
+    if is_help_only(args) {
         return Ok(());
     }
-
-    let parsed = parse_command_args(args, &["stdio", "check"], &["connection", "project"])?;
-    reject_mutually_exclusive(&parsed, "stdio", "check")?;
-    reject_positionals(&parsed, 0, "`volicord mcp`")?;
-
-    let has_stdio = parsed.options.contains("stdio");
-    let has_check = parsed.options.contains("check");
-    if !has_stdio && !has_check {
-        return Err("`volicord mcp` requires --stdio or --check".to_string());
+    let Some(subcommand) = args.first().map(String::as_str) else {
+        return Err("`volicord mcp` requires preflight or serve".to_owned());
+    };
+    if is_help_only(&args[1..]) {
+        return Ok(());
     }
-    if !parsed.options.contains("connection") {
-        return Err("`volicord mcp` requires --connection".to_string());
+    let (flags, context) = match subcommand {
+        "preflight" => (
+            &["discover-repository", "json", "verbose"][..],
+            "`volicord mcp preflight`",
+        ),
+        "serve" => (&["discover-repository"][..], "`volicord mcp serve`"),
+        other => {
+            return Err(format!(
+                "unknown `volicord mcp` subcommand `{other}`; use preflight or serve"
+            ))
+        }
+    };
+    let parsed = parse_command_args(&args[1..], flags, &["connection", "project", "host"])?;
+    reject_positionals(&parsed, 0, context)?;
+    if subcommand == "preflight" {
+        reject_mutually_exclusive(&parsed, "json", "verbose")?;
+    }
+    let discovery = parsed.options.contains("discover-repository");
+    let connection = parsed.options.contains("connection");
+    if discovery == connection {
+        return Err(format!(
+            "{context} requires exactly one of --connection or --discover-repository"
+        ));
+    }
+    if discovery {
+        if !parsed.options.contains("host") {
+            return Err(format!("{context} --discover-repository requires --host"));
+        }
+        if parsed.options.contains("project") {
+            return Err(format!("{context} --project requires --connection"));
+        }
+    } else if parsed.options.contains("host") {
+        return Err(format!("{context} --host requires --discover-repository"));
     }
     Ok(())
 }

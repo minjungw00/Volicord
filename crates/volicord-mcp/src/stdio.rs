@@ -459,7 +459,7 @@ where
 pub fn run_preflight_check_from_env(
     connection_id: &str,
     project_id: Option<&str>,
-) -> Result<String, McpAdapterError> {
+) -> Result<McpPreflightReport, McpAdapterError> {
     let current_dir = std::env::current_dir().map_err(current_dir_environment_error)?;
     preflight_check(process_env_var, &current_dir, connection_id, project_id)
 }
@@ -470,7 +470,7 @@ pub fn preflight_check<F>(
     current_dir: &Path,
     connection_id: &str,
     project_id: Option<&str>,
-) -> Result<String, McpAdapterError>
+) -> Result<McpPreflightReport, McpAdapterError>
 where
     F: Fn(&str) -> Option<OsString>,
 {
@@ -478,24 +478,6 @@ where
     let detail_project_id = project_id.map(ProjectId::new);
     let inspection =
         McpConnectionStartupInspection::resolve(&runtime_home, connection_id, detail_project_id)?;
-    let started_at = authoritative_observation_timestamp();
-    let session = start_mcp_runtime_session(
-        &runtime_home,
-        McpRuntimeSessionStart {
-            connection_internal_id: connection_id.to_owned(),
-            session_source: McpRuntimeSessionSource::CliPreflight,
-            observed_host_executable_version: None,
-            process_id: std::process::id(),
-            process_started_at: started_at,
-        },
-    )
-    .map_err(McpAdapterError::Store)?;
-    record_mcp_graceful_close(
-        &runtime_home,
-        &session.runtime_session_id,
-        &authoritative_observation_timestamp(),
-    )
-    .map_err(McpAdapterError::Store)?;
     Ok(inspection.preflight_report())
 }
 

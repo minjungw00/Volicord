@@ -1701,7 +1701,7 @@ documents:
   - operate
   - implement
   canonical_for:
-  - '`volicord mcp --stdio` process command and preflight contract'
+  - '`volicord mcp serve` manual process command and `volicord mcp preflight` contract'
   - managed stdio startup, binding validation, lifecycle, framing, and shutdown
   - authoritative operational milestone ordering, persistence, and managed-host evidence boundaries
   - attempted-client, requested, selected, negotiated, discovery, safe-tool, and terminal-finding

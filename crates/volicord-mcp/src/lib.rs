@@ -36,7 +36,8 @@ pub use managed_launch::{
     RuntimeHomeBinding, MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES, VOLICORD_HOME_ENV,
 };
 pub use routing::{
-    McpConnectionContext, McpConnectionStartupInspection, McpProjectAvailability,
+    McpConnectionContext, McpConnectionStartupInspection, McpPreflightHostContract,
+    McpPreflightProject, McpPreflightReport, McpPreflightWriteability, McpProjectAvailability,
     RepositoryDiscoveryResolution,
 };
 pub use stdio::{

@@ -872,6 +872,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "toml_edit",
  "volicord-core",
  "volicord-host-contract",

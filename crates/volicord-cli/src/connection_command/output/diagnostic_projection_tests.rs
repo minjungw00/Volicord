@@ -1245,7 +1245,7 @@ fn pending_and_complete_reports_are_exact() {
     let (concise, verbose, json) = projections(&complete);
     assert_eq!(
         concise,
-        "Verification completed: 1 ready.\n\nRepository: /workspace/product\nMode: workflow\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
+        "Verification completed: 1 ready.\n\nOperation: active verification\nEvidence class: active_verification\nSide effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\nDoes not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts\n\nRepository: /workspace/product\nMode: workflow\nChecks: 1 ready, 0 blocked, 0 waiting, 0 failed\n"
     );
     assert_eq!(json["status"], "complete");
     assert_eq!(json["root_cause_ids"], json!([]));

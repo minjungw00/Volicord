@@ -328,6 +328,18 @@ Guard manifest, runtime session, 프로젝트 Agent Session은 쓰지 않습니�
 Registry 효과가 없습니다. `volicord connection status`는 계속 읽기 전용이며 이 변경을
 사용하지 않습니다.
 
+활성 검증은 conformance 전에 항상 rollback하는 한도가 있는 SQLite transaction으로
+Registry와 선택한 project의 쓰기 가능성을 probe합니다. 이 probe는 write lock을 얻을 수
+있으므로 활성 저장 작업이지만 schema object나 row를 남기지 않습니다. Protocol 및 host
+호환성 conformance는 새로운 일회용 명령별 Runtime Home에만 `manual_cli` session과 가능한
+finding을 만들며 fixture disposal이 이를 제거합니다. 선택한 사용자 Runtime Home에는
+conformance session이나 finding을 만들지 않습니다.
+
+`volicord mcp preflight`는 선택한 Registry와 project database를 read-only로 엽니다. 쓰기
+가능성을 probe하거나 runtime session을 생성·갱신하거나 finding을 영속하거나 diagnostic을
+reconcile하거나 Runtime Home 또는 Product Repository에 쓰지 않습니다. 따라서 JSON
+`side_effects`는 빈 배열입니다.
+
 <a id="connection-integration-verification-effects"></a>
 ## Connection-Integration 검증 효과
 

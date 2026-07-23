@@ -9,6 +9,58 @@ const CURRENT_REVISION: &str =
 const OLD_REVISION: &str =
     "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
+#[cfg(unix)]
+#[test]
+fn active_verification_writeability_probe_is_bounded_and_detects_read_only_project_store() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = CoreFixture::new("connection-active-writeability-probe").expect("fixture");
+    let connection = volicord_store::agent_connections::agent_connection_record_read_only(
+        fixture.runtime_home_path(),
+        fixture.connection_id(),
+    )
+    .expect("connection lookup")
+    .expect("connection");
+    verify_selected_store_writeability(
+        fixture.runtime_home_path(),
+        &connection,
+        Some(fixture.project_id()),
+    )
+    .expect("writable stores");
+    let project = volicord_store::bootstrap::project_record_read_only(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+    )
+    .expect("project lookup")
+    .expect("project");
+    std::fs::set_permissions(
+        &project.state_db_path,
+        std::fs::Permissions::from_mode(0o444),
+    )
+    .expect("read-only project database");
+    let error = verify_selected_store_writeability(
+        fixture.runtime_home_path(),
+        &connection,
+        Some(fixture.project_id()),
+    )
+    .expect_err("active probe must detect read-only project storage");
+    assert!(error.contains("writeability probe reported read-only storage"));
+
+    let registry = rusqlite::Connection::open_with_flags(
+        volicord_store::sqlite::registry_db_path(fixture.runtime_home_path()),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .expect("read-only Registry");
+    let probe_tables: u64 = registry
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = '__volicord_write_probe_do_not_persist'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("probe table count");
+    assert_eq!(probe_tables, 0);
+}
+
 fn host(version: &str) -> Verification {
     Verification {
         config_target: "/tmp/codex/config.toml".to_owned(),

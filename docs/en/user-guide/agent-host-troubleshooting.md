@@ -23,8 +23,10 @@ not include credentials or private payloads.
 `connection status` is already a complete read-only evaluation: it calculates
 current findings, resolves inline and persisted causes, and renders the same
 roots in concise, verbose, and JSON output without writing the Runtime Home.
-Use `connection verify` only when the optional active executable, preflight,
-and MCP probes are needed.
+Use `connection verify` only when active executable and Store writeability
+probes, disposable MCP conformance, diagnostic reconciliation, and report
+persistence are needed. `mcp preflight` alone is read-only and explicitly does
+not establish writeability or active conformance.
 
 ## Use The Stable Finding Code
 
@@ -171,12 +173,14 @@ response, or raw stderr into a diagnostic.
 Use the exact stored connection and project identifiers:
 
 ```sh
-volicord mcp --check --connection "<connection_id>" --project "<project_id>"
+volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
-A failure must identify the structural, binding, executable, storage, or
-external-contract problem. Fix that problem and rerun preflight. Do not start a
-different transport or bypass connection binding.
+A failure must identify the structural, binding, storage-read, or
+external-contract problem. Fix that problem and rerun preflight. A passing
+result reports writeability as `not_checked`; use `connection verify` when a
+writeability or active-conformance result is required. Do not start a different
+transport or bypass connection binding.
 
 ## MCP Self-Test Fails
 

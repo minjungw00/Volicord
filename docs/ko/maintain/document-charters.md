@@ -41,7 +41,7 @@ Volicord의 주요 문서가 시간이 지나도 무엇을 담당하고, 제외�
   MCP 사전 점검 줄 목록, 완전한 문제 해결 목록, 전체 API 메서드 참조, 정확한 보안
   보장 표현입니다.
 - 초보자 개념 규칙: 작업 흐름 설명이나 그림이 `Volicord Runtime Home`,
-  `Agent Connection`, `volicord mcp --stdio`, `User Channel` 같은 Volicord 특정 용어에
+  `Agent Connection`, `volicord mcp serve`, `User Channel` 같은 Volicord 특정 용어에
   의존하기 전에 첫 읽기용 의미를 먼저 소개합니다.
 - 허용되는 그림: 가이드 수준의 사용자 작업 흐름과 로컬 구성 요소 지도입니다.
   루트 README에는 둘 다 포함해야 하며, 각 그림이 무엇을 보여 주고 무엇을 생략하는지

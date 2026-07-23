@@ -38,7 +38,7 @@ Volicord는 이 사실들을 나누어 기록합니다. 사용자와 에이전�
 | 사용자 채널 | 사용자 소유 판단을 기록하는 로컬 경로입니다. |
 | `volicord` | 설정, 상태 조회, CLI 사용자 채널에 쓰는 설치된 관리 명령입니다. |
 
-호스트는 `volicord mcp --stdio`로 로컬 MCP 어댑터를 시작합니다. 처음 사용하는 사람이
+호스트는 숨겨진 관리 launcher로 로컬 MCP 어댑터를 시작합니다. 처음 사용하는 사람이
 프로세스 바인딩 세부사항까지 알 필요는 없습니다. 정확한 구성 요소와 위치 경계는
 [런타임 경계](../reference/runtime-boundaries.md),
 [Agent Connection 참조](../reference/agent-connection.md),

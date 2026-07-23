@@ -2,20 +2,31 @@
 
 mod support;
 
-use std::{collections::BTreeSet, error::Error, fs, path::PathBuf, process::Command};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use serde_json::{json, Value};
 use volicord_core::{CoreService, InvocationContext};
 use volicord_store::{
-    agent_connections::CONNECTION_MODE_READ_ONLY, core_pipeline::StorageEffectCounts,
+    agent_connections::{
+        agent_connection_record_read_only, ensure_agent_connection, AgentConnectionRegistration,
+        CONNECTION_MODE_READ_ONLY,
+    },
+    bootstrap::project_record_read_only,
+    core_pipeline::StorageEffectCounts,
+    sqlite::registry_db_path,
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
 use volicord_types::{ActorSource, AgentConnectionId, AgentToolId, OperationCategory, ProjectId};
 
 use support::{
     assertions::{
-        assert_report_line, assert_report_line_names, assert_success, assert_success_captured,
-        captured_stderr, captured_stdout, stderr, stdout,
+        assert_success, assert_success_captured, captured_stderr, captured_stdout, stderr, stdout,
     },
     binary_fixture::{base_command, run_child, run_without_binding, ChildStdin},
     json::{
@@ -27,124 +38,189 @@ use support::{
 
 const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
 
+#[cfg(unix)]
 #[test]
-fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Box<dyn Error>> {
+fn mcp_preflight_succeeds_with_read_only_registry_and_project_databases(
+) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = McpFixture::new("mcp-bin-readonly-preflight")?;
+    let project = project_record_read_only(fixture.runtime_home_path(), fixture.project_id())?
+        .expect("fixture project");
+    let registry = registry_db_path(fixture.runtime_home_path());
+    let before = fixture.registry_observation_counts()?;
+    fs::set_permissions(&registry, fs::Permissions::from_mode(0o444))?;
+    fs::set_permissions(&project.state_db_path, fs::Permissions::from_mode(0o444))?;
+
+    let output = run_child(
+        fixture.connection_command([
+            "preflight",
+            "--connection",
+            fixture.connection_id(),
+            "--json",
+        ]),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_success_captured(&output);
+    let report: Value = serde_json::from_str(&captured_stdout(&output))?;
+    assert_eq!(report["status"], "passed");
+    assert_eq!(report["writeability"]["status"], "not_checked");
+    assert_eq!(fixture.registry_observation_counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn mcp_preflight_rejects_noncanonical_managed_entry_without_observations(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = McpFixture::new("mcp-bin-drifted-preflight")?;
+    let connection =
+        agent_connection_record_read_only(fixture.runtime_home_path(), fixture.connection_id())?
+            .expect("fixture connection");
+    let before = fixture.registry_observation_counts()?;
+    fs::write(
+        connection.config_target,
+        "[mcp_servers.\"volicord-test\"]\ncommand = \"changed\"\nargs = []\n",
+    )?;
+    let output = run_child(
+        fixture.connection_command([
+            "preflight",
+            "--connection",
+            fixture.connection_id(),
+            "--json",
+        ]),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_eq!(output.status.code(), Some(1));
+    assert!(captured_stderr(&output).contains("canonical managed MCP entry validation failed"));
+    assert_eq!(fixture.registry_observation_counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn volicord_mcp_subcommands_report_effects_and_read_only_preflight() -> Result<(), Box<dyn Error>> {
     let fixture = McpFixture::new("mcp-bin-preflight")?;
 
     let help = run_without_binding(["--help"])?;
     assert_success(&help);
     assert!(stdout(&help).contains("Usage: volicord mcp"));
-    assert!(stdout(&help).contains("--discover-repository"));
-    assert!(stdout(&help).contains("--connection <CONNECTION>"));
-
-    let version = run_without_binding(["--version"])?;
-    assert_success(&version);
-    assert_eq!(
-        stdout(&version),
-        format!(
-            "volicord {} (build_id={})\n",
-            env!("CARGO_PKG_VERSION"),
-            volicord_mcp::build_id()
-        )
-    );
+    assert!(stdout(&help).contains("preflight"));
+    assert!(stdout(&help).contains("serve"));
+    let preflight_help = run_without_binding(["preflight", "--help"])?;
+    assert_success(&preflight_help);
+    assert!(stdout(&preflight_help).contains("Side effects: none"));
+    assert!(stdout(&preflight_help).contains("Writeability is not checked"));
+    let serve_help = run_without_binding(["serve", "--help"])?;
+    assert_success(&serve_help);
+    assert!(stdout(&serve_help).contains("manual_cli"));
+    assert!(stdout(&serve_help).contains("never create a managed_host session"));
+    let mut verify_help = base_command();
+    verify_help.args(["connection", "verify", "--help"]);
+    let verify_help = verify_help.output()?;
+    assert_success(&verify_help);
+    assert!(stdout(&verify_help).contains("rollback-only Store writeability probes"));
+    assert!(stdout(&verify_help).contains("disposable protocol conformance"));
 
     let no_args = run_without_binding([])?;
     assert_eq!(no_args.status.code(), Some(2));
-    assert!(stderr(&no_args).contains("required arguments were not provided"));
+    assert!(stderr(&no_args).contains("Usage: volicord mcp"));
 
-    let check_without_connection = run_without_binding(["--check"])?;
+    let check_without_connection = run_without_binding(["preflight"])?;
     assert_eq!(check_without_connection.status.code(), Some(2));
-    assert!(stderr(&check_without_connection).contains("--connection"));
+    assert!(stderr(&check_without_connection).contains("required"));
 
     let before = fixture.counts()?;
+    let before_rows = fixture.store_row_counts()?;
+    let before_observations = fixture.registry_observation_counts()?;
     let connection_check = run_child(
-        fixture.connection_command(["--check", "--connection", fixture.connection_id()]),
+        fixture.connection_command([
+            "preflight",
+            "--connection",
+            fixture.connection_id(),
+            "--json",
+        ]),
         ChildStdin::KeepOpen,
     )?;
     assert_success_captured(&connection_check);
-    let report = captured_stdout(&connection_check);
-    assert_report_line_names(
-        &report,
-        &[
-            "configuration:",
-            "transport:",
-            "Does not prove:",
-            "runtime_home:",
-            "connection_id:",
-            "mode:",
-            "enabled:",
-            "registry_read:",
-            "project_state_read:",
-            "project_state_write:",
-            "effective_tool_mode:",
-            "tools_list_schema_validation:",
-            "tool_naming_style:",
-            "allowed_projects:",
-            "available_projects:",
-            "verification_scope:",
-            "project[0].project_id:",
-            "project[0].available:",
-            "project[0].state_read:",
-            "project[0].state_write:",
-            "project[0].unavailable_reason:",
-            "project[0].repo_root:",
-        ],
+    let report: Value = serde_json::from_str(&captured_stdout(&connection_check))?;
+    assert_eq!(report["operation"], "mcp_preflight");
+    assert_eq!(report["status"], "passed");
+    assert_eq!(report["side_effects"], json!([]));
+    assert_eq!(report["evidence_class"], "read_only_preflight");
+    assert_eq!(report["canonical_managed_entry"], "passed");
+    assert_eq!(
+        report["runtime_home"],
+        fixture.runtime_home_path().display().to_string()
     );
-    assert_report_line(&report, "configuration: valid");
-    assert_report_line(&report, "transport: stdio");
-    assert_report_line(
-        &report,
-        &format!("runtime_home: {}", fixture.runtime_home_path().display()),
+    assert_eq!(report["connection_id"], fixture.connection_id());
+    assert_eq!(report["registry_read"], "passed");
+    assert_eq!(report["project_state_read"], "passed");
+    assert_eq!(report["writeability"]["status"], "not_checked");
+    assert_eq!(
+        report["writeability"]["requirement"],
+        "requires_active_verification"
     );
-    assert_report_line(
-        &report,
-        &format!("connection_id: {}", fixture.connection_id()),
+    assert_eq!(
+        report["effective_tool_mode"],
+        "requires_active_verification"
     );
-    assert_report_line(&report, "mode: workflow");
-    assert_report_line(&report, "enabled: true");
-    assert_report_line(&report, "registry_read: passed");
-    assert_report_line(&report, "project_state_read: passed");
-    assert_report_line(&report, "project_state_write: passed");
-    assert_report_line(&report, "effective_tool_mode: workflow");
-    assert_report_line(&report, "tools_list_schema_validation: passed");
-    assert_report_line(&report, "tool_naming_style: dotted_namespace");
-    assert_report_line(&report, "allowed_projects: 1");
-    assert_report_line(&report, "available_projects: 1");
-    assert_report_line(&report, "verification_scope: startup_check_only");
-    assert_report_line(
-        &report,
-        &format!("project[0].project_id: {}", fixture.project_id()),
-    );
-    assert_report_line(&report, "project[0].available: true");
-    assert_report_line(&report, "project[0].state_read: passed");
-    assert_report_line(&report, "project[0].state_write: passed");
-    assert_report_line(&report, "project[0].unavailable_reason: not_applicable");
+    assert_eq!(report["tools_list_schema_validation"], "passed");
+    assert_eq!(report["projects"][0]["state_write"], "not_checked");
+    let concise = run_child(
+        fixture.connection_command(["preflight", "--connection", fixture.connection_id()]),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_success_captured(&concise);
+    assert!(captured_stdout(&concise).contains("Operation: MCP preflight"));
+    assert!(captured_stdout(&concise).contains("Side effects: none"));
+    assert!(captured_stdout(&concise).contains("Evidence class: read_only_preflight"));
+    let verbose = run_child(
+        fixture.connection_command([
+            "preflight",
+            "--connection",
+            fixture.connection_id(),
+            "--verbose",
+        ]),
+        ChildStdin::KeepOpen,
+    )?;
+    assert_success_captured(&verbose);
+    assert!(captured_stdout(&verbose).contains("Canonical managed entry: passed"));
+    assert!(captured_stdout(&verbose).contains("Protocol profiles:"));
+    assert!(captured_stdout(&verbose).contains("Host contracts:"));
     assert_eq!(fixture.counts()?, before);
+    assert_eq!(fixture.store_row_counts()?, before_rows);
+    assert_eq!(fixture.registry_observation_counts()?, before_observations);
 
     let project_check = run_child(
         fixture.connection_command([
-            "--check",
+            "preflight",
             "--connection",
             fixture.connection_id(),
             "--project",
             fixture.project_id(),
+            "--json",
         ]),
         ChildStdin::KeepOpen,
     )?;
     assert_success_captured(&project_check);
-    let project_report = captured_stdout(&project_check);
-    assert_report_line(&project_report, "allowed_projects: 1");
-    assert_report_line(
-        &project_report,
-        &format!("project[0].project_id: {}", fixture.project_id()),
+    let project_report: Value = serde_json::from_str(&captured_stdout(&project_check))?;
+    assert_eq!(project_report["allowed_projects"], 1);
+    assert_eq!(
+        project_report["projects"][0]["project_id"],
+        fixture.project_id()
     );
 
     let missing_connection = run_child(
-        fixture.connection_command(["--check", "--connection", "missing_connection"]),
+        fixture.connection_command(["preflight", "--connection", "missing_connection"]),
         ChildStdin::KeepOpen,
     )?;
     assert_eq!(missing_connection.status.code(), Some(1));
     assert!(captured_stderr(&missing_connection).contains("not registered"));
+
+    for old_flag in ["--check", "--stdio"] {
+        let removed = run_without_binding([old_flag])?;
+        assert_eq!(removed.status.code(), Some(2));
+        assert!(stderr(&removed).contains(old_flag));
+    }
 
     let unknown = run_without_binding(["--not-a-real-option"])?;
     assert_eq!(unknown.status.code(), Some(2));
@@ -160,7 +236,7 @@ fn repository_discovery_stdio_starts_from_managed_configuration() -> Result<(), 
     fs::create_dir(repo_root.join(".git"))?;
     let before = fixture.counts()?;
     let mut command =
-        fixture.connection_command(["--stdio", "--discover-repository", "--host", "codex"]);
+        fixture.connection_command(["serve", "--discover-repository", "--host", "codex"]);
     command.current_dir(&repo_root);
 
     let output = run_child(
@@ -199,7 +275,7 @@ fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_managed
     ])?;
 
     let first = run_child(
-        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
+        fixture.connection_command(["serve", "--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(first_messages),
     )?;
     assert_success_captured(&first);
@@ -311,7 +387,7 @@ fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_managed
     assert_eq!(fixture.counts()?, before);
 
     let reconnect_before_handshake = run_child(
-        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
+        fixture.connection_command(["serve", "--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(json_lines(&[request(10, "tools/list", json!({}))])?),
     )?;
     assert_success_captured(&reconnect_before_handshake);
@@ -331,7 +407,7 @@ fn volicord_mcp_subcommand_stdio_keeps_protocol_and_rejects_core_without_managed
         ),
     ])?;
     let reconnect = run_child(
-        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
+        fixture.connection_command(["serve", "--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(reconnect_messages),
     )?;
     assert_success_captured(&reconnect);
@@ -368,7 +444,7 @@ fn volicord_mcp_subcommand_stdio_rejects_user_action_without_managed_session_and
         ),
     ])?;
 
-    let command = fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]);
+    let command = fixture.connection_command(["serve", "--connection", fixture.connection_id()]);
     let output = run_child(command, ChildStdin::WriteAndClose(messages))?;
 
     assert_success_captured(&output);
@@ -385,7 +461,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
 ) -> Result<(), Box<dyn Error>> {
     let workflow = McpFixture::new("mcp-bin-tools-workflow")?;
     let workflow_output = run_child(
-        workflow.connection_command(["--stdio", "--connection", workflow.connection_id()]),
+        workflow.connection_command(["serve", "--connection", workflow.connection_id()]),
         ChildStdin::WriteAndClose(tools_list_messages(1, 2)?),
     )?;
     assert_success_captured(&workflow_output);
@@ -402,7 +478,7 @@ fn volicord_mcp_subcommand_tools_list_respects_connection_mode_and_schema_bounda
     let read_only = McpFixture::new("mcp-bin-tools-read-only")?;
     read_only.set_connection_mode(CONNECTION_MODE_READ_ONLY)?;
     let read_only_output = run_child(
-        read_only.connection_command(["--stdio", "--connection", read_only.connection_id()]),
+        read_only.connection_command(["serve", "--connection", read_only.connection_id()]),
         ChildStdin::WriteAndClose(tools_list_messages(10, 11)?),
     )?;
     assert_success_captured(&read_only_output);
@@ -456,7 +532,7 @@ fn volicord_mcp_subcommand_suppresses_notifications_and_rejects_core_without_man
     ])?;
 
     let output = run_child(
-        fixture.connection_command(["--stdio", "--connection", fixture.connection_id()]),
+        fixture.connection_command(["serve", "--connection", fixture.connection_id()]),
         ChildStdin::WriteAndClose(messages),
     )?;
 
@@ -489,9 +565,41 @@ struct McpFixture {
 
 impl McpFixture {
     fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
-        Ok(Self {
-            fixture: CoreFixture::new(prefix)?,
-        })
+        let fixture = CoreFixture::new(prefix)?;
+        let connection = agent_connection_record_read_only(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+        )?
+        .expect("fixture connection");
+        let launch =
+            volicord_mcp::ManagedMcpLaunchSpec::shared_repository(volicord_types::HostKind::Codex)?;
+        let fingerprint = launch.managed_fingerprint(&connection.server_name);
+        ensure_agent_connection(
+            fixture.runtime_home_path(),
+            AgentConnectionRegistration {
+                connection_internal_id: connection.connection_internal_id.clone(),
+                host_kind: connection.host_kind.clone(),
+                intent: connection.intent.clone(),
+                host_scope: connection.host_scope.clone(),
+                server_name: connection.server_name.clone(),
+                config_target: connection.config_target.clone(),
+                mode: connection.mode.clone(),
+                enabled: connection.enabled,
+                managed_fingerprint: fingerprint,
+                metadata_json: connection.metadata_json.clone(),
+            },
+        )?;
+        if let Some(parent) = std::path::Path::new(&connection.config_target).parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(
+            &connection.config_target,
+            format!(
+                "[mcp_servers.\"{}\"]\ncommand = \"volicord\"\nargs = [\"_host-launch\", \"codex\", \"--discover-repository\"]\nenv_vars = [\"VOLICORD_HOME\"]\n",
+                connection.server_name
+            ),
+        )?;
+        Ok(Self { fixture })
     }
 
     fn runtime_home_path(&self) -> &std::path::Path {
@@ -520,6 +628,31 @@ impl McpFixture {
 
     fn counts(&self) -> Result<StorageEffectCounts, Box<dyn Error>> {
         Ok(self.fixture.counts()?)
+    }
+
+    fn registry_observation_counts(&self) -> Result<(u64, u64), Box<dyn Error>> {
+        let connection = rusqlite::Connection::open_with_flags(
+            registry_db_path(self.runtime_home_path()),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let sessions =
+            connection.query_row("SELECT COUNT(*) FROM mcp_runtime_sessions", [], |row| {
+                row.get(0)
+            })?;
+        let findings =
+            connection.query_row("SELECT COUNT(*) FROM diagnostic_findings", [], |row| {
+                row.get(0)
+            })?;
+        Ok((sessions, findings))
+    }
+
+    fn store_row_counts(&self) -> Result<BTreeMap<String, u64>, Box<dyn Error>> {
+        let project = project_record_read_only(self.runtime_home_path(), self.project_id())?
+            .expect("fixture project");
+        let mut counts =
+            database_row_counts("registry", &registry_db_path(self.runtime_home_path()))?;
+        counts.extend(database_row_counts("project", &project.state_db_path)?);
+        Ok(counts)
     }
 
     fn set_connection_mode(&self, mode: &str) -> Result<(), Box<dyn Error>> {
@@ -572,6 +705,29 @@ impl McpFixture {
             .expect("state version");
         Ok((task_id, state_version))
     }
+}
+
+fn database_row_counts(prefix: &str, path: &Path) -> Result<BTreeMap<String, u64>, Box<dyn Error>> {
+    let connection =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let mut statement = connection.prepare(
+        "SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+         ORDER BY name",
+    )?;
+    let tables = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut counts = BTreeMap::new();
+    for table in tables {
+        let quoted = table.replace('"', "\"\"");
+        let count =
+            connection.query_row(&format!("SELECT COUNT(*) FROM \"{quoted}\""), [], |row| {
+                row.get(0)
+            })?;
+        counts.insert(format!("{prefix}.{table}"), count);
+    }
+    Ok(counts)
 }
 
 fn assert_agent_session_missing(response: &Value) {

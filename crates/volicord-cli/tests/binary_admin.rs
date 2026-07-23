@@ -48,7 +48,7 @@ Commands:
   policy       Manage the authoritative project workflow policy
   connection   Manage Codex Agent Connections
   project      Manage registered Product Repositories
-  mcp          Run managed stdio MCP or its preflight check
+  mcp          Inspect or manually serve the local stdio MCP adapter
   export       Export local authority records
   changes      Reconcile observed product changes
   inbox        List or resolve pending UserAction requests
@@ -1603,7 +1603,10 @@ fn host_removal_conflict_preserves_registry_membership_and_child_state(
     let connection_id = before.agent_connections[0].connection_internal_id.clone();
     let runtime_sessions_before =
         registry_connection_row_count(&before.path, "mcp_runtime_sessions", &connection_id)?;
-    assert!(runtime_sessions_before > 0);
+    assert_eq!(
+        runtime_sessions_before, 0,
+        "setup verification must keep conformance sessions out of the selected Runtime Home"
+    );
     let config_target = PathBuf::from(&before.agent_connections[0].config_target);
     fs::write(
         &config_target,
@@ -1840,7 +1843,8 @@ fn failed_verify_human_report_is_written_to_stdout() -> Result<(), Box<dyn Error
         assert!(text.contains(&format!("Runtime home: {}", fixture.runtime_home.display())));
         assert!(text.contains("Verbose output: required."));
     }
-    assert!(!text.contains("Operation:"));
+    assert!(text.contains("Operation: active verification"));
+    assert!(text.contains("Side effects: rollback-only Store writeability probes"));
     assert!(!text.contains("Details: {"));
     Ok(())
 }

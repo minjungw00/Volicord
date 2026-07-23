@@ -20,6 +20,12 @@ pub(super) fn render_command_report_concise(
 ) -> Result<String, ConnectionCommandError> {
     let counts = CheckCounts::from_report(report);
     let mut sections = vec![headline(report, counts)];
+    if report.operation == CommandOperation::Verify {
+        sections.push(
+            "Operation: active verification\nEvidence class: active_verification\nSide effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\nDoes not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts"
+                .to_owned(),
+        );
+    }
     sections.push(format!(
         "Repository: {}\nMode: {}\nChecks: {}",
         report.connection.repository,
@@ -951,6 +957,10 @@ mod tests {
             concise(&action_required),
             concat!(
                 "Verification completed: 5 ready, 4 waiting.\n\n",
+                "Operation: active verification\n",
+                "Evidence class: active_verification\n",
+                "Side effects: rollback-only Store writeability probes, disposable protocol conformance, diagnostic reconciliation, verification-report persistence\n",
+                "Does not prove: managed-host operation, future launch availability, Product Repository correctness outside checked contracts\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
                 "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",

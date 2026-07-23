@@ -91,18 +91,18 @@ fn main() {
                 eprintln!("deterministic MCP fixture startup failure");
                 std::process::exit(70);
             }
-            Ok("early_stdio_exit") if args.iter().any(|arg| arg == "--check") => {
+            Ok("early_stdio_exit") if args.iter().any(|arg| arg == "preflight") => {
                 let connection_id = args
                     .windows(2)
                     .find(|pair| pair[0] == "--connection")
                     .and_then(|pair| pair[1].to_str())
                     .expect("fixture preflight connection ID");
                 println!(
-                    "configuration: valid\ntransport: stdio\nconnection_id: {connection_id}\nmode: workflow\nenabled: true\nregistry_read: passed\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: workflow\ntools_list_schema_validation: passed"
+                    "{{\"operation\":\"mcp_preflight\",\"status\":\"passed\",\"side_effects\":[],\"evidence_class\":\"read_only_preflight\",\"configuration\":\"valid\",\"canonical_managed_entry\":\"passed\",\"transport\":\"stdio\",\"connection_id\":\"{connection_id}\",\"mode\":\"workflow\",\"enabled\":true,\"registry_read\":\"passed\",\"project_state_read\":\"passed\",\"writeability\":{{\"status\":\"not_checked\",\"requirement\":\"requires_active_verification\"}},\"effective_tool_mode\":\"requires_active_verification\",\"tools_list_schema_validation\":\"passed\"}}"
                 );
                 return;
             }
-            Ok("early_stdio_exit") if args.iter().any(|arg| arg == "--stdio") => {
+            Ok("early_stdio_exit") if args.iter().any(|arg| arg == "serve") => {
                 eprint!("{}", "x".repeat(EARLY_EXIT_STDERR_BYTES));
                 std::process::exit(23);
             }
@@ -1595,7 +1595,10 @@ fn guard_failures_are_current_and_structured() -> Result<(), Box<dyn Error>> {
         })
         .ok_or("verified Guard incompatibility finding")?;
     assert_eq!(verify_guard_finding["id"], guard_finding_id);
-    assert!(fixture.cli_preflight_session_count()? > cli_preflight_before_verify);
+    assert_eq!(
+        fixture.cli_preflight_session_count()?,
+        cli_preflight_before_verify
+    );
     Ok(())
 }
 
@@ -2326,7 +2329,7 @@ impl OperationalFixture {
             |row| row.get(0),
         )?;
         assert_eq!(managed_count, 0);
-        assert!(cli_count >= 1);
+        assert_eq!(cli_count, 0);
         assert_eq!(cli_verification_evidence_count, 0);
         Ok(())
     }

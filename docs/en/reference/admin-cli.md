@@ -663,23 +663,27 @@ memory. It neither launches a process nor changes files, timestamps, reports,
 actions, observations, or database rows. Active verification is not required
 to materialize or explain this status report.
 
-`volicord connection verify` is the optional active-probe operation. It
-discovers `codex`, runs the version
-command, runs `volicord mcp --check`, and starts a CLI-only MCP self-test. The
-server-conformance matrix runs one independent stdio process for every
-production-supported protocol profile. Each revision performs `initialize`,
-the initialized notification, `tools/list`, pinned-schema and required-tool
-validation, exactly one call to the tool bound to
-`ToolVerificationRole::ManagedHostRoundTrip`, and the
-contracted graceful EOF/shutdown sequence. The aggregate `mcp_server` check
-passes only when every revision probe passes. Preflight and self-test launch
-materialization both derive from the canonical managed launch contract used for
-the inspected host configuration. Personal verification uses that contract's
-static absolute `VOLICORD_HOME`; shared verification resolves its forwarded
-`VOLICORD_HOME` from the Runtime Home selected by the connection operation and
-runs repository discovery from the canonical Product Repository root. The
-preflight and self-test processes remain `cli_preflight` or `manual_cli`; they
-never create managed-host observations.
+`volicord connection verify` is the optional active-verification operation. It
+discovers `codex`, runs the version command, performs bounded rollback-only
+writeability probes against the selected Registry and project stores, runs
+`volicord mcp preflight`, and starts a CLI-only MCP self-test. The
+server-conformance matrix runs one independent `volicord mcp serve` process for
+every production-supported protocol profile. Each revision performs
+`initialize`, the initialized notification, `tools/list`, pinned-schema and
+required-tool validation, exactly one call to the tool bound to
+`ToolVerificationRole::ManagedHostRoundTrip`, and the contracted graceful
+EOF/shutdown sequence. The aggregate `mcp_server` check passes only when every
+revision probe passes.
+
+Preflight launch materialization derives from the canonical managed launch
+contract used for the inspected host configuration, but preflight only reads
+configuration, Registry and project state, protocol profiles, tool schemas, and
+host contracts. It does not probe writeability or create a runtime session or
+finding. Every conformance and host-compatibility process instead uses a fresh
+disposable Runtime Home and Product Repository owned by that verification
+command. Those processes remain `manual_cli`, are removed with the disposable
+fixture, and never add sessions or findings to the selected user Runtime Home
+or create managed-host observations.
 
 `ToolVerificationRole::ManagedHostRoundTrip` is bound at compile time to
 `AgentToolId::LIST_PROJECTS`, whose wire-name projection is
@@ -854,13 +858,34 @@ general administrative exit rules below.
 ## MCP Commands
 
 ```text
-volicord mcp --stdio --connection <connection_id> [--project <project_id>]
-volicord mcp --stdio --discover-repository --host codex
-volicord mcp --check --connection <connection_id> [--project <project_id>]
+volicord mcp preflight --connection <connection_id> [--project <project_id>] [--verbose | --json]
+volicord mcp preflight --discover-repository --host codex [--verbose | --json]
+volicord mcp serve --connection <connection_id> [--project <project_id>]
+volicord mcp serve --discover-repository --host codex
 ```
 
-These commands expose only managed stdio. Exact framing, lifecycle, tool lists,
-and response projection belong to [MCP Transport](mcp-transport.md).
+`mcp preflight` is a read-only inspection. Its JSON projection declares
+`side_effects: []`, evidence class `read_only_preflight`, and writeability as
+`not_checked` with `requires_active_verification`. It proves only that the
+current launch configuration and selected read surfaces can be inspected. It
+does not prove Store writeability, active protocol conformance, managed-host
+operation, or Agent Connection authority.
+
+`mcp serve` is the public manual stdio surface. Every runtime it creates has
+source `manual_cli`; no flag or environment variable can classify it as
+`managed_host`. It may create and update a runtime session, lifecycle
+observations, and a terminal finding in the selected Runtime Home. Exact
+framing, lifecycle, tool lists, and response projection belong to
+[MCP Transport](mcp-transport.md). The generated Codex entry uses the hidden
+`_host-launch` path as the only managed-launch surface.
+
+Human and JSON output for `connection verify` declare the active operation,
+evidence class `active_verification`, and its possible effects: rollback-only
+Store writeability probes, disposable protocol and host-compatibility
+conformance sessions, diagnostic reconciliation, and verification-report
+persistence. Active verification still does not prove that a managed host ran,
+that a future launch will remain available, or that Product Repository behavior
+outside the checked contracts is correct.
 
 `volicord connection verify codex` reports the canonical
 `guard_verification` check and its verification/run/event IDs when available,
@@ -873,9 +898,9 @@ historical Guard activity cannot complete that check. The command observes
 Codex trust state; it does not automate, approve, or bypass project trust and
 does not modify MCP trust configuration.
 
-The generated Codex entry uses the hidden `_host-launch` command rather than
-these public manual stdio commands. `_host-launch` is host-owned, omitted from
-normal help, and not an alternate administrative or public API surface.
+The generated Codex entry uses the hidden `_host-launch` command.
+`_host-launch` is host-owned, omitted from normal help, and not an alternate
+administrative or public API surface.
 
 <a id="diagnostics"></a>
 ## Diagnostics

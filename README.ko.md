@@ -145,7 +145,7 @@ volicord status --repo /path/to/your-product-repo
 flowchart LR
   user["사용자"]
   host["에이전트 호스트<br/>Codex"]
-  mcp["volicord mcp --stdio<br/>로컬 MCP 도구"]
+  mcp["숨겨진 관리 launcher<br/>로컬 MCP 도구"]
   record["Volicord<br/>작업 기록"]
   runtime["Volicord Runtime Home<br/>로컬 런타임 데이터"]
   repo["Product Repository<br/>제품 파일"]

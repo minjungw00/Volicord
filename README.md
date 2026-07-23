@@ -154,7 +154,7 @@ host-specific configuration.
 flowchart LR
   user["User"]
   host["Agent host<br/>Codex"]
-  mcp["volicord mcp --stdio<br/>local MCP tools"]
+  mcp["hidden managed launcher<br/>local MCP tools"]
   record["Volicord<br/>work records"]
   runtime["Volicord Runtime Home<br/>local runtime data"]
   repo["Product Repository<br/>product files"]

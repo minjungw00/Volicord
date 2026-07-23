@@ -1580,12 +1580,13 @@ fn accepts_sensitive_identifiers_in_document_prose_when_map_roles_are_valid() {
 fn accepts_supported_volicord_shell_command_examples() {
     let fixture = valid_fixture();
     let commands = r#"```sh
-./target/debug/volicord mcp --version
 ./target/debug/volicord mcp --help
-volicord mcp --stdio --connection CONNECTION_ID
-volicord mcp --stdio --connection CONNECTION_ID --project PROJECT_ID
-volicord mcp --check --connection CONNECTION_ID
-volicord mcp --check --connection CONNECTION_ID --project PROJECT_ID
+volicord mcp serve --connection CONNECTION_ID
+volicord mcp serve --connection CONNECTION_ID --project PROJECT_ID
+volicord mcp preflight --connection CONNECTION_ID
+volicord mcp preflight --connection CONNECTION_ID --project PROJECT_ID --json
+volicord mcp serve --discover-repository --host codex
+volicord mcp preflight --discover-repository --host codex --verbose
 volicord init --host codex --repo /path/to/repo --profile record
 ./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
 volicord init --host codex --repo /path/to/repo --verbose

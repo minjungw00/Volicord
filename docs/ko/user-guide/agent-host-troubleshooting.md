@@ -21,8 +21,10 @@ volicord connection status codex --repo "<repo>" --json
 
 `connection status`는 이미 완전한 읽기 전용 평가입니다. 현재 finding을 계산하고 inline 및
 영속 원인을 해석하며 Runtime Home에 쓰지 않고 concise, verbose, JSON 출력에서 같은 root를
-표시합니다. 선택적인 활성 executable, preflight, MCP probe가 필요할 때만
-`connection verify`를 사용합니다.
+표시합니다. 활성 executable 및 Store 쓰기 가능성 probe, 일회용 MCP conformance,
+diagnostic reconciliation, 보고서 영속화가 필요할 때만 `connection verify`를 사용합니다.
+`mcp preflight` 자체는 읽기 전용이며 쓰기 가능성이나 활성 conformance를 성립시키지
+않는다고 명시합니다.
 
 ## 안정 Finding Code 사용
 
@@ -155,12 +157,13 @@ tool response, raw stderr를 diagnostic에 복사하지 않습니다.
 정확한 저장 연결과 프로젝트 식별자를 사용합니다.
 
 ```sh
-volicord mcp --check --connection "<connection_id>" --project "<project_id>"
+volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
-실패는 구조, binding, 실행 파일, 저장소, 외부 계약 문제를 식별해야 합니다. 그 문제를
-고친 뒤 사전 점검을 다시 실행합니다. 다른 전송을 시작하거나 연결 binding을 우회하지
-않습니다.
+실패는 구조, binding, 저장 읽기, 외부 계약 문제를 식별해야 합니다. 그 문제를 고친 뒤
+사전 점검을 다시 실행합니다. 통과 결과도 쓰기 가능성을 `not_checked`로 보고하므로
+쓰기 가능성이나 활성 conformance 결과가 필요하면 `connection verify`를 사용합니다. 다른
+전송을 시작하거나 연결 binding을 우회하지 않습니다.
 
 ## MCP 자체 검사 실패
 

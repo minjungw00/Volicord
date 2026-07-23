@@ -1109,7 +1109,7 @@ pub(super) fn assert_tools_list_json_client_compatible(tools: &[Value]) {
 pub(super) fn preflight_report_for_fixture(
     fixture: &CoreFixture,
     project_id: Option<&str>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<McpPreflightReport, Box<dyn Error>> {
     Ok(preflight_check(
         |name| {
             if name == "VOLICORD_HOME" {
@@ -1122,13 +1122,6 @@ pub(super) fn preflight_report_for_fixture(
         fixture.connection_id(),
         project_id,
     )?)
-}
-
-pub(super) fn assert_report_line(report: &str, expected: &str) {
-    assert!(
-        report.lines().any(|line| line == expected),
-        "missing report line `{expected}` in:\n{report}"
-    );
 }
 
 pub(super) fn read_only_state_version(fixture: &CoreFixture) -> Result<u64, Box<dyn Error>> {

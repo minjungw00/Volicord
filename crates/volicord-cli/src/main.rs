@@ -11,7 +11,10 @@ use std::{
 use clap::{error::ErrorKind as ClapErrorKind, Parser};
 use volicord_cli::{
     changes_command::{run_changes_command, ChangesCommandError},
-    cli::{Cli, Command as CliCommand, McpArgs, PolicyCommand as CliPolicyCommand},
+    cli::{
+        Cli, Command as CliCommand, McpArgs, McpBindingArgs, McpCommand,
+        PolicyCommand as CliPolicyCommand,
+    },
     connection_command::{
         connection_setup_required_message, run_connection_command, run_init_command,
         ConnectionCommandError, ProductionConnectionProcess,
@@ -263,31 +266,69 @@ fn command_mcp<F>(args: McpArgs, env_var: F, current_dir: &Path) -> Result<Strin
 where
     F: Fn(&str) -> Option<std::ffi::OsString>,
 {
-    if args.version {
-        return Ok(version());
+    match args.command {
+        McpCommand::Serve(binding) => mcp_serve(binding),
+        McpCommand::Preflight(options) => {
+            let (runtime_home, connection_id, project_id) = if options.binding.discover_repository {
+                let runtime_home =
+                    volicord_mcp::resolve_repository_discovery_runtime_home(&env_var, current_dir)
+                        .map_err(|error| CliError::runtime(error.to_string()))?;
+                let resolution = volicord_mcp::RepositoryDiscoveryResolution::resolve(
+                    runtime_home,
+                    current_dir,
+                    volicord_types::HostKind::Codex,
+                )
+                .map_err(|error| CliError::runtime(error.to_string()))?;
+                (
+                    resolution.runtime_home,
+                    resolution.connection_internal_id.as_str().to_owned(),
+                    Some(resolution.project_id.as_str().to_owned()),
+                )
+            } else {
+                (
+                    volicord_mcp::resolve_runtime_home(&env_var, current_dir)
+                        .map_err(|error| CliError::runtime(error.to_string()))?,
+                    options
+                        .binding
+                        .connection
+                        .expect("clap requires an MCP binding"),
+                    options.binding.project,
+                )
+            };
+            volicord_cli::connection_command::validate_mcp_preflight_managed_entry(
+                &runtime_home,
+                &connection_id,
+                project_id.as_deref(),
+            )
+            .map_err(|error| CliError::runtime(error.to_string()))?;
+            let report = volicord_mcp::preflight_check(
+                env_var,
+                current_dir,
+                &connection_id,
+                project_id.as_deref(),
+            )
+            .map_err(|error| CliError::runtime(error.to_string()))?;
+            if options.output.json {
+                serde_json::to_string_pretty(&report)
+                    .map(|output| format!("{output}\n"))
+                    .map_err(|error| CliError::runtime(error.to_string()))
+            } else {
+                Ok(report.render_human(options.output.verbose))
+            }
+        }
     }
-    if args.discover_repository {
+}
+
+fn mcp_serve(binding: McpBindingArgs) -> Result<String, CliError> {
+    if binding.discover_repository {
         return Err(CliError::McpRepositoryStdio {
             host: volicord_types::HostKind::Codex,
         });
     }
-    let connection_id = args
-        .connection
-        .expect("the clap declaration requires --connection for bound MCP modes");
-    if args.check {
-        volicord_mcp::preflight_check(
-            env_var,
-            current_dir,
-            &connection_id,
-            args.project.as_deref(),
-        )
-        .map_err(|error| CliError::runtime(error.to_string()))
-    } else {
-        Err(CliError::McpStdio {
-            connection_id,
-            project_id: args.project,
-        })
-    }
+    Err(CliError::McpStdio {
+        connection_id: binding.connection.expect("clap requires an MCP binding"),
+        project_id: binding.project,
+    })
 }
 
 fn version() -> String {

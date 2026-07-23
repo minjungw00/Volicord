@@ -11,7 +11,7 @@ use crate::connection_command::managed_host_round_trip_tool;
 use super::{
     human::{headline, CheckCounts},
     report::{
-        projected_actions, projected_root_cause_ids, ConnectionCommandReport,
+        projected_actions, projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
         ConnectionCommandResult,
     },
     ConnectionCommandError, PlannedConnectionChangeKind,
@@ -27,6 +27,12 @@ pub(super) fn render_command_report_verbose(
     let roots = projected_root_cause_ids(report)?;
     let actions = projected_actions(report)?;
     let mut sections = vec![headline(report, counts), render_connection(report)?];
+    if report.operation == CommandOperation::Verify {
+        sections.push(
+            "Operation Effects\n  Operation: active verification\n  Evidence class: active_verification\n  Side effects: rollback-only Store writeability probes; disposable protocol conformance; diagnostic reconciliation; verification-report persistence\n  Does not prove: managed-host operation; future launch availability; Product Repository correctness outside checked contracts"
+                .to_owned(),
+        );
+    }
     sections.push(render_summary(report, counts));
 
     if !report.checks.is_empty() {
@@ -2030,6 +2036,11 @@ mod tests {
                 "  Repository: /workspace/product\n",
                 "  Config target: /home/user/.codex/config.toml\n",
                 "  Runtime home: /runtime\n\n",
+                "Operation Effects\n",
+                "  Operation: active verification\n",
+                "  Evidence class: active_verification\n",
+                "  Side effects: rollback-only Store writeability probes; disposable protocol conformance; diagnostic reconciliation; verification-report persistence\n",
+                "  Does not prove: managed-host operation; future launch availability; Product Repository correctness outside checked contracts\n\n",
                 "Summary\n",
                 "  Status: failed\n",
                 "  Checks: 0 passed, 0 blocked, 0 pending, 1 failed, 0 not applicable\n\n",

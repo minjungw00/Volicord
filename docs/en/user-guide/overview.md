@@ -40,7 +40,7 @@ known, what was checked, what still needs a decision, and what blocks close.
 | User Channel | The local path used to record a user-owned decision. |
 | `volicord` | The installed administrative command used for setup, status, and the CLI User Channel. |
 
-The host starts the local MCP adapter through `volicord mcp --stdio`. New users
+The host starts the local MCP adapter through the hidden managed launcher. New users
 do not need its process-binding details. Exact component and location boundaries
 are in [Runtime Boundaries](../reference/runtime-boundaries.md),
 [Agent Connection](../reference/agent-connection.md), and

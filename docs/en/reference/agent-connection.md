@@ -67,7 +67,7 @@ The first release accepts only this Agent Connection surface:
 | Integration profile | `integration_profile=record` |
 | Connection intent | `personal` or `shared` |
 | Connection mode | `read_only` or `workflow` |
-| Transport | Volicord-managed stdio MCP entered through the hidden host launcher; public manual stdio remains `volicord mcp --stdio` |
+| Transport | Volicord-managed stdio MCP entered through the hidden host launcher; public manual stdio remains `volicord mcp serve` |
 | Production MCP revisions | `2024-10-07`, `2024-11-05`, `2025-03-26`, `2025-06-18`, or `2025-11-25` |
 | User-owned action delivery | CLI inbox |
 | Platform environment | `linux`, `macos`, `native_windows`, or `wsl2` |
@@ -335,8 +335,9 @@ The current Codex connection report contains these operational checks:
 | `guard_observation` | Every required current typed hook phase was observed. | It waits for remaining phases and is blocked by `guard_hook_execution`. | A current event reports an incompatible hook contract. |
 | `guard_verification` | One bounded run correlated MCP acknowledgement with prompt, pre-tool, and post-tool observation in the same current managed runtime, native session, and turn. | It waits for a completed current run and is blocked by `guard_observation`. | The newest run no longer matches current runtime, Guard Installation, policy, revision, or hook-contract ownership. |
 
-CLI MCP preflight creates `session_source=cli_preflight`, and its manual stdio
-self-test creates `session_source=manual_cli`; neither
+CLI MCP preflight is read-only and creates no runtime session. The manual
+stdio self-test creates `session_source=manual_cli` only in a disposable
+per-command Runtime Home; neither preflight nor that disposable evidence
 satisfies `process_startup`, `host_session`, `required_tools`, or
 `tool_round_trip`. Guard uses `guard_files`, `guard_hook_execution`,
 `guard_observation`, and `guard_verification` as top-level operational checks.
@@ -356,7 +357,7 @@ verification persists
 `mcp.tool_verification.designation_mismatch`. Its bounded facts expose the exact
 `expected_tool_name` and `observed_tool_name`; JSON check details and verbose
 output likewise show the exact expected and observed names. A prior revision,
-CLI preflight row, missing milestone, or a pair split across sessions cannot
+non-managed runtime row, missing milestone, or a pair split across sessions cannot
 substitute for the current exact pair.
 
 Any bounded Codex version proceeds through these behavioral checks. The PATH
@@ -507,9 +508,9 @@ Each MCP process start creates an opaque Registry runtime-session ID before
 host thread metadata exists. `session_source` is exactly `managed_host`,
 `manual_cli`, `cli_preflight`, or `integration_probe`. Only atomic successful
 launch-lease consumption can create `managed_host`, and only `managed_host` can
-authorize an Agent Connection call. Public `volicord mcp --stdio` always
-records `manual_cli`; preflight and integration probes never count as managed
-host activity. The runtime session retains its owning Connection and Connection
+authorize an Agent Connection call. Public `volicord mcp serve` always
+records `manual_cli`; preflight creates no session, and integration probes
+never count as managed host activity. The runtime session retains its owning Connection and Connection
 integration revision.
 
 After a valid initialize request, that runtime owns one session-scoped typed
@@ -768,7 +769,7 @@ Trusted:
 Untrusted:
 
 - external host and client input;
-- a CLI-preflight, stale, closed, or wrong-revision session;
+- a manual, integration-probe, stale, closed, or wrong-revision session;
 - a session for another project, runtime, or Connection;
 - manually modified configuration; and
 - client/host version and process metadata as identity claims.

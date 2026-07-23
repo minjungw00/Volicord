@@ -1,5 +1,6 @@
-use std::{collections::BTreeMap, process::Command, time::Duration};
+use std::{process::Command, time::Duration};
 
+use serde_json::Value;
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
 
 use super::{
@@ -58,49 +59,56 @@ pub(super) fn validate_connection_preflight_report(
     connection_id: &str,
     mode: &str,
 ) -> Result<Option<McpPreflightDiagnostics>, String> {
-    let report = parse_colon_report(stdout)?;
-    expect_report_field(&report, "configuration", "valid")?;
-    expect_report_field(&report, "transport", "stdio")?;
-    expect_report_field(&report, "connection_id", connection_id)?;
-    expect_report_field(&report, "mode", mode)?;
-    expect_report_field(&report, "enabled", "true")?;
-    expect_report_field(&report, "registry_read", "passed")?;
-    expect_report_field(&report, "project_state_read", "passed")?;
+    let report: Value =
+        serde_json::from_str(stdout).map_err(|error| format!("invalid preflight JSON: {error}"))?;
+    expect_report_string(&report, "operation", "mcp_preflight")?;
+    expect_report_string(&report, "status", "passed")?;
+    expect_report_string(&report, "configuration", "valid")?;
+    expect_report_string(&report, "canonical_managed_entry", "passed")?;
+    expect_report_string(&report, "transport", "stdio")?;
+    expect_report_string(&report, "connection_id", connection_id)?;
+    expect_report_string(&report, "mode", mode)?;
+    expect_report_bool(&report, "enabled", true)?;
+    expect_report_string(&report, "registry_read", "passed")?;
+    expect_report_string(&report, "project_state_read", "passed")?;
+    expect_report_string(&report, "evidence_class", "read_only_preflight")?;
+    let side_effects = report
+        .get("side_effects")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "preflight field side_effects was missing or invalid".to_owned())?;
+    if !side_effects.is_empty() {
+        return Err("preflight declared side effects".to_owned());
+    }
+    let writeability = report
+        .get("writeability")
+        .ok_or_else(|| "preflight field writeability was missing".to_owned())?;
+    expect_report_string(writeability, "status", "not_checked")?;
+    expect_report_string(writeability, "requirement", "requires_active_verification")?;
     match mode {
-        CONNECTION_MODE_WORKFLOW => {
-            expect_report_field(&report, "project_state_write", "passed")?;
-            expect_report_field(&report, "effective_tool_mode", "workflow")?;
-        }
-        CONNECTION_MODE_READ_ONLY => {
-            expect_report_field(&report, "project_state_write", "passed")?;
-            expect_report_field(&report, "effective_tool_mode", "read_only")?;
-        }
+        CONNECTION_MODE_WORKFLOW | CONNECTION_MODE_READ_ONLY => {}
         other => return Err(format!("unsupported connection mode: {other}")),
     }
-    expect_report_field(&report, "tools_list_schema_validation", "passed")?;
+    expect_report_string(
+        &report,
+        "effective_tool_mode",
+        "requires_active_verification",
+    )?;
+    expect_report_string(&report, "tools_list_schema_validation", "passed")?;
     Ok(McpPreflightDiagnostics::from_preflight_report(&report))
 }
 
-fn parse_colon_report(stdout: &str) -> Result<BTreeMap<String, String>, String> {
-    let mut report = BTreeMap::new();
-    for line in stdout.lines() {
-        if let Some((key, value)) = line.split_once(':') {
-            report.insert(key.trim().to_owned(), value.trim().to_owned());
-        }
-    }
-    if report.is_empty() {
-        Err("preflight did not return a key-value report".to_owned())
-    } else {
-        Ok(report)
+fn expect_report_string(report: &Value, key: &str, expected: &str) -> Result<(), String> {
+    match report.get(key).and_then(Value::as_str) {
+        Some(actual) if actual == expected => Ok(()),
+        Some(actual) => Err(format!(
+            "preflight field {key} was {actual}, expected {expected}"
+        )),
+        None => Err(format!("preflight field {key} was missing")),
     }
 }
 
-fn expect_report_field(
-    report: &BTreeMap<String, String>,
-    key: &str,
-    expected: &str,
-) -> Result<(), String> {
-    match report.get(key) {
+fn expect_report_bool(report: &Value, key: &str, expected: bool) -> Result<(), String> {
+    match report.get(key).and_then(Value::as_bool) {
         Some(actual) if actual == expected => Ok(()),
         Some(actual) => Err(format!(
             "preflight field {key} was {actual}, expected {expected}"
@@ -126,7 +134,7 @@ mod tests {
 
     #[test]
     fn preflight_requires_current_storage_and_tool_schema_checks() {
-        let report = "configuration: valid\ntransport: stdio\nconnection_id: connection_fixture\nmode: workflow\nenabled: true\nregistry_read: passed\nproject_state_read: passed\nproject_state_write: passed\neffective_tool_mode: workflow\ntools_list_schema_validation: passed\n";
+        let report = r#"{"operation":"mcp_preflight","status":"passed","side_effects":[],"evidence_class":"read_only_preflight","configuration":"valid","canonical_managed_entry":"passed","transport":"stdio","connection_id":"connection_fixture","mode":"workflow","enabled":true,"registry_read":"passed","project_state_read":"passed","writeability":{"status":"not_checked","requirement":"requires_active_verification"},"effective_tool_mode":"requires_active_verification","tools_list_schema_validation":"passed"}"#;
         assert!(validate_connection_preflight_report(
             report,
             "connection_fixture",
@@ -134,15 +142,12 @@ mod tests {
         )
         .is_ok());
         assert!(validate_connection_preflight_report(
-            &report.replace("registry_read: passed\n", ""),
+            &report.replace(r#""registry_read":"passed","#, ""),
             "connection_fixture",
             CONNECTION_MODE_WORKFLOW
         )
         .is_err());
-        let read_only = report.replace("mode: workflow", "mode: read_only").replace(
-            "effective_tool_mode: workflow",
-            "effective_tool_mode: read_only",
-        );
+        let read_only = report.replace(r#""mode":"workflow""#, r#""mode":"read_only""#);
         assert!(validate_connection_preflight_report(
             &read_only,
             "connection_fixture",
@@ -151,8 +156,8 @@ mod tests {
         .is_ok());
         assert!(validate_connection_preflight_report(
             &report.replace(
-                "tools_list_schema_validation: passed",
-                "tools_list_schema_validation: failed"
+                r#""tools_list_schema_validation":"passed""#,
+                r#""tools_list_schema_validation":"failed""#
             ),
             "connection_fixture",
             CONNECTION_MODE_WORKFLOW

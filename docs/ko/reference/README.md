@@ -13,7 +13,7 @@
 - 외부 형식 호환성, 정확한 어댑터 선택, 공통 Git 객체 ID 검증: [외부 계약](external-contracts.md).
 - 첫 에이전트 호스트 설정: 가장 짧은 성공 경로는 [빠른 시작](../user-guide/quickstart.md)에, 전체 운영자 가이드는 [에이전트 호스트 설정](../user-guide/agent-host-setup.md)에, 하나의 사용자 범위 Agent Connection이 여러 저장소를 처리하는 경로는 [다중 저장소 에이전트 설정](../user-guide/multi-repository-agent-setup.md)에 있습니다.
 - 설정 실패와 복구: [에이전트 호스트 문제 해결](../user-guide/agent-host-troubleshooting.md).
-- 로컬 실행 파일 계약: `volicord` 관리 명령과 Runtime Home 선택은 [관리 CLI](admin-cli.md), `volicord mcp --stdio` 시작, 사전 점검, 응답 래핑, 종료는 [MCP 전송](mcp-transport.md)에 있습니다.
+- 로컬 실행 파일 계약: `volicord` 관리 명령과 Runtime Home 선택은 [관리 CLI](admin-cli.md), `volicord mcp preflight`, 수동 `volicord mcp serve`, 관리 시작, 응답 래핑, 종료는 [MCP 전송](mcp-transport.md)에 있습니다.
 - API 메서드 동작: [API 메서드](api/methods.md)에서 연결된 메서드 담당 문서.
 - API 스키마 묶음: [API 코어 스키마](api/schema-core.md), [상태 스키마](api/schema-state.md), [아티팩트 스키마](api/schema-artifacts.md), [사용자 행동 스키마](api/schema-user-action.md), [판단 스키마](api/schema-judgment.md), [값 집합](api/schema-value-sets.md).
 - API 오류 묶음: [API 오류](api/errors.md). 오류 코드, 우선순위, 응답 처리 경로, 차단 사유 처리 경로, 기계 판독 세부사항으로 안내합니다.
@@ -32,7 +32,7 @@
 - 공개 오류 코드 의미는 [API 오류 코드](api/error-codes.md)에, 오류 우선순위는 [API 오류 우선순위](api/error-precedence.md)에, 응답 분기 처리 경로는 [API 오류 처리 경로](api/error-routing.md)에, 기계 판독용 오류 세부사항은 [API 오류 세부사항](api/error-details.md)에 있습니다.
 - 공통 Git 객체 ID 검증과 canonicalization은 [외부 계약](external-contracts.md)이 담당합니다. 구조적 거부, 정책상 비허용, 사용 불가, 저하, 손상을 여러 표면에서 구분하는 의미는 [실패 모델](failure-model.md)이 담당하며, API 응답 표시는 계속 API 오류 담당 문서에 남습니다.
 - 기록 변경 억제 결과, scan budget, fail-safe 경로와 reason 식별자는 [Guard 기록 변경 억제](guard-suppression.md)가 담당합니다.
-- 관리용 `volicord` 명령은 로컬 부트스트랩 명령이며 공개 Volicord API 메서드가 아닙니다. `volicord mcp --stdio`는 별도의 두 번째 메서드 목록을 담당하지 않고 MCP stdio를 통해 공개 메서드 집합을 노출합니다.
+- 관리용 `volicord` 명령은 로컬 부트스트랩 명령이며 공개 Volicord API 메서드가 아닙니다. `volicord mcp serve`는 별도의 두 번째 메서드 목록을 담당하지 않고 수동 MCP stdio를 통해 공개 메서드 집합을 노출합니다.
 - 용어 조회는 선별된 독자용 용어를 다루는 [용어집](glossary.md)에서 시작하고, 구조화 용어와 식별자 통제는 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을 사용합니다.
 
 ## 기여자 / 유지보수 경로

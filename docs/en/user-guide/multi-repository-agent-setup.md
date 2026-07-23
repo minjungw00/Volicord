@@ -36,7 +36,7 @@ volicord connection verify codex
 
 ## Agent Selection
 
-Start the managed `volicord mcp --stdio` process with its exact connection
+Start the managed MCP process through the generated hidden launcher with its exact connection
 binding. The agent should call `volicord.list_projects`, select one allowed
 `project_id`, and pass that identity on project-scoped calls. Ambiguous or
 unlisted selection must fail closed.

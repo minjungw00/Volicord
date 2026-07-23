@@ -613,6 +613,29 @@ impl ConnectionCommandReport {
     fn operation_details(&self) -> Result<serde_json::Map<String, Value>, ConnectionCommandError> {
         let mut details = serde_json::Map::new();
         details.insert("dry_run".to_owned(), Value::Bool(self.dry_run));
+        if self.operation == CommandOperation::Verify {
+            details.insert(
+                "evidence_class".to_owned(),
+                Value::String("active_verification".to_owned()),
+            );
+            details.insert(
+                "side_effects".to_owned(),
+                serde_json::json!([
+                    "rollback_only_store_writeability_probes",
+                    "disposable_protocol_conformance",
+                    "diagnostic_reconciliation",
+                    "verification_report_persistence"
+                ]),
+            );
+            details.insert(
+                "does_not_prove".to_owned(),
+                serde_json::json!([
+                    "managed_host_operation",
+                    "future_launch_availability",
+                    "product_repository_correctness_outside_checked_contracts"
+                ]),
+            );
+        }
         if let Some(result) = self.result.as_ref() {
             details.insert(
                 "result".to_owned(),
@@ -910,6 +933,21 @@ mod tests {
             assert_top_level_keys(&value);
             assert_eq!(value["schema_version"], 2);
             assert_eq!(value["operation"], operation.as_str());
+            if operation == CommandOperation::Verify {
+                assert_eq!(
+                    value["operation_details"]["evidence_class"],
+                    "active_verification"
+                );
+                assert_eq!(
+                    value["operation_details"]["side_effects"],
+                    json!([
+                        "rollback_only_store_writeability_probes",
+                        "disposable_protocol_conformance",
+                        "diagnostic_reconciliation",
+                        "verification_report_persistence"
+                    ])
+                );
+            }
             assert_eq!(value["status"], "complete");
             assert_eq!(value["checks"].as_array().map(Vec::len), Some(1));
             assert_eq!(value["actions"], json!([]));
@@ -1130,6 +1168,11 @@ mod tests {
                     "  Repository: /workspace/product\n",
                     "  Config target: /home/user/.codex/config.toml\n",
                     "  Runtime home: /runtime\n\n",
+                    "Operation Effects\n",
+                    "  Operation: active verification\n",
+                    "  Evidence class: active_verification\n",
+                    "  Side effects: rollback-only Store writeability probes; disposable protocol conformance; diagnostic reconciliation; verification-report persistence\n",
+                    "  Does not prove: managed-host operation; future launch availability; Product Repository correctness outside checked contracts\n\n",
                     "Summary\n",
                     "  Status: failed\n",
                     "  Checks: 0 passed, 0 blocked, 0 pending, 1 failed, 0 not applicable\n\n",

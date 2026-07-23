@@ -614,20 +614,23 @@ Process를 시작하지 않으며 파일, timestamp, 보고서, action, 관찰, 
 바꾸지 않습니다. 이 status 보고서를 구체화하거나 설명하는 데 활성 검증은 필요하지
 않습니다.
 
-`volicord connection verify`는 선택적으로 실행하는 활성 probe 작업입니다. `codex`를
-탐색하고 version 명령을 실행한 뒤
-`volicord mcp --check`와 CLI 전용 MCP self-test를 실행합니다. 서버 conformance
-matrix는 프로덕션 지원 protocol profile마다 독립된 stdio process 하나를 실행합니다.
-각 revision에서 `initialize`, initialized notification, `tools/list`, 고정 schema와 필수
-도구 검증, `ToolVerificationRole::ManagedHostRoundTrip`에 결합된 도구 호출 정확히 하나,
-계약에 정한 정상
-EOF/종료 순서를 수행합니다. 모든 revision probe가 통과해야 집계 `mcp_server` check가
-통과합니다. 사전 점검과 자체 검사의 프로세스 시작 구체화는 모두
-점검 대상 호스트 구성에 사용된 정규 관리 시작 계약에서 파생합니다. 개인 연결 검증은 그
-계약의 정적 절대 `VOLICORD_HOME`을 사용합니다. 공유 연결 검증은 연결 작업이 선택한
-Runtime Home으로 전달 대상 `VOLICORD_HOME`을 해석하고 정규 Product Repository 루트에서
-저장소 검색을 실행합니다. Preflight와 self-test process는 `cli_preflight` 또는
-`manual_cli`로 남으며 managed-host 관찰을 만들지 않습니다.
+`volicord connection verify`는 선택적으로 실행하는 활성 검증 작업입니다. `codex`를
+탐색하고 version 명령을 실행한 뒤 선택한 Registry 및 project store에 한도가 있는
+rollback 전용 쓰기 가능성 probe를 수행하고, `volicord mcp preflight`와 CLI 전용 MCP
+self-test를 실행합니다. 서버 conformance matrix는 프로덕션 지원 protocol profile마다
+독립된 `volicord mcp serve` process 하나를 실행합니다. 각 revision에서 `initialize`,
+initialized notification, `tools/list`, 고정 schema와 필수 도구 검증,
+`ToolVerificationRole::ManagedHostRoundTrip`에 결합된 도구 호출 정확히 하나, 계약에
+정한 정상 EOF/종료 순서를 수행합니다. 모든 revision probe가 통과해야 집계
+`mcp_server` check가 통과합니다.
+
+Preflight 시작 구체화는 점검 대상 호스트 구성에 사용된 정규 관리 시작 계약에서
+파생하지만, preflight는 구성, Registry 및 project 상태, protocol profile, 도구 schema,
+host contract만 읽습니다. 쓰기 가능성을 probe하거나 runtime session 또는 finding을
+만들지 않습니다. 각 conformance 및 host 호환성 process는 해당 검증 명령이 소유하는
+새로운 일회용 Runtime Home과 Product Repository를 사용합니다. 이 process는
+`manual_cli`로 남고 일회용 fixture와 함께 제거되며, 선택한 사용자 Runtime Home에
+session이나 finding을 추가하거나 managed-host 관찰을 만들지 않습니다.
 
 `ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
 `AgentToolId::LIST_PROJECTS`에 결합되며 wire 이름 투영은
@@ -782,13 +785,31 @@ exit `0`을 사용합니다. 호환되는 명시적 `PreToolUse` policy-denial �
 ## MCP 명령
 
 ```text
-volicord mcp --stdio --connection <connection_id> [--project <project_id>]
-volicord mcp --stdio --discover-repository --host codex
-volicord mcp --check --connection <connection_id> [--project <project_id>]
+volicord mcp preflight --connection <connection_id> [--project <project_id>] [--verbose | --json]
+volicord mcp preflight --discover-repository --host codex [--verbose | --json]
+volicord mcp serve --connection <connection_id> [--project <project_id>]
+volicord mcp serve --discover-repository --host codex
 ```
 
-이 명령은 관리 stdio만 노출합니다. 정확한 framing, lifecycle, 도구 목록, 응답
-projection은 [MCP 전송](mcp-transport.md)이 담당합니다.
+`mcp preflight`는 읽기 전용 점검입니다. JSON projection은 `side_effects: []`, 증거
+class `read_only_preflight`, 쓰기 가능성 `not_checked`와
+`requires_active_verification`을 명시합니다. 현재 시작 구성과 선택한 읽기 표면을 점검할
+수 있음만 입증하며 Store 쓰기 가능성, 활성 protocol conformance, managed-host 동작,
+Agent Connection 권한은 입증하지 않습니다.
+
+`mcp serve`는 공개 수동 stdio 표면입니다. 이 명령이 만드는 모든 runtime source는
+`manual_cli`이며 어떤 flag나 environment variable로도 `managed_host`로 분류할 수
+없습니다. 선택한 Runtime Home에 runtime session과 lifecycle 관찰을 만들거나 갱신하고
+terminal finding을 만들 수 있습니다. 정확한 framing, lifecycle, 도구 목록, 응답
+projection은 [MCP 전송](mcp-transport.md)이 담당합니다. 생성 Codex entry는 유일한 관리
+시작 표면인 숨겨진 `_host-launch` 경로를 사용합니다.
+
+`connection verify`의 human 및 JSON 출력은 활성 작업, 증거 class
+`active_verification`, 가능한 효과를 명시합니다. 가능한 효과는 rollback 전용 Store
+쓰기 가능성 probe, 일회용 protocol 및 host 호환성 conformance session, diagnostic
+reconciliation, 검증 보고서 영속화입니다. 활성 검증도 관리 host가 실제로 실행되었음,
+미래 시작의 지속적인 가용성, 확인한 계약 밖의 Product Repository 동작 정확성은
+입증하지 않습니다.
 
 `volicord connection verify codex`는 정규 `guard_verification` check와 사용할 수 있는 경우
 verification/run/event ID를 보고하지만, CLI가 채팅 내 작업 흐름을 합성하거나 실행하지는
@@ -799,9 +820,8 @@ self-test, 이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 �
 관찰할 뿐 프로젝트 trust를 자동화·승인·우회하거나 MCP trust configuration을 변경하지
 않습니다.
 
-생성 Codex entry는 이 공개 수동 stdio 명령 대신 숨겨진 `_host-launch` 명령을 사용합니다.
-`_host-launch`는 host 소유이고 일반 help에 표시하지 않으며 별도의 관리 또는 공개 API
-표면이 아닙니다.
+생성 Codex entry는 숨겨진 `_host-launch` 명령을 사용합니다. `_host-launch`는 host
+소유이고 일반 help에 표시하지 않으며 별도의 관리 또는 공개 API 표면이 아닙니다.
 
 <a id="diagnostics"></a>
 ## Diagnostics

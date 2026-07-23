@@ -486,13 +486,14 @@ fn invocation_args(
             }
             let mut args = vec![
                 "mcp".to_owned(),
-                "--check".to_owned(),
+                "preflight".to_owned(),
                 "--connection".to_owned(),
                 connection_id.clone(),
             ];
             if let Some(project_id) = project_id {
                 args.extend(["--project".to_owned(), project_id.clone()]);
             }
+            args.push("--json".to_owned());
             Ok(args)
         }
     }
@@ -502,13 +503,13 @@ fn manual_stdio_args(binding: &ManagedMcpBinding) -> Vec<String> {
     match binding {
         ManagedMcpBinding::Personal { connection_id, .. } => vec![
             "mcp".to_owned(),
-            "--stdio".to_owned(),
+            "serve".to_owned(),
             "--connection".to_owned(),
             connection_id.clone(),
         ],
         ManagedMcpBinding::SharedRepository { host_kind } => vec![
             "mcp".to_owned(),
-            "--stdio".to_owned(),
+            "serve".to_owned(),
             "--discover-repository".to_owned(),
             "--host".to_owned(),
             host_kind.as_str().to_owned(),
@@ -906,7 +907,7 @@ mod tests {
         );
         assert_eq!(
             first.args(),
-            ["mcp", "--stdio", "--discover-repository", "--host", "codex"]
+            ["mcp", "serve", "--discover-repository", "--host", "codex"]
         );
         let mut command = Command::new(first.command());
         for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES
@@ -992,7 +993,7 @@ mod tests {
         let handshake = materialize(ManagedMcpInvocationPurpose::CliStdioHandshake);
         assert_eq!(
             handshake.args(),
-            ["mcp", "--stdio", "--connection", "connection_alpha"]
+            ["mcp", "serve", "--connection", "connection_alpha"]
         );
         let preflight = materialize(
             ManagedMcpInvocationPurpose::cli_preflight_check("connection_alpha", None)
@@ -1000,7 +1001,13 @@ mod tests {
         );
         assert_eq!(
             preflight.args(),
-            ["mcp", "--check", "--connection", "connection_alpha"]
+            [
+                "mcp",
+                "preflight",
+                "--connection",
+                "connection_alpha",
+                "--json"
+            ]
         );
         for invocation in [managed, handshake, preflight] {
             for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES {
@@ -1034,11 +1041,12 @@ mod tests {
             preflight.args(),
             [
                 "mcp",
-                "--check",
+                "preflight",
                 "--connection",
                 "connection_alpha",
                 "--project",
-                "project_alpha"
+                "project_alpha",
+                "--json"
             ]
         );
         assert_eq!(spec.canonical_projection(), projection);

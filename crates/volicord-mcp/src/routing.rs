@@ -2,6 +2,7 @@ use crate::errors::McpAdapterError;
 use crate::prelude::*;
 use crate::util::*;
 use schemars::{schema_for, JsonSchema};
+use volicord_host_contract::HostContractProfileId;
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_types::HostKind;
 
@@ -210,17 +211,6 @@ pub(crate) enum McpEffectiveToolMode {
     Unavailable,
 }
 
-impl McpEffectiveToolMode {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Workflow => "workflow",
-            Self::ReadOnlyDegraded => "read_only_degraded",
-            Self::ReadOnly => "read_only",
-            Self::Unavailable => "unavailable",
-        }
-    }
-}
-
 pub(crate) fn effective_tool_mode_for_mode_and_storage(
     mode: AgentConnectionMode,
     storage_capability: McpStorageCapability,
@@ -280,7 +270,7 @@ impl McpConnectionStartupInspection {
         };
         let project_reports = selected_projects
             .iter()
-            .map(inspect_allowed_project)
+            .map(inspect_allowed_project_read_only)
             .collect::<Vec<_>>();
 
         Ok(Self {
@@ -303,54 +293,80 @@ impl McpConnectionStartupInspection {
         }
     }
 
-    /// Formats the deterministic operator preflight report.
-    pub fn preflight_report(&self) -> String {
+    /// Projects the deterministic read-only preflight report.
+    pub fn preflight_report(&self) -> McpPreflightReport {
         let available_projects = self
             .projects
             .iter()
             .filter(|project| project.available)
             .count();
-        let storage_capability = storage_capability_for_projects(&self.projects);
-        let effective_tool_mode =
-            effective_tool_mode_for_mode_and_storage(self.mode, storage_capability);
         let tools = crate::tool_registry::mcp_tools_for_mode_and_storage_with_detail(
             self.mode,
-            storage_capability,
+            McpStorageCapability::Unknown,
             crate::tool_registry::ToolSchemaDetail::RuntimeCompact,
         );
         let tools_list_schema_validation =
             crate::tool_registry::tools_list_schema_validation_status(&tools);
         let tool_naming_style = crate::tool_registry::mcp_tool_naming_style(&tools);
-        let mut report = format!(
-            "configuration: valid\ntransport: stdio\n{}\nruntime_home: {}\nconnection_id: {}\nmode: {}\nenabled: {}\nregistry_read: passed\nproject_state_read: {}\nproject_state_write: {}\neffective_tool_mode: {}\ntools_list_schema_validation: {}\ntool_naming_style: {}\nallowed_projects: {}\navailable_projects: {}\nverification_scope: startup_check_only\n",
-            TRANSPORT_DISCLOSURE_TEXT,
-            self.runtime_home.display(),
-            self.connection_internal_id.as_str(),
-            self.mode.as_str(),
-            self.enabled,
-            self.project_state_read_status(),
-            project_state_write_status(storage_capability),
-            effective_tool_mode.as_str(),
+        McpPreflightReport {
+            operation: "mcp_preflight",
+            status: if self.projects.iter().all(|project| project.available) {
+                "passed"
+            } else {
+                "failed"
+            },
+            side_effects: Vec::new(),
+            evidence_class: "read_only_preflight",
+            does_not_prove: vec![
+                "store_writeability",
+                "active_protocol_conformance",
+                "managed_host_operation",
+                "agent_connection_authority",
+            ],
+            configuration: "valid",
+            canonical_managed_entry: "passed",
+            transport: "stdio",
+            transport_disclosure: TRANSPORT_DISCLOSURE_TEXT,
+            runtime_home: self.runtime_home.display().to_string(),
+            connection_id: self.connection_internal_id.as_str().to_owned(),
+            mode: self.mode.as_str(),
+            enabled: self.enabled,
+            registry_read: "passed",
+            project_state_read: self.project_state_read_status(),
+            writeability: McpPreflightWriteability {
+                status: "not_checked",
+                requirement: "requires_active_verification",
+            },
+            effective_tool_mode: "requires_active_verification",
             tools_list_schema_validation,
             tool_naming_style,
-            self.allowed_project_count,
+            protocol_profiles: ProtocolRegistry::production()
+                .oldest_to_newest()
+                .map(|profile| profile.revision().as_str().to_owned())
+                .collect(),
+            host_contracts: HostContractProfileId::ALL
+                .into_iter()
+                .map(|profile| McpPreflightHostContract {
+                    profile: profile.as_str(),
+                    digest: profile.contract_digest(),
+                })
+                .collect(),
+            allowed_projects: self.allowed_project_count,
             available_projects,
-        );
-        for (index, project) in self.projects.iter().enumerate() {
-            report.push_str(&format!(
-                "project[{index}].project_id: {}\nproject[{index}].available: {}\nproject[{index}].state_read: {}\nproject[{index}].state_write: {}\nproject[{index}].unavailable_reason: {}\nproject[{index}].repo_root: {}\n",
-                project.project_id,
-                project.available,
-                project.state_read_status(),
-                project.state_write_status(),
-                project
-                    .unavailable_reason
-                    .as_deref()
-                    .unwrap_or("not_applicable"),
-                project.repo_root_display
-            ));
+            projects: self
+                .projects
+                .iter()
+                .map(|project| McpPreflightProject {
+                    project_id: project.project_id.clone(),
+                    available: project.available,
+                    state_read: project.state_read_status(),
+                    state_write: "not_checked",
+                    writeability_requirement: "requires_active_verification",
+                    unavailable_reason: project.unavailable_reason.clone(),
+                    repo_root: project.repo_root_display.clone(),
+                })
+                .collect(),
         }
-        report
     }
 
     fn project_state_read_status(&self) -> &'static str {
@@ -360,6 +376,107 @@ impl McpConnectionStartupInspection {
             "failed"
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct McpPreflightReport {
+    pub operation: &'static str,
+    pub status: &'static str,
+    pub side_effects: Vec<&'static str>,
+    pub evidence_class: &'static str,
+    pub does_not_prove: Vec<&'static str>,
+    pub configuration: &'static str,
+    pub canonical_managed_entry: &'static str,
+    pub transport: &'static str,
+    pub transport_disclosure: &'static str,
+    pub runtime_home: String,
+    pub connection_id: String,
+    pub mode: &'static str,
+    pub enabled: bool,
+    pub registry_read: &'static str,
+    pub project_state_read: &'static str,
+    pub writeability: McpPreflightWriteability,
+    pub effective_tool_mode: &'static str,
+    pub tools_list_schema_validation: &'static str,
+    pub tool_naming_style: &'static str,
+    pub protocol_profiles: Vec<String>,
+    pub host_contracts: Vec<McpPreflightHostContract>,
+    pub allowed_projects: usize,
+    pub available_projects: usize,
+    pub projects: Vec<McpPreflightProject>,
+}
+
+impl McpPreflightReport {
+    pub fn render_human(&self, verbose: bool) -> String {
+        let mut output = format!(
+            "Operation: MCP preflight\nStatus: {}\nSide effects: none\nEvidence class: {}\nDoes not prove: {}\nWriteability: {} ({})\n",
+            self.status,
+            self.evidence_class,
+            self.does_not_prove.join(", "),
+            self.writeability.status,
+            self.writeability.requirement,
+        );
+        if verbose {
+            output.push_str(&format!(
+                "Configuration: {}\nCanonical managed entry: {}\nTransport: {}\n{}\nRuntime Home: {}\nConnection: {}\nMode: {}\nRegistry read: {}\nProject state read: {}\nTool schema validation: {}\nTool naming style: {}\nProtocol profiles: {}\nHost contracts: {}\nAllowed projects: {}\nAvailable projects: {}\n",
+                self.configuration,
+                self.canonical_managed_entry,
+                self.transport,
+                self.transport_disclosure,
+                self.runtime_home,
+                self.connection_id,
+                self.mode,
+                self.registry_read,
+                self.project_state_read,
+                self.tools_list_schema_validation,
+                self.tool_naming_style,
+                self.protocol_profiles.join(", "),
+                self.host_contracts
+                    .iter()
+                    .map(|contract| contract.profile)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.allowed_projects,
+                self.available_projects,
+            ));
+            for project in &self.projects {
+                output.push_str(&format!(
+                    "Project {}: available={}, state_read={}, state_write={} ({}), repo_root={}\n",
+                    project.project_id,
+                    project.available,
+                    project.state_read,
+                    project.state_write,
+                    project.writeability_requirement,
+                    project.repo_root,
+                ));
+            }
+        }
+        output
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct McpPreflightWriteability {
+    pub status: &'static str,
+    pub requirement: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct McpPreflightProject {
+    pub project_id: String,
+    pub available: bool,
+    pub state_read: &'static str,
+    pub state_write: &'static str,
+    pub writeability_requirement: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+    pub repo_root: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct McpPreflightHostContract {
+    pub profile: &'static str,
+    pub digest: String,
 }
 
 /// MCP-visible availability facts for one connection-allowed project.
@@ -379,10 +496,6 @@ impl McpProjectAvailability {
         } else {
             "failed"
         }
-    }
-
-    fn state_write_status(&self) -> &'static str {
-        project_state_write_status(self.storage_capability)
     }
 }
 
@@ -409,13 +522,8 @@ pub(crate) fn storage_capability_for_projects(
     McpStorageCapability::Unknown
 }
 
-fn project_state_write_status(storage_capability: McpStorageCapability) -> &'static str {
-    match storage_capability {
-        McpStorageCapability::ReadWrite => "passed",
-        McpStorageCapability::ReadOnly => "readonly",
-        McpStorageCapability::Unavailable => "skipped",
-        McpStorageCapability::Unknown => "failed",
-    }
+fn inspect_allowed_project_read_only(project: &ConnectionProjectRecord) -> McpProjectAvailability {
+    inspect_allowed_project_with_write_probe(project, false)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
@@ -607,6 +715,13 @@ pub(crate) fn current_enabled_connection(
 }
 
 pub(crate) fn inspect_allowed_project(project: &ConnectionProjectRecord) -> McpProjectAvailability {
+    inspect_allowed_project_with_write_probe(project, true)
+}
+
+fn inspect_allowed_project_with_write_probe(
+    project: &ConnectionProjectRecord,
+    probe_writeability: bool,
+) -> McpProjectAvailability {
     let repo_root_display = project.project.repo_root.display().to_string();
     if project.project.status != ACTIVE_PROJECT_STATUS {
         return unavailable_project(project, repo_root_display, "project is not active");
@@ -638,11 +753,14 @@ pub(crate) fn inspect_allowed_project(project: &ConnectionProjectRecord) -> McpP
             ),
         );
     }
-    let storage_capability = match sqlite_database_write_capability(&project.project.state_db_path)
-    {
-        Ok(true) => McpStorageCapability::ReadWrite,
-        Ok(false) => McpStorageCapability::ReadOnly,
-        Err(_) => McpStorageCapability::Unknown,
+    let storage_capability = if probe_writeability {
+        match sqlite_database_write_capability(&project.project.state_db_path) {
+            Ok(true) => McpStorageCapability::ReadWrite,
+            Ok(false) => McpStorageCapability::ReadOnly,
+            Err(_) => McpStorageCapability::Unknown,
+        }
+    } else {
+        McpStorageCapability::Unknown
     };
     McpProjectAvailability {
         project_id: project.project_id.clone(),

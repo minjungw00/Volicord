@@ -1,9 +1,20 @@
-use std::{process::Command, time::Duration};
+use std::{fs, process::Command, time::Duration};
 
 use serde_json::{json, Value};
-use volicord_mcp::MaterializedManagedMcpLaunch;
+use tempfile::TempDir;
+use volicord_mcp::{MaterializedManagedMcpLaunch, VOLICORD_HOME_ENV};
 use volicord_mcp_protocol::{McpProtocolRevision, ProtocolRegistry};
-use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
+use volicord_store::{
+    agent_connections::{
+        add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
+        ConnectionProjectRegistration, CONNECTION_INTENT_PERSONAL, CONNECTION_MODE_READ_ONLY,
+        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_USER,
+    },
+    bootstrap::{
+        initialize_runtime_home, register_project, write_installation_profile,
+        InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
+    },
+};
 use volicord_types::{AgentConnectionMode, AgentToolId};
 
 use crate::connection_command::managed_host_round_trip_tool;
@@ -184,7 +195,135 @@ pub(super) fn verify_mcp_stdio_process(
     mode: &str,
     timeout: Duration,
 ) -> McpExchangeOutcome {
-    verify_mcp_stdio_command_factory(|| launch.process_command(), mode, timeout)
+    let fixture = match DisposableConformanceFixture::new(launch, mode) {
+        Ok(fixture) => fixture,
+        Err(detail) => {
+            return McpExchangeOutcome::failed(
+                McpExchangeProgress::not_started(),
+                McpProcessFailure::Spawn {
+                    stage: McpStage::Startup,
+                    io_detail: BoundedText::from_utf8(
+                        detail,
+                        super::failure::MAX_IO_DETAIL_BYTES,
+                        "disposable conformance fixture",
+                    ),
+                },
+            )
+        }
+    };
+    verify_mcp_stdio_command_factory(|| fixture.command(), mode, timeout)
+}
+
+struct DisposableConformanceFixture {
+    _temp_dir: TempDir,
+    runtime_home: std::path::PathBuf,
+    repo_root: std::path::PathBuf,
+    command: String,
+}
+
+impl DisposableConformanceFixture {
+    const CONNECTION_ID: &'static str = "connection_verification_fixture";
+    const PROJECT_ID: &'static str = "project_verification_fixture";
+
+    fn new(launch: &MaterializedManagedMcpLaunch, mode: &str) -> Result<Self, String> {
+        if !matches!(mode, CONNECTION_MODE_WORKFLOW | CONNECTION_MODE_READ_ONLY) {
+            return Err(format!("unsupported connection mode: {mode}"));
+        }
+        let temp_dir = tempfile::Builder::new()
+            .prefix("volicord-connection-verify-")
+            .tempdir()
+            .map_err(|error| {
+                format!("failed to create disposable verification fixture: {error}")
+            })?;
+        let runtime_home = temp_dir.path().join("runtime-home");
+        let repo_root = temp_dir.path().join("product-repository");
+        fs::create_dir_all(&repo_root)
+            .map_err(|error| format!("failed to create disposable Product Repository: {error}"))?;
+        initialize_runtime_home(&runtime_home, "runtime_home_verification_fixture", "{}")
+            .map_err(|error| format!("failed to initialize disposable Runtime Home: {error}"))?;
+        write_installation_profile(
+            &runtime_home,
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: launch.command().to_owned(),
+                volicord_mcp_command: launch.command().to_owned(),
+                bin_dir: runtime_home.join("bin"),
+                default_connection_mode: mode.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )
+        .map_err(|error| format!("failed to write disposable installation profile: {error}"))?;
+        register_project(
+            &runtime_home,
+            ProjectRegistration {
+                project_id: Self::PROJECT_ID.to_owned(),
+                repo_root: repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )
+        .map_err(|error| format!("failed to register disposable project: {error}"))?;
+        ensure_agent_connection(
+            &runtime_home,
+            AgentConnectionRegistration {
+                connection_internal_id: Self::CONNECTION_ID.to_owned(),
+                host_kind: HOST_KIND_CODEX.to_owned(),
+                intent: CONNECTION_INTENT_PERSONAL.to_owned(),
+                host_scope: HOST_SCOPE_USER.to_owned(),
+                server_name: "volicord-verification-fixture".to_owned(),
+                config_target: temp_dir
+                    .path()
+                    .join("codex-config.toml")
+                    .to_string_lossy()
+                    .into_owned(),
+                mode: mode.to_owned(),
+                enabled: true,
+                managed_fingerprint: "disposable-verification-fixture".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )
+        .map_err(|error| format!("failed to register disposable connection: {error}"))?;
+        add_connection_project(
+            &runtime_home,
+            ConnectionProjectRegistration {
+                connection_internal_id: Self::CONNECTION_ID.to_owned(),
+                project_id: Self::PROJECT_ID.to_owned(),
+            },
+        )
+        .map_err(|error| format!("failed to attach disposable project: {error}"))?;
+        Ok(Self {
+            _temp_dir: temp_dir,
+            runtime_home,
+            repo_root,
+            command: launch.command().to_owned(),
+        })
+    }
+
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.command);
+        command.args([
+            "mcp",
+            "serve",
+            "--connection",
+            Self::CONNECTION_ID,
+            "--project",
+            Self::PROJECT_ID,
+        ]);
+        command.env_remove(VOLICORD_HOME_ENV);
+        for name in [
+            "VOLICORD_MCP_LAUNCH",
+            "VOLICORD_MCP_HOST",
+            "VOLICORD_MCP_CONNECTION_ID",
+            "VOLICORD_MCP_VERIFICATION",
+            "VOLICORD_MCP_PROJECT_ID",
+        ] {
+            command.env_remove(name);
+        }
+        command.env(VOLICORD_HOME_ENV, &self.runtime_home);
+        command.current_dir(&self.repo_root);
+        command
+    }
 }
 
 #[cfg(test)]

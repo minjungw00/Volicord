@@ -35,7 +35,7 @@ volicord connection verify codex
 
 ## 에이전트 선택
 
-정확한 연결 binding으로 관리 `volicord mcp --stdio` 프로세스를 시작합니다.
+정확한 연결 binding으로 생성된 숨겨진 launcher를 통해 관리 MCP 프로세스를 시작합니다.
 에이전트는 `volicord.list_projects`를 호출해 허용된 `project_id` 하나를 선택하고
 프로젝트 범위 호출에 그 identity를 전달해야 합니다. 모호하거나 목록에 없는 선택은
 fail closed해야 합니다.
