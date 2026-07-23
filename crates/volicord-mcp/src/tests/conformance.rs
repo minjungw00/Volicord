@@ -98,8 +98,7 @@ fn every_production_profile_executes_the_transport_and_eof_matrix() -> Result<()
             "SELECT runtime_session_id
                FROM mcp_runtime_sessions
               WHERE connection_internal_id = ?1
-              ORDER BY process_started_at DESC, runtime_session_id DESC
-              LIMIT 1",
+                AND session_source = 'manual_cli'",
             [fixture.connection_id()],
             |row| row.get::<_, String>(0),
         )?;

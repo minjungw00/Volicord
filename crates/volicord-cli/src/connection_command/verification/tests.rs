@@ -3,6 +3,7 @@ use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{DiagnosticCause, DiagnosticFindingData, OccurrenceDiagnosticFinding};
 
 use super::*;
+use crate::host_integration::verification::ProjectTrustDiagnostic;
 
 const CURRENT_REVISION: &str =
     "sha256:1111111111111111111111111111111111111111111111111111111111111111";
@@ -74,6 +75,28 @@ fn host(version: &str) -> Verification {
         host_executable_details: "version probe passed".to_owned(),
         project_trust: None,
     }
+}
+
+#[test]
+fn unknown_project_trust_remains_a_typed_pending_observation() {
+    let mut verification = host("999.123-preview+custom");
+    verification.project_trust = Some(ProjectTrustDiagnostic {
+        status: ProjectTrustStatus::Unknown,
+        code: "project_trust_config_unavailable".to_owned(),
+        config_path: String::new(),
+        repo_root: "/repo".to_owned(),
+        details: "Codex user configuration could not be located".to_owned(),
+    });
+
+    let check = project_trust_check(&verification).expect("project trust check");
+    assert_eq!(check.status(), ConnectionCheckStatus::Pending);
+    assert_eq!(check.code(), Some("project_trust_config_unavailable"));
+    let details = check
+        .details()
+        .expect("typed project trust details")
+        .as_object();
+    assert_eq!(details.get("observed_state"), Some(&json!("unknown")));
+    assert_eq!(details.get("repo_root"), Some(&json!("/repo")));
 }
 
 fn managed_session(version: &str, required_tools_present: bool) -> McpRuntimeSessionRecord {

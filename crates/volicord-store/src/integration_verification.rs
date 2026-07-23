@@ -1305,6 +1305,116 @@ mod tests {
     }
 
     #[test]
+    fn ordered_current_events_are_required_instead_of_unrelated_history(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = VerificationFixture::new("guard-integration-event-order")?;
+        let run = fixture.begin()?;
+        acknowledge_guard_integration_probe(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:04Z",
+        )?;
+        let probe_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
+
+        for (event_id, phase, occurred_at) in [
+            (
+                "guard_event_historical_pre",
+                "pre_tool",
+                "2026-07-23T00:00:00.500Z",
+            ),
+            (
+                "guard_event_historical_post",
+                "post_tool",
+                "2026-07-23T00:00:00.750Z",
+            ),
+        ] {
+            fixture.insert_tool_event(ToolEventFixture {
+                event_id,
+                phase,
+                turn: HOST_TURN_ID,
+                tool_use_id: "tool_use_historical",
+                tool_name: probe_name.as_str(),
+                verification_id: &run.verification_id,
+                occurred_at,
+                digest: None,
+            })?;
+        }
+        refresh_guard_integration_verification_for_event(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "guard_event_historical_post",
+        )?;
+        assert_eq!(
+            get_guard_integration_verification(
+                fixture.runtime_home.path(),
+                &run.verification_id,
+                &fixture.caller(),
+                "2026-07-23T00:00:04.100Z",
+            )?
+            .status,
+            GuardIntegrationVerificationStatus::Active,
+            "matching-looking events before the captured prompt cannot complete the run",
+        );
+
+        fixture.insert_tool_event(ToolEventFixture {
+            event_id: "guard_event_current_pre",
+            phase: "pre_tool",
+            turn: HOST_TURN_ID,
+            tool_use_id: "tool_use_current",
+            tool_name: probe_name.as_str(),
+            verification_id: &run.verification_id,
+            occurred_at: "2026-07-23T00:00:03.500Z",
+            digest: None,
+        })?;
+        fixture.insert_tool_event(ToolEventFixture {
+            event_id: "guard_event_post_before_ack",
+            phase: "post_tool",
+            turn: HOST_TURN_ID,
+            tool_use_id: "tool_use_current",
+            tool_name: probe_name.as_str(),
+            verification_id: &run.verification_id,
+            occurred_at: "2026-07-23T00:00:03.750Z",
+            digest: None,
+        })?;
+        refresh_guard_integration_verification_for_event(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "guard_event_post_before_ack",
+        )?;
+        assert_eq!(
+            get_guard_integration_verification(
+                fixture.runtime_home.path(),
+                &run.verification_id,
+                &fixture.caller(),
+                "2026-07-23T00:00:04.200Z",
+            )?
+            .status,
+            GuardIntegrationVerificationStatus::Active,
+            "a post-tool event before probe acknowledgement cannot complete the run",
+        );
+
+        fixture.insert_tool_event(ToolEventFixture {
+            event_id: "guard_event_current_post",
+            phase: "post_tool",
+            turn: HOST_TURN_ID,
+            tool_use_id: "tool_use_current",
+            tool_name: probe_name.as_str(),
+            verification_id: &run.verification_id,
+            occurred_at: "2026-07-23T00:00:04.500Z",
+            digest: None,
+        })?;
+        let updated = refresh_guard_integration_verification_for_event(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            "guard_event_current_post",
+        )?
+        .expect("current verification");
+        assert_eq!(updated.status, "passed");
+        Ok(())
+    }
+
+    #[test]
     fn manual_or_preflight_runtime_is_rejected_and_stale_owner_facts_fail(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = VerificationFixture::new("guard-integration-stale")?;

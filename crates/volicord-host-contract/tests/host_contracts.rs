@@ -113,6 +113,38 @@ fn hooks_parse_without_thread_and_keep_source_specific_correlation() {
 }
 
 #[test]
+fn guard_probe_hook_fixtures_preserve_exact_typed_correlation() {
+    let pre = CodexHooksV1
+        .parse(&read_json("hooks-v1/pre-tool-use-mcp.json"))
+        .expect("Guard probe pre-tool fixture");
+    let post = CodexHooksV1
+        .parse(&read_json("hooks-v1/post-tool-use-mcp.json"))
+        .expect("Guard probe post-tool fixture");
+    let (
+        CodexHookEvent::PreToolUse {
+            correlation: pre,
+            tool_input: pre_input,
+            ..
+        },
+        CodexHookEvent::PostToolUse {
+            correlation: post,
+            tool_input: post_input,
+            ..
+        },
+    ) = (pre, post)
+    else {
+        panic!("Guard probe fixtures must retain their event variants");
+    };
+    assert_eq!(pre, post);
+    assert_eq!(pre.tool_name.as_str(), "mcp__volicord__guard_probe");
+    assert_eq!(
+        pre_input.as_value(),
+        &json!({"verification_id": "guard_verification_fixture_001"})
+    );
+    assert_eq!(pre_input, post_input);
+}
+
+#[test]
 fn mcp_and_hook_correlation_are_not_interchangeable() {
     let mcp = CodexMcpTurnMetadataV1
         .parse_tools_call(&read_json("mcp-turn-metadata-v1/tools-call.json"))
@@ -132,6 +164,15 @@ fn mcp_and_hook_correlation_are_not_interchangeable() {
 
 #[test]
 fn required_hook_fields_and_tool_use_ids_fail_closed() {
+    let mut missing_session = read_json("hooks-v1/pre-tool-use-mcp.json");
+    missing_session
+        .as_object_mut()
+        .unwrap()
+        .remove("session_id");
+    let error = CodexHooksV1.parse(&missing_session).unwrap_err();
+    assert_eq!(error.code(), HostContractErrorCode::MissingRequiredField);
+    assert_eq!(error.field(), "session_id");
+
     let mut missing_turn = read_json("hooks-v1/user-prompt-submit.json");
     missing_turn.as_object_mut().unwrap().remove("turn_id");
     let error = CodexHooksV1.parse(&missing_turn).unwrap_err();
@@ -157,6 +198,12 @@ fn hook_profiles_allow_additive_fields_but_bound_tool_payloads() {
     let error = CodexHooksV1.parse(&additive).unwrap_err();
     assert_eq!(error.code(), HostContractErrorCode::PayloadTooLarge);
     assert_eq!(error.field(), "tool_input");
+
+    let mut additive_mcp = read_json("mcp-turn-metadata-v1/tools-call.json");
+    additive_mcp["params"]["_meta"]["future_optional_field"] = json!({"reviewed": true});
+    CodexMcpTurnMetadataV1
+        .parse_tools_call(&additive_mcp)
+        .expect("unknown additive MCP metadata remains compatible");
 }
 
 #[test]

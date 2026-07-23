@@ -119,7 +119,7 @@ fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     codex_2025_06_18_compatibility_records_managed_runtime_facts()?;
     verification_tool_designation_mismatch_is_typed()?;
     managed_launch_contracts_survive_filtered_environments()?;
-    fresh_operation_version_transition_and_read_only_status()?;
+    complete_managed_activation_journey_and_read_only_status()?;
     connection_mode_transition_rebinds_guard_revision()?;
     connection_mode_preflight_failure_preserves_connection()?;
     connection_removal_after_operational_observations()?;
@@ -1004,7 +1004,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
     Ok(())
 }
 
-fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<dyn Error>> {
+fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<dyn Error>> {
     let fixture = OperationalFixture::new("operational-host-complete")?;
     let init = fixture.run_init(FUTURE_VERSION, None, false)?;
     let init_report = assert_connection_report(&init, 0, "init", "action_required")?;
@@ -1020,9 +1020,26 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     assert_check(&init_report, "tool_round_trip", "pending", None);
     assert_check(&init_report, "guard_observation", "pending", None);
     assert_check(&init_report, "guard_verification", "pending", None);
-    assert!(init_report["actions"]
-        .as_array()
-        .is_some_and(|actions| !actions.is_empty()));
+    assert_eq!(init_report["activation_state"], "host_reload_required");
+    assert_eq!(
+        init_report["hook_activation_state"],
+        "review_required_by_setup"
+    );
+    let initial_actions = init_report["actions"].as_array().expect("initial actions");
+    assert_eq!(initial_actions.len(), 4);
+    for (id, owner, channel) in [
+        ("reload_host", "user", "codex_ui"),
+        ("review_hooks", "user", "codex_ui"),
+        ("run_guard_probe", "agent", "mcp_tool"),
+        ("run_mcp_verification", "agent", "mcp_tool"),
+    ] {
+        let action = initial_actions
+            .iter()
+            .find(|action| action["id"] == id)
+            .unwrap_or_else(|| panic!("missing initial action {id}: {init_report}"));
+        assert_eq!(action["owner"], owner);
+        assert_eq!(action["channel"], channel);
+    }
 
     let snapshot = fixture.registry_snapshot();
     assert_eq!(snapshot.projects.len(), 1);
@@ -1057,6 +1074,18 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
 
     let complete = fixture.run_connection("status", FUTURE_VERSION, true)?;
     let complete_report = assert_connection_report(&complete, 0, "status", "complete")?;
+    assert_eq!(complete_report["activation_state"], "complete");
+    assert_eq!(
+        complete_report["hook_activation_state"],
+        "effective_by_observation"
+    );
+    assert_eq!(complete_report["root_cause_ids"], json!([]));
+    for check in complete_report["checks"].as_array().expect("checks") {
+        assert!(
+            matches!(check["status"].as_str(), Some("passed" | "not_applicable")),
+            "complete activation retained a nonterminal check: {check}"
+        );
+    }
     for check_id in [
         "guard_observation",
         "guard_verification",
@@ -1098,6 +1127,43 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     );
     assert!(round_trip["details"]["verification_tool"]["observed_at"].is_string());
     assert_eq!(complete_report["actions"], json!([]));
+    let runtime_sessions = complete_report["connection"]["runtime_sessions"]
+        .as_array()
+        .expect("role-bearing runtime sessions");
+    assert_eq!(runtime_sessions.len(), 1);
+    assert_eq!(
+        runtime_sessions[0]["roles"],
+        json!(["latest_attempt", "latest_complete_proof"])
+    );
+    let complete_runtime_session_id = runtime_sessions[0]["id"]
+        .as_str()
+        .ok_or("complete runtime-session ID")?;
+    let registry = rusqlite::Connection::open(fixture.runtime_home.join("registry.sqlite"))?;
+    let complete_session_source: String = registry.query_row(
+        "SELECT session_source FROM mcp_runtime_sessions WHERE runtime_session_id = ?1",
+        [complete_runtime_session_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(complete_session_source, "managed_host");
+    let non_managed_session_count: i64 = registry.query_row(
+        "SELECT COUNT(*)
+           FROM mcp_runtime_sessions
+          WHERE connection_internal_id = ?1
+            AND session_source IN ('manual_cli', 'cli_preflight', 'integration_probe')",
+        [&connection_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(non_managed_session_count, 0);
+    let passed_guard_verification_count: i64 = registry.query_row(
+        "SELECT COUNT(*)
+           FROM guard_integration_verification_runs
+          WHERE connection_internal_id = ?1
+            AND status = 'passed'",
+        [&connection_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(passed_guard_verification_count, 1);
+    drop(registry);
     assert_canonical_connection_command_shape(&complete_report);
 
     let before_status = fixture.content_snapshot()?;
@@ -1116,6 +1182,7 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     assert!(human.contains("Activation: complete\n"));
     assert!(human.contains("Hook activation: effective_by_observation\n"));
     assert!(human.contains("Checks: "));
+    assert!(human.contains("0 blocked, 0 waiting, 0 failed\n"));
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(!human.contains(check["id"].as_str().expect("check id")));
     }
@@ -1947,13 +2014,22 @@ impl OperationalFixture {
         )?;
         assert!(prompt_output.status.success());
 
-        child.write(&json_lines(&[managed_tool_call_in_turn(
-            3,
-            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
-            json!({"project_selector": project_id}),
-            native_session,
-            INTEGRATION_VERIFICATION_TURN_ID,
-        )])?)?;
+        child.write(&json_lines(&[
+            managed_tool_call_in_turn(
+                3,
+                managed_host_round_trip_tool().wire_name(),
+                json!({}),
+                native_session,
+                INTEGRATION_VERIFICATION_TURN_ID,
+            ),
+            managed_tool_call_in_turn(
+                4,
+                AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+                json!({"project_selector": project_id}),
+                native_session,
+                INTEGRATION_VERIFICATION_TURN_ID,
+            ),
+        ])?)?;
         let registry_path = self.runtime_home.join("registry.sqlite");
         let started = Instant::now();
         let verification_id = loop {
@@ -2005,7 +2081,7 @@ impl OperationalFixture {
         assert!(pre_output.status.success());
 
         child.write(&json_lines(&[managed_tool_call_in_turn(
-            4,
+            5,
             AgentToolId::GUARD_PROBE.wire_name(),
             json!({"verification_id": verification_id}),
             native_session,
@@ -2055,22 +2131,13 @@ impl OperationalFixture {
         )?;
         assert_eq!(verification_status, "passed");
 
-        child.write(&json_lines(&[
-            managed_tool_call_in_turn(
-                5,
-                AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
-                json!({"verification_id": verification_id}),
-                native_session,
-                INTEGRATION_VERIFICATION_TURN_ID,
-            ),
-            managed_tool_call_in_turn(
-                6,
-                managed_host_round_trip_tool().wire_name(),
-                json!({}),
-                native_session,
-                INTEGRATION_VERIFICATION_TURN_ID,
-            ),
-        ])?)?;
+        child.write(&json_lines(&[managed_tool_call_in_turn(
+            6,
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+            json!({"verification_id": verification_id}),
+            native_session,
+            INTEGRATION_VERIFICATION_TURN_ID,
+        )])?)?;
         let current_session_id = current_project_agent_session_coordinates(
             &self.runtime_home,
             project_id,
@@ -2133,10 +2200,21 @@ impl OperationalFixture {
         for response in &responses[2..] {
             assert_eq!(response["result"]["isError"], false, "{response}");
         }
-        let begin = adapter_tool_response(&responses[2]).map_err(|error| {
+        let projects = adapter_tool_response(&responses[2]).map_err(|error| {
+            format!(
+                "list-projects response was invalid: {error}; {}",
+                responses[2]
+            )
+        })?;
+        assert!(projects["projects"]
+            .as_array()
+            .is_some_and(|projects| projects.iter().any(|project| {
+                project["project_selector"] == project_id && project["available"] == true
+            })));
+        let begin = adapter_tool_response(&responses[3]).map_err(|error| {
             format!(
                 "begin integration-verification response was invalid: {error}; {}",
-                responses[2]
+                responses[3]
             )
         })?;
         assert_eq!(begin["verification_id"], verification_id);
@@ -2145,18 +2223,18 @@ impl OperationalFixture {
             begin["next_probe_tool"],
             AgentToolId::GUARD_PROBE.wire_name()
         );
-        let probe = adapter_tool_response(&responses[3]).map_err(|error| {
+        let probe = adapter_tool_response(&responses[4]).map_err(|error| {
             format!(
                 "Guard probe response was invalid: {error}; {}",
-                responses[3]
+                responses[4]
             )
         })?;
         assert_eq!(probe["verification_id"], verification_id);
         assert_eq!(probe["status"], "active");
-        let verification = adapter_tool_response(&responses[4]).map_err(|error| {
+        let verification = adapter_tool_response(&responses[5]).map_err(|error| {
             format!(
                 "integration-verification lookup response was invalid: {error}; {}",
-                responses[4]
+                responses[5]
             )
         })?;
         assert_eq!(verification["verification_id"], verification_id);
@@ -2164,17 +2242,6 @@ impl OperationalFixture {
         assert_eq!(verification["guard_phases"]["prompt_capture"], "matched");
         assert_eq!(verification["guard_phases"]["pre_tool"], "matched");
         assert_eq!(verification["guard_phases"]["post_tool"], "matched");
-        let projects = adapter_tool_response(&responses[5]).map_err(|error| {
-            format!(
-                "list-projects response was invalid: {error}; {}",
-                responses[5]
-            )
-        })?;
-        assert!(projects["projects"]
-            .as_array()
-            .is_some_and(|projects| projects.iter().any(|project| {
-                project["project_selector"] == project_id && project["available"] == true
-            })));
         let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
         let bound_runtime: Option<String> = project_state.query_row(
             "SELECT runtime_session_id FROM managed_mcp_sessions WHERE session_id = ?1",
@@ -2514,12 +2581,12 @@ impl OperationalFixture {
             |row| row.get(0),
         )?;
         let current_count = registry.query_row(
-            "SELECT COUNT(*) FROM diagnostic_findings WHERE lifecycle = 'current'",
+            "SELECT COUNT(*) FROM diagnostic_findings WHERE lifecycle = 'current_state'",
             [],
             |row| row.get(0),
         )?;
         let mut statement = registry.prepare(
-            "SELECT finding_id, observed_at, resolved_at FROM diagnostic_findings WHERE lifecycle = 'current' ORDER BY finding_id",
+            "SELECT finding_id, observed_at, resolved_at FROM diagnostic_findings WHERE lifecycle = 'current_state' ORDER BY finding_id",
         )?;
         let current_timestamps = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?

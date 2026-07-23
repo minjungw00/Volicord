@@ -32,18 +32,18 @@ production_covered = true
 path = "hooks-v1/pre-tool-use-mcp.json"
 profile_id = "codex-hooks-v1"
 contract_generation = 1
-purpose = "Current PreToolUse MCP command-hook envelope and canonical MCP tool name"
+purpose = "Current PreToolUse command-hook envelope for the canonical Guard probe MCP tool"
 source_reference = "reviewed CodexHooksV1 release contract"
-checksum_sha256 = "eec14d80f033dd55e40501f2fb2c1029f6a9291ee8615ba7616d38c5cf376442"
+checksum_sha256 = "0310a46ce3063129e25e41e2dff56f8155c83dc9cec6d00188575ebf0faf93e1"
 production_covered = true
 
 [[fixtures]]
 path = "hooks-v1/post-tool-use-mcp.json"
 profile_id = "codex-hooks-v1"
 contract_generation = 1
-purpose = "Current PostToolUse MCP command-hook envelope and canonical MCP tool name"
+purpose = "Current PostToolUse command-hook envelope for the canonical Guard probe MCP tool"
 source_reference = "reviewed CodexHooksV1 release contract"
-checksum_sha256 = "5e13ffc744ab9cb718dbdd1ddbb805923fbefeceade948593973defc7160424c"
+checksum_sha256 = "040949c216753477c582cfbde4857a1c60aeaf95ff27058d701134a2e61d0df1"
 production_covered = true
 
 [[fixtures]]
