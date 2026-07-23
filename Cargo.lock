@@ -883,6 +883,7 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+ "xtask",
 ]
 
 [[package]]

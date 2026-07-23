@@ -224,11 +224,19 @@ Volicord 릴리스 검증은 일반적인 다섯 target 빌드, 패키지, check
 
 ```sh
 cargo test --locked -p volicord-release-integrity-tests --all-targets --all-features
+cargo run --locked -p xtask -- release-binary-smoke --bin <path-to-built-volicord>
 ```
 
 이 테스트는 target 범위, 버전 일치, 기준 텍스트 바이트, archive 형태, 패키징한
 binary identity, checksum 출력을 보호합니다. 런타임 권한은 각 MCP 호출에서 현재 관리
 session을 통해 평가합니다.
+
+릴리스 바이너리 스모크 명령은 일반 CI와 네이티브 릴리스 패키징 matrix의 모든
+항목이 함께 사용하는 하나의 플랫폼 공통 하네스입니다. CI는 일반 로컬 바이너리를
+전달하고, 릴리스 패키징은 해당 target용으로 이미 빌드한 정확한 Linux, macOS,
+Windows 바이너리를 전달합니다. 하네스는 폐기 가능한 Product Repository와
+Runtime Home 상태 및 공개 `volicord mcp serve`를 사용하므로 session은
+`manual_cli`로 남으며 managed-host 증거가 아닙니다.
 
 실제 Codex 설치를 사용하는 선택적 smoke 실행은 관리형 구성, MCP 초기화, 필수 도구
 검색, 안전한 도구 왕복, Guard 관찰을 확인할 수 있습니다. 결과는 해당 구성과 환경에

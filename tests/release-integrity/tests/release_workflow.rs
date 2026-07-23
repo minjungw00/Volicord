@@ -46,6 +46,44 @@ fn release_workflow_builds_and_packages_every_published_target() {
     .into_iter()
     .collect::<BTreeSet<_>>();
     assert_eq!(targets, expected);
+    let binaries = build["strategy"]["matrix"]["include"]
+        .as_sequence()
+        .expect("build matrix")
+        .iter()
+        .map(|entry| {
+            (
+                entry["target"].as_str().expect("target string"),
+                entry["binary"].as_str().expect("binary string"),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        binaries,
+        BTreeSet::from([
+            ("aarch64-apple-darwin", "volicord"),
+            ("aarch64-unknown-linux-gnu", "volicord"),
+            ("x86_64-apple-darwin", "volicord"),
+            ("x86_64-pc-windows-msvc", "volicord.exe"),
+            ("x86_64-unknown-linux-gnu", "volicord"),
+        ])
+    );
+    let build_runs = build["steps"]
+        .as_sequence()
+        .expect("build steps")
+        .iter()
+        .filter_map(|step| step["run"].as_str())
+        .collect::<Vec<_>>();
+    let smoke_runs = build_runs
+        .iter()
+        .filter(|run| run.contains("release-binary-smoke"))
+        .copied()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        smoke_runs,
+        vec![
+            "cargo run --locked -p xtask -- release-binary-smoke --bin \"target/${{ matrix.target }}/release/${{ matrix.binary }}\""
+        ]
+    );
 
     let publish = jobs
         .get(Value::String("publish-release".to_owned()))
@@ -59,6 +97,26 @@ fn release_workflow_builds_and_packages_every_published_target() {
     assert!(runs
         .iter()
         .any(|run| run.contains("scripts/package-release-artifacts.sh")));
+}
+
+#[test]
+fn ordinary_ci_builds_and_runs_the_canonical_binary_smoke_harness() {
+    let root = repository_root();
+    let workflow: Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("read CI workflow"),
+    )
+    .expect("parse CI workflow YAML");
+    let steps = workflow["jobs"]["checks"]["steps"]
+        .as_sequence()
+        .expect("CI check steps");
+    let runs = steps
+        .iter()
+        .filter_map(|step| step["run"].as_str())
+        .collect::<Vec<_>>();
+    assert!(runs.contains(&"cargo build --locked -p volicord-cli --bin volicord"));
+    assert!(runs.contains(
+        &"cargo run --locked -p xtask -- release-binary-smoke --bin target/debug/volicord"
+    ));
 }
 
 fn repository_root() -> &'static Path {

@@ -10,7 +10,7 @@ contracts, preserve removed surfaces, or justify broader support claims.
 | Unit test | Pure parsing, canonical encoding, closed values, and policy decisions. |
 | Crate integration test | Adapter boundaries, Store reads/writes, process behavior, and strict persisted-record rejection. |
 | Conformance test | Public cross-method outcomes, error categories, replay, effects, and projections. |
-| Release-integrity test | Volicord target, version, package, checksum, and workflow invariants. |
+| Release-integrity test | Volicord target, version, package, checksum, workflow, and actual-binary smoke invariants. |
 | Documentation check | Owner routing, links, terminology, parity, examples, and generated-source drift. |
 
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
@@ -136,6 +136,21 @@ The durable release test package is `tests/release-integrity`. It verifies all
 five published Volicord targets, version consistency, canonical text bytes,
 package and archive shape, packaged-binary identity, checksum output, and the
 ordinary build and package structure in the release workflow.
+
+`cargo run -p xtask -- release-binary-smoke --bin <path>` is the single
+cross-platform actual-binary smoke harness. It creates a disposable Git Product
+Repository, Runtime Home, Codex home, and fake `codex` executable; runs public
+`volicord init`; decodes its JSON with Serde; and starts public
+`volicord mcp serve --connection <connection-id>`. It requests the protocol
+registry's preferred server revision, completes initialization and
+`tools/list`, and checks one canonical representative public-tool assertion
+set. Process I/O, termination, stderr context, and fixture cleanup are bounded.
+
+Ordinary CI builds a local `volicord` binary and passes that file to this
+harness. Every native release matrix entry passes the exact Linux, macOS, or
+Windows release binary it already built to the same command. These processes
+are public manual transport and remain `manual_cli`; they do not call the
+hidden managed-host launcher or provide managed-host evidence.
 
 Generic release-integrity tests cover Volicord platform build and package
 artifacts. Operational Codex interoperability tests separately cover managed

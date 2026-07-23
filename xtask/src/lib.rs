@@ -8,11 +8,13 @@ use std::path::{Component, Path, PathBuf};
 use toml_edit::{DocumentMut, Item};
 
 mod mcp_spec;
+mod release_binary_smoke;
 
 pub use mcp_spec::{
     check_mcp_spec_fixture, check_mcp_spec_fixture_with_production_profiles, run_mcp_spec_check,
     run_mcp_spec_sync, McpSpecCheckReport, McpSpecSyncReport,
 };
+pub use release_binary_smoke::{run_release_binary_smoke, ReleaseBinarySmokeReport};
 
 const DOC_INDEX_PATH: &str = "docs/doc-index.yaml";
 const TERMINOLOGY_MAP_PATH: &str = "docs/terminology-map.yaml";

@@ -10,7 +10,7 @@
 | Unit test | 순수 파싱, 정규 인코딩, 폐쇄 값, 정책 결정. |
 | Crate integration test | 어댑터 경계, Store 읽기/쓰기, 프로세스 동작, 엄격한 저장 레코드 거부. |
 | Conformance test | 공개 교차 메서드 결과, 오류 범주, replay, 효과, projection. |
-| Release-integrity 테스트 | Volicord target, 버전, 패키지, checksum, workflow invariant. |
+| Release-integrity 테스트 | Volicord target, 버전, 패키지, checksum, workflow, 실제 바이너리 스모크 불변조건. |
 | 문서 검사 | 소유자 경로, 링크, 용어, 언어 동등성, 예시, 생성 소스 drift. |
 
 일회용 Runtime Home과 Product Repository를 사용합니다. fixture는 최소이며 typed여야
@@ -120,6 +120,21 @@ session 소유권 및 integration revision 격리를 점검합니다.
 Volicord target 다섯 개, 버전 일치, 기준 텍스트 바이트, 패키지와 archive 형태,
 패키징한 binary identity, checksum 출력, 릴리스 workflow의 일반 빌드와 패키지
 구조를 검증합니다.
+
+`cargo run -p xtask -- release-binary-smoke --bin <path>`는 하나뿐인 플랫폼 공통
+실제 바이너리 스모크 하네스입니다. 폐기 가능한 Git Product Repository, Runtime
+Home, Codex home, 가짜 `codex` 실행 파일을 만들고 공개 `volicord init`을 실행한
+뒤 Serde로 JSON을 역직렬화하며, 공개
+`volicord mcp serve --connection <connection-id>`를 시작합니다. Protocol
+registry의 선호 서버 리비전을 요청하고 initialization과 `tools/list`를 완료한 뒤,
+한 곳에서 관리하는 대표 공개 도구 검증 집합을 검사합니다. 프로세스 I/O,
+종료, stderr 맥락, fixture 정리에는 한도가 있습니다.
+
+일반 CI는 로컬 `volicord` 바이너리를 빌드해 이 하네스에 전달합니다. 네이티브
+릴리스 matrix의 각 항목도 이미 빌드한 정확한 Linux, macOS, Windows 릴리스
+바이너리를 같은 명령에 전달합니다. 이 프로세스는 공개 수동 전송이므로
+`manual_cli`로 남습니다. 숨은 managed-host launcher를 호출하지 않으며
+managed-host 증거를 제공하지 않습니다.
 
 일반 릴리스 무결성 테스트는 Volicord 플랫폼 빌드와 패키지 artifact를 다룹니다. 운영
 Codex 상호운용성 테스트는 [Agent Connection](../reference/agent-connection.md)이 정의한

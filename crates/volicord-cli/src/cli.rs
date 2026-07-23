@@ -759,6 +759,40 @@ mod tests {
         let error = Cli::try_parse_from(["volicord", "--version", "status"])
             .expect_err("version must conflict with commands in the clap declaration");
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn current_mcp_subcommands_parse_and_removed_mode_flags_are_rejected() {
+        let serve = Cli::try_parse_from([
+            "volicord",
+            "mcp",
+            "serve",
+            "--connection",
+            "connection_example",
+        ])
+        .expect("the public manual MCP subcommand must parse");
+        assert!(matches!(
+            serve.command,
+            Some(Command::Mcp(McpArgs {
+                command: McpCommand::Serve(_)
+            }))
+        ));
+
+        let preflight = Cli::try_parse_from([
+            "volicord",
+            "mcp",
+            "preflight",
+            "--connection",
+            "connection_example",
+            "--json",
+        ])
+        .expect("the public MCP preflight subcommand must parse");
+        assert!(matches!(
+            preflight.command,
+            Some(Command::Mcp(McpArgs {
+                command: McpCommand::Preflight(_)
+            }))
+        ));
 
         for old_flag in ["--stdio", "--check"] {
             let mcp_error = Cli::try_parse_from([

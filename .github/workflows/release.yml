@@ -10,8 +10,6 @@ on:
       - ".github/workflows/release.yml"
       - "scripts/install.sh"
       - "scripts/install.ps1"
-      - "scripts/smoke-test-binary.sh"
-      - "scripts/smoke-test-binary.ps1"
       - "scripts/package-release-artifacts.sh"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -60,14 +58,19 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
+            binary: volicord
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
+            binary: volicord
           - target: aarch64-apple-darwin
             os: macos-15
+            binary: volicord
           - target: x86_64-apple-darwin
             os: macos-15-intel
+            binary: volicord
           - target: x86_64-pc-windows-msvc
             os: windows-2022
+            binary: volicord.exe
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -230,13 +233,7 @@ jobs:
           }
 
       - name: Smoke test binary
-        if: runner.os != 'Windows'
-        run: sh scripts/smoke-test-binary.sh "target/${{ matrix.target }}/release/volicord"
-
-      - name: Smoke test binary (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/smoke-test-binary.ps1 -Bin "target/${{ matrix.target }}/release/volicord.exe"
+        run: cargo run --locked -p xtask -- release-binary-smoke --bin "target/${{ matrix.target }}/release/${{ matrix.binary }}"
 
       - name: Stage immutable raw build artifact
         if: runner.os != 'Windows'

@@ -141,6 +141,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/tests/conformance.rs` | Module-level registry-driven protocol conformance assertions. |
 | `crates/volicord-mcp/src/tests/support.rs` | Shared MCP test fixture and protocol-message construction only. |
 | `crates/volicord-mcp/tests/protocol_conformance.rs` | One registry-driven wire conformance case for every production profile, including pinned-schema validation, required tools, the designated round trip, profile-specific projection and batching, lifecycle rejection, and EOF. |
+| `crates/volicord-cli/tests/binary_admin.rs` | Actual-binary administrative CLI contracts and invocation of the canonical release-binary smoke harness against `CARGO_BIN_EXE_volicord`; smoke protocol and tool assertions remain in `xtask`. |
 | `crates/volicord-cli/tests/operational_host_e2e.rs` | Full managed Codex activation journey from applied setup through lease-bound MCP and exact Guard prompt/pre/post verification to complete read-only status, plus operational failure and cleanup regressions. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
 | `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed `production_supported` and `pre_release_only` facts, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
@@ -151,7 +152,8 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary: `volicord-mcp-protocol` supplies production profiles without pulling in `volicord-mcp`, Core, Store, or platform crates. |
+| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary: `volicord-mcp-protocol` supplies production profiles and the preferred server revision without pulling in `volicord-mcp`, Core, Store, CLI, or platform crates. |
+| `xtask/src/release_binary_smoke.rs` | Single cross-platform release-binary smoke owner: disposable Git Product Repository, Runtime Home, and fake `codex`; public `init` JSON decoding; public `mcp serve` JSON-RPC lifecycle; preferred-revision selection; representative tool assertions; bounded process I/O, timeout, reaping, and cleanup. |
 | `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
 | `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
 | `xtask/src/mcp_spec/validation.rs` | Offline metadata, immutable-pin, checksum, artifact, schema, ordering, and registry-parity validation. |
