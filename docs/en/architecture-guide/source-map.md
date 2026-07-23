@@ -18,6 +18,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/project integration revision bases and derivation. |
 | `crates/volicord-types/src/guard_manifest.rs` | Canonical Guard manifest, managed-artifact, hook-phase, and typed command contracts. |
 | `crates/volicord-types/src/tool_names.rs` | Closed `AgentToolId` catalog, `MethodName` reuse for Core-owned tools, category and mode metadata, compile-time verification-role binding, and stable MCP wire-name projection. |
+| `crates/volicord-types/src/integration_verification.rs` | Shared closed tagged integration-verification workflow state, fixed canonical `AgentToolId`-backed tool-reference types, restart reasons, and begin/probe/get public result shapes. |
 
 ## Host Wire Contracts
 
@@ -58,7 +59,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/diagnostic_findings/row.rs` | Internal finding row encoding, decoding, and lifecycle identity validation. |
 | `crates/volicord-store/src/managed_launch_leases.rs` | Short-lived one-time managed MCP launch leases, current-Connection revalidation, deterministic cancellation/expiry cleanup, and atomic lease-consumption/runtime creation. |
 | `crates/volicord-store/src/operational_sessions.rs` | Runtime-session source decoding, protocol milestones, revision-scoped managed MCP project sessions, exact cross-database bindings, and rejection of direct `managed_host` creation outside lease consumption. |
-| `crates/volicord-store/src/integration_verification.rs` | Bounded Guard integration-verification run lifecycle, exact managed runtime/session/turn validation, probe acknowledgement, prompt/pre/post event correlation, expiry, and stale-owner projection. |
+| `crates/volicord-store/src/integration_verification.rs` | Bounded Guard integration-verification run lifecycle, exact managed runtime/session/turn validation, probe acknowledgement, prompt/pre/post event correlation, expiry, stale-owner handling, and the single record-to-public-workflow domain projection used by begin, probe, and get. |
 | `crates/volicord-store/src/workflow_records.rs` | Workflow record reads and writes. |
 | `crates/volicord-store/src/core_pipeline/` | Core-open, validation, replay, commit, and mutation application. |
 | `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
@@ -122,7 +123,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared hidden-launcher command and arguments, Runtime Home environment binding, strict launch-shape validation, public manual probe materialization, projection, and fingerprint inputs. |
 | `crates/volicord-mcp/src/stdio.rs` | Public manual stdio and in-memory lease-bound managed stdio entry paths, authoritative runtime-source selection, lifecycle and framing, typed initialization-profile selection, explicit `codex-mcp-2025-06-18-v1` turn-metadata parsing, revision-aware message handling, and process preflight. |
-| `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch and wrapping, plus managed in-chat begin/probe/get integration-verification orchestration outside Core. |
+| `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch and wrapping, plus managed in-chat begin/probe/get integration-verification orchestration outside Core that serializes the Store-owned workflow projection without adapter-local state derivation. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed schemas, annotations, effects descriptions, and metadata into canonical tool definitions/results, including the three Connection-integration tools, plus revision-specific wire-name projection through the selected protocol profile. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |
 | `crates/volicord-mcp/src/routing.rs` | Bound Product Repository discovery and current Connection/project routing. |

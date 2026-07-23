@@ -18,6 +18,7 @@
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
 | `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, 안정적인 MCP wire 이름 투영. |
+| `crates/volicord-types/src/integration_verification.rs` | 공유 폐쇄형 tagged integration-verification workflow 상태, 정규 `AgentToolId`에 결속된 고정 tool-reference 타입, restart reason, begin/probe/get 공개 결과 형태. |
 
 ## Host Wire 계약
 
@@ -58,7 +59,7 @@
 | `crates/volicord-store/src/diagnostic_findings/row.rs` | 내부 finding row 인코딩, 디코딩, lifecycle identity 검증. |
 | `crates/volicord-store/src/managed_launch_leases.rs` | 수명이 짧은 일회성 managed MCP launch lease, 현재 Connection 재검증, 결정적인 취소·만료 정리, 원자적 lease 소비와 runtime 생성을 담당합니다. |
 | `crates/volicord-store/src/operational_sessions.rs` | Runtime-session source 디코딩, protocol milestone, revision 범위 managed MCP project session, 정확한 데이터베이스 간 binding, lease 소비 밖의 직접 `managed_host` 생성 거절. |
-| `crates/volicord-store/src/integration_verification.rs` | 한도가 있는 Guard integration-verification run lifecycle, 정확한 managed runtime/session/turn 검증, probe acknowledgement, prompt/pre/post event 상관관계, 만료, 오래된 owner projection. |
+| `crates/volicord-store/src/integration_verification.rs` | 한도가 있는 Guard integration-verification run lifecycle, 정확한 managed runtime/session/turn 검증, probe acknowledgement, prompt/pre/post event 상관관계, 만료, 오래된 owner 처리, begin/probe/get이 함께 쓰는 record-to-public-workflow 단일 domain projection. |
 | `crates/volicord-store/src/workflow_records.rs` | workflow 레코드 읽기와 쓰기. |
 | `crates/volicord-store/src/core_pipeline/` | Core open, 검증, replay, commit, mutation 적용. |
 | `crates/volicord-store/src/guards.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, phase별 Guard 관찰, prompt capture, 예상 쓰기, suppression 입력. |
@@ -122,7 +123,7 @@
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio 진입 경로, 권위 있는 runtime source 선택, 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-2025-06-18-v1` turn-metadata parsing, revision-aware message 처리, 프로세스 사전 점검. |
-| `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치와 wrapping, Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
+| `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치와 wrapping, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
 | `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata를 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 revision별 wire 이름을 투영하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색과 현재 Connection/project routing. |

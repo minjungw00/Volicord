@@ -48,8 +48,8 @@ use volicord_store::operational_sessions::{
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
     guard_manifest_from_json, AgentConnectionMode, AgentToolId, DiagnosticFindingId,
-    GuardHookPhase, GuardManagedOwnership, GuardManifest, McpRuntimeSessionSource,
-    ToolVerificationRole,
+    GuardHookPhase, GuardManagedOwnership, GuardManifest, IntegrationVerificationWorkflowState,
+    McpRuntimeSessionSource, ToolVerificationRole,
 };
 
 const FUTURE_VERSION: &str = "999.0.0";
@@ -2257,11 +2257,12 @@ impl OperationalFixture {
             )
         })?;
         assert_eq!(begin["verification_id"], verification_id);
-        assert_eq!(begin["status"], "active");
-        assert_eq!(begin["mcp_probe_acknowledged"], false);
-        assert_eq!(begin["next_action"], "call_guard_probe");
         assert_eq!(
-            begin["next_probe_tool"],
+            begin["workflow"]["kind"],
+            IntegrationVerificationWorkflowState::AWAITING_PROBE_KIND
+        );
+        assert_eq!(
+            begin["workflow"]["tool"],
             AgentToolId::GUARD_PROBE.wire_name()
         );
         let probe = adapter_tool_response(&responses[4]).map_err(|error| {
@@ -2271,7 +2272,14 @@ impl OperationalFixture {
             )
         })?;
         assert_eq!(probe["verification_id"], verification_id);
-        assert_eq!(probe["status"], "active");
+        assert_eq!(
+            probe["workflow"]["kind"],
+            IntegrationVerificationWorkflowState::AWAITING_HOOK_COMPLETION_KIND
+        );
+        assert_eq!(
+            probe["workflow"]["tool"],
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name()
+        );
         let resumed = adapter_tool_response(&responses[5]).map_err(|error| {
             format!(
                 "resumed integration-verification response was invalid: {error}; {}",
@@ -2279,10 +2287,11 @@ impl OperationalFixture {
             )
         })?;
         assert_eq!(resumed["verification_id"], verification_id);
-        assert_eq!(resumed["status"], "passed");
-        assert_eq!(resumed["mcp_probe_acknowledged"], true);
-        assert_eq!(resumed["next_action"], "no_further_action");
-        assert!(resumed.get("next_probe_tool").is_none());
+        assert_eq!(
+            resumed["workflow"]["kind"],
+            IntegrationVerificationWorkflowState::COMPLETE_KIND
+        );
+        assert!(resumed["workflow"].get("tool").is_none());
         let replayed_probe = adapter_tool_response(&responses[6]).map_err(|error| {
             format!(
                 "replayed Guard probe response was invalid: {error}; {}",
@@ -2290,8 +2299,10 @@ impl OperationalFixture {
             )
         })?;
         assert_eq!(replayed_probe["verification_id"], verification_id);
-        assert_eq!(replayed_probe["status"], "passed");
-        assert_eq!(replayed_probe["acknowledged_at"], probe["acknowledged_at"]);
+        assert_eq!(
+            replayed_probe["workflow"], resumed["workflow"],
+            "exact probe replay after completion must remain complete"
+        );
         let verification = adapter_tool_response(&responses[7]).map_err(|error| {
             format!(
                 "integration-verification lookup response was invalid: {error}; {}",
@@ -2299,7 +2310,7 @@ impl OperationalFixture {
             )
         })?;
         assert_eq!(verification["verification_id"], verification_id);
-        assert_eq!(verification["status"], "passed");
+        assert_eq!(verification["workflow"], resumed["workflow"]);
         assert_eq!(verification["guard_phases"]["prompt_capture"], "matched");
         assert_eq!(verification["guard_phases"]["pre_tool"], "matched");
         assert_eq!(verification["guard_phases"]["post_tool"], "matched");

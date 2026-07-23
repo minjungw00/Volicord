@@ -409,11 +409,12 @@ Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지
 
 정규 사용자 요청은 `Run the Volicord integration verification.`입니다. Agent는
 `volicord.list_projects`로 정확한 프로젝트를 선택한 뒤
-`volicord.begin_integration_verification`을 호출합니다. Begin이
-`next_action=call_guard_probe`를 보고할 때만 반환된 `volicord.guard_probe`를
-호출하고, 이어서 `volicord.get_integration_verification`으로 현재 완료 상태를
-읽습니다. Begin이 기존 run을 재개했다는 이유만으로 probe하지 않습니다. 이 상태 지향
-first-party sequence만 현재 managed MCP와 Guard 상관관계 근거를 만들 수 있습니다.
+`volicord.begin_integration_verification`을 호출합니다. 반환된 tagged `workflow`를
+따릅니다. `awaiting_probe`, `awaiting_hook_completion`, `restart_required`는 각각
+호출할 정확한 정규 `tool`을 담고, `complete`에는 tool이 없습니다. 실패를 복구했거나
+이전 run이 만료된 뒤에만 재시작합니다. Begin, probe, status는 모두 같은 상태 지향
+계약을 노출합니다. 이 first-party sequence만 현재 managed MCP와 Guard 상관관계 근거를
+만들 수 있습니다.
 
 Volicord tool이 노출되지 않으면 agent는 managed MCP connection이 unavailable이라고
 보고합니다. Raw stdio를 시작하거나 Codex `_meta`를 직접 만들거나 `resources/list`,
@@ -430,7 +431,7 @@ project/configuration trust는 user/host가 소유합니다.
 |---|---|---|
 | `volicord.list_projects` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Connection project allowlist를 읽으며 쓰지 않습니다. |
 | `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 현재 좌표를 검증한 뒤 한도가 있는 Registry verification run 하나를 만들거나 재개합니다. Core, Task, Product Repository에는 효과가 없습니다. |
-| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 active run을 first-write-wins 방식으로 acknowledge하거나, 정확한 replay이면 원래 acknowledgement와 현재 상태를 반환합니다. Core, Task, project state, Product Repository에는 효과가 없습니다. |
+| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 active run을 first-write-wins 방식으로 acknowledge하고 현재 공유 workflow 상태를 반환합니다. 정확한 replay는 효과를 반복하지 않고 현재 terminal 또는 nonterminal 상태를 반환합니다. Core, Task, project state, Product Repository에는 효과가 없습니다. |
 | `volicord.get_integration_verification` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 run과 상관관계가 확인된 phase 상태를 읽으며 쓰지 않습니다. |
 
 이 annotation은 도구 자체를 설명합니다. 일반 호환 Guard event 영속과 뒤따르는 Registry
@@ -445,11 +446,7 @@ volicord.begin_integration_verification:
     project_selector?: string
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active | passed | failed | expired
-    expires_at: UtcTimestamp
-    mcp_probe_acknowledged: boolean
-    next_probe_tool?: volicord.guard_probe
-    next_action: call_guard_probe | read_verification_status | no_further_action
+    workflow: IntegrationVerificationWorkflowState
     matched_prompt_event_id: GuardEventId
 
 volicord.guard_probe:
@@ -457,16 +454,14 @@ volicord.guard_probe:
     verification_id: GuardIntegrationVerificationId
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active | passed | failed | expired
-    acknowledged_at: UtcTimestamp
+    workflow: IntegrationVerificationWorkflowState
 
 volicord.get_integration_verification:
   arguments:
     verification_id: GuardIntegrationVerificationId
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active | passed | failed | expired
-    mcp_probe_acknowledged: boolean
+    workflow: IntegrationVerificationWorkflowState
     guard_phases:
       prompt_capture: pending | matched
       pre_tool: pending | matched
@@ -474,30 +469,49 @@ volicord.get_integration_verification:
     matched_prompt_event_id?: GuardEventId
     matched_pre_tool_event_id?: GuardEventId
     matched_post_tool_event_id?: GuardEventId
-    completed_at?: UtcTimestamp
+
+IntegrationVerificationWorkflowState:
+  awaiting_probe:
+    kind: awaiting_probe
+    tool: volicord.guard_probe
+    expires_at: UtcTimestamp
+  awaiting_hook_completion:
+    kind: awaiting_hook_completion
+    tool: volicord.get_integration_verification
+    acknowledged_at: UtcTimestamp
+    expires_at: UtcTimestamp
+  complete:
+    kind: complete
+    completed_at: UtcTimestamp
+  restart_required:
+    kind: restart_required
+    reason: failed | expired
+    tool: volicord.begin_integration_verification
     finding?: { code: string, summary: string }
-    next_action?: string
 ```
 
 `project_selector`는 일반 Connection 프로젝트 선택 규칙을 따르므로 선택이 모호하지 않을
 때만 생략할 수 있습니다. Begin은 실제 현재 managed runtime과 native session/turn에
 결속하고 현재 호환 prompt-capture event를 요구하며 해당 좌표의 한도가 있는 run 하나를
 생성하거나 재개합니다. `manual_cli`, `cli_preflight`, `integration_probe` runtime 증거는
-받지 않습니다. Probe는 그 정확한 좌표를 검증하고 첫 acknowledgement가 아직 가능한지
-별도로 판단합니다. Acknowledge되지 않은 active run에서는 begin이
-`next_action=call_guard_probe`와 정규 `next_probe_tool`을 반환합니다. 이미 acknowledge된
-active run에서는 `next_probe_tool`을 생략하고 `next_action=read_verification_status`를
-반환합니다. Terminal run에서는 `next_probe_tool`을 생략하고
-`next_action=no_further_action`을 반환합니다.
+받지 않습니다. Store가 담당하는 단일 투영은 유효한 active run이 acknowledge되지
+않았으면 `awaiting_probe`, acknowledge되었으면 `awaiting_hook_completion`, passed이면
+`complete`, failed 또는 expired이면 해당 typed reason을 가진 `restart_required`로
+변환합니다. Tool reference는 정규 `AgentToolId` wire 투영을 사용하며 임의 tool 문자열을
+받지 않습니다. Tagged alternative와 상태별 필수 필드 덕분에 모순된 조합은 typed
+decoding과 JSON Schema에서 모두 유효하지 않습니다.
 
 Probe acknowledgement는 verification ID, Connection, managed runtime session, native host
 session, native host turn으로 이루어진 좌표에서 first-write-wins입니다. 적격인 첫 active
-호출이 `probe_acknowledged_at`을 기록합니다. 동일한 active 또는 terminal replay는
-timestamp를 바꾸지 않고 원래 값을 현재 유효 상태와 함께 반환합니다. 다른 caller 좌표는
-acknowledgement를 노출하지 않고 거부합니다. 이전 acknowledgement가 없는 terminal 또는
-expired run에는 뒤늦게 acknowledgement를 만들 수 없습니다. Probe는 terminal run을 다시
-active로 만들지 않으며 Core 상태, Task 상태, Product Repository 파일을 변경하지 않습니다.
-Get은 읽기 전용이며 상관관계가 확인된 phase 상태와 다음 action을 보고합니다.
+호출이 `probe_acknowledged_at`을 기록합니다. 동일한 active replay는 권위 있는
+acknowledgement 시각을 포함한 같은 `awaiting_hook_completion` 상태를 반환합니다. 완료
+후 정확한 replay는 `complete`를 반환합니다. 유효 상태가 failed 또는 expired인 run의
+replay는 해당 `restart_required` 상태를 유지하고 `complete`로 바꾸지 않습니다. 다른
+caller 좌표는 acknowledgement를 노출하지 않고 거부합니다. 이전 acknowledgement가 없는
+terminal 또는 expired run에는 뒤늦게 acknowledgement를 만들 수 없습니다. Probe는
+terminal run을 다시 active로 만들지 않으며 Core 상태, Task 상태, Product Repository
+파일을 변경하지 않습니다. Get은 읽기 전용이며 상관관계가 확인된 phase 관찰과 함께 같은
+workflow 상태를 보고합니다.
 
 Run은 같은 run session과 turn에서 호환 prompt event 뒤에 같은 tool-use ID, 정확히 생성된
 host tool 이름 `mcp__volicord__guard_probe`, 정확한 `verification_id` 입력을 가진

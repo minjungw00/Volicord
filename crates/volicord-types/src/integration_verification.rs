@@ -1,9 +1,13 @@
 //! Public connection-integration verification request and result shapes.
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use schemars::{
+    gen::SchemaGenerator,
+    schema::{InstanceType, Schema, SchemaObject, SingleOrVec},
+    JsonSchema,
+};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{GuardEventId, GuardIntegrationVerificationId, UtcTimestamp};
+use crate::{AgentToolId, GuardEventId, GuardIntegrationVerificationId, UtcTimestamp};
 
 /// Maximum lifetime of one active in-chat Guard integration verification.
 pub const GUARD_INTEGRATION_VERIFICATION_TTL_SECONDS: i64 = 300;
@@ -26,21 +30,149 @@ pub enum GuardIntegrationVerificationPhaseStatus {
     Matched,
 }
 
-/// State-directed operation returned when beginning or resuming verification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum IntegrationVerificationNextAction {
-    CallGuardProbe,
-    ReadVerificationStatus,
-    NoFurtherAction,
-}
-
 /// Bounded terminal or current verification finding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GuardIntegrationVerificationFinding {
     pub code: String,
     pub summary: String,
+}
+
+macro_rules! fixed_agent_tool_reference {
+    ($name:ident, $tool:expr) => {
+        #[doc = concat!("Exact public reference to `", stringify!($tool), "`.")]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub struct $name;
+
+        impl $name {
+            /// Creates the only valid value of this fixed tool reference.
+            pub const fn new() -> Self {
+                Self
+            }
+
+            /// Returns the canonical Agent Connection tool identity.
+            pub const fn tool_id(self) -> AgentToolId {
+                $tool
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                $tool.serialize(serializer)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let tool = AgentToolId::deserialize(deserializer)?;
+                if tool == $tool {
+                    Ok(Self)
+                } else {
+                    Err(serde::de::Error::custom(format!(
+                        "expected canonical integration-verification tool {}",
+                        $tool.wire_name()
+                    )))
+                }
+            }
+        }
+
+        impl JsonSchema for $name {
+            fn schema_name() -> String {
+                stringify!($name).to_owned()
+            }
+
+            fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+                Schema::Object(SchemaObject {
+                    instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::String))),
+                    enum_values: Some(vec![serde_json::Value::String(
+                        $tool.wire_name().to_owned(),
+                    )]),
+                    ..Default::default()
+                })
+            }
+        }
+    };
+}
+
+fixed_agent_tool_reference!(GuardProbeToolReference, AgentToolId::GUARD_PROBE);
+fixed_agent_tool_reference!(
+    IntegrationVerificationStatusToolReference,
+    AgentToolId::GET_INTEGRATION_VERIFICATION
+);
+fixed_agent_tool_reference!(
+    BeginIntegrationVerificationToolReference,
+    AgentToolId::BEGIN_INTEGRATION_VERIFICATION
+);
+
+/// Closed reason that requires a new bounded verification run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationVerificationRestartReason {
+    Failed,
+    Expired,
+}
+
+/// One authoritative, state-directed integration-verification workflow state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum IntegrationVerificationWorkflowState {
+    AwaitingProbe {
+        tool: GuardProbeToolReference,
+        expires_at: UtcTimestamp,
+    },
+    AwaitingHookCompletion {
+        tool: IntegrationVerificationStatusToolReference,
+        acknowledged_at: UtcTimestamp,
+        expires_at: UtcTimestamp,
+    },
+    Complete {
+        completed_at: UtcTimestamp,
+    },
+    RestartRequired {
+        reason: IntegrationVerificationRestartReason,
+        tool: BeginIntegrationVerificationToolReference,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        finding: Option<GuardIntegrationVerificationFinding>,
+    },
+}
+
+impl IntegrationVerificationWorkflowState {
+    pub const AWAITING_PROBE_KIND: &'static str = "awaiting_probe";
+    pub const AWAITING_HOOK_COMPLETION_KIND: &'static str = "awaiting_hook_completion";
+    pub const COMPLETE_KIND: &'static str = "complete";
+    pub const RESTART_REQUIRED_KIND: &'static str = "restart_required";
+
+    /// Returns the exact next tool owned by this state, when one exists.
+    pub const fn directed_tool(&self) -> Option<AgentToolId> {
+        match self {
+            Self::AwaitingProbe { tool, .. } => Some(tool.tool_id()),
+            Self::AwaitingHookCompletion { tool, .. } => Some(tool.tool_id()),
+            Self::Complete { .. } => None,
+            Self::RestartRequired { tool, .. } => Some(tool.tool_id()),
+        }
+    }
+
+    /// Returns the stable serialized tag for this state.
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::AwaitingProbe { .. } => Self::AWAITING_PROBE_KIND,
+            Self::AwaitingHookCompletion { .. } => Self::AWAITING_HOOK_COMPLETION_KIND,
+            Self::Complete { .. } => Self::COMPLETE_KIND,
+            Self::RestartRequired { .. } => Self::RESTART_REQUIRED_KIND,
+        }
+    }
 }
 
 /// Arguments for `volicord.begin_integration_verification`.
@@ -63,12 +195,7 @@ pub struct IntegrationVerificationIdArguments {
 #[serde(deny_unknown_fields)]
 pub struct BeginIntegrationVerificationResult {
     pub verification_id: GuardIntegrationVerificationId,
-    pub status: GuardIntegrationVerificationStatus,
-    pub expires_at: UtcTimestamp,
-    pub mcp_probe_acknowledged: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub next_probe_tool: Option<String>,
-    pub next_action: IntegrationVerificationNextAction,
+    pub workflow: IntegrationVerificationWorkflowState,
     pub matched_prompt_event_id: GuardEventId,
 }
 
@@ -77,8 +204,7 @@ pub struct BeginIntegrationVerificationResult {
 #[serde(deny_unknown_fields)]
 pub struct GuardProbeResult {
     pub verification_id: GuardIntegrationVerificationId,
-    pub status: GuardIntegrationVerificationStatus,
-    pub acknowledged_at: UtcTimestamp,
+    pub workflow: IntegrationVerificationWorkflowState,
 }
 
 /// Correlated phase projection returned by verification lookup.
@@ -95,8 +221,7 @@ pub struct GuardIntegrationVerificationPhases {
 #[serde(deny_unknown_fields)]
 pub struct GetIntegrationVerificationResult {
     pub verification_id: GuardIntegrationVerificationId,
-    pub status: GuardIntegrationVerificationStatus,
-    pub mcp_probe_acknowledged: bool,
+    pub workflow: IntegrationVerificationWorkflowState,
     pub guard_phases: GuardIntegrationVerificationPhases,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matched_prompt_event_id: Option<GuardEventId>,
@@ -104,12 +229,6 @@ pub struct GetIntegrationVerificationResult {
     pub matched_pre_tool_event_id: Option<GuardEventId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matched_post_tool_event_id: Option<GuardEventId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completed_at: Option<UtcTimestamp>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finding: Option<GuardIntegrationVerificationFinding>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub next_action: Option<String>,
 }
 
 #[cfg(test)]
@@ -118,68 +237,152 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::AgentToolId;
-
-    fn begin_result(
-        status: GuardIntegrationVerificationStatus,
-        acknowledged: bool,
-        next_probe_tool: Option<String>,
-        next_action: IntegrationVerificationNextAction,
-    ) -> BeginIntegrationVerificationResult {
-        BeginIntegrationVerificationResult {
-            verification_id: GuardIntegrationVerificationId::new("guard_verification_test"),
-            status,
-            expires_at: UtcTimestamp::parse("2026-07-23T00:05:00Z").expect("timestamp"),
-            mcp_probe_acknowledged: acknowledged,
-            next_probe_tool,
-            next_action,
-            matched_prompt_event_id: GuardEventId::new("guard_event_prompt"),
-        }
+    fn timestamp(value: &str) -> UtcTimestamp {
+        UtcTimestamp::parse(value).expect("timestamp")
     }
 
     #[test]
-    fn begin_result_projects_probe_requirement_and_state_directed_action() {
-        let active = serde_json::to_value(begin_result(
-            GuardIntegrationVerificationStatus::Active,
-            false,
-            Some(AgentToolId::GUARD_PROBE.wire_name().to_owned()),
-            IntegrationVerificationNextAction::CallGuardProbe,
-        ))
-        .expect("active begin result");
+    fn every_workflow_variant_serializes_with_its_exact_state_directed_tool() {
+        let awaiting_probe = IntegrationVerificationWorkflowState::AwaitingProbe {
+            tool: GuardProbeToolReference::new(),
+            expires_at: timestamp("2026-07-23T00:05:00Z"),
+        };
         assert_eq!(
-            active,
+            serde_json::to_value(&awaiting_probe).expect("awaiting-probe state"),
             json!({
-                "verification_id": "guard_verification_test",
-                "status": "active",
+                "kind": "awaiting_probe",
+                "tool": AgentToolId::GUARD_PROBE.wire_name(),
                 "expires_at": "2026-07-23T00:05:00Z",
-                "mcp_probe_acknowledged": false,
-                "next_probe_tool": AgentToolId::GUARD_PROBE.wire_name(),
-                "next_action": "call_guard_probe",
-                "matched_prompt_event_id": "guard_event_prompt",
             })
         );
-
-        let passed = serde_json::to_value(begin_result(
-            GuardIntegrationVerificationStatus::Passed,
-            true,
-            None,
-            IntegrationVerificationNextAction::NoFurtherAction,
-        ))
-        .expect("passed begin result");
-        assert!(passed.get("next_probe_tool").is_none());
-        assert_eq!(passed["mcp_probe_acknowledged"], true);
-        assert_eq!(passed["next_action"], "no_further_action");
+        let awaiting_hooks = IntegrationVerificationWorkflowState::AwaitingHookCompletion {
+            tool: IntegrationVerificationStatusToolReference::new(),
+            acknowledged_at: timestamp("2026-07-23T00:00:04Z"),
+            expires_at: timestamp("2026-07-23T00:05:00Z"),
+        };
+        assert_eq!(
+            serde_json::to_value(&awaiting_hooks).expect("awaiting-hook state"),
+            json!({
+                "kind": "awaiting_hook_completion",
+                "tool": AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+                "acknowledged_at": "2026-07-23T00:00:04Z",
+                "expires_at": "2026-07-23T00:05:00Z",
+            })
+        );
+        let complete = IntegrationVerificationWorkflowState::Complete {
+            completed_at: timestamp("2026-07-23T00:00:05Z"),
+        };
+        assert_eq!(
+            serde_json::to_value(&complete).expect("complete state"),
+            json!({
+                "kind": "complete",
+                "completed_at": "2026-07-23T00:00:05Z",
+            })
+        );
+        for reason in [
+            IntegrationVerificationRestartReason::Failed,
+            IntegrationVerificationRestartReason::Expired,
+        ] {
+            let restart = IntegrationVerificationWorkflowState::RestartRequired {
+                reason,
+                tool: BeginIntegrationVerificationToolReference::new(),
+                finding: Some(GuardIntegrationVerificationFinding {
+                    code: "verification_restart_required".to_owned(),
+                    summary: "Begin a new bounded verification.".to_owned(),
+                }),
+            };
+            let value = serde_json::to_value(&restart).expect("restart-required state");
+            assert_eq!(value["kind"], "restart_required");
+            assert_eq!(
+                value["tool"],
+                AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name()
+            );
+            assert_eq!(
+                restart.directed_tool(),
+                Some(AgentToolId::BEGIN_INTEGRATION_VERIFICATION)
+            );
+        }
+        assert_eq!(
+            awaiting_probe.directed_tool(),
+            Some(AgentToolId::GUARD_PROBE)
+        );
+        assert_eq!(
+            awaiting_hooks.directed_tool(),
+            Some(AgentToolId::GET_INTEGRATION_VERIFICATION)
+        );
+        assert_eq!(complete.directed_tool(), None);
     }
 
     #[test]
-    fn begin_schema_requires_state_and_allows_omitted_probe_tool() {
-        let schema = serde_json::to_value(schema_for!(BeginIntegrationVerificationResult))
-            .expect("begin schema");
-        let required = schema["required"].as_array().expect("required fields");
-        for field in ["status", "mcp_probe_acknowledged", "next_action"] {
-            assert!(required.contains(&json!(field)), "missing required {field}");
+    fn public_results_require_one_shared_tagged_workflow_state() {
+        let schemas = [
+            (
+                "begin",
+                serde_json::to_value(schema_for!(BeginIntegrationVerificationResult))
+                    .expect("begin schema"),
+                &["verification_id", "workflow", "matched_prompt_event_id"][..],
+            ),
+            (
+                "probe",
+                serde_json::to_value(schema_for!(GuardProbeResult)).expect("probe schema"),
+                &["verification_id", "workflow"][..],
+            ),
+            (
+                "get",
+                serde_json::to_value(schema_for!(GetIntegrationVerificationResult))
+                    .expect("get schema"),
+                &["verification_id", "workflow", "guard_phases"][..],
+            ),
+        ];
+        for (result_name, schema, required_fields) in schemas {
+            let required = schema["required"].as_array().expect("required fields");
+            for field in required_fields {
+                assert!(
+                    required.contains(&json!(field)),
+                    "{result_name} is missing required {field}"
+                );
+            }
+            assert_eq!(
+                schema["properties"]["workflow"]["$ref"],
+                "#/definitions/IntegrationVerificationWorkflowState"
+            );
+            for removed in [
+                "status",
+                "mcp_probe_acknowledged",
+                "next_probe_tool",
+                "next_action",
+                "acknowledged_at",
+                "completed_at",
+                "finding",
+            ] {
+                assert!(
+                    schema["properties"].get(removed).is_none(),
+                    "{result_name} retained independent field {removed}"
+                );
+            }
         }
-        assert!(!required.contains(&json!("next_probe_tool")));
-        assert!(schema["properties"].get("next_probe_tool").is_some());
+    }
+
+    #[test]
+    fn fixed_tool_references_reject_every_other_canonical_tool() {
+        for (value, expected) in [
+            (
+                json!(AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name()),
+                AgentToolId::GUARD_PROBE,
+            ),
+            (
+                json!(AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name()),
+                AgentToolId::GET_INTEGRATION_VERIFICATION,
+            ),
+        ] {
+            if expected == AgentToolId::GUARD_PROBE {
+                assert!(serde_json::from_value::<GuardProbeToolReference>(value).is_err());
+            } else {
+                assert!(
+                    serde_json::from_value::<IntegrationVerificationStatusToolReference>(value)
+                        .is_err()
+                );
+            }
+        }
     }
 }

@@ -470,12 +470,13 @@ relax the complete owner-defined request validation.
 
 The canonical user request is `Run the Volicord integration verification.` The
 agent resolves an exact project through `volicord.list_projects`, then calls
-`volicord.begin_integration_verification`. It calls the returned
-`volicord.guard_probe` only when begin reports
-`next_action=call_guard_probe`, then calls
-`volicord.get_integration_verification` to read current completion. It does
-not probe merely because begin resumed an existing run. Only this first-party
-state-directed sequence can supply current managed MCP and Guard correlation.
+`volicord.begin_integration_verification`. It follows the returned tagged
+`workflow`: `awaiting_probe`, `awaiting_hook_completion`, and
+`restart_required` each carry the exact canonical `tool` to call, while
+`complete` carries no tool. A restart is attempted only after the reported
+failure is repaired or the previous run expires. Begin, probe, and status
+expose this same state-directed contract. Only this first-party sequence can
+supply current managed MCP and Guard correlation.
 
 If Volicord tools are not exposed, the agent reports the managed MCP connection
 unavailable. It does not start raw stdio, hand-author Codex `_meta`, or treat
@@ -493,7 +494,7 @@ their exact current managed-host coordinate and have these public shapes:
 |---|---|---|
 | `volicord.list_projects` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Reads the Connection project allowlist; no write. |
 | `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Creates or resumes one bounded Registry verification run after current-coordinate validation; no Core, Task, or Product Repository effect. |
-| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | First-write-wins acknowledges the exact active run, or returns its original acknowledgement and current status on exact replay; no Core, Task, project-state, or Product Repository effect. |
+| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | First-write-wins acknowledges the exact active run and returns its current shared workflow state; exact replay returns the current terminal or nonterminal state without repeating effects. No Core, Task, project-state, or Product Repository effect. |
 | `volicord.get_integration_verification` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Reads the exact run and correlated phase status; no write. |
 
 These annotations describe the tools themselves. Ordinary compatible Guard
@@ -508,11 +509,7 @@ volicord.begin_integration_verification:
     project_selector?: string
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active | passed | failed | expired
-    expires_at: UtcTimestamp
-    mcp_probe_acknowledged: boolean
-    next_probe_tool?: volicord.guard_probe
-    next_action: call_guard_probe | read_verification_status | no_further_action
+    workflow: IntegrationVerificationWorkflowState
     matched_prompt_event_id: GuardEventId
 
 volicord.guard_probe:
@@ -520,16 +517,14 @@ volicord.guard_probe:
     verification_id: GuardIntegrationVerificationId
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active | passed | failed | expired
-    acknowledged_at: UtcTimestamp
+    workflow: IntegrationVerificationWorkflowState
 
 volicord.get_integration_verification:
   arguments:
     verification_id: GuardIntegrationVerificationId
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active | passed | failed | expired
-    mcp_probe_acknowledged: boolean
+    workflow: IntegrationVerificationWorkflowState
     guard_phases:
       prompt_capture: pending | matched
       pre_tool: pending | matched
@@ -537,9 +532,25 @@ volicord.get_integration_verification:
     matched_prompt_event_id?: GuardEventId
     matched_pre_tool_event_id?: GuardEventId
     matched_post_tool_event_id?: GuardEventId
-    completed_at?: UtcTimestamp
+
+IntegrationVerificationWorkflowState:
+  awaiting_probe:
+    kind: awaiting_probe
+    tool: volicord.guard_probe
+    expires_at: UtcTimestamp
+  awaiting_hook_completion:
+    kind: awaiting_hook_completion
+    tool: volicord.get_integration_verification
+    acknowledged_at: UtcTimestamp
+    expires_at: UtcTimestamp
+  complete:
+    kind: complete
+    completed_at: UtcTimestamp
+  restart_required:
+    kind: restart_required
+    reason: failed | expired
+    tool: volicord.begin_integration_verification
     finding?: { code: string, summary: string }
-    next_action?: string
 ```
 
 `project_selector` follows ordinary Connection project selection and may be
@@ -547,23 +558,27 @@ omitted only when selection is unambiguous. Begin binds the actual current
 managed runtime and native session/turn, requires a current compatible
 prompt-capture event, and creates or resumes the one bounded run for that
 coordinate. It never accepts `manual_cli`, `cli_preflight`, or
-`integration_probe` runtime evidence. Probe validates that exact coordinate
-before deciding whether a first acknowledgement is still eligible. For an
-active unacknowledged run, begin returns
-`next_action=call_guard_probe` and the canonical `next_probe_tool`. For an
-active acknowledged run, begin omits `next_probe_tool` and returns
-`next_action=read_verification_status`. For a terminal run, begin omits
-`next_probe_tool` and returns `next_action=no_further_action`.
+`integration_probe` runtime evidence. One Store-owned projection maps an
+effective active unacknowledged run to `awaiting_probe`, an effective active
+acknowledged run to `awaiting_hook_completion`, a passed run to `complete`, and
+a failed or expired run to `restart_required` with the corresponding typed
+reason. The tool references use the canonical `AgentToolId` wire projection;
+no result accepts an arbitrary tool string. The tagged alternatives and their
+state-specific required fields make contradictory combinations invalid in both
+typed decoding and JSON Schema.
 
 The probe acknowledgement is first-write-wins over verification ID,
 Connection, managed runtime session, native host session, and native host turn.
 The first eligible active call records `probe_acknowledged_at`. An exact
-active or terminal replay returns that original timestamp and the current
-effective status without replacing it. A different caller coordinate is
-rejected without exposing the acknowledgement. A terminal or expired run with
-no prior acknowledgement cannot acquire one late. Probe does not reactivate a
-terminal run or mutate Core state, Task state, or Product Repository files.
-Get is read-only and reports the correlated phase state and next action.
+active replay returns the same `awaiting_hook_completion` state, including its
+authoritative acknowledgement time. Exact replay after completion returns
+`complete`. A replay whose run is effectively failed or expired returns the
+corresponding `restart_required` state and never substitutes `complete`. A
+different caller coordinate is rejected without exposing the acknowledgement.
+A terminal or expired run with no prior acknowledgement cannot acquire one
+late. Probe does not reactivate a terminal run or mutate Core state, Task
+state, or Product Repository files. Get is read-only and reports the same
+workflow state with its correlated phase observations.
 
 A run passes only when the same run session and turn contain a compatible
 prompt event followed by `PreToolUse` and `PostToolUse` for the same tool-use

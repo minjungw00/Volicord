@@ -72,7 +72,7 @@ the public method execution path.
 
 | Workspace member | Guide-level role |
 |---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; and the canonical `AgentToolId` catalog and wire-name projection. |
+| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. |
 | `crates/volicord-host-contract` | Dependency-safe versioned Codex wire-contract parsing through the distinct `CodexMcpTurnMetadataV1` and `CodexHooksV1` markers, deterministic contract identities, bounded host values and errors, and source-specific MCP, prompt-hook, and tool-hook correlation types. It owns no Store, Core, CLI, or MCP policy. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, one-time managed MCP launch leases, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared request pipeline, method planning, policy checks, response construction, and Store coordination. |
@@ -169,16 +169,18 @@ host/config inspection + Store session/event evidence
 ```
 
 `volicord-types` owns `HookActivationState`,
-`ConnectionActivationState`, focused check dependencies, and fixed action
-metadata. `volicord-cli` collects current managed configuration, host reload,
-hook-source, session, capability, Guard, and separate project-trust evidence.
-`volicord-store` preserves the Guard definition boundary: unchanged manifests
-retain current observation eligibility and changed managed definition content
-invalidates earlier events. `volicord-mcp` and generated host guidance own the
-canonical first-party in-chat request and state-directed tool sequence: begin
-decides whether the first-write-wins probe is still required, and completed
-exact replay never reactivates the run. Renderers consume typed state; they do
-not classify summary prose.
+`ConnectionActivationState`, focused check dependencies, fixed action
+metadata, and the closed `IntegrationVerificationWorkflowState` with canonical
+typed tool references. `volicord-cli` collects current managed configuration,
+host reload, hook-source, session, capability, Guard, and separate
+project-trust evidence. `volicord-store` preserves the Guard definition
+boundary and is the single domain projector from a verification record to the
+shared workflow state: unchanged manifests retain current observation
+eligibility and changed managed definition content invalidates earlier events.
+Begin, probe, get, `volicord-mcp`, CLI checks, and generated host guidance all
+consume that projection. Completed exact probe replay stays `complete`;
+failed or expired replay stays `restart_required`. Adapters and renderers do
+not derive parallel state or classify summary prose.
 
 Host-provided disabled, policy-managed, or invocation-bypass evidence is
 accepted only through the typed host evidence boundary. In its absence,

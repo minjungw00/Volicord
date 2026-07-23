@@ -52,6 +52,7 @@ fn generated_mcp_workflow_tool_contract_snapshot_matches_sources() {
             AgentConnectionMode::Workflow,
             &[
                 "crates/volicord-types/src/ids.rs",
+                "crates/volicord-types/src/integration_verification.rs",
                 "crates/volicord-types/src/methods.rs",
                 "crates/volicord-types/src/schema.rs",
                 "crates/volicord-types/src/tool_names.rs",
@@ -73,6 +74,7 @@ fn generated_mcp_read_only_tool_contract_snapshot_matches_sources() {
             AgentConnectionMode::ReadOnly,
             &[
                 "crates/volicord-types/src/ids.rs",
+                "crates/volicord-types/src/integration_verification.rs",
                 "crates/volicord-types/src/methods.rs",
                 "crates/volicord-types/src/schema.rs",
                 "crates/volicord-types/src/tool_names.rs",

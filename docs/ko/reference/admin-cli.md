@@ -847,13 +847,13 @@ reconciliation, 검증 보고서 영속화입니다. 활성 검증도 관리 hos
 `volicord connection verify codex`는 정규 `guard_verification` check와 사용할 수 있는 경우
 verification/run/event ID를 보고하지만, CLI가 채팅 내 작업 흐름을 합성하거나 실행하지는
 않습니다. Pending check는 현재 managed Codex 채팅 안에서
-`volicord.begin_integration_verification`을 사용하고, begin이
-`next_action=call_guard_probe`를 보고할 때만 반환된 `volicord.guard_probe`를 호출한 뒤,
-`volicord.get_integration_verification`으로 현재 완료 상태를 읽도록 안내합니다. 재개된
-acknowledged 또는 passed run에는 probe가 더 필요하지 않습니다. CLI preflight, 수동 stdio
-self-test, 이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 명령은 Codex trust 상태를
-관찰할 뿐 프로젝트 trust를 자동화·승인·우회하거나 MCP trust configuration을 변경하지
-않습니다.
+`volicord.begin_integration_verification`을 사용한 뒤 반환된 tagged `workflow`와 정확한
+typed `tool`을 따르도록 안내합니다. `awaiting_probe`는 Guard probe를 호출하고,
+`awaiting_hook_completion`은 status를 읽으며, `restart_required`는 복구 또는 만료 뒤 새
+verification을 시작하고, `complete`는 verification tool을 호출하지 않습니다. Begin,
+probe, status는 같은 workflow 상태를 보고합니다. CLI preflight, 수동 stdio self-test,
+이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 명령은 Codex trust 상태를 관찰할 뿐
+프로젝트 trust를 자동화·승인·우회하거나 MCP trust configuration을 변경하지 않습니다.
 
 생성 Codex entry는 숨겨진 `_host-launch` 명령을 사용합니다. `_host-launch`는 host
 소유이고 일반 help에 표시하지 않으며 별도의 관리 또는 공개 API 표면이 아닙니다.

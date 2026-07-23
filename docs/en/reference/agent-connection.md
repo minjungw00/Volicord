@@ -696,18 +696,24 @@ coordinate has at most one active run, and begin replay under unchanged
 ownership returns the same active or passed run.
 
 Only an actual current `managed_host` call can begin, probe, or read a run.
-Manual stdio, CLI preflight, and integration probes cannot create success. A
-begin result directs the caller from current run state: only an active run
-without an acknowledgement returns the Guard probe instruction; an active
-acknowledged run directs status lookup, and a passed run requires no further
-probe. Terminal runs never become active merely to repeat a probe.
+Manual stdio, CLI preflight, and integration probes cannot create success.
+`IntegrationVerificationWorkflowState` is the one public projection shared by
+begin, probe, and status. Its tagged alternatives are `awaiting_probe` with the
+canonical Guard probe tool and expiry, `awaiting_hook_completion` with the
+canonical status tool, authoritative acknowledgement time, and expiry,
+`complete` with completion time, and `restart_required` with a typed `failed`
+or `expired` reason, the canonical begin tool, and a bounded current finding
+when applicable. Tool fields are typed canonical `AgentToolId` projections,
+not arbitrary strings. Terminal runs never become active merely to repeat a
+probe.
 
 Probe acknowledgement is first-write-wins for the exact verification ID,
 Connection, managed runtime session, native host session, and native host turn.
-The first eligible active call records the timestamp. Any exact replay with an
-existing acknowledgement returns that original timestamp and current effective
-status, including after the run passes, without changing completion or matched
-events. A different coordinate is rejected without exposing the
+The first eligible active call records the timestamp. Active replay retains
+`awaiting_hook_completion` and that original timestamp. Exact replay after
+completion returns `complete`; an effectively failed or expired replay retains
+the corresponding `restart_required` state. No replay changes completion or
+matched events. A different coordinate is rejected without exposing the
 acknowledgement, and a terminal or expired run without one cannot acquire a
 late acknowledgement.
 

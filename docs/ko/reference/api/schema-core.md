@@ -43,9 +43,9 @@ method identity를 정의하지 않습니다.
 `volicord.begin_integration_verification`, `volicord.guard_probe`,
 `volicord.get_integration_verification`은 이 catalog의 Connection-integration 구성원입니다.
 공개 요청/결과 스키마는 [MCP 전송](../mcp-transport.md#in-chat-integration-verification-schemas)이
-담당하며 probe 필요 상태, acknowledgement 상태, 현재 verification 상태, 상태 지향 다음
-행동을 포함합니다. `ToolEnvelope`, Core method 스키마, Task 상태는 이를 담당하지 않습니다.
-Adapter 효과는
+담당하며 공유 tagged `IntegrationVerificationWorkflowState`, typed tool 지향 alternative,
+phase 관찰, 한도 있는 finding을 포함합니다. `ToolEnvelope`, Core method 스키마, Task 상태는
+이를 담당하지 않습니다. Adapter 효과는
 [저장 효과](../storage-effects.md#connection-integration-verification-effects)가 담당합니다.
 
 ## 스키마 표기 규칙

@@ -7,12 +7,14 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde_json::Value;
 use volicord_host_contract::{codex_hook_tool_name, HostContractProfileId, HostNativeCorrelation};
 use volicord_types::{
-    guard_manifest_from_json, AgentToolId, DurableIdGenerator, DurableIdKind,
+    guard_manifest_from_json, AgentToolId, BeginIntegrationVerificationResult,
+    BeginIntegrationVerificationToolReference, DurableIdGenerator, DurableIdKind,
     GetIntegrationVerificationResult, GuardIntegrationVerificationFinding,
     GuardIntegrationVerificationId, GuardIntegrationVerificationPhaseStatus,
     GuardIntegrationVerificationPhases, GuardIntegrationVerificationStatus, GuardProbeResult,
-    IntegrationRevision, RandomDurableIdGenerator, UtcTimestamp,
-    GUARD_INTEGRATION_VERIFICATION_TTL_SECONDS,
+    GuardProbeToolReference, IntegrationRevision, IntegrationVerificationRestartReason,
+    IntegrationVerificationStatusToolReference, IntegrationVerificationWorkflowState,
+    RandomDurableIdGenerator, UtcTimestamp, GUARD_INTEGRATION_VERIFICATION_TTL_SECONDS,
 };
 
 use crate::{
@@ -80,12 +82,15 @@ pub struct GuardIntegrationVerificationRunRecord {
 pub fn begin_guard_integration_verification(
     runtime_home: impl AsRef<Path>,
     input: BeginGuardIntegrationVerificationInput,
-) -> StoreResult<GuardIntegrationVerificationRunRecord> {
-    begin_guard_integration_verification_with_generator(
+) -> StoreResult<BeginIntegrationVerificationResult> {
+    let runtime_home = runtime_home.as_ref();
+    let observed_at = input.observed_at.clone();
+    let record = begin_guard_integration_verification_with_generator(
         runtime_home,
         input,
         &RandomDurableIdGenerator,
-    )
+    )?;
+    begin_result_from_record(runtime_home, &record, &observed_at)
 }
 
 /// Deterministic-generator variant for durable tests.
@@ -279,11 +284,10 @@ pub fn acknowledge_guard_integration_probe(
     })?;
     require_caller_coordinate(&run, caller)?;
     let effective = effective_status(runtime_home, &run, &now)?;
-    if let Some(acknowledged_at) = run.probe_acknowledged_at.as_deref() {
+    if run.probe_acknowledged_at.is_some() {
         let result = GuardProbeResult {
             verification_id: GuardIntegrationVerificationId::new(verification_id),
-            status: effective,
-            acknowledged_at: parse_timestamp("probe_acknowledged_at", acknowledged_at)?,
+            workflow: workflow_state_from_record(&run, effective)?,
         };
         tx.commit()?;
         return Ok(result);
@@ -305,15 +309,13 @@ pub fn acknowledge_guard_integration_probe(
             entity: "guard_integration_verification",
             id: verification_id.to_owned(),
         })?;
-    let acknowledged_at = authoritative
-        .probe_acknowledged_at
-        .as_deref()
-        .ok_or_else(|| terminal_state_conflict(caller, effective))?;
+    if authoritative.probe_acknowledged_at.is_none() {
+        return Err(terminal_state_conflict(caller, effective));
+    }
     let effective = effective_status(runtime_home, &authoritative, &now)?;
     let result = GuardProbeResult {
         verification_id: GuardIntegrationVerificationId::new(verification_id),
-        status: effective,
-        acknowledged_at: parse_timestamp("probe_acknowledged_at", acknowledged_at)?,
+        workflow: workflow_state_from_record(&authoritative, effective)?,
     };
     tx.commit()?;
     Ok(result)
@@ -345,7 +347,8 @@ pub fn get_guard_integration_verification(
         ));
     }
     let effective = effective_status(runtime_home, &run, &now)?;
-    Ok(result_from_record(&run, effective))
+    let workflow = workflow_state_from_record(&run, effective)?;
+    Ok(result_from_record(&run, workflow))
 }
 
 /// Re-evaluates an active run after one compatible Guard event is persisted.
@@ -470,17 +473,18 @@ pub fn latest_guard_integration_verification_for_connection(
     .map_err(Into::into)
 }
 
-/// Computes the current effective status for a report without mutating the run.
-pub fn current_guard_integration_verification_status(
+/// Projects the current authoritative workflow state without mutating the run.
+pub fn current_guard_integration_verification_workflow(
     runtime_home: impl AsRef<Path>,
     run: &GuardIntegrationVerificationRunRecord,
     observed_at: &str,
-) -> StoreResult<GuardIntegrationVerificationStatus> {
-    effective_status(
+) -> StoreResult<IntegrationVerificationWorkflowState> {
+    let effective = effective_status(
         runtime_home.as_ref(),
         run,
         &parse_timestamp("observed_at", observed_at)?,
-    )
+    )?;
+    workflow_state_from_record(run, effective)
 }
 
 fn correlated_event_triple<'a>(
@@ -648,16 +652,44 @@ fn effective_status(
     Ok(stored)
 }
 
-fn result_from_record(
+fn begin_result_from_record(
+    runtime_home: &Path,
+    run: &GuardIntegrationVerificationRunRecord,
+    observed_at: &str,
+) -> StoreResult<BeginIntegrationVerificationResult> {
+    let effective = effective_status(
+        runtime_home,
+        run,
+        &parse_timestamp("observed_at", observed_at)?,
+    )?;
+    let matched_prompt_event_id = run
+        .matched_prompt_event_id
+        .as_deref()
+        .map(volicord_types::GuardEventId::new)
+        .ok_or_else(|| StoreError::CorruptStoredValue {
+            database_kind: "registry",
+            field: "guard_integration_verification_runs.matched_prompt_event_id",
+        })?;
+    Ok(BeginIntegrationVerificationResult {
+        verification_id: GuardIntegrationVerificationId::new(&run.verification_id),
+        workflow: workflow_state_from_record(run, effective)?,
+        matched_prompt_event_id,
+    })
+}
+
+fn workflow_state_from_record(
     run: &GuardIntegrationVerificationRunRecord,
     status: GuardIntegrationVerificationStatus,
-) -> GetIntegrationVerificationResult {
-    let phase = |value: &Option<String>| {
-        if value.is_some() {
-            GuardIntegrationVerificationPhaseStatus::Matched
-        } else {
-            GuardIntegrationVerificationPhaseStatus::Pending
-        }
+) -> StoreResult<IntegrationVerificationWorkflowState> {
+    let expires_at = || parse_timestamp("expires_at", &run.expires_at);
+    let completed_at = || {
+        run.completed_at
+            .as_deref()
+            .ok_or_else(|| StoreError::CorruptStoredValue {
+                database_kind: "registry",
+                field: "guard_integration_verification_runs.completed_at",
+            })
+            .and_then(|value| parse_timestamp("completed_at", value))
     };
     let finding = match status {
         GuardIntegrationVerificationStatus::Failed => Some(GuardIntegrationVerificationFinding {
@@ -685,27 +717,59 @@ fn result_from_record(
         GuardIntegrationVerificationStatus::Active
         | GuardIntegrationVerificationStatus::Passed => None,
     };
-    let next_action = match status {
-        GuardIntegrationVerificationStatus::Active if run.probe_acknowledged_at.is_none() => {
-            Some(format!(
-                "Call {} with this verification_id.",
-                AgentToolId::GUARD_PROBE.wire_name()
-            ))
+    match status {
+        GuardIntegrationVerificationStatus::Active => {
+            if let Some(acknowledged_at) = run.probe_acknowledged_at.as_deref() {
+                Ok(
+                    IntegrationVerificationWorkflowState::AwaitingHookCompletion {
+                        tool: IntegrationVerificationStatusToolReference::new(),
+                        acknowledged_at: parse_timestamp("probe_acknowledged_at", acknowledged_at)?,
+                        expires_at: expires_at()?,
+                    },
+                )
+            } else {
+                Ok(IntegrationVerificationWorkflowState::AwaitingProbe {
+                    tool: GuardProbeToolReference::new(),
+                    expires_at: expires_at()?,
+                })
+            }
         }
-        GuardIntegrationVerificationStatus::Active => Some(
-            "Read this verification again after the host PostToolUse hook completes.".to_owned(),
-        ),
-        GuardIntegrationVerificationStatus::Failed
-        | GuardIntegrationVerificationStatus::Expired => Some(
-            "Begin a new verification in the current managed Codex turn after repairing the reported condition."
-                .to_owned(),
-        ),
-        GuardIntegrationVerificationStatus::Passed => None,
+        GuardIntegrationVerificationStatus::Passed => {
+            Ok(IntegrationVerificationWorkflowState::Complete {
+                completed_at: completed_at()?,
+            })
+        }
+        GuardIntegrationVerificationStatus::Failed => {
+            Ok(IntegrationVerificationWorkflowState::RestartRequired {
+                reason: IntegrationVerificationRestartReason::Failed,
+                tool: BeginIntegrationVerificationToolReference::new(),
+                finding,
+            })
+        }
+        GuardIntegrationVerificationStatus::Expired => {
+            Ok(IntegrationVerificationWorkflowState::RestartRequired {
+                reason: IntegrationVerificationRestartReason::Expired,
+                tool: BeginIntegrationVerificationToolReference::new(),
+                finding,
+            })
+        }
+    }
+}
+
+fn result_from_record(
+    run: &GuardIntegrationVerificationRunRecord,
+    workflow: IntegrationVerificationWorkflowState,
+) -> GetIntegrationVerificationResult {
+    let phase = |value: &Option<String>| {
+        if value.is_some() {
+            GuardIntegrationVerificationPhaseStatus::Matched
+        } else {
+            GuardIntegrationVerificationPhaseStatus::Pending
+        }
     };
     GetIntegrationVerificationResult {
         verification_id: GuardIntegrationVerificationId::new(&run.verification_id),
-        status,
-        mcp_probe_acknowledged: run.probe_acknowledged_at.is_some(),
+        workflow,
         guard_phases: GuardIntegrationVerificationPhases {
             prompt_capture: phase(&run.matched_prompt_event_id),
             pre_tool: phase(&run.matched_pre_tool_event_id),
@@ -723,12 +787,6 @@ fn result_from_record(
             .matched_post_tool_event_id
             .as_deref()
             .map(volicord_types::GuardEventId::new),
-        completed_at: run
-            .completed_at
-            .as_deref()
-            .and_then(|value| UtcTimestamp::parse(value).ok()),
-        finding,
-        next_action,
     }
 }
 
@@ -986,6 +1044,18 @@ mod tests {
         digest: Option<&'a str>,
     }
 
+    fn acknowledged_at(workflow: &IntegrationVerificationWorkflowState) -> Option<&UtcTimestamp> {
+        match workflow {
+            IntegrationVerificationWorkflowState::AwaitingHookCompletion {
+                acknowledged_at,
+                ..
+            } => Some(acknowledged_at),
+            IntegrationVerificationWorkflowState::AwaitingProbe { .. }
+            | IntegrationVerificationWorkflowState::Complete { .. }
+            | IntegrationVerificationWorkflowState::RestartRequired { .. } => None,
+        }
+    }
+
     impl VerificationFixture {
         fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
             let runtime_home = TempRuntimeHome::new(prefix)?;
@@ -1149,6 +1219,15 @@ mod tests {
             &SequenceDurableIdGenerator::new(Vec::<String>::new()),
         )?;
         assert_eq!(run.verification_id, resumed.verification_id);
+        let begin_before_probe =
+            begin_result_from_record(fixture.runtime_home.path(), &run, "2026-07-23T00:00:03Z")?;
+        let get_before_probe = get_guard_integration_verification(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:03Z",
+        )?;
+        assert_eq!(begin_before_probe.workflow, get_before_probe.workflow);
 
         let first = acknowledge_guard_integration_probe(
             fixture.runtime_home.path(),
@@ -1162,9 +1241,28 @@ mod tests {
             &fixture.caller(),
             "2026-07-23T00:00:04.100Z",
         )?;
-        assert_eq!(first.acknowledged_at, replay.acknowledged_at);
-        assert_eq!(first.status, GuardIntegrationVerificationStatus::Active);
-        assert_eq!(replay.status, GuardIntegrationVerificationStatus::Active);
+        assert_eq!(first.workflow, replay.workflow);
+        assert!(matches!(
+            &first.workflow,
+            IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+        ));
+        let acknowledged_record = {
+            let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+            run_from_conn(&conn, &run.verification_id)?.expect("acknowledged run")
+        };
+        let begin_after_probe = begin_result_from_record(
+            fixture.runtime_home.path(),
+            &acknowledged_record,
+            "2026-07-23T00:00:04.100Z",
+        )?;
+        let get_after_probe = get_guard_integration_verification(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:04.100Z",
+        )?;
+        assert_eq!(first.workflow, begin_after_probe.workflow);
+        assert_eq!(first.workflow, get_after_probe.workflow);
 
         let probe_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
         fixture.insert_tool_event(ToolEventFixture {
@@ -1200,11 +1298,10 @@ mod tests {
             &fixture.caller(),
             "2026-07-23T00:00:04.750Z",
         )?;
-        assert_eq!(
-            passed_replay.status,
-            GuardIntegrationVerificationStatus::Passed
-        );
-        assert_eq!(passed_replay.acknowledged_at, first.acknowledged_at);
+        assert!(matches!(
+            &passed_replay.workflow,
+            IntegrationVerificationWorkflowState::Complete { .. }
+        ));
         let after_passed_replay = {
             let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
             run_from_conn(&conn, &run.verification_id)?.expect("passed run")
@@ -1232,7 +1329,17 @@ mod tests {
             &fixture.caller(),
             "2026-07-23T00:00:05Z",
         )?;
-        assert_eq!(result.status, GuardIntegrationVerificationStatus::Passed);
+        assert!(matches!(
+            &result.workflow,
+            IntegrationVerificationWorkflowState::Complete { .. }
+        ));
+        let begin_after_completion = begin_result_from_record(
+            fixture.runtime_home.path(),
+            &updated,
+            "2026-07-23T00:00:05Z",
+        )?;
+        assert_eq!(passed_replay.workflow, begin_after_completion.workflow);
+        assert_eq!(passed_replay.workflow, result.workflow);
         assert_eq!(
             result.guard_phases,
             GuardIntegrationVerificationPhases {
@@ -1270,21 +1377,37 @@ mod tests {
             &fixture.caller(),
             "2026-07-23T00:00:07Z",
         )?;
-        assert_eq!(
-            stale_pass.status,
-            GuardIntegrationVerificationStatus::Failed
-        );
+        assert!(matches!(
+            &stale_pass.workflow,
+            IntegrationVerificationWorkflowState::RestartRequired {
+                reason: IntegrationVerificationRestartReason::Failed,
+                ..
+            }
+        ));
         let failed_replay = acknowledge_guard_integration_probe(
             fixture.runtime_home.path(),
             &run.verification_id,
             &fixture.caller(),
             "2026-07-23T00:00:07.100Z",
         )?;
-        assert_eq!(
-            failed_replay.status,
-            GuardIntegrationVerificationStatus::Failed
-        );
-        assert_eq!(failed_replay.acknowledged_at, first.acknowledged_at);
+        assert!(matches!(
+            &failed_replay.workflow,
+            IntegrationVerificationWorkflowState::RestartRequired {
+                reason: IntegrationVerificationRestartReason::Failed,
+                ..
+            }
+        ));
+        let stale_record = {
+            let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+            run_from_conn(&conn, &run.verification_id)?.expect("stale run")
+        };
+        let failed_begin = begin_result_from_record(
+            fixture.runtime_home.path(),
+            &stale_record,
+            "2026-07-23T00:00:07.100Z",
+        )?;
+        assert_eq!(failed_begin.workflow, stale_pass.workflow);
+        assert_eq!(failed_begin.workflow, failed_replay.workflow);
         Ok(())
     }
 
@@ -1318,13 +1441,17 @@ mod tests {
             .remove(0)
             .join()
             .map_err(|_| "second probe thread panicked")??;
-        assert_eq!(first.acknowledged_at, second.acknowledged_at);
-        assert_eq!(first.status, GuardIntegrationVerificationStatus::Active);
-        assert_eq!(second.status, GuardIntegrationVerificationStatus::Active);
+        assert_eq!(first.workflow, second.workflow);
+        assert!(matches!(
+            &first.workflow,
+            IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+        ));
 
         let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
         let authoritative = run_from_conn(&conn, &run.verification_id)?.expect("verification run");
-        let first_acknowledged_at = first.acknowledged_at.to_canonical_string();
+        let first_acknowledged_at = acknowledged_at(&first.workflow)
+            .expect("acknowledgement")
+            .to_canonical_string();
         assert_eq!(
             authoritative.probe_acknowledged_at.as_deref(),
             Some(first_acknowledged_at.as_str())
@@ -1367,7 +1494,9 @@ mod tests {
         }
         let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
         let authoritative = run_from_conn(&conn, &run.verification_id)?.expect("verification run");
-        let acknowledged_at = acknowledged.acknowledged_at.to_canonical_string();
+        let acknowledged_at = acknowledged_at(&acknowledged.workflow)
+            .expect("acknowledgement")
+            .to_canonical_string();
         assert_eq!(
             authoritative.probe_acknowledged_at.as_deref(),
             Some(acknowledged_at.as_str())
@@ -1376,7 +1505,8 @@ mod tests {
     }
 
     #[test]
-    fn expired_exact_replay_returns_the_original_acknowledgement() -> Result<(), Box<dyn Error>> {
+    fn expired_exact_replay_stays_terminal_without_changing_acknowledgement(
+    ) -> Result<(), Box<dyn Error>> {
         let fixture = VerificationFixture::new("guard-integration-expired-replay")?;
         let run = fixture.begin()?;
         let acknowledged = acknowledge_guard_integration_probe(
@@ -1391,13 +1521,31 @@ mod tests {
             &fixture.caller(),
             "2026-07-23T00:05:03Z",
         )?;
-        assert_eq!(replay.status, GuardIntegrationVerificationStatus::Expired);
-        assert_eq!(replay.acknowledged_at, acknowledged.acknowledged_at);
+        assert!(matches!(
+            &replay.workflow,
+            IntegrationVerificationWorkflowState::RestartRequired {
+                reason: IntegrationVerificationRestartReason::Expired,
+                ..
+            }
+        ));
+        let expired_get = get_guard_integration_verification(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:05:03Z",
+        )?;
+        let expired_begin =
+            begin_result_from_record(fixture.runtime_home.path(), &run, "2026-07-23T00:05:03Z")?;
+        assert_eq!(replay.workflow, expired_get.workflow);
+        assert_eq!(replay.workflow, expired_begin.workflow);
+        let acknowledged_at = acknowledged_at(&acknowledged.workflow)
+            .expect("acknowledgement")
+            .to_canonical_string();
         let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
         let authoritative = run_from_conn(&conn, &run.verification_id)?.expect("expired run");
         assert_eq!(
             authoritative.probe_acknowledged_at.as_deref(),
-            Some(acknowledged.acknowledged_at.to_canonical_string().as_str())
+            Some(acknowledged_at.as_str())
         );
         Ok(())
     }
@@ -1522,9 +1670,11 @@ mod tests {
                 &fixture.caller(),
                 "2026-07-23T00:00:05Z",
             )?;
-            assert_eq!(
-                result.status,
-                GuardIntegrationVerificationStatus::Active,
+            assert!(
+                matches!(
+                    &result.workflow,
+                    IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+                ),
                 "{mismatch} must not pass",
             );
         }
@@ -1537,7 +1687,13 @@ mod tests {
             &fixture.caller(),
             "2026-07-23T00:05:03Z",
         )?;
-        assert_eq!(result.status, GuardIntegrationVerificationStatus::Expired);
+        assert!(matches!(
+            &result.workflow,
+            IntegrationVerificationWorkflowState::RestartRequired {
+                reason: IntegrationVerificationRestartReason::Expired,
+                ..
+            }
+        ));
         Ok(())
     }
 
@@ -1582,15 +1738,17 @@ mod tests {
             PROJECT_ID,
             "guard_event_historical_post",
         )?;
-        assert_eq!(
-            get_guard_integration_verification(
-                fixture.runtime_home.path(),
-                &run.verification_id,
-                &fixture.caller(),
-                "2026-07-23T00:00:04.100Z",
-            )?
-            .status,
-            GuardIntegrationVerificationStatus::Active,
+        assert!(
+            matches!(
+                get_guard_integration_verification(
+                    fixture.runtime_home.path(),
+                    &run.verification_id,
+                    &fixture.caller(),
+                    "2026-07-23T00:00:04.100Z",
+                )?
+                .workflow,
+                IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+            ),
             "matching-looking events before the captured prompt cannot complete the run",
         );
 
@@ -1619,15 +1777,17 @@ mod tests {
             PROJECT_ID,
             "guard_event_post_before_ack",
         )?;
-        assert_eq!(
-            get_guard_integration_verification(
-                fixture.runtime_home.path(),
-                &run.verification_id,
-                &fixture.caller(),
-                "2026-07-23T00:00:04.200Z",
-            )?
-            .status,
-            GuardIntegrationVerificationStatus::Active,
+        assert!(
+            matches!(
+                get_guard_integration_verification(
+                    fixture.runtime_home.path(),
+                    &run.verification_id,
+                    &fixture.caller(),
+                    "2026-07-23T00:00:04.200Z",
+                )?
+                .workflow,
+                IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+            ),
             "a post-tool event before probe acknowledgement cannot complete the run",
         );
 
@@ -1683,7 +1843,13 @@ mod tests {
                 &fixture.caller(),
                 "2026-07-23T00:00:04Z",
             )?;
-            assert_eq!(result.status, GuardIntegrationVerificationStatus::Failed);
+            assert!(matches!(
+                &result.workflow,
+                IntegrationVerificationWorkflowState::RestartRequired {
+                    reason: IntegrationVerificationRestartReason::Failed,
+                    ..
+                }
+            ));
             conn.execute(
                 &format!(
                     "UPDATE guard_integration_verification_runs SET {column} = ?2 WHERE verification_id = ?1"

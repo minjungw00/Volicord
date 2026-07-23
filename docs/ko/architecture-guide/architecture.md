@@ -67,7 +67,7 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 정규 `AgentToolId` catalog와 wire 이름 투영. |
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. |
 | `crates/volicord-host-contract` | 서로 다른 `CodexMcpTurnMetadataV1` 및 `CodexHooksV1` marker를 통한 의존성이 안전한 버전 지정 Codex wire contract parsing, 결정적인 contract identity, 한도 있는 host 값과 error, source별 MCP·prompt-hook·tool-hook 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 요청 파이프라인, 메서드 계획, 정책 점검, 응답 구성, Store 조율. |
@@ -157,14 +157,16 @@ host/config 조사 + Store session/event 근거
 ```
 
 `volicord-types`는 `HookActivationState`, `ConnectionActivationState`, 집중 check
-dependency, 고정 action metadata를 담당합니다. `volicord-cli`는 현재 managed
+dependency, 고정 action metadata, 정규 typed tool reference를 포함하는 폐쇄형
+`IntegrationVerificationWorkflowState`를 담당합니다. `volicord-cli`는 현재 managed
 configuration, host reload, hook source, session, capability, Guard, 별도 project-trust
-근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존합니다. 바뀌지 않은
+근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존하며 verification
+record에서 공유 workflow 상태를 만드는 유일한 domain projector입니다. 바뀌지 않은
 manifest는 현재 관찰의 적격성을 유지하고 관리 definition 내용이 바뀌면 이전 event를
-무효화합니다. `volicord-mcp`와 생성 host guidance는 정규 first-party in-chat 요청과
-상태 지향 tool sequence를 담당합니다. Begin은 first-write-wins probe가 아직 필요한지
-결정하고, 완료된 exact replay는 run을 다시 active로 만들지 않습니다. Renderer는 typed
-상태를 소비하며 summary 산문을 분류하지 않습니다.
+무효화합니다. Begin, probe, get, `volicord-mcp`, CLI check, 생성 host guidance는 모두
+그 projection을 사용합니다. 완료된 정확한 probe replay는 `complete`로 유지되고 실패
+또는 만료 replay는 `restart_required`로 유지됩니다. Adapter와 renderer는 별도의 상태를
+파생하거나 summary 산문을 분류하지 않습니다.
 
 Host가 제공한 disabled, policy-managed, invocation-bypass 근거는 typed host evidence
 경계를 통해서만 받습니다. 이 근거가 없으면 Volicord는 현재 definition에 맞는 호환 event로

@@ -80,11 +80,15 @@ Connection-integration 검증은 도구 호출 거부와 run lifecycle을 구분
 남습니다. 만료는 이력 성공을 꾸며내는 대신 run 상태 `expired`가 됩니다. 이전 probe
 acknowledgement가 없는 terminal 또는 expired run은 새 값을 만들지 않고 늦은 probe를
 거부합니다. 정확한 caller 좌표의 replay에 기존 acknowledgement가 있으면 probe는 원래
-timestamp와 현재 유효 terminal 상태를 반환해 성공하며 run을 다시 active로 만들지
-않습니다. 좌표 거절은 다른 session이나 turn에 그 timestamp를 노출하지 않습니다. 저장된 pass의
+timestamp를 유지합니다. Active probe replay는 `awaiting_hook_completion`, 완료된 replay는
+`complete`, 유효 상태가 failed 또는 expired인 replay는 해당 typed `restart_required`
+상태를 반환합니다. 어떤 replay도 run을 다시 active로 만들지 않습니다. 좌표 거절은 다른
+session이나 turn에 그 timestamp를 노출하지 않습니다. 저장된 pass의
 runtime, Guard Installation, policy, integration revision 또는 hook contract가 더 이상
-현재 상태가 아니면 run 상태를 `failed`로 projection합니다. 이 run 상태는 Connection check
-사실이며 위의 제품 전체 실패 범주를 다시 정의하지 않습니다.
+현재 상태가 아니면 typed `failed` restart reason으로 투영합니다. Failed와 expired run은
+문제를 복구했거나 이전 window가 만료된 뒤 정규 begin tool을 통해 새 verification을
+지시합니다. 이 workflow 상태는 Connection check 사실이며 위의 제품 전체 실패 범주를 다시
+정의하지 않습니다.
 
 활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
 아래에서 정의하는 다섯 가지 상태 모델로 보고합니다. 실행 파일을 찾거나 실행하지 못한

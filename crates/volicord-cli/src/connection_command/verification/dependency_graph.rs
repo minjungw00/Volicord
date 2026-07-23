@@ -197,10 +197,15 @@ pub(super) fn actions_for_checks(
                 add(
                     ConnectionActionKind::RunGuardProbe,
                     &format!(
-                        "Call `{}` only when `{}` reports `next_action=call_guard_probe`, then call `{}`",
-                        AgentToolId::GUARD_PROBE.wire_name(),
+                        "Call `{}`, then follow its tagged workflow: `{}` uses `{}`, `{}` uses `{}`, `{}` uses `{}` after repair or expiry, and `{}` calls no verification tool",
                         AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+                        IntegrationVerificationWorkflowState::AWAITING_PROBE_KIND,
+                        AgentToolId::GUARD_PROBE.wire_name(),
+                        IntegrationVerificationWorkflowState::AWAITING_HOOK_COMPLETION_KIND,
                         AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+                        IntegrationVerificationWorkflowState::RESTART_REQUIRED_KIND,
+                        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+                        IntegrationVerificationWorkflowState::COMPLETE_KIND,
                     ),
                     check,
                 );

@@ -100,15 +100,16 @@ registry 직접 순회가 matrix를 정합니다.
   일치하지 않는 action metadata의 엄격한 거부
 - Reload, hook review, 새 conversation, 정규 요청, status의 init 출력 순서 및 CLI verify가
   선택적 diagnostic일 뿐이라는 문구
-- 정규 요청, 상태 지향 begin/probe/status sequence, unavailable 경로, raw stdio, 직접
-  작성한 `_meta`, resource discovery를 proof로 쓰지 않는다는 경계를 보존하는 생성
-  AGENTS, Codex rule, MCP server instruction
+- 정규 요청, 모든 tagged workflow kind와 그 상태가 반환하는 정규 tool, unavailable
+  경로, raw stdio, 직접 작성한 `_meta`, resource discovery를 proof로 쓰지 않는다는
+  경계를 보존하는 생성 AGENTS, Codex rule, MCP server instruction
 - 동시에 실행한 동일 호출의 first-write-wins probe acknowledgement, active replay,
-  상관관계 완료 뒤 lost-response replay, 유효 terminal 상태, 좌표 격리, 상태에 맞는 begin
-  응답
+  상관관계 완료 뒤 lost-response replay, 유효 terminal 상태, 좌표 격리, 도달 가능한
+  모든 tagged variant, Store projection 하나에 대한 begin/probe/get 일치, 모순된
+  state/tool 조합 거부, 모든 production MCP revision의 상태에 맞는 응답
 - 적용된 setup, launch lease, managed MCP milestone, 같은 turn의 Guard prompt/pre/post
-  검증, passed begin replay, passed probe replay, activation complete, 읽기 전용 status까지
-  비관리 source로 대신하지 않고 다루는
+  검증, complete begin replay, 정확한 complete probe replay, activation complete, 일치하는
+  읽기 전용 get까지 비관리 source로 대신하지 않고 다루는
   `crates/volicord-cli/tests/operational_host_e2e.rs`
 - 안정적인 identity를 유지하는 반복 Guard 초기화와 관련 없는 repository content 보존
 - Guard 관찰과 미기록 변경 suppression 결과

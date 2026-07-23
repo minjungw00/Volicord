@@ -5,6 +5,7 @@
     "notice": "Generated public contract snapshot. Do not edit by hand.",
     "source_paths": [
       "crates/volicord-types/src/ids.rs",
+      "crates/volicord-types/src/integration_verification.rs",
       "crates/volicord-types/src/methods.rs",
       "crates/volicord-types/src/schema.rs",
       "crates/volicord-types/src/tool_names.rs",
@@ -360,7 +361,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns whether the exact Guard probe is still required and the next valid operation.",
+      "description": "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns the authoritative tagged workflow state and its exact typed operation.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -373,8 +374,12 @@
       "output_schema": {
         "definitions": [
           "BeginIntegrationVerificationResult",
-          "GuardIntegrationVerificationStatus",
-          "IntegrationVerificationNextAction",
+          "BeginIntegrationVerificationToolReference",
+          "GuardIntegrationVerificationFinding",
+          "GuardProbeToolReference",
+          "IntegrationVerificationRestartReason",
+          "IntegrationVerificationStatusToolReference",
+          "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -383,7 +388,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:58e156e98b7e477fff92bf0ba23a738b52332bc7a06feef87d635284339b19ab"
+        "sha256": "sha256:1dde8f7b2bc950d1d71608f25d34b26922f3f95ce0c84a65e825c71325c4386b"
       }
     },
     {
@@ -393,7 +398,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Record or replay a first-write-wins MCP probe acknowledgement without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse.",
+      "description": "Record or replay a first-write-wins MCP probe acknowledgement and return the authoritative tagged workflow state without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -407,8 +412,13 @@
       "name": "volicord.guard_probe",
       "output_schema": {
         "definitions": [
-          "GuardIntegrationVerificationStatus",
+          "BeginIntegrationVerificationToolReference",
+          "GuardIntegrationVerificationFinding",
           "GuardProbeResult",
+          "GuardProbeToolReference",
+          "IntegrationVerificationRestartReason",
+          "IntegrationVerificationStatusToolReference",
+          "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -417,7 +427,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:871cb365301facae006501eac5c56ea5c4e3afc4ebf548ef035616509251e9a2"
+        "sha256": "sha256:22e4569eb9e9f3e7650df7b41ab4d96ad17e4099fee8e82cb6c82382c091d018"
       }
     },
     {
@@ -427,7 +437,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "Read MCP acknowledgement and exact same-turn Guard prompt, pre-tool, and post-tool correlation with bounded findings and next action.",
+      "description": "Read the authoritative tagged workflow state and exact same-turn Guard prompt, pre-tool, and post-tool correlation with bounded findings.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -441,11 +451,15 @@
       "name": "volicord.get_integration_verification",
       "output_schema": {
         "definitions": [
+          "BeginIntegrationVerificationToolReference",
           "GetIntegrationVerificationResult",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationPhaseStatus",
           "GuardIntegrationVerificationPhases",
-          "GuardIntegrationVerificationStatus",
+          "GuardProbeToolReference",
+          "IntegrationVerificationRestartReason",
+          "IntegrationVerificationStatusToolReference",
+          "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -454,7 +468,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4aeea902966ba83f43762a0870f66d489a538a464df87809fc9798f3b6cf056e"
+        "sha256": "sha256:db3045f174875ff4e1235f77c42d3ba1a7aaea64021b852c4c367a136b948d98"
       }
     }
   ]

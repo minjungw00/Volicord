@@ -90,13 +90,17 @@ prompt/pre/post correlation leaves an active run pending until its bounded
 expiry; expiry is the run status `expired`, not fabricated historical success.
 A terminal or expired run without a prior probe acknowledgement rejects a late
 probe without creating one. When an exact caller-coordinate replay already has
-an acknowledgement, the probe succeeds with the original timestamp and current
-effective terminal status; this replay does not reactivate the run. Coordinate
-rejection never exposes that timestamp to another session or turn.
+an acknowledgement, an active probe replay returns
+`awaiting_hook_completion` with the original timestamp, a completed replay
+returns `complete`, and an effectively failed or expired replay returns the
+corresponding typed `restart_required` state. No replay reactivates the run.
+Coordinate rejection never exposes that timestamp to another session or turn.
 A stored pass whose runtime, Guard Installation, policy, integration revision,
-or hook contract is no longer current projects as run status `failed`. These
-run statuses are Connection-check facts and do not redefine the product-wide
-failure categories above.
+or hook contract is no longer current projects as the typed `failed` restart
+reason. Failed and expired runs direct a new verification through the canonical
+begin tool after the condition is repaired or the previous window expires.
+These workflow states are Connection-check facts and do not redefine the
+product-wide failure categories above.
 
 Active connection verification discovers the configured Codex executable, runs
 its version command, and reports every behavioral check using the five-state

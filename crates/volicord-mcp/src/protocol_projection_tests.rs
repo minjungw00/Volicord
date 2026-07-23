@@ -328,28 +328,84 @@ fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
 
 #[test]
 fn integration_verification_results_validate_for_every_production_profile() {
-    let begin_active = json!({
-        "verification_id": "guard_verification_profile",
-        "status": "active",
+    let awaiting_probe = json!({
+        "kind": "awaiting_probe",
+        "tool": AgentToolId::GUARD_PROBE.wire_name(),
         "expires_at": "2026-07-23T00:05:00Z",
-        "mcp_probe_acknowledged": false,
-        "next_probe_tool": AgentToolId::GUARD_PROBE.wire_name(),
-        "next_action": "call_guard_probe",
-        "matched_prompt_event_id": "guard_event_prompt",
     });
-    let begin_passed = json!({
-        "verification_id": "guard_verification_profile",
-        "status": "passed",
-        "expires_at": "2026-07-23T00:05:00Z",
-        "mcp_probe_acknowledged": true,
-        "next_action": "no_further_action",
-        "matched_prompt_event_id": "guard_event_prompt",
-    });
-    let probe_passed = json!({
-        "verification_id": "guard_verification_profile",
-        "status": "passed",
+    let awaiting_hooks = json!({
+        "kind": "awaiting_hook_completion",
+        "tool": AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         "acknowledged_at": "2026-07-23T00:00:04Z",
+        "expires_at": "2026-07-23T00:05:00Z",
     });
+    let complete = json!({
+        "kind": "complete",
+        "completed_at": "2026-07-23T00:00:05Z",
+    });
+    let restart_failed = json!({
+        "kind": "restart_required",
+        "reason": "failed",
+        "tool": AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        "finding": {
+            "code": "verification_coordinate_stale",
+            "summary": "The verification coordinate is no longer current."
+        },
+    });
+    let restart_expired = json!({
+        "kind": "restart_required",
+        "reason": "expired",
+        "tool": AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        "finding": {
+            "code": "verification_expired",
+            "summary": "The bounded verification window expired."
+        },
+    });
+    let begin = |workflow: Value| {
+        json!({
+            "verification_id": "guard_verification_profile",
+            "workflow": workflow,
+            "matched_prompt_event_id": "guard_event_prompt",
+        })
+    };
+    let probe = |workflow: Value| {
+        json!({
+            "verification_id": "guard_verification_profile",
+            "workflow": workflow,
+        })
+    };
+    let get = |workflow: Value| {
+        json!({
+            "verification_id": "guard_verification_profile",
+            "workflow": workflow,
+            "guard_phases": {
+                "prompt_capture": "matched",
+                "pre_tool": "pending",
+                "post_tool": "pending"
+            },
+            "matched_prompt_event_id": "guard_event_prompt"
+        })
+    };
+    let begin_bodies = vec![
+        begin(awaiting_probe.clone()),
+        begin(awaiting_hooks.clone()),
+        begin(complete.clone()),
+        begin(restart_failed.clone()),
+        begin(restart_expired.clone()),
+    ];
+    let probe_bodies = vec![
+        probe(awaiting_hooks.clone()),
+        probe(complete.clone()),
+        probe(restart_failed.clone()),
+        probe(restart_expired.clone()),
+    ];
+    let get_bodies = vec![
+        get(awaiting_probe.clone()),
+        get(awaiting_hooks.clone()),
+        get(complete.clone()),
+        get(restart_failed.clone()),
+        get(restart_expired.clone()),
+    ];
     let documentation = mcp_tools_for_mode_and_storage_with_detail(
         AgentConnectionMode::Workflow,
         McpStorageCapability::ReadWrite,
@@ -358,9 +414,13 @@ fn integration_verification_results_validate_for_every_production_profile() {
     for (tool, bodies) in [
         (
             AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
-            vec![begin_active.clone(), begin_passed.clone()],
+            begin_bodies.clone(),
         ),
-        (AgentToolId::GUARD_PROBE, vec![probe_passed.clone()]),
+        (AgentToolId::GUARD_PROBE, probe_bodies.clone()),
+        (
+            AgentToolId::GET_INTEGRATION_VERIFICATION,
+            get_bodies.clone(),
+        ),
     ] {
         let schema = &documentation
             .iter()
@@ -374,30 +434,60 @@ fn integration_verification_results_validate_for_every_production_profile() {
         }
     }
 
+    let begin_schema = &documentation
+        .iter()
+        .find(|definition| definition.id == AgentToolId::BEGIN_INTEGRATION_VERIFICATION)
+        .expect("begin integration-verification definition")
+        .output_schema;
+    for contradictory in [
+        begin(json!({
+            "kind": "awaiting_probe",
+            "tool": AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+            "expires_at": "2026-07-23T00:05:00Z",
+        })),
+        begin(json!({
+            "kind": "complete",
+            "completed_at": "2026-07-23T00:00:05Z",
+            "tool": AgentToolId::GUARD_PROBE.wire_name(),
+        })),
+        begin(json!({
+            "kind": "restart_required",
+            "reason": "expired",
+            "tool": AgentToolId::GUARD_PROBE.wire_name(),
+        })),
+    ] {
+        assert!(
+            validate_schema(begin_schema, begin_schema, &contradictory, 0).is_err(),
+            "tagged workflow schema must reject contradictory state fields"
+        );
+    }
+
     for profile in production_profiles() {
-        for (tool, body) in [
-            (AgentToolId::BEGIN_INTEGRATION_VERIFICATION, &begin_active),
-            (AgentToolId::BEGIN_INTEGRATION_VERIFICATION, &begin_passed),
-            (AgentToolId::GUARD_PROBE, &probe_passed),
+        for (tool, bodies) in [
+            (AgentToolId::BEGIN_INTEGRATION_VERIFICATION, &begin_bodies),
+            (AgentToolId::GUARD_PROBE, &probe_bodies),
+            (AgentToolId::GET_INTEGRATION_VERIFICATION, &get_bodies),
         ] {
-            let projected = CanonicalToolResult {
-                metadata: None,
-                content: Vec::new(),
-                structured_content: body.clone(),
-                is_error: false,
+            for body in bodies {
+                let projected = CanonicalToolResult {
+                    metadata: None,
+                    content: Vec::new(),
+                    structured_content: body.clone(),
+                    is_error: false,
+                }
+                .project(profile)
+                .expect("integration-verification result should project")
+                .into_value();
+                validate_definition(&pinned_schema(profile), "CallToolResult", &projected)
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "{} {} result: {error}",
+                            profile.revision(),
+                            tool.wire_name()
+                        )
+                    });
+                assert_eq!(authoritative_result(&projected), *body);
             }
-            .project(profile)
-            .expect("integration-verification result should project")
-            .into_value();
-            validate_definition(&pinned_schema(profile), "CallToolResult", &projected)
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "{} {} result: {error}",
-                        profile.revision(),
-                        tool.wire_name()
-                    )
-                });
-            assert_eq!(authoritative_result(&projected), *body);
         }
     }
 }

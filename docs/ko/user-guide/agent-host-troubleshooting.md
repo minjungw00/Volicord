@@ -243,25 +243,33 @@ capability와 Guard verification을 충족하지 않습니다.
    `volicord.list_projects`를 호출해 정확한 프로젝트를 선택합니다.
 2. `volicord.begin_integration_verification`을 호출합니다. Connection에 적격 프로젝트가
    둘 이상일 때만 `project_selector`를 제공합니다.
-3. Begin이 `next_action=call_guard_probe`를 보고할 때만 반환된 `verification_id`를
-   반환된 `volicord.guard_probe` 호출에 넣습니다. `read_verification_status` 또는
-   `no_further_action`이면 probe하지 않습니다.
-4. 같은 ID로 `volicord.get_integration_verification`을 호출합니다.
+3. 반환된 tagged `workflow`를 정확히 따릅니다.
+   - `awaiting_probe`이면 반환된 `verification_id`를 반환된
+     `volicord.guard_probe` 도구에 넣습니다.
+   - `awaiting_hook_completion`이면 같은 ID로 반환된
+     `volicord.get_integration_verification` 도구를 호출합니다.
+   - `complete`이면 중단합니다.
+   - `restart_required`이면 보고된 `failed` 문제를 고치거나 `expired` window에
+     대응한 뒤 반환된 `volicord.begin_integration_verification` 도구를 호출합니다.
+4. `workflow.tool`이 status 도구를 지시하면 같은 ID로 호출하고 새로 반환된 tagged
+   상태를 계속 따릅니다.
 
 첫 호출과 마지막 호출은 읽기 전용입니다. Begin과 probe는 멱등이고 비파괴적인 integration
 record update이며 Core 또는 Task 상태, Product Repository file, project trust, hook review
 상태를 바꾸지 않습니다. 정확한 annotation과 저장 효과는
 [MCP 전송](../reference/mcp-transport.md#in-chat-integration-verification-schemas)을
 봅니다.
-정확한 probe replay는 `passed` 뒤에도 원래 acknowledgement와 현재 상태를 반환하며 완료
-또는 일치한 event 효과를 반복하지 않습니다. 다른 session이나 turn은 그 acknowledgement를
-읽을 수 없습니다.
+정확한 probe replay는 상관관계가 성립해 완료된 뒤에도 현재 공유 workflow 상태인
+`complete`를 반환하며 완료 또는 일치한 event 효과를 반복하지 않습니다. 실패 및 만료
+replay는 `restart_required`로 유지됩니다. 다른 session이나 turn은 원래
+acknowledgement를 읽을 수 없습니다.
 
-통과 결과는 `status=passed`와 일치한 prompt, pre-tool, post-tool phase를 표시합니다.
-`active`로 남으면 5분 window가 만료되기 전에 `next_action`을 따릅니다. `failed` 또는
-`expired`이면 보고된 소유권이나 contract 문제를 고친 뒤 현재 turn에서 다시 시작합니다.
-다른 session이나 turn의 ID를 재사용하거나 다른 읽기 전용 도구로 대체하거나 오래된 Guard
-event를 성공으로 취급하지 않습니다.
+통과 결과는 `workflow.kind=complete`이며 일치한 prompt, pre-tool, post-tool phase를
+표시합니다. 결과가 `awaiting_probe` 또는 `awaiting_hook_completion`이면 5분 window가
+만료되기 전에 `workflow.tool`의 정규 도구를 따릅니다. `restart_required`이면 보고된
+실패를 고치거나 만료 window를 반영한 뒤 현재 turn에서 다시 시작합니다. 다른 session이나
+turn의 ID를 재사용하거나 다른 읽기 전용 도구로 대체하거나 오래된 Guard event를 성공으로
+취급하지 않습니다.
 
 Codex가 도구를 노출하지 않거나 프로젝트를 trust하지 않은 상태라면 먼저 host 소유 상태를
 해결합니다. Volicord는 trust 요구 사항을 보고하지만 Codex trust control을 클릭·편집·승인·

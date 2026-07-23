@@ -432,6 +432,13 @@ Current-owner validation and exact event correlation are required when
 projecting effective status; a stored row or unrelated historical Guard event
 is insufficient by itself.
 
+Store projects those authoritative row facts and effective status once into
+the shared tagged `IntegrationVerificationWorkflowState`. The projection maps
+active unacknowledged, active acknowledged, passed, failed, and expired runs to
+their distinct typed states and canonical `AgentToolId` operations. Begin,
+probe, get/status, adapters, and renderers consume that state. Persistence does
+not construct user-facing next-action prose or own renderer wording.
+
 Expected-write and unrecorded-change records are project-local. Guard
 suppression reads only bounded canonical correlation data and returns the exact
 `SuppressionOutcome`. Store-read failure, corrupt records, budget exhaustion,

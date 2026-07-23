@@ -614,17 +614,23 @@ active run이 최대 하나만 있고, 소유권이 변하지 않은 begin repla
 run을 반환합니다.
 
 실제 현재 `managed_host` 호출만 run을 시작하거나 probe하거나 읽을 수 있습니다. 수동 stdio,
-CLI preflight, integration probe는 성공을 만들 수 없습니다. Begin 결과는 현재 run 상태에
-따라 caller를 안내합니다. Acknowledgement가 없는 active run만 Guard probe 지시를 반환하고,
-이미 acknowledge된 active run은 상태 조회를 안내하며, passed run은 추가 probe를 요구하지
-않습니다. Probe를 반복하기 위해 terminal run을 다시 active로 만들지 않습니다.
+CLI preflight, integration probe는 성공을 만들 수 없습니다.
+`IntegrationVerificationWorkflowState`는 begin, probe, status가 공유하는 단일 공개
+투영입니다. Tagged alternative는 정규 Guard probe tool과 만료 시각을 담은
+`awaiting_probe`, 정규 status tool과 권위 있는 acknowledgement 시각 및 만료 시각을 담은
+`awaiting_hook_completion`, 완료 시각을 담은 `complete`, typed `failed` 또는 `expired`
+reason과 정규 begin tool 및 적용되는 경우의 한도 있는 현재 finding을 담은
+`restart_required`입니다. Tool 필드는 임의 문자열이 아니라 typed 정규 `AgentToolId`
+투영입니다. Probe를 반복하기 위해 terminal run을 다시 active로 만들지 않습니다.
 
 Probe acknowledgement는 정확한 verification ID, Connection, managed runtime session,
 native host session, native host turn 좌표에서 first-write-wins입니다. 적격인 첫 active
-호출이 timestamp를 기록합니다. 기존 acknowledgement가 있는 정확한 replay는 run이 passed가
-된 뒤에도 원래 timestamp와 현재 유효 상태를 반환하며 완료 정보나 일치한 event를 바꾸지
-않습니다. 다른 좌표는 acknowledgement를 노출하지 않고 거부하며, acknowledgement가 없는
-terminal 또는 expired run에는 뒤늦게 값을 만들 수 없습니다.
+호출이 timestamp를 기록합니다. Active replay는 `awaiting_hook_completion`과 원래
+timestamp를 유지합니다. 완료 뒤 정확한 replay는 `complete`를 반환하고, 유효 상태가
+failed 또는 expired인 replay는 해당 `restart_required` 상태를 유지합니다. 어떤 replay도
+완료 정보나 일치한 event를 바꾸지 않습니다. 다른 좌표는 acknowledgement를 노출하지 않고
+거부하며, acknowledgement가 없는 terminal 또는 expired run에는 뒤늦게 값을 만들 수
+없습니다.
 
 통과하려면 prompt, pre-tool,
 post-tool 기록이 같은 run session과 turn에 속해야 하고, pre/post는 tool-use ID, 생성된 정확한

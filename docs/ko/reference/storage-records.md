@@ -379,6 +379,13 @@ event를 바꾸지 않고 원래 acknowledgement와 현재 유효 lifecycle 상�
 만들 수 없습니다. 유효 상태를 projection할 때는 현재 소유자 검증과 정확한 event
 상관관계가 필요하며, 저장된 row 자체나 무관한 이력 Guard event만으로는 충분하지 않습니다.
 
+Store는 이 권위 있는 row 사실과 유효 상태를 공유 tagged
+`IntegrationVerificationWorkflowState`로 한 번만 투영합니다. 이 투영은 acknowledge되지
+않은 active, acknowledge된 active, passed, failed, expired run을 서로 다른 typed 상태와
+정규 `AgentToolId` 작업에 대응시킵니다. Begin, probe, get/status, adapter, renderer는 이
+상태를 소비합니다. 영속 계층은 사용자 대상 다음 행동 산문이나 renderer 문구를 만들지
+않습니다.
+
 Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guard suppression은
 제한된 정규 correlation 데이터만 읽고 정확한 `SuppressionOutcome`을 반환합니다. Store
 읽기 실패, 손상된 기록, budget 소진, 유효하지 않은 correlation은 `Unavailable`이며

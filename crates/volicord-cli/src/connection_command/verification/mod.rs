@@ -19,7 +19,7 @@ use volicord_store::{
     diagnostic_findings::{diagnostic_occurrences_for_runtime_session, insert_occurrence_finding},
     guards::{guard_observation_summary, list_guard_installations},
     integration_verification::{
-        current_guard_integration_verification_status,
+        current_guard_integration_verification_workflow,
         latest_guard_integration_verification_for_connection,
     },
     operational_sessions::{
@@ -37,7 +37,8 @@ use volicord_types::{
     ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode, DiagnosticDomain,
     DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
     DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
-    HookActivationEvidence, HookActivationState, IntegrationRevision, UtcTimestamp,
+    HookActivationEvidence, HookActivationState, IntegrationRevision,
+    IntegrationVerificationRestartReason, IntegrationVerificationWorkflowState, UtcTimestamp,
     MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 

@@ -1,7 +1,9 @@
 use std::{collections::BTreeMap, path::Path};
 
 use serde_json::{json, Value};
-use volicord_types::{AgentToolId, GuardHookPhase, GuardManagedArtifact};
+use volicord_types::{
+    AgentToolId, GuardHookPhase, GuardManagedArtifact, IntegrationVerificationWorkflowState,
+};
 
 use crate::{
     guard_integration::{
@@ -138,14 +140,20 @@ pub(crate) fn plan_codex_rule_file(
         "# Hook review and trust remain user/host owned.\n\
 # Manual stdio and CLI preflight are diagnostic, not managed-host evidence.\n\
 # Canonical verification request: Run the Volicord integration verification.\n\
-# Agent sequence: call {}, then {}; call {} only when begin returns next_action=call_guard_probe; then call {}.\n\
-# Do not probe a resumed run that is already acknowledged or passed.\n\
+# Agent sequence: call {}, then {}; follow workflow.kind and call the returned workflow.tool.\n\
+# Workflow states: {} uses {}; {} uses {}; {} uses {} after repair or expiry; {} calls no verification tool.\n\
+# Begin, probe, and status expose the same tagged workflow state.\n\
 # If tools are unavailable, report managed MCP unavailable; do not synthesize raw stdio or Codex _meta.\n\
 prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n",
         AgentToolId::LIST_PROJECTS.wire_name(),
         AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        IntegrationVerificationWorkflowState::AWAITING_PROBE_KIND,
         AgentToolId::GUARD_PROBE.wire_name(),
+        IntegrationVerificationWorkflowState::AWAITING_HOOK_COMPLETION_KIND,
         AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+        IntegrationVerificationWorkflowState::RESTART_REQUIRED_KIND,
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        IntegrationVerificationWorkflowState::COMPLETE_KIND,
     );
     for script in hook_scripts {
         body.push_str("        ");

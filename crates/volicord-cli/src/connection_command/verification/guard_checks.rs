@@ -179,26 +179,31 @@ pub(super) fn guard_checks_for_connection(
         &connection.connection_internal_id,
         &current_revision,
     )?;
-    let verification_effective_status = verification_run
+    let verification_workflow = verification_run
         .as_ref()
         .map(|run| {
-            current_guard_integration_verification_status(
+            current_guard_integration_verification_workflow(
                 runtime_home,
                 run,
                 &verification_observed_at,
             )
         })
         .transpose()?;
-    let verification_status = match verification_effective_status {
-        Some(volicord_types::GuardIntegrationVerificationStatus::Passed) => {
+    let verification_status = match verification_workflow {
+        Some(IntegrationVerificationWorkflowState::Complete { .. }) => {
             ConnectionCheckStatus::Passed
         }
-        Some(volicord_types::GuardIntegrationVerificationStatus::Failed) => {
-            ConnectionCheckStatus::Failed
-        }
+        Some(IntegrationVerificationWorkflowState::RestartRequired {
+            reason: IntegrationVerificationRestartReason::Failed,
+            ..
+        }) => ConnectionCheckStatus::Failed,
         Some(
-            volicord_types::GuardIntegrationVerificationStatus::Active
-            | volicord_types::GuardIntegrationVerificationStatus::Expired,
+            IntegrationVerificationWorkflowState::AwaitingProbe { .. }
+            | IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+            | IntegrationVerificationWorkflowState::RestartRequired {
+                reason: IntegrationVerificationRestartReason::Expired,
+                ..
+            },
         )
         | None => ConnectionCheckStatus::Pending,
     };

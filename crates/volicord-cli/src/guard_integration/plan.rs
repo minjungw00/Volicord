@@ -12,7 +12,8 @@ use volicord_store::{
 use volicord_types::{
     guard_manifest_from_json, guard_manifest_matches_owner_binding, AgentToolId,
     GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManagedArtifact,
-    GuardManifestOwnerBinding, IntegrationProfile, PolicyHash, ProjectId,
+    GuardManifestOwnerBinding, IntegrationProfile, IntegrationVerificationWorkflowState,
+    PolicyHash, ProjectId,
 };
 
 use crate::{
@@ -424,11 +425,16 @@ fn guard_hooks_unsupported_message(
 
 fn agents_guidance_block() -> String {
     format!(
-        "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Treat Volicord's recorded scope and user-owned decisions as authoritative.\n- Do not modify Product Repository files outside an active compatible write authorization.\n- Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.\n- For the request `Run the Volicord integration verification.`, call `{}`, then `{}`. Call the returned `{}` only when begin reports `next_action=call_guard_probe`; otherwise do not probe an already acknowledged or passed run. Then call `{}` to read current completion.\n- Only that first-party state-directed workflow proves current MCP and Guard correlation. Manual stdio and CLI MCP preflight are diagnostic and are not managed-host evidence.\n- If Volicord tools are not exposed, report the managed MCP connection as unavailable. Do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as tool proof; use read-only connection status or MCP preflight only for diagnosis.\n- Follow the `next_action` returned by Volicord instead of calling workflow tools speculatively.\n- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.\n- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.\n{GUIDANCE_END_MARKER}\n",
+        "{GUIDANCE_START_MARKER}\n# Volicord\n\n- Treat Volicord's recorded scope and user-owned decisions as authoritative.\n- Do not modify Product Repository files outside an active compatible write authorization.\n- Do not infer, resolve, approve, or record user-owned trust judgments on the user's behalf.\n- For the request `Run the Volicord integration verification.`, call `{}`, then `{}`. Follow its returned `workflow` tagged state: `{}` calls its exact `{}` tool; `{}` calls its exact `{}` status tool; `{}` calls its exact `{}` begin tool after repair or expiry; `{}` calls no verification tool. Begin, probe, and status expose the same workflow state.\n- Only that first-party state-directed workflow proves current MCP and Guard correlation. Manual stdio and CLI MCP preflight are diagnostic and are not managed-host evidence.\n- If Volicord tools are not exposed, report the managed MCP connection as unavailable. Do not substitute raw stdio, hand-author Codex `_meta`, or treat resources/list or resource templates as tool proof; use read-only connection status or MCP preflight only for diagnosis.\n- Follow Volicord's tagged workflow and typed tool identity instead of calling workflow tools speculatively.\n- Call `volicord.status` only when the current Task state is unknown or an authoritative refresh is required.\n- Do not claim completion while Volicord reports close blockers. If Volicord is unavailable, disclose that its state was not updated or verified.\n{GUIDANCE_END_MARKER}\n",
         AgentToolId::LIST_PROJECTS.wire_name(),
         AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        IntegrationVerificationWorkflowState::AWAITING_PROBE_KIND,
         AgentToolId::GUARD_PROBE.wire_name(),
+        IntegrationVerificationWorkflowState::AWAITING_HOOK_COMPLETION_KIND,
         AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+        IntegrationVerificationWorkflowState::RESTART_REQUIRED_KIND,
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        IntegrationVerificationWorkflowState::COMPLETE_KIND,
     )
 }
 
@@ -508,8 +514,11 @@ mod tests {
             "`volicord.begin_integration_verification`",
             "`volicord.guard_probe`",
             "`volicord.get_integration_verification`",
-            "`next_action=call_guard_probe`",
-            "already acknowledged or passed run",
+            "`awaiting_probe`",
+            "`awaiting_hook_completion`",
+            "`restart_required`",
+            "`complete`",
+            "same workflow state",
             "raw stdio",
             "Codex `_meta`",
             "resources/list",
@@ -531,8 +540,10 @@ mod tests {
             "volicord.begin_integration_verification",
             "volicord.guard_probe",
             "volicord.get_integration_verification",
-            "next_action=call_guard_probe",
-            "already acknowledged or passed",
+            "awaiting_probe",
+            "awaiting_hook_completion",
+            "restart_required",
+            "complete",
             "raw stdio",
             "Codex _meta",
         ] {
