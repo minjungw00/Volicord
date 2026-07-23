@@ -697,7 +697,21 @@ ownership returns the same active or passed run.
 
 Only an actual current `managed_host` call can begin, probe, or read a run.
 Manual stdio, CLI preflight, and integration probes cannot create success. A
-pass requires the prompt, pre-tool, and post-tool records to belong to the same
+begin result directs the caller from current run state: only an active run
+without an acknowledgement returns the Guard probe instruction; an active
+acknowledged run directs status lookup, and a passed run requires no further
+probe. Terminal runs never become active merely to repeat a probe.
+
+Probe acknowledgement is first-write-wins for the exact verification ID,
+Connection, managed runtime session, native host session, and native host turn.
+The first eligible active call records the timestamp. Any exact replay with an
+existing acknowledgement returns that original timestamp and current effective
+status, including after the run passes, without changing completion or matched
+events. A different coordinate is rejected without exposing the
+acknowledgement, and a terminal or expired run without one cannot acquire a
+late acknowledgement.
+
+A pass requires the prompt, pre-tool, and post-tool records to belong to the same
 run session and turn; pre/post must share the tool-use ID, generated exact probe
 name, and verification-ID input. The current Guard Installation, policy hash,
 integration revision, hook-contract digest, and managed runtime must still

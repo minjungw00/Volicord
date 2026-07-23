@@ -243,7 +243,9 @@ capability와 Guard verification을 충족하지 않습니다.
    `volicord.list_projects`를 호출해 정확한 프로젝트를 선택합니다.
 2. `volicord.begin_integration_verification`을 호출합니다. Connection에 적격 프로젝트가
    둘 이상일 때만 `project_selector`를 제공합니다.
-3. 반환된 `verification_id`를 반환된 `volicord.guard_probe` 호출에 넣습니다.
+3. Begin이 `next_action=call_guard_probe`를 보고할 때만 반환된 `verification_id`를
+   반환된 `volicord.guard_probe` 호출에 넣습니다. `read_verification_status` 또는
+   `no_further_action`이면 probe하지 않습니다.
 4. 같은 ID로 `volicord.get_integration_verification`을 호출합니다.
 
 첫 호출과 마지막 호출은 읽기 전용입니다. Begin과 probe는 멱등이고 비파괴적인 integration
@@ -251,6 +253,9 @@ record update이며 Core 또는 Task 상태, Product Repository file, project tr
 상태를 바꾸지 않습니다. 정확한 annotation과 저장 효과는
 [MCP 전송](../reference/mcp-transport.md#in-chat-integration-verification-schemas)을
 봅니다.
+정확한 probe replay는 `passed` 뒤에도 원래 acknowledgement와 현재 상태를 반환하며 완료
+또는 일치한 event 효과를 반복하지 않습니다. 다른 session이나 turn은 그 acknowledgement를
+읽을 수 없습니다.
 
 통과 결과는 `status=passed`와 일치한 prompt, pre-tool, post-tool phase를 표시합니다.
 `active`로 남으면 5분 window가 만료되기 전에 `next_action`을 따릅니다. `failed` 또는

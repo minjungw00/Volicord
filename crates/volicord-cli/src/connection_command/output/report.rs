@@ -312,7 +312,7 @@ impl ConnectionCommandReport {
                 )?,
                 ConnectionAction::try_new(
                     ConnectionActionKind::RunGuardProbe,
-                    "Call the returned Guard probe and then read the integration-verification result",
+                    "Call the Guard probe only when begin reports it is required, then read the integration-verification result",
                 )?,
             ] {
                 if !actions.iter().any(|current| current.id() == action.id()) {

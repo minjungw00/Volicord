@@ -268,8 +268,9 @@ Stay in the same current managed Codex chat and native turn:
 2. Call `volicord.begin_integration_verification`, supplying
    `project_selector` only when the Connection has more than one eligible
    project.
-3. Copy the returned `verification_id` into the returned
-   `volicord.guard_probe` call.
+3. If begin reports `next_action=call_guard_probe`, copy the returned
+   `verification_id` into its returned `volicord.guard_probe` call. If it
+   reports `read_verification_status` or `no_further_action`, do not probe.
 4. Call `volicord.get_integration_verification` with that same ID.
 
 The first and last calls are read-only. Begin and probe are idempotent,
@@ -277,6 +278,9 @@ non-destructive integration-record updates; they do not change Core or Task
 state, Product Repository files, project trust, or hook-review state. The
 exact annotations and storage effects are in
 [MCP Transport](../reference/mcp-transport.md#in-chat-integration-verification-schemas).
+An exact probe replay returns the original acknowledgement and current status,
+including after `passed`; it does not repeat completion or matched-event
+effects. A different session or turn cannot read that acknowledgement.
 
 A passing result shows `status=passed` and matched prompt, pre-tool, and
 post-tool phases. If it remains `active`, follow `next_action` before the

@@ -47,8 +47,10 @@ not define another Core method identity.
 `volicord.get_integration_verification` are the catalog's
 Connection-integration members. Their public request/result schemas are owned
 by [MCP Transport](../mcp-transport.md#in-chat-integration-verification-schemas),
-not by `ToolEnvelope`, a Core method schema, or Task state. Their adapter
-effects are owned by [Storage Effects](../storage-effects.md#connection-integration-verification-effects).
+including probe-required state, acknowledgement state, current verification
+status, and state-directed next action. They are not owned by `ToolEnvelope`, a
+Core method schema, or Task state. Their adapter effects are owned by
+[Storage Effects](../storage-effects.md#connection-integration-verification-effects).
 
 ## Schema notation
 

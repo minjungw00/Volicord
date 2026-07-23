@@ -162,8 +162,9 @@ configuration, host reload, hook source, session, capability, Guard, 별도 proj
 근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존합니다. 바뀌지 않은
 manifest는 현재 관찰의 적격성을 유지하고 관리 definition 내용이 바뀌면 이전 event를
 무효화합니다. `volicord-mcp`와 생성 host guidance는 정규 first-party in-chat 요청과
-tool sequence를 담당합니다. Renderer는 typed 상태를 소비하며 summary 산문을 분류하지
-않습니다.
+상태 지향 tool sequence를 담당합니다. Begin은 first-write-wins probe가 아직 필요한지
+결정하고, 완료된 exact replay는 run을 다시 active로 만들지 않습니다. Renderer는 typed
+상태를 소비하며 summary 산문을 분류하지 않습니다.
 
 Host가 제공한 disabled, policy-managed, invocation-bypass 근거는 typed host evidence
 경계를 통해서만 받습니다. 이 근거가 없으면 Volicord는 현재 definition에 맞는 호환 event로

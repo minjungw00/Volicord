@@ -115,14 +115,13 @@ pub(super) fn actions_for_checks(
     checks: &[ConnectionCheck],
 ) -> Result<Vec<ConnectionAction>, ConnectionCommandError> {
     let mut actions =
-        BTreeMap::<ConnectionActionKind, (&str, BTreeSet<DiagnosticFindingId>)>::new();
-    let mut add =
-        |kind: ConnectionActionKind, instruction: &'static str, check: &ConnectionCheck| {
-            let entry = actions
-                .entry(kind)
-                .or_insert_with(|| (instruction, BTreeSet::new()));
-            entry.1.extend(check.cause_finding_ids().iter().cloned());
-        };
+        BTreeMap::<ConnectionActionKind, (String, BTreeSet<DiagnosticFindingId>)>::new();
+    let mut add = |kind: ConnectionActionKind, instruction: &str, check: &ConnectionCheck| {
+        let entry = actions
+            .entry(kind)
+            .or_insert_with(|| (instruction.to_owned(), BTreeSet::new()));
+        entry.1.extend(check.cause_finding_ids().iter().cloned());
+    };
     for check in checks {
         match (check.id(), check.status()) {
             (ConnectionCheckKind::ManagedConfig, ConnectionCheckStatus::Failed) => {
@@ -197,7 +196,12 @@ pub(super) fn actions_for_checks(
             ) => {
                 add(
                     ConnectionActionKind::RunGuardProbe,
-                    "Call the `volicord.guard_probe` returned by `volicord.begin_integration_verification`, then call `volicord.get_integration_verification`",
+                    &format!(
+                        "Call `{}` only when `{}` reports `next_action=call_guard_probe`, then call `{}`",
+                        AgentToolId::GUARD_PROBE.wire_name(),
+                        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+                        AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+                    ),
                     check,
                 );
             }

@@ -360,7 +360,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns the exact Guard probe tool to call next.",
+      "description": "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns whether the exact Guard probe is still required and the next valid operation.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -374,6 +374,7 @@
         "definitions": [
           "BeginIntegrationVerificationResult",
           "GuardIntegrationVerificationStatus",
+          "IntegrationVerificationNextAction",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -382,7 +383,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9c9bffc65947cc3f83be288b3f343b9dcb6ab887c02c44ca5f10b7254da03cb5"
+        "sha256": "sha256:58e156e98b7e477fff92bf0ba23a738b52332bc7a06feef87d635284339b19ab"
       }
     },
     {
@@ -392,7 +393,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Record an idempotent MCP probe acknowledgement without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse.",
+      "description": "Record or replay a first-write-wins MCP probe acknowledgement without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse.",
       "input_schema": {
         "definitions": [],
         "root_properties": [

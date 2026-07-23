@@ -923,12 +923,14 @@ outside the checked contracts is correct.
 `guard_verification` check and its verification/run/event IDs when available,
 but the CLI does not synthesize or execute the in-chat workflow. A pending
 check instructs the operator to use
-`volicord.begin_integration_verification`, the returned
-`volicord.guard_probe`, and `volicord.get_integration_verification` inside the
-current managed Codex chat. CLI preflight, the manual stdio self-test, and
-historical Guard activity cannot complete that check. The command observes
-Codex trust state; it does not automate, approve, or bypass project trust and
-does not modify MCP trust configuration.
+`volicord.begin_integration_verification` inside the current managed Codex
+chat, call the returned `volicord.guard_probe` only when begin reports
+`next_action=call_guard_probe`, and then use
+`volicord.get_integration_verification` to read current completion. A resumed
+acknowledged or passed run does not require another probe. CLI preflight, the
+manual stdio self-test, and historical Guard activity cannot complete that
+check. The command observes Codex trust state; it does not automate, approve,
+or bypass project trust and does not modify MCP trust configuration.
 
 The generated Codex entry uses the hidden `_host-launch` command.
 `_host-launch` is host-owned, omitted from normal help, and not an alternate

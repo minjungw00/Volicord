@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 
 use serde_json::{json, Value};
-use volicord_types::{GuardHookPhase, GuardManagedArtifact};
+use volicord_types::{AgentToolId, GuardHookPhase, GuardManagedArtifact};
 
 use crate::{
     guard_integration::{
@@ -134,13 +134,18 @@ pub(crate) fn plan_codex_rule_file(
         command_lines.push(command_text);
         hook_scripts.push(script);
     }
-    let mut body = String::from(
+    let mut body = format!(
         "# Hook review and trust remain user/host owned.\n\
 # Manual stdio and CLI preflight are diagnostic, not managed-host evidence.\n\
 # Canonical verification request: Run the Volicord integration verification.\n\
-# Agent sequence: volicord.list_projects, volicord.begin_integration_verification, volicord.guard_probe, volicord.get_integration_verification.\n\
+# Agent sequence: call {}, then {}; call {} only when begin returns next_action=call_guard_probe; then call {}.\n\
+# Do not probe a resumed run that is already acknowledged or passed.\n\
 # If tools are unavailable, report managed MCP unavailable; do not synthesize raw stdio or Codex _meta.\n\
 prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n",
+        AgentToolId::LIST_PROJECTS.wire_name(),
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        AgentToolId::GUARD_PROBE.wire_name(),
+        AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
     );
     for script in hook_scripts {
         body.push_str("        ");

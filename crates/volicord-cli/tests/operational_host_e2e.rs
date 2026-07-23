@@ -2130,14 +2130,53 @@ impl OperationalFixture {
             |row| row.get(0),
         )?;
         assert_eq!(verification_status, "passed");
+        let completed_before_replay: (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = registry.query_row(
+            "SELECT probe_acknowledged_at, completed_at, matched_prompt_event_id,
+                    matched_pre_tool_event_id, matched_post_tool_event_id
+               FROM guard_integration_verification_runs
+              WHERE verification_id = ?1",
+            [&verification_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )?;
+        drop(registry);
 
-        child.write(&json_lines(&[managed_tool_call_in_turn(
-            6,
-            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
-            json!({"verification_id": verification_id}),
-            native_session,
-            INTEGRATION_VERIFICATION_TURN_ID,
-        )])?)?;
+        child.write(&json_lines(&[
+            managed_tool_call_in_turn(
+                6,
+                AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+                json!({"project_selector": project_id}),
+                native_session,
+                INTEGRATION_VERIFICATION_TURN_ID,
+            ),
+            managed_tool_call_in_turn(
+                7,
+                AgentToolId::GUARD_PROBE.wire_name(),
+                json!({"verification_id": verification_id}),
+                native_session,
+                INTEGRATION_VERIFICATION_TURN_ID,
+            ),
+            managed_tool_call_in_turn(
+                8,
+                AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+                json!({"verification_id": verification_id}),
+                native_session,
+                INTEGRATION_VERIFICATION_TURN_ID,
+            ),
+        ])?)?;
         let current_session_id = current_project_agent_session_coordinates(
             &self.runtime_home,
             project_id,
@@ -2196,7 +2235,7 @@ impl OperationalFixture {
         assert_eq!(output.status.code(), Some(0));
         assert!(output.stderr.is_empty());
         let responses = json_rpc_responses(&output.stdout)?;
-        assert_eq!(responses.len(), 6);
+        assert_eq!(responses.len(), 8);
         for response in &responses[2..] {
             assert_eq!(response["result"]["isError"], false, "{response}");
         }
@@ -2219,6 +2258,8 @@ impl OperationalFixture {
         })?;
         assert_eq!(begin["verification_id"], verification_id);
         assert_eq!(begin["status"], "active");
+        assert_eq!(begin["mcp_probe_acknowledged"], false);
+        assert_eq!(begin["next_action"], "call_guard_probe");
         assert_eq!(
             begin["next_probe_tool"],
             AgentToolId::GUARD_PROBE.wire_name()
@@ -2231,10 +2272,30 @@ impl OperationalFixture {
         })?;
         assert_eq!(probe["verification_id"], verification_id);
         assert_eq!(probe["status"], "active");
-        let verification = adapter_tool_response(&responses[5]).map_err(|error| {
+        let resumed = adapter_tool_response(&responses[5]).map_err(|error| {
+            format!(
+                "resumed integration-verification response was invalid: {error}; {}",
+                responses[5]
+            )
+        })?;
+        assert_eq!(resumed["verification_id"], verification_id);
+        assert_eq!(resumed["status"], "passed");
+        assert_eq!(resumed["mcp_probe_acknowledged"], true);
+        assert_eq!(resumed["next_action"], "no_further_action");
+        assert!(resumed.get("next_probe_tool").is_none());
+        let replayed_probe = adapter_tool_response(&responses[6]).map_err(|error| {
+            format!(
+                "replayed Guard probe response was invalid: {error}; {}",
+                responses[6]
+            )
+        })?;
+        assert_eq!(replayed_probe["verification_id"], verification_id);
+        assert_eq!(replayed_probe["status"], "passed");
+        assert_eq!(replayed_probe["acknowledged_at"], probe["acknowledged_at"]);
+        let verification = adapter_tool_response(&responses[7]).map_err(|error| {
             format!(
                 "integration-verification lookup response was invalid: {error}; {}",
-                responses[5]
+                responses[7]
             )
         })?;
         assert_eq!(verification["verification_id"], verification_id);
@@ -2242,6 +2303,31 @@ impl OperationalFixture {
         assert_eq!(verification["guard_phases"]["prompt_capture"], "matched");
         assert_eq!(verification["guard_phases"]["pre_tool"], "matched");
         assert_eq!(verification["guard_phases"]["post_tool"], "matched");
+        let registry = rusqlite::Connection::open(&registry_path)?;
+        let completed_after_replay: (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = registry.query_row(
+            "SELECT probe_acknowledged_at, completed_at, matched_prompt_event_id,
+                    matched_pre_tool_event_id, matched_post_tool_event_id
+               FROM guard_integration_verification_runs
+              WHERE verification_id = ?1",
+            [&verification_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )?;
+        assert_eq!(completed_after_replay, completed_before_replay);
+        drop(registry);
         let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
         let bound_runtime: Option<String> = project_state.query_row(
             "SELECT runtime_session_id FROM managed_mcp_sessions WHERE session_id = ?1",

@@ -114,12 +114,17 @@ Durable tests should cover, as applicable:
 - init output ordering for reload, hook review, new conversation, canonical
   request, and status, with CLI verify described as optional diagnostic only;
 - generated AGENTS, Codex rule, and MCP server instructions preserving the
-  canonical request, four-tool sequence, unavailable path, and prohibition on
-  raw stdio, hand-authored `_meta`, and resource discovery as proof;
+  canonical request, state-directed begin/probe/status sequence, unavailable
+  path, and prohibition on raw stdio, hand-authored `_meta`, and resource
+  discovery as proof;
+- first-write-wins probe acknowledgement under concurrent identical calls,
+  active replay, lost-response replay after correlated completion, effective
+  terminal status, coordinate isolation, and state-correct begin responses;
 - `crates/volicord-cli/tests/operational_host_e2e.rs` covering the complete
   applied-setup, launch-lease, managed MCP milestone, same-turn Guard
-  prompt/pre/post verification, activation-complete, and read-only-status
-  journey without non-managed source substitution;
+  prompt/pre/post verification, passed begin replay, passed probe replay,
+  activation-complete, and read-only-status journey without non-managed source
+  substitution;
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;
 - Guard observation and unrecorded-change suppression outcomes; and

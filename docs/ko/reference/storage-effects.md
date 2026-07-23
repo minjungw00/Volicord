@@ -351,9 +351,16 @@ active row를 만료 처리하고 `guard_integration_verification_runs` row 하�
 preflight 호출, 오래된 호출, 모호한 호출, prompt가 없는 호출은 verification-run 효과가
 없습니다.
 
-`volicord.guard_probe`는 정확한 active row의 nullable `probe_acknowledged_at`만 first-write-
-wins 멱등 방식으로 바꿉니다. 프로젝트 `state.sqlite`, Core 작업 흐름, Task, Product
-Repository에는 효과가 없습니다. `volicord.get_integration_verification`은 읽기 전용입니다.
+`volicord.guard_probe`는 immediate Registry transaction 하나를 사용합니다. 정확한 run을
+읽고 완전한 caller 좌표를 검증하며 현재 유효 상태를 계산한 뒤, 기존
+`probe_acknowledged_at`이 있으면 갱신 없이 반환합니다. 이 필드가 없을 때는 적격인 active
+run만 조건부로 값을 설정할 수 있고 Store는 commit 전에 권위 있는 timestamp와 상태를 다시
+읽습니다. 따라서 동시에 실행한 동일한 첫 호출은 timestamp 하나로 수렴합니다. `passed`
+뒤의 정확한 replay나 현재 공개 projection이 지원하는 다른 terminal replay는 완료 정보와
+일치한 event를 바꾸지 않고 원래 acknowledgement를 반환합니다. 다른 좌표는 값을 노출하지
+않고 거부하며 acknowledgement가 없는 terminal 또는 expired run에는 뒤늦게 값을 만들 수
+없습니다. 프로젝트 `state.sqlite`, Core 작업 흐름, Task, Product Repository에는 효과가
+없습니다. `volicord.get_integration_verification`은 읽기 전용입니다.
 호환 Guard event 영속은 일반적인 프로젝트 로컬 event 효과를 유지하고, 그 commit 뒤 Registry
 상관관계 refresh가 일치하는 active run을 `passed`로 바꾸면서 완료 정보와 일치한 event ID를
 저장할 수 있습니다. 정확한 replay로 이 refresh를 완료할 수 있습니다. 어떤 분기도 없는

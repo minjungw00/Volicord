@@ -77,7 +77,11 @@ policy denial이 되지 않습니다. 실제 Guard `NotAllowed` 결과에는 호
 Connection-integration 검증은 도구 호출 거부와 run lifecycle을 구분합니다. Malformed ID,
 다른 runtime, native session 또는 turn의 호출은 run을 변경하지 않고 거부합니다. 필요한
 현재 prompt/pre/post 상관관계가 없으면 active run은 한도가 있는 만료 시점까지 pending으로
-남습니다. 만료는 이력 성공을 꾸며내는 대신 run 상태 `expired`가 됩니다. 저장된 pass의
+남습니다. 만료는 이력 성공을 꾸며내는 대신 run 상태 `expired`가 됩니다. 이전 probe
+acknowledgement가 없는 terminal 또는 expired run은 새 값을 만들지 않고 늦은 probe를
+거부합니다. 정확한 caller 좌표의 replay에 기존 acknowledgement가 있으면 probe는 원래
+timestamp와 현재 유효 terminal 상태를 반환해 성공하며 run을 다시 active로 만들지
+않습니다. 좌표 거절은 다른 session이나 turn에 그 timestamp를 노출하지 않습니다. 저장된 pass의
 runtime, Guard Installation, policy, integration revision 또는 hook contract가 더 이상
 현재 상태가 아니면 run 상태를 `failed`로 projection합니다. 이 run 상태는 Connection check
 사실이며 위의 제품 전체 실패 범주를 다시 정의하지 않습니다.

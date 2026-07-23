@@ -88,6 +88,11 @@ run lifecycle. A malformed ID or a call from another runtime, native session,
 or turn is rejected without changing the run. Absence of the required current
 prompt/pre/post correlation leaves an active run pending until its bounded
 expiry; expiry is the run status `expired`, not fabricated historical success.
+A terminal or expired run without a prior probe acknowledgement rejects a late
+probe without creating one. When an exact caller-coordinate replay already has
+an acknowledgement, the probe succeeds with the original timestamp and current
+effective terminal status; this replay does not reactivate the run. Coordinate
+rejection never exposes that timestamp to another session or turn.
 A stored pass whose runtime, Guard Installation, policy, integration revision,
 or hook contract is no longer current projects as run status `failed`. These
 run statuses are Connection-check facts and do not redefine the product-wide

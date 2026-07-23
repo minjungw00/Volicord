@@ -614,7 +614,19 @@ active run이 최대 하나만 있고, 소유권이 변하지 않은 begin repla
 run을 반환합니다.
 
 실제 현재 `managed_host` 호출만 run을 시작하거나 probe하거나 읽을 수 있습니다. 수동 stdio,
-CLI preflight, integration probe는 성공을 만들 수 없습니다. 통과하려면 prompt, pre-tool,
+CLI preflight, integration probe는 성공을 만들 수 없습니다. Begin 결과는 현재 run 상태에
+따라 caller를 안내합니다. Acknowledgement가 없는 active run만 Guard probe 지시를 반환하고,
+이미 acknowledge된 active run은 상태 조회를 안내하며, passed run은 추가 probe를 요구하지
+않습니다. Probe를 반복하기 위해 terminal run을 다시 active로 만들지 않습니다.
+
+Probe acknowledgement는 정확한 verification ID, Connection, managed runtime session,
+native host session, native host turn 좌표에서 first-write-wins입니다. 적격인 첫 active
+호출이 timestamp를 기록합니다. 기존 acknowledgement가 있는 정확한 replay는 run이 passed가
+된 뒤에도 원래 timestamp와 현재 유효 상태를 반환하며 완료 정보나 일치한 event를 바꾸지
+않습니다. 다른 좌표는 acknowledgement를 노출하지 않고 거부하며, acknowledgement가 없는
+terminal 또는 expired run에는 뒤늦게 값을 만들 수 없습니다.
+
+통과하려면 prompt, pre-tool,
 post-tool 기록이 같은 run session과 turn에 속해야 하고, pre/post는 tool-use ID, 생성된 정확한
 probe 이름, verification-ID 입력을 공유해야 합니다. 현재 Guard Installation, policy hash,
 integration revision, hook-contract digest, managed runtime도 계속 일치해야 합니다. Prompt는

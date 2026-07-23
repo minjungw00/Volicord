@@ -1210,10 +1210,10 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "List projects explicitly allowed for this MCP connection."
         }
         (_, AgentToolId::BEGIN_INTEGRATION_VERIFICATION) => {
-            "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns the exact Guard probe tool to call next."
+            "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns whether the exact Guard probe is still required and the next valid operation."
         }
         (_, AgentToolId::GUARD_PROBE) => {
-            "Record an idempotent MCP probe acknowledgement without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse."
+            "Record or replay a first-write-wins MCP probe acknowledgement without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse."
         }
         (_, AgentToolId::GET_INTEGRATION_VERIFICATION) => {
             "Read MCP acknowledgement and exact same-turn Guard prompt, pre-tool, and post-tool correlation with bounded findings and next action."

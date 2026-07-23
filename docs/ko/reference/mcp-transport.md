@@ -409,10 +409,11 @@ Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지
 
 정규 사용자 요청은 `Run the Volicord integration verification.`입니다. Agent는
 `volicord.list_projects`로 정확한 프로젝트를 선택한 뒤
-`volicord.begin_integration_verification`, 반환된 `volicord.guard_probe`,
-`volicord.get_integration_verification`을 이 순서로 호출하고 반환된 각
-`next_action`을 따릅니다. 이 first-party sequence만 현재 managed MCP와 Guard
-상관관계 근거를 만들 수 있습니다.
+`volicord.begin_integration_verification`을 호출합니다. Begin이
+`next_action=call_guard_probe`를 보고할 때만 반환된 `volicord.guard_probe`를
+호출하고, 이어서 `volicord.get_integration_verification`으로 현재 완료 상태를
+읽습니다. Begin이 기존 run을 재개했다는 이유만으로 probe하지 않습니다. 이 상태 지향
+first-party sequence만 현재 managed MCP와 Guard 상관관계 근거를 만들 수 있습니다.
 
 Volicord tool이 노출되지 않으면 agent는 managed MCP connection이 unavailable이라고
 보고합니다. Raw stdio를 시작하거나 Codex `_meta`를 직접 만들거나 `resources/list`,
@@ -429,7 +430,7 @@ project/configuration trust는 user/host가 소유합니다.
 |---|---|---|
 | `volicord.list_projects` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Connection project allowlist를 읽으며 쓰지 않습니다. |
 | `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 현재 좌표를 검증한 뒤 한도가 있는 Registry verification run 하나를 만들거나 재개합니다. Core, Task, Product Repository에는 효과가 없습니다. |
-| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | First-write-wins 멱등 방식으로 정확한 active run만 acknowledge합니다. Core, Task, project state, Product Repository에는 효과가 없습니다. |
+| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 active run을 first-write-wins 방식으로 acknowledge하거나, 정확한 replay이면 원래 acknowledgement와 현재 상태를 반환합니다. Core, Task, project state, Product Repository에는 효과가 없습니다. |
 | `volicord.get_integration_verification` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 run과 상관관계가 확인된 phase 상태를 읽으며 쓰지 않습니다. |
 
 이 annotation은 도구 자체를 설명합니다. 일반 호환 Guard event 영속과 뒤따르는 Registry
@@ -444,9 +445,11 @@ volicord.begin_integration_verification:
     project_selector?: string
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active | passed
+    status: active | passed | failed | expired
     expires_at: UtcTimestamp
-    next_probe_tool: volicord.guard_probe
+    mcp_probe_acknowledged: boolean
+    next_probe_tool?: volicord.guard_probe
+    next_action: call_guard_probe | read_verification_status | no_further_action
     matched_prompt_event_id: GuardEventId
 
 volicord.guard_probe:
@@ -454,7 +457,7 @@ volicord.guard_probe:
     verification_id: GuardIntegrationVerificationId
   result:
     verification_id: GuardIntegrationVerificationId
-    status: active
+    status: active | passed | failed | expired
     acknowledged_at: UtcTimestamp
 
 volicord.get_integration_verification:
@@ -480,9 +483,21 @@ volicord.get_integration_verification:
 때만 생략할 수 있습니다. Begin은 실제 현재 managed runtime과 native session/turn에
 결속하고 현재 호환 prompt-capture event를 요구하며 해당 좌표의 한도가 있는 run 하나를
 생성하거나 재개합니다. `manual_cli`, `cli_preflight`, `integration_probe` runtime 증거는
-받지 않습니다. Probe는 그 정확한 좌표를 검증하고 한도가 있는 check만 acknowledge하며
-Core 상태, Task 상태, Product Repository 파일을 변경하지 않습니다. Get은 읽기 전용이며
-상관관계가 확인된 phase 상태와 다음 action을 보고합니다.
+받지 않습니다. Probe는 그 정확한 좌표를 검증하고 첫 acknowledgement가 아직 가능한지
+별도로 판단합니다. Acknowledge되지 않은 active run에서는 begin이
+`next_action=call_guard_probe`와 정규 `next_probe_tool`을 반환합니다. 이미 acknowledge된
+active run에서는 `next_probe_tool`을 생략하고 `next_action=read_verification_status`를
+반환합니다. Terminal run에서는 `next_probe_tool`을 생략하고
+`next_action=no_further_action`을 반환합니다.
+
+Probe acknowledgement는 verification ID, Connection, managed runtime session, native host
+session, native host turn으로 이루어진 좌표에서 first-write-wins입니다. 적격인 첫 active
+호출이 `probe_acknowledged_at`을 기록합니다. 동일한 active 또는 terminal replay는
+timestamp를 바꾸지 않고 원래 값을 현재 유효 상태와 함께 반환합니다. 다른 caller 좌표는
+acknowledgement를 노출하지 않고 거부합니다. 이전 acknowledgement가 없는 terminal 또는
+expired run에는 뒤늦게 acknowledgement를 만들 수 없습니다. Probe는 terminal run을 다시
+active로 만들지 않으며 Core 상태, Task 상태, Product Repository 파일을 변경하지 않습니다.
+Get은 읽기 전용이며 상관관계가 확인된 phase 상태와 다음 action을 보고합니다.
 
 Run은 같은 run session과 turn에서 호환 prompt event 뒤에 같은 tool-use ID, 정확히 생성된
 host tool 이름 `mcp__volicord__guard_probe`, 정확한 `verification_id` 입력을 가진

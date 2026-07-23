@@ -422,9 +422,15 @@ hook-contract digest; expected probe tool; creation, expiry, acknowledgement,
 and completion times; lifecycle status; matched prompt/pre/post Guard event
 IDs; and optional terminal finding. The active uniqueness coordinate is
 Connection/runtime/turn/revision. Exact begin replay resumes the same active or
-passed row. Current-owner validation and exact event correlation are required
-when projecting effective status; a stored row or unrelated historical Guard
-event is insufficient by itself.
+passed row. Probe acknowledgement is a first-write-wins nullable field for the
+complete verification/Connection/runtime/native-session/native-turn
+coordinate. Exact replay reads the original acknowledgement and current
+effective lifecycle status, including after completion, without replacing the
+timestamp, completion, or matched events. Another coordinate cannot read or
+change it, and a terminal row without an acknowledgement cannot gain one.
+Current-owner validation and exact event correlation are required when
+projecting effective status; a stored row or unrelated historical Guard event
+is insufficient by itself.
 
 Expected-write and unrecorded-change records are project-local. Guard
 suppression reads only bounded canonical correlation data and returns the exact

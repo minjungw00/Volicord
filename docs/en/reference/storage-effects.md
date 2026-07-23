@@ -362,8 +362,16 @@ one immediate Registry transaction. It expires due active rows and inserts one
 or passed row as idempotent replay. Rejected, manual, preflight, stale,
 ambiguous, or prompt-missing calls have no verification-run effect.
 
-`volicord.guard_probe` changes only that exact active row's nullable
-`probe_acknowledged_at`, using first-write-wins idempotence. It has no project
+`volicord.guard_probe` uses one immediate Registry transaction. It loads the
+exact run, validates the complete caller coordinate, computes current effective
+status, and returns an existing `probe_acknowledged_at` without updating. When
+the field is absent, only an eligible active run may conditionally set it; the
+Store then reads back the authoritative timestamp and status before commit.
+Concurrent identical first calls therefore converge on one timestamp. Exact
+replay after `passed` or another supported terminal projection returns the
+original acknowledgement without changing completion or matched events.
+Another coordinate is rejected without disclosure, and a terminal or expired
+run without an acknowledgement cannot acquire one late. It has no project
 `state.sqlite`, Core workflow, Task, or Product Repository effect.
 `volicord.get_integration_verification` is read-only. Compatible Guard event
 persistence retains its ordinary project-local event effect; after that commit,

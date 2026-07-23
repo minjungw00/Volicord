@@ -909,7 +909,7 @@ impl McpAdapter {
                         ),
                         project_id: project_id.as_str().to_owned(),
                         project_session_id: session.project_session_id.clone(),
-                        observed_at,
+                        observed_at: observed_at.clone(),
                     },
                 )
                 .map_err(McpAdapterError::Store)?;
@@ -921,11 +921,15 @@ impl McpAdapter {
                         tool_name: tool_name.to_owned(),
                         message: "verification run has no current prompt-capture event".to_owned(),
                     })?;
-                let status = if record.status == "passed" {
-                    volicord_types::GuardIntegrationVerificationStatus::Passed
-                } else {
-                    volicord_types::GuardIntegrationVerificationStatus::Active
-                };
+                let status = current_guard_integration_verification_status(
+                    &self.runtime_home,
+                    &record,
+                    &observed_at,
+                )
+                .map_err(McpAdapterError::Store)?;
+                let mcp_probe_acknowledged = record.probe_acknowledged_at.is_some();
+                let (next_probe_tool, next_action) =
+                    integration_verification_next_step(status, mcp_probe_acknowledged);
                 serde_json::to_value(BeginIntegrationVerificationResult {
                     verification_id: GuardIntegrationVerificationId::new(record.verification_id),
                     status,
@@ -935,7 +939,9 @@ impl McpAdapter {
                             message: "verification run has an invalid expiry".to_owned(),
                         }
                     })?,
-                    next_probe_tool: AgentToolId::GUARD_PROBE.wire_name().to_owned(),
+                    mcp_probe_acknowledged,
+                    next_probe_tool,
+                    next_action,
                     matched_prompt_event_id,
                 })
                 .map_err(McpAdapterError::Json)
@@ -1926,7 +1932,63 @@ fn public_tool_operation_category(tool_name: &str) -> Option<OperationCategory> 
         .then(|| tool.category().operation_category())
 }
 
+fn integration_verification_next_step(
+    status: volicord_types::GuardIntegrationVerificationStatus,
+    acknowledged: bool,
+) -> (Option<String>, IntegrationVerificationNextAction) {
+    match (status, acknowledged) {
+        (volicord_types::GuardIntegrationVerificationStatus::Active, false) => (
+            Some(AgentToolId::GUARD_PROBE.wire_name().to_owned()),
+            IntegrationVerificationNextAction::CallGuardProbe,
+        ),
+        (volicord_types::GuardIntegrationVerificationStatus::Active, true) => (
+            None,
+            IntegrationVerificationNextAction::ReadVerificationStatus,
+        ),
+        (
+            volicord_types::GuardIntegrationVerificationStatus::Passed
+            | volicord_types::GuardIntegrationVerificationStatus::Failed
+            | volicord_types::GuardIntegrationVerificationStatus::Expired,
+            _,
+        ) => (None, IntegrationVerificationNextAction::NoFurtherAction),
+    }
+}
+
 struct PreparedMcpArguments<T> {
     arguments: T,
     project_id: ProjectId,
+}
+
+#[cfg(test)]
+mod integration_verification_tests {
+    use super::*;
+    use volicord_types::GuardIntegrationVerificationStatus;
+
+    #[test]
+    fn begin_next_step_is_state_directed() {
+        assert_eq!(
+            integration_verification_next_step(GuardIntegrationVerificationStatus::Active, false),
+            (
+                Some(AgentToolId::GUARD_PROBE.wire_name().to_owned()),
+                IntegrationVerificationNextAction::CallGuardProbe,
+            )
+        );
+        assert_eq!(
+            integration_verification_next_step(GuardIntegrationVerificationStatus::Active, true),
+            (
+                None,
+                IntegrationVerificationNextAction::ReadVerificationStatus,
+            )
+        );
+        for status in [
+            GuardIntegrationVerificationStatus::Passed,
+            GuardIntegrationVerificationStatus::Failed,
+            GuardIntegrationVerificationStatus::Expired,
+        ] {
+            assert_eq!(
+                integration_verification_next_step(status, true),
+                (None, IntegrationVerificationNextAction::NoFurtherAction,)
+            );
+        }
+    }
 }

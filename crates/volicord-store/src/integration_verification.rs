@@ -31,7 +31,6 @@ use crate::{
 };
 
 const COMPATIBLE_CONTRACT: &str = "compatible";
-const ACTIVE_STATUS: &str = "active";
 
 /// Exact managed caller coordinate supplied by the MCP session boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -274,28 +273,50 @@ pub fn acknowledge_guard_integration_probe(
     )?;
     let mut conn = open_registry_database(registry_db_path(runtime_home))?;
     let tx = begin_immediate_transaction(&mut conn)?;
-    expire_active_runs(&tx, observed_at)?;
     let run = run_from_conn(&tx, verification_id)?.ok_or_else(|| StoreError::NotFound {
         entity: "guard_integration_verification",
         id: verification_id.to_owned(),
     })?;
-    require_active_caller(&run, caller, &now)?;
-    let acknowledged_at = run
-        .probe_acknowledged_at
-        .clone()
-        .unwrap_or_else(|| observed_at.to_owned());
+    require_caller_coordinate(&run, caller)?;
+    let effective = effective_status(runtime_home, &run, &now)?;
+    if let Some(acknowledged_at) = run.probe_acknowledged_at.as_deref() {
+        let result = GuardProbeResult {
+            verification_id: GuardIntegrationVerificationId::new(verification_id),
+            status: effective,
+            acknowledged_at: parse_timestamp("probe_acknowledged_at", acknowledged_at)?,
+        };
+        tx.commit()?;
+        return Ok(result);
+    }
+    if effective != GuardIntegrationVerificationStatus::Active {
+        return Err(terminal_state_conflict(caller, effective));
+    }
     tx.execute(
         "UPDATE guard_integration_verification_runs
             SET probe_acknowledged_at = COALESCE(probe_acknowledged_at, ?2)
-          WHERE verification_id = ?1 AND status = 'active'",
+          WHERE verification_id = ?1
+            AND status = 'active'
+            AND probe_acknowledged_at IS NULL
+            AND expires_at > ?2",
         params![verification_id, observed_at],
     )?;
-    tx.commit()?;
-    Ok(GuardProbeResult {
+    let authoritative =
+        run_from_conn(&tx, verification_id)?.ok_or_else(|| StoreError::NotFound {
+            entity: "guard_integration_verification",
+            id: verification_id.to_owned(),
+        })?;
+    let acknowledged_at = authoritative
+        .probe_acknowledged_at
+        .as_deref()
+        .ok_or_else(|| terminal_state_conflict(caller, effective))?;
+    let effective = effective_status(runtime_home, &authoritative, &now)?;
+    let result = GuardProbeResult {
         verification_id: GuardIntegrationVerificationId::new(verification_id),
-        status: GuardIntegrationVerificationStatus::Active,
-        acknowledged_at: parse_timestamp("probe_acknowledged_at", &acknowledged_at)?,
-    })
+        status: effective,
+        acknowledged_at: parse_timestamp("probe_acknowledged_at", acknowledged_at)?,
+    };
+    tx.commit()?;
+    Ok(result)
 }
 
 /// Returns one verification using only its exact current managed caller coordinate.
@@ -711,14 +732,11 @@ fn result_from_record(
     }
 }
 
-fn require_active_caller(
+fn require_caller_coordinate(
     run: &GuardIntegrationVerificationRunRecord,
     caller: &GuardIntegrationVerificationCaller,
-    now: &UtcTimestamp,
 ) -> StoreResult<()> {
-    if run.status != ACTIVE_STATUS
-        || parse_timestamp("expires_at", &run.expires_at)? <= *now
-        || run.connection_internal_id != caller.connection_internal_id
+    if run.connection_internal_id != caller.connection_internal_id
         || run.runtime_session_id != caller.runtime_session_id
         || run.host_session_id != caller.host_session_id
         || run.host_turn_id != caller.host_turn_id
@@ -726,7 +744,7 @@ fn require_active_caller(
     {
         return Err(coordinate_conflict(
             caller,
-            "verification is not active for this exact managed session and native turn",
+            "verification belongs to another managed session or native turn",
         ));
     }
     Ok(())
@@ -781,6 +799,17 @@ fn coordinate_conflict(caller: &GuardIntegrationVerificationCaller, detail: &str
         id: caller.runtime_session_id.clone(),
         detail: detail.to_owned(),
     }
+}
+
+fn terminal_state_conflict(
+    caller: &GuardIntegrationVerificationCaller,
+    status: GuardIntegrationVerificationStatus,
+) -> StoreError {
+    coordinate_conflict(
+        caller,
+        &format!("verification is {status:?} and has no prior probe acknowledgement")
+            .to_ascii_lowercase(),
+    )
 }
 
 fn expire_active_runs(conn: &Connection, observed_at: &str) -> StoreResult<()> {
@@ -896,7 +925,12 @@ fn parse_status(value: &str) -> StoreResult<GuardIntegrationVerificationStatus> 
 
 #[cfg(test)]
 mod tests {
-    use std::{error::Error, path::Path};
+    use std::{
+        error::Error,
+        path::Path,
+        sync::{Arc, Barrier},
+        thread,
+    };
 
     use volicord_host_contract::{
         CanonicalToolName, CodexHookPromptCorrelation, CodexHookToolCorrelation,
@@ -1129,6 +1163,8 @@ mod tests {
             "2026-07-23T00:00:04.100Z",
         )?;
         assert_eq!(first.acknowledged_at, replay.acknowledged_at);
+        assert_eq!(first.status, GuardIntegrationVerificationStatus::Active);
+        assert_eq!(replay.status, GuardIntegrationVerificationStatus::Active);
 
         let probe_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
         fixture.insert_tool_event(ToolEventFixture {
@@ -1158,6 +1194,38 @@ mod tests {
         )?
         .expect("active verification");
         assert_eq!(updated.status, "passed");
+        let passed_replay = acknowledge_guard_integration_probe(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:04.750Z",
+        )?;
+        assert_eq!(
+            passed_replay.status,
+            GuardIntegrationVerificationStatus::Passed
+        );
+        assert_eq!(passed_replay.acknowledged_at, first.acknowledged_at);
+        let after_passed_replay = {
+            let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+            run_from_conn(&conn, &run.verification_id)?.expect("passed run")
+        };
+        assert_eq!(
+            after_passed_replay.probe_acknowledged_at,
+            updated.probe_acknowledged_at
+        );
+        assert_eq!(after_passed_replay.completed_at, updated.completed_at);
+        assert_eq!(
+            after_passed_replay.matched_prompt_event_id,
+            updated.matched_prompt_event_id
+        );
+        assert_eq!(
+            after_passed_replay.matched_pre_tool_event_id,
+            updated.matched_pre_tool_event_id
+        );
+        assert_eq!(
+            after_passed_replay.matched_post_tool_event_id,
+            updated.matched_post_tool_event_id
+        );
         let result = get_guard_integration_verification(
             fixture.runtime_home.path(),
             &run.verification_id,
@@ -1206,6 +1274,175 @@ mod tests {
             stale_pass.status,
             GuardIntegrationVerificationStatus::Failed
         );
+        let failed_replay = acknowledge_guard_integration_probe(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:07.100Z",
+        )?;
+        assert_eq!(
+            failed_replay.status,
+            GuardIntegrationVerificationStatus::Failed
+        );
+        assert_eq!(failed_replay.acknowledged_at, first.acknowledged_at);
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_identical_first_probe_calls_converge_on_one_timestamp(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = VerificationFixture::new("guard-integration-concurrent-probe")?;
+        let run = fixture.begin()?;
+        let barrier = Arc::new(Barrier::new(2));
+        let mut handles = Vec::new();
+        for observed_at in ["2026-07-23T00:00:04Z", "2026-07-23T00:00:04.100Z"] {
+            let barrier = Arc::clone(&barrier);
+            let runtime_home = fixture.runtime_home.path().to_path_buf();
+            let verification_id = run.verification_id.clone();
+            let caller = fixture.caller();
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+                acknowledge_guard_integration_probe(
+                    runtime_home,
+                    &verification_id,
+                    &caller,
+                    observed_at,
+                )
+            }));
+        }
+        let first = handles
+            .remove(0)
+            .join()
+            .map_err(|_| "first probe thread panicked")??;
+        let second = handles
+            .remove(0)
+            .join()
+            .map_err(|_| "second probe thread panicked")??;
+        assert_eq!(first.acknowledged_at, second.acknowledged_at);
+        assert_eq!(first.status, GuardIntegrationVerificationStatus::Active);
+        assert_eq!(second.status, GuardIntegrationVerificationStatus::Active);
+
+        let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        let authoritative = run_from_conn(&conn, &run.verification_id)?.expect("verification run");
+        let first_acknowledged_at = first.acknowledged_at.to_canonical_string();
+        assert_eq!(
+            authoritative.probe_acknowledged_at.as_deref(),
+            Some(first_acknowledged_at.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn wrong_caller_coordinate_cannot_observe_or_change_acknowledgement(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = VerificationFixture::new("guard-integration-wrong-caller")?;
+        let run = fixture.begin()?;
+        let acknowledged = acknowledge_guard_integration_probe(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:04Z",
+        )?;
+        for caller in [
+            GuardIntegrationVerificationCaller {
+                runtime_session_id: "runtime_other".to_owned(),
+                ..fixture.caller()
+            },
+            GuardIntegrationVerificationCaller {
+                host_session_id: "host_session_other".to_owned(),
+                ..fixture.caller()
+            },
+            GuardIntegrationVerificationCaller {
+                host_turn_id: "host_turn_other".to_owned(),
+                ..fixture.caller()
+            },
+        ] {
+            acknowledge_guard_integration_probe(
+                fixture.runtime_home.path(),
+                &run.verification_id,
+                &caller,
+                "2026-07-23T00:00:05Z",
+            )
+            .expect_err("different caller coordinate must fail");
+        }
+        let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        let authoritative = run_from_conn(&conn, &run.verification_id)?.expect("verification run");
+        let acknowledged_at = acknowledged.acknowledged_at.to_canonical_string();
+        assert_eq!(
+            authoritative.probe_acknowledged_at.as_deref(),
+            Some(acknowledged_at.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn expired_exact_replay_returns_the_original_acknowledgement() -> Result<(), Box<dyn Error>> {
+        let fixture = VerificationFixture::new("guard-integration-expired-replay")?;
+        let run = fixture.begin()?;
+        let acknowledged = acknowledge_guard_integration_probe(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:04Z",
+        )?;
+        let replay = acknowledge_guard_integration_probe(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:05:03Z",
+        )?;
+        assert_eq!(replay.status, GuardIntegrationVerificationStatus::Expired);
+        assert_eq!(replay.acknowledged_at, acknowledged.acknowledged_at);
+        let conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        let authoritative = run_from_conn(&conn, &run.verification_id)?.expect("expired run");
+        assert_eq!(
+            authoritative.probe_acknowledged_at.as_deref(),
+            Some(acknowledged.acknowledged_at.to_canonical_string().as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn terminal_runs_without_acknowledgement_cannot_acquire_one_late() -> Result<(), Box<dyn Error>>
+    {
+        let expired_fixture = VerificationFixture::new("guard-integration-late-expired")?;
+        let expired = expired_fixture.begin()?;
+        let error = acknowledge_guard_integration_probe(
+            expired_fixture.runtime_home.path(),
+            &expired.verification_id,
+            &expired_fixture.caller(),
+            "2026-07-23T00:05:03Z",
+        )
+        .expect_err("expired verification cannot be acknowledged late");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        let conn = open_registry_database(registry_db_path(expired_fixture.runtime_home.path()))?;
+        assert!(run_from_conn(&conn, &expired.verification_id)?
+            .expect("expired run")
+            .probe_acknowledged_at
+            .is_none());
+
+        let failed_fixture = VerificationFixture::new("guard-integration-late-failed")?;
+        let failed = failed_fixture.begin()?;
+        let conn = open_registry_database(registry_db_path(failed_fixture.runtime_home.path()))?;
+        conn.execute(
+            "UPDATE guard_integration_verification_runs
+                SET policy_hash = ?2
+              WHERE verification_id = ?1",
+            params![
+                failed.verification_id,
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+        )?;
+        let error = acknowledge_guard_integration_probe(
+            failed_fixture.runtime_home.path(),
+            &failed.verification_id,
+            &failed_fixture.caller(),
+            "2026-07-23T00:00:04Z",
+        )
+        .expect_err("failed verification cannot be acknowledged late");
+        assert!(matches!(error, StoreError::Conflict { .. }));
+        let authoritative = run_from_conn(&conn, &failed.verification_id)?.expect("failed run");
+        assert!(authoritative.probe_acknowledged_at.is_none());
         Ok(())
     }
 

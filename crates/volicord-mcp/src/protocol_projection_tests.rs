@@ -327,6 +327,82 @@ fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
 }
 
 #[test]
+fn integration_verification_results_validate_for_every_production_profile() {
+    let begin_active = json!({
+        "verification_id": "guard_verification_profile",
+        "status": "active",
+        "expires_at": "2026-07-23T00:05:00Z",
+        "mcp_probe_acknowledged": false,
+        "next_probe_tool": AgentToolId::GUARD_PROBE.wire_name(),
+        "next_action": "call_guard_probe",
+        "matched_prompt_event_id": "guard_event_prompt",
+    });
+    let begin_passed = json!({
+        "verification_id": "guard_verification_profile",
+        "status": "passed",
+        "expires_at": "2026-07-23T00:05:00Z",
+        "mcp_probe_acknowledged": true,
+        "next_action": "no_further_action",
+        "matched_prompt_event_id": "guard_event_prompt",
+    });
+    let probe_passed = json!({
+        "verification_id": "guard_verification_profile",
+        "status": "passed",
+        "acknowledged_at": "2026-07-23T00:00:04Z",
+    });
+    let documentation = mcp_tools_for_mode_and_storage_with_detail(
+        AgentConnectionMode::Workflow,
+        McpStorageCapability::ReadWrite,
+        ToolSchemaDetail::Documentation,
+    );
+    for (tool, bodies) in [
+        (
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+            vec![begin_active.clone(), begin_passed.clone()],
+        ),
+        (AgentToolId::GUARD_PROBE, vec![probe_passed.clone()]),
+    ] {
+        let schema = &documentation
+            .iter()
+            .find(|definition| definition.id == tool)
+            .expect("integration-verification tool definition")
+            .output_schema;
+        for body in bodies {
+            validate_schema(schema, schema, &body, 0).unwrap_or_else(|error| {
+                panic!("{} public output schema: {error}", tool.wire_name())
+            });
+        }
+    }
+
+    for profile in production_profiles() {
+        for (tool, body) in [
+            (AgentToolId::BEGIN_INTEGRATION_VERIFICATION, &begin_active),
+            (AgentToolId::BEGIN_INTEGRATION_VERIFICATION, &begin_passed),
+            (AgentToolId::GUARD_PROBE, &probe_passed),
+        ] {
+            let projected = CanonicalToolResult {
+                metadata: None,
+                content: Vec::new(),
+                structured_content: body.clone(),
+                is_error: false,
+            }
+            .project(profile)
+            .expect("integration-verification result should project")
+            .into_value();
+            validate_definition(&pinned_schema(profile), "CallToolResult", &projected)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} {} result: {error}",
+                        profile.revision(),
+                        tool.wire_name()
+                    )
+                });
+            assert_eq!(authoritative_result(&projected), *body);
+        }
+    }
+}
+
+#[test]
 fn bounded_budget_recovery_shape_remains_bounded_for_every_production_profile() {
     let recovery = CanonicalToolResult {
         metadata: None,

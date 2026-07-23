@@ -371,9 +371,13 @@ Connection과 프로젝트, managed runtime, native host session과 turn, Guard 
 integration revision, policy hash, hook-contract digest, 예상 probe 도구, 생성·만료·
 acknowledgement·완료 시각, lifecycle 상태, 일치한 prompt/pre/post Guard event ID, 선택적
 terminal finding을 저장합니다. Active uniqueness 좌표는 Connection/runtime/turn/revision입니다.
-정확한 begin replay는 같은 active 또는 passed row를 재개합니다. 유효 상태를 projection할
-때는 현재 소유자 검증과 정확한 event 상관관계가 필요하며, 저장된 row 자체나 무관한 이력
-Guard event만으로는 충분하지 않습니다.
+정확한 begin replay는 같은 active 또는 passed row를 재개합니다. Probe acknowledgement는
+완전한 verification/Connection/runtime/native-session/native-turn 좌표에 적용되는 nullable
+first-write-wins 필드입니다. 정확한 replay는 완료 뒤에도 timestamp, 완료 정보, 일치한
+event를 바꾸지 않고 원래 acknowledgement와 현재 유효 lifecycle 상태를 읽습니다. 다른
+좌표는 이 값을 읽거나 바꿀 수 없으며 acknowledgement가 없는 terminal row에는 새 값을
+만들 수 없습니다. 유효 상태를 projection할 때는 현재 소유자 검증과 정확한 event
+상관관계가 필요하며, 저장된 row 자체나 무관한 이력 Guard event만으로는 충분하지 않습니다.
 
 Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guard suppression은
 제한된 정규 correlation 데이터만 읽고 정확한 `SuppressionOutcome`을 반환합니다. Store

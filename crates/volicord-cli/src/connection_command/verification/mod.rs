@@ -29,8 +29,10 @@ use volicord_store::{
     },
     sqlite::{registry_db_path, sqlite_database_write_capability},
 };
+#[cfg(test)]
+use volicord_types::ConnectionStatus;
 use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
+    AgentConnectionId, AgentRuntimeSessionId, AgentToolId, ConnectionAction, ConnectionActionKind,
     ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
     ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode, DiagnosticDomain,
     DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
@@ -38,8 +40,6 @@ use volicord_types::{
     HookActivationEvidence, HookActivationState, IntegrationRevision, UtcTimestamp,
     MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
-#[cfg(test)]
-use volicord_types::{AgentToolId, ConnectionStatus};
 
 use crate::guard_integration::audit::{
     guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,

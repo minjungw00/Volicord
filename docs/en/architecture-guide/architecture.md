@@ -175,8 +175,10 @@ hook-source, session, capability, Guard, and separate project-trust evidence.
 `volicord-store` preserves the Guard definition boundary: unchanged manifests
 retain current observation eligibility and changed managed definition content
 invalidates earlier events. `volicord-mcp` and generated host guidance own the
-canonical first-party in-chat request and tool sequence. Renderers consume
-typed state; they do not classify summary prose.
+canonical first-party in-chat request and state-directed tool sequence: begin
+decides whether the first-write-wins probe is still required, and completed
+exact replay never reactivates the run. Renderers consume typed state; they do
+not classify summary prose.
 
 Host-provided disabled, policy-managed, or invocation-bypass evidence is
 accepted only through the typed host evidence boundary. In its absence,
