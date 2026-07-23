@@ -338,6 +338,26 @@ mode, metadata, memberships, Guard manifests, runtime sessions, or project
 Agent Sessions. A revision conflict has no Registry effect.
 `volicord connection status` remains read-only and does not use this mutation.
 
+<a id="connection-integration-verification-effects"></a>
+## Connection-Integration Verification Effects
+
+`volicord.begin_integration_verification` validates the current managed runtime,
+native session/turn, selected Connection Project, current Agent Session, Guard
+Installation, policy, revision, hook contract, and prompt observation before
+one immediate Registry transaction. It expires due active rows and inserts one
+`guard_integration_verification_runs` row, or returns the exact current active
+or passed row as idempotent replay. Rejected, manual, preflight, stale,
+ambiguous, or prompt-missing calls have no verification-run effect.
+
+`volicord.guard_probe` changes only that exact active row's nullable
+`probe_acknowledged_at`, using first-write-wins idempotence. It has no project
+`state.sqlite`, Core workflow, Task, or Product Repository effect.
+`volicord.get_integration_verification` is read-only. Compatible Guard event
+persistence retains its ordinary project-local event effect; after that commit,
+the Registry correlation refresh may mark the matching active run `passed` and
+store its completion and matched event IDs. Exact replay can complete that
+refresh. No branch fabricates missing Guard events or alters MCP trust state.
+
 ## Managed Runtime Project-Session Binding
 
 An actual managed MCP project call uses these ordered storage effects:
@@ -367,17 +387,19 @@ valid reservation.
 An accepted `volicord connection remove` apply uses one immediate Registry
 transaction. It validates the Agent Connection and selected membership, rejects
 pending-host-cleanup conflicts, deletes the selected membership's Registry
-project-session bindings, then its Guard Installation and membership, and
-counts remaining memberships before commit. With remaining memberships it has
+project-session bindings and integration-verification runs, then its Guard
+Installation and membership, and counts remaining memberships before commit.
+With remaining memberships it has
 no effect on connection-wide runtime sessions or other projects' rows. With no
 remaining membership it additionally deletes every remaining connection-owned
-binding and Guard Installation, every connection-owned MCP runtime session, and
-the Agent Connection.
+binding, integration-verification run, and Guard Installation, every
+connection-owned MCP runtime session, and the Agent Connection.
 
 Connection migration uses the same owner-ordered project retirement. A
 multi-project superseded Connection loses only the selected project's bindings,
-Guard Installation, and membership in the same Registry transaction that
-activates the replacement membership, Guard Installation, and Connection. Its
+integration-verification runs, Guard Installation, and membership in the same
+Registry transaction that activates the replacement membership, Guard
+Installation, and Connection. Its
 other projects' rows and connection-wide runtime sessions remain.
 
 A last-project superseded Connection instead remains disabled with its complete

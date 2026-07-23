@@ -357,6 +357,16 @@ tool 상관관계가 관련 pre/post record에서 일치해야 합니다. 현재
 충족하지 못합니다. 현재 malformed 또는 incompatible event가 있으면 이 check는
 실패합니다. Prompt capture는 별도 설치 상태가 아니라 같은 관찰 summary의 사실입니다.
 
+Registry의 `guard_integration_verification_runs`는 Core 또는 Task record가 아니라 영속적이고
+한도가 있는 Connection-integration record입니다. 각 row는 불투명 verification ID,
+Connection과 프로젝트, managed runtime, native host session과 turn, Guard Installation,
+integration revision, policy hash, hook-contract digest, 예상 probe 도구, 생성·만료·
+acknowledgement·완료 시각, lifecycle 상태, 일치한 prompt/pre/post Guard event ID, 선택적
+terminal finding을 저장합니다. Active uniqueness 좌표는 Connection/runtime/turn/revision입니다.
+정확한 begin replay는 같은 active 또는 passed row를 재개합니다. 유효 상태를 projection할
+때는 현재 소유자 검증과 정확한 event 상관관계가 필요하며, 저장된 row 자체나 무관한 이력
+Guard event만으로는 충분하지 않습니다.
+
 Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guard suppression은
 제한된 정규 correlation 데이터만 읽고 정확한 `SuppressionOutcome`을 반환합니다. Store
 읽기 실패, 손상된 기록, budget 소진, 유효하지 않은 correlation은 `Unavailable`이며

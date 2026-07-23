@@ -68,6 +68,10 @@ opaque_string_type!(
     "Opaque host-hook installation identifier."
 );
 opaque_string_type!(GuardEventId, "Opaque host-hook event identifier.");
+opaque_string_type!(
+    GuardIntegrationVerificationId,
+    "Opaque Guard integration-verification run identifier."
+);
 opaque_string_type!(PromptCaptureId, "Opaque prompt-capture identifier.");
 opaque_string_type!(UnrecordedChangeId, "Opaque unrecorded-change identifier.");
 opaque_string_type!(RequestId, "Opaque request identifier.");
@@ -238,6 +242,8 @@ pub enum DurableIdKind {
     GuardInstallation,
     /// Core-generated host-hook event ids.
     GuardEvent,
+    /// Store-generated Guard integration-verification run ids.
+    GuardIntegrationVerification,
     /// Core-generated prompt-capture ids.
     PromptCapture,
     /// Core-generated unrecorded-change ids.
@@ -282,6 +288,7 @@ impl DurableIdKind {
             Self::ConnectionIntegrationInstance => "connection_instance_",
             Self::GuardInstallation => "guard_installation_",
             Self::GuardEvent => "guard_event_",
+            Self::GuardIntegrationVerification => "guard_verification_",
             Self::PromptCapture => "prompt_capture_",
             Self::UnrecordedChange => "unrecorded_change_",
             Self::StagedArtifact => "staged_",
@@ -315,6 +322,7 @@ impl fmt::Display for DurableIdKind {
             Self::ConnectionIntegrationInstance => "connection_integration_instance",
             Self::GuardInstallation => "guard_installation",
             Self::GuardEvent => "guard_event",
+            Self::GuardIntegrationVerification => "guard_integration_verification",
             Self::PromptCapture => "prompt_capture",
             Self::UnrecordedChange => "unrecorded_change",
             Self::StagedArtifact => "staged_artifact",

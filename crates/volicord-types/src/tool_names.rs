@@ -45,12 +45,16 @@ impl AgentToolCategory {
 pub enum AgentToolOwner {
     CoreMethod(MethodName),
     AdapterUtility,
+    ConnectionIntegration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum AgentToolKind {
     Method(MethodName),
     ListProjects,
+    BeginIntegrationVerification,
+    GuardProbe,
+    GetIntegrationVerification,
 }
 
 /// Canonical typed identity for every Agent Connection MCP tool.
@@ -74,9 +78,13 @@ impl AgentToolId {
     pub const CHECK_CLOSE: Self = Self(AgentToolKind::Method(MethodName::CheckClose));
     pub const CLOSE_TASK: Self = Self(AgentToolKind::Method(MethodName::CloseTask));
     pub const LIST_PROJECTS: Self = Self(AgentToolKind::ListProjects);
+    pub const BEGIN_INTEGRATION_VERIFICATION: Self =
+        Self(AgentToolKind::BeginIntegrationVerification);
+    pub const GUARD_PROBE: Self = Self(AgentToolKind::GuardProbe);
+    pub const GET_INTEGRATION_VERIFICATION: Self = Self(AgentToolKind::GetIntegrationVerification);
 
     /// The complete Agent Connection MCP tool catalog in stable discovery order.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 16] = [
         Self::INTAKE,
         Self::UPDATE_SCOPE,
         Self::STATUS,
@@ -90,6 +98,9 @@ impl AgentToolId {
         Self::CHECK_CLOSE,
         Self::CLOSE_TASK,
         Self::LIST_PROJECTS,
+        Self::BEGIN_INTEGRATION_VERIFICATION,
+        Self::GUARD_PROBE,
+        Self::GET_INTEGRATION_VERIFICATION,
     ];
 
     /// Returns the canonical Agent Connection identity for a public Core method.
@@ -125,6 +136,11 @@ impl AgentToolId {
         match self.0 {
             AgentToolKind::Method(method) => method.as_str(),
             AgentToolKind::ListProjects => "volicord.list_projects",
+            AgentToolKind::BeginIntegrationVerification => {
+                "volicord.begin_integration_verification"
+            }
+            AgentToolKind::GuardProbe => "volicord.guard_probe",
+            AgentToolKind::GetIntegrationVerification => "volicord.get_integration_verification",
         }
     }
 
@@ -134,7 +150,11 @@ impl AgentToolId {
             AgentToolKind::Method(
                 MethodName::Status | MethodName::GetOperationResult | MethodName::CheckClose,
             )
-            | AgentToolKind::ListProjects => AgentToolCategory::ReadOnly,
+            | AgentToolKind::ListProjects
+            | AgentToolKind::GetIntegrationVerification => AgentToolCategory::ReadOnly,
+            AgentToolKind::BeginIntegrationVerification | AgentToolKind::GuardProbe => {
+                AgentToolCategory::NonDestructiveMutation
+            }
             AgentToolKind::Method(
                 MethodName::PrepareEvidenceCapture
                 | MethodName::PrepareWrite
@@ -149,6 +169,9 @@ impl AgentToolId {
         match self.0 {
             AgentToolKind::Method(method) => AgentToolOwner::CoreMethod(method),
             AgentToolKind::ListProjects => AgentToolOwner::AdapterUtility,
+            AgentToolKind::BeginIntegrationVerification
+            | AgentToolKind::GuardProbe
+            | AgentToolKind::GetIntegrationVerification => AgentToolOwner::ConnectionIntegration,
         }
     }
 
@@ -156,7 +179,7 @@ impl AgentToolId {
     pub const fn method(self) -> Option<MethodName> {
         match self.owner() {
             AgentToolOwner::CoreMethod(method) => Some(method),
-            AgentToolOwner::AdapterUtility => None,
+            AgentToolOwner::AdapterUtility | AgentToolOwner::ConnectionIntegration => None,
         }
     }
 
@@ -165,7 +188,8 @@ impl AgentToolId {
         match mode {
             AgentConnectionMode::Workflow => true,
             AgentConnectionMode::ReadOnly => {
-                matches!(self.category(), AgentToolCategory::ReadOnly)
+                matches!(self.owner(), AgentToolOwner::ConnectionIntegration)
+                    || matches!(self.category(), AgentToolCategory::ReadOnly)
             }
         }
     }
@@ -174,8 +198,25 @@ impl AgentToolId {
     pub const fn verification_role(self) -> Option<ToolVerificationRole> {
         match self.0 {
             AgentToolKind::ListProjects => Some(ToolVerificationRole::ManagedHostRoundTrip),
-            AgentToolKind::Method(_) => None,
+            AgentToolKind::Method(_)
+            | AgentToolKind::BeginIntegrationVerification
+            | AgentToolKind::GuardProbe
+            | AgentToolKind::GetIntegrationVerification => None,
         }
+    }
+
+    /// Returns whether retrying this tool with the same integration coordinate is idempotent.
+    pub const fn is_idempotent(self) -> bool {
+        matches!(
+            self.0,
+            AgentToolKind::ListProjects
+                | AgentToolKind::BeginIntegrationVerification
+                | AgentToolKind::GuardProbe
+                | AgentToolKind::GetIntegrationVerification
+                | AgentToolKind::Method(
+                    MethodName::Status | MethodName::GetOperationResult | MethodName::CheckClose
+                )
+        )
     }
 }
 
@@ -233,10 +274,29 @@ mod tests {
     #[test]
     fn every_agent_tool_wire_name_is_unique_and_round_trips() {
         let mut names = BTreeSet::new();
+        assert_eq!(AgentToolId::ALL.len(), 16);
         for tool in AgentToolId::ALL {
             assert!(names.insert(tool.wire_name()));
             assert_eq!(AgentToolId::from_wire_name(tool.wire_name()), Ok(tool));
             assert_eq!(tool.wire_name().parse::<AgentToolId>(), Ok(tool));
+        }
+    }
+
+    #[test]
+    fn integration_verification_tools_share_one_non_core_owner_and_all_modes() {
+        for tool in [
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+            AgentToolId::GUARD_PROBE,
+            AgentToolId::GET_INTEGRATION_VERIFICATION,
+        ] {
+            assert!(matches!(
+                tool.owner(),
+                AgentToolOwner::ConnectionIntegration
+            ));
+            assert!(tool.available_in(AgentConnectionMode::ReadOnly));
+            assert!(tool.available_in(AgentConnectionMode::Workflow));
+            assert!(tool.is_idempotent());
+            assert_eq!(tool.method(), None);
         }
     }
 

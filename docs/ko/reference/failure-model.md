@@ -72,6 +72,14 @@ Event 영속화를 사용할 수 없으면 관찰 결과는 명시적으로 unav
 policy denial이 되지 않습니다. 실제 Guard `NotAllowed` 결과에는 호환되는 입력이 policy에
 도달해 `Deny`를 낸 사실이 필요합니다.
 
+Connection-integration 검증은 도구 호출 거부와 run lifecycle을 구분합니다. Malformed ID,
+다른 runtime, native session 또는 turn의 호출은 run을 변경하지 않고 거부합니다. 필요한
+현재 prompt/pre/post 상관관계가 없으면 active run은 한도가 있는 만료 시점까지 pending으로
+남습니다. 만료는 이력 성공을 꾸며내는 대신 run 상태 `expired`가 됩니다. 저장된 pass의
+runtime, Guard Installation, policy, integration revision 또는 hook contract가 더 이상
+현재 상태가 아니면 run 상태를 `failed`로 projection합니다. 이 run 상태는 Connection check
+사실이며 위의 제품 전체 실패 범주를 다시 정의하지 않습니다.
+
 활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
 아래에서 정의하는 다섯 가지 상태 모델로 보고합니다. 실행 파일을 찾거나 실행하지 못한
 경우 일반 실패 범주 경계에서는 `Unavailable`, 연결 보고서에서는 실패한

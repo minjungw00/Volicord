@@ -862,6 +862,17 @@ volicord mcp --check --connection <connection_id> [--project <project_id>]
 These commands expose only managed stdio. Exact framing, lifecycle, tool lists,
 and response projection belong to [MCP Transport](mcp-transport.md).
 
+`volicord connection verify codex` reports the canonical
+`guard_verification` check and its verification/run/event IDs when available,
+but the CLI does not synthesize or execute the in-chat workflow. A pending
+check instructs the operator to use
+`volicord.begin_integration_verification`, the returned
+`volicord.guard_probe`, and `volicord.get_integration_verification` inside the
+current managed Codex chat. CLI preflight, the manual stdio self-test, and
+historical Guard activity cannot complete that check. The command observes
+Codex trust state; it does not automate, approve, or bypass project trust and
+does not modify MCP trust configuration.
+
 The generated Codex entry uses the hidden `_host-launch` command rather than
 these public manual stdio commands. `_host-launch` is host-owned, omitted from
 normal help, and not an alternate administrative or public API surface.

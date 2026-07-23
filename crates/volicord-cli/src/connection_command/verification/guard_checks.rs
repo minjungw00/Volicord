@@ -140,6 +140,37 @@ pub(super) fn guard_checks_for_connection(
         current_timestamp(),
     )?;
 
+    let verification_observed_at = current_timestamp().to_canonical_string();
+    let current_revision = connection_integration_revision(connection)?;
+    let verification_run = latest_guard_integration_verification_for_connection(
+        runtime_home,
+        &connection.connection_internal_id,
+        &current_revision,
+    )?;
+    let verification_effective_status = verification_run
+        .as_ref()
+        .map(|run| {
+            current_guard_integration_verification_status(
+                runtime_home,
+                run,
+                &verification_observed_at,
+            )
+        })
+        .transpose()?;
+    let verification_status = match verification_effective_status {
+        Some(volicord_types::GuardIntegrationVerificationStatus::Passed) => {
+            ConnectionCheckStatus::Passed
+        }
+        Some(volicord_types::GuardIntegrationVerificationStatus::Failed) => {
+            ConnectionCheckStatus::Failed
+        }
+        Some(
+            volicord_types::GuardIntegrationVerificationStatus::Active
+            | volicord_types::GuardIntegrationVerificationStatus::Expired,
+        )
+        | None => ConnectionCheckStatus::Pending,
+    };
+
     let checks = block_failed_dependencies(vec![
         with_direct_causes(
             canonical_check(
@@ -222,6 +253,42 @@ pub(super) fn guard_checks_for_connection(
                 observed_at.as_deref(),
             )?,
             guard_findings.observation,
+        )?,
+        canonical_check(
+            ConnectionCheckKind::GuardVerification,
+            verification_status,
+            match verification_status {
+                ConnectionCheckStatus::Passed => "guard_verification_passed",
+                ConnectionCheckStatus::Pending => "guard_verification_pending",
+                ConnectionCheckStatus::Failed => "guard_verification_failed",
+                ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
+                    unreachable!("raw Guard verification uses passed, pending, or failed")
+                }
+            },
+            match verification_status {
+                ConnectionCheckStatus::Passed => {
+                    "One current managed Codex turn completed the correlated MCP and Guard verification"
+                }
+                ConnectionCheckStatus::Pending => {
+                    "The current Connection has no completed correlated in-chat Guard verification"
+                }
+                ConnectionCheckStatus::Failed => {
+                    "The newest correlated in-chat Guard verification no longer matches current integration ownership"
+                }
+                ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
+                    unreachable!("raw Guard verification uses passed, pending, or failed")
+                }
+            },
+            Some(json!({
+                "verification_id": verification_run.as_ref().map(|run| run.verification_id.as_str()),
+                "runtime_session_id": verification_run.as_ref().map(|run| run.runtime_session_id.as_str()),
+                "host_turn_id": verification_run.as_ref().map(|run| run.host_turn_id.as_str()),
+                "matched_prompt_event_id": verification_run.as_ref().and_then(|run| run.matched_prompt_event_id.as_deref()),
+                "matched_pre_tool_event_id": verification_run.as_ref().and_then(|run| run.matched_pre_tool_event_id.as_deref()),
+                "matched_post_tool_event_id": verification_run.as_ref().and_then(|run| run.matched_post_tool_event_id.as_deref()),
+            })),
+            (verification_status == ConnectionCheckStatus::Passed)
+                .then_some(verification_observed_at.as_str()),
         )?,
     ])?;
     Ok(ConnectionCheckEvaluation {

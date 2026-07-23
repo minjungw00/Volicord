@@ -81,6 +81,16 @@ observation outcome remains explicitly unavailable and persistence failure
 alone does not become policy denial. An actual `NotAllowed` Guard result
 requires compatible input that reached policy and produced `Deny`.
 
+Connection-integration verification keeps tool-call rejection separate from
+run lifecycle. A malformed ID or a call from another runtime, native session,
+or turn is rejected without changing the run. Absence of the required current
+prompt/pre/post correlation leaves an active run pending until its bounded
+expiry; expiry is the run status `expired`, not fabricated historical success.
+A stored pass whose runtime, Guard Installation, policy, integration revision,
+or hook contract is no longer current projects as run status `failed`. These
+run statuses are Connection-check facts and do not redefine the product-wide
+failure categories above.
+
 Active connection verification discovers the configured Codex executable, runs
 its version command, and reports every behavioral check using the five-state
 model defined below. Failure to find or run the executable is `Unavailable` at

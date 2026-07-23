@@ -2300,7 +2300,7 @@ terms:
       - "Keep connection-verification user instructions inside the report's `actions` array."
       - "`ConnectionAction` contains exactly `id` and `instruction`; actions are semantic report facts, while executable guidance is constructed only from current typed command coordinates."
       - "Do not use `dry_run` or adapter lifecycle facts as connection or check statuses."
-      - "Use only the closed `ConnectionCheckKind` values `connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`, `guard_observation`, `host_executable`, `host_session`, `managed_config`, `mcp_server`, `mode_transition`, `process_startup`, `project_trust`, `required_tools`, `runtime_session_lookup`, `setup_plan`, `tool_round_trip`, and `verification_not_run`."
+      - "Use only the closed `ConnectionCheckKind` values `connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`, `guard_observation`, `guard_verification`, `host_executable`, `host_session`, `managed_config`, `mcp_server`, `mode_transition`, `process_startup`, `project_trust`, `required_tools`, `runtime_session_lookup`, `setup_plan`, `tool_round_trip`, and `verification_not_run`."
       - "Use only the closed `ConnectionActionKind` values `apply_removal`, `apply_setup`, `host_trust_required`, `inspect_codex_protocol`, `install_or_repair_codex`, `observe_codex`, `reload_host`, `repair_guard`, `repair_managed_config`, `repair_mcp_server`, and `run_verification`."
       - "Codex path/version and MCP client version are diagnostic facts; a host-version change renews operational observation, while authorization validates current session ownership and exact bindings."
   diagnostic_lookup_report:

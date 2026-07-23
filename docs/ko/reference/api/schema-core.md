@@ -40,6 +40,12 @@ Core 소유 MCP 도구의 정규 `AgentToolId` identity는 기존 `MethodName` d
 `AgentToolId::LIST_PROJECTS`의 결합은 이 catalog의 컴파일 시점 metadata이며, 별도의 Core
 method identity를 정의하지 않습니다.
 
+`volicord.begin_integration_verification`, `volicord.guard_probe`,
+`volicord.get_integration_verification`은 이 catalog의 Connection-integration 구성원입니다.
+공개 요청/결과 스키마는 `ToolEnvelope`, Core method 스키마, Task 상태가 아니라
+[MCP 전송](../mcp-transport.md#in-chat-integration-verification-schemas)이 담당합니다. Adapter 효과는
+[저장 효과](../storage-effects.md#connection-integration-verification-effects)가 담당합니다.
+
 ## 스키마 표기 규칙
 
 의미:

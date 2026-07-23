@@ -243,6 +243,13 @@ impl ConnectionCommandReport {
                     "Actual Codex Guard activity has not been observed",
                     None,
                 )?,
+                command_check(
+                    ConnectionCheckKind::GuardVerification,
+                    ConnectionCheckStatus::Pending,
+                    "guard_verification_pending",
+                    "In-chat MCP and Guard integration verification has not completed",
+                    None,
+                )?,
             ]);
         }
 

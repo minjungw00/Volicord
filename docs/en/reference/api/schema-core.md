@@ -43,6 +43,13 @@ utilities belong to the same closed identity catalog. The operational
 `AgentToolId::LIST_PROJECTS` is compile-time metadata on that catalog; it does
 not define another Core method identity.
 
+`volicord.begin_integration_verification`, `volicord.guard_probe`, and
+`volicord.get_integration_verification` are the catalog's
+Connection-integration members. Their public request/result schemas are owned
+by [MCP Transport](../mcp-transport.md#in-chat-integration-verification-schemas),
+not by `ToolEnvelope`, a Core method schema, or Task state. Their adapter
+effects are owned by [Storage Effects](../storage-effects.md#connection-integration-verification-effects).
+
 ## Schema notation
 
 Meaning:

@@ -1443,6 +1443,86 @@ pub fn guard_event(
         .map(Option::flatten)
 }
 
+/// Exact owner and native-turn coordinate for bounded integration-verification events.
+#[derive(Debug, Clone, Copy)]
+pub struct GuardIntegrationVerificationEventQuery<'a> {
+    pub project_id: &'a str,
+    pub connection_internal_id: &'a str,
+    pub session_id: &'a str,
+    pub host_turn_id: &'a str,
+    pub guard_installation_id: &'a str,
+    pub policy_hash: &'a str,
+    pub integration_revision: &'a str,
+}
+
+/// Reads the bounded Guard events eligible for one exact integration-verification coordinate.
+pub fn guard_events_for_integration_verification(
+    runtime_home: impl AsRef<Path>,
+    query: GuardIntegrationVerificationEventQuery<'_>,
+) -> StoreResult<Vec<GuardEventRecord>> {
+    for (field, value) in [
+        ("project_id", query.project_id),
+        ("connection_internal_id", query.connection_internal_id),
+        ("session_id", query.session_id),
+        ("host_turn_id", query.host_turn_id),
+        ("guard_installation_id", query.guard_installation_id),
+        ("policy_hash", query.policy_hash),
+        ("integration_revision", query.integration_revision),
+    ] {
+        validate_identifier(field, value)?;
+    }
+    let Some(project) = open_project_for_read(runtime_home, query.project_id)? else {
+        return Ok(Vec::new());
+    };
+    let mut stmt = project.conn.prepare(
+        "SELECT
+            e.project_id, e.guard_event_id, e.session_id,
+            e.connection_internal_id, e.correlation_kind, h.host_session_id,
+            e.host_turn_id, e.host_tool_use_id, e.host_tool_name,
+            e.guard_installation_id, e.policy_hash, e.integration_revision,
+            e.event_kind, e.contract_status, e.decision, e.subject_json,
+            e.result_json, e.occurred_at, e.metadata_json
+           FROM guard_events AS e
+           LEFT JOIN host_sessions AS h
+             ON h.project_id = e.project_id
+            AND h.session_id = e.session_id
+            AND h.connection_internal_id = e.connection_internal_id
+          WHERE e.project_id = ?1
+            AND e.connection_internal_id = ?2
+            AND e.session_id = ?3
+            AND e.host_turn_id = ?4
+            AND e.guard_installation_id = ?5
+            AND e.policy_hash = ?6
+            AND e.integration_revision = ?7
+          ORDER BY volicord_utc_seconds(e.occurred_at),
+                   volicord_utc_subsec_nanos(e.occurred_at),
+                   e.guard_event_id
+          LIMIT 513",
+    )?;
+    let rows = stmt.query_map(
+        params![
+            project.project.project_id,
+            query.connection_internal_id,
+            query.session_id,
+            query.host_turn_id,
+            query.guard_installation_id,
+            query.policy_hash,
+            query.integration_revision,
+        ],
+        guard_event_from_row,
+    )?;
+    let records = collect_rows(rows)?;
+    if records.len() > POST_TOOL_CORRELATION_EVENT_LIMIT {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "integration-verification event window exceeds the bounded event limit of {}",
+                POST_TOOL_CORRELATION_EVENT_LIMIT
+            ),
+        });
+    }
+    Ok(records)
+}
+
 /// Reports whether an earlier event of one kind exists for the exact managed session.
 ///
 /// The query is intentionally existence-only and excludes the current event so a first

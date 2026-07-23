@@ -25,7 +25,7 @@ fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
     assert!(!workflow_names.contains(&MethodName::ResolveUserAction.as_str()));
     assert_eq!(
         workflow_names.last().copied(),
-        Some(AgentToolId::LIST_PROJECTS.wire_name())
+        Some(AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name())
     );
 
     let read_only = mcp_tools_for_mode(AgentConnectionMode::ReadOnly);
@@ -37,7 +37,10 @@ fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
             AgentToolId::STATUS.wire_name(),
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
             AgentToolId::CHECK_CLOSE.wire_name(),
-            AgentToolId::LIST_PROJECTS.wire_name()
+            AgentToolId::LIST_PROJECTS.wire_name(),
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            AgentToolId::GUARD_PROBE.wire_name(),
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         ]
     );
 }
@@ -263,7 +266,10 @@ fn mcp_readonly_degraded_tools_have_valid_schemas() {
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
             AgentToolId::REQUEST_USER_ACTION.wire_name(),
             AgentToolId::CHECK_CLOSE.wire_name(),
-            AgentToolId::LIST_PROJECTS.wire_name()
+            AgentToolId::LIST_PROJECTS.wire_name(),
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            AgentToolId::GUARD_PROBE.wire_name(),
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         ]
     );
     assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
@@ -303,7 +309,9 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             "{} output schema should cover structured adapter failures",
             tool.id.wire_name()
         );
-        if !matches!(tool.id.category(), AgentToolCategory::ReadOnly) {
+        if matches!(tool.id.owner(), AgentToolOwner::CoreMethod(_))
+            && !matches!(tool.id.category(), AgentToolCategory::ReadOnly)
+        {
             assert!(
                 schema_has_definition(&tool.output_schema, "McpMutationResponseBudgetExceeded"),
                 "{} output schema should cover compact response-budget failures",
@@ -316,7 +324,7 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
             );
         }
 
-        let expected_annotations = match tool.id.category() {
+        let mut expected_annotations = match tool.id.category() {
             AgentToolCategory::ReadOnly => CanonicalToolAnnotations {
                 read_only_hint: true,
                 destructive_hint: false,
@@ -336,6 +344,9 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
                 open_world_hint: false,
             },
         };
+        if tool.id.is_idempotent() {
+            expected_annotations.idempotent_hint = true;
+        }
         assert_eq!(
             tool.annotations,
             expected_annotations,

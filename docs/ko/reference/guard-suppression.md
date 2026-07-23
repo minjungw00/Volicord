@@ -137,6 +137,13 @@ Codex adapter만 `hookSpecificOutput`, `permissionDecision`, `additionalContext`
 exit-code projection을 담당합니다. Core-facing type과 Store record는 Codex process-exit
 동작을 encode하지 않습니다.
 
+`PreToolUse`와 `PostToolUse`의 managed hook matcher에는 정확한 Codex native 이름
+`mcp__volicord__guard_probe`가 들어갑니다. 이 이름은 정규
+`AgentToolId::GUARD_PROBE` wire identity에서 생성하며 독립적으로 유지하는 literal이
+아니고 모든 읽기 전용 도구로 matching 범위를 넓히지 않습니다. Prompt capture에는 도구
+matcher가 없습니다. 검증 event는 현재 contract digest와 정확한 session, turn, tool-use ID,
+tool 이름, `verification_id` 입력이 한도가 있는 run과 일치할 때만 match합니다.
+
 ## 진단과 Event Projection
 
 모든 `Unavailable` 결과는 project, Guard event 식별자,
@@ -201,7 +208,7 @@ facts, typed check state를 사용합니다.
 Connection 검증은 다음과 같은 명시적인 Guard dependency graph를 사용합니다.
 
 ```text
-Guard 파일 integrity -> Guard hook 실행 -> Guard phase 관찰
+Guard 파일 integrity -> Guard hook 실행 -> Guard phase 관찰 -> 상관관계가 확인된 통합 검증
 ```
 
 각 check는 정확히 다섯 가지 상태 중 하나입니다. `passed`는 check가 성공적으로 끝났다는
@@ -211,9 +218,9 @@ Guard 파일 integrity -> Guard hook 실행 -> Guard phase 관찰
 뜻입니다. `not_applicable`은 해당 Connection 또는 profile에 check가 적용되지 않는다는
 뜻입니다.
 
-Guard 파일 integrity가 실패하면 해당 check는 `failed`가 되고 hook 실행과 phase 관찰은
-해소된 같은 root finding에 의해 `blocked`가 됩니다. Downstream check가 blocked인
-동안에는 report가 phase 관찰을 요청하지 않습니다. Root 선택은 typed finding cause edge를
+Guard 파일 integrity가 실패하면 해당 check는 `failed`가 되고 hook 실행, phase 관찰,
+상관관계가 확인된 통합 검증은 해소된 같은 root finding에 의해 `blocked`가 됩니다.
+Prerequisite check가 blocked인 동안에는 report가 downstream 관찰을 요청하지 않습니다. Root 선택은 typed finding cause edge를
 따르고, 독립 root를 결정적인 순서로 유지하며, summary를 검사하지 않습니다. 전체 check
 graph와 report 집계 상태는 [Agent Connection](agent-connection.md)이 담당합니다.
 
@@ -233,6 +240,9 @@ graph와 report 집계 상태는 [Agent Connection](agent-connection.md)이 담�
   충족에는 사용되지 않는지 여부
 - 명시적인 pre-tool denial과 non-blocking post-tool projection
 - event 영속화 실패가 제한된 Codex feedback과 함께 계속되는지 여부
+- 관련 없는 읽기 전용 도구와 match하지 않는 정확한 정규 Guard probe matcher 생성
+- session, turn, tool-use ID, tool 이름, verification ID, policy, revision, hook digest,
+  순서, 만료 불일치의 거부
 
 ## 인접 담당 문서
 

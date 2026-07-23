@@ -143,19 +143,21 @@ pub(super) fn actions_for_checks(
                 ConnectionCheckKind::HostSession
                 | ConnectionCheckKind::RequiredTools
                 | ConnectionCheckKind::ToolRoundTrip
-                | ConnectionCheckKind::GuardObservation,
+                | ConnectionCheckKind::GuardObservation
+                | ConnectionCheckKind::GuardVerification,
                 ConnectionCheckStatus::Pending,
             ) => {
                 actions.insert(
                     ConnectionActionKind::ObserveCodex,
-                    "Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool so actual Codex connection and Guard activity can be observed",
+                    "In the managed Codex chat, begin integration verification, call the returned Guard probe, then read the verification result",
                 );
             }
             (
                 ConnectionCheckKind::HostSession
                 | ConnectionCheckKind::RequiredTools
                 | ConnectionCheckKind::ToolRoundTrip
-                | ConnectionCheckKind::GuardObservation,
+                | ConnectionCheckKind::GuardObservation
+                | ConnectionCheckKind::GuardVerification,
                 ConnectionCheckStatus::Failed,
             ) => {
                 actions.insert(

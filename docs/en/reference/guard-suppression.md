@@ -149,6 +149,14 @@ The Codex adapter exclusively owns `hookSpecificOutput`,
 `permissionDecision`, `additionalContext`, stderr, and exit-code projection.
 Core-facing types and Store records do not encode Codex process-exit behavior.
 
+For `PreToolUse` and `PostToolUse`, the managed hook matcher includes the exact
+Codex-native name `mcp__volicord__guard_probe`. That name is generated from the
+canonical `AgentToolId::GUARD_PROBE` wire identity; it is not an independently
+maintained literal and does not broaden matching to all read-only tools.
+Prompt capture has no tool matcher. A verification event matches only when its
+current contract digest and exact session, turn, tool-use ID, tool name, and
+`verification_id` input agree with the bounded run.
+
 ## Diagnostics And Event Projection
 
 Every `Unavailable` outcome emits a bounded diagnostic containing the project,
@@ -221,7 +229,7 @@ selection consumes that definition, typed facts, and typed check state.
 Connection verification uses this explicit Guard dependency graph:
 
 ```text
-Guard file integrity -> Guard hook execution -> Guard phase observation
+Guard file integrity -> Guard hook execution -> Guard phase observation -> correlated integration verification
 ```
 
 Each check has exactly one of five statuses. `passed` means the check completed
@@ -232,9 +240,9 @@ not run or be observed because a prerequisite finding failed.
 `not_applicable` means the check does not apply to the Connection or profile.
 
 A Guard file-integrity failure makes that check `failed` and makes hook
-execution and phase observation `blocked` by the same resolved root finding.
-The report does not request phase observation while either downstream check is
-blocked. Root selection follows typed finding cause edges, retains independent
+execution, phase observation, and correlated integration verification
+`blocked` by the same resolved root finding. The report does not request
+downstream observation while a prerequisite check is blocked. Root selection follows typed finding cause edges, retains independent
 roots in deterministic order, and does not inspect summaries. The complete
 check graph and aggregate report status are owned by
 [Agent Connection](agent-connection.md).
@@ -254,7 +262,11 @@ Durable contract tests cover:
 - incompatible prompt, pre-tool, and post-tool events continuing without a
   policy denial while remaining unsatisfied observations;
 - explicit pre-tool denial and non-blocking post-tool projection; and
-- event-persistence failure continuing with bounded Codex feedback.
+- event-persistence failure continuing with bounded Codex feedback;
+- exact canonical matcher generation for the Guard probe without matching
+  unrelated read-only tools; and
+- rejection of mismatched session, turn, tool-use ID, tool name,
+  verification ID, policy, revision, hook digest, ordering, and expiry.
 
 ## Adjacent Owners
 

@@ -182,7 +182,10 @@ fn mcp_workflow_connection_degrades_tool_list_when_storage_readonly() -> Result<
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
             AgentToolId::REQUEST_USER_ACTION.wire_name(),
             AgentToolId::CHECK_CLOSE.wire_name(),
-            AgentToolId::LIST_PROJECTS.wire_name()
+            AgentToolId::LIST_PROJECTS.wire_name(),
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            AgentToolId::GUARD_PROBE.wire_name(),
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         ]
     );
     assert!(responses[1].get("error").is_none());

@@ -213,6 +213,26 @@ generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_
 활성 Codex 프로세스와 PATH를 확인합니다. 이 warning은 유용한 evidence지만 그 자체로
 치명적 결과는 아닙니다. 보고할 때 한 version을 다른 version으로 바꾸지 않습니다.
 
+## 채팅 내 Guard 검증이 대기 중인 경우
+
+같은 현재 managed Codex 채팅과 native turn을 유지합니다.
+
+1. `volicord.begin_integration_verification`을 호출합니다. Connection에 적격 프로젝트가
+   둘 이상일 때만 `project_selector`를 제공합니다.
+2. 반환된 `verification_id`를 반환된 `volicord.guard_probe` 호출에 넣습니다.
+3. 같은 ID로 `volicord.get_integration_verification`을 호출합니다.
+
+통과 결과는 `status=passed`와 일치한 prompt, pre-tool, post-tool phase를 표시합니다.
+`active`로 남으면 5분 window가 만료되기 전에 `next_action`을 따릅니다. `failed` 또는
+`expired`이면 보고된 소유권이나 contract 문제를 고친 뒤 현재 turn에서 다시 시작합니다.
+다른 session이나 turn의 ID를 재사용하거나 다른 읽기 전용 도구로 대체하거나 오래된 Guard
+event를 성공으로 취급하지 않습니다.
+
+Codex가 도구를 노출하지 않거나 프로젝트를 trust하지 않은 상태라면 먼저 host 소유 상태를
+해결합니다. Volicord는 trust 요구 사항을 보고하지만 Codex trust control을 클릭·편집·승인·
+자동화·우회하지 않습니다. 이 check를 강제로 통과시키려고 MCP trust configuration을
+변경하지 않습니다.
+
 ## Codex에서 도구가 보이지 않음
 
 Codex가 정확한 프로젝트를 신뢰하고 현재 `.codex/config.toml`을 다시 읽었는지

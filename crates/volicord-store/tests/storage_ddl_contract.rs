@@ -28,10 +28,10 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 48);
-    assert_eq!(metadata.columns.len(), 553);
-    assert_eq!(metadata.indexes.len(), 73);
-    assert_eq!(metadata.constraints.len(), 43);
+    assert_eq!(metadata.tables.len(), 49);
+    assert_eq!(metadata.columns.len(), 574);
+    assert_eq!(metadata.indexes.len(), 75);
+    assert_eq!(metadata.constraints.len(), 44);
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -205,6 +205,50 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     ] {
         assert!(runtime_columns.contains(&required), "missing {required}");
     }
+    let verification_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::Registry
+                && column.table == "guard_integration_verification_runs"
+        })
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    for required in [
+        "verification_id",
+        "connection_internal_id",
+        "project_internal_id",
+        "runtime_session_id",
+        "host_session_id",
+        "host_turn_id",
+        "guard_installation_id",
+        "integration_revision",
+        "policy_hash",
+        "hook_contract_digest",
+        "expected_probe_tool",
+        "created_at",
+        "expires_at",
+        "status",
+        "probe_acknowledged_at",
+        "completed_at",
+        "matched_prompt_event_id",
+        "matched_pre_tool_event_id",
+        "matched_post_tool_event_id",
+        "terminal_finding_code",
+        "terminal_finding_summary",
+    ] {
+        assert!(
+            verification_columns.contains(&required),
+            "missing integration-verification column {required}"
+        );
+    }
+    assert!(metadata.indexes.iter().any(|index| {
+        index.database == StorageDatabaseKind::Registry
+            && index.table == "guard_integration_verification_runs"
+            && index.name == "idx_guard_integration_verification_active_coordinate"
+            && index.unique
+            && index.partial
+    }));
     assert!(metadata.tables.iter().any(|relation| {
         relation.database == StorageDatabaseKind::ProjectState
             && relation.name == "host_sessions_project_integration_revision_immutable"
@@ -231,11 +275,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:374fba509c3923435221770b19de3c467d75d5fcd2989335b4703ea523b2d91c"
+        "sha256:3eb4125e8c1f218044f5188871d9c0b69d134e7cf4701fb1d9242cb987b10fe1"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:a3f290eb489f5aba1231a95ce4bd4e1953fb0c078bb680be118744abe2ee60d2"
+        "sha256:d8f68d017b8fcc8214c1ab690d69a5bccf97aa45a631571db8bb09ff2849c5b3"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -269,12 +313,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:374fba509c3923435221770b19de3c467d75d5fcd2989335b4703ea523b2d91c\",",
+            "{\"canonical_ddl_digest\":\"sha256:3eb4125e8c1f218044f5188871d9c0b69d134e7cf4701fb1d9242cb987b10fe1\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:a3f290eb489f5aba1231a95ce4bd4e1953fb0c078bb680be118744abe2ee60d2\"}"
+            "\"integrity_constraints_digest\":\"sha256:d8f68d017b8fcc8214c1ab690d69a5bccf97aa45a631571db8bb09ff2849c5b3\"}"
         )
     );
     Ok(())

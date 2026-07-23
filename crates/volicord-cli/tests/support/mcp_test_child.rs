@@ -15,7 +15,7 @@ use volicord_types::{AgentConnectionMode, AgentToolId};
 const LARGE_STDERR_BYTES: usize = 8 * 1024;
 const SUSTAINED_STDERR_BYTES: usize = 256 * 1024;
 const TEST_CHILD_SCENARIO_ARGUMENT: &str = "--mcp-test-child-scenario";
-const TEST_CHILD_VERSION: &str = "volicord-mcp-test-child-revision-matrix-schema-failure";
+const TEST_CHILD_VERSION: &str = "volicord-mcp-test-child-integration-verification-tools";
 
 fn main() {
     if let Err(error) = run() {

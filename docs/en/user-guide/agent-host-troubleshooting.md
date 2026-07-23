@@ -234,6 +234,29 @@ If `managed_peer.client_info.version` differs from
 active. This warning is useful evidence but is not by itself a fatal result;
 do not replace one version with the other when reporting it.
 
+## In-Chat Guard Verification Is Pending
+
+Stay in the same current managed Codex chat and native turn:
+
+1. Call `volicord.begin_integration_verification`, supplying
+   `project_selector` only when the Connection has more than one eligible
+   project.
+2. Copy the returned `verification_id` into the returned
+   `volicord.guard_probe` call.
+3. Call `volicord.get_integration_verification` with that same ID.
+
+A passing result shows `status=passed` and matched prompt, pre-tool, and
+post-tool phases. If it remains `active`, follow `next_action` before the
+five-minute window expires. If it is `failed` or `expired`, begin again in the
+current turn after repairing the reported ownership or contract problem. Do
+not reuse an ID from another session or turn, substitute another read-only
+tool, or treat old Guard events as success.
+
+If Codex exposes no tools or the project is not trusted, fix that host-owned
+state first. Volicord reports trust requirements but does not click, edit,
+approve, automate, or bypass Codex trust controls. Do not modify MCP trust
+configuration to force this check.
+
 ## Codex Loaded No Tools
 
 Confirm that Codex trusts the exact project and has reloaded the current

@@ -235,7 +235,7 @@ wire-order contract.
 
 `ConnectionCheckKind` is the closed current-product vocabulary:
 `connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`,
-`guard_observation`, `host_executable`, `host_session`, `managed_config`,
+`guard_observation`, `guard_verification`, `host_executable`, `host_session`, `managed_config`,
 `mcp_server`, `mode_transition`, `process_startup`, `project_trust`,
 `required_tools`, `runtime_session_lookup`, `setup_plan`, `tool_round_trip`, and
 `verification_not_run`.
@@ -287,7 +287,7 @@ Operational verification uses these chains:
 managed_config -> process_startup -> host_session
 required_tools -> tool_round_trip
 managed_config -> mcp_server
-guard_files -> guard_hook_execution -> guard_observation
+guard_files -> guard_hook_execution -> guard_observation -> guard_verification
 ```
 
 `host_session` is the managed-host `initialize` check, `required_tools` is the
@@ -308,8 +308,8 @@ still pass the capability checks, but it is reported under its distinct role
 and cannot hide that current failure. Without a complete proof, capability
 readiness remains pending or fails from the latest attempt's own observation.
 A managed-configuration failure blocks `mcp_server` and the current-attempt
-process/session chain. A Guard-file integrity failure blocks hook execution and
-phase observation.
+process/session chain. A Guard-file integrity failure blocks hook execution,
+phase observation, and the correlated integration verification.
 
 Only `failed` and `blocked` checks may carry `cause_finding_ids`. A `blocked`
 check carries the canonical sorted union of the independent root-finding IDs on
@@ -333,12 +333,13 @@ The current Codex connection report contains these operational checks:
 | `guard_files` | Every current Guard manifest file expectation matches. | Applies when Guard is part of the Connection profile. | A managed file, manifest, wrapper, ownership, or executable-integrity check failed. |
 | `guard_hook_execution` | A current managed Guard hook executed. | It waits for current hook activity and is blocked by `guard_files`. | Hook execution itself recorded a failure. |
 | `guard_observation` | Every required current typed hook phase was observed. | It waits for remaining phases and is blocked by `guard_hook_execution`. | A current event reports an incompatible hook contract. |
+| `guard_verification` | One bounded run correlated MCP acknowledgement with prompt, pre-tool, and post-tool observation in the same current managed runtime, native session, and turn. | It waits for a completed current run and is blocked by `guard_observation`. | The newest run no longer matches current runtime, Guard Installation, policy, revision, or hook-contract ownership. |
 
 CLI MCP preflight creates `session_source=cli_preflight`, and its manual stdio
 self-test creates `session_source=manual_cli`; neither
 satisfies `process_startup`, `host_session`, `required_tools`, or
-`tool_round_trip`. Guard uses `guard_files`, `guard_hook_execution`, and
-`guard_observation` as top-level operational checks.
+`tool_round_trip`. Guard uses `guard_files`, `guard_hook_execution`,
+`guard_observation`, and `guard_verification` as top-level operational checks.
 The strict Guard manifest owns the current policy hash, integration revision,
 typed runtime commands, complete Volicord-managed artifact expectations, and
 required hook phases. It also names the exact `host_contract_profile` and
@@ -607,6 +608,36 @@ diagnostics only.
 The integration-instance ID, integration generation, and derived integration
 revisions are local lifecycle and correlation coordinates. Store owns their
 lifecycle inputs; callers cannot select them.
+
+### Managed in-chat integration verification
+
+`GuardIntegrationVerificationRun` is the durable, bounded proof unit for the
+first-party in-chat workflow. It records its verification ID, Connection,
+project, managed MCP runtime, native host session and turn, Guard Installation,
+integration revision, policy hash, hook-contract digest, expected probe tool,
+creation and expiry, lifecycle status, probe acknowledgement, completion,
+matched prompt/pre/post event IDs, and terminal finding. Status is exactly
+`active`, `passed`, `failed`, or `expired`. One Connection/runtime/turn/revision
+coordinate has at most one active run, and begin replay under unchanged
+ownership returns the same active or passed run.
+
+Only an actual current `managed_host` call can begin, probe, or read a run.
+Manual stdio, CLI preflight, and integration probes cannot create success. A
+pass requires the prompt, pre-tool, and post-tool records to belong to the same
+run session and turn; pre/post must share the tool-use ID, generated exact probe
+name, and verification-ID input. The current Guard Installation, policy hash,
+integration revision, hook-contract digest, and managed runtime must still
+match. Prompt is no later than pre-tool, and pre-tool is earlier than post-tool.
+No historical event search or cross-run phase assembly is allowed.
+
+`guard_verification` is the final Connection check for this workflow. Its check
+details expose the verification, runtime-session, host-turn, and matched Guard
+event IDs so concise, verbose, and JSON reports share the same evidence
+coordinate. `complete` requires this correlated check to pass; unrelated
+prompt/pre/post observations do not substitute. The run is cooperative local
+evidence only. It does not automate or bypass Codex project trust, modify MCP
+trust configuration, establish user or host identity, or create Core workflow
+authority.
 
 <a id="validated-agent-session"></a>
 

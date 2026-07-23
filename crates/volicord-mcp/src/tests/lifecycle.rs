@@ -262,7 +262,10 @@ fn mcp_tools_list_remains_available_after_initialized_notification() -> Result<(
             "volicord.status",
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
             AgentToolId::CHECK_CLOSE.wire_name(),
-            AgentToolId::LIST_PROJECTS.wire_name()
+            AgentToolId::LIST_PROJECTS.wire_name(),
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            AgentToolId::GUARD_PROBE.wire_name(),
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         ]
     );
     Ok(())

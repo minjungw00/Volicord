@@ -25,7 +25,7 @@ use support::{
     },
 };
 
-const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 35_000;
+const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
 
 #[test]
 fn volicord_mcp_subcommand_reports_help_version_and_preflight() -> Result<(), Box<dyn Error>> {
@@ -733,7 +733,10 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
         );
         assert_eq!(tool["annotations"]["readOnlyHint"], read_only);
         assert_eq!(tool["annotations"]["destructiveHint"], destructive);
-        assert_eq!(tool["annotations"]["idempotentHint"], read_only);
+        assert_eq!(
+            tool["annotations"]["idempotentHint"],
+            identity.is_idempotent()
+        );
         assert_eq!(tool["annotations"]["openWorldHint"], false);
 
         if !expected_public.contains(name) {

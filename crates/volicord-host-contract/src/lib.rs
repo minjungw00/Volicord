@@ -5,7 +5,7 @@ use std::{error::Error, fmt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use volicord_types::validate_managed_host_native_session_id;
+use volicord_types::{validate_managed_host_native_session_id, AgentToolId};
 
 const MAX_TOOL_NAME_BYTES: usize = 256;
 const MAX_PRESENTATION_TEXT_BYTES: usize = 4_096;
@@ -137,6 +137,16 @@ impl CanonicalToolName {
     pub fn into_inner(self) -> String {
         self.0
     }
+}
+
+/// Projects one canonical Volicord MCP tool identity into the Codex hook tool-name form.
+pub fn codex_hook_tool_name(tool: AgentToolId) -> CanonicalToolName {
+    let (server, method) = tool
+        .wire_name()
+        .split_once('.')
+        .expect("canonical AgentToolId wire names contain one namespace separator");
+    CanonicalToolName::parse(format!("mcp__{server}__{method}"))
+        .expect("canonical AgentToolId projects to a valid Codex tool name")
 }
 
 /// A JSON value admitted only after applying the host payload bounds.

@@ -2,7 +2,8 @@ use std::{fmt, path::Path};
 
 use serde_json::Value;
 use toml_edit::DocumentMut;
-use volicord_types::{GuardHookPhase, GuardManagedArtifact};
+use volicord_host_contract::codex_hook_tool_name;
+use volicord_types::{AgentToolId, GuardHookPhase, GuardManagedArtifact};
 
 use super::HostKind;
 
@@ -107,6 +108,22 @@ pub fn hook_event_for_phase(
         .events
         .iter()
         .find(|event| event.phase == phase)
+}
+
+/// Returns the exact matcher tokens for one Codex hook event.
+pub fn codex_hook_matcher_tokens(event: &HostHookEventContract) -> Vec<String> {
+    let mut tokens = event
+        .write_matcher_tokens
+        .iter()
+        .map(|token| (*token).to_owned())
+        .collect::<Vec<_>>();
+    if matches!(
+        event.phase,
+        GuardHookPhase::PreTool | GuardHookPhase::PostTool
+    ) {
+        tokens.push(codex_hook_tool_name(AgentToolId::GUARD_PROBE).into_inner());
+    }
+    tokens
 }
 
 pub fn classify_contract_config_path(
@@ -216,7 +233,8 @@ fn validate_codex_hook_config(text: &str) -> Result<(), HostContractValidationEr
                 event.event_name
             ))
         })?;
-        if event.write_matcher_tokens.is_empty() {
+        let matcher_tokens = codex_hook_matcher_tokens(&event);
+        if matcher_tokens.is_empty() {
             if group.contains_key("matcher") {
                 return Err(HostContractValidationError::new(format!(
                     "{} must not define a matcher",
@@ -224,7 +242,7 @@ fn validate_codex_hook_config(text: &str) -> Result<(), HostContractValidationEr
                 )));
             }
         } else {
-            let expected = event.write_matcher_tokens.join("|");
+            let expected = matcher_tokens.join("|");
             if group.get("matcher").and_then(Value::as_str) != Some(expected.as_str()) {
                 return Err(HostContractValidationError::new(format!(
                     "{} has an unexpected matcher",
@@ -337,5 +355,17 @@ mod tests {
         )
         .is_err());
         assert!(validate_codex_rule_config(dispatch_file_name).is_err());
+    }
+
+    #[test]
+    fn codex_tool_matcher_derives_only_the_guard_probe_from_canonical_identity() {
+        let event = hook_event_for_phase(&CODEX_CONTRACT, GuardHookPhase::PreTool).unwrap();
+        let tokens = codex_hook_matcher_tokens(event);
+        let expected = codex_hook_tool_name(AgentToolId::GUARD_PROBE).into_inner();
+        assert!(tokens.contains(&expected));
+        assert!(!tokens.contains(
+            &codex_hook_tool_name(AgentToolId::GET_INTEGRATION_VERIFICATION).into_inner()
+        ));
+        assert!(!tokens.contains(&codex_hook_tool_name(AgentToolId::STATUS).into_inner()));
     }
 }

@@ -144,7 +144,7 @@ part of the accepted layout.
 
 ## `registry.sqlite`
 
-`registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, structured diagnostic findings and cause edges, authoritative MCP runtime sessions and project reservations, host-hook installation records, and host configuration inventory. It does not store project-local Core state.
+`registry.sqlite` stores Runtime Home identity, installation profile records, project registration, project aliases, Agent Connection records, Connection Projects membership, structured diagnostic findings and cause edges, authoritative MCP runtime sessions and project reservations, bounded in-chat integration-verification runs, host-hook installation records, and host configuration inventory. It does not store project-local Core state.
 
 <!-- canonical-storage-sql: registry start -->
 ```sql
@@ -707,6 +707,90 @@ CREATE INDEX idx_guard_installations_project
   ON guard_installations (project_internal_id);
 CREATE UNIQUE INDEX idx_guard_installations_scope_project
   ON guard_installations (connection_internal_id, project_internal_id);
+
+CREATE TABLE guard_integration_verification_runs (
+  verification_id TEXT PRIMARY KEY CHECK (
+    length(CAST(verification_id AS BLOB)) BETWEEN 1 AND 192
+    AND substr(verification_id, 1, 19) = 'guard_verification_'
+  ),
+  connection_internal_id TEXT NOT NULL,
+  project_internal_id TEXT NOT NULL,
+  runtime_session_id TEXT NOT NULL,
+  host_session_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL,
+  guard_installation_id TEXT NOT NULL,
+  integration_revision TEXT NOT NULL CHECK (
+    length(integration_revision) = 71
+    AND substr(integration_revision, 1, 7) = 'sha256:'
+    AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  policy_hash TEXT NOT NULL CHECK (
+    length(policy_hash) = 71
+    AND substr(policy_hash, 1, 7) = 'sha256:'
+    AND substr(policy_hash, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  hook_contract_digest TEXT NOT NULL CHECK (
+    length(hook_contract_digest) = 71
+    AND substr(hook_contract_digest, 1, 7) = 'sha256:'
+    AND substr(hook_contract_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  expected_probe_tool TEXT NOT NULL CHECK (
+    expected_probe_tool = 'volicord.guard_probe'
+  ),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'passed', 'failed', 'expired')),
+  probe_acknowledged_at TEXT,
+  completed_at TEXT,
+  matched_prompt_event_id TEXT,
+  matched_pre_tool_event_id TEXT,
+  matched_post_tool_event_id TEXT,
+  terminal_finding_code TEXT CHECK (
+    terminal_finding_code IS NULL
+    OR (
+      length(CAST(terminal_finding_code AS BLOB)) BETWEEN 1 AND 128
+      AND substr(terminal_finding_code, 1, 1) GLOB '[a-z]'
+      AND terminal_finding_code NOT GLOB '*[^a-z0-9_]'
+    )
+  ),
+  terminal_finding_summary TEXT CHECK (
+    terminal_finding_summary IS NULL
+    OR length(CAST(terminal_finding_summary AS BLOB)) BETWEEN 1 AND 4096
+  ),
+  FOREIGN KEY (runtime_session_id, connection_internal_id)
+    REFERENCES mcp_runtime_sessions (runtime_session_id, connection_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id, project_internal_id)
+    REFERENCES connection_projects (connection_internal_id, project_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (guard_installation_id)
+    REFERENCES guard_installations (guard_installation_id)
+    ON DELETE RESTRICT,
+  CHECK (expires_at > created_at),
+  CHECK (probe_acknowledged_at IS NULL OR probe_acknowledged_at >= created_at),
+  CHECK (
+    (status = 'active' AND completed_at IS NULL AND terminal_finding_code IS NULL
+      AND terminal_finding_summary IS NULL)
+    OR (status = 'passed' AND completed_at IS NOT NULL AND terminal_finding_code IS NULL
+      AND terminal_finding_summary IS NULL)
+    OR (status IN ('failed', 'expired') AND completed_at IS NOT NULL
+      AND terminal_finding_code IS NOT NULL AND terminal_finding_summary IS NOT NULL)
+  ),
+  CHECK (
+    (matched_pre_tool_event_id IS NULL AND matched_post_tool_event_id IS NULL)
+    OR matched_pre_tool_event_id IS NOT NULL
+  )
+);
+
+CREATE UNIQUE INDEX idx_guard_integration_verification_active_coordinate
+  ON guard_integration_verification_runs (
+    connection_internal_id, runtime_session_id, host_turn_id, integration_revision
+  )
+  WHERE status = 'active';
+CREATE INDEX idx_guard_integration_verification_project
+  ON guard_integration_verification_runs (
+    project_internal_id, connection_internal_id, created_at, verification_id
+  );
 ```
 <!-- canonical-storage-sql: registry end -->
 
@@ -733,7 +817,8 @@ Registry constraints:
 - `mcp_runtime_sessions.attempted_client_name` and `attempted_client_version` form the bounded parsed client pair. `requested_protocol_version` is client input; `selected_protocol_version` is the server-selected initialize result; `negotiated_protocol_version` is present only with handshake completion and must equal the selected revision. `initialize_completed_at`, `initialized_notification_at`, and `tools_list_observed_at` are distinct lifecycle milestones; `tools/list` may follow initialize completion before the initialized notification. `returned_tool_identities_json` is the canonical exact inventory for that list observation, and `required_tools_validated_at` is present only for a successful required set. The bounded MCP tool name `verification_tool_name` and `verification_tool_observed_at` form an exact null-or-present pair; the observation requires same-session required-tool validation and cannot precede it. `terminal_finding_id` is a same-runtime foreign key to one structured error finding and is mutually exclusive with graceful close.
 - `mcp_runtime_sessions.session_source` is exactly `managed_host`, `manual_cli`, `cli_preflight`, or `integration_probe`. Only the lease-consumption transaction may insert `managed_host`; managed-session lookups exclude the other three values.
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, required hook phases, exact `host_contract_profile`, and deterministic `host_contract_digest`. The current Guard selection is `codex-hooks-v1`. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.
-- Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding and Guard Installation, then `mcp_runtime_sessions`, then `managed_mcp_launch_leases`, and finally `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
+- `guard_integration_verification_runs` stores one bounded managed-host verification coordinate: its opaque ID, Connection and project, current MCP runtime, native session and turn, Guard Installation, integration revision, policy hash, hook-contract digest, expected probe tool, lifetime, status, probe acknowledgement, matched prompt/pre/post event IDs, completion time, and optional terminal finding. At most one `active` row exists for the same Connection/runtime/turn/revision. Foreign keys keep it attached to Registry owners; current-owner validation, rather than the row alone, determines whether `passed` remains effective.
+- Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings and integration-verification runs before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding, integration-verification run, and Guard Installation, then `mcp_runtime_sessions`, then `managed_mcp_launch_leases`, and finally `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
 
 ## Project `state.sqlite`
 

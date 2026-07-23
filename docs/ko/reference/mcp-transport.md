@@ -341,9 +341,9 @@ lifecycle 및 상관관계 좌표입니다.
 
 | 모드와 저장소 | MCP에 보이는 도구 |
 |---|---|
-| `workflow`, 쓰기 가능 | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow`, 읽기만 가능 | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action`(resume만), `volicord.check_close`, `volicord.list_projects` |
-| `read_only`, 읽기 가능 | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
+| `workflow`, 쓰기 가능 | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
+| `workflow`, 읽기만 가능 | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action`(resume만), `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
+| `read_only`, 읽기 가능 | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | 읽을 수 있는 허용 프로젝트 없음 | `volicord.list_projects` |
 
 Task 상태와 이전 호출은 도구를 동적으로 추가하지 않습니다. 숨긴 mutation은 Core 효과
@@ -351,10 +351,10 @@ Task 상태와 이전 호출은 도구를 동적으로 추가하지 않습니다
 아닙니다.
 
 `AgentToolId`는 모든 Agent Connection MCP 도구의 정규 typed identity이자 catalog입니다.
-Core 소유 identity는 `MethodName`을 재사용하고, `AgentToolId::LIST_PROJECTS`를 포함한
-adapter utility도 같은 폐쇄형 catalog에 속합니다. 각 identity는 안정적인 MCP wire 이름
-투영, category, Connection mode별 가용성, Core method 또는 adapter utility 소유권, 선택적
-운영 verification role을 소유합니다.
+Core 소유 identity는 `MethodName`을 재사용하고, adapter utility와 Connection-integration
+도구도 같은 폐쇄형 16개 도구 catalog에 속합니다. 각 identity는 안정적인 MCP wire 이름
+투영, category, Connection mode별 가용성, Core method, adapter utility 또는
+Connection-integration 소유권, 멱등성, 선택적 운영 verification role을 소유합니다.
 
 정규 도구 registry는 각 정의를 `AgentToolId`로 식별하고 설명, 간결한 입력 schema,
 간결한 출력 schema, annotation, 현재 값이 있는 선택적 표시 및 metadata를 제공합니다.
@@ -385,6 +385,65 @@ Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지
 필드, actor source, operation category, verification basis를 숨깁니다. 숨긴 필드는 Core
 전에 거부합니다. 간결한 검색 schema는 담당 문서의 완전한 요청 검증을 느슨하게 하지
 않습니다.
+
+<a id="in-chat-integration-verification-schemas"></a>
+### 채팅 내 통합 검증 스키마
+
+Connection-integration 도구 세 개는 MCP adapter 작업이며 Core method나 Task 작업 흐름이
+아닙니다. 정확한 현재 managed-host 좌표 안에서 멱등이고 공개 형태는 다음과 같습니다.
+
+```yaml
+volicord.begin_integration_verification:
+  arguments:
+    project_selector?: string
+  result:
+    verification_id: GuardIntegrationVerificationId
+    status: active | passed
+    expires_at: UtcTimestamp
+    next_probe_tool: volicord.guard_probe
+    matched_prompt_event_id: GuardEventId
+
+volicord.guard_probe:
+  arguments:
+    verification_id: GuardIntegrationVerificationId
+  result:
+    verification_id: GuardIntegrationVerificationId
+    status: active
+    acknowledged_at: UtcTimestamp
+
+volicord.get_integration_verification:
+  arguments:
+    verification_id: GuardIntegrationVerificationId
+  result:
+    verification_id: GuardIntegrationVerificationId
+    status: active | passed | failed | expired
+    mcp_probe_acknowledged: boolean
+    guard_phases:
+      prompt_capture: pending | matched
+      pre_tool: pending | matched
+      post_tool: pending | matched
+    matched_prompt_event_id?: GuardEventId
+    matched_pre_tool_event_id?: GuardEventId
+    matched_post_tool_event_id?: GuardEventId
+    completed_at?: UtcTimestamp
+    finding?: { code: string, summary: string }
+    next_action?: string
+```
+
+`project_selector`는 일반 Connection 프로젝트 선택 규칙을 따르므로 선택이 모호하지 않을
+때만 생략할 수 있습니다. Begin은 실제 현재 managed runtime과 native session/turn에
+결속하고 현재 호환 prompt-capture event를 요구하며 해당 좌표의 한도가 있는 run 하나를
+생성하거나 재개합니다. `manual_cli`, `cli_preflight`, `integration_probe` runtime 증거는
+받지 않습니다. Probe는 그 정확한 좌표를 검증하고 한도가 있는 check만 acknowledge하며
+Core 상태, Task 상태, Product Repository 파일을 변경하지 않습니다. Get은 읽기 전용이며
+상관관계가 확인된 phase 상태와 다음 action을 보고합니다.
+
+Run은 같은 run session과 turn에서 호환 prompt event 뒤에 같은 tool-use ID, 정확히 생성된
+host tool 이름 `mcp__volicord__guard_probe`, 정확한 `verification_id` 입력을 가진
+`PreToolUse`와 `PostToolUse`가 있을 때만 통과합니다. Guard Installation, policy hash,
+integration revision, hook-contract digest, managed runtime은 현재 상태를 유지해야 하며 event
+시각은 prompt가 pre-tool보다 앞서거나 같고 pre-tool이 post-tool보다 앞서야 합니다. 이력,
+무관한 관찰, 오래된 관찰, 불일치 관찰, 만료된 관찰은 run을 충족할 수 없습니다.
 
 <a id="mutation-authority-receipt-projection"></a>
 ## 응답 wrapping

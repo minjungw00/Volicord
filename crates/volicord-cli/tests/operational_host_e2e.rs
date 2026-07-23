@@ -15,12 +15,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 use support::binary_fixture::{run_child, ChildStdin};
 use support::json::adapter_tool_response;
 use toml_edit::DocumentMut;
 use volicord_host_contract::{
-    CodexHookPromptCorrelation, HostNativeCorrelation, HostSessionId, HostTurnId,
+    codex_hook_tool_name, CodexHookPromptCorrelation, HostNativeCorrelation, HostSessionId,
+    HostTurnId,
 };
 use volicord_mcp::{
     ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
@@ -40,7 +42,8 @@ use volicord_store::inspection::{
 };
 use volicord_store::operational_sessions::{
     connection_integration_revision, current_managed_runtime_sessions,
-    latest_current_managed_runtime_session, McpRuntimeSessionStart,
+    latest_current_managed_runtime_session, mcp_runtime_session_for_process,
+    McpRuntimeSessionStart,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
@@ -59,6 +62,8 @@ const CODEX_VERSION_ENV: &str = "VOLICORD_TEST_CODEX_VERSION";
 const EARLY_EXIT_STDERR_BYTES: usize = 3 * 1024;
 const CODEX_COMPATIBILITY_VERSION: &str = "0.108.0-alpha.12";
 const CODEX_COMPATIBILITY_REVISION: &str = "2025-06-18";
+const INTEGRATION_VERIFICATION_TURN_ID: &str = "future.turn.integration-verification";
+const INTEGRATION_VERIFICATION_TOOL_USE_ID: &str = "future.tool-use.guard-probe";
 
 fn host_session_correlation(session_id: &str) -> HostNativeCorrelation {
     HostNativeCorrelation::CodexHookPrompt(CodexHookPromptCorrelation {
@@ -580,11 +585,12 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     .session_id;
     assert_ne!(read_only_session_id, workflow_session_id);
     assert_unbound_agent_session(&fixture, &read_only_session_id)?;
-    fixture.run_successful_managed_mcp(
+    fixture.run_successful_managed_mcp_with_guard(
         &connection_id,
         &project_id,
         FUTURE_VERSION,
         reused_native_session,
+        &read_only_manifest,
     )?;
     assert_connection_report(
         &fixture.run_connection("verify", FUTURE_VERSION, true)?,
@@ -633,11 +639,12 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
     assert_ne!(current_workflow_session_id, read_only_session_id);
     assert_ne!(current_workflow_session_id, workflow_session_id);
     assert_unbound_agent_session(&fixture, &current_workflow_session_id)?;
-    fixture.run_successful_managed_mcp(
+    fixture.run_successful_managed_mcp_with_guard(
         &connection_id,
         &project_id,
         FUTURE_VERSION,
         reused_native_session,
+        &current_workflow_manifest,
     )?;
     assert_connection_report(
         &fixture.run_connection("verify", FUTURE_VERSION, true)?,
@@ -1011,6 +1018,7 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     assert_check(&init_report, "required_tools", "pending", None);
     assert_check(&init_report, "tool_round_trip", "pending", None);
     assert_check(&init_report, "guard_observation", "pending", None);
+    assert_check(&init_report, "guard_verification", "pending", None);
     assert!(init_report["actions"]
         .as_array()
         .is_some_and(|actions| !actions.is_empty()));
@@ -1051,12 +1059,27 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
     for check_id in [
         "guard_files",
         "guard_observation",
+        "guard_verification",
         "host_session",
         "required_tools",
         "tool_round_trip",
     ] {
         assert_check(&complete_report, check_id, "passed", None);
     }
+    let guard_verification = complete_report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "guard_verification")
+        })
+        .ok_or("guard_verification check")?;
+    assert!(guard_verification["details"]["verification_id"].is_string());
+    assert!(guard_verification["details"]["runtime_session_id"].is_string());
+    assert!(guard_verification["details"]["host_turn_id"].is_string());
+    assert!(guard_verification["details"]["matched_prompt_event_id"].is_string());
+    assert!(guard_verification["details"]["matched_pre_tool_event_id"].is_string());
+    assert!(guard_verification["details"]["matched_post_tool_event_id"].is_string());
     let round_trip = complete_report["checks"]
         .as_array()
         .and_then(|checks| checks.iter().find(|check| check["id"] == "tool_round_trip"))
@@ -1869,24 +1892,171 @@ impl OperationalFixture {
     ) -> Result<(), Box<dyn Error>> {
         let mut command = self.managed_mcp_command(connection_id)?;
         let mut child = LiveMcpChild::spawn(&mut command)?;
+        let process_id = child.id();
         child.write(&json_lines(&[
             initialize_request(version),
             initialized_notification(),
             tools_list_request(),
         ])?)?;
         let started = Instant::now();
-        loop {
-            if latest_current_managed_runtime_session(&self.runtime_home, connection_id)?
-                .is_some_and(|session| session.tools_list_observed_at.is_some())
+        let runtime_session_id = loop {
+            if let Some(session) =
+                mcp_runtime_session_for_process(&self.runtime_home, connection_id, process_id)?
             {
-                break;
+                if session.tools_list_observed_at.is_some() {
+                    break session.runtime_session_id;
+                }
             }
             if started.elapsed() >= Duration::from_secs(10) {
                 return Err("managed MCP tools/list was not recorded before timeout".into());
             }
             thread::sleep(Duration::from_millis(10));
+        };
+
+        let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
+        let guard_history_before: (i64, i64) = (
+            project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?,
+            project_state
+                .query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row.get(0))?,
+        );
+        drop(project_state);
+
+        let prompt = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "prompt": "Verify current MCP and Guard integration."
+        });
+        let prompt_output = self.run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &prompt,
+        )?;
+        assert!(prompt_output.status.success());
+
+        child.write(&json_lines(&[managed_tool_call_in_turn(
+            3,
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            json!({"project_selector": project_id}),
+            native_session,
+            INTEGRATION_VERIFICATION_TURN_ID,
+        )])?)?;
+        let registry_path = self.runtime_home.join("registry.sqlite");
+        let started = Instant::now();
+        let verification_id = loop {
+            let registry = rusqlite::Connection::open(&registry_path)?;
+            let verification_id = registry
+                .query_row(
+                    "SELECT verification_id
+                       FROM guard_integration_verification_runs
+                      WHERE connection_internal_id = ?1
+                        AND runtime_session_id = ?2
+                        AND host_session_id = ?3
+                        AND host_turn_id = ?4
+                      ORDER BY created_at DESC, verification_id DESC
+                      LIMIT 1",
+                    [
+                        connection_id,
+                        runtime_session_id.as_str(),
+                        native_session,
+                        INTEGRATION_VERIFICATION_TURN_ID,
+                    ],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if let Some(verification_id) = verification_id {
+                break verification_id;
+            }
+            if started.elapsed() >= Duration::from_secs(10) {
+                return Err(
+                    "integration-verification begin was not recorded before timeout".into(),
+                );
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+
+        let probe_host_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
+        let probe_input = json!({"verification_id": verification_id});
+        let pre_tool = json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": INTEGRATION_VERIFICATION_TOOL_USE_ID,
+            "tool_name": probe_host_name.as_str(),
+            "tool_input": probe_input,
+        });
+        let pre_output = self.run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PreTool),
+            &pre_tool,
+        )?;
+        assert!(pre_output.status.success());
+
+        child.write(&json_lines(&[managed_tool_call_in_turn(
+            4,
+            AgentToolId::GUARD_PROBE.wire_name(),
+            json!({"verification_id": verification_id}),
+            native_session,
+            INTEGRATION_VERIFICATION_TURN_ID,
+        )])?)?;
+        let started = Instant::now();
+        loop {
+            let registry = rusqlite::Connection::open(&registry_path)?;
+            let acknowledged: i64 = registry.query_row(
+                "SELECT COUNT(*)
+                   FROM guard_integration_verification_runs
+                  WHERE verification_id = ?1
+                    AND probe_acknowledged_at IS NOT NULL",
+                [&verification_id],
+                |row| row.get(0),
+            )?;
+            if acknowledged == 1 {
+                break;
+            }
+            if started.elapsed() >= Duration::from_secs(10) {
+                return Err(
+                    "integration-verification probe was not acknowledged before timeout".into(),
+                );
+            }
+            thread::sleep(Duration::from_millis(10));
         }
-        self.run_current_guard_phases(manifest, native_session)?;
+
+        let post_tool = json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": INTEGRATION_VERIFICATION_TOOL_USE_ID,
+            "tool_name": probe_host_name.as_str(),
+            "tool_input": {"verification_id": verification_id},
+            "tool_response": {"success": true},
+        });
+        let post_output = self.run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PostTool),
+            &post_tool,
+        )?;
+        assert!(post_output.status.success());
+        let registry = rusqlite::Connection::open(&registry_path)?;
+        let verification_status: String = registry.query_row(
+            "SELECT status FROM guard_integration_verification_runs WHERE verification_id = ?1",
+            [&verification_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(verification_status, "passed");
+
+        child.write(&json_lines(&[
+            managed_tool_call_in_turn(
+                5,
+                AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+                json!({"verification_id": verification_id}),
+                native_session,
+                INTEGRATION_VERIFICATION_TURN_ID,
+            ),
+            managed_tool_call_in_turn(
+                6,
+                managed_host_round_trip_tool().wire_name(),
+                json!({}),
+                native_session,
+                INTEGRATION_VERIFICATION_TURN_ID,
+            ),
+        ])?)?;
         let current_session_id = current_project_agent_session_coordinates(
             &self.runtime_home,
             project_id,
@@ -1895,36 +2065,49 @@ impl OperationalFixture {
             &host_session_correlation(native_session),
         )?
         .session_id;
-        assert!(agent_session(&self.runtime_home, project_id, &current_session_id)?.is_none());
-        let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
-        let guard_history_before: (i64, i64) = (
-            project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?,
-            project_state
-                .query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row.get(0))?,
-        );
-        assert!(guard_history_before.0 > 0);
-        assert!(guard_history_before.1 > 0);
-        drop(project_state);
-
-        child.write(&json_lines(&[managed_tool_call(
-            3,
-            managed_host_round_trip_tool().wire_name(),
-            json!({}),
-            native_session,
-        )])?)?;
         let started = Instant::now();
         loop {
-            if latest_current_managed_runtime_session(&self.runtime_home, connection_id)?
-                .is_some_and(|session| {
-                    session.verification_tool_name.as_deref()
-                        == Some(managed_host_round_trip_tool().wire_name())
-                        && session.verification_tool_observed_at.is_some()
-                })
-            {
+            let registry = rusqlite::Connection::open(&registry_path)?;
+            let round_trip_observed: i64 = registry.query_row(
+                "SELECT COUNT(*)
+                   FROM mcp_runtime_sessions
+                  WHERE runtime_session_id = ?1
+                    AND verification_tool_name = ?2
+                    AND verification_tool_observed_at IS NOT NULL",
+                [
+                    runtime_session_id.as_str(),
+                    managed_host_round_trip_tool().wire_name(),
+                ],
+                |row| row.get(0),
+            )?;
+            if round_trip_observed == 1 {
                 break;
             }
             if started.elapsed() >= Duration::from_secs(10) {
-                return Err("managed MCP safe round trip was not recorded before timeout".into());
+                let verification_row: (String, String, String, String, Option<String>) = registry
+                    .query_row(
+                    "SELECT status, runtime_session_id, host_session_id, host_turn_id,
+                                terminal_finding_code
+                           FROM guard_integration_verification_runs
+                          WHERE verification_id = ?1",
+                    [&verification_id],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    },
+                )?;
+                let output = child.finish()?;
+                return Err(format!(
+                    "managed MCP safe round trip was not recorded before timeout for {runtime_session_id}; verification={verification_row:?}; stdout={} stderr={}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr),
+                )
+                .into());
             }
             thread::sleep(Duration::from_millis(10));
         }
@@ -1932,8 +2115,52 @@ impl OperationalFixture {
         assert_eq!(output.status.code(), Some(0));
         assert!(output.stderr.is_empty());
         let responses = json_rpc_responses(&output.stdout)?;
-        assert_eq!(responses.len(), 3);
-        assert_eq!(responses[2]["result"]["isError"], false);
+        assert_eq!(responses.len(), 6);
+        for response in &responses[2..] {
+            assert_eq!(response["result"]["isError"], false, "{response}");
+        }
+        let begin = adapter_tool_response(&responses[2]).map_err(|error| {
+            format!(
+                "begin integration-verification response was invalid: {error}; {}",
+                responses[2]
+            )
+        })?;
+        assert_eq!(begin["verification_id"], verification_id);
+        assert_eq!(begin["status"], "active");
+        assert_eq!(
+            begin["next_probe_tool"],
+            AgentToolId::GUARD_PROBE.wire_name()
+        );
+        let probe = adapter_tool_response(&responses[3]).map_err(|error| {
+            format!(
+                "Guard probe response was invalid: {error}; {}",
+                responses[3]
+            )
+        })?;
+        assert_eq!(probe["verification_id"], verification_id);
+        assert_eq!(probe["status"], "active");
+        let verification = adapter_tool_response(&responses[4]).map_err(|error| {
+            format!(
+                "integration-verification lookup response was invalid: {error}; {}",
+                responses[4]
+            )
+        })?;
+        assert_eq!(verification["verification_id"], verification_id);
+        assert_eq!(verification["status"], "passed");
+        assert_eq!(verification["guard_phases"]["prompt_capture"], "matched");
+        assert_eq!(verification["guard_phases"]["pre_tool"], "matched");
+        assert_eq!(verification["guard_phases"]["post_tool"], "matched");
+        let projects = adapter_tool_response(&responses[5]).map_err(|error| {
+            format!(
+                "list-projects response was invalid: {error}; {}",
+                responses[5]
+            )
+        })?;
+        assert!(projects["projects"]
+            .as_array()
+            .is_some_and(|projects| projects.iter().any(|project| {
+                project["project_selector"] == project_id && project["available"] == true
+            })));
         let project_state = rusqlite::Connection::open(self.project_state_db_path())?;
         let bound_runtime: Option<String> = project_state.query_row(
             "SELECT runtime_session_id FROM managed_mcp_sessions WHERE session_id = ?1",
@@ -1947,12 +2174,12 @@ impl OperationalFixture {
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row
                 .get::<_, i64>(0))?,
-            guard_history_before.0
+            guard_history_before.0 + 3
         );
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row
                 .get::<_, i64>(0))?,
-            guard_history_before.1
+            guard_history_before.1 + 1
         );
         Ok(())
     }
@@ -2343,6 +2570,10 @@ impl LiveMcpChild {
         stdin.flush()
     }
 
+    fn id(&self) -> u32 {
+        self.child.id()
+    }
+
     fn finish(mut self) -> io::Result<support::binary_fixture::CapturedChildOutput> {
         self.stdin.take();
         let status = self.child.wait()?;
@@ -2615,6 +2846,22 @@ fn tools_list_request() -> Value {
 }
 
 fn managed_tool_call(id: u64, name: &str, arguments: Value, session_id: &str) -> Value {
+    managed_tool_call_in_turn(
+        id,
+        name,
+        arguments,
+        session_id,
+        &format!("future.turn.{id}"),
+    )
+}
+
+fn managed_tool_call_in_turn(
+    id: u64,
+    name: &str,
+    arguments: Value,
+    session_id: &str,
+    turn_id: &str,
+) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -2627,7 +2874,7 @@ fn managed_tool_call(id: u64, name: &str, arguments: Value, session_id: &str) ->
                 "x-codex-turn-metadata": {
                     "session_id": session_id,
                     "thread_id": NATIVE_THREAD,
-                    "turn_id": format!("future.turn.{id}")
+                    "turn_id": turn_id
                 }
             }
         }

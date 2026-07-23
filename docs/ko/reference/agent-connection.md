@@ -212,7 +212,7 @@ Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로
 
 `ConnectionCheckKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
 `connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`,
-`guard_observation`, `host_executable`, `host_session`, `managed_config`, `mcp_server`,
+`guard_observation`, `guard_verification`, `host_executable`, `host_session`, `managed_config`, `mcp_server`,
 `mode_transition`, `process_startup`, `project_trust`, `required_tools`,
 `runtime_session_lookup`, `setup_plan`, `tool_round_trip`, `verification_not_run`입니다. 운영 검증은 아래 표에서
 적용되는 check를 사용합니다.
@@ -257,7 +257,7 @@ Connection action은 안정적인 kind와 사용자 지시로 의미 있는 작�
 managed_config -> process_startup -> host_session
 required_tools -> tool_round_trip
 managed_config -> mcp_server
-guard_files -> guard_hook_execution -> guard_observation
+guard_files -> guard_hook_execution -> guard_observation -> guard_verification
 ```
 
 `host_session`은 managed host의 `initialize` check이고, `required_tools`는 managed host의
@@ -276,7 +276,7 @@ verification-tool 호출을 runtime 하나에서 모두 완료한 가장 최신 
 표시되며 현재 실패를 숨길 수 없습니다. 완전한 proof가 없으면 capability readiness는 최신
 시도 자체의 관찰에 따라 pending 또는 failed로 남습니다. Managed configuration 실패는
 `mcp_server`와 현재 시도의 process/session chain을 막습니다. Guard file integrity 실패는
-hook 실행과 phase 관찰을 막습니다.
+hook 실행, phase 관찰, 상관관계가 확인된 통합 검증을 막습니다.
 
 `failed`와 `blocked` check만 `cause_finding_ids`를 가질 수 있습니다. `blocked` check는
 실패했거나 blocked인 prerequisite의 독립 root finding ID를 정규 정렬하고 합친 집합을
@@ -299,12 +299,13 @@ Blocked check의 원인이 실패한 prerequisite와 일치하지 않거나 depe
 | `guard_files` | 현재 Guard manifest의 모든 file 기대값이 일치합니다. | Guard가 Connection profile에 포함될 때 적용됩니다. | Managed file, manifest, wrapper, ownership 또는 executable integrity check가 실패했습니다. |
 | `guard_hook_execution` | 현재 managed Guard hook이 실행되었습니다. | 현재 hook 활동을 기다리며 `guard_files` 실패가 막을 수 있습니다. | Hook 실행 자체가 실패를 기록했습니다. |
 | `guard_observation` | 현재 필수 typed hook phase를 모두 관찰했습니다. | 남은 phase를 기다리며 `guard_hook_execution` 실패가 막을 수 있습니다. | 현재 event가 incompatible hook contract를 보고했습니다. |
+| `guard_verification` | 한도가 있는 run 하나에서 같은 현재 managed runtime, native session, turn의 MCP acknowledgement와 prompt, pre-tool, post-tool 관찰을 상관관계로 확인했습니다. | 완료된 현재 run을 기다리며 `guard_observation` 실패가 막을 수 있습니다. | 가장 최신 run이 현재 runtime, Guard Installation, policy, revision 또는 hook-contract 소유권과 더 이상 일치하지 않습니다. |
 
 CLI MCP preflight는 `session_source=cli_preflight`를 만들고 수동 stdio self-test는
 `session_source=manual_cli`를 만듭니다. 따라서 둘 다
 `process_startup`, `host_session`, `required_tools`, `tool_round_trip`을 충족할 수 없습니다.
 Guard는 최상위 운영 check로 `guard_files`, `guard_hook_execution`,
-`guard_observation`을 사용합니다. 엄격한 Guard manifest는
+`guard_observation`, `guard_verification`을 사용합니다. 엄격한 Guard manifest는
 현재 policy hash, integration revision, typed runtime command, 전체 Volicord 관리 artifact
 기대값, 필수 hook phase를 담당합니다. 또한 정확한 `host_contract_profile`과 결정적인
 `host_contract_digest`를 지정하며, 현재 값은 `codex-hooks-v1`과 검토된 계약 identity를
@@ -526,6 +527,32 @@ name/version과 관찰한 host executable version은 제한 안의 임의 미래
 
 Integration instance ID, integration generation, 파생 integration revision은 로컬 lifecycle과
 상관관계 좌표입니다. Store가 lifecycle 입력을 소유하며 호출자는 이를 선택할 수 없습니다.
+
+### 관리되는 채팅 내 통합 검증
+
+`GuardIntegrationVerificationRun`은 first-party 채팅 내 작업 흐름의 영속적이고 한도가 있는
+proof 단위입니다. Verification ID, Connection, 프로젝트, managed MCP runtime, native host
+session과 turn, Guard Installation, integration revision, policy hash, hook-contract digest,
+예상 probe 도구, 생성 및 만료 시각, lifecycle 상태, probe acknowledgement, 완료 정보,
+일치한 prompt/pre/post event ID, terminal finding을 기록합니다. 상태는 정확히 `active`,
+`passed`, `failed`, `expired` 중 하나입니다. Connection/runtime/turn/revision 좌표 하나에는
+active run이 최대 하나만 있고, 소유권이 변하지 않은 begin replay는 같은 active 또는 passed
+run을 반환합니다.
+
+실제 현재 `managed_host` 호출만 run을 시작하거나 probe하거나 읽을 수 있습니다. 수동 stdio,
+CLI preflight, integration probe는 성공을 만들 수 없습니다. 통과하려면 prompt, pre-tool,
+post-tool 기록이 같은 run session과 turn에 속해야 하고, pre/post는 tool-use ID, 생성된 정확한
+probe 이름, verification-ID 입력을 공유해야 합니다. 현재 Guard Installation, policy hash,
+integration revision, hook-contract digest, managed runtime도 계속 일치해야 합니다. Prompt는
+pre-tool보다 늦을 수 없고 pre-tool은 post-tool보다 앞서야 합니다. 이력 event 검색이나 서로
+다른 run의 phase 조합은 허용하지 않습니다.
+
+`guard_verification`은 이 작업 흐름의 최종 Connection check입니다. Check detail은
+verification, runtime-session, host-turn, 일치한 Guard event ID를 노출하므로 concise, verbose,
+JSON 보고서가 같은 증거 좌표를 공유합니다. `complete`가 되려면 이 상관관계 check가
+통과해야 하며 무관한 prompt/pre/post 관찰은 대신할 수 없습니다. Run은 협력적 로컬 증거일
+뿐입니다. Codex 프로젝트 trust를 자동화하거나 우회하지 않고, MCP trust configuration을
+변경하지 않으며, 사용자 또는 host identity나 Core 작업 흐름 권한을 만들지 않습니다.
 
 <a id="validated-agent-session"></a>
 

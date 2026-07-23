@@ -406,6 +406,18 @@ remain historical and cannot satisfy it. A current malformed or incompatible
 event makes that check fail. Prompt capture remains a fact within the same
 observation summary, not a separate installation state.
 
+Registry `guard_integration_verification_runs` are durable bounded
+Connection-integration records, not Core or Task records. Each row stores its
+opaque verification ID; Connection and project; managed runtime; native host
+session and turn; Guard Installation; integration revision; policy hash;
+hook-contract digest; expected probe tool; creation, expiry, acknowledgement,
+and completion times; lifecycle status; matched prompt/pre/post Guard event
+IDs; and optional terminal finding. The active uniqueness coordinate is
+Connection/runtime/turn/revision. Exact begin replay resumes the same active or
+passed row. Current-owner validation and exact event correlation are required
+when projecting effective status; a stored row or unrelated historical Guard
+event is insufficient by itself.
+
 Expected-write and unrecorded-change records are project-local. Guard
 suppression reads only bounded canonical correlation data and returns the exact
 `SuppressionOutcome`. Store-read failure, corrupt records, budget exhaustion,

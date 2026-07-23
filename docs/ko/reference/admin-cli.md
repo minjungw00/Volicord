@@ -790,6 +790,15 @@ volicord mcp --check --connection <connection_id> [--project <project_id>]
 이 명령은 관리 stdio만 노출합니다. 정확한 framing, lifecycle, 도구 목록, 응답
 projection은 [MCP 전송](mcp-transport.md)이 담당합니다.
 
+`volicord connection verify codex`는 정규 `guard_verification` check와 사용할 수 있는 경우
+verification/run/event ID를 보고하지만, CLI가 채팅 내 작업 흐름을 합성하거나 실행하지는
+않습니다. Pending check는 현재 managed Codex 채팅 안에서
+`volicord.begin_integration_verification`, 반환된 `volicord.guard_probe`,
+`volicord.get_integration_verification`을 사용하도록 안내합니다. CLI preflight, 수동 stdio
+self-test, 이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 명령은 Codex trust 상태를
+관찰할 뿐 프로젝트 trust를 자동화·승인·우회하거나 MCP trust configuration을 변경하지
+않습니다.
+
 생성 Codex entry는 이 공개 수동 stdio 명령 대신 숨겨진 `_host-launch` 명령을 사용합니다.
 `_host-launch`는 host 소유이고 일반 help에 표시하지 않으며 별도의 관리 또는 공개 API
 표면이 아닙니다.

@@ -557,3 +557,87 @@ CREATE INDEX idx_guard_installations_project
   ON guard_installations (project_internal_id);
 CREATE UNIQUE INDEX idx_guard_installations_scope_project
   ON guard_installations (connection_internal_id, project_internal_id);
+
+CREATE TABLE guard_integration_verification_runs (
+  verification_id TEXT PRIMARY KEY CHECK (
+    length(CAST(verification_id AS BLOB)) BETWEEN 1 AND 192
+    AND substr(verification_id, 1, 19) = 'guard_verification_'
+  ),
+  connection_internal_id TEXT NOT NULL,
+  project_internal_id TEXT NOT NULL,
+  runtime_session_id TEXT NOT NULL,
+  host_session_id TEXT NOT NULL,
+  host_turn_id TEXT NOT NULL,
+  guard_installation_id TEXT NOT NULL,
+  integration_revision TEXT NOT NULL CHECK (
+    length(integration_revision) = 71
+    AND substr(integration_revision, 1, 7) = 'sha256:'
+    AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  policy_hash TEXT NOT NULL CHECK (
+    length(policy_hash) = 71
+    AND substr(policy_hash, 1, 7) = 'sha256:'
+    AND substr(policy_hash, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  hook_contract_digest TEXT NOT NULL CHECK (
+    length(hook_contract_digest) = 71
+    AND substr(hook_contract_digest, 1, 7) = 'sha256:'
+    AND substr(hook_contract_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  expected_probe_tool TEXT NOT NULL CHECK (
+    expected_probe_tool = 'volicord.guard_probe'
+  ),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'passed', 'failed', 'expired')),
+  probe_acknowledged_at TEXT,
+  completed_at TEXT,
+  matched_prompt_event_id TEXT,
+  matched_pre_tool_event_id TEXT,
+  matched_post_tool_event_id TEXT,
+  terminal_finding_code TEXT CHECK (
+    terminal_finding_code IS NULL
+    OR (
+      length(CAST(terminal_finding_code AS BLOB)) BETWEEN 1 AND 128
+      AND substr(terminal_finding_code, 1, 1) GLOB '[a-z]'
+      AND terminal_finding_code NOT GLOB '*[^a-z0-9_]'
+    )
+  ),
+  terminal_finding_summary TEXT CHECK (
+    terminal_finding_summary IS NULL
+    OR length(CAST(terminal_finding_summary AS BLOB)) BETWEEN 1 AND 4096
+  ),
+  FOREIGN KEY (runtime_session_id, connection_internal_id)
+    REFERENCES mcp_runtime_sessions (runtime_session_id, connection_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (connection_internal_id, project_internal_id)
+    REFERENCES connection_projects (connection_internal_id, project_internal_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (guard_installation_id)
+    REFERENCES guard_installations (guard_installation_id)
+    ON DELETE RESTRICT,
+  CHECK (expires_at > created_at),
+  CHECK (probe_acknowledged_at IS NULL OR probe_acknowledged_at >= created_at),
+  CHECK (
+    (status = 'active' AND completed_at IS NULL AND terminal_finding_code IS NULL
+      AND terminal_finding_summary IS NULL)
+    OR (status = 'passed' AND completed_at IS NOT NULL AND terminal_finding_code IS NULL
+      AND terminal_finding_summary IS NULL)
+    OR (status IN ('failed', 'expired') AND completed_at IS NOT NULL
+      AND terminal_finding_code IS NOT NULL AND terminal_finding_summary IS NOT NULL)
+  ),
+  CHECK (
+    (matched_pre_tool_event_id IS NULL AND matched_post_tool_event_id IS NULL)
+    OR matched_pre_tool_event_id IS NOT NULL
+  )
+);
+
+CREATE UNIQUE INDEX idx_guard_integration_verification_active_coordinate
+  ON guard_integration_verification_runs (
+    connection_internal_id, runtime_session_id, host_turn_id, integration_revision
+  )
+  WHERE status = 'active';
+CREATE INDEX idx_guard_integration_verification_project
+  ON guard_integration_verification_runs (
+    project_internal_id, connection_internal_id, created_at, verification_id
+  );

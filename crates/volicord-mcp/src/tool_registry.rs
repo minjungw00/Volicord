@@ -3,9 +3,14 @@ use crate::routing::{
     effective_tool_mode_for_mode_and_storage, list_projects_output_schema, McpEffectiveToolMode,
     McpStorageCapability,
 };
+use schemars::schema_for;
+use volicord_types::{
+    BeginIntegrationVerificationArguments, BeginIntegrationVerificationResult,
+    GetIntegrationVerificationResult, GuardProbeResult, IntegrationVerificationIdArguments,
+};
 
 #[cfg(test)]
-pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 35_000;
+pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -526,6 +531,7 @@ pub(crate) fn mcp_tools_for_mode_and_storage_with_detail(
                 McpEffectiveToolMode::ReadOnly => tool.available_in(AgentConnectionMode::ReadOnly),
                 McpEffectiveToolMode::ReadOnlyDegraded => {
                     matches!(tool.category(), AgentToolCategory::ReadOnly)
+                        || matches!(tool.owner(), AgentToolOwner::ConnectionIntegration)
                         || *tool == AgentToolId::REQUEST_USER_ACTION
                 }
                 McpEffectiveToolMode::Workflow => tool.available_in(AgentConnectionMode::Workflow),
@@ -638,6 +644,9 @@ pub(crate) fn tool_definitions(
                         mcp_response_schema(id).expect("MCP tool response schema should exist")
                     }
                     AgentToolOwner::AdapterUtility => list_projects_output_schema(),
+                    AgentToolOwner::ConnectionIntegration => {
+                        integration_verification_output_schema(id)
+                    }
                 },
             },
             annotations: tool_annotations(id),
@@ -668,6 +677,7 @@ fn mcp_tool_input_schema_with_detail(tool: AgentToolId, detail: ToolSchemaDetail
             "properties": {},
             "additionalProperties": false
         }),
+        AgentToolOwner::ConnectionIntegration => integration_verification_input_schema(tool),
         AgentToolOwner::CoreMethod(_) => mcp_request_schema(tool)?,
     };
     match detail {
@@ -1097,13 +1107,17 @@ fn base36(mut value: usize) -> String {
 }
 
 fn tool_annotations(tool: AgentToolId) -> CanonicalToolAnnotations {
-    match tool.category() {
+    let mut annotations = match tool.category() {
         AgentToolCategory::ReadOnly => CanonicalToolAnnotations::read_only(),
         AgentToolCategory::NonDestructiveMutation => {
             CanonicalToolAnnotations::non_destructive_mutation()
         }
         AgentToolCategory::DestructiveMutation => CanonicalToolAnnotations::destructive_mutation(),
+    };
+    if tool.is_idempotent() {
+        annotations.idempotent_hint = true;
     }
+    annotations
 }
 
 pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &'static str {
@@ -1147,6 +1161,15 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
         (ToolSchemaDetail::RuntimeCompact, AgentToolId::LIST_PROJECTS) => {
             "List projects available to this MCP connection."
         }
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::BEGIN_INTEGRATION_VERIFICATION) => {
+            "Begin or resume an in-chat MCP and Guard verification for this managed turn."
+        }
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::GUARD_PROBE) => {
+            "Acknowledge the exact probe observed by Guard pre-tool and post-tool hooks."
+        }
+        (ToolSchemaDetail::RuntimeCompact, AgentToolId::GET_INTEGRATION_VERIFICATION) => {
+            "Read the exact correlated in-chat integration verification."
+        }
         (_, AgentToolId::INTAKE) => {
             "Start, resume, supersede, or reject an ordinary user work loop."
         }
@@ -1186,8 +1209,58 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
         (_, AgentToolId::LIST_PROJECTS) => {
             "List projects explicitly allowed for this MCP connection."
         }
+        (_, AgentToolId::BEGIN_INTEGRATION_VERIFICATION) => {
+            "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns the exact Guard probe tool to call next."
+        }
+        (_, AgentToolId::GUARD_PROBE) => {
+            "Record an idempotent MCP probe acknowledgement without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse."
+        }
+        (_, AgentToolId::GET_INTEGRATION_VERIFICATION) => {
+            "Read MCP acknowledgement and exact same-turn Guard prompt, pre-tool, and post-tool correlation with bounded findings and next action."
+        }
         _ => unreachable!("AgentToolId cannot contain a non-MCP MethodName"),
     }
+}
+
+fn integration_verification_input_schema(tool: AgentToolId) -> Value {
+    match tool {
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => {
+            serde_json::to_value(schema_for!(BeginIntegrationVerificationArguments))
+                .expect("begin integration-verification schema serializes")
+        }
+        AgentToolId::GUARD_PROBE | AgentToolId::GET_INTEGRATION_VERIFICATION => {
+            serde_json::to_value(schema_for!(IntegrationVerificationIdArguments))
+                .expect("integration-verification ID schema serializes")
+        }
+        _ => unreachable!("connection-integration owner has an exact input schema"),
+    }
+}
+
+fn integration_verification_output_schema(tool: AgentToolId) -> Value {
+    let mut schema = match tool {
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => {
+            serde_json::to_value(schema_for!(volicord_types::McpToolStructuredContent<
+                BeginIntegrationVerificationResult,
+            >))
+            .expect("begin integration-verification result schema serializes")
+        }
+        AgentToolId::GUARD_PROBE => serde_json::to_value(schema_for!(
+            volicord_types::McpToolStructuredContent<GuardProbeResult>
+        ))
+        .expect("Guard probe result schema serializes"),
+        AgentToolId::GET_INTEGRATION_VERIFICATION => {
+            serde_json::to_value(schema_for!(volicord_types::McpToolStructuredContent<
+                GetIntegrationVerificationResult,
+            >))
+            .expect("get integration-verification result schema serializes")
+        }
+        _ => unreachable!("connection-integration owner has an exact output schema"),
+    };
+    schema
+        .as_object_mut()
+        .expect("integration-verification output schema has an object root")
+        .insert("type".to_owned(), Value::String("object".to_owned()));
+    schema
 }
 
 fn valid_mcp_tool_name(name: &str) -> bool {

@@ -395,9 +395,9 @@ the validated operational ownership recorded in the audit event.
 
 | Mode and storage | MCP-visible tools |
 |---|---|
-| `workflow`, writable | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects` |
-| `workflow`, readable only | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action` (resume only), `volicord.check_close`, `volicord.list_projects` |
-| `read_only`, readable | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects` |
+| `workflow`, writable | `volicord.intake`, `volicord.update_scope`, `volicord.status`, `volicord.get_operation_result`, `volicord.prepare_write`, `volicord.prepare_evidence_capture`, `volicord.stage_artifact`, `volicord.record_run`, `volicord.request_user_action`, `volicord.reconcile_changes`, `volicord.check_close`, `volicord.close_task`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
+| `workflow`, readable only | `volicord.status`, `volicord.get_operation_result`, `volicord.request_user_action` (resume only), `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
+| `read_only`, readable | `volicord.status`, `volicord.get_operation_result`, `volicord.check_close`, `volicord.list_projects`, `volicord.begin_integration_verification`, `volicord.guard_probe`, `volicord.get_integration_verification` |
 | no readable allowed project | `volicord.list_projects` |
 
 Task state and previous calls do not dynamically add tools. A withheld mutation
@@ -406,10 +406,11 @@ method but is never an MCP tool.
 
 `AgentToolId` is the canonical typed identity and catalog for every Agent
 Connection MCP tool. Core-owned identities reuse `MethodName`; adapter
-utilities, including `AgentToolId::LIST_PROJECTS`, belong to the same closed
+utilities and Connection-integration tools belong to the same closed 16-tool
 catalog. Each identity owns its stable MCP wire-name projection, category,
-Connection-mode availability, Core-method or adapter-utility ownership, and
-optional operational verification role.
+Connection-mode availability, Core-method, adapter-utility, or
+Connection-integration ownership, idempotence, and optional operational
+verification role.
 
 The canonical tool registry keys each definition by `AgentToolId` and supplies
 its description, compact input schema, compact output schema, annotations, and
@@ -443,6 +444,70 @@ Public schemas hide Core envelopes, internal connection/project IDs, protocol
 metadata, idempotency fields, actor source, operation category, and verification
 basis. Hidden fields are rejected before Core. Compact discovery schemas never
 relax the complete owner-defined request validation.
+
+<a id="in-chat-integration-verification-schemas"></a>
+### In-chat integration-verification schemas
+
+The three Connection-integration tools are MCP adapter operations, not Core
+methods or Task workflows. They are idempotent within their exact current
+managed-host coordinate and have these public shapes:
+
+```yaml
+volicord.begin_integration_verification:
+  arguments:
+    project_selector?: string
+  result:
+    verification_id: GuardIntegrationVerificationId
+    status: active | passed
+    expires_at: UtcTimestamp
+    next_probe_tool: volicord.guard_probe
+    matched_prompt_event_id: GuardEventId
+
+volicord.guard_probe:
+  arguments:
+    verification_id: GuardIntegrationVerificationId
+  result:
+    verification_id: GuardIntegrationVerificationId
+    status: active
+    acknowledged_at: UtcTimestamp
+
+volicord.get_integration_verification:
+  arguments:
+    verification_id: GuardIntegrationVerificationId
+  result:
+    verification_id: GuardIntegrationVerificationId
+    status: active | passed | failed | expired
+    mcp_probe_acknowledged: boolean
+    guard_phases:
+      prompt_capture: pending | matched
+      pre_tool: pending | matched
+      post_tool: pending | matched
+    matched_prompt_event_id?: GuardEventId
+    matched_pre_tool_event_id?: GuardEventId
+    matched_post_tool_event_id?: GuardEventId
+    completed_at?: UtcTimestamp
+    finding?: { code: string, summary: string }
+    next_action?: string
+```
+
+`project_selector` follows ordinary Connection project selection and may be
+omitted only when selection is unambiguous. Begin binds the actual current
+managed runtime and native session/turn, requires a current compatible
+prompt-capture event, and creates or resumes the one bounded run for that
+coordinate. It never accepts `manual_cli`, `cli_preflight`, or
+`integration_probe` runtime evidence. Probe validates that exact coordinate
+and acknowledges only the bounded check; it does not mutate Core state, Task
+state, or Product Repository files. Get is read-only and reports the correlated
+phase state and next action.
+
+A run passes only when the same run session and turn contain a compatible
+prompt event followed by `PreToolUse` and `PostToolUse` for the same tool-use
+ID, exact generated host tool name `mcp__volicord__guard_probe`, and exact
+`verification_id` input. The Guard Installation, policy hash, integration
+revision, hook-contract digest, and managed runtime must remain current, and
+the event times must satisfy prompt at or before pre-tool and pre-tool before
+post-tool. Historical, unrelated, stale, mismatched, or expired observations
+cannot satisfy the run.
 
 <a id="mutation-authority-receipt-projection"></a>
 ## Response Wrapping

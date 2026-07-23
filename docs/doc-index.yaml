@@ -1560,6 +1560,7 @@ documents:
   - fail-safe preservation of every observed path when suppression is unavailable
   - machine-readable warning, diagnostic, and related-event reason projection
   - subject-aware current Guard findings for exact artifacts, installations, phases, and events
+  - exact canonical Guard-probe matcher and correlated prompt/pre/post verification boundary
   depends_on:
   - reference.failure-model
   - reference.runtime-boundaries
@@ -1715,6 +1716,7 @@ documents:
   - Runtime Home forwarding, connection binding, project selection, and repository discovery
   - native host session retention before project-selected Agent Session derivation
   - explicit versioned Codex MCP metadata profile and separation from command-hook correlation
+  - closed 16-tool Agent Connection catalog and public in-chat integration-verification tool schemas
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -2554,6 +2556,7 @@ documents:
   - immutable Store-owned Connection integration-instance identity and physical recreation boundary
   - single nullable canonical Agent Connection verification report persistence
   - authoritative MCP runtime sessions, integration revisions, normalized source-aware host correlation, MCP-only project sessions, and runtime attachment ownership
+  - bounded durable Guard integration-verification runs and exact current-owner correlation records
   - immutable occurrence findings, subject-aware current-state finding upserts, atomic cause-edge replacement,
     current-report selection, current-coordinate queries, and MCP terminal-finding links
   - revision-scoped immutable host-session identity and Registry binding revision
@@ -2590,6 +2593,7 @@ documents:
   - '`registry.sqlite` schema shape'
   - project `state.sqlite` schema shape
   - Agent Connection, Connection Projects, Codex Record Guard configuration state, normalized host-correlation tables, and retained observations
+  - Guard integration-verification run tables, lifecycle constraints, and active-coordinate uniqueness
   - structured diagnostic finding lifecycle, atomic cause-edge replacement, and MCP runtime-session terminal-link constraints
   - strict immutable and unique Agent Connection integration-instance column and update guard
   - immutable host-session revision and revision-bearing managed MCP runtime-binding constraints
@@ -2626,6 +2630,7 @@ documents:
   - read-only and dry-run storage effects
   - rejected and blocked branch storage effects
   - canonical-time-floor effects for Core commits and storage-owned temporal writers
+  - Connection-integration verification begin, probe, lookup, and Guard-correlation effects
 - doc_id: reference.storage-artifacts
   path_en: docs/en/reference/storage-artifacts.md
   path_ko: docs/ko/reference/storage-artifacts.md
@@ -2726,6 +2731,7 @@ documents:
   - versioned Codex MCP and hook contract selection, exact Guard contract profile/digest, and phase-specific source correlation
   - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
   - compatibility from current managed configuration and observed protocol, tool, safe-call, and Guard behavior
+  - same-turn managed MCP and Guard integration verification and the `guard_verification` report check
   - report-contained connection actions without an independent persisted status or action array
   - first-release managed-host cooperative and non-identity threat boundary
   depends_on:

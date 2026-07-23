@@ -14,7 +14,8 @@ use crate::{
     },
     host_integration::{
         contracts::{
-            contract_for, hook_event_for_phase, validate_contract_config, HostContractConfigKind,
+            codex_hook_matcher_tokens, contract_for, hook_event_for_phase,
+            validate_contract_config, HostContractConfigKind,
         },
         guard_phase_capability_name, HostKind,
     },
@@ -49,10 +50,11 @@ pub(crate) fn plan_codex_hook_file(
                 ))
             })?;
             let mut group = serde_json::Map::new();
-            if !event.write_matcher_tokens.is_empty() {
+            let matcher_tokens = codex_hook_matcher_tokens(event);
+            if !matcher_tokens.is_empty() {
                 group.insert(
                     "matcher".to_owned(),
-                    Value::String(event.write_matcher_tokens.join("|")),
+                    Value::String(matcher_tokens.join("|")),
                 );
             }
             group.insert(

@@ -1618,6 +1618,109 @@
         "root_required": [],
         "sha256": "sha256:92bf033bc411c070f0ee25c4dbcf767c881e673646456663844ad176630d6dec"
       }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns the exact Guard probe tool to call next.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [
+          "project_selector"
+        ],
+        "root_required": [],
+        "sha256": "sha256:06bc1a7eb1927fe9a7725f2d61de9b6a99bea15b59443cd5659769bea63c1b66"
+      },
+      "name": "volicord.begin_integration_verification",
+      "output_schema": {
+        "definitions": [
+          "BeginIntegrationVerificationResult",
+          "GuardIntegrationVerificationStatus",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
+          "UtcTimestamp"
+        ],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:9c9bffc65947cc3f83be288b3f343b9dcb6ab887c02c44ca5f10b7254da03cb5"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Record an idempotent MCP probe acknowledgement without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [
+          "verification_id"
+        ],
+        "root_required": [
+          "verification_id"
+        ],
+        "sha256": "sha256:343394f366c2fba69c60ab297780c39bfb2ff0317090ccc6fb171460c5d1e246"
+      },
+      "name": "volicord.guard_probe",
+      "output_schema": {
+        "definitions": [
+          "GuardIntegrationVerificationStatus",
+          "GuardProbeResult",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
+          "UtcTimestamp"
+        ],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:871cb365301facae006501eac5c56ea5c4e3afc4ebf548ef035616509251e9a2"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read MCP acknowledgement and exact same-turn Guard prompt, pre-tool, and post-tool correlation with bounded findings and next action.",
+      "input_schema": {
+        "definitions": [],
+        "root_properties": [
+          "verification_id"
+        ],
+        "root_required": [
+          "verification_id"
+        ],
+        "sha256": "sha256:343394f366c2fba69c60ab297780c39bfb2ff0317090ccc6fb171460c5d1e246"
+      },
+      "name": "volicord.get_integration_verification",
+      "output_schema": {
+        "definitions": [
+          "GetIntegrationVerificationResult",
+          "GuardIntegrationVerificationFinding",
+          "GuardIntegrationVerificationPhaseStatus",
+          "GuardIntegrationVerificationPhases",
+          "GuardIntegrationVerificationStatus",
+          "McpToolErrorCode",
+          "McpToolErrorIssue",
+          "McpToolErrorResponse",
+          "McpToolIssueCode",
+          "UtcTimestamp"
+        ],
+        "root_properties": [],
+        "root_required": [],
+        "sha256": "sha256:4aeea902966ba83f43762a0870f66d489a538a464df87809fc9798f3b6cf056e"
+      }
     }
   ]
 }

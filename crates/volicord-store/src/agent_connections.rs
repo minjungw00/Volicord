@@ -1875,6 +1875,12 @@ fn retire_connection_project_state_in_transaction(
         params![connection_internal_id, project_internal_id],
     )?;
     tx.execute(
+        "DELETE FROM guard_integration_verification_runs
+          WHERE connection_internal_id = ?1
+            AND project_internal_id = ?2",
+        params![connection_internal_id, project_internal_id],
+    )?;
+    tx.execute(
         "DELETE FROM guard_installations
           WHERE connection_internal_id = ?1
             AND project_internal_id = ?2",

@@ -25,6 +25,7 @@ use volicord_store::{
         current_project_agent_session_coordinates, guard_event, guard_installation,
         insert_guard_event, observe_host_correlation, GuardEventInsert, HostCorrelationObservation,
     },
+    integration_verification::refresh_guard_integration_verification_for_event,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
 };
@@ -513,6 +514,7 @@ fn record_guard_hook_contract_failure(
             metadata_json: json!({
                 "source": "volicord_guard_cli",
                 "source_payload_sha256": source_payload_sha256,
+                "host_contract_digest": HostContractProfileId::CodexHooksV1.contract_digest(),
                 "cooperative_guard": true,
             })
             .to_string(),
@@ -1236,6 +1238,7 @@ fn persist_guard_event(
         metadata_json: json!({
             "source": "volicord_guard_cli",
             "source_payload_sha256": source_payload_sha256,
+            "host_contract_digest": HostContractProfileId::CodexHooksV1.contract_digest(),
             "cooperative_guard": true
         })
         .to_string(),
@@ -1244,6 +1247,11 @@ fn persist_guard_event(
         if guard_event_record_payload_sha256(&existing)?
             == guard_event_insert_payload_sha256(&input, envelope.session_id.as_deref())?
         {
+            refresh_guard_integration_verification_for_event(
+                runtime_home,
+                &project.project_id,
+                &envelope.event_id,
+            )?;
             return Ok(());
         }
         return Err(GuardCommandError::Runtime(format!(
@@ -1252,6 +1260,11 @@ fn persist_guard_event(
         )));
     }
     insert_guard_event(runtime_home, &project.project_id, input)?;
+    refresh_guard_integration_verification_for_event(
+        runtime_home,
+        &project.project_id,
+        &envelope.event_id,
+    )?;
     Ok(())
 }
 

@@ -143,7 +143,10 @@ fn tool_listing_and_dispatch_use_current_connection_mode() -> Result<(), Box<dyn
             "volicord.status",
             "volicord.get_operation_result",
             "volicord.check_close",
-            "volicord.list_projects"
+            "volicord.list_projects",
+            "volicord.begin_integration_verification",
+            "volicord.guard_probe",
+            "volicord.get_integration_verification",
         ]
     );
     let error = adapter

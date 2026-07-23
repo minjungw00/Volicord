@@ -119,6 +119,8 @@ pub enum ConnectionCheckKind {
     GuardHookExecution,
     /// Current required Guard phases were observed.
     GuardObservation,
+    /// One current managed turn completed the correlated Guard verification workflow.
+    GuardVerification,
     /// A setup plan is ready to apply or already matches.
     SetupPlan,
     /// A connection-mode transition was planned or applied.
@@ -131,12 +133,13 @@ pub enum ConnectionCheckKind {
 
 impl ConnectionCheckKind {
     /// Every current check kind in canonical serialized-spelling order.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::ConnectionRemoval,
         Self::DiagnosticLookup,
         Self::GuardFiles,
         Self::GuardHookExecution,
         Self::GuardObservation,
+        Self::GuardVerification,
         Self::HostExecutable,
         Self::HostSession,
         Self::ManagedConfig,
@@ -167,6 +170,7 @@ impl ConnectionCheckKind {
             Self::GuardFiles => "guard_files",
             Self::GuardHookExecution => "guard_hook_execution",
             Self::GuardObservation => "guard_observation",
+            Self::GuardVerification => "guard_verification",
             Self::SetupPlan => "setup_plan",
             Self::ModeTransition => "mode_transition",
             Self::ConnectionRemoval => "connection_removal",
@@ -182,6 +186,7 @@ impl ConnectionCheckKind {
             Self::ToolRoundTrip => &[Self::RequiredTools],
             Self::GuardHookExecution => &[Self::GuardFiles],
             Self::GuardObservation => &[Self::GuardHookExecution],
+            Self::GuardVerification => &[Self::GuardObservation],
             Self::VerificationNotRun
             | Self::DiagnosticLookup
             | Self::ManagedConfig
@@ -1081,12 +1086,18 @@ mod tests {
 
     #[test]
     fn every_current_check_kind_round_trips_exact_json() {
+        assert_eq!(ConnectionCheckKind::ALL.len(), 18);
+        assert_eq!(
+            ConnectionCheckKind::GuardVerification.dependencies(),
+            &[ConnectionCheckKind::GuardObservation]
+        );
         let expected = [
             "connection_removal",
             "diagnostic_lookup",
             "guard_files",
             "guard_hook_execution",
             "guard_observation",
+            "guard_verification",
             "host_executable",
             "host_session",
             "managed_config",

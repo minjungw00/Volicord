@@ -5,7 +5,7 @@ use std::{
 };
 
 const TEST_CHILD_PREFIX: &str = "mcp_test_child-";
-const TEST_CHILD_VERSION: &[u8] = b"volicord-mcp-test-child-revision-matrix-schema-failure\n";
+const TEST_CHILD_VERSION: &[u8] = b"volicord-mcp-test-child-integration-verification-tools\n";
 const TEST_CHILD_SCENARIO_ARGUMENT: &str = "--mcp-test-child-scenario";
 
 static TEST_CHILD_PATH: OnceLock<PathBuf> = OnceLock::new();

@@ -328,6 +328,25 @@ Guard manifest, runtime session, 프로젝트 Agent Session은 쓰지 않습니�
 Registry 효과가 없습니다. `volicord connection status`는 계속 읽기 전용이며 이 변경을
 사용하지 않습니다.
 
+<a id="connection-integration-verification-effects"></a>
+## Connection-Integration 검증 효과
+
+`volicord.begin_integration_verification`은 immediate Registry transaction 하나보다 먼저
+현재 managed runtime, native session/turn, 선택한 Connection Project, 현재 Agent Session,
+Guard Installation, policy, revision, hook contract, prompt 관찰을 검증합니다. 만기가 지난
+active row를 만료 처리하고 `guard_integration_verification_runs` row 하나를 삽입하거나,
+정확한 현재 active 또는 passed row를 멱등 replay로 반환합니다. 거부된 호출, 수동 호출,
+preflight 호출, 오래된 호출, 모호한 호출, prompt가 없는 호출은 verification-run 효과가
+없습니다.
+
+`volicord.guard_probe`는 정확한 active row의 nullable `probe_acknowledged_at`만 first-write-
+wins 멱등 방식으로 바꿉니다. 프로젝트 `state.sqlite`, Core 작업 흐름, Task, Product
+Repository에는 효과가 없습니다. `volicord.get_integration_verification`은 읽기 전용입니다.
+호환 Guard event 영속은 일반적인 프로젝트 로컬 event 효과를 유지하고, 그 commit 뒤 Registry
+상관관계 refresh가 일치하는 active run을 `passed`로 바꾸면서 완료 정보와 일치한 event ID를
+저장할 수 있습니다. 정확한 replay로 이 refresh를 완료할 수 있습니다. 어떤 분기도 없는
+Guard event를 꾸며내거나 MCP trust 상태를 변경하지 않습니다.
+
 ## Managed Runtime 프로젝트 Session 결속
 
 실제 managed MCP 프로젝트 호출은 다음 순서로 저장 효과를 만듭니다.
@@ -353,17 +372,19 @@ attach가 없는 상태가 남을 수 있으며 이 예약도 권한이 아닙�
 
 승인된 `volicord connection remove` 적용은 immediate Registry transaction 하나를
 사용합니다. Agent Connection과 선택한 membership을 검증하고 pending-host-cleanup
-충돌을 거부한 뒤, 선택한 membership의 Registry project-session binding과 Guard
-Installation, membership 순서로 삭제하고 commit 전에 남은 membership 수를 계산합니다.
+충돌을 거부한 뒤, 선택한 membership의 Registry project-session binding과
+integration-verification run을 먼저 삭제하고 Guard Installation, membership 순서로 삭제한
+뒤 commit 전에 남은 membership 수를 계산합니다.
 Membership이 남으면 connection 전체 runtime session과 다른 프로젝트 행은 바꾸지
-않습니다. Membership이 남지 않으면 Connection 소유의 남은 binding과 Guard
-Installation, 모든 Connection 소유 MCP runtime session, Agent Connection도 삭제합니다.
+않습니다. Membership이 남지 않으면 Connection 소유의 남은 binding,
+integration-verification run, Guard Installation, 모든 Connection 소유 MCP runtime session,
+Agent Connection도 삭제합니다.
 
 Connection migration도 같은 소유자 순서의 프로젝트 폐기를 사용합니다. 여러 프로젝트를
 가진 superseded Connection에서는 replacement membership, Guard Installation,
 Connection을 활성화하는 같은 Registry transaction 안에서 선택한 프로젝트의 binding,
-Guard Installation, membership만 제거합니다. 다른 프로젝트 행과 connection 전체 runtime
-session은 유지합니다.
+integration-verification run, Guard Installation, membership만 제거합니다. 다른 프로젝트
+행과 connection 전체 runtime session은 유지합니다.
 
 마지막 프로젝트를 가진 superseded Connection은 외부 정리가 대기 중이거나 실패하는 동안
 membership, binding, Guard Installation, pending-host-cleanup marker의 완전한 inventory와

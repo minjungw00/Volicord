@@ -2053,7 +2053,12 @@ pub(crate) fn call_tool_result(
             }
         }
     } else {
-        let response = match adapter.call_adapter_tool(tool, arguments, None) {
+        let response = match adapter.call_adapter_tool(
+            tool,
+            arguments,
+            binding.as_ref(),
+            coordinates.as_ref(),
+        ) {
             Ok(response) => response,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
@@ -2168,10 +2173,11 @@ pub(crate) fn call_tool_result(
 }
 
 fn mutation_detail_for_tool(tool: AgentToolId, arguments: &Value) -> Option<MutationDetailLevel> {
-    matches!(
-        tool.category(),
-        AgentToolCategory::NonDestructiveMutation | AgentToolCategory::DestructiveMutation
-    )
+    (matches!(tool.owner(), AgentToolOwner::CoreMethod(_))
+        && matches!(
+            tool.category(),
+            AgentToolCategory::NonDestructiveMutation | AgentToolCategory::DestructiveMutation
+        ))
     .then(|| {
         arguments
             .get("detail")
@@ -4113,6 +4119,16 @@ mod mutation_output_tests {
 
         let detail = mutation_detail_for_tool(AgentToolId::INTAKE, &json!({}));
         assert_eq!(detail, Some(MutationDetailLevel::Summary));
+        assert_eq!(
+            mutation_detail_for_tool(AgentToolId::BEGIN_INTEGRATION_VERIFICATION, &json!({})),
+            None,
+            "Connection-integration writes do not use Core mutation projection"
+        );
+        assert_eq!(
+            mutation_detail_for_tool(AgentToolId::GUARD_PROBE, &json!({})),
+            None,
+            "the bounded Guard probe does not use Core mutation projection"
+        );
         let output = ToolCallOutput::from_pipeline_response(&replayed)?;
         let output = finalize_mutation_output_with_refresh(
             AgentToolId::INTAKE.wire_name(),

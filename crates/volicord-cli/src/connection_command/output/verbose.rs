@@ -212,6 +212,7 @@ fn check_label(kind: ConnectionCheckKind) -> &'static str {
         ConnectionCheckKind::GuardFiles => "Guard managed files",
         ConnectionCheckKind::GuardHookExecution => "Guard hook execution",
         ConnectionCheckKind::GuardObservation => "Guard hook activity",
+        ConnectionCheckKind::GuardVerification => "Guard integration verification",
         ConnectionCheckKind::SetupPlan => "Setup plan",
         ConnectionCheckKind::ModeTransition => "Connection mode transition",
         ConnectionCheckKind::ConnectionRemoval => "Connection removal",
@@ -384,9 +385,25 @@ fn render_known_details(context: &mut DetailContext<'_>) {
         ConnectionCheckKind::GuardFiles => render_guard_files(context),
         ConnectionCheckKind::GuardHookExecution => render_guard_observation(context),
         ConnectionCheckKind::GuardObservation => render_guard_observation(context),
+        ConnectionCheckKind::GuardVerification => render_guard_verification(context),
         ConnectionCheckKind::SetupPlan => render_setup_plan(context),
         ConnectionCheckKind::ModeTransition => render_mode_transition(context),
         ConnectionCheckKind::ConnectionRemoval => render_connection_removal(context),
+    }
+}
+
+fn render_guard_verification(context: &mut DetailContext<'_>) {
+    if let Some(id) = context.take_string("verification_id") {
+        context.line("Verification ID", id);
+    }
+    if let Some(status) = context.take_string("verification_status") {
+        context.line("Verification status", status);
+    }
+    if let Some(runtime) = context.take_string("runtime_session_id") {
+        context.line("Runtime session", runtime);
+    }
+    if let Some(turn) = context.take_string("host_turn_id") {
+        context.line("Host turn", turn);
     }
 }
 
@@ -2552,6 +2569,10 @@ mod tests {
                 "Guard hook execution",
             ),
             (ConnectionCheckKind::GuardObservation, "Guard hook activity"),
+            (
+                ConnectionCheckKind::GuardVerification,
+                "Guard integration verification",
+            ),
             (ConnectionCheckKind::HostExecutable, "Codex executable"),
             (ConnectionCheckKind::HostSession, "Codex managed session"),
             (

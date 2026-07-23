@@ -16,6 +16,10 @@ use volicord_store::{
     agent_connections::{AgentConnectionRecord, ConnectionProjectRecord},
     diagnostic_findings::{diagnostic_occurrences_for_runtime_session, insert_occurrence_finding},
     guards::{guard_observation_summary, list_guard_installations},
+    integration_verification::{
+        current_guard_integration_verification_status,
+        latest_guard_integration_verification_for_connection,
+    },
     operational_sessions::{
         connection_integration_revision, current_managed_runtime_sessions,
         latest_managed_runtime_session, mcp_runtime_session_for_process, McpRuntimeSessionRecord,

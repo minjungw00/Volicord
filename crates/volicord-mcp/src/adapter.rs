@@ -4,6 +4,7 @@ use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_arguments;
 use crate::tool_registry::*;
 use crate::util::*;
+use chrono::{DateTime, Utc};
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 
@@ -866,7 +867,8 @@ impl McpAdapter {
         &self,
         tool: AgentToolId,
         params: Value,
-        _session_id: Option<&str>,
+        binding: Option<&ManagedAgentSessionBinding>,
+        session: Option<&OwnedAgentSessionCoordinates>,
     ) -> Result<Value, McpAdapterError> {
         let tool_name = tool.wire_name();
         validate_mcp_tool_arguments(tool_name, &params)?;
@@ -885,6 +887,89 @@ impl McpAdapter {
                     });
                 }
                 let result = self.list_projects_result()?;
+                serde_json::to_value(result).map_err(McpAdapterError::Json)
+            }
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION => {
+                let binding = required_integration_binding(tool_name, binding)?;
+                let session = session.ok_or_else(|| McpAdapterError::ToolExecution {
+                    tool_name: tool_name.to_owned(),
+                    message: "integration verification requires a writable current project session"
+                        .to_owned(),
+                })?;
+                let arguments: BeginIntegrationVerificationArguments =
+                    self.decode_params(tool_name, params)?;
+                let project_id = self.select_project(arguments.project_selector.as_deref())?;
+                let observed_at = integration_verification_timestamp();
+                let record = begin_guard_integration_verification(
+                    &self.runtime_home,
+                    BeginGuardIntegrationVerificationInput {
+                        caller: integration_verification_caller(
+                            self.context.connection_internal_id.as_str(),
+                            binding,
+                        ),
+                        project_id: project_id.as_str().to_owned(),
+                        project_session_id: session.project_session_id.clone(),
+                        observed_at,
+                    },
+                )
+                .map_err(McpAdapterError::Store)?;
+                let matched_prompt_event_id = record
+                    .matched_prompt_event_id
+                    .as_deref()
+                    .map(GuardEventId::new)
+                    .ok_or_else(|| McpAdapterError::ToolExecution {
+                        tool_name: tool_name.to_owned(),
+                        message: "verification run has no current prompt-capture event".to_owned(),
+                    })?;
+                let status = if record.status == "passed" {
+                    volicord_types::GuardIntegrationVerificationStatus::Passed
+                } else {
+                    volicord_types::GuardIntegrationVerificationStatus::Active
+                };
+                serde_json::to_value(BeginIntegrationVerificationResult {
+                    verification_id: GuardIntegrationVerificationId::new(record.verification_id),
+                    status,
+                    expires_at: UtcTimestamp::parse(&record.expires_at).map_err(|_| {
+                        McpAdapterError::ToolExecution {
+                            tool_name: tool_name.to_owned(),
+                            message: "verification run has an invalid expiry".to_owned(),
+                        }
+                    })?,
+                    next_probe_tool: AgentToolId::GUARD_PROBE.wire_name().to_owned(),
+                    matched_prompt_event_id,
+                })
+                .map_err(McpAdapterError::Json)
+            }
+            AgentToolId::GUARD_PROBE => {
+                let binding = required_integration_binding(tool_name, binding)?;
+                let arguments: IntegrationVerificationIdArguments =
+                    self.decode_params(tool_name, params)?;
+                let result = acknowledge_guard_integration_probe(
+                    &self.runtime_home,
+                    arguments.verification_id.as_str(),
+                    &integration_verification_caller(
+                        self.context.connection_internal_id.as_str(),
+                        binding,
+                    ),
+                    &integration_verification_timestamp(),
+                )
+                .map_err(McpAdapterError::Store)?;
+                serde_json::to_value(result).map_err(McpAdapterError::Json)
+            }
+            AgentToolId::GET_INTEGRATION_VERIFICATION => {
+                let binding = required_integration_binding(tool_name, binding)?;
+                let arguments: IntegrationVerificationIdArguments =
+                    self.decode_params(tool_name, params)?;
+                let result = get_guard_integration_verification(
+                    &self.runtime_home,
+                    arguments.verification_id.as_str(),
+                    &integration_verification_caller(
+                        self.context.connection_internal_id.as_str(),
+                        binding,
+                    ),
+                    &integration_verification_timestamp(),
+                )
+                .map_err(McpAdapterError::Store)?;
                 serde_json::to_value(result).map_err(McpAdapterError::Json)
             }
             other => Err(McpAdapterError::UnknownTool(other.wire_name().to_owned())),
@@ -961,6 +1046,12 @@ impl McpAdapter {
                 tool_name: tool_name.to_owned(),
                 message: "tool arguments must be an object".to_owned(),
             })?;
+        if matches!(
+            tool,
+            AgentToolId::GUARD_PROBE | AgentToolId::GET_INTEGRATION_VERIFICATION
+        ) {
+            return Ok(None);
+        }
         let project_id = if tool == AgentToolId::LIST_PROJECTS {
             let projects = self.allowed_project_availabilities(tool_name)?;
             let [project] = projects.as_slice() else {
@@ -1257,6 +1348,33 @@ impl McpAdapter {
             }
         })
     }
+}
+
+fn required_integration_binding<'a>(
+    tool_name: &str,
+    binding: Option<&'a ManagedAgentSessionBinding>,
+) -> Result<&'a ManagedAgentSessionBinding, McpAdapterError> {
+    binding.ok_or_else(|| McpAdapterError::ToolExecution {
+        tool_name: tool_name.to_owned(),
+        message: "integration verification is available only in a current managed Codex session"
+            .to_owned(),
+    })
+}
+
+fn integration_verification_caller(
+    connection_internal_id: &str,
+    binding: &ManagedAgentSessionBinding,
+) -> GuardIntegrationVerificationCaller {
+    GuardIntegrationVerificationCaller {
+        connection_internal_id: connection_internal_id.to_owned(),
+        runtime_session_id: binding.runtime_session_id.clone(),
+        host_session_id: binding.correlation.session_id.as_str().to_owned(),
+        host_turn_id: binding.correlation.turn_id.as_str().to_owned(),
+    }
+}
+
+fn integration_verification_timestamp() -> String {
+    UtcTimestamp::from_datetime(DateTime::<Utc>::from(SystemTime::now())).to_canonical_string()
 }
 
 fn invalid_argument_guidance(
