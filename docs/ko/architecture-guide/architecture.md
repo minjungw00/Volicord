@@ -177,6 +177,12 @@ manifest는 현재 관찰의 적격성을 유지하고 관리 definition 내용�
 또는 만료 replay는 `restart_required`로 유지됩니다. Adapter와 renderer는 별도의 상태를
 파생하거나 summary 산문을 분류하지 않습니다.
 
+Store 내부의 integration-verification facade는 생성·재개, probe acknowledgement,
+event correlation, 상태 projection, typed coordinate 검증, SQL row 변환을
+lifecycle별 모듈에 위임합니다. 각 변경 진입점은 자신의 즉시 Registry
+transaction을 소유하며 row 및 coordinate helper는 transaction을 열거나
+데이터베이스 표현을 Store 밖으로 노출하지 않습니다.
+
 Host가 제공한 disabled, policy-managed, invocation-bypass 근거는 typed host evidence
 경계를 통해서만 받습니다. 이 근거가 없으면 Volicord는 현재 definition에 맞는 호환 event로
 hook 효과를 성립시키거나 `unknown`을 보고할 수 있을 뿐 trust 상태를 만들 수 없습니다.

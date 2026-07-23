@@ -1,0 +1,428 @@
+use std::{error::Error, path::Path};
+
+use volicord_host_contract::{
+    CanonicalToolName, CodexHookPromptCorrelation, CodexHookToolCorrelation, CodexMcpCorrelation,
+    HostContractProfileId, HostNativeCorrelation, HostSessionId, HostThreadId, HostToolUseId,
+    HostTurnId,
+};
+use volicord_test_support::TempRuntimeHome;
+use volicord_types::{
+    AgentToolId, GuardDecision, GuardHookContractStatus, GuardProbeResult, McpRuntimeSessionSource,
+    SequenceDurableIdGenerator,
+};
+
+use crate::{
+    agent_connections::{
+        add_connection_project, agent_connection_record_read_only, ensure_agent_connection,
+        AgentConnectionRegistration, ConnectionProjectRegistration, CONNECTION_INTENT_SHARED,
+        CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
+    },
+    bootstrap::{
+        initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
+    },
+    guards::{
+        bind_agent_session_runtime, insert_guard_event, observe_host_correlation,
+        test_guard_manifest_json, upsert_guard_installation, AgentSessionRuntimeBinding,
+        GuardEventInsert, GuardInstallationUpsert, HostCorrelationObservation,
+    },
+    integration_verification::{
+        acknowledge_guard_integration_probe, begin_guard_integration_verification_with_generator,
+        correlation::refresh_guard_integration_verification_for_event,
+        row::{overwrite_owner_field_for_test, run_by_id, StoredOwnerField},
+        BeginGuardIntegrationVerificationInput, GuardIntegrationVerificationCaller,
+        GuardIntegrationVerificationRunRecord,
+    },
+    operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
+    sqlite::{open_registry_database, registry_db_path},
+    StoreResult,
+};
+
+pub(super) const POLICY_HASH: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+pub(super) const STALE_HASH: &str =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+pub(super) const PROJECT_ID: &str = "project_verification";
+pub(super) const CONNECTION_ID: &str = "connection_verification";
+pub(super) const INSTALLATION_ID: &str = "guard_installation_verification";
+pub(super) const HOST_SESSION_ID: &str = "host_session_verification";
+pub(super) const HOST_THREAD_ID: &str = "host_thread_verification";
+pub(super) const HOST_TURN_ID: &str = "host_turn_verification";
+pub(super) const BEGIN_AT: &str = "2026-07-23T00:00:03Z";
+pub(super) const ACK_AT: &str = "2026-07-23T00:00:04Z";
+
+pub(super) struct VerificationFixture {
+    pub runtime_home: TempRuntimeHome,
+    pub runtime_session_id: String,
+    pub project_session_id: String,
+    pub integration_revision: String,
+}
+
+pub(super) struct ToolEventFixture<'a> {
+    pub event_id: &'a str,
+    pub phase: &'a str,
+    pub turn: &'a str,
+    pub tool_use_id: &'a str,
+    pub tool_name: &'a str,
+    pub verification_id: &'a str,
+    pub occurred_at: &'a str,
+    pub digest: Option<&'a str>,
+    pub policy_hash: Option<&'a str>,
+    pub integration_revision: Option<&'a str>,
+}
+
+impl VerificationFixture {
+    pub(super) fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+        let runtime_home = TempRuntimeHome::new(prefix)?;
+        initialize_runtime_home(runtime_home.path(), &format!("runtime_home_{prefix}"), "{}")?;
+        let repo_root = runtime_home.create_product_repo("verification-repo")?;
+        register_project(
+            runtime_home.path(),
+            ProjectRegistration {
+                project_id: PROJECT_ID.to_owned(),
+                repo_root: repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        ensure_agent_connection(
+            runtime_home.path(),
+            AgentConnectionRegistration {
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                host_kind: HOST_KIND_CODEX.to_owned(),
+                intent: CONNECTION_INTENT_SHARED.to_owned(),
+                host_scope: HOST_SCOPE_PROJECT.to_owned(),
+                server_name: "volicord-verification".to_owned(),
+                config_target: runtime_home
+                    .path()
+                    .join("connection-verification")
+                    .to_string_lossy()
+                    .into_owned(),
+                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                enabled: true,
+                managed_fingerprint: "fingerprint:verification".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        add_connection_project(
+            runtime_home.path(),
+            ConnectionProjectRegistration {
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+            },
+        )?;
+        let connection = agent_connection_record_read_only(runtime_home.path(), CONNECTION_ID)?
+            .expect("test connection");
+        upsert_guard_installation(
+            runtime_home.path(),
+            GuardInstallationUpsert {
+                guard_installation_id: INSTALLATION_ID.to_owned(),
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                project_id: PROJECT_ID.to_owned(),
+                manifest_json: test_guard_manifest_json(
+                    &connection,
+                    PROJECT_ID,
+                    &repo_root,
+                    INSTALLATION_ID,
+                    POLICY_HASH,
+                ),
+            },
+        )?;
+        let integration_revision =
+            crate::operational_sessions::connection_integration_revision(&connection)?
+                .as_str()
+                .to_owned();
+        let runtime_session_id = start_mcp_runtime_session_for_test(
+            runtime_home.path(),
+            McpRuntimeSessionStart {
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                session_source: McpRuntimeSessionSource::ManagedHost,
+                observed_host_executable_version: None,
+                process_id: 42,
+                process_started_at: "2026-07-23T00:00:00Z".to_owned(),
+            },
+        )?
+        .runtime_session_id;
+
+        let prompt = prompt_correlation(HOST_TURN_ID);
+        observe_event_correlation(runtime_home.path(), prompt.clone(), "2026-07-23T00:00:01Z")?;
+        insert_test_event(
+            runtime_home.path(),
+            EventFixture {
+                integration_revision: &integration_revision,
+                event_id: "guard_event_prompt",
+                correlation: prompt,
+                phase: "prompt_capture",
+                occurred_at: "2026-07-23T00:00:01Z",
+                verification_id: None,
+                digest: None,
+                policy_hash: POLICY_HASH,
+            },
+        )?;
+        let session = bind_agent_session_runtime(
+            runtime_home.path(),
+            PROJECT_ID,
+            AgentSessionRuntimeBinding {
+                runtime_session_id: runtime_session_id.clone(),
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                guard_installation_id: Some(INSTALLATION_ID.to_owned()),
+                correlation: mcp_correlation(HOST_TURN_ID),
+                observed_at: "2026-07-23T00:00:02Z".to_owned(),
+            },
+        )?;
+        Ok(Self {
+            runtime_home,
+            runtime_session_id,
+            project_session_id: session.session_id,
+            integration_revision,
+        })
+    }
+
+    pub(super) fn caller(&self) -> GuardIntegrationVerificationCaller {
+        GuardIntegrationVerificationCaller {
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            runtime_session_id: self.runtime_session_id.clone(),
+            host_session_id: HOST_SESSION_ID.to_owned(),
+            host_turn_id: HOST_TURN_ID.to_owned(),
+        }
+    }
+
+    pub(super) fn begin(&self) -> StoreResult<GuardIntegrationVerificationRunRecord> {
+        self.begin_at(BEGIN_AT, ["one"])
+    }
+
+    pub(super) fn begin_at<const N: usize>(
+        &self,
+        observed_at: &str,
+        ids: [&str; N],
+    ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
+        begin_guard_integration_verification_with_generator(
+            self.runtime_home.path(),
+            BeginGuardIntegrationVerificationInput {
+                caller: self.caller(),
+                project_id: PROJECT_ID.to_owned(),
+                project_session_id: self.project_session_id.clone(),
+                observed_at: observed_at.to_owned(),
+            },
+            &SequenceDurableIdGenerator::new(ids),
+        )
+    }
+
+    pub(super) fn acknowledge(
+        &self,
+        verification_id: &str,
+        observed_at: &str,
+    ) -> StoreResult<GuardProbeResult> {
+        acknowledge_guard_integration_probe(
+            self.runtime_home.path(),
+            verification_id,
+            &self.caller(),
+            observed_at,
+        )
+    }
+
+    pub(super) fn record(
+        &self,
+        verification_id: &str,
+    ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
+        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        Ok(run_by_id(&conn, verification_id)?.expect("verification record"))
+    }
+
+    pub(super) fn set_policy_hash(
+        &self,
+        verification_id: &str,
+        policy_hash: &str,
+    ) -> StoreResult<()> {
+        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        overwrite_owner_field_for_test(
+            &conn,
+            verification_id,
+            StoredOwnerField::PolicyHash,
+            policy_hash,
+        )
+    }
+
+    pub(super) fn set_hook_contract_digest(
+        &self,
+        verification_id: &str,
+        hook_contract_digest: &str,
+    ) -> StoreResult<()> {
+        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        overwrite_owner_field_for_test(
+            &conn,
+            verification_id,
+            StoredOwnerField::HookContractDigest,
+            hook_contract_digest,
+        )
+    }
+
+    pub(super) fn set_integration_revision(
+        &self,
+        verification_id: &str,
+        integration_revision: &str,
+    ) -> StoreResult<()> {
+        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        overwrite_owner_field_for_test(
+            &conn,
+            verification_id,
+            StoredOwnerField::IntegrationRevision,
+            integration_revision,
+        )
+    }
+
+    pub(super) fn insert_tool_event(&self, event: ToolEventFixture<'_>) -> StoreResult<()> {
+        let correlation = tool_correlation(event.turn, event.tool_use_id, event.tool_name);
+        observe_event_correlation(
+            self.runtime_home.path(),
+            correlation.clone(),
+            event.occurred_at,
+        )?;
+        insert_test_event(
+            self.runtime_home.path(),
+            EventFixture {
+                integration_revision: event
+                    .integration_revision
+                    .unwrap_or(&self.integration_revision),
+                event_id: event.event_id,
+                correlation,
+                phase: event.phase,
+                occurred_at: event.occurred_at,
+                verification_id: Some(event.verification_id),
+                digest: event.digest,
+                policy_hash: event.policy_hash.unwrap_or(POLICY_HASH),
+            },
+        )
+    }
+
+    pub(super) fn insert_exact_tool_events(&self, verification_id: &str) -> StoreResult<()> {
+        let probe_name = volicord_host_contract::codex_hook_tool_name(AgentToolId::GUARD_PROBE);
+        self.insert_tool_event(ToolEventFixture {
+            event_id: "guard_event_pre",
+            phase: "pre_tool",
+            turn: HOST_TURN_ID,
+            tool_use_id: "tool_use_probe",
+            tool_name: probe_name.as_str(),
+            verification_id,
+            occurred_at: "2026-07-23T00:00:03.500Z",
+            digest: None,
+            policy_hash: None,
+            integration_revision: None,
+        })?;
+        self.insert_tool_event(ToolEventFixture {
+            event_id: "guard_event_post",
+            phase: "post_tool",
+            turn: HOST_TURN_ID,
+            tool_use_id: "tool_use_probe",
+            tool_name: probe_name.as_str(),
+            verification_id,
+            occurred_at: "2026-07-23T00:00:04.500Z",
+            digest: None,
+            policy_hash: None,
+            integration_revision: None,
+        })
+    }
+
+    pub(super) fn complete(
+        &self,
+        verification_id: &str,
+    ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
+        self.acknowledge(verification_id, ACK_AT)?;
+        self.insert_exact_tool_events(verification_id)?;
+        Ok(refresh_guard_integration_verification_for_event(
+            self.runtime_home.path(),
+            PROJECT_ID,
+            "guard_event_post",
+        )?
+        .expect("active verification"))
+    }
+}
+
+struct EventFixture<'a> {
+    integration_revision: &'a str,
+    event_id: &'a str,
+    correlation: HostNativeCorrelation,
+    phase: &'a str,
+    occurred_at: &'a str,
+    verification_id: Option<&'a str>,
+    digest: Option<&'a str>,
+    policy_hash: &'a str,
+}
+
+fn mcp_correlation(turn: &str) -> CodexMcpCorrelation {
+    CodexMcpCorrelation {
+        session_id: HostSessionId::parse(HOST_SESSION_ID).expect("session"),
+        thread_id: HostThreadId::parse(HOST_THREAD_ID).expect("thread"),
+        turn_id: HostTurnId::parse(turn).expect("turn"),
+    }
+}
+
+fn prompt_correlation(turn: &str) -> HostNativeCorrelation {
+    HostNativeCorrelation::CodexHookPrompt(CodexHookPromptCorrelation {
+        session_id: HostSessionId::parse(HOST_SESSION_ID).expect("session"),
+        turn_id: HostTurnId::parse(turn).expect("turn"),
+    })
+}
+
+fn tool_correlation(turn: &str, tool_use: &str, tool_name: &str) -> HostNativeCorrelation {
+    HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+        session_id: HostSessionId::parse(HOST_SESSION_ID).expect("session"),
+        turn_id: HostTurnId::parse(turn).expect("turn"),
+        tool_use_id: HostToolUseId::parse(tool_use).expect("tool use"),
+        tool_name: CanonicalToolName::parse(tool_name).expect("tool name"),
+    })
+}
+
+fn observe_event_correlation(
+    runtime_home: &Path,
+    correlation: HostNativeCorrelation,
+    observed_at: &str,
+) -> StoreResult<()> {
+    observe_host_correlation(
+        runtime_home,
+        PROJECT_ID,
+        HostCorrelationObservation {
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id: Some(INSTALLATION_ID.to_owned()),
+            correlation,
+            observed_at: observed_at.to_owned(),
+        },
+    )?;
+    Ok(())
+}
+
+fn insert_test_event(runtime_home: &Path, event: EventFixture<'_>) -> StoreResult<()> {
+    insert_guard_event(
+        runtime_home,
+        PROJECT_ID,
+        GuardEventInsert {
+            guard_event_id: event.event_id.to_owned(),
+            correlation: Some(event.correlation),
+            connection_internal_id: CONNECTION_ID.to_owned(),
+            guard_installation_id: INSTALLATION_ID.to_owned(),
+            policy_hash: event.policy_hash.to_owned(),
+            integration_revision: event.integration_revision.to_owned(),
+            event_kind: event.phase.to_owned(),
+            contract_status: GuardHookContractStatus::Compatible.as_str().to_owned(),
+            decision: GuardDecision::Allow.as_str().to_owned(),
+            subject_json: serde_json::json!({
+                "raw_event": {
+                    "tool_input": event.verification_id.map(|id| serde_json::json!({
+                        "verification_id": id
+                    }))
+                }
+            })
+            .to_string(),
+            result_json: "{}".to_owned(),
+            occurred_at: event.occurred_at.to_owned(),
+            metadata_json: serde_json::json!({
+                "host_contract_digest": event
+                    .digest
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| HostContractProfileId::CodexHooksV1.contract_digest())
+            })
+            .to_string(),
+        },
+    )?;
+    Ok(())
+}

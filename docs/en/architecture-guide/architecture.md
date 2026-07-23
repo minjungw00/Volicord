@@ -192,6 +192,13 @@ consume that projection. Completed exact probe replay stays `complete`;
 failed or expired replay stays `restart_required`. Adapters and renderers do
 not derive parallel state or classify summary prose.
 
+Within Store, the integration-verification facade delegates create/resume,
+probe acknowledgement, event correlation, status projection, typed coordinate
+validation, and SQL row conversion to lifecycle-specific modules. Each
+mutating entry point owns its immediate Registry transaction; row and
+coordinate helpers do not open transactions or expose database
+representations outside Store.
+
 Host-provided disabled, policy-managed, or invocation-bypass evidence is
 accepted only through the typed host evidence boundary. In its absence,
 Volicord can establish hook effectiveness from a compatible event for the

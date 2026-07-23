@@ -60,7 +60,14 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/diagnostic_findings/row.rs` | Internal finding row encoding, decoding, and lifecycle identity validation. |
 | `crates/volicord-store/src/managed_launch_leases.rs` | Short-lived one-time managed MCP launch leases, current-Connection revalidation, deterministic cancellation/expiry cleanup, and atomic lease-consumption/runtime creation. |
 | `crates/volicord-store/src/operational_sessions.rs` | Runtime-session source decoding, protocol milestones, revision-scoped managed MCP project sessions, exact cross-database bindings, and rejection of direct `managed_host` creation outside lease consumption. |
-| `crates/volicord-store/src/integration_verification.rs` | Bounded Guard integration-verification run lifecycle, exact managed runtime/session/turn validation, probe acknowledgement, prompt/pre/post event correlation, expiry, stale-owner handling, and the single record-to-public-workflow domain projection used by begin, probe, and get. |
+| `crates/volicord-store/src/integration_verification/mod.rs` | Public Store facade, stable integration-verification inputs and records, and bounded exports for the lifecycle implementation. |
+| `crates/volicord-store/src/integration_verification/begin.rs` | Verification creation, exact-coordinate resume, active-run expiry before begin, current prompt selection, and durable ID allocation in one immediate Registry transaction. |
+| `crates/volicord-store/src/integration_verification/probe.rs` | First-write probe acknowledgement, exact active and terminal replay, and concurrent-call convergence in one immediate Registry transaction. |
+| `crates/volicord-store/src/integration_verification/correlation.rs` | Prompt/pre/post event matching, verification-ID and hook-contract matching, tool identity and tool-use correlation, timestamp ordering, and atomic completion refresh. |
+| `crates/volicord-store/src/integration_verification/status.rs` | Effective lifecycle status, latest and exact reads, public result and tagged workflow projection, and stale-owner handling. |
+| `crates/volicord-store/src/integration_verification/coordinate.rs` | Typed caller, current, and stored verification coordinates plus caller and run-owner validation. |
+| `crates/volicord-store/src/integration_verification/row.rs` | Private verification SQL, row decoding, status and timestamp parsing, database representation conversion, and focused row-decoder tests. |
+| `crates/volicord-store/src/integration_verification/tests/` | Lifecycle-owner tests for begin, probe, correlation, status, and concurrent first acknowledgement, with shared fixture construction isolated from assertions. |
 | `crates/volicord-store/src/workflow_records.rs` | Workflow record reads and writes. |
 | `crates/volicord-store/src/core_pipeline/` | Core-open, validation, replay, commit, and mutation application. |
 | `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
