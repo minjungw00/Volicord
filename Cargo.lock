@@ -883,7 +883,6 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
- "xtask",
 ]
 
 [[package]]
@@ -993,7 +992,20 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tempfile",
+ "toml",
  "volicord-store",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-release-smoke"
+version = "0.9.1"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "tempfile",
+ "volicord-mcp-protocol",
+ "volicord-test-process",
  "volicord-types",
 ]
 
@@ -1312,7 +1324,6 @@ dependencies = [
  "tempfile",
  "toml_edit",
  "volicord-mcp-protocol",
- "volicord-test-process",
 ]
 
 [[package]]

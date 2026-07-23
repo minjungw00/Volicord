@@ -1,0 +1,14 @@
+name: Volicord release smoke
+description: Exercise one already-built Volicord binary through the dedicated release-smoke package.
+
+inputs:
+  binary-path:
+    description: Path to the Volicord binary built by the current job.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Exercise built Volicord binary
+      shell: bash
+      run: cargo run --locked -p volicord-release-smoke -- --bin "${{ inputs.binary-path }}"

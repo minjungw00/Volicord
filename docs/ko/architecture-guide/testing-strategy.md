@@ -136,24 +136,29 @@ Volicord target 다섯 개, 버전 일치, 기준 텍스트 바이트, 패키지
 패키징한 binary identity, checksum 출력, 릴리스 workflow의 일반 빌드와 패키지
 구조를 검증합니다.
 
-`cargo run -p xtask -- release-binary-smoke --bin <path>`는 하나뿐인 플랫폼 공통
-실제 바이너리 스모크 하네스입니다. 폐기 가능한 Git Product Repository, Runtime
-Home, Codex home, 가짜 `codex` 실행 파일을 만들고 공개 `volicord init`을 실행한
-뒤 Serde로 JSON을 역직렬화하며, 공개
+`cargo run -p volicord-release-smoke -- --bin <path>`는 게시하지 않는 전용 플랫폼
+공통 실제 바이너리 스모크 패키지를 호출합니다. 폐기 가능한 Git Product Repository,
+Runtime Home, Codex home과 안정적인 테스트 소유 Codex fixture 실행 파일을 만들고
+공개 `volicord init`을 실행한 뒤 Serde로 JSON을 역직렬화하며, 공개
 `volicord mcp serve --connection <connection-id>`를 시작합니다. Protocol
 registry의 선호 서버 리비전을 요청하고 initialization과 `tools/list`를 완료한 뒤,
-한 곳에서 관리하는 대표 공개 도구 검증 집합을 검사합니다. 프로세스 I/O,
-종료, stderr 맥락, fixture 정리는 `volicord-test-process`를 통해 한도를 둡니다.
+정규 `AgentToolId` identity로 대표 공개 도구를 검사하고 사용자 전용 resolution
+operation이 없음을 증명합니다. Codex fixture는 스모크 실행 파일을 플랫폼별 Codex
+파일 이름으로 복사한 것입니다. `--version`만 성공하며 한도가 있는 의미 기반 fixture
+버전 `codex-fixture 0.145.0-test`를 보고합니다.
 
-스모크 하네스는 릴리스별 조율과 기록 검증을 `xtask`에 유지합니다. 생명주기와
-수집 한도는 재사용 가능한 한도 자식 실행을 담당하는 공유 테스트 프로세스 경계에
-전달합니다.
+이 패키지는 릴리스 전용 orchestration, transcript 검증, fixture 설정, 결과 보고를
+담당합니다. Lifecycle 및 수집 한도를 `volicord-test-process`에 전달하며, 이 공유
+경계는 재사용 가능한 한도 자식 실행, 프로세스 트리 정리, 직접 자식 회수를 담당합니다.
 
-일반 CI는 로컬 `volicord` 바이너리를 빌드해 이 하네스에 전달합니다. 네이티브
-릴리스 matrix의 각 항목도 이미 빌드한 정확한 Linux, macOS, Windows 릴리스
-바이너리를 같은 명령에 전달합니다. 이 프로세스는 공개 수동 전송이므로
-`manual_cli`로 남습니다. 숨은 managed-host launcher를 호출하지 않으며
-managed-host 증거를 제공하지 않습니다.
+`.github/actions/volicord-release-smoke`는 재사용 workflow 호출 경계입니다. 일반 CI는
+로컬 debug `volicord` 바이너리를 빌드한 뒤 action을 정확히 한 번 호출합니다. 네이티브
+릴리스 matrix의 각 항목도 artifact staging 전에 같은 action을 정확히 한 번 호출하여
+이미 빌드한 정확한 Linux, macOS, Windows 바이너리를 전달합니다. Release-integrity
+테스트는 완전한 shell 명령 형식 대신 YAML 의미를 기준으로 build, smoke, staging
+순서, matrix target과 binary 참조, 정확히 한 번인 호출 수를 검증합니다. 이 프로세스는
+공개 수동 전송이므로 `manual_cli`로 남습니다. 숨은 managed-host launcher를 호출하지
+않으며 managed-host 증거를 제공하지 않습니다.
 
 일반 릴리스 무결성 테스트는 Volicord 플랫폼 빌드와 패키지 artifact를 다룹니다. 운영
 Codex 상호운용성 테스트는 [Agent Connection](../reference/agent-connection.md)이 정의한

@@ -32,7 +32,6 @@ rustix = { version = "1", features = ["fs", "process", "termios"] }
 volicord-store = { path = "../volicord-store", features = ["test-support"] }
 volicord-test-support = { path = "../volicord-test-support" }
 rusqlite = { version = "0.32", features = ["bundled"] }
-xtask = { path = "../../xtask" }
 
 [[bin]]
 name = "volicord"

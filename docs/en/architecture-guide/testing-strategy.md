@@ -156,23 +156,31 @@ five published Volicord targets, version consistency, canonical text bytes,
 package and archive shape, packaged-binary identity, checksum output, and the
 ordinary build and package structure in the release workflow.
 
-`cargo run -p xtask -- release-binary-smoke --bin <path>` is the single
-cross-platform actual-binary smoke harness. It creates a disposable Git Product
-Repository, Runtime Home, Codex home, and fake `codex` executable; runs public
-`volicord init`; decodes its JSON with Serde; and starts public
+`cargo run -p volicord-release-smoke -- --bin <path>` invokes the dedicated
+publish-disabled cross-platform actual-binary smoke package. It creates a
+disposable Git Product Repository, Runtime Home, Codex home, and a stable
+test-owned Codex fixture executable; runs public `volicord init`; decodes its
+JSON with Serde; and starts public
 `volicord mcp serve --connection <connection-id>`. It requests the protocol
 registry's preferred server revision, completes initialization and
-`tools/list`, and checks one canonical representative public-tool assertion
-set. Process I/O, termination, stderr context, and fixture cleanup are bounded
-through `volicord-test-process`.
+`tools/list`, and checks representative public tools through canonical
+`AgentToolId` identities while proving that the user-only resolution operation
+is absent. The Codex fixture is a copy of the smoke executable under the
+platform Codex filename; only `--version` succeeds and reports the bounded
+semantic fixture version `codex-fixture 0.145.0-test`.
 
-The smoke harness keeps release-specific orchestration and transcript
-validation in `xtask`. It supplies its lifecycle and capture limits to the
-shared test-process boundary, which owns the reusable bounded child execution.
+The package owns release-specific orchestration, transcript validation, fixture
+setup, and result reporting. It supplies lifecycle and capture limits to
+`volicord-test-process`, which owns reusable bounded child execution, process
+tree cleanup, and direct-child reaping.
 
-Ordinary CI builds a local `volicord` binary and passes that file to this
-harness. Every native release matrix entry passes the exact Linux, macOS, or
-Windows release binary it already built to the same command. These processes
+`.github/actions/volicord-release-smoke` is the reusable workflow invocation
+boundary. Ordinary CI builds the local debug `volicord` binary and invokes the
+action exactly once. Every native release matrix entry invokes the same action
+exactly once with the exact Linux, macOS, or Windows binary it already built,
+before artifact staging. Release-integrity tests validate build, smoke, and
+staging order, matrix target and binary references, and exactly-once counts as
+YAML semantics rather than complete shell-command formatting. These processes
 are public manual transport and remain `manual_cli`; they do not call the
 hidden managed-host launcher or provide managed-host evidence.
 

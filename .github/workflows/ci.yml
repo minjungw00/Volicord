@@ -5,13 +5,19 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/release.yml"
+      - ".github/actions/volicord-release-smoke/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "Dockerfile"
       - "crates/**"
+      - "crates/volicord-cli/**"
+      - "crates/volicord-mcp-protocol/**"
+      - "crates/volicord-test-process/**"
+      - "crates/volicord-types/**"
       - "docs/**"
       - "scripts/**"
       - "tests/**"
+      - "tests/release-smoke/**"
       - "xtask/**"
   push:
     branches:
@@ -19,13 +25,19 @@ on:
     paths:
       - ".github/workflows/ci.yml"
       - ".github/workflows/release.yml"
+      - ".github/actions/volicord-release-smoke/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "Dockerfile"
       - "crates/**"
+      - "crates/volicord-cli/**"
+      - "crates/volicord-mcp-protocol/**"
+      - "crates/volicord-test-process/**"
+      - "crates/volicord-types/**"
       - "docs/**"
       - "scripts/**"
       - "tests/**"
+      - "tests/release-smoke/**"
       - "xtask/**"
   workflow_dispatch:
 
@@ -83,7 +95,9 @@ jobs:
         run: cargo build --locked -p volicord-cli --bin volicord
 
       - name: Smoke test local Volicord binary
-        run: cargo run --locked -p xtask -- release-binary-smoke --bin target/debug/volicord
+        uses: ./.github/actions/volicord-release-smoke
+        with:
+          binary-path: target/debug/volicord
 
       - name: Check release integrity
         run: cargo test --locked -p volicord-release-integrity-tests --all-targets --all-features

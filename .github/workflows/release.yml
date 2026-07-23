@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/release.yml"
+      - ".github/actions/volicord-release-smoke/**"
       - "scripts/install.sh"
       - "scripts/install.ps1"
       - "scripts/package-release-artifacts.sh"
@@ -16,7 +17,12 @@ on:
       - "Dockerfile"
       - "Dockerfile.release"
       - "crates/**"
+      - "crates/volicord-cli/**"
+      - "crates/volicord-mcp-protocol/**"
+      - "crates/volicord-test-process/**"
+      - "crates/volicord-types/**"
       - "tests/release-integrity/**"
+      - "tests/release-smoke/**"
       - "tests/**/Cargo.toml"
       - "xtask/**"
 
@@ -233,7 +239,9 @@ jobs:
           }
 
       - name: Smoke test binary
-        run: cargo run --locked -p xtask -- release-binary-smoke --bin "target/${{ matrix.target }}/release/${{ matrix.binary }}"
+        uses: ./.github/actions/volicord-release-smoke
+        with:
+          binary-path: target/${{ matrix.target }}/release/${{ matrix.binary }}
 
       - name: Stage immutable raw build artifact
         if: runner.os != 'Windows'

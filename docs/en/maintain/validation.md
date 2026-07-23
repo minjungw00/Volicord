@@ -250,19 +250,25 @@ The durable repository checks for release packaging are:
 
 ```sh
 cargo test --locked -p volicord-release-integrity-tests --all-targets --all-features
-cargo run --locked -p xtask -- release-binary-smoke --bin <path-to-built-volicord>
+cargo run --locked -p volicord-release-smoke -- --bin <path-to-built-volicord>
 ```
 
 These tests protect target coverage, version consistency, canonical text bytes,
-archive shape, packaged-binary identity, and checksum output. Runtime authority
-is evaluated through current managed sessions during each MCP call.
+archive shape, packaged-binary identity, checksum output, and workflow
+semantics. Workflow validation inspects parsed action identity, matrix inputs,
+step ordering, and invocation counts; it does not compare one complete shell
+command.
 
-The release-binary smoke command is one cross-platform harness used by ordinary
-CI and every native release packaging matrix entry. CI passes its normal local
-binary; release packaging passes the exact Linux, macOS, or Windows binary
-already built for that target. The harness uses disposable Product Repository
-and Runtime Home state and public `volicord mcp serve`, so its session remains
-`manual_cli` and is not managed-host evidence.
+The publish-disabled `tests/release-smoke` package owns the cross-platform
+actual-binary harness. It uses a disposable Product Repository, Runtime Home,
+and stable test-owned Codex fixture while delegating bounded process execution
+and cleanup to `volicord-test-process`. The local composite action
+`.github/actions/volicord-release-smoke` is the single workflow invocation
+boundary. Ordinary CI passes its built debug binary exactly once. Every native
+release packaging matrix entry passes the exact Linux, macOS, or Windows binary
+already built for that target exactly once, before artifact staging. The smoke
+uses public `volicord mcp serve`, so its session remains `manual_cli` and is not
+managed-host evidence.
 
 An optional smoke run with a real Codex installation may exercise managed
 configuration, MCP initialization, required-tool discovery, safe tool round

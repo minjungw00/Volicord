@@ -1,5 +1,4 @@
 use std::env;
-use std::path::Path;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -53,32 +52,11 @@ fn main() -> ExitCode {
         [command, option, tag] if command == "release-version-check" && option == "--tag" => {
             run_release_version_check_command(Some(tag))
         }
-        [command, option, binary] if command == "release-binary-smoke" && option == "--bin" => {
-            run_release_binary_smoke_command(Path::new(binary))
-        }
         _ => {
             eprintln!(
-                "usage: cargo run -p xtask -- <docs-check|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]|release-binary-smoke --bin PATH>"
+                "usage: cargo run -p xtask -- <docs-check|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]>"
             );
             ExitCode::from(2)
-        }
-    }
-}
-
-fn run_release_binary_smoke_command(binary: &Path) -> ExitCode {
-    match xtask::run_release_binary_smoke(binary) {
-        Ok(report) => {
-            println!(
-                "release-binary-smoke passed: {} used MCP {} and exposed {} tool(s)",
-                report.binary().display(),
-                report.protocol_revision(),
-                report.tool_count()
-            );
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("release-binary-smoke failed: {error:#}");
-            ExitCode::from(1)
         }
     }
 }

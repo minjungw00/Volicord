@@ -1,0 +1,23 @@
+[package]
+name = "volicord-release-smoke"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+tempfile = "3"
+volicord-mcp-protocol = { path = "../../crates/volicord-mcp-protocol" }
+volicord-test-process = { path = "../../crates/volicord-test-process" }
+volicord-types = { path = "../../crates/volicord-types" }
+
+[[bin]]
+name = "volicord-release-smoke"
+path = "src/main.rs"
+
+[[test]]
+name = "release_smoke_fixture"
+path = "tests/support/release_smoke_fixture.rs"
+harness = false

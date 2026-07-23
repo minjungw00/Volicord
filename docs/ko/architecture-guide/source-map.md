@@ -143,11 +143,16 @@
 | `crates/volicord-mcp/src/tests/conformance.rs` | 모듈 수준 registry 기반 protocol conformance assertion. |
 | `crates/volicord-mcp/src/tests/support.rs` | 공유 MCP 테스트 fixture와 protocol message 구성만 담당. |
 | `crates/volicord-mcp/tests/protocol_conformance.rs` | 모든 프로덕션 profile에 적용하는 하나의 registry 기반 wire 적합성 case. 고정 schema 검증, 필수 도구, 지정 왕복, profile별 projection 및 batching, lifecycle 거절, EOF를 다룹니다. |
-| `crates/volicord-cli/tests/binary_admin.rs` | 실제 바이너리 관리 CLI 계약과 `CARGO_BIN_EXE_volicord`에 대한 정규 릴리스 바이너리 스모크 하네스 호출. 스모크 protocol 및 도구 검증은 `xtask`에 남습니다. |
+| `crates/volicord-cli/tests/binary_admin.rs` | 실제 바이너리 관리 CLI parser, help, output, exit 계약. |
 | `crates/volicord-cli/tests/operational_host_e2e.rs` | 적용된 setup부터 lease-bound MCP와 정확한 Guard prompt/pre/post 검증을 거쳐 complete 읽기 전용 status에 이르는 전체 managed Codex activation journey 및 운영 실패·정리 regression. |
 | `tests/conformance/` | 교차 메서드 conformance scenario. |
 | `tests/conformance/mcp-spec/` | 오프라인 적합성 입력으로 쓰는 버전별 공식 MCP schema, release 및 handshake-family metadata, 검토된 `production_supported`와 `pre_release_only` 사실, 변경 불가능한 upstream pin, 라이선스 저작자 표시, checksum. |
-| `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, 릴리스 workflow 무결성 테스트. |
+| `tests/release-integrity/` | 일반 target 다섯 개, 버전, 기준 바이트, 패키지, checksum, CI 및 릴리스 workflow 의미 테스트. Build/smoke/staging 순서, matrix binary input, 정확히 한 번인 action 사용, 경로 filter, 의존 방향을 포함합니다. |
+| `tests/release-smoke/Cargo.toml` | 게시하지 않는 전용 스모크 패키지 경계. Protocol, 정규 tool type, 공유 한도 테스트 프로세스에는 의존하지만 CLI library, MCP 구현, Core, Store, `xtask`에는 의존하지 않습니다. |
+| `tests/release-smoke/src/lib.rs` | 전달받은 실제 바이너리 orchestration, 폐기 가능한 Git Product Repository 및 Runtime Home fixture, 선호 리비전 initialize와 `tools/list` transcript 검증, 정규 대표 도구 assertion, 릴리스 전용 프로세스 한도, 스모크 결과 보고, 집중 transcript 실패 테스트. |
+| `tests/release-smoke/src/main.rs` | 패키지 명령 진입점과 복사된 `codex` 또는 `codex.exe` identity로 선택되는 비공개 안정적 Codex fixture 동작. |
+| `tests/release-smoke/tests/` | 전달받은 바이너리의 성공 흐름, 안정적인 Codex fixture 및 미지원 호출, 누락 및 실행 불가능 바이너리, 테스트 소유 Volicord 프로세스 동작, 한도 프로세스 timeout 및 정리 coverage. |
+| `.github/actions/volicord-release-smoke/action.yml` | binary path input 하나를 받는 재사용 workflow 수준 실제 바이너리 스모크 호출. |
 | `crates/volicord-test-support/` | 재사용 fixture만 담당합니다. 일회용 Runtime Home, repository, Store 쪽 설정 및 검사, 의도적인 손상·비정상 저장소 설정, 요청 도우미를 제공합니다. 제품 동작 assertion은 owner별 test에 남고 구현 테스트 모듈은 저장소 SQL을 직접 포함하지 않습니다. |
 | `crates/volicord-test-process/tests/` | 플랫폼 공통 한도 자식 실행, stdin, 실패, 시간 초과, truncation, 동시 stream, 자손이 유지하는 pipe, 정리, 프로세스 격리, 경로, 인자, 환경 coverage. 네이티브 Unix와 Windows case는 `volicord-platform-process`가 선택한 플랫폼 격리를 실행합니다. |
 
@@ -155,8 +160,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-mcp-protocol`에서 프로덕션 profile과 선호 서버 리비전을 받고 `volicord-test-process`에서 한도 있는 자식 실행을 받으며 `volicord-mcp`, Core, Store, CLI, host integration 크레이트를 끌어오지 않습니다. |
-| `xtask/src/release_binary_smoke.rs` | 하나뿐인 플랫폼 공통 릴리스 바이너리 스모크 orchestration 담당 소스. 폐기 가능한 Git Product Repository, Runtime Home, 가짜 `codex`, 공개 `init` JSON 역직렬화, 공개 `mcp serve` JSON-RPC lifecycle, 선호 리비전 선택, 대표 도구 검증, `volicord-test-process`에 전달하는 릴리스별 프로세스 한도를 담당합니다. |
+| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받으며 `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트를 끌어오지 않습니다. |
 | `xtask/src/mcp_spec/mod.rs` | MCP 명세 유지보수 facade와 명령 진입점. |
 | `xtask/src/mcp_spec/manifest.rs` | 엄격한 고정 manifest 모델, parsing, 결정론적 rendering. |
 | `xtask/src/mcp_spec/validation.rs` | 오프라인 metadata, 변경 불가능한 pin, checksum, artifact, schema, ordering, registry 일치 검증. |

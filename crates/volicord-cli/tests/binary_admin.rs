@@ -142,12 +142,6 @@ fn binary_help_exposes_current_codex_record_workflows() -> Result<(), Box<dyn Er
 }
 
 #[test]
-fn release_binary_smoke_harness_exercises_actual_binary() -> Result<(), Box<dyn Error>> {
-    xtask::run_release_binary_smoke(Path::new(env!("CARGO_BIN_EXE_volicord")))?;
-    Ok(())
-}
-
-#[test]
 fn init_help_is_codex_record_only() -> Result<(), Box<dyn Error>> {
     let output = run(&["init", "--help"])?;
     assert!(output.status.success());

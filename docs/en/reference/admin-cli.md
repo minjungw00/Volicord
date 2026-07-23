@@ -1111,6 +1111,20 @@ Noninteractive execution never accepts project trust, resolves UserAction,
 approves a sensitive operation, or answers a host-controlled prompt. It returns
 the structured next action and leaves the decision to the user.
 
+## Actual-Binary Release Validation
+
+The publish-disabled `tests/release-smoke` package validates the exact supplied
+`volicord` executable through the administrative command surface owned here and
+the manual transport owned by [MCP Transport](mcp-transport.md). It supplies a
+stable test-owned Codex fixture and delegates bounded child execution and
+cleanup to `volicord-test-process`.
+
+`.github/actions/volicord-release-smoke` is the reusable workflow invocation
+boundary. Ordinary CI invokes it exactly once after building the debug binary;
+each native release target invokes it exactly once before artifact staging.
+Release-integrity tests validate those action, input, ordering, and count
+semantics without fixing the complete shell-command formatting.
+
 ## Related Owners
 
 - [Agent Connection](agent-connection.md)

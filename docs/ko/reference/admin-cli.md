@@ -1018,6 +1018,18 @@ Workflow metrics는 별도 report와 종료 계약을 유지합니다.
 승인하거나 호스트가 표시한 질문에 답하지 않습니다. 구조화된 다음 동작을 반환하고 판단을
 사용자에게 남깁니다.
 
+## 실제 바이너리 릴리스 검증
+
+게시하지 않는 `tests/release-smoke` 패키지는 전달받은 정확한 `volicord` 실행 파일을 이
+문서가 담당하는 관리 명령 표면과 [MCP 전송](mcp-transport.md)이 담당하는 수동 전송을
+통해 검증합니다. 안정적인 테스트 소유 Codex fixture를 제공하고 한도가 있는 자식 실행과
+정리는 `volicord-test-process`에 위임합니다.
+
+`.github/actions/volicord-release-smoke`는 재사용 workflow 호출 경계입니다. 일반 CI는
+debug 바이너리를 빌드한 뒤 정확히 한 번 호출하고, 네이티브 릴리스 target마다 artifact
+staging 전에 정확히 한 번 호출합니다. Release-integrity 테스트는 완전한 shell 명령
+형식을 고정하지 않고 action, input, 순서, 호출 수의 의미를 검증합니다.
+
 ## 관련 담당 문서
 
 - [Agent Connection](agent-connection.md)

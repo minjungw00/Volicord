@@ -224,19 +224,23 @@ Volicord 릴리스 검증은 일반적인 다섯 target 빌드, 패키지, check
 
 ```sh
 cargo test --locked -p volicord-release-integrity-tests --all-targets --all-features
-cargo run --locked -p xtask -- release-binary-smoke --bin <path-to-built-volicord>
+cargo run --locked -p volicord-release-smoke -- --bin <path-to-built-volicord>
 ```
 
 이 테스트는 target 범위, 버전 일치, 기준 텍스트 바이트, archive 형태, 패키징한
-binary identity, checksum 출력을 보호합니다. 런타임 권한은 각 MCP 호출에서 현재 관리
-session을 통해 평가합니다.
+binary identity, checksum 출력, workflow 의미를 보호합니다. Workflow 검증은 parsing한
+action identity, matrix input, step 순서, 호출 수를 검사하며 완전한 shell 명령 하나를
+비교하지 않습니다.
 
-릴리스 바이너리 스모크 명령은 일반 CI와 네이티브 릴리스 패키징 matrix의 모든
-항목이 함께 사용하는 하나의 플랫폼 공통 하네스입니다. CI는 일반 로컬 바이너리를
-전달하고, 릴리스 패키징은 해당 target용으로 이미 빌드한 정확한 Linux, macOS,
-Windows 바이너리를 전달합니다. 하네스는 폐기 가능한 Product Repository와
-Runtime Home 상태 및 공개 `volicord mcp serve`를 사용하므로 session은
-`manual_cli`로 남으며 managed-host 증거가 아닙니다.
+게시하지 않는 `tests/release-smoke` 패키지는 플랫폼 공통 실제 바이너리 하네스를
+담당합니다. 폐기 가능한 Product Repository, Runtime Home, 안정적인 테스트 소유 Codex
+fixture를 사용하며 한도가 있는 프로세스 실행과 정리는 `volicord-test-process`에
+위임합니다. 로컬 composite action `.github/actions/volicord-release-smoke`가 하나뿐인
+workflow 호출 경계입니다. 일반 CI는 빌드한 debug 바이너리를 정확히 한 번 전달합니다.
+네이티브 릴리스 패키징 matrix의 각 항목도 artifact staging 전에 해당 target용으로 이미
+빌드한 정확한 Linux, macOS, Windows 바이너리를 정확히 한 번 전달합니다. 스모크는 공개
+`volicord mcp serve`를 사용하므로 session은 `manual_cli`로 남으며 managed-host 증거가
+아닙니다.
 
 실제 Codex 설치를 사용하는 선택적 smoke 실행은 관리형 구성, MCP 초기화, 필수 도구
 검색, 안전한 도구 왕복, Guard 관찰을 확인할 수 있습니다. 결과는 해당 구성과 환경에

@@ -1,3 +1,7 @@
+//! Cross-platform smoke validation for one externally supplied Volicord binary.
+
+#![deny(unsafe_code)]
+
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 use std::{
@@ -11,6 +15,7 @@ use volicord_test_process::{
     BoundedCapture, BoundedCommand, BoundedProcessFailureKind, BoundedProcessOutput,
     ProcessDeadline,
 };
+use volicord_types::{AgentToolId, MethodName};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(90);
 const MCP_TIMEOUT: Duration = Duration::from_secs(15);
@@ -18,26 +23,28 @@ const PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const STDOUT_LIMIT_BYTES: usize = 1024 * 1024;
 const STDERR_LIMIT_BYTES: usize = 8 * 1024;
 
-const EXPECTED_PUBLIC_TOOLS: &[&str] = &[
-    "volicord.status",
-    "volicord.close_task",
-    "volicord.request_user_action",
-    "volicord.list_projects",
-    "volicord.begin_integration_verification",
-    "volicord.guard_probe",
-    "volicord.get_integration_verification",
+const EXPECTED_PUBLIC_TOOLS: [AgentToolId; 7] = [
+    AgentToolId::STATUS,
+    AgentToolId::CLOSE_TASK,
+    AgentToolId::REQUEST_USER_ACTION,
+    AgentToolId::LIST_PROJECTS,
+    AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+    AgentToolId::GUARD_PROBE,
+    AgentToolId::GET_INTEGRATION_VERIFICATION,
 ];
-const USER_ONLY_TOOL: &str = "volicord.resolve_user_action";
 
-/// Summary of one successful release-binary smoke run.
+/// Stable version reported by the test-owned Codex executable fixture.
+pub const CODEX_FIXTURE_VERSION: &str = "codex-fixture 0.145.0-test";
+
+/// Summary of one successful actual-binary smoke run.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReleaseBinarySmokeReport {
+pub struct ReleaseSmokeReport {
     binary: PathBuf,
     protocol_revision: String,
     tool_count: usize,
 }
 
-impl ReleaseBinarySmokeReport {
+impl ReleaseSmokeReport {
     /// Returns the exact executable file exercised by the harness.
     pub fn binary(&self) -> &Path {
         &self.binary
@@ -56,12 +63,13 @@ impl ReleaseBinarySmokeReport {
 
 /// Exercises one already-built `volicord` executable through its public CLI and
 /// manual stdio MCP boundary.
-pub fn run_release_binary_smoke(binary: &Path) -> Result<ReleaseBinarySmokeReport> {
+pub fn run_release_smoke(binary: &Path, fixture_executable: &Path) -> Result<ReleaseSmokeReport> {
     let binary = resolve_binary(binary)?;
+    let fixture_executable = resolve_fixture_executable(fixture_executable)?;
     let temporary = tempfile::Builder::new()
         .prefix("volicord-release-smoke-")
         .tempdir()?;
-    let result = run_in_fixture(&binary, temporary.path());
+    let result = run_in_fixture(&binary, &fixture_executable, temporary.path());
     let cleanup = temporary.close().context("remove release smoke fixture");
 
     match (result, cleanup) {
@@ -72,7 +80,26 @@ pub fn run_release_binary_smoke(binary: &Path) -> Result<ReleaseBinarySmokeRepor
     }
 }
 
-fn run_in_fixture(binary: &Path, root: &Path) -> Result<ReleaseBinarySmokeReport> {
+/// Returns whether an executable path has the private Codex fixture identity.
+pub fn is_codex_fixture_executable(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name == codex_executable_name())
+}
+
+/// Returns the platform-native filename used for the private Codex fixture.
+pub fn codex_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "codex.exe"
+    } else {
+        "codex"
+    }
+}
+
+fn run_in_fixture(
+    binary: &Path,
+    fixture_executable: &Path,
+    root: &Path,
+) -> Result<ReleaseSmokeReport> {
     let repository = root.join("product-repository");
     let runtime_home = root.join("runtime-home");
     let codex_home = root.join("codex-home");
@@ -82,7 +109,7 @@ fn run_in_fixture(binary: &Path, root: &Path) -> Result<ReleaseBinarySmokeReport
     fs::create_dir_all(&fake_bin)?;
 
     initialize_git_repository(&repository)?;
-    create_fake_codex(binary, &fake_bin)?;
+    create_fake_codex(fixture_executable, &fake_bin)?;
     let fixture_path = prepend_path(&fake_bin)?;
 
     execute_smoke_process(
@@ -125,7 +152,7 @@ fn run_in_fixture(binary: &Path, root: &Path) -> Result<ReleaseBinarySmokeReport
     let tool_count = validate_mcp_transcript(serve_output.stdout(), revision)
         .with_context(|| format!("validate MCP stdout\n{}", process_context(&serve_output)))?;
 
-    Ok(ReleaseBinarySmokeReport {
+    Ok(ReleaseSmokeReport {
         binary: binary.to_path_buf(),
         protocol_revision: revision.to_owned(),
         tool_count,
@@ -142,6 +169,27 @@ fn resolve_binary(binary: &Path) -> Result<PathBuf> {
         .with_context(|| format!("resolve release binary path: {}", binary.display()))
 }
 
+fn resolve_fixture_executable(executable: &Path) -> Result<PathBuf> {
+    let metadata = fs::metadata(executable).with_context(|| {
+        format!(
+            "release-smoke fixture executable does not exist: {}",
+            executable.display()
+        )
+    })?;
+    if !metadata.is_file() {
+        bail!(
+            "release-smoke fixture executable is not a file: {}",
+            executable.display()
+        );
+    }
+    fs::canonicalize(executable).with_context(|| {
+        format!(
+            "resolve release-smoke fixture executable path: {}",
+            executable.display()
+        )
+    })
+}
+
 fn initialize_git_repository(repository: &Path) -> Result<()> {
     execute_smoke_process(
         "git init for disposable Product Repository",
@@ -154,10 +202,9 @@ fn initialize_git_repository(repository: &Path) -> Result<()> {
     .map(|_| ())
 }
 
-fn create_fake_codex(binary: &Path, fake_bin: &Path) -> Result<()> {
-    let name = if cfg!(windows) { "codex.exe" } else { "codex" };
-    let destination = fake_bin.join(name);
-    fs::copy(binary, &destination).with_context(|| {
+fn create_fake_codex(fixture_executable: &Path, fake_bin: &Path) -> Result<()> {
+    let destination = fake_bin.join(codex_executable_name());
+    fs::copy(fixture_executable, &destination).with_context(|| {
         format!(
             "create disposable codex executable at {}",
             destination.display()
@@ -298,12 +345,16 @@ fn validate_mcp_transcript(stdout: &BoundedCapture, requested_revision: &str) ->
         .collect::<Result<BTreeSet<_>>>()?;
 
     for expected in EXPECTED_PUBLIC_TOOLS {
-        if !names.contains(expected) {
-            bail!("MCP tools/list was missing expected public tool {expected}");
+        if !names.contains(expected.wire_name()) {
+            bail!(
+                "MCP tools/list was missing expected public tool {}",
+                expected.wire_name()
+            );
         }
     }
-    if names.contains(USER_ONLY_TOOL) {
-        bail!("MCP tools/list exposed user-only tool {USER_ONLY_TOOL}");
+    let user_only_tool = MethodName::ResolveUserAction.as_str();
+    if names.contains(user_only_tool) {
+        bail!("MCP tools/list exposed user-only tool {user_only_tool}");
     }
     Ok(names.len())
 }
@@ -357,16 +408,12 @@ fn process_context(output: &BoundedProcessOutput) -> String {
 mod tests {
     use super::*;
 
-    const HANG_FIXTURE_ENV: &str = "VOLICORD_XTASK_HANG_FIXTURE";
-
-    fn transcript(revision: &str, tools: &[&str]) -> BoundedCapture {
-        let initialize = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"protocolVersion": revision}
-        });
+    fn transcript(
+        initialize: Value,
+        tools: impl IntoIterator<Item = &'static str>,
+    ) -> BoundedCapture {
         let tools = tools
-            .iter()
+            .into_iter()
             .map(|name| serde_json::json!({"name": name}))
             .collect::<Vec<_>>();
         let tools_list = serde_json::json!({
@@ -377,78 +424,35 @@ mod tests {
         BoundedCapture::from_bytes(format!("{initialize}\n{tools_list}\n"), STDOUT_LIMIT_BYTES)
     }
 
-    #[test]
-    fn missing_binary_is_rejected() {
-        let temporary = tempfile::tempdir().expect("temporary directory");
-        let error = run_release_binary_smoke(&temporary.path().join("missing-volicord"))
-            .expect_err("missing binary must fail");
-        assert!(error.to_string().contains("release binary does not exist"));
+    fn successful_initialize(revision: &str) -> Value {
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"protocolVersion": revision}
+        })
+    }
+
+    fn expected_tool_names() -> Vec<&'static str> {
+        EXPECTED_PUBLIC_TOOLS
+            .iter()
+            .map(|tool| tool.wire_name())
+            .collect()
     }
 
     #[test]
-    fn unlaunchable_binary_is_rejected() {
-        let temporary = tempfile::tempdir().expect("temporary directory");
-        let binary = temporary.path().join(if cfg!(windows) {
-            "not-volicord.exe"
-        } else {
-            "not-volicord"
-        });
-        fs::write(&binary, b"not an executable").expect("write unlaunchable fixture");
-        let error = run_release_binary_smoke(&binary).expect_err("unlaunchable binary must fail");
-        assert!(error
-            .to_string()
-            .contains("failed to launch release binary --help"));
-    }
-
-    #[test]
-    fn init_failure_is_reported_without_leaking_fixture_state() {
-        let current_test = env::current_exe().expect("current test executable");
-        let error = run_release_binary_smoke(&current_test)
-            .expect_err("the Rust test harness is not the volicord CLI");
-        assert!(error.to_string().contains("volicord init failed"));
-    }
-
-    #[test]
-    fn nonzero_serve_exit_is_reported() {
-        let current_test = env::current_exe().expect("current test executable");
-        let error = execute_smoke_process(
-            "nonzero serve fixture",
-            smoke_command(current_test, Duration::from_secs(5))
-                .arg("--unsupported-release-smoke-argument")
-                .require_success(true),
-        )
-        .expect_err("nonzero serve status must fail");
-        assert!(error.to_string().contains("nonzero serve fixture failed"));
-    }
-
-    #[test]
-    fn malformed_init_json_is_rejected() {
-        let error = parse_connection_id(&BoundedCapture::from_bytes(
-            "{not-json\n",
-            STDOUT_LIMIT_BYTES,
-        ))
-        .expect_err("malformed init JSON must fail");
-        assert!(error.to_string().contains("parse volicord init JSON"));
-    }
-
-    #[test]
-    fn malformed_initialize_response_is_rejected() {
+    fn initialize_failure_is_reported() {
         let revision = "preferred-test-revision";
-        let tools = EXPECTED_PUBLIC_TOOLS;
-        let mut transcript = transcript(revision, tools);
-        let text = String::from_utf8(transcript.into_bytes()).expect("fixture UTF-8");
-        transcript = BoundedCapture::from_bytes(
-            text.replace(
-                &format!("\"protocolVersion\":\"{revision}\""),
-                "\"protocolVersion\":17",
-            ),
-            STDOUT_LIMIT_BYTES,
-        );
-        let error = validate_mcp_transcript(&transcript, revision)
-            .expect_err("malformed initialize result must fail");
+        let initialize = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {"code": -32602, "message": "fixture initialize failure"}
+        });
+        let error =
+            validate_mcp_transcript(&transcript(initialize, expected_tool_names()), revision)
+                .expect_err("initialize failure must fail the smoke");
         assert!(error
             .to_string()
-            .contains("did not contain a string protocolVersion"));
+            .contains("MCP initialize returned an error"));
     }
 
     #[test]
@@ -457,56 +461,41 @@ mod tests {
         let tools = EXPECTED_PUBLIC_TOOLS
             .iter()
             .copied()
-            .filter(|name| *name != "volicord.guard_probe")
-            .collect::<Vec<_>>();
-        let error = validate_mcp_transcript(&transcript(revision, &tools), revision)
-            .expect_err("missing representative tool must fail");
-        assert!(error.to_string().contains("volicord.guard_probe"));
+            .filter(|tool| *tool != AgentToolId::GUARD_PROBE)
+            .map(AgentToolId::wire_name);
+        let error = validate_mcp_transcript(
+            &transcript(successful_initialize(revision), tools),
+            revision,
+        )
+        .expect_err("missing representative tool must fail");
+        assert!(error
+            .to_string()
+            .contains(AgentToolId::GUARD_PROBE.wire_name()));
     }
 
     #[test]
     fn unexpected_user_only_tool_is_rejected() {
         let revision = "preferred-test-revision";
-        let mut tools = EXPECTED_PUBLIC_TOOLS.to_vec();
-        tools.push(USER_ONLY_TOOL);
-        let error = validate_mcp_transcript(&transcript(revision, &tools), revision)
-            .expect_err("user-only resolution must not be exposed");
-        assert!(error.to_string().contains(USER_ONLY_TOOL));
+        let mut tools = expected_tool_names();
+        tools.push(MethodName::ResolveUserAction.as_str());
+        let error = validate_mcp_transcript(
+            &transcript(successful_initialize(revision), tools),
+            revision,
+        )
+        .expect_err("user-only resolution must not be exposed");
+        assert!(error
+            .to_string()
+            .contains(MethodName::ResolveUserAction.as_str()));
     }
 
     #[test]
     fn successful_transcript_reports_observed_inventory() {
         let revision = "preferred-test-revision";
-        let tool_count =
-            validate_mcp_transcript(&transcript(revision, EXPECTED_PUBLIC_TOOLS), revision)
-                .expect("representative smoke transcript");
+        let tool_count = validate_mcp_transcript(
+            &transcript(successful_initialize(revision), expected_tool_names()),
+            revision,
+        )
+        .expect("representative smoke transcript");
         assert_eq!(tool_count, EXPECTED_PUBLIC_TOOLS.len());
-    }
-
-    #[test]
-    fn mcp_process_timeout_terminates_and_reaps_the_child() {
-        let current_test = env::current_exe().expect("current test executable");
-        let failure = smoke_command(current_test, Duration::from_millis(100))
-            .args([
-                "--ignored",
-                "--exact",
-                "release_binary_smoke::tests::bounded_process_hang_fixture",
-            ])
-            .env(HANG_FIXTURE_ENV, "1")
-            .run()
-            .expect_err("hanging child must time out");
-        assert_eq!(failure.kind(), BoundedProcessFailureKind::Timeout);
-        assert!(failure.status().is_some());
-        assert!(failure.cleanup_detail().is_none());
-    }
-
-    #[test]
-    #[ignore = "child-process fixture invoked by mcp_process_timeout_terminates_and_reaps_the_child"]
-    fn bounded_process_hang_fixture() {
-        if env::var_os(HANG_FIXTURE_ENV).is_some() {
-            loop {
-                std::thread::park();
-            }
-        }
     }
 }

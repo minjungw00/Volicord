@@ -227,8 +227,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -686,8 +686,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -841,8 +841,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1324,14 +1324,14 @@ documents:
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
   summary: Concise top-level implementation architecture overview for workspace shape, dependency
-    direction, operational paths, durable boundaries, release-integrity, binary-smoke and pinned-spec
-    tooling, and detail routes.
+    direction, operational paths, durable boundaries, release integrity, dedicated binary-smoke and
+    pinned-spec tooling, and detail routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1648,8 +1648,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -3075,13 +3075,13 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, cross-platform release-binary smoke, generic release integrity, optional host smoke, Rust checks, and result reporting.
+  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated-source drift, onboarding usability, dedicated cross-platform release-binary smoke, semantic release integrity, optional host smoke, Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - doc_index_schema_v3
@@ -3098,7 +3098,7 @@ documents:
   - durable repository-test and one-time audit reporting boundaries
   - representative-user Codex onboarding usability validation
   - generic five-target, version, canonical-byte, package, checksum, and workflow integrity validation
-  - one cross-platform actual-binary smoke harness shared by ordinary CI and native release packaging
+  - one dedicated cross-platform actual-binary smoke package and reusable action shared exactly once by ordinary CI and each native release target
   - optional real-Codex smoke as an operational observation outside the ordinary release result
   - behavioral host verification through configuration, MCP initialization, required tools, safe tool round trips, Guard observations, and session/revision isolation
   - diagnostic host-version changes as a reason to renew operational observation

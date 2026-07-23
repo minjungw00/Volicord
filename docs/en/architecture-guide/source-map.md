@@ -143,11 +143,16 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/tests/conformance.rs` | Module-level registry-driven protocol conformance assertions. |
 | `crates/volicord-mcp/src/tests/support.rs` | Shared MCP test fixture and protocol-message construction only. |
 | `crates/volicord-mcp/tests/protocol_conformance.rs` | One registry-driven wire conformance case for every production profile, including pinned-schema validation, required tools, the designated round trip, profile-specific projection and batching, lifecycle rejection, and EOF. |
-| `crates/volicord-cli/tests/binary_admin.rs` | Actual-binary administrative CLI contracts and invocation of the canonical release-binary smoke harness against `CARGO_BIN_EXE_volicord`; smoke protocol and tool assertions remain in `xtask`. |
+| `crates/volicord-cli/tests/binary_admin.rs` | Actual-binary administrative CLI parser, help, output, and exit contracts. |
 | `crates/volicord-cli/tests/operational_host_e2e.rs` | Full managed Codex activation journey from applied setup through lease-bound MCP and exact Guard prompt/pre/post verification to complete read-only status, plus operational failure and cleanup regressions. |
 | `tests/conformance/` | Cross-method conformance scenarios. |
 | `tests/conformance/mcp-spec/` | Versioned official MCP schemas, release and handshake-family metadata, reviewed `production_supported` and `pre_release_only` facts, immutable upstream pins, license attribution, and checksums used as offline conformance inputs. |
-| `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and release-workflow integrity tests. |
+| `tests/release-integrity/` | Generic five-target, version, canonical-byte, package, checksum, and semantic CI/release-workflow integrity tests, including build/smoke/staging order, matrix binary inputs, exactly-once action use, path filters, and dependency direction. |
+| `tests/release-smoke/Cargo.toml` | Publish-disabled dedicated smoke package boundary with protocol, canonical tool type, and shared bounded test-process dependencies but no CLI library, MCP implementation, Core, Store, or `xtask` dependency. |
+| `tests/release-smoke/src/lib.rs` | Actual supplied-binary orchestration, disposable Git Product Repository and Runtime Home fixture, preferred-revision initialize and `tools/list` transcript validation, canonical representative tool assertions, release-specific process bounds, smoke result reporting, and focused transcript failure tests. |
+| `tests/release-smoke/src/main.rs` | Package command entry and private stable Codex fixture behavior selected by the copied `codex` or `codex.exe` identity. |
+| `tests/release-smoke/tests/` | Successful supplied-binary flow, stable and unsupported Codex fixture invocations, missing and unlaunchable binaries, test-owned Volicord process behavior, and bounded process timeout/cleanup coverage. |
+| `.github/actions/volicord-release-smoke/action.yml` | Reusable workflow-level actual-binary smoke invocation with one binary-path input. |
 | `crates/volicord-test-support/` | Reusable fixtures only: disposable Runtime Home, repository, Store-facing setup and inspection, intentional corruption/malformed-storage setup, and request helpers. Product-behavior assertions stay in owner-specific tests, and implementation-test modules do not embed storage SQL. |
 | `crates/volicord-test-process/tests/` | Cross-platform bounded child execution, stdin, failure, timeout, truncation, concurrent stream, descendant-held pipe, cleanup, process containment, path, argument, and environment coverage. Native Unix and Windows cases exercise the platform containment selected by `volicord-platform-process`. |
 
@@ -155,8 +160,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary: `volicord-mcp-protocol` supplies production profiles and the preferred server revision, and `volicord-test-process` supplies bounded child execution without pulling in `volicord-mcp`, Core, Store, CLI, or host integration crates. |
-| `xtask/src/release_binary_smoke.rs` | Single cross-platform release-binary smoke orchestration owner: disposable Git Product Repository, Runtime Home, and fake `codex`; public `init` JSON decoding; public `mcp serve` JSON-RPC lifecycle; preferred-revision selection; representative tool assertions; and release-specific process bounds supplied to `volicord-test-process`. |
+| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-mcp-protocol` supplies production profiles for pinned specification parity without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
 | `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
 | `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
 | `xtask/src/mcp_spec/validation.rs` | Offline metadata, immutable-pin, checksum, artifact, schema, ordering, and registry-parity validation. |
