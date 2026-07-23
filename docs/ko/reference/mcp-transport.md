@@ -219,17 +219,23 @@ managed-host 운영 check를 충족할 수 있습니다.
 ## 버전이 지정된 Codex Host 계약
 
 관리 Codex wire 입력은 명시적으로 선택한 host contract profile로 decode합니다.
-`codex-mcp-2025-06-18-v1`은 `tools/call` `_meta`를 소유하며 native session, thread,
-turn과 최상위 `threadId` 및 중첩
-`x-codex-turn-metadata.thread_id`의 동일성을 요구합니다. `codex-hooks-v1`은 command-hook
-envelope를 별도로 소유합니다. `UserPromptSubmit` 상관관계는 session과 turn이고,
-`PreToolUse` 및 `PostToolUse` 상관관계는 session, turn, tool-use ID, 정규 tool
-name입니다. Command-hook 상관관계에는 thread 좌표가 없습니다.
+`CodexMcpTurnMetadataV1` marker는 `codex-mcp-2025-06-18-v1`을 선택합니다. 이 profile은
+`tools/call` `_meta`를 소유하며 native session, thread, turn과 최상위 `threadId` 및 중첩
+`x-codex-turn-metadata.thread_id`의 동일성을 요구합니다. 별도
+`CodexHooksV1` marker는 `codex-hooks-v1`을 선택하며 command-hook envelope를 따로
+소유합니다. `UserPromptSubmit` 상관관계는 session과 turn이고, `PreToolUse` 및
+`PostToolUse` 상관관계는 session, turn, tool-use ID, 정규 tool name입니다.
+Command-hook 상관관계에는 thread 좌표가 없습니다.
 
 두 profile은 payload 모양에서 추론하지 않으며 typed 상관관계를 서로 바꾸어 쓸 수 없습니다.
 둘 다 알 수 없는 추가 field를 허용하지만 계약이 소유하는 presentation 값과 tool 값만 한도
 안에서 보관하고, 전체 입력을 유지하지 않는 한도 있는 typed failure를 반환합니다. 관리 MCP는
 파싱한 session과 thread가 등록된 managed runtime binding과 일치하는지도 요구합니다.
+`volicord-host-contract`가 두 marker, 결정적인 profile identity와 digest, source별
+correlation type을 담당합니다. `tests/conformance/codex-host/` 아래의 검토된 fixture와
+coverage manifest 및
+`crates/volicord-host-contract/tests/host_contracts.rs`의 parser/checksum assertion은
+고정 계약 입력이며 protocol revision이나 package version 주장이 아닙니다.
 
 ## 권위 있는 Lifecycle 기록
 
@@ -414,8 +420,23 @@ resource template, CLI preflight, connection status를 managed tool availability
 proof로 취급하지 않습니다. 이 표면은 읽기 전용 diagnostic으로 남습니다. Hook review와
 project/configuration trust는 user/host가 소유합니다.
 
-Connection-integration 도구 세 개는 MCP adapter 작업이며 Core method나 Task 작업 흐름이
-아닙니다. 정확한 현재 managed-host 좌표 안에서 멱등이고 공개 형태는 다음과 같습니다.
+이 sequence는 읽기 전용 project discovery와 세 Connection-integration 도구를
+결합합니다. 네 도구 모두 MCP adapter 작업이며 Core method나 Task 작업 흐름이 아닙니다.
+세 integration 도구는 정확한 현재 managed-host 좌표 안에서 멱등이고 공개 형태는 다음과
+같습니다.
+
+| Tool | 정규 annotation | 직접 효과 |
+|---|---|---|
+| `volicord.list_projects` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Connection project allowlist를 읽으며 쓰지 않습니다. |
+| `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 현재 좌표를 검증한 뒤 한도가 있는 Registry verification run 하나를 만들거나 재개합니다. Core, Task, Product Repository에는 효과가 없습니다. |
+| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | First-write-wins 멱등 방식으로 정확한 active run만 acknowledge합니다. Core, Task, project state, Product Repository에는 효과가 없습니다. |
+| `volicord.get_integration_verification` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 run과 상관관계가 확인된 phase 상태를 읽으며 쓰지 않습니다. |
+
+이 annotation은 도구 자체를 설명합니다. 일반 호환 Guard event 영속과 뒤따르는 Registry
+correlation refresh에는
+[저장 효과](storage-effects.md#connection-integration-verification-effects)가 정의한 별도
+효과가 그대로 적용됩니다. 네 도구 모두 Codex project trust나 hook review 상태를
+변경하지 않습니다.
 
 ```yaml
 volicord.begin_integration_verification:

@@ -246,6 +246,12 @@ capability와 Guard verification을 충족하지 않습니다.
 3. 반환된 `verification_id`를 반환된 `volicord.guard_probe` 호출에 넣습니다.
 4. 같은 ID로 `volicord.get_integration_verification`을 호출합니다.
 
+첫 호출과 마지막 호출은 읽기 전용입니다. Begin과 probe는 멱등이고 비파괴적인 integration
+record update이며 Core 또는 Task 상태, Product Repository file, project trust, hook review
+상태를 바꾸지 않습니다. 정확한 annotation과 저장 효과는
+[MCP 전송](../reference/mcp-transport.md#in-chat-integration-verification-schemas)을
+봅니다.
+
 통과 결과는 `status=passed`와 일치한 prompt, pre-tool, post-tool phase를 표시합니다.
 `active`로 남으면 5분 window가 만료되기 전에 `next_action`을 따릅니다. `failed` 또는
 `expired`이면 보고된 소유권이나 contract 문제를 고친 뒤 현재 turn에서 다시 시작합니다.

@@ -208,10 +208,18 @@ The Registry owns process lifecycle milestones, structured runtime diagnostic
 findings and cause edges, terminal-finding links, and cross-project runtime/host
 session reservations. Each project database owns normalized host sessions,
 turns, hook tool invocations, Guard observations, and MCP-only session
-anchors. The explicitly selected `codex-mcp-2025-06-18-v1` profile supplies
-session/thread/turn correlation. The separately selected `codex-hooks-v1`
-profile supplies prompt session/turn or tool session/turn/tool-use/tool-name
-correlation; command hooks have no thread coordinate.
+anchors. The explicitly selected `CodexMcpTurnMetadataV1` marker and
+`codex-mcp-2025-06-18-v1` profile supply session/thread/turn correlation. The
+separately selected `CodexHooksV1` marker and `codex-hooks-v1` profile supply
+prompt session/turn or tool session/turn/tool-use/tool-name correlation;
+command hooks have no thread coordinate.
+
+Runtime source is also explicit. `managed_host` is created only by atomic
+one-time lease consumption; `manual_cli` identifies the public stdio or
+disposable CLI-conformance path; `cli_preflight` and `integration_probe` are
+non-managed diagnostic classifications. The current public preflight remains a
+pure read and creates no runtime. None of the three non-managed sources can
+supply managed-host authorization or activation evidence.
 
 MCP retains its typed native coordinates until an actual project is selected;
 Store then derives the local project session coordinate from the Connection,

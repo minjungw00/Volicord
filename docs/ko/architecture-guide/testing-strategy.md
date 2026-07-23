@@ -77,8 +77,9 @@ registry 직접 순회가 matrix를 정합니다.
 - exact-match와 counter-offer 협상, profile별 initialize capability, batching,
   `tools/list`, `tools/call` wire projection
 - 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정하며 revision 적합성을
-  대신하지 않는 Codex host fixture, CLI conformance evidence와 실제 `managed_host`
-  관찰의 분리
+  대신하지 않는 Codex host fixture, 정확한 `CodexMcpTurnMetadataV1` 및 `CodexHooksV1`
+  profile coverage, source별 상관관계, 추가 field와 한도 check, checksum 일치, CLI
+  conformance evidence와 실제 `managed_host` 관찰의 분리
 - lifecycle별 진단 구성 및 Store API, 변경할 수 없는 occurrence 삽입, 완전한 current key
   digest와 영속 ID 검증, current snapshot identity 불변성, 해소와 재활성화,
   active/reportable filtering, 명시적 report seed와 한도가 있는 lifecycle-aware 정확한 cause
@@ -102,6 +103,9 @@ registry 직접 순회가 matrix를 정합니다.
 - 정규 요청, 네 tool sequence, unavailable 경로, raw stdio, 직접 작성한 `_meta`, resource
   discovery를 proof로 쓰지 않는다는 경계를 보존하는 생성 AGENTS, Codex rule, MCP server
   instruction
+- 적용된 setup, launch lease, managed MCP milestone, 같은 turn의 Guard prompt/pre/post
+  검증, activation complete, 읽기 전용 status까지 비관리 source로 대신하지 않고 다루는
+  `crates/volicord-cli/tests/operational_host_e2e.rs`
 - 안정적인 identity를 유지하는 반복 Guard 초기화와 관련 없는 repository content 보존
 - Guard 관찰과 미기록 변경 suppression 결과
 - Codex 구성 drift와 행동 probe 실패 보고

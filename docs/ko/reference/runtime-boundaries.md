@@ -186,10 +186,17 @@ allowlist 또는 명시적으로 선택한 구성원입니다. 임의의 파일�
 Registry는 process lifecycle milestone, 구조화된 runtime diagnostic finding과 cause edge,
 terminal-finding 연결, 프로젝트 간 runtime/host session 예약을 담당합니다. 각 프로젝트
 데이터베이스는 정규화한 host session, turn, hook tool invocation, Guard observation, MCP
-전용 session anchor를 담당합니다. 명시적으로 선택한 `codex-mcp-2025-06-18-v1` profile은
-session/thread/turn 상관관계를 제공합니다. 별도로 선택한 `codex-hooks-v1` profile은 prompt의
-session/turn 또는 tool의 session/turn/tool-use/tool-name 상관관계를 제공하며 command
-hook에는 thread 좌표가 없습니다.
+전용 session anchor를 담당합니다. 명시적으로 선택한 `CodexMcpTurnMetadataV1` marker와
+`codex-mcp-2025-06-18-v1` profile은 session/thread/turn 상관관계를 제공합니다. 별도로
+선택한 `CodexHooksV1` marker와 `codex-hooks-v1` profile은 prompt의 session/turn 또는
+tool의 session/turn/tool-use/tool-name 상관관계를 제공하며 command hook에는 thread
+좌표가 없습니다.
+
+Runtime source도 명시적입니다. `managed_host`는 one-time lease를 원자적으로 소비하는
+경우에만 만들고, `manual_cli`는 공개 stdio 또는 일회용 CLI conformance 경로를
+식별하며, `cli_preflight`와 `integration_probe`는 비관리 diagnostic 분류입니다. 현재
+공개 preflight는 순수 읽기로 남고 runtime을 만들지 않습니다. 세 비관리 source 중 어느
+것도 managed-host 권한 또는 activation evidence를 제공할 수 없습니다.
 
 MCP는 실제 프로젝트를 선택할 때까지 typed native 좌표를 유지하고, 그 뒤 Store가
 Connection, 현재 프로젝트 통합 revision, native session으로 로컬 프로젝트 session 좌표를

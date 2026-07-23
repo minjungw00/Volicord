@@ -137,6 +137,12 @@ Codex adapter만 `hookSpecificOutput`, `permissionDecision`, `additionalContext`
 exit-code projection을 담당합니다. Core-facing type과 Store record는 Codex process-exit
 동작을 encode하지 않습니다.
 
+선택한 command-hook decoder는 `CodexHooksV1` marker입니다. 이 decoder는
+session/turn의 `CodexHookPromptCorrelation` 또는 session/turn/tool-use ID/정규 tool
+name의 `CodexHookToolCorrelation`만 만듭니다. 한도가 있는 envelope 안에서 알 수 없는
+추가 field를 허용하고 hook thread 좌표를 요구하지 않으며, 별도
+`CodexMcpTurnMetadataV1` MCP 상관관계로 대신하지 않습니다.
+
 Hook occurrence와 hook activation은 별도 projection입니다.
 `hook_source_activation`은 현재 Guard Installation, policy hash, integration revision,
 현재 hook-definition 경계가 소유한 호환 event가 있을 때만

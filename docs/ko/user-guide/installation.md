@@ -278,6 +278,9 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 `/path/to/your-product-repo`는 Codex가 작업할 Product Repository의 예시 경로입니다.
 최초 릴리스는 모든 지원 플랫폼에서 `record` 프로필을 사용합니다.
 
+이 명령은 남은 host 소유 activation action을 보고하기 전에 정규 managed launcher,
+Connection, 현재 Guard 설정을 적용합니다. 적용에 성공했다는 사실만으로 다시 불러온
+managed host나 현재 hook이 실행됐음이 증명되지는 않습니다.
 
 이 공유 설정에서는 init이 선택한 것과 같은 비어 있지 않은 절대 경로
 `VOLICORD_HOME`을 호스트 시작 환경이 제공해야 합니다. 저장소에서 보이는 설정은 그

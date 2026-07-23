@@ -250,14 +250,14 @@ root finding, 사용자 지시로 의미 있는 작업을 표현하며 실행 �
 
 `HookActivationState`는 Volicord가 근거를 특정할 수 있는 상태만 보고합니다.
 
-| 상태 | 필요한 근거 |
-|---|---|
-| `unknown` | 권위 있는 host 상태도 없고 현재 hook definition에 맞는 호환 event도 없습니다. 관찰 부재는 trust 판정이 아닙니다. |
-| `review_required_by_setup` | Setup이 프로젝트 로컬 hook definition을 만들거나 바꿨습니다. 이전 definition이 실행된 적이 있어도 host review를 다시 해야 합니다. |
-| `effective_by_observation` | 현재 설치 definition, policy hash, integration revision, installation 경계에 맞는 호환 Guard event가 있습니다. |
-| `managed_by_policy` | Host가 현재 hook activation이 policy로 관리된다고 명시적으로 보고합니다. |
-| `bypassed_for_invocation` | Host가 호출 한 번에 한정된 bypass를 명시적으로 보고합니다. 지속적인 activation이 아닙니다. |
-| `disabled` | Host가 hook source가 disabled라고 명시적으로 보고합니다. |
+| Variant | Wire 값 | 필요한 근거 |
+|---|---|---|
+| `Unknown` | `unknown` | 권위 있는 host 상태도 없고 현재 hook definition에 맞는 호환 event도 없습니다. 관찰 부재는 trust 판정이 아닙니다. |
+| `ReviewRequiredBySetup` | `review_required_by_setup` | Setup이 프로젝트 로컬 hook definition을 만들거나 바꿨습니다. 이전 definition이 실행된 적이 있어도 host review를 다시 해야 합니다. |
+| `EffectiveByObservation` | `effective_by_observation` | 현재 설치 definition, policy hash, integration revision, installation 경계에 맞는 호환 Guard event가 있습니다. |
+| `ManagedByPolicy` | `managed_by_policy` | Host가 현재 hook activation이 policy로 관리된다고 명시적으로 보고합니다. |
+| `BypassedForInvocation` | `bypassed_for_invocation` | Host가 호출 한 번에 한정된 bypass를 명시적으로 보고합니다. 지속적인 activation이 아닙니다. |
+| `Disabled` | `disabled` | Host가 hook source가 disabled라고 명시적으로 보고합니다. |
 
 우선순위는 명시적인 disabled 근거, setup definition 변경, policy 관리, 호출별 bypass,
 현재 definition 관찰, `unknown` 순입니다. 의도적으로 `trusted` hook 상태는 두지 않습니다.
@@ -273,7 +273,19 @@ definition content hash와 주변 prompt/pre/post phase detail을 분리해 보�
 
 ### Connection activation 진행 상태
 
-`ConnectionActivationState`는 다음 순서로 파생합니다.
+`ConnectionActivationState`의 정확한 variant와 안정적인 wire 값은 다음과 같습니다.
+
+| Variant | Wire 값 | 의미 |
+|---|---|---|
+| `Configured` | `configured` | Managed configuration은 있지만 아직 이후 activation 단계가 확정되지 않았습니다. |
+| `HostReloadRequired` | `host_reload_required` | Managed host가 현재 configuration을 다시 불러와야 합니다. |
+| `HookReviewRequiredOrUnknown` | `hook_review_required_or_unknown` | 현재 hook review가 필요하거나 hook-source activation이 unknown으로 남아 있습니다. |
+| `McpObservationRequired` | `mcp_observation_required` | 현재 managed-host session 및 capability 근거가 불완전합니다. |
+| `GuardVerificationRequired` | `guard_verification_required` | 상관관계가 확인된 first-party Guard verification이 불완전합니다. |
+| `Complete` | `complete` | 현재 activation check가 모두 완료됐습니다. |
+| `Failed` | `failed` | 필수 activation 또는 diagnostic check가 실패했습니다. |
+
+상태는 다음 순서로 파생합니다.
 
 1. 필수 check가 failed 또는 blocked이면 `failed`
 2. `managed_config`가 미완료이면 `configured`
@@ -532,12 +544,15 @@ native session, 관찰 시각을 보관합니다. `host_turns`는 두 계약 sou
 session ID를 도출합니다. 호출자는 완성된 로컬 ID를 제공할 수 없고 저장된 프로젝트
 revision은 변경할 수 없습니다.
 
-`codex-hooks-v1` parser는 `UserPromptSubmit`에 `CodexHookPromptCorrelation`을,
-`PreToolUse`와 `PostToolUse`에 `CodexHookToolCorrelation`을 만듭니다. Prompt 상관관계에는
-session과 turn만 필요합니다. Tool 상관관계에는 tool-use ID와 정규 tool name도 필요합니다.
-어떤 hook phase에도 thread 좌표가 없습니다. 반면 `codex-mcp-2025-06-18-v1` parser는
-session, thread, turn이 모두 필요한 `CodexMcpCorrelation`을 만듭니다. Store phase check와
-SQL discriminator는 source가 교차되거나 불완전한 조합을 거부합니다.
+`CodexHooksV1` marker가 `codex-hooks-v1` parser를 선택합니다. 이 parser는
+`UserPromptSubmit`에 `CodexHookPromptCorrelation`을, `PreToolUse`와 `PostToolUse`에
+`CodexHookToolCorrelation`을 만듭니다. Prompt 상관관계에는 session과 turn만 필요합니다.
+Tool 상관관계에는 tool-use ID와 정규 tool name도 필요합니다. 어떤 hook phase에도 thread
+좌표가 없습니다. 별도 `CodexMcpTurnMetadataV1` marker는
+`codex-mcp-2025-06-18-v1` parser를 선택하며, 이 parser는 session, thread, turn이 모두
+필요한 `CodexMcpCorrelation`을 만듭니다. `HostNativeCorrelation`은 범용으로 교환 가능한
+좌표를 제공하지 않고 이 source variant를 보존합니다. Store phase check와 SQL
+discriminator는 source가 교차되거나 불완전한 조합을 거부합니다.
 
 Guard 상관관계와 Guard policy는 별도 단계입니다. 호환되는 hook 상관관계는 policy에 도달해
 `Continue`, `ContinueWithContext`, `ContinueWithWarning`, `Deny` 중 하나를 낼 수 있습니다.

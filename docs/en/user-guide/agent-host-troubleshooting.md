@@ -272,6 +272,12 @@ Stay in the same current managed Codex chat and native turn:
    `volicord.guard_probe` call.
 4. Call `volicord.get_integration_verification` with that same ID.
 
+The first and last calls are read-only. Begin and probe are idempotent,
+non-destructive integration-record updates; they do not change Core or Task
+state, Product Repository files, project trust, or hook-review state. The
+exact annotations and storage effects are in
+[MCP Transport](../reference/mcp-transport.md#in-chat-integration-verification-schemas).
+
 A passing result shows `status=passed` and matched prompt, pre-tool, and
 post-tool phases. If it remains `active`, follow `next_action` before the
 five-minute window expires. If it is `failed` or `expired`, begin again in the

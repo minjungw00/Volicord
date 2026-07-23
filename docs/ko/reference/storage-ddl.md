@@ -97,6 +97,11 @@ manifest와 같아야 합니다. 정수를 파싱하거나, 버전을 비교하�
 제약과 phase discriminator가 있는 Guard column은 두 현재 schema digest 모두에 포함됩니다.
 엄격한 open은 완전한 현재 manifest identity만 허용합니다.
 
+Application은 저장 전에 서로 다른 `CodexMcpTurnMetadataV1`과 `CodexHooksV1` marker를
+선택하며 host-contract 담당자가 이 marker를 검토된 profile ID에 연결합니다. DDL은 그
+결과인 한도가 있고 source로 구분된 좌표와 소유 profile/digest field만 저장합니다. Raw host
+envelope를 저장하거나 column 존재 여부에서 decoder를 추론하지 않습니다.
+
 ## 기준 SQL 원본
 
 실행 가능한 DDL 원본은 고정된 순서의

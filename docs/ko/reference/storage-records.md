@@ -136,9 +136,12 @@ lease를 취소하고, 한도가 있는 cleanup은 오래된 terminal row를 만
 `mcp_runtime_sessions`는 Agent Connection 소유 application state입니다. Volicord는 host
 thread metadata가 생기기 전 MCP process 시작 시점에 opaque `runtime_session_id`를
 만듭니다. `session_source`는 정확히 `managed_host`, `manual_cli`, `cli_preflight`,
-`integration_probe` 중 하나입니다. 원자적인 launch-lease 소비에 성공한 경우에만
-`managed_host`를 만들 수 있으며, 나머지 source는 검사할 수 있지만 managed-host 운영
-evidence 조회를 충족하거나 managed call을 승인할 수 없습니다.
+`integration_probe` 중 하나입니다. `managed_host`는 lease에 결속된 managed launcher
+source이고, `manual_cli`는 공개 stdio 또는 일회용 CLI conformance source이며,
+`cli_preflight`와 `integration_probe`는 비관리 diagnostic 분류입니다. 현재 공개
+preflight는 읽기 전용이며 runtime row를 만들지 않습니다. 원자적인 launch-lease 소비에
+성공한 경우에만 `managed_host`를 만들 수 있으며, 나머지 source는 검사할 수 있지만
+managed-host 운영 evidence 조회를 충족하거나 managed call을 승인할 수 없습니다.
 
 각 물리 `agent_connections` 행에는 Store가 그 행을 삽입할 때 생성한 고유하고 변경
 불가능한 opaque 통합 instance ID가 하나 있습니다. Store는 호환 등록 replay, enabled 상태와
@@ -197,12 +200,17 @@ managed row를 `latest_attempt`, 가장 최신 complete row를 `latest_complete_
 사용하지 않습니다. 영속 Connection report는 선택된 모든 session ID와 role을 보존하며 한
 ID가 두 role을 가지면 중복을 제거합니다.
 
-프로젝트 host 상관관계는 source에 따라 정규화합니다. `host_sessions`는 Connection, 정확한
-native host session, 변경할 수 없는 프로젝트 integration revision, 최초/마지막 관찰 시각을
-저장합니다. Store는 Connection internal ID, 정확한 revision, native session으로 revision
-범위 로컬 session ID를 도출합니다. `host_turns`는 그 로컬 session의 정확한 turn을
-기록합니다. `host_tool_invocations`는 정확한 session 및 turn 아래 hook tool-use ID와 정규
-tool name을 기록합니다. 같은 tool-use ID를 다른 turn이나 tool name에 다시 쓰면 거부합니다.
+프로젝트 host 상관관계는 source에 따라 정규화합니다.
+`CodexMcpTurnMetadataV1` decoder는 MCP session/thread/turn 상관관계를 제공하고, 별도
+`CodexHooksV1` decoder는 prompt session/turn 또는 tool
+session/turn/tool-use/tool-name 상관관계를 제공합니다. Host-contract 담당자가 두 marker를
+검토된 profile ID에 연결합니다. `host_sessions`는 Connection, 정확한 native host session,
+변경할 수 없는 프로젝트 integration revision, 최초/마지막 관찰 시각을 저장합니다. Store는
+Connection internal ID, 정확한 revision, native session으로 revision 범위 로컬 session ID를
+도출합니다.
+`host_turns`는 그 로컬 session의 정확한 turn을 기록합니다. `host_tool_invocations`는 정확한
+session 및 turn 아래 hook tool-use ID와 정규 tool name을 기록합니다. 같은 tool-use ID를
+다른 turn이나 tool name에 다시 쓰면 거부합니다.
 
 호환 event의 `guard_events.correlation_kind`는 `codex_hook_prompt` 또는
 `codex_hook_tool`입니다. `prompt_capture`는 session과 turn을 요구하고 tool-use field를

@@ -106,6 +106,12 @@ The current project schema normalizes source-aware host correlation into
 Guard columns are part of both current schema digests. Strict open accepts only
 the complete current manifest identity.
 
+The application selects the distinct `CodexMcpTurnMetadataV1` and
+`CodexHooksV1` markers before storage; the host-contract owner maps them to the
+reviewed profile IDs. DDL stores only the resulting bounded,
+source-discriminated coordinates plus the owned profile/digest fields; it does
+not store raw host envelopes or infer a decoder from column presence.
+
 ## Canonical SQL Sources
 
 The only executable DDL sources are

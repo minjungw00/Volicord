@@ -85,8 +85,10 @@ Durable tests should cover, as applicable:
   capabilities, batching, `tools/list`, and `tools/call` wire projection;
 - independently pinned Codex host fixtures that are not derived from the
   production protocol registry and do not substitute for revision conformance,
-  with CLI conformance evidence kept separate from actual `managed_host`
-  observations;
+  with exact `CodexMcpTurnMetadataV1` and `CodexHooksV1` profile coverage,
+  source-specific correlation, additive-field and bound checks, checksum
+  parity, and CLI conformance evidence kept separate from actual
+  `managed_host` observations;
 - lifecycle-specific diagnostic construction and Store APIs, immutable
   occurrence insertion, complete-current-key digest and persisted-ID
   validation, current snapshot identity immutability, resolution and
@@ -114,6 +116,10 @@ Durable tests should cover, as applicable:
 - generated AGENTS, Codex rule, and MCP server instructions preserving the
   canonical request, four-tool sequence, unavailable path, and prohibition on
   raw stdio, hand-authored `_meta`, and resource discovery as proof;
+- `crates/volicord-cli/tests/operational_host_e2e.rs` covering the complete
+  applied-setup, launch-lease, managed MCP milestone, same-turn Guard
+  prompt/pre/post verification, activation-complete, and read-only-status
+  journey without non-managed source substitution;
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;
 - Guard observation and unrecorded-change suppression outcomes; and

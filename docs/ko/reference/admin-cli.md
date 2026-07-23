@@ -831,6 +831,12 @@ terminal finding을 만들 수 있습니다. 정확한 framing, lifecycle, 도�
 projection은 [MCP 전송](mcp-transport.md)이 담당합니다. 생성 Codex entry는 유일한 관리
 시작 표면인 숨겨진 `_host-launch` 경로를 사용합니다.
 
+폐쇄 runtime-source 집합에서 `managed_host`에는 one-time launch lease 소비가 필요하고,
+`manual_cli`는 공개 stdio 또는 일회용 CLI conformance를 식별하며, `cli_preflight`와
+`integration_probe`는 비관리 diagnostic 분류로 남습니다. 현재 `mcp preflight` 명령은
+runtime row를 만들지 않습니다. 뒤의 세 값은 argument, environment marker, 통과한
+probe로 managed evidence로 승격할 수 없습니다.
+
 `connection verify`의 human 및 JSON 출력은 활성 작업, 증거 class
 `active_verification`, 가능한 효과를 명시합니다. 가능한 효과는 rollback 전용 Store
 쓰기 가능성 probe, 일회용 protocol 및 host 호환성 conformance session, diagnostic

@@ -278,14 +278,14 @@ persisted report.
 
 `HookActivationState` reports only evidence Volicord can name:
 
-| State | Required evidence |
-|---|---|
-| `unknown` | No authoritative host state and no compatible event for the current hook definition. Absence is not a trust judgment. |
-| `review_required_by_setup` | Setup created or changed the project-local hook definition. Host review must happen again even if an older definition ran. |
-| `effective_by_observation` | A compatible Guard event exists for the current installed definition, policy hash, integration revision, and installation boundary. |
-| `managed_by_policy` | The host explicitly reports that current hook activation is policy-managed. |
-| `bypassed_for_invocation` | The host explicitly reports a one-invocation bypass. This is not durable activation. |
-| `disabled` | The host explicitly reports the hook source disabled. |
+| Variant | Wire value | Required evidence |
+|---|---|---|
+| `Unknown` | `unknown` | No authoritative host state and no compatible event for the current hook definition. Absence is not a trust judgment. |
+| `ReviewRequiredBySetup` | `review_required_by_setup` | Setup created or changed the project-local hook definition. Host review must happen again even if an older definition ran. |
+| `EffectiveByObservation` | `effective_by_observation` | A compatible Guard event exists for the current installed definition, policy hash, integration revision, and installation boundary. |
+| `ManagedByPolicy` | `managed_by_policy` | The host explicitly reports that current hook activation is policy-managed. |
+| `BypassedForInvocation` | `bypassed_for_invocation` | The host explicitly reports a one-invocation bypass. This is not durable activation. |
+| `Disabled` | `disabled` | The host explicitly reports the hook source disabled. |
 
 The precedence is explicit disabled evidence, a setup definition change,
 policy management, invocation bypass, current-definition observation, then
@@ -304,7 +304,19 @@ prompt/pre/post phase details.
 
 ### Connection activation progression
 
-`ConnectionActivationState` is derived in this order:
+`ConnectionActivationState` has these exact variants and stable wire values:
+
+| Variant | Wire value | Meaning |
+|---|---|---|
+| `Configured` | `configured` | Managed configuration exists, but no later activation stage is decisive yet. |
+| `HostReloadRequired` | `host_reload_required` | The managed host must reload the current configuration. |
+| `HookReviewRequiredOrUnknown` | `hook_review_required_or_unknown` | Current hook review is required or hook-source activation remains unknown. |
+| `McpObservationRequired` | `mcp_observation_required` | Current managed-host session and capability evidence is incomplete. |
+| `GuardVerificationRequired` | `guard_verification_required` | The correlated first-party Guard verification is incomplete. |
+| `Complete` | `complete` | Every current activation check is complete. |
+| `Failed` | `failed` | A required activation or diagnostic check failed. |
+
+The state is derived in this order:
 
 1. any failed or blocked required check produces `failed`;
 2. incomplete `managed_config` produces `configured`;
@@ -601,12 +613,15 @@ native session only after resolving the project and validating current Guard
 ownership. Callers cannot supply the complete local ID, and the stored project
 revision is immutable.
 
-The `codex-hooks-v1` parser yields `CodexHookPromptCorrelation` for
-`UserPromptSubmit` and `CodexHookToolCorrelation` for `PreToolUse` and
-`PostToolUse`. Prompt correlation requires only session and turn. Tool
-correlation additionally requires tool-use ID and canonical tool name. No hook
-phase has a thread coordinate. The `codex-mcp-2025-06-18-v1` parser instead
-yields `CodexMcpCorrelation`, for which session, thread, and turn are required.
+The `CodexHooksV1` marker selects the `codex-hooks-v1` parser, which yields
+`CodexHookPromptCorrelation` for `UserPromptSubmit` and
+`CodexHookToolCorrelation` for `PreToolUse` and `PostToolUse`. Prompt
+correlation requires only session and turn. Tool correlation additionally
+requires tool-use ID and canonical tool name. No hook phase has a thread
+coordinate. The distinct `CodexMcpTurnMetadataV1` marker selects the
+`codex-mcp-2025-06-18-v1` parser, which yields `CodexMcpCorrelation` with
+required session, thread, and turn. `HostNativeCorrelation` preserves these
+source variants instead of providing a generic interchangeable coordinate.
 Store phase checks and SQL discriminators reject cross-source or incomplete
 combinations.
 

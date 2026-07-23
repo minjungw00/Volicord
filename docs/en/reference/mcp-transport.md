@@ -251,20 +251,27 @@ runtime created by successful launch-lease consumption with source
 ## Versioned Codex Host Contracts
 
 Managed Codex wire input is decoded through an explicitly selected host
-contract profile. `codex-mcp-2025-06-18-v1` owns `tools/call` `_meta` and
-requires the native session, thread, and turn plus equality between the
-top-level `threadId` and nested `x-codex-turn-metadata.thread_id`.
-`codex-hooks-v1` separately owns command-hook envelopes. Its
-`UserPromptSubmit` correlation is session plus turn, while `PreToolUse` and
-`PostToolUse` correlation is session, turn, tool-use ID, and canonical tool
-name. Command-hook correlation has no thread coordinate.
+contract profile. The `CodexMcpTurnMetadataV1` marker selects
+`codex-mcp-2025-06-18-v1`, which owns `tools/call` `_meta` and requires the
+native session, thread, and turn plus equality between the top-level
+`threadId` and nested `x-codex-turn-metadata.thread_id`. The distinct
+`CodexHooksV1` marker selects `codex-hooks-v1`, which separately owns
+command-hook envelopes. Its `UserPromptSubmit` correlation is session plus
+turn, while `PreToolUse` and `PostToolUse` correlation is session, turn,
+tool-use ID, and canonical tool name. Command-hook correlation has no thread
+coordinate.
 
 The two profiles are not inferred from payload shape and their typed
 correlations are not interchangeable. Both accept unknown additive fields,
 retain only bounded contract-owned presentation and tool values, and return
 bounded typed failures without retaining the complete input. Managed MCP also
 requires the parsed session and thread to match the registered managed runtime
-binding.
+binding. `volicord-host-contract` owns both markers, their deterministic
+profile identities and digests, and the source-specific correlation types.
+The reviewed fixtures and coverage manifest under
+`tests/conformance/codex-host/`, with parser and checksum assertions in
+`crates/volicord-host-contract/tests/host_contracts.rs`, are pinned contract
+inputs rather than protocol-revision or package-version claims.
 
 ## Authoritative Lifecycle Recording
 
@@ -475,9 +482,23 @@ proof of managed tool availability. Those surfaces remain read-only
 diagnostics. Hook review and project/configuration trust remain user/host
 owned.
 
-The three Connection-integration tools are MCP adapter operations, not Core
-methods or Task workflows. They are idempotent within their exact current
-managed-host coordinate and have these public shapes:
+The sequence combines read-only project discovery with three
+Connection-integration tools. All four are MCP adapter operations, not Core
+methods or Task workflows. The three integration tools are idempotent within
+their exact current managed-host coordinate and have these public shapes:
+
+| Tool | Canonical annotations | Direct effect |
+|---|---|---|
+| `volicord.list_projects` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Reads the Connection project allowlist; no write. |
+| `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Creates or resumes one bounded Registry verification run after current-coordinate validation; no Core, Task, or Product Repository effect. |
+| `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Acknowledges only the exact active run with first-write-wins idempotence; no Core, Task, project-state, or Product Repository effect. |
+| `volicord.get_integration_verification` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Reads the exact run and correlated phase status; no write. |
+
+These annotations describe the tools themselves. Ordinary compatible Guard
+event persistence and its subsequent Registry correlation refresh retain the
+separate effects defined by
+[Storage Effects](storage-effects.md#connection-integration-verification-effects).
+None of the four tools modifies Codex project trust or hook-review state.
 
 ```yaml
 volicord.begin_integration_verification:

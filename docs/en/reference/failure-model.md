@@ -58,11 +58,13 @@ boundary input that has not become persisted owner state is `Rejected`, not
 ### Versioned host-contract rejection
 
 Codex wire input is decoded only by the explicitly selected profile.
-`codex-mcp-2025-06-18-v1` and `codex-hooks-v1` are separate contracts; a
-failure under one is not retried, reinterpreted, or completed with fields from
-the other. Missing or invalid required fields, an unexpected event value,
-inconsistent MCP thread coordinates, and an input exceeding the contract's
-size or depth bounds are `Rejected` before Store or policy evaluation.
+`CodexMcpTurnMetadataV1` selects `codex-mcp-2025-06-18-v1`, while the distinct
+`CodexHooksV1` selects `codex-hooks-v1`. A failure under one is not retried,
+reinterpreted, or completed with fields from the other. Unknown additive
+fields are accepted, but missing or invalid required fields, an unexpected
+event value, inconsistent MCP thread coordinates, and an input exceeding the
+contract's size or depth bounds are `Rejected` before Store or policy
+evaluation.
 
 The typed host-contract error retains only a closed error code and the static
 field label. It does not retain or project the complete hook payload, MCP

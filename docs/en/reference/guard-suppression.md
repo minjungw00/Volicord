@@ -149,6 +149,12 @@ The Codex adapter exclusively owns `hookSpecificOutput`,
 `permissionDecision`, `additionalContext`, stderr, and exit-code projection.
 Core-facing types and Store records do not encode Codex process-exit behavior.
 
+The selected command-hook decoder is the `CodexHooksV1` marker. It produces
+only `CodexHookPromptCorrelation` (session/turn) or `CodexHookToolCorrelation`
+(session/turn/tool-use ID/canonical tool name). It accepts unknown additive
+fields within the bounded envelope, never requires a hook thread coordinate,
+and never substitutes the separate `CodexMcpTurnMetadataV1` MCP correlation.
+
 Hook occurrence and hook activation are separate projections.
 `hook_source_activation` may become `effective_by_observation` only from a
 compatible event owned by the current Guard Installation, policy hash,

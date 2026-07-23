@@ -289,6 +289,10 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 you want Codex to work. The first release uses the `record` profile on every
 supported platform.
 
+This command applies the canonical managed launcher, Connection, and current
+Guard setup before it reports the remaining host-owned activation actions. A
+successful apply does not by itself prove that a reloaded managed host or the
+current hooks have run.
 
 This shared setup requires the host launch environment to provide the same
 nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible

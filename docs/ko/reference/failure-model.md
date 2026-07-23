@@ -54,10 +54,12 @@ diagnostic입니다.
 ### 버전이 지정된 host contract 거부
 
 Codex wire 입력은 명시적으로 선택한 profile로만 decode합니다.
-`codex-mcp-2025-06-18-v1`과 `codex-hooks-v1`은 별도 계약이며, 한 계약의 실패를 다른
-계약으로 다시 시도하거나 재해석하거나 다른 계약의 field로 보완하지 않습니다. 필수 field가
-없거나 유효하지 않은 경우, 예상하지 않은 event 값, 일관되지 않은 MCP thread 좌표, 계약의
-크기 또는 depth 한도를 넘은 입력은 Store 또는 policy 평가 전에 `Rejected`입니다.
+`CodexMcpTurnMetadataV1`은 `codex-mcp-2025-06-18-v1`을 선택하고 별도
+`CodexHooksV1`은 `codex-hooks-v1`을 선택합니다. 한 계약의 실패를 다른 계약으로 다시
+시도하거나 재해석하거나 다른 계약의 field로 보완하지 않습니다. 알 수 없는 추가 field는
+허용하지만, 필수 field가 없거나 유효하지 않은 경우, 예상하지 않은 event 값, 일관되지 않은
+MCP thread 좌표, 계약의 크기 또는 depth 한도를 넘은 입력은 Store 또는 policy 평가 전에
+`Rejected`입니다.
 
 Typed host-contract error는 닫힌 error code와 정적인 field label만 보관합니다. 전체 hook
 payload, MCP metadata, tool input, tool response를 보관하거나 투영하지 않습니다. Hook

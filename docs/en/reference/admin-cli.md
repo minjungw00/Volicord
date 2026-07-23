@@ -904,6 +904,13 @@ framing, lifecycle, tool lists, and response projection belong to
 [MCP Transport](mcp-transport.md). The generated Codex entry uses the hidden
 `_host-launch` path as the only managed-launch surface.
 
+Across the closed runtime-source set, `managed_host` requires one-time
+launch-lease consumption, `manual_cli` identifies public stdio or disposable
+CLI conformance, and `cli_preflight` plus `integration_probe` remain
+non-managed diagnostic classifications. The current `mcp preflight` command
+creates no runtime row. None of the latter three values can be promoted to
+managed evidence by an argument, environment marker, or passing probe.
+
 Human and JSON output for `connection verify` declare the active operation,
 evidence class `active_verification`, and its possible effects: rollback-only
 Store writeability probes, disposable protocol and host-compatibility
