@@ -540,7 +540,15 @@ CREATE TABLE mcp_runtime_sessions (
   initialize_completed_at TEXT,
   initialized_notification_at TEXT,
   tools_list_observed_at TEXT,
+  returned_tool_identities_json TEXT CHECK (
+    returned_tool_identities_json IS NULL
+    OR (
+      json_valid(returned_tool_identities_json)
+      AND json_type(returned_tool_identities_json) = 'array'
+    )
+  ),
   required_tools_present INTEGER CHECK (required_tools_present IN (0, 1)),
+  required_tools_validated_at TEXT,
   verification_tool_name TEXT CHECK (
     verification_tool_name IS NULL
     OR (
@@ -575,8 +583,24 @@ CREATE TABLE mcp_runtime_sessions (
     OR (initialized_notification_at IS NOT NULL AND negotiated_protocol_version IS NOT NULL)
   ),
   CHECK (
-    (tools_list_observed_at IS NULL AND required_tools_present IS NULL)
-    OR (tools_list_observed_at IS NOT NULL AND required_tools_present IS NOT NULL)
+    (
+      tools_list_observed_at IS NULL
+      AND returned_tool_identities_json IS NULL
+      AND required_tools_present IS NULL
+      AND required_tools_validated_at IS NULL
+    )
+    OR (
+      tools_list_observed_at IS NOT NULL
+      AND returned_tool_identities_json IS NOT NULL
+      AND required_tools_present = 0
+      AND required_tools_validated_at IS NULL
+    )
+    OR (
+      tools_list_observed_at IS NOT NULL
+      AND returned_tool_identities_json IS NOT NULL
+      AND required_tools_present = 1
+      AND required_tools_validated_at IS NOT NULL
+    )
   ),
   CHECK (
     (verification_tool_name IS NULL AND verification_tool_observed_at IS NULL)
@@ -584,13 +608,16 @@ CREATE TABLE mcp_runtime_sessions (
   ),
   CHECK (initialized_notification_at IS NULL OR initialize_completed_at IS NOT NULL),
   CHECK (negotiated_protocol_version IS NULL OR negotiated_protocol_version = selected_protocol_version),
-  CHECK (verification_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
+  CHECK (tools_list_observed_at IS NULL OR initialize_completed_at IS NOT NULL),
+  CHECK (required_tools_validated_at IS NULL OR required_tools_validated_at >= tools_list_observed_at),
+  CHECK (verification_tool_observed_at IS NULL OR required_tools_validated_at IS NOT NULL),
   CHECK (terminal_finding_id IS NULL OR graceful_close_at IS NULL),
   CHECK (last_observed_at >= process_started_at),
   CHECK (initialize_completed_at IS NULL OR initialize_completed_at >= process_started_at),
   CHECK (initialized_notification_at IS NULL OR initialized_notification_at >= initialize_completed_at),
   CHECK (tools_list_observed_at IS NULL OR tools_list_observed_at >= initialize_completed_at),
   CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= initialized_notification_at),
+  CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= required_tools_validated_at),
   CHECK (terminal_finding_id IS NULL OR last_observed_at >= process_started_at),
   CHECK (graceful_close_at IS NULL OR graceful_close_at >= process_started_at)
 );
@@ -610,7 +637,7 @@ CREATE INDEX idx_mcp_runtime_sessions_successful_managed
   )
   WHERE session_source = 'managed_host'
     AND initialized_notification_at IS NOT NULL
-    AND required_tools_present = 1
+    AND required_tools_validated_at IS NOT NULL
     AND verification_tool_name IS NOT NULL
     AND verification_tool_observed_at IS NOT NULL;
 
@@ -688,7 +715,7 @@ CREATE UNIQUE INDEX idx_guard_installations_scope_project
 - `managed_mcp_launch_leases`는 수명이 짧고 한 번만 쓰는 숨겨진 launcher 권한을 저장합니다. 예상 Connection, `codex` host kind, integration revision, managed launch fingerprint는 Store가 `issued`를 `consumed`로 바꾸고 `managed_host` runtime을 삽입하는 원자적 transaction 시점에도 현재 상태여야 합니다. Replay, 만료, 불일치, 취소는 runtime을 만들 수 없습니다. 한도가 있는 cleanup은 오래된 row를 만료 처리하거나 제거합니다. Lease는 evidence-integrity 좌표이지 OS actor credential이 아닙니다.
 - `diagnostic_findings.lifecycle`은 정확히 `occurrence` 또는 `current_state`입니다. Occurrence row에는 current identity 및 status field가 없고 변경할 수 없습니다. Current row에는 64자 소문자 전체 identity digest, 검증된 `sha256:<64 lowercase hex>` `current_subject_identity`, scope kind와 완전한 scope identity, active/resolved status가 필요하고 runtime-session 좌표가 없어야 하며, ID는 정확히 `finding.current.sha256:`와 해당 digest를 이어 붙인 값이어야 합니다. Active row에는 `resolved_at`이 없고 resolved row에는 반드시 있어야 합니다. Unique digest index, active-scope index, lifecycle check, identity update trigger가 이 물리적 구분을 강제합니다. Trigger는 subject identity를 변경할 수 없게 유지하면서 `subject_json`은 교체 가능한 안전한 표시로 갱신할 수 있게 합니다. `facts_json`은 계속 16,384 byte 이하의 유효한 JSON object이며 `subject_json`과 `actions_json`도 한도가 있는 typed 표현입니다.
 - `diagnostic_cause_edges`는 양 끝에 foreign key가 있는 고유한 finding-to-cause 쌍을 저장합니다. `diagnostic_cause_edges_acyclic`은 방향성 cycle을 완성하는 insert를 거부하고, cause-side index는 결정적인 역방향 조회와 제한된 순회를 지원합니다. 현재 상태 finding을 교체할 때는 이전 outgoing edge를 삭제하고 대체 edge를 row 교체와 같은 immediate transaction에서 삽입하며, 실패하면 이전 row와 edge 집합을 보존합니다.
-- `mcp_runtime_sessions.attempted_client_name`과 `attempted_client_version`은 한도가 있는 파싱된 client 쌍입니다. `requested_protocol_version`은 client 입력이고 `selected_protocol_version`은 server가 선택한 initialize 결과이며, `negotiated_protocol_version`은 handshake 완료와 함께 있을 때만 존재하고 선택 revision과 같아야 합니다. `initialize_completed_at`과 `tools_list_observed_at`은 서로 다른 milestone입니다. 한도가 있는 MCP 도구 이름 `verification_tool_name`과 `verification_tool_observed_at`은 정확한 null-or-present 쌍이며 observation에는 initialized notification이 필요하고 그보다 앞설 수 없습니다. `terminal_finding_id`는 같은 runtime의 구조화된 error finding 하나를 가리키는 foreign key이며 graceful close와 함께 있을 수 없습니다.
+- `mcp_runtime_sessions.attempted_client_name`과 `attempted_client_version`은 한도가 있는 파싱된 client 쌍입니다. `requested_protocol_version`은 client 입력이고 `selected_protocol_version`은 server가 선택한 initialize 결과이며, `negotiated_protocol_version`은 handshake 완료와 함께 있을 때만 존재하고 선택 revision과 같아야 합니다. `initialize_completed_at`, `initialized_notification_at`, `tools_list_observed_at`은 서로 구분되는 lifecycle milestone이며, `tools/list`는 initialize 완료 뒤 initialized notification보다 먼저 올 수 있습니다. `returned_tool_identities_json`은 해당 list observation의 정규 exact inventory이고, required set 검증에 성공한 경우에만 `required_tools_validated_at`이 존재합니다. 한도가 있는 MCP 도구 이름 `verification_tool_name`과 `verification_tool_observed_at`은 정확한 null-or-present 쌍이며, observation에는 같은 session의 required-tool validation이 필요하고 그보다 앞설 수 없습니다. `terminal_finding_id`는 같은 runtime의 구조화된 error finding 하나를 가리키는 foreign key이며 graceful close와 함께 있을 수 없습니다.
 - `mcp_runtime_sessions.session_source`는 정확히 `managed_host`, `manual_cli`, `cli_preflight`, `integration_probe` 중 하나입니다. Lease-consumption transaction만 `managed_host`를 삽입할 수 있고 managed-session 조회는 나머지 세 값을 제외합니다.
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase, 정확한 `host_contract_profile`, 결정적인 `host_contract_digest`에 결속됩니다. 현재 Guard 선택은 `codex-hooks-v1`입니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 모든 필수 phase의 호환되는 현재 소유 `guard_events`를 요구합니다. 이 협력적 check는 OS 수준 집행이나 쓰기 방지를 제공하지 않습니다.
 - 명시적 제거 또는 migration에 따른 Connection Project 폐기는 immediate transaction 하나에서 소유자 순서로 삭제하여 제한적인 Registry foreign key를 충족합니다. 선택한 project-session binding을 선택한 Guard Installation과 membership보다 먼저 삭제합니다. 여러 프로젝트가 있는 migration은 관련 없는 프로젝트 행과 connection 전체 runtime session을 유지합니다. 마지막 프로젝트 migration은 host 정리와 최종 재검증이 성공할 때까지 비활성 membership, binding, Guard Installation, pending-cleanup marker의 완전한 inventory를 유지한 뒤 프로젝트 소유 행과 membership만 삭제합니다. 명시적으로 마지막 membership을 제거할 때는 Connection 소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 `mcp_runtime_sessions`, `managed_mcp_launch_leases`, `agent_connections` 순서로 삭제하며, 구조화된 finding은 영속 이력 진단으로 남습니다. 어떤 경로도 `projects`, `runtime_home`, `installation_profile`, 프로젝트 `state.sqlite` 데이터베이스로 cascade하지 않습니다.

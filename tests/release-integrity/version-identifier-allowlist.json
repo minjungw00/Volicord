@@ -265,6 +265,12 @@
       "reason": "The source map routes implementation of the exact reviewed Codex MCP profile."
     },
     {
+      "path": "docs/en/reference/admin-cli.md",
+      "needle": "codex-mcp-2025-06-18-v1",
+      "classification": "product_contract",
+      "reason": "The administrative CLI owner identifies the reviewed Codex MCP fixture by its semantic wire-contract profile."
+    },
+    {
       "path": "docs/en/reference/agent-connection.md",
       "needle": "codex-hooks-v1",
       "classification": "product_contract",
@@ -347,6 +353,12 @@
       "needle": "codex-mcp-2025-06-18-v1",
       "classification": "product_contract",
       "reason": "The Korean source map routes implementation of the exact reviewed Codex MCP profile."
+    },
+    {
+      "path": "docs/ko/reference/admin-cli.md",
+      "needle": "codex-mcp-2025-06-18-v1",
+      "classification": "product_contract",
+      "reason": "The Korean administrative CLI owner identifies the reviewed Codex MCP fixture by its semantic wire-contract profile."
     },
     {
       "path": "docs/ko/reference/agent-connection.md",

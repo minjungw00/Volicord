@@ -266,7 +266,11 @@ typed fact, requested/selected/negotiated protocol revision, 실제 MCP peer `cl
 PATH executable probe, 한도가 있는 process exit와 stderr fact, Runtime Home과 Connection
 correlation, runtime-session ID, integration revision, timestamp, dependency와 blocked-by
 관계, 권장 action, report limit을 표시합니다. 알고 있는 세부 필드는 구조화해서 표시하며,
-집중 렌더러가 기대하는 타입과 맞지 않는 값이나 알 수 없는 확장 필드는 `Additional
+MCP check는 typed `ManagedSessionAttemptDetails`,
+`ManagedCapabilityProofDetails`, `RequiredToolsEvidence`,
+`VerificationToolEvidence`, `HostExecutableProbeDetails`를 직렬화합니다. 렌더러는 passed
+check에서 선택 필드가 없다는 이유로 milestone을 부정값으로 바꾸지 않습니다. 집중 렌더러가
+기대하는 타입과 맞지 않는 값이나 알 수 없는 확장 필드는 `Additional
 details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구성하지 않으며 가린 fact는
 계속 가립니다.
 
@@ -296,7 +300,11 @@ DiagnosticReport:
 ```
 
 `connection`에는 Runtime Home, 선택한 Connection 좌표, 선택적인 repository와 config
-target, 현재 integration revision, 한도가 있는 runtime-session ID가 들어갑니다. 각
+target, 현재 integration revision, 한도가 있는 `runtime_session_ids`, role을 보존하는
+`runtime_sessions`가 들어갑니다. 각 role 항목은 `id` 하나와 `latest_attempt`,
+`latest_complete_proof`에서 가져온 정규 `roles`를 가집니다. Finding correlation이 없어도
+check evidence에서 ID를 수집합니다. Session 하나가 두 role을 모두 가지면 한 번만 나타내고
+role 둘을 함께 표시하며 verbose human 출력도 같은 배정을 표시합니다. 각
 check에는 상태, 정규 dependency, typed detail, 관찰 시각, cause-finding ID가 들어갑니다.
 각 finding에는 안전한 typed fact, cause ID, action, correlation, redaction metadata,
 truncation metadata가 들어갑니다. 관찰 부재는 필드 부재 또는 명시적인 담당자 fact
@@ -307,18 +315,18 @@ truncation metadata가 들어갑니다. 관찰 부재는 필드 부재 또는 �
 대표적인 간결한 protocol mismatch 결과는 다음과 같습니다.
 
 ```text
-Verification completed: 2 blocked, 1 failed.
+Verification completed: 1 blocked, 2 failed.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 0 ready, 2 blocked, 0 waiting, 1 failed
+Checks: 0 ready, 1 blocked, 0 waiting, 2 failed
 
 Problems
   mcp.protocol.counter_offer_rejected: the protocol counter-offer was rejected or disconnected
     Actual MCP client: codex 0.42.0
     Requested protocol: 2025-01-15
     Supported protocols: 2024-10-07, 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25
-    Blocked checks: required_tools, tool_round_trip
+    Blocked checks: tool_round_trip
     Runtime session: runtime_session_01
     Finding: finding.runtime_session_01.protocol
 
@@ -331,7 +339,7 @@ Rerun active verification with `volicord connection verify codex --repo /workspa
 Verbose 보기는 같은 root ID와 typed 관찰을 표시합니다.
 
 ```text
-Verification completed: 2 blocked, 1 failed.
+Verification completed: 1 blocked, 2 failed.
 
 Connection
   ID: connection_1
@@ -343,11 +351,11 @@ Connection
   Config target: /home/user/.codex/config.toml
   Runtime home: /home/user/.volicord
   Integration revision: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-  Runtime sessions: runtime_session_01
+  Runtime sessions: runtime_session_01 (latest_attempt)
 
 Summary
   Status: failed
-  Checks: 0 passed, 2 blocked, 0 pending, 1 failed, 0 not applicable
+  Checks: 0 passed, 1 blocked, 0 pending, 2 failed, 0 not applicable
 
 Checks
   [fail] Codex managed session
@@ -355,6 +363,8 @@ Checks
     Code: host_session_protocol_mismatch
     Depends on: process_startup
     Root findings: finding.runtime_session_01.protocol
+    Evidence role: latest_attempt
+    Runtime session: runtime_session_01
     PATH executable: /opt/codex
     PATH executable version: 0.42.0
     Actual MCP peer: codex
@@ -363,9 +373,8 @@ Checks
     Selected protocol: 2025-11-25
     Initialize: failed
 
-  [blocked] Codex required tools
-    Depends on: host_session
-    Blocked by: host_session
+  [fail] Codex required tools
+    No current-revision managed-host session completed same-session required-tool validation
     Root findings: finding.runtime_session_01.protocol
 
   [blocked] Read-only tool round trip
@@ -628,8 +637,10 @@ fixture를 실행합니다. 현재
 `codex` fixture는 검토된 Codex initialize `clientInfo` 및 capability 형태를 사용하고,
 정확한 revision `2025-06-18`을 요청하며, `volicord.list_projects` 호출 하나에 유효한
 native session correlation metadata를 보냅니다. 이 fixture는 서버의 선호 profile에서
-revision을 선택하지 않습니다. 배포된 Codex 계열마다 필요한 revision이나 wire 형태가
-다르면 fixture 목록에 `codex` entry를 여러 개 둘 수 있습니다.
+revision을 선택하지 않습니다. 각 fixture identity는 임의의 과거 Codex package version이
+아니라 `codex-mcp-2025-06-18-v1` 같은 검토된 semantic wire contract를 가리킵니다. 배포된
+Codex 계열마다 필요한 revision이나 wire 형태가 다르면 fixture 목록에 `codex` entry를 여러
+개 둘 수 있습니다.
 
 stdio probe가 실패하면 현재 단계별 check code를 유지합니다. 해당 matrix entry에는
 정확한 revision 또는 host fixture와 완료 관찰을 유지합니다. 실패 식별값은 안정적인
@@ -712,6 +723,12 @@ diagnostic으로만 남습니다. 검증은 이를 적용하거나 채택하지 
 probe 증거일 뿐입니다. `codex` 호환성 fixture가 통과해도 실제 관리 Codex process를
 관찰한 것이 아니며 `host_session`, `required_tools`, `tool_round_trip` 증거를 만들지
 않습니다. Source가 `managed_host`인 runtime session만 해당 관찰을 제공할 수 있습니다.
+현재 revision에서 가장 최신인 managed session을 process와 initialize health의 고정
+`latest_attempt`로 선택합니다. Required tools와 round trip은 initialize, initialized
+notification, `tools/list`, required-tool validation, 정규 verification 호출을 같은 session에서
+모두 완료한 가장 최신 `latest_complete_proof`에서만 통과합니다. 더 최신인 partial/failed
+attempt와 더 오래된 proof는 서로 다른 role evidence로 남고 서로의 milestone을 채우지
+않습니다.
 
 `volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
 유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리

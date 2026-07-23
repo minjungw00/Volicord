@@ -331,6 +331,7 @@ fn connection_context(
         Some(connection.config_target.clone()),
         revision,
         runtime_session_ids,
+        Vec::new(),
     )
     .map_err(|error| DiagnosticsCommandError::Runtime(error.to_string()))
 }

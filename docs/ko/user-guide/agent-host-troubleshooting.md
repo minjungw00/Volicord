@@ -176,6 +176,13 @@ volicord connection verify codex --repo "<repo>" --json
 남습니다. 종료 code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을
 확인하거나 전달할 때 finding ID를 함께 보존합니다.
 
+`connection.runtime_sessions`에서 `latest_attempt`는 현재 managed-session health로,
+`latest_complete_proof`는 initialize, `tools/list`, required-tool validation, 정규 verification
+호출을 session 하나에서 완료한 가장 최신 항목으로 읽습니다. 두 role의 ID가 다를 수
+있습니다. 더 최신인 partial attempt가 오래된 proof를 지우지 않고, 오래된 proof도 더 최신인
+terminal failure를 숨기지 않습니다. Complete proof가 없으면 최신 attempt에 따라 readiness를
+pending 또는 failed로 유지하고 여러 session entry의 milestone을 조합하지 않습니다.
+
 `mcp.protocol.unsupported_version`이면 `requested_revision`과
 `production_supported_revisions`를 비교합니다.
 `mcp.protocol.counter_offer_rejected`이면 `selected_revision`도 비교합니다.
@@ -183,8 +190,9 @@ volicord connection verify codex --repo "<repo>" --json
 `mcp.protocol.generation_mismatch`이면 요청 revision이 추적 중인 비프로덕션 handshake
 generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_name`과
 `attempted_client_version`을 보존하고
-`action.mcp.use_supported_protocol_revision`을 사용합니다. 일반 concise 출력에는 적용되는
-제한된 사실과 blocked `required_tools`, `tool_round_trip` check가 나옵니다. Verbose
+`action.mcp.use_supported_protocol_revision`을 사용합니다. 더 오래된 complete proof가
+없다면 일반 concise 출력에는 적용되는 제한된 사실, failed `required_tools`, blocked
+`tool_round_trip` check가 나옵니다. Verbose
 출력에서는 requested, selected, negotiated revision을 구분하고 실제 MCP peer
 `clientInfo`와 PATH executable probe도 구분합니다.
 
@@ -201,7 +209,7 @@ generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_
 `volicord.check_close` 같은 다른 읽기 전용 도구 호출이 성공해도 managed-host 왕복 검증을
 충족하지 않습니다.
 
-`actual_mcp_peer_client_info.version`과 `path_executable_probe.version`이 다르면 먼저
+`managed_peer.client_info.version`과 `host_executable_probe.version`이 다르면 먼저
 활성 Codex 프로세스와 PATH를 확인합니다. 이 warning은 유용한 evidence지만 그 자체로
 치명적 결과는 아닙니다. 보고할 때 한 version을 다른 version으로 바꾸지 않습니다.
 

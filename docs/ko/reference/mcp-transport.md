@@ -193,7 +193,8 @@ host가 독립적으로 소유하는 fixture 목록입니다. 현재 `codex` fix
 `clientInfo.name`이 `codex-mcp-client`이고 title이
 `Codex`이며 현재의 빈 capability 객체를 사용하는 검토된 Codex initialize 요청 형태와,
 독립적으로 고정한 revision `2025-06-18`을 사용합니다. 도구 호출 하나에는 유효한
-`codex-mcp-2025-06-18-v1` session/thread/turn metadata를 담습니다. `tools/list`와
+`codex-mcp-2025-06-18-v1` session/thread/turn metadata를 담습니다. 이 fixture ID는
+검토한 wire contract를 가리키며 Codex package version identity가 아닙니다. `tools/list`와
 `ToolVerificationRole::ManagedHostRoundTrip`이 선택한 도구(현재
 `volicord.list_projects`)를 실행하며, 요청 revision을 서버의 선호 또는 최신 profile에서
 파생하지 않습니다. 배포된 client 계열이 서로 다른 revision을 요구하면 독립적으로 고정한
@@ -234,15 +235,17 @@ process 시작 시각을 식별합니다. 원자적인 launch-lease 소비만 `m
 관찰을 유지합니다. Initialize가 성공하면 완료와 server가 선택한 profile revision을 그
 revision을 반환하기 전에 기록합니다. 선택 값은 유효한 `notifications/initialized`가
 handshake를 완전히 끝낼 때만 협상 revision이 됩니다. 실제 `tools/list` 응답도 반환하기
-전에 매번 기록합니다. Discovery 사실은 생성된 그 응답에 현재 Connection mode가 요구하는
-모든 도구가 있었는지를 나타냅니다. 중복 initialized notification은 첫 번째 유효 관찰 뒤
-멱등이며 협상한 revision을 바꿀 수 없습니다.
+전에 매번 기록하며 정규 정렬한 정확한 반환 도구 identity를 함께 보관합니다. Discovery
+사실은 생성된 그 응답에 현재 Connection mode가 요구하는 모든 도구가 있었는지를 나타내고,
+검증에 성공하면 별도 `required_tools_validated_at` milestone을 기록합니다. 중복 initialized
+notification은 첫 번째 유효 관찰 뒤 멱등이며 협상한 revision을 바꿀 수 없습니다.
 
 `ToolVerificationRole::ManagedHostRoundTrip`에 결합된 정확한 도구의 `tools/call`이
 성공한 경우에만 managed-host 왕복 evidence를 기록할 수 있습니다. 이 role은 컴파일
 시점에 `AgentToolId::LIST_PROJECTS`에 결합되고, 그 wire 이름 투영은
-`volicord.list_projects`입니다. 호출은 현재 enabled `managed_host` runtime과 Connection
-revision에 속하고 유효한 현재 관리 Codex session/thread/turn correlation을 담아야 하며,
+`volicord.list_projects`입니다. 호출은 같은 session의 required-tool validation 뒤에
+실행되어야 하고, 현재 enabled `managed_host` runtime과 Connection revision에 속하며 유효한
+현재 관리 Codex session/thread/turn correlation을 담아야 합니다. 또한
 JSON-RPC error나 tool error 없이 완료되어야 합니다. 그러면 Store는 도구 결과를 내보내기
 전에 정확한 `verification_tool_name`과 `verification_tool_observed_at` 쌍을 원자적으로
 기록합니다. 성공한 `volicord.status`, `volicord.get_operation_result`,
@@ -277,8 +280,15 @@ graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보�
 협상 revision은 handshake가 완전히 끝난 뒤에만 그 선택 값이 됩니다. 협상한 protocol version만 권위
 있는 runtime-session protocol data입니다. `clientInfo` name/version과 관찰한 host 실행
 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며 호환성은 현재 관리
-구성과 현재 revision에서 관찰한 초기화, 도구 목록, 필수 도구, 안전 호출, Guard 동작으로
-판단합니다. 이 기록은 협력적이며 client, host, actor, human identity를 성립시키지 않습니다.
+구성과 현재 revision의 `managed_host` runtime 하나에서 관찰한 초기화, 도구 목록, 필수
+도구, 안전 호출, Guard 동작으로 판단합니다. 검증은 가장 최신 managed runtime을 현재
+health를 나타내는 `latest_attempt`로 선택하고, 같은 session의 전체 chain을 완료한 가장 최신
+runtime을 별도로 `latest_complete_proof`로 선택합니다. Runtime 사이의 milestone을 조합하지
+않습니다. 실제 protocol peer는 선택된 runtime의 `clientInfo`입니다. 별도로 probe한
+executable path와 `codex --version`은 설치 및 수동 호출을 돕는 정보일 뿐 protocol peer의
+권위 있는 값이 아닙니다. Peer/PATH version 불일치는 warning evidence가 될 수 있지만 완전한
+managed session 자체를 무효화하지 않습니다. 이 기록은 협력적이며 client, host, actor,
+human identity를 성립시키지 않습니다.
 
 ## 호출별 Session 권한
 

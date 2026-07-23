@@ -284,7 +284,8 @@ The five check statuses have exactly these meanings:
 Operational verification uses these chains:
 
 ```text
-managed_config -> process_startup -> host_session -> required_tools -> tool_round_trip
+managed_config -> process_startup -> host_session
+required_tools -> tool_round_trip
 managed_config -> mcp_server
 guard_files -> guard_hook_execution -> guard_observation
 ```
@@ -295,12 +296,20 @@ verification-role tool-call check. `ToolVerificationRole::ManagedHostRoundTrip`
 is bound at compile time to `AgentToolId::LIST_PROJECTS`; its persisted and MCP
 wire-name projection is `volicord.list_projects`. The CLI probe, MCP runtime,
 Store observation, and verification report comparison use that same typed
-identity. When no managed-host attempt exists, the four checks
-from `process_startup` through `tool_round_trip` are `pending`. An initialize
-failure makes `host_session` `failed` and makes `required_tools` and
-`tool_round_trip` `blocked` by that same root finding. A managed-configuration
-failure blocks both `mcp_server` and the process/protocol chain. A Guard-file
-integrity failure blocks hook execution and phase observation.
+identity. `process_startup` and `host_session` use the fixed `latest_attempt`
+role: the newest current-revision `managed_host` runtime. `required_tools` and
+`tool_round_trip` use the fixed `latest_complete_proof` role: the newest such
+runtime that completed initialize, the initialized notification, `tools/list`,
+required-tool validation, and the canonical verification-tool call in that
+one runtime. No check combines milestones from different sessions. When no
+managed-host attempt exists, all four checks are `pending`. A terminal latest
+attempt makes current managed-session health fail; an older complete proof can
+still pass the capability checks, but it is reported under its distinct role
+and cannot hide that current failure. Without a complete proof, capability
+readiness remains pending or fails from the latest attempt's own observation.
+A managed-configuration failure blocks `mcp_server` and the current-attempt
+process/session chain. A Guard-file integrity failure blocks hook execution and
+phase observation.
 
 Only `failed` and `blocked` checks may carry `cause_finding_ids`. A `blocked`
 check carries the canonical sorted union of the independent root-finding IDs on
@@ -317,9 +326,9 @@ The current Codex connection report contains these operational checks:
 | `host_executable` | `codex` was discovered on `PATH` and its version command succeeded. | It waits when the read-only status path has no prior active probe. | Discovery or the version command failed. |
 | `mcp_server` | The CLI self-test passed preflight and the complete MCP exchange. | It waits for active verification and is blocked by failed managed configuration. | The self-test itself observed a process, Store, or protocol failure. |
 | `process_startup` | A current managed host started the configured MCP process. | It waits for managed-host use and is blocked by failed managed configuration. | No managed-host startup failure is claimed without a typed host observation; absence remains waiting. |
-| `host_session` | A current, host-version-fresh managed-host session completed `initialize` and its initialized notification. | It waits for a qualifying attempt and is blocked by `process_startup`. | The current attempt observed an initialization or protocol failure. |
-| `required_tools` | A qualifying `tools/list` observation contains every required tool. | It waits for tool discovery and is blocked by `host_session`. | Tool discovery completed with missing or invalid required tools. |
-| `tool_round_trip` | A qualifying current, host-version-fresh session records both `verification_tool_name=volicord.list_projects` and `verification_tool_observed_at`. | It waits for the canonical role-owner call and is blocked by `required_tools`. | The call itself observed a protocol or contract failure, or the recorded tool name differs from the current canonical owner. |
+| `host_session` | The `latest_attempt` completed `initialize` and its initialized notification. | It waits for the newest current-revision managed-host attempt and is blocked by `process_startup`. | That latest attempt has a linked terminal protocol finding. |
+| `required_tools` | The `latest_complete_proof` records one actual `tools/list` inventory and same-session required-tool validation. | It waits when no complete proof exists; it has no dependency on the current-attempt session check. | With no complete proof, the latest attempt returned a missing required set or terminally failed. |
+| `tool_round_trip` | The same `latest_complete_proof` records `verification_tool_name=volicord.list_projects` and its observation time after required-tool validation. | It waits for a complete proof and is blocked only by `required_tools`. | With no complete proof, the latest attempt's canonical call failed or used a different current canonical owner. |
 | `project_trust` | Project trust is satisfied. | A normal trust or reload action is `pending`; scopes with no separate trust check are `not_applicable`. | Trust configuration is malformed or contradictory. |
 | `guard_files` | Every current Guard manifest file expectation matches. | Applies when Guard is part of the Connection profile. | A managed file, manifest, wrapper, ownership, or executable-integrity check failed. |
 | `guard_hook_execution` | A current managed Guard hook executed. | It waits for current hook activity and is blocked by `guard_files`. | Hook execution itself recorded a failure. |
@@ -346,12 +355,11 @@ verification persists
 `mcp.tool_verification.designation_mismatch`. Its bounded facts expose the exact
 `expected_tool_name` and `observed_tool_name`; JSON check details and verbose
 output likewise show the exact expected and observed names. A prior revision,
-CLI preflight row, missing timestamp, or stale host-version observation cannot
+CLI preflight row, missing milestone, or a pair split across sessions cannot
 substitute for the current exact pair.
 
-Any bounded Codex version proceeds through these behavioral checks. A changed
-version makes the current host observation pending until Codex is reloaded and
-its operational behavior is observed again.
+Any bounded Codex version proceeds through these behavioral checks. The PATH
+executable version does not select or disqualify a managed runtime session.
 
 `dry_run` is an operation mode, never a connection or check status.
 Configuration matching, executable availability, protocol and host versions,
@@ -478,9 +486,8 @@ new revision and cannot make evidence from that earlier mode generation current
 again.
 
 The observed executable path, host version, and MCP client name/version remain
-diagnostic facts. A host-version change renews operational observation, while
-authorization uses the current Connection, revisions, and authoritative
-runtime/project session bindings.
+diagnostic facts. Authorization uses the current Connection, revisions, and
+authoritative runtime/project session bindings.
 
 The actual MCP peer is the bounded `clientInfo.name` and `clientInfo.version`
 observed on that runtime session. The PATH probe is the separately observed
@@ -505,15 +512,22 @@ host activity. The runtime session retains its owning Connection and Connection
 integration revision.
 
 After a valid initialize request, that runtime owns one session-scoped typed
-MCP selection. It retains the requested protocol string, selected production
-profile, exact-match or server-counter-offer outcome, client capabilities,
-bounded attempted client name/version, and whether the initialized notification
-completed the handshake. The selected profile generates the initialize result
-revision and capabilities and governs later lifecycle validation. Selection is
-not negotiation completion: only the required valid initialized notification
-marks the profile negotiated and records its revision as the authoritative
-runtime-session protocol observation. Reconnection creates a new runtime and a
-new selection; profiles are not shared or inherited across processes.
+MCP selection. Its `McpSessionMilestones` retain the runtime, source,
+Connection, integration revision, process start, actual peer `clientInfo`,
+requested/selected/negotiated protocol revisions, initialize and initialized-
+notification completion, `tools/list` time and exact deterministic returned
+tool identities, required-tool validation time, canonical verification-tool
+identity/time, terminal finding, and last observation. Invalid combinations
+are rejected: negotiation requires completed initialization, required-tool
+success requires an actual list observation, verification-tool success
+requires same-session required-tool validation, and a managed capability proof
+requires `session_source=managed_host`. Reconnection creates a new runtime and
+new milestones; profiles and milestones are not shared across processes.
+
+Connection report context gathers session IDs from check evidence as well as
+finding correlation. Each entry preserves `latest_attempt` and/or
+`latest_complete_proof` roles; when one session has both roles it appears once
+with both roles. Human and JSON projections expose the same role assignment.
 
 The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint and current Guard installation

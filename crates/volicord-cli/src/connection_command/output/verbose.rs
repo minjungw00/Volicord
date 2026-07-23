@@ -26,7 +26,7 @@ pub(super) fn render_command_report_verbose(
     let counts = CheckCounts::from_report(report);
     let roots = projected_root_cause_ids(report)?;
     let actions = projected_actions(report)?;
-    let mut sections = vec![headline(report, counts), render_connection(report)];
+    let mut sections = vec![headline(report, counts), render_connection(report)?];
     sections.push(render_summary(report, counts));
 
     if !report.checks.is_empty() {
@@ -55,7 +55,7 @@ pub(super) fn render_command_report_verbose(
     Ok(format!("{}\n", sections.join("\n\n")))
 }
 
-fn render_connection(report: &ConnectionCommandReport) -> String {
+fn render_connection(report: &ConnectionCommandReport) -> Result<String, ConnectionCommandError> {
     let mut output = format!(
         concat!(
             "Connection\n",
@@ -80,22 +80,41 @@ fn render_connection(report: &ConnectionCommandReport) -> String {
     if let Some(revision) = report.integration_revision.as_ref() {
         output.push_str(&format!("\n  Integration revision: {}", revision.as_str()));
     }
-    let runtime_sessions = report
+    let runtime_sessions = report.role_bearing_runtime_sessions()?;
+    let role_ids = runtime_sessions
+        .iter()
+        .map(|session| session.id().as_str())
+        .collect::<BTreeSet<_>>();
+    let related_sessions = report
         .findings
         .iter()
         .filter_map(|finding| finding.runtime_session_id())
+        .filter(|session_id| !role_ids.contains(session_id.as_str()))
+        .map(|session_id| session_id.as_str().to_owned())
         .collect::<BTreeSet<_>>();
-    if !runtime_sessions.is_empty() {
+    if !runtime_sessions.is_empty() || !related_sessions.is_empty() {
+        let mut rendered_sessions = runtime_sessions
+            .iter()
+            .map(|session| {
+                format!(
+                    "{} ({})",
+                    session.id().as_str(),
+                    session
+                        .roles()
+                        .iter()
+                        .map(|role| role.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .collect::<Vec<_>>();
+        rendered_sessions.extend(related_sessions);
         output.push_str(&format!(
             "\n  Runtime sessions: {}",
-            runtime_sessions
-                .iter()
-                .map(|session_id| session_id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            rendered_sessions.join(", ")
         ));
     }
-    output
+    Ok(output)
 }
 
 fn render_summary(report: &ConnectionCommandReport, counts: CheckCounts) -> String {
@@ -357,7 +376,7 @@ fn render_known_details(context: &mut DetailContext<'_>) {
         ConnectionCheckKind::ManagedConfig => render_managed_config(context),
         ConnectionCheckKind::HostExecutable => render_host_executable(context),
         ConnectionCheckKind::McpServer => render_mcp_server(context),
-        ConnectionCheckKind::ProcessStartup => {}
+        ConnectionCheckKind::ProcessStartup => render_process_startup(context),
         ConnectionCheckKind::HostSession => render_host_session(context),
         ConnectionCheckKind::RequiredTools => render_required_tools(context),
         ConnectionCheckKind::ToolRoundTrip => render_tool_round_trip(context),
@@ -389,10 +408,11 @@ fn render_managed_config(context: &mut DetailContext<'_>) {
 }
 
 fn render_host_executable(context: &mut DetailContext<'_>) {
-    if let Some(version) = context.take_string("version") {
+    let _status = context.take_string("status");
+    if let Some(version) = context.take_string("probe.version") {
         context.line("Version", version);
     }
-    if let Some(path) = context.take_string("path") {
+    if let Some(path) = context.take_string("probe.discovered_path") {
         context.line("Path", path);
     }
     if let Some(diagnostic) = context.take_string("diagnostic") {
@@ -400,6 +420,17 @@ fn render_host_executable(context: &mut DetailContext<'_>) {
             context.diagnostic("Probe diagnostic", &diagnostic);
         }
     }
+}
+
+fn render_process_startup(context: &mut DetailContext<'_>) {
+    render_runtime_evidence_identity(context);
+    render_revision_pair(context);
+    if let Some(started_at) = context.take_string("process_started_at") {
+        context.line("Process started at", started_at);
+    }
+    render_managed_peer_and_probe(context);
+    render_terminal_finding(context);
+    render_last_observed(context);
 }
 
 fn render_mcp_server(context: &mut DetailContext<'_>) {
@@ -720,31 +751,9 @@ fn split_json_suffix(value: &str) -> Option<(&str, Value)> {
 }
 
 fn render_host_session(context: &mut DetailContext<'_>) {
+    render_runtime_evidence_identity(context);
     render_revision_pair(context);
-    if let Some(path) = context.take_string("path_executable_probe.path") {
-        context.line("PATH executable", path);
-    }
-    if let Some(version) = context.take_string("path_executable_probe.version") {
-        context.line("PATH executable version", version);
-    }
-    if let Some(version) = context.take_string("observed_host_executable_version") {
-        context.line("Observed host executable version", version);
-    }
-    if let Some(name) = context.take_string("actual_mcp_peer_client_info.name") {
-        context.line("Actual MCP peer", name);
-    }
-    if let Some(version) = context.take_string("actual_mcp_peer_client_info.version") {
-        context.line("Actual MCP peer version", version);
-    }
-    if let Some(revision) = context.take_string("requested_protocol_version") {
-        context.line("Requested protocol", revision);
-    }
-    if let Some(revision) = context.take_string("selected_protocol_version") {
-        context.line("Selected protocol", revision);
-    }
-    if let Some(revision) = context.take_string("negotiated_protocol_version") {
-        context.line("Negotiated protocol", revision);
-    }
+    render_managed_peer_and_probe(context);
     context.line("Initialize", host_initialize_result(context.check));
     render_terminal_finding(context);
     render_last_observed(context);
@@ -762,18 +771,20 @@ fn host_initialize_result(check: &ConnectionCheck) -> &'static str {
 }
 
 fn render_required_tools(context: &mut DetailContext<'_>) {
+    render_runtime_evidence_identity(context);
     render_revision_pair(context);
-    let observed = context
-        .take_bool("tools_list_observed")
-        .or_else(|| context.take_string("tools_list_observed_at").map(|_| true))
-        .unwrap_or_else(|| {
-            matches!(
-                context.check.code(),
-                Some("required_tools_present" | "required_tools_missing")
-            )
-        });
-    context.line("Tools/list observed", yes_no(observed));
-    let explicit_result = context.take_bool("required_tools_present");
+    render_managed_peer_and_probe(context);
+    let tools_observed_at = context.take_string("required_tools.tools_list_observed_at");
+    if let Some(observed_at) = tools_observed_at {
+        context.line("Tools/list observed at", observed_at);
+    }
+    let returned_tools = context
+        .take_string_array("required_tools.returned_tool_identities")
+        .unwrap_or_default();
+    if !returned_tools.is_empty() {
+        context.line("Returned tools", returned_tools.len());
+    }
+    let explicit_result = context.take_bool("required_tools.required_tools_present");
     let result = match (context.check.status(), explicit_result) {
         (ConnectionCheckStatus::Blocked, _) => "blocked",
         (ConnectionCheckStatus::NotApplicable, _) => "not applicable",
@@ -782,34 +793,69 @@ fn render_required_tools(context: &mut DetailContext<'_>) {
         _ => "pending",
     };
     context.line("Required tools", result);
-    let missing = context
-        .take_string_array("missing_tools")
-        .unwrap_or_default();
-    if !missing.is_empty() {
-        context.line("Missing tools", render_string_values(&missing));
+    if let Some(validated_at) = context.take_string("required_tools.required_tools_validated_at") {
+        context.line("Required tools validated at", validated_at);
     }
     render_terminal_finding(context);
     render_last_observed(context);
 }
 
 fn render_tool_round_trip(context: &mut DetailContext<'_>) {
+    render_runtime_evidence_identity(context);
     render_revision_pair(context);
+    render_managed_peer_and_probe(context);
     let expected_tool = context
-        .take_string("expected_verification_tool_name")
+        .take_string("verification_tool.expected_tool_identity")
         .unwrap_or_else(|| managed_host_round_trip_tool().wire_name().to_owned());
     context.line("Expected verification tool", expected_tool);
-    if let Some(observed_tool) = context.take_string("observed_verification_tool_name") {
+    let observed_tool = context.take_string("verification_tool.observed_tool_identity");
+    if let Some(observed_tool) = observed_tool.as_deref() {
         context.line("Observed verification tool", observed_tool);
     }
-    if let Some(observed_at) = context.take_string("verification_tool_observed_at") {
+    if let Some(observed_at) = context.take_string("verification_tool.observed_at") {
         context.line("Verification tool observed at", observed_at);
     }
-    let completed = context
-        .take_bool("call_completed")
-        .unwrap_or(context.check.status() == ConnectionCheckStatus::Passed);
-    context.line("Call completed", yes_no(completed));
+    if observed_tool.is_some() || context.check.status() == ConnectionCheckStatus::Passed {
+        context.line("Call completed", "yes");
+    }
     render_terminal_finding(context);
     render_last_observed(context);
+}
+
+fn render_runtime_evidence_identity(context: &mut DetailContext<'_>) {
+    if let Some(role) = context.take_string("evidence_role") {
+        context.line("Evidence role", role);
+    }
+    if let Some(runtime_session_id) = context.take_string("runtime_session_id") {
+        context.line("Runtime session", runtime_session_id);
+    }
+    if let Some(source) = context.take_string("source") {
+        context.line("Session source", source);
+    }
+}
+
+fn render_managed_peer_and_probe(context: &mut DetailContext<'_>) {
+    if let Some(path) = context.take_string("host_executable_probe.discovered_path") {
+        context.line("PATH executable", path);
+    }
+    if let Some(version) = context.take_string("host_executable_probe.version") {
+        context.line("PATH executable version", version);
+    }
+    if let Some(name) = context.take_string("managed_peer.client_info.name") {
+        context.line("Actual MCP peer", name);
+    }
+    if let Some(version) = context.take_string("managed_peer.client_info.version") {
+        context.line("Actual MCP peer version", version);
+    }
+    if let Some(revision) = context.take_string("managed_peer.requested_protocol_revision") {
+        context.line("Requested protocol", revision);
+    }
+    if let Some(revision) = context.take_string("managed_peer.selected_protocol_revision") {
+        context.line("Selected protocol", revision);
+    }
+    if let Some(revision) = context.take_string("managed_peer.negotiated_protocol_revision") {
+        context.line("Negotiated protocol", revision);
+    }
 }
 
 fn render_revision_pair(context: &mut DetailContext<'_>) {
@@ -1715,11 +1761,16 @@ mod tests {
                     Some("host_session_initialize_pending"),
                     "Codex initialize has not completed",
                     Some(json!({
-                        "current_integration_revision": "revision_current",
-                        "observed_integration_revision": "revision_current",
-                        "path_executable_probe": {"path": "/opt/codex", "version": "1.2.3"},
-                        "observed_host_executable_version": "1.2.3",
-                        "actual_mcp_peer_client_info": {"name": "codex", "version": "1.2.3"},
+                    "current_integration_revision": "revision_current",
+                    "observed_integration_revision": "revision_current",
+                    "evidence_role": "latest_attempt",
+                    "runtime_session_id": "session_1",
+                    "source": "managed_host",
+                    "host_executable_probe": {"discovered_path": "/opt/codex", "version": "1.2.3"},
+                    "managed_peer": {
+                        "client_info": {"name": "codex", "version": "1.2.3"},
+                        "requested_protocol_revision": "2025-11-25",
+                    },
                         "last_observed_at": "2026-07-20T00:00:00Z",
                         "terminal_finding_id": null,
                     })),
@@ -1763,7 +1814,8 @@ mod tests {
                 "  Mode: workflow\n",
                 "  Repository: /workspace/product\n",
                 "  Config target: /home/user/.codex/config.toml\n",
-                "  Runtime home: /runtime\n\n",
+                "  Runtime home: /runtime\n",
+                "  Runtime sessions: session_1 (latest_attempt)\n\n",
                 "Summary\n",
                 "  Status: failed\n",
                 "  Dry run: yes\n",
@@ -1777,13 +1829,16 @@ mod tests {
                 "    Code: host_session_initialize_pending\n",
                 "    Observed at: 2026-07-20T00:00:00Z\n",
                 "    Depends on: process_startup\n",
+                "    Evidence role: latest_attempt\n",
+                "    Runtime session: session_1\n",
+                "    Session source: managed_host\n",
                 "    Current revision: revision_current\n",
                 "    Observed revision: revision_current\n",
                 "    PATH executable: /opt/codex\n",
                 "    PATH executable version: 1.2.3\n",
-                "    Observed host executable version: 1.2.3\n",
                 "    Actual MCP peer: codex\n",
                 "    Actual MCP peer version: 1.2.3\n",
+                "    Requested protocol: 2025-11-25\n",
                 "    Initialize: pending\n\n",
                 "  [fail] Managed Codex configuration\n",
                 "    Managed Codex configuration differs from the canonical entry\n",
@@ -1826,9 +1881,8 @@ mod tests {
                 Some(json!({
                     "current_integration_revision": "revision_current",
                     "observed_integration_revision": null,
-                    "path_executable_probe": {"path": "/opt/codex", "version": "1.2.3"},
-                    "observed_host_executable_version": null,
-                    "actual_mcp_peer_client_info": {"name": null, "version": null},
+                    "evidence_role": "latest_attempt",
+                    "host_executable_probe": {"discovered_path": "/opt/codex", "version": "1.2.3"},
                     "last_observed_at": null,
                     "terminal_finding_id": null,
                 })),
@@ -1862,6 +1916,7 @@ mod tests {
                 "    Managed host connection use has not been observed\n",
                 "    Code: host_session_not_observed\n",
                 "    Depends on: process_startup\n",
+                "    Evidence role: latest_attempt\n",
                 "    Current revision: revision_current\n",
                 "    PATH executable: /opt/codex\n",
                 "    PATH executable version: 1.2.3\n",
@@ -2423,9 +2478,12 @@ mod tests {
                 Some(json!({
                     "current_integration_revision": "revision_current",
                     "observed_integration_revision": "revision_observed",
-                    "path_executable_probe": {"path": "/opt/codex", "version": "2.0"},
-                    "observed_host_executable_version": "1.0",
-                    "actual_mcp_peer_client_info": {"name": "codex", "version": "1.0"},
+                    "evidence_role": "latest_attempt",
+                    "host_executable_probe": {"discovered_path": "/opt/codex", "version": "2.0"},
+                    "managed_peer": {
+                        "client_info": {"name": "codex", "version": "1.0"},
+                        "requested_protocol_revision": "2025-11-25",
+                    },
                     "runtime_session_id": "session_1",
                     "last_observed_at": "2026-07-20T02:00:00Z",
                     "terminal_finding_id": "finding.protocol_failure",
@@ -2443,7 +2501,12 @@ mod tests {
             "    Observed revision: revision_observed\n",
             "    Initialize: failed\n",
             "    Terminal finding: finding.protocol_failure\n",
-            "    Additional details\n      Runtime session id: session_1\n",
+            "    Evidence role: latest_attempt\n",
+            "    Runtime session: session_1\n",
+            "    PATH executable: /opt/codex\n",
+            "    PATH executable version: 2.0\n",
+            "    Actual MCP peer: codex\n",
+            "    Actual MCP peer version: 1.0\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}");
         }
@@ -2540,8 +2603,11 @@ mod tests {
                     Some("host_executable_probe_failed"),
                     "Codex executable version probe failed",
                     Some(json!({
-                        "version": "1.2.3",
-                        "path": "/opt/codex/bin/codex",
+                        "status": "unavailable",
+                        "probe": {
+                            "version": "1.2.3",
+                            "discovered_path": "/opt/codex/bin/codex",
+                        },
                         "diagnostic": "process exited with status 1",
                     })),
                     None,
@@ -2554,9 +2620,14 @@ mod tests {
                     Some(json!({
                         "current_integration_revision": "revision_current",
                         "observed_integration_revision": "revision_observed",
-                        "tools_list_observed": true,
-                        "required_tools_present": false,
-                        "missing_tools": ["volicord.close_task"],
+                        "evidence_role": "latest_attempt",
+                        "runtime_session_id": "session_tools",
+                        "source": "managed_host",
+                        "required_tools": {
+                            "tools_list_observed_at": "2026-07-20T03:00:00Z",
+                            "returned_tool_identities": ["volicord.status"],
+                            "required_tools_present": false,
+                        },
                         "last_observed_at": "2026-07-20T03:00:00Z",
                         "terminal_finding_id": null,
                     })),
@@ -2578,10 +2649,14 @@ mod tests {
                     Some(json!({
                         "current_integration_revision": "revision_current",
                         "observed_integration_revision": "revision_observed",
-                        "expected_verification_tool_name": "volicord.list_projects",
-                        "observed_verification_tool_name": "volicord.status",
-                        "verification_tool_observed_at": "2026-07-20T04:00:00Z",
-                        "call_completed": false,
+                        "evidence_role": "latest_attempt",
+                        "runtime_session_id": "session_tools",
+                        "source": "managed_host",
+                        "verification_tool": {
+                            "expected_tool_identity": "volicord.list_projects",
+                            "observed_tool_identity": "volicord.status",
+                            "observed_at": "2026-07-20T04:00:00Z",
+                        },
                         "last_observed_at": "2026-07-20T04:00:00Z",
                         "terminal_finding_id": "finding.tool_contract_mismatch",
                     })),
@@ -2623,9 +2698,9 @@ mod tests {
             "    Path: /opt/codex/bin/codex\n",
             "    Probe diagnostic: process exited with status 1\n",
             "  [fail] Codex required tools\n",
-            "    Tools/list observed: yes\n",
+            "    Tools/list observed at: 2026-07-20T03:00:00Z\n",
+            "    Returned tools: 1\n",
             "    Required tools: failed\n",
-            "    Missing tools: volicord.close_task\n",
             "  [wait] Setup plan\n",
             "    Planned state: changes ready to apply\n",
             "    guard_managed_file: 2\n",
@@ -2634,7 +2709,7 @@ mod tests {
             "    Expected verification tool: volicord.list_projects\n",
             "    Observed verification tool: volicord.status\n",
             "    Verification tool observed at: 2026-07-20T04:00:00Z\n",
-            "    Call completed: no\n",
+            "    Call completed: yes\n",
             "    Terminal finding: finding.tool_contract_mismatch\n",
             "  [wait] Connection verification\n",
             "    Connection verification has not been run\n",
@@ -2899,7 +2974,10 @@ mod tests {
                 Some("required_tools_missing"),
                 "Required tools are missing",
                 Some(json!({
-                    "missing_tools": ["volicord.close_task", "volicord.record_evidence"],
+                    "required_tools": {
+                        "tools_list_observed_at": "2026-07-20T03:00:00Z",
+                        "returned_tool_identities": ["volicord.close_task", "volicord.record_evidence"],
+                    },
                 })),
                 None,
             )],
@@ -2908,10 +2986,7 @@ mod tests {
             None,
         );
         let output = rendered(&focused);
-        assert!(
-            output.contains("    Missing tools: volicord.close_task, volicord.record_evidence\n")
-        );
-        assert_eq!(output.matches("volicord.close_task").count(), 1);
+        assert!(output.contains("    Returned tools: 2\n"));
         assert!(!output.contains("Additional details"));
 
         let mixed = report(

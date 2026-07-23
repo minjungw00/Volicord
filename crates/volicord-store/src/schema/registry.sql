@@ -405,7 +405,15 @@ CREATE TABLE mcp_runtime_sessions (
   initialize_completed_at TEXT,
   initialized_notification_at TEXT,
   tools_list_observed_at TEXT,
+  returned_tool_identities_json TEXT CHECK (
+    returned_tool_identities_json IS NULL
+    OR (
+      json_valid(returned_tool_identities_json)
+      AND json_type(returned_tool_identities_json) = 'array'
+    )
+  ),
   required_tools_present INTEGER CHECK (required_tools_present IN (0, 1)),
+  required_tools_validated_at TEXT,
   verification_tool_name TEXT CHECK (
     verification_tool_name IS NULL
     OR (
@@ -440,8 +448,24 @@ CREATE TABLE mcp_runtime_sessions (
     OR (initialized_notification_at IS NOT NULL AND negotiated_protocol_version IS NOT NULL)
   ),
   CHECK (
-    (tools_list_observed_at IS NULL AND required_tools_present IS NULL)
-    OR (tools_list_observed_at IS NOT NULL AND required_tools_present IS NOT NULL)
+    (
+      tools_list_observed_at IS NULL
+      AND returned_tool_identities_json IS NULL
+      AND required_tools_present IS NULL
+      AND required_tools_validated_at IS NULL
+    )
+    OR (
+      tools_list_observed_at IS NOT NULL
+      AND returned_tool_identities_json IS NOT NULL
+      AND required_tools_present = 0
+      AND required_tools_validated_at IS NULL
+    )
+    OR (
+      tools_list_observed_at IS NOT NULL
+      AND returned_tool_identities_json IS NOT NULL
+      AND required_tools_present = 1
+      AND required_tools_validated_at IS NOT NULL
+    )
   ),
   CHECK (
     (verification_tool_name IS NULL AND verification_tool_observed_at IS NULL)
@@ -449,13 +473,16 @@ CREATE TABLE mcp_runtime_sessions (
   ),
   CHECK (initialized_notification_at IS NULL OR initialize_completed_at IS NOT NULL),
   CHECK (negotiated_protocol_version IS NULL OR negotiated_protocol_version = selected_protocol_version),
-  CHECK (verification_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
+  CHECK (tools_list_observed_at IS NULL OR initialize_completed_at IS NOT NULL),
+  CHECK (required_tools_validated_at IS NULL OR required_tools_validated_at >= tools_list_observed_at),
+  CHECK (verification_tool_observed_at IS NULL OR required_tools_validated_at IS NOT NULL),
   CHECK (terminal_finding_id IS NULL OR graceful_close_at IS NULL),
   CHECK (last_observed_at >= process_started_at),
   CHECK (initialize_completed_at IS NULL OR initialize_completed_at >= process_started_at),
   CHECK (initialized_notification_at IS NULL OR initialized_notification_at >= initialize_completed_at),
   CHECK (tools_list_observed_at IS NULL OR tools_list_observed_at >= initialize_completed_at),
   CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= initialized_notification_at),
+  CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= required_tools_validated_at),
   CHECK (terminal_finding_id IS NULL OR last_observed_at >= process_started_at),
   CHECK (graceful_close_at IS NULL OR graceful_close_at >= process_started_at)
 );
@@ -475,7 +502,7 @@ CREATE INDEX idx_mcp_runtime_sessions_successful_managed
   )
   WHERE session_source = 'managed_host'
     AND initialized_notification_at IS NOT NULL
-    AND required_tools_present = 1
+    AND required_tools_validated_at IS NOT NULL
     AND verification_tool_name IS NOT NULL
     AND verification_tool_observed_at IS NOT NULL;
 

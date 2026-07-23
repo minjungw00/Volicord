@@ -50,6 +50,15 @@ pub enum HostExecutableStatus {
     NotChecked,
 }
 
+/// Installation and manual-invocation aid observed from the current PATH.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HostExecutableProbe {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discovered_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
 impl HostExecutableStatus {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -120,6 +129,13 @@ impl Verification {
             host_executable_code: "host_executable_not_checked".to_owned(),
             host_executable_details: "Codex executable was not probed".to_owned(),
             project_trust: None,
+        }
+    }
+
+    pub fn host_executable_probe(&self) -> HostExecutableProbe {
+        HostExecutableProbe {
+            discovered_path: self.executable_path.clone(),
+            version: self.host_version.clone(),
         }
     }
 }

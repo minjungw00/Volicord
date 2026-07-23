@@ -255,10 +255,6 @@ pub(super) fn host_boundary_findings(
     Ok(findings)
 }
 
-pub(super) fn observed_host_version(session: &McpRuntimeSessionRecord) -> Option<&str> {
-    session.observed_host_executable_version.as_deref()
-}
-
 #[derive(Serialize)]
 pub(super) struct ActualMcpPeerClientInfo<'a> {
     name: Option<&'a str>,

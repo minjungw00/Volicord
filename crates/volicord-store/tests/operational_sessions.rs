@@ -28,7 +28,8 @@ use volicord_store::{
         mcp_runtime_session, mcp_runtime_session_for_process, record_mcp_initialize_attempt,
         record_mcp_initialize_completion, record_mcp_initialized_notification,
         record_mcp_terminal_finding, record_mcp_tools_list,
-        record_mcp_verification_tool_observation, McpRuntimeSessionStart,
+        record_mcp_verification_tool_observation, ManagedCapabilityProof, McpRuntimeSessionStart,
+        McpSessionEvidenceSelection, McpSessionMilestones,
     },
     sqlite::registry_db_path,
 };
@@ -120,14 +121,124 @@ fn complete(
     record_mcp_tools_list(
         fixture.runtime_home_path(),
         runtime_session_id,
+        &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
         required_tools_present,
         TOOLS,
     )?;
-    record_mcp_verification_tool_observation(
+    if required_tools_present {
+        record_mcp_verification_tool_observation(
+            fixture.runtime_home_path(),
+            runtime_session_id,
+            SAFE,
+        )?;
+    }
+    Ok(())
+}
+
+fn initialize_only(fixture: &CoreFixture, runtime_session_id: &str) -> Result<(), Box<dyn Error>> {
+    let client = ManagedMcpClientInfo::new("future-client", "999.123-preview+custom")?;
+    record_mcp_initialize_attempt(
         fixture.runtime_home_path(),
         runtime_session_id,
-        SAFE,
+        &client,
+        "2025-11-25",
+        INIT,
     )?;
+    record_mcp_initialize_completion(
+        fixture.runtime_home_path(),
+        runtime_session_id,
+        "2025-11-25",
+        INIT,
+    )?;
+    record_mcp_initialized_notification(
+        fixture.runtime_home_path(),
+        runtime_session_id,
+        "2025-11-25",
+        INITIALIZED,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn evidence_selection_requires_one_session_to_complete_every_readiness_milestone(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-session-coherent-proof")?;
+    let complete_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    complete(&fixture, &complete_runtime, true)?;
+    let revision = volicord_store::operational_sessions::connection_integration_revision(
+        &volicord_store::agent_connections::agent_connection_record_read_only(
+            fixture.runtime_home_path(),
+            fixture.connection_id(),
+        )?
+        .expect("connection"),
+    )?;
+    let sessions =
+        current_managed_runtime_sessions(fixture.runtime_home_path(), fixture.connection_id())?;
+    let selection = McpSessionEvidenceSelection::select(&revision, &sessions)?;
+    assert_eq!(
+        selection
+            .latest_attempt
+            .as_ref()
+            .expect("latest attempt")
+            .runtime_session_id
+            .as_str(),
+        complete_runtime
+    );
+    let proof = selection.latest_complete_proof.expect("complete proof");
+    assert_eq!(
+        proof.milestones().runtime_session_id.as_str(),
+        complete_runtime
+    );
+    assert_eq!(
+        proof.milestones().returned_tool_identities.as_deref(),
+        Some(&[AgentToolId::LIST_PROJECTS.wire_name().to_owned()][..])
+    );
+    assert!(proof.milestones().required_tools_validated_at.is_some());
+
+    let initialize_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    initialize_only(&fixture, &initialize_runtime)?;
+    let tools_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    initialize_only(&fixture, &tools_runtime)?;
+    record_mcp_tools_list(
+        fixture.runtime_home_path(),
+        &tools_runtime,
+        &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
+        true,
+        TOOLS,
+    )?;
+    let mixed_records =
+        current_managed_runtime_sessions(fixture.runtime_home_path(), fixture.connection_id())?
+            .into_iter()
+            .filter(|session| {
+                session.runtime_session_id == initialize_runtime
+                    || session.runtime_session_id == tools_runtime
+            })
+            .collect::<Vec<_>>();
+    let mixed = McpSessionEvidenceSelection::select(&revision, &mixed_records)?;
+    assert!(mixed.latest_complete_proof.is_none());
+    Ok(())
+}
+
+#[test]
+fn typed_milestones_reject_implied_or_non_managed_capability_proof() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("operational-session-impossible-proof")?;
+    let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
+    complete(&fixture, &runtime, true)?;
+    let record = mcp_runtime_session(fixture.runtime_home_path(), &runtime)?.expect("runtime");
+
+    let mut implied_required_tools = record.clone();
+    implied_required_tools.tools_list_observed_at = None;
+    implied_required_tools.returned_tool_identities = None;
+    assert!(McpSessionMilestones::try_from_record(&implied_required_tools).is_err());
+
+    let mut implied_verification = record.clone();
+    implied_verification.required_tools_validated_at = None;
+    assert!(McpSessionMilestones::try_from_record(&implied_verification).is_err());
+
+    let mut non_managed = record;
+    non_managed.session_source = McpRuntimeSessionSource::CliPreflight;
+    let milestones = McpSessionMilestones::try_from_record(&non_managed)?;
+    assert!(ManagedCapabilityProof::try_new(milestones).is_err());
     Ok(())
 }
 
@@ -252,7 +363,14 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("operational-session-order")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
-    assert!(record_mcp_tools_list(fixture.runtime_home_path(), &runtime, true, INIT).is_err());
+    assert!(record_mcp_tools_list(
+        fixture.runtime_home_path(),
+        &runtime,
+        &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
+        true,
+        INIT,
+    )
+    .is_err());
     let client = ManagedMcpClientInfo::new("unlisted-client", "2037.0")?;
     record_mcp_initialize_attempt(
         fixture.runtime_home_path(),
@@ -337,11 +455,15 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
     let record =
         mcp_runtime_session(fixture.runtime_home_path(), &incomplete)?.expect("runtime session");
     assert_eq!(record.required_tools_present, Some(false));
-    assert_eq!(
-        record.verification_tool_name.as_deref(),
-        Some(AgentToolId::LIST_PROJECTS.wire_name())
-    );
-    assert_eq!(record.verification_tool_observed_at.as_deref(), Some(SAFE));
+    assert!(record.required_tools_validated_at.is_none());
+    assert!(record.verification_tool_name.is_none());
+    assert!(record.verification_tool_observed_at.is_none());
+    assert!(record_mcp_verification_tool_observation(
+        fixture.runtime_home_path(),
+        &incomplete,
+        SAFE,
+    )
+    .is_err());
 
     let fatal = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let finding = terminal_finding(

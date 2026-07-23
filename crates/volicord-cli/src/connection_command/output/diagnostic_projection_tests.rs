@@ -304,6 +304,122 @@ fn assert_same_roots(concise: &str, verbose: &str, json: &Value, expected: &[&st
     }
 }
 
+fn role_check(kind: ConnectionCheckKind, role: &str, runtime_session_id: &str) -> ConnectionCheck {
+    check(
+        kind,
+        ConnectionCheckStatus::Passed,
+        "passed",
+        "Role-bearing session evidence passed",
+        &[],
+        Some(json!({
+            "evidence_role": role,
+            "runtime_session_id": runtime_session_id,
+        })),
+    )
+}
+
+#[test]
+fn report_context_deduplicates_same_session_roles_with_human_json_parity() {
+    let runtime_session_id = "runtime_session_same_proof";
+    let report = report(
+        vec![
+            check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Passed,
+                "passed",
+                "Managed configuration passed",
+                &[],
+                None,
+            ),
+            role_check(
+                ConnectionCheckKind::ProcessStartup,
+                "latest_attempt",
+                runtime_session_id,
+            ),
+            role_check(
+                ConnectionCheckKind::HostSession,
+                "latest_attempt",
+                runtime_session_id,
+            ),
+            role_check(
+                ConnectionCheckKind::RequiredTools,
+                "latest_complete_proof",
+                runtime_session_id,
+            ),
+            role_check(
+                ConnectionCheckKind::ToolRoundTrip,
+                "latest_complete_proof",
+                runtime_session_id,
+            ),
+        ],
+        Vec::new(),
+        Vec::new(),
+    );
+    let (_, verbose, json) = projections(&report);
+    assert_eq!(
+        json["connection"]["runtime_session_ids"],
+        json!([runtime_session_id])
+    );
+    assert_eq!(
+        json["connection"]["runtime_sessions"],
+        json!([{
+            "id": runtime_session_id,
+            "roles": ["latest_attempt", "latest_complete_proof"],
+        }])
+    );
+    assert!(verbose.contains(&format!(
+        "Runtime sessions: {runtime_session_id} (latest_attempt, latest_complete_proof)"
+    )));
+}
+
+#[test]
+fn report_context_contains_both_distinct_role_bearing_sessions() {
+    let report = report(
+        vec![
+            check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Passed,
+                "passed",
+                "Managed configuration passed",
+                &[],
+                None,
+            ),
+            role_check(
+                ConnectionCheckKind::ProcessStartup,
+                "latest_attempt",
+                "runtime_session_attempt",
+            ),
+            role_check(
+                ConnectionCheckKind::HostSession,
+                "latest_attempt",
+                "runtime_session_attempt",
+            ),
+            role_check(
+                ConnectionCheckKind::RequiredTools,
+                "latest_complete_proof",
+                "runtime_session_proof",
+            ),
+            role_check(
+                ConnectionCheckKind::ToolRoundTrip,
+                "latest_complete_proof",
+                "runtime_session_proof",
+            ),
+        ],
+        Vec::new(),
+        Vec::new(),
+    );
+    let (_, verbose, json) = projections(&report);
+    assert_eq!(
+        json["connection"]["runtime_sessions"],
+        json!([
+            {"id": "runtime_session_attempt", "roles": ["latest_attempt"]},
+            {"id": "runtime_session_proof", "roles": ["latest_complete_proof"]},
+        ])
+    );
+    assert!(verbose.contains("runtime_session_attempt (latest_attempt)"));
+    assert!(verbose.contains("runtime_session_proof (latest_complete_proof)"));
+}
+
 #[test]
 fn protocol_mismatch_projection_is_exact_and_actionable() {
     let id = "finding.protocol_mismatch";
@@ -337,19 +453,25 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
                 "MCP initialize selected no supported protocol",
                 &[id],
                 Some(json!({
-                    "actual_mcp_peer_client_info": {"name": "codex", "version": "0.42.0"},
-                    "path_executable_probe": {"path": "/opt/codex", "version": "0.42.0"},
-                    "requested_protocol_version": "2024-11-05",
-                    "selected_protocol_version": "2025-11-25",
-                    "negotiated_protocol_version": null,
+                    "evidence_role": "latest_attempt",
+                    "runtime_session_id": "runtime_session_projection",
+                    "managed_peer": {
+                        "client_info": {"name": "codex", "version": "0.42.0"},
+                        "requested_protocol_revision": "2024-11-05",
+                        "selected_protocol_revision": "2025-11-25",
+                    },
+                    "host_executable_probe": {
+                        "discovered_path": "/opt/codex",
+                        "version": "0.42.0",
+                    },
                     "terminal_finding_id": id,
                 })),
             ),
             check(
                 ConnectionCheckKind::RequiredTools,
-                ConnectionCheckStatus::Blocked,
-                "blocked_by_failed_prerequisite",
-                "tools/list was blocked by initialize",
+                ConnectionCheckStatus::Failed,
+                "required_tools_not_proven",
+                "tools/list did not produce a complete same-session proof",
                 &[id],
                 None,
             ),
@@ -385,7 +507,7 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
     assert!(concise.contains("Actual MCP client: codex 0.42.0"));
     assert!(concise.contains("Requested protocol: 2024-11-05"));
     assert!(concise.contains("Supported protocols: 2025-06-18, 2025-11-25"));
-    assert!(concise.contains("Blocked checks: required_tools, tool_round_trip"));
+    assert!(concise.contains("Blocked checks: tool_round_trip"));
     assert!(concise.contains("action.mcp.use_supported_protocol_revision"));
     assert!(!concise.contains("inspect the failure"));
     for expected in [
@@ -395,7 +517,7 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
         "PATH executable: /opt/codex",
         "Runtime sessions: runtime_session_projection",
         "Integration revision: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "Blocked by: host_session",
+        "Blocked by: required_tools",
         "Report limits",
     ] {
         assert!(
@@ -502,18 +624,9 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
         ConnectionCheckKind::McpServer,
         ConnectionCheckKind::ProcessStartup,
         ConnectionCheckKind::HostSession,
-        ConnectionCheckKind::RequiredTools,
-        ConnectionCheckKind::ToolRoundTrip,
     ];
-    const PROCESS_BLOCKED: &[ConnectionCheckKind] = &[
-        ConnectionCheckKind::HostSession,
-        ConnectionCheckKind::RequiredTools,
-        ConnectionCheckKind::ToolRoundTrip,
-    ];
-    const HOST_SESSION_BLOCKED: &[ConnectionCheckKind] = &[
-        ConnectionCheckKind::RequiredTools,
-        ConnectionCheckKind::ToolRoundTrip,
-    ];
+    const PROCESS_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::HostSession];
+    const HOST_SESSION_BLOCKED: &[ConnectionCheckKind] = &[];
     const TOOLS_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::ToolRoundTrip];
     const GUARD_BLOCKED: &[ConnectionCheckKind] = &[
         ConnectionCheckKind::GuardHookExecution,
@@ -1092,11 +1205,12 @@ fn pending_and_complete_reports_are_exact() {
             "Managed host connection use has not been observed",
             &[],
             Some(json!({
-                "actual_mcp_peer_client_info": {"name": null, "version": null},
-                "path_executable_probe": {"path": "/opt/codex", "version": "0.42.0"},
-                "requested_protocol_version": null,
-                "selected_protocol_version": null,
-                "negotiated_protocol_version": null,
+                "evidence_role": "latest_attempt",
+                "current_integration_revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "host_executable_probe": {
+                    "discovered_path": "/opt/codex",
+                    "version": "0.42.0",
+                },
             })),
         )],
         Vec::new(),

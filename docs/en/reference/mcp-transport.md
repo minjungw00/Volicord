@@ -220,7 +220,8 @@ matrix. The current `codex` fixture uses the
 reviewed Codex initialize request shape with `clientInfo.name` set to
 `codex-mcp-client`, the `Codex` title, an empty current capability object, and
 the independently pinned revision `2025-06-18`. Its one tool call carries valid
-`codex-mcp-2025-06-18-v1` session/thread/turn metadata. It executes
+`codex-mcp-2025-06-18-v1` session/thread/turn metadata. That fixture ID names
+the reviewed wire contract and is not a Codex package-version identity. It executes
 `tools/list` and the tool selected by
 `ToolVerificationRole::ManagedHostRoundTrip`, currently
 `volicord.list_projects`, and it never derives its requested revision from the
@@ -270,17 +271,19 @@ initialize it records completion and the server-selected profile revision
 before returning that revision. The selected value becomes the negotiated
 revision only when a valid `notifications/initialized` fully completes the
 handshake. The adapter records each actual `tools/list` response before
-returning it; the discovery fact says whether that generated response contained
-every tool required by the current Connection mode. Duplicate initialized
-notifications are idempotent after the first valid observation and cannot
-change the negotiated revision.
+returning it, including the canonical sorted exact returned tool identities.
+The discovery fact says whether that generated response contained every tool
+required by the current Connection mode; successful validation records its own
+`required_tools_validated_at` milestone. Duplicate initialized notifications
+are idempotent after the first valid observation and cannot change the
+negotiated revision.
 
 Only a successful `tools/call` for the exact tool bound to
 `ToolVerificationRole::ManagedHostRoundTrip` can record managed-host
 round-trip evidence. The role's compile-time binding is
 `AgentToolId::LIST_PROJECTS`, whose wire-name projection is
-`volicord.list_projects`. The call
-must carry valid current managed Codex session/thread/turn correlation, belong
+`volicord.list_projects`. The call must follow same-session required-tool
+validation, carry valid current managed Codex session/thread/turn correlation, belong
 to the current enabled `managed_host` runtime and Connection revision, and
 complete without a JSON-RPC or tool error. Store then atomically records the
 exact `verification_tool_name` and `verification_tool_observed_at` pair before
@@ -322,8 +325,16 @@ authoritative runtime-session protocol data. `clientInfo` name/version and an
 observed host executable version are diagnostic fields; they accept bounded
 future values. Compatibility is determined from the current managed
 configuration and the initialization, tool-list, required-tool, safe-call, and
-Guard behavior observed for the current revision. These records are cooperative
-and do not establish client, host, actor, or human identity.
+Guard behavior observed in one current-revision `managed_host` runtime.
+Verification selects the newest managed runtime as `latest_attempt` for current
+health and independently selects the newest runtime with that complete same-
+session chain as `latest_complete_proof`. It never combines milestones across
+runtimes. The actual protocol peer is the selected runtime's `clientInfo`; the
+separately probed executable path and `codex --version` are installation and
+manual-invocation aids, not protocol-peer authority. A peer/PATH version
+mismatch may produce warning evidence but does not itself invalidate a complete
+managed session. These records are cooperative and do not establish client,
+host, actor, or human identity.
 
 ## Per-Call Session Authorization
 

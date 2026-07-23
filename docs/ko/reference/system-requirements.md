@@ -135,9 +135,10 @@ workflow가 Git 객체 ID를 제공하거나 검증할 때, 또는 선택한 Pro
 ## 실행 파일과 프로세스 요구사항
 
 관리 프로세스는 구성된 Codex 실행 파일을 찾아 실행할 수 있어야 합니다. 활성 검증에서는
-실행 파일 탐색과 version 명령이 성공해야 합니다. 검증은 해석한 path와 관찰한 host version을
-diagnostic으로 보고합니다. 관찰한 version이 달라지면 관리 Codex 동작을 다시 관찰할 때까지
-현재 운영 관찰이 pending이 됩니다. 실행 파일 사용 가능성만으로 agent, 운영체제 사용자,
+실행 파일 탐색과 version 명령이 성공해야 합니다. 검증은 해석한 path와 관찰한 executable
+version을 diagnostic으로 보고합니다. 실제 MCP peer version은 해당 managed runtime의
+`clientInfo`에서 가져오며, PATH probe와 다르다는 이유만으로 운영 관찰을 pending으로 만들지
+않습니다. 실행 파일 사용 가능성만으로 agent, 운영체제 사용자,
 human identity가 성립하지는 않습니다.
 
 관리 Codex 설정은 의도한 Volicord 실행 파일을 관리형 stdio MCP로 시작해야 합니다.
@@ -219,8 +220,8 @@ Initialize 전에 MCP는 lease를 원자적으로 소비하고 제한된 client 
 host version diagnostic을 포함한 managed-host runtime session 하나를 기록합니다. 각 project tool 호출에서는
 project session을 기록하거나 선택하고, Core 맥락을 만들기 전에 현재 Connection
 활성화, membership, mode, runtime/project session 소유권, 두 integration revision을
-검증합니다. 새로 관찰한 제한 안의 host version은 운영 관찰을 갱신해 호환성을
-확인합니다.
+검증합니다. 호환성은 PATH probe version 일치가 아니라 현재 managed runtime의 protocol 및
+capability 동작으로 확인합니다.
 
 비밀과 관련 없는 ambient 환경 값은 관리 설정에 복사하지 않습니다. 진단은 token,
 전체 민감 payload 또는 가리지 않은 민감 절대 경로를 출력하면 안 됩니다.

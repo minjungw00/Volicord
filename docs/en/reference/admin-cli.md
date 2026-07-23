@@ -291,7 +291,11 @@ requested, selected, and negotiated protocol revisions, actual MCP peer
 process exit and stderr facts, Runtime Home and Connection correlation,
 runtime-session ID, integration revision, timestamps, dependency and
 blocked-by relationships, recommended actions, and report limits. Known detail
-fields are rendered structurally; unknown or extended fields and values that do
+fields are rendered structurally. MCP checks serialize typed
+`ManagedSessionAttemptDetails`, `ManagedCapabilityProofDetails`,
+`RequiredToolsEvidence`, `VerificationToolEvidence`, and
+`HostExecutableProbeDetails`; a renderer does not turn an absent optional field
+into a negative milestone on a passed check. Unknown or extended fields and values that do
 not match a focused renderer's expected type appear under `Additional details`.
 The renderer never reconstructs a cause from a summary. Redacted fact fields
 remain redacted.
@@ -322,9 +326,14 @@ DiagnosticReport:
 ```
 
 `connection` carries Runtime Home, selected Connection coordinates, optional
-repository and configuration target, current integration revision, and bounded
-runtime-session IDs. Each check carries its status, canonical dependencies,
-typed details, observation time, and cause-finding IDs. Each finding carries
+repository and configuration target, current integration revision, bounded
+`runtime_session_ids`, and role-preserving `runtime_sessions`. Each role entry
+contains one `id` and canonical `roles` drawn from `latest_attempt` and
+`latest_complete_proof`. Check evidence supplies these IDs even when no finding
+is correlated. One session selected for both roles appears once with both
+roles, and verbose human output renders the same assignment. Each check carries
+its status, canonical dependencies, typed details, observation time, and
+cause-finding IDs. Each finding carries
 safe typed facts, cause IDs, actions, correlations, redaction metadata, and
 truncation metadata. A missing observation is represented by an absent field or
 an explicit `observation_state=absent` owner fact; an observed empty collection
@@ -335,18 +344,18 @@ collapsed into the same empty value.
 A representative concise protocol-mismatch result is:
 
 ```text
-Verification completed: 2 blocked, 1 failed.
+Verification completed: 1 blocked, 2 failed.
 
 Repository: /workspace/product
 Mode: workflow
-Checks: 0 ready, 2 blocked, 0 waiting, 1 failed
+Checks: 0 ready, 1 blocked, 0 waiting, 2 failed
 
 Problems
   mcp.protocol.counter_offer_rejected: the protocol counter-offer was rejected or disconnected
     Actual MCP client: codex 0.42.0
     Requested protocol: 2025-01-15
     Supported protocols: 2024-10-07, 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25
-    Blocked checks: required_tools, tool_round_trip
+    Blocked checks: tool_round_trip
     Runtime session: runtime_session_01
     Finding: finding.runtime_session_01.protocol
 
@@ -359,7 +368,7 @@ Rerun active verification with `volicord connection verify codex --repo /workspa
 The verbose view presents the same root ID and typed observations:
 
 ```text
-Verification completed: 2 blocked, 1 failed.
+Verification completed: 1 blocked, 2 failed.
 
 Connection
   ID: connection_1
@@ -371,11 +380,11 @@ Connection
   Config target: /home/user/.codex/config.toml
   Runtime home: /home/user/.volicord
   Integration revision: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-  Runtime sessions: runtime_session_01
+  Runtime sessions: runtime_session_01 (latest_attempt)
 
 Summary
   Status: failed
-  Checks: 0 passed, 2 blocked, 0 pending, 1 failed, 0 not applicable
+  Checks: 0 passed, 1 blocked, 0 pending, 2 failed, 0 not applicable
 
 Checks
   [fail] Codex managed session
@@ -383,6 +392,8 @@ Checks
     Code: host_session_protocol_mismatch
     Depends on: process_startup
     Root findings: finding.runtime_session_01.protocol
+    Evidence role: latest_attempt
+    Runtime session: runtime_session_01
     PATH executable: /opt/codex
     PATH executable version: 0.42.0
     Actual MCP peer: codex
@@ -391,9 +402,8 @@ Checks
     Selected protocol: 2025-11-25
     Initialize: failed
 
-  [blocked] Codex required tools
-    Depends on: host_session
-    Blocked by: host_session
+  [fail] Codex required tools
+    No current-revision managed-host session completed same-session required-tool validation
     Root findings: finding.runtime_session_01.protocol
 
   [blocked] Read-only tool round trip
@@ -681,7 +691,9 @@ capability shape, requests exact revision `2025-06-18`, sends valid native
 session-correlation metadata on its one `volicord.list_projects` call, and does
 not select a revision from the server's preferred profile. The fixture list can
 contain multiple `codex` entries when deployed Codex families require different
-revisions or wire shapes.
+revisions or wire shapes. Each fixture identity names its reviewed semantic
+wire contract, such as `codex-mcp-2025-06-18-v1`, rather than an arbitrary
+historical Codex package version.
 
 A failed stdio probe keeps the current stage-specific check code. Its exact
 revision or host fixture and completed observations remain in the corresponding
@@ -772,7 +784,14 @@ diagnostic: verification does not apply or adopt it and never changes
 CLI probe evidence only. Even a passing `codex` compatibility fixture is not
 an observation of an actual managed Codex process and does not create
 `host_session`, `required_tools`, or `tool_round_trip` evidence. Only a runtime
-session whose source is `managed_host` can supply those observations.
+session whose source is `managed_host` can supply those observations. The
+newest current-revision managed session is fixed as `latest_attempt` for
+process and initialize health. Required tools and round trip pass only from the
+newest `latest_complete_proof` whose initialize, initialized notification,
+`tools/list`, required-tool validation, and canonical verification call all
+completed in that same session. A newer partial or failed attempt and an older
+proof remain separate role-bearing evidence; neither fills milestones in the
+other.
 
 `volicord init` and `volicord connection add` keep a successfully written valid
 setup even when a later operational check fails. They do not roll back managed

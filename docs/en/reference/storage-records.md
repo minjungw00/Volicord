@@ -175,9 +175,8 @@ applied or adopted. Only an explicit setup-owned managed-configuration write
 may change it. When that write changes the fingerprint, the same Registry
 transaction clears `verification_report_json`; replay with the same
 fingerprint may retain the report. Host and client version fields remain
-diagnostic observations. A changed host version renews operational observation,
-while the current owner fields and Store-owned generation derive the lifecycle
-revision. Store increments the generation exactly once in each
+diagnostic observations. The current owner fields and Store-owned generation
+derive the lifecycle revision. Store increments the generation exactly once in each
 successful real mode transition and never for a same-mode no-op. The generation
 distinguishes revisions within one physical Connection instance; the immutable
 instance ID distinguishes physical deletion and recreation. Together they are
@@ -199,16 +198,31 @@ parsed, including when later initialize validation fails.
 when initialize completes; `negotiated_protocol_version` remains null until the
 valid initialized notification fully completes that selected profile's
 handshake. Store separately records initialize completion, every actual
-`tools/list` result and required-tool-set fact, the exact successful
+`tools/list` time, canonical sorted `returned_tool_identities_json`, required-
+tool-set fact, and `required_tools_validated_at`, plus the exact successful
 verification-tool identity/time pair `verification_tool_name` and
 `verification_tool_observed_at`, one terminal structured finding ID, and
-graceful close. The pair is both null or both present. A present name is an
+graceful close. Required-tool success requires the list observation and
+returned inventory; verification-tool success requires same-session required-
+tool validation. The verification pair is both null or both present. A present name is an
 MCP-compatible 1 through 128 byte ASCII name, and its observation timestamp is
-not earlier than the initialized notification. Store accepts this pair only
+not earlier than required-tool validation. Store accepts this pair only
 for a current enabled `managed_host` runtime and current Connection revision;
 `cli_preflight` cannot write it. A protocol success is not emitted when its
 authoritative Store write fails. Best-effort diagnostics remain separate and
 cannot make an otherwise valid tool result fail.
+
+Store converts one row to `McpSessionMilestones` only when all milestone
+relationships are coherent. A `ManagedCapabilityProof` additionally requires
+`session_source=managed_host` and the complete process, initialize,
+initialized-notification, `tools/list`, required-tool, and canonical
+verification-tool chain in that row. For one current integration revision,
+selection names the newest managed row `latest_attempt` and the newest complete
+row `latest_complete_proof`; it never merges rows. The selected peer's
+`clientInfo` is the authoritative protocol peer observation. The separately
+probed PATH executable version remains diagnostic and does not select the
+proof. Persisted connection reports retain all selected session IDs and their
+roles, deduplicating one ID that carries both roles.
 
 Project host correlation is normalized by source. `host_sessions` names the
 Connection, exact native host session, immutable project integration revision,

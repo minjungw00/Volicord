@@ -2,17 +2,13 @@
 
 use super::*;
 
-pub(super) fn terminal_cause_ids(
-    session: Option<&McpRuntimeSessionRecord>,
-) -> Result<Vec<DiagnosticFindingId>, ConnectionCommandError> {
+pub(super) fn milestone_terminal_cause_ids(
+    session: Option<&McpSessionMilestones>,
+) -> Vec<DiagnosticFindingId> {
     session
-        .and_then(|session| session.terminal_finding_id.as_deref())
-        .map(|finding_id| {
-            DiagnosticFindingId::parse(finding_id.to_owned())
-                .map(|finding_id| vec![finding_id])
-                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
-        })
-        .unwrap_or_else(|| Ok(Vec::new()))
+        .and_then(|session| session.terminal_finding.clone())
+        .into_iter()
+        .collect()
 }
 
 pub(super) fn with_direct_causes(
@@ -176,6 +172,10 @@ pub(super) fn actions_for_checks(
             _ => {}
         }
     }
+    if actions.contains_key(&ConnectionActionKind::RepairManagedConfig) {
+        actions.remove(&ConnectionActionKind::ObserveCodex);
+        actions.remove(&ConnectionActionKind::InspectCodexProtocol);
+    }
     actions
         .into_iter()
         .map(|(id, instruction)| {
@@ -222,6 +222,14 @@ pub(super) fn canonical_check(
         observed_at,
     )
     .map_err(ConnectionCommandError::from)
+}
+
+pub(super) fn typed_details<T: Serialize>(details: &T) -> Result<Value, ConnectionCommandError> {
+    serde_json::to_value(details).map_err(|error| {
+        ConnectionCommandError::runtime(format!(
+            "typed connection-check details could not be serialized: {error}"
+        ))
+    })
 }
 
 pub(super) fn compact_json_value(value: Value) -> Value {

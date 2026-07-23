@@ -5,10 +5,10 @@ use std::{path::Path, str::FromStr};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation, HostSessionId};
 use volicord_types::{
-    project_agent_session_id, ConnectionIntegrationRevisionBasis, DurableIdGenerator,
-    DurableIdKind, IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource,
-    OccurrenceDiagnosticFinding, RandomDurableIdGenerator, ToolVerificationRole, UtcTimestamp,
-    DURABLE_ID_RETRY_LIMIT,
+    project_agent_session_id, AgentRuntimeSessionId, ConnectionIntegrationRevisionBasis,
+    DiagnosticFindingId, DurableIdGenerator, DurableIdKind, IntegrationRevision,
+    ManagedMcpClientInfo, McpRuntimeSessionSource, OccurrenceDiagnosticFinding,
+    RandomDurableIdGenerator, ToolVerificationRole, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
 };
 
 use crate::{
@@ -25,6 +25,7 @@ use crate::{
 const MAX_DIAGNOSTIC_FIELD_BYTES: usize = 1024;
 const MAX_PROTOCOL_FIELD_BYTES: usize = 256;
 const MAX_MCP_TOOL_NAME_BYTES: usize = 128;
+const MAX_RETURNED_TOOL_IDENTITIES: usize = 256;
 
 /// MCP process-start facts used to create an authoritative runtime session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,12 +55,314 @@ pub struct McpRuntimeSessionRecord {
     pub initialize_completed_at: Option<String>,
     pub initialized_notification_at: Option<String>,
     pub tools_list_observed_at: Option<String>,
+    pub returned_tool_identities: Option<Vec<String>>,
     pub required_tools_present: Option<bool>,
+    pub required_tools_validated_at: Option<String>,
     pub verification_tool_name: Option<String>,
     pub verification_tool_observed_at: Option<String>,
     pub last_observed_at: String,
     pub terminal_finding_id: Option<String>,
     pub graceful_close_at: Option<String>,
+}
+
+/// Authoritative MCP peer facts observed from one runtime's initialize exchange.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedPeerObservation {
+    pub client_info: ManagedMcpClientInfo,
+    pub requested_protocol_revision: String,
+    pub selected_protocol_revision: Option<String>,
+    pub negotiated_protocol_revision: Option<String>,
+}
+
+/// Typed lifecycle evidence for exactly one authoritative MCP runtime session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpSessionMilestones {
+    pub runtime_session_id: AgentRuntimeSessionId,
+    pub source: McpRuntimeSessionSource,
+    pub connection_id: String,
+    pub integration_revision: IntegrationRevision,
+    pub process_started_at: UtcTimestamp,
+    pub managed_peer: Option<ManagedPeerObservation>,
+    pub initialize_completed_at: Option<UtcTimestamp>,
+    pub initialized_notification_at: Option<UtcTimestamp>,
+    pub tools_list_observed_at: Option<UtcTimestamp>,
+    pub returned_tool_identities: Option<Vec<String>>,
+    pub required_tools_present: Option<bool>,
+    pub required_tools_validated_at: Option<UtcTimestamp>,
+    pub verification_tool_name: Option<String>,
+    pub verification_tool_observed_at: Option<UtcTimestamp>,
+    pub terminal_finding: Option<DiagnosticFindingId>,
+    pub last_observed_at: UtcTimestamp,
+}
+
+/// A complete same-session managed-host capability proof.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedCapabilityProof {
+    milestones: McpSessionMilestones,
+}
+
+impl ManagedCapabilityProof {
+    /// Returns the complete same-session milestones carried by this proof.
+    pub fn milestones(&self) -> &McpSessionMilestones {
+        &self.milestones
+    }
+}
+
+/// Deterministic current-revision managed-host evidence roles.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct McpSessionEvidenceSelection {
+    pub latest_attempt: Option<McpSessionMilestones>,
+    pub latest_complete_proof: Option<ManagedCapabilityProof>,
+}
+
+impl McpSessionMilestones {
+    /// Validates one persisted row and converts it to typed single-session evidence.
+    pub fn try_from_record(record: &McpRuntimeSessionRecord) -> StoreResult<Self> {
+        let integration_revision =
+            IntegrationRevision::parse(record.connection_integration_revision.clone())
+                .map_err(|_| corrupt(record, "connection_integration_revision"))?;
+        let process_started_at =
+            parse_stored_timestamp(record, "process_started_at", &record.process_started_at)?;
+        let initialize_completed_at = parse_optional_stored_timestamp(
+            record,
+            "initialize_completed_at",
+            record.initialize_completed_at.as_deref(),
+        )?;
+        let initialized_notification_at = parse_optional_stored_timestamp(
+            record,
+            "initialized_notification_at",
+            record.initialized_notification_at.as_deref(),
+        )?;
+        let tools_list_observed_at = parse_optional_stored_timestamp(
+            record,
+            "tools_list_observed_at",
+            record.tools_list_observed_at.as_deref(),
+        )?;
+        let required_tools_validated_at = parse_optional_stored_timestamp(
+            record,
+            "required_tools_validated_at",
+            record.required_tools_validated_at.as_deref(),
+        )?;
+        let verification_tool_observed_at = parse_optional_stored_timestamp(
+            record,
+            "verification_tool_observed_at",
+            record.verification_tool_observed_at.as_deref(),
+        )?;
+        let last_observed_at =
+            parse_stored_timestamp(record, "last_observed_at", &record.last_observed_at)?;
+        let managed_peer = match (
+            record.attempted_client_name.as_deref(),
+            record.attempted_client_version.as_deref(),
+            record.requested_protocol_version.as_deref(),
+        ) {
+            (None, None, None) => None,
+            (Some(name), Some(version), Some(requested)) => {
+                let client_info = ManagedMcpClientInfo::new(name, version)
+                    .map_err(|_| corrupt(record, "attempted_client_name"))?;
+                validate_text(
+                    "requested_protocol_version",
+                    requested,
+                    MAX_PROTOCOL_FIELD_BYTES,
+                )
+                .map_err(|_| corrupt(record, "requested_protocol_version"))?;
+                if let Some(selected) = record.selected_protocol_version.as_deref() {
+                    validate_text(
+                        "selected_protocol_version",
+                        selected,
+                        MAX_PROTOCOL_FIELD_BYTES,
+                    )
+                    .map_err(|_| corrupt(record, "selected_protocol_version"))?;
+                }
+                if let Some(negotiated) = record.negotiated_protocol_version.as_deref() {
+                    validate_text(
+                        "negotiated_protocol_version",
+                        negotiated,
+                        MAX_PROTOCOL_FIELD_BYTES,
+                    )
+                    .map_err(|_| corrupt(record, "negotiated_protocol_version"))?;
+                }
+                Some(ManagedPeerObservation {
+                    client_info,
+                    requested_protocol_revision: requested.to_owned(),
+                    selected_protocol_revision: record.selected_protocol_version.clone(),
+                    negotiated_protocol_revision: record.negotiated_protocol_version.clone(),
+                })
+            }
+            _ => return Err(corrupt(record, "attempted_client_name")),
+        };
+        if initialize_completed_at.is_some() != record.selected_protocol_version.is_some()
+            || initialize_completed_at.is_some() && managed_peer.is_none()
+        {
+            return Err(corrupt(record, "initialize_completed_at"));
+        }
+        if initialized_notification_at.is_some() != record.negotiated_protocol_version.is_some()
+            || initialized_notification_at.is_some() && initialize_completed_at.is_none()
+            || record.negotiated_protocol_version.as_deref()
+                != record.selected_protocol_version.as_deref()
+                && record.negotiated_protocol_version.is_some()
+        {
+            return Err(corrupt(record, "negotiated_protocol_version"));
+        }
+        match (
+            tools_list_observed_at.as_ref(),
+            record.returned_tool_identities.as_ref(),
+            record.required_tools_present,
+            required_tools_validated_at.as_ref(),
+        ) {
+            (None, None, None, None) => {}
+            (Some(_), Some(identities), Some(false), None) => {
+                validate_returned_tool_identities(identities)
+                    .map_err(|_| corrupt(record, "returned_tool_identities_json"))?;
+            }
+            (Some(_), Some(identities), Some(true), Some(_)) => {
+                validate_returned_tool_identities(identities)
+                    .map_err(|_| corrupt(record, "returned_tool_identities_json"))?;
+            }
+            _ => return Err(corrupt(record, "required_tools_validated_at")),
+        }
+        if tools_list_observed_at.is_some() && initialize_completed_at.is_none() {
+            return Err(corrupt(record, "tools_list_observed_at"));
+        }
+        if last_observed_at < process_started_at
+            || initialize_completed_at
+                .as_ref()
+                .is_some_and(|value| value < &process_started_at)
+            || initialized_notification_at.as_ref().is_some_and(|value| {
+                initialize_completed_at
+                    .as_ref()
+                    .is_none_or(|initialize| value < initialize)
+            })
+            || tools_list_observed_at.as_ref().is_some_and(|value| {
+                initialize_completed_at
+                    .as_ref()
+                    .is_none_or(|initialize| value < initialize)
+            })
+            || required_tools_validated_at.as_ref().is_some_and(|value| {
+                tools_list_observed_at
+                    .as_ref()
+                    .is_none_or(|tools| value < tools)
+            })
+            || verification_tool_observed_at.as_ref().is_some_and(|value| {
+                required_tools_validated_at
+                    .as_ref()
+                    .is_none_or(|required| value < required)
+                    || initialized_notification_at
+                        .as_ref()
+                        .is_none_or(|initialized| value < initialized)
+            })
+        {
+            return Err(corrupt(record, "last_observed_at"));
+        }
+        match (
+            record.verification_tool_name.as_deref(),
+            verification_tool_observed_at.as_ref(),
+        ) {
+            (None, None) => {}
+            (Some(name), Some(_)) => {
+                validate_mcp_tool_name(name)
+                    .map_err(|_| corrupt(record, "verification_tool_name"))?;
+                if required_tools_validated_at.is_none() {
+                    return Err(corrupt(record, "verification_tool_observed_at"));
+                }
+            }
+            _ => return Err(corrupt(record, "verification_tool_name")),
+        }
+        let terminal_finding = record
+            .terminal_finding_id
+            .as_ref()
+            .map(|value| {
+                DiagnosticFindingId::parse(value.clone())
+                    .map_err(|_| corrupt(record, "terminal_finding_id"))
+            })
+            .transpose()?;
+        Ok(Self {
+            runtime_session_id: AgentRuntimeSessionId::new(record.runtime_session_id.clone()),
+            source: record.session_source,
+            connection_id: record.connection_internal_id.clone(),
+            integration_revision,
+            process_started_at,
+            managed_peer,
+            initialize_completed_at,
+            initialized_notification_at,
+            tools_list_observed_at,
+            returned_tool_identities: record.returned_tool_identities.clone(),
+            required_tools_present: record.required_tools_present,
+            required_tools_validated_at,
+            verification_tool_name: record.verification_tool_name.clone(),
+            verification_tool_observed_at,
+            terminal_finding,
+            last_observed_at,
+        })
+    }
+
+    /// Returns whether this runtime has a linked terminal failure.
+    pub fn terminally_failed(&self) -> bool {
+        self.terminal_finding.is_some()
+    }
+}
+
+impl ManagedCapabilityProof {
+    /// Accepts only the full readiness chain from one current managed-host session.
+    pub fn try_new(milestones: McpSessionMilestones) -> StoreResult<Self> {
+        let expected_tool = ToolVerificationRole::ManagedHostRoundTrip
+            .tool()
+            .wire_name();
+        if milestones.source != McpRuntimeSessionSource::ManagedHost {
+            return Err(StoreError::InvalidInput {
+                detail: "managed capability proof requires session_source=managed_host".to_owned(),
+            });
+        }
+        if milestones.initialize_completed_at.is_none()
+            || milestones.initialized_notification_at.is_none()
+            || milestones.tools_list_observed_at.is_none()
+            || milestones.returned_tool_identities.is_none()
+            || milestones.required_tools_present != Some(true)
+            || milestones.required_tools_validated_at.is_none()
+            || milestones.verification_tool_name.as_deref() != Some(expected_tool)
+            || milestones.verification_tool_observed_at.is_none()
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "managed capability proof requires one session's complete initialize, tools/list, required-tool, and verification-tool chain".to_owned(),
+            });
+        }
+        Ok(Self { milestones })
+    }
+}
+
+impl McpSessionEvidenceSelection {
+    /// Selects fixed evidence roles without combining milestones across sessions.
+    pub fn select(
+        current_revision: &IntegrationRevision,
+        sessions: &[McpRuntimeSessionRecord],
+    ) -> StoreResult<Self> {
+        let mut current = sessions
+            .iter()
+            .filter(|session| {
+                session.session_source == McpRuntimeSessionSource::ManagedHost
+                    && session.connection_integration_revision == current_revision.as_str()
+            })
+            .map(McpSessionMilestones::try_from_record)
+            .collect::<StoreResult<Vec<_>>>()?;
+        current.sort_by(|left, right| {
+            right
+                .last_observed_at
+                .cmp(&left.last_observed_at)
+                .then_with(|| {
+                    right
+                        .runtime_session_id
+                        .as_str()
+                        .cmp(left.runtime_session_id.as_str())
+                })
+        });
+        let latest_attempt = current.first().cloned();
+        let latest_complete_proof = current
+            .into_iter()
+            .find_map(|milestones| ManagedCapabilityProof::try_new(milestones).ok());
+        Ok(Self {
+            latest_attempt,
+            latest_complete_proof,
+        })
+    }
 }
 
 /// Registry reservation joining one managed runtime to one project Agent Session.
@@ -690,10 +993,21 @@ pub fn record_mcp_initialized_notification(
 pub fn record_mcp_tools_list(
     runtime_home: impl AsRef<Path>,
     runtime_session_id: &str,
+    returned_tool_identities: &[String],
     required_tools_present: bool,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     validate_timestamp("tools_list_observed_at", observed_at)?;
+    let mut returned_tool_identities = returned_tool_identities.to_vec();
+    returned_tool_identities.sort();
+    returned_tool_identities.dedup();
+    validate_returned_tool_identities(&returned_tool_identities)?;
+    let returned_tool_identities_json =
+        serde_json::to_string(&returned_tool_identities).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: format!("returned MCP tool identities cannot be encoded: {error}"),
+            }
+        })?;
     update_session(runtime_home, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.initialize_completed_at.is_none() {
@@ -704,12 +1018,15 @@ pub fn record_mcp_tools_list(
         }
         tx.execute(
             "UPDATE mcp_runtime_sessions
-                SET tools_list_observed_at = ?2, required_tools_present = ?3,
+                SET tools_list_observed_at = ?2, returned_tool_identities_json = ?3,
+                    required_tools_present = ?4,
+                    required_tools_validated_at = CASE WHEN ?4 = 1 THEN ?2 ELSE NULL END,
                     last_observed_at = ?2
               WHERE runtime_session_id = ?1",
             params![
                 runtime_session_id,
                 observed_at,
+                returned_tool_identities_json,
                 bool_i64(required_tools_present)
             ],
         )?;
@@ -733,6 +1050,13 @@ pub fn record_mcp_verification_tool_observation(
             return Err(milestone_order(
                 runtime_session_id,
                 "verification tool success requires the initialized notification",
+            ));
+        }
+        if prior.required_tools_present != Some(true) || prior.required_tools_validated_at.is_none()
+        {
+            return Err(milestone_order(
+                runtime_session_id,
+                "verification tool success requires same-session required-tool validation",
             ));
         }
         if prior.terminal_finding_id.is_some() {
@@ -850,7 +1174,8 @@ pub fn latest_successful_managed_runtime_session(
             AND initialize_completed_at IS NOT NULL
             AND initialized_notification_at IS NOT NULL
             AND tools_list_observed_at IS NOT NULL
-            AND required_tools_present = 1
+            AND returned_tool_identities_json IS NOT NULL
+            AND required_tools_validated_at IS NOT NULL
             AND verification_tool_name IS NOT NULL
             AND verification_tool_observed_at IS NOT NULL
           ORDER BY verification_tool_observed_at DESC, runtime_session_id DESC
@@ -1030,7 +1355,8 @@ const RUNTIME_SESSION_SELECT: &str = "SELECT
     requested_protocol_version, selected_protocol_version,
     negotiated_protocol_version, process_id,
     process_started_at, initialize_completed_at, initialized_notification_at,
-    tools_list_observed_at, required_tools_present,
+    tools_list_observed_at, returned_tool_identities_json,
+    required_tools_present, required_tools_validated_at,
     verification_tool_name, verification_tool_observed_at, last_observed_at,
     terminal_finding_id, graceful_close_at
   FROM mcp_runtime_sessions";
@@ -1070,6 +1396,33 @@ fn runtime_session_from_row(row: &Row<'_>) -> rusqlite::Result<McpRuntimeSession
             Box::new(error),
         )
     })?;
+    let returned_tool_identities = row
+        .get::<_, Option<String>>(15)?
+        .map(|value| {
+            let identities = serde_json::from_str::<Vec<String>>(&value).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    15,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            let canonical = serde_json::to_string(&identities).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    15,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+            if canonical != value {
+                return Err(rusqlite::Error::FromSqlConversionFailure(
+                    15,
+                    rusqlite::types::Type::Text,
+                    "returned tool identities are not canonically encoded".into(),
+                ));
+            }
+            Ok(identities)
+        })
+        .transpose()?;
     Ok(McpRuntimeSessionRecord {
         runtime_session_id: row.get(0)?,
         connection_internal_id: row.get(1)?,
@@ -1086,42 +1439,35 @@ fn runtime_session_from_row(row: &Row<'_>) -> rusqlite::Result<McpRuntimeSession
         initialize_completed_at: row.get(12)?,
         initialized_notification_at: row.get(13)?,
         tools_list_observed_at: row.get(14)?,
-        required_tools_present: row.get::<_, Option<i64>>(15)?.map(|value| value == 1),
-        verification_tool_name: row.get(16)?,
-        verification_tool_observed_at: row.get(17)?,
-        last_observed_at: row.get(18)?,
-        terminal_finding_id: row.get(19)?,
-        graceful_close_at: row.get(20)?,
+        returned_tool_identities,
+        required_tools_present: row.get::<_, Option<i64>>(16)?.map(|value| value == 1),
+        required_tools_validated_at: row.get(17)?,
+        verification_tool_name: row.get(18)?,
+        verification_tool_observed_at: row.get(19)?,
+        last_observed_at: row.get(20)?,
+        terminal_finding_id: row.get(21)?,
+        graceful_close_at: row.get(22)?,
     })
 }
 
 fn validate_runtime_session(
     record: McpRuntimeSessionRecord,
 ) -> StoreResult<McpRuntimeSessionRecord> {
-    IntegrationRevision::parse(record.connection_integration_revision.clone())
-        .map_err(|_| corrupt(&record, "connection_integration_revision"))?;
-    validate_timestamp("process_started_at", &record.process_started_at)
-        .map_err(|_| corrupt(&record, "process_started_at"))?;
-    validate_timestamp("last_observed_at", &record.last_observed_at)
-        .map_err(|_| corrupt(&record, "last_observed_at"))?;
-    match (
-        record.verification_tool_name.as_deref(),
-        record.verification_tool_observed_at.as_deref(),
-    ) {
-        (None, None) => {}
-        (Some(name), Some(observed_at)) => {
-            validate_mcp_tool_name(name).map_err(|_| corrupt(&record, "verification_tool_name"))?;
-            validate_timestamp("verification_tool_observed_at", observed_at)
-                .map_err(|_| corrupt(&record, "verification_tool_observed_at"))?;
-            if record
-                .initialized_notification_at
-                .as_deref()
-                .is_none_or(|initialized_at| observed_at < initialized_at)
-            {
-                return Err(corrupt(&record, "verification_tool_observed_at"));
-            }
-        }
-        _ => return Err(corrupt(&record, "verification_tool_name")),
+    McpSessionMilestones::try_from_record(&record)?;
+    if let Some(version) = record.observed_host_executable_version.as_deref() {
+        validate_text(
+            "observed_host_executable_version",
+            version,
+            MAX_DIAGNOSTIC_FIELD_BYTES,
+        )
+        .map_err(|_| corrupt(&record, "observed_host_executable_version"))?;
+    }
+    if let Some(graceful_close_at) = record.graceful_close_at.as_deref() {
+        validate_timestamp("graceful_close_at", graceful_close_at)
+            .map_err(|_| corrupt(&record, "graceful_close_at"))?;
+    }
+    if record.terminal_finding_id.is_some() && record.graceful_close_at.is_some() {
+        return Err(corrupt(&record, "terminal_finding_id"));
     }
     Ok(record)
 }
@@ -1186,6 +1532,47 @@ fn validate_mcp_tool_name(value: &str) -> StoreResult<()> {
             detail: "verification_tool_name must be an MCP-compatible tool name of 1 through 128 ASCII bytes".to_owned(),
         })
     }
+}
+
+fn validate_returned_tool_identities(identities: &[String]) -> StoreResult<()> {
+    if identities.len() > MAX_RETURNED_TOOL_IDENTITIES {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "returned MCP tool identities exceed the {MAX_RETURNED_TOOL_IDENTITIES}-item bound"
+            ),
+        });
+    }
+    for identity in identities {
+        validate_mcp_tool_name(identity)?;
+    }
+    if identities
+        .windows(2)
+        .any(|pair| pair[0].as_bytes() >= pair[1].as_bytes())
+    {
+        return Err(StoreError::InvalidInput {
+            detail: "returned MCP tool identities must be unique and sorted by UTF-8 bytes"
+                .to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn parse_stored_timestamp(
+    record: &McpRuntimeSessionRecord,
+    field: &'static str,
+    value: &str,
+) -> StoreResult<UtcTimestamp> {
+    UtcTimestamp::parse(value).map_err(|_| corrupt(record, field))
+}
+
+fn parse_optional_stored_timestamp(
+    record: &McpRuntimeSessionRecord,
+    field: &'static str,
+    value: Option<&str>,
+) -> StoreResult<Option<UtcTimestamp>> {
+    value
+        .map(|value| parse_stored_timestamp(record, field, value))
+        .transpose()
 }
 
 fn require_observation_time(

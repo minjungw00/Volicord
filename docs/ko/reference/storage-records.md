@@ -154,9 +154,9 @@ command와 entry가 포함되며, setup 담당 경로가 마지막으로 적용�
 Volicord 관리 host configuration을 식별합니다. 명시적인 setup 소유 managed-configuration
 쓰기만 이 값을 바꿀 수 있습니다. 이 쓰기가 fingerprint를 바꾸면 같은 Registry
 transaction에서 `verification_report_json`을 비우며, fingerprint가 같은 replay는 보고서를
-유지할 수 있습니다. Host와 client version 필드는 diagnostic 관찰로 남습니다. Host version이
-바뀌면 운영 관찰을 갱신하며, 현재 소유자 field와 Store 소유 generation이 lifecycle revision을
-파생합니다. Store는 실제 mode 전환이 성공할 때마다 generation을 정확히 한
+유지할 수 있습니다. Host와 client version 필드는 diagnostic 관찰로 남습니다. 현재 소유자
+field와 Store 소유 generation이 lifecycle revision을 파생합니다. Store는 실제 mode 전환이
+성공할 때마다 generation을 정확히 한
 번 증가시키고 같은 mode의 no-op에서는 증가시키지 않습니다. Generation은 물리 Connection
 instance 하나 안의 revision을 구분하고, 변경 불가능한 instance ID는 물리 삭제와 재생성을
 구분합니다. 두 값은 Store 소유 로컬 lifecycle 및 상관관계 좌표입니다.
@@ -174,15 +174,28 @@ Milestone timestamp와 사실로 lifecycle 상태를 표현하며 중복 status 
 initialize 검증이 실패한 경우도 포함합니다. `selected_protocol_version`은 initialize가
 완료될 때 server가 선택해 반환한 revision이고, `negotiated_protocol_version`은 유효한
 initialized notification이 선택 profile의 handshake를 완전히 끝낼 때까지 null입니다.
-Store는 initialize 완료, 실제 `tools/list`마다의 응답과 required-tool-set 사실,
-verification 도구의 정확한 identity/time 쌍인 `verification_tool_name`과
+Store는 initialize 완료, 실제 `tools/list` 시각, 정규 정렬한
+`returned_tool_identities_json`, required-tool-set 사실과
+`required_tools_validated_at`, verification 도구의 정확한 identity/time 쌍인 `verification_tool_name`과
 `verification_tool_observed_at`, terminal 구조화 finding ID 하나, graceful close도 각각
-기록합니다. 두 필드는 모두 null이거나 모두 있어야 합니다. 이름이 있으면 1~128바이트의
-MCP 호환 ASCII 이름이어야 하고 관찰 timestamp는 initialized notification보다 이르지 않아야
+기록합니다. Required-tool 성공에는 list 관찰과 반환 inventory가 필요하고,
+verification-tool 성공에는 같은 session의 required-tool validation이 필요합니다. Verification
+쌍은 모두 null이거나 모두 있어야 합니다. 이름이 있으면 1~128바이트의 MCP 호환 ASCII
+이름이어야 하고 관찰 timestamp는 required-tool validation보다 이르지 않아야
 합니다. Store는 현재 enabled `managed_host` runtime과 현재 Connection revision에 대해서만
 이 쌍을 받으며 `cli_preflight`는 기록할 수 없습니다. 권위 있는 Store 쓰기가 실패하면
 protocol 성공을 내보내지 않습니다.
 Best-effort diagnostics는 분리되어 있으며 정상적인 도구 결과를 실패시킬 수 없습니다.
+
+Store는 milestone 관계가 모두 일관된 row만 `McpSessionMilestones`로 변환합니다.
+`ManagedCapabilityProof`는 추가로 `session_source=managed_host`이면서 process,
+initialize, initialized notification, `tools/list`, required-tool, 정규 verification-tool chain이
+그 row 하나에서 모두 완료되어야 합니다. 현재 integration revision 하나에서는 가장 최신
+managed row를 `latest_attempt`, 가장 최신 complete row를 `latest_complete_proof`로
+선택하며 row를 합치지 않습니다. 선택된 peer의 `clientInfo`가 권위 있는 protocol peer
+관찰입니다. 별도로 probe한 PATH executable version은 diagnostic으로 남고 proof 선택에
+사용하지 않습니다. 영속 Connection report는 선택된 모든 session ID와 role을 보존하며 한
+ID가 두 role을 가지면 중복을 제거합니다.
 
 프로젝트 host 상관관계는 source에 따라 정규화합니다. `host_sessions`는 Connection, 정확한
 native host session, 변경할 수 없는 프로젝트 integration revision, 최초/마지막 관찰 시각을

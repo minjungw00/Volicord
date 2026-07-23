@@ -193,6 +193,14 @@ retains stage-specific detail, including `details.self_test.diagnostic_code`,
 inspecting or sharing bounded Registry facts such as exit code, timeout,
 missing tools, or stderr excerpt.
 
+In `connection.runtime_sessions`, read `latest_attempt` as current managed-
+session health and `latest_complete_proof` as the newest single session that
+completed initialize, `tools/list`, required-tool validation, and the canonical
+verification call. They may be different IDs. A newer partial attempt does not
+erase an older proof, and an older proof does not hide a newer terminal failure.
+If no complete proof exists, keep readiness pending or failed from the latest
+attempt; do not combine milestones from several session entries.
+
 For `mcp.protocol.unsupported_version`, compare `requested_revision` with
 `production_supported_revisions`. For `mcp.protocol.counter_offer_rejected`,
 also compare `selected_revision`; the absence of `negotiated_revision` means
@@ -200,9 +208,10 @@ the handshake did not complete. For `mcp.protocol.generation_mismatch`, confirm
 that the requested revision belongs to the tracked non-production handshake
 generation. In all three cases, retain `attempted_client_name` and
 `attempted_client_version` and use
-`action.mcp.use_supported_protocol_revision`. The ordinary concise output shows
-the applicable bounded facts and the blocked `required_tools` and
-`tool_round_trip` checks. In verbose output, keep requested, selected, and
+`action.mcp.use_supported_protocol_revision`. With no older complete proof,
+ordinary concise output shows the applicable bounded facts, failed
+`required_tools`, and blocked `tool_round_trip` check. In verbose output, keep
+requested, selected, and
 negotiated revisions distinct, and keep actual MCP peer `clientInfo` distinct
 from the PATH executable probe.
 
@@ -220,8 +229,8 @@ expected tool is `volicord.list_projects`; a successful call to another
 read-only tool such as `volicord.status`, `volicord.get_operation_result`, or
 `volicord.check_close` does not satisfy managed-host round-trip verification.
 
-If `actual_mcp_peer_client_info.version` differs from
-`path_executable_probe.version`, first confirm which Codex process and PATH are
+If `managed_peer.client_info.version` differs from
+`host_executable_probe.version`, first confirm which Codex process and PATH are
 active. This warning is useful evidence but is not by itself a fatal result;
 do not replace one version with the other when reporting it.
 

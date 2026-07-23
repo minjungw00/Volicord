@@ -85,7 +85,9 @@ Active connection verification discovers the configured Codex executable, runs
 its version command, and reports every behavioral check using the five-state
 model defined below. Failure to find or run the executable is `Unavailable` at
 a general failure-category boundary and a failed `host_executable` connection
-check. A different observed version renews the operational observations.
+check. The PATH executable version remains an installation probe; it does not
+replace actual MCP peer `clientInfo` or invalidate an otherwise valid managed
+session merely because the two versions differ.
 
 The administrative connection command report uses `failed` for a typed
 operational result with at least one failed or blocked required check. Pending
@@ -229,6 +231,12 @@ generation timestamp, optional Connection context, complete check array,
 bounded finding graph, derived root-cause IDs, deduplicated report actions,
 operation-specific typed details, and report limits. A report action contains a
 namespaced code, bounded summary, and the exact root IDs it remediates.
+Connection context includes role-preserving runtime-session evidence selected
+as `latest_attempt` and `latest_complete_proof`. IDs come from check evidence as
+well as finding correlation; one ID with both roles is represented once with
+both roles. The roles distinguish current attempt health from a possibly older
+same-session capability proof and prohibit consumers from treating milestones
+across sessions as one success.
 Deserialization rejects any other schema version, unknown top-level member,
 duplicate check or finding ID, invalid cause graph, supplied root list that
 differs from the derived roots, duplicate action code, or action that refers to

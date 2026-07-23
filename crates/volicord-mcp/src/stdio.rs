@@ -1211,6 +1211,10 @@ fn handle_json_rpc_request_inner(
                 Ok(canonical_tools) => {
                     let required_tools_present =
                         required_tool_set_present(adapter, &canonical_tools)?;
+                    let returned_tool_identities = canonical_tools
+                        .iter()
+                        .map(|tool| tool.id.wire_name().to_owned())
+                        .collect::<Vec<_>>();
                     if !required_tools_present {
                         state.pending_finding = Some(McpDiagnostic::ToolDiscovery(
                             McpToolDiscoveryDiagnostic::RequiredToolMissing,
@@ -1230,6 +1234,7 @@ fn handle_json_rpc_request_inner(
                         record_mcp_tools_list(
                             &adapter.runtime_home,
                             &state.runtime_session_id,
+                            &returned_tool_identities,
                             required_tools_present,
                             &authoritative_observation_timestamp(),
                         )

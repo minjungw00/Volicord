@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use volicord_store::{
     operational_sessions::{
         record_mcp_initialize_attempt, record_mcp_initialize_completion,
-        record_mcp_initialized_notification, McpRuntimeSessionStart,
+        record_mcp_initialized_notification, record_mcp_tools_list, McpRuntimeSessionStart,
     },
     schema::{
         current_storage_manifest, current_storage_manifest_json, generated_schema_metadata,
@@ -29,7 +29,7 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 48);
-    assert_eq!(metadata.columns.len(), 551);
+    assert_eq!(metadata.columns.len(), 553);
     assert_eq!(metadata.indexes.len(), 73);
     assert_eq!(metadata.constraints.len(), 43);
     let agent_connection_columns = metadata
@@ -197,6 +197,8 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         "negotiated_protocol_version",
         "initialize_completed_at",
         "tools_list_observed_at",
+        "returned_tool_identities_json",
+        "required_tools_validated_at",
         "verification_tool_name",
         "verification_tool_observed_at",
         "terminal_finding_id",
@@ -229,11 +231,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:9834ff83627bbde8afba9f5c17cf710bf47fa7b2811215a04077097d89e2e704"
+        "sha256:374fba509c3923435221770b19de3c467d75d5fcd2989335b4703ea523b2d91c"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:fe125d5b51a6930762bbdce1c87e851d17518ce840fd941cad859cdd65ffc31a"
+        "sha256:a3f290eb489f5aba1231a95ce4bd4e1953fb0c078bb680be118744abe2ee60d2"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -267,12 +269,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:9834ff83627bbde8afba9f5c17cf710bf47fa7b2811215a04077097d89e2e704\",",
+            "{\"canonical_ddl_digest\":\"sha256:374fba509c3923435221770b19de3c467d75d5fcd2989335b4703ea523b2d91c\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:fe125d5b51a6930762bbdce1c87e851d17518ce840fd941cad859cdd65ffc31a\"}"
+            "\"integrity_constraints_digest\":\"sha256:a3f290eb489f5aba1231a95ce4bd4e1953fb0c078bb680be118744abe2ee60d2\"}"
         )
     );
     Ok(())
@@ -844,6 +846,13 @@ fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
         "2025-11-25",
         "2026-07-22T00:00:02Z",
     )?;
+    record_mcp_tools_list(
+        fixture.runtime_home_path(),
+        &runtime.runtime_session_id,
+        &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
+        true,
+        "2026-07-22T00:00:03Z",
+    )?;
 
     let registry = Connection::open(fixture.runtime_home_path().join("registry.sqlite"))?;
     let update = |name: Option<&str>, observed_at: Option<&str>| {
@@ -870,7 +879,7 @@ fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
     assert_eq!(
         update(
             Some(AgentToolId::LIST_PROJECTS.wire_name()),
-            Some("2026-07-22T00:00:03Z")
+            Some("2026-07-22T00:00:04Z")
         )?,
         1
     );

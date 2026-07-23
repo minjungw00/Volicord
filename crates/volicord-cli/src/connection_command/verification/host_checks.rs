@@ -78,11 +78,9 @@ pub(super) fn host_executable_check(
         status,
         &host.host_executable_code,
         summary,
-        Some(json!({
-            "path": host.executable_path,
-            "version": host.host_version,
-            "diagnostic": host.host_executable_details,
-        })),
+        Some(typed_details(
+            &HostExecutableProbeDetails::from_verification(host),
+        )?),
         None,
     )
 }
@@ -134,276 +132,201 @@ pub(super) fn project_trust_check(
 
 pub(super) fn host_session_checks(
     host: &Verification,
-    current_revision: &str,
-    current: &[McpRuntimeSessionRecord],
+    current_revision: &IntegrationRevision,
+    selection: &McpSessionEvidenceSelection,
     latest: Option<&McpRuntimeSessionRecord>,
     tool_round_trip_finding_ids: &[DiagnosticFindingId],
 ) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
-    let current = current
-        .iter()
+    let attempt = selection.latest_attempt.as_ref();
+    let complete_proof = selection.latest_complete_proof.as_ref();
+    let stale_observed_at = latest
         .filter(|session| {
             session.session_source == volicord_types::McpRuntimeSessionSource::ManagedHost
-                && session.connection_integration_revision == current_revision
+                && session.connection_integration_revision != current_revision.as_str()
         })
-        .collect::<Vec<_>>();
-    let latest = latest.filter(|session| {
-        session.session_source == volicord_types::McpRuntimeSessionSource::ManagedHost
-    });
-    let version_fresh = |session: &McpRuntimeSessionRecord| {
-        host.host_version.as_deref().is_none()
-            || observed_host_version(session).is_none()
-            || host.host_version.as_deref() == observed_host_version(session)
+        .map(|session| session.last_observed_at.as_str());
+    let attempt_details = || {
+        typed_details(&ManagedSessionAttemptDetails::new(
+            current_revision,
+            attempt,
+            host,
+        ))
     };
-    let expected_verification_tool_name = super::super::managed_host_round_trip_tool().wire_name();
-    let details = |observed: Option<&McpRuntimeSessionRecord>| {
-        json!({
-            "current_integration_revision": current_revision,
-            "observed_integration_revision": observed.map(|session| session.connection_integration_revision.as_str()),
-            "path_executable_probe": {
-                "path": host.executable_path,
-                "version": host.host_version,
-            },
-            "observed_host_executable_version": observed.and_then(observed_host_version),
-            "runtime_session_id": observed.map(|session| session.runtime_session_id.as_str()),
-            "actual_mcp_peer_client_info": {
-                "name": observed.and_then(|session| session.attempted_client_name.as_deref()),
-                "version": observed.and_then(|session| session.attempted_client_version.as_deref()),
-            },
-            "requested_protocol_version": observed.and_then(|session| session.requested_protocol_version.as_deref()),
-            "selected_protocol_version": observed.and_then(|session| session.selected_protocol_version.as_deref()),
-            "negotiated_protocol_version": observed.and_then(|session| session.negotiated_protocol_version.as_deref()),
-            "expected_verification_tool_name": expected_verification_tool_name,
-            "observed_verification_tool_name": observed.and_then(|session| session.verification_tool_name.as_deref()),
-            "verification_tool_observed_at": observed.and_then(|session| session.verification_tool_observed_at.as_deref()),
-            "last_observed_at": observed.map(|session| session.last_observed_at.as_str()),
-            "terminal_finding_id": observed.and_then(|session| session.terminal_finding_id.as_deref()),
-        })
+    let proof_details = || {
+        complete_proof
+            .map(|proof| {
+                typed_details(&ManagedCapabilityProofDetails::new(
+                    current_revision,
+                    proof,
+                    host,
+                ))
+            })
+            .transpose()
     };
-    let diagnostic = current.first().copied();
-    let started = current
-        .iter()
-        .copied()
-        .find(|session| version_fresh(session));
-    let initialized = current.iter().copied().find(|session| {
-        version_fresh(session)
-            && session.initialize_completed_at.is_some()
-            && session.initialized_notification_at.is_some()
-    });
-    let tools_present = current
-        .iter()
-        .copied()
-        .find(|session| version_fresh(session) && session.required_tools_present == Some(true));
-    let round_trip = current.iter().copied().find(|session| {
-        version_fresh(session)
-            && session.verification_tool_name.as_deref() == Some(expected_verification_tool_name)
-            && session.verification_tool_observed_at.is_some()
-    });
-    let designation_mismatch = current.iter().copied().find(|session| {
-        version_fresh(session)
-            && session.verification_tool_observed_at.is_some()
-            && session
-                .verification_tool_name
-                .as_deref()
-                .is_some_and(|observed| observed != expected_verification_tool_name)
-    });
 
-    let (session_status, session_code, session_summary, session_observed_at, session_detail) =
-        match (initialized, diagnostic) {
-            (Some(session), _) => (
-                ConnectionCheckStatus::Passed,
-                "host_session_initialized",
-                "A current managed-host session completed MCP initialize",
-                session.initialized_notification_at.as_deref(),
-                Some(session),
-            ),
-            (None, None) if latest.is_some() => (
-                ConnectionCheckStatus::Pending,
-                "host_session_revision_stale",
-                "Managed host has not loaded the current connection revision",
-                latest.map(|session| session.last_observed_at.as_str()),
-                latest,
-            ),
-            (None, None) => (
-                ConnectionCheckStatus::Pending,
-                "host_session_not_observed",
-                "Managed host connection use has not been observed",
-                None,
-                None,
-            ),
-            (None, Some(session)) if !version_fresh(session) => (
-                ConnectionCheckStatus::Pending,
-                "host_version_observation_stale",
-                "Codex version changed after the newest managed-host observation",
-                Some(session.last_observed_at.as_str()),
-                Some(session),
-            ),
-            (None, Some(session)) if session.terminal_finding_id.is_some() => (
-                ConnectionCheckStatus::Failed,
-                "host_session_initialize_failed",
-                "Newest current managed-host session failed before MCP initialize completed",
-                Some(session.last_observed_at.as_str()),
-                Some(session),
-            ),
-            (None, Some(session)) => (
-                ConnectionCheckStatus::Pending,
-                "host_session_initialize_pending",
-                "Newest current managed-host session has not completed MCP initialize",
-                Some(session.last_observed_at.as_str()),
-                Some(session),
-            ),
-        };
+    let process_started_at =
+        attempt.map(|session| session.process_started_at.to_canonical_string());
     let process_startup = canonical_check(
         ConnectionCheckKind::ProcessStartup,
-        if started.is_some() {
+        if attempt.is_some() {
             ConnectionCheckStatus::Passed
         } else {
             ConnectionCheckStatus::Pending
         },
-        if started.is_some() {
+        if attempt.is_some() {
             "process_startup_observed"
         } else {
             "process_startup_not_observed"
         },
-        if started.is_some() {
+        if attempt.is_some() {
             "A current managed host started the configured Volicord MCP process"
         } else {
             "Managed host process startup has not been observed"
         },
-        Some(details(started.or(latest))),
-        started.map(|session| session.process_started_at.as_str()),
+        Some(attempt_details()?),
+        process_started_at.as_deref(),
     )?;
 
+    let (session_status, session_code, session_summary, session_observed_at) = match attempt {
+        Some(session) if session.terminally_failed() => (
+            ConnectionCheckStatus::Failed,
+            "host_session_current_attempt_failed",
+            "The latest current managed-host attempt terminated with a protocol failure",
+            Some(session.last_observed_at.to_canonical_string()),
+        ),
+        Some(session) if session.initialized_notification_at.is_some() => (
+            ConnectionCheckStatus::Passed,
+            "host_session_initialized",
+            "The latest current managed-host attempt completed MCP initialize",
+            session
+                .initialized_notification_at
+                .as_ref()
+                .map(UtcTimestamp::to_canonical_string),
+        ),
+        Some(session) => (
+            ConnectionCheckStatus::Pending,
+            "host_session_initialize_pending",
+            "The latest current managed-host attempt has not completed MCP initialize",
+            Some(session.last_observed_at.to_canonical_string()),
+        ),
+        None if stale_observed_at.is_some() => (
+            ConnectionCheckStatus::Pending,
+            "host_session_revision_stale",
+            "Managed host has not loaded the current connection revision",
+            stale_observed_at.map(str::to_owned),
+        ),
+        None => (
+            ConnectionCheckStatus::Pending,
+            "host_session_not_observed",
+            "Managed host connection use has not been observed",
+            None,
+        ),
+    };
     let host_session = with_direct_causes(
         canonical_check(
             ConnectionCheckKind::HostSession,
             session_status,
             session_code,
             session_summary,
-            Some(details(session_detail)),
-            session_observed_at,
+            Some(attempt_details()?),
+            session_observed_at.as_deref(),
         )?,
-        terminal_cause_ids(session_detail)?,
+        milestone_terminal_cause_ids(attempt),
     )?;
 
-    let (tools_status, tools_code, tools_summary, tools_observed_at, tools_detail) =
-        match (tools_present, diagnostic) {
-            (Some(session), _) => (
-                ConnectionCheckStatus::Passed,
-                "required_tools_present",
-                "A current managed host exposed every required tool",
-                session.tools_list_observed_at.as_deref(),
-                Some(session),
-            ),
-            (None, None) => (
-                ConnectionCheckStatus::Pending,
-                "required_tools_not_observed",
-                "Current managed host has not reported tools/list",
-                None,
-                latest,
-            ),
-            (None, Some(session)) if !version_fresh(session) => (
-                ConnectionCheckStatus::Pending,
-                "required_tools_observation_stale",
-                "Newest required-tool observation predates the current Codex version",
-                Some(session.last_observed_at.as_str()),
-                Some(session),
-            ),
-            (None, Some(session)) if session.required_tools_present == Some(false) => (
+    let (tools_status, tools_code, tools_summary, tools_observed_at) = match complete_proof {
+        Some(proof) => (
+            ConnectionCheckStatus::Passed,
+            "required_tools_present",
+            "One current-revision managed-host session completed same-session required-tool validation",
+            proof
+                .milestones()
+                .required_tools_validated_at
+                .as_ref()
+                .map(UtcTimestamp::to_canonical_string),
+        ),
+        None => match attempt {
+            Some(session) if session.required_tools_present == Some(false) => (
                 ConnectionCheckStatus::Failed,
                 "required_tools_missing",
-                "Newest current managed host is missing one or more required tools",
-                session.tools_list_observed_at.as_deref(),
-                Some(session),
+                "The latest current managed-host attempt returned a tools/list result missing required tools",
+                session
+                    .tools_list_observed_at
+                    .as_ref()
+                    .map(UtcTimestamp::to_canonical_string),
             ),
-            (None, Some(session))
-                if session.initialize_completed_at.is_some()
-                    && session.terminal_finding_id.is_some() =>
-            {
-                (
-                    ConnectionCheckStatus::Failed,
-                    "required_tools_invalid",
-                    "Newest current managed-host tool discovery ended in a protocol failure",
-                    Some(session.last_observed_at.as_str()),
-                    Some(session),
-                )
-            }
-            (None, Some(session)) => (
+            Some(session) if session.terminally_failed() => (
+                ConnectionCheckStatus::Failed,
+                "required_tools_current_attempt_failed",
+                "The latest current managed-host attempt failed without a complete capability proof",
+                Some(session.last_observed_at.to_canonical_string()),
+            ),
+            Some(session) => (
                 ConnectionCheckStatus::Pending,
                 "required_tools_not_observed",
-                "Newest current managed host has not reported tools/list",
-                Some(session.last_observed_at.as_str()),
-                Some(session),
+                "No current-revision managed-host session has completed same-session required-tool validation",
+                Some(session.last_observed_at.to_canonical_string()),
             ),
-        };
+            None => (
+                ConnectionCheckStatus::Pending,
+                "required_tools_not_observed",
+                "No current-revision managed-host session has completed same-session required-tool validation",
+                None,
+            ),
+        },
+    };
+    let required_tools_details = proof_details()?.unwrap_or(attempt_details()?);
     let required_tools = with_direct_causes(
         canonical_check(
             ConnectionCheckKind::RequiredTools,
             tools_status,
             tools_code,
             tools_summary,
-            Some(details(tools_detail)),
-            tools_observed_at,
+            Some(required_tools_details),
+            tools_observed_at.as_deref(),
         )?,
-        terminal_cause_ids(tools_detail)?,
+        milestone_terminal_cause_ids(attempt),
     )?;
 
-    let (
-        round_trip_status,
-        round_trip_code,
-        round_trip_summary,
-        round_trip_observed_at,
-        round_detail,
-    ) = match (round_trip, designation_mismatch, diagnostic) {
-        (Some(session), _, _) => (
+    let designation_mismatch = attempt.is_some_and(|session| {
+        session.verification_tool_observed_at.is_some()
+            && session.verification_tool_name.as_deref() != Some(expected_verification_tool_name())
+    });
+    let (round_trip_status, round_trip_code, round_trip_summary, round_trip_observed_at) =
+        match complete_proof {
+        Some(proof) => (
             ConnectionCheckStatus::Passed,
             "tool_round_trip_passed",
-            "A current managed host completed the canonical verification tool call",
-            session.verification_tool_observed_at.as_deref(),
-            Some(session),
+            "One current-revision managed-host session completed the full same-session capability proof",
+            proof
+                .milestones()
+                .verification_tool_observed_at
+                .as_ref()
+                .map(UtcTimestamp::to_canonical_string),
         ),
-        (None, Some(session), _) => (
+        None if designation_mismatch => (
             ConnectionCheckStatus::Failed,
             "tool_round_trip_designation_mismatch",
             "The observed verification tool does not match the canonical role owner",
-            session.verification_tool_observed_at.as_deref(),
-            Some(session),
+            attempt
+                .and_then(|session| session.verification_tool_observed_at.as_ref())
+                .map(UtcTimestamp::to_canonical_string),
         ),
-        (None, None, None) => (
+        None if attempt.is_some_and(McpSessionMilestones::terminally_failed) => (
+            ConnectionCheckStatus::Failed,
+            "tool_round_trip_failed",
+            "The latest current managed-host attempt failed without completing the canonical verification tool call",
+            attempt.map(|session| session.last_observed_at.to_canonical_string()),
+        ),
+        None => (
             ConnectionCheckStatus::Pending,
             "tool_round_trip_not_observed",
-            "Current managed host has not completed the canonical verification tool call",
-            None,
-            latest,
-        ),
-        (None, None, Some(session)) if !version_fresh(session) => (
-            ConnectionCheckStatus::Pending,
-            "tool_round_trip_observation_stale",
-            "Newest verification-tool observation predates the current Codex version",
-            Some(session.last_observed_at.as_str()),
-            Some(session),
-        ),
-        (None, None, Some(session))
-            if session.required_tools_present == Some(true)
-                && session.terminal_finding_id.is_some() =>
-        {
-            (
-                ConnectionCheckStatus::Failed,
-                "tool_round_trip_failed",
-                "Newest current managed-host session reported a protocol or contract failure",
-                Some(session.last_observed_at.as_str()),
-                Some(session),
-            )
-        }
-        (None, None, Some(session)) => (
-            ConnectionCheckStatus::Pending,
-            "tool_round_trip_not_observed",
-            "Newest current managed host has not completed the canonical verification tool call",
-            Some(session.last_observed_at.as_str()),
-            Some(session),
+            "No current-revision managed-host session has completed the full same-session capability proof",
+            attempt.map(|session| session.last_observed_at.to_canonical_string()),
         ),
     };
-    let mut round_trip_causes = terminal_cause_ids(round_detail)?;
-    if designation_mismatch.is_some() {
+    let mut round_trip_causes = milestone_terminal_cause_ids(attempt);
+    if designation_mismatch {
         round_trip_causes.extend_from_slice(tool_round_trip_finding_ids);
     }
     round_trip_causes.sort();
@@ -414,8 +337,8 @@ pub(super) fn host_session_checks(
             round_trip_status,
             round_trip_code,
             round_trip_summary,
-            Some(details(round_detail)),
-            round_trip_observed_at,
+            Some(proof_details()?.unwrap_or(attempt_details()?)),
+            round_trip_observed_at.as_deref(),
         )?,
         round_trip_causes,
     )?;

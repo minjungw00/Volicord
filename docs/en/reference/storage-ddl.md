@@ -555,7 +555,15 @@ CREATE TABLE mcp_runtime_sessions (
   initialize_completed_at TEXT,
   initialized_notification_at TEXT,
   tools_list_observed_at TEXT,
+  returned_tool_identities_json TEXT CHECK (
+    returned_tool_identities_json IS NULL
+    OR (
+      json_valid(returned_tool_identities_json)
+      AND json_type(returned_tool_identities_json) = 'array'
+    )
+  ),
   required_tools_present INTEGER CHECK (required_tools_present IN (0, 1)),
+  required_tools_validated_at TEXT,
   verification_tool_name TEXT CHECK (
     verification_tool_name IS NULL
     OR (
@@ -590,8 +598,24 @@ CREATE TABLE mcp_runtime_sessions (
     OR (initialized_notification_at IS NOT NULL AND negotiated_protocol_version IS NOT NULL)
   ),
   CHECK (
-    (tools_list_observed_at IS NULL AND required_tools_present IS NULL)
-    OR (tools_list_observed_at IS NOT NULL AND required_tools_present IS NOT NULL)
+    (
+      tools_list_observed_at IS NULL
+      AND returned_tool_identities_json IS NULL
+      AND required_tools_present IS NULL
+      AND required_tools_validated_at IS NULL
+    )
+    OR (
+      tools_list_observed_at IS NOT NULL
+      AND returned_tool_identities_json IS NOT NULL
+      AND required_tools_present = 0
+      AND required_tools_validated_at IS NULL
+    )
+    OR (
+      tools_list_observed_at IS NOT NULL
+      AND returned_tool_identities_json IS NOT NULL
+      AND required_tools_present = 1
+      AND required_tools_validated_at IS NOT NULL
+    )
   ),
   CHECK (
     (verification_tool_name IS NULL AND verification_tool_observed_at IS NULL)
@@ -599,13 +623,16 @@ CREATE TABLE mcp_runtime_sessions (
   ),
   CHECK (initialized_notification_at IS NULL OR initialize_completed_at IS NOT NULL),
   CHECK (negotiated_protocol_version IS NULL OR negotiated_protocol_version = selected_protocol_version),
-  CHECK (verification_tool_observed_at IS NULL OR initialized_notification_at IS NOT NULL),
+  CHECK (tools_list_observed_at IS NULL OR initialize_completed_at IS NOT NULL),
+  CHECK (required_tools_validated_at IS NULL OR required_tools_validated_at >= tools_list_observed_at),
+  CHECK (verification_tool_observed_at IS NULL OR required_tools_validated_at IS NOT NULL),
   CHECK (terminal_finding_id IS NULL OR graceful_close_at IS NULL),
   CHECK (last_observed_at >= process_started_at),
   CHECK (initialize_completed_at IS NULL OR initialize_completed_at >= process_started_at),
   CHECK (initialized_notification_at IS NULL OR initialized_notification_at >= initialize_completed_at),
   CHECK (tools_list_observed_at IS NULL OR tools_list_observed_at >= initialize_completed_at),
   CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= initialized_notification_at),
+  CHECK (verification_tool_observed_at IS NULL OR verification_tool_observed_at >= required_tools_validated_at),
   CHECK (terminal_finding_id IS NULL OR last_observed_at >= process_started_at),
   CHECK (graceful_close_at IS NULL OR graceful_close_at >= process_started_at)
 );
@@ -625,7 +652,7 @@ CREATE INDEX idx_mcp_runtime_sessions_successful_managed
   )
   WHERE session_source = 'managed_host'
     AND initialized_notification_at IS NOT NULL
-    AND required_tools_present = 1
+    AND required_tools_validated_at IS NOT NULL
     AND verification_tool_name IS NOT NULL
     AND verification_tool_observed_at IS NOT NULL;
 
@@ -703,7 +730,7 @@ Registry constraints:
 - `managed_mcp_launch_leases` stores short-lived, one-time hidden-launcher authority. Its expected Connection, `codex` host kind, integration revision, and managed launch fingerprint must still be current when Store atomically changes `issued` to `consumed` and inserts the `managed_host` runtime. Replay, expiry, mismatch, or cancellation cannot create a runtime. Bounded cleanup expires or removes old rows. The lease is an evidence-integrity coordinate, not an OS actor credential.
 - `diagnostic_findings.lifecycle` is exactly `occurrence` or `current_state`. Occurrence rows have no current identity or status fields and are immutable. Current rows require a full 64-character lowercase identity digest, a validated `sha256:<64 lowercase hex>` `current_subject_identity`, scope kind and complete scope identity, active/resolved status, no runtime-session coordinate, and an ID exactly equal to `finding.current.sha256:` plus that digest. Active rows have no `resolved_at`; resolved rows require it. The unique digest index, active-scope index, lifecycle checks, and identity update trigger enforce those physical distinctions. The trigger keeps the subject identity immutable while allowing `subject_json` to change as replaceable safe presentation. `facts_json` remains a valid JSON object bounded to 16,384 bytes; `subject_json` and `actions_json` are likewise bounded typed representations.
 - `diagnostic_cause_edges` stores unique finding-to-cause pairs with foreign keys on both ends. `diagnostic_cause_edges_acyclic` rejects an insert that would close a directed cycle, while the cause-side index supports deterministic reverse and bounded traversal. Replacing a current-state finding deletes its prior outgoing edges and inserts the replacement edges in the same immediate transaction as the row replacement; any failure preserves the prior row and edge set.
-- `mcp_runtime_sessions.attempted_client_name` and `attempted_client_version` form the bounded parsed client pair. `requested_protocol_version` is client input; `selected_protocol_version` is the server-selected initialize result; `negotiated_protocol_version` is present only with handshake completion and must equal the selected revision. `initialize_completed_at` and `tools_list_observed_at` are distinct milestones. The bounded MCP tool name `verification_tool_name` and `verification_tool_observed_at` form an exact null-or-present pair; the observation requires the initialized notification and cannot precede it. `terminal_finding_id` is a same-runtime foreign key to one structured error finding and is mutually exclusive with graceful close.
+- `mcp_runtime_sessions.attempted_client_name` and `attempted_client_version` form the bounded parsed client pair. `requested_protocol_version` is client input; `selected_protocol_version` is the server-selected initialize result; `negotiated_protocol_version` is present only with handshake completion and must equal the selected revision. `initialize_completed_at`, `initialized_notification_at`, and `tools_list_observed_at` are distinct lifecycle milestones; `tools/list` may follow initialize completion before the initialized notification. `returned_tool_identities_json` is the canonical exact inventory for that list observation, and `required_tools_validated_at` is present only for a successful required set. The bounded MCP tool name `verification_tool_name` and `verification_tool_observed_at` form an exact null-or-present pair; the observation requires same-session required-tool validation and cannot precede it. `terminal_finding_id` is a same-runtime foreign key to one structured error finding and is mutually exclusive with graceful close.
 - `mcp_runtime_sessions.session_source` is exactly `managed_host`, `manual_cli`, `cli_preflight`, or `integration_probe`. Only the lease-consumption transaction may insert `managed_host`; managed-session lookups exclude the other three values.
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, required hook phases, exact `host_contract_profile`, and deterministic `host_contract_digest`. The current Guard selection is `codex-hooks-v1`. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.
 - Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding and Guard Installation, then `mcp_runtime_sessions`, then `managed_mcp_launch_leases`, and finally `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.

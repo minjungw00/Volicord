@@ -4,6 +4,11 @@ use volicord_types::{DiagnosticCause, DiagnosticFindingData, OccurrenceDiagnosti
 
 use super::*;
 
+const CURRENT_REVISION: &str =
+    "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+const OLD_REVISION: &str =
+    "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+
 fn host(version: &str) -> Verification {
     Verification {
         config_target: "/tmp/codex/config.toml".to_owned(),
@@ -24,7 +29,7 @@ fn managed_session(version: &str, required_tools_present: bool) -> McpRuntimeSes
         runtime_session_id: "mcp_runtime_fixture".to_owned(),
         connection_internal_id: "connection_fixture".to_owned(),
         session_source: volicord_types::McpRuntimeSessionSource::ManagedHost,
-        connection_integration_revision: "revision_current".to_owned(),
+        connection_integration_revision: CURRENT_REVISION.to_owned(),
         observed_host_executable_version: Some(version.to_owned()),
         attempted_client_name: Some("codex".to_owned()),
         attempted_client_version: Some(version.to_owned()),
@@ -36,17 +41,43 @@ fn managed_session(version: &str, required_tools_present: bool) -> McpRuntimeSes
         initialize_completed_at: Some("2026-07-18T00:00:01Z".to_owned()),
         initialized_notification_at: Some("2026-07-18T00:00:02Z".to_owned()),
         tools_list_observed_at: Some("2026-07-18T00:00:03Z".to_owned()),
-        required_tools_present: Some(required_tools_present),
-        verification_tool_name: Some(
+        returned_tool_identities: Some(vec![
             crate::connection_command::managed_host_round_trip_tool()
                 .wire_name()
                 .to_owned(),
-        ),
-        verification_tool_observed_at: Some("2026-07-18T00:00:04Z".to_owned()),
+        ]),
+        required_tools_present: Some(required_tools_present),
+        required_tools_validated_at: required_tools_present
+            .then(|| "2026-07-18T00:00:03Z".to_owned()),
+        verification_tool_name: required_tools_present.then(|| {
+            crate::connection_command::managed_host_round_trip_tool()
+                .wire_name()
+                .to_owned()
+        }),
+        verification_tool_observed_at: required_tools_present
+            .then(|| "2026-07-18T00:00:04Z".to_owned()),
         last_observed_at: "2026-07-18T00:00:04Z".to_owned(),
         terminal_finding_id: None,
         graceful_close_at: None,
     }
+}
+
+fn test_host_session_checks(
+    host: &Verification,
+    _current_revision: &str,
+    sessions: &[McpRuntimeSessionRecord],
+    latest: Option<&McpRuntimeSessionRecord>,
+    tool_round_trip_finding_ids: &[DiagnosticFindingId],
+) -> Result<Vec<ConnectionCheck>, ConnectionCommandError> {
+    let revision = IntegrationRevision::parse(CURRENT_REVISION).expect("current revision");
+    let selection = McpSessionEvidenceSelection::select(&revision, sessions)?;
+    host_session_checks(
+        host,
+        &revision,
+        &selection,
+        latest,
+        tool_round_trip_finding_ids,
+    )
 }
 
 fn check_for(checks: &[ConnectionCheck], id: ConnectionCheckKind) -> &ConnectionCheck {
@@ -61,7 +92,7 @@ fn arbitrary_future_version_can_complete_managed_host_checks() {
     let host = host("999.123-preview+custom");
     let session = managed_session("999.123-preview+custom", true);
 
-    let session_checks = host_session_checks(
+    let session_checks = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&session),
@@ -114,11 +145,11 @@ fn arbitrary_future_version_can_complete_managed_host_checks() {
 }
 
 #[test]
-fn host_version_change_requires_new_observation_without_rejection() {
+fn peer_path_version_mismatch_does_not_invalidate_managed_evidence() {
     let host = host("1000.0-new-host");
     let session = managed_session("999.123-preview+custom", true);
 
-    let checks = host_session_checks(
+    let checks = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&session),
@@ -129,10 +160,18 @@ fn host_version_change_requires_new_observation_without_rejection() {
 
     assert!(checks
         .iter()
-        .all(|check| check.status() == ConnectionCheckStatus::Pending));
+        .all(|check| check.status() == ConnectionCheckStatus::Passed));
+    let details = check_for(&checks, ConnectionCheckKind::HostSession)
+        .details()
+        .expect("managed-session details")
+        .as_object();
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::HostSession).code(),
-        Some("host_version_observation_stale")
+        details["managed_peer"]["client_info"]["version"],
+        "999.123-preview+custom"
+    );
+    assert_eq!(
+        details["host_executable_probe"]["version"],
+        "1000.0-new-host"
     );
 }
 
@@ -147,7 +186,7 @@ fn mismatched_verification_tool_fails_with_expected_and_observed_names() {
     )
     .expect("finding id");
 
-    let checks = host_session_checks(
+    let checks = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&session),
@@ -161,12 +200,12 @@ fn mismatched_verification_tool_fails_with_expected_and_observed_names() {
     assert_eq!(check.cause_finding_ids(), &[cause]);
     let details = check.details().expect("round-trip details").as_object();
     assert_eq!(
-        details["expected_verification_tool_name"],
-        crate::connection_command::managed_host_round_trip_tool().wire_name()
+        details["verification_tool"]["observed_tool_identity"],
+        volicord_types::AgentToolId::STATUS.wire_name()
     );
     assert_eq!(
-        details["observed_verification_tool_name"],
-        volicord_types::AgentToolId::STATUS.wire_name()
+        details["verification_tool"]["expected_tool_identity"],
+        expected_verification_tool_name()
     );
 }
 
@@ -177,11 +216,13 @@ fn initialize_response_without_initialized_notification_remains_pending() {
     session.negotiated_protocol_version = None;
     session.initialized_notification_at = None;
     session.tools_list_observed_at = None;
+    session.returned_tool_identities = None;
     session.required_tools_present = None;
+    session.required_tools_validated_at = None;
     session.verification_tool_name = None;
     session.verification_tool_observed_at = None;
 
-    let checks = host_session_checks(
+    let checks = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&session),
@@ -213,42 +254,78 @@ fn initialize_response_without_initialized_notification_remains_pending() {
 }
 
 #[test]
-fn completed_current_session_wins_over_newer_incomplete_or_terminal_diagnostics() {
+fn latest_attempt_health_is_not_hidden_by_an_older_complete_proof() {
     let host = host("future");
     let completed = managed_session("future", true);
     let mut newer = managed_session("future", true);
     newer.runtime_session_id = "mcp_runtime_newer".to_owned();
+    newer.selected_protocol_version = None;
     newer.initialize_completed_at = None;
     newer.initialized_notification_at = None;
+    newer.negotiated_protocol_version = None;
     newer.tools_list_observed_at = None;
+    newer.returned_tool_identities = None;
     newer.required_tools_present = None;
+    newer.required_tools_validated_at = None;
     newer.verification_tool_name = None;
     newer.verification_tool_observed_at = None;
     newer.last_observed_at = "2026-07-18T00:01:00Z".to_owned();
 
     let sessions = vec![newer.clone(), completed.clone()];
-    let checks = host_session_checks(&host, "revision_current", &sessions, Some(&newer), &[])
+    let checks = test_host_session_checks(&host, "revision_current", &sessions, Some(&newer), &[])
         .expect("concurrent session checks");
-    assert!(checks
-        .iter()
-        .all(|check| check.status() == ConnectionCheckStatus::Passed));
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::HostSession).status(),
+        ConnectionCheckStatus::Pending
+    );
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
+        ConnectionCheckStatus::Passed
+    );
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
+        ConnectionCheckStatus::Passed
+    );
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::HostSession)
+            .details()
+            .unwrap()
+            .as_object()["runtime_session_id"],
+        "mcp_runtime_newer"
+    );
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::RequiredTools)
+            .details()
+            .unwrap()
+            .as_object()["runtime_session_id"],
+        "mcp_runtime_fixture"
+    );
 
     newer.terminal_finding_id = Some("finding.later_crash".to_owned());
     let sessions = vec![newer.clone(), completed];
-    let checks = host_session_checks(&host, "revision_current", &sessions, Some(&newer), &[])
+    let checks = test_host_session_checks(&host, "revision_current", &sessions, Some(&newer), &[])
         .expect("terminal diagnostic checks");
-    assert!(checks
-        .iter()
-        .all(|check| check.status() == ConnectionCheckStatus::Passed));
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::HostSession).status(),
+        ConnectionCheckStatus::Failed
+    );
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
+        ConnectionCheckStatus::Passed
+    );
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
+        ConnectionCheckStatus::Passed
+    );
 }
 
 #[test]
 fn old_revision_and_cli_preflight_observations_remain_action_required() {
     let host = host("future");
     let mut old = managed_session("future", true);
-    old.connection_integration_revision = "revision_old".to_owned();
-    let stale =
-        host_session_checks(&host, "revision_current", &[], Some(&old), &[]).expect("stale checks");
+    old.connection_integration_revision = OLD_REVISION.to_owned();
+    let stale = test_host_session_checks(&host, "revision_current", &[], Some(&old), &[])
+        .expect("stale checks");
     assert!(stale
         .iter()
         .all(|check| check.status() == ConnectionCheckStatus::Pending));
@@ -258,7 +335,7 @@ fn old_revision_and_cli_preflight_observations_remain_action_required() {
     );
 
     old.session_source = volicord_types::McpRuntimeSessionSource::CliPreflight;
-    let cli = host_session_checks(
+    let cli = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&old),
@@ -277,7 +354,7 @@ fn old_revision_and_cli_preflight_observations_remain_action_required() {
 
 #[test]
 fn no_managed_host_activity_keeps_the_protocol_chain_pending() {
-    let checks = host_session_checks(&host("future"), "revision_current", &[], None, &[])
+    let checks = test_host_session_checks(&host("future"), "revision_current", &[], None, &[])
         .expect("pending host checks");
     for id in [
         ConnectionCheckKind::ProcessStartup,
@@ -362,12 +439,19 @@ fn managed_config_failure_blocks_process_and_protocol_checks() {
         ConnectionCheckKind::McpServer,
         ConnectionCheckKind::ProcessStartup,
         ConnectionCheckKind::HostSession,
-        ConnectionCheckKind::RequiredTools,
-        ConnectionCheckKind::ToolRoundTrip,
     ] {
         let check = check_for(&checks, id);
         assert_eq!(check.status(), ConnectionCheckStatus::Blocked);
         assert_eq!(check.cause_finding_ids(), std::slice::from_ref(&root));
+    }
+    for id in [
+        ConnectionCheckKind::RequiredTools,
+        ConnectionCheckKind::ToolRoundTrip,
+    ] {
+        assert_eq!(
+            check_for(&checks, id).status(),
+            ConnectionCheckStatus::Pending
+        );
     }
     assert_eq!(
         actions_for_checks(&checks)
@@ -440,7 +524,7 @@ fn actual_current_protocol_incompatibility_fails_only_demonstrated_checks() {
     session.verification_tool_name = None;
     session.verification_tool_observed_at = None;
     session.terminal_finding_id = Some("finding.protocol_contract_mismatch".to_owned());
-    let checks = host_session_checks(
+    let checks = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&session),
@@ -451,19 +535,15 @@ fn actual_current_protocol_incompatibility_fails_only_demonstrated_checks() {
 
     assert_eq!(
         check_for(&checks, ConnectionCheckKind::HostSession).status(),
-        ConnectionCheckStatus::Passed
-    );
-    assert_eq!(
-        check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
-        ConnectionCheckStatus::Passed
-    );
-    assert_eq!(
-        check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
         ConnectionCheckStatus::Failed
     );
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::ToolRoundTrip).code(),
-        Some("tool_round_trip_failed")
+        check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
+        ConnectionCheckStatus::Failed
+    );
+    assert_eq!(
+        check_for(&checks, ConnectionCheckKind::ToolRoundTrip).status(),
+        ConnectionCheckStatus::Blocked
     );
     assert_eq!(
         serde_json::to_value(actions_for_checks(&checks).expect("protocol action")).unwrap(),
@@ -478,14 +558,18 @@ fn actual_current_protocol_incompatibility_fails_only_demonstrated_checks() {
 fn initialize_failure_blocks_tools_list_and_tool_round_trip() {
     let host = host("future");
     let mut session = managed_session("future", true);
+    session.selected_protocol_version = None;
     session.initialize_completed_at = None;
     session.initialized_notification_at = None;
+    session.negotiated_protocol_version = None;
     session.tools_list_observed_at = None;
+    session.returned_tool_identities = None;
     session.required_tools_present = None;
+    session.required_tools_validated_at = None;
     session.verification_tool_name = None;
     session.verification_tool_observed_at = None;
     session.terminal_finding_id = Some("finding.initialize_failed".to_owned());
-    let checks = host_session_checks(
+    let checks = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&session),
@@ -498,17 +582,18 @@ fn initialize_failure_blocks_tools_list_and_tool_round_trip() {
         check_for(&checks, ConnectionCheckKind::HostSession).status(),
         ConnectionCheckStatus::Failed
     );
-    for id in [
-        ConnectionCheckKind::RequiredTools,
-        ConnectionCheckKind::ToolRoundTrip,
-    ] {
-        let check = check_for(&checks, id);
-        assert_eq!(check.status(), ConnectionCheckStatus::Blocked);
-        assert_eq!(
-            check.cause_finding_ids(),
-            &[DiagnosticFindingId::parse("finding.initialize_failed").unwrap()]
-        );
-    }
+    let required = check_for(&checks, ConnectionCheckKind::RequiredTools);
+    assert_eq!(required.status(), ConnectionCheckStatus::Failed);
+    assert_eq!(
+        required.cause_finding_ids(),
+        &[DiagnosticFindingId::parse("finding.initialize_failed").unwrap()]
+    );
+    let round_trip = check_for(&checks, ConnectionCheckKind::ToolRoundTrip);
+    assert_eq!(round_trip.status(), ConnectionCheckStatus::Blocked);
+    assert_eq!(
+        round_trip.cause_finding_ids(),
+        &[DiagnosticFindingId::parse("finding.initialize_failed").unwrap()]
+    );
 }
 
 #[test]
@@ -516,11 +601,13 @@ fn tool_discovery_failure_blocks_the_tool_call() {
     let host = host("future");
     let mut session = managed_session("future", true);
     session.tools_list_observed_at = None;
+    session.returned_tool_identities = None;
     session.required_tools_present = None;
+    session.required_tools_validated_at = None;
     session.verification_tool_name = None;
     session.verification_tool_observed_at = None;
     session.terminal_finding_id = Some("finding.tools_list_failed".to_owned());
-    let checks = host_session_checks(
+    let checks = test_host_session_checks(
         &host,
         "revision_current",
         std::slice::from_ref(&session),
@@ -531,7 +618,7 @@ fn tool_discovery_failure_blocks_the_tool_call() {
 
     assert_eq!(
         check_for(&checks, ConnectionCheckKind::HostSession).status(),
-        ConnectionCheckStatus::Passed
+        ConnectionCheckStatus::Failed
     );
     assert_eq!(
         check_for(&checks, ConnectionCheckKind::RequiredTools).status(),
@@ -561,7 +648,7 @@ fn successful_cli_self_test_without_host_observation_is_action_required() {
         .expect("MCP check"),
     ];
     checks.extend(
-        host_session_checks(&host, "revision_current", &[], None, &[])
+        test_host_session_checks(&host, "revision_current", &[], None, &[])
             .expect("pending host checks"),
     );
     let report = ConnectionVerificationReport::try_new(

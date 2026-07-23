@@ -1,4 +1,9 @@
-use std::{path::Path, str::FromStr, time::SystemTime};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    str::FromStr,
+    time::SystemTime,
+};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -9,8 +14,9 @@ use volicord_types::{
     ConnectionVerificationReport, DiagnosticAction, DiagnosticCode, DiagnosticConnectionContext,
     DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
     DiagnosticFindingId, DiagnosticOperation, DiagnosticReport, DiagnosticReportAction,
-    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationProfile,
-    IntegrationRevision, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    DiagnosticRuntimeSessionContext, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, IntegrationProfile, IntegrationRevision, RuntimeSessionEvidenceRole,
+    UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 
 use super::{
@@ -516,10 +522,12 @@ impl ConnectionCommandReport {
     }
 
     pub(super) fn diagnostic_report(&self) -> Result<DiagnosticReport, ConnectionCommandError> {
+        let runtime_sessions = self.role_bearing_runtime_sessions()?;
         let mut runtime_session_ids = self
             .findings
             .iter()
             .filter_map(|finding| finding.runtime_session_id().cloned())
+            .chain(runtime_sessions.iter().map(|session| session.id().clone()))
             .collect::<Vec<_>>();
         runtime_session_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
         runtime_session_ids.dedup();
@@ -534,6 +542,7 @@ impl ConnectionCommandReport {
             Some(self.connection.config_target.clone()),
             self.integration_revision.clone(),
             runtime_session_ids,
+            runtime_sessions,
         )
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
         DiagnosticReport::try_new(
@@ -548,6 +557,50 @@ impl ConnectionCommandReport {
             self.limits.clone(),
         )
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+    }
+
+    pub(super) fn role_bearing_runtime_sessions(
+        &self,
+    ) -> Result<Vec<DiagnosticRuntimeSessionContext>, ConnectionCommandError> {
+        let mut by_id = BTreeMap::<String, BTreeSet<RuntimeSessionEvidenceRole>>::new();
+        for check in &self.checks {
+            let Some(details) = check.details().map(ConnectionCheckDetails::as_object) else {
+                continue;
+            };
+            let role = match details.get("evidence_role").and_then(Value::as_str) {
+                Some("latest_attempt") => Some(RuntimeSessionEvidenceRole::LatestAttempt),
+                Some("latest_complete_proof") => {
+                    Some(RuntimeSessionEvidenceRole::LatestCompleteProof)
+                }
+                Some(value) => {
+                    return Err(ConnectionCommandError::runtime(format!(
+                        "connection check contains unknown runtime-session evidence role: {value}"
+                    )))
+                }
+                None => None,
+            };
+            let runtime_session_id = details.get("runtime_session_id").and_then(Value::as_str);
+            match (role, runtime_session_id) {
+                (Some(role), Some(runtime_session_id)) => {
+                    by_id
+                        .entry(runtime_session_id.to_owned())
+                        .or_default()
+                        .insert(role);
+                }
+                (None, None) | (Some(_), None) => {}
+                (None, Some(_)) => {}
+            }
+        }
+        by_id
+            .into_iter()
+            .map(|(id, roles)| {
+                DiagnosticRuntimeSessionContext::try_new(
+                    volicord_types::AgentRuntimeSessionId::new(id),
+                    roles.into_iter().collect(),
+                )
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+            })
+            .collect()
     }
 
     fn operation_details(&self) -> Result<serde_json::Map<String, Value>, ConnectionCommandError> {

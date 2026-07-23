@@ -19,6 +19,7 @@ use volicord_store::{
     operational_sessions::{
         connection_integration_revision, current_managed_runtime_sessions,
         latest_managed_runtime_session, mcp_runtime_session_for_process, McpRuntimeSessionRecord,
+        McpSessionEvidenceSelection, McpSessionMilestones,
     },
 };
 use volicord_types::{
@@ -64,6 +65,7 @@ use super::{
 };
 
 mod dependency_graph;
+mod evidence;
 mod finding_projection;
 mod guard_checks;
 mod host_checks;
@@ -71,6 +73,7 @@ mod mcp_checks;
 mod report_inputs;
 
 use dependency_graph::*;
+use evidence::*;
 use finding_projection::*;
 use guard_checks::*;
 use host_checks::*;

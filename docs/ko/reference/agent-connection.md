@@ -254,7 +254,8 @@ Connection action은 안정적인 kind와 사용자 지시로 의미 있는 작�
 사용합니다.
 
 ```text
-managed_config -> process_startup -> host_session -> required_tools -> tool_round_trip
+managed_config -> process_startup -> host_session
+required_tools -> tool_round_trip
 managed_config -> mcp_server
 guard_files -> guard_hook_execution -> guard_observation
 ```
@@ -264,12 +265,18 @@ guard_files -> guard_hook_execution -> guard_observation
 `ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
 `AgentToolId::LIST_PROJECTS`에 결합되며, 영속 이름과 MCP wire 이름으로는
 `volicord.list_projects`를 투영합니다. CLI probe, MCP runtime, Store 관찰, 검증 보고서
-비교는 모두 같은 typed identity를 사용합니다.
-Managed-host 시도가 한 번도 없으면 `process_startup`부터 `tool_round_trip`까지 네 check는
-`pending`입니다. Initialize가 실패하면 `host_session`은 `failed`이고,
-`required_tools`와 `tool_round_trip`은 같은 root finding 때문에 `blocked`입니다. Managed
-configuration이 실패하면 `mcp_server`와 process/protocol chain을 모두 막습니다. Guard
-file integrity가 실패하면 hook 실행과 phase 관찰을 막습니다.
+비교는 모두 같은 typed identity를 사용합니다. `process_startup`과 `host_session`은 고정된
+`latest_attempt` role, 즉 현재 revision의 `managed_host` runtime 가운데 가장 최신 항목을
+사용합니다. `required_tools`와 `tool_round_trip`은 고정된 `latest_complete_proof` role,
+즉 initialize, initialized notification, `tools/list`, required-tool validation, 정규
+verification-tool 호출을 runtime 하나에서 모두 완료한 가장 최신 항목을 사용합니다. 서로
+다른 session의 milestone을 조합하지 않습니다. Managed-host 시도가 없으면 네 check 모두
+`pending`입니다. 최신 시도가 terminal failure로 끝나면 현재 managed-session health는
+실패합니다. 더 오래된 완전한 proof가 capability check를 통과시킬 수는 있지만 별도 role로
+표시되며 현재 실패를 숨길 수 없습니다. 완전한 proof가 없으면 capability readiness는 최신
+시도 자체의 관찰에 따라 pending 또는 failed로 남습니다. Managed configuration 실패는
+`mcp_server`와 현재 시도의 process/session chain을 막습니다. Guard file integrity 실패는
+hook 실행과 phase 관찰을 막습니다.
 
 `failed`와 `blocked` check만 `cause_finding_ids`를 가질 수 있습니다. `blocked` check는
 실패했거나 blocked인 prerequisite의 독립 root finding ID를 정규 정렬하고 합친 집합을
@@ -285,9 +292,9 @@ Blocked check의 원인이 실패한 prerequisite와 일치하지 않거나 depe
 | `host_executable` | `PATH`에서 `codex`를 찾았고 version 명령이 성공했습니다. | 읽기 전용 status 경로에 이전 active probe가 없으면 기다립니다. | 탐색 또는 version 명령이 실패했습니다. |
 | `mcp_server` | CLI self-test가 preflight와 전체 MCP exchange를 통과했습니다. | Active verification을 기다리며 managed configuration 실패가 막을 수 있습니다. | Self-test 자체가 process, Store 또는 protocol 실패를 관찰했습니다. |
 | `process_startup` | 현재 managed host가 구성된 MCP process를 시작했습니다. | Managed-host 사용을 기다리며 managed configuration 실패가 막을 수 있습니다. | Typed host 관찰이 없으면 managed-host startup 실패를 주장하지 않으며, 관찰 부재는 대기로 남습니다. |
-| `host_session` | 현재 상태이고 host-version이 fresh인 managed-host session이 `initialize`와 initialized notification을 완료했습니다. | 조건을 충족하는 시도를 기다리며 `process_startup` 실패가 막을 수 있습니다. | 현재 시도가 initialization 또는 protocol 실패를 관찰했습니다. |
-| `required_tools` | 조건을 충족하는 `tools/list` 관찰에 모든 필수 도구가 있습니다. | 도구 검색을 기다리며 `host_session` 실패가 막을 수 있습니다. | 도구 검색이 완료됐지만 필수 도구가 없거나 유효하지 않습니다. |
-| `tool_round_trip` | 조건을 충족하는 현재 상태이고 host-version이 fresh인 session이 `verification_tool_name=volicord.list_projects`와 `verification_tool_observed_at`을 모두 기록했습니다. | 정규 role 담당 도구 호출을 기다리며 `required_tools` 실패가 막을 수 있습니다. | 호출 자체가 protocol 또는 contract 실패를 관찰했거나 기록한 도구 이름이 현재 정규 담당 도구와 다릅니다. |
+| `host_session` | `latest_attempt`가 `initialize`와 initialized notification을 완료했습니다. | 현재 revision의 가장 최신 managed-host 시도를 기다리며 `process_startup` 실패가 막을 수 있습니다. | 해당 최신 시도에 terminal protocol finding이 연결되어 있습니다. |
+| `required_tools` | `latest_complete_proof`가 실제 `tools/list` inventory와 같은 session의 required-tool validation을 기록했습니다. | 완전한 proof가 없으면 기다리며 현재 시도의 session check에는 의존하지 않습니다. | 완전한 proof가 없는 상태에서 최신 시도가 required set 누락을 반환했거나 terminal failure로 끝났습니다. |
+| `tool_round_trip` | 같은 `latest_complete_proof`가 required-tool validation 뒤 `verification_tool_name=volicord.list_projects`와 관찰 시각을 기록했습니다. | 완전한 proof를 기다리며 `required_tools`만 prerequisite로 둡니다. | 완전한 proof가 없는 상태에서 최신 시도의 정규 호출이 실패했거나 현재 정규 담당 도구와 다른 이름을 사용했습니다. |
 | `project_trust` | Project trust가 충족되었습니다. | 일반 trust 또는 reload action은 `pending`이고, 별도 trust check가 없는 scope는 `not_applicable`입니다. | Trust configuration이 malformed 또는 모순 상태입니다. |
 | `guard_files` | 현재 Guard manifest의 모든 file 기대값이 일치합니다. | Guard가 Connection profile에 포함될 때 적용됩니다. | Managed file, manifest, wrapper, ownership 또는 executable integrity check가 실패했습니다. |
 | `guard_hook_execution` | 현재 managed Guard hook이 실행되었습니다. | 현재 hook 활동을 기다리며 `guard_files` 실패가 막을 수 있습니다. | Hook 실행 자체가 실패를 기록했습니다. |
@@ -310,11 +317,11 @@ projection입니다. Audit은 profile이나 digest가 이 정확한 선택과 �
 Check는 `tool_round_trip_designation_mismatch`로 실패하고 활성 검증은
 `mcp.tool_verification.designation_mismatch`를 영속합니다. 제한된 facts에는 정확한
 `expected_tool_name`과 `observed_tool_name`을 노출하며 JSON check detail과 verbose 출력도
-정확한 기대 이름과 관찰 이름을 표시합니다. 이전 revision, CLI preflight row, timestamp
-부재, stale host-version 관찰은 현재의 정확한 쌍을 대신할 수 없습니다.
+정확한 기대 이름과 관찰 이름을 표시합니다. 이전 revision, CLI preflight row, milestone
+부재, 서로 다른 session에 나뉜 쌍은 현재의 정확한 쌍을 대신할 수 없습니다.
 
-제한 안의 모든 Codex version은 이 동작 check를 거칩니다. Version이 바뀌면 Codex를
-reload하고 운영 동작을 다시 관찰할 때까지 현재 host 관찰이 pending이 됩니다.
+제한 안의 모든 Codex version은 이 동작 check를 거칩니다. PATH executable version은
+managed runtime session을 선택하거나 제외하는 기준이 아닙니다.
 
 `dry_run`은 작업 mode이며 연결 상태나 check 상태가 아닙니다. 구성 일치, 실행 파일
 가용성, protocol/host version, capability 관찰, 관찰 timestamp는 check 사실에 두며
@@ -417,8 +424,8 @@ Integration generation은 해당 물리 instance 안에서 0으로 시작하고 
 그 이전 mode generation의 evidence는 다시 현재 상태가 될 수 없습니다.
 
 관찰한 executable path, host version, MCP client name/version은 diagnostic 사실로
-남습니다. Host version이 바뀌면 운영 관찰을 갱신하며, 권한은 현재 Connection, revision,
-권위 있는 runtime/project session binding을 사용합니다.
+남습니다. 권한은 현재 Connection, revision, 권위 있는 runtime/project session binding을
+사용합니다.
 
 실제 MCP peer는 해당 runtime session에서 관찰한 제한된 `clientInfo.name`과
 `clientInfo.version`입니다. PATH probe는 별도로 관찰한 Codex executable path와
@@ -440,13 +447,20 @@ preflight와 integration probe는 managed-host 활동으로 계산하지 않습�
 session은 소유 Connection과 Connection 통합 revision을 보관합니다.
 
 유효한 initialize 요청 뒤 해당 runtime은 session 범위의 typed MCP selection 하나를
-소유합니다. 이 값은 요청 protocol 문자열, 선택한 프로덕션 profile, exact match 또는 서버
-counter-offer 결과, client capability, 제한 안의 시도된 client name/version, initialized
-notification의 handshake 완료 여부를 보관합니다. 선택한 profile에서 initialize 결과
-revision과 capability를 만들고 이후 lifecycle을 검증합니다. 선택은 협상 완료가 아닙니다.
-필수 initialized notification이 유효하게 도착한 뒤에만 profile의 협상이 끝나며 그 revision을
-권위 있는 runtime-session protocol 관찰로 기록합니다. 다시 연결하면 새 runtime과 새
-selection을 만들며 process 사이에서 profile을 공유하거나 상속하지 않습니다.
+소유합니다. `McpSessionMilestones`는 runtime, source, Connection, integration revision,
+process start, 실제 peer `clientInfo`, requested/selected/negotiated protocol revision,
+initialize와 initialized-notification 완료, `tools/list` 시각과 결정적으로 정렬한 정확한
+반환 도구 identity, required-tool validation 시각, 정규 verification-tool identity/시각,
+terminal finding, 마지막 관찰 시각을 보관합니다. Negotiation에는 완료된 initialization이,
+required-tool 성공에는 실제 list 관찰이, verification-tool 성공에는 같은 session의
+required-tool validation이 필요합니다. Managed capability proof는
+`session_source=managed_host`인 경우에만 만들 수 있으며, 그 밖의 조합은 거부합니다. 다시
+연결하면 새 runtime과 새 milestone을 만들고 process 사이에서 공유하거나 상속하지 않습니다.
+
+Connection report context는 finding correlation뿐 아니라 check evidence에서도 session ID를
+수집합니다. 각 항목은 `latest_attempt`와 `latest_complete_proof` role을 보존하며, session
+하나가 두 role을 모두 가지면 한 번만 표시하고 role 둘을 함께 둡니다. Human과 JSON
+projection은 같은 role 배정을 표시합니다.
 
 프로젝트 통합 revision은 Connection revision에 현재 프로젝트 workflow-policy
 fingerprint와 현재 Guard installation identity/policy hash 또는 Guard ownership의 명시적

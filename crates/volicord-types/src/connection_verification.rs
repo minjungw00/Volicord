@@ -179,7 +179,6 @@ impl ConnectionCheckKind {
         match self {
             Self::McpServer | Self::ProcessStartup => &[Self::ManagedConfig],
             Self::HostSession => &[Self::ProcessStartup],
-            Self::RequiredTools => &[Self::HostSession],
             Self::ToolRoundTrip => &[Self::RequiredTools],
             Self::GuardHookExecution => &[Self::GuardFiles],
             Self::GuardObservation => &[Self::GuardHookExecution],
@@ -187,6 +186,7 @@ impl ConnectionCheckKind {
             | Self::DiagnosticLookup
             | Self::ManagedConfig
             | Self::HostExecutable
+            | Self::RequiredTools
             | Self::ProjectTrust
             | Self::GuardFiles
             | Self::SetupPlan

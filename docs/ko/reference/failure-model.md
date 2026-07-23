@@ -75,7 +75,9 @@ policy denial이 되지 않습니다. 실제 Guard `NotAllowed` 결과에는 호
 활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
 아래에서 정의하는 다섯 가지 상태 모델로 보고합니다. 실행 파일을 찾거나 실행하지 못한
 경우 일반 실패 범주 경계에서는 `Unavailable`, 연결 보고서에서는 실패한
-`host_executable` check입니다. 관찰한 version이 달라지면 운영 관찰을 갱신합니다.
+`host_executable` check입니다. PATH executable version은 설치 probe로 남으며 실제 MCP
+peer `clientInfo`를 대신하지 않습니다. 두 version이 다르다는 이유만으로 유효한 managed
+session을 무효화하지 않습니다.
 
 관리 connection command report는 필수 check가 하나 이상 실패했거나 blocked인 typed
 운영 결과에 `failed`를 사용합니다. Host 관찰이 pending이면 `action_required`이며
@@ -201,7 +203,12 @@ enum 순서를 비교하거나 첫 번째 실패 check를 고르지 않습니다
 Connection context, 전체 check 배열, 한도가 있는 finding graph, 계산한 root-cause ID,
 중복 제거한 report action, operation별 typed detail, report limit을 담습니다. Report
 action은 namespaced code, 한도가 있는 summary, 해당 action이 복구하는 정확한 root ID를
-담습니다. 다른 schema version, 알 수 없는 최상위 구성원, 중복 check 또는 finding ID,
+담습니다. Connection context에는 role을 보존하는 runtime-session evidence인
+`latest_attempt`와 `latest_complete_proof`가 들어갑니다. ID는 finding correlation뿐 아니라
+check evidence에서도 수집하고, ID 하나가 role 둘을 가지면 role 둘을 함께 둔 항목 하나로
+나타냅니다. 이 role은 현재 attempt health와 더 오래됐을 수 있는 same-session capability
+proof를 구분하며, consumer가 여러 session의 milestone을 성공 하나로 다루지 못하게 합니다.
+다른 schema version, 알 수 없는 최상위 구성원, 중복 check 또는 finding ID,
 잘못된 cause graph, 계산 결과와 다른 supplied root list, 중복 action code, root가 아닌
 finding을 가리키는 action은 역직렬화에서 거부합니다. 예전 connection-report schema를
 위한 두 번째 분기는 없습니다.

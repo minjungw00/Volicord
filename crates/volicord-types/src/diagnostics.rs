@@ -2398,6 +2398,79 @@ impl DiagnosticOperation {
 }
 
 /// Complete bounded Connection context for a diagnostic projection.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeSessionEvidenceRole {
+    LatestAttempt,
+    LatestCompleteProof,
+}
+
+impl RuntimeSessionEvidenceRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LatestAttempt => "latest_attempt",
+            Self::LatestCompleteProof => "latest_complete_proof",
+        }
+    }
+}
+
+/// One deduplicated runtime-session identity and its explicit evidence roles.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct DiagnosticRuntimeSessionContext {
+    id: AgentRuntimeSessionId,
+    roles: Vec<RuntimeSessionEvidenceRole>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticRuntimeSessionContextWire {
+    id: AgentRuntimeSessionId,
+    roles: Vec<RuntimeSessionEvidenceRole>,
+}
+
+impl<'de> Deserialize<'de> for DiagnosticRuntimeSessionContext {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = DiagnosticRuntimeSessionContextWire::deserialize(deserializer)?;
+        let supplied_roles = wire.roles.clone();
+        let context = Self::try_new(wire.id, wire.roles).map_err(de::Error::custom)?;
+        if supplied_roles != context.roles {
+            return Err(de::Error::custom(
+                "diagnostic runtime-session roles are not in canonical order",
+            ));
+        }
+        Ok(context)
+    }
+}
+
+impl DiagnosticRuntimeSessionContext {
+    pub fn try_new(
+        id: AgentRuntimeSessionId,
+        mut roles: Vec<RuntimeSessionEvidenceRole>,
+    ) -> Result<Self, DiagnosticError> {
+        roles.sort();
+        if roles.is_empty() || roles.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid(
+                "diagnostic runtime-session context requires unique evidence roles",
+            ));
+        }
+        Ok(Self { id, roles })
+    }
+
+    pub fn id(&self) -> &AgentRuntimeSessionId {
+        &self.id
+    }
+
+    pub fn roles(&self) -> &[RuntimeSessionEvidenceRole] {
+        &self.roles
+    }
+}
+
+/// Complete bounded Connection context for a diagnostic projection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct DiagnosticConnectionContext {
     runtime_home: String,
@@ -2410,6 +2483,7 @@ pub struct DiagnosticConnectionContext {
     config_target: Option<String>,
     integration_revision: Option<IntegrationRevision>,
     runtime_session_ids: Vec<AgentRuntimeSessionId>,
+    runtime_sessions: Vec<DiagnosticRuntimeSessionContext>,
 }
 
 #[derive(Deserialize)]
@@ -2425,6 +2499,7 @@ struct DiagnosticConnectionContextWire {
     config_target: Option<String>,
     integration_revision: Option<IntegrationRevision>,
     runtime_session_ids: Vec<AgentRuntimeSessionId>,
+    runtime_sessions: Vec<DiagnosticRuntimeSessionContext>,
 }
 
 impl<'de> Deserialize<'de> for DiagnosticConnectionContext {
@@ -2434,6 +2509,7 @@ impl<'de> Deserialize<'de> for DiagnosticConnectionContext {
     {
         let wire = DiagnosticConnectionContextWire::deserialize(deserializer)?;
         let supplied_runtime_session_ids = wire.runtime_session_ids.clone();
+        let supplied_runtime_sessions = wire.runtime_sessions.clone();
         let context = Self::try_new(
             wire.runtime_home,
             wire.connection_id,
@@ -2445,11 +2521,17 @@ impl<'de> Deserialize<'de> for DiagnosticConnectionContext {
             wire.config_target,
             wire.integration_revision,
             wire.runtime_session_ids,
+            wire.runtime_sessions,
         )
         .map_err(de::Error::custom)?;
         if supplied_runtime_session_ids != context.runtime_session_ids {
             return Err(de::Error::custom(
                 "diagnostic connection runtime_session_ids are not in canonical order",
+            ));
+        }
+        if supplied_runtime_sessions != context.runtime_sessions {
+            return Err(de::Error::custom(
+                "diagnostic connection runtime_sessions are not in canonical order",
             ));
         }
         Ok(context)
@@ -2470,6 +2552,7 @@ impl DiagnosticConnectionContext {
         config_target: Option<String>,
         integration_revision: Option<IntegrationRevision>,
         mut runtime_session_ids: Vec<AgentRuntimeSessionId>,
+        mut runtime_sessions: Vec<DiagnosticRuntimeSessionContext>,
     ) -> Result<Self, DiagnosticError> {
         let runtime_home = runtime_home.into();
         let connection_id = connection_id.into();
@@ -2504,6 +2587,27 @@ impl DiagnosticConnectionContext {
                 "diagnostic connection context contains duplicate runtime-session ids",
             ));
         }
+        runtime_sessions.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
+        if runtime_sessions
+            .windows(2)
+            .any(|pair| pair[0].id() == pair[1].id())
+        {
+            return Err(invalid(
+                "diagnostic connection context contains duplicate role-bearing runtime sessions",
+            ));
+        }
+        let runtime_session_id_set = runtime_session_ids
+            .iter()
+            .map(AgentRuntimeSessionId::as_str)
+            .collect::<BTreeSet<_>>();
+        if runtime_sessions
+            .iter()
+            .any(|session| !runtime_session_id_set.contains(session.id().as_str()))
+        {
+            return Err(invalid(
+                "diagnostic connection role-bearing runtime session is absent from runtime_session_ids",
+            ));
+        }
         Ok(Self {
             runtime_home,
             connection_id,
@@ -2515,6 +2619,7 @@ impl DiagnosticConnectionContext {
             config_target,
             integration_revision,
             runtime_session_ids,
+            runtime_sessions,
         })
     }
 
@@ -2556,6 +2661,10 @@ impl DiagnosticConnectionContext {
 
     pub fn runtime_session_ids(&self) -> &[AgentRuntimeSessionId] {
         &self.runtime_session_ids
+    }
+
+    pub fn runtime_sessions(&self) -> &[DiagnosticRuntimeSessionContext] {
+        &self.runtime_sessions
     }
 }
 
@@ -4248,6 +4357,7 @@ mod tests {
                 AgentRuntimeSessionId::new("runtime_session_b"),
                 AgentRuntimeSessionId::new("runtime_session_a"),
             ],
+            Vec::new(),
         )
         .unwrap();
         let mut noncanonical_context = serde_json::to_value(context).unwrap();
@@ -4256,6 +4366,41 @@ mod tests {
         assert!(
             serde_json::from_value::<DiagnosticConnectionContext>(noncanonical_context).is_err()
         );
+
+        let role_context = DiagnosticRuntimeSessionContext::try_new(
+            AgentRuntimeSessionId::new("runtime_session_a"),
+            vec![
+                RuntimeSessionEvidenceRole::LatestCompleteProof,
+                RuntimeSessionEvidenceRole::LatestAttempt,
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            role_context.roles(),
+            &[
+                RuntimeSessionEvidenceRole::LatestAttempt,
+                RuntimeSessionEvidenceRole::LatestCompleteProof,
+            ]
+        );
+        let mut noncanonical_roles = serde_json::to_value(&role_context).unwrap();
+        noncanonical_roles["roles"] = json!(["latest_complete_proof", "latest_attempt"]);
+        assert!(
+            serde_json::from_value::<DiagnosticRuntimeSessionContext>(noncanonical_roles).is_err()
+        );
+        assert!(DiagnosticConnectionContext::try_new(
+            "/runtime",
+            "connection_1",
+            "codex",
+            "user",
+            "record",
+            "workflow",
+            None,
+            None,
+            None,
+            vec![AgentRuntimeSessionId::new("runtime_session_b")],
+            vec![role_context],
+        )
+        .is_err());
 
         let action = DiagnosticReportAction::try_new(
             DiagnosticCode::parse("action.connection.repair").unwrap(),

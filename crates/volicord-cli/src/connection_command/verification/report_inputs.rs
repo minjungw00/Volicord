@@ -217,6 +217,8 @@ pub(super) fn canonical_verification_evaluation(
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
+    let session_evidence =
+        McpSessionEvidenceSelection::select(&current_revision, &current_sessions)?;
     persist_peer_path_mismatch_findings(runtime_home, connection, host, &current_sessions)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
@@ -238,8 +240,8 @@ pub(super) fn canonical_verification_evaluation(
     ];
     checks.extend(host_session_checks(
         host,
-        current_revision.as_str(),
-        &current_sessions,
+        &current_revision,
+        &session_evidence,
         latest_session.as_ref(),
         &host_findings.tool_round_trip,
     )?);
@@ -349,11 +351,15 @@ pub(in crate::connection_command) fn current_status_report(
             .to_owned();
         if let Some(details) = check.details().map(ConnectionCheckDetails::as_object) {
             host.executable_path = details
-                .get("path")
+                .get("probe")
+                .and_then(Value::as_object)
+                .and_then(|probe| probe.get("discovered_path"))
                 .and_then(Value::as_str)
                 .map(str::to_owned);
             host.host_version = details
-                .get("version")
+                .get("probe")
+                .and_then(Value::as_object)
+                .and_then(|probe| probe.get("version"))
                 .and_then(Value::as_str)
                 .map(str::to_owned);
             host.host_executable_details = details
@@ -399,6 +405,8 @@ pub(in crate::connection_command) fn current_status_report(
     let current_revision = connection_integration_revision(connection)?;
     let current_sessions =
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
+    let session_evidence =
+        McpSessionEvidenceSelection::select(&current_revision, &current_sessions)?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
     let host_findings = host_boundary_findings(
@@ -429,8 +437,8 @@ pub(in crate::connection_command) fn current_status_report(
     )?));
     checks.extend(host_session_checks(
         &host,
-        current_revision.as_str(),
-        &current_sessions,
+        &current_revision,
+        &session_evidence,
         latest_session.as_ref(),
         &host_findings.tool_round_trip,
     )?);

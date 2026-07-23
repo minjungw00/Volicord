@@ -156,11 +156,11 @@ fn verification_tool_designation_mismatch_is_typed() -> Result<(), Box<dyn Error
     assert_eq!(check["status"], "failed");
     assert_eq!(check["code"], "tool_round_trip_designation_mismatch");
     assert_eq!(
-        check["details"]["expected_verification_tool_name"],
+        check["details"]["verification_tool"]["expected_tool_identity"],
         managed_host_round_trip_tool().wire_name()
     );
     assert_eq!(
-        check["details"]["observed_verification_tool_name"],
+        check["details"]["verification_tool"]["observed_tool_identity"],
         AgentToolId::STATUS.wire_name()
     );
     let finding = report["findings"]
@@ -369,7 +369,7 @@ fn managed_launch_contracts_survive_filtered_environments() -> Result<(), Box<dy
         let partial_status = fixture.run_connection("status", FUTURE_VERSION, true)?;
         let partial_report = assert_connection_report(&partial_status, 1, "status", "failed")?;
         assert_check(&partial_report, "host_session", "failed", None);
-        assert_check(&partial_report, "required_tools", "blocked", None);
+        assert_check(&partial_report, "required_tools", "failed", None);
         assert_check(&partial_report, "tool_round_trip", "blocked", None);
 
         fixture.run_successful_managed_mcp(
@@ -1062,14 +1062,14 @@ fn fresh_operation_version_transition_and_read_only_status() -> Result<(), Box<d
         .and_then(|checks| checks.iter().find(|check| check["id"] == "tool_round_trip"))
         .ok_or("tool_round_trip check")?;
     assert_eq!(
-        round_trip["details"]["expected_verification_tool_name"],
+        round_trip["details"]["verification_tool"]["expected_tool_identity"],
         managed_host_round_trip_tool().wire_name()
     );
     assert_eq!(
-        round_trip["details"]["observed_verification_tool_name"],
+        round_trip["details"]["verification_tool"]["observed_tool_identity"],
         managed_host_round_trip_tool().wire_name()
     );
-    assert!(round_trip["details"]["verification_tool_observed_at"].is_string());
+    assert!(round_trip["details"]["verification_tool"]["observed_at"].is_string());
     assert_eq!(complete_report["actions"], json!([]));
     assert_canonical_connection_command_shape(&complete_report);
 
@@ -1209,7 +1209,7 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
             }
         })])?,
     )?;
-    initialize.assert_failed_status("host_session", "host_session_initialize_failed")?;
+    initialize.assert_failed_status("host_session", "host_session_current_attempt_failed")?;
 
     let tools_list = OperationalFixture::initialized("operational-tools-list-failure")?;
     tools_list.run_managed_mcp_messages(
@@ -1225,12 +1225,12 @@ fn protocol_failures_are_authoritative() -> Result<(), Box<dyn Error>> {
             }),
         ])?,
     )?;
-    tools_list.assert_failed_status("required_tools", "required_tools_invalid")?;
+    tools_list.assert_failed_status("required_tools", "required_tools_current_attempt_failed")?;
     tools_list.assert_latest_runtime_finding("mcp.tools.protocol_error")?;
 
     let safe_call = OperationalFixture::initialized("operational-safe-call-failure")?;
     safe_call.run_safe_tool_storage_failure()?;
-    safe_call.assert_failed_status("tool_round_trip", "tool_round_trip_failed")?;
+    safe_call.assert_failed_status("required_tools", "required_tools_current_attempt_failed")?;
     safe_call.assert_latest_runtime_finding("mcp.tool_call.safe_read_only_failed")?;
 
     let missing_tools = OperationalFixture::initialized("operational-missing-tools")?;

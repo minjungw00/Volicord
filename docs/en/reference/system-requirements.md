@@ -154,9 +154,9 @@ ID spelling follows [External Contracts](external-contracts.md#shared-git-object
 The administrative process must resolve and execute the configured Codex
 executable. When active verification runs, the executable must be discoverable
 and its version command must succeed. Verification reports the resolved path and
-observed host version as diagnostics. A different observed version makes the
-current operational observation pending until managed Codex behavior is
-observed again. Executable availability alone does not establish agent,
+observed executable version as diagnostics. The actual MCP peer version comes
+from that managed runtime's `clientInfo`; a difference between it and the PATH
+probe does not itself make the operational observation pending. Executable availability alone does not establish agent,
 operating-system-user, or human identity.
 
 The managed Codex configuration must launch the intended Volicord executable
@@ -251,9 +251,9 @@ managed-host runtime session with bounded client name/version and optional host
 version diagnostics. On each project tool call,
 it records or selects the project session and validates current Connection
 enablement, membership, mode, runtime/project session ownership, and both
-integration revisions before constructing Core context. Compatibility for a
-newly observed bounded host version is established by renewed operational
-observation.
+integration revisions before constructing Core context. Compatibility is
+established by the current managed runtime's protocol and capability behavior,
+not by matching the PATH probe version.
 
 Secrets and unrelated ambient environment values are not copied into managed
 configuration. Diagnostics must not print tokens, complete sensitive payloads,
