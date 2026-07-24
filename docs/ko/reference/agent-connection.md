@@ -283,9 +283,10 @@ Preflight 쓰기 가능성은 항상 `not_checked`이고 `connection_verify`를 
 revision 및 host 호환성 결과를 기록하며, 자체 `observed_at`과
 `source=connection_verify`를 식별합니다. 활성 MCP side effect의 닫힌 값은
 `rollback_only_registry_write_probe`, `rollback_only_project_write_probe`,
-`disposable_protocol_conformance`, `disposable_host_compatibility`입니다. 활성 source와
-증거 형태는 작업이 선택하며 schema-version 정수, 숫자 host version, 예전 결합 decoder가
-선택하지 않습니다. 사람용, verbose, JSON projection은 이 구분을 보존합니다. 활성 증거가
+`disposable_protocol_conformance`, `disposable_host_compatibility`입니다. 작업이 활성
+source와 분리된 증거 형태를 직접 선택하며 schema-version 정수, 숫자 host version,
+결합 형태 decoder로 선택하지 않습니다. 사람용, verbose, JSON projection은 이 구분을
+보존합니다. 활성 증거가
 없으면 `Storage writeability: not checked`라고 표시하고, 활성 증거가 있으면 별도 timestamp와
 source를 표시하며 그 쓰기 결과를 preflight 효과로 표시하지 않습니다.
 
@@ -737,7 +738,7 @@ policy 및 bounded finding을 담은 `repair_required`입니다. Tool 필드는 
 Host contract는 `HookObservationPolicy`를 semantic하게
 `Synchronous { allowed_status_reads }` 또는
 `Deferred { deadline, allowed_status_reads }`로 선택합니다. 검토된 현재 Codex
-command-hook profile은 status read 한 번의 synchronous observation을 선택하며 package
+command-hook 계약은 status read 한 번의 synchronous observation을 선택하며 package
 version이나 numeric profile generation으로 이 동작을 고르지 않습니다. 결정적 순서는
 begin 또는 resume, 요청된 경우 GuardProbe 한 번 호출, policy에 따른 status 호출, terminal
 상태에서 중단입니다. Sleep loop와 자동 same-turn retry는 없습니다.

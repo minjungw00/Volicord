@@ -49,7 +49,7 @@ Code 계열에 따라 집중 복구 경계를 선택합니다.
 | Code 계열 | 복구 경계 |
 |---|---|
 | `platform.*` | 지원 플랫폼 cell로 옮기거나 필수 플랫폼 관찰을 복구합니다. |
-| `runtime_home.*` | Action이 이름 붙인 대로 절대 Runtime Home을 고치고, 누락 Registry를 초기화하고, permission을 복구하거나 경로 경계를 분리합니다. |
+| `runtime_home.*` | Action이 이름 붙인 대로 절대 Runtime Home 또는 경로 경계를 고치고 permission을 복구하거나, 명시적인 새 `--home`으로 지원 `init` 흐름을 실행합니다. Schema object를 제자리에서 복구하지 않습니다. |
 | `installation.*` | 실행 가능한 현재 Volicord build를 복구합니다. 있으면 `action.installation.reinstall_current_build`를 사용합니다. |
 | `managed_config.*` | 같은 지원 `init` 복구를 실행합니다. Finding은 정적 환경 값이나 argument를 노출하지 않습니다. |
 | `store.sqlite.busy`, `store.sqlite.locked` | Database transaction을 잡고 있는 프로세스를 끝내거나 중지한 뒤 재시도합니다. |
@@ -258,7 +258,9 @@ acquisition stage, 기대·관찰 callable, retry policy, timestamp를 보존합
 `latest_attempt.attempt_state=repair_required`이면 중단합니다. Typed recovery action과
 안정적인 `guard.probe.*` root finding을 따릅니다. 더 오래된
 `latest_completed_proof`가 있다는 이유로 retry하거나 summary에서 reason을 분류하지
-않습니다. Attempt 부재 또는 실제 deferred active attempt만 pending입니다.
+않습니다. Attempt 부재는 pending입니다. 현재 Codex 계약에서는 acknowledgement 뒤
+status read 한 번으로 attempt가 `complete` 또는 `repair_required`가 되며 pending으로
+남지 않습니다.
 
 같은 현재 managed Codex 채팅과 native turn을 유지합니다.
 
@@ -286,7 +288,7 @@ trust, hook review 상태를 바꾸지 않습니다. 정확한 annotation과 저
 acknowledgement를 읽을 수 없습니다.
 
 통과 결과는 `workflow.kind=complete`이며 일치한 prompt, pre-tool, post-tool phase를
-표시합니다. 현재 Codex profile에서는 요청된 경우 GuardProbe를 한 번 호출하고, 이어서
+표시합니다. 현재 Codex 계약에서는 요청된 경우 GuardProbe를 한 번 호출하고, 이어서
 요청된 경우 status를 한 번 호출합니다. Sleep, polling, 같은 turn의 새 attempt는 하지
 않습니다. `repair_required`이면 중단하고 typed retry policy를 충족합니다. Cleanup 시각은
 retry eligibility가 아닙니다. 다른 session이나 turn의 ID를 재사용하거나 다른 읽기 전용

@@ -310,12 +310,13 @@ records each disposable protocol-revision and host-compatibility result, and
 identifies its own `observed_at` and `source=connection_verify`. Its closed MCP
 side-effect values are `rollback_only_registry_write_probe`,
 `rollback_only_project_write_probe`, `disposable_protocol_conformance`, and
-`disposable_host_compatibility`. The active source and evidence shape are
-selected by the operation, not by a schema-version integer, a numeric host
-version, or a legacy combined decoder. Human, verbose, and JSON projections
-preserve this distinction. With no active evidence they say `Storage
-writeability: not checked`; with active evidence they show its separate
-timestamp and source and do not label its write result as a preflight effect.
+`disposable_host_compatibility`. The operation selects the active source and
+the separate evidence shape directly; schema-version integers, numeric host
+versions, and combined-shape decoding do not select them. Human, verbose, and
+JSON projections preserve this distinction. With no active evidence they say
+`Storage writeability: not checked`; with active evidence they show its
+separate timestamp and source and do not label its write result as a preflight
+effect.
 
 `ActivationStepId` is the closed current-product vocabulary:
 `reload_codex`, `review_project_hooks`, `request_integration_verification`,
@@ -829,7 +830,7 @@ canonical `AgentToolId` projections, not arbitrary strings. `complete` and
 The host contract selects `HookObservationPolicy` semantically as
 `Synchronous { allowed_status_reads }` or
 `Deferred { deadline, allowed_status_reads }`. The reviewed current Codex
-command-hook profile selects synchronous observation with one status read;
+command-hook contract selects synchronous observation with one status read;
 neither package version numbers nor numeric profile generations select this
 behavior. The deterministic sequence is begin or resume, call GuardProbe once
 when requested, call status according to that policy, then stop at a terminal

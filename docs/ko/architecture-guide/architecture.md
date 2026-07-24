@@ -160,7 +160,7 @@ Activation은 기존 경계를 가로지르는 typed projection 하나입니다.
 
 ```text
 host/config 조사 + Store session/event 근거
-  -> volicord-cli 집중 check와 activation-plan suffix 하나
+  -> volicord-cli 집중 check와 계층형 activation plan 하나
   -> volicord-types ConnectionVerificationReport + IntegrationActivationPlan
   -> concise / verbose / JSON projection
 ```
@@ -174,7 +174,7 @@ configuration, host reload, hook source, session, capability, Guard, 별도 proj
 근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존하며 불변 semantic
 verification 좌표에서 공유 workflow 상태를 만드는 유일한 domain projector입니다.
 `volicord-host-contract`는 semantic synchronous/deferred observation policy를 담당하고
-현재 Codex profile은 version 분기 없이 synchronous status read 한 번을 선택합니다.
+현재 Codex 계약은 version 분기 없이 synchronous status read 한 번을 선택합니다.
 Begin, probe, get, `volicord-mcp`, CLI check, 생성 host guidance는 모두 그 projection을
 사용합니다. 정확한 replay는 같은 verification ID와 상태를 유지하고 `complete`와 typed
 `repair_required`는 terminal로 남습니다. Adapter와 renderer는 별도의 상태를 파생하거나

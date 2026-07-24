@@ -41,10 +41,14 @@ Waiting
   Codex session and tool activity: initialize, tools/list, and the designated read-only tool call
   Guard hook activity: pre_tool, post_tool, prompt_capture
 
-Next
-  Restart or reload Codex, start or resume this repository, and use a read-only Volicord tool.
+Required next steps
+  1. Restart or reload Codex in this repository.
+  2. Review the current project hooks.
+  3. Start a new Codex conversation and request: "Run the Volicord integration verification."
+  4. After the agent finishes, read connection status.
 
-Run again with --verbose for detailed diagnostics.
+Optional active diagnostics
+  Run `volicord connection verify` for fresh executable, writeability, and disposable conformance evidence.
 ```
 
 개수와 구역은 현재 보고서에 따라 달라집니다. 모든 check, 지원용 식별자, 정확한 계획

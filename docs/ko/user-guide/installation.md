@@ -286,7 +286,7 @@ Product Repository를 보게 합니다.
 참조](../reference/admin-cli.md#project-commands)를 보세요. 내부 식별 정보는
 Volicord가 저장하며 첫 설정 입력이 아닙니다.
 
-## 다음 단계
+## Codex 연결
 
 Product Repository에 호스트를 연결합니다.
 
@@ -300,8 +300,8 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 이 명령은 정규 managed launcher, Connection, 현재 Guard 설정을 적용한 뒤 계층형
 `IntegrationActivationPlan` 하나를 보고합니다. 적용에 성공했다는 사실만으로 다시
 불러온 managed host나 현재 hook이 실행됐음이 증명되지는 않습니다. 기본 init 출력은
-`Required next steps` section 하나를 사용하고 `Optional active diagnostics`를
-분리하며, 같은 작업을 두 번째 `Next` block으로 반복하지 않습니다.
+plan을 `Required next steps` section 하나에 표시하고 `Optional active diagnostics`를
+분리합니다.
 
 이 공유 설정에서는 init이 선택한 것과 같은 비어 있지 않은 절대 경로
 `VOLICORD_HOME`을 호스트 시작 환경이 제공해야 합니다. 저장소에서 보이는 설정은 그

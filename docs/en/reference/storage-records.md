@@ -520,7 +520,7 @@ writeability `not_checked`, and always has an empty side-effect array.
 `last_active_verification` is null when no active evidence exists or contains
 the latest active Registry/project write results, disposable conformance
 results, timestamp, source, and side effects. Store accepts no combined
-preflight/write result and no decoder migrates an older combined shape.
+preflight/write result; a combined shape is invalid stored owner data.
 
 Report replacement accepts the exact expected typed Connection integration
 revision, not a caller-supplied fingerprint. In one immediate Registry

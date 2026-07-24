@@ -230,9 +230,9 @@ code, one bounded typed summary, the most useful safe actual-versus-expected
 facts, affected blocked checks, and the finding or runtime-session identifier.
 One `Required next steps` section projects the current topological suffix of
 `IntegrationActivationPlan`; `Optional active diagnostics` remains separate.
-There is no second `Next` block. A root finding that already carries a typed
-remediation does not produce a generic inspection step. Human labels are
-presentation wording; they do not add report or check statuses.
+A root finding that already carries a typed remediation does not produce a
+generic inspection step. Human labels are presentation wording; they do not
+add report or check statuses.
 
 The canonical check statuses are `passed`, `pending`, `failed`, `blocked`, and
 `not_applicable`. They mean, respectively: completed successfully; waiting for
@@ -351,10 +351,10 @@ The renderer never reconstructs a cause from a summary. Redacted fact fields
 remain redacted.
 
 `--json` writes exactly one current `DiagnosticReport` schema and is the
-lossless machine representation. The only current schema version is `2`; there
-is no alternate legacy connection-report JSON branch. Consumers use the
-structured checks, findings, cause IDs, action codes, and fact objects rather
-than parsing human summaries. `--verbose` and `--json` are mutually exclusive.
+lossless machine representation. The accepted schema version is exactly `2`.
+Consumers use the structured checks, findings, cause IDs, action codes, and
+fact objects rather than parsing human summaries. `--verbose` and `--json` are
+mutually exclusive.
 `volicord connection list` retains its separate compact collection projection
 and does not accept `--verbose`.
 
@@ -417,7 +417,7 @@ Problems
     Runtime session: runtime_session_01
     Finding: finding.runtime_session_01.protocol
 
-Next
+Required next steps
   action.mcp.use_supported_protocol_revision: Configure the client to request a production-supported protocol revision
 
 Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /home/user/.volicord --verbose` for detailed diagnostics.
@@ -754,15 +754,13 @@ or create managed-host observations.
 `AgentToolId::LIST_PROJECTS`, whose wire-name projection is
 `volicord.list_projects`; the CLI does not select the first read-only tool or
 carry an independent designated-tool string.
-The self-test separately runs independently pinned host-compatibility fixtures.
-The current `codex` fixture uses the reviewed Codex initialize `clientInfo` and
-capability shape, requests exact revision `2025-06-18`, sends valid native
-session-correlation metadata on its one `volicord.list_projects` call, and does
-not select a revision from the server's preferred profile. The fixture list can
-contain multiple `codex` entries when deployed Codex families require different
-revisions or wire shapes. Each fixture identity names its reviewed semantic
-wire contract, such as `codex-mcp-turn-metadata`, rather than an arbitrary
-historical Codex package version.
+The self-test separately runs the independently pinned current
+host-compatibility fixture. The `codex` fixture uses the reviewed Codex
+initialize `clientInfo` and capability shape, requests exact revision
+`2025-06-18`, sends valid native session-correlation metadata on its one
+`volicord.list_projects` call, and does not select a revision from the server's
+preferred profile. Its identity names the reviewed semantic wire contract
+`codex-mcp-turn-metadata`; no Codex package version selects the fixture.
 
 A failed stdio probe keeps the current stage-specific check code. Its exact
 revision or host fixture and completed observations remain in the corresponding
@@ -967,8 +965,9 @@ writeability always remains `not_checked`; active Registry and project write
 results never replace it. Human output says `Storage writeability: not checked`
 when the active member is absent. When present, verbose and JSON output show
 the active evidence's separate `observed_at`, `source=connection_verify`,
-write results, conformance results, and side effects. There is no combined
-legacy result or schema-version/host-version branch.
+write results, conformance results, and side effects. A combined result is
+invalid, and no schema-version or host-version branch selects the evidence
+shape.
 
 `volicord connection verify codex` reports `ambient_hook_coverage` separately
 from `correlated_guard_verification`. Concise output names both results and a
@@ -981,7 +980,7 @@ check instructs the operator to use
 chat, then follow the returned tagged `workflow` and its exact typed `tool`.
 `awaiting_probe` calls the Guard probe once and `awaiting_observation` reads
 status according to the semantic host policy. `complete` and
-`repair_required` call no verification tool. The current Codex profile allows
+`repair_required` call no verification tool. The current Codex contract allows
 one synchronous status read, with no sleep, repeated poll, or same-turn retry.
 Begin, probe, and status report the same workflow state. CLI preflight, the
 manual stdio self-test, and historical Guard activity cannot complete that

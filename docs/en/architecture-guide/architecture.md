@@ -174,7 +174,7 @@ Activation is one typed projection across existing boundaries:
 
 ```text
 host/config inspection + Store session/event evidence
-  -> volicord-cli focused checks and one activation-plan suffix
+  -> volicord-cli focused checks and one hierarchical activation plan
   -> volicord-types ConnectionVerificationReport + IntegrationActivationPlan
   -> concise / verbose / JSON projections
 ```
@@ -190,7 +190,7 @@ project-trust evidence. `volicord-store` preserves the Guard definition
 boundary and is the single domain projector from an immutable semantic
 verification coordinate to the shared workflow state. `volicord-host-contract`
 owns the semantic synchronous/deferred observation policy; the current Codex
-profile selects one synchronous status read without a version branch. Begin,
+contract selects one synchronous status read without a version branch. Begin,
 probe, get, `volicord-mcp`, CLI checks, and generated host guidance all consume
 that projection. Exact replay retains the same verification ID and state;
 `complete` and typed `repair_required` remain terminal. Adapters and renderers

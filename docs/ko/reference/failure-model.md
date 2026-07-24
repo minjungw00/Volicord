@@ -51,7 +51,7 @@ diagnostic입니다.
 잘못되었거나 알려지지 않은 경우는 `Corrupt`가 아니라 `Rejected`이며 지원되는
 형태로 추정하지 않습니다.
 
-### 버전이 지정된 host contract 거부
+### Semantic host contract 거부
 
 Codex wire 입력은 명시적으로 선택한 profile로만 decode합니다.
 `CodexMcpTurnMetadata`는 `codex-mcp-turn-metadata`를 선택하고 별도
@@ -261,10 +261,9 @@ runtime-session evidence인 `latest_managed_attempt`,
 evidence에서도 수집하고, session 하나가 여러 role을 가지면 정규 role 목록이 있는 항목
 하나로 나타냅니다. 이 role은 현재 attempt health, managed capability, 상관관계가 확인된
 Guard 근거를 구분합니다.
-다른 schema version, 알 수 없는 최상위 구성원, 중복 check 또는 finding ID,
+`2`가 아닌 schema version, 알 수 없는 최상위 구성원, 중복 check 또는 finding ID,
 잘못된 cause graph, 계산 결과와 다른 supplied root list, 중복 action code, root가 아닌
-finding을 가리키는 action은 역직렬화에서 거부합니다. 예전 connection-report schema를
-위한 두 번째 분기는 없습니다.
+finding을 가리키는 action은 역직렬화에서 거부합니다.
 
 정확한 finding 및 runtime-session read는 별도의 schema 1
 `DiagnosticLookupReport`를 사용합니다. `lookup_status`는 정확히 `found` 또는

@@ -62,7 +62,7 @@
 | `crates/volicord-store/src/managed_launch_leases.rs` | 수명이 짧은 일회성 managed MCP launch lease, 현재 Connection 재검증, 결정적인 취소·만료 정리, 원자적 lease 소비와 runtime 생성을 담당합니다. |
 | `crates/volicord-store/src/operational_sessions.rs` | Runtime-session source 디코딩, protocol milestone, revision 범위 managed MCP project session, 정확한 데이터베이스 간 binding, lease 소비 밖의 직접 `managed_host` 생성 거절. |
 | `crates/volicord-store/src/integration_verification/mod.rs` | 공개 Store facade, 안정적인 integration-verification 입력과 레코드, lifecycle 구현을 위한 한정된 export. |
-| `crates/volicord-store/src/integration_verification/begin.rs` | 검증 생성, 정확한 coordinate 재개, begin 전 활성 run 만료, 현재 prompt 선택, 하나의 즉시 Registry transaction 안에서 수행하는 영속 ID 할당. |
+| `crates/volicord-store/src/integration_verification/begin.rs` | 검증 생성, 정확한 coordinate 재개, coordinate 변경의 terminal 처리, typed retry eligibility, 현재 prompt 선택, 하나의 즉시 Registry transaction 안에서 수행하는 영속 ID 할당. |
 | `crates/volicord-store/src/integration_verification/probe.rs` | 최초 쓰기 probe acknowledgement, 정확한 활성 및 terminal replay, 하나의 즉시 Registry transaction 안에서 수행하는 동시 호출 수렴. |
 | `crates/volicord-store/src/integration_verification/observation.rs` | Typed hook acquisition, Connection server의 `McpToolCatalog`를 통한 semantic callable filtering, 서로 다른 상관관계 불일치 stage, payload 없는 한도 내 관찰 영속화. |
 | `crates/volicord-store/src/integration_verification/correlation.rs` | Prompt와 acquisition을 통과한 pre/post event matching, hook contract 및 tool-use 상관관계, timestamp 순서, 원자적 completion refresh. |

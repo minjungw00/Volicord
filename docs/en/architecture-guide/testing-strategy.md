@@ -111,7 +111,7 @@ Durable tests should cover, as applicable:
   writeability always `not_checked`, active write evidence stored only under
   `last_active_verification`, unchanged preflight evidence after verification,
   active timestamp/source, disposable conformance state, concise/verbose/JSON
-  parity, and strict rejection of a combined legacy evidence shape;
+  parity, and strict rejection of a combined evidence shape;
 - lifecycle-specific diagnostic construction and Store APIs, immutable
   occurrence insertion, complete-current-key digest and persisted-ID
   validation, current snapshot identity immutability, resolution and
@@ -149,9 +149,9 @@ Durable tests should cover, as applicable:
   of duplicates, cycles, unknown prerequisites, inconsistent metadata,
   top-level nested tools, and required diagnostic-only steps;
 - init output count and ordering for reload, hook review, one user-level
-  request, and status; one `Required next steps` block; no duplicate `Next`
-  block or inaccurate “one more step”; current-status suffixes; typed
-  repair-required plans; and optional active diagnostics kept separate;
+  request, and status; one `Required next steps` block; accurate count and
+  pluralization; current-status suffixes; typed repair-required plans; and
+  optional active diagnostics kept separate;
 - transactional init fault injection after Runtime Home preparation, Store
   recovery preparation, every managed hook/rule/guidance replacement, before
   and after Codex configuration replacement, before integration-revision
@@ -168,8 +168,8 @@ Durable tests should cover, as applicable:
 - immutable semantic-coordinate begin replay, terminal same-turn replay without
   a new ID, new-turn attempts, prompt ownership, first-write-wins probe
   acknowledgement, and duplicate-begin concurrency;
-- the pinned current Codex semantic profile's synchronous one-read observation
-  policy, no numeric-version or legacy-profile branch, missing-event immediate
+- the pinned current Codex semantic contract's synchronous one-read observation
+  policy, no numeric-version branch, missing-event immediate
   repair without TTL waiting, distinct payload/callable/verification/session/
   turn/tool-use repair reasons, immutable complete and repair terminals, and
   retry-policy gating of genuinely new coordinates;

@@ -255,7 +255,7 @@ than rendered summaries:
 | `guard.internal.unexpected_failure` | Guard encountered an unexpected failure without a narrower typed mapping. |
 | `guard.prompt_capture.unsupported` | The host boundary does not support configured prompt capture. |
 | `guard.prompt_capture.unobserved` | Supported configured prompt capture has not been observed. |
-| `guard.probe.hook_event_not_observed` | The typed attempt stage did not observe the required hook event or reached its observation deadline. |
+| `guard.probe.hook_event_not_observed` | The current synchronous observation did not receive the required hook event; a deferred semantic policy may use its explicit deadline. |
 | `guard.probe.payload_incompatible` | The acquired hook payload was structurally incompatible. |
 | `guard.probe.callable_mismatch` | The bounded observed callable did not match the expected Guard probe callable. |
 | `guard.probe.verification_id_mismatch` | The hook event carried another verification ID. |
@@ -349,8 +349,8 @@ Durable contract tests cover:
   policy denial while remaining unsatisfied observations;
 - explicit pre-tool denial and non-blocking post-tool projection; and
 - event-persistence failure continuing with bounded Codex feedback;
-- exact canonical matcher generation for the Guard probe without matching
-  unrelated read-only tools; and
+- typed routing-strategy generation and reconstruction, followed by semantic
+  exclusion of unrelated read-only tools from Guard verification; and
 - rejection of mismatched session, turn, tool-use ID, tool name,
   verification ID, policy, revision, hook digest, ordering, and expiry.
 

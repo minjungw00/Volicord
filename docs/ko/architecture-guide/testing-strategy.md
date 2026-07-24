@@ -98,7 +98,7 @@ registry 직접 순회가 matrix를 정합니다.
   선택 database의 변하지 않은 row count와 modification time, 항상 `not_checked`인 쓰기
   가능성, `last_active_verification` 아래에만 저장되는 활성 쓰기 증거, 검증 뒤에도
   변하지 않는 preflight 증거, 활성 timestamp/source, 일회용 conformance 상태,
-  concise/verbose/JSON 일치, 결합된 예전 증거 형태의 엄격한 거부
+  concise/verbose/JSON 일치, 결합된 증거 형태의 엄격한 거부
 - lifecycle별 진단 구성 및 Store API, 변경할 수 없는 occurrence 삽입, 완전한 current key
   digest와 영속 ID 검증, current snapshot identity 불변성, 해소와 재활성화,
   active/reportable filtering, 명시적 report seed와 한도가 있는 lifecycle-aware 정확한 cause
@@ -130,8 +130,8 @@ registry 직접 순회가 matrix를 정합니다.
   prerequisite 위상 순서와 중복·cycle·알 수 없는 prerequisite·불일치 metadata·최상위
   nested tool·필수 diagnostic-only step의 엄격한 거부
 - Reload, hook review, 사용자 수준 요청 하나, status의 init 출력 개수와 순서,
-  `Required next steps` block 하나, 중복 `Next` block 및 부정확한 “one more step” 부재,
-  current-status suffix, typed repair-required plan, 분리된 optional active diagnostics
+  `Required next steps` block 하나, 정확한 개수와 단복수 표현, current-status suffix,
+  typed repair-required plan, 분리된 optional active diagnostics
 - Runtime Home 준비, Store 복구 준비, 모든 관리 hook/rule/guidance 교체 뒤, Codex
   구성 교체 전후, integration revision commit 전, rollback 중의 transactional init
   fault injection, 새 상태와 기존 상태의 정확한 복원, 동시 외부 bytes 보존,
@@ -144,8 +144,8 @@ registry 직접 순회가 matrix를 정합니다.
   경계를 보존하는 생성 AGENTS, Codex rule, MCP server instruction
 - 불변 semantic 좌표의 begin replay, 새 ID가 없는 terminal same-turn replay, 새 turn
   attempt, prompt 소유권, first-write-wins probe acknowledgement, 중복 begin concurrency
-- 고정된 현재 Codex semantic profile의 synchronous one-read observation policy, numeric
-  version 또는 legacy-profile 분기 부재, TTL 대기 없는 누락 event 즉시 repair, 서로 다른
+- 고정된 현재 Codex semantic 계약의 synchronous one-read observation policy, numeric
+  version 분기 부재, TTL 대기 없는 누락 event 즉시 repair, 서로 다른
   payload/callable/verification/session/turn/tool-use repair reason, 불변 complete 및 repair
   terminal, 실제 새 좌표에 대한 retry-policy gate
 - 결정적인 begin, probe 한 번, policy가 정한 status read 한 번, stop 순서와 sleep,

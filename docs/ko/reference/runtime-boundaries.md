@@ -124,7 +124,8 @@ schema, singleton identity, 최종 경로가 정확히 일치할 때만 `Ready`�
 파일을 만들거나 쓰지 않으며 호환되지 않거나 손상된 home의 bytes와 timestamp를 바꾸지
 않고 보존합니다. Schema 불일치는 예상·관찰 manifest digest와 relation 범주를 한도
 안에서 보고합니다. 복구할 때는 기존 home을 보존하고 명시적 `--home`으로 새 위치를
-선택하거나, 담당자가 정의한 importer가 있는 경우에만 그것을 사용합니다.
+선택하거나, 담당자가 정의한 importer가 있는 경우에만 그것을 사용합니다. 누락 relation을
+만들거나 schema를 patch하거나 숫자로 format을 선택해 제자리에서 복구하지 않습니다.
 
 최종 경로가 `Absent`이면 초기화는 같은 상위 directory 아래에 고유 staging directory를
 만듭니다. 그 안에서 Registry, Runtime Home singleton, 최초 installation profile을 만들고
@@ -198,8 +199,9 @@ Runtime Home finding은 `runtime_home.path.missing`,
 `volicord mcp preflight`는 선택한 Runtime Home의 읽기 경계 안에 머뭅니다. 파일을
 만들거나 write transaction을 열거나 runtime session을 시작하지 않고 정규 관리 구성,
 Registry, project 상태, protocol profile, 도구 schema, host contract를 읽습니다. 활성
-연결 검증은 별도 경계입니다. 선택한 store에 rollback 전용 쓰기 가능성 probe를 수행할 수
-있으며 이 최소 transaction은 항상 rollback합니다. 모든 protocol revision 및 host 호환성
+연결 검증은 별도 경계이므로 preflight 쓰기 가능성은 `not_checked`로 남습니다. 활성 검증은
+선택한 store에 rollback 전용 쓰기 가능성 probe를 수행할 수 있으며 이 최소 transaction은
+항상 rollback합니다. 모든 protocol revision 및 host 호환성
 conformance process는 명령이 소유한 임시 directory 아래의 새로운 일회용 Runtime Home과
 Product Repository를 사용합니다. 실행 뒤 전체 fixture를 제거하며, conformance는 선택한
 실제 Runtime Home에 runtime session, finding, project record를 만들지 않습니다. 보고서

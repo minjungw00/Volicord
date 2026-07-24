@@ -228,7 +228,7 @@ typed failure per revision. The aggregate server check passes only if every
 production profile passes; one failed profile does not prevent the remaining
 profiles from being probed.
 
-Host compatibility is a separate, host-owned fixture list rather than a
+Host compatibility uses a separately pinned semantic fixture rather than a
 projection of the protocol registry or a substitute for the complete revision
 matrix. The current `codex` fixture uses the
 reviewed Codex initialize request shape with `clientInfo.name` set to
@@ -514,7 +514,7 @@ exact project through `volicord.list_projects`, then calls
 `workflow`: `awaiting_probe` and `awaiting_observation` carry the exact
 canonical `tool` to call, while `complete` and `repair_required` are terminal
 and carry no tool. Begin, probe, and status expose this same state-directed
-contract. The current Codex semantic host profile uses synchronous observation
+contract. The current Codex semantic host contract uses synchronous observation
 with one allowed status read, so the agent uses no shell sleep or poll loop and
 does not automatically restart in the same turn. The Guard probe is an
 internal nested tool step, not a top-level user action. Only this first-party
@@ -628,8 +628,8 @@ state, Task state, or Product Repository files. Get follows the semantic
 `HookObservationPolicy`: the reviewed current Codex contract is
 `Synchronous { allowed_status_reads: 1 }`. Its single read either observes
 completion or persists the most precise `repair_required` acquisition or
-correlation reason. Deferred profiles, when defined, carry an explicit
-deadline policy rather than inheriting a Codex version threshold.
+correlation reason. This behavior is selected by the semantic host contract,
+not a Codex version threshold.
 
 A run passes only when the same run session and turn contain a compatible
 prompt event followed by `PreToolUse` and `PostToolUse` for the same tool-use

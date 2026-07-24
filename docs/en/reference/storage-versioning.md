@@ -41,13 +41,6 @@ fallback database opener. It also contains no development-stage diagnostics
 database migration. Ordinary open never relabels, repairs, rewrites, or infers
 an existing database shape.
 
-Adding the bounded Guard-probe acquisition record and expected host-callable
-coordinate changes the current Registry schema identity. A Runtime Home from
-the preceding schema is a noncurrent storage contract and is rejected with
-explicit reinitialization guidance. Store does not add the table or column in
-place, synthesize acquisition evidence for an old row, or dual-read the
-preceding shape.
-
 Development data is recreated in a fresh location from the canonical SQL and
 the current manifest. Recreation is not conversion and does not preserve or
 reinterpret records from another shape. Persisted authority data is never
@@ -376,10 +369,9 @@ that recreation.
 
 The current Registry contract stores integration verification as one immutable
 attempt per complete semantic coordinate with a semantic observation policy
-and typed repair/retry fields. The former time-window lifecycle is not a
-compatible alternate layout. A Registry containing that prior table shape is
-an unsupported storage contract and follows the same recreation rule; Store
-does not reinterpret an expired or terminal legacy row as a current attempt.
+and typed repair/retry fields. Exact-open validation requires that complete
+current relation and constraint inventory; Store never synthesizes acquisition
+evidence or attempt state while opening a Runtime Home.
 
 ## Owner Links
 

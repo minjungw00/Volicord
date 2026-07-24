@@ -232,7 +232,7 @@ Guard 설치와 관찰 진단은 렌더링한 summary가 아니라 닫힌 원인
 | `guard.internal.unexpected_failure` | 더 좁은 typed mapping이 없는 예상 밖 Guard 실패입니다. |
 | `guard.prompt_capture.unsupported` | Host 경계가 구성된 prompt capture를 지원하지 않습니다. |
 | `guard.prompt_capture.unobserved` | 지원되고 구성된 prompt capture를 아직 관찰하지 못했습니다. |
-| `guard.probe.hook_event_not_observed` | Typed attempt stage가 필수 hook event를 관찰하지 못했거나 observation deadline에 도달했습니다. |
+| `guard.probe.hook_event_not_observed` | 현재 synchronous observation이 필수 hook event를 받지 못했습니다. Deferred semantic policy는 명시적인 deadline을 사용할 수 있습니다. |
 | `guard.probe.payload_incompatible` | 획득한 hook payload의 구조가 호환되지 않습니다. |
 | `guard.probe.callable_mismatch` | 한도가 있는 관찰 callable이 기대 Guard probe callable과 다릅니다. |
 | `guard.probe.verification_id_mismatch` | Hook event에 다른 verification ID가 있습니다. |
@@ -316,7 +316,8 @@ graph와 report 집계 상태는 [Agent Connection](agent-connection.md)이 담�
   충족에는 사용되지 않는지 여부
 - 명시적인 pre-tool denial과 non-blocking post-tool projection
 - event 영속화 실패가 제한된 Codex feedback과 함께 계속되는지 여부
-- 관련 없는 읽기 전용 도구와 match하지 않는 정확한 정규 Guard probe matcher 생성
+- Typed routing strategy 생성 및 재구성과, Guard 검증에서 관련 없는 읽기 전용 도구의
+  semantic 제외
 - session, turn, tool-use ID, tool 이름, verification ID, policy, revision, hook digest,
   순서, 만료 불일치의 거부
 

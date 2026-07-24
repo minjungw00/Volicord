@@ -202,7 +202,7 @@ Revision별로 요청 및 협상 revision, 반환된 도구, 완료 단계, type
 나머지 profile probe를 계속 실행합니다.
 
 Host 호환성은 protocol registry projection도 전체 revision 매트릭스의 대체물도 아닌,
-host가 독립적으로 소유하는 fixture 목록입니다. 현재 `codex` fixture는
+독립적으로 고정한 semantic fixture를 사용합니다. 현재 `codex` fixture는
 `clientInfo.name`이 `codex-mcp-client`이고 title이
 `Codex`이며 현재의 빈 capability 객체를 사용하는 검토된 Codex initialize 요청 형태와,
 독립적으로 고정한 revision `2025-06-18`을 사용합니다. 도구 호출 하나에는 유효한
@@ -449,7 +449,7 @@ Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지
 따릅니다. `awaiting_probe`와 `awaiting_observation`은 호출할 정확한 정규 `tool`을
 담고, `complete`와 `repair_required`는 tool이 없는 terminal 상태입니다. Begin,
 probe, status는 모두 같은 상태 지향 계약을 노출합니다. 현재 Codex semantic host
-profile은 status read를 한 번만 허용하는 synchronous observation을 사용하므로 agent는
+contract는 status read를 한 번만 허용하는 synchronous observation을 사용하므로 agent는
 shell sleep이나 poll loop를 사용하지 않고 같은 turn에 자동으로 다시 시작하지 않습니다.
 Guard probe는 내부 nested tool step이며 최상위 사용자 action이 아닙니다. 이 first-party
 sequence만 현재 managed MCP와 Guard 상관관계 근거를 만들 수 있습니다.
@@ -556,8 +556,8 @@ session, native host turn으로 이루어진 좌표에서 first-write-wins입니
 Product Repository 파일을 변경하지 않습니다. Get은 semantic
 `HookObservationPolicy`를 따릅니다. 검토된 현재 Codex 계약은
 `Synchronous { allowed_status_reads: 1 }`입니다. 그 한 번의 read는 완료를 관찰하거나 가장
-정확한 `repair_required` acquisition 또는 correlation reason을 영속합니다. 나중에 정의할
-Deferred profile은 Codex version threshold가 아니라 명시적인 deadline policy를 가집니다.
+정확한 `repair_required` acquisition 또는 correlation reason을 영속합니다. 이 동작은
+Codex version threshold가 아니라 semantic host contract로 선택합니다.
 
 Run은 같은 run session과 turn에서 호환 prompt event 뒤에 같은 tool-use ID, 정확히 생성된
 host tool 이름 `mcp__volicord__volicord_guard_probe`, 정확한 `verification_id` 입력을 가진

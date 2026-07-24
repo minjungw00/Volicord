@@ -55,7 +55,7 @@ trusted contract violates that contract. A malformed or unknown untrusted
 boundary input that has not become persisted owner state is `Rejected`, not
 `Corrupt`, and is not guessed into a supported shape.
 
-### Versioned host-contract rejection
+### Semantic host-contract rejection
 
 Codex wire input is decoded only by the explicitly selected profile.
 `CodexMcpTurnMetadata` selects `codex-mcp-turn-metadata`, while the distinct
@@ -297,10 +297,10 @@ role-preserving runtime-session evidence selected as
 check evidence as well as finding correlation; one session with several roles
 is represented once with a canonical role list. These roles distinguish
 current attempt health, managed capability, and correlated Guard evidence.
-Deserialization rejects any other schema version, unknown top-level member,
-duplicate check or finding ID, invalid cause graph, supplied root list that
-differs from the derived roots, duplicate action code, or action that refers to
-a non-root finding. There is no second legacy connection-report schema.
+Deserialization rejects any schema version other than `2`, unknown top-level
+member, duplicate check or finding ID, invalid cause graph, supplied root list
+that differs from the derived roots, duplicate action code, or action that
+refers to a non-root finding.
 
 Exact finding and runtime-session reads use the separate schema-1
 `DiagnosticLookupReport`. Its `lookup_status` is exactly `found` or

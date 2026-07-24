@@ -54,7 +54,7 @@ Use the code family to choose the focused recovery:
 | Code family | Recovery boundary |
 |---|---|
 | `platform.*` | Move to or restore observation of the supported platform cell. |
-| `runtime_home.*` | Correct the absolute Runtime Home, initialize a missing Registry, repair permissions, or separate path boundaries as named by the action. |
+| `runtime_home.*` | Correct the absolute Runtime Home or its path boundary, repair permissions, or use the supported `init` flow with a fresh explicit `--home` as named by the action. Do not repair schema objects in place. |
 | `installation.*` | Restore a runnable current Volicord build; use `action.installation.reinstall_current_build` when present. |
 | `managed_config.*` | Run the same supported `init` repair. The finding never exposes static environment values or arguments. |
 | `store.sqlite.busy`, `store.sqlite.locked` | Finish or stop the process holding the database transaction, then retry. |
@@ -284,8 +284,9 @@ expected/observed callable, retry policy, and timestamps.
 If `latest_attempt.attempt_state=repair_required`, stop. Follow its typed
 recovery action and stable `guard.probe.*` root finding. Do not retry because an
 older `latest_completed_proof` exists, and do not classify the reason from the
-summary. Only an absent attempt or a genuinely deferred active attempt is
-pending.
+summary. An absent attempt is pending. Under the current Codex contract, the
+single status read makes an acknowledged attempt `complete` or
+`repair_required`; it does not leave that attempt pending.
 
 Stay in the same current managed Codex chat and native turn:
 
@@ -314,7 +315,7 @@ matched-event effects. Repair replay remains `repair_required`. A different
 session or turn cannot read the original acknowledgement.
 
 A passing result has `workflow.kind=complete` and matched prompt, pre-tool, and
-post-tool phases. For the current Codex profile, call GuardProbe once when
+post-tool phases. For the current Codex contract, call GuardProbe once when
 requested and then call status once when requested. Do not sleep, poll, or
 begin another attempt in the same turn. On `repair_required`, stop and satisfy
 the typed retry policy; cleanup time is not retry eligibility. Do not reuse an

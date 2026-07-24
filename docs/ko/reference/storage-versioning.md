@@ -39,12 +39,6 @@ SQL 파일입니다.
 개발 단계 진단 데이터베이스 마이그레이션도 없습니다. 일반 열기는 기존 데이터베이스
 형태의 이름을 바꾸거나, 복구하거나, 다시 쓰거나, 추정하지 않습니다.
 
-한도가 있는 Guard probe acquisition record와 예상 host-callable 좌표를 추가하면 현재
-Registry schema identity가 바뀝니다. 바로 이전 schema의 Runtime Home은 현재가 아닌 저장
-계약이므로 명시적인 재초기화 안내와 함께 거부합니다. Store는 table이나 column을
-제자리에서 추가하거나 이전 row의 acquisition evidence를 합성하거나 바로 이전 형태를
-함께 읽지 않습니다.
-
 개발 데이터는 기준 SQL과 현재 매니페스트를 사용해 새 위치에 다시 만듭니다. 다시
 만들기는 conversion이 아니며 다른 형태의 기록을 보존하거나 재해석하지 않습니다.
 일반 열기는 영속 권한 데이터를 암묵적으로 버리거나 다시 만들지 않습니다.
@@ -340,10 +334,9 @@ serialization, transaction, constraint finding은 각각의 집중 복구 action
 변환, 가져오기하지 않습니다.
 
 현재 Registry 계약은 완전한 semantic 좌표마다 불변 integration-verification attempt
-하나를 semantic observation policy 및 typed repair/retry field와 함께 저장합니다. 이전
-time-window lifecycle은 호환되는 대체 layout이 아닙니다. 이전 table 형태를 가진
-Registry는 같은 재생성 규칙을 따르는 지원되지 않는 저장소 계약이며 Store는 만료 또는
-terminal legacy row를 현재 attempt로 재해석하지 않습니다.
+하나를 semantic observation policy 및 typed repair/retry field와 함께 저장합니다. 정확한
+열기 검증은 이 완전한 현재 relation 및 constraint inventory를 요구하며, Store는 Runtime
+Home을 열면서 acquisition evidence나 attempt 상태를 합성하지 않습니다.
 
 ## 담당 문서 링크
 

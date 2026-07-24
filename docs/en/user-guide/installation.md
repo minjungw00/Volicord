@@ -299,7 +299,7 @@ Project naming and internal identity behavior are owned by the
 [Administrative CLI Reference](../reference/admin-cli.md#project-commands).
 Internal identities are stored by Volicord and are not first-time setup inputs.
 
-## Next Step
+## Connect Codex
 
 Connect a host to the Product Repository:
 
@@ -314,9 +314,9 @@ supported platform.
 This command applies the canonical managed launcher, Connection, and current
 Guard setup before it reports one hierarchical `IntegrationActivationPlan`. A
 successful apply does not by itself prove that a reloaded managed host or the
-current hooks have run. Default init output has one `Required next steps`
-section and keeps `Optional active diagnostics` separate; it does not repeat
-the work in a second `Next` block.
+current hooks have run. Default init output presents the plan in one
+`Required next steps` section and keeps `Optional active diagnostics`
+separate.
 
 This shared setup requires the host launch environment to provide the same
 nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible

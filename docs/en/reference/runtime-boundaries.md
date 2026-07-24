@@ -142,7 +142,8 @@ create or write a file, and an incompatible or corrupt home is preserved
 without changing its bytes or timestamps. A schema mismatch reports bounded
 expected and observed manifest digests and relation categories; recovery keeps
 the existing home, selects a fresh explicit `--home`, or uses an owner-defined
-importer only if one exists.
+importer only if one exists. It never creates a missing relation, patches the
+schema, or selects a format numerically in place.
 
 For an `Absent` final path, initialization creates a unique staging directory
 under the same parent. It creates the Registry, Runtime Home singleton, and
@@ -224,7 +225,8 @@ filesystem contents, or unrestricted path discovery.
 it reads the canonical managed configuration, Registry, project state,
 protocol profiles, tool schemas, and host contracts without creating files,
 opening a write transaction, or starting a runtime session. Active connection
-verification is a different boundary. It may perform rollback-only
+verification is a different boundary, so preflight writeability remains
+`not_checked`. Active verification may perform rollback-only
 writeability probes in the selected stores; those minimal transactions always
 roll back. Every protocol-revision and host-compatibility conformance process
 uses a fresh disposable Runtime Home and Product Repository under the

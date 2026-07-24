@@ -461,7 +461,7 @@ Connection 담당 문서의 합성 `verification_not_run` 보고서로 projectio
 side-effect 배열은 항상 비어 있습니다. `last_active_verification`은 활성 증거가 없으면
 null이고, 있으면 마지막 활성 Registry/프로젝트 쓰기 결과, 일회용 conformance 결과,
 timestamp, source, side effect를 담습니다. Store는 결합된 preflight/write 결과를 받지
-않으며 어떤 decoder도 예전 결합 형태를 migration하지 않습니다.
+않으며 결합 형태는 유효하지 않은 영속 담당 상태입니다.
 
 보고서 교체는 호출자가 준 fingerprint가 아니라 정확한 예상 typed Connection integration
 revision을 받습니다. Store는 immediate Registry transaction 하나에서 revision 소유자 field를

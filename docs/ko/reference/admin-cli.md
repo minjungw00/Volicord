@@ -215,8 +215,8 @@ integration generation을 증가시키지 않습니다.
 가장 유용한 안전한 actual-versus-expected fact, 영향을 받은 blocked check, finding 또는
 runtime-session 식별자를 포함합니다. `Required next steps` 구역 하나가
 `IntegrationActivationPlan`의 현재 위상 suffix를 projection하며
-`Optional active diagnostics`는 분리합니다. 두 번째 `Next` block은 없습니다. Root
-finding에 typed remediation이 있으면 일반적인 inspection step을 만들지 않습니다.
+`Optional active diagnostics`는 분리합니다. Root finding에 typed remediation이 있으면
+일반적인 inspection step을 만들지 않습니다.
 사람용 라벨은 표시 문구이며 보고서나 check 상태를 추가하지 않습니다.
 
 정규 check 상태는 `passed`, `pending`, `failed`, `blocked`, `not_applicable`입니다. 각각
@@ -323,7 +323,7 @@ details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구�
 계속 가립니다.
 
 `--json`은 현재 `DiagnosticReport` schema 하나만 쓰며 정확하고 손실 없는 기계 판독
-표현입니다. 현재 schema version은 `2`뿐이며 예전 connection-report JSON 분기는 없습니다.
+표현입니다. 허용하는 schema version은 정확히 `2`입니다.
 Consumer는 사람용 summary를 parsing하지 않고 구조화된 check, finding, cause ID, action
 code, fact object를 사용합니다. `--verbose`와 `--json`은 함께 사용할 수 없는 사용법
 옵션입니다.
@@ -386,7 +386,7 @@ Problems
     Runtime session: runtime_session_01
     Finding: finding.runtime_session_01.protocol
 
-Next
+Required next steps
   action.mcp.use_supported_protocol_revision: Configure the client to request a production-supported protocol revision
 
 Rerun active verification with `volicord connection verify codex --repo /workspace/product --home /home/user/.volicord --verbose` for detailed diagnostics.
@@ -407,7 +407,7 @@ Connection
   Config target: /home/user/.codex/config.toml
   Runtime home: /home/user/.volicord
   Integration revision: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-  Runtime sessions: runtime_session_01 (latest_attempt)
+  Runtime sessions: runtime_session_01 (latest_managed_attempt)
 
 Summary
   Status: failed
@@ -419,7 +419,7 @@ Checks
     Code: host_session_protocol_mismatch
     Depends on: process_startup
     Root findings: finding.runtime_session_01.protocol
-    Evidence role: latest_attempt
+    Evidence role: latest_managed_attempt
     Runtime session: runtime_session_01
     PATH executable: /opt/codex
     PATH executable version: 0.42.0
@@ -696,15 +696,13 @@ session이나 finding을 추가하거나 managed-host 관찰을 만들지 않습
 `ToolVerificationRole::ManagedHostRoundTrip`은 컴파일 시점에
 `AgentToolId::LIST_PROJECTS`에 결합되며 wire 이름 투영은
 `volicord.list_projects`입니다. CLI는 첫 번째 읽기 전용 도구를 선택하거나 독립적인 지정
-도구 문자열을 유지하지 않습니다. Self-test는 이와 별도로 독립적으로 고정한 host 호환성
-fixture를 실행합니다. 현재
-`codex` fixture는 검토된 Codex initialize `clientInfo` 및 capability 형태를 사용하고,
-정확한 revision `2025-06-18`을 요청하며, `volicord.list_projects` 호출 하나에 유효한
-native session correlation metadata를 보냅니다. 이 fixture는 서버의 선호 profile에서
-revision을 선택하지 않습니다. 각 fixture identity는 임의의 과거 Codex package version이
-아니라 `codex-mcp-turn-metadata` 같은 검토된 semantic wire contract를 가리킵니다. 배포된
-Codex 계열마다 필요한 revision이나 wire 형태가 다르면 fixture 목록에 `codex` entry를 여러
-개 둘 수 있습니다.
+도구 문자열을 유지하지 않습니다. Self-test는 이와 별도로 독립적으로 고정한 현재 host
+호환성 fixture를 실행합니다. `codex` fixture는 검토된 Codex initialize `clientInfo` 및
+capability 형태를 사용하고, 정확한 revision `2025-06-18`을 요청하며,
+`volicord.list_projects` 호출 하나에 유효한 native session correlation metadata를
+보냅니다. 이 fixture는 서버의 선호 profile에서 revision을 선택하지 않습니다. Identity는
+검토된 semantic wire contract `codex-mcp-turn-metadata`를 가리키며 Codex package
+version으로 fixture를 선택하지 않습니다.
 
 stdio probe가 실패하면 현재 단계별 check code를 유지합니다. 해당 matrix entry에는
 정확한 revision 또는 host fixture와 완료 관찰을 유지합니다. 실패 식별값은 안정적인
@@ -886,8 +884,8 @@ Preflight 쓰기 가능성은 항상 `not_checked`로 남으며 활성 Registry 
 이를 교체하지 않습니다. 활성 구성원이 없으면 사람용 출력은
 `Storage writeability: not checked`라고 표시합니다. 활성 구성원이 있으면 verbose와 JSON
 출력은 활성 증거의 별도 `observed_at`, `source=connection_verify`, 쓰기 결과, conformance
-결과, side effect를 표시합니다. 결합된 예전 결과나 schema-version/host-version 분기는
-없습니다.
+결과, side effect를 표시합니다. 결합된 결과는 유효하지 않으며 schema-version 또는
+host-version 분기로 evidence 형태를 선택하지 않습니다.
 
 `volicord connection verify codex`는 `ambient_hook_coverage`와
 `correlated_guard_verification`을 분리해 보고합니다. Concise 출력은 결과 둘과 terminal
@@ -898,7 +896,7 @@ verification ID를 보존합니다. CLI가 채팅 내 작업 흐름을 합성하
 `volicord.begin_integration_verification`을 사용한 뒤 반환된 tagged `workflow`와 정확한
 typed `tool`을 따르도록 안내합니다. `awaiting_probe`는 Guard probe를 호출하고,
 `awaiting_observation`은 semantic host policy에 따라 status를 읽습니다. `complete`와
-`repair_required`는 verification tool을 호출하지 않습니다. 현재 Codex profile은
+`repair_required`는 verification tool을 호출하지 않습니다. 현재 Codex 계약은
 synchronous status read 한 번만 허용하며 sleep, 반복 poll, same-turn retry는 없습니다.
 Begin, probe, status는 같은 workflow 상태를 보고합니다. CLI preflight, 수동 stdio
 self-test, 이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 명령은 Codex trust 상태를
