@@ -201,8 +201,8 @@ managed row를 `latest_attempt`, 가장 최신 complete row를 `latest_complete_
 ID가 두 role을 가지면 중복을 제거합니다.
 
 프로젝트 host 상관관계는 source에 따라 정규화합니다.
-`CodexMcpTurnMetadataV1` decoder는 MCP session/thread/turn 상관관계를 제공하고, 별도
-`CodexHooksV1` decoder는 prompt session/turn 또는 tool
+`CodexMcpTurnMetadata` decoder는 MCP session/thread/turn 상관관계를 제공하고, 별도
+`CodexCommandHooks` decoder는 prompt session/turn 또는 tool
 session/turn/tool-use/tool-name 상관관계를 제공합니다. Host-contract 담당자가 두 marker를
 검토된 profile ID에 연결합니다. `host_sessions`는 Connection, 정확한 native host session,
 변경할 수 없는 프로젝트 integration revision, 최초/마지막 관찰 시각을 저장합니다. Store는
@@ -344,7 +344,7 @@ Registry의 각 `guard_installations` row는 안정적인 설치/소유자 ident
 `manifest_json`, 생성/갱신 timestamp만 유지합니다. Manifest는 엄격하고 소유자에
 결속되며 정확한 policy hash, integration revision, typed runtime command, 전체
 Volicord managed-file 기대값, 필수 typed hook phase, `host_contract_profile`,
-`host_contract_digest`를 담습니다. 현재 Guard profile은 명시적으로 `codex-hooks-v1`이며,
+`host_contract_digest`를 담습니다. 현재 Guard profile은 명시적으로 `codex-command-hooks`이며,
 audit은 들어온 payload에서 parser를 선택하지 않고 그 profile의 결정적인 검토 digest를
 요구합니다. File audit과 필수 phase 관찰은 이 manifest와 현재 소유자가 일치하는 사실에서
 현재 Guard check를 파생합니다.

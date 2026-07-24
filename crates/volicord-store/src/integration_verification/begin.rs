@@ -110,8 +110,8 @@ pub fn begin_guard_integration_verification_with_generator(
             logical_column: "manifest_json",
         }
     })?;
-    let expected_digest = HostContractProfileId::CodexHooksV1.contract_digest();
-    if manifest.host_contract_profile != HostContractProfileId::CodexHooksV1.as_str()
+    let expected_digest = HostContractProfileId::CodexCommandHooks.contract_digest();
+    if manifest.host_contract_profile != HostContractProfileId::CodexCommandHooks.as_str()
         || manifest.host_contract_digest != expected_digest
     {
         return Err(StoreError::Conflict {

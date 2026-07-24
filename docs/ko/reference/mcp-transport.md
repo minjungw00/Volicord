@@ -203,12 +203,11 @@ host가 독립적으로 소유하는 fixture 목록입니다. 현재 `codex` fix
 `clientInfo.name`이 `codex-mcp-client`이고 title이
 `Codex`이며 현재의 빈 capability 객체를 사용하는 검토된 Codex initialize 요청 형태와,
 독립적으로 고정한 revision `2025-06-18`을 사용합니다. 도구 호출 하나에는 유효한
-`codex-mcp-2025-06-18-v1` session/thread/turn metadata를 담습니다. 이 fixture ID는
+`codex-mcp-turn-metadata` session/thread/turn metadata를 담습니다. 이 fixture ID는
 검토한 wire contract를 가리키며 Codex package version identity가 아닙니다. `tools/list`와
 `ToolVerificationRole::ManagedHostRoundTrip`이 선택한 도구(현재
 `volicord.list_projects`)를 실행하며, 요청 revision을 서버의 선호 또는 최신 profile에서
-파생하지 않습니다. 배포된 client 계열이 서로 다른 revision을 요구하면 독립적으로 고정한
-`codex` fixture 여러 개를 함께 둘 수 있습니다.
+파생하지 않습니다.
 
 두 matrix 모두 CLI probe 증거입니다. 일회용 `manual_cli` 또는 `integration_probe`
 runtime source는 managed check에서 제외되고 검증 fixture와 함께 제거됩니다. Host 호환성 fixture 통과는 검토된 요청 형태가 이
@@ -216,13 +215,13 @@ runtime source는 managed check에서 제외되고 검증 fixture와 함께 제�
 Launch lease 소비에 성공해 source가 `managed_host`로 생성된 runtime의 lifecycle 관찰만
 managed-host 운영 check를 충족할 수 있습니다.
 
-## 버전이 지정된 Codex Host 계약
+## Semantic Codex Host 계약
 
 관리 Codex wire 입력은 명시적으로 선택한 host contract profile로 decode합니다.
-`CodexMcpTurnMetadataV1` marker는 `codex-mcp-2025-06-18-v1`을 선택합니다. 이 profile은
+`CodexMcpTurnMetadata` marker는 `codex-mcp-turn-metadata`를 선택합니다. 이 profile은
 `tools/call` `_meta`를 소유하며 native session, thread, turn과 최상위 `threadId` 및 중첩
 `x-codex-turn-metadata.thread_id`의 동일성을 요구합니다. 별도
-`CodexHooksV1` marker는 `codex-hooks-v1`을 선택하며 command-hook envelope를 따로
+`CodexCommandHooks` marker는 `codex-command-hooks`를 선택하며 command-hook envelope를 따로
 소유합니다. `UserPromptSubmit` 상관관계는 session과 turn이고, `PreToolUse` 및
 `PostToolUse` 상관관계는 session, turn, tool-use ID, 정규 tool name입니다.
 Command-hook 상관관계에는 thread 좌표가 없습니다.
@@ -236,6 +235,18 @@ correlation type을 담당합니다. `tests/conformance/codex-host/` 아래의 �
 coverage manifest 및
 `crates/volicord-host-contract/tests/host_contracts.rs`의 parser/checksum assertion은
 고정 계약 입력이며 protocol revision이나 package version 주장이 아닙니다.
+
+MCP 등록은 명시적인 `McpServerKey`를 제공하고 `AgentToolId`는 완전한
+`McpRawToolName`을 제공합니다. `McpToolIdentity`는 두 좌표를 보존하며
+`CodexMcpCallableNames`는 이를 `codex-mcp-callable-names`의 검증된
+`HostCallableIdentity`로 투영합니다. 이 투영은 server key와 완전한 raw name을 각각
+정규화하고 Codex separator로 결합하며 64-byte callable 한도를 적용합니다. 서로 다른
+source가 이 한도를 넘으면 현재의 결정적 12자리 16진수 SHA-1 source-identity suffix로
+이름을 맞춥니다. 이 suffix는 이름 길이 조정 규칙이며 무결성 주장이 아닙니다. 그렇게
+투영한 뒤에도 서로 다른 source가 같은 callable이 되면 catalog를 거부합니다. Dotted raw tool name에서
+server identity를 추출하지 않습니다. `McpToolCatalog`만 역방향 해석의 근거이므로
+underscore나 구두점에서 namespace 경계를 추측하지 않습니다. Adapter는 이 semantic
+계약을 직접 선택하며 관찰한 Codex package version은 callable 투영을 제어하지 않습니다.
 
 ## 권위 있는 Lifecycle 기록
 
@@ -514,7 +525,7 @@ terminal run을 다시 active로 만들지 않으며 Core 상태, Task 상태, P
 workflow 상태를 보고합니다.
 
 Run은 같은 run session과 turn에서 호환 prompt event 뒤에 같은 tool-use ID, 정확히 생성된
-host tool 이름 `mcp__volicord__guard_probe`, 정확한 `verification_id` 입력을 가진
+host tool 이름 `mcp__volicord__volicord_guard_probe`, 정확한 `verification_id` 입력을 가진
 `PreToolUse`와 `PostToolUse`가 있을 때만 통과합니다. Guard Installation, policy hash,
 integration revision, hook-contract digest, managed runtime은 현재 상태를 유지해야 하며 event
 시각은 prompt가 pre-tool보다 앞서거나 같고 pre-tool이 post-tool보다 앞서야 합니다. 이력,

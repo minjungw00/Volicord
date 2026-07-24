@@ -1,0 +1,121 @@
+{
+  "profile_id": "codex-mcp-callable-names",
+  "catalog": [
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.intake",
+      "expected_callable_name": "mcp__volicord__volicord_intake",
+      "purpose": "Public intake tool preserves its complete dotted raw name"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.update_scope",
+      "expected_callable_name": "mcp__volicord__volicord_update_scope",
+      "purpose": "Public underscore-bearing update-scope tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.status",
+      "expected_callable_name": "mcp__volicord__volicord_status",
+      "purpose": "Public status tool preserves its complete dotted raw name"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.get_operation_result",
+      "expected_callable_name": "mcp__volicord__volicord_get_operation_result",
+      "purpose": "Public operation-result lookup tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.prepare_evidence_capture",
+      "expected_callable_name": "mcp__volicord__volicord_prepare_evidence_capture",
+      "purpose": "Public evidence-capture preparation tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.prepare_write",
+      "expected_callable_name": "mcp__volicord__volicord_prepare_write",
+      "purpose": "Public write-preparation tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.stage_artifact",
+      "expected_callable_name": "mcp__volicord__volicord_stage_artifact",
+      "purpose": "Public artifact-staging tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.record_run",
+      "expected_callable_name": "mcp__volicord__volicord_record_run",
+      "purpose": "Public run-recording tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.request_user_action",
+      "expected_callable_name": "mcp__volicord__volicord_request_user_action",
+      "purpose": "Public user-action request tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.reconcile_changes",
+      "expected_callable_name": "mcp__volicord__volicord_reconcile_changes",
+      "purpose": "Public change-reconciliation tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.check_close",
+      "expected_callable_name": "mcp__volicord__volicord_check_close",
+      "purpose": "Public close-check tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.close_task",
+      "expected_callable_name": "mcp__volicord__volicord_close_task",
+      "purpose": "Public task-close tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.list_projects",
+      "expected_callable_name": "mcp__volicord__volicord_list_projects",
+      "purpose": "Adapter-owned project-list tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.begin_integration_verification",
+      "expected_callable_name": "mcp__volicord__volicord_begin_integration_verification",
+      "purpose": "Connection-owned integration-verification begin tool"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.guard_probe",
+      "expected_callable_name": "mcp__volicord__volicord_guard_probe",
+      "purpose": "Guard probe uses the complete raw MCP tool identity"
+    },
+    {
+      "server_key": "volicord",
+      "raw_tool_name": "volicord.get_integration_verification",
+      "expected_callable_name": "mcp__volicord__volicord_get_integration_verification",
+      "purpose": "Connection-owned integration-verification status tool"
+    }
+  ],
+  "normalization_cases": [
+    {
+      "server_key": "collision.server",
+      "raw_tool_name": "volicord.status",
+      "expected_callable_name": "mcp__collision_server__volicord_status",
+      "purpose": "First explicit server-key normalization collision candidate"
+    },
+    {
+      "server_key": "collision-server",
+      "raw_tool_name": "volicord.status",
+      "expected_callable_name": "mcp__collision_server__volicord_status",
+      "purpose": "Second explicit server-key normalization collision candidate"
+    },
+    {
+      "server_key": "other_tools",
+      "raw_tool_name": "volicord.guard_probe",
+      "expected_callable_name": "mcp__other_tools__volicord_guard_probe",
+      "purpose": "The same raw tool name remains distinct under an unrelated server key"
+    }
+  ]
+}

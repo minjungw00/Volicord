@@ -3247,7 +3247,7 @@ fn current_guard_manifest(
 fn validate_current_guard_host_contract(
     manifest: &volicord_types::GuardManifest,
 ) -> StoreResult<()> {
-    let profile = HostContractProfileId::CodexHooksV1;
+    let profile = HostContractProfileId::CodexCommandHooks;
     if manifest.host_contract_profile == profile.as_str()
         && manifest.host_contract_digest == profile.contract_digest()
     {
@@ -4054,8 +4054,8 @@ pub(crate) fn test_guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: HostKind::Codex,
         integration_profile: IntegrationProfile::Record,
-        host_contract_profile: HostContractProfileId::CodexHooksV1.as_str().to_owned(),
-        host_contract_digest: HostContractProfileId::CodexHooksV1.contract_digest(),
+        host_contract_profile: HostContractProfileId::CodexCommandHooks.as_str().to_owned(),
+        host_contract_digest: HostContractProfileId::CodexCommandHooks.contract_digest(),
         policy_hash: typed_policy_hash,
         integration_revision,
         runtime_commands,

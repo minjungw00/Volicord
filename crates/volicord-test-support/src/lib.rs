@@ -210,10 +210,10 @@ pub fn test_guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: HostKind::Codex,
         integration_profile: IntegrationProfile::Record,
-        host_contract_profile: volicord_host_contract::HostContractProfileId::CodexHooksV1
+        host_contract_profile: volicord_host_contract::HostContractProfileId::CodexCommandHooks
             .as_str()
             .to_owned(),
-        host_contract_digest: volicord_host_contract::HostContractProfileId::CodexHooksV1
+        host_contract_digest: volicord_host_contract::HostContractProfileId::CodexCommandHooks
             .contract_digest(),
         policy_hash: typed_policy_hash,
         integration_revision,

@@ -2,7 +2,7 @@ use std::{fmt, path::Path};
 
 use serde_json::Value;
 use toml_edit::DocumentMut;
-use volicord_host_contract::codex_hook_tool_name;
+use volicord_host_contract::{HostCallableName, HostContractError, McpServerKey, McpToolCatalog};
 use volicord_types::{AgentToolId, GuardHookPhase, GuardManagedArtifact};
 
 use super::HostKind;
@@ -111,7 +111,10 @@ pub fn hook_event_for_phase(
 }
 
 /// Returns the exact matcher tokens for one Codex hook event.
-pub fn codex_hook_matcher_tokens(event: &HostHookEventContract) -> Vec<String> {
+pub fn codex_hook_matcher_tokens(
+    event: &HostHookEventContract,
+    server: &McpServerKey,
+) -> Result<Vec<String>, HostContractError> {
     let mut tokens = event
         .write_matcher_tokens
         .iter()
@@ -121,9 +124,16 @@ pub fn codex_hook_matcher_tokens(event: &HostHookEventContract) -> Vec<String> {
         event.phase,
         GuardHookPhase::PreTool | GuardHookPhase::PostTool
     ) {
-        tokens.push(codex_hook_tool_name(AgentToolId::GUARD_PROBE).into_inner());
+        let catalog = McpToolCatalog::for_server(server, AgentToolId::ALL)?;
+        tokens.push(
+            catalog
+                .require(server, AgentToolId::GUARD_PROBE)?
+                .callable_name()
+                .as_str()
+                .to_owned(),
+        );
     }
-    tokens
+    Ok(tokens)
 }
 
 pub fn classify_contract_config_path(
@@ -157,10 +167,11 @@ pub fn validate_contract_config(
     _host_kind: HostKind,
     kind: HostContractConfigKind,
     text: &str,
+    server: Option<&McpServerKey>,
 ) -> Result<(), HostContractValidationError> {
     match kind {
         HostContractConfigKind::ProjectConfig => validate_codex_project_config(text),
-        HostContractConfigKind::HookConfig => validate_codex_hook_config(text),
+        HostContractConfigKind::HookConfig => validate_codex_hook_config(text, server),
         HostContractConfigKind::RuleConfig => validate_codex_rule_config(text),
     }
 }
@@ -198,7 +209,10 @@ fn validate_codex_project_config(text: &str) -> Result<(), HostContractValidatio
     Ok(())
 }
 
-fn validate_codex_hook_config(text: &str) -> Result<(), HostContractValidationError> {
+fn validate_codex_hook_config(
+    text: &str,
+    server: Option<&McpServerKey>,
+) -> Result<(), HostContractValidationError> {
     let value: Value = serde_json::from_str(text).map_err(|error| {
         HostContractValidationError::new(format!("Codex hook config must be JSON: {error}"))
     })?;
@@ -233,8 +247,11 @@ fn validate_codex_hook_config(text: &str) -> Result<(), HostContractValidationEr
                 event.event_name
             ))
         })?;
-        let matcher_tokens = codex_hook_matcher_tokens(&event);
-        if matcher_tokens.is_empty() {
+        let matcher_tokens = server
+            .map(|server| codex_hook_matcher_tokens(&event, server))
+            .transpose()
+            .map_err(|error| HostContractValidationError::new(error.to_string()))?;
+        if event.write_matcher_tokens.is_empty() {
             if group.contains_key("matcher") {
                 return Err(HostContractValidationError::new(format!(
                     "{} must not define a matcher",
@@ -242,8 +259,14 @@ fn validate_codex_hook_config(text: &str) -> Result<(), HostContractValidationEr
                 )));
             }
         } else {
-            let expected = matcher_tokens.join("|");
-            if group.get("matcher").and_then(Value::as_str) != Some(expected.as_str()) {
+            let actual = group.get("matcher").and_then(Value::as_str);
+            let matches = if let Some(matcher_tokens) = matcher_tokens {
+                let expected = matcher_tokens.join("|");
+                actual == Some(expected.as_str())
+            } else {
+                valid_unbound_codex_matcher(&event, actual)
+            };
+            if !matches {
                 return Err(HostContractValidationError::new(format!(
                     "{} has an unexpected matcher",
                     event.event_name
@@ -284,6 +307,22 @@ fn validate_codex_hook_config(text: &str) -> Result<(), HostContractValidationEr
         }
     }
     Ok(())
+}
+
+fn valid_unbound_codex_matcher(event: &HostHookEventContract, actual: Option<&str>) -> bool {
+    if event.write_matcher_tokens.is_empty() {
+        return actual.is_none();
+    }
+    let Some(actual) = actual else {
+        return false;
+    };
+    let prefix = format!("{}|", event.write_matcher_tokens.join("|"));
+    actual
+        .strip_prefix(&prefix)
+        .filter(|callable| !callable.contains('|'))
+        .is_some_and(|callable| {
+            callable.starts_with("mcp__") && HostCallableName::parse(callable).is_ok()
+        })
 }
 
 fn validate_codex_rule_config(text: &str) -> Result<(), HostContractValidationError> {
@@ -360,12 +399,28 @@ mod tests {
     #[test]
     fn codex_tool_matcher_derives_only_the_guard_probe_from_canonical_identity() {
         let event = hook_event_for_phase(&CODEX_CONTRACT, GuardHookPhase::PreTool).unwrap();
-        let tokens = codex_hook_matcher_tokens(event);
-        let expected = codex_hook_tool_name(AgentToolId::GUARD_PROBE).into_inner();
+        let server = McpServerKey::parse("volicord").unwrap();
+        let tokens = codex_hook_matcher_tokens(event, &server).unwrap();
+        let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL).unwrap();
+        let expected = catalog
+            .require(&server, AgentToolId::GUARD_PROBE)
+            .unwrap()
+            .callable_name()
+            .as_str()
+            .to_owned();
         assert!(tokens.contains(&expected));
-        assert!(!tokens.contains(
-            &codex_hook_tool_name(AgentToolId::GET_INTEGRATION_VERIFICATION).into_inner()
-        ));
-        assert!(!tokens.contains(&codex_hook_tool_name(AgentToolId::STATUS).into_inner()));
+        for excluded in [
+            AgentToolId::GET_INTEGRATION_VERIFICATION,
+            AgentToolId::STATUS,
+        ] {
+            assert!(!tokens.contains(
+                &catalog
+                    .require(&server, excluded)
+                    .unwrap()
+                    .callable_name()
+                    .as_str()
+                    .to_owned()
+            ));
+        }
     }
 }

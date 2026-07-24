@@ -4,6 +4,7 @@ use crate::routing::{
     McpStorageCapability,
 };
 use schemars::schema_for;
+use volicord_host_contract::{HostContractError, McpServerKey, McpToolCatalog};
 use volicord_types::{
     BeginIntegrationVerificationArguments, BeginIntegrationVerificationResult,
     GetIntegrationVerificationResult, GuardProbeResult, IntegrationVerificationIdArguments,
@@ -169,6 +170,21 @@ impl CanonicalToolDefinition {
         }
         VersionedToolDefinition(Value::Object(projected))
     }
+}
+
+/// Builds the collision-checked host catalog for the complete canonical MCP registry.
+pub fn canonical_mcp_tool_catalog(
+    server: &McpServerKey,
+) -> Result<McpToolCatalog, HostContractError> {
+    McpToolCatalog::for_server(server, AgentToolId::ALL)
+}
+
+/// Builds the collision-checked host catalog for an effective `tools/list` projection.
+pub fn effective_mcp_tool_catalog(
+    server: &McpServerKey,
+    tools: &[CanonicalToolDefinition],
+) -> Result<McpToolCatalog, HostContractError> {
+    McpToolCatalog::for_server(server, tools.iter().map(|tool| tool.id))
 }
 
 impl CanonicalToolResult {

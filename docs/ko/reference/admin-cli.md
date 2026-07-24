@@ -667,7 +667,7 @@ fixture를 실행합니다. 현재
 정확한 revision `2025-06-18`을 요청하며, `volicord.list_projects` 호출 하나에 유효한
 native session correlation metadata를 보냅니다. 이 fixture는 서버의 선호 profile에서
 revision을 선택하지 않습니다. 각 fixture identity는 임의의 과거 Codex package version이
-아니라 `codex-mcp-2025-06-18-v1` 같은 검토된 semantic wire contract를 가리킵니다. 배포된
+아니라 `codex-mcp-turn-metadata` 같은 검토된 semantic wire contract를 가리킵니다. 배포된
 Codex 계열마다 필요한 revision이나 wire 형태가 다르면 fixture 목록에 `codex` entry를 여러
 개 둘 수 있습니다.
 

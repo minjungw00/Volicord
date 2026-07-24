@@ -91,9 +91,12 @@ Durable tests should cover, as applicable:
   capabilities, batching, `tools/list`, and `tools/call` wire projection;
 - independently pinned Codex host fixtures that are not derived from the
   production protocol registry and do not substitute for revision conformance,
-  with exact `CodexMcpTurnMetadataV1` and `CodexHooksV1` profile coverage,
-  source-specific correlation, additive-field and bound checks, checksum
-  parity, and CLI conformance evidence kept separate from actual
+  with exact `CodexMcpTurnMetadata`, `CodexCommandHooks`, and
+  `CodexMcpCallableNames` profile coverage; source-specific correlation;
+  explicit server/raw/callable fixture parity; complete raw-name projection;
+  normalization-collision rejection; exact catalog reverse lookup; additive-
+  field and bound checks; checksum parity; generated-hook/Guard identity
+  agreement; and CLI conformance evidence kept separate from actual
   `managed_host` observations;
 - lifecycle-specific diagnostic construction and Store APIs, immutable
   occurrence insertion, complete-current-key digest and persisted-ID

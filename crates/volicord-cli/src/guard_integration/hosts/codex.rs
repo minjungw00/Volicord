@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 
 use serde_json::{json, Value};
+use volicord_host_contract::McpServerKey;
 use volicord_types::{
     AgentToolId, GuardHookPhase, GuardManagedArtifact, IntegrationVerificationWorkflowState,
 };
@@ -30,6 +31,7 @@ pub(crate) fn plan_codex_hook_file(
     repo_root: &Path,
     hook_commands: &BTreeMap<String, HostHookCommand>,
     phases: &[GuardHookPhase],
+    server: &McpServerKey,
 ) -> Result<GeneratedFilePlan, GuardIntegrationError> {
     let contract = contract_for(HostKind::Codex).ok_or_else(|| {
         GuardIntegrationError::runtime(
@@ -52,7 +54,8 @@ pub(crate) fn plan_codex_hook_file(
                 ))
             })?;
             let mut group = serde_json::Map::new();
-            let matcher_tokens = codex_hook_matcher_tokens(event);
+            let matcher_tokens = codex_hook_matcher_tokens(event, server)
+                .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
             if !matcher_tokens.is_empty() {
                 group.insert(
                     "matcher".to_owned(),
@@ -72,13 +75,17 @@ pub(crate) fn plan_codex_hook_file(
     let value = json!({ "hooks": hooks });
     let text = serde_json::to_string_pretty(&value)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
-    validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, &text).map_err(
-        |error| {
-            GuardIntegrationError::runtime(format!(
-                "generated Codex hook config does not match the verified contract: {error}"
-            ))
-        },
-    )?;
+    validate_contract_config(
+        HostKind::Codex,
+        HostContractConfigKind::HookConfig,
+        &text,
+        Some(server),
+    )
+    .map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "generated Codex hook config does not match the verified contract: {error}"
+        ))
+    })?;
     plan_managed_exact_json_file(
         GuardManagedArtifact::HostHookConfig,
         repo_root,
@@ -171,13 +178,17 @@ prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n",
     body.push_str(
         "    ],\n    not_match = [\n        \"sh -c 'echo unrelated'\",\n        \"volicord status\",\n    ],\n)\n",
     );
-    validate_contract_config(HostKind::Codex, HostContractConfigKind::RuleConfig, &body).map_err(
-        |error| {
-            GuardIntegrationError::runtime(format!(
-                "generated Codex rule config does not match the verified contract: {error}"
-            ))
-        },
-    )?;
+    validate_contract_config(
+        HostKind::Codex,
+        HostContractConfigKind::RuleConfig,
+        &body,
+        None,
+    )
+    .map_err(|error| {
+        GuardIntegrationError::runtime(format!(
+            "generated Codex rule config does not match the verified contract: {error}"
+        ))
+    })?;
     let block = format!("{CODEX_RULE_START_MARKER}\n{body}{CODEX_RULE_END_MARKER}\n");
     plan_managed_block_file(
         GuardManagedArtifact::HostRuleInstruction,

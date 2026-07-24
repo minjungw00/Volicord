@@ -721,7 +721,7 @@ session-correlation metadata on its one `volicord.list_projects` call, and does
 not select a revision from the server's preferred profile. The fixture list can
 contain multiple `codex` entries when deployed Codex families require different
 revisions or wire shapes. Each fixture identity names its reviewed semantic
-wire contract, such as `codex-mcp-2025-06-18-v1`, rather than an arbitrary
+wire contract, such as `codex-mcp-turn-metadata`, rather than an arbitrary
 historical Codex package version.
 
 A failed stdio probe keeps the current stage-specific check code. Its exact

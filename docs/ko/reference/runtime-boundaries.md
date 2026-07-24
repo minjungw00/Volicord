@@ -186,9 +186,9 @@ allowlist 또는 명시적으로 선택한 구성원입니다. 임의의 파일�
 Registry는 process lifecycle milestone, 구조화된 runtime diagnostic finding과 cause edge,
 terminal-finding 연결, 프로젝트 간 runtime/host session 예약을 담당합니다. 각 프로젝트
 데이터베이스는 정규화한 host session, turn, hook tool invocation, Guard observation, MCP
-전용 session anchor를 담당합니다. 명시적으로 선택한 `CodexMcpTurnMetadataV1` marker와
-`codex-mcp-2025-06-18-v1` profile은 session/thread/turn 상관관계를 제공합니다. 별도로
-선택한 `CodexHooksV1` marker와 `codex-hooks-v1` profile은 prompt의 session/turn 또는
+전용 session anchor를 담당합니다. 명시적으로 선택한 `CodexMcpTurnMetadata` marker와
+`codex-mcp-turn-metadata` profile은 session/thread/turn 상관관계를 제공합니다. 별도로
+선택한 `CodexCommandHooks` marker와 `codex-command-hooks` profile은 prompt의 session/turn 또는
 tool의 session/turn/tool-use/tool-name 상관관계를 제공하며 command hook에는 thread
 좌표가 없습니다.
 

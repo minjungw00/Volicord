@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use volicord_host_contract::HostContractProfileId;
 use volicord_mcp_protocol::McpProtocolRevision;
 
 /// An independently reviewed managed-host compatibility family.
@@ -50,12 +51,10 @@ impl HostCompatibilityFixture {
     }
 }
 
-// Host fixtures are independently pinned and intentionally do not consult the
-// server registry's preferred profile. Add another entry when a deployed Codex
-// family requires a separately reviewed revision or initialize shape.
+// The host fixture explicitly selects the semantic turn-metadata contract.
 const REVIEWED_CODEX_MCP_FIXTURE: HostCompatibilityFixture = HostCompatibilityFixture {
     profile: HostCompatibilityProfile::Codex,
-    fixture_id: "codex-mcp-2025-06-18-v1",
+    fixture_id: HostContractProfileId::CodexMcpTurnMetadata.as_str(),
     revision: McpProtocolRevision::V20250618,
     client_name: "codex-mcp-client",
     client_title: "Codex",
@@ -79,7 +78,10 @@ mod tests {
             .find(|fixture| fixture.profile == HostCompatibilityProfile::Codex)
             .expect("Codex compatibility fixture");
         assert_eq!(fixture.revision, McpProtocolRevision::V20250618);
-        assert_eq!(fixture.fixture_id, "codex-mcp-2025-06-18-v1");
+        assert_eq!(
+            fixture.fixture_id,
+            HostContractProfileId::CodexMcpTurnMetadata.as_str()
+        );
         assert!(!fixture.fixture_id.contains("0.108.0"));
         assert_eq!(fixture.initialize_params()["capabilities"], json!({}));
         assert_eq!(

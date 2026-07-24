@@ -2,7 +2,7 @@ use std::{path::Path, str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
-use volicord_host_contract::{CodexHooksV1, HostContractError, HostNativeCorrelation};
+use volicord_host_contract::{CodexCommandHooks, HostContractError, HostNativeCorrelation};
 use volicord_store::bootstrap::ProjectRecord;
 use volicord_types::{GuardHookPhase, HostKind, IntegrationProfile};
 
@@ -144,7 +144,7 @@ pub(super) fn guard_envelope(
     if host_kind != "codex" {
         return Err(GuardEnvelopeError::unexpected("host_kind"));
     }
-    let hook_event = CodexHooksV1.parse(&input.raw_value)?;
+    let hook_event = CodexCommandHooks.parse(&input.raw_value)?;
     let expected_event_name = match phase {
         GuardHookPhase::PromptCapture => "UserPromptSubmit",
         GuardHookPhase::PreTool => "PreToolUse",
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn selected_hook_profile_uses_source_specific_coordinates() {
-        let event = CodexHooksV1
+        let event = CodexCommandHooks
             .parse(&json!({
                 "hook_event_name": "UserPromptSubmit",
                 "session_id": "native.session:1",

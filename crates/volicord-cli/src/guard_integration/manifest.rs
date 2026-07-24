@@ -58,8 +58,8 @@ pub(crate) fn guard_manifest_json(
         project_id: ProjectId::new(project_id),
         host_kind: ManifestHostKind::Codex,
         integration_profile: IntegrationProfile::Record,
-        host_contract_profile: HostContractProfileId::CodexHooksV1.as_str().to_owned(),
-        host_contract_digest: HostContractProfileId::CodexHooksV1.contract_digest(),
+        host_contract_profile: HostContractProfileId::CodexCommandHooks.as_str().to_owned(),
+        host_contract_digest: HostContractProfileId::CodexCommandHooks.contract_digest(),
         policy_hash: plan.policy_hash.clone(),
         integration_revision,
         runtime_commands: plan.runtime_commands.clone(),
@@ -275,6 +275,7 @@ mod tests {
         let plan = plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,
+            server_name: "volicord-test",
             runtime_home: fixture.runtime_home_path(),
             volicord_command: &volicord_command,
             repo_root: &repo_root,
@@ -335,11 +336,11 @@ mod tests {
         let manifest = guard_manifest_from_json(&manifest_text)?;
         assert_eq!(
             manifest.host_contract_profile,
-            HostContractProfileId::CodexHooksV1.as_str()
+            HostContractProfileId::CodexCommandHooks.as_str()
         );
         assert_eq!(
             manifest.host_contract_digest,
-            HostContractProfileId::CodexHooksV1.contract_digest()
+            HostContractProfileId::CodexCommandHooks.contract_digest()
         );
         assert_eq!(manifest.runtime_commands, plan.runtime_commands);
         assert_eq!(

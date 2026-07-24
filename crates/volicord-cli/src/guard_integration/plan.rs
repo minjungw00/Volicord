@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use volicord_host_contract::McpServerKey;
 use volicord_mcp::ManagedMcpLaunchSpec;
 use volicord_store::agent_connections::agent_connection_record_read_only;
 use volicord_store::guards::guard_installation;
@@ -75,6 +76,7 @@ impl GuardIntegrationPlan {
 pub(crate) struct GuardIntegrationPlanRequest<'a> {
     pub(crate) host_kind: HostKind,
     pub(crate) profile: IntegrationProfile,
+    pub(crate) server_name: &'a str,
     pub(crate) runtime_home: &'a Path,
     pub(crate) volicord_command: &'a Path,
     pub(crate) repo_root: &'a Path,
@@ -90,6 +92,7 @@ pub(crate) fn plan_guard_integration(
     let GuardIntegrationPlanRequest {
         host_kind,
         profile,
+        server_name,
         runtime_home,
         volicord_command,
         repo_root,
@@ -116,6 +119,8 @@ pub(crate) fn plan_guard_integration(
             guard_hooks_unsupported_message(host_kind, &missing_required_hooks),
         ));
     }
+    let server = McpServerKey::parse(server_name)
+        .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
     let policy_commands = guard_command_specs(
         volicord_command,
         repo_root,
@@ -187,6 +192,7 @@ pub(crate) fn plan_guard_integration(
         host_commands: &host_hook_commands,
         phases: &GuardHookPhase::REQUIRED,
         purpose: HostHookPurpose::Guard,
+        server: &server,
     })?);
     let retired_files = plan_retired_files(
         runtime_home,
@@ -442,8 +448,10 @@ fn agents_guidance_block() -> String {
 mod tests {
     use std::fs;
 
+    use serde_json::Value;
+    use volicord_host_contract::{McpServerKey, McpToolCatalog};
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{GuardManagedArtifact, IntegrationProfile};
+    use volicord_types::{AgentToolId, GuardManagedArtifact, IntegrationProfile};
 
     use super::{
         plan_guard_integration, validate_generated_guard_plan, GuardIntegrationPlanRequest,
@@ -465,6 +473,7 @@ mod tests {
         let mut plan = plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,
+            server_name: "volicord-test",
             runtime_home: fixture.runtime_home_path(),
             volicord_command: &volicord_command,
             repo_root: &repo_root,
@@ -494,6 +503,7 @@ mod tests {
         let plan = plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,
+            server_name: "volicord-test",
             runtime_home: fixture.runtime_home_path(),
             volicord_command: &volicord_command,
             repo_root: &repo_root,
@@ -527,6 +537,24 @@ mod tests {
         ] {
             assert!(agents.content.contains(required));
         }
+
+        let hook_config = plan
+            .generated_files
+            .iter()
+            .find(|file| file.artifact == GuardManagedArtifact::HostHookConfig)
+            .expect("managed Codex hook configuration");
+        let hook_config: Value = serde_json::from_str(&hook_config.content)?;
+        let matcher = hook_config
+            .pointer("/hooks/PreToolUse/0/matcher")
+            .and_then(Value::as_str)
+            .expect("PreToolUse matcher");
+        let server = McpServerKey::parse("volicord-test")?;
+        let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL)?;
+        let guard_callable = catalog
+            .require(&server, AgentToolId::GUARD_PROBE)?
+            .callable_name()
+            .as_str();
+        assert!(matcher.split('|').any(|token| token == guard_callable));
 
         let codex_rule = plan
             .generated_files
@@ -563,6 +591,7 @@ mod tests {
         let request = || GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,
+            server_name: "volicord-test",
             runtime_home: fixture.runtime_home_path(),
             volicord_command: &volicord_command,
             repo_root: &repo_root,

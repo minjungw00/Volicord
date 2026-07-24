@@ -1,20 +1,29 @@
-//! Versioned, dependency-safe contracts for host-native Codex wire data.
+//! Dependency-safe contracts for host-native Codex wire data.
 
-use std::{error::Error, fmt};
+use std::{
+    collections::{BTreeMap, HashSet},
+    error::Error,
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use volicord_types::{validate_managed_host_native_session_id, AgentToolId};
 
 const MAX_TOOL_NAME_BYTES: usize = 256;
+const MAX_HOST_CALLABLE_NAME_BYTES: usize = 64;
+const CALLABLE_NAME_HASH_LEN: usize = 12;
+const MCP_TOOL_NAME_DELIMITER: &str = "__";
+const CODEX_MCP_TOOL_PREFIX: &str = "mcp__";
 const MAX_PRESENTATION_TEXT_BYTES: usize = 4_096;
 const MAX_SAFE_PAYLOAD_BYTES: usize = 65_536;
 const MAX_SAFE_PAYLOAD_DEPTH: usize = 32;
 const CODEX_TURN_METADATA_KEY: &str = "x-codex-turn-metadata";
 
 const CODEX_MCP_CONTRACT_CANONICAL: &str = concat!(
-    "profile=codex-mcp-2025-06-18-v1\n",
+    "profile=codex-mcp-turn-metadata\n",
     "required=params._meta.threadId:string\n",
     "required=params._meta.x-codex-turn-metadata.session_id:string\n",
     "required=params._meta.x-codex-turn-metadata.thread_id:string\n",
@@ -24,7 +33,7 @@ const CODEX_MCP_CONTRACT_CANONICAL: &str = concat!(
 );
 
 const CODEX_HOOKS_CONTRACT_CANONICAL: &str = concat!(
-    "profile=codex-hooks-v1\n",
+    "profile=codex-command-hooks\n",
     "common=session_id:string,turn_id:string,hook_event_name:string\n",
     "UserPromptSubmit=prompt:string\n",
     "PreToolUse=tool_use_id:string,tool_name:string,tool_input:bounded-json\n",
@@ -33,29 +42,49 @@ const CODEX_HOOKS_CONTRACT_CANONICAL: &str = concat!(
     "unknown_fields=allowed\n",
 );
 
+const CODEX_MCP_CALLABLE_NAMES_CONTRACT_CANONICAL: &str = concat!(
+    "profile=codex-mcp-callable-names\n",
+    "source=mcp-server-key,mcp-raw-tool-name\n",
+    "namespace=mcp__<normalized-server-key>\n",
+    "callable=<normalized-complete-raw-tool-name>\n",
+    "separator=__\n",
+    "allowed=ascii-alphanumeric-or-underscore\n",
+    "maximum_bytes=64\n",
+    "overflow=sha1-source-identity-suffix-12\n",
+    "collision=reject-catalog-construction\n",
+);
+
 /// Closed identifiers for reviewed host-wire contracts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum HostContractProfileId {
-    #[serde(rename = "codex-mcp-2025-06-18-v1")]
-    CodexMcpTurnMetadataV1,
-    #[serde(rename = "codex-hooks-v1")]
-    CodexHooksV1,
+    #[serde(rename = "codex-mcp-turn-metadata")]
+    CodexMcpTurnMetadata,
+    #[serde(rename = "codex-command-hooks")]
+    CodexCommandHooks,
+    #[serde(rename = "codex-mcp-callable-names")]
+    CodexMcpCallableNames,
 }
 
 impl HostContractProfileId {
-    pub const ALL: [Self; 2] = [Self::CodexMcpTurnMetadataV1, Self::CodexHooksV1];
+    pub const ALL: [Self; 3] = [
+        Self::CodexMcpTurnMetadata,
+        Self::CodexCommandHooks,
+        Self::CodexMcpCallableNames,
+    ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::CodexMcpTurnMetadataV1 => "codex-mcp-2025-06-18-v1",
-            Self::CodexHooksV1 => "codex-hooks-v1",
+            Self::CodexMcpTurnMetadata => "codex-mcp-turn-metadata",
+            Self::CodexCommandHooks => "codex-command-hooks",
+            Self::CodexMcpCallableNames => "codex-mcp-callable-names",
         }
     }
 
     pub fn contract_digest(self) -> String {
         let canonical = match self {
-            Self::CodexMcpTurnMetadataV1 => CODEX_MCP_CONTRACT_CANONICAL,
-            Self::CodexHooksV1 => CODEX_HOOKS_CONTRACT_CANONICAL,
+            Self::CodexMcpTurnMetadata => CODEX_MCP_CONTRACT_CANONICAL,
+            Self::CodexCommandHooks => CODEX_HOOKS_CONTRACT_CANONICAL,
+            Self::CodexMcpCallableNames => CODEX_MCP_CALLABLE_NAMES_CONTRACT_CANONICAL,
         };
         format!("sha256:{:x}", Sha256::digest(canonical.as_bytes()))
     }
@@ -139,14 +168,318 @@ impl CanonicalToolName {
     }
 }
 
-/// Projects one canonical Volicord MCP tool identity into the Codex hook tool-name form.
-pub fn codex_hook_tool_name(tool: AgentToolId) -> CanonicalToolName {
-    let (server, method) = tool
-        .wire_name()
-        .split_once('.')
-        .expect("canonical AgentToolId wire names contain one namespace separator");
-    CanonicalToolName::parse(format!("mcp__{server}__{method}"))
-        .expect("canonical AgentToolId projects to a valid Codex tool name")
+/// An explicit MCP server registration key.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct McpServerKey(String);
+
+impl McpServerKey {
+    pub fn parse(value: impl Into<String>) -> Result<Self, HostContractError> {
+        let value = value.into();
+        let valid = !value.is_empty()
+            && value.len() <= MAX_TOOL_NAME_BYTES
+            && value.trim() == value
+            && value.chars().all(|character| !character.is_control());
+        valid
+            .then_some(Self(value))
+            .ok_or_else(|| HostContractError::invalid_field("mcp_server_key"))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+/// The complete raw MCP tool name owned by one [`AgentToolId`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct McpRawToolName(String);
+
+impl McpRawToolName {
+    pub fn for_tool(tool: AgentToolId) -> Self {
+        Self(tool.wire_name().to_owned())
+    }
+
+    pub fn parse_for_tool(
+        value: impl Into<String>,
+        tool: AgentToolId,
+    ) -> Result<Self, HostContractError> {
+        let value = value.into();
+        if value == tool.wire_name() {
+            Ok(Self(value))
+        } else {
+            Err(HostContractError::unexpected_value("mcp_raw_tool_name"))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+/// A canonical MCP tool identity with explicit registration and raw-name coordinates.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct McpToolIdentity {
+    server: McpServerKey,
+    tool: AgentToolId,
+    raw_tool_name: McpRawToolName,
+}
+
+impl McpToolIdentity {
+    pub fn new(server: McpServerKey, tool: AgentToolId) -> Self {
+        Self {
+            server,
+            tool,
+            raw_tool_name: McpRawToolName::for_tool(tool),
+        }
+    }
+
+    pub fn server(&self) -> &McpServerKey {
+        &self.server
+    }
+
+    pub const fn tool(&self) -> AgentToolId {
+        self.tool
+    }
+
+    pub fn raw_tool_name(&self) -> &McpRawToolName {
+        &self.raw_tool_name
+    }
+}
+
+/// A validated flattened name emitted by the Codex MCP callable-name contract.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct HostCallableName(String);
+
+impl HostCallableName {
+    pub fn parse(value: impl Into<String>) -> Result<Self, HostContractError> {
+        let value = value.into();
+        let valid = !value.is_empty()
+            && value.len() <= MAX_HOST_CALLABLE_NAME_BYTES
+            && value
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_');
+        valid
+            .then_some(Self(value))
+            .ok_or_else(|| HostContractError::invalid_field("host_callable_name"))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+/// One source MCP identity and its semantic Codex host-callable projection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostCallableIdentity {
+    profile: HostContractProfileId,
+    source: McpToolIdentity,
+    callable_name: HostCallableName,
+}
+
+impl HostCallableIdentity {
+    pub const fn profile(&self) -> HostContractProfileId {
+        self.profile
+    }
+
+    pub fn source(&self) -> &McpToolIdentity {
+        &self.source
+    }
+
+    pub fn callable_name(&self) -> &HostCallableName {
+        &self.callable_name
+    }
+}
+
+/// The current semantic Codex MCP callable-name contract.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CodexMcpCallableNames;
+
+impl CodexMcpCallableNames {
+    pub const PROFILE_ID: HostContractProfileId = HostContractProfileId::CodexMcpCallableNames;
+
+    pub fn project_mcp_tool(
+        &self,
+        server: &McpServerKey,
+        tool: AgentToolId,
+    ) -> Result<HostCallableIdentity, HostContractError> {
+        let source = McpToolIdentity::new(server.clone(), tool);
+        let namespace = format!(
+            "{CODEX_MCP_TOOL_PREFIX}{}",
+            sanitize_callable_part(server.as_str())
+        );
+        let raw_tool_name = source.raw_tool_name().as_str();
+        let callable = sanitize_callable_part(raw_tool_name);
+        let raw_identity = codex_raw_tool_identity(server.as_str(), raw_tool_name);
+        let (namespace, callable) = fit_callable_parts(
+            &namespace,
+            &callable,
+            &raw_identity,
+            MCP_TOOL_NAME_DELIMITER.len(),
+        );
+        let callable_name =
+            HostCallableName::parse(format!("{namespace}{MCP_TOOL_NAME_DELIMITER}{callable}"))?;
+        Ok(HostCallableIdentity {
+            profile: Self::PROFILE_ID,
+            source,
+            callable_name,
+        })
+    }
+
+    pub fn parse_callable_name(
+        &self,
+        value: &HostCallableName,
+        catalog: &McpToolCatalog,
+    ) -> Result<McpToolIdentity, HostContractError> {
+        catalog
+            .by_callable_name
+            .get(value)
+            .cloned()
+            .ok_or_else(|| HostContractError::unknown_callable("host_callable_name"))
+    }
+}
+
+/// Projects one explicitly registered MCP tool through the semantic Codex contract.
+pub fn project_mcp_tool(
+    server: &McpServerKey,
+    tool: AgentToolId,
+) -> Result<HostCallableIdentity, HostContractError> {
+    CodexMcpCallableNames.project_mcp_tool(server, tool)
+}
+
+/// Resolves one callable name only through an explicit canonical catalog.
+pub fn parse_callable_name(
+    value: &HostCallableName,
+    catalog: &McpToolCatalog,
+) -> Result<McpToolIdentity, HostContractError> {
+    CodexMcpCallableNames.parse_callable_name(value, catalog)
+}
+
+/// A collision-checked catalog of MCP source identities and host-callable projections.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpToolCatalog {
+    identities: Vec<HostCallableIdentity>,
+    by_callable_name: BTreeMap<HostCallableName, McpToolIdentity>,
+}
+
+impl McpToolCatalog {
+    pub fn new<I>(registrations: I) -> Result<Self, HostContractError>
+    where
+        I: IntoIterator<Item = (McpServerKey, AgentToolId)>,
+    {
+        let mut sources = HashSet::new();
+        let mut by_callable_name = BTreeMap::new();
+        let mut identities = Vec::new();
+        for (server, tool) in registrations {
+            let identity = project_mcp_tool(&server, tool)?;
+            if !sources.insert(identity.source.clone()) {
+                return Err(HostContractError::duplicate_tool("mcp_tool_identity"));
+            }
+            if by_callable_name
+                .insert(identity.callable_name.clone(), identity.source.clone())
+                .is_some()
+            {
+                return Err(HostContractError::callable_collision("host_callable_name"));
+            }
+            identities.push(identity);
+        }
+        Ok(Self {
+            identities,
+            by_callable_name,
+        })
+    }
+
+    pub fn for_server<I>(server: &McpServerKey, tools: I) -> Result<Self, HostContractError>
+    where
+        I: IntoIterator<Item = AgentToolId>,
+    {
+        Self::new(tools.into_iter().map(|tool| (server.clone(), tool)))
+    }
+
+    pub fn identities(&self) -> &[HostCallableIdentity] {
+        &self.identities
+    }
+
+    pub fn find(&self, server: &McpServerKey, tool: AgentToolId) -> Option<&HostCallableIdentity> {
+        self.identities
+            .iter()
+            .find(|identity| identity.source.server() == server && identity.source.tool() == tool)
+    }
+
+    pub fn require(
+        &self,
+        server: &McpServerKey,
+        tool: AgentToolId,
+    ) -> Result<&HostCallableIdentity, HostContractError> {
+        self.find(server, tool)
+            .ok_or_else(|| HostContractError::unknown_tool("mcp_tool_identity"))
+    }
+}
+
+fn sanitize_callable_part(value: &str) -> String {
+    let mut sanitized = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() || character == '_' {
+            sanitized.push(character);
+        } else {
+            sanitized.push('_');
+        }
+    }
+    if sanitized.is_empty() {
+        "_".to_owned()
+    } else {
+        sanitized
+    }
+}
+
+fn codex_raw_tool_identity(server: &str, raw_tool_name: &str) -> String {
+    format!("{server}\0{server}\0\0{raw_tool_name}\0{raw_tool_name}")
+}
+
+fn callable_name_hash_suffix(raw_identity: &str) -> String {
+    let hash = format!("{:x}", Sha1::digest(raw_identity.as_bytes()));
+    format!("_{}", &hash[..CALLABLE_NAME_HASH_LEN])
+}
+
+fn fit_callable_parts(
+    namespace: &str,
+    callable: &str,
+    raw_identity: &str,
+    reserved_len: usize,
+) -> (String, String) {
+    if namespace.len() + callable.len() + reserved_len <= MAX_HOST_CALLABLE_NAME_BYTES {
+        return (namespace.to_owned(), callable.to_owned());
+    }
+    let suffix = callable_name_hash_suffix(raw_identity);
+    let max_callable_len =
+        MAX_HOST_CALLABLE_NAME_BYTES.saturating_sub(namespace.len() + reserved_len);
+    if max_callable_len >= suffix.len() {
+        let prefix_len = max_callable_len - suffix.len();
+        return (
+            namespace.to_owned(),
+            format!("{}{}", truncate_ascii(callable, prefix_len), suffix),
+        );
+    }
+    let max_namespace_len =
+        MAX_HOST_CALLABLE_NAME_BYTES.saturating_sub(suffix.len() + reserved_len);
+    (truncate_ascii(namespace, max_namespace_len), suffix)
+}
+
+fn truncate_ascii(value: &str, max_len: usize) -> String {
+    value.chars().take(max_len).collect()
 }
 
 /// A JSON value admitted only after applying the host payload bounds.
@@ -255,7 +588,7 @@ pub struct CodexHookContext {
     pub transcript_path: Option<String>,
 }
 
-/// A parsed event from the `CodexHooksV1` wire profile.
+/// A parsed event from the `CodexCommandHooks` wire profile.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CodexHookEvent {
     UserPromptSubmit {
@@ -299,10 +632,10 @@ impl CodexHookEvent {
 
 /// Marker for the managed MCP turn-metadata contract.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct CodexMcpTurnMetadataV1;
+pub struct CodexMcpTurnMetadata;
 
-impl CodexMcpTurnMetadataV1 {
-    pub const PROFILE_ID: HostContractProfileId = HostContractProfileId::CodexMcpTurnMetadataV1;
+impl CodexMcpTurnMetadata {
+    pub const PROFILE_ID: HostContractProfileId = HostContractProfileId::CodexMcpTurnMetadata;
 
     pub fn parse_tools_call(
         &self,
@@ -339,10 +672,10 @@ impl CodexMcpTurnMetadataV1 {
 
 /// Marker for the current Codex command-hook contract.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct CodexHooksV1;
+pub struct CodexCommandHooks;
 
-impl CodexHooksV1 {
-    pub const PROFILE_ID: HostContractProfileId = HostContractProfileId::CodexHooksV1;
+impl CodexCommandHooks {
+    pub const PROFILE_ID: HostContractProfileId = HostContractProfileId::CodexCommandHooks;
 
     pub fn parse(&self, payload: &Value) -> Result<CodexHookEvent, HostContractError> {
         let object = required_object(payload, "payload")?;
@@ -504,6 +837,34 @@ impl HostContractError {
         }
     }
 
+    const fn duplicate_tool(field: &'static str) -> Self {
+        Self {
+            code: HostContractErrorCode::DuplicateMcpToolIdentity,
+            field,
+        }
+    }
+
+    const fn callable_collision(field: &'static str) -> Self {
+        Self {
+            code: HostContractErrorCode::CallableNameCollision,
+            field,
+        }
+    }
+
+    const fn unknown_callable(field: &'static str) -> Self {
+        Self {
+            code: HostContractErrorCode::UnknownCallableName,
+            field,
+        }
+    }
+
+    const fn unknown_tool(field: &'static str) -> Self {
+        Self {
+            code: HostContractErrorCode::UnknownMcpToolIdentity,
+            field,
+        }
+    }
+
     pub const fn code(self) -> HostContractErrorCode {
         self.code
     }
@@ -529,6 +890,10 @@ pub enum HostContractErrorCode {
     UnexpectedValue,
     InconsistentCorrelation,
     PayloadTooLarge,
+    DuplicateMcpToolIdentity,
+    CallableNameCollision,
+    UnknownCallableName,
+    UnknownMcpToolIdentity,
 }
 
 impl HostContractErrorCode {
@@ -539,6 +904,10 @@ impl HostContractErrorCode {
             Self::UnexpectedValue => "unexpected_value",
             Self::InconsistentCorrelation => "inconsistent_correlation",
             Self::PayloadTooLarge => "payload_too_large",
+            Self::DuplicateMcpToolIdentity => "duplicate_mcp_tool_identity",
+            Self::CallableNameCollision => "callable_name_collision",
+            Self::UnknownCallableName => "unknown_callable_name",
+            Self::UnknownMcpToolIdentity => "unknown_mcp_tool_identity",
         }
     }
 }

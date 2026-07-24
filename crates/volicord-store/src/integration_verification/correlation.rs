@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use serde_json::Value;
-use volicord_host_contract::{codex_hook_tool_name, HostNativeCorrelation};
+use volicord_host_contract::{
+    parse_callable_name, HostCallableIdentity, HostCallableName, HostNativeCorrelation,
+    McpServerKey, McpToolCatalog,
+};
 use volicord_types::AgentToolId;
 
 use super::{
@@ -12,6 +15,7 @@ use super::{
     GuardIntegrationVerificationRunRecord,
 };
 use crate::{
+    agent_connections::agent_connection_record_read_only,
     guards::{
         guard_event, guard_events_for_integration_verification, GuardEventRecord,
         GuardIntegrationVerificationEventQuery,
@@ -77,7 +81,23 @@ pub fn refresh_guard_integration_verification_for_event(
             integration_revision: &run.integration_revision,
         },
     )?;
-    let Some((prompt, pre, post)) = correlated_event_triple(&run, &events)? else {
+    let connection = agent_connection_record_read_only(runtime_home, &run.connection_internal_id)?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "agent_connection",
+            id: run.connection_internal_id.clone(),
+        })?;
+    let server = McpServerKey::parse(connection.server_name).map_err(|_| {
+        StoreError::corrupt_stored_value("registry", "agent_connections.server_name")
+    })?;
+    let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL).map_err(|_| {
+        StoreError::corrupt_stored_value("registry", "agent_connections.server_name")
+    })?;
+    let probe = catalog
+        .require(&server, AgentToolId::GUARD_PROBE)
+        .map_err(|_| {
+            StoreError::corrupt_stored_value("registry", "agent_connections.server_name")
+        })?;
+    let Some((prompt, pre, post)) = correlated_event_triple(&run, &events, &catalog, probe)? else {
         tx.commit()?;
         return Ok(Some(run));
     };
@@ -102,6 +122,8 @@ pub fn refresh_guard_integration_verification_for_event(
 fn correlated_event_triple<'a>(
     run: &GuardIntegrationVerificationRunRecord,
     events: &'a [GuardEventRecord],
+    catalog: &McpToolCatalog,
+    probe: &HostCallableIdentity,
 ) -> StoreResult<
     Option<(
         &'a GuardEventRecord,
@@ -117,14 +139,14 @@ fn correlated_event_triple<'a>(
         .iter()
         .filter(|event| prompt_event_matches(event, &run.hook_contract_digest))
         .filter(|event| run.matched_prompt_event_id.as_deref() == Some(&event.guard_event_id));
-    let probe_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
     for prompt in prompt {
         let prompt_at = parse_timestamp("occurred_at", &prompt.occurred_at)?;
         for pre in events.iter().filter(|event| {
             tool_event_matches(
                 event,
                 "pre_tool",
-                probe_name.as_str(),
+                catalog,
+                probe,
                 &run.verification_id,
                 &run.hook_contract_digest,
             )
@@ -144,7 +166,8 @@ fn correlated_event_triple<'a>(
                 tool_event_matches(
                     event,
                     "post_tool",
-                    probe_name.as_str(),
+                    catalog,
+                    probe,
                     &run.verification_id,
                     &run.hook_contract_digest,
                 )
@@ -182,16 +205,23 @@ pub(super) fn prompt_event_matches(event: &GuardEventRecord, digest: &str) -> bo
 fn tool_event_matches(
     event: &GuardEventRecord,
     kind: &str,
-    expected_name: &str,
+    catalog: &McpToolCatalog,
+    expected: &HostCallableIdentity,
     verification_id: &str,
     digest: &str,
 ) -> bool {
     let Some(HostNativeCorrelation::CodexHookTool(correlation)) = event.correlation.as_ref() else {
         return false;
     };
+    let callable = HostCallableName::parse(correlation.tool_name.as_str());
+    let source_matches = callable
+        .as_ref()
+        .ok()
+        .and_then(|callable| parse_callable_name(callable, catalog).ok())
+        .is_some_and(|source| &source == expected.source());
     event.event_kind == kind
         && event.contract_status == COMPATIBLE_CONTRACT
-        && correlation.tool_name.as_str() == expected_name
+        && source_matches
         && event_contract_digest(event).as_deref() == Some(digest)
         && event_verification_id(event).as_deref() == Some(verification_id)
 }

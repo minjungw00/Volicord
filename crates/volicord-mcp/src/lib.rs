@@ -37,8 +37,8 @@ pub use managed_launch::{
 };
 pub use routing::{
     McpConnectionContext, McpConnectionStartupInspection, McpPreflightHostContract,
-    McpPreflightProject, McpPreflightReport, McpPreflightWriteability, McpProjectAvailability,
-    RepositoryDiscoveryResolution,
+    McpPreflightHostToolIdentity, McpPreflightProject, McpPreflightReport,
+    McpPreflightWriteability, McpProjectAvailability, RepositoryDiscoveryResolution,
 };
 pub use stdio::{
     preflight_check, resolve_repository_discovery_runtime_home, resolve_runtime_home,
@@ -46,7 +46,7 @@ pub use stdio::{
     run_stdio_discover_repository_from_env, run_stdio_from_env,
 };
 pub use tool_registry::{
-    adapter_utility_tools, mcp_tools, mcp_tools_for_mode, public_method_tools, CanonicalContent,
-    CanonicalToolAnnotations, CanonicalToolDefinition, CanonicalToolResult,
-    VersionedToolDefinition, VersionedToolResult,
+    adapter_utility_tools, canonical_mcp_tool_catalog, effective_mcp_tool_catalog, mcp_tools,
+    mcp_tools_for_mode, public_method_tools, CanonicalContent, CanonicalToolAnnotations,
+    CanonicalToolDefinition, CanonicalToolResult, VersionedToolDefinition, VersionedToolResult,
 };

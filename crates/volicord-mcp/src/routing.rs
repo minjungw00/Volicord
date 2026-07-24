@@ -2,7 +2,7 @@ use crate::errors::McpAdapterError;
 use crate::prelude::*;
 use crate::util::*;
 use schemars::{schema_for, JsonSchema};
-use volicord_host_contract::HostContractProfileId;
+use volicord_host_contract::{HostContractProfileId, McpServerKey};
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_types::HostKind;
 
@@ -235,6 +235,7 @@ pub struct McpConnectionStartupInspection {
     pub connection_internal_id: AgentConnectionId,
     pub mode: AgentConnectionMode,
     pub enabled: bool,
+    pub server_key: McpServerKey,
     pub allowed_project_count: usize,
     pub projects: Vec<McpProjectAvailability>,
 }
@@ -272,12 +273,23 @@ impl McpConnectionStartupInspection {
             .iter()
             .map(inspect_allowed_project_read_only)
             .collect::<Vec<_>>();
+        let server_key = McpServerKey::parse(connection.server_name.clone()).map_err(|error| {
+            McpAdapterError::Environment(format!(
+                "Agent Connection has an invalid MCP server registration key: {error}"
+            ))
+        })?;
+        crate::tool_registry::canonical_mcp_tool_catalog(&server_key).map_err(|error| {
+            McpAdapterError::Environment(format!(
+                "Agent Connection MCP callable catalog is invalid: {error}"
+            ))
+        })?;
 
         Ok(Self {
             runtime_home: context.runtime_home.clone(),
             connection_internal_id: context.connection_internal_id,
             mode: context.mode,
             enabled: connection.enabled,
+            server_key,
             allowed_project_count: projects.len(),
             projects: project_reports,
         })
@@ -308,6 +320,18 @@ impl McpConnectionStartupInspection {
         let tools_list_schema_validation =
             crate::tool_registry::tools_list_schema_validation_status(&tools);
         let tool_naming_style = crate::tool_registry::mcp_tool_naming_style(&tools);
+        let host_callable_tools =
+            crate::tool_registry::effective_mcp_tool_catalog(&self.server_key, &tools)
+                .expect("startup validated the complete MCP callable catalog")
+                .identities()
+                .iter()
+                .map(|identity| McpPreflightHostToolIdentity {
+                    profile: identity.profile().as_str(),
+                    server_key: identity.source().server().as_str().to_owned(),
+                    raw_tool_name: identity.source().raw_tool_name().as_str().to_owned(),
+                    callable_name: identity.callable_name().as_str().to_owned(),
+                })
+                .collect();
         McpPreflightReport {
             operation: "mcp_preflight",
             status: if self.projects.iter().all(|project| project.available) {
@@ -351,6 +375,7 @@ impl McpConnectionStartupInspection {
                     digest: profile.contract_digest(),
                 })
                 .collect(),
+            host_callable_tools,
             allowed_projects: self.allowed_project_count,
             available_projects,
             projects: self
@@ -401,9 +426,18 @@ pub struct McpPreflightReport {
     pub tool_naming_style: &'static str,
     pub protocol_profiles: Vec<String>,
     pub host_contracts: Vec<McpPreflightHostContract>,
+    pub host_callable_tools: Vec<McpPreflightHostToolIdentity>,
     pub allowed_projects: usize,
     pub available_projects: usize,
     pub projects: Vec<McpPreflightProject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct McpPreflightHostToolIdentity {
+    pub profile: &'static str,
+    pub server_key: String,
+    pub raw_tool_name: String,
+    pub callable_name: String,
 }
 
 impl McpPreflightReport {
@@ -418,7 +452,7 @@ impl McpPreflightReport {
         );
         if verbose {
             output.push_str(&format!(
-                "Configuration: {}\nCanonical managed entry: {}\nTransport: {}\n{}\nRuntime Home: {}\nConnection: {}\nMode: {}\nRegistry read: {}\nProject state read: {}\nTool schema validation: {}\nTool naming style: {}\nProtocol profiles: {}\nHost contracts: {}\nAllowed projects: {}\nAvailable projects: {}\n",
+                "Configuration: {}\nCanonical managed entry: {}\nTransport: {}\n{}\nRuntime Home: {}\nConnection: {}\nMode: {}\nRegistry read: {}\nProject state read: {}\nTool schema validation: {}\nTool naming style: {}\nProtocol profiles: {}\nHost contracts: {}\nHost callable tools: {}\nAllowed projects: {}\nAvailable projects: {}\n",
                 self.configuration,
                 self.canonical_managed_entry,
                 self.transport,
@@ -434,6 +468,11 @@ impl McpPreflightReport {
                 self.host_contracts
                     .iter()
                     .map(|contract| contract.profile)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.host_callable_tools
+                    .iter()
+                    .map(|identity| identity.callable_name.as_str())
                     .collect::<Vec<_>>()
                     .join(", "),
                 self.allowed_projects,

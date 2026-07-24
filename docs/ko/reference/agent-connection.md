@@ -362,7 +362,7 @@ resource template도 tool 노출을 증명하지 않습니다. Guard는 집중 a
 `guard_hook_execution`과 `guard_verification`을 사용합니다. 엄격한 Guard manifest는
 현재 policy hash, integration revision, typed runtime command, 전체 Volicord 관리 artifact
 기대값, 필수 hook phase를 담당합니다. 또한 정확한 `host_contract_profile`과 결정적인
-`host_contract_digest`를 지정하며, 현재 값은 `codex-hooks-v1`과 검토된 계약 identity를
+`host_contract_digest`를 지정하며, 현재 값은 `codex-command-hooks`와 검토된 계약 identity를
 선택합니다. Policy command와 runtime command는 typed invocation 하나에서 나온 서로 다른
 projection입니다. Audit은 profile이나 digest가 이 정확한 선택과 다르면 manifest를 거부하고,
 각 관리 artifact를 정규 현재 기대값과 비교하며, 모든 필수 phase의 호환되는 현재 event를
@@ -503,7 +503,7 @@ Integration generation은 해당 물리 instance 안에서 0으로 시작하고 
 version입니다. 보고서와 finding은 둘을 서로 대신 사용하지 않습니다. 두 version이 모두
 있고 서로 다르면 `host.codex.peer_version_differs_from_path_probe`가 두 사실 객체를 담은
 warning evidence를 기록하며, 이 불일치만으로 Connection을 치명적 실패로 만들지 않습니다.
-명시적으로 선택한 `codex-mcp-2025-06-18-v1` profile이 MCP session/thread/turn
+명시적으로 선택한 `codex-mcp-turn-metadata` profile이 MCP session/thread/turn
 metadata를 소유합니다. 잘못된 MCP metadata, 중첩 및 최상위 thread 좌표 불일치, 등록
 session 불일치는 각각 `host.codex.metadata_malformed`,
 `host.codex.session_thread_turn_inconsistent`,
@@ -544,15 +544,24 @@ native session, 관찰 시각을 보관합니다. `host_turns`는 두 계약 sou
 session ID를 도출합니다. 호출자는 완성된 로컬 ID를 제공할 수 없고 저장된 프로젝트
 revision은 변경할 수 없습니다.
 
-`CodexHooksV1` marker가 `codex-hooks-v1` parser를 선택합니다. 이 parser는
+`CodexCommandHooks` marker가 `codex-command-hooks` parser를 선택합니다. 이 parser는
 `UserPromptSubmit`에 `CodexHookPromptCorrelation`을, `PreToolUse`와 `PostToolUse`에
 `CodexHookToolCorrelation`을 만듭니다. Prompt 상관관계에는 session과 turn만 필요합니다.
 Tool 상관관계에는 tool-use ID와 정규 tool name도 필요합니다. 어떤 hook phase에도 thread
-좌표가 없습니다. 별도 `CodexMcpTurnMetadataV1` marker는
-`codex-mcp-2025-06-18-v1` parser를 선택하며, 이 parser는 session, thread, turn이 모두
+좌표가 없습니다. 별도 `CodexMcpTurnMetadata` marker는
+`codex-mcp-turn-metadata` parser를 선택하며, 이 parser는 session, thread, turn이 모두
 필요한 `CodexMcpCorrelation`을 만듭니다. `HostNativeCorrelation`은 범용으로 교환 가능한
 좌표를 제공하지 않고 이 source variant를 보존합니다. Store phase check와 SQL
 discriminator는 source가 교차되거나 불완전한 조합을 거부합니다.
+
+Connection에 등록된 `server_name`은 `McpServerKey`로 decode하며 각 도구의 완전한
+`McpRawToolName`과 구분해 유지합니다. `CodexMcpCallableNames` 계약은 이 좌표를
+`codex-mcp-callable-names`의 `HostCallableIdentity` 하나로 투영합니다. Raw tool
+name에서 마침표로 구분한 일부를 server key로 취급하지 않습니다. 생성한 hook, MCP
+preflight diagnostic, Guard 검증은 충돌 검사를 마친 같은 `McpToolCatalog`를 사용하며,
+역방향 해석은 구두점을 분석하지 않고 catalog에서 정확히 조회합니다. Adapter는 이
+semantic 계약을 직접 선택하며 관찰한 Codex package version에서 host 동작을 도출하지
+않습니다.
 
 Guard 상관관계와 Guard policy는 별도 단계입니다. 호환되는 hook 상관관계는 policy에 도달해
 `Continue`, `ContinueWithContext`, `ContinueWithWarning`, `Deny` 중 하나를 낼 수 있습니다.

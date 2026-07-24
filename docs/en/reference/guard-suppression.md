@@ -149,11 +149,11 @@ The Codex adapter exclusively owns `hookSpecificOutput`,
 `permissionDecision`, `additionalContext`, stderr, and exit-code projection.
 Core-facing types and Store records do not encode Codex process-exit behavior.
 
-The selected command-hook decoder is the `CodexHooksV1` marker. It produces
+The selected command-hook decoder is the `CodexCommandHooks` marker. It produces
 only `CodexHookPromptCorrelation` (session/turn) or `CodexHookToolCorrelation`
 (session/turn/tool-use ID/canonical tool name). It accepts unknown additive
 fields within the bounded envelope, never requires a hook thread coordinate,
-and never substitutes the separate `CodexMcpTurnMetadataV1` MCP correlation.
+and never substitutes the separate `CodexMcpTurnMetadata` MCP correlation.
 
 Hook occurrence and hook activation are separate projections.
 `hook_source_activation` may become `effective_by_observation` only from a
@@ -171,9 +171,12 @@ capability or correlated Guard verification. Project/configuration trust is a
 separate host/user-owned check.
 
 For `PreToolUse` and `PostToolUse`, the managed hook matcher includes the exact
-Codex-native name `mcp__volicord__guard_probe`. That name is generated from the
-canonical `AgentToolId::GUARD_PROBE` wire identity; it is not an independently
-maintained literal and does not broaden matching to all read-only tools.
+Codex-native name `mcp__volicord__volicord_guard_probe`. The registered
+`McpServerKey` and complete `volicord.guard_probe` raw MCP name remain distinct
+inputs to the `CodexMcpCallableNames` projection. The matcher and verification
+correlation read the resulting `HostCallableIdentity` from the same
+collision-checked catalog; neither infers a server from the dotted raw name.
+The matcher does not broaden matching to all read-only tools.
 Prompt capture has no tool matcher. A verification event matches only when its
 current contract digest and exact session, turn, tool-use ID, tool name, and
 `verification_id` input agree with the bounded run.

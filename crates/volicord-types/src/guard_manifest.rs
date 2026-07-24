@@ -1313,7 +1313,7 @@ fn exact_manifest_semantics(manifest: &GuardManifest) -> bool {
         && !manifest.project_id.as_str().trim().is_empty()
         && manifest.host_kind == HostKind::Codex
         && manifest.integration_profile == IntegrationProfile::Record
-        && manifest.host_contract_profile == "codex-hooks-v1"
+        && manifest.host_contract_profile == "codex-command-hooks"
         && canonical_sha256(&manifest.host_contract_digest)
         && canonical_sha256(manifest.policy_hash.as_str())
         && manifest.required_hook_phases == GuardHookPhase::REQUIRED
@@ -1605,7 +1605,7 @@ mod tests {
             project_id: ProjectId::new("project_example"),
             host_kind: HostKind::Codex,
             integration_profile: IntegrationProfile::Record,
-            host_contract_profile: "codex-hooks-v1".to_owned(),
+            host_contract_profile: "codex-command-hooks".to_owned(),
             host_contract_digest: HASH.to_owned(),
             policy_hash: PolicyHash::parse(HASH).unwrap(),
             integration_revision: IntegrationRevision::parse(HASH).unwrap(),

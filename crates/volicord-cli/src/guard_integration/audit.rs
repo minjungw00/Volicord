@@ -602,8 +602,12 @@ fn verify_managed_json_file(
                 return;
             }
         }
-        let validation =
-            validate_contract_config(HostKind::Codex, HostContractConfigKind::HookConfig, text);
+        let validation = validate_contract_config(
+            HostKind::Codex,
+            HostContractConfigKind::HookConfig,
+            text,
+            None,
+        );
         if validation.is_err() {
             findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
         }
@@ -1131,6 +1135,7 @@ mod tests {
         let plan = plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: HostKind::Codex,
             profile: IntegrationProfile::Record,
+            server_name: "volicord-test",
             runtime_home: fixture.runtime_home_path(),
             volicord_command: &volicord_command,
             repo_root: &repo_root,

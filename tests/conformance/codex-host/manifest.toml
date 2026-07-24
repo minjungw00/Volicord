@@ -2,55 +2,57 @@ manifest_version = 1
 host = "codex"
 
 [[fixtures]]
-path = "hooks-v1/user-prompt-submit.json"
-profile_id = "codex-hooks-v1"
-contract_generation = 1
+path = "command-hooks/user-prompt-submit.json"
+profile_id = "codex-command-hooks"
 purpose = "Current UserPromptSubmit command-hook envelope without a thread coordinate"
-source_reference = "reviewed CodexHooksV1 release contract"
+source_reference = "reviewed Codex command-hook contract"
 checksum_sha256 = "9262e631f9b4734b3639f67825b0b92da4fe3667ac03fa44fad89117e77ea978"
 production_covered = true
 
 [[fixtures]]
-path = "hooks-v1/pre-tool-use-bash.json"
-profile_id = "codex-hooks-v1"
-contract_generation = 1
+path = "command-hooks/pre-tool-use-bash.json"
+profile_id = "codex-command-hooks"
 purpose = "Current PreToolUse Bash command-hook envelope"
-source_reference = "reviewed CodexHooksV1 release contract"
+source_reference = "reviewed Codex command-hook contract"
 checksum_sha256 = "2e65cd851c4bb2bbcb273963eeb5016d1a3f427d05bc5b8ea36839c5a03ddf58"
 production_covered = true
 
 [[fixtures]]
-path = "hooks-v1/post-tool-use-bash.json"
-profile_id = "codex-hooks-v1"
-contract_generation = 1
+path = "command-hooks/post-tool-use-bash.json"
+profile_id = "codex-command-hooks"
 purpose = "Current PostToolUse Bash command-hook envelope"
-source_reference = "reviewed CodexHooksV1 release contract"
+source_reference = "reviewed Codex command-hook contract"
 checksum_sha256 = "df88cb9e15f39ee56f455596b75307ef1e1b1c3ba248b872f3d8113ec396a5c7"
 production_covered = true
 
 [[fixtures]]
-path = "hooks-v1/pre-tool-use-mcp.json"
-profile_id = "codex-hooks-v1"
-contract_generation = 1
+path = "command-hooks/pre-tool-use-mcp.json"
+profile_id = "codex-command-hooks"
 purpose = "Current PreToolUse command-hook envelope for the canonical Guard probe MCP tool"
-source_reference = "reviewed CodexHooksV1 release contract"
-checksum_sha256 = "0310a46ce3063129e25e41e2dff56f8155c83dc9cec6d00188575ebf0faf93e1"
+source_reference = "reviewed Codex command-hook contract"
+checksum_sha256 = "b68c92383d979a5f6a35b427b8b8b30f4e4a0ee12e4c666dae88ffa40f621962"
 production_covered = true
 
 [[fixtures]]
-path = "hooks-v1/post-tool-use-mcp.json"
-profile_id = "codex-hooks-v1"
-contract_generation = 1
+path = "command-hooks/post-tool-use-mcp.json"
+profile_id = "codex-command-hooks"
 purpose = "Current PostToolUse command-hook envelope for the canonical Guard probe MCP tool"
-source_reference = "reviewed CodexHooksV1 release contract"
-checksum_sha256 = "040949c216753477c582cfbde4857a1c60aeaf95ff27058d701134a2e61d0df1"
+source_reference = "reviewed Codex command-hook contract"
+checksum_sha256 = "d80362a7845af4bc894c5162630ef7c3a8193178df98a5e252cda2f3bc1a883c"
 production_covered = true
 
 [[fixtures]]
-path = "mcp-turn-metadata-v1/tools-call.json"
-profile_id = "codex-mcp-2025-06-18-v1"
-contract_generation = 1
+path = "mcp-turn-metadata/tools-call.json"
+profile_id = "codex-mcp-turn-metadata"
 purpose = "Managed MCP tools/call metadata with session, thread, and turn consistency"
-source_reference = "reviewed Codex MCP 2025-06-18 tools/call contract"
+source_reference = "reviewed Codex MCP turn-metadata contract"
 checksum_sha256 = "7a846006225957c770afd9489bb5d925f383ae52ead592457233e2ce1290d4ca"
+production_covered = true
+
+[[fixtures]]
+path = "callable-names/mcp-tools.json"
+profile_id = "codex-mcp-callable-names"
+purpose = "Explicit MCP source identities and their current Codex callable-name projection"
+source_reference = "reviewed Codex MCP callable-name contract"
+checksum_sha256 = "42bf64dcf5e2de95295504c2ba409984df59acfde22091ad9f6cfe34848f46f3"
 production_covered = true

@@ -450,7 +450,7 @@ fn record_guard_hook_contract_failure(
     );
     if guard_event(runtime_home, &project.project_id, &event_id)?.is_some() {
         return Ok(GuardHookDiagnosticFacts {
-            contract_profile: Some(HostContractProfileId::CodexHooksV1.as_str().to_owned()),
+            contract_profile: Some(HostContractProfileId::CodexCommandHooks.as_str().to_owned()),
             hook_event_kind: Some(phase.as_str().to_owned()),
             field_category: Some(failure.field_category.to_owned()),
             field: Some(failure.field.to_owned()),
@@ -499,7 +499,7 @@ fn record_guard_hook_contract_failure(
                 "diagnostics": [{
                     "code": GuardHookDiagnosticCode::HostContractIncompatible.as_str(),
                     "facts": {
-                        "contract_profile": HostContractProfileId::CodexHooksV1.as_str(),
+                        "contract_profile": HostContractProfileId::CodexCommandHooks.as_str(),
                         "hook_event_kind": phase.as_str(),
                         "field_category": failure.field_category,
                         "field": failure.field,
@@ -514,14 +514,14 @@ fn record_guard_hook_contract_failure(
             metadata_json: json!({
                 "source": "volicord_guard_cli",
                 "source_payload_sha256": source_payload_sha256,
-                "host_contract_digest": HostContractProfileId::CodexHooksV1.contract_digest(),
+                "host_contract_digest": HostContractProfileId::CodexCommandHooks.contract_digest(),
                 "cooperative_guard": true,
             })
             .to_string(),
         },
     )?;
     Ok(GuardHookDiagnosticFacts {
-        contract_profile: Some(HostContractProfileId::CodexHooksV1.as_str().to_owned()),
+        contract_profile: Some(HostContractProfileId::CodexCommandHooks.as_str().to_owned()),
         hook_event_kind: Some(phase.as_str().to_owned()),
         field_category: Some(failure.field_category.to_owned()),
         field: Some(failure.field.to_owned()),
@@ -660,7 +660,7 @@ fn guard_diagnostic_facts(
     event_id: Option<&str>,
 ) -> GuardHookDiagnosticFacts {
     GuardHookDiagnosticFacts {
-        contract_profile: Some(HostContractProfileId::CodexHooksV1.as_str().to_owned()),
+        contract_profile: Some(HostContractProfileId::CodexCommandHooks.as_str().to_owned()),
         hook_event_kind: Some(phase.as_str().to_owned()),
         field_category: None,
         field: None,
@@ -1238,7 +1238,7 @@ fn persist_guard_event(
         metadata_json: json!({
             "source": "volicord_guard_cli",
             "source_payload_sha256": source_payload_sha256,
-            "host_contract_digest": HostContractProfileId::CodexHooksV1.contract_digest(),
+            "host_contract_digest": HostContractProfileId::CodexCommandHooks.contract_digest(),
             "cooperative_guard": true
         })
         .to_string(),

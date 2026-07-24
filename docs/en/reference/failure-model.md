@@ -58,8 +58,8 @@ boundary input that has not become persisted owner state is `Rejected`, not
 ### Versioned host-contract rejection
 
 Codex wire input is decoded only by the explicitly selected profile.
-`CodexMcpTurnMetadataV1` selects `codex-mcp-2025-06-18-v1`, while the distinct
-`CodexHooksV1` selects `codex-hooks-v1`. A failure under one is not retried,
+`CodexMcpTurnMetadata` selects `codex-mcp-turn-metadata`, while the distinct
+`CodexCommandHooks` selects `codex-command-hooks`. A failure under one is not retried,
 reinterpreted, or completed with fields from the other. Unknown additive
 fields are accepted, but missing or invalid required fields, an unexpected
 event value, inconsistent MCP thread coordinates, and an input exceeding the

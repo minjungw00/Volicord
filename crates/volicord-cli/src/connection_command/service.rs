@@ -338,6 +338,7 @@ fn plan_init_provisioning(
     let integration = plan_guard_integration(GuardIntegrationPlanRequest {
         host_kind,
         profile: parsed.mode.integration_profile(),
+        server_name: &server_name,
         runtime_home: &runtime_home,
         volicord_command: &profile_plan.volicord_command,
         repo_root: &repo_root,
@@ -417,6 +418,7 @@ fn apply_init_provisioning(
     let mut integration = plan_guard_integration(GuardIntegrationPlanRequest {
         host_kind: plan.host_kind,
         profile: plan.init_mode.integration_profile(),
+        server_name: &host_plan.server_name,
         runtime_home: &plan.runtime_home,
         volicord_command: Path::new(&profile.volicord_command),
         repo_root: &project.repo_root,
@@ -563,6 +565,7 @@ fn apply_init_provisioning(
         plan_guard_integration(GuardIntegrationPlanRequest {
             host_kind: plan.host_kind,
             profile: plan.init_mode.integration_profile(),
+            server_name: &host_plan.server_name,
             runtime_home: &plan.runtime_home,
             volicord_command: Path::new(&profile.volicord_command),
             repo_root: &project.repo_root,
@@ -1301,6 +1304,7 @@ fn plan_connection_provisioning(
     let integration = plan_guard_integration(GuardIntegrationPlanRequest {
         host_kind,
         profile: IntegrationProfile::Record,
+        server_name: &server_name,
         runtime_home: &runtime_home,
         volicord_command: Path::new(&installation_profile.volicord_command),
         repo_root: &repo_root,
@@ -1430,6 +1434,7 @@ fn apply_connection_provisioning(
     let integration = plan_guard_integration(GuardIntegrationPlanRequest {
         host_kind: plan.host_kind,
         profile: IntegrationProfile::Record,
+        server_name: &host_plan.server_name,
         runtime_home: &plan.runtime_home,
         volicord_command: Path::new(&plan.installation_profile.volicord_command),
         repo_root: &project.repo_root,

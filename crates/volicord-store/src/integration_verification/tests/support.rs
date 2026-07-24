@@ -1,9 +1,9 @@
 use std::{error::Error, path::Path};
 
 use volicord_host_contract::{
-    CanonicalToolName, CodexHookPromptCorrelation, CodexHookToolCorrelation, CodexMcpCorrelation,
-    HostContractProfileId, HostNativeCorrelation, HostSessionId, HostThreadId, HostToolUseId,
-    HostTurnId,
+    project_mcp_tool, CanonicalToolName, CodexHookPromptCorrelation, CodexHookToolCorrelation,
+    CodexMcpCorrelation, HostCallableName, HostContractProfileId, HostNativeCorrelation,
+    HostSessionId, HostThreadId, HostToolUseId, HostTurnId, McpServerKey,
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
@@ -43,6 +43,7 @@ pub(super) const STALE_HASH: &str =
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub(super) const PROJECT_ID: &str = "project_verification";
 pub(super) const CONNECTION_ID: &str = "connection_verification";
+pub(super) const SERVER_KEY: &str = "volicord-verification";
 pub(super) const INSTALLATION_ID: &str = "guard_installation_verification";
 pub(super) const HOST_SESSION_ID: &str = "host_session_verification";
 pub(super) const HOST_THREAD_ID: &str = "host_thread_verification";
@@ -92,7 +93,7 @@ impl VerificationFixture {
                 host_kind: HOST_KIND_CODEX.to_owned(),
                 intent: CONNECTION_INTENT_SHARED.to_owned(),
                 host_scope: HOST_SCOPE_PROJECT.to_owned(),
-                server_name: "volicord-verification".to_owned(),
+                server_name: SERVER_KEY.to_owned(),
                 config_target: runtime_home
                     .path()
                     .join("connection-verification")
@@ -296,7 +297,7 @@ impl VerificationFixture {
     }
 
     pub(super) fn insert_exact_tool_events(&self, verification_id: &str) -> StoreResult<()> {
-        let probe_name = volicord_host_contract::codex_hook_tool_name(AgentToolId::GUARD_PROBE);
+        let probe_name = host_callable_name(AgentToolId::GUARD_PROBE);
         self.insert_tool_event(ToolEventFixture {
             event_id: "guard_event_pre",
             phase: "pre_tool",
@@ -336,6 +337,14 @@ impl VerificationFixture {
         )?
         .expect("active verification"))
     }
+}
+
+pub(super) fn host_callable_name(tool: AgentToolId) -> HostCallableName {
+    let server = McpServerKey::parse(SERVER_KEY).expect("fixture server key");
+    project_mcp_tool(&server, tool)
+        .expect("fixture callable projection")
+        .callable_name()
+        .clone()
 }
 
 struct EventFixture<'a> {
@@ -419,7 +428,7 @@ fn insert_test_event(runtime_home: &Path, event: EventFixture<'_>) -> StoreResul
                 "host_contract_digest": event
                     .digest
                     .map(str::to_owned)
-                    .unwrap_or_else(|| HostContractProfileId::CodexHooksV1.contract_digest())
+                    .unwrap_or_else(|| HostContractProfileId::CodexCommandHooks.contract_digest())
             })
             .to_string(),
         },

@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use volicord_host_contract::{codex_hook_tool_name, HostContractProfileId};
+use volicord_host_contract::HostContractProfileId;
 use volicord_types::{AgentToolId, IntegrationVerificationWorkflowState};
 
 use super::support::*;
@@ -39,7 +39,8 @@ fn exact_prompt_and_exact_pre_post_tool_use_complete() -> Result<(), Box<dyn Err
 #[test]
 fn mismatched_tool_identity_owner_and_contract_facts_never_complete() -> Result<(), Box<dyn Error>>
 {
-    let probe_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
+    let probe_name = host_callable_name(AgentToolId::GUARD_PROBE);
+    let status_name = host_callable_name(AgentToolId::STATUS);
     for (index, mismatch) in [
         "turn",
         "tool_use",
@@ -66,7 +67,7 @@ fn mismatched_tool_identity_owner_and_contract_facts_never_complete() -> Result<
             "tool_use_pre"
         };
         let tool_name = if mismatch == "tool_name" {
-            "mcp__volicord__status"
+            status_name.as_str()
         } else {
             probe_name.as_str()
         };
@@ -144,7 +145,7 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
     let fixture = VerificationFixture::new("guard-integration-correlation-order")?;
     let run = fixture.begin()?;
     fixture.acknowledge(&run.verification_id, ACK_AT)?;
-    let probe_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
+    let probe_name = host_callable_name(AgentToolId::GUARD_PROBE);
 
     for (event_id, phase, occurred_at) in [
         (
@@ -208,7 +209,7 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
         verification_id: &run.verification_id,
         occurred_at: "2026-07-23T00:00:03.750Z",
         digest: Some(
-            HostContractProfileId::CodexHooksV1
+            HostContractProfileId::CodexCommandHooks
                 .contract_digest()
                 .as_str(),
         ),

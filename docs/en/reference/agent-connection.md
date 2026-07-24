@@ -400,7 +400,7 @@ The strict Guard manifest owns the current policy hash, integration revision,
 typed runtime commands, complete Volicord-managed artifact expectations, and
 required hook phases. It also names the exact `host_contract_profile` and
 deterministic `host_contract_digest`; the current values select
-`codex-hooks-v1` and its reviewed contract identity. Policy and runtime
+`codex-command-hooks` and its reviewed contract identity. Policy and runtime
 commands are distinct projections of one typed invocation. Audit rejects a
 manifest whose profile or digest differs from that exact selection, compares
 every managed artifact with its canonical current expectation, and requires
@@ -567,7 +567,7 @@ Codex executable path and version. Reports and findings never substitute one
 for the other. When both versions exist and differ,
 `host.codex.peer_version_differs_from_path_probe` records warning evidence with
 both fact objects; the mismatch alone is not a fatal Connection failure.
-The explicitly selected `codex-mcp-2025-06-18-v1` profile owns MCP
+The explicitly selected `codex-mcp-turn-metadata` profile owns MCP
 session/thread/turn metadata. Malformed MCP metadata, inconsistent nested and
 top-level thread coordinates, and registered-session mismatch use
 `host.codex.metadata_malformed`,
@@ -613,17 +613,28 @@ native session only after resolving the project and validating current Guard
 ownership. Callers cannot supply the complete local ID, and the stored project
 revision is immutable.
 
-The `CodexHooksV1` marker selects the `codex-hooks-v1` parser, which yields
+The `CodexCommandHooks` marker selects the `codex-command-hooks` parser, which yields
 `CodexHookPromptCorrelation` for `UserPromptSubmit` and
 `CodexHookToolCorrelation` for `PreToolUse` and `PostToolUse`. Prompt
 correlation requires only session and turn. Tool correlation additionally
 requires tool-use ID and canonical tool name. No hook phase has a thread
-coordinate. The distinct `CodexMcpTurnMetadataV1` marker selects the
-`codex-mcp-2025-06-18-v1` parser, which yields `CodexMcpCorrelation` with
+coordinate. The distinct `CodexMcpTurnMetadata` marker selects the
+`codex-mcp-turn-metadata` parser, which yields `CodexMcpCorrelation` with
 required session, thread, and turn. `HostNativeCorrelation` preserves these
 source variants instead of providing a generic interchangeable coordinate.
 Store phase checks and SQL discriminators reject cross-source or incomplete
 combinations.
+
+The Connection's registered `server_name` is decoded as `McpServerKey` and
+remains separate from each complete `McpRawToolName`. The
+`CodexMcpCallableNames` contract projects those coordinates to one
+`HostCallableIdentity` under `codex-mcp-callable-names`. It never treats a
+period-delimited segment of the raw tool name as the server key. Generated
+hooks, MCP preflight diagnostics, and Guard verification resolve the same
+collision-checked `McpToolCatalog`; reverse resolution is an exact catalog
+lookup, not punctuation parsing. The adapter selects this semantic contract
+directly and does not derive host behavior from an observed Codex package
+version.
 
 Guard correlation and Guard policy are separate steps. A compatible hook
 correlation may reach policy and produce `Continue`, `ContinueWithContext`,

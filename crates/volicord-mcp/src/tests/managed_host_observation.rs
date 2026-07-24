@@ -39,6 +39,29 @@ fn connection_context_resolves_and_preflight_reports_allowed_project() -> Result
     assert_eq!(report.effective_tool_mode, "requires_active_verification");
     assert_eq!(report.tools_list_schema_validation, "passed");
     assert_eq!(report.tool_naming_style, "dotted_namespace");
+    let effective_tools =
+        mcp_tools_for_mode_and_storage(context.mode, McpStorageCapability::Unknown);
+    assert_eq!(report.host_callable_tools.len(), effective_tools.len());
+    assert!(effective_tools.iter().all(|tool| report
+        .host_callable_tools
+        .iter()
+        .any(|identity| identity.raw_tool_name == tool.id.wire_name())));
+    let guard_probe = report
+        .host_callable_tools
+        .iter()
+        .find(|identity| identity.raw_tool_name == AgentToolId::GUARD_PROBE.wire_name())
+        .expect("Guard probe callable identity");
+    assert_eq!(
+        guard_probe.profile,
+        HostContractProfileId::CodexMcpCallableNames.as_str()
+    );
+    assert!(guard_probe
+        .callable_name
+        .ends_with("__volicord_guard_probe"));
+    assert_eq!(
+        guard_probe.server_key,
+        report.host_callable_tools[0].server_key
+    );
     Ok(())
 }
 

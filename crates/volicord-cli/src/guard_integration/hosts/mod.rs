@@ -1,4 +1,5 @@
 use std::{collections::BTreeMap, path::Path};
+use volicord_host_contract::McpServerKey;
 use volicord_types::{GuardCommandSet, GuardHookPhase};
 
 use crate::{
@@ -23,6 +24,7 @@ pub(crate) struct HostGeneratedFilesRequest<'a> {
     pub(crate) host_commands: &'a BTreeMap<String, HostHookCommand>,
     pub(crate) phases: &'a [GuardHookPhase],
     pub(crate) purpose: HostHookPurpose,
+    pub(crate) server: &'a McpServerKey,
 }
 
 pub(crate) fn plan_host_generated_files(
@@ -36,6 +38,7 @@ pub(crate) fn plan_host_generated_files(
         host_commands,
         phases,
         purpose,
+        server,
     } = request;
     let mut files = Vec::new();
     match host_kind {
@@ -53,6 +56,7 @@ pub(crate) fn plan_host_generated_files(
                 repo_root,
                 host_commands,
                 phases,
+                server,
             )?);
             files.push(codex::plan_codex_rule_file(repo_root, host_commands)?);
         }

@@ -231,14 +231,12 @@ matrix. The current `codex` fixture uses the
 reviewed Codex initialize request shape with `clientInfo.name` set to
 `codex-mcp-client`, the `Codex` title, an empty current capability object, and
 the independently pinned revision `2025-06-18`. Its one tool call carries valid
-`codex-mcp-2025-06-18-v1` session/thread/turn metadata. That fixture ID names
+`codex-mcp-turn-metadata` session/thread/turn metadata. That fixture ID names
 the reviewed wire contract and is not a Codex package-version identity. It executes
 `tools/list` and the tool selected by
 `ToolVerificationRole::ManagedHostRoundTrip`, currently
 `volicord.list_projects`, and it never derives its requested revision from the
-server's preferred or newest profile. Multiple independently
-pinned `codex` fixtures may coexist when deployed client families require
-different revisions.
+server's preferred or newest profile.
 
 Both matrices are CLI probe evidence. Their disposable `manual_cli` or
 `integration_probe` runtime sources remain excluded from managed checks and
@@ -248,14 +246,14 @@ show that a managed Codex process ran. Only lifecycle observations from a
 runtime created by successful launch-lease consumption with source
 `managed_host` can satisfy managed-host operational checks.
 
-## Versioned Codex Host Contracts
+## Semantic Codex Host Contracts
 
 Managed Codex wire input is decoded through an explicitly selected host
-contract profile. The `CodexMcpTurnMetadataV1` marker selects
-`codex-mcp-2025-06-18-v1`, which owns `tools/call` `_meta` and requires the
+contract profile. The `CodexMcpTurnMetadata` marker selects
+`codex-mcp-turn-metadata`, which owns `tools/call` `_meta` and requires the
 native session, thread, and turn plus equality between the top-level
 `threadId` and nested `x-codex-turn-metadata.thread_id`. The distinct
-`CodexHooksV1` marker selects `codex-hooks-v1`, which separately owns
+`CodexCommandHooks` marker selects `codex-command-hooks`, which separately owns
 command-hook envelopes. Its `UserPromptSubmit` correlation is session plus
 turn, while `PreToolUse` and `PostToolUse` correlation is session, turn,
 tool-use ID, and canonical tool name. Command-hook correlation has no thread
@@ -272,6 +270,21 @@ The reviewed fixtures and coverage manifest under
 `tests/conformance/codex-host/`, with parser and checksum assertions in
 `crates/volicord-host-contract/tests/host_contracts.rs`, are pinned contract
 inputs rather than protocol-revision or package-version claims.
+
+MCP registration supplies an explicit `McpServerKey`; `AgentToolId` supplies
+the complete `McpRawToolName`. `McpToolIdentity` preserves both coordinates,
+and `CodexMcpCallableNames` projects them under
+`codex-mcp-callable-names` to a validated `HostCallableIdentity`. The
+projection normalizes the server key and complete raw name independently,
+joins them with the Codex separator, applies the 64-byte callable bound, and
+uses the current deterministic 12-hex SHA-1 source-identity suffix when the
+source exceeds that bound. This suffix is a name-fitting rule, not an integrity
+claim. The catalog rejects distinct sources that still project to one callable. It never
+extracts server identity from a dotted raw tool name. `McpToolCatalog` is also
+the only reverse-resolution source, so underscores and punctuation are never
+used to guess namespace boundaries. The adapter selects this semantic
+contract directly; an observed Codex package version does not control
+callable projection.
 
 ## Authoritative Lifecycle Recording
 
@@ -582,7 +595,7 @@ workflow state with its correlated phase observations.
 
 A run passes only when the same run session and turn contain a compatible
 prompt event followed by `PreToolUse` and `PostToolUse` for the same tool-use
-ID, exact generated host tool name `mcp__volicord__guard_probe`, and exact
+ID, exact generated host tool name `mcp__volicord__volicord_guard_probe`, and exact
 `verification_id` input. The Guard Installation, policy hash, integration
 revision, hook-contract digest, and managed runtime must remain current, and
 the event times must satisfy prompt at or before pre-tool and pre-tool before

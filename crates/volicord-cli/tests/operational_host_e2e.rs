@@ -21,8 +21,8 @@ use support::binary_fixture::{run_child, ChildStdin};
 use support::json::adapter_tool_response;
 use toml_edit::DocumentMut;
 use volicord_host_contract::{
-    codex_hook_tool_name, CodexHookPromptCorrelation, HostNativeCorrelation, HostSessionId,
-    HostTurnId,
+    project_mcp_tool, CodexHookPromptCorrelation, HostNativeCorrelation, HostSessionId, HostTurnId,
+    McpServerKey,
 };
 use volicord_mcp::{
     ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
@@ -2064,14 +2064,17 @@ impl OperationalFixture {
             thread::sleep(Duration::from_millis(10));
         };
 
-        let probe_host_name = codex_hook_tool_name(AgentToolId::GUARD_PROBE);
+        let connection = agent_connection_record(&self.runtime_home, connection_id)?
+            .ok_or("managed Guard Connection should exist")?;
+        let server = McpServerKey::parse(connection.server_name)?;
+        let probe_host_name = project_mcp_tool(&server, AgentToolId::GUARD_PROBE)?;
         let probe_input = json!({"verification_id": verification_id});
         let pre_tool = json!({
             "hook_event_name": "PreToolUse",
             "session_id": native_session,
             "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
             "tool_use_id": INTEGRATION_VERIFICATION_TOOL_USE_ID,
-            "tool_name": probe_host_name.as_str(),
+            "tool_name": probe_host_name.callable_name().as_str(),
             "tool_input": probe_input,
         });
         let pre_output = self.run_guard_command(
@@ -2114,7 +2117,7 @@ impl OperationalFixture {
             "session_id": native_session,
             "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
             "tool_use_id": INTEGRATION_VERIFICATION_TOOL_USE_ID,
-            "tool_name": probe_host_name.as_str(),
+            "tool_name": probe_host_name.callable_name().as_str(),
             "tool_input": {"verification_id": verification_id},
             "tool_response": {"success": true},
         });

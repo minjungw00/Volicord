@@ -137,11 +137,11 @@ Codex adapter만 `hookSpecificOutput`, `permissionDecision`, `additionalContext`
 exit-code projection을 담당합니다. Core-facing type과 Store record는 Codex process-exit
 동작을 encode하지 않습니다.
 
-선택한 command-hook decoder는 `CodexHooksV1` marker입니다. 이 decoder는
+선택한 command-hook decoder는 `CodexCommandHooks` marker입니다. 이 decoder는
 session/turn의 `CodexHookPromptCorrelation` 또는 session/turn/tool-use ID/정규 tool
 name의 `CodexHookToolCorrelation`만 만듭니다. 한도가 있는 envelope 안에서 알 수 없는
 추가 field를 허용하고 hook thread 좌표를 요구하지 않으며, 별도
-`CodexMcpTurnMetadataV1` MCP 상관관계로 대신하지 않습니다.
+`CodexMcpTurnMetadata` MCP 상관관계로 대신하지 않습니다.
 
 Hook occurrence와 hook activation은 별도 projection입니다.
 `hook_source_activation`은 현재 Guard Installation, policy hash, integration revision,
@@ -156,9 +156,11 @@ managed MCP capability나 상관관계가 확인된 Guard verification의 독립
 Project/configuration trust는 host/user가 소유하는 별도 check입니다.
 
 `PreToolUse`와 `PostToolUse`의 managed hook matcher에는 정확한 Codex native 이름
-`mcp__volicord__guard_probe`가 들어갑니다. 이 이름은 정규
-`AgentToolId::GUARD_PROBE` wire identity에서 생성하며 독립적으로 유지하는 literal이
-아니고 모든 읽기 전용 도구로 matching 범위를 넓히지 않습니다. Prompt capture에는 도구
+`mcp__volicord__volicord_guard_probe`가 들어갑니다. 등록된 `McpServerKey`와 완전한
+`volicord.guard_probe` raw MCP name은 `CodexMcpCallableNames` 투영의 서로 다른
+입력으로 유지됩니다. Matcher와 검증 상관관계는 충돌 검사를 마친 같은 catalog의
+`HostCallableIdentity`를 읽으며 어느 쪽도 dotted raw name에서 server를 추론하지
+않습니다. Matcher는 모든 읽기 전용 도구로 matching 범위를 넓히지 않습니다. Prompt capture에는 도구
 matcher가 없습니다. 검증 event는 현재 contract digest와 정확한 session, turn, tool-use ID,
 tool 이름, `verification_id` 입력이 한도가 있는 run과 일치할 때만 match합니다.
 

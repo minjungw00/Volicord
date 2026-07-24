@@ -111,7 +111,7 @@ pub(super) fn effective_status(
         || manifest.integration_revision.as_str() != run.integration_revision
         || manifest.policy_hash.as_str() != run.policy_hash
         || manifest.host_contract_digest != run.hook_contract_digest
-        || run.hook_contract_digest != HostContractProfileId::CodexHooksV1.contract_digest()
+        || run.hook_contract_digest != HostContractProfileId::CodexCommandHooks.contract_digest()
     {
         return Ok(GuardIntegrationVerificationStatus::Failed);
     }

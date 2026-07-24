@@ -229,8 +229,8 @@ proof. Persisted connection reports retain all selected session IDs and their
 roles, deduplicating one ID that carries both roles.
 
 Project host correlation is normalized by source. The
-`CodexMcpTurnMetadataV1` decoder supplies MCP session/thread/turn correlation,
-while the distinct `CodexHooksV1` decoder supplies prompt session/turn or tool
+`CodexMcpTurnMetadata` decoder supplies MCP session/thread/turn correlation,
+while the distinct `CodexCommandHooks` decoder supplies prompt session/turn or tool
 session/turn/tool-use/tool-name correlation. The host-contract owner maps both
 markers to their reviewed profile IDs. `host_sessions` names the
 Connection, exact native host session, immutable project integration revision,
@@ -390,7 +390,7 @@ manifest is strict and owner-bound. It carries the exact policy hash,
 integration revision, typed runtime commands, complete Volicord-managed file
 expectations, required typed hook phases, `host_contract_profile`, and
 `host_contract_digest`. The current Guard profile is explicitly
-`codex-hooks-v1`; audit requires its deterministic reviewed digest rather than
+`codex-command-hooks`; audit requires its deterministic reviewed digest rather than
 choosing a parser from an incoming payload. File audit and required-phase
 observation derive the current Guard checks from this manifest and current
 owner-matched facts.

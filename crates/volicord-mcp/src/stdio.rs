@@ -12,7 +12,7 @@ use crate::tool_registry::{CanonicalContent, CanonicalToolResult};
 use crate::util::*;
 use crate::VOLICORD_HOME_ENV;
 use sha2::{Digest, Sha256};
-use volicord_host_contract::{CodexMcpCorrelation, CodexMcpTurnMetadataV1, HostContractErrorCode};
+use volicord_host_contract::{CodexMcpCorrelation, CodexMcpTurnMetadata, HostContractErrorCode};
 use volicord_types::{HostKind, ManagedMcpClientInfo};
 
 const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord.codex-mcp-thread-binding\0";
@@ -1477,7 +1477,7 @@ fn codex_managed_call_binding(
     params: &Map<String, Value>,
     connection_internal_id: &str,
 ) -> Result<CodexManagedCallBinding, McpHostError> {
-    let correlation = CodexMcpTurnMetadataV1
+    let correlation = CodexMcpTurnMetadata
         .parse_tools_call_params(params)
         .map_err(|error| match error.code() {
             HostContractErrorCode::InconsistentCorrelation => {

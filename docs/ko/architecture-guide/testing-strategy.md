@@ -83,9 +83,11 @@ registry 직접 순회가 matrix를 정합니다.
 - exact-match와 counter-offer 협상, profile별 initialize capability, batching,
   `tools/list`, `tools/call` wire projection
 - 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정하며 revision 적합성을
-  대신하지 않는 Codex host fixture, 정확한 `CodexMcpTurnMetadataV1` 및 `CodexHooksV1`
-  profile coverage, source별 상관관계, 추가 field와 한도 check, checksum 일치, CLI
-  conformance evidence와 실제 `managed_host` 관찰의 분리
+  대신하지 않는 Codex host fixture, 정확한 `CodexMcpTurnMetadata`,
+  `CodexCommandHooks`, `CodexMcpCallableNames` profile coverage, source별 상관관계,
+  명시적 server/raw/callable fixture 일치, 완전한 raw name 투영, 정규화 충돌 거부,
+  정확한 catalog 역방향 조회, 추가 field와 한도 check, checksum 일치,
+  생성 hook과 Guard identity 일치, CLI conformance evidence와 실제 `managed_host` 관찰의 분리
 - lifecycle별 진단 구성 및 Store API, 변경할 수 없는 occurrence 삽입, 완전한 current key
   digest와 영속 ID 검증, current snapshot identity 불변성, 해소와 재활성화,
   active/reportable filtering, 명시적 report seed와 한도가 있는 lifecycle-aware 정확한 cause

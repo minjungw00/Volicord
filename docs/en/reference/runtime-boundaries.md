@@ -208,9 +208,9 @@ The Registry owns process lifecycle milestones, structured runtime diagnostic
 findings and cause edges, terminal-finding links, and cross-project runtime/host
 session reservations. Each project database owns normalized host sessions,
 turns, hook tool invocations, Guard observations, and MCP-only session
-anchors. The explicitly selected `CodexMcpTurnMetadataV1` marker and
-`codex-mcp-2025-06-18-v1` profile supply session/thread/turn correlation. The
-separately selected `CodexHooksV1` marker and `codex-hooks-v1` profile supply
+anchors. The explicitly selected `CodexMcpTurnMetadata` marker and
+`codex-mcp-turn-metadata` profile supply session/thread/turn correlation. The
+separately selected `CodexCommandHooks` marker and `codex-command-hooks` profile supply
 prompt session/turn or tool session/turn/tool-use/tool-name correlation;
 command hooks have no thread coordinate.
 
