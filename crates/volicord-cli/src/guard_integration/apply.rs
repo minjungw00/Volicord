@@ -2,14 +2,13 @@ use crate::{
     guard_integration::{
         files::{
             apply_managed_file_retirement, ensure_generated_file_plan_fresh,
-            generated_file_plan_matches_artifact_spec, managed_block_conflict,
-            write_managed_file_if_fresh, FilePlanStatus, GeneratedFilePlan, GeneratedFileWriteKind,
+            generated_file_plan_matches_artifact_spec, generated_file_target_bytes,
+            write_managed_file_if_fresh, FilePlanStatus, GeneratedFilePlan,
         },
         git_exclude::plan_git_excludes,
         GuardIntegrationError, GuardIntegrationPlan,
     },
     host_integration::ConnectionIntent,
-    managed_block,
 };
 use volicord_types::{GuardManagedArtifact, IntegrationProfile};
 
@@ -97,33 +96,8 @@ pub(crate) fn apply_generated_file(
         return Ok(FilePlanStatus::Unchanged);
     }
 
-    let content = match file.write_kind {
-        GeneratedFileWriteKind::Block {
-            start_marker,
-            end_marker,
-            require_existing_marker,
-        } => {
-            let existing = file.target_snapshot.text().unwrap_or("");
-            if require_existing_marker
-                && file.target_snapshot.text().is_some()
-                && !existing.contains(start_marker)
-            {
-                return Err(GuardIntegrationError::runtime(format!(
-                    "{} already exists without a Volicord-managed block",
-                    file.path.display()
-                )));
-            }
-            managed_block::apply_managed_block_with_markers(
-                existing,
-                &file.content,
-                start_marker,
-                end_marker,
-            )
-            .map_err(managed_block_conflict)?
-        }
-        GeneratedFileWriteKind::Json | GeneratedFileWriteKind::ExactJson => file.content.clone(),
-        GeneratedFileWriteKind::Script => file.content.clone(),
-    };
+    let content = String::from_utf8(generated_file_target_bytes(file)?)
+        .expect("generated managed file content is UTF-8");
     let executable = file.artifact.spec().executable_required;
     write_managed_file_if_fresh(file, &content, executable)?;
     Ok(match file.status {

@@ -7,7 +7,7 @@ use std::{
 use crate::host_integration::process::{CommandRunner, ProductionCommandRunner};
 use crate::host_integration::verification::{ManagedConfigStatus, Verification};
 use crate::host_integration::{
-    config_edit::{read_text_snapshot, write_if_fresh},
+    config_edit::{read_text_snapshot, write_if_fresh, FileSnapshot},
     validated_server_name, ConnectionIntent, HostAdapter, HostConfigError, HostConflict,
     HostConflictKind, HostDetection, HostEffect, HostKind, HostPlan, HostPlanRequest,
     HostRemoveRequest, HostScope, HostTarget, InstallationProfile, PlannedChange, ProjectContext,
@@ -144,6 +144,92 @@ impl<R: CommandRunner> CodexAdapter<R> {
         })
     }
 
+    pub(crate) fn planned_file_bytes(plan: &HostPlan) -> Result<Vec<u8>, HostConfigError> {
+        if plan.host_kind != HostKind::Codex {
+            return Err(HostConfigError::Conflict(HostConflict::new(
+                HostConflictKind::InvalidScope,
+                "Codex adapter cannot materialize a non-Codex host plan",
+            )));
+        }
+        if let Some(conflict) = plan.conflicts.first() {
+            return Err(HostConfigError::Conflict(conflict.clone()));
+        }
+        let HostTarget::File(target) = &plan.target else {
+            return Err(HostConfigError::Conflict(HostConflict::new(
+                HostConflictKind::UnsafeTarget,
+                "Codex plan target must be a file",
+            )));
+        };
+        let snapshot = plan.file_snapshot.as_ref().ok_or_else(|| {
+            HostConfigError::StalePlan("Codex plan is missing its file snapshot".to_owned())
+        })?;
+        let mut document = document_from_snapshot(snapshot, target)?;
+        upsert_server_table(&mut document, &plan.server_name, &plan.entry)?;
+        Ok(document.to_string().into_bytes())
+    }
+
+    pub(crate) fn planned_input_bytes(plan: &HostPlan) -> Result<Option<&[u8]>, HostConfigError> {
+        match plan.file_snapshot.as_ref().ok_or_else(|| {
+            HostConfigError::StalePlan("Codex plan is missing its file snapshot".to_owned())
+        })? {
+            FileSnapshot::Missing => Ok(None),
+            FileSnapshot::Present { bytes } => Ok(Some(bytes)),
+        }
+    }
+
+    pub(crate) fn target_input_bytes(
+        target: &HostTarget,
+    ) -> Result<Option<Vec<u8>>, HostConfigError> {
+        let HostTarget::File(target) = target else {
+            return Err(HostConfigError::Conflict(HostConflict::new(
+                HostConflictKind::UnsafeTarget,
+                "Codex plan target must be a file",
+            )));
+        };
+        match crate::host_integration::config_edit::read_snapshot(target)? {
+            FileSnapshot::Missing => Ok(None),
+            FileSnapshot::Present { bytes } => Ok(Some(bytes)),
+        }
+    }
+
+    pub(crate) fn planned_removal_file_bytes(
+        request: &HostRemoveRequest,
+        source: &[u8],
+    ) -> Result<Vec<u8>, HostConfigError> {
+        let HostTarget::File(target) = &request.target else {
+            return Err(HostConfigError::Conflict(HostConflict::new(
+                HostConflictKind::UnsafeTarget,
+                "Codex removal target must be a file",
+            )));
+        };
+        let text = std::str::from_utf8(source).map_err(|error| {
+            HostConfigError::Malformed(format!(
+                "failed to decode Codex TOML configuration {}: {error}",
+                target.display()
+            ))
+        })?;
+        let mut document = parse_document((!text.is_empty()).then_some(text), target)?;
+        let Some(servers) = document.get_mut("mcp_servers").and_then(Item::as_table_mut) else {
+            return Ok(source.to_vec());
+        };
+        let Some(existing) = servers.get(&request.server_name) else {
+            return Ok(source.to_vec());
+        };
+        let current =
+            codex_managed_identity_fingerprint(request.host_scope, &request.server_name, existing);
+        if current.as_deref() != Some(request.expected_fingerprint.as_str()) {
+            return Err(HostConfigError::Conflict(HostConflict::new(
+                HostConflictKind::FingerprintMismatch,
+                format!(
+                    "Codex MCP server changed since Volicord last managed it: {}",
+                    request.server_name
+                ),
+            )));
+        }
+        servers.remove(&request.server_name);
+        Ok(document.to_string().into_bytes())
+    }
+
     fn config_path(
         &self,
         scope: HostScope,
@@ -219,9 +305,8 @@ impl<R: CommandRunner> HostAdapter for CodexAdapter<R> {
         let snapshot = plan.file_snapshot.as_ref().ok_or_else(|| {
             HostConfigError::StalePlan("Codex plan is missing its file snapshot".to_owned())
         })?;
-        let mut document = document_from_snapshot(snapshot, target)?;
-        upsert_server_table(&mut document, &plan.server_name, &plan.entry)?;
-        write_if_fresh(target, document.to_string().as_bytes(), snapshot)?;
+        let content = Self::planned_file_bytes(plan)?;
+        write_if_fresh(target, &content, snapshot)?;
         Ok(effect_from_plan(plan))
     }
 

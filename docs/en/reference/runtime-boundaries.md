@@ -153,6 +153,26 @@ without replacing an existing final path. A staging path is never a Runtime
 Home identity, all pre-publication failures remove it and leave the final path
 absent, and concurrent creators accept only the exact read-only `Ready` winner.
 
+### Init setup transaction
+
+Runtime Home bootstrap is one prepared member of the larger `volicord init`
+setup transaction. Read-only planning also snapshots the existing Codex
+configuration and every owned Product Repository file, calculates exact target
+bytes, validates parents and conflicts, and orders the mutations
+deterministically. Prepare creates same-directory staging files and Store
+recovery entries before any final target is committed.
+
+Commit publishes or validates the Runtime Home, applies checkpointed Store
+mutations, atomically replaces Product Repository files, atomically replaces
+Codex configuration last, and records the integration revision. A stale input
+is a concurrent-modification failure and the newer external bytes are
+preserved. Rollback never deletes a pre-existing Runtime Home or user file. A
+Runtime Home created by this invocation may be removed only while rolling back
+this uncommitted setup ownership. Runtime Home, Codex configuration, and the
+Product Repository may reside on distinct filesystems, so the guarantee is
+complete preparation, atomic replacement per file, and bounded rollback—not
+one global filesystem transaction.
+
 The Registry is the durable Runtime Home carrier for structured diagnostic
 findings and their cause edges. A finding may correlate to its Connection,
 project, runtime session, and integration revision, while an MCP runtime

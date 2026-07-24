@@ -1305,8 +1305,8 @@ fn render_findings(report: &ConnectionCommandReport, roots: &[DiagnosticFindingI
 fn render_result(result: &ConnectionCommandResult) -> String {
     let mut lines = vec!["Result".to_owned()];
     match result {
-        ConnectionCommandResult::Setup { applied } => {
-            lines.push(format!("  Applied: {}", yes_no(*applied)));
+        ConnectionCommandResult::Setup { disposition } => {
+            lines.push(format!("  Disposition: {}", disposition.as_str()));
         }
         ConnectionCommandResult::ModeTransition {
             changed,
@@ -1690,7 +1690,7 @@ mod tests {
             active_verification_evidence, mcp_server_check, McpStoreWriteabilityEvidence,
             VerificationStep,
         },
-        McpExchangeOutcome, McpExchangeProgress, McpProcessFailure, McpStage,
+        McpExchangeOutcome, McpExchangeProgress, McpProcessFailure, McpStage, SetupDisposition,
     };
 
     fn connection(mode: &str) -> CommandConnection {
@@ -1892,7 +1892,9 @@ mod tests {
                 ActivationStepId::RepairManagedConfiguration,
                 "Repair the managed Codex configuration",
             )],
-            Some(ConnectionCommandResult::Setup { applied: false }),
+            Some(ConnectionCommandResult::Setup {
+                disposition: SetupDisposition::Planned,
+            }),
             Some(vec![PlannedConnectionChange::new(
                 PlannedConnectionChangeKind::ManagedHostConfiguration,
                 PlannedChangeOperation::Update,
@@ -1950,7 +1952,7 @@ mod tests {
                 "    Repair the managed Codex configuration\n",
                 "\n",
                 "Result\n",
-                "  Applied: no\n\n",
+                "  Disposition: planned\n\n",
                 "Planned changes\n",
                 "  Change 1\n",
                 "    Kind: managed_host_configuration\n",
@@ -1990,13 +1992,15 @@ mod tests {
                 ActivationStepId::RequestIntegrationVerification,
                 "Restart or reload Codex and use the connection",
             )],
-            Some(ConnectionCommandResult::Setup { applied: true }),
+            Some(ConnectionCommandResult::Setup {
+                disposition: SetupDisposition::Committed,
+            }),
             None,
         );
         assert_current_verbose!(
             rendered(&init),
             concat!(
-                "Setup applied; 1 host-owned activation step remains.\n\n",
+                "Setup committed; 1 host-owned activation step remains.\n\n",
                 "Connection\n",
                 "  ID: connection_1\n",
                 "  Host: codex\n",
@@ -2023,7 +2027,7 @@ mod tests {
                 "  action.host.observe_activity\n",
                 "    Restart or reload Codex and use the connection\n\n",
                 "Result\n",
-                "  Applied: yes\n\n",
+                "  Disposition: committed\n\n",
                 "Report limits\n",
                 "  Diagnostic cause traversal is bounded to 32 edges and 128 findings.\n",
                 "  Diagnostic fact strings are bounded to 1024 bytes, collections to 32 items, and sensitive fields remain redacted.\n",
@@ -2920,7 +2924,7 @@ mod tests {
             vec![check(
                 ConnectionCheckKind::SetupPlan,
                 ConnectionCheckStatus::Failed,
-                Some("setup_partial_application"),
+                Some("setup_transaction_failed"),
                 "Setup migration could not be completed",
                 Some(json!({
                     "failure": "registry conflict",
@@ -2940,7 +2944,9 @@ mod tests {
                 None,
             )],
             Vec::new(),
-            Some(ConnectionCommandResult::Setup { applied: false }),
+            Some(ConnectionCommandResult::Setup {
+                disposition: SetupDisposition::Planned,
+            }),
             None,
         );
         let json_before =
@@ -2985,7 +2991,7 @@ mod tests {
             vec![check(
                 ConnectionCheckKind::SetupPlan,
                 ConnectionCheckStatus::Failed,
-                Some("setup_partial_application"),
+                Some("setup_transaction_failed"),
                 "Deep details",
                 Some(json!({"future": nested})),
                 None,

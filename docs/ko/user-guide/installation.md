@@ -194,6 +194,20 @@ profile을 만들고 검증한 뒤 전체 directory를 원자적으로 공개합
 담당자 승인 복구를 위해 그대로 두고 명시적 `--home`으로 새 위치를 선택해 다시 실행합니다.
 현재 담당자가 importer를 제공한 경우에만 그것을 사용합니다.
 
+`init`은 어떤 target도 쓰지 않은 채 전체 setup plan을 구성합니다. Prepare 단계는
+정확한 Codex 구성과 repository hook, wrapper, rule, policy, exclude, 관리 guidance
+파일을 각각의 target 옆에 staging하고 Store 복구 경계를 준비합니다. Commit 단계는
+Runtime Home을 공개하거나 검증하고 Store mutation을 적용한 뒤 repository 파일을
+결정적인 순서로 원자 교체하고 Codex 구성을 마지막에 교체한 다음 integration revision을
+기록합니다. 실패하면 그 뒤 외부 변경이 없는 교체 파일과 checkpoint된 Store bytes를
+복원하고 소유한 staging을 안전할 때 제거하며 `preserved`, `rolled_back`,
+`partially_rolled_back`을 정확히 보고합니다. 이후 writer 때문에 복원이 안전하지
+않은 상황에서 복구 entry 삭제가 pre-existing file을 잃게 한다면 그 entry를 보존하고
+diagnostic에 경로를 기록합니다. Runtime Home, Codex home, Product
+Repository가 서로 다른 파일시스템에 있을 수 있으므로 commit 전에 준비는 모두 끝나고
+각 파일 교체는 원자적이지만, 여러 파일시스템 전체를 아우르는 작업이 전역적으로
+원자적인 것은 아닙니다.
+
 호스트 설정을 실행하기 전에 설치된 `volicord` 바이너리가 `PATH`에 있어야 합니다.
 셸 시작 파일 변경은 암시적으로 이루어지지 않습니다. 셸 시작 파일을 통해 `PATH`를
 갱신했다면 새 셸을 열거나 기존 에이전트 호스트 프로세스를 재시작하거나 다시 불러온 뒤

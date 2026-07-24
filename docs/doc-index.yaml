@@ -530,8 +530,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-20'
-  last_verified_on: '2026-07-20'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles

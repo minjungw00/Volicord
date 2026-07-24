@@ -152,6 +152,14 @@ Durable tests should cover, as applicable:
   request, and status; one `Required next steps` block; no duplicate `Next`
   block or inaccurate “one more step”; current-status suffixes; typed
   repair-required plans; and optional active diagnostics kept separate;
+- transactional init fault injection after Runtime Home preparation, Store
+  recovery preparation, every managed hook/rule/guidance replacement, before
+  and after Codex configuration replacement, before integration-revision
+  commit, and during rollback; exact fresh and existing-state restoration;
+  external concurrent-byte preservation; `planned`, `committed`,
+  `preserved`, `rolled_back`, and `partially_rolled_back` report projection;
+  read-only dry-run parity; replay idempotence; and activation only after
+  commit;
 - generated AGENTS, Codex rule, and MCP server instructions preserving the
   canonical request, every tagged workflow kind, its canonical returned tool,
   the nested list/begin/probe/status order, the unavailable path, and the

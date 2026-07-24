@@ -256,7 +256,10 @@ fn failed_init_is_one_stdout_document_and_exit_one() -> Result<(), Box<dyn Error
     assert_eq!(value["operation"], "init");
     assert_eq!(value["operation_details"]["dry_run"], false);
     assert_eq!(value["operation_details"]["result"]["kind"], "setup");
-    assert_eq!(value["operation_details"]["result"]["applied"], true);
+    assert_eq!(
+        value["operation_details"]["result"]["disposition"],
+        "committed"
+    );
     assert!(value["operation_details"].get("planned_changes").is_none());
     assert!(value["checks"].is_array());
     assert!(value["activation_plan"].is_object());
@@ -278,7 +281,10 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     assert_eq!(value["operation_details"]["dry_run"], true);
     assert_eq!(value["status"], "action_required");
     assert_eq!(value["operation_details"]["result"]["kind"], "setup");
-    assert_eq!(value["operation_details"]["result"]["applied"], false);
+    assert_eq!(
+        value["operation_details"]["result"]["disposition"],
+        "planned"
+    );
     assert_eq!(value["connection"]["mode"], "workflow");
     let planned_changes = value["operation_details"]["planned_changes"]
         .as_array()
@@ -504,7 +510,10 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     let fixture = IsolatedInitFixture::new("binary-connection-list-json")?;
     let init = fixture.run(false)?;
     let init_report: Value = serde_json::from_slice(&init.stdout)?;
-    assert_eq!(init_report["operation_details"]["result"]["applied"], true);
+    assert_eq!(
+        init_report["operation_details"]["result"]["disposition"],
+        "committed"
+    );
     let files_before = directory_contents(fixture._temporary_root.root_path())?;
     let entries_before = directory_entries(fixture._temporary_root.root_path())?;
 
@@ -1259,8 +1268,8 @@ fn connection_list_filters_by_repository() -> Result<(), Box<dyn Error>> {
     let shared = fixture.run_shared_connection_add(&other_repo)?;
     let shared_report: Value = serde_json::from_slice(&shared.stdout)?;
     assert_eq!(
-        shared_report["operation_details"]["result"]["applied"],
-        true
+        shared_report["operation_details"]["result"]["disposition"],
+        "committed"
     );
 
     let first = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
@@ -1376,7 +1385,10 @@ fn fresh_init_without_host_observation_is_action_required_and_exit_zero(
     assert_eq!(value["operation"], "init");
     assert_eq!(value["status"], "action_required");
     assert_eq!(value["operation_details"]["result"]["kind"], "setup");
-    assert_eq!(value["operation_details"]["result"]["applied"], true);
+    assert_eq!(
+        value["operation_details"]["result"]["disposition"],
+        "committed"
+    );
     assert!(value["checks"].as_array().is_some_and(|checks| {
         checks
             .iter()
@@ -1394,7 +1406,7 @@ fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
-    assert!(text.starts_with("Setup applied; 4 host-owned activation steps remain.\n\n"));
+    assert!(text.starts_with("Setup committed; 4 host-owned activation steps remain.\n\n"));
     assert!(text.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
     assert!(text.contains("Mode: workflow\nActivation: "));
     assert!(text.contains("\nHook activation: "));
@@ -1422,7 +1434,9 @@ fn concise_follow_up_argument_vector_preserves_custom_runtime_home() -> Result<(
     fixture.install_codex_executable()?;
     let init = fixture.run_init_with_output(false, None)?;
     assert_eq!(init.status.code(), Some(0), "{}", stderr(&init)?);
-    assert!(stdout(&init)?.starts_with("Setup applied; 4 host-owned activation steps remain.\n\n"));
+    assert!(
+        stdout(&init)?.starts_with("Setup committed; 4 host-owned activation steps remain.\n\n")
+    );
 
     let default_runtime_home = fixture.user_home.join(".volicord");
     assert!(!default_runtime_home.exists());
@@ -1602,7 +1616,10 @@ fn connection_add_operational_failure_is_one_stdout_document_and_exit_one(
     assert_eq!(report["operation_details"]["dry_run"], false);
     assert_eq!(report["status"], "failed");
     assert_eq!(report["operation_details"]["result"]["kind"], "setup");
-    assert_eq!(report["operation_details"]["result"]["applied"], true);
+    assert_eq!(
+        report["operation_details"]["result"]["disposition"],
+        "committed"
+    );
     assert!(report["checks"].is_array());
     assert!(report["activation_plan"].is_object());
     Ok(())
@@ -2336,7 +2353,10 @@ fn successful_init_dry_run_report(output: &std::process::Output) -> Result<Value
     let report: Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(report["operation"], "init");
     assert_eq!(report["operation_details"]["dry_run"], true);
-    assert_eq!(report["operation_details"]["result"]["applied"], false);
+    assert_eq!(
+        report["operation_details"]["result"]["disposition"],
+        "planned"
+    );
     Ok(report)
 }
 

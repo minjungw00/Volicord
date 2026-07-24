@@ -101,7 +101,7 @@ impl CommandConnection {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum ConnectionCommandResult {
     Setup {
-        applied: bool,
+        disposition: SetupDisposition,
     },
     ModeTransition {
         changed: bool,
@@ -116,6 +116,61 @@ pub(super) enum ConnectionCommandResult {
         connection_removed: bool,
         remaining_project_count: usize,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(in crate::connection_command) enum SetupDisposition {
+    Planned,
+    Committed,
+    RolledBack,
+    Preserved,
+    PartiallyRolledBack,
+}
+
+impl SetupDisposition {
+    pub(in crate::connection_command) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Planned => "planned",
+            Self::Committed => "committed",
+            Self::RolledBack => "rolled_back",
+            Self::Preserved => "preserved",
+            Self::PartiallyRolledBack => "partially_rolled_back",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::connection_command) enum SetupFailureDiagnostic {
+    TransactionFailed,
+    ConcurrentModification,
+    PartialRollback,
+}
+
+impl SetupFailureDiagnostic {
+    const fn finding_id(self) -> &'static str {
+        match self {
+            Self::TransactionFailed => "finding.setup.transaction_failed",
+            Self::ConcurrentModification => "finding.setup.concurrent_modification",
+            Self::PartialRollback => "finding.setup.partial_rollback",
+        }
+    }
+
+    const fn code(self) -> &'static str {
+        match self {
+            Self::TransactionFailed => "setup.transaction_failed",
+            Self::ConcurrentModification => "setup.concurrent_modification",
+            Self::PartialRollback => "setup.partial_rollback",
+        }
+    }
+
+    const fn check_reason(self) -> &'static str {
+        match self {
+            Self::TransactionFailed => "setup_transaction_failed",
+            Self::ConcurrentModification => "setup_concurrent_modification",
+            Self::PartialRollback => "setup_partial_rollback",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -140,7 +195,7 @@ pub(in crate::connection_command) struct ConnectionCommandReport {
 impl ConnectionCommandReport {
     pub(in crate::connection_command) fn from_verification(
         operation: CommandOperation,
-        setup_result: Option<bool>,
+        setup_result: Option<SetupDisposition>,
         runtime_home: &Path,
         connection: CommandConnection,
         verification: &ConnectionVerificationReport,
@@ -158,7 +213,7 @@ impl ConnectionCommandReport {
             generated_at: verification.checked_at().clone(),
             findings: Vec::new(),
             integration_revision: None,
-            result: setup_result.map(|applied| ConnectionCommandResult::Setup { applied }),
+            result: setup_result.map(|disposition| ConnectionCommandResult::Setup { disposition }),
             planned_changes: None,
             limits: cooperative_assurance_limits(),
         }
@@ -303,7 +358,9 @@ impl ConnectionCommandReport {
             connection,
             checks,
             activation_plan,
-            Some(ConnectionCommandResult::Setup { applied: false }),
+            Some(ConnectionCommandResult::Setup {
+                disposition: SetupDisposition::Planned,
+            }),
             Some(planned_changes),
         )
     }
@@ -431,11 +488,13 @@ impl ConnectionCommandReport {
         operation: CommandOperation,
         runtime_home: &Path,
         connection: CommandConnection,
+        disposition: SetupDisposition,
+        diagnostic: SetupFailureDiagnostic,
         summary: &str,
         details: Value,
         activation_plan: IntegrationActivationPlan,
     ) -> Result<Self, ConnectionCommandError> {
-        let finding_id = DiagnosticFindingId::parse("finding.setup.partial_application")
+        let finding_id = DiagnosticFindingId::parse(diagnostic.finding_id())
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
         let diagnostic_action = if let Some(step) = activation_plan.required_steps().first() {
             DiagnosticAction::try_new(
@@ -454,7 +513,7 @@ impl ConnectionCommandReport {
         let check = command_check(
             ConnectionCheckKind::SetupPlan,
             ConnectionCheckStatus::Failed,
-            "setup_partial_application",
+            diagnostic.check_reason(),
             summary,
             Some(details),
         )?
@@ -468,12 +527,12 @@ impl ConnectionCommandReport {
             connection,
             vec![check],
             activation_plan,
-            Some(ConnectionCommandResult::Setup { applied: false }),
+            Some(ConnectionCommandResult::Setup { disposition }),
             None,
         )?;
         let finding = DiagnosticFinding::try_new(
             finding_id,
-            DiagnosticCode::parse("setup.partial_application")
+            DiagnosticCode::parse(diagnostic.code())
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
             DiagnosticDomain::parse("setup")
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
@@ -487,8 +546,8 @@ impl ConnectionCommandReport {
             DiagnosticFacts::project(&SetupFailureDiagnosticFacts {
                 summary,
                 observation_state: "failed",
-                expected: "complete setup application",
-                actual: "partial setup application",
+                expected: "committed setup transaction",
+                actual: disposition.as_str(),
             })
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
             report.generated_at.clone(),
@@ -1013,7 +1072,8 @@ mod tests {
         ] {
             let report = ConnectionCommandReport::from_verification(
                 operation,
-                matches!(operation, CommandOperation::Init | CommandOperation::Add).then_some(true),
+                matches!(operation, CommandOperation::Init | CommandOperation::Add)
+                    .then_some(SetupDisposition::Committed),
                 Path::new("/runtime"),
                 connection(),
                 &verification(ConnectionCheckStatus::Passed),
@@ -1043,7 +1103,7 @@ mod tests {
             if matches!(operation, CommandOperation::Init | CommandOperation::Add) {
                 assert_eq!(
                     value["operation_details"]["result"],
-                    json!({"kind": "setup", "applied": true})
+                    json!({"kind": "setup", "disposition": "committed"})
                 );
             } else {
                 assert!(value["operation_details"].get("result").is_none());
@@ -1144,7 +1204,7 @@ mod tests {
         assert_eq!(changed["status"], "action_required");
         assert_eq!(
             changed["operation_details"]["result"],
-            json!({"kind": "setup", "applied": false})
+            json!({"kind": "setup", "disposition": "planned"})
         );
 
         let mode = ConnectionCommandReport::mode_transition(

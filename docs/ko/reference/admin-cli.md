@@ -135,8 +135,17 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 첫 명령은 개인 연결, `--shared`는 프로젝트 소유 공유 연결을 선택합니다. `init`은
-정확한 관리 binding을 계획, 검증, 적용하고 남은 Codex 신뢰, 다시 불러오기, 검증 동작을
+정확한 관리 binding을 계획, 준비, commit하고 남은 Codex 신뢰, 다시 불러오기, 검증 동작을
 보고합니다. `--dry-run`은 파일시스템과 저장소를 변경하지 않습니다.
+
+Plan 구성은 읽기 전용이며 정확한 Runtime Home, Store, Codex 구성, repository 관리
+파일 mutation을 계산합니다. Prepare 단계는 모든 입력 snapshot을 검증하고 각 파일을
+target 옆에 staging하며 Store 복구 entry를 준비합니다. Commit 단계는 Runtime Home을
+공개하거나 검증하고 Store mutation을 적용한 뒤 repository 파일을 결정적인 경로 순서로
+원자 교체하고 Codex 구성을 마지막에 원자 교체한 다음 현재 integration revision을
+기록합니다. Activation step은 setup이 `committed`일 때만 만듭니다. 이는 여러
+파일시스템 전체의 전역 원자성을 뜻하지 않으며, 완전한 사전 준비, 파일별 원자 교체,
+한도가 있는 rollback을 뜻합니다.
 
 일치하는 현재 Agent Connection이 없으면 `init`은 `workflow` mode로 새 연결을
 만듭니다. 일치하는 현재 Agent Connection이 이미 있으면 `init` replay와 repair는
@@ -582,7 +591,8 @@ operation_details:
 
 SetupResult:
   kind: setup
-  applied: bool
+  disposition: planned | committed | rolled_back | preserved |
+    partially_rolled_back
 
 ModeTransitionResult:
   kind: mode_transition
@@ -613,17 +623,19 @@ tagged `operation_details.result`에는 작업별 사실만 두며 두 번째 �
 result는 `kind=removal`을 사용합니다. Status와 verify는 보통 `result`를 생략하고, 제거
 dry run은 아직 발생하지 않은 결과를 생략합니다.
 
-`SetupResult.applied`는 설정 변경과 운영 검증을 구분합니다. Init 또는 add 적용이
-성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`가 되더라도
-`applied=true`입니다. Dry run은 `applied=false`와 `planned_changes`를 보고하며
+`SetupResult.disposition`은 setup transaction과 운영 검증을 구분합니다. Init 또는
+add가 성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`가 되더라도
+`committed`를 보고합니다. Dry run은 `planned`와 `planned_changes`를 보고하며
 `status=dry_run`을 직렬화하지
 않습니다. 계획 변경이나 host action이 남으면 `action_required`, 둘 다 없으면
 `complete`입니다.
 
-Migration의 일부만 적용된 뒤 설정이 실패하면 `status=failed`와 `applied=false`를
-보고합니다. 실패한 `setup_plan` check의 details에는 관찰한 Registry 전환, cleanup,
-이전 Connection의 disposition, 재시도 인자를 기록합니다. 두 번째 migration 상태를
-보고하거나 관찰하지 않은 단계가 성공했다고 암시하지 않습니다.
+Commit 전에 실패하면 `preserved`를 보고합니다. Commit한 교체 가능 상태를 복원했으면
+`rolled_back`을 보고합니다. 이후 외부 변경을 안전하게 교체할 수 없어 복원이
+완료되지 않으면 `partially_rolled_back`을 보고하며, 외부 bytes를 보존하고 실패한
+`setup_plan` check에 rollback 개수와 오류를 기록합니다. 오래된 입력은 더 새로운
+bytes를 덮어쓰지 않고 `SETUP_CONCURRENT_MODIFICATION`으로 실패합니다. 이런 실패
+disposition은 host activation step을 내보내거나 setup이 적용됐다고 주장하지 않습니다.
 
 명령 보고서는 필수 check가 하나라도 실패하면 `failed`, 실패 없이 필수 check가
 pending이거나 typed action이 남으면 `action_required`, 그 밖에는 `complete`로
@@ -781,13 +793,13 @@ probe 증거일 뿐입니다. `codex` 호환성 fixture가 통과해도 실제 �
 가장 최신 `latest_managed_capability_proof`에서만 통과합니다. 더 최신인 partial/failed attempt와
 더 오래된 proof는 서로 다른 role evidence로 남고 서로의 milestone을 채우지 않습니다.
 
-`volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
+`volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 commit한
 유효한 설정을 유지합니다. Codex를 사용할 수 없거나 self-test가 실패했다는 이유로 관리
 구성을 rollback하지 않습니다. Managed-host 관찰이 아직 없는 새 유효 설정은
 `action_required`이며 typed `reload_codex`, `review_project_hooks`,
 `request_integration_verification`, `read_connection_status` step을 담습니다.
-이 setup 명령은 host configuration을 적용하거나 채택한 뒤 managed fingerprint를 commit하고,
-소유자와 일관된 Registry/Guard 상태를 완성하며, 최종 Connection revision을 파생한 다음에만
+이 setup 명령은 계획한 관리 파일과 소유자와 일관된 Store 상태를 commit하고 최종
+Connection revision을 기록한 다음에만
 현재 구성과 관찰한 host 동작을 검증하고 조건부로 보고서를 영속합니다.
 
 Required step은 pending 및 failed check에서 만드는 위상 정렬되고 중복 제거된

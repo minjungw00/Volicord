@@ -208,6 +208,21 @@ prompt/pre/post chain did not complete; cleanup expiry is not a substitute for
 this decision. A new attempt is never created automatically in the same
 semantic turn.
 
+## Managed-file setup transaction
+
+`volicord init` plans the exact final bytes for every Guard-owned hook
+configuration, dispatch script, phase wrapper, Codex rule, policy, Git exclude
+block, and AGENTS guidance block without writing a target. Prepare validates
+the current snapshot and stages each changed file in the target directory.
+Commit replaces those files atomically in deterministic path order before
+Codex configuration and the integration revision commit.
+
+On failure, committed Guard file replacements are restored in reverse order
+only while their current digest still matches the staged setup digest. A later
+external edit is preserved and produces a partial-rollback diagnostic instead
+of being overwritten. Unmanaged bytes outside a managed block remain part of
+the exact original snapshot and are restored unchanged.
+
 ## Diagnostics And Event Projection
 
 Every `Unavailable` outcome emits a bounded diagnostic containing the project,

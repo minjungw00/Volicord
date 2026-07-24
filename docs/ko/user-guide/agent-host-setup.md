@@ -27,11 +27,11 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 ## 설정 출력 읽기
 
 출력 플래그를 지정하지 않으면 `init`과 선택한 Connection의 생명주기 명령은 터미널에
-간결한 산문을 표시합니다. 새 설정을 적용했지만 관리 호스트 활동이 더 필요한 경우에는
+간결한 산문을 표시합니다. 새 설정을 commit했지만 관리 호스트 활동이 더 필요한 경우에는
 다음과 같은 대표 출력이 나타납니다.
 
 ```text
-Volicord setup was applied and needs one more step.
+Setup committed; 4 host-owned activation steps remain.
 
 Repository: <repo>
 Mode: workflow

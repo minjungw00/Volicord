@@ -16,10 +16,9 @@ use volicord_store::{
     agent_connections::{
         activate_staged_connection, add_connection_project, agent_connection_record,
         agent_connection_record_read_only, complete_pending_host_cleanup,
-        connection_metadata_has_pending_host_cleanup,
         connection_metadata_has_pending_host_cleanup_for_project, ensure_agent_connection,
-        ensure_staged_agent_connection, list_agent_connections,
-        list_agent_connections_for_diagnostics, list_connection_projects,
+        ensure_staged_agent_connection, list_agent_connections_for_diagnostics,
+        list_agent_connections_read_only, list_connection_projects,
         list_connection_projects_for_diagnostics, list_connection_projects_read_only,
         remove_connection_project, replace_agent_connection_verification_report_if_revision,
         staged_connection_migration_state, transition_connection_mode, AgentConnectionRecord,
@@ -31,13 +30,14 @@ use volicord_store::{
     },
     bootstrap::{
         ensure_project_for_repo, initialize_runtime_home,
-        initialize_runtime_home_with_installation, installation_profile_read_only,
-        project_record_by_repo_root_read_only, InstallationProfileRecord,
-        InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
+        initialize_runtime_home_with_installation, inspect_runtime_home_bootstrap,
+        installation_profile_read_only, project_record_by_repo_root_read_only,
+        InstallationProfileRecord, InstallationProfileRegistration, RepoProjectRegistration,
+        RuntimeHomeBootstrapState, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
     guards::{list_guard_installations, GuardInstallationRecord},
-    operational_sessions::connection_integration_revision,
+    operational_sessions::{connection_integration_revision, current_managed_runtime_sessions},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     workflow_records::ProjectWorkflowPolicyAuthorityApply,
     StoreError,
@@ -54,8 +54,8 @@ use crate::cli::{
 };
 use crate::guard_integration::audit::guard_manifest_binding_valid_for_installation;
 use crate::guard_integration::{
-    apply_guard_integration, apply_guard_migration_protection, guard_installation_upsert,
-    plan_guard_integration, record_guard_installation, GuardIntegrationError, GuardIntegrationPlan,
+    apply_guard_integration, guard_installation_upsert, plan_guard_integration,
+    record_guard_installation, GuardIntegrationError, GuardIntegrationPlan,
     GuardIntegrationPlanRequest,
 };
 use crate::host_integration::{
@@ -81,6 +81,7 @@ mod persisted_state;
 mod planning;
 mod selection;
 mod service;
+mod setup_transaction;
 mod verification;
 
 const fn managed_host_round_trip_tool() -> AgentToolId {
@@ -102,7 +103,7 @@ use guidance::{
 };
 use output::{
     render_command_report, render_connections_output, CommandConnection, CommandOperation,
-    ConnectionCommandReport,
+    ConnectionCommandReport, SetupDisposition, SetupFailureDiagnostic,
 };
 use persisted_state::{decode_persisted_object, PERSISTED_CONNECTION_METADATA_CORRUPT_REASON};
 use planning::{
@@ -226,12 +227,12 @@ pub fn run_init_command(
     } else {
         let verification = outcome.verification.as_ref().ok_or_else(|| {
             ConnectionCommandError::runtime(
-                "applied init requires one canonical verification report",
+                "committed init requires one canonical verification report",
             )
         })?;
         ConnectionCommandReport::from_verification(
             CommandOperation::Init,
-            Some(true),
+            Some(SetupDisposition::Committed),
             &outcome.runtime_home,
             connection,
             &verification.report,
@@ -298,7 +299,7 @@ pub fn run_connect_command(
             let outcome = *outcome;
             let report = ConnectionCommandReport::from_verification(
                 CommandOperation::Add,
-                Some(true),
+                Some(SetupDisposition::Committed),
                 &outcome.runtime_home,
                 CommandConnection::new(
                     &outcome.connection.connection_internal_id,

@@ -31,6 +31,9 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 pub trait ConnectionProcess {
     fn env_var(&self, name: &str) -> Option<OsString>;
     fn current_exe(&self) -> Result<PathBuf, String>;
+    fn setup_fault(&mut self, _point: &str) -> Result<(), String> {
+        Ok(())
+    }
     fn run_preflight(
         &mut self,
         launch: &MaterializedManagedMcpLaunch,

@@ -132,6 +132,12 @@ registry 직접 순회가 matrix를 정합니다.
 - Reload, hook review, 사용자 수준 요청 하나, status의 init 출력 개수와 순서,
   `Required next steps` block 하나, 중복 `Next` block 및 부정확한 “one more step” 부재,
   current-status suffix, typed repair-required plan, 분리된 optional active diagnostics
+- Runtime Home 준비, Store 복구 준비, 모든 관리 hook/rule/guidance 교체 뒤, Codex
+  구성 교체 전후, integration revision commit 전, rollback 중의 transactional init
+  fault injection, 새 상태와 기존 상태의 정확한 복원, 동시 외부 bytes 보존,
+  `planned`, `committed`, `preserved`, `rolled_back`,
+  `partially_rolled_back` 보고 projection, 읽기 전용 dry-run 일치, replay idempotence,
+  commit 뒤에만 activation
 - 정규 요청, 모든 tagged workflow kind와 그 상태가 반환하는 정규 tool, nested
   list/begin/probe/status 순서, unavailable 경로, shell sleep/poll loop, same-turn 자동
   재시작, raw stdio, 직접 작성한 `_meta`, resource discovery를 proof로 쓰지 않는다는

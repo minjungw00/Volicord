@@ -1,9 +1,18 @@
-use std::path::{Path, PathBuf};
-
-use volicord_types::{
-    ActivationStep, ActivationStepId, IntegrationActivationPlan, IntegrationActivationState,
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
 };
 
+use volicord_store::setup_transaction::PreparedStoreMutationBoundary;
+use volicord_types::{IntegrationActivationPlan, IntegrationActivationState};
+
+use super::setup_transaction::{
+    AtomicFileMutation, AtomicFileMutationRole, PreparedSetup, RuntimeHomePlan, SetupPlan,
+    StoreMutation, StoreMutationKind, FAULT_AFTER_CODEX_CONFIG_REPLACE,
+    FAULT_AFTER_REGISTRY_MUTATION_PREPARATION, FAULT_AFTER_RUNTIME_HOME_PREPARATION,
+    FAULT_BEFORE_CODEX_CONFIG_REPLACE, FAULT_BEFORE_INTEGRATION_REVISION_COMMIT,
+    FAULT_DURING_ROLLBACK,
+};
 use super::verification::report_with_hook_review_required;
 use super::*;
 
@@ -63,9 +72,7 @@ pub(super) struct ConnectionProvisioningResult {
 
 struct InitProvisioningPlan {
     output_format: OutputFormat,
-    migration_id: String,
     host_kind: HostKind,
-    init_mode: InitMode,
     intent: ConnectionIntent,
     host_scope: HostScope,
     runtime_home: PathBuf,
@@ -75,6 +82,8 @@ struct InitProvisioningPlan {
     expected_connection: Option<SetupConnectionExpectation>,
     current_report: Option<volicord_types::ConnectionVerificationReport>,
     project_id: Option<String>,
+    store_inputs: Vec<volicord_store::setup_transaction::StoreMutationInput>,
+    runtime_home_absent: bool,
     membership_exists: bool,
     guard_installation_exists: bool,
     host_plan: HostPlan,
@@ -84,6 +93,7 @@ struct InitProvisioningPlan {
     target_hint: String,
     guard_installation_id: String,
     server_name: String,
+    superseded_integrations: Vec<SupersededIntegration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,39 +163,8 @@ impl SetupCommand {
 struct SupersededIntegration {
     connection: AgentConnectionRecord,
     selected_project: ConnectionProjectRecord,
-}
-
-#[derive(Clone, Copy)]
-enum MigrationRegistryPhase {
-    Pending,
-    Attempted,
-    AppliedCleanupPending,
-    AppliedCleanupUnknown,
-    Applied,
-}
-
-impl MigrationRegistryPhase {
-    fn registry_transition_applied(self, connection_migration: bool) -> Option<bool> {
-        if !connection_migration {
-            return Some(false);
-        }
-        match self {
-            Self::Pending => Some(false),
-            Self::Attempted => None,
-            Self::AppliedCleanupPending | Self::AppliedCleanupUnknown | Self::Applied => Some(true),
-        }
-    }
-
-    fn prior_host_cleanup_completed(self, connection_migration: bool) -> Option<bool> {
-        if !connection_migration {
-            return Some(false);
-        }
-        match self {
-            Self::Pending | Self::Attempted | Self::AppliedCleanupPending => Some(false),
-            Self::AppliedCleanupUnknown => None,
-            Self::Applied => Some(true),
-        }
-    }
+    host_plan: HostPlan,
+    host_input_bytes: Option<Vec<u8>>,
 }
 
 pub(super) fn provision_init(
@@ -241,6 +220,15 @@ fn plan_init_provisioning(
         |name| process.env_var(name),
         request.current_dir,
     )?;
+    let runtime_home_state = inspect_runtime_home_bootstrap(&runtime_home)?;
+    let runtime_home_absent = matches!(&runtime_home_state, RuntimeHomeBootstrapState::Absent);
+    let mut store_inputs = if matches!(&runtime_home_state, RuntimeHomeBootstrapState::Ready(_)) {
+        PreparedStoreMutationBoundary::inspect_inputs(&[volicord_store::sqlite::registry_db_path(
+            &runtime_home,
+        )])?
+    } else {
+        Vec::new()
+    };
     let existing_profile = installation_profile_read_only(&runtime_home)?;
     let profile_plan =
         init_profile_plan(parsed, &runtime_home, existing_profile.as_ref(), process)?;
@@ -283,6 +271,11 @@ fn plan_init_provisioning(
         .map(effective_connection_report)
         .transpose()?;
     let project_hint = project_record_by_repo_root_read_only(&runtime_home, &repo_root)?;
+    if let Some(project) = &project_hint {
+        store_inputs.extend(PreparedStoreMutationBoundary::inspect_inputs(
+            std::slice::from_ref(&project.state_db_path),
+        )?);
+    }
     let expected_fingerprint = existing
         .as_ref()
         .map(|connection| connection.managed_fingerprint.as_str());
@@ -328,15 +321,6 @@ fn plan_init_provisioning(
             .map(|project| project.project_id.as_str()),
         &guard_installation_id,
     )?;
-    let migration_id = stable_id(
-        "migration",
-        &[
-            &connection_id,
-            &repo_root_key,
-            intent.as_str(),
-            parsed.mode.profile_value(),
-        ],
-    );
     let integration = plan_guard_integration(GuardIntegrationPlanRequest {
         host_kind,
         profile: parsed.mode.integration_profile(),
@@ -349,12 +333,22 @@ fn plan_init_provisioning(
         mcp_entry: &host_plan.entry,
         connection_intent: intent,
     })?;
+    let superseded_integrations = if runtime_home_absent {
+        Vec::new()
+    } else {
+        superseded_integrations_for_project(
+            &runtime_home,
+            &connection_id,
+            integration.prior_connection_id.as_deref(),
+            &repo_root,
+            process,
+        )?
+    };
+    PreparedStoreMutationBoundary::validate_planned_inputs(&store_inputs)?;
 
     Ok(InitProvisioningPlan {
         output_format: init_output_format(parsed),
-        migration_id,
         host_kind,
-        init_mode: parsed.mode,
         intent,
         host_scope,
         runtime_home,
@@ -363,7 +357,11 @@ fn plan_init_provisioning(
         effective_mode,
         expected_connection,
         current_report,
-        project_id: project_hint.map(|project| project.project_id),
+        project_id: project_hint
+            .as_ref()
+            .map(|project| project.project_id.clone()),
+        store_inputs,
+        runtime_home_absent,
         membership_exists,
         guard_installation_exists,
         host_plan,
@@ -373,6 +371,226 @@ fn plan_init_provisioning(
         target_hint,
         guard_installation_id,
         server_name,
+        superseded_integrations,
+    })
+}
+
+fn build_setup_plan(plan: &InitProvisioningPlan) -> Result<SetupPlan, ConnectionCommandError> {
+    let runtime_home = if plan.runtime_home_absent {
+        RuntimeHomePlan::Create {
+            final_path: plan.runtime_home.clone(),
+            runtime_home_id: runtime_home_id_for_path(&plan.runtime_home)
+                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+            metadata_json: ADMIN_METADATA_JSON.to_owned(),
+            installation: init_installation_registration(&plan.profile_plan),
+        }
+    } else {
+        RuntimeHomePlan::Validate {
+            final_path: plan.runtime_home.clone(),
+        }
+    };
+
+    let mut registry_mutations = Vec::new();
+    if !plan.profile_exists {
+        registry_mutations.push(StoreMutation {
+            kind: StoreMutationKind::InstallationProfile,
+            target: INSTALLATION_ID.to_owned(),
+        });
+    }
+    if plan.project_id.is_none() {
+        registry_mutations.push(StoreMutation {
+            kind: StoreMutationKind::ProjectRegistration,
+            target: path_text(&plan.repo_root),
+        });
+    }
+    registry_mutations.push(StoreMutation {
+        kind: StoreMutationKind::WorkflowPolicy,
+        target: path_text(&plan.repo_root),
+    });
+    if plan.expected_connection.is_none() {
+        registry_mutations.push(StoreMutation {
+            kind: StoreMutationKind::Connection,
+            target: plan.connection_id.clone(),
+        });
+    }
+    if !plan.membership_exists {
+        registry_mutations.push(StoreMutation {
+            kind: StoreMutationKind::ConnectionMembership,
+            target: plan.connection_id.clone(),
+        });
+    }
+    if !plan.guard_installation_exists {
+        registry_mutations.push(StoreMutation {
+            kind: StoreMutationKind::GuardInstallation,
+            target: plan.guard_installation_id.clone(),
+        });
+    }
+    registry_mutations.push(StoreMutation {
+        kind: StoreMutationKind::IntegrationRevision,
+        target: plan.connection_id.clone(),
+    });
+
+    let mut repository_file_mutations = Vec::new();
+    for file in &plan.integration.generated_files {
+        if matches!(
+            file.status,
+            crate::guard_integration::files::FilePlanStatus::PlannedCreate
+                | crate::guard_integration::files::FilePlanStatus::PlannedUpdate
+        ) {
+            if let Some(mutation) = AtomicFileMutation::plan(
+                file.path.clone(),
+                Some(crate::guard_integration::files::generated_file_target_bytes(file)?),
+                crate::guard_integration::files::generated_file_original_bytes(file),
+                file.artifact.spec().executable_required,
+                AtomicFileMutationRole::GuardManagedFile(file.artifact.kind().as_str().to_owned()),
+            )? {
+                repository_file_mutations.push(mutation);
+            }
+        }
+    }
+    for retirement in &plan.integration.retired_files {
+        let desired = match retirement.status {
+            crate::guard_integration::files::RetirementPlanStatus::PlannedRemove => None,
+            crate::guard_integration::files::RetirementPlanStatus::PlannedUpdate => Some(
+                retirement
+                    .replacement
+                    .clone()
+                    .unwrap_or_default()
+                    .into_bytes(),
+            ),
+            crate::guard_integration::files::RetirementPlanStatus::Unchanged
+            | crate::guard_integration::files::RetirementPlanStatus::Removed
+            | crate::guard_integration::files::RetirementPlanStatus::Updated => continue,
+        };
+        if let Some(mutation) = AtomicFileMutation::plan(
+            retirement.path.clone(),
+            desired,
+            crate::guard_integration::files::retirement_file_original_bytes(retirement),
+            retirement.artifact.spec().executable_required,
+            AtomicFileMutationRole::GuardManagedFile(
+                retirement.artifact.kind().as_str().to_owned(),
+            ),
+        )? {
+            repository_file_mutations.push(mutation);
+        }
+    }
+    repository_file_mutations.sort_by(|left, right| left.target.cmp(&right.target));
+    for duplicate in repository_file_mutations.windows(2) {
+        if duplicate[0].target == duplicate[1].target {
+            return Err(ConnectionCommandError::runtime(format!(
+                "setup plan contains duplicate managed-file target {}",
+                duplicate[0].target.display()
+            )));
+        }
+    }
+
+    let mut host_targets = BTreeMap::<PathBuf, (Vec<u8>, Option<Vec<u8>>)>::new();
+    if plan.host_plan.change != crate::host_integration::PlannedChange::Noop {
+        let HostTarget::File(target) = &plan.host_plan.target else {
+            return Err(ConnectionCommandError::runtime(
+                "transactional init requires a file-backed Codex configuration target",
+            ));
+        };
+        host_targets.insert(
+            target.clone(),
+            (
+                CodexAdapter::<
+                    crate::host_integration::process::ProductionCommandRunner,
+                >::planned_file_bytes(&plan.host_plan)?,
+                CodexAdapter::<
+                    crate::host_integration::process::ProductionCommandRunner,
+                >::planned_input_bytes(&plan.host_plan)?
+                .map(<[u8]>::to_vec),
+            ),
+        );
+    }
+    for superseded in &plan.superseded_integrations {
+        let host_kind = parse_host_kind(&superseded.connection.host_kind)?;
+        let request = HostRemoveRequest {
+            host_kind,
+            connection_intent: parse_connection_intent(&superseded.connection.intent)?,
+            host_scope: parse_host_scope(&superseded.connection.host_scope)?,
+            mode: superseded.connection.mode.clone(),
+            server_name: superseded.connection.server_name.clone(),
+            target: superseded.host_plan.target.clone(),
+            expected_fingerprint: superseded.connection.managed_fingerprint.clone(),
+        };
+        let HostTarget::File(target) = &request.target else {
+            return Err(ConnectionCommandError::runtime(
+                "transactional init requires file-backed superseded Codex configuration",
+            ));
+        };
+        if request.target == plan.host_plan.target
+            && request.server_name == plan.host_plan.server_name
+        {
+            continue;
+        }
+        let superseded_expected = superseded.host_input_bytes.clone();
+        let (current, expected) = match host_targets.remove(target) {
+            Some((bytes, expected)) => {
+                if expected != superseded_expected {
+                    return Err(ConnectionCommandError::runtime(format!(
+                        "SETUP_CONCURRENT_MODIFICATION: Codex configuration snapshots disagree during plan construction: {}; external bytes were preserved",
+                        target.display()
+                    )));
+                }
+                (bytes, expected)
+            }
+            None => (
+                superseded_expected.clone().unwrap_or_default(),
+                superseded_expected,
+            ),
+        };
+        let desired = CodexAdapter::<
+            crate::host_integration::process::ProductionCommandRunner,
+        >::planned_removal_file_bytes(&request, &current)?;
+        host_targets.insert(target.clone(), (desired, expected));
+    }
+    let mut host_file_mutations = Vec::new();
+    for (target, (desired, expected)) in host_targets {
+        if let Some(mutation) = AtomicFileMutation::plan(
+            target,
+            Some(desired),
+            expected.as_deref(),
+            false,
+            AtomicFileMutationRole::CodexConfig,
+        )? {
+            host_file_mutations.push(mutation);
+        }
+    }
+    if let HostTarget::File(primary_target) = &plan.host_plan.target {
+        if let Some(position) = host_file_mutations
+            .iter()
+            .position(|mutation| mutation.target == *primary_target)
+        {
+            let primary = host_file_mutations.remove(position);
+            host_file_mutations.push(primary);
+        }
+    }
+    if host_file_mutations.iter().any(|host| {
+        repository_file_mutations
+            .iter()
+            .any(|repository| repository.target == host.target)
+    }) {
+        return Err(ConnectionCommandError::runtime(
+            "setup plan assigns one path to both Codex configuration and Guard management",
+        ));
+    }
+
+    let activation_plan = plan
+        .current_report
+        .as_ref()
+        .map(|report| report.activation_plan().clone())
+        .unwrap_or_else(|| {
+            IntegrationActivationPlan::empty(IntegrationActivationState::Configured)
+        });
+    Ok(SetupPlan {
+        runtime_home,
+        store_inputs: plan.store_inputs.clone(),
+        registry_mutations,
+        host_file_mutations,
+        repository_file_mutations,
+        activation_plan,
     })
 }
 
@@ -381,166 +599,115 @@ fn apply_init_provisioning(
     process: &mut impl ConnectionProcess,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
     validate_init_connection_expectation(&plan)?;
-    let setup_changed_hook_definition = plan.integration.hook_definition_changed();
-    let runtime_home_id = runtime_home_id_for_path(&plan.runtime_home)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    let (_, profile) = initialize_runtime_home_with_installation(
-        &plan.runtime_home,
-        &runtime_home_id,
-        ADMIN_METADATA_JSON,
-        init_installation_registration(&plan.profile_plan),
-    )?;
-    let project = ensure_project_for_repo(
-        &plan.runtime_home,
-        RepoProjectRegistration {
-            project_name: None,
-            project_alias: None,
-            repo_root: plan.repo_root.clone(),
-            project_home: None,
-            status: ACTIVE_PROJECT_STATUS.to_owned(),
-            metadata_json: metadata_json_base()?,
-        },
-    )?;
-    plan.project_id = Some(project.project_id.clone());
-    let existing = validate_init_connection_expectation(&plan)?;
-    let expected_fingerprint = existing
-        .as_ref()
-        .map(|connection| connection.managed_fingerprint.as_str());
-    let host_plan = build_host_plan(
-        BuildHostPlanRequest {
-            host_kind: plan.host_kind,
-            connection_intent: plan.intent,
-            connection_id: &plan.connection_id,
-            repo_root: Some(&project.repo_root),
-            project_id: Some(&project.project_id),
-            project_name: Some(&project.project_name),
-            installation_profile: installation_profile_context(&plan.runtime_home, &profile),
-            mode: &plan.effective_mode,
-            expected_fingerprint,
-        },
-        process,
-    )?;
-    ensure_host_plan_has_no_conflict(&host_plan)?;
-    let mut integration = plan_guard_integration(GuardIntegrationPlanRequest {
-        host_kind: plan.host_kind,
-        profile: plan.init_mode.integration_profile(),
-        server_name: &host_plan.server_name,
-        runtime_home: &plan.runtime_home,
-        volicord_command: Path::new(&profile.volicord_command),
-        repo_root: &project.repo_root,
-        connection_id: &plan.connection_id,
-        guard_installation_id: &plan.guard_installation_id,
-        mcp_entry: &host_plan.entry,
-        connection_intent: plan.intent,
-    })?;
-    let superseded_integrations = superseded_integrations_for_project(
-        &plan.runtime_home,
-        &plan.connection_id,
-        integration.prior_connection_id.as_deref(),
-        &project.repo_root,
-    )?;
-    let is_connection_migration = !superseded_integrations.is_empty();
-    let is_integration_migration = integration.migration_required || is_connection_migration;
-    let mcp_command = PathBuf::from(host_plan.entry.command());
-    let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &plan.runtime_home)?;
-    let desired_connection_registration = AgentConnectionRegistration {
-        connection_internal_id: plan.connection_id.clone(),
-        host_kind: plan.host_kind.as_str().to_owned(),
-        intent: plan.intent.as_str().to_owned(),
-        host_scope: plan.host_scope.as_str().to_owned(),
-        server_name: host_plan.server_name.clone(),
-        config_target: host_target_text(&host_plan.target),
-        mode: plan.effective_mode.clone(),
-        enabled: !is_connection_migration,
-        managed_fingerprint: host_plan.fingerprint.clone(),
-        metadata_json,
+    let setup_plan = build_setup_plan(&plan)?;
+    let mut prepared = match PreparedSetup::prepare(setup_plan) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            return setup_transaction_failure(&plan, SetupDisposition::Preserved, &error, None);
+        }
     };
-    let superseded_bindings = superseded_integrations
-        .iter()
-        .map(|integration| SupersededConnectionProject {
-            connection_internal_id: integration.connection.connection_internal_id.clone(),
-            project_id: integration.selected_project.project_id.clone(),
-        })
-        .collect::<Vec<_>>();
-    let mut cleanup_resume = false;
-    let mut cleanup_resume_pending = Vec::new();
-    if is_connection_migration && existing.is_some() {
-        let (_, migration_state) = migration_step(
-            &plan,
-            &superseded_integrations,
-            is_integration_migration,
-            staged_connection_migration_state(
+    let _planned_file_count = prepared.plan.planned_file_count();
+    let _planned_store_mutations = &prepared.plan.registry_mutations;
+    let _planned_activation = &prepared.plan.activation_plan;
+    let setup_changed_hook_definition = plan.integration.hook_definition_changed();
+    let transaction_result = (|| -> Result<InitProvisioningOutcome, ConnectionCommandError> {
+        setup_fault(process, FAULT_AFTER_RUNTIME_HOME_PREPARATION)?;
+        setup_fault(process, FAULT_AFTER_REGISTRY_MUTATION_PREPARATION)?;
+        prepared.validate_inputs()?;
+        prepared.publish_runtime_home()?;
+        let runtime_home_id = runtime_home_id_for_path(&plan.runtime_home)
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+        let (_, _profile) = initialize_runtime_home_with_installation(
+            &plan.runtime_home,
+            &runtime_home_id,
+            ADMIN_METADATA_JSON,
+            init_installation_registration(&plan.profile_plan),
+        )?;
+        prepared.mark_store_applied(None)?;
+        let project_was_missing = plan.project_id.is_none();
+        let project = ensure_project_for_repo(
+            &plan.runtime_home,
+            RepoProjectRegistration {
+                project_name: None,
+                project_alias: None,
+                repo_root: plan.repo_root.clone(),
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: metadata_json_base()?,
+            },
+        )?;
+        prepared.mark_store_applied(project_was_missing.then(|| project.project_home.clone()))?;
+        plan.project_id = Some(project.project_id.clone());
+        let existing = validate_init_connection_expectation(&plan)?;
+        let host_plan = plan.host_plan.clone();
+        let integration = plan.integration.clone();
+        let superseded_integrations = std::mem::take(&mut plan.superseded_integrations);
+        let is_connection_migration = !superseded_integrations.is_empty();
+        let mcp_command = PathBuf::from(host_plan.entry.command());
+        let metadata_json = connection_metadata_json(&host_plan, &mcp_command, &plan.runtime_home)?;
+        let desired_connection_registration = AgentConnectionRegistration {
+            connection_internal_id: plan.connection_id.clone(),
+            host_kind: plan.host_kind.as_str().to_owned(),
+            intent: plan.intent.as_str().to_owned(),
+            host_scope: plan.host_scope.as_str().to_owned(),
+            server_name: host_plan.server_name.clone(),
+            config_target: host_target_text(&host_plan.target),
+            mode: plan.effective_mode.clone(),
+            enabled: !is_connection_migration,
+            managed_fingerprint: host_plan.fingerprint.clone(),
+            metadata_json,
+        };
+        let superseded_bindings = superseded_integrations
+            .iter()
+            .map(|integration| SupersededConnectionProject {
+                connection_internal_id: integration.connection.connection_internal_id.clone(),
+                project_id: integration.selected_project.project_id.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut cleanup_resume = false;
+        let mut cleanup_resume_pending = Vec::new();
+        if is_connection_migration && existing.is_some() {
+            let (_, migration_state) = staged_connection_migration_state(
                 &plan.runtime_home,
                 &desired_connection_registration.connection_internal_id,
                 &project.project_id,
                 &superseded_bindings,
             )
-            .map_err(ConnectionCommandError::from),
-        )?;
-        if let StagedConnectionMigrationState::CleanupResume {
-            pending_connection_ids,
-        } = migration_state
-        {
-            cleanup_resume = true;
-            cleanup_resume_pending = pending_connection_ids;
+            .map_err(ConnectionCommandError::from)?;
+            if let StagedConnectionMigrationState::CleanupResume {
+                pending_connection_ids,
+            } = migration_state
+            {
+                cleanup_resume = true;
+                cleanup_resume_pending = pending_connection_ids;
+            }
         }
-    }
-    if plan.expected_connection.is_some() {
-        validate_init_connection_expectation(&plan)?;
-    }
-    migration_before_cleanup_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        cleanup_resume,
-        apply_guard_migration_protection(&mut integration).map_err(ConnectionCommandError::from),
-    )?;
-    migration_before_cleanup_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        cleanup_resume,
-        apply_host_plan(plan.host_kind, &host_plan, process),
-    )?;
-    let registered_connection = if is_connection_migration {
-        ensure_staged_agent_connection(&plan.runtime_home, desired_connection_registration)
-    } else {
-        ensure_agent_connection(&plan.runtime_home, desired_connection_registration)
-    };
-    let mut connection = migration_before_cleanup_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        cleanup_resume,
-        registered_connection.map_err(ConnectionCommandError::from),
-    )?;
-    if is_connection_migration && !cleanup_resume {
-        let (current_connection, migration_state) = migration_before_cleanup_step(
-            &plan,
-            &superseded_integrations,
-            is_integration_migration,
-            cleanup_resume,
-            staged_connection_migration_state(
+        if plan.expected_connection.is_some() {
+            validate_init_connection_expectation(&plan)?;
+        }
+        let registered_connection = if is_connection_migration {
+            ensure_staged_agent_connection(&plan.runtime_home, desired_connection_registration)
+        } else {
+            ensure_agent_connection(&plan.runtime_home, desired_connection_registration)
+        };
+        let mut connection = registered_connection.map_err(ConnectionCommandError::from)?;
+        if is_connection_migration && !cleanup_resume {
+            let (current_connection, migration_state) = staged_connection_migration_state(
                 &plan.runtime_home,
                 &connection.connection_internal_id,
                 &project.project_id,
                 &superseded_bindings,
             )
-            .map_err(ConnectionCommandError::from),
-        )?;
-        connection = current_connection;
-        if let StagedConnectionMigrationState::CleanupResume {
-            pending_connection_ids,
-        } = migration_state
-        {
-            cleanup_resume = true;
-            cleanup_resume_pending = pending_connection_ids;
-        }
-    } else if !is_connection_migration {
-        migration_step(
-            &plan,
-            &superseded_integrations,
-            is_integration_migration,
+            .map_err(ConnectionCommandError::from)?;
+            connection = current_connection;
+            if let StagedConnectionMigrationState::CleanupResume {
+                pending_connection_ids,
+            } = migration_state
+            {
+                cleanup_resume = true;
+                cleanup_resume_pending = pending_connection_ids;
+            }
+        } else if !is_connection_migration {
             add_connection_project(
                 &plan.runtime_home,
                 ConnectionProjectRegistration {
@@ -549,186 +716,224 @@ fn apply_init_provisioning(
                 },
             )
             .map(|_| ())
-            .map_err(ConnectionCommandError::from),
-        )?;
-    }
-    migration_before_cleanup_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        cleanup_resume,
-        enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id),
-    )?;
-    // Host setup may create repository-local parent directories. Replan after
-    // those mutations so every managed-file snapshot is anchored to the
-    // current filesystem state. The protective union exclude was already
-    // applied above and remains in force while the migration completes.
-    let mut integration = migration_before_cleanup_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        cleanup_resume,
-        plan_guard_integration(GuardIntegrationPlanRequest {
-            host_kind: plan.host_kind,
-            profile: plan.init_mode.integration_profile(),
-            server_name: &host_plan.server_name,
-            runtime_home: &plan.runtime_home,
-            volicord_command: Path::new(&profile.volicord_command),
-            repo_root: &project.repo_root,
-            connection_id: &plan.connection_id,
-            guard_installation_id: &plan.guard_installation_id,
-            mcp_entry: &host_plan.entry,
-            connection_intent: plan.intent,
-        })
-        .map_err(ConnectionCommandError::from),
-    )?;
-    integration.migration_protection_applied = true;
-    migration_before_cleanup_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        cleanup_resume,
+            .map_err(ConnectionCommandError::from)?;
+        }
+        enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id)?;
         record_authoritative_workflow_policy(
             &plan.runtime_home,
             &project.project_id,
             &integration.policy,
-        ),
-    )?;
-    let integration = migration_before_cleanup_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        cleanup_resume,
-        apply_guard_integration(integration).map_err(ConnectionCommandError::from),
-    )?;
-    let (_guard_installation, pending_host_cleanup_connections) = if cleanup_resume {
-        let guard_installation = migration_cleanup_step(
-            &plan,
-            &superseded_integrations,
-            is_integration_migration,
-            record_guard_installation(
+        )?;
+        prepared.mark_store_applied(None)?;
+        for mutation in &mut prepared.plan.repository_file_mutations {
+            mutation.commit()?;
+            let point = match &mutation.role {
+                AtomicFileMutationRole::GuardManagedFile(artifact) => {
+                    format!(
+                        "after_managed_file:{artifact}:{}",
+                        mutation.target.display()
+                    )
+                }
+                AtomicFileMutationRole::CodexConfig => {
+                    "after_managed_file:unexpected_codex_config".to_owned()
+                }
+            };
+            setup_fault(process, &point)?;
+        }
+        setup_fault(process, FAULT_BEFORE_CODEX_CONFIG_REPLACE)?;
+        for mutation in &mut prepared.plan.host_file_mutations {
+            mutation.commit()?;
+        }
+        setup_fault(process, FAULT_AFTER_CODEX_CONFIG_REPLACE)?;
+        setup_fault(process, FAULT_BEFORE_INTEGRATION_REVISION_COMMIT)?;
+        let (_guard_installation, pending_host_cleanup_connections) = if cleanup_resume {
+            let guard_installation = record_guard_installation(
                 &plan.runtime_home,
                 &connection,
                 &project.project_id,
                 &integration,
             )
-            .map_err(ConnectionCommandError::from),
-        )?;
-        (guard_installation, cleanup_resume_pending)
-    } else if is_connection_migration {
-        let guard_upsert = migration_step(
-            &plan,
-            &superseded_integrations,
-            is_integration_migration,
-            guard_installation_upsert(&connection, &project.project_id, &integration)
-                .map_err(ConnectionCommandError::from),
-        )?;
-        let (activated_connection, guard_installation, pending) = migration_transition_step(
-            &plan,
-            &superseded_integrations,
-            is_integration_migration,
-            activate_staged_connection(
+            .map_err(ConnectionCommandError::from)?;
+            (guard_installation, cleanup_resume_pending)
+        } else if is_connection_migration {
+            let guard_upsert =
+                guard_installation_upsert(&connection, &project.project_id, &integration)
+                    .map_err(ConnectionCommandError::from)?;
+            let (activated_connection, guard_installation, pending) = activate_staged_connection(
                 &plan.runtime_home,
                 &connection.connection_internal_id,
                 &project.project_id,
                 &superseded_bindings,
                 guard_upsert,
             )
-            .map_err(ConnectionCommandError::from),
-        )?;
-        connection = activated_connection;
-        (guard_installation, pending)
-    } else {
-        (
-            migration_step(
-                &plan,
-                &superseded_integrations,
-                is_integration_migration,
+            .map_err(ConnectionCommandError::from)?;
+            connection = activated_connection;
+            (guard_installation, pending)
+        } else {
+            (
                 record_guard_installation(
                     &plan.runtime_home,
                     &connection,
                     &project.project_id,
                     &integration,
                 )
-                .map_err(ConnectionCommandError::from),
-            )?,
-            Vec::new(),
-        )
-    };
-    if !pending_host_cleanup_connections.is_empty() {
-        let cleanup = complete_pending_host_cleanup(
-            &plan.runtime_home,
-            &project.project_id,
-            &connection.connection_internal_id,
-            &pending_host_cleanup_connections,
-            |pending_connection_ids| {
-                retire_superseded_host_configuration(
-                    &plan.runtime_home,
-                    &superseded_integrations,
-                    pending_connection_ids,
-                    process,
-                )
-            },
-        );
-        match cleanup {
-            Ok(()) => {}
-            Err(PendingHostCleanupError::Host(error)) => migration_cleanup_step(
-                &plan,
-                &superseded_integrations,
-                is_integration_migration,
-                Err(error),
-            )?,
-            Err(PendingHostCleanupError::Store(error)) => migration_cleanup_unknown_step(
-                &plan,
-                &superseded_integrations,
-                is_integration_migration,
-                Err(ConnectionCommandError::from(error)),
-            )?,
+                .map_err(ConnectionCommandError::from)?,
+                Vec::new(),
+            )
+        };
+        prepared.mark_store_applied(None)?;
+        if !pending_host_cleanup_connections.is_empty() {
+            let cleanup = complete_pending_host_cleanup(
+                &plan.runtime_home,
+                &project.project_id,
+                &connection.connection_internal_id,
+                &pending_host_cleanup_connections,
+                |_pending_connection_ids| Ok(()),
+            );
+            match cleanup {
+                Ok(()) => {}
+                Err(PendingHostCleanupError::Host(error)) => return Err(error),
+                Err(PendingHostCleanupError::Store(error)) => {
+                    return Err(ConnectionCommandError::from(error));
+                }
+            }
         }
-    }
-    let expected_integration_revision = connection_integration_revision(&connection)?;
-    let mut verification = migration_post_transition_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        verify_connection(
+        prepared.mark_store_applied(None)?;
+        let expected_integration_revision = connection_integration_revision(&connection)?;
+        let mut verification = verify_connection(
             &plan.runtime_home,
             &connection,
             &host_plan,
             &project.repo_root,
             Some(&project.project_id),
             process,
-        ),
-    )?;
-    if setup_changed_hook_definition {
-        verification.report = report_with_hook_review_required(&verification.report)?;
-    }
-    connection = migration_post_transition_step(
-        &plan,
-        &superseded_integrations,
-        is_integration_migration,
-        persist_connection_verification_report(
+        )?;
+        if setup_changed_hook_definition {
+            verification.report = report_with_hook_review_required(&verification.report)?;
+        }
+        connection = persist_connection_verification_report(
             &plan.runtime_home,
             &connection.connection_internal_id,
             &expected_integration_revision,
             Some(&verification.report),
-        ),
-    )?;
-    let _ = connection;
+        )?;
+        prepared.mark_store_applied(None)?;
+        let _ = connection;
+        prepared.cleanup_after_success()?;
 
-    Ok(InitProvisioningOutcome {
-        dry_run: false,
-        host_kind: plan.host_kind,
-        host_scope: plan.host_scope,
-        runtime_home: plan.runtime_home,
-        repo_root: project.repo_root,
-        connection_id: plan.connection_id,
-        mode: plan.effective_mode,
-        host_plan,
-        verification: Some(verification),
-        current_report: None,
-        planned_changes: Vec::new(),
+        Ok(InitProvisioningOutcome {
+            dry_run: false,
+            host_kind: plan.host_kind,
+            host_scope: plan.host_scope,
+            runtime_home: plan.runtime_home.clone(),
+            repo_root: project.repo_root.clone(),
+            connection_id: plan.connection_id.clone(),
+            mode: plan.effective_mode.clone(),
+            host_plan,
+            verification: Some(verification),
+            current_report: None,
+            planned_changes: Vec::new(),
+        })
+    })();
+    match transaction_result {
+        Ok(outcome) => Ok(outcome),
+        Err(error) => {
+            let had_committed_effects = prepared.has_committed_effects();
+            if plan.runtime_home_absent
+                && prepared.externally_visible_managed_file_committed()
+                && !matches!(
+                    current_managed_runtime_sessions(&plan.runtime_home, &plan.connection_id),
+                    Ok(sessions) if sessions.is_empty()
+                )
+            {
+                prepared.preserve_created_runtime_home();
+            }
+            let rollback_fault = process.setup_fault(FAULT_DURING_ROLLBACK).err();
+            let mut rollback = prepared.rollback_files();
+            prepared.rollback_store(&mut rollback);
+            if let Some(error) = rollback_fault {
+                rollback.partially_rolled_back += 1;
+                rollback
+                    .errors
+                    .push(format!("{FAULT_DURING_ROLLBACK}: {error}"));
+            }
+            let disposition = if !rollback.is_complete() {
+                SetupDisposition::PartiallyRolledBack
+            } else if had_committed_effects {
+                SetupDisposition::RolledBack
+            } else {
+                SetupDisposition::Preserved
+            };
+            setup_transaction_failure(&plan, disposition, &error, Some(&rollback))
+        }
+    }
+}
+
+fn setup_fault(
+    process: &mut impl ConnectionProcess,
+    point: &str,
+) -> Result<(), ConnectionCommandError> {
+    process.setup_fault(point).map_err(|error| {
+        ConnectionCommandError::runtime(format!("SETUP_FAULT_INJECTED at {point}: {error}"))
     })
+}
+
+fn setup_transaction_failure(
+    plan: &InitProvisioningPlan,
+    disposition: SetupDisposition,
+    error: &ConnectionCommandError,
+    rollback: Option<&super::setup_transaction::RollbackSummary>,
+) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
+    let rollback_errors = rollback
+        .map(|summary| summary.errors.clone())
+        .unwrap_or_default();
+    let details = json!({
+        "failure": error.to_string(),
+        "disposition": disposition.as_str(),
+        "rollback": rollback.map(|summary| json!({
+            "rolled_back": summary.rolled_back,
+            "partially_rolled_back": summary.partially_rolled_back,
+            "errors": rollback_errors,
+        })),
+        "retryable": true,
+    });
+    let report = ConnectionCommandReport::setup_failure(
+        CommandOperation::Init,
+        &plan.runtime_home,
+        CommandConnection::new(
+            &plan.connection_id,
+            plan.host_kind.as_str(),
+            plan.host_scope.as_str(),
+            &plan.effective_mode,
+            &plan.repo_root,
+            host_target_text(&plan.host_plan.target),
+        ),
+        disposition,
+        if disposition == SetupDisposition::PartiallyRolledBack {
+            SetupFailureDiagnostic::PartialRollback
+        } else if error.to_string().contains("SETUP_CONCURRENT_MODIFICATION") {
+            SetupFailureDiagnostic::ConcurrentModification
+        } else {
+            SetupFailureDiagnostic::TransactionFailed
+        },
+        match disposition {
+            SetupDisposition::RolledBack => {
+                "Setup transaction failed and committed changes were rolled back"
+            }
+            SetupDisposition::Preserved => {
+                "Setup transaction failed before commit and existing state was preserved"
+            }
+            SetupDisposition::PartiallyRolledBack => {
+                "Setup transaction failed and could not be fully rolled back"
+            }
+            SetupDisposition::Planned => "Setup transaction remained planned",
+            SetupDisposition::Committed => "Setup transaction committed",
+        },
+        details,
+        IntegrationActivationPlan::empty(IntegrationActivationState::Failed),
+    )?;
+    let rendered = render_command_report(plan.output_format, &report)?;
+    Err(ConnectionCommandError::FailureOutput(rendered.output))
 }
 
 fn effective_setup_connection_mode(
@@ -904,16 +1109,18 @@ fn superseded_integrations_for_project(
     requested_connection_id: &str,
     prior_policy_connection_id: Option<&str>,
     repo_root: &Path,
+    process: &impl ConnectionProcess,
 ) -> Result<Vec<SupersededIntegration>, ConnectionCommandError> {
     let mut integrations = Vec::new();
-    for connection in list_agent_connections(runtime_home)? {
+    for connection in list_agent_connections_read_only(runtime_home)? {
         if connection.host_kind != "codex"
             || !matches!(connection.intent.as_str(), "personal" | "shared")
             || connection.connection_internal_id == requested_connection_id
         {
             continue;
         }
-        let projects = list_connection_projects(runtime_home, &connection.connection_internal_id)?;
+        let projects =
+            list_connection_projects_read_only(runtime_home, &connection.connection_internal_id)?;
         let Some(selected_project) = projects
             .iter()
             .find(|project| project.project.repo_root == repo_root)
@@ -932,281 +1139,19 @@ fn superseded_integrations_for_project(
         {
             continue;
         }
+        let host_plan =
+            existing_host_plan(&connection, runtime_home, process, Some(&selected_project))?;
+        let host_input_bytes = CodexAdapter::<
+            crate::host_integration::process::ProductionCommandRunner,
+        >::target_input_bytes(&host_plan.target)?;
         integrations.push(SupersededIntegration {
             connection,
             selected_project,
+            host_plan,
+            host_input_bytes,
         });
     }
     Ok(integrations)
-}
-
-fn retire_superseded_host_configuration(
-    runtime_home: &Path,
-    integrations: &[SupersededIntegration],
-    disabled_connection_ids: &[String],
-    process: &impl ConnectionProcess,
-) -> Result<(), ConnectionCommandError> {
-    for integration in integrations {
-        if disabled_connection_ids
-            .iter()
-            .any(|connection_id| connection_id == &integration.connection.connection_internal_id)
-        {
-            let host_plan = existing_host_plan(
-                &integration.connection,
-                runtime_home,
-                process,
-                Some(&integration.selected_project),
-            )?;
-            remove_host_configuration(&host_plan, &integration.connection, process)?;
-        }
-    }
-    Ok(())
-}
-
-fn migration_step<T>(
-    plan: &InitProvisioningPlan,
-    integrations: &[SupersededIntegration],
-    migration_required: bool,
-    result: Result<T, ConnectionCommandError>,
-) -> Result<T, ConnectionCommandError> {
-    if !migration_required {
-        return result;
-    }
-    result.map_err(|error| {
-        migration_partial_application(plan, integrations, MigrationRegistryPhase::Pending, &error)
-    })
-}
-
-fn migration_transition_step<T>(
-    plan: &InitProvisioningPlan,
-    integrations: &[SupersededIntegration],
-    migration_required: bool,
-    result: Result<T, ConnectionCommandError>,
-) -> Result<T, ConnectionCommandError> {
-    if !migration_required {
-        return result;
-    }
-    result.map_err(|error| {
-        migration_partial_application(
-            plan,
-            integrations,
-            MigrationRegistryPhase::Attempted,
-            &error,
-        )
-    })
-}
-
-fn migration_before_cleanup_step<T>(
-    plan: &InitProvisioningPlan,
-    integrations: &[SupersededIntegration],
-    migration_required: bool,
-    cleanup_resume: bool,
-    result: Result<T, ConnectionCommandError>,
-) -> Result<T, ConnectionCommandError> {
-    if cleanup_resume {
-        migration_cleanup_step(plan, integrations, migration_required, result)
-    } else {
-        migration_step(plan, integrations, migration_required, result)
-    }
-}
-
-fn migration_cleanup_step<T>(
-    plan: &InitProvisioningPlan,
-    integrations: &[SupersededIntegration],
-    migration_required: bool,
-    result: Result<T, ConnectionCommandError>,
-) -> Result<T, ConnectionCommandError> {
-    if !migration_required {
-        return result;
-    }
-    result.map_err(|error| {
-        migration_partial_application(
-            plan,
-            integrations,
-            MigrationRegistryPhase::AppliedCleanupPending,
-            &error,
-        )
-    })
-}
-
-fn migration_cleanup_unknown_step<T>(
-    plan: &InitProvisioningPlan,
-    integrations: &[SupersededIntegration],
-    migration_required: bool,
-    result: Result<T, ConnectionCommandError>,
-) -> Result<T, ConnectionCommandError> {
-    if !migration_required {
-        return result;
-    }
-    result.map_err(|error| {
-        migration_partial_application(
-            plan,
-            integrations,
-            MigrationRegistryPhase::AppliedCleanupUnknown,
-            &error,
-        )
-    })
-}
-
-fn migration_post_transition_step<T>(
-    plan: &InitProvisioningPlan,
-    integrations: &[SupersededIntegration],
-    migration_required: bool,
-    result: Result<T, ConnectionCommandError>,
-) -> Result<T, ConnectionCommandError> {
-    if !migration_required {
-        return result;
-    }
-    result.map_err(|error| {
-        migration_partial_application(plan, integrations, MigrationRegistryPhase::Applied, &error)
-    })
-}
-
-fn migration_prior_connection_disposition(
-    plan: &InitProvisioningPlan,
-    integration: &SupersededIntegration,
-) -> String {
-    let connection_id = &integration.connection.connection_internal_id;
-    let project_id = &integration.selected_project.project_id;
-    let connection = match agent_connection_record(&plan.runtime_home, connection_id) {
-        Ok(Some(connection)) => connection,
-        Ok(None) => return "retired_for_project".to_owned(),
-        Err(_) => return "unknown".to_owned(),
-    };
-    let membership_active = match list_connection_projects(&plan.runtime_home, connection_id) {
-        Ok(memberships) => memberships
-            .iter()
-            .any(|membership| membership.project_id == *project_id),
-        Err(_) => return "unknown".to_owned(),
-    };
-    if !membership_active {
-        return "retired_for_project".to_owned();
-    }
-    if connection.enabled {
-        return "unchanged".to_owned();
-    }
-    if connection_metadata_has_pending_host_cleanup(
-        &connection.metadata_json,
-        project_id,
-        &plan.connection_id,
-    ) {
-        "disabled_pending_host_cleanup".to_owned()
-    } else {
-        "disabled_for_project".to_owned()
-    }
-}
-
-fn migration_partial_application(
-    plan: &InitProvisioningPlan,
-    integrations: &[SupersededIntegration],
-    registry_phase: MigrationRegistryPhase,
-    error: &ConnectionCommandError,
-) -> ConnectionCommandError {
-    let prior_connection_ids = integrations
-        .iter()
-        .map(|integration| integration.connection.connection_internal_id.clone())
-        .collect::<Vec<_>>();
-    let connection_migration = !integrations.is_empty();
-    let prior_connection_dispositions = integrations
-        .iter()
-        .map(|integration| {
-            (
-                integration.connection.connection_internal_id.clone(),
-                migration_prior_connection_disposition(plan, integration),
-            )
-        })
-        .collect::<Vec<_>>();
-    let requested_connection_enabled =
-        agent_connection_record(&plan.runtime_home, &plan.connection_id)
-            .ok()
-            .flatten()
-            .map(|connection| connection.enabled);
-    let requested_project_membership_active = plan.project_id.as_deref().and_then(|project_id| {
-        list_connection_projects(&plan.runtime_home, &plan.connection_id)
-            .ok()
-            .map(|memberships| {
-                memberships
-                    .iter()
-                    .any(|membership| membership.project_id == project_id)
-            })
-    });
-    let mut retry_arguments = vec![
-        "volicord".to_owned(),
-        "init".to_owned(),
-        "--home".to_owned(),
-        path_text(&plan.runtime_home),
-        "--host".to_owned(),
-        public_host_label(plan.host_kind).to_owned(),
-    ];
-    if plan.intent == ConnectionIntent::Shared {
-        retry_arguments.push("--shared".to_owned());
-    }
-    retry_arguments.extend([
-        "--repo".to_owned(),
-        path_text(&plan.repo_root),
-        "--profile".to_owned(),
-        plan.init_mode.profile_value().to_owned(),
-    ]);
-    let explanation = error.to_string();
-    let details = json!({
-        "failure": explanation,
-        "migration_id": plan.migration_id,
-        "connection_migration_required": connection_migration,
-        "requested_connection_id": plan.connection_id,
-        "requested_connection_enabled": requested_connection_enabled,
-        "requested_project_membership_active": requested_project_membership_active,
-        "prior_connection_ids": prior_connection_ids,
-        "prior_connections": prior_connection_dispositions
-            .iter()
-            .map(|(connection_id, disposition)| json!({
-                "connection_id": connection_id,
-                "disposition": disposition,
-            }))
-            .collect::<Vec<_>>(),
-        "registry_transition_applied": registry_phase
-            .registry_transition_applied(connection_migration),
-        "prior_host_cleanup_completed": registry_phase
-            .prior_host_cleanup_completed(connection_migration),
-        "retryable": true,
-        "retry_arguments": retry_arguments,
-    });
-    let activation_plan = ActivationStep::try_new(
-            ActivationStepId::RepairManagedConfiguration,
-            Vec::new(),
-            "Resolve the reported setup conflict, then rerun the same init migration using the retry arguments in the failed check details",
-        )
-        .and_then(|step| {
-            IntegrationActivationPlan::try_new(
-                IntegrationActivationState::Failed,
-                vec![step],
-                Vec::new(),
-            )
-        })
-        .unwrap_or_else(|_| IntegrationActivationPlan::empty(IntegrationActivationState::Failed));
-    let report = ConnectionCommandReport::setup_failure(
-        CommandOperation::Init,
-        &plan.runtime_home,
-        CommandConnection::new(
-            &plan.connection_id,
-            plan.host_kind.as_str(),
-            plan.host_scope.as_str(),
-            &plan.effective_mode,
-            &plan.repo_root,
-            host_target_text(&plan.host_plan.target),
-        ),
-        "Setup migration was only partially applied",
-        details,
-        activation_plan,
-    );
-    let output = report
-        .and_then(|report| render_command_report(plan.output_format, &report))
-        .map(|rendered| rendered.output)
-        .unwrap_or_else(|render_error| {
-            format!(
-                "Operation: init\nStatus: failed\nWhy: {explanation}\nReport error: {render_error}\n"
-            )
-        });
-    ConnectionCommandError::FailureOutput(output)
 }
 
 pub(super) fn provision_connection(
@@ -1903,6 +1848,47 @@ mod init_planning_tests {
         assert_empty_product_repository_untouched(&repo_root)?;
         assert_no_planned_files_exist(&plan);
 
+        let dry_run_changes = plan_init_changes(InitPlannedChanges {
+            runtime_home: &plan.runtime_home,
+            repo_root: &plan.repo_root,
+            profile_exists: plan.profile_exists,
+            project_exists: plan.project_id.is_some(),
+            membership_exists: plan.membership_exists,
+            guard_installation_exists: plan.guard_installation_exists,
+            host_plan: &plan.host_plan,
+            integration: &plan.integration,
+        });
+        let prepared_plan = build_setup_plan(&plan)?;
+        let mut dry_run_file_targets = dry_run_changes
+            .iter()
+            .filter(|change| {
+                matches!(
+                    change.kind(),
+                    PlannedConnectionChangeKind::ManagedHostConfiguration
+                        | PlannedConnectionChangeKind::HookDefinition
+                        | PlannedConnectionChangeKind::GuardManagedFile
+                )
+            })
+            .map(|change| {
+                let target = PathBuf::from(change.target());
+                let target = if target.is_absolute() {
+                    target
+                } else {
+                    repo_root.join(target)
+                };
+                path_text(&target)
+            })
+            .collect::<Vec<_>>();
+        let mut prepared_file_targets = prepared_plan
+            .repository_file_mutations
+            .iter()
+            .chain(prepared_plan.host_file_mutations.iter())
+            .map(|mutation| path_text(&mutation.target))
+            .collect::<Vec<_>>();
+        dry_run_file_targets.sort();
+        prepared_file_targets.sort();
+        assert_eq!(prepared_file_targets, dry_run_file_targets);
+
         let generated_paths = plan
             .integration
             .generated_files
@@ -2096,34 +2082,5 @@ mod init_planning_tests {
         let mut output = std::collections::BTreeMap::new();
         visit(root, root, &mut output)?;
         Ok(output)
-    }
-}
-
-#[cfg(test)]
-mod migration_state_tests {
-    use super::*;
-
-    #[test]
-    fn cleanup_revalidation_failure_reports_truthful_optional_facts() {
-        assert_eq!(
-            MigrationRegistryPhase::AppliedCleanupUnknown.registry_transition_applied(true),
-            Some(true)
-        );
-        assert_eq!(
-            MigrationRegistryPhase::AppliedCleanupUnknown.prior_host_cleanup_completed(true),
-            None
-        );
-    }
-
-    #[test]
-    fn pre_transition_failure_does_not_claim_registry_application() {
-        assert_eq!(
-            MigrationRegistryPhase::Pending.registry_transition_applied(true),
-            Some(false)
-        );
-        assert_eq!(
-            MigrationRegistryPhase::Pending.prior_host_cleanup_completed(true),
-            Some(false)
-        );
     }
 }

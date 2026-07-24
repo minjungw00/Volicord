@@ -189,6 +189,19 @@ prompt/pre/post chain이 완료되지 않으면 이 read가 영속 acquisition s
 terminal repair reason으로 대응시킵니다. Cleanup expiry는 이 판단을 대신하지 않으며 같은
 semantic turn에서 새 attempt를 자동 생성하지 않습니다.
 
+## 관리 파일 setup transaction
+
+`volicord init`은 target을 쓰지 않고 Guard가 소유한 hook 구성, dispatch script,
+phase wrapper, Codex rule, policy, Git exclude block, AGENTS guidance block의 정확한
+최종 bytes를 계획합니다. Prepare 단계는 현재 snapshot을 검증하고 바뀌는 각 파일을
+target directory에 staging합니다. Commit 단계는 Codex 구성과 integration revision을
+commit하기 전에 이 파일들을 결정적인 경로 순서로 원자 교체합니다.
+
+실패하면 commit한 Guard 파일 교체를 역순으로 복원하되, 현재 digest가 staging한 setup
+digest와 여전히 일치할 때만 복원합니다. 이후의 외부 편집은 덮어쓰지 않고 보존하며
+partial-rollback 진단을 냅니다. 관리 block 밖의 비관리 bytes도 정확한 원본 snapshot의
+일부이므로 변경 없이 복원합니다.
+
 ## 진단과 Event Projection
 
 모든 `Unavailable` 결과는 project, Guard event 식별자,

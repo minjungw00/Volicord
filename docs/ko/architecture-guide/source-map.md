@@ -51,6 +51,7 @@
 | `crates/volicord-store/src/schema/registry.sql` | Runtime Home registry DDL 정본 소스. |
 | `crates/volicord-store/src/schema/project.sql` | project Store DDL 정본 소스. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home과 Store bootstrap. |
+| `crates/volicord-store/src/setup_transaction.rs` | Setup이 변경하는 기존 Store 파일의 명시적인 prepare, 입력 검증, mutation checkpoint, commit, guarded rollback 경계. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection 레코드, project allowlist, managed fingerprint, 영속 검증 보고서 경계. |
 | `crates/volicord-store/src/diagnostic_findings/mod.rs` | Lifecycle별 진단 영속화 facade와 공개 Store API export. |
 | `crates/volicord-store/src/diagnostic_findings/occurrence.rs` | 추가 전용 occurrence 영속화와 원자적 runtime terminal-finding 연결. |
@@ -93,6 +94,7 @@
 | `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
 | `crates/volicord-cli/src/host_launch.rs` | 숨은 동일 프로세스 host launcher, 현재 Codex entry의 정확한 재검증, launch-lease 발급·정리, managed stdio로의 메모리 내 전환. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
+| `crates/volicord-cli/src/connection_command/setup_transaction.rs` | `volicord init`의 typed `SetupPlan`, Runtime Home 준비, 같은 directory의 원자적 파일 mutation, freshness 검증, 결정적인 commit, 한도가 있는 rollback. |
 | `crates/volicord-cli/src/connection_command/verification/mod.rs` | Connection 검증 조율, 공유 step/report 타입, 한도가 있는 패키지 export. |
 | `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, managed-host session check. |
 | `crates/volicord-cli/src/connection_command/verification/mcp_checks.rs` | MCP preflight/handshake check 투영과 MCP finding ID 입력. |
@@ -111,6 +113,7 @@
 | `crates/volicord-cli/src/connection_command/mcp_process/host_compatibility.rs` | 프로덕션 프로토콜 레지스트리에서 파생하지 않고 독립적으로 고정한 host profile fixture와 Codex 요청/도구 호출 형태. |
 | `crates/volicord-cli/src/connection_command/mcp_process/pinned_schema.rs` | 고정된 오프라인 schema를 사용한 revision별 initialize, `tools/list`, `tools/call` probe message 검증. |
 | `crates/volicord-cli/src/connection_command/output/` | 선택한 Connection의 정규 진단 보고서 구성, 집계 상태와 root, 두 번째 renderer 소유 step 목록 없이 같은 필수·선택 activation plan을 concise·verbose·lossless JSON으로 표시. |
+| `crates/volicord-cli/tests/init_record_regression.rs` | Init plan/read-only, replay, migration, 정확한 소유자 record, 모든 단계 setup fault injection, 동시 변경, 전체 rollback, partial-rollback 보고 regression. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | Finding ID 및 runtime-session 세부 명령, 한도가 있는 lifecycle-aware cause traversal, lookup별 JSON 및 사람용 projection, finding severity와 독립적인 lookup-status 종료 결과. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 구성 parsing 및 직렬화, 정규 관리 entry 검증, 허용된 도구 승인 overlay 보존, 관리 구성 변경, 진단용 실행 파일 관찰, 연결 검증. |
 | `crates/volicord-cli/src/host_integration/contracts.rs` | 명시적인 semantic Codex host-contract 선택, typed Guard routing strategy 투영, 등록된 `McpServerKey`로부터의 엄격한 구성 재구성. |

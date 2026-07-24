@@ -134,6 +134,23 @@ file과 directory를 동기화합니다. 그 다음 기존 최종 경로를 교�
 정리하고 최종 경로를 없는 상태로 남깁니다. 동시 생성자는 정확히 `Ready`인 승자의 상태만
 읽기 전용으로 받아들입니다.
 
+### Init setup transaction
+
+Runtime Home bootstrap은 더 큰 `volicord init` setup transaction에서 준비되는 구성원
+하나입니다. 읽기 전용 planning은 기존 Codex 구성과 소유한 모든 Product Repository
+파일도 snapshot하고, 정확한 target bytes를 계산하며, 상위 경로와 conflict를 검증하고,
+mutation을 결정적인 순서로 정렬합니다. Prepare 단계는 최종 target을 commit하기 전에
+같은 directory의 staging 파일과 Store 복구 entry를 만듭니다.
+
+Commit 단계는 Runtime Home을 공개하거나 검증하고 checkpoint한 Store mutation을 적용한
+뒤 Product Repository 파일을 원자 교체하고 Codex 구성을 마지막에 원자 교체한 다음
+integration revision을 기록합니다. 오래된 입력은 concurrent-modification 실패이며 더
+새로운 외부 bytes를 보존합니다. Rollback은 기존 Runtime Home이나 user file을 삭제하지
+않습니다. 이 invocation이 만든 Runtime Home은 아직 commit되지 않은 이 setup 소유권을
+rollback하는 동안에만 제거할 수 있습니다. Runtime Home, Codex 구성, Product
+Repository가 서로 다른 파일시스템에 있을 수 있으므로 보장은 전역 파일시스템
+transaction 하나가 아니라 완전한 준비, 파일별 원자 교체, 한도가 있는 rollback입니다.
+
 Registry는 구조화된 diagnostic finding과 cause edge의 영속 Runtime Home carrier입니다.
 Finding은 해당 Connection, project, runtime session, integration revision과 상관관계를
 가질 수 있고 MCP runtime session은 terminal finding을 가리킬 수 있습니다. 이 기록은

@@ -8,7 +8,7 @@ use volicord_types::{
 
 use super::report::{
     projected_activation_plan, projected_check_root_cause_ids, projected_root_cause_ids,
-    CommandOperation, ConnectionCommandReport, ConnectionCommandResult,
+    CommandOperation, ConnectionCommandReport, ConnectionCommandResult, SetupDisposition,
 };
 use crate::connection_command::{
     guidance::{ConnectionUserInvocation, DiagnosticOperation},
@@ -345,11 +345,13 @@ fn concise_diagnostic_hint(report: &ConnectionCommandReport) -> Option<String> {
             Some("Run the same dry-run command with --verbose for detailed diagnostics.".to_owned())
         }
         CommandOperation::Init | CommandOperation::Add => match report.result.as_ref() {
-            Some(ConnectionCommandResult::Setup { applied: true }) if has_nonpassing_check => {
-                Some(current_status_diagnostic_hint(report))
-            }
-            Some(ConnectionCommandResult::Setup { applied: false })
-                if report.status == ConnectionStatus::Failed && has_nonpassing_check =>
+            Some(ConnectionCommandResult::Setup {
+                disposition: SetupDisposition::Committed,
+            }) if has_nonpassing_check => Some(current_status_diagnostic_hint(report)),
+            Some(ConnectionCommandResult::Setup { disposition })
+                if *disposition != SetupDisposition::Committed
+                    && report.status == ConnectionStatus::Failed
+                    && has_nonpassing_check =>
             {
                 Some(
                     "Run the same setup command with --verbose for detailed diagnostics."
@@ -507,14 +509,14 @@ fn setup_headline(report: &ConnectionCommandReport) -> String {
         };
     }
 
-    let applied = matches!(
-        report.result,
-        Some(ConnectionCommandResult::Setup { applied: true })
-    );
-    match (report.status, applied) {
+    let disposition = match report.result {
+        Some(ConnectionCommandResult::Setup { disposition }) => disposition,
+        _ => SetupDisposition::Preserved,
+    };
+    match (report.status, disposition) {
         (ConnectionStatus::Complete, _) => "Volicord setup is ready.".to_owned(),
-        (ConnectionStatus::ActionRequired, true) => format!(
-            "Setup applied; {} host-owned activation {} {}.",
+        (ConnectionStatus::ActionRequired, SetupDisposition::Committed) => format!(
+            "Setup committed; {} host-owned activation {} {}.",
             report.activation_plan.required_steps().len(),
             if report.activation_plan.required_steps().len() == 1 {
                 "step"
@@ -527,7 +529,7 @@ fn setup_headline(report: &ConnectionCommandReport) -> String {
                 "remain"
             },
         ),
-        (ConnectionStatus::ActionRequired, false) => format!(
+        (ConnectionStatus::ActionRequired, _) => format!(
             "Volicord setup requires {} activation {}.",
             report.activation_plan.required_steps().len(),
             if report.activation_plan.required_steps().len() == 1 {
@@ -536,10 +538,21 @@ fn setup_headline(report: &ConnectionCommandReport) -> String {
                 "steps"
             }
         ),
-        (ConnectionStatus::Failed, true) => {
-            "Volicord setup was applied, but verification failed.".to_owned()
+        (ConnectionStatus::Failed, SetupDisposition::Committed) => {
+            "Volicord setup was committed, but verification failed.".to_owned()
         }
-        (ConnectionStatus::Failed, false) => "Volicord setup could not be applied.".to_owned(),
+        (ConnectionStatus::Failed, SetupDisposition::RolledBack) => {
+            "Volicord setup failed; committed changes were rolled back.".to_owned()
+        }
+        (ConnectionStatus::Failed, SetupDisposition::Preserved) => {
+            "Volicord setup failed before commit; existing state was preserved.".to_owned()
+        }
+        (ConnectionStatus::Failed, SetupDisposition::PartiallyRolledBack) => {
+            "Volicord setup failed and was only partially rolled back.".to_owned()
+        }
+        (ConnectionStatus::Failed, SetupDisposition::Planned) => {
+            "Volicord setup plan could not be committed.".to_owned()
+        }
     }
 }
 
@@ -765,6 +778,7 @@ mod tests {
         args::{HumanOutputDetail, OutputFormat},
         output::report::{
             render_command_report, CommandConnection, CommandOperation, ConnectionCommandReport,
+            SetupDisposition, SetupFailureDiagnostic,
         },
         planning::{PlannedChangeOperation, PlannedConnectionChange, PlannedConnectionChangeKind},
     };
@@ -827,13 +841,13 @@ mod tests {
 
     fn report(
         operation: CommandOperation,
-        setup_applied: Option<bool>,
+        setup_disposition: Option<SetupDisposition>,
         checks: Vec<ConnectionCheck>,
         actions: Vec<ActivationStep>,
     ) -> ConnectionCommandReport {
         ConnectionCommandReport::from_verification(
             operation,
-            setup_applied,
+            setup_disposition,
             Path::new("/runtime"),
             connection("workflow"),
             &verification(checks, actions),
@@ -954,7 +968,7 @@ mod tests {
     fn concise_init_outputs_are_exact_for_complete_action_required_and_applied_failure() {
         let complete = report(
             CommandOperation::Init,
-            Some(true),
+            Some(SetupDisposition::Committed),
             vec![ready_check()],
             Vec::new(),
         );
@@ -970,14 +984,14 @@ mod tests {
 
         let action_required = report(
             CommandOperation::Init,
-            Some(true),
+            Some(SetupDisposition::Committed),
             activity_checks(),
             vec![observe_action()],
         );
         assert_current_concise!(
             concise(&action_required),
             concat!(
-                "Setup applied; 1 host-owned activation step remains.\n\n",
+                "Setup committed; 1 host-owned activation step remains.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
                 "Checks: 5 ready, 0 blocked, 4 waiting, 0 failed\n\n",
@@ -992,7 +1006,7 @@ mod tests {
 
         let failed = report(
             CommandOperation::Init,
-            Some(true),
+            Some(SetupDisposition::Committed),
             vec![failed_check()],
             vec![action(
                 ActivationStepId::RepairManagedConfiguration,
@@ -1002,7 +1016,7 @@ mod tests {
         assert_current_concise!(
             concise(&failed),
             concat!(
-                "Volicord setup was applied, but verification failed.\n\n",
+                "Volicord setup was committed, but verification failed.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
                 "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
@@ -1018,6 +1032,8 @@ mod tests {
             CommandOperation::Init,
             Path::new("/runtime"),
             connection("workflow"),
+            SetupDisposition::Preserved,
+            SetupFailureDiagnostic::TransactionFailed,
             "Setup migration could not be completed",
             json!({"retry_arguments": ["init", "--verbose"]}),
             IntegrationActivationPlan::empty(IntegrationActivationState::Failed),
@@ -1026,15 +1042,15 @@ mod tests {
         assert_current_concise!(
             concise(&not_applied),
             concat!(
-                "Volicord setup could not be applied.\n\n",
+                "Volicord setup failed before commit; existing state was preserved.\n\n",
                 "Repository: /workspace/product\n",
                 "Mode: workflow\n",
                 "Checks: 0 ready, 0 blocked, 0 waiting, 1 failed\n\n",
                 "Problems\n",
-                "  setup.partial_application: Setup migration could not be completed\n",
-                "    Actual: partial setup application\n",
-                "    Expected: complete setup application\n",
-                "    Finding: finding.setup.partial_application\n\n",
+                "  setup.transaction_failed: Setup migration could not be completed\n",
+                "    Actual: preserved\n",
+                "    Expected: committed setup transaction\n",
+                "    Finding: finding.setup.transaction_failed\n\n",
                 "Required next steps\n",
                 "  action.connection.retry_setup: Resolve the typed setup failure and rerun the setup operation\n\n",
                 "Run the same setup command with --verbose for detailed diagnostics.\n",
@@ -1090,13 +1106,13 @@ mod tests {
         .unwrap();
         let report = ConnectionCommandReport::from_verification(
             CommandOperation::Init,
-            Some(true),
+            Some(SetupDisposition::Committed),
             Path::new("/runtime"),
             connection("workflow"),
             &verification,
         );
         let output = concise(&report);
-        assert!(output.starts_with("Setup applied; 4 host-owned activation steps remain.\n\n"));
+        assert!(output.starts_with("Setup committed; 4 host-owned activation steps remain.\n\n"));
         assert_eq!(output.matches("Required next steps\n").count(), 1);
         assert_eq!(
             output
@@ -1243,7 +1259,7 @@ mod tests {
         for operation in [CommandOperation::Init, CommandOperation::Add] {
             let applied = report(
                 operation,
-                Some(true),
+                Some(SetupDisposition::Committed),
                 vec![check(
                     ConnectionCheckKind::HostSession,
                     ConnectionCheckStatus::Pending,
@@ -1262,6 +1278,8 @@ mod tests {
                 operation,
                 Path::new("/runtime"),
                 connection("workflow"),
+                SetupDisposition::Preserved,
+                SetupFailureDiagnostic::TransactionFailed,
                 "Setup could not be applied",
                 json!({"retryable": true}),
                 IntegrationActivationPlan::empty(IntegrationActivationState::Failed),

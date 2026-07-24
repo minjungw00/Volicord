@@ -202,7 +202,7 @@ pub(crate) struct ManagedFileRetirementPlan {
     pub(crate) path: PathBuf,
     pub(crate) status: RetirementPlanStatus,
     target_snapshot: ManagedTargetSnapshot,
-    replacement: Option<String>,
+    pub(crate) replacement: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,6 +212,55 @@ pub(crate) enum RetirementPlanStatus {
     Unchanged,
     Removed,
     Updated,
+}
+
+pub(crate) fn generated_file_target_bytes(
+    file: &GeneratedFilePlan,
+) -> Result<Vec<u8>, GuardIntegrationError> {
+    if !generated_file_plan_matches_artifact_spec(file) {
+        return Err(GuardIntegrationError::runtime(
+            "managed file plan does not match the Guard artifact registry",
+        ));
+    }
+    let content = match file.write_kind {
+        GeneratedFileWriteKind::Block {
+            start_marker,
+            end_marker,
+            require_existing_marker,
+        } => {
+            let existing = file.target_snapshot.text().unwrap_or("");
+            if require_existing_marker
+                && file.target_snapshot.text().is_some()
+                && !existing.contains(start_marker)
+            {
+                return Err(GuardIntegrationError::runtime(format!(
+                    "{} already exists without a Volicord-managed block",
+                    file.path.display()
+                )));
+            }
+            managed_block::apply_managed_block_with_markers(
+                existing,
+                &file.content,
+                start_marker,
+                end_marker,
+            )
+            .map_err(managed_block_conflict)?
+        }
+        GeneratedFileWriteKind::Json
+        | GeneratedFileWriteKind::ExactJson
+        | GeneratedFileWriteKind::Script => file.content.clone(),
+    };
+    Ok(content.into_bytes())
+}
+
+pub(crate) fn generated_file_original_bytes(file: &GeneratedFilePlan) -> Option<&[u8]> {
+    file.target_snapshot.text().map(str::as_bytes)
+}
+
+pub(crate) fn retirement_file_original_bytes(
+    retirement: &ManagedFileRetirementPlan,
+) -> Option<&[u8]> {
+    retirement.target_snapshot.text().map(str::as_bytes)
 }
 
 impl FilePlanStatus {

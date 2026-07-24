@@ -878,7 +878,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
     let repair = assert_connection_report(&repair, 0, "init", "action_required")?;
     assert_eq!(
         repair["operation_details"]["result"],
-        json!({"kind": "setup", "applied": true})
+        json!({"kind": "setup", "disposition": "committed"})
     );
     let initialized = fixture.registry_snapshot();
     assert_ne!(
@@ -1029,7 +1029,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     let init_report = assert_connection_report(&init, 0, "init", "action_required")?;
     assert_eq!(
         init_report["operation_details"]["result"],
-        json!({"kind": "setup", "applied": true})
+        json!({"kind": "setup", "disposition": "committed"})
     );
     assert_check(&init_report, "managed_config", "passed", None);
     assert_check(&init_report, "host_executable", "passed", None);
@@ -1373,7 +1373,7 @@ fn dry_run_has_no_mutation() -> Result<(), Box<dyn Error>> {
     assert_eq!(report["operation_details"]["dry_run"], true);
     assert_eq!(
         report["operation_details"]["result"],
-        json!({"kind": "setup", "applied": false})
+        json!({"kind": "setup", "disposition": "planned"})
     );
     assert!(report["operation_details"]["planned_changes"].is_array());
     assert!(!fixture.runtime_home.exists());
@@ -1475,7 +1475,7 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
     let report = assert_connection_report(&output, 1, "init", "failed")?;
     assert_eq!(
         report["operation_details"]["result"],
-        json!({"kind": "setup", "applied": true})
+        json!({"kind": "setup", "disposition": "committed"})
     );
     assert_check(
         &report,
@@ -1494,7 +1494,7 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
     let report = assert_connection_report(&output, 1, "init", "failed")?;
     assert_eq!(
         report["operation_details"]["result"],
-        json!({"kind": "setup", "applied": true})
+        json!({"kind": "setup", "disposition": "committed"})
     );
     assert_check(
         &report,

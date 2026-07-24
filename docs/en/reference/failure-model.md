@@ -165,6 +165,25 @@ while preserving existing bytes and timestamps. Only an absent final path may
 enter staged creation and atomic no-replace publication. A failure before
 publication removes staging and does not create the final path.
 
+Setup transaction failures use the failed `setup_plan` check.
+`finding.setup.transaction_failed` covers ordinary commit failures,
+`finding.setup.concurrent_modification` identifies an input whose bytes changed
+after planning, and `finding.setup.partial_rollback` identifies a target that
+could not be restored without overwriting later state. Their matching diagnostic
+codes are `setup.transaction_failed`, `setup.concurrent_modification`, and
+`setup.partial_rollback`. New external bytes must be preserved. The result
+disposition is `preserved` when no final mutation committed, `rolled_back` when
+every committed replaceable mutation was restored, and `partially_rolled_back`
+when any restoration could not be completed safely. Failure details include the
+disposition and bounded rollback counts and errors. Failure activation plans
+contain no host activation steps because activation belongs only to a committed
+setup.
+
+These categories do not claim global filesystem atomicity. Prepare completes
+before commit, each managed file uses a same-directory atomic replacement, and
+rollback is bounded across independent Runtime Home, Codex configuration,
+Product Repository, and Store boundaries.
+
 ## Structured Diagnostic Findings
 
 `DiagnosticFinding` is the shared read-only report projection. A producer must

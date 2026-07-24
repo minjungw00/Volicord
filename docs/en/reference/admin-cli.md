@@ -143,9 +143,19 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 The first command selects a personal connection; `--shared` selects the
-project-owned shared connection. `init` plans, validates, and applies the exact
+project-owned shared connection. `init` plans, prepares, and commits the exact
 managed binding and reports any remaining Codex trust, reload, or verification
 action. `--dry-run` performs no filesystem or storage mutation.
+
+Plan construction is read-only and calculates the exact Runtime Home, Store,
+Codex configuration, and repository managed-file mutations. Prepare validates
+all input snapshots, stages each file beside its target, and prepares Store
+recovery entries. Commit publishes or validates the Runtime Home, applies the
+Store mutations, atomically replaces repository files in deterministic path
+order, atomically replaces Codex configuration last, and records the current
+integration revision. Activation steps are produced only for a committed
+setup. This is not global cross-filesystem atomicity; it is complete
+preparation, atomic per-file replacement, and bounded rollback.
 
 When no matching current Agent Connection exists, `init` creates one in
 `workflow` mode. When a matching current Agent Connection already exists,
@@ -623,7 +633,8 @@ operation_details:
 
 SetupResult:
   kind: setup
-  applied: bool
+  disposition: planned | committed | rolled_back | preserved |
+    partially_rolled_back
 
 ModeTransitionResult:
   kind: mode_transition
@@ -655,18 +666,21 @@ mode results use `kind=mode_transition`, and successful applied removal results
 use `kind=removal`. Status and verify normally omit `result`, and removal dry
 runs omit an outcome that has not happened.
 
-`SetupResult.applied` separates setup mutation from operational verification.
-A successful init or add apply reports `applied=true` even when a later local
-or operational check makes `status=failed`. A dry run reports `applied=false`,
+`SetupResult.disposition` separates the setup transaction from operational
+verification. A successful init or add reports `committed` even when a later
+local or operational check makes `status=failed`. A dry run reports `planned`,
 includes `planned_changes`, and never serializes
 `status=dry_run`. Its status is `action_required` when a planned change or host
 action remains and otherwise `complete`.
 
-If setup fails after only part of a migration was applied, it reports
-`status=failed` and `applied=false`; the failed `setup_plan` check details state
-the observed Registry transition, cleanup, prior-Connection dispositions, and
-retry arguments. It does not report a second migration status or imply that an
-unobserved step succeeded.
+If setup fails before any commit, it reports `preserved`. If committed
+replaceable state was restored, it reports `rolled_back`. A restoration that
+cannot safely replace a later external change reports
+`partially_rolled_back`; the external bytes are preserved and the failed
+`setup_plan` check includes the rollback counts and errors. A stale input fails
+with `SETUP_CONCURRENT_MODIFICATION` instead of overwriting the newer bytes.
+None of these failure dispositions emits host activation steps or claims that
+setup was applied.
 
 The command-report aggregate is `failed` when any required check failed,
 `action_required` when no check failed and a required check is pending or a
@@ -847,16 +861,15 @@ session health. Capability proof passes only from the newest
 in that same session. A newer partial or failed attempt and an older proof
 remain separate role-bearing evidence; neither fills milestones in the other.
 
-`volicord init` and `volicord connection add` keep a successfully written valid
+`volicord init` and `volicord connection add` keep a committed valid
 setup even when a later operational check fails. They do not roll back managed
 configuration because Codex is unavailable or the self-test fails. A fresh
 valid setup with no managed-host observation is `action_required` and includes
 the typed `reload_codex`, `review_project_hooks`,
 `request_integration_verification`, and `read_connection_status` steps.
-These setup commands apply or adopt host configuration before committing its
-managed fingerprint, complete owner-coherent Registry and Guard state, derive
-the final Connection revision, and only then verify the current configuration
-and observed host behavior and conditionally persist the report.
+These setup commands commit the planned managed files and owner-coherent Store
+state, record the final Connection revision, and only then verify current
+configuration and observed host behavior and conditionally persist the report.
 
 Required steps are a topologically ordered, deduplicated plan derived from
 pending and failed checks. Each carries fixed initiator, executor, execution

@@ -29,11 +29,11 @@ verify, repair, and removal commands.
 ## Read Setup Output
 
 Without an output flag, `init` and the selected-Connection lifecycle commands
-print concise terminal prose. A newly applied setup that still needs managed
+print concise terminal prose. A newly committed setup that still needs managed
 host activity looks like this representative output:
 
 ```text
-Volicord setup was applied and needs one more step.
+Setup committed; 4 host-owned activation steps remain.
 
 Repository: <repo>
 Mode: workflow

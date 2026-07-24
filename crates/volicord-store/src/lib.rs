@@ -24,6 +24,7 @@ pub mod operational_diagnostics;
 pub mod operational_sessions;
 pub mod runtime_home;
 pub mod schema;
+pub mod setup_transaction;
 pub mod sqlite;
 pub mod workflow_records;
 

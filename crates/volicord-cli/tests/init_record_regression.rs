@@ -61,6 +61,12 @@ struct FakeConnectionProcess {
     current_exe: PathBuf,
     preflight_modes: Vec<String>,
     verification_modes: Vec<String>,
+    setup_points: Vec<String>,
+    fail_setup_call: Option<usize>,
+    fail_setup_point: Option<String>,
+    fail_during_rollback: bool,
+    concurrent_codex_bytes: Option<Vec<u8>>,
+    post_commit_codex_bytes: Option<Vec<u8>>,
 }
 
 impl FakeConnectionProcess {
@@ -80,7 +86,21 @@ impl FakeConnectionProcess {
             current_exe: PathBuf::from(env!("CARGO_BIN_EXE_volicord")),
             preflight_modes: Vec::new(),
             verification_modes: Vec::new(),
+            setup_points: Vec::new(),
+            fail_setup_call: None,
+            fail_setup_point: None,
+            fail_during_rollback: false,
+            concurrent_codex_bytes: None,
+            post_commit_codex_bytes: None,
         })
+    }
+
+    fn fail_setup_call(&mut self, call: usize) {
+        self.fail_setup_call = Some(call);
+    }
+
+    fn fail_setup_point(&mut self, point: &str) {
+        self.fail_setup_point = Some(point.to_owned());
     }
 }
 
@@ -103,6 +123,30 @@ impl ConnectionProcess for FakeConnectionProcess {
 
     fn current_exe(&self) -> Result<PathBuf, String> {
         Ok(self.current_exe.clone())
+    }
+
+    fn setup_fault(&mut self, point: &str) -> Result<(), String> {
+        let call = self.setup_points.len();
+        self.setup_points.push(point.to_owned());
+        if point == "before_codex_config_replace" {
+            if let Some(bytes) = self.concurrent_codex_bytes.take() {
+                fs::write(self.codex_home.join("config.toml"), bytes)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        if point == "after_codex_config_replace" {
+            if let Some(bytes) = self.post_commit_codex_bytes.take() {
+                fs::write(self.codex_home.join("config.toml"), bytes)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        if (point == "during_rollback" && self.fail_during_rollback)
+            || self.fail_setup_call == Some(call)
+            || self.fail_setup_point.as_deref() == Some(point)
+        {
+            return Err(format!("fixture setup fault at {point}"));
+        }
+        Ok(())
     }
 
     fn run_preflight(
@@ -200,6 +244,174 @@ fn fresh_record_init_persists_exact_owner_bound_manifest_and_managed_artifacts(
 }
 
 #[test]
+fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), Box<dyn Error>> {
+    let control = TempRuntimeHome::new("cli-record-init-transaction-points")?;
+    let control_repo = create_git_repo(&control, "repo")?;
+    let mut control_process = FakeConnectionProcess::new(&control)?;
+    let control_output = run_record_init_outcome(&control_repo, &mut control_process)?;
+    assert_eq!(
+        control_output["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    let setup_points = control_process.setup_points.clone();
+    assert_eq!(
+        setup_points.first().map(String::as_str),
+        Some("after_runtime_home_preparation")
+    );
+    assert!(setup_points
+        .iter()
+        .any(|point| point == "after_registry_mutation_preparation"));
+    assert!(setup_points
+        .iter()
+        .any(|point| point == "before_codex_config_replace"));
+    assert!(setup_points
+        .iter()
+        .any(|point| point == "after_codex_config_replace"));
+    assert_eq!(
+        setup_points.last().map(String::as_str),
+        Some("before_integration_revision_commit")
+    );
+    assert!(
+        setup_points
+            .iter()
+            .filter(|point| point.starts_with("after_managed_file:"))
+            .count()
+            >= 9,
+        "fault coverage did not include every managed hook/rule/guidance file: {setup_points:?}"
+    );
+
+    for (call, point) in setup_points.iter().enumerate() {
+        let fixture = TempRuntimeHome::new("cli-record-init-transaction-fault")?;
+        let repo_root = create_git_repo(&fixture, "repo")?;
+        fs::write(repo_root.join("user-notes.txt"), b"user-owned bytes\n")?;
+        let mut process = FakeConnectionProcess::new(&fixture)?;
+        let runtime_before = directory_contents(fixture.path())?;
+        let repo_before = directory_contents(&repo_root)?;
+        let codex_before = directory_contents(&process.codex_home)?;
+        process.fail_setup_call(call);
+
+        let failure = run_record_init_outcome(&repo_root, &mut process)?;
+        let expected_disposition = if matches!(
+            point.as_str(),
+            "after_runtime_home_preparation" | "after_registry_mutation_preparation"
+        ) {
+            "preserved"
+        } else {
+            "rolled_back"
+        };
+        assert_eq!(
+            failure["operation_details"]["result"]["disposition"], expected_disposition,
+            "unexpected disposition for fault point {point}: {failure}"
+        );
+        assert!(failure["activation_plan"]["required_steps"]
+            .as_array()
+            .is_some_and(Vec::is_empty));
+        assert_eq!(
+            directory_contents(fixture.path())?,
+            runtime_before,
+            "{point}"
+        );
+        assert_eq!(directory_contents(&repo_root)?, repo_before, "{point}");
+        assert_eq!(
+            directory_contents(&process.codex_home)?,
+            codex_before,
+            "{point}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn init_concurrent_codex_change_is_preserved_and_other_targets_roll_back(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-concurrent-config")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    let runtime_before = directory_contents(fixture.path())?;
+    let repo_before = directory_contents(&repo_root)?;
+    let external_bytes = b"# written by another process\n".to_vec();
+    process.concurrent_codex_bytes = Some(external_bytes.clone());
+
+    let failure = run_record_init_outcome(&repo_root, &mut process)?;
+    assert_eq!(
+        failure["operation_details"]["result"]["disposition"],
+        "rolled_back"
+    );
+    assert!(failure["checks"][0]["details"]["failure"]
+        .as_str()
+        .is_some_and(|failure| failure.contains("SETUP_CONCURRENT_MODIFICATION")));
+    assert_eq!(
+        failure["findings"][0]["code"],
+        "setup.concurrent_modification"
+    );
+    assert_eq!(directory_contents(fixture.path())?, runtime_before);
+    assert_eq!(directory_contents(&repo_root)?, repo_before);
+    assert_eq!(
+        fs::read(process.codex_home.join("config.toml"))?,
+        external_bytes
+    );
+    Ok(())
+}
+
+#[test]
+fn existing_init_failure_restores_registry_repository_and_codex_bytes() -> Result<(), Box<dyn Error>>
+{
+    let fixture = TempRuntimeHome::new("cli-record-init-existing-rollback")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    let committed = run_record_init_outcome(&repo_root, &mut process)?;
+    assert_eq!(
+        committed["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    let runtime_before = directory_contents(fixture.path())?;
+    let repo_before = directory_contents(&repo_root)?;
+    let codex_before = directory_contents(&process.codex_home)?;
+    process.setup_points.clear();
+    process.fail_setup_point("before_integration_revision_commit");
+
+    let failure = run_record_init_outcome(&repo_root, &mut process)?;
+    assert_eq!(
+        failure["operation_details"]["result"]["disposition"],
+        "rolled_back"
+    );
+    assert_eq!(directory_contents(fixture.path())?, runtime_before);
+    assert_eq!(directory_contents(&repo_root)?, repo_before);
+    assert_eq!(directory_contents(&process.codex_home)?, codex_before);
+    Ok(())
+}
+
+#[test]
+fn init_reports_partial_rollback_fault_but_continues_best_effort_restoration(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-rollback-fault")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    let runtime_before = directory_contents(fixture.path())?;
+    let repo_before = directory_contents(&repo_root)?;
+    let codex_before = directory_contents(&process.codex_home)?;
+    let external_bytes = b"# external edit after setup replacement\n".to_vec();
+    process.fail_setup_point("after_codex_config_replace");
+    process.fail_during_rollback = true;
+    process.post_commit_codex_bytes = Some(external_bytes.clone());
+
+    let failure = run_record_init_outcome(&repo_root, &mut process)?;
+    assert_eq!(
+        failure["operation_details"]["result"]["disposition"],
+        "partially_rolled_back"
+    );
+    assert_eq!(failure["findings"][0]["code"], "setup.partial_rollback");
+    assert_eq!(directory_contents(fixture.path())?, runtime_before);
+    assert_eq!(directory_contents(&repo_root)?, repo_before);
+    assert_ne!(directory_contents(&process.codex_home)?, codex_before);
+    assert_eq!(
+        fs::read(process.codex_home.join("config.toml"))?,
+        external_bytes
+    );
+    Ok(())
+}
+
+#[test]
 fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = TempRuntimeHome::new("cli-connection-add-new-modes")?;
@@ -216,7 +428,7 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
     assert_eq!(workflow["connection"]["mode"], CONNECTION_MODE_WORKFLOW);
     assert_eq!(
         workflow["operation_details"]["result"],
-        json!({"kind": "setup", "applied": true})
+        json!({"kind": "setup", "disposition": "committed"})
     );
     let workflow_id = workflow["connection"]["connection_id"]
         .as_str()
@@ -725,7 +937,7 @@ fn init_migration_retires_bound_project_state_from_a_multi_project_connection(
 }
 
 #[test]
-fn init_migration_retains_bound_cleanup_inventory_until_host_cleanup_replay(
+fn init_migration_rolls_back_bound_cleanup_inventory_until_clean_replay(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = TempRuntimeHome::new("cli-record-init-bound-pending-cleanup")?;
     let repo_root = create_git_repo(&fixture, "repo")?;
@@ -748,50 +960,45 @@ fn init_migration_retains_bound_cleanup_inventory_until_host_cleanup_replay(
         "init.cleanup.pending",
     )?;
     let prior_config_target = PathBuf::from(&prior_connection.config_target);
-    fs::write(&prior_config_target, "malformed = [\n")?;
+    let prior_config_bytes = fs::read(&prior_config_target)?;
+    let before_failed_migration = registry_snapshot(fixture.path());
 
     let mut replacement_process = FakeConnectionProcess::named(&fixture, "replacement")?;
+    replacement_process.fail_setup_point("after_codex_config_replace");
     let failed_cleanup = run_record_init_outcome(&repo_root, &mut replacement_process)?;
     assert_eq!(failed_cleanup["operation"], "init");
     assert_eq!(failed_cleanup["status"], "failed");
     assert_eq!(
         failed_cleanup["operation_details"]["result"],
-        json!({"kind": "setup", "applied": false}),
+        json!({"kind": "setup", "disposition": "rolled_back"}),
         "unexpected migration output: {failed_cleanup}"
     );
     let failure_details = &failed_cleanup["checks"][0]["details"];
-    assert_eq!(failure_details["registry_transition_applied"], true);
-    assert_eq!(failure_details["prior_host_cleanup_completed"], false);
-    assert!(failure_details["prior_connections"]
-        .as_array()
-        .is_some_and(|connections| connections
-            .iter()
-            .any(|connection| { connection["disposition"] == "disabled_pending_host_cleanup" })));
+    assert_eq!(failure_details["disposition"], "rolled_back");
+    assert_eq!(failure_details["rollback"]["partially_rolled_back"], 0);
     assert!(!failure_details["failure"]
         .as_str()
         .unwrap_or_default()
         .contains("FOREIGN KEY"));
 
-    let pending = registry_snapshot(fixture.path());
-    assert_eq!(pending.agent_connections.len(), 2);
-    assert_eq!(pending.connection_projects.len(), 2);
-    assert_eq!(pending.guard_installations.len(), 2);
-    assert_eq!(pending.runtime_project_session_bindings.len(), 1);
-    let pending_prior = pending
+    let rolled_back = registry_snapshot(fixture.path());
+    assert_eq!(rolled_back, before_failed_migration);
+    let retained_prior = rolled_back
         .agent_connections
         .iter()
         .find(|connection| {
             connection.connection_internal_id == prior_connection.connection_internal_id
         })
-        .expect("disabled prior Connection remains");
-    assert!(!pending_prior.enabled);
-    assert!(connection_metadata_contains_pending_host_cleanup_key(
-        &pending_prior.metadata_json
+        .expect("prior Connection remains");
+    assert!(retained_prior.enabled);
+    assert!(!connection_metadata_contains_pending_host_cleanup_key(
+        &retained_prior.metadata_json
     ));
     assert!(mcp_runtime_session(fixture.path(), &runtime_id)?.is_some());
     assert!(agent_session(fixture.path(), &project_id, &project_session_id)?.is_some());
+    assert_eq!(fs::read(&prior_config_target)?, prior_config_bytes);
 
-    fs::remove_file(&prior_config_target)?;
+    replacement_process.fail_setup_point = None;
     let cleanup_replay = run_record_init_outcome(&repo_root, &mut replacement_process)?;
     assert_failed_init_with_recorded_guard(&cleanup_replay);
     assert!(cleanup_replay["migration"].is_null());
@@ -1089,7 +1296,7 @@ fn assert_failed_init_with_recorded_guard(output: &Value) {
     assert_eq!(output["operation_details"]["dry_run"], false);
     assert_eq!(
         output["operation_details"]["result"],
-        json!({"kind": "setup", "applied": true})
+        json!({"kind": "setup", "disposition": "committed"})
     );
 }
 

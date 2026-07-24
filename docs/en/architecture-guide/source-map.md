@@ -51,6 +51,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/schema/registry.sql` | Canonical Runtime Home registry DDL source. |
 | `crates/volicord-store/src/schema/project.sql` | Canonical project Store DDL source. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home and Store bootstrap. |
+| `crates/volicord-store/src/setup_transaction.rs` | Explicit prepare, input validation, mutation checkpoint, commit, and guarded rollback boundary for the existing Store files touched by setup. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection records, project allowlists, managed fingerprints, and persisted verification-report boundary. |
 | `crates/volicord-store/src/diagnostic_findings/mod.rs` | Lifecycle-specific diagnostic persistence facade and public Store API exports. |
 | `crates/volicord-store/src/diagnostic_findings/occurrence.rs` | Insert-only occurrence persistence and atomic runtime terminal-finding links. |
@@ -93,6 +94,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
 | `crates/volicord-cli/src/host_launch.rs` | Hidden same-process host launcher, exact current Codex entry revalidation, launch-lease issue/cleanup, and in-memory transition into managed stdio. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
+| `crates/volicord-cli/src/connection_command/setup_transaction.rs` | Typed `SetupPlan`, Runtime Home preparation, same-directory atomic file mutations, freshness validation, deterministic commit, and bounded rollback for `volicord init`. |
 | `crates/volicord-cli/src/connection_command/verification/mod.rs` | Connection verification coordinator, shared step/report types, and bounded package exports. |
 | `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, and managed-host session checks. |
 | `crates/volicord-cli/src/connection_command/verification/mcp_checks.rs` | MCP preflight/handshake check projection and MCP finding-ID inputs. |
@@ -111,6 +113,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/connection_command/mcp_process/host_compatibility.rs` | Independently pinned host-profile fixtures and Codex request/tool-call shapes; these are not derived from the production protocol registry. |
 | `crates/volicord-cli/src/connection_command/mcp_process/pinned_schema.rs` | Revision-specific validation of initialize, `tools/list`, and `tools/call` probe messages against the pinned offline schemas. |
 | `crates/volicord-cli/src/connection_command/output/` | Canonical selected-Connection diagnostic report construction, aggregate status and roots, and concise, verbose, and lossless JSON presentation of the same required and optional activation plan without a second renderer-owned step list. |
+| `crates/volicord-cli/tests/init_record_regression.rs` | Init plan/read-only, replay, migration, exact owner record, all-stage setup fault injection, concurrent modification, full rollback, and partial-rollback reporting regressions. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | Finding-ID and runtime-session detail commands, bounded lifecycle-aware cause traversal, lookup-specific JSON and human projection, and lookup-status exit outcomes independent of finding severity. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex configuration parsing and serialization, canonical managed-entry validation, preservation of the allowed tool-approval overlay, managed configuration mutation, diagnostic executable observations, and connection verification. |
 | `crates/volicord-cli/src/host_integration/contracts.rs` | Explicit semantic Codex host-contract selection, typed Guard routing-strategy projection, and strict configuration reconstruction from the registered `McpServerKey`. |

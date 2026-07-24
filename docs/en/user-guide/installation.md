@@ -202,6 +202,22 @@ read-only. A manifest or schema mismatch preserves that home; keep it for
 owner-approved recovery and rerun with a fresh explicit `--home`. Use an
 owner-defined importer only when the current owners provide one.
 
+`init` constructs its complete setup plan without writing any target. Prepare
+then stages the exact Codex configuration and every repository hook, wrapper,
+rule, policy, exclude, and managed guidance file beside its target, and
+prepares the Store recovery boundary. Commit publishes or validates the
+Runtime Home, applies Store mutations, atomically replaces repository files in
+deterministic order, replaces Codex configuration last, and records the
+integration revision. A failure restores already replaced files and
+checkpointed Store bytes when they remain unchanged, removes owned staging
+when safe, and reports `preserved`, `rolled_back`, or
+`partially_rolled_back` precisely. A recovery entry is retained and named in
+the diagnostic if deleting it would discard a pre-existing file after a later
+writer made restoration unsafe.
+Runtime Home, Codex home, and Product Repository may be on different
+filesystems: preparation is complete before commit and each file replacement
+is atomic, but the whole multi-filesystem operation is not globally atomic.
+
 Ensure the installed `volicord` binary is available on `PATH` before running
 host setup. Shell startup file changes are never implicit. If you update `PATH`
 through your shell startup files, open a new shell or restart or reload existing

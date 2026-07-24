@@ -148,6 +148,22 @@ Runtime Home bootstrap은 setup 변경 전에 이 규칙을 적용합니다. 기
 최종 경로가 없을 때만 staged creation과 기존 대상을 교체하지 않는 원자적 공개를 시작할
 수 있습니다. 공개 전 실패는 staging을 제거하고 최종 경로를 만들지 않습니다.
 
+Setup transaction 실패는 실패한 `setup_plan` check를 사용합니다. 일반적인 commit
+실패에는 `finding.setup.transaction_failed`, planning 뒤 bytes가 바뀐 입력에는
+`finding.setup.concurrent_modification`, 이후 상태를 덮어쓰지 않고는 복원할 수 없는
+target에는 `finding.setup.partial_rollback`을 사용합니다. 대응하는 diagnostic code는
+각각 `setup.transaction_failed`, `setup.concurrent_modification`,
+`setup.partial_rollback`입니다. 새 외부 bytes는 보존해야 합니다. 최종 mutation을
+하나도 commit하지 않았으면 result disposition은 `preserved`, commit한 교체 가능
+mutation을 모두 복원했으면 `rolled_back`, 안전하게 끝내지 못한 복원이 하나라도
+있으면 `partially_rolled_back`입니다. 실패 details에는 disposition, 한도가 있는
+rollback 개수와 오류를 담습니다. Activation은 commit한 setup에만 속하므로 실패
+activation plan에는 host activation step이 없습니다.
+
+이 범주는 전역 파일시스템 원자성을 주장하지 않습니다. Prepare는 commit 전에 끝나고,
+각 관리 파일은 같은 directory의 원자 교체를 사용하며, 서로 독립적인 Runtime Home,
+Codex 구성, Product Repository, Store 경계에 걸친 rollback에는 한도가 있습니다.
+
 ## 구조화된 Diagnostic Finding
 
 `DiagnosticFinding`은 공유 read-only report projection입니다. Producer는

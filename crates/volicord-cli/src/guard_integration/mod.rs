@@ -10,7 +10,7 @@ pub(crate) mod manifest;
 pub(crate) mod plan;
 pub(crate) mod policy;
 
-pub(crate) use apply::{apply_guard_integration, apply_guard_migration_protection};
+pub(crate) use apply::apply_guard_integration;
 pub(crate) use audit::{HookWrapperResolutionStatus, HOOK_WRAPPER_MARKER};
 pub(crate) use files::FilePlanStatus;
 pub(crate) use manifest::{guard_installation_upsert, record_guard_installation};
