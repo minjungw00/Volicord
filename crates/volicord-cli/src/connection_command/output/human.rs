@@ -347,8 +347,9 @@ fn concise_diagnostic_hint(report: &ConnectionCommandReport) -> Option<String> {
         CommandOperation::Init | CommandOperation::Add => match report.result.as_ref() {
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Committed,
+                ..
             }) if has_nonpassing_check => Some(current_status_diagnostic_hint(report)),
-            Some(ConnectionCommandResult::Setup { disposition })
+            Some(ConnectionCommandResult::Setup { disposition, .. })
                 if *disposition != SetupDisposition::Committed
                     && report.status == ConnectionStatus::Failed
                     && has_nonpassing_check =>
@@ -510,7 +511,7 @@ fn setup_headline(report: &ConnectionCommandReport) -> String {
     }
 
     let disposition = match report.result {
-        Some(ConnectionCommandResult::Setup { disposition }) => disposition,
+        Some(ConnectionCommandResult::Setup { disposition, .. }) => disposition,
         _ => SetupDisposition::Preserved,
     };
     match (report.status, disposition) {
@@ -778,7 +779,7 @@ mod tests {
         args::{HumanOutputDetail, OutputFormat},
         output::report::{
             render_command_report, CommandConnection, CommandOperation, ConnectionCommandReport,
-            SetupDisposition, SetupFailureDiagnostic,
+            RuntimeHomePublicationStatus, SetupDisposition, SetupFailureDiagnostic,
         },
         planning::{PlannedChangeOperation, PlannedConnectionChange, PlannedConnectionChangeKind},
     };
@@ -1033,6 +1034,7 @@ mod tests {
             Path::new("/runtime"),
             connection("workflow"),
             SetupDisposition::Preserved,
+            RuntimeHomePublicationStatus::NotPublished,
             SetupFailureDiagnostic::TransactionFailed,
             "Setup migration could not be completed",
             json!({"retry_arguments": ["init", "--verbose"]}),
@@ -1279,6 +1281,7 @@ mod tests {
                 Path::new("/runtime"),
                 connection("workflow"),
                 SetupDisposition::Preserved,
+                RuntimeHomePublicationStatus::NotPublished,
                 SetupFailureDiagnostic::TransactionFailed,
                 "Setup could not be applied",
                 json!({"retryable": true}),

@@ -162,6 +162,21 @@ part of the accepted layout.
 CREATE TABLE runtime_home (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   runtime_home_id TEXT NOT NULL UNIQUE,
+  publication_id TEXT NOT NULL UNIQUE CHECK (
+    length(publication_id) = 61
+    AND substr(publication_id, 1, 25) = 'runtime_home_publication_'
+    AND substr(publication_id, 34, 1) = '-'
+    AND substr(publication_id, 39, 1) = '-'
+    AND substr(publication_id, 44, 1) = '-'
+    AND substr(publication_id, 49, 1) = '-'
+    AND substr(publication_id, 26, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 35, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 40, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 45, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 50, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 40, 1) = '4'
+    AND substr(publication_id, 45, 1) GLOB '[89ab]'
+  ),
   runtime_home_path TEXT NOT NULL UNIQUE,
   registry_db_path TEXT NOT NULL UNIQUE,
   storage_profile TEXT NOT NULL,
@@ -962,7 +977,7 @@ CREATE INDEX idx_guard_probe_observations_verification
 
 Registry constraints:
 
-- `runtime_home` is a singleton table. Its `storage_profile` column is the required manifest carrier and stores the complete current `StorageManifest`; the row also stores Runtime Home identity, the Runtime Home path, the registry database path, metadata, and timestamps. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
+- `runtime_home` is a singleton table. Its `storage_profile` column is the required manifest carrier and stores the complete current `StorageManifest`; the row also stores Runtime Home identity, the unique `runtime_home_publication_`-prefixed lowercase UUIDv4 publication provenance, the Runtime Home path, the registry database path, metadata, and timestamps. The publication ID identifies one preparation invocation and is not a credential, OS actor identity, or numeric schema selector. The stored `runtime_home_id` identifies the Runtime Home record; it is not a security guarantee.
 - `installation_profile` stores the selected `volicord` command, MCP launch command, bin directory, default connection mode, metadata, and timestamps for the Runtime Home. It may be established by `volicord init`. It is not host trust, user authority, or public API state.
 - `projects.project_internal_id` is the storage primary key for project records. `projects.project_name` is the display name. `projects.project_alias` is the CLI selection aid. `projects.repo_root` is the repository-root lookup key. `projects.project_alias`, `projects.repo_root`, `projects.project_home`, and `projects.state_db_path` are unique.
 - `project_aliases` maps aliases to `project_internal_id` values. Alias rows are registry selection aids, not project-local Core authority records.

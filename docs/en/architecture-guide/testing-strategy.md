@@ -68,9 +68,12 @@ Durable tests should cover, as applicable:
 - current-contract mismatch routed through the owned corrupt-data failure;
 - Runtime Home `Absent`, `Ready`, `Incompatible`, and `Corrupt` inspection;
   same-parent staged creation with singleton and installation metadata; exact
-  manifest and relation facts; cleanup at each pre-publication failure;
-  no-replace concurrent publication on Unix and native Windows; and unchanged
-  bytes and timestamps for existing incompatible state;
+  manifest, opaque publication provenance, and relation facts; cleanup at each
+  pre-publication failure; no-replace concurrent publication with exactly one
+  owner and observer-only losers on Unix and native Windows; token-backed
+  rollback revalidation, ownership-loss and managed-host-consumption
+  preservation, unrelated replacement safety; and unchanged bytes and
+  timestamps for existing incompatible state;
 - missing or ineligible operation-result rows remaining
   `OPERATION_RESULT_UNAVAILABLE`;
 - MCP rejection of hidden context and CLI-only UserAction resolution;
@@ -155,10 +158,13 @@ Durable tests should cover, as applicable:
   pluralization; current-status suffixes; typed repair-required plans; and
   optional active diagnostics kept separate;
 - transactional init fault injection after Runtime Home preparation, Store
-  recovery preparation, every managed hook/rule/guidance replacement, before
-  and after Codex configuration replacement, before integration-revision
-  commit, and during rollback; exact fresh and existing-state restoration;
-  external concurrent-byte preservation; `planned`, `committed`,
+  recovery preparation, Runtime Home rename at parent-sync, publication
+  read-back, and manifest-validation phases, every managed
+  hook/rule/guidance replacement, before and after Codex configuration
+  replacement, before integration-revision commit, and during rollback; exact
+  fresh and existing-state restoration; bounded competing full-init coverage
+  for either winner order with a later loser failure; external concurrent-byte
+  preservation; every setup publication result and `planned`, `committed`,
   `preserved`, `rolled_back`, and `partially_rolled_back` report projection;
   read-only dry-run parity; replay idempotence; and activation only after
   commit;

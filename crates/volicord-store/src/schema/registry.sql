@@ -1,6 +1,21 @@
 CREATE TABLE runtime_home (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   runtime_home_id TEXT NOT NULL UNIQUE,
+  publication_id TEXT NOT NULL UNIQUE CHECK (
+    length(publication_id) = 61
+    AND substr(publication_id, 1, 25) = 'runtime_home_publication_'
+    AND substr(publication_id, 34, 1) = '-'
+    AND substr(publication_id, 39, 1) = '-'
+    AND substr(publication_id, 44, 1) = '-'
+    AND substr(publication_id, 49, 1) = '-'
+    AND substr(publication_id, 26, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 35, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 40, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 45, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 50, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 40, 1) = '4'
+    AND substr(publication_id, 45, 1) GLOB '[89ab]'
+  ),
   runtime_home_path TEXT NOT NULL UNIQUE,
   registry_db_path TEXT NOT NULL UNIQUE,
   storage_profile TEXT NOT NULL,

@@ -29,9 +29,31 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
     assert_eq!(metadata.tables.len(), 53);
-    assert_eq!(metadata.columns.len(), 596);
+    assert_eq!(metadata.columns.len(), 597);
     assert_eq!(metadata.indexes.len(), 77);
     assert_eq!(metadata.constraints.len(), 45);
+    let runtime_home_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::Registry && column.table == "runtime_home"
+        })
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        runtime_home_columns,
+        [
+            "singleton_id",
+            "runtime_home_id",
+            "publication_id",
+            "runtime_home_path",
+            "registry_db_path",
+            "storage_profile",
+            "metadata_json",
+            "created_at",
+            "updated_at",
+        ]
+    );
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -328,11 +350,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:bc7eec2185cf6554caf6572c0371fc49d7e90234f05c1855cfca32554e98d63b"
+        "sha256:a3eb52503b6eae3dab156446457273f13fcc5a5ae8118159ec273e6eaebe4557"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:eff0b1482ce8d9a0c8f1fa8fa9f9e3003b6d34b1359b61a370af05efbb9465b0"
+        "sha256:0d80ee10e79975d637a4a40025a35c6cc1585734acf7e8f49a30d4254b5d1044"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -366,12 +388,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:bc7eec2185cf6554caf6572c0371fc49d7e90234f05c1855cfca32554e98d63b\",",
+            "{\"canonical_ddl_digest\":\"sha256:a3eb52503b6eae3dab156446457273f13fcc5a5ae8118159ec273e6eaebe4557\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:eff0b1482ce8d9a0c8f1fa8fa9f9e3003b6d34b1359b61a370af05efbb9465b0\"}"
+            "\"integrity_constraints_digest\":\"sha256:0d80ee10e79975d637a4a40025a35c6cc1585734acf7e8f49a30d4254b5d1044\"}"
         )
     );
     Ok(())
@@ -1000,9 +1022,18 @@ fn canonical_project() -> Result<Connection, Box<dyn Error>> {
 fn insert_registry_owner(conn: &Connection, manifest: &str) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO runtime_home (
-            singleton_id, runtime_home_id, runtime_home_path, registry_db_path,
+            singleton_id, runtime_home_id, publication_id, runtime_home_path, registry_db_path,
             storage_profile, created_at, updated_at
-         ) VALUES (1, 'runtime_a', '/runtime-a', '/runtime-a/registry.sqlite', ?1, 't0', 't0')",
+         ) VALUES (
+            1,
+            'runtime_a',
+            'runtime_home_publication_00112233-4455-4abb-8cdd-eeff10203040',
+            '/runtime-a',
+            '/runtime-a/registry.sqlite',
+            ?1,
+            't0',
+            't0'
+         )",
         [manifest],
     )?;
     Ok(())

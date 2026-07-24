@@ -7,16 +7,25 @@ use std::{
 use sha2::{Digest, Sha256};
 use volicord_store::bootstrap::{
     commit_runtime_home, inspect_runtime_home_bootstrap, prepare_runtime_home_with_installation,
-    InstallationProfileRegistration, PreparedRuntimeHome, RuntimeHomeBootstrapState,
+    project_record_by_repo_root_read_only, InstallationProfileRegistration, PreparedRuntimeHome,
+    RuntimeHomeBootstrapState, RuntimeHomePublicationGuard, RuntimeHomePublicationOutcome,
+    RuntimeHomePublicationRollbackOutcome,
 };
 use volicord_store::setup_transaction::{PreparedStoreMutationBoundary, StoreMutationInput};
+use volicord_store::sqlite::registry_db_path;
 use volicord_types::IntegrationActivationPlan;
 
-use super::ConnectionCommandError;
+use super::{output::RuntimeHomePublicationStatus, ConnectionCommandError};
 
 pub(super) const FAULT_AFTER_RUNTIME_HOME_PREPARATION: &str = "after_runtime_home_preparation";
 pub(super) const FAULT_AFTER_REGISTRY_MUTATION_PREPARATION: &str =
     "after_registry_mutation_preparation";
+pub(super) const FAULT_RUNTIME_HOME_PARENT_DIRECTORY_SYNC: &str =
+    "runtime_home_parent_directory_sync";
+pub(super) const FAULT_RUNTIME_HOME_PUBLICATION_READ_BACK: &str =
+    "runtime_home_publication_read_back";
+pub(super) const FAULT_RUNTIME_HOME_PUBLICATION_MANIFEST_VALIDATION: &str =
+    "runtime_home_publication_manifest_validation";
 pub(super) const FAULT_BEFORE_CODEX_CONFIG_REPLACE: &str = "before_codex_config_replace";
 pub(super) const FAULT_AFTER_CODEX_CONFIG_REPLACE: &str = "after_codex_config_replace";
 pub(super) const FAULT_BEFORE_INTEGRATION_REVISION_COMMIT: &str =
@@ -388,24 +397,36 @@ impl AtomicFileMutation {
 #[derive(Debug)]
 pub(super) struct PreparedSetup {
     pub(super) plan: SetupPlan,
-    prepared_runtime_home: Option<PreparedRuntimeHome>,
-    runtime_home_published: bool,
+    runtime_home_publication: SetupRuntimeHomePublication,
     pub(super) created_directories: Vec<PathBuf>,
     store_boundary: Option<PreparedStoreMutationBoundary>,
     pub(super) store_applied: bool,
     pub(super) created_project_home: Option<PathBuf>,
-    created_runtime_home_removal_allowed: bool,
+}
+
+#[derive(Debug)]
+enum SetupRuntimeHomePublication {
+    ExistingReady,
+    Prepared(PreparedRuntimeHome),
+    NotPublished,
+    OwnedPublished(RuntimeHomePublicationGuard),
+    OwnedConfirmed(RuntimeHomePublicationGuard),
+    ConcurrentWinnerObserved,
+    OwnedPreserved(RuntimeHomePublicationGuard),
+    OwnedRolledBack,
+    OwnershipLost,
+    Transitioning,
 }
 
 impl PreparedSetup {
     pub(super) fn prepare(mut plan: SetupPlan) -> Result<Self, ConnectionCommandError> {
-        let prepared_runtime_home = match &plan.runtime_home {
+        let runtime_home_publication = match &plan.runtime_home {
             RuntimeHomePlan::Create {
                 final_path,
                 runtime_home_id,
                 metadata_json,
                 installation,
-            } => Some(prepare_runtime_home_with_installation(
+            } => SetupRuntimeHomePublication::Prepared(prepare_runtime_home_with_installation(
                 final_path,
                 runtime_home_id,
                 metadata_json,
@@ -413,7 +434,9 @@ impl PreparedSetup {
             )?),
             RuntimeHomePlan::Validate { final_path } => {
                 match inspect_runtime_home_bootstrap(final_path)? {
-                    RuntimeHomeBootstrapState::Ready(_) => None,
+                    RuntimeHomeBootstrapState::Ready(_) => {
+                        SetupRuntimeHomePublication::ExistingReady
+                    }
                     RuntimeHomeBootstrapState::Absent => {
                         return Err(ConnectionCommandError::runtime(format!(
                             "SETUP_CONCURRENT_MODIFICATION: Runtime Home disappeared after planning: {}",
@@ -468,31 +491,17 @@ impl PreparedSetup {
 
         Ok(Self {
             plan,
-            prepared_runtime_home,
-            runtime_home_published: false,
+            runtime_home_publication,
             created_directories,
             store_boundary,
             store_applied: false,
             created_project_home: None,
-            created_runtime_home_removal_allowed: true,
         })
     }
 
     pub(super) fn validate_inputs(&self) -> Result<(), ConnectionCommandError> {
         match &self.plan.runtime_home {
-            RuntimeHomePlan::Create { final_path, .. } => {
-                if final_path.try_exists().map_err(|error| {
-                    ConnectionCommandError::runtime(format!(
-                        "failed to revalidate Runtime Home target {}: {error}",
-                        final_path.display()
-                    ))
-                })? {
-                    return Err(ConnectionCommandError::runtime(format!(
-                        "SETUP_CONCURRENT_MODIFICATION: Runtime Home appeared after setup preparation: {}",
-                        final_path.display()
-                    )));
-                }
-            }
+            RuntimeHomePlan::Create { .. } => {}
             RuntimeHomePlan::Validate { final_path } => {
                 if !matches!(
                     inspect_runtime_home_bootstrap(final_path)?,
@@ -520,10 +529,88 @@ impl PreparedSetup {
     }
 
     pub(super) fn publish_runtime_home(&mut self) -> Result<(), ConnectionCommandError> {
-        if let Some(prepared) = self.prepared_runtime_home.take() {
-            commit_runtime_home(prepared)?;
-            self.runtime_home_published = true;
+        let state = std::mem::replace(
+            &mut self.runtime_home_publication,
+            SetupRuntimeHomePublication::Transitioning,
+        );
+        match state {
+            SetupRuntimeHomePublication::Prepared(prepared) => {
+                match commit_runtime_home(prepared) {
+                    Ok(RuntimeHomePublicationOutcome::PublishedByThisInvocation {
+                        publication,
+                    }) => {
+                        self.runtime_home_publication =
+                            SetupRuntimeHomePublication::OwnedPublished(publication);
+                    }
+                    Ok(RuntimeHomePublicationOutcome::ObservedConcurrentWinner { .. }) => {
+                        self.runtime_home_publication =
+                            SetupRuntimeHomePublication::ConcurrentWinnerObserved;
+                    }
+                    Err(error) => {
+                        self.runtime_home_publication = SetupRuntimeHomePublication::NotPublished;
+                        return Err(error.into());
+                    }
+                }
+            }
+            other => self.runtime_home_publication = other,
         }
+        Ok(())
+    }
+
+    pub(super) fn confirm_runtime_home(
+        &mut self,
+        mut phase_fault: impl FnMut(&str) -> Result<(), ConnectionCommandError>,
+    ) -> Result<(), ConnectionCommandError> {
+        let state = std::mem::replace(
+            &mut self.runtime_home_publication,
+            SetupRuntimeHomePublication::Transitioning,
+        );
+        let SetupRuntimeHomePublication::OwnedPublished(mut publication) = state else {
+            self.runtime_home_publication = state;
+            return Ok(());
+        };
+        let confirmed = (|| {
+            phase_fault(FAULT_RUNTIME_HOME_PARENT_DIRECTORY_SYNC)?;
+            publication.synchronize_parent_directory()?;
+            phase_fault(FAULT_RUNTIME_HOME_PUBLICATION_READ_BACK)?;
+            let _ = publication.read_back()?;
+            phase_fault(FAULT_RUNTIME_HOME_PUBLICATION_MANIFEST_VALIDATION)?;
+            let _ = publication.validate_manifest_and_confirm()?;
+            Ok::<(), ConnectionCommandError>(())
+        })();
+        match confirmed {
+            Ok(()) => {
+                self.runtime_home_publication =
+                    SetupRuntimeHomePublication::OwnedConfirmed(publication);
+                Ok(())
+            }
+            Err(error) => {
+                self.runtime_home_publication =
+                    SetupRuntimeHomePublication::OwnedPublished(publication);
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) fn prepare_concurrent_winner_store_boundary(
+        &mut self,
+        repo_root: &Path,
+    ) -> Result<(), ConnectionCommandError> {
+        if !matches!(
+            self.runtime_home_publication,
+            SetupRuntimeHomePublication::ConcurrentWinnerObserved
+        ) {
+            return Ok(());
+        }
+        let runtime_home = self.plan.runtime_home.final_path();
+        let mut paths = vec![registry_db_path(runtime_home)];
+        if let Some(project) = project_record_by_repo_root_read_only(runtime_home, repo_root)? {
+            paths.push(project.state_db_path);
+        }
+        let inputs = PreparedStoreMutationBoundary::inspect_inputs(&paths)?;
+        let boundary = PreparedStoreMutationBoundary::prepare(&inputs)?;
+        boundary.validate_inputs()?;
+        self.store_boundary = Some(boundary);
         Ok(())
     }
 
@@ -564,27 +651,64 @@ impl PreparedSetup {
     }
 
     pub(super) fn rollback_store(&mut self, summary: &mut RollbackSummary) {
-        if self.runtime_home_published
-            && matches!(self.plan.runtime_home, RuntimeHomePlan::Create { .. })
-        {
-            if !self.created_runtime_home_removal_allowed {
-                summary.partially_rolled_back += 1;
-                summary.errors.push(
-                    "SETUP_PARTIAL_ROLLBACK: the newly published Runtime Home was preserved because a managed host session may have consumed it"
-                        .to_owned(),
-                );
+        let state = std::mem::replace(
+            &mut self.runtime_home_publication,
+            SetupRuntimeHomePublication::Transitioning,
+        );
+        match state {
+            SetupRuntimeHomePublication::OwnedPublished(mut publication)
+            | SetupRuntimeHomePublication::OwnedConfirmed(mut publication)
+            | SetupRuntimeHomePublication::OwnedPreserved(mut publication) => {
+                match publication.rollback_if_owned() {
+                    Ok(
+                        RuntimeHomePublicationRollbackOutcome::RolledBack
+                        | RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack,
+                    ) => {
+                        summary.rolled_back += 1;
+                        self.runtime_home_publication =
+                            SetupRuntimeHomePublication::OwnedRolledBack;
+                    }
+                    Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason }) => {
+                        summary.partially_rolled_back += 1;
+                        summary.errors.push(format!(
+                            "SETUP_PARTIAL_ROLLBACK: the owned Runtime Home publication was preserved ({})",
+                            reason.as_str()
+                        ));
+                        self.runtime_home_publication =
+                            SetupRuntimeHomePublication::OwnedPreserved(publication);
+                    }
+                    Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost { reason }) => {
+                        summary.partially_rolled_back += 1;
+                        summary.errors.push(format!(
+                            "SETUP_PARTIAL_ROLLBACK: Runtime Home publication ownership was lost and the final path was preserved ({})",
+                            reason.as_str()
+                        ));
+                        self.runtime_home_publication = SetupRuntimeHomePublication::OwnershipLost;
+                    }
+                    Err(error) => {
+                        summary.partially_rolled_back += 1;
+                        summary.errors.push(error.to_string());
+                        self.runtime_home_publication =
+                            SetupRuntimeHomePublication::OwnedPublished(publication);
+                    }
+                }
                 return;
             }
-            match remove_created_runtime_home(self.plan.runtime_home.final_path()) {
-                Ok(()) => {
-                    summary.rolled_back += 1;
-                    self.runtime_home_published = false;
-                }
-                Err(error) => {
-                    summary.partially_rolled_back += 1;
-                    summary.errors.push(error.to_string());
-                }
-            }
+            other => self.runtime_home_publication = other,
+        }
+        if matches!(
+            self.runtime_home_publication,
+            SetupRuntimeHomePublication::ConcurrentWinnerObserved
+        ) {
+            // This invocation observed another publisher and can restore only
+            // its checkpointed Store writes. It has no Runtime Home removal
+            // authority.
+        } else if matches!(
+            self.runtime_home_publication,
+            SetupRuntimeHomePublication::OwnedRolledBack
+                | SetupRuntimeHomePublication::OwnedPreserved(_)
+                | SetupRuntimeHomePublication::OwnershipLost
+        ) {
             return;
         }
         if !self.store_applied {
@@ -623,8 +747,13 @@ impl PreparedSetup {
     }
 
     pub(super) fn has_committed_effects(&self) -> bool {
-        self.runtime_home_published
-            || self.store_applied
+        matches!(
+            self.runtime_home_publication,
+            SetupRuntimeHomePublication::OwnedPublished(_)
+                | SetupRuntimeHomePublication::OwnedConfirmed(_)
+                | SetupRuntimeHomePublication::OwnedPreserved(_)
+                | SetupRuntimeHomePublication::OwnershipLost
+        ) || self.store_applied
             || self
                 .plan
                 .repository_file_mutations
@@ -642,7 +771,47 @@ impl PreparedSetup {
     }
 
     pub(super) fn preserve_created_runtime_home(&mut self) {
-        self.created_runtime_home_removal_allowed = false;
+        let state = std::mem::replace(
+            &mut self.runtime_home_publication,
+            SetupRuntimeHomePublication::Transitioning,
+        );
+        self.runtime_home_publication = match state {
+            SetupRuntimeHomePublication::OwnedPublished(mut publication)
+            | SetupRuntimeHomePublication::OwnedConfirmed(mut publication) => {
+                publication.preserve();
+                SetupRuntimeHomePublication::OwnedPreserved(publication)
+            }
+            other => other,
+        };
+    }
+
+    pub(super) fn publication_status(&self) -> RuntimeHomePublicationStatus {
+        match self.runtime_home_publication {
+            SetupRuntimeHomePublication::ExistingReady => {
+                RuntimeHomePublicationStatus::ExistingReady
+            }
+            SetupRuntimeHomePublication::Prepared(_)
+            | SetupRuntimeHomePublication::NotPublished
+            | SetupRuntimeHomePublication::Transitioning => {
+                RuntimeHomePublicationStatus::NotPublished
+            }
+            SetupRuntimeHomePublication::OwnedPublished(_)
+            | SetupRuntimeHomePublication::OwnedConfirmed(_) => {
+                RuntimeHomePublicationStatus::PublishedByThisInvocation
+            }
+            SetupRuntimeHomePublication::ConcurrentWinnerObserved => {
+                RuntimeHomePublicationStatus::ConcurrentWinnerObserved
+            }
+            SetupRuntimeHomePublication::OwnedPreserved(_) => {
+                RuntimeHomePublicationStatus::OwnedPublicationPreserved
+            }
+            SetupRuntimeHomePublication::OwnedRolledBack => {
+                RuntimeHomePublicationStatus::OwnedPublicationRolledBack
+            }
+            SetupRuntimeHomePublication::OwnershipLost => {
+                RuntimeHomePublicationStatus::OwnershipLostDuringRollback
+            }
+        }
     }
 }
 
@@ -949,23 +1118,6 @@ fn remove_empty_directories(directories: &[PathBuf]) {
     for directory in directories.iter().rev() {
         let _ = fs::remove_dir(directory);
     }
-}
-
-fn remove_created_runtime_home(path: &Path) -> Result<(), ConnectionCommandError> {
-    if !path.try_exists().map_err(|error| {
-        ConnectionCommandError::runtime(format!(
-            "failed to inspect created Runtime Home {}: {error}",
-            path.display()
-        ))
-    })? {
-        return Ok(());
-    }
-    fs::remove_dir_all(path).map_err(|error| {
-        ConnectionCommandError::runtime(format!(
-            "failed to remove Runtime Home created by this setup invocation {}: {error}",
-            path.display()
-        ))
-    })
 }
 
 fn remove_created_project_home(path: &Path) -> Result<(), ConnectionCommandError> {

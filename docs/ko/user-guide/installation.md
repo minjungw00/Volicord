@@ -189,10 +189,13 @@ volicord init --help
 다시 불러오기, 검증 단계가 끝날 때까지 `action_required`가 남을 수 있습니다.
 
 새 Runtime Home에서는 `init`이 같은 상위 directory의 staging에서 Registry와 installation
-profile을 만들고 검증한 뒤 전체 directory를 원자적으로 공개합니다. 선택한 경로가 이미
-있으면 읽기 전용으로 검사합니다. Manifest 또는 schema 불일치는 해당 home을 보존하므로
-담당자 승인 복구를 위해 그대로 두고 명시적 `--home`으로 새 위치를 선택해 다시 실행합니다.
-현재 담당자가 importer를 제공한 경우에만 그것을 사용합니다.
+profile을 만들고 검증한 뒤 기존 대상을 교체하지 않는 원자적 rename으로 전체 directory를
+공개합니다. Staging한 singleton에는 불투명 publication ID 하나가 있습니다. 성공한
+publisher는 동기화와 read-back 동안 invocation별 guard를 유지하며, 동시에
+`AlreadyExists`를 받은 호출자는 제거 권한 없이 정확한 승자를 관찰합니다. 선택한 경로가
+이미 있으면 읽기 전용으로 검사합니다. Manifest 또는 schema 불일치는 해당 home을
+보존하므로 담당자 승인 복구를 위해 그대로 두고 명시적 `--home`으로 새 위치를 선택해 다시
+실행합니다. 현재 담당자가 importer를 제공한 경우에만 그것을 사용합니다.
 
 `init`은 어떤 target도 쓰지 않은 채 전체 setup plan을 구성합니다. Prepare 단계는
 정확한 Codex 구성과 repository hook, wrapper, rule, policy, exclude, 관리 guidance
@@ -201,7 +204,9 @@ Runtime Home을 공개하거나 검증하고 Store mutation을 적용한 뒤 rep
 결정적인 순서로 원자 교체하고 Codex 구성을 마지막에 교체한 다음 integration revision을
 기록합니다. 실패하면 그 뒤 외부 변경이 없는 교체 파일과 checkpoint된 Store bytes를
 복원하고 소유한 staging을 안전할 때 제거하며 `preserved`, `rolled_back`,
-`partially_rolled_back`을 정확히 보고합니다. 이후 writer 때문에 복원이 안전하지
+`partially_rolled_back`을 정확히 보고합니다. Runtime Home을 제거하려면 소유 publication
+guard가 정확한 ID, manifest, 경로, schema, installation, managed-host 소비 부재를 다시
+검증해야 하며 동시 승자와 소유권 불일치는 보존합니다. 이후 writer 때문에 복원이 안전하지
 않은 상황에서 복구 entry 삭제가 pre-existing file을 잃게 한다면 그 entry를 보존하고
 diagnostic에 경로를 기록합니다. Runtime Home, Codex home, Product
 Repository가 서로 다른 파일시스템에 있을 수 있으므로 commit 전에 준비는 모두 끝나고

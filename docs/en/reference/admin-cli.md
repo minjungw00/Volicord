@@ -116,14 +116,15 @@ read-only exact manifest and schema validation. It preserves `Incompatible` or
 explicit `--home`, or use an owner-defined importer only if one exists.
 
 When the final path is absent, `init` creates the Registry, singleton, and
-installation profile in a unique same-parent staging directory. It publishes
-the validated directory with an atomic no-replace rename; pre-publication
-failure leaves the final path absent and removes staging. Connection commands
-require the selected home to have a current installation profile and fail with
-that exact path when it is missing or unusable. `connection list` and
-`connection status` remain read-only after selection. Empty, malformed, or
-conflicting values fail before storage access. A Product Repository is never
-used as a Runtime Home.
+installation profile in a unique same-parent staging directory. The singleton
+contains a fresh opaque publication ID. A successful atomic no-replace rename
+returns invocation-specific ownership before parent synchronization and
+read-back confirmation; `AlreadyExists` cleans staging and yields only an
+observed exact current winner. Connection commands require the selected home
+to have a current installation profile and fail with that exact path when it
+is missing or unusable. `connection list` and `connection status` remain
+read-only after selection. Empty, malformed, or conflicting values fail before
+storage access. A Product Repository is never used as a Runtime Home.
 
 A custom-home lifecycle can pass the same path to every command without
 exporting `VOLICORD_HOME`:
@@ -150,12 +151,15 @@ action. `--dry-run` performs no filesystem or storage mutation.
 Plan construction is read-only and calculates the exact Runtime Home, Store,
 Codex configuration, and repository managed-file mutations. Prepare validates
 all input snapshots, stages each file beside its target, and prepares Store
-recovery entries. Commit publishes or validates the Runtime Home, applies the
-Store mutations, atomically replaces repository files in deterministic path
-order, atomically replaces Codex configuration last, and records the current
-integration revision. Activation steps are produced only for a committed
-setup. This is not global cross-filesystem atomicity; it is complete
-preparation, atomic per-file replacement, and bounded rollback.
+recovery entries. Commit retains an owned Runtime Home publication guard or an
+observer-only concurrent-winner result, applies the Store mutations,
+atomically replaces repository files in deterministic path order, atomically
+replaces Codex configuration last, and records the current integration
+revision. Rollback may remove a fresh Runtime Home only through exact
+guard-backed revalidation; ownership loss or managed-host consumption
+preserves it. Activation steps are produced only for a committed setup. This
+is not global cross-filesystem atomicity; it is complete preparation, atomic
+per-file replacement, and bounded rollback.
 
 When no matching current Agent Connection exists, `init` creates one in
 `workflow` mode. When a matching current Agent Connection already exists,
@@ -635,6 +639,10 @@ SetupResult:
   kind: setup
   disposition: planned | committed | rolled_back | preserved |
     partially_rolled_back
+  runtime_home_publication: not_published | existing_ready |
+    published_by_this_invocation | concurrent_winner_observed |
+    owned_publication_rolled_back | owned_publication_preserved |
+    ownership_lost_during_rollback
 
 ModeTransitionResult:
   kind: mode_transition
@@ -672,6 +680,13 @@ local or operational check makes `status=failed`. A dry run reports `planned`,
 includes `planned_changes`, and never serializes
 `status=dry_run`. Its status is `action_required` when a planned change or host
 action remains and otherwise `complete`.
+
+`SetupResult.runtime_home_publication` reports the independent publication
+state. `published_by_this_invocation` is the only successful no-replace rename
+that carries rollback authority. `concurrent_winner_observed` has observation
+only. Rollback reports whether that owned publication was removed, preserved
+by setup or managed-host-consumption policy, or preserved because exact
+ownership revalidation was lost.
 
 If setup fails before any commit, it reports `preserved`. If committed
 replaceable state was restored, it reports `rolled_back`. A restoration that

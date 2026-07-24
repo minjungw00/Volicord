@@ -1305,8 +1305,15 @@ fn render_findings(report: &ConnectionCommandReport, roots: &[DiagnosticFindingI
 fn render_result(result: &ConnectionCommandResult) -> String {
     let mut lines = vec!["Result".to_owned()];
     match result {
-        ConnectionCommandResult::Setup { disposition } => {
+        ConnectionCommandResult::Setup {
+            disposition,
+            runtime_home_publication,
+        } => {
             lines.push(format!("  Disposition: {}", disposition.as_str()));
+            lines.push(format!(
+                "  Runtime Home publication: {}",
+                runtime_home_publication.as_str()
+            ));
         }
         ConnectionCommandResult::ModeTransition {
             changed,
@@ -1690,7 +1697,8 @@ mod tests {
             active_verification_evidence, mcp_server_check, McpStoreWriteabilityEvidence,
             VerificationStep,
         },
-        McpExchangeOutcome, McpExchangeProgress, McpProcessFailure, McpStage, SetupDisposition,
+        McpExchangeOutcome, McpExchangeProgress, McpProcessFailure, McpStage,
+        RuntimeHomePublicationStatus, SetupDisposition,
     };
 
     fn connection(mode: &str) -> CommandConnection {
@@ -1894,6 +1902,7 @@ mod tests {
             )],
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
+                runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
             }),
             Some(vec![PlannedConnectionChange::new(
                 PlannedConnectionChangeKind::ManagedHostConfiguration,
@@ -1994,6 +2003,7 @@ mod tests {
             )],
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Committed,
+                runtime_home_publication: RuntimeHomePublicationStatus::ExistingReady,
             }),
             None,
         );
@@ -2946,6 +2956,7 @@ mod tests {
             Vec::new(),
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
+                runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
             }),
             None,
         );

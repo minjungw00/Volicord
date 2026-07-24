@@ -140,12 +140,15 @@ the same classification.
 
 Fresh Runtime Home initialization is a distinct operation allowed only when
 the final path is absent. It creates a same-parent staging directory, applies
-the canonical SQL there, records the current manifest with the Runtime Home
-singleton and installation metadata, enables foreign keys, and validates the
-complete manifest and physical schema before publication. After supported
-file and directory synchronization, a no-replace atomic rename publishes the
-directory. Every pre-publication failure removes staging and leaves the final
-path absent.
+the canonical SQL there, generates one opaque UUID-backed publication ID, and
+records that provenance with the current manifest, Runtime Home singleton, and
+installation metadata. It enables foreign keys and validates the complete
+manifest and physical schema before publication. After staging
+synchronization, a no-replace atomic rename publishes the directory. The
+successful publisher receives an invocation-specific guard immediately after
+rename and retains it through parent synchronization, read-back, and manifest
+confirmation. An `AlreadyExists` caller removes only its staging and observes
+the exact current winner without removal authority.
 
 An existing Runtime Home follows the exact-open checks above through a
 read-only connection before any setup mutation. The result is `Ready`,

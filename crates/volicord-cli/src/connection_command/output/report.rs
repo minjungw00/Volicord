@@ -102,6 +102,7 @@ impl CommandConnection {
 pub(super) enum ConnectionCommandResult {
     Setup {
         disposition: SetupDisposition,
+        runtime_home_publication: RuntimeHomePublicationStatus,
     },
     ModeTransition {
         changed: bool,
@@ -116,6 +117,32 @@ pub(super) enum ConnectionCommandResult {
         connection_removed: bool,
         remaining_project_count: usize,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(in crate::connection_command) enum RuntimeHomePublicationStatus {
+    NotPublished,
+    ExistingReady,
+    PublishedByThisInvocation,
+    ConcurrentWinnerObserved,
+    OwnedPublicationRolledBack,
+    OwnedPublicationPreserved,
+    OwnershipLostDuringRollback,
+}
+
+impl RuntimeHomePublicationStatus {
+    pub(in crate::connection_command) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotPublished => "not_published",
+            Self::ExistingReady => "existing_ready",
+            Self::PublishedByThisInvocation => "published_by_this_invocation",
+            Self::ConcurrentWinnerObserved => "concurrent_winner_observed",
+            Self::OwnedPublicationRolledBack => "owned_publication_rolled_back",
+            Self::OwnedPublicationPreserved => "owned_publication_preserved",
+            Self::OwnershipLostDuringRollback => "ownership_lost_during_rollback",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -200,6 +227,24 @@ impl ConnectionCommandReport {
         connection: CommandConnection,
         verification: &ConnectionVerificationReport,
     ) -> Self {
+        Self::from_verification_with_publication(
+            operation,
+            setup_result,
+            setup_result.map(|_| RuntimeHomePublicationStatus::ExistingReady),
+            runtime_home,
+            connection,
+            verification,
+        )
+    }
+
+    pub(in crate::connection_command) fn from_verification_with_publication(
+        operation: CommandOperation,
+        setup_result: Option<SetupDisposition>,
+        runtime_home_publication: Option<RuntimeHomePublicationStatus>,
+        runtime_home: &Path,
+        connection: CommandConnection,
+        verification: &ConnectionVerificationReport,
+    ) -> Self {
         Self {
             operation,
             dry_run: false,
@@ -213,7 +258,11 @@ impl ConnectionCommandReport {
             generated_at: verification.checked_at().clone(),
             findings: Vec::new(),
             integration_revision: None,
-            result: setup_result.map(|disposition| ConnectionCommandResult::Setup { disposition }),
+            result: setup_result.map(|disposition| ConnectionCommandResult::Setup {
+                disposition,
+                runtime_home_publication: runtime_home_publication
+                    .unwrap_or(RuntimeHomePublicationStatus::ExistingReady),
+            }),
             planned_changes: None,
             limits: cooperative_assurance_limits(),
         }
@@ -360,6 +409,7 @@ impl ConnectionCommandReport {
             activation_plan,
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
+                runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
             }),
             Some(planned_changes),
         )
@@ -489,6 +539,7 @@ impl ConnectionCommandReport {
         runtime_home: &Path,
         connection: CommandConnection,
         disposition: SetupDisposition,
+        runtime_home_publication: RuntimeHomePublicationStatus,
         diagnostic: SetupFailureDiagnostic,
         summary: &str,
         details: Value,
@@ -527,7 +578,10 @@ impl ConnectionCommandReport {
             connection,
             vec![check],
             activation_plan,
-            Some(ConnectionCommandResult::Setup { disposition }),
+            Some(ConnectionCommandResult::Setup {
+                disposition,
+                runtime_home_publication,
+            }),
             None,
         )?;
         let finding = DiagnosticFinding::try_new(
@@ -1103,7 +1157,11 @@ mod tests {
             if matches!(operation, CommandOperation::Init | CommandOperation::Add) {
                 assert_eq!(
                     value["operation_details"]["result"],
-                    json!({"kind": "setup", "disposition": "committed"})
+                    json!({
+                        "kind": "setup",
+                        "disposition": "committed",
+                        "runtime_home_publication": "existing_ready"
+                    })
                 );
             } else {
                 assert!(value["operation_details"].get("result").is_none());
@@ -1157,6 +1215,52 @@ mod tests {
     }
 
     #[test]
+    fn setup_results_serialize_every_publication_ownership_state() {
+        for (status, expected) in [
+            (RuntimeHomePublicationStatus::NotPublished, "not_published"),
+            (
+                RuntimeHomePublicationStatus::ExistingReady,
+                "existing_ready",
+            ),
+            (
+                RuntimeHomePublicationStatus::PublishedByThisInvocation,
+                "published_by_this_invocation",
+            ),
+            (
+                RuntimeHomePublicationStatus::ConcurrentWinnerObserved,
+                "concurrent_winner_observed",
+            ),
+            (
+                RuntimeHomePublicationStatus::OwnedPublicationRolledBack,
+                "owned_publication_rolled_back",
+            ),
+            (
+                RuntimeHomePublicationStatus::OwnedPublicationPreserved,
+                "owned_publication_preserved",
+            ),
+            (
+                RuntimeHomePublicationStatus::OwnershipLostDuringRollback,
+                "ownership_lost_during_rollback",
+            ),
+        ] {
+            let report = ConnectionCommandReport::from_verification_with_publication(
+                CommandOperation::Init,
+                Some(SetupDisposition::Committed),
+                Some(status),
+                Path::new("/runtime"),
+                connection(),
+                &verification(ConnectionCheckStatus::Passed),
+            );
+            let value = diagnostic_value(&report);
+            assert_eq!(
+                value["operation_details"]["result"]["runtime_home_publication"],
+                expected
+            );
+            assert_eq!(status.as_str(), expected);
+        }
+    }
+
+    #[test]
     fn dry_run_and_mode_status_come_from_typed_checks_and_activation_plan() {
         let activation_plan = IntegrationActivationPlan::try_new(
             IntegrationActivationState::HostReloadRequired,
@@ -1204,7 +1308,11 @@ mod tests {
         assert_eq!(changed["status"], "action_required");
         assert_eq!(
             changed["operation_details"]["result"],
-            json!({"kind": "setup", "disposition": "planned"})
+            json!({
+                "kind": "setup",
+                "disposition": "planned",
+                "runtime_home_publication": "not_published"
+            })
         );
 
         let mode = ConnectionCommandReport::mode_transition(

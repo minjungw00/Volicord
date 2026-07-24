@@ -33,6 +33,7 @@ pub(super) struct InitProvisioningOutcome {
     pub(super) verification: Option<VerificationReport>,
     pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
     pub(super) planned_changes: Vec<PlannedConnectionChange>,
+    pub(super) runtime_home_publication: RuntimeHomePublicationStatus,
 }
 
 pub(super) struct ProvisionConnectionRequest<'a> {
@@ -196,6 +197,7 @@ pub(super) fn provision_init(
             verification: None,
             current_report: plan.current_report,
             planned_changes,
+            runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
         });
     }
 
@@ -603,7 +605,17 @@ fn apply_init_provisioning(
     let mut prepared = match PreparedSetup::prepare(setup_plan) {
         Ok(prepared) => prepared,
         Err(error) => {
-            return setup_transaction_failure(&plan, SetupDisposition::Preserved, &error, None);
+            return setup_transaction_failure(
+                &plan,
+                SetupDisposition::Preserved,
+                if plan.runtime_home_absent {
+                    RuntimeHomePublicationStatus::NotPublished
+                } else {
+                    RuntimeHomePublicationStatus::ExistingReady
+                },
+                &error,
+                None,
+            );
         }
     };
     let _planned_file_count = prepared.plan.planned_file_count();
@@ -615,6 +627,8 @@ fn apply_init_provisioning(
         setup_fault(process, FAULT_AFTER_REGISTRY_MUTATION_PREPARATION)?;
         prepared.validate_inputs()?;
         prepared.publish_runtime_home()?;
+        prepared.confirm_runtime_home(|point| setup_fault(process, point))?;
+        prepared.prepare_concurrent_winner_store_boundary(&plan.repo_root)?;
         let runtime_home_id = runtime_home_id_for_path(&plan.runtime_home)
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
         let (_, _profile) = initialize_runtime_home_with_installation(
@@ -624,7 +638,8 @@ fn apply_init_provisioning(
             init_installation_registration(&plan.profile_plan),
         )?;
         prepared.mark_store_applied(None)?;
-        let project_was_missing = plan.project_id.is_none();
+        let project_was_missing =
+            project_record_by_repo_root_read_only(&plan.runtime_home, &plan.repo_root)?.is_none();
         let project = ensure_project_for_repo(
             &plan.runtime_home,
             RepoProjectRegistration {
@@ -819,6 +834,7 @@ fn apply_init_provisioning(
         )?;
         prepared.mark_store_applied(None)?;
         let _ = connection;
+        let runtime_home_publication = prepared.publication_status();
         prepared.cleanup_after_success()?;
 
         Ok(InitProvisioningOutcome {
@@ -833,6 +849,7 @@ fn apply_init_provisioning(
             verification: Some(verification),
             current_report: None,
             planned_changes: Vec::new(),
+            runtime_home_publication,
         })
     })();
     match transaction_result {
@@ -851,6 +868,7 @@ fn apply_init_provisioning(
             let rollback_fault = process.setup_fault(FAULT_DURING_ROLLBACK).err();
             let mut rollback = prepared.rollback_files();
             prepared.rollback_store(&mut rollback);
+            let runtime_home_publication = prepared.publication_status();
             if let Some(error) = rollback_fault {
                 rollback.partially_rolled_back += 1;
                 rollback
@@ -864,7 +882,13 @@ fn apply_init_provisioning(
             } else {
                 SetupDisposition::Preserved
             };
-            setup_transaction_failure(&plan, disposition, &error, Some(&rollback))
+            setup_transaction_failure(
+                &plan,
+                disposition,
+                runtime_home_publication,
+                &error,
+                Some(&rollback),
+            )
         }
     }
 }
@@ -881,6 +905,7 @@ fn setup_fault(
 fn setup_transaction_failure(
     plan: &InitProvisioningPlan,
     disposition: SetupDisposition,
+    runtime_home_publication: RuntimeHomePublicationStatus,
     error: &ConnectionCommandError,
     rollback: Option<&super::setup_transaction::RollbackSummary>,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
@@ -909,6 +934,7 @@ fn setup_transaction_failure(
             host_target_text(&plan.host_plan.target),
         ),
         disposition,
+        runtime_home_publication,
         if disposition == SetupDisposition::PartiallyRolledBack {
             SetupFailureDiagnostic::PartialRollback
         } else if error.to_string().contains("SETUP_CONCURRENT_MODIFICATION") {

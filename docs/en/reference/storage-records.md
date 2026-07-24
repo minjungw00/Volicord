@@ -36,7 +36,8 @@ User Channel result. Operational MCP evidence is never read from this database.
 
 Registry records include:
 
-- one Runtime Home identity and current `StorageManifest` carrier;
+- one Runtime Home identity, opaque publication ID, and current
+  `StorageManifest` carrier;
 - installation and executable selection;
 - project registrations and aliases;
 - Agent Connections and Connection Projects memberships;
@@ -49,10 +50,12 @@ Registry records include:
 - cross-database reservations that bind one runtime/host session to one
   Connection Project.
 
-For a fresh Runtime Home, the identity row and initial installation profile
-are inserted together in the staged Registry before its final directory is
-published. Exact manifest and schema validation must succeed before either
-record becomes reachable at the selected Runtime Home path. An existing
+For a fresh Runtime Home, one UUID-backed publication ID is generated for the
+preparation and inserted with the identity row and initial installation
+profile in the staged Registry before its final directory is published. The
+publication ID is invocation provenance, not a credential, actor identity, or
+schema version. Exact manifest and schema validation must succeed before the
+records become reachable at the selected Runtime Home path. An existing
 Registry is inspected read-only first; incompatible record or relation facts
 are reported without rewriting any Registry record.
 

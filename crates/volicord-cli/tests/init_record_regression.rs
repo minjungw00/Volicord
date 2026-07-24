@@ -8,6 +8,7 @@ use std::{
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
+    sync::{Arc, Barrier, Condvar, Mutex},
 };
 
 use rusqlite::{params, Connection};
@@ -67,6 +68,8 @@ struct FakeConnectionProcess {
     fail_during_rollback: bool,
     concurrent_codex_bytes: Option<Vec<u8>>,
     post_commit_codex_bytes: Option<Vec<u8>>,
+    setup_barrier: Option<Arc<Barrier>>,
+    setup_release: Option<Arc<(Mutex<bool>, Condvar)>>,
 }
 
 impl FakeConnectionProcess {
@@ -92,6 +95,8 @@ impl FakeConnectionProcess {
             fail_during_rollback: false,
             concurrent_codex_bytes: None,
             post_commit_codex_bytes: None,
+            setup_barrier: None,
+            setup_release: None,
         })
     }
 
@@ -128,6 +133,22 @@ impl ConnectionProcess for FakeConnectionProcess {
     fn setup_fault(&mut self, point: &str) -> Result<(), String> {
         let call = self.setup_points.len();
         self.setup_points.push(point.to_owned());
+        if point == "after_registry_mutation_preparation" {
+            if let Some(barrier) = &self.setup_barrier {
+                barrier.wait();
+            }
+            if let Some(release) = &self.setup_release {
+                let (lock, ready) = &**release;
+                let mut released = lock
+                    .lock()
+                    .map_err(|_| "fixture setup release lock poisoned".to_owned())?;
+                while !*released {
+                    released = ready
+                        .wait(released)
+                        .map_err(|_| "fixture setup release lock poisoned".to_owned())?;
+                }
+            }
+        }
         if point == "before_codex_config_replace" {
             if let Some(bytes) = self.concurrent_codex_bytes.take() {
                 fs::write(self.codex_home.join("config.toml"), bytes)
@@ -263,6 +284,15 @@ fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), B
         .any(|point| point == "after_registry_mutation_preparation"));
     assert!(setup_points
         .iter()
+        .any(|point| point == "runtime_home_parent_directory_sync"));
+    assert!(setup_points
+        .iter()
+        .any(|point| point == "runtime_home_publication_read_back"));
+    assert!(setup_points
+        .iter()
+        .any(|point| point == "runtime_home_publication_manifest_validation"));
+    assert!(setup_points
+        .iter()
         .any(|point| point == "before_codex_config_replace"));
     assert!(setup_points
         .iter()
@@ -303,6 +333,19 @@ fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), B
             failure["operation_details"]["result"]["disposition"], expected_disposition,
             "unexpected disposition for fault point {point}: {failure}"
         );
+        let expected_publication = if matches!(
+            point.as_str(),
+            "after_runtime_home_preparation" | "after_registry_mutation_preparation"
+        ) {
+            "not_published"
+        } else {
+            "owned_publication_rolled_back"
+        };
+        assert_eq!(
+            failure["operation_details"]["result"]["runtime_home_publication"],
+            expected_publication,
+            "unexpected publication state for fault point {point}: {failure}"
+        );
         assert!(failure["activation_plan"]["required_steps"]
             .as_array()
             .is_some_and(Vec::is_empty));
@@ -317,6 +360,98 @@ fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), B
             codex_before,
             "{point}"
         );
+    }
+    Ok(())
+}
+
+#[test]
+fn competing_full_inits_preserve_the_winner_for_either_publication_order(
+) -> Result<(), Box<dyn Error>> {
+    for winner_name in ["a", "b"] {
+        let fixture =
+            TempRuntimeHome::new(&format!("cli-record-init-publication-race-{winner_name}"))?;
+        let repo_a = create_git_repo(&fixture, "repo-a")?;
+        let repo_b = create_git_repo(&fixture, "repo-b")?;
+        let loser_name = if winner_name == "a" { "b" } else { "a" };
+        let (winner_repo, loser_repo) = if winner_name == "a" {
+            (repo_a.clone(), repo_b.clone())
+        } else {
+            (repo_b.clone(), repo_a.clone())
+        };
+        let loser_repo_before = directory_contents(&loser_repo)?;
+        let barrier = Arc::new(Barrier::new(2));
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let mut winner_process = FakeConnectionProcess::named(&fixture, winner_name)?;
+        winner_process.setup_barrier = Some(Arc::clone(&barrier));
+        let mut loser_process = FakeConnectionProcess::named(&fixture, loser_name)?;
+        loser_process.setup_barrier = Some(Arc::clone(&barrier));
+        loser_process.setup_release = Some(Arc::clone(&release));
+        loser_process.fail_setup_point("before_integration_revision_commit");
+        let loser_codex_before = directory_contents(&loser_process.codex_home)?;
+        let runtime_home = fixture.path().to_path_buf();
+        let winner_repo_for_run = winner_repo.clone();
+        let loser_repo_for_run = loser_repo.clone();
+
+        let (winner_result, loser_result) = std::thread::scope(|scope| {
+            let winner_release = Arc::clone(&release);
+            let winner_runtime_home = runtime_home.clone();
+            let winner_repo_for_snapshot = winner_repo.clone();
+            let winner = scope.spawn(move || {
+                let result = run_record_init_outcome(&winner_repo_for_run, &mut winner_process)
+                    .map_err(|error| error.to_string())
+                    .and_then(|output| {
+                        let runtime = directory_contents(&winner_runtime_home)
+                            .map_err(|error| error.to_string())?;
+                        let repo = directory_contents(&winner_repo_for_snapshot)
+                            .map_err(|error| error.to_string())?;
+                        Ok((output, runtime, repo, winner_process))
+                    });
+                let (lock, ready) = &*winner_release;
+                if let Ok(mut released) = lock.lock() {
+                    *released = true;
+                    ready.notify_all();
+                }
+                result
+            });
+            let loser = scope.spawn(move || {
+                run_record_init_outcome(&loser_repo_for_run, &mut loser_process)
+                    .map(|output| (output, loser_process))
+                    .map_err(|error| error.to_string())
+            });
+            (
+                winner.join().expect("winner init thread panicked"),
+                loser.join().expect("loser init thread panicked"),
+            )
+        });
+        let (winner_output, winner_runtime, winner_repo_after, winner_process) =
+            winner_result.map_err(|error| format!("winner {winner_name} failed: {error}"))?;
+        let (loser_output, loser_process) =
+            loser_result.map_err(|error| format!("loser {loser_name} failed: {error}"))?;
+
+        assert_eq!(
+            winner_output["operation_details"]["result"]["runtime_home_publication"],
+            "published_by_this_invocation"
+        );
+        assert_eq!(
+            loser_output["operation_details"]["result"]["disposition"],
+            "rolled_back"
+        );
+        assert_eq!(
+            loser_output["operation_details"]["result"]["runtime_home_publication"],
+            "concurrent_winner_observed"
+        );
+        assert_eq!(directory_contents(&runtime_home)?, winner_runtime);
+        assert_eq!(directory_contents(&winner_repo)?, winner_repo_after);
+        assert_eq!(directory_contents(&loser_repo)?, loser_repo_before);
+        assert_eq!(
+            directory_contents(&loser_process.codex_home)?,
+            loser_codex_before
+        );
+        assert!(!winner_process.setup_points.is_empty());
+        let snapshot = registry_snapshot(&runtime_home);
+        assert_eq!(snapshot.projects.len(), 1);
+        assert_eq!(snapshot.agent_connections.len(), 1);
+        assert_eq!(snapshot.connection_projects.len(), 1);
     }
     Ok(())
 }
@@ -428,7 +563,11 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
     assert_eq!(workflow["connection"]["mode"], CONNECTION_MODE_WORKFLOW);
     assert_eq!(
         workflow["operation_details"]["result"],
-        json!({"kind": "setup", "disposition": "committed"})
+        json!({
+            "kind": "setup",
+            "disposition": "committed",
+            "runtime_home_publication": "existing_ready"
+        })
     );
     let workflow_id = workflow["connection"]["connection_id"]
         .as_str()
@@ -970,7 +1109,11 @@ fn init_migration_rolls_back_bound_cleanup_inventory_until_clean_replay(
     assert_eq!(failed_cleanup["status"], "failed");
     assert_eq!(
         failed_cleanup["operation_details"]["result"],
-        json!({"kind": "setup", "disposition": "rolled_back"}),
+        json!({
+            "kind": "setup",
+            "disposition": "rolled_back",
+            "runtime_home_publication": "existing_ready"
+        }),
         "unexpected migration output: {failed_cleanup}"
     );
     let failure_details = &failed_cleanup["checks"][0]["details"];
@@ -1294,9 +1437,17 @@ fn assert_failed_init_with_recorded_guard(output: &Value) {
     );
     assert_eq!(output["operation"], "init");
     assert_eq!(output["operation_details"]["dry_run"], false);
+    assert_eq!(output["operation_details"]["result"]["kind"], "setup");
     assert_eq!(
-        output["operation_details"]["result"],
-        json!({"kind": "setup", "disposition": "committed"})
+        output["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    assert!(
+        matches!(
+            output["operation_details"]["result"]["runtime_home_publication"].as_str(),
+            Some("published_by_this_invocation" | "existing_ready")
+        ),
+        "unexpected Runtime Home publication result: {output}"
     );
 }
 

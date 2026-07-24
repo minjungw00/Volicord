@@ -147,12 +147,14 @@ schema, or selects a format numerically in place.
 
 For an `Absent` final path, initialization creates a unique staging directory
 under the same parent. It creates the Registry, Runtime Home singleton, and
-initial installation profile there, validates the exact current manifest and
-schema, and synchronizes the staged file and directories where the platform
-supports that boundary. It then atomically renames the staging directory
-without replacing an existing final path. A staging path is never a Runtime
-Home identity, all pre-publication failures remove it and leave the final path
-absent, and concurrent creators accept only the exact read-only `Ready` winner.
+initial installation profile there. The singleton contains one opaque,
+UUID-backed publication ID generated for that preparation and the current
+canonical manifest. Initialization validates and synchronizes staging, then
+atomically renames it without replacing an existing final path. A successful
+rename immediately creates a non-cloneable invocation-specific publication
+guard before parent synchronization, read-back, and manifest confirmation can
+fail. `AlreadyExists` cleans this invocation's staging and returns only the
+exact read-only `Ready` winner, without rollback authority.
 
 ### Init setup transaction
 
@@ -165,14 +167,20 @@ recovery entries before any final target is committed.
 
 Commit publishes or validates the Runtime Home, applies checkpointed Store
 mutations, atomically replaces Product Repository files, atomically replaces
-Codex configuration last, and records the integration revision. A stale input
-is a concurrent-modification failure and the newer external bytes are
-preserved. Rollback never deletes a pre-existing Runtime Home or user file. A
-Runtime Home created by this invocation may be removed only while rolling back
-this uncommitted setup ownership. Runtime Home, Codex configuration, and the
-Product Repository may reside on distinct filesystems, so the guarantee is
-complete preparation, atomic replacement per file, and bounded rollback—not
-one global filesystem transaction.
+Codex configuration last, and records the integration revision. Setup retains
+explicit states for prepared, owned published, owned confirmed, concurrent
+winner observed, owned preserved, and owned rolled-back publication. A stale
+input is a concurrent-modification failure and the newer external bytes are
+preserved. Runtime Home rollback requires the owned guard to reopen the final
+home and revalidate its publication ID, Runtime Home identity, canonical
+manifest digest, exact paths and schema, prepared installation identity, and
+absence of managed-host consumption immediately before platform-owned
+removal. Any mismatch or consumption preserves the final path and reports a
+partial rollback. An observer never removes or modifies the concurrent
+winner. Runtime Home, Codex configuration, and the Product Repository may
+reside on distinct filesystems, so the guarantee is complete preparation,
+atomic replacement per file, and bounded rollback—not one global filesystem
+transaction.
 
 The Registry is the durable Runtime Home carrier for structured diagnostic
 findings and their cause edges. A finding may correlate to its Connection,

@@ -197,10 +197,14 @@ until the named Codex trust, reload, or verification step is complete.
 
 For a new Runtime Home, `init` builds and validates the Registry and
 installation profile in same-parent staging, then publishes the whole
-directory atomically. If the selected path already exists, inspection is
-read-only. A manifest or schema mismatch preserves that home; keep it for
-owner-approved recovery and rerun with a fresh explicit `--home`. Use an
-owner-defined importer only when the current owners provide one.
+directory by an atomic no-replace rename. The staged singleton contains one
+opaque publication ID. The successful publisher retains an invocation-specific
+guard through synchronization and read-back; a concurrent `AlreadyExists`
+caller observes the exact winner without removal authority. If the selected
+path already exists, inspection is read-only. A manifest or schema mismatch
+preserves that home; keep it for owner-approved recovery and rerun with a fresh
+explicit `--home`. Use an owner-defined importer only when the current owners
+provide one.
 
 `init` constructs its complete setup plan without writing any target. Prepare
 then stages the exact Codex configuration and every repository hook, wrapper,
@@ -211,9 +215,12 @@ deterministic order, replaces Codex configuration last, and records the
 integration revision. A failure restores already replaced files and
 checkpointed Store bytes when they remain unchanged, removes owned staging
 when safe, and reports `preserved`, `rolled_back`, or
-`partially_rolled_back` precisely. A recovery entry is retained and named in
-the diagnostic if deleting it would discard a pre-existing file after a later
-writer made restoration unsafe.
+`partially_rolled_back` precisely. Runtime Home removal additionally requires
+the owned publication guard to revalidate the exact ID, manifest, paths,
+schema, installation, and absence of managed-host consumption; concurrent
+winners and ownership mismatches are preserved. A recovery entry is retained
+and named in the diagnostic if deleting it would discard a pre-existing file
+after a later writer made restoration unsafe.
 Runtime Home, Codex home, and Product Repository may be on different
 filesystems: preparation is complete before commit and each file replacement
 is atomic, but the whole multi-filesystem operation is not globally atomic.

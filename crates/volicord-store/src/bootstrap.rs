@@ -9,8 +9,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tempfile::{Builder as TempDirBuilder, TempDir};
 use volicord_types::{
-    canonical_json_string, GeneratedRelationKind, StorageDatabaseKind, StorageManifest,
-    UtcTimestamp, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
+    canonical_json_string, GeneratedRelationKind, RuntimeHomePublicationId, StorageDatabaseKind,
+    StorageManifest, UtcTimestamp, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
 };
 
 use crate::{
@@ -40,6 +40,7 @@ pub struct RuntimeHomeRecord {
     pub runtime_home: PathBuf,
     pub registry_db_path: PathBuf,
     pub runtime_home_id: String,
+    pub publication_id: RuntimeHomePublicationId,
     pub storage_profile: String,
     pub metadata_json: String,
     pub created_at: String,
@@ -234,6 +235,125 @@ pub enum RuntimeHomeBootstrapState {
 pub struct PreparedRuntimeHome {
     final_runtime_home: PathBuf,
     staging_directory: TempDir,
+    expected_runtime_home_id: String,
+    expected_publication_id: RuntimeHomePublicationId,
+    expected_manifest_digest: String,
+    expected_installation_id: Option<String>,
+}
+
+impl PreparedRuntimeHome {
+    /// Final Runtime Home path proposed by this preparation.
+    pub fn final_path(&self) -> &Path {
+        &self.final_runtime_home
+    }
+
+    /// Same-parent unpublished staging path owned by this preparation.
+    pub fn staging_path(&self) -> &Path {
+        self.staging_directory.path()
+    }
+
+    /// Invocation-specific publication provenance persisted in staging.
+    pub fn publication_id(&self) -> &RuntimeHomePublicationId {
+        &self.expected_publication_id
+    }
+
+    /// Expected canonical manifest digest retained across publication.
+    pub fn manifest_digest(&self) -> &str {
+        &self.expected_manifest_digest
+    }
+}
+
+/// Explicit result of an atomic no-replace Runtime Home publication attempt.
+#[derive(Debug)]
+pub enum RuntimeHomePublicationOutcome {
+    /// This invocation performed the successful no-replace rename and owns the
+    /// guard required for confirmation or rollback.
+    PublishedByThisInvocation {
+        publication: RuntimeHomePublicationGuard,
+    },
+    /// Another invocation already published the current final Runtime Home.
+    /// This branch carries no removal authority.
+    ObservedConcurrentWinner { record: RuntimeHomeRecord },
+}
+
+/// Non-cloneable proof that this invocation performed the successful
+/// no-replace rename for one prepared Runtime Home.
+#[derive(Debug)]
+pub struct RuntimeHomePublicationGuard {
+    final_path: PathBuf,
+    runtime_home_id: String,
+    publication_id: RuntimeHomePublicationId,
+    manifest_digest: String,
+    installation_id: Option<String>,
+    state: RuntimeHomePublicationGuardState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuntimeHomePublicationGuardState {
+    Published,
+    Confirmed,
+    Preserved(RuntimeHomePublicationPreservationReason),
+    RolledBack,
+}
+
+/// Closed reason why an owned publication remains at its final path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeHomePublicationPreservationReason {
+    /// The setup owner determined that current transaction policy forbids
+    /// removal, including possible external visibility.
+    SetupPolicy,
+    /// A managed-host runtime has consumed the published Runtime Home.
+    ManagedHostConsumption,
+}
+
+impl RuntimeHomePublicationPreservationReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SetupPolicy => "setup_policy",
+            Self::ManagedHostConsumption => "managed_host_consumption",
+        }
+    }
+}
+
+/// Closed exact mismatch that prevents an owned publication rollback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeHomePublicationOwnershipLoss {
+    FinalPathMissing,
+    FinalPathMismatch,
+    RegistryPathMismatch,
+    RuntimeHomeIdMismatch,
+    PublicationIdMismatch,
+    ManifestDigestMismatch,
+    InstallationIdentityMismatch,
+    SchemaOrRecordInvalid,
+}
+
+impl RuntimeHomePublicationOwnershipLoss {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FinalPathMissing => "final_path_missing",
+            Self::FinalPathMismatch => "final_path_mismatch",
+            Self::RegistryPathMismatch => "registry_path_mismatch",
+            Self::RuntimeHomeIdMismatch => "runtime_home_id_mismatch",
+            Self::PublicationIdMismatch => "publication_id_mismatch",
+            Self::ManifestDigestMismatch => "manifest_digest_mismatch",
+            Self::InstallationIdentityMismatch => "installation_identity_mismatch",
+            Self::SchemaOrRecordInvalid => "schema_or_record_invalid",
+        }
+    }
+}
+
+/// Result of an explicit token-backed publication rollback attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeHomePublicationRollbackOutcome {
+    RolledBack,
+    AlreadyRolledBack,
+    Preserved {
+        reason: RuntimeHomePublicationPreservationReason,
+    },
+    OwnershipLost {
+        reason: RuntimeHomePublicationOwnershipLoss,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +362,13 @@ enum RuntimeHomeBootstrapPhase {
     SingletonInsert,
     ManifestValidation,
     AtomicRename,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuntimeHomePublicationConfirmationPhase {
+    ParentDirectorySync,
+    PublicationReadBack,
+    PublicationManifestValidation,
 }
 
 const BOOTSTRAP_MISMATCH_FACT_LIMIT: usize = 32;
@@ -436,8 +563,11 @@ pub fn prepare_runtime_home_with_installation(
     )
 }
 
-/// Atomically publishes a prepared Runtime Home without replacing an existing path.
-pub fn commit_runtime_home(prepared: PreparedRuntimeHome) -> StoreResult<RuntimeHomeRecord> {
+/// Atomically publishes a prepared Runtime Home without replacing an existing
+/// path and preserves whether this invocation performed the rename.
+pub fn commit_runtime_home(
+    prepared: PreparedRuntimeHome,
+) -> StoreResult<RuntimeHomePublicationOutcome> {
     let mut hook = |_| Ok(());
     commit_runtime_home_inner(prepared, &mut hook)
 }
@@ -445,31 +575,299 @@ pub fn commit_runtime_home(prepared: PreparedRuntimeHome) -> StoreResult<Runtime
 fn commit_runtime_home_inner(
     prepared: PreparedRuntimeHome,
     hook: &mut impl FnMut(RuntimeHomeBootstrapPhase) -> StoreResult<()>,
-) -> StoreResult<RuntimeHomeRecord> {
+) -> StoreResult<RuntimeHomePublicationOutcome> {
     let PreparedRuntimeHome {
         final_runtime_home,
         staging_directory,
+        expected_runtime_home_id,
+        expected_publication_id,
+        expected_manifest_digest,
+        expected_installation_id,
     } = prepared;
     let staging_path = staging_directory.path().to_path_buf();
-    let parent = final_runtime_home
-        .parent()
-        .ok_or_else(|| StoreError::InvalidInput {
-            detail: "runtime_home must have a parent directory".to_owned(),
-        })?;
 
     hook(RuntimeHomeBootstrapPhase::AtomicRename)?;
     match rename_directory_no_replace(&staging_path, &final_runtime_home) {
         Ok(()) => {
-            sync_directory(parent)?;
             drop(staging_directory);
-            ready_runtime_home_after_publication(&final_runtime_home)
+            Ok(RuntimeHomePublicationOutcome::PublishedByThisInvocation {
+                publication: RuntimeHomePublicationGuard {
+                    final_path: final_runtime_home,
+                    runtime_home_id: expected_runtime_home_id,
+                    publication_id: expected_publication_id,
+                    manifest_digest: expected_manifest_digest,
+                    installation_id: expected_installation_id,
+                    state: RuntimeHomePublicationGuardState::Published,
+                },
+            })
         }
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
             drop(staging_directory);
             ready_runtime_home_after_publication(&final_runtime_home)
+                .map(|record| RuntimeHomePublicationOutcome::ObservedConcurrentWinner { record })
         }
         Err(error) => Err(StoreError::Io(error)),
     }
+}
+
+impl RuntimeHomePublicationGuard {
+    /// Final path on which this invocation performed its no-replace rename.
+    pub fn final_path(&self) -> &Path {
+        &self.final_path
+    }
+
+    /// Invocation-specific persisted publication provenance.
+    pub fn publication_id(&self) -> &RuntimeHomePublicationId {
+        &self.publication_id
+    }
+
+    /// Expected digest of the complete canonical manifest carrier.
+    pub fn manifest_digest(&self) -> &str {
+        &self.manifest_digest
+    }
+
+    /// Synchronizes the final path's parent directory after publication.
+    ///
+    /// The guard remains owned by the caller when this operation fails.
+    pub fn synchronize_parent_directory(&mut self) -> StoreResult<()> {
+        self.require_live("synchronize")?;
+        let parent = self
+            .final_path
+            .parent()
+            .ok_or_else(|| StoreError::InvalidInput {
+                detail: "runtime_home must have a parent directory".to_owned(),
+            })?;
+        sync_directory(parent)
+    }
+
+    /// Reads back and validates the exact publication identity without yet
+    /// accepting the complete canonical schema.
+    ///
+    /// The guard remains owned by the caller when this operation fails.
+    pub fn read_back(&mut self) -> StoreResult<RuntimeHomeRecord> {
+        self.require_live("read back")?;
+        let candidate = runtime_home_publication_candidate(&self.final_path)?;
+        if let Some(reason) = self.ownership_loss(&candidate) {
+            return Err(self.ownership_error(reason));
+        }
+        self.validate_installation_identity(&candidate.conn)?;
+        Ok(candidate.record)
+    }
+
+    /// Validates the complete current canonical manifest, schema, exact final
+    /// paths, publication identity, and prepared installation identity.
+    ///
+    /// The guard remains owned by the caller when this operation fails.
+    pub fn validate_manifest_and_confirm(&mut self) -> StoreResult<RuntimeHomeRecord> {
+        self.require_live("confirm")?;
+        let record = ready_runtime_home_after_publication(&self.final_path)?;
+        let candidate = runtime_home_publication_candidate(&self.final_path)?;
+        if let Some(reason) = self.ownership_loss(&candidate) {
+            return Err(self.ownership_error(reason));
+        }
+        self.validate_installation_identity(&candidate.conn)?;
+        if record != candidate.record {
+            return Err(
+                self.ownership_error(RuntimeHomePublicationOwnershipLoss::SchemaOrRecordInvalid)
+            );
+        }
+        self.state = RuntimeHomePublicationGuardState::Confirmed;
+        Ok(record)
+    }
+
+    /// Completes parent synchronization, read-back, and exact manifest
+    /// validation while keeping the guard in the caller's ownership on error.
+    pub fn confirm(&mut self) -> StoreResult<RuntimeHomeRecord> {
+        let mut hook = |_| Ok(());
+        confirm_runtime_home_inner(self, &mut hook)
+    }
+
+    /// Permanently disables rollback authority for this guard under the
+    /// caller's setup policy.
+    pub fn preserve(&mut self) {
+        if !matches!(self.state, RuntimeHomePublicationGuardState::RolledBack) {
+            self.state = RuntimeHomePublicationGuardState::Preserved(
+                RuntimeHomePublicationPreservationReason::SetupPolicy,
+            );
+        }
+    }
+
+    /// Removes the final Runtime Home only after immediately revalidating the
+    /// exact publication identity, manifest, paths, schema, and consumption
+    /// state.
+    pub fn rollback_if_owned(&mut self) -> StoreResult<RuntimeHomePublicationRollbackOutcome> {
+        match self.state {
+            RuntimeHomePublicationGuardState::RolledBack => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack);
+            }
+            RuntimeHomePublicationGuardState::Preserved(reason) => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason });
+            }
+            RuntimeHomePublicationGuardState::Published
+            | RuntimeHomePublicationGuardState::Confirmed => {}
+        }
+
+        let candidate = match runtime_home_publication_candidate(&self.final_path) {
+            Ok(candidate) => candidate,
+            Err(StoreError::Io(error))
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                    reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
+                });
+            }
+            Err(StoreError::NotFound { .. }) => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                    reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
+                });
+            }
+            Err(
+                StoreError::RuntimeHomeSchemaMismatch(_)
+                | StoreError::RuntimeHomeCorruption(_)
+                | StoreError::CorruptStoredValue { .. }
+                | StoreError::CorruptStoredJson { .. }
+                | StoreError::SchemaInvariant { .. }
+                | StoreError::Sqlite(_),
+            ) => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                    reason: RuntimeHomePublicationOwnershipLoss::SchemaOrRecordInvalid,
+                });
+            }
+            Err(error) => return Err(error),
+        };
+        if let Some(reason) = self.ownership_loss(&candidate) {
+            return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost { reason });
+        }
+        if self
+            .validate_installation_identity(&candidate.conn)
+            .is_err()
+        {
+            return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                reason: RuntimeHomePublicationOwnershipLoss::InstallationIdentityMismatch,
+            });
+        }
+        match inspect_runtime_home_bootstrap(&self.final_path)? {
+            RuntimeHomeBootstrapState::Ready(record) if record == candidate.record => {}
+            RuntimeHomeBootstrapState::Absent => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                    reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
+                });
+            }
+            RuntimeHomeBootstrapState::Ready(_)
+            | RuntimeHomeBootstrapState::Incompatible(_)
+            | RuntimeHomeBootstrapState::Corrupt(_) => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                    reason: RuntimeHomePublicationOwnershipLoss::SchemaOrRecordInvalid,
+                });
+            }
+        }
+        let managed_host_consumed = candidate.conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1
+                  FROM mcp_runtime_sessions
+                 WHERE session_source = 'managed_host'
+            )",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        drop(candidate);
+        if managed_host_consumed {
+            let reason = RuntimeHomePublicationPreservationReason::ManagedHostConsumption;
+            self.state = RuntimeHomePublicationGuardState::Preserved(reason);
+            return Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason });
+        }
+
+        volicord_platform_fs::remove_owned_directory_tree(&self.final_path)?;
+        self.state = RuntimeHomePublicationGuardState::RolledBack;
+        Ok(RuntimeHomePublicationRollbackOutcome::RolledBack)
+    }
+
+    fn require_live(&self, operation: &'static str) -> StoreResult<()> {
+        if matches!(self.state, RuntimeHomePublicationGuardState::RolledBack) {
+            return Err(StoreError::Conflict {
+                entity: "runtime_home_publication",
+                id: self.publication_id.to_string(),
+                detail: format!("cannot {operation} a rolled-back Runtime Home publication"),
+            });
+        }
+        if matches!(self.state, RuntimeHomePublicationGuardState::Preserved(_)) {
+            return Err(StoreError::Conflict {
+                entity: "runtime_home_publication",
+                id: self.publication_id.to_string(),
+                detail: format!("cannot {operation} a preserved Runtime Home publication"),
+            });
+        }
+        Ok(())
+    }
+
+    fn ownership_loss(
+        &self,
+        candidate: &RuntimeHomePublicationCandidate,
+    ) -> Option<RuntimeHomePublicationOwnershipLoss> {
+        if candidate.stored_runtime_home != self.final_path {
+            return Some(RuntimeHomePublicationOwnershipLoss::FinalPathMismatch);
+        }
+        if candidate.stored_registry_path != registry_db_path(&self.final_path) {
+            return Some(RuntimeHomePublicationOwnershipLoss::RegistryPathMismatch);
+        }
+        if candidate.record.runtime_home_id != self.runtime_home_id {
+            return Some(RuntimeHomePublicationOwnershipLoss::RuntimeHomeIdMismatch);
+        }
+        if candidate.record.publication_id != self.publication_id {
+            return Some(RuntimeHomePublicationOwnershipLoss::PublicationIdMismatch);
+        }
+        if sha256_digest(candidate.record.storage_profile.as_bytes()) != self.manifest_digest {
+            return Some(RuntimeHomePublicationOwnershipLoss::ManifestDigestMismatch);
+        }
+        None
+    }
+
+    fn validate_installation_identity(&self, conn: &Connection) -> StoreResult<()> {
+        let Some(expected) = self.installation_id.as_deref() else {
+            return Ok(());
+        };
+        let observed = conn
+            .query_row(
+                "SELECT installation_id
+                   FROM installation_profile
+                  WHERE runtime_home_id = ?1",
+                params![self.runtime_home_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if observed.as_deref() == Some(expected) {
+            Ok(())
+        } else {
+            Err(self
+                .ownership_error(RuntimeHomePublicationOwnershipLoss::InstallationIdentityMismatch))
+        }
+    }
+
+    fn ownership_error(&self, reason: RuntimeHomePublicationOwnershipLoss) -> StoreError {
+        StoreError::Conflict {
+            entity: "runtime_home_publication",
+            id: self.publication_id.to_string(),
+            detail: format!(
+                "Runtime Home publication ownership could not be confirmed: {}",
+                reason.as_str()
+            ),
+        }
+    }
+}
+
+fn confirm_runtime_home_inner(
+    publication: &mut RuntimeHomePublicationGuard,
+    hook: &mut impl FnMut(RuntimeHomePublicationConfirmationPhase) -> StoreResult<()>,
+) -> StoreResult<RuntimeHomeRecord> {
+    hook(RuntimeHomePublicationConfirmationPhase::ParentDirectorySync)?;
+    publication.synchronize_parent_directory()?;
+    hook(RuntimeHomePublicationConfirmationPhase::PublicationReadBack)?;
+    let _ = publication.read_back()?;
+    hook(RuntimeHomePublicationConfirmationPhase::PublicationManifestValidation)?;
+    publication.validate_manifest_and_confirm()
 }
 
 /// Creates a fresh Runtime Home atomically or validates an existing one read-only.
@@ -483,11 +881,9 @@ pub fn initialize_runtime_home(
 
     let runtime_home = runtime_home.as_ref();
     match inspect_runtime_home_bootstrap(runtime_home)? {
-        RuntimeHomeBootstrapState::Absent => commit_runtime_home(prepare_runtime_home(
-            runtime_home,
-            runtime_home_id,
-            metadata_json,
-        )?),
+        RuntimeHomeBootstrapState::Absent => publish_and_confirm_runtime_home(
+            prepare_runtime_home(runtime_home, runtime_home_id, metadata_json)?,
+        ),
         RuntimeHomeBootstrapState::Ready(record) => Ok(record),
         RuntimeHomeBootstrapState::Incompatible(mismatch) => {
             Err(StoreError::RuntimeHomeSchemaMismatch(Box::new(mismatch)))
@@ -513,7 +909,7 @@ pub fn initialize_runtime_home_with_installation(
     let runtime_home = runtime_home.as_ref();
     let (runtime_home_record, fresh_profile) = match inspect_runtime_home_bootstrap(runtime_home)? {
         RuntimeHomeBootstrapState::Absent => {
-            let record = commit_runtime_home(prepare_runtime_home_with_installation(
+            let record = publish_and_confirm_runtime_home(prepare_runtime_home_with_installation(
                 runtime_home,
                 runtime_home_id,
                 metadata_json,
@@ -534,6 +930,23 @@ pub fn initialize_runtime_home_with_installation(
         None => write_installation_profile(runtime_home, installation)?,
     };
     Ok((runtime_home_record, profile))
+}
+
+fn publish_and_confirm_runtime_home(
+    prepared: PreparedRuntimeHome,
+) -> StoreResult<RuntimeHomeRecord> {
+    match commit_runtime_home(prepared)? {
+        RuntimeHomePublicationOutcome::ObservedConcurrentWinner { record } => Ok(record),
+        RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } => {
+            match publication.confirm() {
+                Ok(record) => Ok(record),
+                Err(error) => {
+                    let _ = publication.rollback_if_owned();
+                    Err(error)
+                }
+            }
+        }
+    }
 }
 
 fn prepare_runtime_home_inner(
@@ -574,6 +987,15 @@ fn prepare_runtime_home_inner(
     let runtime_home_text = path_to_text("runtime_home.runtime_home_path", runtime_home)?;
     let registry_path_text = path_to_text("runtime_home.registry_db_path", &final_registry)?;
     let storage_manifest_json = current_storage_manifest_json()?;
+    let expected_manifest_digest = sha256_digest(storage_manifest_json.as_bytes());
+    let publication_id = RuntimeHomePublicationId::generate().map_err(|error| {
+        StoreError::Io(io::Error::other(format!(
+            "Runtime Home publication ID generation failed: {error}"
+        )))
+    })?;
+    let expected_installation_id = installation
+        .as_ref()
+        .map(|registration| registration.installation_id.clone());
     hook(RuntimeHomeBootstrapPhase::SchemaCreation)?;
     let mut conn = create_registry_database(&staging_registry)?;
 
@@ -583,6 +1005,7 @@ fn prepare_runtime_home_inner(
             "INSERT INTO runtime_home (
                 singleton_id,
                 runtime_home_id,
+                publication_id,
                 runtime_home_path,
                 registry_db_path,
                 storage_profile,
@@ -597,11 +1020,13 @@ fn prepare_runtime_home_inner(
                 ?3,
                 ?4,
                 ?5,
+                ?6,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             )",
             params![
                 runtime_home_id,
+                publication_id.as_str(),
                 runtime_home_text,
                 registry_path_text,
                 storage_manifest_json,
@@ -626,6 +1051,10 @@ fn prepare_runtime_home_inner(
     Ok(PreparedRuntimeHome {
         final_runtime_home: runtime_home.to_path_buf(),
         staging_directory,
+        expected_runtime_home_id: runtime_home_id.to_owned(),
+        expected_publication_id: publication_id,
+        expected_manifest_digest,
+        expected_installation_id,
     })
 }
 
@@ -671,6 +1100,96 @@ fn ready_runtime_home_after_publication(runtime_home: &Path) -> StoreResult<Runt
             Err(StoreError::RuntimeHomeCorruption(corruption))
         }
     }
+}
+
+struct RuntimeHomePublicationCandidate {
+    conn: Connection,
+    record: RuntimeHomeRecord,
+    stored_runtime_home: PathBuf,
+    stored_registry_path: PathBuf,
+}
+
+fn runtime_home_publication_candidate(
+    runtime_home: &Path,
+) -> StoreResult<RuntimeHomePublicationCandidate> {
+    let runtime_metadata = fs::symlink_metadata(runtime_home)?;
+    if !runtime_metadata.file_type().is_dir() {
+        return Err(StoreError::RuntimeHomeCorruption(RuntimeHomeCorruption {
+            runtime_home: runtime_home.to_path_buf(),
+            kind: RuntimeHomeCorruptionKind::RuntimeHomeNotDirectory,
+            existing_state_preserved: true,
+        }));
+    }
+    let registry_path = registry_db_path(runtime_home);
+    let registry_metadata = fs::symlink_metadata(&registry_path)?;
+    if !registry_metadata.file_type().is_file() {
+        return Err(StoreError::RuntimeHomeCorruption(RuntimeHomeCorruption {
+            runtime_home: runtime_home.to_path_buf(),
+            kind: RuntimeHomeCorruptionKind::RegistryNotFile,
+            existing_state_preserved: true,
+        }));
+    }
+    let conn = open_read_only_database(&registry_path)?;
+    let count = conn.query_row("SELECT COUNT(*) FROM runtime_home", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    if count != 1 {
+        return Err(StoreError::RuntimeHomeCorruption(RuntimeHomeCorruption {
+            runtime_home: runtime_home.to_path_buf(),
+            kind: RuntimeHomeCorruptionKind::RuntimeHomeRecordInvalid,
+            existing_state_preserved: true,
+        }));
+    }
+    let values = conn
+        .query_row(
+            "SELECT
+                runtime_home_id,
+                publication_id,
+                runtime_home_path,
+                registry_db_path,
+                storage_profile,
+                metadata_json,
+                created_at,
+                updated_at
+               FROM runtime_home
+              WHERE singleton_id = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    PathBuf::from(row.get::<_, String>(2)?),
+                    PathBuf::from(row.get::<_, String>(3)?),
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or_else(|| StoreError::NotFound {
+            entity: "runtime_home",
+            id: runtime_home.display().to_string(),
+        })?;
+    let publication_id = RuntimeHomePublicationId::parse(values.1)
+        .map_err(|_| StoreError::corrupt_stored_value("registry", "runtime_home.publication_id"))?;
+    let record = RuntimeHomeRecord {
+        runtime_home: runtime_home.to_path_buf(),
+        registry_db_path: registry_path,
+        runtime_home_id: values.0,
+        publication_id,
+        storage_profile: values.4,
+        metadata_json: values.5,
+        created_at: values.6,
+        updated_at: values.7,
+    };
+    Ok(RuntimeHomePublicationCandidate {
+        conn,
+        record,
+        stored_runtime_home: values.2,
+        stored_registry_path: values.3,
+    })
 }
 
 fn current_runtime_home_record_matches_path(
@@ -1631,6 +2150,7 @@ fn runtime_home_record_from_conn(
     conn.query_row(
         "SELECT
             runtime_home_id,
+            publication_id,
             storage_profile,
             metadata_json,
             created_at,
@@ -1639,19 +2159,43 @@ fn runtime_home_record_from_conn(
           WHERE singleton_id = 1",
         [],
         |row| {
-            Ok(RuntimeHomeRecord {
-                runtime_home: runtime_home.clone(),
-                registry_db_path: registry_path.clone(),
-                runtime_home_id: row.get(0)?,
-                storage_profile: row.get(1)?,
-                metadata_json: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
         },
     )
     .optional()
-    .map_err(StoreError::from)
+    .map_err(StoreError::from)?
+    .map(
+        |(
+            runtime_home_id,
+            publication_id,
+            storage_profile,
+            metadata_json,
+            created_at,
+            updated_at,
+        )| {
+            let publication_id = RuntimeHomePublicationId::parse(publication_id).map_err(|_| {
+                StoreError::corrupt_stored_value("registry", "runtime_home.publication_id")
+            })?;
+            Ok(RuntimeHomeRecord {
+                runtime_home,
+                registry_db_path: registry_path,
+                runtime_home_id,
+                publication_id,
+                storage_profile,
+                metadata_json,
+                created_at,
+                updated_at,
+            })
+        },
+    )
+    .transpose()
 }
 
 fn project_record_from_conn(
@@ -1927,12 +2471,14 @@ mod tests {
     };
 
     use crate::{
+        agent_connections::{ensure_agent_connection, AgentConnectionRegistration},
         core_pipeline::CoreProjectStore,
         inspection::{inspect_registry_database, DatabaseInspection},
+        operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
         sqlite::{open_project_state_database, open_read_only_database},
     };
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::ProjectId;
+    use volicord_types::{McpRuntimeSessionSource, ProjectId};
 
     use super::*;
 
@@ -1950,7 +2496,13 @@ mod tests {
         assert!(!fixture.path().exists());
         assert_eq!(staging_directories(fixture.path())?.len(), 1);
 
-        let record = commit_runtime_home(prepared)?;
+        let outcome = commit_runtime_home(prepared)?;
+        let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } = outcome
+        else {
+            panic!("fresh publication must be owned by this invocation");
+        };
+        assert_eq!(publication.final_path(), fixture.path());
+        let record = publication.confirm()?;
         assert_eq!(record.runtime_home, fixture.path());
         assert_eq!(record.registry_db_path, fixture.registry_db_path());
         assert!(fixture.registry_db_path().is_file());
@@ -2175,12 +2727,24 @@ mod tests {
             commit_runtime_home(second)
         });
 
-        let first_record = first.join().expect("first creator thread")?;
-        let second_record = second.join().expect("second creator thread")?;
+        let first_outcome = first.join().expect("first creator thread")?;
+        let second_outcome = second.join().expect("second creator thread")?;
+        let (mut winner, observed) = match (first_outcome, second_outcome) {
+            (
+                RuntimeHomePublicationOutcome::PublishedByThisInvocation { publication },
+                RuntimeHomePublicationOutcome::ObservedConcurrentWinner { record },
+            )
+            | (
+                RuntimeHomePublicationOutcome::ObservedConcurrentWinner { record },
+                RuntimeHomePublicationOutcome::PublishedByThisInvocation { publication },
+            ) => (publication, record),
+            _ => panic!("exactly one concurrent creator must own publication"),
+        };
+        let winner_record = winner.confirm()?;
 
-        assert_eq!(first_record, second_record);
+        assert_eq!(winner_record, observed);
         assert!(matches!(
-            first_record.runtime_home_id.as_str(),
+            winner_record.runtime_home_id.as_str(),
             "runtime_home_creator_first" | "runtime_home_creator_second"
         ));
         assert!(staging_directories(fixture.path())?.is_empty());
@@ -2188,6 +2752,215 @@ mod tests {
             inspect_runtime_home_bootstrap(fixture.path())?,
             RuntimeHomeBootstrapState::Ready(_)
         ));
+        assert_eq!(
+            winner.rollback_if_owned()?,
+            RuntimeHomePublicationRollbackOutcome::RolledBack
+        );
+        assert!(!fixture.path().exists());
+        Ok(())
+    }
+
+    #[test]
+    fn equal_runtime_home_ids_receive_distinct_publication_ids() -> Result<(), Box<dyn Error>> {
+        let first = TempRuntimeHome::new("bootstrap-distinct-publication-first")?;
+        let second = TempRuntimeHome::new("bootstrap-distinct-publication-second")?;
+        let first_prepared =
+            prepare_runtime_home(first.path(), "runtime_home_same_identity", "{}")?;
+        let second_prepared =
+            prepare_runtime_home(second.path(), "runtime_home_same_identity", "{}")?;
+
+        assert_ne!(
+            first_prepared.publication_id(),
+            second_prepared.publication_id()
+        );
+        assert_ne!(
+            first_prepared.manifest_digest(),
+            first_prepared.publication_id().as_str()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn post_rename_confirmation_failures_retain_rollback_ownership() -> Result<(), Box<dyn Error>> {
+        for phase in [
+            RuntimeHomePublicationConfirmationPhase::ParentDirectorySync,
+            RuntimeHomePublicationConfirmationPhase::PublicationReadBack,
+            RuntimeHomePublicationConfirmationPhase::PublicationManifestValidation,
+        ] {
+            let fixture = TempRuntimeHome::new(&format!(
+                "bootstrap-post-rename-{}",
+                match phase {
+                    RuntimeHomePublicationConfirmationPhase::ParentDirectorySync => "parent-sync",
+                    RuntimeHomePublicationConfirmationPhase::PublicationReadBack => "read-back",
+                    RuntimeHomePublicationConfirmationPhase::PublicationManifestValidation =>
+                        "manifest",
+                }
+            ))?;
+            let prepared =
+                prepare_runtime_home(fixture.path(), "runtime_home_post_rename_failure", "{}")?;
+            let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
+                commit_runtime_home(prepared)?
+            else {
+                panic!("fresh publication must be owned");
+            };
+            assert!(fixture.path().is_dir());
+
+            let mut hook = |current| {
+                if current == phase {
+                    Err(StoreError::InvalidInput {
+                        detail: format!("injected {phase:?} failure"),
+                    })
+                } else {
+                    Ok(())
+                }
+            };
+            confirm_runtime_home_inner(&mut publication, &mut hook)
+                .expect_err("post-rename confirmation fault must be visible");
+            assert_eq!(
+                publication.rollback_if_owned()?,
+                RuntimeHomePublicationRollbackOutcome::RolledBack
+            );
+            assert!(!fixture.path().exists());
+            initialize_runtime_home(fixture.path(), "runtime_home_unrelated_replacement", "{}")?;
+            assert_eq!(
+                publication.rollback_if_owned()?,
+                RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack
+            );
+            let RuntimeHomeBootstrapState::Ready(replacement) =
+                inspect_runtime_home_bootstrap(fixture.path())?
+            else {
+                panic!("unrelated replacement must remain ready");
+            };
+            assert_eq!(
+                replacement.runtime_home_id,
+                "runtime_home_unrelated_replacement"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rollback_preserves_publication_when_exact_identity_is_lost() -> Result<(), Box<dyn Error>> {
+        for (field, expected_reason) in [
+            (
+                "publication_id",
+                RuntimeHomePublicationOwnershipLoss::PublicationIdMismatch,
+            ),
+            (
+                "runtime_home_id",
+                RuntimeHomePublicationOwnershipLoss::RuntimeHomeIdMismatch,
+            ),
+            (
+                "storage_profile",
+                RuntimeHomePublicationOwnershipLoss::ManifestDigestMismatch,
+            ),
+        ] {
+            let fixture = TempRuntimeHome::new(&format!("bootstrap-ownership-loss-{field}"))?;
+            let prepared =
+                prepare_runtime_home(fixture.path(), "runtime_home_ownership_loss", "{}")?;
+            let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
+                commit_runtime_home(prepared)?
+            else {
+                panic!("fresh publication must be owned");
+            };
+            let conn = Connection::open(fixture.registry_db_path())?;
+            match field {
+                "publication_id" => {
+                    let replacement = RuntimeHomePublicationId::generate()?;
+                    conn.execute(
+                        "UPDATE runtime_home SET publication_id = ?1 WHERE singleton_id = 1",
+                        [replacement.as_str()],
+                    )?;
+                }
+                "runtime_home_id" => {
+                    conn.execute(
+                        "UPDATE runtime_home SET runtime_home_id = 'runtime_home_replacement'
+                          WHERE singleton_id = 1",
+                        [],
+                    )?;
+                }
+                "storage_profile" => {
+                    let current = current_storage_manifest()?;
+                    let replacement = StorageManifest::new(
+                        volicord_types::STORAGE_CONTRACT_ID,
+                        format!("sha256:{}", "c".repeat(64)),
+                        format!("sha256:{}", "d".repeat(64)),
+                        current.enabled_capabilities.clone(),
+                    )?;
+                    conn.execute(
+                        "UPDATE runtime_home SET storage_profile = ?1 WHERE singleton_id = 1",
+                        [canonical_json_string(&replacement)?],
+                    )?;
+                }
+                _ => unreachable!(),
+            }
+            drop(conn);
+
+            assert_eq!(
+                publication.rollback_if_owned()?,
+                RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                    reason: expected_reason,
+                }
+            );
+            assert!(fixture.path().is_dir(), "{field}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn managed_host_consumption_preserves_the_owned_publication() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("bootstrap-managed-consumption-preserves")?;
+        let prepared =
+            prepare_runtime_home(fixture.path(), "runtime_home_managed_consumption", "{}")?;
+        let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
+            commit_runtime_home(prepared)?
+        else {
+            panic!("fresh publication must be owned");
+        };
+        publication.confirm()?;
+        ensure_agent_connection(
+            fixture.path(),
+            AgentConnectionRegistration {
+                connection_internal_id: "connection_managed_consumption".to_owned(),
+                host_kind: "codex".to_owned(),
+                intent: "personal".to_owned(),
+                host_scope: "user".to_owned(),
+                server_name: "volicord".to_owned(),
+                config_target: fixture
+                    .root_path()
+                    .join("config.toml")
+                    .display()
+                    .to_string(),
+                mode: "workflow".to_owned(),
+                enabled: true,
+                managed_fingerprint: "managed-consumption-fingerprint".to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        start_mcp_runtime_session_for_test(
+            fixture.path(),
+            McpRuntimeSessionStart {
+                connection_internal_id: "connection_managed_consumption".to_owned(),
+                session_source: McpRuntimeSessionSource::ManagedHost,
+                observed_host_executable_version: None,
+                process_id: 42,
+                process_started_at: "2026-07-25T00:00:00Z".to_owned(),
+            },
+        )?;
+
+        assert_eq!(
+            publication.rollback_if_owned()?,
+            RuntimeHomePublicationRollbackOutcome::Preserved {
+                reason: RuntimeHomePublicationPreservationReason::ManagedHostConsumption,
+            }
+        );
+        assert!(fixture.path().is_dir());
+        assert_eq!(
+            publication.rollback_if_owned()?,
+            RuntimeHomePublicationRollbackOutcome::Preserved {
+                reason: RuntimeHomePublicationPreservationReason::ManagedHostConsumption,
+            }
+        );
         Ok(())
     }
 

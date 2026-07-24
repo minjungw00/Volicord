@@ -129,11 +129,12 @@ schema, singleton identity, 최종 경로가 정확히 일치할 때만 `Ready`�
 
 최종 경로가 `Absent`이면 초기화는 같은 상위 directory 아래에 고유 staging directory를
 만듭니다. 그 안에서 Registry, Runtime Home singleton, 최초 installation profile을 만들고
-정확한 현재 manifest와 schema를 검증한 뒤, 플랫폼 경계가 지원하는 곳에서는 staging
-file과 directory를 동기화합니다. 그 다음 기존 최종 경로를 교체하지 않는 원자적 rename으로
-공개합니다. Staging 경로는 Runtime Home identity가 아니며 공개 전 실패는 staging을 모두
-정리하고 최종 경로를 없는 상태로 남깁니다. 동시 생성자는 정확히 `Ready`인 승자의 상태만
-읽기 전용으로 받아들입니다.
+singleton에는 해당 준비에서 생성한 불투명한 UUID 기반 publication ID 하나와 현재 정규
+manifest를 기록합니다. Staging을 검증하고 동기화한 뒤 기존 최종 경로를 교체하지 않는
+원자적 rename으로 공개합니다. Rename이 성공하면 상위 directory 동기화, read-back,
+manifest 확인이 실패할 수 있는 작업보다 먼저 복제할 수 없는 invocation별 publication
+guard를 즉시 만듭니다. `AlreadyExists`이면 이 invocation의 staging을 정리하고 rollback
+권한 없이 읽기 전용으로 정확히 검증한 `Ready` 승자만 반환합니다.
 
 ### Init setup transaction
 
@@ -145,12 +146,16 @@ mutation을 결정적인 순서로 정렬합니다. Prepare 단계는 최종 tar
 
 Commit 단계는 Runtime Home을 공개하거나 검증하고 checkpoint한 Store mutation을 적용한
 뒤 Product Repository 파일을 원자 교체하고 Codex 구성을 마지막에 원자 교체한 다음
-integration revision을 기록합니다. 오래된 입력은 concurrent-modification 실패이며 더
-새로운 외부 bytes를 보존합니다. Rollback은 기존 Runtime Home이나 user file을 삭제하지
-않습니다. 이 invocation이 만든 Runtime Home은 아직 commit되지 않은 이 setup 소유권을
-rollback하는 동안에만 제거할 수 있습니다. Runtime Home, Codex 구성, Product
-Repository가 서로 다른 파일시스템에 있을 수 있으므로 보장은 전역 파일시스템
-transaction 하나가 아니라 완전한 준비, 파일별 원자 교체, 한도가 있는 rollback입니다.
+integration revision을 기록합니다. Setup은 준비됨, 소유한 공개, 소유한 확인 완료, 동시
+승자 관찰, 소유한 보존, 소유한 rollback 완료 상태를 명시적으로 유지합니다. 오래된 입력은
+concurrent-modification 실패이며 더 새로운 외부 bytes를 보존합니다. Runtime Home
+rollback은 플랫폼 소유 제거 직전에 소유 guard가 최종 home을 다시 열어 publication ID,
+Runtime Home identity, 정규 manifest digest, 정확한 경로와 schema, 준비한 installation
+identity, managed-host 소비 부재를 다시 검증해야 합니다. 불일치나 소비가 있으면 최종
+경로를 보존하고 partial rollback을 보고합니다. 관찰자는 동시 승자를 제거하거나 변경하지
+않습니다. Runtime Home, Codex 구성, Product Repository가 서로 다른 파일시스템에 있을 수
+있으므로 보장은 전역 파일시스템 transaction 하나가 아니라 완전한 준비, 파일별 원자 교체,
+한도가 있는 rollback입니다.
 
 Registry는 구조화된 diagnostic finding과 cause edge의 영속 Runtime Home carrier입니다.
 Finding은 해당 Connection, project, runtime session, integration revision과 상관관계를

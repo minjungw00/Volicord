@@ -64,8 +64,10 @@ registry 직접 순회가 matrix를 정합니다.
 - owner-defined corrupt-data failure로 라우팅되는 current-contract 불일치
 - Runtime Home의 `Absent`, `Ready`, `Incompatible`, `Corrupt` 검사, singleton과
   installation metadata를 포함한 같은 상위 directory의 staged creation, 정확한
-  manifest 및 relation fact, 공개 전 각 실패 지점의 정리, Unix와 native Windows의
-  no-replace 동시 공개, 기존 비호환 상태의 변경되지 않은 bytes와 timestamp
+  manifest, 불투명 publication provenance 및 relation fact, 공개 전 각 실패 지점의
+  정리, Unix와 native Windows에서 소유자 하나와 관찰 전용 패자만 만드는 no-replace
+  동시 공개, token-backed rollback 재검증, 소유권 상실 및 managed-host 소비 시 보존,
+  관련 없는 replacement 안전성, 기존 비호환 상태의 변경되지 않은 bytes와 timestamp
 - 행 없음 또는 비적격 operation result에서 유지되는
   `OPERATION_RESULT_UNAVAILABLE`
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution
@@ -134,10 +136,12 @@ registry 직접 순회가 matrix를 정합니다.
 - Reload, hook review, 사용자 수준 요청 하나, status의 init 출력 개수와 순서,
   `Required next steps` block 하나, 정확한 개수와 단복수 표현, current-status suffix,
   typed repair-required plan, 분리된 optional active diagnostics
-- Runtime Home 준비, Store 복구 준비, 모든 관리 hook/rule/guidance 교체 뒤, Codex
-  구성 교체 전후, integration revision commit 전, rollback 중의 transactional init
-  fault injection, 새 상태와 기존 상태의 정확한 복원, 동시 외부 bytes 보존,
-  `planned`, `committed`, `preserved`, `rolled_back`,
+- Runtime Home 준비, Store 복구 준비, Runtime Home rename 뒤 상위 directory 동기화,
+  publication read-back, manifest 검증 단계, 모든 관리 hook/rule/guidance 교체 뒤,
+  Codex 구성 교체 전후, integration revision commit 전, rollback 중의 transactional
+  init fault injection, 새 상태와 기존 상태의 정확한 복원, 두 승자 순서와 이후 패자 실패를
+  포함하는 동기화 경계가 있는 전체 init 경쟁, 동시 외부 bytes 보존, 모든 setup
+  publication 결과와 `planned`, `committed`, `preserved`, `rolled_back`,
   `partially_rolled_back` 보고 projection, 읽기 전용 dry-run 일치, replay idempotence,
   commit 뒤에만 activation
 - 정규 요청, 모든 tagged workflow kind와 그 상태가 반환하는 정규 tool, nested

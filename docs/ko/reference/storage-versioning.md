@@ -131,11 +131,13 @@ Store는 아래 검사를 모두 통과한 데이터베이스만 받아들입니
 같은 분류를 냅니다.
 
 새 Runtime Home 초기화는 최종 경로가 없을 때만 허용하는 별도 작업입니다. 같은 상위
-directory에 staging directory를 만들고, 그 안에 기준 SQL을 적용하며, Runtime Home
-singleton 및 installation metadata와 함께 현재 manifest를 기록하고, 외래 키를 활성화한
-뒤 전체 manifest와 물리 schema를 검증합니다. 지원되는 file 및 directory 동기화를 마친
-뒤 기존 대상을 교체하지 않는 원자적 rename으로 directory를 공개합니다. 공개 전 실패는
-모두 staging을 제거하고 최종 경로를 없는 상태로 남깁니다.
+directory에 staging directory를 만들고 그 안에 기준 SQL을 적용하며 불투명한 UUID 기반
+publication ID 하나를 생성합니다. 이 provenance를 현재 manifest, Runtime Home singleton,
+installation metadata와 함께 기록하고 외래 키를 활성화한 뒤 전체 manifest와 물리
+schema를 검증합니다. Staging 동기화를 마친 뒤 기존 대상을 교체하지 않는 원자적 rename으로
+directory를 공개합니다. 성공한 publisher는 rename 직후 invocation별 guard를 받고 상위
+directory 동기화, read-back, manifest 확인까지 이를 유지합니다. `AlreadyExists`를 받은
+호출자는 자기 staging만 제거하고 제거 권한 없이 정확한 현재 승자를 관찰합니다.
 
 기존 Runtime Home은 setup 변경 전에 읽기 전용 연결로 위의 정확한 열기 검사를 수행합니다.
 결과는 `Ready`, `Incompatible`, `Corrupt`이며 불일치는 manifest digest와 물리 relation

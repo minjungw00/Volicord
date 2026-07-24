@@ -208,6 +208,83 @@ impl fmt::Display for ConnectionIntegrationInstanceIdError {
 
 impl Error for ConnectionIntegrationInstanceIdError {}
 
+/// Opaque provenance identifier for one prepared Runtime Home publication.
+///
+/// This value distinguishes publication invocations. It is not a credential,
+/// an authorization secret, or an operating-system actor identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
+#[serde(transparent)]
+pub struct RuntimeHomePublicationId(String);
+
+const RUNTIME_HOME_PUBLICATION_ID_PREFIX: &str = "runtime_home_publication_";
+
+impl RuntimeHomePublicationId {
+    /// Generates one fresh publication identifier from the operating-system
+    /// random source.
+    pub fn generate() -> Result<Self, DurableIdError> {
+        Ok(Self(format!(
+            "{RUNTIME_HOME_PUBLICATION_ID_PREFIX}{}",
+            random_uuid_v4_suffix()?
+        )))
+    }
+
+    /// Validates and retains a canonical persisted publication identifier.
+    pub fn parse(value: impl Into<String>) -> Result<Self, RuntimeHomePublicationIdError> {
+        let value = value.into();
+        let Some(suffix) = value.strip_prefix(RUNTIME_HOME_PUBLICATION_ID_PREFIX) else {
+            return Err(RuntimeHomePublicationIdError);
+        };
+        if !is_uuid_v4_suffix(suffix) {
+            return Err(RuntimeHomePublicationIdError);
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the canonical persisted spelling.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes the wrapper and returns the canonical persisted spelling.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for RuntimeHomePublicationId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(de::Error::custom)
+    }
+}
+
+impl AsRef<str> for RuntimeHomePublicationId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for RuntimeHomePublicationId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Failure to decode a noncanonical Runtime Home publication identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeHomePublicationIdError;
+
+impl fmt::Display for RuntimeHomePublicationIdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Runtime Home publication ID must be a canonical prefixed UUIDv4")
+    }
+}
+
+impl Error for RuntimeHomePublicationIdError {}
+
 /// Number of generated durable IDs to try before reporting an internal collision failure.
 pub const DURABLE_ID_RETRY_LIMIT: usize = 8;
 
@@ -417,6 +494,10 @@ pub fn prefixed_durable_id(kind: DurableIdKind, suffix: &str) -> String {
 }
 
 fn random_durable_id(kind: DurableIdKind) -> Result<String, DurableIdError> {
+    Ok(prefixed_durable_id(kind, &random_uuid_v4_suffix()?))
+}
+
+fn random_uuid_v4_suffix() -> Result<String, DurableIdError> {
     let mut bytes = [0_u8; 16];
     getrandom::fill(&mut bytes).map_err(|error| DurableIdError::RandomUnavailable {
         detail: error.to_string(),
@@ -426,7 +507,7 @@ fn random_durable_id(kind: DurableIdKind) -> Result<String, DurableIdError> {
     // not public ordering, timing, or authority semantics.
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    Ok(prefixed_durable_id(kind, &uuid_v4_suffix(bytes)))
+    Ok(uuid_v4_suffix(bytes))
 }
 
 fn uuid_v4_suffix(bytes: [u8; 16]) -> String {
@@ -451,6 +532,20 @@ fn uuid_v4_suffix(bytes: [u8; 16]) -> String {
     )
 }
 
+fn is_uuid_v4_suffix(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 36
+        && bytes[8] == b'-'
+        && bytes[13] == b'-'
+        && bytes[18] == b'-'
+        && bytes[23] == b'-'
+        && bytes[14] == b'4'
+        && matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
+        && !bytes.iter().enumerate().any(|(index, byte)| {
+            !matches!(index, 8 | 13 | 18 | 23) && !matches!(byte, b'0'..=b'9' | b'a'..=b'f')
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,6 +557,32 @@ mod tests {
             0x30, 0x40,
         ]);
         assert_eq!(suffix, "00112233-4455-4abb-8cdd-eeff10203040");
+    }
+
+    #[test]
+    fn runtime_home_publication_ids_are_bounded_prefixed_uuid_v4_values() {
+        let publication_id =
+            RuntimeHomePublicationId::generate().expect("publication ID should be generated");
+        assert_eq!(publication_id.as_str().len(), 61);
+        assert!(publication_id
+            .as_str()
+            .starts_with(RUNTIME_HOME_PUBLICATION_ID_PREFIX));
+        assert_eq!(
+            RuntimeHomePublicationId::parse(publication_id.as_str()).unwrap(),
+            publication_id
+        );
+        for invalid in [
+            "",
+            "runtime_home_publication_not-a-uuid",
+            "runtime_home_publication_00112233-4455-3abb-8cdd-eeff10203040",
+            "runtime_home_publication_00112233-4455-4abb-7cdd-eeff10203040",
+            "runtime_home_publication_00112233-4455-4ABB-8cdd-eeff10203040",
+        ] {
+            assert!(
+                RuntimeHomePublicationId::parse(invalid).is_err(),
+                "{invalid}"
+            );
+        }
     }
 
     #[test]

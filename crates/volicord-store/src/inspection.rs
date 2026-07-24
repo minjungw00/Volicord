@@ -7,7 +7,7 @@ use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 use volicord_types::{
     guard_manifest_from_json, project_agent_session_id, ConnectionIntegrationInstanceId,
-    ConnectionVerificationReport, IntegrationRevision,
+    ConnectionVerificationReport, IntegrationRevision, RuntimeHomePublicationId,
 };
 
 use crate::{
@@ -75,6 +75,7 @@ pub struct RegistryInspectionSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeHomeInspectionRecord {
     pub runtime_home_id: String,
+    pub publication_id: RuntimeHomePublicationId,
     pub runtime_home_path: PathBuf,
     pub registry_db_path: PathBuf,
     pub storage_profile: String,
@@ -465,6 +466,7 @@ fn read_runtime_home_record(
         .query_row(
             "SELECT
                 runtime_home_id,
+                publication_id,
                 runtime_home_path,
                 registry_db_path,
                 storage_profile,
@@ -477,12 +479,20 @@ fn read_runtime_home_record(
             |row| {
                 Ok(RuntimeHomeInspectionRecord {
                     runtime_home_id: row.get(0)?,
-                    runtime_home_path: PathBuf::from(row.get::<_, String>(1)?),
-                    registry_db_path: PathBuf::from(row.get::<_, String>(2)?),
-                    storage_profile: row.get(3)?,
-                    metadata_json: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
+                    publication_id: RuntimeHomePublicationId::parse(row.get::<_, String>(1)?)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                1,
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })?,
+                    runtime_home_path: PathBuf::from(row.get::<_, String>(2)?),
+                    registry_db_path: PathBuf::from(row.get::<_, String>(3)?),
+                    storage_profile: row.get(4)?,
+                    metadata_json: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             },
         )

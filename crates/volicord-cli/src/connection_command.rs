@@ -103,7 +103,8 @@ use guidance::{
 };
 use output::{
     render_command_report, render_connections_output, CommandConnection, CommandOperation,
-    ConnectionCommandReport, SetupDisposition, SetupFailureDiagnostic,
+    ConnectionCommandReport, RuntimeHomePublicationStatus, SetupDisposition,
+    SetupFailureDiagnostic,
 };
 use persisted_state::{decode_persisted_object, PERSISTED_CONNECTION_METADATA_CORRUPT_REASON};
 use planning::{
@@ -230,9 +231,10 @@ pub fn run_init_command(
                 "committed init requires one canonical verification report",
             )
         })?;
-        ConnectionCommandReport::from_verification(
+        ConnectionCommandReport::from_verification_with_publication(
             CommandOperation::Init,
             Some(SetupDisposition::Committed),
+            Some(outcome.runtime_home_publication),
             &outcome.runtime_home,
             connection,
             &verification.report,

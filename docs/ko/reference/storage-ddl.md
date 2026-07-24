@@ -145,6 +145,21 @@ projection, fixture, DDL 계약 테스트, 문서 목록은 이 생성 아티팩
 CREATE TABLE runtime_home (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   runtime_home_id TEXT NOT NULL UNIQUE,
+  publication_id TEXT NOT NULL UNIQUE CHECK (
+    length(publication_id) = 61
+    AND substr(publication_id, 1, 25) = 'runtime_home_publication_'
+    AND substr(publication_id, 34, 1) = '-'
+    AND substr(publication_id, 39, 1) = '-'
+    AND substr(publication_id, 44, 1) = '-'
+    AND substr(publication_id, 49, 1) = '-'
+    AND substr(publication_id, 26, 8) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 35, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 40, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 45, 4) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 50, 12) NOT GLOB '*[^0-9a-f]*'
+    AND substr(publication_id, 40, 1) = '4'
+    AND substr(publication_id, 45, 1) GLOB '[89ab]'
+  ),
   runtime_home_path TEXT NOT NULL UNIQUE,
   registry_db_path TEXT NOT NULL UNIQUE,
   storage_profile TEXT NOT NULL,
@@ -945,7 +960,7 @@ CREATE INDEX idx_guard_probe_observations_verification
 
 레지스트리 제약:
 
-- `runtime_home`은 단일 행 테이블입니다. `storage_profile` 열은 필수 manifest 운반 열이며 완전한 현재 `StorageManifest`를 저장합니다. 이 행은 Runtime Home 식별 정보, Runtime Home 경로, 레지스트리 데이터베이스 경로, 메타데이터, 타임스탬프도 저장합니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
+- `runtime_home`은 단일 행 테이블입니다. `storage_profile` 열은 필수 manifest 운반 열이며 완전한 현재 `StorageManifest`를 저장합니다. 이 행은 Runtime Home 식별 정보, 고유한 `runtime_home_publication_` 접두 소문자 UUIDv4 publication provenance, Runtime Home 경로, 레지스트리 데이터베이스 경로, 메타데이터, 타임스탬프도 저장합니다. Publication ID는 준비 invocation 하나를 식별하며 credential, OS actor identity, 숫자 schema selector가 아닙니다. 저장된 `runtime_home_id`는 Runtime Home 기록을 식별하며 보안 보장이 아닙니다.
 - `installation_profile`은 Runtime Home에 대해 선택된 `volicord` 명령, MCP 시작 명령, 실행 파일 디렉터리, 기본 연결 모드, 메타데이터, 타임스탬프를 저장합니다. `volicord init`이 이를 마련할 수 있습니다. 호스트 신뢰, 사용자 권한, 공개 API 상태가 아닙니다.
 - `projects.project_internal_id`는 프로젝트 기록의 저장 기본 키입니다. `projects.project_name`은 표시 이름입니다. `projects.project_alias`는 CLI 선택 보조 값입니다. `projects.repo_root`는 저장소 루트 조회 키입니다. `projects.project_alias`, `projects.repo_root`, `projects.project_home`, `projects.state_db_path`는 고유합니다.
 - `project_aliases`는 별칭을 `project_internal_id` 값에 매핑합니다. 별칭 행은 레지스트리 선택 보조 값이지 프로젝트별 Core 권한 기록이 아닙니다.

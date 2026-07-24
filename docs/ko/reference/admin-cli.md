@@ -110,10 +110,12 @@ Runtime Home 선택과 모든 connection 명령이 수행하는 설치 프로필
 importer가 있는 경우에만 그것을 사용하도록 안내합니다.
 
 최종 경로가 없으면 `init`은 같은 상위 directory의 고유 staging directory에 Registry,
-singleton, installation profile을 만듭니다. 검증된 directory는 기존 대상을 교체하지 않는
-원자적 rename으로 공개하며, 공개 전 실패는 최종 경로를 없는 상태로 두고 staging을
-제거합니다. Connection 명령은 선택한 홈에 현재 installation profile이 있어야 하며 홈이
-없거나 사용할 수 없으면 그 정확한 경로를 담아 실패합니다. 선택 뒤에도
+singleton, installation profile을 만들고 singleton에 새 불투명 publication ID를
+기록합니다. 기존 대상을 교체하지 않는 원자적 rename에 성공하면 상위 directory 동기화와
+read-back 확인 전에 invocation별 소유권을 반환합니다. `AlreadyExists`이면 staging을
+정리하고 정확한 현재 승자를 관찰한 결과만 반환합니다. Connection 명령은 선택한 홈에
+현재 installation profile이 있어야 하며 홈이 없거나 사용할 수 없으면 그 정확한 경로를
+담아 실패합니다. 선택 뒤에도
 `connection list`와 `connection status`는 읽기 전용입니다. 비어 있거나 잘못됐거나 충돌하는
 값은 저장소 접근 전에 실패합니다. Product Repository를 Runtime Home으로 사용하지 않습니다.
 
@@ -140,11 +142,13 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 
 Plan 구성은 읽기 전용이며 정확한 Runtime Home, Store, Codex 구성, repository 관리
 파일 mutation을 계산합니다. Prepare 단계는 모든 입력 snapshot을 검증하고 각 파일을
-target 옆에 staging하며 Store 복구 entry를 준비합니다. Commit 단계는 Runtime Home을
-공개하거나 검증하고 Store mutation을 적용한 뒤 repository 파일을 결정적인 경로 순서로
-원자 교체하고 Codex 구성을 마지막에 원자 교체한 다음 현재 integration revision을
-기록합니다. Activation step은 setup이 `committed`일 때만 만듭니다. 이는 여러
-파일시스템 전체의 전역 원자성을 뜻하지 않으며, 완전한 사전 준비, 파일별 원자 교체,
+target 옆에 staging하며 Store 복구 entry를 준비합니다. Commit 단계는 소유한 Runtime
+Home publication guard 또는 관찰 전용 동시 승자 결과를 유지하고 Store mutation을 적용한
+뒤 repository 파일을 결정적인 경로 순서로 원자 교체하고 Codex 구성을 마지막에 원자
+교체한 다음 현재 integration revision을 기록합니다. Rollback은 guard가 정확한 소유권을
+다시 검증한 경우에만 새 Runtime Home을 제거할 수 있으며, 소유권 상실이나 managed-host
+소비가 있으면 보존합니다. Activation step은 setup이 `committed`일 때만 만듭니다. 이는
+여러 파일시스템 전체의 전역 원자성을 뜻하지 않으며, 완전한 사전 준비, 파일별 원자 교체,
 한도가 있는 rollback을 뜻합니다.
 
 일치하는 현재 Agent Connection이 없으면 `init`은 `workflow` mode로 새 연결을
@@ -593,6 +597,10 @@ SetupResult:
   kind: setup
   disposition: planned | committed | rolled_back | preserved |
     partially_rolled_back
+  runtime_home_publication: not_published | existing_ready |
+    published_by_this_invocation | concurrent_winner_observed |
+    owned_publication_rolled_back | owned_publication_preserved |
+    ownership_lost_during_rollback
 
 ModeTransitionResult:
   kind: mode_transition
@@ -629,6 +637,12 @@ add가 성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`�
 `status=dry_run`을 직렬화하지
 않습니다. 계획 변경이나 host action이 남으면 `action_required`, 둘 다 없으면
 `complete`입니다.
+
+`SetupResult.runtime_home_publication`은 독립적인 publication 상태를 보고합니다.
+`published_by_this_invocation`만 기존 대상을 교체하지 않는 rename 성공과 rollback 권한을
+함께 뜻합니다. `concurrent_winner_observed`에는 관찰 권한만 있습니다. Rollback 결과는
+소유한 publication을 제거했는지, setup 또는 managed-host 소비 정책 때문에 보존했는지,
+정확한 소유권 재검증을 통과하지 못해 보존했는지를 구분합니다.
 
 Commit 전에 실패하면 `preserved`를 보고합니다. Commit한 교체 가능 상태를 복원했으면
 `rolled_back`을 보고합니다. 이후 외부 변경을 안전하게 교체할 수 없어 복원이

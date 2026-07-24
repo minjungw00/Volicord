@@ -1089,6 +1089,40 @@ impl std::error::Error for ReplaceFileError {
     }
 }
 
+/// Removes one exact ordinary directory tree and synchronizes its parent where
+/// the platform exposes directory synchronization.
+///
+/// Callers must establish product ownership immediately before invoking this
+/// primitive. This function rejects symlinks and non-directory namespace
+/// entries; it does not infer product ownership from a path.
+pub fn remove_owned_directory_tree(path: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "owned directory removal requires an ordinary directory",
+        ));
+    }
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "owned directory removal requires a parent directory",
+        )
+    })?;
+    fs::remove_dir_all(path)?;
+    sync_directory_entry_parent(parent)
+}
+
+#[cfg(unix)]
+fn sync_directory_entry_parent(parent: &Path) -> io::Result<()> {
+    fs::File::open(parent)?.sync_all()
+}
+
+#[cfg(not(unix))]
+fn sync_directory_entry_parent(_parent: &Path) -> io::Result<()> {
+    Ok(())
+}
+
 #[cfg(windows)]
 /// Opens a regular file so that replacement may rename it while new write
 /// handles and writable mappings are rejected until the returned handle is
@@ -1202,6 +1236,28 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn owned_directory_removal_rejects_non_directories_and_removes_exact_tree() -> io::Result<()> {
+        let directory = TestDirectory::new("owned-directory-removal")?;
+        let owned = directory.path().join("owned");
+        fs::create_dir(&owned)?;
+        fs::write(owned.join("record"), b"owned")?;
+
+        remove_owned_directory_tree(&owned)?;
+        assert!(!owned.exists());
+
+        let file = directory.path().join("ordinary-file");
+        fs::write(&file, b"preserve")?;
+        assert_eq!(
+            remove_owned_directory_tree(&file)
+                .expect_err("ordinary file must not be removed")
+                .kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(fs::read(file)?, b"preserve");
+        Ok(())
+    }
 
     static TEST_DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 

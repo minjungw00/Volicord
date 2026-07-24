@@ -35,7 +35,7 @@ canonical schema digest와 `contract_id=volicord.sqlite.diagnostics`로 식별�
 
 Registry 기록에는 다음이 포함됩니다.
 
-- Runtime Home identity 하나와 현재 `StorageManifest` carrier
+- Runtime Home identity 하나, 불투명 publication ID, 현재 `StorageManifest` carrier
 - 설치와 실행 파일 선택
 - 프로젝트 등록과 alias
 - Agent Connection과 Connection Projects membership
@@ -46,11 +46,13 @@ Registry 기록에는 다음이 포함됩니다.
   finding, graceful close 사실
 - runtime/host session 하나를 Connection Project 하나에 결속하는 데이터베이스 간 예약
 
-새 Runtime Home에서는 identity row와 최초 installation profile을 staging한 Registry에
-함께 삽입한 뒤 최종 directory를 공개합니다. 두 record가 선택한 Runtime Home 경로에서
-접근 가능해지기 전에 정확한 manifest 및 schema 검증을 통과해야 합니다. 기존 Registry는
-먼저 읽기 전용으로 검사하며, 호환되지 않는 record 또는 relation 사실을 어떤 Registry
-record도 다시 쓰지 않고 보고합니다.
+새 Runtime Home에서는 준비마다 UUID 기반 publication ID 하나를 생성하고 identity row,
+최초 installation profile과 함께 staging한 Registry에 삽입한 뒤 최종 directory를
+공개합니다. Publication ID는 invocation provenance이며 credential, actor identity,
+schema version이 아닙니다. 이 record들이 선택한 Runtime Home 경로에서 접근 가능해지기
+전에 정확한 manifest 및 schema 검증을 통과해야 합니다. 기존 Registry는 먼저 읽기
+전용으로 검사하며, 호환되지 않는 record 또는 relation 사실을 어떤 Registry record도
+다시 쓰지 않고 보고합니다.
 
 프로젝트 상태 기록에는 다음이 포함됩니다.
 
