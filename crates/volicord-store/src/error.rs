@@ -2,6 +2,8 @@ use std::{error::Error, fmt, io};
 
 use rusqlite::{ffi, ErrorCode as SqliteErrorCode};
 
+use crate::bootstrap::{RuntimeHomeCorruption, RuntimeHomeSchemaMismatch};
+
 /// Store-layer result type.
 pub type StoreResult<T> = Result<T, StoreError>;
 
@@ -74,6 +76,10 @@ pub enum StoreError {
         database_kind: &'static str,
         detail: String,
     },
+    /// An existing Runtime Home has a noncurrent manifest or physical schema.
+    RuntimeHomeSchemaMismatch(Box<RuntimeHomeSchemaMismatch>),
+    /// An existing Runtime Home cannot be decoded as one valid storage instance.
+    RuntimeHomeCorruption(RuntimeHomeCorruption),
 }
 
 impl StoreError {
@@ -317,6 +323,24 @@ impl StoreError {
                 field: None,
                 owner_state_error: None,
             },
+            Self::RuntimeHomeSchemaMismatch(_) => StoreFailureClassification {
+                route: StoreFailureRoute::PersistedDataCorrupt,
+                category: "runtime_home_schema_mismatch",
+                retryable: false,
+                database_kind: Some("registry"),
+                entity: Some("runtime_home"),
+                field: Some("storage_profile"),
+                owner_state_error: None,
+            },
+            Self::RuntimeHomeCorruption(_) => StoreFailureClassification {
+                route: StoreFailureRoute::PersistedDataCorrupt,
+                category: "runtime_home_corrupt",
+                retryable: false,
+                database_kind: Some("registry"),
+                entity: Some("runtime_home"),
+                field: None,
+                owner_state_error: None,
+            },
         }
     }
 }
@@ -531,6 +555,8 @@ impl fmt::Display for StoreError {
                 formatter,
                 "schema invariant failed for {database_kind}: {detail}"
             ),
+            Self::RuntimeHomeSchemaMismatch(mismatch) => mismatch.fmt(formatter),
+            Self::RuntimeHomeCorruption(corruption) => corruption.fmt(formatter),
         }
     }
 }
@@ -551,7 +577,9 @@ impl Error for StoreError {
             | Self::CorruptOwnerStateValue { .. }
             | Self::CorruptStoredValue { .. }
             | Self::UnsupportedStorageProfile { .. }
-            | Self::SchemaInvariant { .. } => None,
+            | Self::SchemaInvariant { .. }
+            | Self::RuntimeHomeSchemaMismatch(_)
+            | Self::RuntimeHomeCorruption(_) => None,
         }
     }
 }

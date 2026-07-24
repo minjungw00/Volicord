@@ -136,10 +136,17 @@ Store는 아래 검사를 모두 통과한 데이터베이스만 받아들입니
 일부만 검증한 데이터베이스를 열지 않습니다. 바이트가 바뀌지 않았다면 열기를 반복해도
 같은 분류를 냅니다.
 
-새 초기화는 빈 대상에서 수행하는 별도 작업입니다. 기준 SQL을 적용하고, 현재
-매니페스트를 기록하고, 외래 키를 활성화하고, 결과 데이터베이스를 검증한 뒤에만
-사용할 수 있게 공개합니다. 실패하면 초기화된 저장소로 받아들일 수 있는 대상이 남지
-않습니다.
+새 Runtime Home 초기화는 최종 경로가 없을 때만 허용하는 별도 작업입니다. 같은 상위
+directory에 staging directory를 만들고, 그 안에 기준 SQL을 적용하며, Runtime Home
+singleton 및 installation metadata와 함께 현재 manifest를 기록하고, 외래 키를 활성화한
+뒤 전체 manifest와 물리 schema를 검증합니다. 지원되는 file 및 directory 동기화를 마친
+뒤 기존 대상을 교체하지 않는 원자적 rename으로 directory를 공개합니다. 공개 전 실패는
+모두 staging을 제거하고 최종 경로를 없는 상태로 남깁니다.
+
+기존 Runtime Home은 setup 변경 전에 읽기 전용 연결로 위의 정확한 열기 검사를 수행합니다.
+결과는 `Ready`, `Incompatible`, `Corrupt`이며 불일치는 manifest digest와 물리 relation
+사실을 한도 안에서 포함합니다. Store는 호환되지 않거나 손상된 home 위에 staging을
+덮거나 migration, patch, rewrite, timestamp 갱신을 수행하지 않습니다.
 
 ## 기준 SQL과 생성 메타데이터
 

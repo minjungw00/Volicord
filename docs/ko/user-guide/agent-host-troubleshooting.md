@@ -53,7 +53,7 @@ Code 계열에 따라 집중 복구 경계를 선택합니다.
 | `installation.*` | 실행 가능한 현재 Volicord build를 복구합니다. 있으면 `action.installation.reinstall_current_build`를 사용합니다. |
 | `managed_config.*` | 같은 지원 `init` 복구를 실행합니다. Finding은 정적 환경 값이나 argument를 노출하지 않습니다. |
 | `store.sqlite.busy`, `store.sqlite.locked` | Database transaction을 잡고 있는 프로세스를 끝내거나 중지한 뒤 재시도합니다. |
-| `store.schema.mismatch`, `store.integrity.corruption_failure` | 호환 build와 담당자가 승인한 명시적 복원 또는 재초기화 경로를 사용합니다. Schema table을 직접 편집하지 않습니다. |
+| `store.schema.mismatch`, `store.integrity.corruption_failure` | 기존 Runtime Home을 보존하고 명시적 `--home`으로 새 위치를 선택하거나 담당자가 정의한 importer가 있는 경우에만 사용합니다. 검사는 읽기 전용이며 schema table을 직접 편집하지 않습니다. |
 | `guard.*` | Guard 설치를 복구하거나 typed action이 이름 붙인 정확한 미관찰 phase를 실행합니다. |
 | `trust.repository.not_trusted` | Codex에서 정확한 Product Repository를 승인합니다. |
 | `revision.integration.stale` | 이미 적용한 구성 변경 뒤 Codex를 다시 불러옵니다. |

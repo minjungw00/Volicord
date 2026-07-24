@@ -1027,6 +1027,7 @@ version = "0.9.1"
 dependencies = [
  "chrono",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

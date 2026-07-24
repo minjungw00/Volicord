@@ -1014,6 +1014,7 @@ mod tests {
     #[test]
     fn runtime_product_validation_accepts_separate_sibling_paths() -> Result<(), Box<dyn Error>> {
         let fixture = TempRuntimeHome::new("boundary-siblings")?;
+        fs::create_dir_all(fixture.path())?;
         let repo_root = fixture.create_product_repo("repo")?;
 
         let validation = validate_runtime_home_product_repository(fixture.path(), &repo_root)?;
@@ -1043,6 +1044,7 @@ mod tests {
     #[test]
     fn runtime_product_validation_normalizes_dot_components() -> Result<(), Box<dyn Error>> {
         let fixture = TempRuntimeHome::new("boundary-dot")?;
+        fs::create_dir_all(fixture.path())?;
         let repo_root = fixture.create_product_repo("repo")?;
         let runtime_with_dot = fixture.path().join(".");
         let repo_with_dot = repo_root.join(".");
@@ -1187,6 +1189,7 @@ mod tests {
     #[test]
     fn runtime_product_validation_rejects_same_path() -> Result<(), Box<dyn Error>> {
         let fixture = TempRuntimeHome::new("boundary-same")?;
+        fs::create_dir_all(fixture.path())?;
 
         let error = validate_runtime_home_product_repository(fixture.path(), fixture.path())
             .expect_err("same path should be rejected");

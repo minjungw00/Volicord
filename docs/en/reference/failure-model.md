@@ -158,6 +158,13 @@ Recoverable state may be regenerated only through an explicit owner-defined
 verify or repair flow. Reads and ordinary execution must not repair, migrate,
 guess, or silently replace the data while classifying the failure.
 
+Runtime Home bootstrap applies this rule before setup mutation. Existing state
+is inspected read-only and classified as `Ready`, `Incompatible`, or
+`Corrupt`; a manifest or physical-schema mismatch reports bounded typed facts
+while preserving existing bytes and timestamps. Only an absent final path may
+enter staged creation and atomic no-replace publication. A failure before
+publication removes staging and does not create the final path.
+
 ## Structured Diagnostic Findings
 
 `DiagnosticFinding` is the shared read-only report projection. A producer must

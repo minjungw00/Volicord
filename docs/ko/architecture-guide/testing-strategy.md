@@ -62,6 +62,10 @@ registry 직접 순회가 matrix를 정합니다.
 - authority event나 `state_version` 증가가 없는 read-only branch
 - 하나의 원자적 성공 mutation과 정확한 replay 동작
 - owner-defined corrupt-data failure로 라우팅되는 current-contract 불일치
+- Runtime Home의 `Absent`, `Ready`, `Incompatible`, `Corrupt` 검사, singleton과
+  installation metadata를 포함한 같은 상위 directory의 staged creation, 정확한
+  manifest 및 relation fact, 공개 전 각 실패 지점의 정리, Unix와 native Windows의
+  no-replace 동시 공개, 기존 비호환 상태의 변경되지 않은 bytes와 timestamp
 - 행 없음 또는 비적격 operation result에서 유지되는
   `OPERATION_RESULT_UNAVAILABLE`
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution

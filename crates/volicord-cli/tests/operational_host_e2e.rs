@@ -862,7 +862,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
     let initial_revision = connection_integration_revision(
         &fixture.agent_connection_record(&initial.agent_connections[0]),
     )?;
-    let applied_mcp_dir = fixture._temporary_root.path().join("applied-mcp");
+    let applied_mcp_dir = fixture._temporary_root.root_path().join("applied-mcp");
     fs::create_dir_all(&applied_mcp_dir)?;
     let applied_mcp_command = applied_mcp_dir.join(if cfg!(windows) {
         "volicord.exe"
@@ -927,7 +927,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
         Some(manifest.guard_installation_id.as_str()),
     )?);
 
-    let alternate_mcp_dir = fixture._temporary_root.path().join("desired-mcp");
+    let alternate_mcp_dir = fixture._temporary_root.root_path().join("desired-mcp");
     fs::create_dir_all(&alternate_mcp_dir)?;
     let alternate_mcp_command = alternate_mcp_dir.join(if cfg!(windows) {
         "volicord.exe"
@@ -1790,11 +1790,11 @@ impl OperationalFixture {
 
     fn with_scope(prefix: &str, shared: bool) -> Result<Self, Box<dyn Error>> {
         let temporary_root = TempRuntimeHome::new(prefix)?;
-        let runtime_home = temporary_root.path().join("runtime-home");
-        let codex_home = temporary_root.path().join("codex-home");
-        let user_home = temporary_root.path().join("user-home");
-        let path_dir = temporary_root.path().join("path");
-        let repo_root = temporary_root.path().join("product-repository");
+        let runtime_home = temporary_root.root_path().join("runtime-home");
+        let codex_home = temporary_root.root_path().join("codex-home");
+        let user_home = temporary_root.root_path().join("user-home");
+        let path_dir = temporary_root.root_path().join("path");
+        let repo_root = temporary_root.root_path().join("product-repository");
         for directory in [&codex_home, &user_home, &path_dir, &repo_root] {
             fs::create_dir_all(directory)?;
         }
@@ -1826,7 +1826,7 @@ impl OperationalFixture {
     }
 
     fn install_mcp_fixture_executable(&self) -> Result<PathBuf, Box<dyn Error>> {
-        let directory = self._temporary_root.path().join("mcp-fixture");
+        let directory = self._temporary_root.root_path().join("mcp-fixture");
         fs::create_dir_all(&directory)?;
         let name = if cfg!(windows) {
             "volicord.exe"
@@ -1866,7 +1866,7 @@ impl OperationalFixture {
             .env(
                 "VOLICORD_HOME",
                 self._temporary_root
-                    .path()
+                    .root_path()
                     .join("ambient-decoy-runtime-home"),
             )
             .env("VOLICORD_MCP_LAUNCH", "ambient-decoy-launch")

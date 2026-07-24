@@ -343,13 +343,17 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
 #[test]
 fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Box<dyn Error>> {
     let fixture = IsolatedInitFixture::new("binary-init-dry-run-registry-states")?;
-    let missing_home = fixture._temporary_root.path().join("missing-runtime-home");
+    let missing_home = fixture
+        ._temporary_root
+        .root_path()
+        .join("missing-runtime-home");
     let absent_registry_home = fixture.runtime_home.clone();
-    let zero_byte_home = fixture._temporary_root.path().join("zero-byte-home");
+    fs::create_dir(&absent_registry_home)?;
+    let zero_byte_home = fixture._temporary_root.root_path().join("zero-byte-home");
     fs::create_dir(&zero_byte_home)?;
     let zero_byte_registry = registry_db_path(&zero_byte_home);
     fs::write(&zero_byte_registry, [])?;
-    let schema_less_home = fixture._temporary_root.path().join("schema-less-home");
+    let schema_less_home = fixture._temporary_root.root_path().join("schema-less-home");
     fs::create_dir(&schema_less_home)?;
     let schema_less_registry = registry_db_path(&schema_less_home);
     let schema_less = rusqlite::Connection::open(&schema_less_registry)?;
@@ -357,10 +361,13 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
     drop(schema_less);
     let schema_less_master_before = sqlite_master_rows(&schema_less_registry)?;
     assert!(schema_less_master_before.is_empty());
-    let no_profile_home = fixture._temporary_root.path().join("no-profile-home");
+    let no_profile_home = fixture._temporary_root.root_path().join("no-profile-home");
     initialize_runtime_home(&no_profile_home, "runtime_home_without_profile", "{}")?;
     let no_profile_registry = registry_db_path(&no_profile_home);
-    let current_profile_home = fixture._temporary_root.path().join("current-profile-home");
+    let current_profile_home = fixture
+        ._temporary_root
+        .root_path()
+        .join("current-profile-home");
     initialize_runtime_home(
         &current_profile_home,
         "runtime_home_with_current_profile",
@@ -382,51 +389,49 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
         },
     )?;
     let current_profile_registry = registry_db_path(&current_profile_home);
-    let fallback_home = fixture._temporary_root.path().join("fallback-home");
+    let fallback_home = fixture._temporary_root.root_path().join("fallback-home");
 
-    let files_before = directory_contents(fixture._temporary_root.path())?;
-    let entries_before = directory_entries(fixture._temporary_root.path())?;
+    let files_before = directory_contents(fixture._temporary_root.root_path())?;
+    let entries_before = directory_entries(fixture._temporary_root.root_path())?;
     let zero_byte_modified_before = fs::metadata(&zero_byte_registry)?.modified()?;
     let schema_less_modified_before = fs::metadata(&schema_less_registry)?.modified()?;
     let no_profile_modified_before = fs::metadata(&no_profile_registry)?.modified()?;
     let current_profile_modified_before = fs::metadata(&current_profile_registry)?.modified()?;
 
-    for runtime_home in [&missing_home, &absent_registry_home] {
-        let output = fixture.run_init_dry_run_against_home(runtime_home, &fallback_home)?;
-        let report = successful_init_dry_run_report(&output)?;
-        assert!(report["operation_details"]["planned_changes"]
-            .as_array()
-            .expect("planned changes")
-            .iter()
-            .any(|change| change["kind"] == "runtime_home_initialization"));
-        assert_eq!(
-            directory_contents(fixture._temporary_root.path())?,
-            files_before
-        );
-        assert_eq!(
-            directory_entries(fixture._temporary_root.path())?,
-            entries_before
-        );
-    }
+    let output = fixture.run_init_dry_run_against_home(&missing_home, &fallback_home)?;
+    let report = successful_init_dry_run_report(&output)?;
+    assert!(report["operation_details"]["planned_changes"]
+        .as_array()
+        .expect("planned changes")
+        .iter()
+        .any(|change| change["kind"] == "runtime_home_initialization"));
+    assert_eq!(
+        directory_contents(fixture._temporary_root.root_path())?,
+        files_before
+    );
+    assert_eq!(
+        directory_entries(fixture._temporary_root.root_path())?,
+        entries_before
+    );
     assert!(!missing_home.exists());
     assert!(!registry_db_path(&absent_registry_home).exists());
 
-    for runtime_home in [&zero_byte_home, &schema_less_home] {
+    for runtime_home in [&absent_registry_home, &zero_byte_home, &schema_less_home] {
         let output = fixture.run_init_dry_run_against_home(runtime_home, &fallback_home)?;
         assert_eq!(output.status.code(), Some(1));
         assert_eq!(stdout(&output)?, "");
         let diagnostic = stderr(&output)?;
         assert!(
-            diagnostic.contains("schema invariant failed for registry")
-                || diagnostic.contains("sqlite error: no such table: runtime_home"),
+            diagnostic.contains("existing state preserved"),
             "unexpected invalid Registry diagnostic: {diagnostic}"
         );
+        assert!(!diagnostic.contains("missing canonical SQLite relation"));
         assert_eq!(
-            directory_contents(fixture._temporary_root.path())?,
+            directory_contents(fixture._temporary_root.root_path())?,
             files_before
         );
         assert_eq!(
-            directory_entries(fixture._temporary_root.path())?,
+            directory_entries(fixture._temporary_root.root_path())?,
             entries_before
         );
     }
@@ -439,11 +444,11 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
         .iter()
         .any(|change| change["kind"] == "runtime_home_initialization"));
     assert_eq!(
-        directory_contents(fixture._temporary_root.path())?,
+        directory_contents(fixture._temporary_root.root_path())?,
         files_before
     );
     assert_eq!(
-        directory_entries(fixture._temporary_root.path())?,
+        directory_entries(fixture._temporary_root.root_path())?,
         entries_before
     );
 
@@ -458,11 +463,11 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
             .any(|change| change["kind"] == "runtime_home_initialization")
     );
     assert_eq!(
-        directory_contents(fixture._temporary_root.path())?,
+        directory_contents(fixture._temporary_root.root_path())?,
         files_before
     );
     assert_eq!(
-        directory_entries(fixture._temporary_root.path())?,
+        directory_entries(fixture._temporary_root.root_path())?,
         entries_before
     );
 
@@ -500,8 +505,8 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     let init = fixture.run(false)?;
     let init_report: Value = serde_json::from_slice(&init.stdout)?;
     assert_eq!(init_report["operation_details"]["result"]["applied"], true);
-    let files_before = directory_contents(fixture._temporary_root.path())?;
-    let entries_before = directory_entries(fixture._temporary_root.path())?;
+    let files_before = directory_contents(fixture._temporary_root.root_path())?;
+    let entries_before = directory_entries(fixture._temporary_root.root_path())?;
 
     let output = fixture.run_connection_list(Some(&fixture.repo_root), true)?;
     assert_eq!(output.status.code(), Some(0));
@@ -557,11 +562,11 @@ fn connection_list_json_is_a_read_only_typed_inventory() -> Result<(), Box<dyn E
     );
 
     assert_eq!(
-        directory_contents(fixture._temporary_root.path())?,
+        directory_contents(fixture._temporary_root.root_path())?,
         files_before
     );
     assert_eq!(
-        directory_entries(fixture._temporary_root.path())?,
+        directory_entries(fixture._temporary_root.root_path())?,
         entries_before
     );
     Ok(())
@@ -745,7 +750,7 @@ fn relative_explicit_home_is_reported_as_the_selected_absolute_path() -> Result<
     fixture.run(false)?;
     let relative_home = fixture
         .runtime_home
-        .strip_prefix(fixture._temporary_root.path())?;
+        .strip_prefix(fixture._temporary_root.root_path())?;
     let output = base_command()
         .arg("connection")
         .arg("status")
@@ -759,7 +764,7 @@ fn relative_explicit_home_is_reported_as_the_selected_absolute_path() -> Result<
         .env("CODEX_HOME", &fixture.codex_home)
         .env("HOME", &fixture.user_home)
         .env("USERPROFILE", &fixture.user_home)
-        .current_dir(fixture._temporary_root.path())
+        .current_dir(fixture._temporary_root.root_path())
         .output()?;
     assert!(
         !output.stdout.is_empty(),
@@ -782,22 +787,25 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
     let connection_id = init["connection"]["connection_id"]
         .as_str()
         .expect("custom-home connection id");
-    let missing_home = fixture._temporary_root.path().join("missing explicit home");
+    let missing_home = fixture
+        ._temporary_root
+        .root_path()
+        .join("missing explicit home");
     let missing_registry_home = fixture
         ._temporary_root
-        .path()
+        .root_path()
         .join("missing-registry-explicit-home");
     fs::create_dir(&missing_registry_home)?;
     let zero_byte_home = fixture
         ._temporary_root
-        .path()
+        .root_path()
         .join("zero-byte-explicit-home");
     fs::create_dir(&zero_byte_home)?;
     let zero_byte_registry = registry_db_path(&zero_byte_home);
     fs::write(&zero_byte_registry, [])?;
     let empty_sqlite_home = fixture
         ._temporary_root
-        .path()
+        .root_path()
         .join("empty-sqlite-explicit-home");
     fs::create_dir(&empty_sqlite_home)?;
     let empty_sqlite_registry = registry_db_path(&empty_sqlite_home);
@@ -810,7 +818,7 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
     );
     let no_profile_home = fixture
         ._temporary_root
-        .path()
+        .root_path()
         .join("no-profile-explicit-home");
     initialize_runtime_home(&no_profile_home, "runtime_home_without_profile", "{}")?;
 
@@ -818,8 +826,8 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
     let empty_sqlite_modified = fs::metadata(&empty_sqlite_registry)?.modified()?;
     let no_profile_registry = registry_db_path(&no_profile_home);
     let no_profile_modified = fs::metadata(&no_profile_registry)?.modified()?;
-    let files_before = directory_contents(fixture._temporary_root.path())?;
-    let entries_before = directory_entries(fixture._temporary_root.path())?;
+    let files_before = directory_contents(fixture._temporary_root.root_path())?;
+    let entries_before = directory_entries(fixture._temporary_root.root_path())?;
 
     for (unusable_home, expected_code) in [
         (&missing_home, "RUNTIME_HOME_MISSING"),
@@ -854,13 +862,13 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
             assert!(!diagnostic.contains(&format!("--home '{}'", unusable_home.display())));
             assert!(!diagnostic.contains(connection_id));
             assert_eq!(
-                directory_contents(fixture._temporary_root.path())?,
+                directory_contents(fixture._temporary_root.root_path())?,
                 files_before,
                 "{operation} changed filesystem bytes for {}",
                 unusable_home.display()
             );
             assert_eq!(
-                directory_entries(fixture._temporary_root.path())?,
+                directory_entries(fixture._temporary_root.root_path())?,
                 entries_before,
                 "{operation} changed directory entries for {}",
                 unusable_home.display()
@@ -922,10 +930,12 @@ fn shell_neutral_connection_guidance_preserves_one_unsafe_custom_home() -> Resul
     let mut fixture = IsolatedInitFixture::new("binary-shell-neutral-guidance")?;
     fixture.runtime_home = fixture
         ._temporary_root
-        .path()
+        .root_path()
         .join("Volicord Runtime Home's");
-    fixture.repo_root = fixture._temporary_root.path().join("Product Repository's");
-    fs::create_dir_all(&fixture.runtime_home)?;
+    fixture.repo_root = fixture
+        ._temporary_root
+        .root_path()
+        .join("Product Repository's");
     fs::create_dir_all(fixture.repo_root.join(".git"))?;
 
     let initialized = fixture.run_init_with_output(false, None)?;
@@ -1271,9 +1281,9 @@ fn connection_list_filters_by_repository() -> Result<(), Box<dyn Error>> {
 fn connection_list_empty_inventory_and_store_failure_use_owned_channels(
 ) -> Result<(), Box<dyn Error>> {
     let temporary_root = TempRuntimeHome::new("binary-connection-list-channels")?;
-    let repo_root = temporary_root.path().join("repo");
+    let repo_root = temporary_root.root_path().join("repo");
     fs::create_dir_all(repo_root.join(".git"))?;
-    let empty_home = temporary_root.path().join("empty-home");
+    let empty_home = temporary_root.root_path().join("empty-home");
     prepare_runtime_home(&empty_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
     let empty = run_connection_list_at(&empty_home, &repo_root)?;
     assert_eq!(
@@ -1287,7 +1297,7 @@ fn connection_list_empty_inventory_and_store_failure_use_owned_channels(
     assert_eq!(empty_report["connections"], serde_json::json!([]));
     assert_eq!(empty_report["limits"].as_array().map(Vec::len), Some(3));
 
-    let corrupt_home = temporary_root.path().join("corrupt-home");
+    let corrupt_home = temporary_root.root_path().join("corrupt-home");
     prepare_runtime_home(&corrupt_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
     fs::write(
         volicord_store::sqlite::registry_db_path(&corrupt_home),
@@ -1304,7 +1314,7 @@ fn connection_list_empty_inventory_and_store_failure_use_owned_channels(
 fn diagnostics_show_exit_status_depends_on_lookup_not_finding_severity(
 ) -> Result<(), Box<dyn Error>> {
     let temporary_root = TempRuntimeHome::new("binary-diagnostics-show-exits")?;
-    let runtime_home = temporary_root.path().join("runtime-home");
+    let runtime_home = temporary_root.root_path().join("runtime-home");
     prepare_runtime_home(&runtime_home, Path::new(env!("CARGO_BIN_EXE_volicord")))?;
 
     let finding = OccurrenceDiagnosticFinding::try_new(
@@ -1927,18 +1937,12 @@ struct IsolatedInitFixture {
 impl IsolatedInitFixture {
     fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
         let temporary_root = TempRuntimeHome::new(prefix)?;
-        let runtime_home = temporary_root.path().join("volicord-home");
-        let codex_home = temporary_root.path().join("codex-home");
-        let user_home = temporary_root.path().join("user-home");
-        let empty_path = temporary_root.path().join("empty-path");
-        let repo_root = temporary_root.path().join("product-repository");
-        for directory in [
-            &runtime_home,
-            &codex_home,
-            &user_home,
-            &empty_path,
-            &repo_root,
-        ] {
+        let runtime_home = temporary_root.root_path().join("volicord-home");
+        let codex_home = temporary_root.root_path().join("codex-home");
+        let user_home = temporary_root.root_path().join("user-home");
+        let empty_path = temporary_root.root_path().join("empty-path");
+        let repo_root = temporary_root.root_path().join("product-repository");
+        for directory in [&codex_home, &user_home, &empty_path, &repo_root] {
             fs::create_dir_all(directory)?;
         }
         fs::create_dir(repo_root.join(".git"))?;
@@ -2227,7 +2231,7 @@ impl IsolatedInitFixture {
     }
 
     fn all_contents(&self) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn Error>> {
-        directory_contents(self._temporary_root.path())
+        directory_contents(self._temporary_root.root_path())
     }
 
     fn only_connection_id(&self) -> String {
@@ -2237,7 +2241,7 @@ impl IsolatedInitFixture {
     }
 
     fn create_repository(&self, name: &str) -> Result<PathBuf, Box<dyn Error>> {
-        let repo_root = self._temporary_root.path().join(name);
+        let repo_root = self._temporary_root.root_path().join(name);
         fs::create_dir_all(repo_root.join(".git"))?;
         Ok(repo_root)
     }

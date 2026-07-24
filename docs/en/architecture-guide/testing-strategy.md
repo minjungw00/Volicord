@@ -66,6 +66,11 @@ Durable tests should cover, as applicable:
 - read-only branches with no authority event or state-version advance;
 - one atomic successful mutation and exact replay behavior;
 - current-contract mismatch routed through the owned corrupt-data failure;
+- Runtime Home `Absent`, `Ready`, `Incompatible`, and `Corrupt` inspection;
+  same-parent staged creation with singleton and installation metadata; exact
+  manifest and relation facts; cleanup at each pre-publication failure;
+  no-replace concurrent publication on Unix and native Windows; and unchanged
+  bytes and timestamps for existing incompatible state;
 - missing or ineligible operation-result rows remaining
   `OPERATION_RESULT_UNAVAILABLE`;
 - MCP rejection of hidden context and CLI-only UserAction resolution;

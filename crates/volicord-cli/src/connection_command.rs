@@ -10,6 +10,8 @@ use sha2::{Digest, Sha256};
 use volicord_mcp::ManagedMcpLaunchSpec;
 #[cfg(test)]
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
+#[cfg(test)]
+use volicord_store::bootstrap::write_installation_profile;
 use volicord_store::{
     agent_connections::{
         activate_staged_connection, add_connection_project, agent_connection_record,
@@ -28,10 +30,10 @@ use volicord_store::{
         CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
     },
     bootstrap::{
-        ensure_project_for_repo, initialize_runtime_home, installation_profile_read_only,
-        project_record_by_repo_root_read_only, write_installation_profile,
-        InstallationProfileRecord, InstallationProfileRegistration, RepoProjectRegistration,
-        ACTIVE_PROJECT_STATUS,
+        ensure_project_for_repo, initialize_runtime_home,
+        initialize_runtime_home_with_installation, installation_profile_read_only,
+        project_record_by_repo_root_read_only, InstallationProfileRecord,
+        InstallationProfileRegistration, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::CoreProjectStore,
     guards::{list_guard_installations, GuardInstallationRecord},
@@ -1018,22 +1020,15 @@ fn init_profile_plan(
     })
 }
 
-fn ensure_init_installation_profile(
-    runtime_home: &Path,
-    plan: &InitProfilePlan,
-) -> Result<InstallationProfileRecord, ConnectionCommandError> {
-    write_installation_profile(
-        runtime_home,
-        InstallationProfileRegistration {
-            installation_id: INSTALLATION_ID.to_owned(),
-            volicord_command: setup_path_text(&plan.volicord_command),
-            volicord_mcp_command: setup_path_text(&plan.volicord_mcp_command),
-            bin_dir: plan.bin_dir.clone(),
-            default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            metadata_json: plan.metadata_json.clone(),
-        },
-    )
-    .map_err(Into::into)
+fn init_installation_registration(plan: &InitProfilePlan) -> InstallationProfileRegistration {
+    InstallationProfileRegistration {
+        installation_id: INSTALLATION_ID.to_owned(),
+        volicord_command: setup_path_text(&plan.volicord_command),
+        volicord_mcp_command: setup_path_text(&plan.volicord_mcp_command),
+        bin_dir: plan.bin_dir.clone(),
+        default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+        metadata_json: plan.metadata_json.clone(),
+    }
 }
 
 fn canonical_existing_file(

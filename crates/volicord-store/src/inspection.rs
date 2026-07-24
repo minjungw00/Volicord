@@ -15,7 +15,10 @@ use crate::{
         CONNECTION_INTENT_PERSONAL, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
         CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT, HOST_SCOPE_USER,
     },
-    bootstrap::{validate_project_record_for_execution, ProjectRecord},
+    bootstrap::{
+        inspect_runtime_home_bootstrap, validate_project_record_for_execution, ProjectRecord,
+        RuntimeHomeBootstrapState,
+    },
     schema::{PROJECT_STATE_DATABASE_KIND, REGISTRY_DATABASE_KIND},
     sqlite::{
         open_read_only_database, registry_db_path, validate_persisted_manifest,
@@ -231,8 +234,26 @@ pub fn inspect_project_state_database(
 }
 
 fn inspect_registry_database_at(path: &Path, runtime_home: &Path) -> RegistryDatabaseInspection {
-    if let Some(missing) = missing_database(path) {
-        return missing;
+    match inspect_runtime_home_bootstrap(runtime_home) {
+        Ok(RuntimeHomeBootstrapState::Absent) => {
+            return DatabaseInspection::Missing {
+                path: path.to_path_buf(),
+            };
+        }
+        Ok(RuntimeHomeBootstrapState::Ready(_)) => {}
+        Ok(RuntimeHomeBootstrapState::Incompatible(mismatch)) => {
+            return DatabaseInspection::Unsupported {
+                path: path.to_path_buf(),
+                detail: mismatch.to_string(),
+            };
+        }
+        Ok(RuntimeHomeBootstrapState::Corrupt(corruption)) => {
+            return DatabaseInspection::Malformed {
+                path: path.to_path_buf(),
+                detail: corruption.to_string(),
+            };
+        }
+        Err(error) => return unreadable(path, error),
     }
 
     let conn = match open_read_only_database(path) {
@@ -1227,8 +1248,10 @@ mod tests {
 
         match inspection.registry {
             DatabaseInspection::Unsupported { detail, .. } => {
-                assert!(detail.contains(UNSUPPORTED_STORAGE_PROFILE));
-                assert!(detail.contains("explicitly recreate"));
+                assert!(detail.contains("Runtime Home schema mismatch"));
+                assert!(detail.contains("expected manifest digest"));
+                assert!(detail.contains("existing state preserved"));
+                assert!(detail.contains("choose a fresh explicit --home"));
             }
             other => panic!("expected unsupported old-profile registry, got {other:?}"),
         }

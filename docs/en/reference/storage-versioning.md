@@ -145,10 +145,20 @@ profile, or SQL inventory; fill missing fields; ignore extra objects; or open a
 partially validated database. Repeating open against unchanged bytes produces
 the same classification.
 
-Fresh initialization is a distinct operation on an empty destination. It
-applies the canonical SQL, records the current manifest, enables foreign keys,
-and validates the resulting database before publishing it for use. Failure
-leaves no destination that can be accepted as initialized.
+Fresh Runtime Home initialization is a distinct operation allowed only when
+the final path is absent. It creates a same-parent staging directory, applies
+the canonical SQL there, records the current manifest with the Runtime Home
+singleton and installation metadata, enables foreign keys, and validates the
+complete manifest and physical schema before publication. After supported
+file and directory synchronization, a no-replace atomic rename publishes the
+directory. Every pre-publication failure removes staging and leaves the final
+path absent.
+
+An existing Runtime Home follows the exact-open checks above through a
+read-only connection before any setup mutation. The result is `Ready`,
+`Incompatible`, or `Corrupt`; a mismatch includes bounded manifest-digest and
+physical relation facts. Store does not stage over, migrate, patch, rewrite,
+or update timestamps in an incompatible or corrupt home.
 
 ## Canonical SQL And Generated Metadata
 

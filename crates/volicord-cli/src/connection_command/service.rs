@@ -384,8 +384,12 @@ fn apply_init_provisioning(
     let setup_changed_hook_definition = plan.integration.hook_definition_changed();
     let runtime_home_id = runtime_home_id_for_path(&plan.runtime_home)
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    initialize_runtime_home(&plan.runtime_home, &runtime_home_id, ADMIN_METADATA_JSON)?;
-    let profile = ensure_init_installation_profile(&plan.runtime_home, &plan.profile_plan)?;
+    let (_, profile) = initialize_runtime_home_with_installation(
+        &plan.runtime_home,
+        &runtime_home_id,
+        ADMIN_METADATA_JSON,
+        init_installation_registration(&plan.profile_plan),
+    )?;
     let project = ensure_project_for_repo(
         &plan.runtime_home,
         RepoProjectRegistration {
@@ -1609,6 +1613,9 @@ mod init_planning_tests {
     }
 
     fn directory_is_empty(path: &Path) -> Result<bool, std::io::Error> {
+        if !path.exists() {
+            return Ok(true);
+        }
         Ok(fs::read_dir(path)?.next().is_none())
     }
 
@@ -1639,6 +1646,10 @@ mod init_planning_tests {
     }
 
     fn directory_entries(root: &Path) -> Result<BTreeSet<PathBuf>, std::io::Error> {
+        if !root.exists() {
+            return Ok(BTreeSet::new());
+        }
+
         fn visit(
             root: &Path,
             current: &Path,
@@ -1694,7 +1705,7 @@ mod init_planning_tests {
     fn init_planning_with_missing_runtime_home_creates_nothing(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("init-planning-missing-runtime-home")?;
-        let runtime_home = fixture.path().join("missing-runtime-home");
+        let runtime_home = fixture.root_path().join("missing-runtime-home");
         let repo_root = create_empty_product_repository(&fixture)?;
         let repo_before = directory_contents(&repo_root)?;
         let root_entries_before = directory_entries(fixture.path())?;
@@ -1723,6 +1734,7 @@ mod init_planning_tests {
         let fixture = TempRuntimeHome::new("init-planning-zero-byte-registry")?;
         let repo_root = create_empty_product_repository(&fixture)?;
         let registry_path = registry_db_path(fixture.path());
+        fs::create_dir(fixture.path())?;
         fs::write(&registry_path, [])?;
         let registry_before = fs::read(&registry_path)?;
         let modified_before = fs::metadata(&registry_path)?.modified()?;
@@ -1758,6 +1770,7 @@ mod init_planning_tests {
         let fixture = TempRuntimeHome::new("init-planning-schema-less-registry")?;
         let repo_root = create_empty_product_repository(&fixture)?;
         let registry_path = registry_db_path(fixture.path());
+        fs::create_dir(fixture.path())?;
         create_schema_less_sqlite(&registry_path)?;
         let schema_before = sqlite_schema_snapshot(&registry_path)?;
         let registry_before = fs::read(&registry_path)?;

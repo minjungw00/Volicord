@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn detect_command_on_path_finds_executable_command() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("shell-path-detect-command")?;
-        let path_dir = fixture.path().join("path-bin");
+        let path_dir = fixture.root_path().join("path-bin");
         let command = write_executable(&path_dir, &volicord_binary_name())?;
         let path_env = env::join_paths([path_dir.as_path()])?;
 
@@ -335,8 +335,8 @@ mod tests {
     fn candidate_setup_link_dirs_prefers_writable_path_dirs(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("shell-path-candidates")?;
-        let path_dir = fixture.path().join("path-bin");
-        let home = fixture.path().join("home");
+        let path_dir = fixture.root_path().join("path-bin");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         fs::create_dir_all(&path_dir)?;
         fs::create_dir_all(&local_bin)?;
@@ -359,8 +359,8 @@ mod tests {
     fn candidate_setup_link_dirs_uses_user_bin_when_path_has_no_writable_directory(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("shell-path-user-bin")?;
-        let path_file = fixture.path().join("path-file");
-        let home = fixture.path().join("home");
+        let path_file = fixture.root_path().join("path-file");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         let home_bin = home.join("bin");
         fs::write(&path_file, "not a directory")?;
@@ -386,7 +386,7 @@ mod tests {
     fn candidate_setup_link_dirs_offers_missing_creatable_user_bin_dirs(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("shell-path-missing-user-bin")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&home)?;
         let env = BTreeMap::from([("HOME".to_owned(), home.clone().into_os_string())]);
 
@@ -419,7 +419,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let fixture = TempRuntimeHome::new("shell-path-unwritable-home-user-bin")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         let home_bin = home.join("bin");
         fs::create_dir_all(&home)?;
@@ -452,7 +452,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let fixture = TempRuntimeHome::new("shell-path-unwritable-local-user-bin")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         let local = home.join(".local");
         let local_bin = local.join("bin");
         let home_bin = home.join("bin");
@@ -488,8 +488,8 @@ mod tests {
     fn candidate_setup_link_dirs_does_not_offer_arbitrary_missing_path_dirs(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("shell-path-missing-path-dir")?;
-        let home = fixture.path().join("home");
-        let missing_path_dir = fixture.path().join("missing-path-bin");
+        let home = fixture.root_path().join("home");
+        let missing_path_dir = fixture.root_path().join("missing-path-bin");
         fs::create_dir_all(&home)?;
         let env = BTreeMap::from([
             (
@@ -515,7 +515,7 @@ mod tests {
     fn candidate_setup_link_dirs_marks_user_bin_with_unsafe_parent_unavailable(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("shell-path-unsafe-user-bin")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&home)?;
         fs::write(home.join(".local"), "not a directory")?;
         let env = BTreeMap::from([("HOME".to_owned(), home.clone().into_os_string())]);
@@ -539,7 +539,7 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let fixture = TempRuntimeHome::new("shell-path-broken-user-bin-symlink")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         let local = home.join(".local");
         let local_bin = local.join("bin");
         fs::create_dir_all(&local)?;
@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn writable_directory_probe_cleans_up_probe_file() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("shell-path-write-probe")?;
-        let path_dir = fixture.path().join("path-bin");
+        let path_dir = fixture.root_path().join("path-bin");
         fs::create_dir_all(&path_dir)?;
 
         verify_directory_writable(&path_dir)?;
@@ -573,8 +573,8 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let fixture = TempRuntimeHome::new("shell-path-unwritable-path-dir")?;
-        let path_dir = fixture.path().join("path-bin");
-        let home = fixture.path().join("home");
+        let path_dir = fixture.root_path().join("path-bin");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         fs::create_dir_all(&path_dir)?;
         fs::create_dir_all(&local_bin)?;

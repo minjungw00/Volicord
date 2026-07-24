@@ -195,6 +195,12 @@ Runtime Home, connects the Product Repository, writes the managed Codex stdio
 configuration, and records integration status. `action_required` can remain
 until the named Codex trust, reload, or verification step is complete.
 
+For a new Runtime Home, `init` builds and validates the Registry and
+installation profile in same-parent staging, then publishes the whole
+directory atomically. If the selected path already exists, inspection is
+read-only. A manifest or schema mismatch preserves that home; keep it for
+owner-approved recovery and rerun with a fresh explicit `--home`. Use an
+owner-defined importer only when the current owners provide one.
 
 Ensure the installed `volicord` binary is available on `PATH` before running
 host setup. Shell startup file changes are never implicit. If you update `PATH`

@@ -396,13 +396,12 @@ pub struct TempRuntimeHome {
 }
 
 impl TempRuntimeHome {
-    /// Creates a new empty Runtime Home under the system temporary directory.
+    /// Reserves a fresh absent Runtime Home path under the system temporary directory.
     pub fn new(prefix: &str) -> std::io::Result<Self> {
         let dir = Builder::new()
             .prefix(&format!("volicord-runtime-{prefix}-"))
             .tempdir()?;
         let runtime_home_path = dir.path().join("runtime-home");
-        fs::create_dir_all(&runtime_home_path)?;
         Ok(Self {
             dir,
             runtime_home_path,
@@ -412,6 +411,11 @@ impl TempRuntimeHome {
     /// Returns the Runtime Home directory path.
     pub fn path(&self) -> &Path {
         &self.runtime_home_path
+    }
+
+    /// Returns the existing disposable fixture root for non-Runtime-Home scratch data.
+    pub fn root_path(&self) -> &Path {
+        self.dir.path()
     }
 
     /// Returns a sibling Product Repository path inside this disposable fixture root.
@@ -2172,7 +2176,7 @@ mod tests {
     fn temp_runtime_home_uses_disposable_directory() {
         let runtime_home = TempRuntimeHome::new("helpers").expect("tempdir should be created");
         assert!(runtime_home.path().is_absolute());
-        assert!(runtime_home.path().exists());
+        assert!(!runtime_home.path().exists());
         assert!(runtime_home.registry_db_path().ends_with("registry.sqlite"));
         assert!(runtime_home
             .project_state_db_path("PRJ-helpers")

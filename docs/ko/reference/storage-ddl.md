@@ -86,10 +86,14 @@ PRAGMA foreign_keys = ON;
 중복이 없는 집합을 보존해야 합니다.
 
 새 초기화는 레지스트리 운반 열과 새로 만드는 모든 프로젝트 운반 열에 같은 현재 manifest
-값을 씁니다. Store는 권한 또는 정책 기록을 읽기 전에 각 운반 열을 독립적으로 엄격하게
-디코드합니다. 영속 값이 현재 내장 manifest와 같고, 선택한 프로젝트 manifest가 레지스트리
-manifest와 같아야 합니다. 정수를 파싱하거나, 버전을 비교하거나, 필드 존재 여부로 decoder를
-고르거나, 다른 프로필을 시도하지 않습니다. 정확한 열기 결과와 실패 범주는
+값을 씁니다. 새 Runtime Home Registry는 같은 상위 directory의 staging directory에서만
+만듭니다. Singleton과 최초 installation row를 commit하고 정확한 DDL inventory 및 manifest
+carrier를 검증한 뒤에만 directory를 기존 대상을 교체하지 않는 원자적 방식으로 공개합니다.
+Store는 권한 또는 정책 기록을 읽기 전에 각 운반 열을 독립적으로 엄격하게 디코드합니다.
+영속 값이 현재 내장 manifest와 같고, 선택한 프로젝트 manifest가 레지스트리 manifest와
+같아야 합니다. 정수를 파싱하거나, 버전을 비교하거나, 필드 존재 여부로 decoder를 고르거나,
+다른 프로필을 시도하지 않습니다. 기존 carrier 검사는 읽기 전용이며 호환되지 않는
+데이터베이스를 보존합니다. 정확한 열기 결과와 실패 범주는
 [저장소 버전 관리](storage-versioning.md)가 담당합니다.
 
 현재 프로젝트 schema는 source를 구분하는 host 상관관계를 `host_sessions`, `host_turns`,

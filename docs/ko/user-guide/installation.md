@@ -188,6 +188,11 @@ volicord init --help
 연결하며 관리 Codex stdio 구성을 쓰고 통합 상태를 기록합니다. 이름 붙은 Codex 신뢰,
 다시 불러오기, 검증 단계가 끝날 때까지 `action_required`가 남을 수 있습니다.
 
+새 Runtime Home에서는 `init`이 같은 상위 directory의 staging에서 Registry와 installation
+profile을 만들고 검증한 뒤 전체 directory를 원자적으로 공개합니다. 선택한 경로가 이미
+있으면 읽기 전용으로 검사합니다. Manifest 또는 schema 불일치는 해당 home을 보존하므로
+담당자 승인 복구를 위해 그대로 두고 명시적 `--home`으로 새 위치를 선택해 다시 실행합니다.
+현재 담당자가 importer를 제공한 경우에만 그것을 사용합니다.
 
 호스트 설정을 실행하기 전에 설치된 `volicord` 바이너리가 `PATH`에 있어야 합니다.
 셸 시작 파일 변경은 암시적으로 이루어지지 않습니다. 셸 시작 파일을 통해 `PATH`를

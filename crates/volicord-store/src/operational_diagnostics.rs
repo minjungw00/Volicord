@@ -138,7 +138,9 @@ impl RuntimeHomeDiagnostic {
             | StoreError::CorruptOwnerStateValue { .. }
             | StoreError::CorruptStoredValue { .. }
             | StoreError::UnsupportedStorageProfile { .. }
-            | StoreError::SchemaInvariant { .. } => None,
+            | StoreError::SchemaInvariant { .. }
+            | StoreError::RuntimeHomeSchemaMismatch(_)
+            | StoreError::RuntimeHomeCorruption(_) => None,
         }
     }
 }
@@ -320,9 +322,10 @@ impl StoreDiagnostic {
             | StoreError::CorruptOwnerStateJson { .. }
             | StoreError::CorruptOwnerStateValue { .. }
             | StoreError::CorruptStoredValue { .. } => Self::SerializationFailure,
-            StoreError::UnsupportedStorageProfile { .. } | StoreError::SchemaInvariant { .. } => {
-                Self::SchemaMismatch
-            }
+            StoreError::UnsupportedStorageProfile { .. }
+            | StoreError::SchemaInvariant { .. }
+            | StoreError::RuntimeHomeSchemaMismatch(_) => Self::SchemaMismatch,
+            StoreError::RuntimeHomeCorruption(_) => Self::IntegrityOrCorruptionFailure,
             StoreError::Io(_)
             | StoreError::InvalidInput { .. }
             | StoreError::UnsupportedPlatformEnvironment { .. }

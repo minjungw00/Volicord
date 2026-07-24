@@ -134,6 +134,25 @@ ancestor against the exact distribution ext4 boundary before initialization.
 Project homes and runtime-managed artifacts remain within that same boundary;
 Linux-looking `/mnt/*` or other non-ext4 locations are unsupported.
 
+Bootstrap inspection classifies the selected final path as `Absent`, `Ready`,
+`Incompatible`, or `Corrupt`. An existing Runtime Home is opened read-only and
+becomes `Ready` only when its canonical `StorageManifest`, complete physical
+schema, singleton identity, and final paths match exactly. Inspection does not
+create or write a file, and an incompatible or corrupt home is preserved
+without changing its bytes or timestamps. A schema mismatch reports bounded
+expected and observed manifest digests and relation categories; recovery keeps
+the existing home, selects a fresh explicit `--home`, or uses an owner-defined
+importer only if one exists.
+
+For an `Absent` final path, initialization creates a unique staging directory
+under the same parent. It creates the Registry, Runtime Home singleton, and
+initial installation profile there, validates the exact current manifest and
+schema, and synchronizes the staged file and directories where the platform
+supports that boundary. It then atomically renames the staging directory
+without replacing an existing final path. A staging path is never a Runtime
+Home identity, all pre-publication failures remove it and leave the final path
+absent, and concurrent creators accept only the exact read-only `Ready` winner.
+
 The Registry is the durable Runtime Home carrier for structured diagnostic
 findings and their cause edges. A finding may correlate to its Connection,
 project, runtime session, and integration revision, while an MCP runtime

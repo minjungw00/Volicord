@@ -104,9 +104,16 @@ permission 실패에는 일반적인 restart action을 붙이지 않습니다.
 Runtime Home 선택과 모든 connection 명령이 수행하는 설치 프로필 검증은 읽기 전용입니다.
 선택한 디렉터리나 `registry.sqlite`를 만들거나, Registry 스키마를 초기화하거나
 마이그레이션하거나, Registry 상태를 쓰지 않습니다. Registry 스키마 생성은 명시적인
-`init` 설정 변경에 속합니다. `init`은 자신이 소유한 설정 변경의 일부로 선택한 홈과
-스키마를 만들 수 있지만, connection 명령은 선택한 홈에 현재 installation profile이 있어야
-하며 홈이 없거나 사용할 수 없으면 그 정확한 경로를 담아 실패합니다. 선택 뒤에도
+`init` 설정 변경에 속합니다. `init`은 setup 변경 전에 기존 home을 읽기 전용으로 열어
+정확한 manifest와 schema를 검증하고 분류합니다. `Incompatible` 또는 `Corrupt` 상태는
+보존하며, 기존 home을 유지하고 명시적 `--home`으로 새 위치를 선택하거나 담당자가 정의한
+importer가 있는 경우에만 그것을 사용하도록 안내합니다.
+
+최종 경로가 없으면 `init`은 같은 상위 directory의 고유 staging directory에 Registry,
+singleton, installation profile을 만듭니다. 검증된 directory는 기존 대상을 교체하지 않는
+원자적 rename으로 공개하며, 공개 전 실패는 최종 경로를 없는 상태로 두고 staging을
+제거합니다. Connection 명령은 선택한 홈에 현재 installation profile이 있어야 하며 홈이
+없거나 사용할 수 없으면 그 정확한 경로를 담아 실패합니다. 선택 뒤에도
 `connection list`와 `connection status`는 읽기 전용입니다. 비어 있거나 잘못됐거나 충돌하는
 값은 저장소 접근 전에 실패합니다. Product Repository를 Runtime Home으로 사용하지 않습니다.
 

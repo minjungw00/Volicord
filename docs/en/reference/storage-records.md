@@ -49,6 +49,13 @@ Registry records include:
 - cross-database reservations that bind one runtime/host session to one
   Connection Project.
 
+For a fresh Runtime Home, the identity row and initial installation profile
+are inserted together in the staged Registry before its final directory is
+published. Exact manifest and schema validation must succeed before either
+record becomes reachable at the selected Runtime Home path. An existing
+Registry is inspected read-only first; incompatible record or relation facts
+are reported without rewriting any Registry record.
+
 Project-state records include:
 
 - `project_state`, project workflow policy, Tasks, acceptance criteria,

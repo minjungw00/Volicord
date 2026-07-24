@@ -118,6 +118,22 @@ WSL2에서는 초기화 전에 Runtime Home 또는 가장 가까운 기존 상�
 같은 경계 안에 있어야 하며 Linux 형태의 `/mnt/*` 또는 ext4가 아닌 위치는
 지원하지 않습니다.
 
+Bootstrap 검사는 선택한 최종 경로를 `Absent`, `Ready`, `Incompatible`, `Corrupt`로
+분류합니다. 기존 Runtime Home은 읽기 전용으로 열며 정규 `StorageManifest`, 전체 물리
+schema, singleton identity, 최종 경로가 정확히 일치할 때만 `Ready`가 됩니다. 검사는
+파일을 만들거나 쓰지 않으며 호환되지 않거나 손상된 home의 bytes와 timestamp를 바꾸지
+않고 보존합니다. Schema 불일치는 예상·관찰 manifest digest와 relation 범주를 한도
+안에서 보고합니다. 복구할 때는 기존 home을 보존하고 명시적 `--home`으로 새 위치를
+선택하거나, 담당자가 정의한 importer가 있는 경우에만 그것을 사용합니다.
+
+최종 경로가 `Absent`이면 초기화는 같은 상위 directory 아래에 고유 staging directory를
+만듭니다. 그 안에서 Registry, Runtime Home singleton, 최초 installation profile을 만들고
+정확한 현재 manifest와 schema를 검증한 뒤, 플랫폼 경계가 지원하는 곳에서는 staging
+file과 directory를 동기화합니다. 그 다음 기존 최종 경로를 교체하지 않는 원자적 rename으로
+공개합니다. Staging 경로는 Runtime Home identity가 아니며 공개 전 실패는 staging을 모두
+정리하고 최종 경로를 없는 상태로 남깁니다. 동시 생성자는 정확히 `Ready`인 승자의 상태만
+읽기 전용으로 받아들입니다.
+
 Registry는 구조화된 diagnostic finding과 cause edge의 영속 Runtime Home carrier입니다.
 Finding은 해당 Connection, project, runtime session, integration revision과 상관관계를
 가질 수 있고 MCP runtime session은 terminal finding을 가리킬 수 있습니다. 이 기록은

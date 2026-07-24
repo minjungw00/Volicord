@@ -142,6 +142,12 @@ session을 무효화하지 않습니다.
 다시 만들 수 있습니다. 읽기와 일반 실행은 실패를 분류하는 동안 데이터를 repair,
 migration, 추정, 암묵적 교체하면 안 됩니다.
 
+Runtime Home bootstrap은 setup 변경 전에 이 규칙을 적용합니다. 기존 상태는 읽기 전용으로
+검사하여 `Ready`, `Incompatible`, `Corrupt`로 분류하고, manifest 또는 물리 schema
+불일치는 기존 bytes와 timestamp를 보존하면서 한도가 있는 typed fact를 보고합니다.
+최종 경로가 없을 때만 staged creation과 기존 대상을 교체하지 않는 원자적 공개를 시작할
+수 있습니다. 공개 전 실패는 staging을 제거하고 최종 경로를 만들지 않습니다.
+
 ## 구조화된 Diagnostic Finding
 
 `DiagnosticFinding`은 공유 read-only report projection입니다. Producer는

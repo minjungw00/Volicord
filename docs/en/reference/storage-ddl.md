@@ -92,12 +92,17 @@ complete sorted, duplicate-free set owned by
 [Storage Versioning](storage-versioning.md).
 
 Fresh initialization writes the same current manifest value into the registry
-carrier and every newly created project carrier. Store strict-decodes each
-carrier independently before reading authority or policy records. It requires
-the persisted value to equal the current built-in manifest and requires a
-selected project's manifest to equal the registry manifest. It does not parse
-an integer, compare versions, inspect field presence to select a decoder, or
-try another profile. The exact open result and failure category remain with
+carrier and every newly created project carrier. A fresh Runtime Home Registry
+is created only in a same-parent staging directory; its singleton and initial
+installation row are committed and the exact DDL inventory and manifest
+carrier are validated before the directory is atomically published without
+replacement. Store strict-decodes each carrier independently before reading
+authority or policy records. It requires the persisted value to equal the
+current built-in manifest and requires a selected project's manifest to equal
+the registry manifest. It does not parse an integer, compare versions, inspect
+field presence to select a decoder, or try another profile. Existing carrier
+inspection is read-only and preserves an incompatible database. The exact
+open result and failure category remain with
 [Storage Versioning](storage-versioning.md).
 
 The current project schema normalizes source-aware host correlation into

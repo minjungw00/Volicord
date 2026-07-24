@@ -46,6 +46,12 @@ Registry 기록에는 다음이 포함됩니다.
   finding, graceful close 사실
 - runtime/host session 하나를 Connection Project 하나에 결속하는 데이터베이스 간 예약
 
+새 Runtime Home에서는 identity row와 최초 installation profile을 staging한 Registry에
+함께 삽입한 뒤 최종 directory를 공개합니다. 두 record가 선택한 Runtime Home 경로에서
+접근 가능해지기 전에 정확한 manifest 및 schema 검증을 통과해야 합니다. 기존 Registry는
+먼저 읽기 전용으로 검사하며, 호환되지 않는 record 또는 relation 사실을 어떤 Registry
+record도 다시 쓰지 않고 보고합니다.
+
 프로젝트 상태 기록에는 다음이 포함됩니다.
 
 - `project_state`, 프로젝트 workflow policy, Task, acceptance criterion, supplemental

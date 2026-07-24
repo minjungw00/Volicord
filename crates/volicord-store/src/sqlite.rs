@@ -1,5 +1,6 @@
 use std::{
-    fs, io,
+    fs::{self, OpenOptions},
+    io,
     path::{Path, PathBuf},
 };
 
@@ -69,9 +70,35 @@ pub fn artifacts_tmp_path(runtime_home: impl AsRef<Path>, project_id: impl AsRef
         .join(ARTIFACTS_TMP_DIR)
 }
 
-/// Opens `registry.sqlite`, creating its canonical schema only when empty.
+/// Opens an existing `registry.sqlite` after exact-contract validation.
 pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
-    let mut conn = open_sqlite_database(path)?;
+    let path = path.as_ref();
+    if !path.exists() {
+        return Err(StoreError::NotFound {
+            entity: "runtime_home",
+            id: path.display().to_string(),
+        });
+    }
+
+    let conn = open_existing_sqlite_database(path)?;
+    validate_registry_schema(&conn)?;
+    Ok(conn)
+}
+
+/// Creates a new staging Registry from the canonical schema.
+///
+/// This is crate-private so callers cannot create a Registry at a selected
+/// final Runtime Home path outside the staged bootstrap boundary.
+pub(crate) fn create_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    let path = path.as_ref();
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    OpenOptions::new().write(true).create_new(true).open(path)?;
+    let mut conn = open_existing_sqlite_database(path)?;
     initialize_registry_schema(&mut conn)?;
     validate_registry_schema(&conn)?;
     Ok(conn)
@@ -247,6 +274,16 @@ fn open_sqlite_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
     Ok(conn)
 }
 
+fn open_existing_sqlite_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    let conn = Connection::open_with_flags(
+        path.as_ref(),
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    register_utc_order_functions(&conn)?;
+    enable_foreign_keys(&conn)?;
+    Ok(conn)
+}
+
 fn register_utc_order_functions(conn: &Connection) -> rusqlite::Result<()> {
     let flags = FunctionFlags::SQLITE_UTF8
         | FunctionFlags::SQLITE_DETERMINISTIC
@@ -356,18 +393,11 @@ pub(crate) fn validate_persisted_manifest(
                 ))
             }
         }
-        Ok(manifest)
-            if manifest.contract_id == volicord_types::STORAGE_CONTRACT_ID
-                && manifest.canonical_ddl_digest
-                    == "sha256:3eb4125e8c1f218044f5188871d9c0b69d134e7cf4701fb1d9242cb987b10fe1"
-                && manifest.integrity_constraints_digest
-                    == "sha256:d8f68d017b8fcc8214c1ab690d69a5bccf97aa45a631571db8bb09ff2849c5b3"
-                && manifest.enabled_capabilities == expected.enabled_capabilities =>
-        {
+        Ok(manifest) => {
             let actual = canonical_json_string(&manifest).map_err(|error| {
                 StoreError::schema_invariant(
                     database_kind,
-                    format!("prior manifest canonical encoding failed: {error}"),
+                    format!("observed manifest canonical encoding failed: {error}"),
                 )
             })?;
             Err(StoreError::unsupported_storage_profile(
@@ -376,17 +406,6 @@ pub(crate) fn validate_persisted_manifest(
                 expected_json,
             ))
         }
-        Ok(manifest) if manifest.contract_id == volicord_types::STORAGE_CONTRACT_ID => {
-            Err(StoreError::schema_invariant(
-                database_kind,
-                "current manifest digest or capabilities do not match",
-            ))
-        }
-        Ok(manifest) => Err(StoreError::unsupported_storage_profile(
-            database_kind,
-            manifest.contract_id,
-            expected_json,
-        )),
         Err(error) => Err(StoreError::schema_invariant(
             database_kind,
             format!("persisted storage manifest is malformed: {error}"),
@@ -568,8 +587,9 @@ mod tests {
     #[test]
     fn canonical_schema_initialization_is_idempotent() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("canonical-schema-idempotent")?;
+        fs::create_dir_all(runtime_home.path())?;
         let registry_path = registry_db_path(runtime_home.path());
-        open_registry_database(&registry_path)?;
+        create_registry_database(&registry_path)?;
         let registry = open_registry_database(&registry_path)?;
         validate_registry_schema(&registry)?;
 

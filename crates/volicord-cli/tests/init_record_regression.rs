@@ -69,8 +69,8 @@ impl FakeConnectionProcess {
     }
 
     fn named(fixture: &TempRuntimeHome, name: &str) -> Result<Self, Box<dyn Error>> {
-        let codex_home = fixture.path().join(format!("{name}-codex-home"));
-        let isolated_path = fixture.path().join(format!("{name}-isolated-path"));
+        let codex_home = fixture.root_path().join(format!("{name}-codex-home"));
+        let isolated_path = fixture.root_path().join(format!("{name}-isolated-path"));
         fs::create_dir_all(&codex_home)?;
         fs::create_dir_all(&isolated_path)?;
         Ok(Self {

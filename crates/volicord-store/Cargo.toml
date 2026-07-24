@@ -14,13 +14,16 @@ rusqlite = { version = "0.32", features = ["bundled", "functions"] }
 serde = "1"
 serde_json = "1"
 sha2 = "0.10"
+tempfile = "3"
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+rustix = { version = "1", features = ["fs"] }
 
 [features]
 test-support = []
 
 [dev-dependencies]
 volicord-test-support = { path = "../volicord-test-support" }
-tempfile = "3"
 
 [lib]
 path = "src/lib.rs"

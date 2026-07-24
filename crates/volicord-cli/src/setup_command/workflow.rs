@@ -7,10 +7,13 @@ use serde_json::json;
 use volicord_store::{
     agent_connections::CONNECTION_MODE_WORKFLOW,
     bootstrap::{
-        initialize_runtime_home, write_installation_profile, InstallationProfileRecord,
-        InstallationProfileRegistration, RuntimeHomeRecord,
+        initialize_runtime_home_with_installation, inspect_runtime_home_bootstrap,
+        InstallationProfileRecord, InstallationProfileRegistration, RuntimeHomeBootstrapState,
+        RuntimeHomeRecord,
     },
     runtime_home::resolve_runtime_home,
+    sqlite::registry_db_path,
+    StoreError,
 };
 
 use crate::{
@@ -76,14 +79,14 @@ struct SetupWorkflowState {
 }
 
 impl SetupWorkflowState {
-    fn new(runtime_home_record: &RuntimeHomeRecord) -> Self {
+    fn new(runtime_home: &Path, registry_db: &Path, runtime_home_id: &str) -> Self {
         Self {
             checks: vec![
                 DiagnosticCheck::passed("runtime_home", "Runtime Home registry is ready")
                     .with_details(json!({
-                        "runtime_home": path_text(&runtime_home_record.runtime_home),
-                        "registry_db": path_text(&runtime_home_record.registry_db_path),
-                        "runtime_home_id": &runtime_home_record.runtime_home_id,
+                        "runtime_home": path_text(runtime_home),
+                        "registry_db": path_text(registry_db),
+                        "runtime_home_id": runtime_home_id,
                     })),
             ],
             actions_required: Vec::new(),
@@ -93,7 +96,7 @@ impl SetupWorkflowState {
                 SetupActionKind::RuntimeHomeReady,
                 "Runtime Home registry is ready.",
             )
-            .with_path(&runtime_home_record.runtime_home)],
+            .with_path(runtime_home)],
             link_results: BTreeMap::new(),
             shell_startup_plan: None,
             interactive_notes: Vec::new(),
@@ -119,10 +122,18 @@ pub(super) fn run_setup_workflow(
     let output = parsed.output;
     let runtime_home = resolve_setup_runtime_home(&parsed, current_dir, process)?;
     let runtime_home_id = runtime_home_id_for_path(&runtime_home)?;
-    let runtime_home_record =
-        initialize_runtime_home(&runtime_home, &runtime_home_id, ADMIN_METADATA_JSON)?;
-    let runtime_home_section = runtime_home_report_section(&runtime_home_record);
-    let mut state = SetupWorkflowState::new(&runtime_home_record);
+    let existing_runtime_home = match inspect_runtime_home_bootstrap(&runtime_home)? {
+        RuntimeHomeBootstrapState::Absent => None,
+        RuntimeHomeBootstrapState::Ready(record) => Some(record),
+        RuntimeHomeBootstrapState::Incompatible(mismatch) => {
+            return Err(StoreError::RuntimeHomeSchemaMismatch(Box::new(mismatch)).into());
+        }
+        RuntimeHomeBootstrapState::Corrupt(corruption) => {
+            return Err(StoreError::RuntimeHomeCorruption(corruption).into());
+        }
+    };
+    let registry_db = registry_db_path(&runtime_home);
+    let mut state = SetupWorkflowState::new(&runtime_home, &registry_db, &runtime_home_id);
 
     let volicord_command = match discover_volicord_command(process) {
         Ok(command) => {
@@ -136,6 +147,10 @@ pub(super) fn run_setup_workflow(
             command
         }
         Err(error) => {
+            let Some(runtime_home_record) = existing_runtime_home.clone() else {
+                return Err(error);
+            };
+            let runtime_home_section = runtime_home_report_section(&runtime_home_record);
             state.checks.push(
                 DiagnosticCheck::failed("volicord_command", "volicord command was not discovered")
                     .with_details(json!({ "detail": error.to_string() })),
@@ -183,6 +198,10 @@ pub(super) fn run_setup_workflow(
             command
         }
         Err(error) => {
+            let Some(runtime_home_record) = existing_runtime_home.clone() else {
+                return Err(error);
+            };
+            let runtime_home_section = runtime_home_report_section(&runtime_home_record);
             state.checks.push(
                 DiagnosticCheck::failed(
                     "volicord_mcp_command",
@@ -255,8 +274,10 @@ pub(super) fn run_setup_workflow(
         parsed.link_bin.as_deref(),
         &state.link_results,
     )?;
-    let profile = write_installation_profile(
+    let (runtime_home_record, profile) = initialize_runtime_home_with_installation(
         &runtime_home,
+        &runtime_home_id,
+        ADMIN_METADATA_JSON,
         InstallationProfileRegistration {
             installation_id: INSTALLATION_ID.to_owned(),
             volicord_command: path_text(&volicord_command.path),
@@ -266,6 +287,7 @@ pub(super) fn run_setup_workflow(
             metadata_json,
         },
     )?;
+    let runtime_home_section = runtime_home_report_section(&runtime_home_record);
     state.checks.push(
         DiagnosticCheck::passed("installation_profile", "installation profile was saved")
             .with_details(profile_json(&profile)),

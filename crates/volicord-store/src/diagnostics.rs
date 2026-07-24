@@ -2418,6 +2418,7 @@ mod tests {
     #[test]
     fn existing_empty_diagnostics_database_is_rejected_without_initialization() {
         let fixture = TempRuntimeHome::new("diagnostics-existing-empty").expect("fixture");
+        fs::create_dir_all(fixture.path()).expect("runtime home directory");
         let path = diagnostics_db_path(fixture.path());
         Connection::open(&path).expect("empty database");
 

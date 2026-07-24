@@ -422,10 +422,10 @@ mod tests {
     fn setup_action_planner_reports_stable_action_kinds() -> Result<(), Box<dyn std::error::Error>>
     {
         let fixture = TempRuntimeHome::new("setup-action-planner-kinds")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         fs::create_dir_all(&home)?;
-        let command_path = fixture.path().join("exe").join(volicord_binary_name());
+        let command_path = fixture.root_path().join("exe").join(volicord_binary_name());
         let process = FakeProcess {
             exe: command_path.clone(),
             env: BTreeMap::from([("HOME".to_owned(), home.clone().into_os_string())]),
@@ -482,11 +482,11 @@ mod tests {
     fn setup_action_planner_uses_home_bin_when_local_bin_is_unavailable(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-action-planner-home-bin")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         let home_bin = home.join("bin");
         fs::create_dir_all(&home)?;
         fs::write(home.join(".local"), "not a directory")?;
-        let command_path = fixture.path().join("exe").join(volicord_binary_name());
+        let command_path = fixture.root_path().join("exe").join(volicord_binary_name());
         let process = FakeProcess {
             exe: command_path.clone(),
             env: BTreeMap::from([("HOME".to_owned(), home.clone().into_os_string())]),
@@ -538,13 +538,13 @@ mod tests {
     fn interactive_menu_plan_prefers_existing_path_link() -> Result<(), Box<dyn std::error::Error>>
     {
         let fixture = TempRuntimeHome::new("setup-menu-path-dir")?;
-        let path_dir = fixture.path().join("path-bin");
-        let home = fixture.path().join("home");
+        let path_dir = fixture.root_path().join("path-bin");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         fs::create_dir_all(&path_dir)?;
         fs::create_dir_all(&local_bin)?;
         let process = FakeProcess {
-            exe: fixture.path().join("volicord"),
+            exe: fixture.root_path().join("volicord"),
             env: BTreeMap::from([
                 (PATH_ENV.to_owned(), env::join_paths([path_dir.as_path()])?),
                 ("HOME".to_owned(), home.into_os_string()),
@@ -552,8 +552,8 @@ mod tests {
             ]),
         };
         let selected = [
-            fixture.path().join(volicord_binary_name()),
-            fixture.path().join(mcp_binary_name()),
+            fixture.root_path().join(volicord_binary_name()),
+            fixture.root_path().join(mcp_binary_name()),
         ];
 
         let menu = plan_interactive_menu_choices(
@@ -579,19 +579,19 @@ mod tests {
     fn interactive_menu_plan_orders_shell_update_before_user_bin_only(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-menu-shell-order")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         fs::create_dir_all(&home)?;
         let process = FakeProcess {
-            exe: fixture.path().join("volicord"),
+            exe: fixture.root_path().join("volicord"),
             env: BTreeMap::from([
                 ("HOME".to_owned(), home.clone().into_os_string()),
                 ("SHELL".to_owned(), OsString::from("/bin/zsh")),
             ]),
         };
         let selected = [
-            fixture.path().join(volicord_binary_name()),
-            fixture.path().join(mcp_binary_name()),
+            fixture.root_path().join(volicord_binary_name()),
+            fixture.root_path().join(mcp_binary_name()),
         ];
 
         let menu = plan_interactive_menu_choices(
@@ -621,20 +621,20 @@ mod tests {
     fn interactive_menu_plan_uses_home_bin_when_local_bin_is_unavailable(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-menu-home-bin")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         let home_bin = home.join("bin");
         fs::create_dir_all(&home)?;
         fs::write(home.join(".local"), "not a directory")?;
         let process = FakeProcess {
-            exe: fixture.path().join("volicord"),
+            exe: fixture.root_path().join("volicord"),
             env: BTreeMap::from([
                 ("HOME".to_owned(), home.clone().into_os_string()),
                 ("SHELL".to_owned(), OsString::from("/bin/zsh")),
             ]),
         };
         let selected = [
-            fixture.path().join(volicord_binary_name()),
-            fixture.path().join(mcp_binary_name()),
+            fixture.root_path().join(volicord_binary_name()),
+            fixture.root_path().join(mcp_binary_name()),
         ];
 
         let menu = plan_interactive_menu_choices(
@@ -669,18 +669,18 @@ mod tests {
     fn interactive_menu_plan_keeps_manual_and_skip_when_shell_is_unsupported(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-menu-unsupported-shell")?;
-        let home = fixture.path().join("home");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(home.join(".local").join("bin"))?;
         let process = FakeProcess {
-            exe: fixture.path().join("volicord"),
+            exe: fixture.root_path().join("volicord"),
             env: BTreeMap::from([
                 ("HOME".to_owned(), home.into_os_string()),
                 ("SHELL".to_owned(), OsString::from("/bin/fish")),
             ]),
         };
         let selected = [
-            fixture.path().join(volicord_binary_name()),
-            fixture.path().join(mcp_binary_name()),
+            fixture.root_path().join(volicord_binary_name()),
+            fixture.root_path().join(mcp_binary_name()),
         ];
 
         let menu = plan_interactive_menu_choices(
@@ -709,9 +709,9 @@ mod tests {
     fn setup_interactive_creates_links_in_writable_path_dir(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-path-dir")?;
-        let exe_dir = fixture.path().join("exe");
-        let path_dir = fixture.path().join("path-bin");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let path_dir = fixture.root_path().join("path-bin");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&path_dir)?;
         fs::create_dir_all(&home)?;
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
@@ -750,7 +750,7 @@ mod tests {
     #[test]
     fn setup_interactive_json_never_prompts() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-json")?;
-        let bin_dir = fixture.path().join("bin");
+        let bin_dir = fixture.root_path().join("bin");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         write_executable(&bin_dir, &mcp_binary_name())?;
         let process = FakeProcess {
@@ -777,8 +777,8 @@ mod tests {
     fn setup_json_reports_missing_user_bin_action_without_creating_it(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-json-missing-user-bin")?;
-        let bin_dir = fixture.path().join("bin");
-        let home = fixture.path().join("home");
+        let bin_dir = fixture.root_path().join("bin");
+        let home = fixture.root_path().join("home");
         let local_bin = home.join(".local").join("bin");
         fs::create_dir_all(&home)?;
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
@@ -812,8 +812,8 @@ mod tests {
     #[test]
     fn setup_interactive_link_bin_never_prompts() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-link-bin")?;
-        let bin_dir = fixture.path().join("bin");
-        let link_bin = fixture.path().join("links");
+        let bin_dir = fixture.root_path().join("bin");
+        let link_bin = fixture.root_path().join("links");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let mcp = write_executable(&bin_dir, &mcp_binary_name())?;
         let process = FakeProcess {
@@ -841,8 +841,8 @@ mod tests {
     fn setup_interactive_writes_shell_startup_block_idempotently(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-shell")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         let link_bin = home.join(".local").join("bin");
         fs::create_dir_all(&home)?;
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
@@ -901,8 +901,8 @@ mod tests {
     fn setup_interactive_does_not_add_shell_block_for_unmanaged_link(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-unsafe-link")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         let link_bin = home.join(".local/bin");
         fs::create_dir_all(&link_bin)?;
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
@@ -943,8 +943,8 @@ mod tests {
     fn setup_interactive_unsupported_shell_uses_manual_action(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-unsupported-shell")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&home)?;
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
         write_executable(&exe_dir, &mcp_binary_name())?;
@@ -981,8 +981,8 @@ mod tests {
     fn setup_interactive_skip_reports_action_required_without_links(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-skip")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&home)?;
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
         write_executable(&exe_dir, &mcp_binary_name())?;
@@ -1032,8 +1032,8 @@ mod tests {
     fn setup_interactive_link_only_creates_links_without_shell_startup_when_path_needs_update(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-link-only")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&home)?;
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
         let mcp = write_executable(&exe_dir, &mcp_binary_name())?;
@@ -1076,8 +1076,8 @@ mod tests {
     fn setup_interactive_link_only_creates_home_bin_when_local_bin_is_unavailable(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-home-bin")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         let local = home.join(".local");
         let link_bin = home.join("bin");
         fs::create_dir_all(&home)?;
@@ -1124,8 +1124,8 @@ mod tests {
     fn setup_interactive_declined_shell_startup_update_leaves_files_unchanged(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-decline-shell")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&home)?;
         let zshrc = home.join(".zshrc");
         let original_zshrc = "export PATH=\"$HOME/bin:$PATH\"\n";
@@ -1165,8 +1165,8 @@ mod tests {
     #[test]
     fn setup_interactive_eof_cancels_command_linking() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-interactive-eof")?;
-        let exe_dir = fixture.path().join("exe");
-        let home = fixture.path().join("home");
+        let exe_dir = fixture.root_path().join("exe");
+        let home = fixture.root_path().join("home");
         fs::create_dir_all(&home)?;
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
         write_executable(&exe_dir, &mcp_binary_name())?;
@@ -1196,7 +1196,7 @@ mod tests {
     #[test]
     fn setup_records_explicit_mcp_command() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-explicit")?;
-        let bin_dir = fixture.path().join("bin");
+        let bin_dir = fixture.root_path().join("bin");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let mcp = write_executable(&bin_dir, "custom-volicord")?;
         let process = FakeProcess {
@@ -1243,7 +1243,7 @@ mod tests {
     fn setup_uses_volicord_as_default_mcp_launch_command() -> Result<(), Box<dyn std::error::Error>>
     {
         let fixture = TempRuntimeHome::new("setup-default-mcp")?;
-        let bin_dir = fixture.path().join("bin");
+        let bin_dir = fixture.root_path().join("bin");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let process = FakeProcess {
             exe: volicord.clone(),
@@ -1265,8 +1265,8 @@ mod tests {
     fn setup_keeps_default_mcp_launch_bound_to_current_volicord(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-path")?;
-        let exe_dir = fixture.path().join("exe");
-        let path_dir = fixture.path().join("path-bin");
+        let exe_dir = fixture.root_path().join("exe");
+        let path_dir = fixture.root_path().join("path-bin");
         let volicord = write_executable(&exe_dir, &volicord_binary_name())?;
         write_executable(&path_dir, &volicord_binary_name())?;
         let process = FakeProcess {
@@ -1289,7 +1289,7 @@ mod tests {
     fn setup_json_does_not_require_separate_mcp_executable(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-single-executable")?;
-        let bin_dir = fixture.path().join("bin");
+        let bin_dir = fixture.root_path().join("bin");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let process = FakeProcess {
             exe: volicord.clone(),
@@ -1318,8 +1318,8 @@ mod tests {
     #[test]
     fn setup_creates_requested_links() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-links")?;
-        let bin_dir = fixture.path().join("bin");
-        let link_bin = fixture.path().join("links");
+        let bin_dir = fixture.root_path().join("bin");
+        let link_bin = fixture.root_path().join("links");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let mcp = write_executable(&bin_dir, &mcp_binary_name())?;
         let process = FakeProcess {
@@ -1360,8 +1360,8 @@ mod tests {
     fn setup_link_bin_reports_path_action_without_prompting(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-links-path-action")?;
-        let bin_dir = fixture.path().join("bin");
-        let link_bin = fixture.path().join("links");
+        let bin_dir = fixture.root_path().join("bin");
+        let link_bin = fixture.root_path().join("links");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let mcp = write_executable(&bin_dir, &mcp_binary_name())?;
         let process = FakeProcess {
@@ -1395,8 +1395,8 @@ mod tests {
     fn setup_link_bin_error_still_saves_profile_when_possible(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-link-bin-file")?;
-        let bin_dir = fixture.path().join("bin");
-        let link_bin = fixture.path().join("not-a-directory");
+        let bin_dir = fixture.root_path().join("bin");
+        let link_bin = fixture.root_path().join("not-a-directory");
         fs::write(&link_bin, "not a directory")?;
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let mcp = write_executable(&bin_dir, &mcp_binary_name())?;
@@ -1449,8 +1449,8 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let fixture = TempRuntimeHome::new("setup-link-bin-probe-fails")?;
-        let bin_dir = fixture.path().join("bin");
-        let link_bin = fixture.path().join("links");
+        let bin_dir = fixture.root_path().join("bin");
+        let link_bin = fixture.root_path().join("links");
         fs::create_dir_all(&link_bin)?;
         let mut permissions = fs::metadata(&link_bin)?.permissions();
         permissions.set_mode(0o555);
@@ -1542,7 +1542,7 @@ mod tests {
     fn installation_profile_can_be_read_through_store_after_setup(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("setup-sql")?;
-        let bin_dir = fixture.path().join("bin");
+        let bin_dir = fixture.root_path().join("bin");
         let volicord = write_executable(&bin_dir, &volicord_binary_name())?;
         let mcp = write_executable(&bin_dir, &mcp_binary_name())?;
         let process = FakeProcess {
