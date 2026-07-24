@@ -19,8 +19,10 @@ use volicord_store::{
     diagnostic_findings::{diagnostic_occurrences_for_runtime_session, insert_occurrence_finding},
     guards::{guard_observation_summary, list_guard_installations},
     integration_verification::{
-        current_guard_integration_verification_workflow,
+        current_guard_integration_verification_workflow, guard_probe_observations,
+        latest_completed_guard_integration_verification_for_connection,
         latest_guard_integration_verification_for_connection,
+        GuardIntegrationVerificationRunRecord,
     },
     operational_sessions::{
         connection_integration_revision, current_managed_runtime_sessions,
@@ -36,7 +38,9 @@ use volicord_types::{
     ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
     ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode, DiagnosticDomain,
     DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
-    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
+    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    GuardIntegrationVerificationStatus, GuardManagedArtifact, GuardProbeObservationStage,
+    GuardVerificationRecoverability, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
     HookActivationEvidence, HookActivationState, IntegrationRevision,
     IntegrationVerificationWorkflowState, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
@@ -57,10 +61,10 @@ use crate::operational_diagnostics::{
     reconcile_current_findings_for_scope, CurrentOperationalOwner, DiagnosticFindingOverlay,
     GuardArtifactFacts, GuardDiagnostic, GuardEventFacts, GuardEventSubject,
     GuardInstallationFacts, GuardInstallationSubject, GuardManagedArtifactSubject, GuardPhaseFacts,
-    GuardPhaseSubject, IntegrationRevisionFacts, IntegrationRevisionSubject,
-    ManagedConfigurationFacts, ManagedConfigurationTarget, OperationalCheckState,
-    OperationalDiagnostic, RevisionDiagnostic, ToolVerificationDiagnostic, TrustDiagnostic,
-    TrustFacts, TrustSubject, VerificationToolFacts, VerificationToolSubject,
+    GuardPhaseSubject, GuardProbeFacts, GuardVerificationAttemptSubject, IntegrationRevisionFacts,
+    IntegrationRevisionSubject, ManagedConfigurationFacts, ManagedConfigurationTarget,
+    OperationalCheckState, OperationalDiagnostic, RevisionDiagnostic, ToolVerificationDiagnostic,
+    TrustDiagnostic, TrustFacts, TrustSubject, VerificationToolFacts, VerificationToolSubject,
 };
 
 use super::{

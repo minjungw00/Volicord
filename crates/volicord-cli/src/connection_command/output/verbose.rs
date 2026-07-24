@@ -228,9 +228,9 @@ fn check_label(kind: ConnectionCheckKind) -> &'static str {
         ConnectionCheckKind::ToolRoundTrip => "Read-only tool round trip",
         ConnectionCheckKind::ProjectTrust => "Project trust",
         ConnectionCheckKind::GuardFiles => "Guard managed files",
-        ConnectionCheckKind::GuardHookExecution => "Guard hook execution",
+        ConnectionCheckKind::AmbientHookCoverage => "Hook installation and ambient execution",
         ConnectionCheckKind::GuardObservation => "Guard hook activity",
-        ConnectionCheckKind::GuardVerification => "Guard integration verification",
+        ConnectionCheckKind::CorrelatedGuardVerification => "Correlated Guard verification",
         ConnectionCheckKind::SetupPlan => "Setup plan",
         ConnectionCheckKind::ModeTransition => "Connection mode transition",
         ConnectionCheckKind::ConnectionRemoval => "Connection removal",
@@ -405,9 +405,12 @@ fn render_known_details(context: &mut DetailContext<'_>) {
         ConnectionCheckKind::ToolRoundTrip => render_tool_round_trip(context),
         ConnectionCheckKind::ProjectTrust => render_project_trust(context),
         ConnectionCheckKind::GuardFiles => render_guard_files(context),
-        ConnectionCheckKind::GuardHookExecution => render_guard_observation(context),
+        ConnectionCheckKind::AmbientHookCoverage => {
+            render_guard_files(context);
+            render_guard_observation(context);
+        }
         ConnectionCheckKind::GuardObservation => render_guard_observation(context),
-        ConnectionCheckKind::GuardVerification => render_guard_verification(context),
+        ConnectionCheckKind::CorrelatedGuardVerification => render_guard_verification(context),
         ConnectionCheckKind::SetupPlan => render_setup_plan(context),
         ConnectionCheckKind::ModeTransition => render_mode_transition(context),
         ConnectionCheckKind::ConnectionRemoval => render_connection_removal(context),
@@ -415,17 +418,130 @@ fn render_known_details(context: &mut DetailContext<'_>) {
 }
 
 fn render_guard_verification(context: &mut DetailContext<'_>) {
-    if let Some(id) = context.take_string("verification_id") {
-        context.line("Verification ID", id);
+    if let Some(recoverability) = context.take_string("recoverability") {
+        context.line("Recoverability", recoverability);
     }
-    if let Some(status) = context.take_string("verification_status") {
-        context.line("Verification status", status);
+    render_guard_attempt(context);
+    render_guard_proof(context);
+}
+
+fn render_guard_attempt(context: &mut DetailContext<'_>) {
+    for (path, label) in [
+        ("latest_attempt.evidence_role", "Attempt evidence role"),
+        ("latest_attempt.verification_id", "Verification ID"),
+        ("latest_attempt.runtime_session_id", "Runtime session"),
+        ("latest_attempt.host_session_id", "Host session"),
+        ("latest_attempt.host_turn_id", "Host turn"),
+        ("latest_attempt.attempt_state", "Attempt state"),
+        ("latest_attempt.prompt_event_id", "Prompt event"),
+        ("latest_attempt.pre_tool_event_id", "Pre-tool event"),
+        ("latest_attempt.post_tool_event_id", "Post-tool event"),
+        (
+            "latest_attempt.expected_agent_tool_id",
+            "Expected AgentToolId",
+        ),
+        (
+            "latest_attempt.expected_host_callable_identity",
+            "Expected host callable",
+        ),
+        (
+            "latest_attempt.observed_host_callable_identity",
+            "Observed host callable",
+        ),
+        ("latest_attempt.acquisition_stage", "Acquisition stage"),
+        ("latest_attempt.repair_reason", "Repair reason"),
+        ("latest_attempt.retry_policy", "Retry policy"),
+        ("latest_attempt.recoverability", "Attempt recoverability"),
+        ("latest_attempt.recovery_action", "Recovery action"),
+        ("latest_attempt.integration_revision", "Attempt revision"),
+        (
+            "latest_attempt.guard_installation_id",
+            "Guard Installation ID",
+        ),
+        ("latest_attempt.policy_digest", "Policy digest"),
+        (
+            "latest_attempt.hook_definition_digest",
+            "Hook definition digest",
+        ),
+        ("latest_attempt.created_at", "Attempt created at"),
+        ("latest_attempt.acknowledged_at", "Probe acknowledged at"),
+        ("latest_attempt.completed_at", "Attempt completed at"),
+        ("latest_attempt.terminal_at", "Attempt terminal at"),
+    ] {
+        if let Some(value) = context.take_string(path) {
+            context.line(label, value);
+        }
     }
-    if let Some(runtime) = context.take_string("runtime_session_id") {
-        context.line("Runtime session", runtime);
-    }
-    if let Some(turn) = context.take_string("host_turn_id") {
-        context.line("Host turn", turn);
+}
+
+fn render_guard_proof(context: &mut DetailContext<'_>) {
+    for (path, label) in [
+        (
+            "latest_completed_proof.evidence_role",
+            "Proof evidence role",
+        ),
+        (
+            "latest_completed_proof.verification_id",
+            "Proof verification ID",
+        ),
+        (
+            "latest_completed_proof.runtime_session_id",
+            "Proof runtime session",
+        ),
+        (
+            "latest_completed_proof.host_session_id",
+            "Proof host session",
+        ),
+        ("latest_completed_proof.host_turn_id", "Proof host turn"),
+        (
+            "latest_completed_proof.prompt_event_id",
+            "Proof prompt event",
+        ),
+        (
+            "latest_completed_proof.pre_tool_event_id",
+            "Proof pre-tool event",
+        ),
+        (
+            "latest_completed_proof.post_tool_event_id",
+            "Proof post-tool event",
+        ),
+        (
+            "latest_completed_proof.expected_agent_tool_id",
+            "Proof expected AgentToolId",
+        ),
+        (
+            "latest_completed_proof.expected_host_callable_identity",
+            "Proof expected host callable",
+        ),
+        (
+            "latest_completed_proof.observed_host_callable_identity",
+            "Proof observed host callable",
+        ),
+        (
+            "latest_completed_proof.acquisition_stage",
+            "Proof acquisition stage",
+        ),
+        (
+            "latest_completed_proof.integration_revision",
+            "Proof revision",
+        ),
+        (
+            "latest_completed_proof.guard_installation_id",
+            "Proof Guard Installation ID",
+        ),
+        (
+            "latest_completed_proof.policy_digest",
+            "Proof policy digest",
+        ),
+        (
+            "latest_completed_proof.hook_definition_digest",
+            "Proof hook definition digest",
+        ),
+        ("latest_completed_proof.completed_at", "Proof completed at"),
+    ] {
+        if let Some(value) = context.take_string(path) {
+            context.line(label, value);
+        }
     }
 }
 
@@ -1038,6 +1154,18 @@ fn render_artifact_issues(context: &mut DetailContext<'_>) {
 }
 
 fn render_guard_observation(context: &mut DetailContext<'_>) {
+    if let Some(executed) = context.take_bool("current_hook_definition_executed") {
+        context.line(
+            "Current hook definition executed",
+            if executed { "yes" } else { "no" },
+        );
+    }
+    if let Some(observed) = context.take_bool("configured_phases_observed") {
+        context.line(
+            "Configured phases observed",
+            if observed { "yes" } else { "no" },
+        );
+    }
     for (path, label) in [
         ("required_phases", "Required phases"),
         ("observed_phases", "Observed phases"),
@@ -1851,7 +1979,7 @@ mod tests {
                     Some(json!({
                     "current_integration_revision": "revision_current",
                     "observed_integration_revision": "revision_current",
-                    "evidence_role": "latest_attempt",
+                    "evidence_role": "latest_managed_attempt",
                     "runtime_session_id": "session_1",
                     "source": "managed_host",
                     "host_executable_probe": {"discovered_path": "/opt/codex", "version": "1.2.3"},
@@ -1903,7 +2031,7 @@ mod tests {
                 "  Repository: /workspace/product\n",
                 "  Config target: /home/user/.codex/config.toml\n",
                 "  Runtime home: /runtime\n",
-                "  Runtime sessions: session_1 (latest_attempt)\n\n",
+                "  Runtime sessions: session_1 (latest_managed_attempt)\n\n",
                 "Summary\n",
                 "  Status: failed\n",
                 "  Dry run: yes\n",
@@ -1917,7 +2045,7 @@ mod tests {
                 "    Code: host_session_initialize_pending\n",
                 "    Observed at: 2026-07-20T00:00:00Z\n",
                 "    Depends on: process_startup\n",
-                "    Evidence role: latest_attempt\n",
+                "    Evidence role: latest_managed_attempt\n",
                 "    Runtime session: session_1\n",
                 "    Session source: managed_host\n",
                 "    Current revision: revision_current\n",
@@ -1969,7 +2097,7 @@ mod tests {
                 Some(json!({
                     "current_integration_revision": "revision_current",
                     "observed_integration_revision": null,
-                    "evidence_role": "latest_attempt",
+                    "evidence_role": "latest_managed_attempt",
                     "host_executable_probe": {"discovered_path": "/opt/codex", "version": "1.2.3"},
                     "last_observed_at": null,
                     "terminal_finding_id": null,
@@ -2004,7 +2132,7 @@ mod tests {
                 "    Managed host connection use has not been observed\n",
                 "    Code: host_session_not_observed\n",
                 "    Depends on: process_startup\n",
-                "    Evidence role: latest_attempt\n",
+                "    Evidence role: latest_managed_attempt\n",
                 "    Current revision: revision_current\n",
                 "    PATH executable: /opt/codex\n",
                 "    PATH executable version: 1.2.3\n",
@@ -2571,7 +2699,7 @@ mod tests {
                 Some(json!({
                     "current_integration_revision": "revision_current",
                     "observed_integration_revision": "revision_observed",
-                    "evidence_role": "latest_attempt",
+                    "evidence_role": "latest_managed_attempt",
                     "host_executable_probe": {"discovered_path": "/opt/codex", "version": "2.0"},
                     "managed_peer": {
                         "client_info": {"name": "codex", "version": "1.0"},
@@ -2594,7 +2722,7 @@ mod tests {
             "    Observed revision: revision_observed\n",
             "    Initialize: failed\n",
             "    Terminal finding: finding.protocol_failure\n",
-            "    Evidence role: latest_attempt\n",
+            "    Evidence role: latest_managed_attempt\n",
             "    Runtime session: session_1\n",
             "    PATH executable: /opt/codex\n",
             "    PATH executable version: 2.0\n",
@@ -2641,13 +2769,13 @@ mod tests {
             ),
             (ConnectionCheckKind::GuardFiles, "Guard managed files"),
             (
-                ConnectionCheckKind::GuardHookExecution,
-                "Guard hook execution",
+                ConnectionCheckKind::AmbientHookCoverage,
+                "Hook installation and ambient execution",
             ),
             (ConnectionCheckKind::GuardObservation, "Guard hook activity"),
             (
-                ConnectionCheckKind::GuardVerification,
-                "Guard integration verification",
+                ConnectionCheckKind::CorrelatedGuardVerification,
+                "Correlated Guard verification",
             ),
             (ConnectionCheckKind::HostExecutable, "Codex executable"),
             (ConnectionCheckKind::HostReload, "Managed host reload"),
@@ -2730,7 +2858,7 @@ mod tests {
                     Some(json!({
                         "current_integration_revision": "revision_current",
                         "observed_integration_revision": "revision_observed",
-                        "evidence_role": "latest_attempt",
+                        "evidence_role": "latest_managed_attempt",
                         "runtime_session_id": "session_tools",
                         "source": "managed_host",
                         "required_tools": {
@@ -2759,7 +2887,7 @@ mod tests {
                     Some(json!({
                         "current_integration_revision": "revision_current",
                         "observed_integration_revision": "revision_observed",
-                        "evidence_role": "latest_attempt",
+                        "evidence_role": "latest_managed_attempt",
                         "runtime_session_id": "session_tools",
                         "source": "managed_host",
                         "verification_tool": {

@@ -245,8 +245,8 @@ order rather than silently normalizing it; enum declaration order is not the
 wire-order contract.
 
 `ConnectionCheckKind` is the closed current-product vocabulary:
-`connection_removal`, `diagnostic_lookup`, `guard_files`, `guard_hook_execution`,
-`guard_observation`, `guard_verification`, `hook_source_activation`,
+`connection_removal`, `diagnostic_lookup`, `guard_files`, `ambient_hook_coverage`,
+`guard_observation`, `correlated_guard_verification`, `hook_source_activation`,
 `host_executable`, `host_reload`, `host_session`, `managed_capability_proof`,
 `managed_config`, `managed_session_health`, `mcp_server`, `mode_transition`,
 `process_startup`, `project_trust`, `required_tools`,
@@ -325,14 +325,17 @@ The state is derived in this order:
    produces `hook_review_required_or_unknown`;
 5. incomplete `managed_session_health` or `managed_capability_proof` produces
    `mcp_observation_required`;
-6. incomplete `guard_verification` produces `guard_verification_required`;
+6. incomplete `correlated_guard_verification` produces
+   `guard_verification_required`;
 7. otherwise the state is `complete`.
 
 Every check in the report is required for that report. The top-level status is
 derived and cannot disagree with the checks:
 
-1. any `failed` or `blocked` check produces `status=failed`;
-2. otherwise any `pending` check produces `status=action_required`;
+1. any `blocked` check or non-recoverable `failed` check produces
+   `status=failed`;
+2. otherwise any `pending` check or recoverable failed
+   `correlated_guard_verification` produces `status=action_required`;
 3. otherwise the report contains only `passed` and `not_applicable` checks and
    produces `status=complete`.
 
@@ -352,14 +355,14 @@ Operational verification uses these chains:
 ```text
 managed_config -> host_reload -> hook_source_activation
 host_reload -> managed_session_health -> managed_capability_proof
-hook_source_activation -> guard_hook_execution -> guard_verification
+hook_source_activation -> ambient_hook_coverage -> correlated_guard_verification
 ```
 
 `project_trust` is evaluated independently. It can explain a host-owned
 prerequisite but is never folded into `hook_source_activation`.
-`managed_session_health` uses the fixed `latest_attempt` role: the newest
+`managed_session_health` uses the fixed `latest_managed_attempt` role: the newest
 current-revision `managed_host` runtime. `managed_capability_proof` uses the
-distinct `latest_complete_proof` role: the newest single runtime that completed
+distinct `latest_managed_capability_proof` role: the newest single runtime that completed
 initialize, the initialized notification, `tools/list`, required-tool
 validation, and the designated safe tool call. No check combines milestones
 from different sessions. A terminal latest attempt fails current session
@@ -381,10 +384,10 @@ The current Codex connection report contains these operational checks:
 | `managed_config` | The selected target contains the canonical managed entry. |
 | `host_reload` | A current-revision managed-host attempt shows that the host loaded current configuration. |
 | `hook_source_activation` | Carries the typed hook activation state and current definition hashes; ambient phase observations stay in details. |
-| `managed_session_health` | Reports `latest_attempt`, including a terminal protocol failure. |
-| `managed_capability_proof` | Reports the distinct `latest_complete_proof` and its same-session capability milestones. |
-| `guard_hook_execution` | Reports current-definition hook execution and managed-file integrity; ambient phase observations remain bounded details. |
-| `guard_verification` | Reports the verification ID and same-turn managed MCP plus prompt/pre/post Guard correlation. |
+| `managed_session_health` | Reports `latest_managed_attempt`, including a terminal protocol failure. |
+| `managed_capability_proof` | Reports the distinct `latest_managed_capability_proof` and its same-session capability milestones. |
+| `ambient_hook_coverage` | Reports only current-definition execution, managed-file integrity, and general configured prompt/pre/post phase coverage. |
+| `correlated_guard_verification` | Reports the latest current verification attempt and the latest completed current proof as distinct evidence. |
 | `project_trust` | Reports separately available project/configuration trust applicability without changing hook state. |
 | `host_executable` | Reports the separately probed PATH executable and version as a diagnostic. |
 | `mcp_server` | Reports CLI-owned MCP preflight/self-test facts as diagnostics only. |
@@ -393,9 +396,9 @@ CLI MCP preflight is read-only and creates no runtime session. The manual
 stdio self-test creates `session_source=manual_cli` only in a disposable
 per-command Runtime Home; neither preflight nor that disposable evidence
 satisfies `managed_session_health`, `managed_capability_proof`, or
-`guard_verification`. MCP resources and resource templates likewise do not
-prove tool exposure. Guard uses `guard_hook_execution` and
-`guard_verification` as focused top-level activation checks.
+`correlated_guard_verification`. MCP resources and resource templates likewise do not
+prove tool exposure. Guard uses `ambient_hook_coverage` and
+`correlated_guard_verification` as focused top-level activation checks.
 The strict Guard manifest owns the current policy hash, integration revision,
 typed runtime commands, complete Volicord-managed artifact expectations, and
 required hook phases. It also names the exact `host_contract_profile` and
@@ -427,11 +430,11 @@ metadata:
 | `reload_host` | `user` / `codex_ui` | `managed_config` | `host_reload` |
 | `review_hooks` | `user` / `codex_ui` | `host_reload` | `hook_source_activation` |
 | `run_mcp_verification` | `agent` / `mcp_tool` | `hook_source_activation` | `managed_session_health`, `managed_capability_proof` |
-| `run_guard_probe` | `agent` / `mcp_tool` | `managed_capability_proof` | `guard_hook_execution`, `guard_verification` |
+| `run_guard_probe` | `agent` / `mcp_tool` | `managed_capability_proof` | `ambient_hook_coverage`, `correlated_guard_verification` |
 | `inspect_hook_contract` | `user` / `codex_ui` | none | `hook_source_activation` |
 | `repair_managed_configuration` | `volicord` / `cli` | none | `managed_config` |
 | `inspect_runtime_session` | `agent` / `documentation` | `host_reload` | `managed_session_health`, `managed_capability_proof` |
-| `reinstall_current_build` | `volicord` / `cli` | none | `managed_config`, `guard_hook_execution` |
+| `reinstall_current_build` | `volicord` / `cli` | none | `managed_config`, `ambient_hook_coverage` |
 
 Strict construction and decoding reject action metadata that does not match
 the ID. `root_finding_ids` connects the action to its current independent
@@ -442,7 +445,7 @@ and deduplicated by stable ID and are derived from root findings and current
 check state. A blocked downstream check does not emit an observation action;
 its blocker's repair action comes first. Equivalent actions from several
 symptoms collapse to one stable action. Reload and first-use actions require
-actual Codex activity to be observed. A passing `guard_hook_execution` check
+actual Codex activity to be observed. A passing `ambient_hook_coverage` check
 does not request Guard reinstallation. Registry storage does not keep an independent verification
 status or action array. A
 connection with no completed persisted report is projected as a synthesized
@@ -597,9 +600,12 @@ requires `session_source=managed_host`. Reconnection creates a new runtime and
 new milestones; profiles and milestones are not shared across processes.
 
 Connection report context gathers session IDs from check evidence as well as
-finding correlation. Each entry preserves `latest_attempt` and/or
-`latest_complete_proof` roles; when one session has both roles it appears once
-with both roles. Human and JSON projections expose the same role assignment.
+finding correlation. Each entry preserves the closed roles
+`latest_managed_attempt`, `latest_managed_capability_proof`,
+`guard_verification_attempt`, and `guard_verification_proof`. One session with
+several roles appears once with a canonical role list. Context also carries
+the relevant Guard verification IDs. Human and JSON projections expose the
+same role assignment.
 
 The project integration revision extends the Connection revision with the
 current project workflow-policy fingerprint and current Guard installation
@@ -769,11 +775,22 @@ hook definition, and policy changes. Retry eligibility is represented only by
 `hook_review_required`, or `repair_required`; a new attempt still requires a
 genuinely different eligible coordinate.
 
-`guard_verification` is the final Connection check for this workflow. Its check
-details expose the verification, runtime-session, host-turn, and matched Guard
-event IDs so concise, verbose, and JSON reports share the same evidence
-coordinate. `complete` requires this correlated check to pass; unrelated
-prompt/pre/post observations do not substitute. The run is cooperative local
+`ambient_hook_coverage` and `correlated_guard_verification` deliberately do
+not share one boolean. `AmbientGuardCoverageEvidence` proves only current hook
+definition execution and general coverage of every configured prompt/pre/post
+phase. `CorrelatedGuardAttemptEvidence` retains the latest current attempt,
+including verification, runtime-session, host-session, host-turn, event,
+expected/observed callable, acquisition-stage, repair, retry, and timestamp
+facts. `CorrelatedGuardProof` retains the latest completed current proof.
+
+No attempt, or an active attempt under a deferred host policy, is `pending`.
+`complete` is `passed`. `repair_required` is always `failed` with typed
+recoverability and action; a recoverable failure may make the aggregate
+`action_required`, but neither its check nor attempt state becomes pending. An
+older completed proof remains historical capability evidence when a newer
+attempt fails and cannot make the current check pass. Diagnostic codes are
+selected directly from the typed repair reason and acquisition stage, never
+from summary wording. The run is cooperative local
 evidence only. It does not automate or bypass Codex project trust, modify MCP
 trust configuration, establish user or host identity, or create Core workflow
 authority.

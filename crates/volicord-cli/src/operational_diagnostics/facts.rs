@@ -1,7 +1,11 @@
 //! Typed, bounded fact inputs for operational-diagnostic families.
 
 use serde::Serialize;
-use volicord_types::{DiagnosticFactSource, DiagnosticFacts, GuardHookPhase, IntegrationRevision};
+use volicord_types::{
+    AgentToolId, ConnectionActionKind, DiagnosticFactSource, DiagnosticFacts, GuardHookPhase,
+    GuardProbeObservationStage, GuardVerificationRecoverability, GuardVerificationRepairReason,
+    GuardVerificationRetryPolicy, IntegrationRevision,
+};
 
 use crate::{
     guard_integration::audit::HookWrapperResolutionStatus,
@@ -134,6 +138,62 @@ impl TypedOperationalFacts for GuardEventFacts {
         matches!(
             diagnostic,
             OperationalDiagnostic::Guard(GuardDiagnostic::IncompatibleObservation)
+        )
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct GuardProbeFacts {
+    repair_reason: GuardVerificationRepairReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acquisition_stage: Option<GuardProbeObservationStage>,
+    retry_policy: GuardVerificationRetryPolicy,
+    recoverability: GuardVerificationRecoverability,
+    recovery_action: ConnectionActionKind,
+    expected_agent_tool_id: AgentToolId,
+    expected_host_callable_identity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observed_host_callable_identity: Option<String>,
+}
+
+impl GuardProbeFacts {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        repair_reason: GuardVerificationRepairReason,
+        acquisition_stage: Option<GuardProbeObservationStage>,
+        retry_policy: GuardVerificationRetryPolicy,
+        recoverability: GuardVerificationRecoverability,
+        recovery_action: ConnectionActionKind,
+        expected_host_callable_identity: impl Into<String>,
+        observed_host_callable_identity: Option<String>,
+    ) -> Self {
+        Self {
+            repair_reason,
+            acquisition_stage,
+            retry_policy,
+            recoverability,
+            recovery_action,
+            expected_agent_tool_id: AgentToolId::GUARD_PROBE,
+            expected_host_callable_identity: expected_host_callable_identity.into(),
+            observed_host_callable_identity,
+        }
+    }
+}
+
+impl TypedOperationalFacts for GuardProbeFacts {
+    fn supports(&self, diagnostic: OperationalDiagnostic) -> bool {
+        matches!(
+            diagnostic,
+            OperationalDiagnostic::Guard(
+                GuardDiagnostic::ProbeHookEventNotObserved
+                    | GuardDiagnostic::ProbePayloadIncompatible
+                    | GuardDiagnostic::ProbeCallableMismatch
+                    | GuardDiagnostic::ProbeVerificationIdMismatch
+                    | GuardDiagnostic::ProbeSessionMismatch
+                    | GuardDiagnostic::ProbeTurnMismatch
+                    | GuardDiagnostic::ProbeToolUseMismatch
+                    | GuardDiagnostic::ProbeCurrentContractChanged
+            )
         )
     }
 }

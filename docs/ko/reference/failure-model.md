@@ -232,11 +232,13 @@ enum 순서를 비교하거나 첫 번째 실패 check를 고르지 않습니다
 Connection context, 전체 check 배열, 한도가 있는 finding graph, 계산한 root-cause ID,
 중복 제거한 report action, operation별 typed detail, report limit을 담습니다. Report
 action은 namespaced code, 한도가 있는 summary, 해당 action이 복구하는 정확한 root ID를
-담습니다. Connection context에는 role을 보존하는 runtime-session evidence인
-`latest_attempt`와 `latest_complete_proof`가 들어갑니다. ID는 finding correlation뿐 아니라
-check evidence에서도 수집하고, ID 하나가 role 둘을 가지면 role 둘을 함께 둔 항목 하나로
-나타냅니다. 이 role은 현재 attempt health와 더 오래됐을 수 있는 same-session capability
-proof를 구분하며, consumer가 여러 session의 milestone을 성공 하나로 다루지 못하게 합니다.
+담습니다. Connection context에는 관련 Guard verification ID와 role을 보존하는
+runtime-session evidence인 `latest_managed_attempt`,
+`latest_managed_capability_proof`, `guard_verification_attempt`,
+`guard_verification_proof`가 들어갑니다. ID는 finding correlation뿐 아니라 check
+evidence에서도 수집하고, session 하나가 여러 role을 가지면 정규 role 목록이 있는 항목
+하나로 나타냅니다. 이 role은 현재 attempt health, managed capability, 상관관계가 확인된
+Guard 근거를 구분합니다.
 다른 schema version, 알 수 없는 최상위 구성원, 중복 check 또는 finding ID,
 잘못된 cause graph, 계산 결과와 다른 supplied root list, 중복 action code, root가 아닌
 finding을 가리키는 action은 역직렬화에서 거부합니다. 예전 connection-report schema를
@@ -307,10 +309,23 @@ Connection activation은 다음 구분을 보존합니다.
 - `bypassed_for_invocation`은 호출에 한정된 명시적 host 근거이며 지속적인 activation이
   아닙니다.
 - `disabled`에는 명시적 host 근거가 필요하며 `inspect_hook_contract`로 routing합니다.
-- 이전 `latest_complete_proof`가 남아 있어도 현재 managed session이 terminal이면
+- 이전 `latest_managed_capability_proof`가 남아 있어도 현재 managed session이 terminal이면
   failure입니다.
-- 현재 Guard 상관관계가 없으면 pending이며 prerequisite가 통과한 뒤에만
+- 현재 Guard attempt가 없으면 pending이며 prerequisite가 통과한 뒤에만
   `run_guard_probe`로 routing합니다.
+- `repair_required`는 failed `correlated_guard_verification`으로 유지합니다. Typed
+  recoverability가 집계를 `action_required`로 만들 수 있지만 terminal attempt를
+  pending으로 바꾸지는 않습니다.
+- `ambient_hook_coverage` 통과는 상관관계가 확인된 Guard 성공을 증명하지 않으며 오래된
+  `guard_verification_proof`는 더 최신 실패 attempt를 숨기지 못합니다.
+
+Guard probe root finding은 typed repair reason과 acquisition stage에서 직접 고릅니다.
+안정적인 범주는 `guard.probe.hook_event_not_observed`,
+`guard.probe.payload_incompatible`, `guard.probe.callable_mismatch`,
+`guard.probe.verification_id_mismatch`, `guard.probe.session_mismatch`,
+`guard.probe.turn_mismatch`, `guard.probe.tool_use_mismatch`,
+`guard.probe.current_contract_changed`입니다. Summary parsing은 diagnostic 분류 경계가
+아닙니다.
 
 Failed 및 blocked check는 typed root finding ID를 유지합니다. Remediation은 닫힌
 connection action `reload_host`, `review_hooks`, `run_mcp_verification`,

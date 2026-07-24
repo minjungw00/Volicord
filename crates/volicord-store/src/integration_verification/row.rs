@@ -331,6 +331,27 @@ pub(super) fn latest_run_for_connection(
     .map_err(Into::into)
 }
 
+pub(super) fn latest_completed_run_for_connection(
+    conn: &Connection,
+    connection_internal_id: &str,
+    integration_revision: &str,
+) -> StoreResult<Option<GuardIntegrationVerificationRunRecord>> {
+    conn.query_row(
+        &format!(
+            "{RUN_SELECT}
+              WHERE connection_internal_id = ?1
+                AND integration_revision = ?2
+                AND status = 'complete'
+              ORDER BY completed_at DESC, created_at DESC, verification_id DESC
+              LIMIT 1"
+        ),
+        [connection_internal_id, integration_revision],
+        run_from_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
 fn run_from_row(row: &Row<'_>) -> rusqlite::Result<GuardIntegrationVerificationRunRecord> {
     Ok(GuardIntegrationVerificationRunRecord {
         verification_id: row.get(0)?,

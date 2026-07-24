@@ -20,6 +20,7 @@ pub use observation::{
 pub use probe::acknowledge_guard_integration_probe;
 pub use status::{
     current_guard_integration_verification_workflow, get_guard_integration_verification,
+    latest_completed_guard_integration_verification_for_connection,
     latest_guard_integration_verification_for_connection,
 };
 use volicord_host_contract::{HostContractProfileId, HostSessionId, HostTurnId};

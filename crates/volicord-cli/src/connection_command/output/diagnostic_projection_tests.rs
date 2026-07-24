@@ -363,22 +363,22 @@ fn report_context_deduplicates_same_session_roles_with_human_json_parity() {
             ),
             role_check(
                 ConnectionCheckKind::ProcessStartup,
-                "latest_attempt",
+                "latest_managed_attempt",
                 runtime_session_id,
             ),
             role_check(
                 ConnectionCheckKind::HostSession,
-                "latest_attempt",
+                "latest_managed_attempt",
                 runtime_session_id,
             ),
             role_check(
                 ConnectionCheckKind::RequiredTools,
-                "latest_complete_proof",
+                "latest_managed_capability_proof",
                 runtime_session_id,
             ),
             role_check(
                 ConnectionCheckKind::ToolRoundTrip,
-                "latest_complete_proof",
+                "latest_managed_capability_proof",
                 runtime_session_id,
             ),
         ],
@@ -394,11 +394,11 @@ fn report_context_deduplicates_same_session_roles_with_human_json_parity() {
         json["connection"]["runtime_sessions"],
         json!([{
             "id": runtime_session_id,
-            "roles": ["latest_attempt", "latest_complete_proof"],
+            "roles": ["latest_managed_attempt", "latest_managed_capability_proof"],
         }])
     );
     assert!(verbose.contains(&format!(
-        "Runtime sessions: {runtime_session_id} (latest_attempt, latest_complete_proof)"
+        "Runtime sessions: {runtime_session_id} (latest_managed_attempt, latest_managed_capability_proof)"
     )));
 }
 
@@ -416,22 +416,22 @@ fn report_context_contains_both_distinct_role_bearing_sessions() {
             ),
             role_check(
                 ConnectionCheckKind::ProcessStartup,
-                "latest_attempt",
+                "latest_managed_attempt",
                 "runtime_session_attempt",
             ),
             role_check(
                 ConnectionCheckKind::HostSession,
-                "latest_attempt",
+                "latest_managed_attempt",
                 "runtime_session_attempt",
             ),
             role_check(
                 ConnectionCheckKind::RequiredTools,
-                "latest_complete_proof",
+                "latest_managed_capability_proof",
                 "runtime_session_proof",
             ),
             role_check(
                 ConnectionCheckKind::ToolRoundTrip,
-                "latest_complete_proof",
+                "latest_managed_capability_proof",
                 "runtime_session_proof",
             ),
         ],
@@ -442,12 +442,102 @@ fn report_context_contains_both_distinct_role_bearing_sessions() {
     assert_eq!(
         json["connection"]["runtime_sessions"],
         json!([
-            {"id": "runtime_session_attempt", "roles": ["latest_attempt"]},
-            {"id": "runtime_session_proof", "roles": ["latest_complete_proof"]},
+            {"id": "runtime_session_attempt", "roles": ["latest_managed_attempt"]},
+            {"id": "runtime_session_proof", "roles": ["latest_managed_capability_proof"]},
         ])
     );
-    assert!(verbose.contains("runtime_session_attempt (latest_attempt)"));
-    assert!(verbose.contains("runtime_session_proof (latest_complete_proof)"));
+    assert!(verbose.contains("runtime_session_attempt (latest_managed_attempt)"));
+    assert!(verbose.contains("runtime_session_proof (latest_managed_capability_proof)"));
+}
+
+#[test]
+fn guard_failure_keeps_typed_attempt_context_and_renderer_parity() {
+    let report = report(
+        vec![
+            check(
+                ConnectionCheckKind::AmbientHookCoverage,
+                ConnectionCheckStatus::Passed,
+                "ambient_hook_coverage_passed",
+                "A current managed Guard hook executed",
+                &[],
+                Some(json!({
+                    "current_hook_definition_executed": true,
+                    "configured_phases_observed": true,
+                })),
+            ),
+            check(
+                ConnectionCheckKind::CorrelatedGuardVerification,
+                ConnectionCheckStatus::Failed,
+                "correlated_guard_verification_failed",
+                "The latest correlated Guard verification requires repair",
+                &[],
+                Some(json!({
+                    "recoverability": "recoverable",
+                    "latest_attempt": {
+                        "evidence_role": "guard_verification_attempt",
+                        "verification_id": "guard_verification_current",
+                        "runtime_session_id": "runtime_session_guard",
+                        "host_session_id": "host_session_guard",
+                        "host_turn_id": "host_turn_guard",
+                        "attempt_state": "repair_required",
+                        "expected_agent_tool_id": "volicord.guard_probe",
+                        "expected_host_callable_identity": "mcp__volicord__guard_probe",
+                        "observed_host_callable_identity": "mcp__other__guard_probe",
+                        "acquisition_stage": "callable_identity_mismatch",
+                        "repair_reason": "callable_identity_mismatch",
+                        "retry_policy": "new_turn_required",
+                        "recovery_action": "run_guard_probe",
+                    },
+                    "latest_completed_proof": {
+                        "evidence_role": "guard_verification_proof",
+                        "verification_id": "guard_verification_older",
+                        "runtime_session_id": "runtime_session_guard",
+                    }
+                })),
+            ),
+        ],
+        Vec::new(),
+        Vec::new(),
+    );
+
+    let (concise, verbose, json) = projections(&report);
+    assert_eq!(json["status"], "action_required");
+    assert_eq!(
+        json["checks"]
+            .as_array()
+            .expect("checks")
+            .iter()
+            .find(|check| check["id"] == "correlated_guard_verification")
+            .expect("correlated check")["status"],
+        "failed"
+    );
+    assert!(concise.contains("Hook installation and ambient execution: passed"));
+    assert!(concise.contains("Correlated Guard verification: failed"));
+    assert!(concise.contains("Reason: callable_identity_mismatch"));
+    for expected in [
+        "Verification ID: guard_verification_current",
+        "Runtime session: runtime_session_guard",
+        "Host session: host_session_guard",
+        "Host turn: host_turn_guard",
+        "Attempt state: repair_required",
+        "Acquisition stage: callable_identity_mismatch",
+        "Expected host callable: mcp__volicord__guard_probe",
+        "Observed host callable: mcp__other__guard_probe",
+        "Retry policy: new_turn_required",
+    ] {
+        assert!(verbose.contains(expected), "{verbose}");
+    }
+    assert_eq!(
+        json["connection"]["runtime_sessions"],
+        json!([{
+            "id": "runtime_session_guard",
+            "roles": ["guard_verification_attempt", "guard_verification_proof"],
+        }])
+    );
+    assert_eq!(
+        json["connection"]["verification_ids"],
+        json!(["guard_verification_current", "guard_verification_older"])
+    );
 }
 
 #[test]
@@ -483,7 +573,7 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
                 "MCP initialize selected no supported protocol",
                 &[id],
                 Some(json!({
-                    "evidence_role": "latest_attempt",
+                    "evidence_role": "latest_managed_attempt",
                     "runtime_session_id": "runtime_session_projection",
                     "managed_peer": {
                         "client_info": {"name": "codex", "version": "0.42.0"},
@@ -666,7 +756,8 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
     const PROCESS_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::HostSession];
     const HOST_SESSION_BLOCKED: &[ConnectionCheckKind] = &[];
     const TOOLS_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::ToolRoundTrip];
-    const GUARD_BLOCKED: &[ConnectionCheckKind] = &[ConnectionCheckKind::GuardVerification];
+    const GUARD_BLOCKED: &[ConnectionCheckKind] =
+        &[ConnectionCheckKind::CorrelatedGuardVerification];
 
     let scenarios = [
         DiagnosticMatrixScenario::failure(
@@ -994,7 +1085,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             "guard.managed_file.integrity_failed",
             "guard",
             Some("action.guard.repair"),
-            ConnectionCheckKind::GuardHookExecution,
+            ConnectionCheckKind::AmbientHookCoverage,
             GUARD_BLOCKED,
             None,
             "action.guard.repair",
@@ -1249,7 +1340,7 @@ fn pending_and_complete_reports_are_exact() {
             "Managed host connection use has not been observed",
             &[],
             Some(json!({
-                "evidence_role": "latest_attempt",
+                "evidence_role": "latest_managed_attempt",
                 "current_integration_revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "host_executable_probe": {
                     "discovered_path": "/opt/codex",

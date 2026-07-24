@@ -126,6 +126,7 @@ typed_subject!(GuardManagedArtifactSubject);
 typed_subject!(GuardPhaseSubject);
 typed_subject!(GuardInstallationSubject);
 typed_subject!(GuardEventSubject);
+typed_subject!(GuardVerificationAttemptSubject);
 typed_subject!(IntegrationRevisionSubject);
 typed_subject!(VerificationToolSubject);
 typed_subject!(InstallationSubject);
@@ -216,6 +217,18 @@ impl GuardEventSubject {
     pub fn for_connection(connection_id: &str, event_id: &str) -> Result<Self, String> {
         SubjectIdentity::stable_reference(connection_id, "guard_event", b"guard_event", event_id)
             .map(Self)
+    }
+}
+
+impl GuardVerificationAttemptSubject {
+    pub fn for_connection(connection_id: &str, verification_id: &str) -> Result<Self, String> {
+        SubjectIdentity::stable_reference(
+            connection_id,
+            "guard_verification_attempt",
+            b"guard_verification_attempt",
+            verification_id,
+        )
+        .map(Self)
     }
 }
 

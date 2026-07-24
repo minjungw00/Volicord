@@ -178,6 +178,14 @@ Begin, probe, get, `volicord-mcp`, CLI check, 생성 host guidance는 모두 그
 `repair_required`는 terminal로 남습니다. Adapter와 renderer는 별도의 상태를 파생하거나
 summary 산문을 분류하지 않습니다.
 
+CLI는 Guard를 독립된 check/evidence 경로 둘로 projection합니다.
+`AmbientGuardCoverageEvidence`는 현재 definition과 configured-phase coverage를
+담당합니다. `CorrelatedGuardAttemptEvidence`와 `CorrelatedGuardProof`는 최신 attempt와
+최신 완료 proof를 담당합니다. Report context는 Guard와 managed-MCP runtime session을
+함께 수집하고 폐쇄형 evidence role 네 개를 정규화하며 관련 verification ID를
+보존합니다. Diagnostic은 typed repair reason과 acquisition stage로 선택하고 renderer
+문구나 숫자형 Codex version으로 선택하지 않습니다.
+
 Store 내부의 integration-verification facade는 생성·재개, probe acknowledgement,
 event correlation, bounded observation, typed repair/retry projection, coordinate 검증,
 SQL row 변환을

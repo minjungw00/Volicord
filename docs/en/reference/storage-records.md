@@ -221,8 +221,8 @@ relationships are coherent. A `ManagedCapabilityProof` additionally requires
 `session_source=managed_host` and the complete process, initialize,
 initialized-notification, `tools/list`, required-tool, and canonical
 verification-tool chain in that row. For one current integration revision,
-selection names the newest managed row `latest_attempt` and the newest complete
-row `latest_complete_proof`; it never merges rows. The selected peer's
+selection names the newest managed row `latest_managed_attempt` and the newest
+complete row `latest_managed_capability_proof`; it never merges rows. The selected peer's
 `clientInfo` is the authoritative protocol peer observation. The separately
 probed PATH executable version remains diagnostic and does not select the
 proof. Persisted connection reports retain all selected session IDs and their
@@ -457,6 +457,15 @@ states. The repair reason is separate from
 `hook_review_required`, or `repair_required`. Begin, probe, get/status,
 adapters, and renderers consume that state. Persistence does not construct
 user-facing next-action prose or own renderer wording.
+
+Connection reporting queries the newest current-revision Guard run as
+`guard_verification_attempt` and independently queries the newest completed
+current-revision run as `guard_verification_proof`. The latest run alone
+determines the correlated check: active is pending, complete is passed, and
+`repair_required` is failed. An older completed row remains proof evidence but
+cannot override a newer failed attempt. Report context deduplicates their
+runtime session with managed MCP roles and retains all relevant verification
+IDs.
 
 Expected-write and unrecorded-change records are project-local. Guard
 suppression reads only bounded canonical correlation data and returns the exact

@@ -2,13 +2,15 @@ use std::error::Error;
 
 use volicord_types::{
     GuardIntegrationVerificationPhaseStatus, GuardIntegrationVerificationPhases,
-    GuardVerificationRepairReason, GuardVerificationRetryPolicy,
+    GuardVerificationRepairReason, GuardVerificationRetryPolicy, IntegrationRevision,
     IntegrationVerificationWorkflowState,
 };
 
 use super::support::*;
 use crate::integration_verification::{
-    get_guard_integration_verification, status::begin_result_from_record,
+    get_guard_integration_verification,
+    latest_completed_guard_integration_verification_for_connection,
+    latest_guard_integration_verification_for_connection, status::begin_result_from_record,
 };
 
 #[test]
@@ -115,6 +117,44 @@ fn complete_projects_exact_workflow_and_remains_terminal() -> Result<(), Box<dyn
         passed_fixture.record(&passed.verification_id)?.status,
         "complete"
     );
+    Ok(())
+}
+
+#[test]
+fn newest_attempt_and_newest_completed_proof_are_selected_independently(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = VerificationFixture::new("guard-integration-status-proof-history")?;
+    let completed = fixture.begin()?;
+    fixture.complete(&completed.verification_id)?;
+    let newer = fixture.begin_new_turn(
+        "host_turn_newer",
+        "guard_event_prompt_newer",
+        "2026-07-23T00:01:00Z",
+        ["newer"],
+    )?;
+    fixture.force_repair(
+        &newer.verification_id,
+        GuardVerificationRepairReason::CallableIdentityMismatch,
+        GuardVerificationRetryPolicy::NewTurnRequired,
+    )?;
+
+    let latest = latest_guard_integration_verification_for_connection(
+        fixture.runtime_home.path(),
+        CONNECTION_ID,
+        &IntegrationRevision::parse(fixture.integration_revision.clone())?,
+    )?
+    .expect("latest attempt");
+    let proof = latest_completed_guard_integration_verification_for_connection(
+        fixture.runtime_home.path(),
+        CONNECTION_ID,
+        &IntegrationRevision::parse(fixture.integration_revision.clone())?,
+    )?
+    .expect("latest completed proof");
+
+    assert_eq!(latest.verification_id, newer.verification_id);
+    assert_eq!(latest.status, "repair_required");
+    assert_eq!(proof.verification_id, completed.verification_id);
+    assert_eq!(proof.status, "complete");
     Ok(())
 }
 

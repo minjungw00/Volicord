@@ -123,6 +123,15 @@ Durable tests should cover, as applicable:
 - `ConnectionActivationState` transitions through configured, reload, hook
   review/unknown, managed MCP observation, Guard verification, complete, and
   failed, with `project_trust` kept independent;
+- separate ambient and correlated Guard checks: ambient passed with correlated
+  failed, ambient pending with no attempt, correlated complete,
+  repair-required never projected as pending, and an older proof retained
+  without hiding a newer failed attempt;
+- Guard report parity across concise, verbose, and JSON; top-level Guard
+  runtime sessions and verification IDs; canonical deduplication of managed
+  and Guard session roles; recoverable failed aggregation to
+  `action_required`; and direct stable-code mapping for every typed repair
+  reason and acquisition stage;
 - fixed typed action IDs, owners, channels, prerequisites, completed checks,
   root-finding ordering, and strict rejection of inconsistent action metadata;
 - init output ordering for reload, hook review, new conversation, canonical

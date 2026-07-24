@@ -264,12 +264,13 @@ generation timestamp, optional Connection context, complete check array,
 bounded finding graph, derived root-cause IDs, deduplicated report actions,
 operation-specific typed details, and report limits. A report action contains a
 namespaced code, bounded summary, and the exact root IDs it remediates.
-Connection context includes role-preserving runtime-session evidence selected
-as `latest_attempt` and `latest_complete_proof`. IDs come from check evidence as
-well as finding correlation; one ID with both roles is represented once with
-both roles. The roles distinguish current attempt health from a possibly older
-same-session capability proof and prohibit consumers from treating milestones
-across sessions as one success.
+Connection context includes relevant Guard verification IDs and
+role-preserving runtime-session evidence selected as
+`latest_managed_attempt`, `latest_managed_capability_proof`,
+`guard_verification_attempt`, and `guard_verification_proof`. IDs come from
+check evidence as well as finding correlation; one session with several roles
+is represented once with a canonical role list. These roles distinguish
+current attempt health, managed capability, and correlated Guard evidence.
 Deserialization rejects any other schema version, unknown top-level member,
 duplicate check or finding ID, invalid cause graph, supplied root list that
 differs from the derived roots, duplicate action code, or action that refers to
@@ -350,9 +351,23 @@ Connection activation preserves these distinctions:
 - `disabled` requires explicit host evidence and routes to
   `inspect_hook_contract`.
 - a terminal current managed session is a failure even if an older
-  `latest_complete_proof` remains available.
-- a missing current Guard correlation is pending and routes to
+  `latest_managed_capability_proof` remains available.
+- a missing current Guard attempt is pending and routes to
   `run_guard_probe` only after prerequisites pass.
+- `repair_required` remains a failed `correlated_guard_verification`; typed
+  recoverability may make the aggregate `action_required`, but does not turn
+  the terminal attempt into pending.
+- a passed `ambient_hook_coverage` never proves correlated Guard success, and
+  an older `guard_verification_proof` never hides a newer failed attempt.
+
+Guard probe root findings are selected directly from typed repair reason and
+acquisition stage. The stable categories are
+`guard.probe.hook_event_not_observed`, `guard.probe.payload_incompatible`,
+`guard.probe.callable_mismatch`, `guard.probe.verification_id_mismatch`,
+`guard.probe.session_mismatch`, `guard.probe.turn_mismatch`,
+`guard.probe.tool_use_mismatch`, and
+`guard.probe.current_contract_changed`. Summary parsing is not a diagnostic
+classification boundary.
 
 Failures and blocked checks retain typed root finding IDs. Remediation is chosen
 from the closed connection actions `reload_host`, `review_hooks`,

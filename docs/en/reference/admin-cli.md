@@ -219,19 +219,27 @@ The canonical check statuses are `passed`, `pending`, `failed`, `blocked`, and
 `not_applicable`. They mean, respectively: completed successfully; waiting for
 a required external observation with no failed prerequisite; failed in the
 check itself; unable to run because a prerequisite finding failed; and not
-applicable to the selected Connection or profile. The aggregate remains
-`failed` when any check is failed or blocked, `action_required` when no such
-check exists and at least one is pending, and `complete` otherwise.
+applicable to the selected Connection or profile. The aggregate is `failed`
+for a blocked or non-recoverable failed check. A recoverable failed
+`correlated_guard_verification` remains failed while it may contribute to
+`action_required`; pending checks also contribute to `action_required`.
 
 The concise renderer always names `activation_state` and
 `hook_activation_state`. Pending focused checks may be grouped as managed
 session, capability, or Guard activity; passed, failed, blocked,
 not-applicable, and absent checks are not repeated under `Waiting`. Ambient
-Guard phases remain details of `hook_source_activation` or
-`guard_hook_execution`, not additional top-level readiness checks. The
+Guard phases are reported separately by `ambient_hook_coverage`; they never
+satisfy `correlated_guard_verification`. The
 renderer does not change, remove, reorder, or persist canonical checks or
 actions. Dry-run prose groups planned-change counts by the typed
 `PlannedConnectionChangeKind`; it does not infer ownership from target paths.
+A terminal correlated attempt therefore renders facts such as:
+
+```text
+Hook installation and ambient execution: passed
+Correlated Guard verification: failed
+Reason: callable_identity_mismatch
+```
 
 When applied `init` creates or changes the project hook definition, it reports
 `hook_activation_state=review_required_by_setup` and prints this exact
@@ -309,7 +317,11 @@ blocked-by relationships, recommended actions, and report limits. Known detail
 fields are rendered structurally. MCP checks serialize typed
 `ManagedSessionAttemptDetails`, `ManagedCapabilityProofDetails`,
 `RequiredToolsEvidence`, `VerificationToolEvidence`, and
-`HostExecutableProbeDetails`; a renderer does not turn an absent optional field
+`HostExecutableProbeDetails`. Guard checks serialize
+`AmbientGuardCoverageEvidence`, `CorrelatedGuardAttemptEvidence`, and
+`CorrelatedGuardProof`; verbose output shows attempt coordinates, acquisition
+stage, expected and observed callable identity, retry policy, and timestamps.
+A renderer does not turn an absent optional field
 into a negative milestone on a passed check. Unknown or extended fields and values that do
 not match a focused renderer's expected type appear under `Additional details`.
 The renderer never reconstructs a cause from a summary. Redacted fact fields
@@ -348,11 +360,13 @@ DiagnosticReport:
 
 `connection` carries Runtime Home, selected Connection coordinates, optional
 repository and configuration target, current integration revision, bounded
-`runtime_session_ids`, and role-preserving `runtime_sessions`. Each role entry
-contains one `id` and canonical `roles` drawn from `latest_attempt` and
-`latest_complete_proof`. Check evidence supplies these IDs even when no finding
-is correlated. One session selected for both roles appears once with both
-roles, and verbose human output renders the same assignment. Each check carries
+`runtime_session_ids`, role-preserving `runtime_sessions`, and relevant
+`verification_ids`. Each role entry contains one `id` and canonical `roles`
+drawn from `latest_managed_attempt`, `latest_managed_capability_proof`,
+`guard_verification_attempt`, and `guard_verification_proof`. Check evidence
+supplies these IDs even when no finding is correlated. One session selected for
+several roles appears once with its canonically ordered roles, and verbose
+human output renders the same assignment. Each check carries
 its status, canonical dependencies, typed details, observation time, and
 cause-finding IDs. Each finding carries
 safe typed facts, cause IDs, actions, correlations, redaction metadata, and
@@ -401,7 +415,7 @@ Connection
   Config target: /home/user/.codex/config.toml
   Runtime home: /home/user/.volicord
   Integration revision: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-  Runtime sessions: runtime_session_01 (latest_attempt)
+  Runtime sessions: runtime_session_01 (latest_managed_attempt)
 
 Summary
   Status: failed
@@ -413,7 +427,7 @@ Checks
     Code: host_session_protocol_mismatch
     Depends on: process_startup
     Root findings: finding.runtime_session_01.protocol
-    Evidence role: latest_attempt
+    Evidence role: latest_managed_attempt
     Runtime session: runtime_session_01
     PATH executable: /opt/codex
     PATH executable version: 0.42.0
@@ -814,9 +828,9 @@ CLI probe evidence only. Even a passing `codex` compatibility fixture is not
 an observation of an actual managed Codex process and does not create
 `managed_session_health` or `managed_capability_proof` evidence. Only a runtime
 session whose source is `managed_host` can supply those observations. The
-newest current-revision managed session is fixed as `latest_attempt` for
+newest current-revision managed session is fixed as `latest_managed_attempt` for
 session health. Capability proof passes only from the newest
-`latest_complete_proof` whose initialize, initialized notification,
+`latest_managed_capability_proof` whose initialize, initialized notification,
 `tools/list`, required-tool validation, and designated safe call all completed
 in that same session. A newer partial or failed attempt and an older proof
 remain separate role-bearing evidence; neither fills milestones in the other.
@@ -834,7 +848,7 @@ and observed host behavior and conditionally persist the report.
 
 Actions are an ordered, deduplicated list derived from pending and failed
 checks. Each carries its fixed owner, channel, prerequisites, intended checks,
-and current root finding IDs. A passing `guard_hook_execution` check never
+and current root finding IDs. A passing `ambient_hook_coverage` check never
 produces `reinstall_current_build`.
 
 <a id="external-host-configuration"></a>
@@ -919,9 +933,12 @@ persistence. Active verification still does not prove that a managed host ran,
 that a future launch will remain available, or that Product Repository behavior
 outside the checked contracts is correct.
 
-`volicord connection verify codex` reports the canonical
-`guard_verification` check and its verification/run/event IDs when available,
-but the CLI does not synthesize or execute the in-chat workflow. A pending
+`volicord connection verify codex` reports `ambient_hook_coverage` separately
+from `correlated_guard_verification`. Concise output names both results and a
+typed repair reason for a terminal attempt. Verbose output shows the complete
+bounded attempt coordinates and current proof; JSON preserves the same typed
+objects, runtime-session roles, and verification IDs. The CLI does not
+synthesize or execute the in-chat workflow. A pending
 check instructs the operator to use
 `volicord.begin_integration_verification` inside the current managed Codex
 chat, then follow the returned tagged `workflow` and its exact typed `tool`.
@@ -1000,6 +1017,15 @@ details and verbose output expose those same exact names. Arbitrary bounded
 future Codex version text remains diagnostic and accepted; the focused host
 owner defines no unsupported-current-host-revision code, so the CLI does not
 invent one.
+
+Terminal Guard attempts map typed repair reasons directly to
+`guard.probe.hook_event_not_observed`, `guard.probe.payload_incompatible`,
+`guard.probe.callable_mismatch`, `guard.probe.verification_id_mismatch`,
+`guard.probe.session_mismatch`, `guard.probe.turn_mismatch`,
+`guard.probe.tool_use_mismatch`, or
+`guard.probe.current_contract_changed`. Their facts retain the acquisition
+stage and retry policy. Neither diagnostic lookup nor a renderer parses the
+attempt summary to choose a code.
 
 These CLI-owned operational findings are current-state snapshots. Their
 `CurrentDiagnosticKey` contains the complete Connection scope, code, domain,

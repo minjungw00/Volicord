@@ -22,8 +22,8 @@ use crate::{
     AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionChannel,
     ConnectionActionKind, ConnectionActionOwner, ConnectionActivationState, ConnectionCheck,
     ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, DurableIdGenerator,
-    DurableIdKind, HookActivationState, IntegrationRevision, JsonObject, ProjectId,
-    RandomDurableIdGenerator, UtcTimestamp,
+    DurableIdKind, GuardIntegrationVerificationId, HookActivationState, IntegrationRevision,
+    JsonObject, ProjectId, RandomDurableIdGenerator, UtcTimestamp,
 };
 
 /// The only current JSON representation version for [`DiagnosticReport`].
@@ -2405,15 +2405,19 @@ impl DiagnosticOperation {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeSessionEvidenceRole {
-    LatestAttempt,
-    LatestCompleteProof,
+    LatestManagedAttempt,
+    LatestManagedCapabilityProof,
+    GuardVerificationAttempt,
+    GuardVerificationProof,
 }
 
 impl RuntimeSessionEvidenceRole {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::LatestAttempt => "latest_attempt",
-            Self::LatestCompleteProof => "latest_complete_proof",
+            Self::LatestManagedAttempt => "latest_managed_attempt",
+            Self::LatestManagedCapabilityProof => "latest_managed_capability_proof",
+            Self::GuardVerificationAttempt => "guard_verification_attempt",
+            Self::GuardVerificationProof => "guard_verification_proof",
         }
     }
 }
@@ -2484,6 +2488,7 @@ pub struct DiagnosticConnectionContext {
     repository: Option<String>,
     config_target: Option<String>,
     integration_revision: Option<IntegrationRevision>,
+    verification_ids: Vec<GuardIntegrationVerificationId>,
     runtime_session_ids: Vec<AgentRuntimeSessionId>,
     runtime_sessions: Vec<DiagnosticRuntimeSessionContext>,
 }
@@ -2500,6 +2505,7 @@ struct DiagnosticConnectionContextWire {
     repository: Option<String>,
     config_target: Option<String>,
     integration_revision: Option<IntegrationRevision>,
+    verification_ids: Vec<GuardIntegrationVerificationId>,
     runtime_session_ids: Vec<AgentRuntimeSessionId>,
     runtime_sessions: Vec<DiagnosticRuntimeSessionContext>,
 }
@@ -2510,6 +2516,7 @@ impl<'de> Deserialize<'de> for DiagnosticConnectionContext {
         D: Deserializer<'de>,
     {
         let wire = DiagnosticConnectionContextWire::deserialize(deserializer)?;
+        let supplied_verification_ids = wire.verification_ids.clone();
         let supplied_runtime_session_ids = wire.runtime_session_ids.clone();
         let supplied_runtime_sessions = wire.runtime_sessions.clone();
         let context = Self::try_new(
@@ -2522,10 +2529,16 @@ impl<'de> Deserialize<'de> for DiagnosticConnectionContext {
             wire.repository,
             wire.config_target,
             wire.integration_revision,
+            wire.verification_ids,
             wire.runtime_session_ids,
             wire.runtime_sessions,
         )
         .map_err(de::Error::custom)?;
+        if supplied_verification_ids != context.verification_ids {
+            return Err(de::Error::custom(
+                "diagnostic connection verification_ids are not in canonical order",
+            ));
+        }
         if supplied_runtime_session_ids != context.runtime_session_ids {
             return Err(de::Error::custom(
                 "diagnostic connection runtime_session_ids are not in canonical order",
@@ -2553,6 +2566,7 @@ impl DiagnosticConnectionContext {
         repository: Option<String>,
         config_target: Option<String>,
         integration_revision: Option<IntegrationRevision>,
+        mut verification_ids: Vec<GuardIntegrationVerificationId>,
         mut runtime_session_ids: Vec<AgentRuntimeSessionId>,
         mut runtime_sessions: Vec<DiagnosticRuntimeSessionContext>,
     ) -> Result<Self, DiagnosticError> {
@@ -2579,6 +2593,12 @@ impl DiagnosticConnectionContext {
             if let Some(value) = value {
                 validate_bounded_text(field, value, 4_096)?;
             }
+        }
+        verification_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        if verification_ids.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid(
+                "diagnostic connection context contains duplicate verification ids",
+            ));
         }
         runtime_session_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
         if runtime_session_ids
@@ -2620,6 +2640,7 @@ impl DiagnosticConnectionContext {
             repository,
             config_target,
             integration_revision,
+            verification_ids,
             runtime_session_ids,
             runtime_sessions,
         })
@@ -2659,6 +2680,10 @@ impl DiagnosticConnectionContext {
 
     pub fn integration_revision(&self) -> Option<&IntegrationRevision> {
         self.integration_revision.as_ref()
+    }
+
+    pub fn verification_ids(&self) -> &[GuardIntegrationVerificationId] {
+        &self.verification_ids
     }
 
     pub fn runtime_session_ids(&self) -> &[AgentRuntimeSessionId] {
@@ -4451,13 +4476,32 @@ mod tests {
             None,
             None,
             vec![
+                GuardIntegrationVerificationId::new("guard_verification_b"),
+                GuardIntegrationVerificationId::new("guard_verification_a"),
+            ],
+            vec![
                 AgentRuntimeSessionId::new("runtime_session_b"),
                 AgentRuntimeSessionId::new("runtime_session_a"),
             ],
             Vec::new(),
         )
         .unwrap();
-        let mut noncanonical_context = serde_json::to_value(context).unwrap();
+        assert_eq!(
+            context.verification_ids(),
+            &[
+                GuardIntegrationVerificationId::new("guard_verification_a"),
+                GuardIntegrationVerificationId::new("guard_verification_b"),
+            ]
+        );
+        let canonical_context = serde_json::to_value(&context).unwrap();
+        let mut noncanonical_verification_ids = canonical_context.clone();
+        noncanonical_verification_ids["verification_ids"] =
+            json!(["guard_verification_b", "guard_verification_a"]);
+        assert!(serde_json::from_value::<DiagnosticConnectionContext>(
+            noncanonical_verification_ids
+        )
+        .is_err());
+        let mut noncanonical_context = canonical_context;
         noncanonical_context["runtime_session_ids"] =
             json!(["runtime_session_b", "runtime_session_a"]);
         assert!(
@@ -4467,20 +4511,21 @@ mod tests {
         let role_context = DiagnosticRuntimeSessionContext::try_new(
             AgentRuntimeSessionId::new("runtime_session_a"),
             vec![
-                RuntimeSessionEvidenceRole::LatestCompleteProof,
-                RuntimeSessionEvidenceRole::LatestAttempt,
+                RuntimeSessionEvidenceRole::LatestManagedCapabilityProof,
+                RuntimeSessionEvidenceRole::LatestManagedAttempt,
             ],
         )
         .unwrap();
         assert_eq!(
             role_context.roles(),
             &[
-                RuntimeSessionEvidenceRole::LatestAttempt,
-                RuntimeSessionEvidenceRole::LatestCompleteProof,
+                RuntimeSessionEvidenceRole::LatestManagedAttempt,
+                RuntimeSessionEvidenceRole::LatestManagedCapabilityProof,
             ]
         );
         let mut noncanonical_roles = serde_json::to_value(&role_context).unwrap();
-        noncanonical_roles["roles"] = json!(["latest_complete_proof", "latest_attempt"]);
+        noncanonical_roles["roles"] =
+            json!(["latest_managed_capability_proof", "latest_managed_attempt"]);
         assert!(
             serde_json::from_value::<DiagnosticRuntimeSessionContext>(noncanonical_roles).is_err()
         );
@@ -4494,6 +4539,7 @@ mod tests {
             None,
             None,
             None,
+            Vec::new(),
             vec![AgentRuntimeSessionId::new("runtime_session_b")],
             vec![role_context],
         )

@@ -219,6 +219,14 @@ Guard 설치와 관찰 진단은 렌더링한 summary가 아니라 닫힌 원인
 | `guard.internal.unexpected_failure` | 더 좁은 typed mapping이 없는 예상 밖 Guard 실패입니다. |
 | `guard.prompt_capture.unsupported` | Host 경계가 구성된 prompt capture를 지원하지 않습니다. |
 | `guard.prompt_capture.unobserved` | 지원되고 구성된 prompt capture를 아직 관찰하지 못했습니다. |
+| `guard.probe.hook_event_not_observed` | Typed attempt stage가 필수 hook event를 관찰하지 못했거나 observation deadline에 도달했습니다. |
+| `guard.probe.payload_incompatible` | 획득한 hook payload의 구조가 호환되지 않습니다. |
+| `guard.probe.callable_mismatch` | 한도가 있는 관찰 callable이 기대 Guard probe callable과 다릅니다. |
+| `guard.probe.verification_id_mismatch` | Hook event에 다른 verification ID가 있습니다. |
+| `guard.probe.session_mismatch` | Hook event가 다른 host session에 속합니다. |
+| `guard.probe.turn_mismatch` | Hook event가 다른 host turn에 속합니다. |
+| `guard.probe.tool_use_mismatch` | Pre/post event가 필수 tool-use identity를 공유하지 않습니다. |
+| `guard.probe.current_contract_changed` | Integration revision, hook definition 또는 policy가 바뀌었습니다. |
 
 Finding 사실에는 한도가 있는 artifact kind, phase, 범주형 상태, 현재 revision 좌표만 담을
 수 있습니다. 관리 파일 내용, prompt text, 임의 event payload, 제한 없는 경로는
@@ -254,7 +262,7 @@ facts, typed check state를 사용합니다.
 Connection 검증은 다음과 같은 명시적인 Guard dependency graph를 사용합니다.
 
 ```text
-hook_source_activation -> guard_hook_execution -> guard_verification
+hook_source_activation -> ambient_hook_coverage -> correlated_guard_verification
 ```
 
 각 check는 정확히 다섯 가지 상태 중 하나입니다. `passed`는 check가 성공적으로 끝났다는
@@ -264,10 +272,16 @@ hook_source_activation -> guard_hook_execution -> guard_verification
 뜻입니다. `not_applicable`은 해당 Connection 또는 profile에 check가 적용되지 않는다는
 뜻입니다.
 
-Guard managed-file 또는 현재 definition 실패는 `guard_hook_execution`을 failed 또는
-blocked로 만들고 `guard_verification`을 해소된 같은 root finding으로 막습니다. 주변 phase
-관찰은 이 집중 check의 detail로 유지합니다. Prerequisite check가 blocked인 동안에는
-report가 downstream 관찰을 요청하지 않습니다. Root 선택은 typed finding cause edge를
+Guard managed-file 또는 현재 definition 실패는 `ambient_hook_coverage`를 failed 또는
+blocked로 만들고 `correlated_guard_verification`을 해소된 같은 root finding으로
+막습니다. Ambient check가 통과해도 현재 definition과 일반 configured-phase coverage만
+증명합니다. Correlated check는 최신 현재 attempt를 사용합니다. Attempt 부재 또는 실제
+deferred active 상태는 pending, complete는 passed, `repair_required`는 typed
+recoverability와 action을 가진 failed입니다. Detail은 최신 attempt와 최신 완료 현재 proof를
+분리해 보존하므로 오래된 proof가 더 최신 terminal failure를 숨기지 못합니다. Root code는
+렌더링한 summary가 아니라 typed repair reason과 acquisition stage에서 나옵니다.
+Prerequisite check가 blocked인 동안에는 report가 downstream 관찰을 요청하지 않습니다.
+Root 선택은 typed finding cause edge를
 따르고, 독립 root를 결정적인 순서로 유지하며, summary를 검사하지 않습니다. 전체 check
 graph와 report 집계 상태는 [Agent Connection](agent-connection.md)이 담당합니다.
 

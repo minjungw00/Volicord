@@ -330,6 +330,7 @@ fn connection_context(
         repository,
         Some(connection.config_target.clone()),
         revision,
+        Vec::new(),
         runtime_session_ids,
         Vec::new(),
     )

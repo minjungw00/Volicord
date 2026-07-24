@@ -108,6 +108,14 @@ registry 직접 순회가 matrix를 정합니다.
 - `project_trust`를 독립적으로 유지하면서 configured, reload, hook review/unknown,
   managed MCP observation, Guard verification, complete, failed를 지나는
   `ConnectionActivationState` 전환
+- ambient와 correlated Guard check의 분리, 즉 ambient passed와 correlated failed의
+  동시 표현, attempt가 없을 때 ambient pending, correlated complete, repair-required를
+  pending으로 projection하지 않음, 더 오래된 proof가 더 최신 failed attempt를 숨기지
+  않음
+- concise, verbose, JSON 사이 Guard report parity, 최상위 Guard runtime session과
+  verification ID, managed/Guard session role의 정규 중복 제거, 복구 가능한 failed
+  check의 `action_required` 집계, 모든 typed repair reason 및 acquisition stage의 안정적인
+  code 직접 mapping
 - 고정 typed action ID, owner, channel, prerequisite, 완료 check, root-finding 순서와
   일치하지 않는 action metadata의 엄격한 거부
 - Reload, hook review, 새 conversation, 정규 요청, status의 init 출력 순서 및 CLI verify가

@@ -34,6 +34,9 @@ pub(super) fn render_command_report_concise(
         report.hook_activation_state.as_str(),
         counts.render(true)
     ));
+    if let Some(guard) = render_guard_verification_summary(&report.checks) {
+        sections.push(guard);
+    }
 
     if let Some(planned_changes) = report
         .planned_changes
@@ -81,6 +84,41 @@ pub(super) fn render_command_report_concise(
         sections.push(hint);
     }
     Ok(format!("{}\n", sections.join("\n\n")))
+}
+
+fn render_guard_verification_summary(checks: &[ConnectionCheck]) -> Option<String> {
+    let ambient = checks
+        .iter()
+        .find(|check| check.id() == ConnectionCheckKind::AmbientHookCoverage);
+    let correlated = checks
+        .iter()
+        .find(|check| check.id() == ConnectionCheckKind::CorrelatedGuardVerification);
+    if ambient.is_none() && correlated.is_none() {
+        return None;
+    }
+    let mut lines = Vec::new();
+    if let Some(check) = ambient {
+        lines.push(format!(
+            "Hook installation and ambient execution: {}",
+            check.status().as_str()
+        ));
+    }
+    if let Some(check) = correlated {
+        lines.push(format!(
+            "Correlated Guard verification: {}",
+            check.status().as_str()
+        ));
+        if let Some(reason) = check
+            .details()
+            .and_then(|details| details.as_object().get("latest_attempt"))
+            .and_then(Value::as_object)
+            .and_then(|attempt| attempt.get("repair_reason"))
+            .and_then(Value::as_str)
+        {
+            lines.push(format!("Reason: {reason}"));
+        }
+    }
+    Some(lines.join("\n"))
 }
 
 pub(super) fn render_init_activation_steps(report: &ConnectionCommandReport) -> Option<String> {
@@ -379,6 +417,9 @@ pub(super) fn headline(report: &ConnectionCommandReport, counts: CheckCounts) ->
         CommandOperation::Init | CommandOperation::Add => setup_headline(report),
         CommandOperation::Status => match report.status {
             ConnectionStatus::Complete => "Codex connection is ready.".to_owned(),
+            ConnectionStatus::ActionRequired if counts.failed > 0 => {
+                "Codex connection needs a repair action.".to_owned()
+            }
             ConnectionStatus::ActionRequired => {
                 "Codex connection is configured and waiting for activity.".to_owned()
             }

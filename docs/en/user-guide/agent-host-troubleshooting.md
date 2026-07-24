@@ -147,9 +147,11 @@ Use `activation_state` to choose the stage, then read
 
 `unknown` means hook activation has not been established. It does not mean
 untrusted or disabled. `project_trust` is a separate check and applies only
-when the host exposes that concern. Compare `latest_attempt` and
-`latest_complete_proof` by their roles, keep the verification ID, and report
-actual MCP peer information separately from the PATH executable probe.
+when the host exposes that concern. Compare `latest_managed_attempt`,
+`latest_managed_capability_proof`, `guard_verification_attempt`, and
+`guard_verification_proof` by their roles, keep every relevant verification
+ID, and report actual MCP peer information separately from the PATH executable
+probe.
 
 ## `action_required`
 
@@ -217,8 +219,8 @@ retains stage-specific detail, including `details.self_test.diagnostic_code`,
 inspecting or sharing bounded Registry facts such as exit code, timeout,
 missing tools, or stderr excerpt.
 
-In `connection.runtime_sessions`, read `latest_attempt` as current managed-
-session health and `latest_complete_proof` as the newest single session that
+In `connection.runtime_sessions`, read `latest_managed_attempt` as current
+managed-session health and `latest_managed_capability_proof` as the newest single session that
 completed initialize, `tools/list`, required-tool validation, and the canonical
 verification call. They may be different IDs. A newer partial attempt does not
 erase an older proof, and an older proof does not hide a newer terminal failure.
@@ -260,6 +262,20 @@ active. This warning is useful evidence but is not by itself a fatal result;
 do not replace one version with the other when reporting it.
 
 ## In-Chat Guard Verification Is Pending
+
+First inspect both Guard checks. `ambient_hook_coverage=passed` means only that
+the current hook definition and configured phases were observed generally; it
+does not prove the correlated attempt. In concise output, a terminal attempt is
+shown as `Correlated Guard verification: failed` with its typed `Reason`, not
+as waiting. In verbose or JSON output, retain the verification ID, runtime and
+host session, turn, event IDs, attempt state, acquisition stage,
+expected/observed callable, retry policy, and timestamps.
+
+If `latest_attempt.attempt_state=repair_required`, stop. Follow its typed
+recovery action and stable `guard.probe.*` root finding. Do not retry because an
+older `latest_completed_proof` exists, and do not classify the reason from the
+summary. Only an absent attempt or a genuinely deferred active attempt is
+pending.
 
 Stay in the same current managed Codex chat and native turn:
 

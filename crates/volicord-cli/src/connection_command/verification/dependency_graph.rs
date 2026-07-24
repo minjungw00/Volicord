@@ -159,7 +159,8 @@ pub(super) fn actions_for_checks(
                 );
             }
             (
-                ConnectionCheckKind::HookSourceActivation | ConnectionCheckKind::GuardHookExecution,
+                ConnectionCheckKind::HookSourceActivation
+                | ConnectionCheckKind::AmbientHookCoverage,
                 ConnectionCheckStatus::Failed,
             ) => {
                 add(
@@ -191,7 +192,8 @@ pub(super) fn actions_for_checks(
                 );
             }
             (
-                ConnectionCheckKind::GuardHookExecution | ConnectionCheckKind::GuardVerification,
+                ConnectionCheckKind::AmbientHookCoverage
+                | ConnectionCheckKind::CorrelatedGuardVerification,
                 ConnectionCheckStatus::Pending,
             ) => {
                 add(
@@ -209,12 +211,30 @@ pub(super) fn actions_for_checks(
                     check,
                 );
             }
-            (ConnectionCheckKind::GuardVerification, ConnectionCheckStatus::Failed) => {
-                add(
-                    ConnectionActionKind::InspectRuntimeSession,
-                    "Inspect the failed correlated integration-verification record and its current managed runtime session",
-                    check,
-                );
+            (ConnectionCheckKind::CorrelatedGuardVerification, ConnectionCheckStatus::Failed) => {
+                let kind = guard_recovery_action(check)
+                    .unwrap_or(ConnectionActionKind::InspectRuntimeSession);
+                let instruction = match kind {
+                    ConnectionActionKind::ReloadHost => {
+                        "Reload Codex before starting a later correlated Guard verification attempt"
+                    }
+                    ConnectionActionKind::RunGuardProbe => {
+                        "Start a later correlated Guard verification attempt with the typed new-turn policy"
+                    }
+                    ConnectionActionKind::InspectHookContract => {
+                        "Inspect and repair the current hook contract before starting a later Guard verification attempt"
+                    }
+                    ConnectionActionKind::RepairManagedConfiguration => {
+                        "Repair the current managed integration contract before starting a later Guard verification attempt"
+                    }
+                    ConnectionActionKind::InspectRuntimeSession => {
+                        "Inspect the failed correlated integration-verification record and its current managed runtime session"
+                    }
+                    _ => {
+                        "Inspect the failed correlated integration-verification record before retrying"
+                    }
+                };
+                add(kind, instruction, check);
             }
             _ => {}
         }
@@ -236,6 +256,19 @@ pub(super) fn actions_for_checks(
                 .map_err(ConnectionCommandError::from)
         })
         .collect()
+}
+
+fn guard_recovery_action(check: &ConnectionCheck) -> Option<ConnectionActionKind> {
+    let action = check
+        .details()?
+        .as_object()
+        .get("latest_attempt")?
+        .as_object()?
+        .get("recovery_action")?
+        .as_str()?;
+    ConnectionActionKind::ALL
+        .into_iter()
+        .find(|kind| kind.as_str() == action)
 }
 
 pub(super) fn canonical_check(

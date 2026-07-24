@@ -1,10 +1,19 @@
 //! Typed evidence projected into MCP-related connection-check details.
 
 use serde::Serialize;
-use volicord_store::operational_sessions::{
-    ManagedCapabilityProof, ManagedPeerObservation, McpSessionMilestones,
+use serde_json::Value;
+use volicord_store::{
+    integration_verification::{
+        GuardIntegrationVerificationRunRecord, GuardProbeObservationRecord,
+    },
+    operational_sessions::{ManagedCapabilityProof, ManagedPeerObservation, McpSessionMilestones},
 };
-use volicord_types::{IntegrationRevision, ToolVerificationRole, UtcTimestamp};
+use volicord_types::{
+    AgentToolId, ConnectionActionKind, GuardIntegrationVerificationStatus,
+    GuardProbeObservationStage, GuardVerificationRecoverability, GuardVerificationRepairReason,
+    GuardVerificationRetryPolicy, IntegrationRevision, IntegrationVerificationWorkflowState,
+    ToolVerificationRole, UtcTimestamp,
+};
 
 use super::{HostExecutableStatus, Verification};
 use crate::host_integration::verification::HostExecutableProbe;
@@ -23,6 +32,364 @@ impl HostExecutableProbeDetails {
             probe: host.host_executable_probe(),
             diagnostic: host.host_executable_details.clone(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(super) struct AmbientGuardCoverageEvidence {
+    current_hook_definition_executed: bool,
+    configured_phases_observed: bool,
+    installation_ids: Vec<String>,
+    affected_paths: Vec<String>,
+    artifact_issues: Vec<Value>,
+    manifest_issues: Vec<&'static str>,
+    configured_missing_phases: Vec<String>,
+    required_phases: Vec<String>,
+    observed_phases: Vec<String>,
+    missing_required_phases: Vec<String>,
+    incompatible_event_ids: Vec<String>,
+    prompt_capture: AmbientPromptCaptureEvidence,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_current_observation_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(super) struct AmbientPromptCaptureEvidence {
+    host_supported: bool,
+    configured: bool,
+    observed: bool,
+}
+
+impl AmbientGuardCoverageEvidence {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn new(
+        current_hook_definition_executed: bool,
+        configured_phases_observed: bool,
+        installation_ids: Vec<String>,
+        affected_paths: Vec<String>,
+        artifact_issues: Vec<Value>,
+        manifest_issues: Vec<&'static str>,
+        configured_missing_phases: Vec<String>,
+        required_phases: Vec<String>,
+        observed_phases: Vec<String>,
+        missing_required_phases: Vec<String>,
+        incompatible_event_ids: Vec<String>,
+        prompt_capture: AmbientPromptCaptureEvidence,
+        last_current_observation_at: Option<String>,
+    ) -> Self {
+        Self {
+            current_hook_definition_executed,
+            configured_phases_observed,
+            installation_ids,
+            affected_paths,
+            artifact_issues,
+            manifest_issues,
+            configured_missing_phases,
+            required_phases,
+            observed_phases,
+            missing_required_phases,
+            incompatible_event_ids,
+            prompt_capture,
+            last_current_observation_at,
+        }
+    }
+}
+
+impl AmbientPromptCaptureEvidence {
+    pub(super) const fn new(host_supported: bool, configured: bool, observed: bool) -> Self {
+        Self {
+            host_supported,
+            configured,
+            observed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(super) struct CorrelatedGuardVerificationEvidence {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recoverability: Option<GuardVerificationRecoverability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_attempt: Option<CorrelatedGuardAttemptEvidence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_completed_proof: Option<CorrelatedGuardProof>,
+}
+
+impl CorrelatedGuardVerificationEvidence {
+    pub(super) fn new(
+        latest_attempt: Option<CorrelatedGuardAttemptEvidence>,
+        latest_completed_proof: Option<CorrelatedGuardProof>,
+    ) -> Self {
+        let recoverability = latest_attempt
+            .as_ref()
+            .and_then(|attempt| attempt.recoverability);
+        Self {
+            recoverability,
+            latest_attempt,
+            latest_completed_proof,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(super) struct CorrelatedGuardAttemptEvidence {
+    evidence_role: &'static str,
+    verification_id: String,
+    runtime_session_id: String,
+    host_session_id: String,
+    host_turn_id: String,
+    attempt_state: GuardIntegrationVerificationStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt_event_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pre_tool_event_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    post_tool_event_id: Option<String>,
+    expected_agent_tool_id: AgentToolId,
+    expected_host_callable_identity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observed_host_callable_identity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acquisition_stage: Option<GuardProbeObservationStage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repair_reason: Option<GuardVerificationRepairReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retry_policy: Option<GuardVerificationRetryPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recoverability: Option<GuardVerificationRecoverability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recovery_action: Option<ConnectionActionKind>,
+    integration_revision: String,
+    guard_installation_id: String,
+    policy_digest: String,
+    hook_definition_digest: String,
+    created_at: UtcTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acknowledged_at: Option<UtcTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completed_at: Option<UtcTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    terminal_at: Option<UtcTimestamp>,
+}
+
+impl CorrelatedGuardAttemptEvidence {
+    pub(super) fn try_new(
+        run: &GuardIntegrationVerificationRunRecord,
+        workflow: &IntegrationVerificationWorkflowState,
+        observations: &[GuardProbeObservationRecord],
+    ) -> Result<Self, String> {
+        let (attempt_state, repair_reason, retry_policy) = match workflow {
+            IntegrationVerificationWorkflowState::AwaitingProbe { .. } => (
+                GuardIntegrationVerificationStatus::AwaitingProbe,
+                None,
+                None,
+            ),
+            IntegrationVerificationWorkflowState::AwaitingObservation { .. } => (
+                GuardIntegrationVerificationStatus::AwaitingObservation,
+                None,
+                None,
+            ),
+            IntegrationVerificationWorkflowState::Complete { .. } => {
+                (GuardIntegrationVerificationStatus::Complete, None, None)
+            }
+            IntegrationVerificationWorkflowState::RepairRequired {
+                reason,
+                retry_policy,
+                ..
+            } => (
+                GuardIntegrationVerificationStatus::RepairRequired,
+                Some(*reason),
+                Some(*retry_policy),
+            ),
+        };
+        let selected_observation =
+            selected_guard_observation(attempt_state, repair_reason, observations);
+        let recoverability = retry_policy.map(GuardVerificationRecoverability::from_retry_policy);
+        let recovery_action = retry_policy.map(recovery_action_for_retry_policy);
+        let terminal_timestamp = run
+            .completed_at
+            .as_deref()
+            .map(parse_guard_timestamp)
+            .transpose()?;
+        Ok(Self {
+            evidence_role: "guard_verification_attempt",
+            verification_id: run.verification_id.clone(),
+            runtime_session_id: run.runtime_session_id.clone(),
+            host_session_id: run.host_session_id.clone(),
+            host_turn_id: run.host_turn_id.clone(),
+            attempt_state,
+            prompt_event_id: run.matched_prompt_event_id.clone(),
+            pre_tool_event_id: run.matched_pre_tool_event_id.clone(),
+            post_tool_event_id: run.matched_post_tool_event_id.clone(),
+            expected_agent_tool_id: AgentToolId::GUARD_PROBE,
+            expected_host_callable_identity: run.expected_host_callable_name.clone(),
+            observed_host_callable_identity: selected_observation
+                .and_then(|observation| observation.observed_callable_name.clone()),
+            acquisition_stage: selected_observation.map(|observation| observation.stage),
+            repair_reason,
+            retry_policy,
+            recoverability,
+            recovery_action,
+            integration_revision: run.integration_revision.clone(),
+            guard_installation_id: run.guard_installation_id.clone(),
+            policy_digest: run.policy_digest.clone(),
+            hook_definition_digest: run.hook_definition_digest.clone(),
+            created_at: parse_guard_timestamp(&run.created_at)?,
+            acknowledged_at: run
+                .probe_acknowledged_at
+                .as_deref()
+                .map(parse_guard_timestamp)
+                .transpose()?,
+            completed_at: (attempt_state == GuardIntegrationVerificationStatus::Complete)
+                .then(|| terminal_timestamp.clone())
+                .flatten(),
+            terminal_at: terminal_timestamp,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(super) struct CorrelatedGuardProof {
+    evidence_role: &'static str,
+    verification_id: String,
+    runtime_session_id: String,
+    host_session_id: String,
+    host_turn_id: String,
+    prompt_event_id: String,
+    pre_tool_event_id: String,
+    post_tool_event_id: String,
+    expected_agent_tool_id: AgentToolId,
+    expected_host_callable_identity: String,
+    observed_host_callable_identity: String,
+    acquisition_stage: GuardProbeObservationStage,
+    integration_revision: String,
+    guard_installation_id: String,
+    policy_digest: String,
+    hook_definition_digest: String,
+    completed_at: UtcTimestamp,
+}
+
+impl CorrelatedGuardProof {
+    pub(super) fn try_new(
+        run: &GuardIntegrationVerificationRunRecord,
+        observations: &[GuardProbeObservationRecord],
+    ) -> Result<Self, String> {
+        let required = |value: &Option<String>, field: &str| {
+            value
+                .clone()
+                .ok_or_else(|| format!("completed Guard proof is missing {field}"))
+        };
+        let matched_observation = observations
+            .iter()
+            .rev()
+            .find(|observation| observation.stage == GuardProbeObservationStage::PostToolMatched)
+            .ok_or_else(|| {
+                "completed Guard proof is missing its post-tool matched observation".to_owned()
+            })?;
+        Ok(Self {
+            evidence_role: "guard_verification_proof",
+            verification_id: run.verification_id.clone(),
+            runtime_session_id: run.runtime_session_id.clone(),
+            host_session_id: run.host_session_id.clone(),
+            host_turn_id: run.host_turn_id.clone(),
+            prompt_event_id: required(&run.matched_prompt_event_id, "prompt_event_id")?,
+            pre_tool_event_id: required(&run.matched_pre_tool_event_id, "pre_tool_event_id")?,
+            post_tool_event_id: required(&run.matched_post_tool_event_id, "post_tool_event_id")?,
+            expected_agent_tool_id: AgentToolId::GUARD_PROBE,
+            expected_host_callable_identity: run.expected_host_callable_name.clone(),
+            observed_host_callable_identity: matched_observation
+                .observed_callable_name
+                .clone()
+                .ok_or_else(|| {
+                    "completed Guard proof is missing its observed host callable identity"
+                        .to_owned()
+                })?,
+            acquisition_stage: GuardProbeObservationStage::PostToolMatched,
+            integration_revision: run.integration_revision.clone(),
+            guard_installation_id: run.guard_installation_id.clone(),
+            policy_digest: run.policy_digest.clone(),
+            hook_definition_digest: run.hook_definition_digest.clone(),
+            completed_at: parse_guard_timestamp(
+                run.completed_at
+                    .as_deref()
+                    .ok_or_else(|| "completed Guard proof is missing completed_at".to_owned())?,
+            )?,
+        })
+    }
+}
+
+fn parse_guard_timestamp(value: &str) -> Result<UtcTimestamp, String> {
+    UtcTimestamp::parse(value)
+        .map_err(|_| format!("Guard verification timestamp is not canonical: {value}"))
+}
+
+pub(super) fn recovery_action_for_retry_policy(
+    policy: GuardVerificationRetryPolicy,
+) -> ConnectionActionKind {
+    match policy {
+        GuardVerificationRetryPolicy::NoAutomaticRetry => {
+            ConnectionActionKind::InspectRuntimeSession
+        }
+        GuardVerificationRetryPolicy::NewTurnRequired => ConnectionActionKind::RunGuardProbe,
+        GuardVerificationRetryPolicy::HostReloadRequired => ConnectionActionKind::ReloadHost,
+        GuardVerificationRetryPolicy::HookReviewRequired => {
+            ConnectionActionKind::InspectHookContract
+        }
+        GuardVerificationRetryPolicy::RepairRequired => {
+            ConnectionActionKind::RepairManagedConfiguration
+        }
+    }
+}
+
+pub(super) fn selected_guard_observation(
+    status: GuardIntegrationVerificationStatus,
+    reason: Option<GuardVerificationRepairReason>,
+    observations: &[GuardProbeObservationRecord],
+) -> Option<&GuardProbeObservationRecord> {
+    let matches_reason = |stage: GuardProbeObservationStage| match reason {
+        Some(GuardVerificationRepairReason::HookEventNotObserved)
+        | Some(GuardVerificationRepairReason::ObservationDeadlineExceeded) => {
+            stage == GuardProbeObservationStage::HookEventNotObserved
+        }
+        Some(GuardVerificationRepairReason::HookPayloadIncompatible) => {
+            stage == GuardProbeObservationStage::HookPayloadIncompatible
+        }
+        Some(GuardVerificationRepairReason::CallableIdentityMismatch) => matches!(
+            stage,
+            GuardProbeObservationStage::CallableIdentityUnknown
+                | GuardProbeObservationStage::CallableIdentityMismatch
+        ),
+        Some(GuardVerificationRepairReason::VerificationIdMismatch) => {
+            stage == GuardProbeObservationStage::VerificationIdMismatch
+        }
+        Some(GuardVerificationRepairReason::SessionMismatch) => {
+            stage == GuardProbeObservationStage::SessionMismatch
+        }
+        Some(GuardVerificationRepairReason::TurnMismatch) => {
+            stage == GuardProbeObservationStage::TurnMismatch
+        }
+        Some(GuardVerificationRepairReason::ToolUseMismatch) => {
+            stage == GuardProbeObservationStage::ToolUseMismatch
+        }
+        Some(
+            GuardVerificationRepairReason::IntegrationRevisionChanged
+            | GuardVerificationRepairReason::HookDefinitionChanged
+            | GuardVerificationRepairReason::PolicyChanged,
+        )
+        | None => false,
+    };
+    if status == GuardIntegrationVerificationStatus::Complete {
+        return observations
+            .iter()
+            .rev()
+            .find(|observation| observation.stage == GuardProbeObservationStage::PostToolMatched);
+    }
+    match reason {
+        Some(_) => observations
+            .iter()
+            .rev()
+            .find(|observation| matches_reason(observation.stage)),
+        None => observations.last(),
     }
 }
 
@@ -92,7 +459,7 @@ impl ManagedSessionAttemptDetails {
         host: &Verification,
     ) -> Self {
         Self {
-            evidence_role: "latest_attempt",
+            evidence_role: "latest_managed_attempt",
             current_integration_revision: current_revision.clone(),
             runtime_session_id: attempt.map(|value| value.runtime_session_id.as_str().to_owned()),
             source: attempt.map(|value| value.source),
@@ -179,7 +546,7 @@ impl ManagedCapabilityProofDetails {
     ) -> Self {
         let milestones = proof.milestones();
         Self {
-            evidence_role: "latest_complete_proof",
+            evidence_role: "latest_managed_capability_proof",
             current_integration_revision: current_revision.clone(),
             runtime_session_id: milestones.runtime_session_id.as_str().to_owned(),
             source: milestones.source,

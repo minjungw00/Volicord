@@ -28,6 +28,8 @@ pub enum OperationalRecommendedAction {
     ReloadHostAfterConfigurationChange,
     RepairGuard,
     TriggerGuardPhase,
+    RetryGuardVerification,
+    InspectRuntimeSession,
     TriggerPromptCapture,
     UseSupportedPromptCaptureHost,
     TrustRepository,
@@ -46,6 +48,8 @@ impl OperationalRecommendedAction {
             }
             Self::RepairGuard => "action.guard.repair",
             Self::TriggerGuardPhase => "action.guard.trigger_phase",
+            Self::RetryGuardVerification => "action.guard.retry_verification",
+            Self::InspectRuntimeSession => "action.mcp.inspect_runtime_session",
             Self::TriggerPromptCapture => "action.guard.trigger_prompt_capture",
             Self::UseSupportedPromptCaptureHost => "action.guard.use_supported_prompt_capture_host",
             Self::TrustRepository => "action.trust.approve_repository",
@@ -64,6 +68,12 @@ impl OperationalRecommendedAction {
             }
             Self::RepairGuard => "Repair the current Guard installation",
             Self::TriggerGuardPhase => "Trigger the required unobserved Guard phase",
+            Self::RetryGuardVerification => {
+                "Start a later Guard verification attempt after satisfying its retry policy"
+            }
+            Self::InspectRuntimeSession => {
+                "Inspect the managed runtime session for the failed Guard verification attempt"
+            }
             Self::TriggerPromptCapture => "Trigger one configured prompt-capture observation",
             Self::UseSupportedPromptCaptureHost => {
                 "Use a host boundary that supports prompt capture"
@@ -132,6 +142,18 @@ const fn recommended_actions(
         }
         OperationalDiagnostic::Guard(GuardDiagnostic::PromptCaptureUnsupported) => {
             &[Action::UseSupportedPromptCaptureHost]
+        }
+        OperationalDiagnostic::Guard(
+            GuardDiagnostic::ProbeHookEventNotObserved
+            | GuardDiagnostic::ProbeVerificationIdMismatch
+            | GuardDiagnostic::ProbeTurnMismatch
+            | GuardDiagnostic::ProbeToolUseMismatch,
+        ) => &[Action::RetryGuardVerification],
+        OperationalDiagnostic::Guard(GuardDiagnostic::ProbeSessionMismatch) => {
+            &[Action::InspectRuntimeSession]
+        }
+        OperationalDiagnostic::Guard(GuardDiagnostic::ProbeCurrentContractChanged) => {
+            &[Action::RepairManagedConfiguration]
         }
         OperationalDiagnostic::Guard(_) => &[Action::RepairGuard],
         OperationalDiagnostic::Trust(TrustDiagnostic::RepositoryNotTrusted) => {

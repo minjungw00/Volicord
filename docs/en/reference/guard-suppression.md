@@ -240,6 +240,14 @@ than rendered summaries:
 | `guard.internal.unexpected_failure` | Guard encountered an unexpected failure without a narrower typed mapping. |
 | `guard.prompt_capture.unsupported` | The host boundary does not support configured prompt capture. |
 | `guard.prompt_capture.unobserved` | Supported configured prompt capture has not been observed. |
+| `guard.probe.hook_event_not_observed` | The typed attempt stage did not observe the required hook event or reached its observation deadline. |
+| `guard.probe.payload_incompatible` | The acquired hook payload was structurally incompatible. |
+| `guard.probe.callable_mismatch` | The bounded observed callable did not match the expected Guard probe callable. |
+| `guard.probe.verification_id_mismatch` | The hook event carried another verification ID. |
+| `guard.probe.session_mismatch` | The hook event belonged to another host session. |
+| `guard.probe.turn_mismatch` | The hook event belonged to another host turn. |
+| `guard.probe.tool_use_mismatch` | Pre/post events did not share the required tool-use identity. |
+| `guard.probe.current_contract_changed` | The integration revision, hook definition, or policy changed. |
 
 Finding facts may identify only the bounded artifact kind, phase, categorical
 state, and current revision coordinates. They do not project managed-file
@@ -281,7 +289,7 @@ selection consumes that definition, typed facts, and typed check state.
 Connection verification uses this explicit Guard dependency graph:
 
 ```text
-hook_source_activation -> guard_hook_execution -> guard_verification
+hook_source_activation -> ambient_hook_coverage -> correlated_guard_verification
 ```
 
 Each check has exactly one of five statuses. `passed` means the check completed
@@ -292,10 +300,17 @@ not run or be observed because a prerequisite finding failed.
 `not_applicable` means the check does not apply to the Connection or profile.
 
 A Guard managed-file or current-definition failure makes
-`guard_hook_execution` fail or remain blocked and blocks
-`guard_verification` by the same resolved root finding. Ambient phase
-observations remain details of those focused checks. The report does not request
-downstream observation while a prerequisite check is blocked. Root selection follows typed finding cause edges, retains independent
+`ambient_hook_coverage` fail or remain blocked and blocks
+`correlated_guard_verification` by the same resolved root finding. A passed
+ambient check proves only the current definition and general configured-phase
+coverage. The correlated check uses the latest current attempt: absent or
+genuinely deferred active is pending, complete is passed, and
+`repair_required` is failed with typed recoverability and action. Its details
+retain the latest attempt separately from the latest completed current proof,
+so an older proof cannot hide a newer terminal failure. Root codes come from
+the typed repair reason and acquisition stage, not rendered summaries. The
+report does not request downstream observation while a prerequisite check is
+blocked. Root selection follows typed finding cause edges, retains independent
 roots in deterministic order, and does not inspect summaries. The complete
 check graph and aggregate report status are owned by
 [Agent Connection](agent-connection.md).

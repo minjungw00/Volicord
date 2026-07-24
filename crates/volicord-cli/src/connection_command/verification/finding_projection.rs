@@ -367,6 +367,41 @@ pub(super) struct GuardBoundaryFindings {
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(super) fn guard_verification_repair_finding(
+    connection: &AgentConnectionRecord,
+    run: &GuardIntegrationVerificationRunRecord,
+    reason: GuardVerificationRepairReason,
+    acquisition_stage: Option<GuardProbeObservationStage>,
+    retry_policy: GuardVerificationRetryPolicy,
+    observed_host_callable_identity: Option<String>,
+    observed_at: UtcTimestamp,
+) -> Result<CurrentDiagnosticFinding, ConnectionCommandError> {
+    let diagnostic = GuardDiagnostic::from_verification_repair_reason(reason);
+    let subject = GuardVerificationAttemptSubject::for_connection(
+        &connection.connection_internal_id,
+        &run.verification_id,
+    )
+    .map_err(ConnectionCommandError::runtime)?;
+    let recoverability = GuardVerificationRecoverability::from_retry_policy(retry_policy);
+    current_connection_finding(
+        connection,
+        OperationalDiagnostic::Guard(diagnostic),
+        &subject,
+        &GuardProbeFacts::new(
+            reason,
+            acquisition_stage,
+            retry_policy,
+            recoverability,
+            recovery_action_for_retry_policy(retry_policy),
+            &run.expected_host_callable_name,
+            observed_host_callable_identity,
+        ),
+        OperationalCheckState::Failed,
+        observed_at,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) fn guard_boundary_findings(
     connection: &AgentConnectionRecord,
     audit: &GuardAuditFacts,

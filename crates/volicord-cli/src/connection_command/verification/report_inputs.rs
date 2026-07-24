@@ -227,13 +227,13 @@ pub(in crate::connection_command) fn report_with_hook_review_required(
             "The new managed Codex conversation has not completed current capability proof",
         ),
         (
-            ConnectionCheckKind::GuardHookExecution,
-            "guard_hook_execution_required_after_hook_change",
-            "The changed project hook definition has not executed",
+            ConnectionCheckKind::AmbientHookCoverage,
+            "ambient_hook_coverage_required_after_hook_change",
+            "The changed project hook definition does not yet have ambient phase coverage",
         ),
         (
-            ConnectionCheckKind::GuardVerification,
-            "guard_verification_required_after_hook_change",
+            ConnectionCheckKind::CorrelatedGuardVerification,
+            "correlated_guard_verification_required_after_hook_change",
             "The first-party correlated Guard verification has not completed for the changed hook definition",
         ),
     ]

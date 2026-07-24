@@ -194,8 +194,9 @@ Store는 milestone 관계가 모두 일관된 row만 `McpSessionMilestones`로 �
 `ManagedCapabilityProof`는 추가로 `session_source=managed_host`이면서 process,
 initialize, initialized notification, `tools/list`, required-tool, 정규 verification-tool chain이
 그 row 하나에서 모두 완료되어야 합니다. 현재 integration revision 하나에서는 가장 최신
-managed row를 `latest_attempt`, 가장 최신 complete row를 `latest_complete_proof`로
-선택하며 row를 합치지 않습니다. 선택된 peer의 `clientInfo`가 권위 있는 protocol peer
+managed row를 `latest_managed_attempt`, 가장 최신 complete row를
+`latest_managed_capability_proof`로 선택하며 row를 합치지 않습니다. 선택된 peer의
+`clientInfo`가 권위 있는 protocol peer
 관찰입니다. 별도로 probe한 PATH executable version은 diagnostic으로 남고 proof 선택에
 사용하지 않습니다. 영속 Connection report는 선택된 모든 session ID와 role을 보존하며 한
 ID가 두 role을 가지면 중복을 제거합니다.
@@ -403,6 +404,14 @@ Store는 이 권위 있는 row 사실을 공유 tagged
 `hook_review_required`, `repair_required`와 분리됩니다. Begin, probe, get/status, adapter,
 renderer는 이 상태를 소비합니다. 영속 계층은 사용자 대상 다음 행동 산문이나 renderer
 문구를 만들지 않습니다.
+
+Connection report는 가장 최신 현재 revision Guard run을
+`guard_verification_attempt`로 조회하고 가장 최신 완료 현재 revision run을 별도로
+`guard_verification_proof`로 조회합니다. 최신 run만 correlated check를 결정합니다.
+Active는 pending, complete는 passed, `repair_required`는 failed입니다. 더 오래된 완료
+row는 proof evidence로 남지만 더 최신 failed attempt를 덮지 못합니다. Report context는
+managed MCP role과 같은 runtime session을 중복 제거하고 관련 verification ID를 모두
+보존합니다.
 
 Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guard suppression은
 제한된 정규 correlation 데이터만 읽고 정확한 `SuppressionOutcome`을 반환합니다. Store

@@ -265,16 +265,16 @@ impl ConnectionCommandReport {
                     None,
                 )?,
                 command_check(
-                    ConnectionCheckKind::GuardHookExecution,
+                    ConnectionCheckKind::AmbientHookCoverage,
                     ConnectionCheckStatus::Pending,
-                    "guard_hook_execution_pending",
-                    "A current managed Guard hook has not executed",
+                    "ambient_hook_coverage_pending",
+                    "Current Guard hook installation and ambient phase coverage are incomplete",
                     None,
                 )?,
                 command_check(
-                    ConnectionCheckKind::GuardVerification,
+                    ConnectionCheckKind::CorrelatedGuardVerification,
                     ConnectionCheckStatus::Pending,
-                    "guard_verification_pending",
+                    "correlated_guard_verification_pending",
                     "In-chat MCP and Guard integration verification has not completed",
                     None,
                 )?,
@@ -568,6 +568,7 @@ impl ConnectionCommandReport {
 
     pub(super) fn diagnostic_report(&self) -> Result<DiagnosticReport, ConnectionCommandError> {
         let runtime_sessions = self.role_bearing_runtime_sessions()?;
+        let verification_ids = self.relevant_verification_ids();
         let mut runtime_session_ids = self
             .findings
             .iter()
@@ -586,6 +587,7 @@ impl ConnectionCommandReport {
             Some(self.connection.repository.clone()),
             Some(self.connection.config_target.clone()),
             self.integration_revision.clone(),
+            verification_ids,
             runtime_session_ids,
             runtime_sessions,
         )
@@ -614,28 +616,11 @@ impl ConnectionCommandReport {
             let Some(details) = check.details().map(ConnectionCheckDetails::as_object) else {
                 continue;
             };
-            let role = match details.get("evidence_role").and_then(Value::as_str) {
-                Some("latest_attempt") => Some(RuntimeSessionEvidenceRole::LatestAttempt),
-                Some("latest_complete_proof") => {
-                    Some(RuntimeSessionEvidenceRole::LatestCompleteProof)
+            collect_runtime_session_evidence(details, &mut by_id)?;
+            for key in ["latest_attempt", "latest_completed_proof"] {
+                if let Some(nested) = details.get(key).and_then(Value::as_object) {
+                    collect_runtime_session_evidence(nested, &mut by_id)?;
                 }
-                Some(value) => {
-                    return Err(ConnectionCommandError::runtime(format!(
-                        "connection check contains unknown runtime-session evidence role: {value}"
-                    )))
-                }
-                None => None,
-            };
-            let runtime_session_id = details.get("runtime_session_id").and_then(Value::as_str);
-            match (role, runtime_session_id) {
-                (Some(role), Some(runtime_session_id)) => {
-                    by_id
-                        .entry(runtime_session_id.to_owned())
-                        .or_default()
-                        .insert(role);
-                }
-                (None, None) | (Some(_), None) => {}
-                (None, Some(_)) => {}
             }
         }
         by_id
@@ -647,6 +632,30 @@ impl ConnectionCommandReport {
                 )
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
             })
+            .collect()
+    }
+
+    pub(super) fn relevant_verification_ids(
+        &self,
+    ) -> Vec<volicord_types::GuardIntegrationVerificationId> {
+        let mut ids = BTreeSet::new();
+        for check in &self.checks {
+            let Some(details) = check.details().map(ConnectionCheckDetails::as_object) else {
+                continue;
+            };
+            for key in ["latest_attempt", "latest_completed_proof"] {
+                if let Some(id) = details
+                    .get(key)
+                    .and_then(Value::as_object)
+                    .and_then(|evidence| evidence.get("verification_id"))
+                    .and_then(Value::as_str)
+                {
+                    ids.insert(id.to_owned());
+                }
+            }
+        }
+        ids.into_iter()
+            .map(volicord_types::GuardIntegrationVerificationId::new)
             .collect()
     }
 
@@ -692,6 +701,40 @@ impl ConnectionCommandReport {
         }
         Ok(details)
     }
+}
+
+fn collect_runtime_session_evidence(
+    details: &serde_json::Map<String, Value>,
+    by_id: &mut BTreeMap<String, BTreeSet<RuntimeSessionEvidenceRole>>,
+) -> Result<(), ConnectionCommandError> {
+    let role = match details.get("evidence_role").and_then(Value::as_str) {
+        Some("latest_managed_attempt") => Some(RuntimeSessionEvidenceRole::LatestManagedAttempt),
+        Some("latest_managed_capability_proof") => {
+            Some(RuntimeSessionEvidenceRole::LatestManagedCapabilityProof)
+        }
+        Some("guard_verification_attempt") => {
+            Some(RuntimeSessionEvidenceRole::GuardVerificationAttempt)
+        }
+        Some("guard_verification_proof") => {
+            Some(RuntimeSessionEvidenceRole::GuardVerificationProof)
+        }
+        Some(value) => {
+            return Err(ConnectionCommandError::runtime(format!(
+                "connection check contains unknown runtime-session evidence role: {value}"
+            )))
+        }
+        None => None,
+    };
+    if let (Some(role), Some(runtime_session_id)) = (
+        role,
+        details.get("runtime_session_id").and_then(Value::as_str),
+    ) {
+        by_id
+            .entry(runtime_session_id.to_owned())
+            .or_default()
+            .insert(role);
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -756,7 +799,10 @@ fn diagnostic_action_kind(code: &str) -> Option<ConnectionActionKind> {
         || code.starts_with("action.runtime_home.")
     {
         Some(ConnectionActionKind::RepairManagedConfiguration)
-    } else if code == "action.guard.trigger_phase" {
+    } else if matches!(
+        code,
+        "action.guard.trigger_phase" | "action.guard.retry_verification"
+    ) {
         Some(ConnectionActionKind::RunGuardProbe)
     } else if code.starts_with("action.guard.") {
         Some(ConnectionActionKind::InspectHookContract)

@@ -19,7 +19,7 @@ pub use definitions::{
     TrustDiagnostic,
 };
 pub use facts::{
-    GuardArtifactFacts, GuardEventFacts, GuardInstallationFacts, GuardPhaseFacts,
+    GuardArtifactFacts, GuardEventFacts, GuardInstallationFacts, GuardPhaseFacts, GuardProbeFacts,
     InstallationFacts, IntegrationRevisionFacts, ManagedConfigurationFacts, TrustFacts,
     VerificationToolFacts,
 };
@@ -31,8 +31,9 @@ pub(crate) use projection::{
 pub(crate) use subjects::guard_artifact_kind;
 pub use subjects::{
     GuardEventSubject, GuardInstallationSubject, GuardManagedArtifactSubject, GuardPhaseSubject,
-    InstallationSubject, IntegrationRevisionSubject, ManagedConfigurationTarget,
-    OperationalSubject, ProductRepositorySubject, TrustSubject, VerificationToolSubject,
+    GuardVerificationAttemptSubject, InstallationSubject, IntegrationRevisionSubject,
+    ManagedConfigurationTarget, OperationalSubject, ProductRepositorySubject, TrustSubject,
+    VerificationToolSubject,
 };
 
 fn current_timestamp() -> UtcTimestamp {

@@ -22,6 +22,7 @@ pub(super) fn guard_checks_for_connection(
 
     let mut audit = GuardAuditFacts::default();
     let mut all_required_phases_observed = !installations.is_empty();
+    let mut current_hook_definition_executed = false;
     let mut prompt_capture_observed = !installations.is_empty();
     let mut required_phases = Vec::new();
     let mut observed_phases = Vec::new();
@@ -49,6 +50,8 @@ pub(super) fn guard_checks_for_connection(
         required_phases.extend(observation.required_phases.iter().cloned());
         observed_phases.extend(observation.observed_phases.iter().cloned());
         incompatible_event_ids.extend(observation.incompatible_event_ids.iter().cloned());
+        current_hook_definition_executed |=
+            binding_is_current && !observation.observed_phases.is_empty();
         let observation_is_current =
             binding_is_current && observation.all_required_phases_observed();
         all_required_phases_observed &= observation_is_current;
@@ -96,18 +99,18 @@ pub(super) fn guard_checks_for_connection(
     } else {
         ConnectionCheckStatus::Pending
     };
-    let hook_execution_status =
+    let ambient_coverage_status =
         if files_status == ConnectionCheckStatus::Failed || !incompatible_event_ids.is_empty() {
             ConnectionCheckStatus::Failed
-        } else if observed_phases.is_empty() {
-            ConnectionCheckStatus::Pending
-        } else {
+        } else if all_required_phases_observed {
             ConnectionCheckStatus::Passed
+        } else {
+            ConnectionCheckStatus::Pending
         };
     let hook_activation_state = HookActivationState::from_evidence(HookActivationEvidence {
         setup_changed_definition: false,
         host: None,
-        current_definition_event_observed: !observed_phases.is_empty(),
+        current_definition_event_observed: current_hook_definition_executed,
     });
     let hook_activation_status = match hook_activation_state {
         HookActivationState::EffectiveByObservation | HookActivationState::ManagedByPolicy => {
@@ -160,7 +163,7 @@ pub(super) fn guard_checks_for_connection(
         .as_ref()
         .map(UtcTimestamp::to_canonical_string);
 
-    let guard_findings = guard_boundary_findings(
+    let mut guard_findings = guard_boundary_findings(
         connection,
         &audit,
         &installation_ids,
@@ -189,6 +192,21 @@ pub(super) fn guard_checks_for_connection(
             )
         })
         .transpose()?;
+    let verification_observations = verification_run
+        .as_ref()
+        .map(|run| guard_probe_observations(runtime_home, &run.verification_id))
+        .transpose()?
+        .unwrap_or_default();
+    let completed_proof = latest_completed_guard_integration_verification_for_connection(
+        runtime_home,
+        &connection.connection_internal_id,
+        &current_revision,
+    )?;
+    let completed_proof_observations = completed_proof
+        .as_ref()
+        .map(|run| guard_probe_observations(runtime_home, &run.verification_id))
+        .transpose()?
+        .unwrap_or_default();
     let verification_status = match verification_workflow {
         Some(IntegrationVerificationWorkflowState::Complete { .. }) => {
             ConnectionCheckStatus::Passed
@@ -202,11 +220,55 @@ pub(super) fn guard_checks_for_connection(
         )
         | None => ConnectionCheckStatus::Pending,
     };
+    let latest_attempt_evidence = verification_run
+        .as_ref()
+        .zip(verification_workflow.as_ref())
+        .map(|(run, workflow)| {
+            CorrelatedGuardAttemptEvidence::try_new(run, workflow, &verification_observations)
+                .map_err(ConnectionCommandError::runtime)
+        })
+        .transpose()?;
+    let latest_proof_evidence = completed_proof
+        .as_ref()
+        .map(|run| CorrelatedGuardProof::try_new(run, &completed_proof_observations))
+        .transpose()
+        .map_err(ConnectionCommandError::runtime)?;
+    let correlated_evidence =
+        CorrelatedGuardVerificationEvidence::new(latest_attempt_evidence, latest_proof_evidence);
+    let verification_causes = match (verification_run.as_ref(), verification_workflow.as_ref()) {
+        (
+            Some(run),
+            Some(IntegrationVerificationWorkflowState::RepairRequired {
+                reason,
+                retry_policy,
+                ..
+            }),
+        ) => {
+            let observation = selected_guard_observation(
+                GuardIntegrationVerificationStatus::RepairRequired,
+                Some(*reason),
+                &verification_observations,
+            );
+            let finding = guard_verification_repair_finding(
+                connection,
+                run,
+                *reason,
+                observation.map(|value| value.stage),
+                *retry_policy,
+                observation.and_then(|value| value.observed_callable_name.clone()),
+                current_timestamp(),
+            )?;
+            let finding_id = finding.id().clone();
+            guard_findings.current.push(finding);
+            vec![finding_id]
+        }
+        _ => Vec::new(),
+    };
 
-    let mut hook_execution_causes = guard_findings.files.clone();
-    hook_execution_causes.extend(guard_findings.observation.iter().cloned());
-    hook_execution_causes.sort();
-    hook_execution_causes.dedup();
+    let mut ambient_coverage_causes = guard_findings.files.clone();
+    ambient_coverage_causes.extend(guard_findings.observation.iter().cloned());
+    ambient_coverage_causes.sort();
+    ambient_coverage_causes.dedup();
     let checks = block_failed_dependencies(vec![
         canonical_check(
             ConnectionCheckKind::HookSourceActivation,
@@ -255,62 +317,56 @@ pub(super) fn guard_checks_for_connection(
             observed_at.as_deref(),
         )?,
         with_direct_causes(canonical_check(
-            ConnectionCheckKind::GuardHookExecution,
-            hook_execution_status,
-            match hook_execution_status {
-                ConnectionCheckStatus::Passed => "guard_hook_execution_observed",
-                ConnectionCheckStatus::Pending => "guard_hook_execution_pending",
-                ConnectionCheckStatus::Failed => "guard_hook_execution_failed",
+            ConnectionCheckKind::AmbientHookCoverage,
+            ambient_coverage_status,
+            match ambient_coverage_status {
+                ConnectionCheckStatus::Passed => "ambient_hook_coverage_passed",
+                ConnectionCheckStatus::Pending => "ambient_hook_coverage_pending",
+                ConnectionCheckStatus::Failed => "ambient_hook_coverage_failed",
                 ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
-                    unreachable!("raw Guard hook execution does not block itself")
+                    unreachable!("raw ambient Guard coverage does not block itself")
                 }
             },
-            match hook_execution_status {
+            match ambient_coverage_status {
                 ConnectionCheckStatus::Passed => "A current managed Guard hook executed",
                 ConnectionCheckStatus::Pending => {
-                    "Current managed Guard hook execution has not been observed"
+                    "Current hook installation has not observed every configured ambient phase"
                 }
                 ConnectionCheckStatus::Failed => {
                     "Guard managed files or a current hook contract are incompatible"
                 }
                 ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
-                    unreachable!("raw Guard hook execution does not block itself")
+                    unreachable!("raw ambient Guard coverage does not block itself")
                 }
             },
-            Some(json!({
-                "installation_ids": installation_ids,
-                "affected_paths": affected_paths,
-                "artifact_issues": artifact_issues,
-                "manifest_issues": manifest_issues,
-                "configured_missing_phases": configured_phase_gaps,
-                "ambient_observation": {
-                    "status": match observation_status {
-                        ConnectionCheckStatus::Passed => "passed",
-                        ConnectionCheckStatus::Pending => "pending",
-                        ConnectionCheckStatus::Failed => "failed",
-                        ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => unreachable!(),
-                    },
-                    "required_phases": required_phases,
-                    "missing_required_phases": missing_required_phases,
-                    "incompatible_event_ids": incompatible_event_ids,
-                    "prompt_capture": {
-                        "host_supported": audit.prompt_capture_host_supported,
-                        "configured": audit.prompt_capture_configured,
-                        "observed": prompt_capture_observed,
-                    },
-                },
-                "observed_phases": observed_phases,
-                "last_current_observation_at": observed_at,
-            })),
+            Some(typed_details(&AmbientGuardCoverageEvidence::new(
+                current_hook_definition_executed,
+                observation_status == ConnectionCheckStatus::Passed,
+                installation_ids,
+                affected_paths,
+                artifact_issues,
+                manifest_issues,
+                configured_phase_gaps,
+                required_phases,
+                observed_phases,
+                missing_required_phases,
+                incompatible_event_ids,
+                AmbientPromptCaptureEvidence::new(
+                    audit.prompt_capture_host_supported,
+                    audit.prompt_capture_configured,
+                    prompt_capture_observed,
+                ),
+                observed_at.clone(),
+            ))?),
             observed_at.as_deref(),
-        )?, hook_execution_causes)?,
-        canonical_check(
-            ConnectionCheckKind::GuardVerification,
+        )?, ambient_coverage_causes)?,
+        with_direct_causes(canonical_check(
+            ConnectionCheckKind::CorrelatedGuardVerification,
             verification_status,
             match verification_status {
-                ConnectionCheckStatus::Passed => "guard_verification_passed",
-                ConnectionCheckStatus::Pending => "guard_verification_pending",
-                ConnectionCheckStatus::Failed => "guard_verification_failed",
+                ConnectionCheckStatus::Passed => "correlated_guard_verification_passed",
+                ConnectionCheckStatus::Pending => "correlated_guard_verification_pending",
+                ConnectionCheckStatus::Failed => "correlated_guard_verification_failed",
                 ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
                     unreachable!("raw Guard verification uses passed, pending, or failed")
                 }
@@ -323,23 +379,16 @@ pub(super) fn guard_checks_for_connection(
                     "The current Connection has no completed correlated in-chat Guard verification"
                 }
                 ConnectionCheckStatus::Failed => {
-                    "The newest correlated in-chat Guard verification no longer matches current integration ownership"
+                    "The latest correlated in-chat Guard verification attempt requires typed repair"
                 }
                 ConnectionCheckStatus::Blocked | ConnectionCheckStatus::NotApplicable => {
                     unreachable!("raw Guard verification uses passed, pending, or failed")
                 }
             },
-            Some(json!({
-                "verification_id": verification_run.as_ref().map(|run| run.verification_id.as_str()),
-                "runtime_session_id": verification_run.as_ref().map(|run| run.runtime_session_id.as_str()),
-                "host_turn_id": verification_run.as_ref().map(|run| run.host_turn_id.as_str()),
-                "matched_prompt_event_id": verification_run.as_ref().and_then(|run| run.matched_prompt_event_id.as_deref()),
-                "matched_pre_tool_event_id": verification_run.as_ref().and_then(|run| run.matched_pre_tool_event_id.as_deref()),
-                "matched_post_tool_event_id": verification_run.as_ref().and_then(|run| run.matched_post_tool_event_id.as_deref()),
-            })),
+            Some(typed_details(&correlated_evidence)?),
             (verification_status == ConnectionCheckStatus::Passed)
                 .then_some(verification_observed_at.as_str()),
-        )?,
+        )?, verification_causes)?,
     ])?;
     Ok(ConnectionCheckEvaluation {
         checks,

@@ -944,7 +944,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
         "failed",
         Some("managed_config_mismatch"),
     );
-    assert_check(&report, "guard_hook_execution", "blocked", None);
+    assert_check(&report, "ambient_hook_coverage", "blocked", None);
     let after_verify = fixture.registry_snapshot();
     assert_eq!(fs::read(&config_target)?, config_f_old);
     assert_eq!(
@@ -1019,7 +1019,22 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert_check(&init_report, "required_tools", "pending", None);
     assert_check(&init_report, "tool_round_trip", "pending", None);
     assert_check(&init_report, "guard_observation", "pending", None);
-    assert_check(&init_report, "guard_verification", "pending", None);
+    assert_check(&init_report, "ambient_hook_coverage", "pending", None);
+    assert_check(
+        &init_report,
+        "correlated_guard_verification",
+        "pending",
+        None,
+    );
+    let initial_correlated = init_report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["id"] == "correlated_guard_verification")
+        })
+        .ok_or("initial correlated_guard_verification check")?;
+    assert!(initial_correlated["details"]["latest_attempt"].is_null());
     assert_eq!(init_report["activation_state"], "host_reload_required");
     assert_eq!(
         init_report["hook_activation_state"],
@@ -1088,7 +1103,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     }
     for check_id in [
         "guard_observation",
-        "guard_verification",
+        "correlated_guard_verification",
         "host_session",
         "required_tools",
         "tool_round_trip",
@@ -1100,15 +1115,32 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         .and_then(|checks| {
             checks
                 .iter()
-                .find(|check| check["id"] == "guard_verification")
+                .find(|check| check["id"] == "correlated_guard_verification")
         })
-        .ok_or("guard_verification check")?;
-    assert!(guard_verification["details"]["verification_id"].is_string());
-    assert!(guard_verification["details"]["runtime_session_id"].is_string());
-    assert!(guard_verification["details"]["host_turn_id"].is_string());
-    assert!(guard_verification["details"]["matched_prompt_event_id"].is_string());
-    assert!(guard_verification["details"]["matched_pre_tool_event_id"].is_string());
-    assert!(guard_verification["details"]["matched_post_tool_event_id"].is_string());
+        .ok_or("correlated_guard_verification check")?;
+    let latest_attempt = &guard_verification["details"]["latest_attempt"];
+    assert!(latest_attempt["verification_id"].is_string());
+    assert!(latest_attempt["runtime_session_id"].is_string());
+    assert!(latest_attempt["host_session_id"].is_string());
+    assert!(latest_attempt["host_turn_id"].is_string());
+    assert!(latest_attempt["prompt_event_id"].is_string());
+    assert!(latest_attempt["pre_tool_event_id"].is_string());
+    assert!(latest_attempt["post_tool_event_id"].is_string());
+    assert_eq!(latest_attempt["attempt_state"], "complete");
+    let latest_proof = &guard_verification["details"]["latest_completed_proof"];
+    assert_eq!(
+        latest_proof["verification_id"],
+        latest_attempt["verification_id"]
+    );
+    assert_eq!(
+        latest_proof["runtime_session_id"],
+        latest_attempt["runtime_session_id"]
+    );
+    assert!(latest_attempt["observed_host_callable_identity"].is_string());
+    assert_eq!(
+        latest_proof["observed_host_callable_identity"],
+        latest_attempt["observed_host_callable_identity"]
+    );
     let round_trip = complete_report["checks"]
         .as_array()
         .and_then(|checks| {
@@ -1133,7 +1165,12 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     assert_eq!(runtime_sessions.len(), 1);
     assert_eq!(
         runtime_sessions[0]["roles"],
-        json!(["latest_attempt", "latest_complete_proof"])
+        json!([
+            "latest_managed_attempt",
+            "latest_managed_capability_proof",
+            "guard_verification_attempt",
+            "guard_verification_proof"
+        ])
     );
     let complete_runtime_session_id = runtime_sessions[0]["id"]
         .as_str()
@@ -1271,9 +1308,9 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     let tampered_report = assert_connection_report(&tampered, 1, "status", "failed")?;
     assert_check(
         &tampered_report,
-        "guard_hook_execution",
+        "ambient_hook_coverage",
         "failed",
-        Some("guard_hook_execution_failed"),
+        Some("ambient_hook_coverage_failed"),
     );
     Ok(())
 }
@@ -1610,9 +1647,9 @@ fn guard_failures_are_current_and_structured() -> Result<(), Box<dyn Error>> {
     let report = assert_connection_report(&status, 1, "status", "failed")?;
     assert_check(
         &report,
-        "guard_hook_execution",
+        "ambient_hook_coverage",
         "failed",
-        Some("guard_hook_execution_failed"),
+        Some("ambient_hook_coverage_failed"),
     );
     let guard_finding = report["findings"]
         .as_array()
@@ -2976,7 +3013,7 @@ fn assert_check(report: &Value, id: &str, status: &str, expected_code: Option<&s
     let current_id = match id {
         "host_session" => "managed_session_health",
         "required_tools" | "tool_round_trip" => "managed_capability_proof",
-        "guard_files" | "guard_observation" => "guard_hook_execution",
+        "guard_files" | "guard_observation" => "ambient_hook_coverage",
         _ => id,
     };
     let check = report["checks"]

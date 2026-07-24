@@ -321,8 +321,9 @@ graceful close를 기록하기 전에 종료된 process는 열린 것처럼 보�
 파일 version은 diagnostic 필드입니다. 제한 안의 미래 값도 받아들이며 호환성은 현재 관리
 구성과 현재 revision의 `managed_host` runtime 하나에서 관찰한 초기화, 도구 목록, 필수
 도구, 안전 호출, Guard 동작으로 판단합니다. 검증은 가장 최신 managed runtime을 현재
-health를 나타내는 `latest_attempt`로 선택하고, 같은 session의 전체 chain을 완료한 가장 최신
-runtime을 별도로 `latest_complete_proof`로 선택합니다. Runtime 사이의 milestone을 조합하지
+health를 나타내는 `latest_managed_attempt`로 선택하고, 같은 session의 전체 chain을 완료한
+가장 최신 runtime을 별도로 `latest_managed_capability_proof`로 선택합니다. Runtime 사이의
+milestone을 조합하지
 않습니다. 실제 protocol peer는 선택된 runtime의 `clientInfo`입니다. 별도로 probe한
 executable path와 `codex --version`은 설치 및 수동 호출을 돕는 정보일 뿐 protocol peer의
 권위 있는 값이 아닙니다. Peer/PATH version 불일치는 warning evidence가 될 수 있지만 완전한

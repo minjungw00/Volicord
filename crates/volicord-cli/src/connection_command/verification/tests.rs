@@ -163,7 +163,7 @@ fn check_for(checks: &[ConnectionCheck], id: ConnectionCheckKind) -> &Connection
             ConnectionCheckKind::ManagedCapabilityProof
         }
         ConnectionCheckKind::GuardFiles | ConnectionCheckKind::GuardObservation => {
-            ConnectionCheckKind::GuardHookExecution
+            ConnectionCheckKind::AmbientHookCoverage
         }
         id => id,
     };
@@ -197,8 +197,8 @@ fn changed_hook_definition_resets_activation_to_the_host_owned_workflow() {
             ),
             passed(ConnectionCheckKind::ManagedSessionHealth, None),
             passed(ConnectionCheckKind::ManagedCapabilityProof, None),
-            passed(ConnectionCheckKind::GuardHookExecution, None),
-            passed(ConnectionCheckKind::GuardVerification, None),
+            passed(ConnectionCheckKind::AmbientHookCoverage, None),
+            passed(ConnectionCheckKind::CorrelatedGuardVerification, None),
         ],
         Vec::new(),
     )
@@ -614,16 +614,16 @@ fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
         .with_cause_finding_ids(vec![root.clone()])
         .unwrap(),
         canonical_check(
-            ConnectionCheckKind::GuardHookExecution,
+            ConnectionCheckKind::AmbientHookCoverage,
             ConnectionCheckStatus::Pending,
-            "guard_hook_execution_pending",
-            "Guard hook execution is not observed",
+            "ambient_hook_coverage_pending",
+            "Ambient Guard hook coverage is not observed",
             None,
             None,
         )
         .unwrap(),
         canonical_check(
-            ConnectionCheckKind::GuardVerification,
+            ConnectionCheckKind::CorrelatedGuardVerification,
             ConnectionCheckStatus::Pending,
             "guard_verification_pending",
             "Guard correlation is not verified",
@@ -635,11 +635,11 @@ fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
     .expect("blocked Guard graph");
 
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::GuardHookExecution).status(),
+        check_for(&checks, ConnectionCheckKind::AmbientHookCoverage).status(),
         ConnectionCheckStatus::Blocked
     );
     assert_eq!(
-        check_for(&checks, ConnectionCheckKind::GuardVerification).status(),
+        check_for(&checks, ConnectionCheckKind::CorrelatedGuardVerification,).status(),
         ConnectionCheckStatus::Blocked
     );
     assert_eq!(

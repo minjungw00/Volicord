@@ -205,18 +205,26 @@ inspection action을 만들지 않습니다. 사람용 라벨은 표시 문구�
 정규 check 상태는 `passed`, `pending`, `failed`, `blocked`, `not_applicable`입니다. 각각
 성공적으로 완료됨, 실패한 prerequisite가 없는 상태에서 필요한 외부 관찰을 기다림, check
 자체에서 실패함, prerequisite finding 실패로 실행할 수 없음, 선택한 Connection 또는
-profile에 적용되지 않음을 뜻합니다. Check 하나라도 failed 또는 blocked면 집계 상태는
-`failed`이고, 그런 check 없이 pending이 하나 이상이면 `action_required`이며, 그 밖에는
-`complete`입니다.
+profile에 적용되지 않음을 뜻합니다. Blocked 또는 복구 불가능한 failed check가 있으면
+집계 상태는 `failed`입니다. 복구 가능한 failed `correlated_guard_verification`은 failed로
+그대로 남으면서 집계에 `action_required`로 기여할 수 있고 pending check도
+`action_required`에 기여합니다.
 
 간결한 렌더러는 `activation_state`와 `hook_activation_state`를 항상 이름 붙여
 표시합니다. Pending 집중 check는 managed session, capability, Guard 활동으로 묶을 수
 있으며 passed, failed, blocked, not-applicable, 부재 check는 `Waiting` 아래에 반복하지
-않습니다. 주변 Guard phase는 `hook_source_activation` 또는 `guard_hook_execution`의
-detail로 유지하며 별도 최상위 readiness check가 아닙니다. 렌더러는 정규 check나 action을
+않습니다. 주변 Guard phase는 `ambient_hook_coverage`가 별도로 보고하며
+`correlated_guard_verification`을 충족하지 않습니다. 렌더러는 정규 check나 action을
 변경, 제거, 재정렬, 영속하지 않습니다. Dry run 산문은 typed
 `PlannedConnectionChangeKind`별로 계획 변경 수를 묶으며 target path에서 소유권을
 추론하지 않습니다.
+따라서 terminal correlated attempt는 다음과 같은 사실로 표시합니다.
+
+```text
+Hook installation and ambient execution: passed
+Correlated Guard verification: failed
+Reason: callable_identity_mismatch
+```
 
 적용한 `init`이 프로젝트 hook definition을 만들거나 바꾸면
 `hook_activation_state=review_required_by_setup`을 보고하고 다음 host 소유 sequence를
@@ -285,7 +293,10 @@ correlation, runtime-session ID, integration revision, timestamp, dependency와 
 관계, 권장 action, report limit을 표시합니다. 알고 있는 세부 필드는 구조화해서 표시하며,
 MCP check는 typed `ManagedSessionAttemptDetails`,
 `ManagedCapabilityProofDetails`, `RequiredToolsEvidence`,
-`VerificationToolEvidence`, `HostExecutableProbeDetails`를 직렬화합니다. 렌더러는 passed
+`VerificationToolEvidence`, `HostExecutableProbeDetails`를 직렬화합니다. Guard check는
+`AmbientGuardCoverageEvidence`, `CorrelatedGuardAttemptEvidence`,
+`CorrelatedGuardProof`를 직렬화하며 verbose 출력은 attempt 좌표, acquisition stage,
+기대·관찰 callable identity, retry policy, timestamp를 표시합니다. 렌더러는 passed
 check에서 선택 필드가 없다는 이유로 milestone을 부정값으로 바꾸지 않습니다. 집중 렌더러가
 기대하는 타입과 맞지 않는 값이나 알 수 없는 확장 필드는 `Additional
 details` 아래에 표시합니다. 렌더러는 summary에서 cause를 재구성하지 않으며 가린 fact는
@@ -324,10 +335,12 @@ DiagnosticReport:
 
 `connection`에는 Runtime Home, 선택한 Connection 좌표, 선택적인 repository와 config
 target, 현재 integration revision, 한도가 있는 `runtime_session_ids`, role을 보존하는
-`runtime_sessions`가 들어갑니다. 각 role 항목은 `id` 하나와 `latest_attempt`,
-`latest_complete_proof`에서 가져온 정규 `roles`를 가집니다. Finding correlation이 없어도
-check evidence에서 ID를 수집합니다. Session 하나가 두 role을 모두 가지면 한 번만 나타내고
-role 둘을 함께 표시하며 verbose human 출력도 같은 배정을 표시합니다. 각
+`runtime_sessions`, 관련 `verification_ids`가 들어갑니다. 각 role 항목은 `id` 하나와
+`latest_managed_attempt`, `latest_managed_capability_proof`,
+`guard_verification_attempt`, `guard_verification_proof`에서 가져온 정규 `roles`를
+가집니다. Finding correlation이 없어도 check evidence에서 ID를 수집합니다. Session 하나가
+여러 role을 가지면 한 번만 나타내고 정규 순서의 role을 함께 표시하며 verbose human
+출력도 같은 배정을 표시합니다. 각
 check에는 상태, 정규 dependency, typed detail, 관찰 시각, cause-finding ID가 들어갑니다.
 각 finding에는 안전한 typed fact, cause ID, action, correlation, redaction metadata,
 truncation metadata가 들어갑니다. 관찰 부재는 필드 부재 또는 명시적인 담당자 fact
@@ -753,9 +766,9 @@ probe 증거일 뿐입니다. `codex` 호환성 fixture가 통과해도 실제 �
 관찰한 것이 아니며 `managed_session_health` 또는 `managed_capability_proof` 근거를
 만들지 않습니다. Source가 `managed_host`인 runtime session만 해당 관찰을 제공할 수
 있습니다. 현재 revision에서 가장 최신인 managed session을 session health의 고정
-`latest_attempt`로 선택합니다. Capability proof는 initialize, initialized notification,
+`latest_managed_attempt`로 선택합니다. Capability proof는 initialize, initialized notification,
 `tools/list`, required-tool validation, 지정된 safe call을 같은 session에서 모두 완료한
-가장 최신 `latest_complete_proof`에서만 통과합니다. 더 최신인 partial/failed attempt와
+가장 최신 `latest_managed_capability_proof`에서만 통과합니다. 더 최신인 partial/failed attempt와
 더 오래된 proof는 서로 다른 role evidence로 남고 서로의 milestone을 채우지 않습니다.
 
 `volicord init`과 `volicord connection add`는 뒤의 운영 check가 실패하더라도 이미 쓴
@@ -769,7 +782,7 @@ probe 증거일 뿐입니다. `codex` 호환성 fixture가 통과해도 실제 �
 
 Action은 pending 및 failed check에서 직접 만드는 정렬되고 중복 제거된 목록입니다. 각
 action은 고정 owner, channel, prerequisite, 완료 의도 check, 현재 root finding ID를
-담습니다. `guard_hook_execution` check가 통과했다면 `reinstall_current_build`를 만들지
+담습니다. `ambient_hook_coverage` check가 통과했다면 `reinstall_current_build`를 만들지
 않습니다.
 
 <a id="external-host-configuration"></a>
@@ -844,8 +857,11 @@ reconciliation, 검증 보고서 영속화입니다. 활성 검증도 관리 hos
 미래 시작의 지속적인 가용성, 확인한 계약 밖의 Product Repository 동작 정확성은
 입증하지 않습니다.
 
-`volicord connection verify codex`는 정규 `guard_verification` check와 사용할 수 있는 경우
-verification/run/event ID를 보고하지만, CLI가 채팅 내 작업 흐름을 합성하거나 실행하지는
+`volicord connection verify codex`는 `ambient_hook_coverage`와
+`correlated_guard_verification`을 분리해 보고합니다. Concise 출력은 결과 둘과 terminal
+attempt의 typed repair reason을 표시합니다. Verbose 출력은 한도가 있는 전체 attempt
+좌표와 현재 proof를 표시하고 JSON은 같은 typed object, runtime-session role,
+verification ID를 보존합니다. CLI가 채팅 내 작업 흐름을 합성하거나 실행하지는
 않습니다. Pending check는 현재 managed Codex 채팅 안에서
 `volicord.begin_integration_verification`을 사용한 뒤 반환된 tagged `workflow`와 정확한
 typed `tool`을 따르도록 안내합니다. `awaiting_probe`는 Guard probe를 호출하고,
@@ -918,6 +934,14 @@ identity facts로는 `expected_tool_name`과 `observed_tool_name`만 담습니�
 detail과 verbose 출력도 같은 정확한 이름을 노출합니다. 한도 안의 임의 미래 Codex version 문구는 계속
 diagnostic으로 받아들입니다. 집중 host 담당 문서는 지원하지 않는 현재 host revision
 code를 정의하지 않으므로 CLI도 이를 만들어 내지 않습니다.
+
+Terminal Guard attempt는 typed repair reason에서
+`guard.probe.hook_event_not_observed`, `guard.probe.payload_incompatible`,
+`guard.probe.callable_mismatch`, `guard.probe.verification_id_mismatch`,
+`guard.probe.session_mismatch`, `guard.probe.turn_mismatch`,
+`guard.probe.tool_use_mismatch`, `guard.probe.current_contract_changed` 중 하나로 직접
+대응합니다. Fact는 acquisition stage와 retry policy를 보존합니다. Diagnostic lookup과
+renderer는 code를 고르기 위해 attempt summary를 parsing하지 않습니다.
 
 이 CLI 소유 운영 finding은 현재 상태 snapshot입니다. `CurrentDiagnosticKey`에는 완전한
 Connection scope, code, domain, stage, source, opaque typed subject identity가 들어가며 opaque

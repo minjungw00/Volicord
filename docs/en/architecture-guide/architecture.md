@@ -194,6 +194,15 @@ that projection. Exact replay retains the same verification ID and state;
 `complete` and typed `repair_required` remain terminal. Adapters and renderers
 do not derive parallel state or classify summary prose.
 
+The CLI projects Guard through two independent check/evidence paths.
+`AmbientGuardCoverageEvidence` owns current-definition and configured-phase
+coverage. `CorrelatedGuardAttemptEvidence` and `CorrelatedGuardProof` own the
+latest attempt and latest completed proof. Report context gathers both Guard
+and managed-MCP runtime sessions, canonicalizes their four closed evidence
+roles, and carries relevant verification IDs. Typed repair reason and
+acquisition stage select diagnostics; renderer wording and numeric Codex
+versions do not.
+
 Within Store, the integration-verification facade delegates create/resume,
 probe acknowledgement, event correlation, bounded observation, typed
 repair/retry projection, coordinate validation, and SQL row conversion to

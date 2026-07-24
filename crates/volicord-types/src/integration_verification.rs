@@ -22,6 +22,18 @@ pub enum GuardIntegrationVerificationStatus {
     RepairRequired,
 }
 
+impl GuardIntegrationVerificationStatus {
+    /// Returns the exact persisted and diagnostic spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AwaitingProbe => "awaiting_probe",
+            Self::AwaitingObservation => "awaiting_observation",
+            Self::Complete => "complete",
+            Self::RepairRequired => "repair_required",
+        }
+    }
+}
+
 /// Closed observation state for one correlated verification phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -233,6 +245,27 @@ pub enum GuardVerificationRetryPolicy {
     HostReloadRequired,
     HookReviewRequired,
     RepairRequired,
+}
+
+/// Whether a terminal repair attempt has a typed path to a later new attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardVerificationRecoverability {
+    Recoverable,
+    NotRecoverable,
+}
+
+impl GuardVerificationRecoverability {
+    /// Derives recoverability from the closed retry policy.
+    pub const fn from_retry_policy(policy: GuardVerificationRetryPolicy) -> Self {
+        match policy {
+            GuardVerificationRetryPolicy::NoAutomaticRetry => Self::NotRecoverable,
+            GuardVerificationRetryPolicy::NewTurnRequired
+            | GuardVerificationRetryPolicy::HostReloadRequired
+            | GuardVerificationRetryPolicy::HookReviewRequired
+            | GuardVerificationRetryPolicy::RepairRequired => Self::Recoverable,
+        }
+    }
 }
 
 impl GuardVerificationRetryPolicy {

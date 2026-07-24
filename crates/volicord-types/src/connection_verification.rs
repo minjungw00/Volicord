@@ -247,12 +247,12 @@ pub enum ConnectionCheckKind {
     ProjectTrust,
     /// Current Guard managed-file expectations match.
     GuardFiles,
-    /// A current Guard hook executed under the managed installation.
-    GuardHookExecution,
+    /// The current hook definition and every configured phase have ambient coverage.
+    AmbientHookCoverage,
     /// Current required Guard phases were observed.
     GuardObservation,
     /// One current managed turn completed the correlated Guard verification workflow.
-    GuardVerification,
+    CorrelatedGuardVerification,
     /// A setup plan is ready to apply or already matches.
     SetupPlan,
     /// A connection-mode transition was planned or applied.
@@ -269,9 +269,9 @@ impl ConnectionCheckKind {
         Self::ConnectionRemoval,
         Self::DiagnosticLookup,
         Self::GuardFiles,
-        Self::GuardHookExecution,
+        Self::AmbientHookCoverage,
         Self::GuardObservation,
-        Self::GuardVerification,
+        Self::CorrelatedGuardVerification,
         Self::HookSourceActivation,
         Self::HostExecutable,
         Self::HostReload,
@@ -308,9 +308,9 @@ impl ConnectionCheckKind {
             Self::ToolRoundTrip => "tool_round_trip",
             Self::ProjectTrust => "project_trust",
             Self::GuardFiles => "guard_files",
-            Self::GuardHookExecution => "guard_hook_execution",
+            Self::AmbientHookCoverage => "ambient_hook_coverage",
             Self::GuardObservation => "guard_observation",
-            Self::GuardVerification => "guard_verification",
+            Self::CorrelatedGuardVerification => "correlated_guard_verification",
             Self::SetupPlan => "setup_plan",
             Self::ModeTransition => "mode_transition",
             Self::ConnectionRemoval => "connection_removal",
@@ -327,9 +327,9 @@ impl ConnectionCheckKind {
             Self::ManagedSessionHealth => &[Self::HostReload],
             Self::ToolRoundTrip => &[Self::RequiredTools],
             Self::ManagedCapabilityProof => &[Self::ManagedSessionHealth],
-            Self::GuardHookExecution => &[Self::HookSourceActivation],
-            Self::GuardObservation => &[Self::GuardHookExecution],
-            Self::GuardVerification => &[Self::GuardHookExecution],
+            Self::AmbientHookCoverage => &[Self::HookSourceActivation],
+            Self::GuardObservation => &[Self::AmbientHookCoverage],
+            Self::CorrelatedGuardVerification => &[Self::AmbientHookCoverage],
             Self::VerificationNotRun
             | Self::DiagnosticLookup
             | Self::ManagedConfig
@@ -935,8 +935,8 @@ fn canonical_action_context(
             ConnectionActionChannel::McpTool,
             &[ConnectionCheckKind::ManagedCapabilityProof],
             &[
-                ConnectionCheckKind::GuardHookExecution,
-                ConnectionCheckKind::GuardVerification,
+                ConnectionCheckKind::AmbientHookCoverage,
+                ConnectionCheckKind::CorrelatedGuardVerification,
             ],
         ),
         ConnectionActionKind::InspectHookContract => (
@@ -965,7 +965,7 @@ fn canonical_action_context(
             ConnectionActionChannel::Cli,
             &[],
             &[
-                ConnectionCheckKind::GuardHookExecution,
+                ConnectionCheckKind::AmbientHookCoverage,
                 ConnectionCheckKind::ManagedConfig,
             ],
         ),
@@ -1227,23 +1227,31 @@ fn derive_activation_state(
     {
         return ConnectionActivationState::McpObservationRequired;
     }
-    if !passed(ConnectionCheckKind::GuardVerification) {
+    if !passed(ConnectionCheckKind::CorrelatedGuardVerification) {
         return ConnectionActivationState::GuardVerificationRequired;
     }
     ConnectionActivationState::Complete
 }
 
 fn aggregate_status(checks: &[ConnectionCheck]) -> ConnectionStatus {
+    let recoverable_failure = |check: &ConnectionCheck| {
+        check.status == ConnectionCheckStatus::Failed
+            && check.id == ConnectionCheckKind::CorrelatedGuardVerification
+            && check
+                .details
+                .as_ref()
+                .and_then(|details| details.as_object().get("recoverability"))
+                .and_then(Value::as_str)
+                == Some("recoverable")
+    };
     if checks.iter().any(|check| {
-        matches!(
-            check.status,
-            ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
-        )
+        check.status == ConnectionCheckStatus::Blocked
+            || (check.status == ConnectionCheckStatus::Failed && !recoverable_failure(check))
     }) {
         ConnectionStatus::Failed
     } else if checks
         .iter()
-        .any(|check| check.status == ConnectionCheckStatus::Pending)
+        .any(|check| check.status == ConnectionCheckStatus::Pending || recoverable_failure(check))
     {
         ConnectionStatus::ActionRequired
     } else {
@@ -1577,16 +1585,16 @@ mod tests {
     fn every_current_check_kind_round_trips_exact_json() {
         assert_eq!(ConnectionCheckKind::ALL.len(), 22);
         assert_eq!(
-            ConnectionCheckKind::GuardVerification.dependencies(),
-            &[ConnectionCheckKind::GuardHookExecution]
+            ConnectionCheckKind::CorrelatedGuardVerification.dependencies(),
+            &[ConnectionCheckKind::AmbientHookCoverage]
         );
         let expected = [
             "connection_removal",
             "diagnostic_lookup",
             "guard_files",
-            "guard_hook_execution",
+            "ambient_hook_coverage",
             "guard_observation",
-            "guard_verification",
+            "correlated_guard_verification",
             "hook_source_activation",
             "host_executable",
             "host_reload",
@@ -1715,7 +1723,8 @@ mod tests {
         )
         .unwrap();
         let mut noncanonical = serde_json::to_value(action).unwrap();
-        noncanonical["completes_checks"] = json!(["guard_verification", "guard_hook_execution"]);
+        noncanonical["completes_checks"] =
+            json!(["correlated_guard_verification", "ambient_hook_coverage"]);
         assert!(serde_json::from_value::<ConnectionAction>(noncanonical).is_err());
     }
 
@@ -1816,12 +1825,12 @@ mod tests {
                     None,
                 ),
                 activation_check(
-                    ConnectionCheckKind::GuardHookExecution,
+                    ConnectionCheckKind::AmbientHookCoverage,
                     guard_execution,
                     None,
                 ),
                 activation_check(
-                    ConnectionCheckKind::GuardVerification,
+                    ConnectionCheckKind::CorrelatedGuardVerification,
                     guard_verification,
                     None,
                 ),
@@ -2074,6 +2083,59 @@ mod tests {
                 .unwrap()
                 .status(),
             ConnectionStatus::Complete
+        );
+    }
+
+    #[test]
+    fn recoverable_correlated_failure_is_action_required_without_losing_failed_state() {
+        let correlated = ConnectionCheck::try_new(
+            ConnectionCheckKind::CorrelatedGuardVerification,
+            ConnectionCheckStatus::Failed,
+            Vec::new(),
+            Some("correlated_guard_verification_failed".to_owned()),
+            "The latest correlated Guard verification requires repair",
+            Some(
+                ConnectionCheckDetails::try_new(
+                    json!({
+                        "recoverability": "recoverable",
+                        "latest_attempt": {
+                            "attempt_state": "repair_required",
+                            "repair_reason": "hook_event_not_observed"
+                        }
+                    })
+                    .as_object()
+                    .expect("details object")
+                    .clone(),
+                )
+                .expect("typed details"),
+            ),
+            None,
+        )
+        .expect("recoverable correlated failure");
+        let report = ConnectionVerificationReport::try_new(
+            timestamp(),
+            vec![
+                check(
+                    ConnectionCheckKind::AmbientHookCoverage,
+                    ConnectionCheckStatus::Passed,
+                ),
+                correlated,
+            ],
+            Vec::new(),
+        )
+        .expect("action-required report");
+
+        assert_eq!(report.status(), ConnectionStatus::ActionRequired);
+        let correlated = report
+            .checks()
+            .iter()
+            .find(|check| check.id() == ConnectionCheckKind::CorrelatedGuardVerification)
+            .expect("correlated check");
+        assert_eq!(correlated.status(), ConnectionCheckStatus::Failed);
+        assert_eq!(
+            correlated.details().expect("typed evidence").as_object()["latest_attempt"]
+                ["attempt_state"],
+            "repair_required"
         );
     }
 

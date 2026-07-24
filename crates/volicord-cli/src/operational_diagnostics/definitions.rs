@@ -1,6 +1,6 @@
 //! Immutable definitions for CLI-owned operational diagnostics.
 
-use volicord_types::{DiagnosticSeverity, GuardManagedArtifact};
+use volicord_types::{DiagnosticSeverity, GuardManagedArtifact, GuardVerificationRepairReason};
 
 use crate::{
     guard_integration::audit::{
@@ -118,10 +118,18 @@ pub enum GuardDiagnostic {
     IncompatibleObservation,
     PromptCaptureUnsupported,
     PromptCaptureUnobserved,
+    ProbeHookEventNotObserved,
+    ProbePayloadIncompatible,
+    ProbeCallableMismatch,
+    ProbeVerificationIdMismatch,
+    ProbeSessionMismatch,
+    ProbeTurnMismatch,
+    ProbeToolUseMismatch,
+    ProbeCurrentContractChanged,
 }
 
 impl GuardDiagnostic {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 18] = [
         Self::ManagedFileMissing,
         Self::ManagedFileIntegrityFailure,
         Self::ManifestMismatch,
@@ -132,6 +140,14 @@ impl GuardDiagnostic {
         Self::IncompatibleObservation,
         Self::PromptCaptureUnsupported,
         Self::PromptCaptureUnobserved,
+        Self::ProbeHookEventNotObserved,
+        Self::ProbePayloadIncompatible,
+        Self::ProbeCallableMismatch,
+        Self::ProbeVerificationIdMismatch,
+        Self::ProbeSessionMismatch,
+        Self::ProbeTurnMismatch,
+        Self::ProbeToolUseMismatch,
+        Self::ProbeCurrentContractChanged,
     ];
 
     pub const fn definition(self) -> &'static OperationalDiagnosticDefinition {
@@ -146,11 +162,41 @@ impl GuardDiagnostic {
             Self::IncompatibleObservation => &GUARD_INCOMPATIBLE_OBSERVATION,
             Self::PromptCaptureUnsupported => &GUARD_PROMPT_CAPTURE_UNSUPPORTED,
             Self::PromptCaptureUnobserved => &GUARD_PROMPT_CAPTURE_UNOBSERVED,
+            Self::ProbeHookEventNotObserved => &GUARD_PROBE_HOOK_EVENT_NOT_OBSERVED,
+            Self::ProbePayloadIncompatible => &GUARD_PROBE_PAYLOAD_INCOMPATIBLE,
+            Self::ProbeCallableMismatch => &GUARD_PROBE_CALLABLE_MISMATCH,
+            Self::ProbeVerificationIdMismatch => &GUARD_PROBE_VERIFICATION_ID_MISMATCH,
+            Self::ProbeSessionMismatch => &GUARD_PROBE_SESSION_MISMATCH,
+            Self::ProbeTurnMismatch => &GUARD_PROBE_TURN_MISMATCH,
+            Self::ProbeToolUseMismatch => &GUARD_PROBE_TOOL_USE_MISMATCH,
+            Self::ProbeCurrentContractChanged => &GUARD_PROBE_CURRENT_CONTRACT_CHANGED,
         }
     }
 
     pub const fn code(self) -> &'static str {
         self.definition().code()
+    }
+
+    pub const fn from_verification_repair_reason(reason: GuardVerificationRepairReason) -> Self {
+        match reason {
+            GuardVerificationRepairReason::HookEventNotObserved
+            | GuardVerificationRepairReason::ObservationDeadlineExceeded => {
+                Self::ProbeHookEventNotObserved
+            }
+            GuardVerificationRepairReason::HookPayloadIncompatible => {
+                Self::ProbePayloadIncompatible
+            }
+            GuardVerificationRepairReason::CallableIdentityMismatch => Self::ProbeCallableMismatch,
+            GuardVerificationRepairReason::VerificationIdMismatch => {
+                Self::ProbeVerificationIdMismatch
+            }
+            GuardVerificationRepairReason::SessionMismatch => Self::ProbeSessionMismatch,
+            GuardVerificationRepairReason::TurnMismatch => Self::ProbeTurnMismatch,
+            GuardVerificationRepairReason::ToolUseMismatch => Self::ProbeToolUseMismatch,
+            GuardVerificationRepairReason::IntegrationRevisionChanged
+            | GuardVerificationRepairReason::HookDefinitionChanged
+            | GuardVerificationRepairReason::PolicyChanged => Self::ProbeCurrentContractChanged,
+        }
     }
 
     pub(crate) const fn from_artifact_issue(
@@ -288,7 +334,7 @@ pub enum OperationalDiagnostic {
 }
 
 impl OperationalDiagnostic {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 38] = [
         Self::Installation(InstallationDiagnostic::ExecutableMissing),
         Self::Installation(InstallationDiagnostic::ExecutableNotRunnable),
         Self::Installation(InstallationDiagnostic::BuildIdentityUnavailable),
@@ -313,6 +359,14 @@ impl OperationalDiagnostic {
         Self::Guard(GuardDiagnostic::IncompatibleObservation),
         Self::Guard(GuardDiagnostic::PromptCaptureUnsupported),
         Self::Guard(GuardDiagnostic::PromptCaptureUnobserved),
+        Self::Guard(GuardDiagnostic::ProbeHookEventNotObserved),
+        Self::Guard(GuardDiagnostic::ProbePayloadIncompatible),
+        Self::Guard(GuardDiagnostic::ProbeCallableMismatch),
+        Self::Guard(GuardDiagnostic::ProbeVerificationIdMismatch),
+        Self::Guard(GuardDiagnostic::ProbeSessionMismatch),
+        Self::Guard(GuardDiagnostic::ProbeTurnMismatch),
+        Self::Guard(GuardDiagnostic::ProbeToolUseMismatch),
+        Self::Guard(GuardDiagnostic::ProbeCurrentContractChanged),
         Self::Trust(TrustDiagnostic::RepositoryNotTrusted),
         Self::Trust(TrustDiagnostic::ObservationUnavailable),
         Self::Trust(TrustDiagnostic::ConfigurationMalformed),
@@ -602,6 +656,78 @@ definition!(
     "Configured prompt capture has not been observed",
     DiagnosticSeverity::Warning
 );
+definition!(
+    GUARD_PROBE_HOOK_EVENT_NOT_OBSERVED,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbeHookEventNotObserved),
+    "guard.probe.hook_event_not_observed",
+    "guard",
+    "guard_probe",
+    "The expected Guard probe hook event was not observed",
+    DiagnosticSeverity::Error
+);
+definition!(
+    GUARD_PROBE_PAYLOAD_INCOMPATIBLE,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbePayloadIncompatible),
+    "guard.probe.payload_incompatible",
+    "guard",
+    "guard_probe",
+    "The Guard probe hook payload is incompatible with the current contract",
+    DiagnosticSeverity::Error
+);
+definition!(
+    GUARD_PROBE_CALLABLE_MISMATCH,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbeCallableMismatch),
+    "guard.probe.callable_mismatch",
+    "guard",
+    "guard_probe",
+    "The observed Guard probe callable does not match the expected identity",
+    DiagnosticSeverity::Error
+);
+definition!(
+    GUARD_PROBE_VERIFICATION_ID_MISMATCH,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbeVerificationIdMismatch),
+    "guard.probe.verification_id_mismatch",
+    "guard",
+    "guard_probe",
+    "The Guard probe event has a different verification ID",
+    DiagnosticSeverity::Error
+);
+definition!(
+    GUARD_PROBE_SESSION_MISMATCH,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbeSessionMismatch),
+    "guard.probe.session_mismatch",
+    "guard",
+    "guard_probe",
+    "The Guard probe event does not match the managed runtime session",
+    DiagnosticSeverity::Error
+);
+definition!(
+    GUARD_PROBE_TURN_MISMATCH,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbeTurnMismatch),
+    "guard.probe.turn_mismatch",
+    "guard",
+    "guard_probe",
+    "The Guard probe event does not match the verification turn",
+    DiagnosticSeverity::Error
+);
+definition!(
+    GUARD_PROBE_TOOL_USE_MISMATCH,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbeToolUseMismatch),
+    "guard.probe.tool_use_mismatch",
+    "guard",
+    "guard_probe",
+    "The Guard probe pre-tool and post-tool events have different tool-use identities",
+    DiagnosticSeverity::Error
+);
+definition!(
+    GUARD_PROBE_CURRENT_CONTRACT_CHANGED,
+    OperationalDiagnostic::Guard(GuardDiagnostic::ProbeCurrentContractChanged),
+    "guard.probe.current_contract_changed",
+    "guard",
+    "guard_probe",
+    "The current integration, policy, or hook contract changed during verification",
+    DiagnosticSeverity::Error
+);
 
 definition!(
     TRUST_REPOSITORY_NOT_TRUSTED,
@@ -707,6 +833,32 @@ mod tests {
             assert!(!definition.stage().is_empty());
             assert_eq!(definition.source(), ADMINISTRATIVE_CLI);
             assert!(codes.insert(definition.code()), "duplicate definition code");
+        }
+    }
+
+    #[test]
+    fn every_guard_repair_reason_maps_directly_to_one_stable_finding_code() {
+        let expected = [
+            "guard.probe.hook_event_not_observed",
+            "guard.probe.payload_incompatible",
+            "guard.probe.callable_mismatch",
+            "guard.probe.verification_id_mismatch",
+            "guard.probe.session_mismatch",
+            "guard.probe.turn_mismatch",
+            "guard.probe.tool_use_mismatch",
+            "guard.probe.current_contract_changed",
+            "guard.probe.current_contract_changed",
+            "guard.probe.current_contract_changed",
+            "guard.probe.hook_event_not_observed",
+        ];
+        assert_eq!(GuardVerificationRepairReason::ALL.len(), expected.len());
+        for (reason, expected_code) in GuardVerificationRepairReason::ALL.into_iter().zip(expected)
+        {
+            assert_eq!(
+                GuardDiagnostic::from_verification_repair_reason(reason).code(),
+                expected_code,
+                "{reason:?}"
+            );
         }
     }
 }

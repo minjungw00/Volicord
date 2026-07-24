@@ -136,8 +136,10 @@ volicord connection verify codex --repo "<repo>"
 
 `unknown`은 hook activation이 성립하지 않았다는 뜻입니다. Untrusted 또는 disabled를
 뜻하지 않습니다. `project_trust`는 별도 check이며 host가 그 관심사를 노출할 때만
-적용됩니다. `latest_attempt`와 `latest_complete_proof`는 role로 비교하고 verification
-ID를 보존하며 실제 MCP peer 정보와 PATH executable probe를 분리해 보고합니다.
+적용됩니다. `latest_managed_attempt`, `latest_managed_capability_proof`,
+`guard_verification_attempt`, `guard_verification_proof`는 role로 비교하고 관련
+verification ID를 모두 보존하며 실제 MCP peer 정보와 PATH executable probe를 분리해
+보고합니다.
 
 ## `action_required`
 
@@ -198,8 +200,8 @@ volicord connection verify codex --repo "<repo>" --json
 남습니다. 종료 code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을
 확인하거나 전달할 때 finding ID를 함께 보존합니다.
 
-`connection.runtime_sessions`에서 `latest_attempt`는 현재 managed-session health로,
-`latest_complete_proof`는 initialize, `tools/list`, required-tool validation, 정규 verification
+`connection.runtime_sessions`에서 `latest_managed_attempt`는 현재 managed-session health로,
+`latest_managed_capability_proof`는 initialize, `tools/list`, required-tool validation, 정규 verification
 호출을 session 하나에서 완료한 가장 최신 항목으로 읽습니다. 두 role의 ID가 다를 수
 있습니다. 더 최신인 partial attempt가 오래된 proof를 지우지 않고, 오래된 proof도 더 최신인
 terminal failure를 숨기지 않습니다. Complete proof가 없으면 최신 attempt에 따라 readiness를
@@ -236,6 +238,18 @@ capability와 Guard verification을 충족하지 않습니다.
 치명적 결과는 아닙니다. 보고할 때 한 version을 다른 version으로 바꾸지 않습니다.
 
 ## 채팅 내 Guard 검증이 대기 중인 경우
+
+먼저 Guard check 둘을 모두 확인합니다. `ambient_hook_coverage=passed`는 현재 hook
+definition과 configured phase를 일반적으로 관찰했다는 뜻일 뿐 correlated attempt를
+증명하지 않습니다. Terminal attempt는 concise 출력에서 waiting이 아니라
+`Correlated Guard verification: failed`와 typed `Reason`으로 표시됩니다. Verbose 또는
+JSON 출력에서는 verification ID, runtime 및 host session, turn, event ID, attempt state,
+acquisition stage, 기대·관찰 callable, retry policy, timestamp를 보존합니다.
+
+`latest_attempt.attempt_state=repair_required`이면 중단합니다. Typed recovery action과
+안정적인 `guard.probe.*` root finding을 따릅니다. 더 오래된
+`latest_completed_proof`가 있다는 이유로 retry하거나 summary에서 reason을 분류하지
+않습니다. Attempt 부재 또는 실제 deferred active attempt만 pending입니다.
 
 같은 현재 managed Codex 채팅과 native turn을 유지합니다.
 

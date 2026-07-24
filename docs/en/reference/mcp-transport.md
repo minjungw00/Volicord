@@ -370,9 +370,9 @@ observed host executable version are diagnostic fields; they accept bounded
 future values. Compatibility is determined from the current managed
 configuration and the initialization, tool-list, required-tool, safe-call, and
 Guard behavior observed in one current-revision `managed_host` runtime.
-Verification selects the newest managed runtime as `latest_attempt` for current
+Verification selects the newest managed runtime as `latest_managed_attempt` for current
 health and independently selects the newest runtime with that complete same-
-session chain as `latest_complete_proof`. It never combines milestones across
+session chain as `latest_managed_capability_proof`. It never combines milestones across
 runtimes. The actual protocol peer is the selected runtime's `clientInfo`; the
 separately probed executable path and `codex --version` are installation and
 manual-invocation aids, not protocol-peer authority. A peer/PATH version
