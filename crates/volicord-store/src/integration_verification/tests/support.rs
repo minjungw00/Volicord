@@ -264,6 +264,21 @@ impl VerificationFixture {
         self.set_current_manifest_field("$.integration_revision", integration_revision)
     }
 
+    pub(super) fn set_expected_host_callable_name(
+        &self,
+        verification_id: &str,
+        expected_host_callable_name: &str,
+    ) -> StoreResult<()> {
+        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        conn.execute(
+            "UPDATE guard_integration_verification_runs
+                SET expected_host_callable_name = ?2
+              WHERE verification_id = ?1",
+            rusqlite::params![verification_id, expected_host_callable_name],
+        )?;
+        Ok(())
+    }
+
     fn set_current_manifest_field(&self, path: &str, value: &str) -> StoreResult<()> {
         let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
         let manifest_json: String = conn.query_row(

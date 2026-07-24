@@ -374,49 +374,47 @@ fn observation_repair(
         .into_iter()
         .map(|observation| observation.stage)
         .collect::<Vec<_>>();
-    for (stages_to_match, reason, retry_policy) in [
-        (
-            &[GuardProbeObservationStage::HookPayloadIncompatible][..],
-            GuardVerificationRepairReason::HookPayloadIncompatible,
-            GuardVerificationRetryPolicy::HookReviewRequired,
-        ),
-        (
-            &[
-                GuardProbeObservationStage::CallableIdentityUnknown,
-                GuardProbeObservationStage::CallableIdentityMismatch,
-            ][..],
-            GuardVerificationRepairReason::CallableIdentityMismatch,
-            GuardVerificationRetryPolicy::HookReviewRequired,
-        ),
-        (
-            &[GuardProbeObservationStage::VerificationIdMismatch][..],
-            GuardVerificationRepairReason::VerificationIdMismatch,
-            GuardVerificationRetryPolicy::NewTurnRequired,
-        ),
-        (
-            &[GuardProbeObservationStage::SessionMismatch][..],
-            GuardVerificationRepairReason::SessionMismatch,
-            GuardVerificationRetryPolicy::HostReloadRequired,
-        ),
-        (
-            &[GuardProbeObservationStage::TurnMismatch][..],
-            GuardVerificationRepairReason::TurnMismatch,
-            GuardVerificationRetryPolicy::NewTurnRequired,
-        ),
-        (
-            &[GuardProbeObservationStage::ToolUseMismatch][..],
-            GuardVerificationRepairReason::ToolUseMismatch,
-            GuardVerificationRetryPolicy::NewTurnRequired,
-        ),
-    ] {
-        if stages.iter().any(|stage| stages_to_match.contains(stage)) {
-            return Ok((reason, retry_policy));
+    let reason = [
+        GuardProbeObservationStage::HookPayloadIncompatible,
+        GuardProbeObservationStage::CallableIdentityUnknown,
+        GuardProbeObservationStage::CallableIdentityMismatch,
+        GuardProbeObservationStage::VerificationIdMismatch,
+        GuardProbeObservationStage::SessionMismatch,
+        GuardProbeObservationStage::TurnMismatch,
+        GuardProbeObservationStage::ToolUseMismatch,
+        GuardProbeObservationStage::HookEventNotObserved,
+    ]
+    .into_iter()
+    .find(|candidate| stages.contains(candidate))
+    .and_then(GuardProbeObservationStage::terminal_repair_reason)
+    .ok_or_else(|| {
+        StoreError::corrupt_stored_value("registry", "guard_probe_observations.terminal_stage")
+    })?;
+    let retry_policy = match reason {
+        GuardVerificationRepairReason::HookEventNotObserved
+        | GuardVerificationRepairReason::SessionMismatch => {
+            GuardVerificationRetryPolicy::HostReloadRequired
         }
-    }
-    Ok((
-        GuardVerificationRepairReason::HookEventNotObserved,
-        GuardVerificationRetryPolicy::HostReloadRequired,
-    ))
+        GuardVerificationRepairReason::HookPayloadIncompatible
+        | GuardVerificationRepairReason::CallableIdentityMismatch => {
+            GuardVerificationRetryPolicy::HookReviewRequired
+        }
+        GuardVerificationRepairReason::VerificationIdMismatch
+        | GuardVerificationRepairReason::TurnMismatch
+        | GuardVerificationRepairReason::ToolUseMismatch => {
+            GuardVerificationRetryPolicy::NewTurnRequired
+        }
+        GuardVerificationRepairReason::IntegrationRevisionChanged
+        | GuardVerificationRepairReason::HookDefinitionChanged
+        | GuardVerificationRepairReason::PolicyChanged
+        | GuardVerificationRepairReason::ObservationDeadlineExceeded => {
+            return Err(StoreError::corrupt_stored_value(
+                "registry",
+                "guard_probe_observations.terminal_stage",
+            ));
+        }
+    };
+    Ok((reason, retry_policy))
 }
 
 fn persist_repair(

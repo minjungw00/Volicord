@@ -267,8 +267,11 @@ hook에서 검토된 strategy는 native Guard host tool과 server-qualified MCP 
 파생합니다. Matcher JSON은 이 typed 값에서만 생성하고 엄격한 구성 검증은 이를 다시
 같은 값으로 parsing합니다. Routing은 semantic tool 수락이 아닙니다.
 Wrapper에서 `McpToolCatalog`가 계속 정확한 callable 해석을 수행하며, 해석된
-`AgentToolId`만 Guard probe 역할을 선택할 수 있습니다. 숫자 host-version branch는
-strategy를 바꾸지 않습니다.
+`AgentToolId`에는 정규 catalog가 probe target, workflow control, unrelated known tool
+중 정확히 하나의 integration-verification role을 부여합니다. Catalog 구성은 모순되는
+role metadata를 거부합니다. Probe target role만 probe 전용 좌표 검사를 계속하며 begin,
+status 및 그 밖의 known role은 nonterminal routed trace입니다. 숫자 host-version
+branch는 strategy를 바꾸지 않습니다.
 
 ## 권위 있는 Lifecycle 기록
 
@@ -567,6 +570,11 @@ integration revision, hook-contract digest, managed runtime은 현재 상태를 
 무관한 관찰, 오래된 관찰, 불일치 관찰은 attempt를 충족할 수 없습니다. Cleanup expiry는
 보관 기록의 범위만 제한하며 synchronous observation을 판단하거나 같은 좌표의 retry를
 허용하지 않습니다.
+Begin과 status의 hook event는 현재 verification ID를 담더라도
+`unrelated_routed_tool` trace로 남으므로 status tool의 자체 Pre/Post hook을 Guard probe
+callable mismatch로 분류하지 않습니다. Routing된 server namespace의 알 수 없는
+callable도 정확한 현재 verification ID를 명시적으로 주장하지 않으면 nonterminal입니다.
+그 ID를 주장한 경우에만 terminal unknown-identity observation입니다.
 
 <a id="mutation-authority-receipt-projection"></a>
 ## 응답 wrapping

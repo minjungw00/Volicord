@@ -99,10 +99,12 @@ Durable tests should cover, as applicable:
   with exact `CodexMcpTurnMetadata`, `CodexCommandHooks`, and
   `CodexMcpCallableNames` profile coverage; source-specific correlation;
   explicit server/raw/callable fixture parity; complete raw-name projection;
-  normalization-collision rejection; exact catalog reverse lookup; additive-
-  field and bound checks; checksum parity; typed host-tool plus server-
-  namespace/catalog-derived-exact routing; current Guard-probe pre/post fixture
-  delivery; foreign-server
+  normalization-collision and contradictory-role rejection; exact catalog
+  reverse lookup; additive-field and bound checks; checksum parity; typed
+  host-tool plus server-namespace/catalog-derived-exact routing; complete
+  probe-target/workflow-control/unrelated-known role coverage; current
+  Guard-probe pre/post fixture delivery; nonterminal begin/get/status
+  self-observation; unknown same-server exact-ID claim handling; foreign-server
   exclusion; generated matcher/catalog parity; strict matcher-drift rejection;
   and CLI conformance evidence kept separate from actual `managed_host`
   observations;

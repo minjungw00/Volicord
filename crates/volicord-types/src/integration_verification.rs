@@ -42,11 +42,22 @@ pub enum GuardIntegrationVerificationPhaseStatus {
     Matched,
 }
 
+/// Semantic relevance of one host-routed tool event to the active Guard probe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuardProbeEventRelevance {
+    ProbeTarget { tool: AgentToolId },
+    WorkflowControl { tool: AgentToolId },
+    UnrelatedKnownTool { tool: AgentToolId },
+    UnknownSameServerCallable,
+    NotRouted,
+}
+
 /// Closed acquisition stage for one bounded Guard-probe observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardProbeObservationStage {
     ProbeAcknowledged,
+    UnrelatedRoutedTool,
     HookEventNotObserved,
     HookPayloadIncompatible,
     CallableIdentityUnknown,
@@ -60,8 +71,9 @@ pub enum GuardProbeObservationStage {
 }
 
 impl GuardProbeObservationStage {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::ProbeAcknowledged,
+        Self::UnrelatedRoutedTool,
         Self::HookEventNotObserved,
         Self::HookPayloadIncompatible,
         Self::CallableIdentityUnknown,
@@ -78,6 +90,7 @@ impl GuardProbeObservationStage {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ProbeAcknowledged => "probe_acknowledged",
+            Self::UnrelatedRoutedTool => "unrelated_routed_tool",
             Self::HookEventNotObserved => "hook_event_not_observed",
             Self::HookPayloadIncompatible => "hook_payload_incompatible",
             Self::CallableIdentityUnknown => "callable_identity_unknown",
@@ -94,6 +107,29 @@ impl GuardProbeObservationStage {
     /// Parses the exact storage and diagnostic spelling.
     pub fn from_storage_str(value: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|stage| stage.as_str() == value)
+    }
+
+    /// Returns the terminal repair reason represented by this acquisition stage.
+    pub const fn terminal_repair_reason(self) -> Option<GuardVerificationRepairReason> {
+        match self {
+            Self::HookEventNotObserved => Some(GuardVerificationRepairReason::HookEventNotObserved),
+            Self::HookPayloadIncompatible => {
+                Some(GuardVerificationRepairReason::HookPayloadIncompatible)
+            }
+            Self::CallableIdentityUnknown | Self::CallableIdentityMismatch => {
+                Some(GuardVerificationRepairReason::CallableIdentityMismatch)
+            }
+            Self::VerificationIdMismatch => {
+                Some(GuardVerificationRepairReason::VerificationIdMismatch)
+            }
+            Self::SessionMismatch => Some(GuardVerificationRepairReason::SessionMismatch),
+            Self::TurnMismatch => Some(GuardVerificationRepairReason::TurnMismatch),
+            Self::ToolUseMismatch => Some(GuardVerificationRepairReason::ToolUseMismatch),
+            Self::ProbeAcknowledged
+            | Self::UnrelatedRoutedTool
+            | Self::PreToolMatched
+            | Self::PostToolMatched => None,
+        }
     }
 }
 
@@ -561,6 +597,14 @@ mod tests {
             GuardProbeObservationStage::from_storage_str("matcher_failed"),
             None
         );
+        for stage in [
+            GuardProbeObservationStage::ProbeAcknowledged,
+            GuardProbeObservationStage::UnrelatedRoutedTool,
+            GuardProbeObservationStage::PreToolMatched,
+            GuardProbeObservationStage::PostToolMatched,
+        ] {
+            assert_eq!(stage.terminal_repair_reason(), None);
+        }
     }
 
     #[test]

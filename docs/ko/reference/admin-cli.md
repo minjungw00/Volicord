@@ -972,6 +972,11 @@ Terminal Guard attempt는 typed repair reason에서
 `guard.probe.tool_use_mismatch`, `guard.probe.current_contract_changed` 중 하나로 직접
 대응합니다. Fact는 acquisition stage와 retry policy를 보존합니다. Diagnostic lookup과
 renderer는 code를 고르기 위해 attempt summary를 parsing하지 않습니다.
+Nonterminal `UnrelatedRoutedTool` trace는 해당하는 경우에만 한도 있는 attempt detail로
+노출되며 concise root cause나 terminal repair finding이 되지 않습니다. 특히 begin/status
+control tool의 routed hook은 누락된 Guard probe event를
+`guard.probe.callable_mismatch`로 바꾸지 않습니다. JSON, concise, verbose status는 모두
+`guard.probe.hook_event_not_observed`를 root로 유지합니다.
 
 이 CLI 소유 운영 finding은 현재 상태 snapshot입니다. `CurrentDiagnosticKey`에는 완전한
 Connection scope, code, domain, stage, source, opaque typed subject identity가 들어가며 opaque

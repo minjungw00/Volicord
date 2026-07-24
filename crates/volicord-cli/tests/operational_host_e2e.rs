@@ -21,7 +21,8 @@ use support::binary_fixture::{run_child, ChildStdin};
 use support::json::adapter_tool_response;
 use toml_edit::DocumentMut;
 use volicord_host_contract::{
-    CodexHookPromptCorrelation, HostNativeCorrelation, HostSessionId, HostTurnId,
+    project_mcp_tool, CodexHookPromptCorrelation, HostNativeCorrelation, HostSessionId, HostTurnId,
+    McpServerKey,
 };
 use volicord_mcp::{
     ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
@@ -47,8 +48,9 @@ use volicord_store::operational_sessions::{
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
     guard_manifest_from_json, AgentConnectionMode, AgentToolId, DiagnosticFindingId,
-    GuardHookPhase, GuardManagedOwnership, GuardManifest, IntegrationVerificationWorkflowState,
-    McpRuntimeSessionSource, ToolVerificationRole,
+    GuardHookPhase, GuardManagedOwnership, GuardManifest, GuardProbeObservationStage,
+    GuardVerificationRepairReason, IntegrationVerificationWorkflowState, McpRuntimeSessionSource,
+    ToolVerificationRole,
 };
 
 const FUTURE_VERSION: &str = "999.0.0";
@@ -63,7 +65,6 @@ const CODEX_COMPATIBILITY_VERSION: &str = "0.108.0-alpha.12";
 const CODEX_COMPATIBILITY_REVISION: &str = "2025-06-18";
 const INTEGRATION_VERIFICATION_TURN_ID: &str = "future.turn.integration-verification";
 const INTEGRATION_VERIFICATION_TOOL_USE_ID: &str = "future.tool-use.guard-probe";
-const REVIEWED_CODEX_GUARD_PROBE_CALLABLE: &str = "mcp__volicord__volicord_guard_probe";
 const MCP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, PartialEq, Eq)]
@@ -130,6 +131,7 @@ fn main() {
 fn run_operational_regressions() -> Result<(), Box<dyn Error>> {
     codex_2025_06_18_compatibility_records_managed_runtime_facts()?;
     verification_tool_designation_mismatch_is_typed()?;
+    status_tool_self_observation_preserves_missing_probe_reason()?;
     managed_launch_contracts_survive_filtered_environments()?;
     complete_managed_activation_journey_and_read_only_status()?;
     connection_mode_transition_rebinds_guard_revision()?;
@@ -207,6 +209,220 @@ fn verification_tool_designation_mismatch_is_typed() -> Result<(), Box<dyn Error
     let verbose = String::from_utf8(verbose.stdout)?;
     assert!(verbose.contains("Expected verification tool: volicord.list_projects"));
     assert!(verbose.contains("Observed verification tool: volicord.status"));
+    Ok(())
+}
+
+fn status_tool_self_observation_preserves_missing_probe_reason() -> Result<(), Box<dyn Error>> {
+    let fixture = OperationalFixture::initialized("operational-status-self-observation")?;
+    let connection_id = fixture.connection_id();
+    let project_id = fixture.project_id();
+    let snapshot = fixture.registry_snapshot();
+    let manifest = guard_manifest_from_json(&snapshot.guard_installations[0].manifest_json)?;
+    let connection = agent_connection_record(&fixture.runtime_home, &connection_id)?
+        .ok_or("managed Guard Connection should exist")?;
+    let status_callable = project_mcp_tool(
+        &McpServerKey::parse(&connection.server_name)?,
+        AgentToolId::GET_INTEGRATION_VERIFICATION,
+    )?;
+
+    let mut command = fixture.managed_mcp_command(&connection_id)?;
+    let mut child = LiveMcpChild::spawn(&mut command)?;
+    child.write(&json_lines(&[
+        initialize_request(FUTURE_VERSION),
+        initialized_notification(),
+        tools_list_request(),
+    ])?)?;
+    child.read_responses(2)?;
+
+    let prompt = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "future.session.status-self-observation",
+        "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+        "prompt": "Verify missing Guard probe hooks."
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PromptCapture),
+            &prompt,
+        )?
+        .status
+        .success());
+
+    child.write(&json_lines(&[
+        managed_tool_call_in_turn(
+            3,
+            managed_host_round_trip_tool().wire_name(),
+            json!({}),
+            "future.session.status-self-observation",
+            INTEGRATION_VERIFICATION_TURN_ID,
+        ),
+        managed_tool_call_in_turn(
+            4,
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            json!({"project_selector": project_id}),
+            "future.session.status-self-observation",
+            INTEGRATION_VERIFICATION_TURN_ID,
+        ),
+    ])?)?;
+    let begin_responses = child.read_responses(2)?;
+    let begin = adapter_tool_response(&begin_responses[1])?;
+    let verification_id = begin["verification_id"]
+        .as_str()
+        .ok_or("begin response verification ID")?
+        .to_owned();
+
+    child.write(&json_lines(&[managed_tool_call_in_turn(
+        5,
+        AgentToolId::GUARD_PROBE.wire_name(),
+        json!({"verification_id": verification_id}),
+        "future.session.status-self-observation",
+        INTEGRATION_VERIFICATION_TURN_ID,
+    )])?)?;
+    let probe_responses = child.read_responses(1)?;
+    let probe = adapter_tool_response(&probe_responses[0])?;
+    assert_eq!(
+        probe["workflow"]["kind"],
+        IntegrationVerificationWorkflowState::AWAITING_OBSERVATION_KIND
+    );
+
+    let status_tool_use_id = "future.tool-use.integration-verification-status";
+    let status_pre = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "future.session.status-self-observation",
+        "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+        "tool_use_id": status_tool_use_id,
+        "tool_name": status_callable.callable_name().as_str(),
+        "tool_input": {"verification_id": verification_id},
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PreTool),
+            &status_pre,
+        )?
+        .status
+        .success());
+    let registry_path = fixture.runtime_home.join("registry.sqlite");
+    let registry = rusqlite::Connection::open(&registry_path)?;
+    let before_status: (String, i64) = registry.query_row(
+        "SELECT status, status_read_count
+           FROM guard_integration_verification_runs
+          WHERE verification_id = ?1",
+        [&verification_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(before_status, ("awaiting_observation".to_owned(), 0));
+    drop(registry);
+
+    child.write(&json_lines(&[managed_tool_call_in_turn(
+        6,
+        AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
+        json!({"verification_id": verification_id}),
+        "future.session.status-self-observation",
+        INTEGRATION_VERIFICATION_TURN_ID,
+    )])?)?;
+    let status_responses = child.read_responses(1)?;
+    let verification = adapter_tool_response(&status_responses[0])?;
+    assert_eq!(
+        verification["workflow"]["kind"],
+        IntegrationVerificationWorkflowState::REPAIR_REQUIRED_KIND
+    );
+    assert_eq!(
+        verification["workflow"]["reason"],
+        GuardVerificationRepairReason::HookEventNotObserved.as_str()
+    );
+
+    let status_post = json!({
+        "hook_event_name": "PostToolUse",
+        "session_id": "future.session.status-self-observation",
+        "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+        "tool_use_id": status_tool_use_id,
+        "tool_name": status_callable.callable_name().as_str(),
+        "tool_input": {"verification_id": verification_id},
+        "tool_response": {"success": true},
+    });
+    assert!(fixture
+        .run_guard_command(
+            manifest.runtime_commands.get(GuardHookPhase::PostTool),
+            &status_post,
+        )?
+        .status
+        .success());
+
+    let registry = rusqlite::Connection::open(&registry_path)?;
+    let terminal: (String, i64, String) = registry.query_row(
+        "SELECT status, status_read_count, repair_reason
+           FROM guard_integration_verification_runs
+          WHERE verification_id = ?1",
+        [&verification_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    assert_eq!(
+        terminal,
+        (
+            "repair_required".to_owned(),
+            1,
+            GuardVerificationRepairReason::HookEventNotObserved
+                .as_str()
+                .to_owned(),
+        )
+    );
+    let unrelated_count: i64 = registry.query_row(
+        "SELECT COUNT(*)
+           FROM guard_probe_observations
+          WHERE verification_id = ?1 AND stage = ?2",
+        rusqlite::params![
+            verification_id,
+            GuardProbeObservationStage::UnrelatedRoutedTool.as_str()
+        ],
+        |row| row.get(0),
+    )?;
+    let mismatch_count: i64 = registry.query_row(
+        "SELECT COUNT(*)
+           FROM guard_probe_observations
+          WHERE verification_id = ?1
+            AND stage IN ('callable_identity_unknown', 'callable_identity_mismatch')",
+        [&verification_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(unrelated_count, 1);
+    assert_eq!(mismatch_count, 0);
+    drop(registry);
+
+    let output = child.finish()?;
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+
+    let status = fixture.run_connection("status", FUTURE_VERSION, true)?;
+    assert!(status.stderr.is_empty());
+    let report: Value = serde_json::from_slice(&status.stdout)?;
+    let finding = report["findings"]
+        .as_array()
+        .and_then(|findings| {
+            findings
+                .iter()
+                .find(|finding| finding["code"] == "guard.probe.hook_event_not_observed")
+        })
+        .ok_or("missing hook-event-not-observed Connection finding")?;
+    let finding_id = finding["id"]
+        .as_str()
+        .ok_or("hook-event-not-observed finding ID")?;
+    assert!(report["root_cause_ids"]
+        .as_array()
+        .is_some_and(|roots| roots.iter().any(|root| root == finding_id)));
+    let report_text = serde_json::to_string(&report)?;
+    assert!(!report_text.contains("guard.probe.callable_mismatch"));
+    assert!(!report_text.contains("callable_identity_mismatch"));
+
+    for rendered in [
+        fixture.run_connection("status", FUTURE_VERSION, false)?,
+        fixture.run_connection_verbose("status", FUTURE_VERSION)?,
+    ] {
+        assert!(rendered.stderr.is_empty());
+        let rendered = String::from_utf8(rendered.stdout)?;
+        assert!(rendered.contains("guard.probe.hook_event_not_observed"));
+        assert!(!rendered.contains("guard.probe.callable_mismatch"));
+        assert!(!rendered.contains("callable_identity_mismatch"));
+    }
     Ok(())
 }
 
@@ -1128,10 +1344,10 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
             .map(|step| step["tool"].as_str().expect("nested tool"))
             .collect::<Vec<_>>(),
         vec![
-            "volicord.list_projects",
-            "volicord.begin_integration_verification",
-            "volicord.guard_probe",
-            "volicord.get_integration_verification",
+            AgentToolId::LIST_PROJECTS.wire_name(),
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            AgentToolId::GUARD_PROBE.wire_name(),
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         ]
     );
     assert!(!initial_steps.iter().any(|step| step["id"] == "guard_probe"));
@@ -2184,25 +2400,49 @@ impl OperationalFixture {
         )?;
         assert!(prompt_output.status.success());
 
-        child.write(&json_lines(&[
-            managed_tool_call_in_turn(
-                3,
-                managed_host_round_trip_tool().wire_name(),
-                json!({}),
-                native_session,
-                INTEGRATION_VERIFICATION_TURN_ID,
-            ),
-            managed_tool_call_in_turn(
-                4,
-                AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
-                json!({"project_selector": project_id}),
-                native_session,
-                INTEGRATION_VERIFICATION_TURN_ID,
-            ),
-        ])?)?;
+        let connection = agent_connection_record(&self.runtime_home, connection_id)?
+            .ok_or("managed Guard Connection should exist")?;
+        assert_eq!(connection.server_name, "volicord");
+        let server = McpServerKey::parse(&connection.server_name)?;
+        let begin_callable =
+            project_mcp_tool(&server, AgentToolId::BEGIN_INTEGRATION_VERIFICATION)?;
+        let probe_callable = project_mcp_tool(&server, AgentToolId::GUARD_PROBE)?;
+        let status_callable = project_mcp_tool(&server, AgentToolId::GET_INTEGRATION_VERIFICATION)?;
+
+        child.write(&json_lines(&[managed_tool_call_in_turn(
+            3,
+            managed_host_round_trip_tool().wire_name(),
+            json!({}),
+            native_session,
+            INTEGRATION_VERIFICATION_TURN_ID,
+        )])?)?;
+        child.read_responses(1)?;
+        let begin_input = json!({"project_selector": project_id});
+        let begin_pre = json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": "future.tool-use.integration-verification-begin",
+            "tool_name": begin_callable.callable_name().as_str(),
+            "tool_input": begin_input,
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PreTool),
+                &begin_pre,
+            )?
+            .status
+            .success());
+        child.write(&json_lines(&[managed_tool_call_in_turn(
+            4,
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            json!({"project_selector": project_id}),
+            native_session,
+            INTEGRATION_VERIFICATION_TURN_ID,
+        )])?)?;
         let registry_path = self.runtime_home.join("registry.sqlite");
-        let begin_responses = child.read_responses(2)?;
-        let begin = adapter_tool_response(&begin_responses[1])?;
+        let begin_responses = child.read_responses(1)?;
+        let begin = adapter_tool_response(&begin_responses[0])?;
         let verification_id = begin["verification_id"]
             .as_str()
             .ok_or("begin response verification ID")?
@@ -2215,17 +2455,29 @@ impl OperationalFixture {
             begin["workflow"]["tool"],
             AgentToolId::GUARD_PROBE.wire_name()
         );
-
-        let connection = agent_connection_record(&self.runtime_home, connection_id)?
-            .ok_or("managed Guard Connection should exist")?;
-        assert_eq!(connection.server_name, "volicord");
+        let begin_post = json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": "future.tool-use.integration-verification-begin",
+            "tool_name": begin_callable.callable_name().as_str(),
+            "tool_input": {"project_selector": project_id},
+            "tool_response": {"success": true},
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PostTool),
+                &begin_post,
+            )?
+            .status
+            .success());
         let probe_input = json!({"verification_id": verification_id});
         let pre_tool = json!({
             "hook_event_name": "PreToolUse",
             "session_id": native_session,
             "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
             "tool_use_id": INTEGRATION_VERIFICATION_TOOL_USE_ID,
-            "tool_name": REVIEWED_CODEX_GUARD_PROBE_CALLABLE,
+            "tool_name": probe_callable.callable_name().as_str(),
             "tool_input": probe_input,
         });
         let pre_output = self.run_guard_command(
@@ -2258,7 +2510,7 @@ impl OperationalFixture {
             "session_id": native_session,
             "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
             "tool_use_id": INTEGRATION_VERIFICATION_TOOL_USE_ID,
-            "tool_name": REVIEWED_CODEX_GUARD_PROBE_CALLABLE,
+            "tool_name": probe_callable.callable_name().as_str(),
             "tool_input": {"verification_id": verification_id},
             "tool_response": {"success": true},
         });
@@ -2294,6 +2546,21 @@ impl OperationalFixture {
         );
         drop(registry);
 
+        let status_pre = json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": "future.tool-use.integration-verification-status",
+            "tool_name": status_callable.callable_name().as_str(),
+            "tool_input": {"verification_id": verification_id},
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PreTool),
+                &status_pre,
+            )?
+            .status
+            .success());
         child.write(&json_lines(&[managed_tool_call_in_turn(
             6,
             AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
@@ -2312,6 +2579,22 @@ impl OperationalFixture {
         assert_eq!(verification["guard_phases"]["prompt_capture"], "matched");
         assert_eq!(verification["guard_phases"]["pre_tool"], "matched");
         assert_eq!(verification["guard_phases"]["post_tool"], "matched");
+        let status_post = json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": native_session,
+            "turn_id": INTEGRATION_VERIFICATION_TURN_ID,
+            "tool_use_id": "future.tool-use.integration-verification-status",
+            "tool_name": status_callable.callable_name().as_str(),
+            "tool_input": {"verification_id": verification_id},
+            "tool_response": {"success": true},
+        });
+        assert!(self
+            .run_guard_command(
+                manifest.runtime_commands.get(GuardHookPhase::PostTool),
+                &status_post,
+            )?
+            .status
+            .success());
 
         let current_session_id = current_project_agent_session_coordinates(
             &self.runtime_home,
@@ -2469,7 +2752,7 @@ impl OperationalFixture {
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM guard_events", [], |row| row
                 .get::<_, i64>(0))?,
-            guard_history_before.0 + 3
+            guard_history_before.0 + 7
         );
         assert_eq!(
             project_state.query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row

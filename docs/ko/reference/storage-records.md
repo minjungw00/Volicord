@@ -393,7 +393,7 @@ deadline, 허용 및 소비한 status read 수, 생성 및 cleanup 시각, ackno
 
 Registry의 `guard_probe_observations`는 acquisition 경계를 상관관계가 확인된 완료와
 분리해 기록합니다. 폐쇄형 `stage` 값은 `probe_acknowledged`,
-`hook_event_not_observed`, `hook_payload_incompatible`,
+`unrelated_routed_tool`, `hook_event_not_observed`, `hook_payload_incompatible`,
 `callable_identity_unknown`, `callable_identity_mismatch`,
 `verification_id_mismatch`, `session_mismatch`, `turn_mismatch`,
 `tool_use_mismatch`, `pre_tool_matched`, `post_tool_matched`입니다. 각 row는 예상
@@ -402,6 +402,10 @@ callable, 선택적인 hook kind, verification ID의 존재 및 일치 boolean, 
 Installation, integration revision, 관찰 시각을 저장합니다. Prompt, 전체 payload, tool
 input, tool output은 저장하지 않습니다. 따라서 event 부재는 입증된 routing 원인을
 주장하지 않고 `hook_event_not_observed`만 기록합니다.
+`unrelated_routed_tool`은 workflow control과 그 밖의 known routed tool, 그리고 정확한
+현재 verification ID를 주장하지 않는 알 수 없는 same-server callable을 위한 nonterminal
+bounded trace입니다. 이 stage는 proof를 제공하거나 status-read budget을 소비하거나
+acknowledgement, repair, retry, root finding을 선택할 수 없습니다.
 
 Store는 이 권위 있는 row 사실을 공유 tagged
 `IntegrationVerificationWorkflowState`로 한 번만 투영합니다. 네 저장 상태를 직접

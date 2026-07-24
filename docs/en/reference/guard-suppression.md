@@ -182,14 +182,18 @@ dotted raw name and never selects behavior from a numeric host version.
 
 Routing only delivers an event to the wrapper. Semantic filtering then decodes
 the hook kind and callable, resolves the explicit server/tool identity to
-`AgentToolId`, and compares the current session, turn, tool-use ID, and bounded
-`verification_id`. Only `AgentToolId::GuardProbe` at the exact current
-verification coordinate satisfies Guard verification. Other routed Volicord
-tools and unknown same-server callables remain diagnostic observations; a
-foreign server namespace is not routed.
+`AgentToolId`, and assigns the catalog-owned `ProbeTarget`, `WorkflowControl`,
+or `UnrelatedKnownTool` role before comparing any probe coordinate. Only
+`AgentToolId::GuardProbe` at the exact current verification coordinate
+satisfies Guard verification. Begin, status, and every other known tool are
+nonterminal routed trace and never produce probe coordinate or callable
+mismatch. An unknown same-server callable is nonterminal unless it claims the
+exact current `verification_id`; that exact claim records terminal unknown
+identity. A foreign server namespace is not routed.
 
 Probe acquisition records one closed stage:
-`ProbeAcknowledged`, `HookEventNotObserved`, `HookPayloadIncompatible`,
+`ProbeAcknowledged`, `UnrelatedRoutedTool`, `HookEventNotObserved`,
+`HookPayloadIncompatible`,
 `CallableIdentityUnknown`, `CallableIdentityMismatch`,
 `VerificationIdMismatch`, `SessionMismatch`, `TurnMismatch`,
 `ToolUseMismatch`, `PreToolMatched`, or `PostToolMatched`. The record retains
@@ -199,6 +203,8 @@ and current installation/revision. It never retains the full hook payload,
 prompt, tool input, or tool output. `HookEventNotObserved` means only that no
 event reached Volicord; it does not prove whether host emission or routing was
 responsible.
+`UnrelatedRoutedTool` is bounded nonterminal trace. It neither supplies probe
+proof nor chooses repair, acknowledgement, retry, or status-read behavior.
 
 The same semantic host contract owns `HookObservationPolicy`, independently of
 host package versions. The reviewed `CodexCommandHooks` profile is synchronous

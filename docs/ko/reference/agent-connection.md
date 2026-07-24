@@ -652,19 +652,27 @@ semantic 계약을 직접 선택하며 관찰한 Codex package version에서 hos
 phase에서는 검토된 native host-tool 집합과 server-qualified MCP callable을
 routing합니다. Callable 투영이 등록된 namespace를 보존하면 그 namespace를 사용하고,
 그렇지 않으면 `McpToolCatalog`에서 파생한 exact token을 사용합니다. 생성 matcher는
-acquisition 경계일 뿐입니다. Event가 전달된 뒤 wrapper는
-관찰한 callable을 `McpToolCatalog`로 해석하며, 현재 verification ID, session, turn,
-tool-use chain이 정확히 일치하는 `AgentToolId::GuardProbe`만 검증을 완료할 수
-있습니다. Routing된 다른 tool, 알 수 없는 same-server callable, 호환되지 않는 payload,
-각 coordinate mismatch는 서로 다른 acquisition stage로 남습니다.
+acquisition 경계일 뿐입니다. Event가 전달된 뒤 wrapper는 관찰한 callable을
+`McpToolCatalog`로 해석합니다. 정규 catalog는 해석된 모든 tool을 `ProbeTarget`,
+`WorkflowControl`, `UnrelatedKnownTool` 중 하나로 분류하며 catalog 구성은 모순되는 role
+metadata를 거부합니다. Callable과 role은 probe 전용 session, turn, verification ID,
+tool-use 검사보다 먼저 해석합니다. 정확한 `AgentToolId::GuardProbe` probe target만 이
+검사를 계속해 검증을 완료할 수 있습니다. Begin, status와 그 밖의 모든 known tool은 현재
+verification ID나 다른 좌표를 담더라도 nonterminal `UnrelatedRoutedTool` trace만
+기록하며 probe를 충족하거나 coordinate/callable mismatch를 만들 수 없습니다. 알 수 없는
+same-server callable도 정확한 현재 verification ID를 주장하지 않으면 nonterminal이고,
+그 ID를 주장한 경우에만 terminal `CallableIdentityUnknown`을 기록합니다. 호환되지 않는
+payload와 실제 probe-target coordinate mismatch는 각각의 acquisition stage를 유지합니다.
 
-영속 stage는 `ProbeAcknowledged`, `HookEventNotObserved`,
+영속 stage는 `ProbeAcknowledged`, `UnrelatedRoutedTool`, `HookEventNotObserved`,
 `HookPayloadIncompatible`, `CallableIdentityUnknown`,
 `CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
 `TurnMismatch`, `ToolUseMismatch`, `PreToolMatched`, `PostToolMatched`입니다.
 각 stage는 한도가 있는 callable 및 범주형 상관관계 fact만 보관합니다. 특히
 `HookEventNotObserved`는 Volicord가 event를 받지 못했다는 뜻이며 matcher 오류나 host
 emission 오류라고 진단하지 않습니다.
+`UnrelatedRoutedTool`은 trace일 뿐이며 repair reason, retry 입력, probe proof,
+acknowledgement, status-read budget 소비가 아닙니다.
 
 Guard 상관관계와 Guard policy는 별도 단계입니다. 호환되는 hook 상관관계는 policy에 도달해
 `Continue`, `ContinueWithContext`, `ContinueWithWarning`, `Deny` 중 하나를 낼 수 있습니다.

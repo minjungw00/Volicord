@@ -16,6 +16,17 @@ pub enum ToolVerificationRole {
     ManagedHostRoundTrip,
 }
 
+/// Semantic relevance of one canonical Agent tool to Guard integration verification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IntegrationVerificationToolRole {
+    /// The only tool whose hook events can provide correlated Guard-probe proof.
+    ProbeTarget,
+    /// A begin or status operation that controls the verification workflow.
+    WorkflowControl,
+    /// A known Volicord tool unrelated to the correlated Guard-probe target.
+    UnrelatedKnownTool,
+}
+
 impl ToolVerificationRole {
     /// Returns the canonical tool bound to this role at compile time.
     pub const fn tool(self) -> AgentToolId {
@@ -230,6 +241,20 @@ impl AgentToolId {
         }
     }
 
+    /// Returns this tool's semantic role in Guard integration verification.
+    pub const fn integration_verification_role(self) -> IntegrationVerificationToolRole {
+        match self.0 {
+            AgentToolKind::GuardProbe => IntegrationVerificationToolRole::ProbeTarget,
+            AgentToolKind::BeginIntegrationVerification
+            | AgentToolKind::GetIntegrationVerification => {
+                IntegrationVerificationToolRole::WorkflowControl
+            }
+            AgentToolKind::Method(_) | AgentToolKind::ListProjects => {
+                IntegrationVerificationToolRole::UnrelatedKnownTool
+            }
+        }
+    }
+
     /// Returns whether retrying this tool with the same integration coordinate is idempotent.
     pub const fn is_idempotent(self) -> bool {
         matches!(
@@ -371,5 +396,23 @@ mod tests {
         assert!(matches!(tool.owner(), AgentToolOwner::AdapterUtility));
         assert!(tool.available_in(AgentConnectionMode::ReadOnly));
         assert!(tool.available_in(AgentConnectionMode::Workflow));
+    }
+
+    #[test]
+    fn integration_verification_roles_cover_the_complete_canonical_catalog() {
+        for tool in AgentToolId::ALL {
+            let expected = if tool == AgentToolId::GUARD_PROBE {
+                IntegrationVerificationToolRole::ProbeTarget
+            } else if matches!(
+                tool,
+                AgentToolId::BEGIN_INTEGRATION_VERIFICATION
+                    | AgentToolId::GET_INTEGRATION_VERIFICATION
+            ) {
+                IntegrationVerificationToolRole::WorkflowControl
+            } else {
+                IntegrationVerificationToolRole::UnrelatedKnownTool
+            };
+            assert_eq!(tool.integration_verification_role(), expected);
+        }
     }
 }

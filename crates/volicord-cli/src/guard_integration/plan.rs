@@ -522,9 +522,7 @@ mod tests {
         for required in [
             "Run the Volicord integration verification.",
             "`volicord.list_projects`",
-            "`volicord.begin_integration_verification`",
             "`volicord.guard_probe`",
-            "`volicord.get_integration_verification`",
             "`awaiting_probe`",
             "`awaiting_observation`",
             "`repair_required`",
@@ -540,6 +538,14 @@ mod tests {
             "`volicord connection verify` is optional active diagnostics only",
         ] {
             assert!(agents.content.contains(required));
+        }
+        for control in [
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+            AgentToolId::GET_INTEGRATION_VERIFICATION,
+        ] {
+            assert!(agents
+                .content
+                .contains(&format!("`{}`", control.wire_name())));
         }
         for forbidden in [
             "awaiting_hook_completion",
@@ -586,9 +592,7 @@ mod tests {
             "Hook review and trust remain user/host owned",
             "Run the Volicord integration verification.",
             "volicord.list_projects",
-            "volicord.begin_integration_verification",
             "volicord.guard_probe",
-            "volicord.get_integration_verification",
             "awaiting_probe",
             "awaiting_observation",
             "repair_required",
@@ -600,6 +604,12 @@ mod tests {
             "volicord connection verify is optional active diagnostics only",
         ] {
             assert!(codex_rule.content.contains(required));
+        }
+        for control in [
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+            AgentToolId::GET_INTEGRATION_VERIFICATION,
+        ] {
+            assert!(codex_rule.content.contains(control.wire_name()));
         }
         for forbidden in [
             "awaiting_hook_completion",

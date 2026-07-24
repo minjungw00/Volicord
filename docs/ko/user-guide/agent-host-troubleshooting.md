@@ -294,6 +294,13 @@ acknowledgement를 읽을 수 없습니다.
 retry eligibility가 아닙니다. 다른 session이나 turn의 ID를 재사용하거나 다른 읽기 전용
 도구로 대체하거나 오래된 Guard event를 성공으로 취급하지 않습니다.
 
+Status tool 자체의 Pre/Post hook은 예상된 routed control traffic이며 Guard probe
+evidence가 아닙니다. 이 hook은 nonterminal trace로만 남고 추가 status read를 소비하지
+않습니다. 요청된 status 호출 한 번 전까지 Guard probe hook이 도착하지 않았다면 결과는
+`hook_event_not_observed`로 유지됩니다. `callable_identity_mismatch`는 event가 Guard
+probe로 해석됐지만 예상 callable과 달랐거나, 알 수 없는 same-server callable이 정확한
+현재 verification ID를 명시적으로 주장했음을 뜻합니다.
+
 Codex가 도구를 노출하지 않거나 프로젝트를 trust하지 않은 상태라면 먼저 host 소유 상태를
 해결합니다. Volicord는 trust 요구 사항을 보고하지만 Codex trust control을 클릭·편집·승인·
 자동화·우회하지 않습니다. 이 check를 강제로 통과시키려고 MCP trust configuration을

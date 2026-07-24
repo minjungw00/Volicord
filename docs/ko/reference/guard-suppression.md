@@ -165,13 +165,17 @@ MCP routing의 합집합입니다. Callable 투영이 등록된 `McpServerKey` n
 name에서 server를 추론하지 않고 숫자 host version으로 동작을 선택하지 않습니다.
 
 Routing은 event를 wrapper에 전달할 뿐입니다. 그 뒤 semantic filtering이 hook kind와
-callable을 decode하고, 명시적인 server/tool identity를 `AgentToolId`로 해석하며, 현재
-session, turn, tool-use ID와 한도가 있는 `verification_id`를 비교합니다. 정확한 현재
-검증 좌표의 `AgentToolId::GuardProbe`만 Guard 검증을 충족합니다. Routing된 다른
-Volicord tool과 알 수 없는 same-server callable은 진단 관찰로만 남고 foreign server
-namespace는 routing하지 않습니다.
+callable을 decode하고 명시적인 server/tool identity를 `AgentToolId`로 해석한 뒤, probe
+좌표를 비교하기 전에 catalog 소유 `ProbeTarget`, `WorkflowControl`,
+`UnrelatedKnownTool` role을 부여합니다. 정확한 현재 검증 좌표의
+`AgentToolId::GuardProbe`만 Guard 검증을 충족합니다. Begin, status 및 그 밖의 모든
+known tool은 nonterminal routed trace이며 probe coordinate 또는 callable mismatch를
+만들지 않습니다. 알 수 없는 same-server callable은 정확한 현재 `verification_id`를
+주장하지 않으면 nonterminal이고, 정확한 ID를 주장한 경우에만 terminal unknown
+identity를 기록합니다. Foreign server namespace는 routing하지 않습니다.
 
-Probe acquisition은 `ProbeAcknowledged`, `HookEventNotObserved`,
+Probe acquisition은 `ProbeAcknowledged`, `UnrelatedRoutedTool`,
+`HookEventNotObserved`,
 `HookPayloadIncompatible`, `CallableIdentityUnknown`,
 `CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
 `TurnMismatch`, `ToolUseMismatch`, `PreToolMatched`, `PostToolMatched` 중 하나의
@@ -181,6 +185,8 @@ Probe acquisition은 `ProbeAcknowledged`, `HookEventNotObserved`,
 tool output은 저장하지 않습니다. `HookEventNotObserved`는 event가 Volicord에
 도달하지 않았다는 뜻일 뿐이며 host emission과 routing 중 어느 쪽이 원인인지
 증명하지 않습니다.
+`UnrelatedRoutedTool`은 한도 있는 nonterminal trace일 뿐이며 probe proof, repair,
+acknowledgement, retry, status-read 동작을 선택하지 않습니다.
 
 같은 semantic host contract가 host package version과 독립적으로
 `HookObservationPolicy`를 담당합니다. 검토된 `CodexCommandHooks` profile은

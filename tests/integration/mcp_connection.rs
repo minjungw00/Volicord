@@ -140,13 +140,13 @@ fn tool_listing_and_dispatch_use_current_connection_mode() -> Result<(), Box<dyn
     assert_eq!(
         names,
         vec![
-            "volicord.status",
-            "volicord.get_operation_result",
-            "volicord.check_close",
-            "volicord.list_projects",
-            "volicord.begin_integration_verification",
-            "volicord.guard_probe",
-            "volicord.get_integration_verification",
+            AgentToolId::STATUS.wire_name(),
+            AgentToolId::GET_OPERATION_RESULT.wire_name(),
+            AgentToolId::CHECK_CLOSE.wire_name(),
+            AgentToolId::LIST_PROJECTS.wire_name(),
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+            AgentToolId::GUARD_PROBE.wire_name(),
+            AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         ]
     );
     let error = adapter

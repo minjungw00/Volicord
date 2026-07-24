@@ -17,14 +17,14 @@
 | `crates/volicord-types/src/connection_verification.rs` | 정규 `ConnectionStatus`, `IntegrationActivationState`, `HookActivationState`, check, 단일 계층형 `IntegrationActivationPlan`, 안정적인 actor/channel/step metadata, 위상 검증, nested agent sequence, session-role evidence, 검증 보고서 타입. |
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
-| `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, 안정적인 MCP wire 이름 투영. |
-| `crates/volicord-types/src/integration_verification.rs` | 공유 폐쇄형 tagged integration-verification workflow 상태, 정규 `AgentToolId`에 결속된 고정 tool-reference 타입, Guard probe acquisition stage, restart reason, begin/probe/get 공개 결과 형태. |
+| `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, catalog 소유 `IntegrationVerificationToolRole`, 안정적인 MCP wire 이름 투영. |
+| `crates/volicord-types/src/integration_verification.rs` | 공유 폐쇄형 tagged integration-verification workflow 상태, 정규 `AgentToolId`에 결속된 고정 tool-reference 타입, typed routed-event relevance, terminal reason mapping을 포함한 Guard probe acquisition stage, restart reason, begin/probe/get 공개 결과 형태. |
 
 ## Host Wire 계약
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames` 계약, typed host-tool 및 server-namespace/catalog-derived-exact hook routing, 결정적인 profile digest, 한도 있는 값과 error, source별 상관관계, 명시적인 `McpServerKey`·`McpRawToolName`·`McpToolIdentity`, `HostCallableIdentity`로의 충돌 검사 투영, 정확한 `McpToolCatalog` 역방향 조회. |
+| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames` 계약, typed host-tool 및 server-namespace/catalog-derived-exact hook routing, MCP 전용 routing 분류, 결정적인 profile digest, 한도 있는 값과 error, source별 상관관계, 명시적인 `McpServerKey`·`McpRawToolName`·`McpToolIdentity`, `HostCallableIdentity`로의 충돌 및 role 일관성 검사 투영, 정확한 `McpToolCatalog` 역방향 조회. |
 | `crates/volicord-host-contract/tests/host_contracts.rs` | 계약 parsing, source type 분리, 필수 field 및 한도 강제, typed matcher routing 및 재구성, MCP 일관성, 고정 fixture manifest/checksum/profile 일치. |
 | `tests/conformance/codex-host/` | 검토된 오프라인 Codex command-hook, MCP turn-metadata, MCP callable-name fixture와 semantic profile coverage manifest 및 checksum. |
 

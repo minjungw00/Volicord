@@ -745,6 +745,7 @@ CREATE TABLE guard_probe_observations (
   stage TEXT NOT NULL CHECK (
     stage IN (
       'probe_acknowledged',
+      'unrelated_routed_tool',
       'hook_event_not_observed',
       'hook_payload_incompatible',
       'callable_identity_unknown',

@@ -89,11 +89,13 @@ registry 직접 순회가 matrix를 정합니다.
 - 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정하며 revision 적합성을
   대신하지 않는 Codex host fixture, 정확한 `CodexMcpTurnMetadata`,
   `CodexCommandHooks`, `CodexMcpCallableNames` profile coverage, source별 상관관계,
-  명시적 server/raw/callable fixture 일치, 완전한 raw name 투영, 정규화 충돌 거부,
-  정확한 catalog 역방향 조회, 추가 field와 한도 check, checksum 일치, typed host-tool 및
-  server-namespace/catalog-derived-exact routing, 현재 Guard probe pre/post fixture 전달, foreign-server
-  제외, 생성 matcher와 catalog의 일치, 엄격한 matcher drift 거부, CLI conformance
-  evidence와 실제 `managed_host` 관찰의 분리
+  명시적 server/raw/callable fixture 일치, 완전한 raw name 투영, 정규화 충돌 및 모순되는
+  role 거부, 정확한 catalog 역방향 조회, 추가 field와 한도 check, checksum 일치, typed
+  host-tool 및 server-namespace/catalog-derived-exact routing, probe target·workflow
+  control·unrelated known role의 완전한 coverage, 현재 Guard probe pre/post fixture 전달,
+  nonterminal begin/get/status self-observation, 알 수 없는 same-server callable의 정확한 ID
+  주장 처리, foreign-server 제외, 생성 matcher와 catalog의 일치, 엄격한 matcher drift
+  거부, CLI conformance evidence와 실제 `managed_host` 관찰의 분리
 - 읽을 수 있는 read-only Registry 및 프로젝트 database의 불변 MCP preflight 증거,
   선택 database의 변하지 않은 row count와 modification time, 항상 `not_checked`인 쓰기
   가능성, `last_active_verification` 아래에만 저장되는 활성 쓰기 증거, 검증 뒤에도

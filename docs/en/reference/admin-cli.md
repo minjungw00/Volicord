@@ -1062,6 +1062,12 @@ Terminal Guard attempts map typed repair reasons directly to
 `guard.probe.current_contract_changed`. Their facts retain the acquisition
 stage and retry policy. Neither diagnostic lookup nor a renderer parses the
 attempt summary to choose a code.
+Nonterminal `UnrelatedRoutedTool` trace is available only as bounded attempt
+detail where applicable. It never becomes a concise root cause or a terminal
+repair finding. In particular, the begin/status control tools' routed hooks do
+not turn a missing Guard-probe event into
+`guard.probe.callable_mismatch`; JSON, concise, and verbose status all retain
+`guard.probe.hook_event_not_observed` as the root.
 
 These CLI-owned operational findings are current-state snapshots. Their
 `CurrentDiagnosticKey` contains the complete Connection scope, code, domain,

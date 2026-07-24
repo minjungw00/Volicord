@@ -322,6 +322,14 @@ the typed retry policy; cleanup time is not retry eligibility. Do not reuse an
 ID from another session or turn, substitute another read-only tool, or treat
 old Guard events as success.
 
+The status tool's own Pre/Post hooks are expected routed control traffic, not
+Guard-probe evidence. They appear only as nonterminal trace and do not consume
+another status read. If no Guard-probe hook arrived before the one requested
+status call, the result remains `hook_event_not_observed`; a
+`callable_identity_mismatch` instead means an event resolved as the Guard probe
+but disagreed with its expected callable, or an unknown same-server callable
+explicitly claimed the exact current verification ID.
+
 If Codex exposes no tools or the project is not trusted, fix that host-owned
 state first. Volicord reports trust requirements but does not click, edit,
 approve, automate, or bypass Codex trust controls. Do not modify MCP trust

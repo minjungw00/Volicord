@@ -7,7 +7,8 @@ use volicord_host_contract::{
     McpServerKey, McpToolCatalog,
 };
 use volicord_types::{
-    guard_manifest_from_json, AgentToolId, GuardHookPhase, GuardProbeObservationStage,
+    guard_manifest_from_json, AgentToolId, GuardHookPhase, GuardProbeEventRelevance,
+    GuardProbeObservationStage, IntegrationVerificationToolRole,
 };
 
 use super::{
@@ -252,7 +253,7 @@ pub(super) fn record_probe_acknowledgement(
             SELECT 1
               FROM guard_probe_observations
              WHERE verification_id = ?1
-               AND hook_event_kind = 'pre_tool'
+               AND stage = 'pre_tool_matched'
         )",
         [run.verification_id.as_str()],
         |row| row.get::<_, bool>(0),
@@ -330,22 +331,6 @@ fn classify_hook_event<'a>(
         .verification_id
         .as_deref()
         .is_some_and(|value| value == run.verification_id);
-    if correlation.session_id.as_str() != run.host_session_id {
-        return Ok(Some(HookClassification {
-            stage: GuardProbeObservationStage::SessionMismatch,
-            observed_callable_name,
-            hook_event_kind,
-            verification_id_matches,
-        }));
-    }
-    if correlation.turn_id.as_str() != run.host_turn_id {
-        return Ok(Some(HookClassification {
-            stage: GuardProbeObservationStage::TurnMismatch,
-            observed_callable_name,
-            hook_event_kind,
-            verification_id_matches,
-        }));
-    }
     let connection = agent_connection_record_read_only(runtime_home, &run.connection_internal_id)?
         .ok_or_else(|| StoreError::NotFound {
             entity: "agent_connection",
@@ -357,34 +342,59 @@ fn classify_hook_event<'a>(
     let matcher = HostHookMatcherStrategy::codex_guard(&server).map_err(|_| {
         StoreError::corrupt_stored_value("registry", "agent_connections.server_name")
     })?;
-    if !matcher.routes(&correlation.tool_name) {
-        return Ok(None);
-    }
-    if !correlation.tool_name.as_str().starts_with("mcp__") {
-        return Ok(None);
-    }
     let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL).map_err(|_| {
         StoreError::corrupt_stored_value("registry", "agent_connections.server_name")
     })?;
-    let callable = HostCallableName::parse(correlation.tool_name.as_str());
-    let source = callable
-        .as_ref()
-        .ok()
-        .and_then(|callable| parse_callable_name(callable, &catalog).ok());
-    let Some(source) = source else {
+    let relevance =
+        classify_routed_tool_relevance(&matcher, &catalog, &server, &correlation.tool_name);
+    match relevance {
+        GuardProbeEventRelevance::NotRouted => return Ok(None),
+        GuardProbeEventRelevance::WorkflowControl { .. }
+        | GuardProbeEventRelevance::UnrelatedKnownTool { .. } => {
+            return Ok(Some(HookClassification {
+                stage: GuardProbeObservationStage::UnrelatedRoutedTool,
+                observed_callable_name,
+                hook_event_kind,
+                verification_id_matches,
+            }));
+        }
+        GuardProbeEventRelevance::UnknownSameServerCallable if !verification_id_matches => {
+            return Ok(Some(HookClassification {
+                stage: GuardProbeObservationStage::UnrelatedRoutedTool,
+                observed_callable_name,
+                hook_event_kind,
+                verification_id_matches: false,
+            }));
+        }
+        GuardProbeEventRelevance::UnknownSameServerCallable => {
+            return Ok(Some(HookClassification {
+                stage: GuardProbeObservationStage::CallableIdentityUnknown,
+                observed_callable_name,
+                hook_event_kind,
+                verification_id_matches: true,
+            }));
+        }
+        GuardProbeEventRelevance::ProbeTarget { .. } => {}
+    }
+    if correlation.tool_name.as_str() != run.expected_host_callable_name {
         return Ok(Some(HookClassification {
-            stage: GuardProbeObservationStage::CallableIdentityUnknown,
+            stage: GuardProbeObservationStage::CallableIdentityMismatch,
             observed_callable_name,
             hook_event_kind,
             verification_id_matches,
         }));
-    };
-    if source.tool() != AgentToolId::GUARD_PROBE
-        || source.server() != &server
-        || correlation.tool_name.as_str() != run.expected_host_callable_name
-    {
+    }
+    if correlation.session_id.as_str() != run.host_session_id {
         return Ok(Some(HookClassification {
-            stage: GuardProbeObservationStage::CallableIdentityMismatch,
+            stage: GuardProbeObservationStage::SessionMismatch,
+            observed_callable_name,
+            hook_event_kind,
+            verification_id_matches,
+        }));
+    }
+    if correlation.turn_id.as_str() != run.host_turn_id {
+        return Ok(Some(HookClassification {
+            stage: GuardProbeObservationStage::TurnMismatch,
             observed_callable_name,
             hook_event_kind,
             verification_id_matches,
@@ -447,6 +457,38 @@ fn classify_hook_event<'a>(
         hook_event_kind,
         verification_id_matches: true,
     }))
+}
+
+pub(super) fn classify_routed_tool_relevance(
+    matcher: &HostHookMatcherStrategy,
+    catalog: &McpToolCatalog,
+    server: &McpServerKey,
+    observed: &volicord_host_contract::CanonicalToolName,
+) -> GuardProbeEventRelevance {
+    if !matcher.routes_mcp_callable(observed) {
+        return GuardProbeEventRelevance::NotRouted;
+    }
+    let Some(source) = HostCallableName::parse(observed.as_str())
+        .ok()
+        .and_then(|callable| parse_callable_name(&callable, catalog).ok())
+    else {
+        return GuardProbeEventRelevance::UnknownSameServerCallable;
+    };
+    if source.server() != server {
+        return GuardProbeEventRelevance::NotRouted;
+    }
+    let tool = source.tool();
+    match tool.integration_verification_role() {
+        IntegrationVerificationToolRole::ProbeTarget => {
+            GuardProbeEventRelevance::ProbeTarget { tool }
+        }
+        IntegrationVerificationToolRole::WorkflowControl => {
+            GuardProbeEventRelevance::WorkflowControl { tool }
+        }
+        IntegrationVerificationToolRole::UnrelatedKnownTool => {
+            GuardProbeEventRelevance::UnrelatedKnownTool { tool }
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

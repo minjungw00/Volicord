@@ -74,14 +74,21 @@ Event 영속화를 사용할 수 없으면 관찰 결과는 명시적으로 unav
 policy denial이 되지 않습니다. 실제 Guard `NotAllowed` 결과에는 호환되는 입력이 policy에
 도달해 `Deny`를 낸 사실이 필요합니다.
 
-Guard probe acquisition은 routing, decoding, identity, correlation을 하나의 failure로
-합치지 않습니다. `HookPayloadIncompatible`, `CallableIdentityUnknown`,
-`CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
-`TurnMismatch`, `ToolUseMismatch`는 Volicord가 관찰할 수 있었던 마지막 한정 stage를
-나타냅니다. `HookEventNotObserved`는 의도적으로 더 약한 의미입니다. Hook event가
-Volicord에 도달하지 않았음을 뜻하며 host가 event를 내지 않았는지 구성된 routing이
-선택하지 않았는지 증명할 수 없습니다. Acquisition record에는 범주형 fact와 한도가
-있는 callable identity만 넣고 제한 없는 hook payload는 넣지 않습니다.
+Guard probe acquisition은 routing, decoding, semantic tool relevance, identity,
+correlation을 하나의 failure로 합치지 않습니다. Callable과 catalog 소유 role은 probe
+전용 좌표보다 먼저 해석합니다. `UnrelatedRoutedTool`은 어떤 probe 좌표를 주장하더라도
+workflow control과 그 밖의 known tool을 위한 nonterminal trace입니다. 알 수 없는
+same-server callable도 정확한 현재 verification ID를 주장하지 않으면 nonterminal입니다.
+어느 경우도 repair reason, retry, proof, acknowledgement, root finding,
+status-read-budget effect를 선택하지 않습니다. `HookPayloadIncompatible`,
+`CallableIdentityUnknown`, `CallableIdentityMismatch`, `VerificationIdMismatch`,
+`SessionMismatch`, `TurnMismatch`, `ToolUseMismatch`는 Volicord가 관찰할 수 있었던 마지막
+한정 terminal stage를 나타냅니다. `HookEventNotObserved`는 의도적으로 더 약한
+의미입니다. Probe event가 Volicord에 도달하지 않았음을 뜻하며 host가 event를 내지
+않았는지 구성된 routing이 선택하지 않았는지 증명할 수 없습니다. 따라서 status tool
+자체의 routed Pre/Post hook은 부재를 `CallableIdentityMismatch`로 바꿀 수 없습니다.
+Acquisition record에는 범주형 fact와 한도가 있는 callable identity만 넣고 제한 없는
+hook payload는 넣지 않습니다.
 
 Connection-integration 검증은 도구 호출 거부와 run lifecycle을 구분합니다. Malformed ID,
 다른 runtime, native session 또는 turn의 호출은 attempt를 변경하지 않고 거부합니다.

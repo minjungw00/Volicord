@@ -445,7 +445,8 @@ rejected. Cleanup time only bounds retention.
 
 Registry `guard_probe_observations` records the acquisition boundary separately
 from correlated completion. Its closed `stage` values are
-`probe_acknowledged`, `hook_event_not_observed`, `hook_payload_incompatible`,
+`probe_acknowledged`, `unrelated_routed_tool`, `hook_event_not_observed`,
+`hook_payload_incompatible`,
 `callable_identity_unknown`, `callable_identity_mismatch`,
 `verification_id_mismatch`, `session_mismatch`, `turn_mismatch`,
 `tool_use_mismatch`, `pre_tool_matched`, and `post_tool_matched`. Each row
@@ -455,6 +456,10 @@ verification-ID presence/match booleans, Guard Installation, integration
 revision, and observation time. It stores no prompt, full payload, tool input,
 or tool output. An absent event therefore records only
 `hook_event_not_observed`, without claiming a proven routing cause.
+`unrelated_routed_tool` is nonterminal bounded trace for workflow controls and
+other known routed tools, plus an unknown same-server callable that does not
+claim the exact current verification ID. It cannot supply proof, consume the
+status-read budget, or select acknowledgement, repair, retry, or root finding.
 
 Store projects those authoritative row facts once into the shared tagged
 `IntegrationVerificationWorkflowState`. It maps the four stored states

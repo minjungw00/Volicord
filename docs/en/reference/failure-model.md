@@ -83,15 +83,23 @@ observation outcome remains explicitly unavailable and persistence failure
 alone does not become policy denial. An actual `NotAllowed` Guard result
 requires compatible input that reached policy and produced `Deny`.
 
-Guard-probe acquisition does not collapse routing, decoding, identity, and
-correlation into one failure. `HookPayloadIncompatible`,
-`CallableIdentityUnknown`, `CallableIdentityMismatch`,
-`VerificationIdMismatch`, `SessionMismatch`, `TurnMismatch`, and
-`ToolUseMismatch` describe the last bounded stage Volicord could observe.
-`HookEventNotObserved` is intentionally weaker: it means that no hook event
-reached Volicord and cannot prove whether the host omitted the event or its
-configured routing did not select it. Acquisition records contain categorical
-facts and bounded callable identity only, never the unrestricted hook payload.
+Guard-probe acquisition does not collapse routing, decoding, semantic tool
+relevance, identity, and correlation into one failure. Callable and
+catalog-owned role are resolved before probe-specific coordinates.
+`UnrelatedRoutedTool` is nonterminal trace for workflow controls and other
+known tools regardless of their claimed probe coordinates. An unknown
+same-server callable is also nonterminal unless it claims the exact current
+verification ID. Neither case chooses a repair reason, retry, proof,
+acknowledgement, root finding, or status-read-budget effect.
+`HookPayloadIncompatible`, `CallableIdentityUnknown`,
+`CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
+`TurnMismatch`, and `ToolUseMismatch` describe the last bounded terminal stage
+Volicord could observe. `HookEventNotObserved` is intentionally weaker: it
+means that no probe event reached Volicord and cannot prove whether the host
+omitted the event or its configured routing did not select it. The status
+tool's own routed Pre/Post hooks therefore cannot replace absence with
+`CallableIdentityMismatch`. Acquisition records contain categorical facts and
+bounded callable identity only, never the unrestricted hook payload.
 
 Connection-integration verification keeps tool-call rejection separate from
 attempt state. A malformed ID or a call from another runtime, native session,

@@ -9,7 +9,7 @@ use volicord_host_contract::{
     HostContractProfileId, HostHookMatcherStrategy, HostNativeCorrelation, McpServerKey,
     McpToolCatalog,
 };
-use volicord_types::AgentToolId;
+use volicord_types::{AgentToolId, IntegrationVerificationToolRole};
 
 const REVIEWED_GUARD_PROBE_CALLABLE: &str = "mcp__volicord__volicord_guard_probe";
 
@@ -417,6 +417,19 @@ fn all_public_tools_form_one_collision_free_catalog_and_round_trip_exactly() {
 }
 
 #[test]
+fn catalog_rejects_tool_roles_that_contradict_the_canonical_agent_catalog() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let error = McpToolCatalog::new_with_roles([(
+        server,
+        AgentToolId::GET_INTEGRATION_VERIFICATION,
+        IntegrationVerificationToolRole::ProbeTarget,
+    )])
+    .unwrap_err();
+    assert_eq!(error.code(), HostContractErrorCode::UnexpectedValue);
+    assert_eq!(error.field(), "integration_verification_tool_role");
+}
+
+#[test]
 fn normalized_server_collision_fails_catalog_construction_with_typed_error() {
     let error = McpToolCatalog::new([
         (
@@ -544,13 +557,17 @@ fn guard_matcher_routes_typed_host_tools_and_the_registered_server_namespace() {
         )
         .unwrap();
         assert!(strategy.routes(&observed));
+        assert!(strategy.routes_mcp_callable(&observed));
     }
-    assert!(strategy.routes(&CanonicalToolName::parse("Bash").unwrap()));
-    assert!(strategy
-        .routes(&CanonicalToolName::parse("mcp__volicord__unknown_same_server_tool").unwrap()));
-    assert!(
-        !strategy.routes(&CanonicalToolName::parse("mcp__foreign__volicord_guard_probe").unwrap())
-    );
+    let host_native = CanonicalToolName::parse("Bash").unwrap();
+    assert!(strategy.routes(&host_native));
+    assert!(!strategy.routes_mcp_callable(&host_native));
+    let unknown_same_server =
+        CanonicalToolName::parse("mcp__volicord__unknown_same_server_tool").unwrap();
+    assert!(strategy.routes(&unknown_same_server));
+    assert!(strategy.routes_mcp_callable(&unknown_same_server));
+    let foreign = CanonicalToolName::parse("mcp__foreign__volicord_guard_probe").unwrap();
+    assert!(!strategy.routes(&foreign) && !strategy.routes_mcp_callable(&foreign));
 }
 
 #[test]

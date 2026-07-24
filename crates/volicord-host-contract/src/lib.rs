@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
-use volicord_types::{validate_managed_host_native_session_id, AgentToolId};
+use volicord_types::{
+    validate_managed_host_native_session_id, AgentToolId, IntegrationVerificationToolRole,
+};
 
 const MAX_TOOL_NAME_BYTES: usize = 256;
 const MAX_HOST_CALLABLE_NAME_BYTES: usize = 64;
@@ -521,6 +523,27 @@ impl HostHookMatcherStrategy {
         }
     }
 
+    /// Returns whether the host-level strategy routes one MCP callable.
+    ///
+    /// Host-native tool identities are deliberately excluded so downstream
+    /// integration verification can distinguish routed MCP traffic without
+    /// reproducing host naming conventions.
+    pub fn routes_mcp_callable(&self, observed: &CanonicalToolName) -> bool {
+        match self {
+            Self::HostTools { .. } => false,
+            Self::McpServerNamespace { server } => {
+                let prefix = codex_mcp_server_namespace_prefix(server);
+                observed.as_str().starts_with(&prefix)
+            }
+            Self::ExactCallables { callables } => callables
+                .iter()
+                .any(|identity| identity.callable_name().as_str() == observed.as_str()),
+            Self::Union(strategies) => strategies
+                .iter()
+                .any(|strategy| strategy.routes_mcp_callable(observed)),
+        }
+    }
+
     fn matches_codex_token(&self, token: &str) -> bool {
         match self {
             Self::McpServerNamespace { server } => {
@@ -643,10 +666,27 @@ impl McpToolCatalog {
     where
         I: IntoIterator<Item = (McpServerKey, AgentToolId)>,
     {
+        Self::new_with_roles(
+            registrations
+                .into_iter()
+                .map(|(server, tool)| (server, tool, tool.integration_verification_role())),
+        )
+    }
+
+    /// Builds a catalog while rejecting role metadata that contradicts the canonical tool owner.
+    pub fn new_with_roles<I>(registrations: I) -> Result<Self, HostContractError>
+    where
+        I: IntoIterator<Item = (McpServerKey, AgentToolId, IntegrationVerificationToolRole)>,
+    {
         let mut sources = HashSet::new();
         let mut by_callable_name = BTreeMap::new();
         let mut identities = Vec::new();
-        for (server, tool) in registrations {
+        for (server, tool, declared_role) in registrations {
+            if declared_role != tool.integration_verification_role() {
+                return Err(HostContractError::unexpected_value(
+                    "integration_verification_tool_role",
+                ));
+            }
             let identity = project_mcp_tool(&server, tool)?;
             if !sources.insert(identity.source.clone()) {
                 return Err(HostContractError::duplicate_tool("mcp_tool_identity"));

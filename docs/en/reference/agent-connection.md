@@ -731,20 +731,31 @@ For tool phases it routes the reviewed native host-tool set plus the
 Connection's server-qualified MCP callables. It uses the registered namespace
 when the callable projection preserves that namespace, or exact tokens derived
 from `McpToolCatalog` otherwise. The generated matcher is only an acquisition
-boundary: after delivery, the wrapper resolves the observed
-callable through `McpToolCatalog` and only the exact `AgentToolId::GuardProbe`
-with the current verification ID, session, turn, and tool-use chain may
-complete verification. A routed different tool, an unknown same-server
-callable, an incompatible payload, and each coordinate mismatch remain
-distinct acquisition stages.
+boundary: after delivery, the wrapper resolves the observed callable through
+`McpToolCatalog`. The canonical catalog classifies every resolved tool as
+`ProbeTarget`, `WorkflowControl`, or `UnrelatedKnownTool`, and catalog
+construction rejects contradictory role metadata. Callable and role are
+resolved before any probe-specific session, turn, verification-ID, or tool-use
+check. Only the exact `AgentToolId::GuardProbe` probe target may continue
+through those checks and complete verification. Begin, status, and all other
+known tools record nonterminal `UnrelatedRoutedTool` trace even when they carry
+the current verification ID or different coordinates; they cannot satisfy the
+probe or produce coordinate or callable mismatch. An unknown same-server
+callable is likewise nonterminal unless it claims the exact current
+verification ID, in which case it records terminal `CallableIdentityUnknown`.
+An incompatible payload and actual probe-target coordinate mismatches retain
+their distinct acquisition stages.
 
-The durable stages are `ProbeAcknowledged`, `HookEventNotObserved`,
+The durable stages are `ProbeAcknowledged`, `UnrelatedRoutedTool`,
+`HookEventNotObserved`,
 `HookPayloadIncompatible`, `CallableIdentityUnknown`,
 `CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
 `TurnMismatch`, `ToolUseMismatch`, `PreToolMatched`, and `PostToolMatched`.
 They retain bounded callable and categorical correlation facts only. In
 particular, `HookEventNotObserved` says that Volicord received no event; it
 does not diagnose a matcher fault or a host-emission fault.
+`UnrelatedRoutedTool` is trace only: it is not a repair reason, retry input,
+probe proof, acknowledgement, or status-read-budget consumer.
 
 Guard correlation and Guard policy are separate steps. A compatible hook
 correlation may reach policy and produce `Continue`, `ContinueWithContext`,

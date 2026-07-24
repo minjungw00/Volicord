@@ -17,14 +17,14 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/connection_verification.rs` | Canonical `ConnectionStatus`, `IntegrationActivationState`, `HookActivationState`, checks, single hierarchical `IntegrationActivationPlan`, stable actor/channel/step metadata, topological validation, nested agent sequence, session-role evidence, and verification-report types. |
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/project integration revision bases and derivation. |
 | `crates/volicord-types/src/guard_manifest.rs` | Canonical Guard manifest, managed-artifact, hook-phase, and typed command contracts. |
-| `crates/volicord-types/src/tool_names.rs` | Closed `AgentToolId` catalog, `MethodName` reuse for Core-owned tools, category and mode metadata, compile-time verification-role binding, and stable MCP wire-name projection. |
-| `crates/volicord-types/src/integration_verification.rs` | Shared closed tagged integration-verification workflow state, fixed canonical `AgentToolId`-backed tool-reference types, Guard-probe acquisition stages, restart reasons, and begin/probe/get public result shapes. |
+| `crates/volicord-types/src/tool_names.rs` | Closed `AgentToolId` catalog, `MethodName` reuse for Core-owned tools, category and mode metadata, compile-time verification-role binding, catalog-owned `IntegrationVerificationToolRole`, and stable MCP wire-name projection. |
+| `crates/volicord-types/src/integration_verification.rs` | Shared closed tagged integration-verification workflow state, fixed canonical `AgentToolId`-backed tool-reference types, typed routed-event relevance, Guard-probe acquisition stages with their terminal-reason mapping, restart reasons, and begin/probe/get public result shapes. |
 
 ## Host Wire Contracts
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames` contracts; typed host-tool and server-namespace/catalog-derived-exact hook routing; deterministic profile digests; bounded values and errors; source-specific correlation; explicit `McpServerKey`, `McpRawToolName`, and `McpToolIdentity`; collision-checked projection to `HostCallableIdentity`; and exact `McpToolCatalog` reverse lookup. |
+| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames` contracts; typed host-tool and server-namespace/catalog-derived-exact hook routing; MCP-only routing classification; deterministic profile digests; bounded values and errors; source-specific correlation; explicit `McpServerKey`, `McpRawToolName`, and `McpToolIdentity`; collision- and role-consistency-checked projection to `HostCallableIdentity`; and exact `McpToolCatalog` reverse lookup. |
 | `crates/volicord-host-contract/tests/host_contracts.rs` | Contract parsing, source-type separation, required-field and bound enforcement, typed matcher routing/reconstruction, MCP consistency, and pinned-fixture manifest/checksum/profile parity. |
 | `tests/conformance/codex-host/` | Reviewed offline Codex command-hook, MCP turn-metadata, and MCP callable-name fixtures plus their semantic-profile coverage manifest and checksums. |
 

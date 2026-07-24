@@ -1,19 +1,19 @@
 use std::error::Error;
 
 use volicord_host_contract::{
-    CanonicalToolName, CodexHookToolCorrelation, HostNativeCorrelation, HostSessionId,
-    HostToolUseId, HostTurnId,
+    CanonicalToolName, CodexHookToolCorrelation, HostHookMatcherStrategy, HostNativeCorrelation,
+    HostSessionId, HostToolUseId, HostTurnId, McpServerKey, McpToolCatalog,
 };
 use volicord_types::{
-    AgentToolId, GuardHookPhase, GuardProbeObservationStage, GuardVerificationRepairReason,
-    IntegrationVerificationWorkflowState,
+    AgentToolId, GuardHookPhase, GuardProbeEventRelevance, GuardProbeObservationStage,
+    GuardVerificationRepairReason, IntegrationVerificationWorkflowState,
 };
 
 use super::support::*;
 use crate::integration_verification::{
     get_guard_integration_verification, guard_probe_observations,
-    observe_unbound_guard_probe_hook_event, GuardProbeHookEvidence,
-    UnboundGuardProbeHookObservation,
+    observation::classify_routed_tool_relevance, observe_unbound_guard_probe_hook_event,
+    GuardProbeHookEvidence, UnboundGuardProbeHookObservation,
 };
 
 #[test]
@@ -84,44 +84,170 @@ fn current_pre_and_post_events_record_bounded_stages_and_complete() -> Result<()
 }
 
 #[test]
-fn routed_other_and_unknown_same_server_tools_do_not_satisfy_probe() -> Result<(), Box<dyn Error>> {
-    for (suffix, tool_name, expected_stage) in [
+fn catalog_roles_drive_routed_tool_relevance_before_probe_coordinates() -> Result<(), Box<dyn Error>>
+{
+    let server = McpServerKey::parse(SERVER_KEY)?;
+    let matcher = HostHookMatcherStrategy::codex_guard(&server)?;
+    let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL)?;
+    for (tool, expected) in [
         (
-            "other",
-            host_callable_name(AgentToolId::STATUS).into_inner(),
-            GuardProbeObservationStage::CallableIdentityMismatch,
+            AgentToolId::GUARD_PROBE,
+            GuardProbeEventRelevance::ProbeTarget {
+                tool: AgentToolId::GUARD_PROBE,
+            },
         ),
         (
-            "unknown",
-            "mcp__volicord_verification__unknown_same_server_tool".to_owned(),
-            GuardProbeObservationStage::CallableIdentityUnknown,
+            AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+            GuardProbeEventRelevance::WorkflowControl {
+                tool: AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+            },
+        ),
+        (
+            AgentToolId::GET_INTEGRATION_VERIFICATION,
+            GuardProbeEventRelevance::WorkflowControl {
+                tool: AgentToolId::GET_INTEGRATION_VERIFICATION,
+            },
+        ),
+        (
+            AgentToolId::STATUS,
+            GuardProbeEventRelevance::UnrelatedKnownTool {
+                tool: AgentToolId::STATUS,
+            },
         ),
     ] {
-        let fixture = VerificationFixture::new(&format!("guard-observation-{suffix}"))?;
+        let observed = CanonicalToolName::parse(host_callable_name(tool).as_str())?;
+        assert_eq!(
+            classify_routed_tool_relevance(&matcher, &catalog, &server, &observed),
+            expected
+        );
+    }
+    assert_eq!(
+        classify_routed_tool_relevance(
+            &matcher,
+            &catalog,
+            &server,
+            &CanonicalToolName::parse("mcp__volicord_verification__unknown_same_server_tool")?,
+        ),
+        GuardProbeEventRelevance::UnknownSameServerCallable
+    );
+    assert_eq!(
+        classify_routed_tool_relevance(
+            &matcher,
+            &catalog,
+            &server,
+            &CanonicalToolName::parse("mcp__foreign__volicord_guard_probe")?,
+        ),
+        GuardProbeEventRelevance::NotRouted
+    );
+    assert_eq!(
+        classify_routed_tool_relevance(
+            &matcher,
+            &catalog,
+            &server,
+            &CanonicalToolName::parse("Bash")?,
+        ),
+        GuardProbeEventRelevance::NotRouted
+    );
+    Ok(())
+}
+
+#[test]
+fn known_non_probe_tools_are_nonterminal_even_with_current_probe_coordinates(
+) -> Result<(), Box<dyn Error>> {
+    for tool in [
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+        AgentToolId::GET_INTEGRATION_VERIFICATION,
+        AgentToolId::STATUS,
+    ] {
+        let fixture =
+            VerificationFixture::new(&format!("guard-observation-known-{}", tool.wire_name()))?;
         let run = fixture.begin()?;
         fixture.acknowledge(&run.verification_id, ACK_AT)?;
-        fixture.insert_tool_event(ToolEventFixture {
-            event_id: "guard_event_other",
-            phase: "pre_tool",
-            turn: HOST_TURN_ID,
-            tool_use_id: "tool_use_other",
-            tool_name: &tool_name,
-            verification_id: &run.verification_id,
-            occurred_at: "2026-07-23T00:00:04.100Z",
-            digest: None,
-            policy_hash: None,
-            integration_revision: None,
-        })?;
+        let tool_name = host_callable_name(tool);
+        for (phase, event_id, tool_use_id, observed_at) in [
+            (
+                "pre_tool",
+                "guard_event_known_pre",
+                "tool_use_known",
+                "2026-07-23T00:00:04.100Z",
+            ),
+            (
+                "post_tool",
+                "guard_event_known_post",
+                "tool_use_known",
+                "2026-07-23T00:00:04.200Z",
+            ),
+        ] {
+            fixture.insert_tool_event(ToolEventFixture {
+                event_id,
+                phase,
+                turn: HOST_TURN_ID,
+                tool_use_id,
+                tool_name: tool_name.as_str(),
+                verification_id: &run.verification_id,
+                occurred_at: observed_at,
+                digest: None,
+                policy_hash: None,
+                integration_revision: None,
+            })?;
+        }
+        for (session, turn, tool_use_id, observed_at) in [
+            (
+                "other_session",
+                HOST_TURN_ID,
+                "tool_use_known_wrong_session",
+                "2026-07-23T00:00:04.300Z",
+            ),
+            (
+                HOST_SESSION_ID,
+                "other_turn",
+                "tool_use_known_wrong_turn",
+                "2026-07-23T00:00:04.400Z",
+            ),
+        ] {
+            observe_unbound_guard_probe_hook_event(
+                fixture.runtime_home.path(),
+                PROJECT_ID,
+                UnboundGuardProbeHookObservation {
+                    connection_internal_id: CONNECTION_ID.to_owned(),
+                    guard_installation_id: INSTALLATION_ID.to_owned(),
+                    correlation: HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+                        session_id: HostSessionId::parse(session)?,
+                        turn_id: HostTurnId::parse(turn)?,
+                        tool_use_id: HostToolUseId::parse(tool_use_id)?,
+                        tool_name: CanonicalToolName::parse(tool_name.as_str())?,
+                    }),
+                    phase: GuardHookPhase::PreTool,
+                    evidence: GuardProbeHookEvidence::present(Some(run.verification_id.clone())),
+                    observed_at: observed_at.to_owned(),
+                },
+            )?;
+        }
         let observations =
             guard_probe_observations(fixture.runtime_home.path(), &run.verification_id)?;
-        let observed = observations
-            .iter()
-            .find(|observation| observation.stage == expected_stage)
-            .expect("typed mismatch observation");
         assert_eq!(
-            observed.observed_callable_name.as_deref(),
-            Some(tool_name.as_str())
+            observations
+                .iter()
+                .filter(|observation| {
+                    observation.stage == GuardProbeObservationStage::UnrelatedRoutedTool
+                })
+                .count(),
+            3,
+            "the two unbound coordinate variants share one bounded stage record"
         );
+        assert!(!observations.iter().any(|observation| {
+            matches!(
+                observation.stage,
+                GuardProbeObservationStage::CallableIdentityUnknown
+                    | GuardProbeObservationStage::CallableIdentityMismatch
+                    | GuardProbeObservationStage::SessionMismatch
+                    | GuardProbeObservationStage::TurnMismatch
+                    | GuardProbeObservationStage::VerificationIdMismatch
+                    | GuardProbeObservationStage::PreToolMatched
+                    | GuardProbeObservationStage::PostToolMatched
+            )
+        }));
+        assert_eq!(fixture.record(&run.verification_id)?.status_read_count, 0);
         assert!(matches!(
             get_guard_integration_verification(
                 fixture.runtime_home.path(),
@@ -131,11 +257,152 @@ fn routed_other_and_unknown_same_server_tools_do_not_satisfy_probe() -> Result<(
             )?
             .workflow,
             IntegrationVerificationWorkflowState::RepairRequired {
-                reason: GuardVerificationRepairReason::CallableIdentityMismatch,
+                reason: GuardVerificationRepairReason::HookEventNotObserved,
                 ..
             }
         ));
     }
+    Ok(())
+}
+
+#[test]
+fn unknown_same_server_callable_is_terminal_only_when_it_claims_the_current_id(
+) -> Result<(), Box<dyn Error>> {
+    let unknown = CanonicalToolName::parse("mcp__volicord_verification__unknown_same_server_tool")?;
+    for (suffix, evidence, expected_stage, expected_reason) in [
+        (
+            "unclaimed",
+            GuardProbeHookEvidence::absent(),
+            GuardProbeObservationStage::UnrelatedRoutedTool,
+            GuardVerificationRepairReason::HookEventNotObserved,
+        ),
+        (
+            "claimed",
+            GuardProbeHookEvidence::present(Some(String::new())),
+            GuardProbeObservationStage::CallableIdentityUnknown,
+            GuardVerificationRepairReason::CallableIdentityMismatch,
+        ),
+    ] {
+        let fixture = VerificationFixture::new(&format!("guard-observation-unknown-{suffix}"))?;
+        let run = fixture.begin()?;
+        fixture.acknowledge(&run.verification_id, ACK_AT)?;
+        let evidence = if suffix == "claimed" {
+            GuardProbeHookEvidence::present(Some(run.verification_id.clone()))
+        } else {
+            evidence
+        };
+        observe_unbound_guard_probe_hook_event(
+            fixture.runtime_home.path(),
+            PROJECT_ID,
+            UnboundGuardProbeHookObservation {
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                guard_installation_id: INSTALLATION_ID.to_owned(),
+                correlation: HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+                    session_id: HostSessionId::parse(HOST_SESSION_ID)?,
+                    turn_id: HostTurnId::parse(HOST_TURN_ID)?,
+                    tool_use_id: HostToolUseId::parse(format!("tool_use_unknown_{suffix}"))?,
+                    tool_name: unknown.clone(),
+                }),
+                phase: GuardHookPhase::PreTool,
+                evidence,
+                observed_at: "2026-07-23T00:00:04.100Z".to_owned(),
+            },
+        )?;
+        let observations =
+            guard_probe_observations(fixture.runtime_home.path(), &run.verification_id)?;
+        assert!(observations
+            .iter()
+            .any(|observation| observation.stage == expected_stage));
+        assert!(matches!(
+            get_guard_integration_verification(
+                fixture.runtime_home.path(),
+                &run.verification_id,
+                &fixture.caller(),
+                "2026-07-23T00:00:05Z",
+            )?
+            .workflow,
+            IntegrationVerificationWorkflowState::RepairRequired { reason, .. }
+                if reason == expected_reason
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn status_tool_self_observation_cannot_poison_missing_probe_result() -> Result<(), Box<dyn Error>> {
+    let fixture = VerificationFixture::new("guard-observation-status-self")?;
+    let run = fixture.begin()?;
+    fixture.acknowledge(&run.verification_id, ACK_AT)?;
+    let status_tool = host_callable_name(AgentToolId::GET_INTEGRATION_VERIFICATION);
+    fixture.insert_tool_event(ToolEventFixture {
+        event_id: "guard_event_status_pre",
+        phase: "pre_tool",
+        turn: HOST_TURN_ID,
+        tool_use_id: "tool_use_status",
+        tool_name: status_tool.as_str(),
+        verification_id: &run.verification_id,
+        occurred_at: "2026-07-23T00:00:04.100Z",
+        digest: None,
+        policy_hash: None,
+        integration_revision: None,
+    })?;
+    let before_get = fixture.record(&run.verification_id)?;
+    assert_eq!(before_get.status, "awaiting_observation");
+    assert_eq!(before_get.status_read_count, 0);
+
+    let first = get_guard_integration_verification(
+        fixture.runtime_home.path(),
+        &run.verification_id,
+        &fixture.caller(),
+        "2026-07-23T00:00:04.200Z",
+    )?;
+    assert!(matches!(
+        first.workflow,
+        IntegrationVerificationWorkflowState::RepairRequired {
+            reason: GuardVerificationRepairReason::HookEventNotObserved,
+            ..
+        }
+    ));
+    fixture.insert_tool_event(ToolEventFixture {
+        event_id: "guard_event_status_post",
+        phase: "post_tool",
+        turn: HOST_TURN_ID,
+        tool_use_id: "tool_use_status",
+        tool_name: status_tool.as_str(),
+        verification_id: &run.verification_id,
+        occurred_at: "2026-07-23T00:00:04.300Z",
+        digest: None,
+        policy_hash: None,
+        integration_revision: None,
+    })?;
+    let second = get_guard_integration_verification(
+        fixture.runtime_home.path(),
+        &run.verification_id,
+        &fixture.caller(),
+        "2026-07-23T00:00:04.400Z",
+    )?;
+    assert_eq!(first.workflow, second.workflow);
+    let stored = fixture.record(&run.verification_id)?;
+    assert_eq!(stored.status, "repair_required");
+    assert_eq!(stored.status_read_count, 1);
+    let observations = guard_probe_observations(fixture.runtime_home.path(), &run.verification_id)?;
+    assert_eq!(
+        observations
+            .iter()
+            .filter(|observation| {
+                observation.stage == GuardProbeObservationStage::UnrelatedRoutedTool
+            })
+            .count(),
+        1,
+        "the post-hook arrives after terminalization and cannot mutate the run"
+    );
+    assert!(!observations.iter().any(|observation| {
+        matches!(
+            observation.stage,
+            GuardProbeObservationStage::CallableIdentityUnknown
+                | GuardProbeObservationStage::CallableIdentityMismatch
+        )
+    }));
     Ok(())
 }
 
@@ -162,25 +429,30 @@ fn correlation_failures_map_to_distinct_terminal_repair_reasons() -> Result<(), 
         let run = fixture.begin()?;
         fixture.acknowledge(&run.verification_id, ACK_AT)?;
         let probe = host_callable_name(AgentToolId::GUARD_PROBE);
-        let status = host_callable_name(AgentToolId::STATUS);
         match case {
             "payload" => fixture.insert_incompatible_tool_event(
                 "guard_event_malformed",
                 "pre_tool",
                 "2026-07-23T00:00:04.100Z",
             )?,
-            "callable" => fixture.insert_tool_event(ToolEventFixture {
-                event_id: "guard_event_callable",
-                phase: "pre_tool",
-                turn: HOST_TURN_ID,
-                tool_use_id: "tool_use_callable",
-                tool_name: status.as_str(),
-                verification_id: &run.verification_id,
-                occurred_at: "2026-07-23T00:00:04.100Z",
-                digest: None,
-                policy_hash: None,
-                integration_revision: None,
-            })?,
+            "callable" => {
+                fixture.set_expected_host_callable_name(
+                    &run.verification_id,
+                    host_callable_name(AgentToolId::STATUS).as_str(),
+                )?;
+                fixture.insert_tool_event(ToolEventFixture {
+                    event_id: "guard_event_callable",
+                    phase: "pre_tool",
+                    turn: HOST_TURN_ID,
+                    tool_use_id: "tool_use_callable",
+                    tool_name: probe.as_str(),
+                    verification_id: &run.verification_id,
+                    occurred_at: "2026-07-23T00:00:04.100Z",
+                    digest: None,
+                    policy_hash: None,
+                    integration_revision: None,
+                })?;
+            }
             "verification" => fixture.insert_tool_event(ToolEventFixture {
                 event_id: "guard_event_verification",
                 phase: "pre_tool",

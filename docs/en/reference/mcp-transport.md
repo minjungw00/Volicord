@@ -307,8 +307,12 @@ otherwise derives exact callable tokens from the same canonical catalog.
 Matcher JSON is generated only from this typed value, and strict configuration
 validation parses it back to the same value. Routing is not semantic tool acceptance:
 `McpToolCatalog` still performs exact callable resolution in the wrapper, and
-only the resolved `AgentToolId` can select the Guard-probe role. No numeric
-host-version branch changes the strategy.
+the canonical catalog assigns the resolved `AgentToolId` exactly one
+integration-verification role: probe target, workflow control, or unrelated
+known tool. Catalog construction rejects contradictory role metadata. Only the
+probe-target role proceeds to probe-specific coordinate checks; begin, status,
+and all other known roles are nonterminal routed trace. No numeric host-version
+branch changes the strategy.
 
 ## Authoritative Lifecycle Recording
 
@@ -640,6 +644,12 @@ the event times must satisfy prompt at or before pre-tool and pre-tool before
 post-tool. Historical, unrelated, stale, mismatched, or expired observations
 cannot satisfy the attempt. Cleanup expiry only bounds retained records; it
 does not drive synchronous observation or permit a same-coordinate retry.
+Hook events for begin and status remain `unrelated_routed_tool` trace even when
+they carry the current verification ID, so the status tool cannot classify its
+own Pre/Post hooks as Guard-probe callable mismatches. An unknown callable in
+the routed server namespace is also nonterminal unless it explicitly claims
+the exact current verification ID; that claim is a terminal unknown-identity
+observation.
 
 <a id="mutation-authority-receipt-projection"></a>
 ## Response Wrapping
