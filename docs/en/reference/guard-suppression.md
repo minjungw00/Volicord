@@ -258,10 +258,13 @@ ID, integration revision, and Guard event ID when available. They never include
 complete prompts, tool inputs, tool responses, parser prose, or unrestricted
 stderr.
 File, manifest, wrapper, and incompatible-observation findings project to the
-typed connection actions `inspect_hook_contract` or
-`reinstall_current_build` according to their typed condition. A missing
-current observation projects to `run_guard_probe` only after its prerequisites
-are complete. No action is selected by parsing a human summary.
+typed activation steps `repair_hook_contract` or
+`repair_managed_configuration` according to their typed condition. A missing
+current observation projects the user-level
+`request_integration_verification`; its workflow-directed `volicord.guard_probe`
+is nested inside the agent sequence and is never a sibling top-level step. A
+terminal `repair_required` attempt projects its typed repair step rather than a
+blind probe retry. No step is selected by parsing a human summary.
 
 Current-state Guard diagnostics use the exact managed artifact, installation,
 required phase, or incompatible event as their typed subject. Their stable ID

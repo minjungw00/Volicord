@@ -14,7 +14,7 @@
 | `crates/volicord-types/src/diagnostics.rs` | Lifecycle별 occurrence/current finding 타입, opaque `DiagnosticSubjectIdentity`, `CurrentDiagnosticKey` 정규 identity와 고정 digest ID 파생, lifecycle-aware `StoredDiagnosticFinding` 및 `StoredDiagnosticGraph`, 별도의 `DiagnosticLookupReport`, 공유 read-only `DiagnosticFinding` 및 선택한 Connection의 `DiagnosticReport` 타입, 안정적인 네임스페이스 code 검증, 담당 크레이트의 typed fact에 한도와 민감정보 제거를 적용하는 projection, cause graph 검증, 예기치 않은 실패 대체 표현. |
 | `crates/volicord-types/src/platform.rs` | 공유 플랫폼 환경과 플랫폼 경로 타입. |
 | `crates/volicord-types/src/host_configuration.rs` | 공유 connection intent와 host scope 구성 타입. |
-| `crates/volicord-types/src/connection_verification.rs` | 정규 `ConnectionStatus`, `ConnectionActivationState`, `HookActivationState`, check, 고정 action metadata, session-role evidence, 검증 보고서 타입. |
+| `crates/volicord-types/src/connection_verification.rs` | 정규 `ConnectionStatus`, `IntegrationActivationState`, `HookActivationState`, check, 단일 계층형 `IntegrationActivationPlan`, 안정적인 actor/channel/step metadata, 위상 검증, nested agent sequence, session-role evidence, 검증 보고서 타입. |
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
 | `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, 안정적인 MCP wire 이름 투영. |
@@ -97,7 +97,7 @@
 | `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, managed-host session check. |
 | `crates/volicord-cli/src/connection_command/verification/mcp_checks.rs` | MCP preflight/handshake check 투영과 MCP finding ID 입력. |
 | `crates/volicord-cli/src/connection_command/verification/guard_checks.rs` | Guard 파일, hook execution, observation check 평가. |
-| `crates/volicord-cli/src/connection_command/verification/dependency_graph.rs` | Cause 부착, `Blocked` 전파, graph 확정, action 선택, 정규 check 구성. |
+| `crates/volicord-cli/src/connection_command/verification/dependency_graph.rs` | Cause 부착, `Blocked` 전파, graph 확정, 현재 activation-plan suffix와 typed repair 선택, 정규 check 구성. |
 | `crates/volicord-cli/src/connection_command/verification/finding_projection.rs` | Process, host, peer version, Guard 관찰을 lifecycle별 finding으로 투영. |
 | `crates/volicord-cli/src/connection_command/verification/report_inputs.rs` | 능동 검증과 current-status 보고서 입력 조립. |
 | `crates/volicord-cli/src/operational_diagnostics/mod.rs` | Typed 운영 diagnostic module facade와 한도가 있는 내부 export. |
@@ -110,12 +110,13 @@
 | `crates/volicord-cli/src/connection_command/mcp_process/` | 관리 시작 구체화, 한도가 있는 자식 프로세스 감독 정책과 기한, 사전 점검 해석, stdio JSON-RPC 프레이밍과 점검 순서, 교환 진행 상태, 타입이 지정된 생명주기 또는 프로토콜 진단. 저수준 격리와 파이프 준비 상태는 `volicord-platform-process`를 통합니다. |
 | `crates/volicord-cli/src/connection_command/mcp_process/host_compatibility.rs` | 프로덕션 프로토콜 레지스트리에서 파생하지 않고 독립적으로 고정한 host profile fixture와 Codex 요청/도구 호출 형태. |
 | `crates/volicord-cli/src/connection_command/mcp_process/pinned_schema.rs` | 고정된 오프라인 schema를 사용한 revision별 initialize, `tools/list`, `tools/call` probe message 검증. |
-| `crates/volicord-cli/src/connection_command/output/` | 선택한 Connection의 정규 진단 보고서 구성, 집계 상태와 root, 같은 보고서의 concise·verbose·lossless JSON 표시. |
+| `crates/volicord-cli/src/connection_command/output/` | 선택한 Connection의 정규 진단 보고서 구성, 집계 상태와 root, 두 번째 renderer 소유 step 목록 없이 같은 필수·선택 activation plan을 concise·verbose·lossless JSON으로 표시. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | Finding ID 및 runtime-session 세부 명령, 한도가 있는 lifecycle-aware cause traversal, lookup별 JSON 및 사람용 projection, finding severity와 독립적인 lookup-status 종료 결과. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 구성 parsing 및 직렬화, 정규 관리 entry 검증, 허용된 도구 승인 overlay 보존, 관리 구성 변경, 진단용 실행 파일 관찰, 연결 검증. |
 | `crates/volicord-cli/src/host_integration/contracts.rs` | 명시적인 semantic Codex host-contract 선택, typed Guard routing strategy 투영, 등록된 `McpServerKey`로부터의 엄격한 구성 재구성. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest, 정확한 host-contract profile/digest, 정규 관리 artifact 기대값 생성. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
+| `crates/volicord-cli/src/guard_integration/plan.rs` 및 `hosts/codex.rs` | Nested integration-verification sequence, stop 규칙, diagnostic 경계를 포함한 managed AGENTS 및 Codex rule 안내 source template. |
 | `crates/volicord-cli/src/guard_command/` | 명시적인 `codex-command-hooks` event decoding, semantic Guard probe filtering, routing된 MCP payload를 보관하지 않는 한도 있는 source별 observation. |
 | `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |
@@ -134,6 +135,7 @@
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio 진입 경로, 권위 있는 runtime source 선택, 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-turn-metadata` parsing, revision-aware message 처리, 프로세스 사전 점검. |
 | `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치와 wrapping, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
+| `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청, nested workflow-directed sequence, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
 | `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata를 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 raw revision별 wire 이름을 투영하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색, 현재 Connection/project routing, 정규 catalog에서 server/raw/callable identity를 가져오는 preflight diagnostic 투영. |

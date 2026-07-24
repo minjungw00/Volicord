@@ -9,16 +9,18 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use volicord_types::{
-    diagnostic_root_cause_ids, ConnectionAction, ConnectionActionKind, ConnectionActivationState,
-    ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
-    ConnectionStatus, ConnectionVerificationReport, DiagnosticAction, DiagnosticCode,
-    DiagnosticConnectionContext, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
-    DiagnosticFinding, DiagnosticFindingId, DiagnosticOperation, DiagnosticReport,
-    DiagnosticReportAction, DiagnosticRuntimeSessionContext, DiagnosticSeverity, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, HookActivationState, IntegrationProfile,
-    IntegrationRevision, RuntimeSessionEvidenceRole, UtcTimestamp,
+    derive_integration_activation_state, diagnostic_root_cause_ids, ActivationStep,
+    ActivationStepId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
+    ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport, DiagnosticAction,
+    DiagnosticCode, DiagnosticConnectionContext, DiagnosticDomain, DiagnosticFactSource,
+    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticOperation, DiagnosticReport,
+    DiagnosticRuntimeSessionContext, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, HookActivationState, IntegrationActivationPlan, IntegrationActivationState,
+    IntegrationProfile, IntegrationRevision, RuntimeSessionEvidenceRole, UtcTimestamp,
     MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
+#[cfg(test)]
+use volicord_types::{ActivationActor, ActivationExecutionChannel, AgentSequenceStep, AgentToolId};
 
 use super::{
     cooperative_assurance_limits, human::render_command_report_concise, path_text,
@@ -121,12 +123,12 @@ pub(in crate::connection_command) struct ConnectionCommandReport {
     pub(super) operation: CommandOperation,
     pub(super) dry_run: bool,
     pub(super) status: ConnectionStatus,
-    pub(super) activation_state: ConnectionActivationState,
+    pub(super) activation_state: IntegrationActivationState,
     pub(super) hook_activation_state: HookActivationState,
     pub(super) runtime_home: String,
     pub(super) connection: CommandConnection,
     pub(super) checks: Vec<ConnectionCheck>,
-    pub(super) actions: Vec<ConnectionAction>,
+    pub(super) activation_plan: IntegrationActivationPlan,
     pub(super) generated_at: UtcTimestamp,
     pub(super) findings: Vec<DiagnosticFinding>,
     pub(super) integration_revision: Option<IntegrationRevision>,
@@ -152,7 +154,7 @@ impl ConnectionCommandReport {
             runtime_home: path_text(runtime_home),
             connection,
             checks: verification.checks().to_vec(),
-            actions: verification.actions().to_vec(),
+            activation_plan: verification.activation_plan().clone(),
             generated_at: verification.checked_at().clone(),
             findings: Vec::new(),
             integration_revision: None,
@@ -168,7 +170,6 @@ impl ConnectionCommandReport {
         connection: CommandConnection,
         current: Option<&ConnectionVerificationReport>,
         planned_changes: Vec<PlannedConnectionChange>,
-        plan_actions: &[ConnectionAction],
     ) -> Result<Self, ConnectionCommandError> {
         let has_changes = !planned_changes.is_empty();
         let mut checks = current
@@ -281,52 +282,27 @@ impl ConnectionCommandReport {
             ]);
         }
 
-        let mut actions = plan_actions.to_vec();
-        if let Some(current) = current {
-            actions.extend(current.actions().iter().cloned());
-        }
         let hook_definition_changes = planned_changes
             .iter()
             .any(|change| change.kind() == PlannedConnectionChangeKind::HookDefinition);
-        if current.is_none() || hook_definition_changes {
-            for action in [
-                ConnectionAction::try_new(
-                    ConnectionActionKind::ReloadHost,
-                    "After setup is applied, restart or reload Codex in this repository",
-                )?,
-                ConnectionAction::try_new(
-                    ConnectionActionKind::ReviewHooks,
-                    "Review the current project hook definition in the Codex hook UI or with `/hooks`",
-                )?,
-            ] {
-                if !actions.iter().any(|current| current.id() == action.id()) {
-                    actions.push(action);
-                }
-            }
-        }
-        if current.is_none() {
-            for action in [
-                ConnectionAction::try_new(
-                    ConnectionActionKind::RunMcpVerification,
-                    "Start a new conversation and request `Run the Volicord integration verification.`",
-                )?,
-                ConnectionAction::try_new(
-                    ConnectionActionKind::RunGuardProbe,
-                    "Call the Guard probe only when begin reports it is required, then read the integration-verification result",
-                )?,
-            ] {
-                if !actions.iter().any(|current| current.id() == action.id()) {
-                    actions.push(action);
-                }
-            }
-        }
+        let hook_state = if current.is_none() || hook_definition_changes {
+            HookActivationState::ReviewRequiredBySetup
+        } else {
+            current
+                .map(ConnectionVerificationReport::hook_activation_state)
+                .unwrap_or(HookActivationState::Unknown)
+        };
+        let activation_plan =
+            crate::connection_command::verification::activation_plan_for_checks_with_hook_state(
+                &checks, hook_state,
+            )?;
         Self::from_components(
             operation,
             true,
             runtime_home,
             connection,
             checks,
-            actions,
+            activation_plan,
             Some(ConnectionCommandResult::Setup { applied: false }),
             Some(planned_changes),
         )
@@ -343,16 +319,6 @@ impl ConnectionCommandReport {
         current_integration_revision: String,
         rebound_guard_installation_ids: Vec<String>,
     ) -> Result<Self, ConnectionCommandError> {
-        let actions = if changed {
-            vec![ConnectionAction::try_new(
-                ConnectionActionKind::ReloadHost,
-                format!(
-                    "Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision {current_integration_revision}"
-                ),
-            )?]
-        } else {
-            Vec::new()
-        };
         let checks = vec![command_check(
             ConnectionCheckKind::ModeTransition,
             ConnectionCheckStatus::Passed,
@@ -364,13 +330,28 @@ impl ConnectionCommandReport {
             },
             None,
         )?];
+        let activation_state =
+            derive_integration_activation_state(&checks, HookActivationState::Unknown);
+        let required_steps = if changed {
+            vec![ActivationStep::try_new(
+                ActivationStepId::ReloadCodex,
+                Vec::new(),
+                format!(
+                    "Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision {current_integration_revision}"
+                ),
+            )?]
+        } else {
+            Vec::new()
+        };
+        let activation_plan =
+            IntegrationActivationPlan::try_new(activation_state, required_steps, Vec::new())?;
         Self::from_components(
             CommandOperation::Mode,
             false,
             runtime_home,
             connection,
             checks,
-            actions,
+            activation_plan,
             Some(ConnectionCommandResult::ModeTransition {
                 changed,
                 previous_mode,
@@ -402,7 +383,7 @@ impl ConnectionCommandReport {
                 "Selected Connection membership removal was applied",
                 None,
             )?],
-            Vec::new(),
+            IntegrationActivationPlan::empty(IntegrationActivationState::Configured),
             Some(ConnectionCommandResult::Removal {
                 membership_removed,
                 connection_removed,
@@ -433,14 +414,13 @@ impl ConnectionCommandReport {
             },
             None,
         )?];
-        let actions = Vec::new();
         Self::from_components(
             CommandOperation::Remove,
             true,
             runtime_home,
             connection,
             checks,
-            actions,
+            IntegrationActivationPlan::empty(IntegrationActivationState::Configured),
             None,
             Some(planned_changes),
         )
@@ -453,15 +433,15 @@ impl ConnectionCommandReport {
         connection: CommandConnection,
         summary: &str,
         details: Value,
-        actions: Vec<ConnectionAction>,
+        activation_plan: IntegrationActivationPlan,
     ) -> Result<Self, ConnectionCommandError> {
         let finding_id = DiagnosticFindingId::parse("finding.setup.partial_application")
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        let diagnostic_action = if let Some(action) = actions.first() {
+        let diagnostic_action = if let Some(step) = activation_plan.required_steps().first() {
             DiagnosticAction::try_new(
-                DiagnosticCode::parse(connection_action_code(action.id()))
+                DiagnosticCode::parse(activation_step_code(step.id()))
                     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
-                action.instruction(),
+                step.instruction(),
             )
         } else {
             DiagnosticAction::try_new(
@@ -487,7 +467,7 @@ impl ConnectionCommandReport {
             runtime_home,
             connection,
             vec![check],
-            actions,
+            activation_plan,
             Some(ConnectionCommandResult::Setup { applied: false }),
             None,
         )?;
@@ -526,12 +506,12 @@ impl ConnectionCommandReport {
         runtime_home: &Path,
         connection: CommandConnection,
         checks: Vec<ConnectionCheck>,
-        actions: Vec<ConnectionAction>,
+        activation_plan: IntegrationActivationPlan,
         result: Option<ConnectionCommandResult>,
         planned_changes: Option<Vec<PlannedConnectionChange>>,
     ) -> Result<Self, ConnectionCommandError> {
         let canonical =
-            ConnectionVerificationReport::try_new(current_timestamp(), checks, actions)?;
+            ConnectionVerificationReport::try_new(current_timestamp(), checks, activation_plan)?;
         let status = command_status(&canonical);
         Ok(Self {
             operation,
@@ -542,7 +522,7 @@ impl ConnectionCommandReport {
             runtime_home: path_text(runtime_home),
             connection,
             checks: canonical.checks().to_vec(),
-            actions: canonical.actions().to_vec(),
+            activation_plan: canonical.activation_plan().clone(),
             generated_at: canonical.checked_at().clone(),
             findings: Vec::new(),
             integration_revision: None,
@@ -601,7 +581,7 @@ impl ConnectionCommandReport {
             Some(context),
             self.checks.clone(),
             self.findings.clone(),
-            projected_actions(self)?,
+            projected_activation_plan(self)?,
             Some(self.operation_details()?),
             self.limits.clone(),
         )
@@ -747,75 +727,80 @@ struct SetupFailureDiagnosticFacts<'a> {
 
 impl DiagnosticFactSource for SetupFailureDiagnosticFacts<'_> {}
 
-pub(super) fn projected_actions(
+pub(super) fn projected_activation_plan(
     report: &ConnectionCommandReport,
-) -> Result<Vec<DiagnosticReportAction>, ConnectionCommandError> {
+) -> Result<IntegrationActivationPlan, ConnectionCommandError> {
     let roots = projected_root_cause_ids(report)?;
     let root_set = roots.iter().collect::<BTreeSet<_>>();
-    let mut actions = report
-        .actions
+    let mut required_steps = report
+        .activation_plan
+        .required_steps()
         .iter()
         .cloned()
-        .map(|action| (action.id(), action))
+        .map(|step| (step.id(), step))
         .collect::<BTreeMap<_, _>>();
     for finding in &report.findings {
         if !root_set.contains(finding.id()) {
             continue;
         }
         for finding_action in finding.actions() {
-            let Some(kind) = diagnostic_action_kind(finding_action.code().as_str()) else {
+            let Some(id) = diagnostic_activation_step_id(finding_action.code().as_str()) else {
                 continue;
             };
-            if actions.contains_key(&kind) {
+            if required_steps.contains_key(&id) {
                 continue;
             }
-            let action = ConnectionAction::try_new(kind, finding_action.summary())?
+            let step = ActivationStep::try_new(id, Vec::new(), finding_action.summary())?
                 .with_root_finding_ids(vec![finding.id().clone()])?;
-            actions.insert(kind, action);
+            required_steps.insert(id, step);
         }
     }
-    actions
-        .values()
-        .map(|action| {
-            let action_roots = if action.root_finding_ids().is_empty() {
-                roots.clone()
+    let required_steps = required_steps
+        .into_values()
+        .map(|step| {
+            if step.root_finding_ids().is_empty() && !roots.is_empty() {
+                step.with_root_finding_ids(roots.clone())
             } else {
-                action.root_finding_ids().to_vec()
-            };
-            DiagnosticReportAction::from_connection_action(action, action_roots)
-                .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
+                Ok(step)
+            }
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    IntegrationActivationPlan::try_new(
+        report.activation_plan.state(),
+        required_steps,
+        report.activation_plan.optional_diagnostics().to_vec(),
+    )
+    .map_err(ConnectionCommandError::from)
 }
 
-fn diagnostic_action_kind(code: &str) -> Option<ConnectionActionKind> {
+fn diagnostic_activation_step_id(code: &str) -> Option<ActivationStepId> {
     if code == "action.host.reload_after_configuration_change" {
-        Some(ConnectionActionKind::ReloadHost)
+        Some(ActivationStepId::ReloadCodex)
     } else if code.starts_with("action.host.") {
-        Some(ConnectionActionKind::InspectRuntimeSession)
+        Some(ActivationStepId::ReadConnectionStatus)
     } else if code.starts_with("action.managed_config.")
         || code.starts_with("action.storage.")
         || code.starts_with("action.store.")
         || code.starts_with("action.runtime_home.")
     {
-        Some(ConnectionActionKind::RepairManagedConfiguration)
+        Some(ActivationStepId::RepairManagedConfiguration)
     } else if matches!(
         code,
         "action.guard.trigger_phase" | "action.guard.retry_verification"
     ) {
-        Some(ConnectionActionKind::RunGuardProbe)
+        Some(ActivationStepId::RequestIntegrationVerification)
     } else if code.starts_with("action.guard.") {
-        Some(ConnectionActionKind::InspectHookContract)
+        Some(ActivationStepId::RepairHookContract)
     } else if code.starts_with("action.process.")
         || code.starts_with("action.mcp.")
         || code.starts_with("action.protocol.")
     {
-        Some(ConnectionActionKind::InspectRuntimeSession)
+        Some(ActivationStepId::ReadConnectionStatus)
     } else if code.starts_with("action.internal.")
         || code.starts_with("action.connection.reinstall")
         || code.starts_with("action.installation.")
     {
-        Some(ConnectionActionKind::ReinstallCurrentBuild)
+        Some(ActivationStepId::RepairManagedConfiguration)
     } else {
         None
     }
@@ -861,16 +846,19 @@ pub(super) fn projected_check_root_cause_ids(
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
 }
 
-const fn connection_action_code(kind: ConnectionActionKind) -> &'static str {
-    match kind {
-        ConnectionActionKind::ReloadHost => "action.host.reload_after_configuration_change",
-        ConnectionActionKind::ReviewHooks => "action.host.review_hooks",
-        ConnectionActionKind::RunMcpVerification => "action.mcp.run_verification",
-        ConnectionActionKind::RunGuardProbe => "action.guard.run_probe",
-        ConnectionActionKind::InspectHookContract => "action.guard.inspect_hook_contract",
-        ConnectionActionKind::RepairManagedConfiguration => "action.managed_config.repair",
-        ConnectionActionKind::InspectRuntimeSession => "action.mcp.inspect_runtime_session",
-        ConnectionActionKind::ReinstallCurrentBuild => "action.connection.reinstall_current_build",
+const fn activation_step_code(id: ActivationStepId) -> &'static str {
+    match id {
+        ActivationStepId::ReloadCodex => "action.host.reload_after_configuration_change",
+        ActivationStepId::ReviewProjectHooks => "action.host.review_hooks",
+        ActivationStepId::RequestIntegrationVerification => {
+            "action.mcp.request_integration_verification"
+        }
+        ActivationStepId::ReadConnectionStatus => "action.connection.read_status",
+        ActivationStepId::RunOptionalActiveDiagnostics => {
+            "action.connection.run_optional_active_diagnostics"
+        }
+        ActivationStepId::RepairHookContract => "action.guard.repair_hook_contract",
+        ActivationStepId::RepairManagedConfiguration => "action.managed_config.repair",
     }
 }
 
@@ -897,7 +885,9 @@ pub(in crate::connection_command) fn render_command_report(
 }
 
 fn command_status(report: &ConnectionVerificationReport) -> ConnectionStatus {
-    if report.status() == ConnectionStatus::Complete && !report.actions().is_empty() {
+    if report.status() == ConnectionStatus::Complete
+        && !report.activation_plan().required_steps().is_empty()
+    {
         ConnectionStatus::ActionRequired
     } else {
         report.status()
@@ -950,20 +940,23 @@ mod tests {
     use super::*;
 
     fn verification(status: ConnectionCheckStatus) -> ConnectionVerificationReport {
+        let checks = vec![ConnectionCheck::try_new(
+            ConnectionCheckKind::ManagedConfig,
+            status,
+            Vec::new(),
+            (status != ConnectionCheckStatus::Passed).then(|| "managed_config_failed".to_owned()),
+            "Managed configuration check",
+            None,
+            None,
+        )
+        .unwrap()];
+        let activation_plan = IntegrationActivationPlan::empty(
+            derive_integration_activation_state(&checks, HookActivationState::Unknown),
+        );
         ConnectionVerificationReport::try_new(
             UtcTimestamp::parse("2026-07-18T00:00:00Z").unwrap(),
-            vec![ConnectionCheck::try_new(
-                ConnectionCheckKind::ManagedConfig,
-                status,
-                Vec::new(),
-                (status != ConnectionCheckStatus::Passed)
-                    .then(|| "managed_config_failed".to_owned()),
-                "Managed configuration check",
-                None,
-                None,
-            )
-            .unwrap()],
-            Vec::new(),
+            checks,
+            activation_plan,
         )
         .unwrap()
     }
@@ -985,7 +978,7 @@ mod tests {
 
     fn assert_top_level_keys(value: &Value) {
         let expected = BTreeSet::from([
-            "actions",
+            "activation_plan",
             "activation_state",
             "checks",
             "connection",
@@ -1046,7 +1039,7 @@ mod tests {
             }
             assert_eq!(value["status"], "complete");
             assert_eq!(value["checks"].as_array().map(Vec::len), Some(1));
-            assert_eq!(value["actions"], json!([]));
+            assert_eq!(value["activation_plan"]["required_steps"], json!([]));
             if matches!(operation, CommandOperation::Init | CommandOperation::Add) {
                 assert_eq!(
                     value["operation_details"]["result"],
@@ -1104,16 +1097,24 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_and_mode_status_come_from_typed_checks_and_actions() {
+    fn dry_run_and_mode_status_come_from_typed_checks_and_activation_plan() {
+        let activation_plan = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::HostReloadRequired,
+            vec![ActivationStep::try_new(
+                ActivationStepId::ReloadCodex,
+                Vec::new(),
+                "Reload Codex",
+            )
+            .unwrap()],
+            Vec::new(),
+        )
+        .unwrap();
         let action_only_verification = ConnectionVerificationReport::try_new(
             UtcTimestamp::parse("2026-07-18T00:00:00Z").unwrap(),
             verification(ConnectionCheckStatus::Passed)
                 .checks()
                 .to_vec(),
-            vec![
-                ConnectionAction::try_new(ConnectionActionKind::ReloadHost, "Reload Codex")
-                    .unwrap(),
-            ],
+            activation_plan,
         )
         .unwrap();
         let action_only = ConnectionCommandReport::from_verification(
@@ -1135,7 +1136,6 @@ mod tests {
                 PlannedChangeOperation::Update,
                 "/home/user/.codex/config.toml",
             )],
-            &[],
         )
         .unwrap();
         let changed = diagnostic_value(&changed);
@@ -1162,9 +1162,22 @@ mod tests {
         assert_top_level_keys(&mode);
         assert_eq!(mode["status"], "action_required");
         assert_eq!(mode["checks"][0]["status"], "passed");
-        assert_eq!(mode["actions"][0]["id"], "reload_host");
-        assert_eq!(mode["actions"][0]["owner"], "user");
-        assert_eq!(mode["actions"][0]["channel"], "codex_ui");
+        assert_eq!(
+            mode["activation_plan"]["required_steps"][0]["id"],
+            "reload_codex"
+        );
+        assert_eq!(
+            mode["activation_plan"]["required_steps"][0]["initiator"],
+            "user"
+        );
+        assert_eq!(
+            mode["activation_plan"]["required_steps"][0]["executor"],
+            "host"
+        );
+        assert_eq!(
+            mode["activation_plan"]["required_steps"][0]["execution_channel"],
+            "codex_ui"
+        );
         assert_eq!(mode["operation_details"]["result"]["changed"], true);
 
         let removal = ConnectionCommandReport::removal_dry_run(
@@ -1182,59 +1195,66 @@ mod tests {
         assert_eq!(removal["operation"], "remove");
         assert_eq!(removal["status"], "action_required");
         assert_eq!(removal["checks"][0]["status"], "pending");
-        assert_eq!(removal["actions"], json!([]));
+        assert_eq!(removal["activation_plan"]["required_steps"], json!([]));
         assert!(removal["operation_details"].get("result").is_none());
     }
 
     #[test]
-    fn setup_dry_run_preserves_canonical_host_actions_and_rejects_duplicate_kinds() {
-        let host_action = ConnectionAction::try_new(
-            ConnectionActionKind::RunMcpVerification,
-            "Run connection verification",
-        )
-        .unwrap();
+    fn setup_dry_run_builds_the_shared_semantic_activation_plan() {
         let report = ConnectionCommandReport::setup_dry_run(
             CommandOperation::Add,
             Path::new("/runtime"),
             connection(),
             None,
             Vec::new(),
-            std::slice::from_ref(&host_action),
         )
         .unwrap();
-        let action = report
-            .actions
+        let step = report
+            .activation_plan
+            .required_steps()
             .iter()
-            .find(|action| action.id() == ConnectionActionKind::RunMcpVerification)
-            .expect("host-supplied action");
-        assert_eq!(action.instruction(), "Run connection verification");
+            .find(|step| step.id() == ActivationStepId::RequestIntegrationVerification)
+            .expect("shared verification step");
+        assert_eq!(step.initiator(), ActivationActor::User);
+        assert_eq!(step.executor(), ActivationActor::Agent);
         assert_eq!(
-            serde_json::to_value(action).unwrap(),
-            json!({
-                "id": "run_mcp_verification",
-                "owner": "agent",
-                "channel": "mcp_tool",
-                "prerequisites": ["hook_source_activation"],
-                "completes_checks": ["managed_capability_proof", "managed_session_health"],
-                "root_finding_ids": [],
-                "instruction": "Run connection verification",
-            })
+            step.execution_channel(),
+            ActivationExecutionChannel::CodexChat
         );
-
-        let error = ConnectionCommandReport::setup_dry_run(
-            CommandOperation::Add,
-            Path::new("/runtime"),
-            connection(),
-            None,
-            Vec::new(),
-            &[host_action.clone(), host_action],
-        )
-        .expect_err("duplicate action kinds must fail");
-        assert!(error.to_string().contains("duplicate action"));
+        assert_eq!(
+            step.agent_sequence()
+                .iter()
+                .map(AgentSequenceStep::tool)
+                .collect::<Vec<_>>(),
+            vec![
+                AgentToolId::LIST_PROJECTS,
+                AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+                AgentToolId::GUARD_PROBE,
+                AgentToolId::GET_INTEGRATION_VERIFICATION,
+            ]
+        );
+        assert_eq!(
+            serde_json::to_value(step).unwrap()["id"],
+            json!("request_integration_verification")
+        );
+        assert_eq!(
+            report
+                .activation_plan
+                .required_steps()
+                .iter()
+                .map(ActivationStep::id)
+                .collect::<Vec<_>>(),
+            vec![
+                ActivationStepId::ReloadCodex,
+                ActivationStepId::ReviewProjectHooks,
+                ActivationStepId::RequestIntegrationVerification,
+                ActivationStepId::ReadConnectionStatus,
+            ]
+        );
     }
 
     #[test]
-    fn json_and_verbose_human_render_the_same_typed_status_and_actions() {
+    fn json_and_verbose_human_render_the_same_typed_status_and_activation_plan() {
         let report = ConnectionCommandReport::from_verification(
             CommandOperation::Verify,
             None,

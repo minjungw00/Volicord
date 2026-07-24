@@ -423,7 +423,7 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
         "mode_transition"
     );
     assert_eq!(no_op["operation_details"]["result"]["changed"], false);
-    assert_eq!(no_op["actions"], json!([]));
+    assert_eq!(no_op["activation_plan"]["required_steps"], json!([]));
     assert_eq!(
         no_op["operation_details"]["result"]["previous_integration_revision"],
         no_op["operation_details"]["result"]["current_integration_revision"]
@@ -500,7 +500,9 @@ fn connection_mode_transition_rebinds_guard_revision() -> Result<(), Box<dyn Err
         Some(1)
     );
     assert_eq!(
-        read_only_report["actions"].as_array().map(Vec::len),
+        read_only_report["activation_plan"]["required_steps"]
+            .as_array()
+            .map(Vec::len),
         Some(1)
     );
     assert_eq!(fixture.repository_snapshot()?, repository_before);
@@ -1040,21 +1042,48 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         init_report["hook_activation_state"],
         "review_required_by_setup"
     );
-    let initial_actions = init_report["actions"].as_array().expect("initial actions");
-    assert_eq!(initial_actions.len(), 4);
-    for (id, owner, channel) in [
-        ("reload_host", "user", "codex_ui"),
-        ("review_hooks", "user", "codex_ui"),
-        ("run_guard_probe", "agent", "mcp_tool"),
-        ("run_mcp_verification", "agent", "mcp_tool"),
+    let initial_steps = init_report["activation_plan"]["required_steps"]
+        .as_array()
+        .expect("initial activation steps");
+    assert_eq!(initial_steps.len(), 4);
+    for (id, initiator, executor, channel) in [
+        ("reload_codex", "user", "host", "codex_ui"),
+        ("review_project_hooks", "user", "user", "codex_ui"),
+        (
+            "request_integration_verification",
+            "user",
+            "agent",
+            "codex_chat",
+        ),
+        ("read_connection_status", "user", "volicord", "cli"),
     ] {
-        let action = initial_actions
+        let step = initial_steps
             .iter()
-            .find(|action| action["id"] == id)
-            .unwrap_or_else(|| panic!("missing initial action {id}: {init_report}"));
-        assert_eq!(action["owner"], owner);
-        assert_eq!(action["channel"], channel);
+            .find(|step| step["id"] == id)
+            .unwrap_or_else(|| panic!("missing initial activation step {id}: {init_report}"));
+        assert_eq!(step["initiator"], initiator);
+        assert_eq!(step["executor"], executor);
+        assert_eq!(step["execution_channel"], channel);
     }
+    let request = initial_steps
+        .iter()
+        .find(|step| step["id"] == "request_integration_verification")
+        .expect("request integration verification step");
+    assert_eq!(
+        request["agent_sequence"]
+            .as_array()
+            .expect("nested agent sequence")
+            .iter()
+            .map(|step| step["tool"].as_str().expect("nested tool"))
+            .collect::<Vec<_>>(),
+        vec![
+            "volicord.list_projects",
+            "volicord.begin_integration_verification",
+            "volicord.guard_probe",
+            "volicord.get_integration_verification",
+        ]
+    );
+    assert!(!initial_steps.iter().any(|step| step["id"] == "guard_probe"));
 
     let snapshot = fixture.registry_snapshot();
     assert_eq!(snapshot.projects.len(), 1);
@@ -1158,7 +1187,10 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         managed_host_round_trip_tool().wire_name()
     );
     assert!(round_trip["details"]["verification_tool"]["observed_at"].is_string());
-    assert_eq!(complete_report["actions"], json!([]));
+    assert_eq!(
+        complete_report["activation_plan"]["required_steps"],
+        json!([])
+    );
     let runtime_sessions = complete_report["connection"]["runtime_sessions"]
         .as_array()
         .expect("role-bearing runtime sessions");
@@ -2963,7 +2995,7 @@ fn assert_connection_report(
 fn assert_canonical_connection_command_shape(report: &Value) {
     let object = report.as_object().expect("connection report object");
     let expected = BTreeSet::from([
-        "actions",
+        "activation_plan",
         "activation_state",
         "checks",
         "connection",

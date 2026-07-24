@@ -7,11 +7,12 @@ use volicord_store::diagnostic_findings::{
 };
 use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionKind,
-    ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
-    ConnectionVerificationReport, DiagnosticAction, DiagnosticCode, DiagnosticDomain,
-    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingData,
-    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    derive_integration_activation_state, ActivationStep, ActivationStepId, AgentConnectionId,
+    AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
+    ConnectionCheckStatus, ConnectionVerificationReport, DiagnosticAction, DiagnosticCode,
+    DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
+    DiagnosticFindingData, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
+    DiagnosticStage, DiagnosticSubject, HookActivationState, IntegrationActivationPlan,
     IntegrationRevision, OccurrenceDiagnosticFinding, UtcTimestamp, MAX_DIAGNOSTIC_FACT_BYTES,
     MAX_DIAGNOSTIC_FACT_STRING_BYTES,
 };
@@ -178,36 +179,34 @@ struct DiagnosticMatrixScenario {
     primary_check: ConnectionCheckKind,
     primary_status: ConnectionCheckStatus,
     blocked_checks: &'static [ConnectionCheckKind],
-    connection_action: Option<ConnectionActionKind>,
+    connection_action: Option<ActivationStepId>,
     report_action: Option<&'static str>,
     is_root: bool,
 }
 
 fn typed_action_id_for_diagnostic(code: &str) -> &'static str {
     if code == "action.host.reload_after_configuration_change" {
-        "reload_host"
+        "reload_codex"
     } else if code.starts_with("action.host.") {
-        "inspect_runtime_session"
+        "read_connection_status"
     } else if code.starts_with("action.managed_config.")
         || code.starts_with("action.storage.")
         || code.starts_with("action.store.")
         || code.starts_with("action.runtime_home.")
     {
         "repair_managed_configuration"
-    } else if code == "action.guard.trigger_phase" {
-        "run_guard_probe"
+    } else if matches!(
+        code,
+        "action.guard.trigger_phase" | "action.guard.retry_verification"
+    ) {
+        "request_integration_verification"
     } else if code.starts_with("action.guard.") {
-        "inspect_hook_contract"
+        "repair_hook_contract"
     } else if code.starts_with("action.process.")
         || code.starts_with("action.mcp.")
         || code.starts_with("action.protocol.")
     {
-        "inspect_runtime_session"
-    } else if code.starts_with("action.internal.")
-        || code.starts_with("action.connection.reinstall")
-        || code.starts_with("action.installation.")
-    {
-        "reinstall_current_build"
+        "read_connection_status"
     } else {
         "repair_managed_configuration"
     }
@@ -222,7 +221,7 @@ impl DiagnosticMatrixScenario {
         finding_action: Option<&'static str>,
         primary_check: ConnectionCheckKind,
         blocked_checks: &'static [ConnectionCheckKind],
-        connection_action: Option<ConnectionActionKind>,
+        connection_action: Option<ActivationStepId>,
         report_action: &'static str,
     ) -> Self {
         Self {
@@ -247,7 +246,7 @@ impl DiagnosticMatrixScenario {
         finding_action: Option<&'static str>,
         primary_check: ConnectionCheckKind,
         primary_status: ConnectionCheckStatus,
-        connection_action: Option<ConnectionActionKind>,
+        connection_action: Option<ActivationStepId>,
         report_action: Option<&'static str>,
     ) -> Self {
         Self {
@@ -293,9 +292,13 @@ fn check(
 fn report(
     checks: Vec<ConnectionCheck>,
     findings: Vec<DiagnosticFinding>,
-    actions: Vec<ConnectionAction>,
+    required_steps: Vec<ActivationStep>,
 ) -> ConnectionCommandReport {
-    let verification = ConnectionVerificationReport::try_new(timestamp(), checks, actions).unwrap();
+    let state = derive_integration_activation_state(&checks, HookActivationState::Unknown);
+    let activation_plan =
+        IntegrationActivationPlan::try_new(state, required_steps, Vec::new()).unwrap();
+    let verification =
+        ConnectionVerificationReport::try_new(timestamp(), checks, activation_plan).unwrap();
     ConnectionCommandReport::from_verification(
         CommandOperation::Verify,
         None,
@@ -486,7 +489,7 @@ fn guard_failure_keeps_typed_attempt_context_and_renderer_parity() {
                         "acquisition_stage": "callable_identity_mismatch",
                         "repair_reason": "callable_identity_mismatch",
                         "retry_policy": "new_turn_required",
-                        "recovery_action": "run_guard_probe",
+                        "recovery_action": "request_integration_verification",
                     },
                     "latest_completed_proof": {
                         "evidence_role": "guard_verification_proof",
@@ -617,22 +620,26 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
         "mcp.protocol.unsupported_revision"
     );
     assert_eq!(
-        json["actions"],
+        json["activation_plan"]["required_steps"],
         json!([{
-            "id": "inspect_runtime_session",
-            "owner": "agent",
-            "channel": "documentation",
-            "prerequisites": ["host_reload"],
-            "completes_checks": ["managed_capability_proof", "managed_session_health"],
-            "root_cause_ids": [id],
+            "id": "read_connection_status",
+            "initiator": "user",
+            "executor": "volicord",
+            "execution_channel": "cli",
+            "prerequisites": [],
+            "completes_checks": [],
+            "root_finding_ids": [id],
             "instruction": "Configure the client to request a production-supported protocol revision",
+            "diagnostic_only": false,
+            "agent_sequence": [],
         }])
     );
     assert!(concise.contains("Actual MCP client: codex 0.42.0"));
     assert!(concise.contains("Requested protocol: 2024-11-05"));
     assert!(concise.contains("Supported protocols: 2025-06-18, 2025-11-25"));
     assert!(concise.contains("Blocked checks: tool_round_trip"));
-    assert!(concise.contains("inspect_runtime_session"));
+    assert!(concise
+        .contains("Configure the client to request a production-supported protocol revision"));
     assert!(!concise.contains("inspect the failure"));
     for expected in [
         "Requested protocol: 2024-11-05",
@@ -733,7 +740,7 @@ fn failure_scenarios_have_exact_lossless_root_projections() {
         assert_same_roots(&concise, &verbose, &json, &[id]);
         assert_eq!(json["findings"][0]["code"], code, "{name}");
         assert_eq!(
-            json["actions"][0]["id"],
+            json["activation_plan"]["required_steps"][0]["id"],
             typed_action_id_for_diagnostic(action_code),
             "{name}"
         );
@@ -1097,7 +1104,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             Some("action.guard.trigger_phase"),
             ConnectionCheckKind::GuardObservation,
             ConnectionCheckStatus::Pending,
-            Some(ConnectionActionKind::RunMcpVerification),
+            Some(ActivationStepId::RequestIntegrationVerification),
             Some("action.host.observe_activity"),
         ),
         DiagnosticMatrixScenario::observation(
@@ -1107,7 +1114,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             Some("action.host.reload_after_configuration_change"),
             ConnectionCheckKind::HostSession,
             ConnectionCheckStatus::Pending,
-            Some(ConnectionActionKind::ReloadHost),
+            Some(ActivationStepId::ReloadCodex),
             Some("action.host.reload_after_configuration_change"),
         ),
         DiagnosticMatrixScenario::failure(
@@ -1117,7 +1124,7 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
             None,
             ConnectionCheckKind::McpServer,
             &[],
-            Some(ConnectionActionKind::ReinstallCurrentBuild),
+            Some(ActivationStepId::RepairManagedConfiguration),
             "action.mcp.repair_server",
         ),
     ];
@@ -1197,7 +1204,9 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
         }));
         let connection_actions = scenario
             .connection_action
-            .map(|kind| ConnectionAction::try_new(kind, "Apply the typed report action").unwrap())
+            .map(|kind| {
+                ActivationStep::try_new(kind, Vec::new(), "Apply the typed report action").unwrap()
+            })
             .into_iter()
             .collect();
         let report = report(checks, vec![root], connection_actions);
@@ -1260,18 +1269,29 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
         match scenario.report_action {
             Some(expected) => {
                 assert_eq!(
-                    json["actions"].as_array().map(Vec::len),
+                    json["activation_plan"]["required_steps"]
+                        .as_array()
+                        .map(Vec::len),
                     Some(1),
                     "{}",
                     scenario.name
                 );
                 let expected_id = scenario
                     .connection_action
-                    .map(ConnectionActionKind::as_str)
+                    .map(ActivationStepId::as_str)
                     .unwrap_or_else(|| typed_action_id_for_diagnostic(expected));
-                assert_eq!(json["actions"][0]["id"], expected_id, "{}", scenario.name);
+                assert_eq!(
+                    json["activation_plan"]["required_steps"][0]["id"], expected_id,
+                    "{}",
+                    scenario.name
+                );
             }
-            None => assert_eq!(json["actions"], json!([]), "{}", scenario.name),
+            None => assert_eq!(
+                json["activation_plan"]["required_steps"],
+                json!([]),
+                "{}",
+                scenario.name
+            ),
         }
     }
 }
@@ -1325,7 +1345,13 @@ fn multiple_roots_are_deduplicated_without_renderer_inference() {
     );
     let (concise, verbose, json) = projections(&report);
     assert_same_roots(&concise, &verbose, &json, &[config_id, guard_id]);
-    assert_eq!(json["actions"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        json["activation_plan"]["required_steps"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
     assert_eq!(concise.matches("Finding: finding.").count(), 2);
     assert_eq!(verbose.matches("  [root] finding.").count(), 2);
 }
@@ -1349,8 +1375,9 @@ fn pending_and_complete_reports_are_exact() {
             })),
         )],
         Vec::new(),
-        vec![ConnectionAction::try_new(
-            ConnectionActionKind::RunMcpVerification,
+        vec![ActivationStep::try_new(
+            ActivationStepId::RequestIntegrationVerification,
+            Vec::new(),
             "Restart or reload Codex and use the connection",
         )
         .unwrap()],
@@ -1360,7 +1387,7 @@ fn pending_and_complete_reports_are_exact() {
     assert_eq!(json["status"], "action_required");
     assert_eq!(json["checks"][0]["status"], "pending");
     assert!(concise.contains("Checks: 0 ready, 0 blocked, 1 waiting, 0 failed"));
-    assert!(concise.contains("run_mcp_verification"));
+    assert!(concise.contains("Restart or reload Codex and use the connection"));
     assert!(
         verbose.contains("Actual MCP peer: none observed") || !verbose.contains("Actual MCP peer:")
     );

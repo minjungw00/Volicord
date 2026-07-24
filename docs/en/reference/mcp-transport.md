@@ -492,23 +492,28 @@ relax the complete owner-defined request validation.
 <a id="in-chat-integration-verification-schemas"></a>
 ### In-chat integration-verification schemas
 
-The canonical user request is `Run the Volicord integration verification.` The
-agent resolves an exact project through `volicord.list_projects`, then calls
+The canonical user-level activation step is
+`request_integration_verification`, initiated by the user through
+`codex_chat` and executed by the agent. Its nested sequence starts from the
+request `Run the Volicord integration verification.` The agent resolves an
+exact project through `volicord.list_projects`, then calls
 `volicord.begin_integration_verification`. It follows the returned tagged
 `workflow`: `awaiting_probe` and `awaiting_observation` carry the exact
 canonical `tool` to call, while `complete` and `repair_required` are terminal
 and carry no tool. Begin, probe, and status expose this same state-directed
 contract. The current Codex semantic host profile uses synchronous observation
-with one allowed status read, so the agent never sleeps, polls, or begins
-another attempt in the same turn. Only this first-party sequence can supply
-current managed MCP and Guard correlation.
+with one allowed status read, so the agent uses no shell sleep or poll loop and
+does not automatically restart in the same turn. The Guard probe is an
+internal nested tool step, not a top-level user action. Only this first-party
+sequence can supply current managed MCP and Guard correlation.
 
 If Volicord tools are not exposed, the agent reports the managed MCP connection
 unavailable. It does not start raw stdio, hand-author Codex `_meta`, or treat
 `resources/list`, resource templates, CLI preflight, or connection status as
 proof of managed tool availability. Those surfaces remain read-only
 diagnostics. Hook review and project/configuration trust remain user/host
-owned.
+owned. `volicord connection verify` is optional active diagnostics and does not
+replace the managed-host sequence.
 
 The sequence combines read-only project discovery with three
 Connection-integration tools. All four are MCP adapter operations, not Core

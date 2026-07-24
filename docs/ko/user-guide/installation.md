@@ -278,9 +278,11 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 `/path/to/your-product-repo`는 Codex가 작업할 Product Repository의 예시 경로입니다.
 최초 릴리스는 모든 지원 플랫폼에서 `record` 프로필을 사용합니다.
 
-이 명령은 남은 host 소유 activation action을 보고하기 전에 정규 managed launcher,
-Connection, 현재 Guard 설정을 적용합니다. 적용에 성공했다는 사실만으로 다시 불러온
-managed host나 현재 hook이 실행됐음이 증명되지는 않습니다.
+이 명령은 정규 managed launcher, Connection, 현재 Guard 설정을 적용한 뒤 계층형
+`IntegrationActivationPlan` 하나를 보고합니다. 적용에 성공했다는 사실만으로 다시
+불러온 managed host나 현재 hook이 실행됐음이 증명되지는 않습니다. 기본 init 출력은
+`Required next steps` section 하나를 사용하고 `Optional active diagnostics`를
+분리하며, 같은 작업을 두 번째 `Next` block으로 반복하지 않습니다.
 
 이 공유 설정에서는 init이 선택한 것과 같은 비어 있지 않은 절대 경로
 `VOLICORD_HOME`을 호스트 시작 환경이 제공해야 합니다. 저장소에서 보이는 설정은 그
@@ -290,17 +292,19 @@ Init이 `review_required_by_setup`을 보고하면 host에서 activation을 마�
 
 1. 해당 저장소에서 Codex를 restart 또는 reload합니다.
 2. Codex hook UI 또는 `/hooks`로 현재 프로젝트 hook definition을 review합니다.
-3. 새 conversation을 시작합니다.
-4. `Run the Volicord integration verification.`을 요청합니다.
-5. 현재 connection status를 읽습니다.
+3. 새 conversation을 시작하고
+   `Run the Volicord integration verification.`을 요청합니다.
+4. Agent가 끝나면 현재 connection status를 읽습니다.
 
 In-chat agent는 `volicord.list_projects`,
 `volicord.begin_integration_verification`, 반환된 `volicord.guard_probe`,
 `volicord.get_integration_verification`을 이 순서로 사용해야 합니다. Tool이 노출되지
 않으면 managed MCP가 unavailable이라고 보고합니다. Raw stdio, 직접 작성한 Codex
 `_meta`, resource, resource template, CLI preflight를 proof로 대신하지 않습니다.
-`volicord connection verify`는 선택적인 diagnostic이며 host 소유 hook review나
-managed in-chat evidence를 대신하지 않습니다.
+Terminal workflow 상태를 따르며 shell sleep이나 poll loop를 쓰거나 같은 turn에
+verification을 자동으로 다시 시작하지 않습니다. `volicord connection verify`는
+선택적인 active diagnostics이며 host 소유 hook review나 managed in-chat evidence를
+대신하지 않습니다.
 
 전체 첫 실행 경로는 [빠른 시작](quickstart.md)을 계속 읽습니다. 호스트별
 세부사항은 [에이전트 호스트 설정](../user-guide/agent-host-setup.md)을 봅니다.

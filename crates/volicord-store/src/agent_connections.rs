@@ -2900,7 +2900,18 @@ mod tests {
             volicord_types::ConnectionStatus::ActionRequired
         );
         assert_eq!(projected.checks()[0].id().as_str(), "verification_not_run");
-        assert_eq!(projected.actions()[0].id().as_str(), "run_mcp_verification");
+        assert_eq!(
+            projected.activation_plan().required_steps()[0]
+                .id()
+                .as_str(),
+            "request_integration_verification"
+        );
+        assert_eq!(
+            projected.activation_plan().optional_diagnostics()[0]
+                .id()
+                .as_str(),
+            "run_optional_active_diagnostics"
+        );
         assert!(
             agent_connection_record(fixture.runtime_home.path(), "conn_missing")?
                 .expect("projection must not remove the connection")

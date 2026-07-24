@@ -409,8 +409,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -559,8 +559,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -686,8 +686,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -841,8 +841,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1330,8 +1330,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - rust_workspace_1_85
@@ -1506,8 +1506,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1544,8 +1544,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1648,8 +1648,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -1688,8 +1688,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -2700,8 +2700,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-25'
+  last_verified_on: '2026-07-25'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -2716,7 +2716,7 @@ documents:
   - Codex `record`, personal/shared, managed stdio MCP, and CLI inbox first-release connection surface
   - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
   - shared CLI diagnostic projection of canonical verification checks, findings, cause graph, and
-    root-scoped actions without renderer-side cause inference
+    root-scoped activation plan without renderer-side cause inference
   - subject-aware current operational findings and explicit current-report finding selection
   - typed integration revisions and authoritative managed-host operational-session evidence
   - immutable Store-owned integration-instance identity across physical Connection lifecycles
@@ -2732,7 +2732,8 @@ documents:
   - Core session validation without host configuration, shell, wrapper, artifact, or process syntax knowledge
   - compatibility from current managed configuration and observed protocol, tool, safe-call, and Guard behavior
   - separate ambient Guard coverage and correlated Guard attempt/proof reporting with exact terminal-state preservation
-  - report-contained connection actions without an independent persisted status or action array
+  - one report-contained hierarchical activation plan without an independent persisted status,
+    host-plan action array, or renderer-owned step list
   - first-release managed-host cooperative and non-identity threat boundary
   depends_on:
   - reference.mcp-transport

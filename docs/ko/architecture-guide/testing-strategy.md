@@ -107,7 +107,7 @@ registry 직접 순회가 matrix를 정합니다.
   disabled를 포함한 정확한 `HookActivationState` 근거 우선순위와 합성 trusted 상태 부재
 - `project_trust`를 독립적으로 유지하면서 configured, reload, hook review/unknown,
   managed MCP observation, Guard verification, complete, failed를 지나는
-  `ConnectionActivationState` 전환
+  `IntegrationActivationState` 전환
 - ambient와 correlated Guard check의 분리, 즉 ambient passed와 correlated failed의
   동시 표현, attempt가 없을 때 ambient pending, correlated complete, repair-required를
   pending으로 projection하지 않음, 더 오래된 proof가 더 최신 failed attempt를 숨기지
@@ -116,12 +116,16 @@ registry 직접 순회가 matrix를 정합니다.
   verification ID, managed/Guard session role의 정규 중복 제거, 복구 가능한 failed
   check의 `action_required` 집계, 모든 typed repair reason 및 acquisition stage의 안정적인
   code 직접 mapping
-- 고정 typed action ID, owner, channel, prerequisite, 완료 check, root-finding 순서와
-  일치하지 않는 action metadata의 엄격한 거부
-- Reload, hook review, 새 conversation, 정규 요청, status의 init 출력 순서 및 CLI verify가
-  선택적 diagnostic일 뿐이라는 문구
-- 정규 요청, 모든 tagged workflow kind와 그 상태가 반환하는 정규 tool, unavailable
-  경로, raw stdio, 직접 작성한 `_meta`, resource discovery를 proof로 쓰지 않는다는
+- 단일 `IntegrationActivationPlan`, 고정 semantic step ID, 서로 구분된
+  initiator/executor, `codex_chat` 요청 channel, 완료 check, root-finding 순서,
+  prerequisite 위상 순서와 중복·cycle·알 수 없는 prerequisite·불일치 metadata·최상위
+  nested tool·필수 diagnostic-only step의 엄격한 거부
+- Reload, hook review, 사용자 수준 요청 하나, status의 init 출력 개수와 순서,
+  `Required next steps` block 하나, 중복 `Next` block 및 부정확한 “one more step” 부재,
+  current-status suffix, typed repair-required plan, 분리된 optional active diagnostics
+- 정규 요청, 모든 tagged workflow kind와 그 상태가 반환하는 정규 tool, nested
+  list/begin/probe/status 순서, unavailable 경로, shell sleep/poll loop, same-turn 자동
+  재시작, raw stdio, 직접 작성한 `_meta`, resource discovery를 proof로 쓰지 않는다는
   경계를 보존하는 생성 AGENTS, Codex rule, MCP server instruction
 - 불변 semantic 좌표의 begin replay, 새 ID가 없는 terminal same-turn replay, 새 turn
   attempt, prompt 소유권, first-write-wins probe acknowledgement, 중복 begin concurrency

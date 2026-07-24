@@ -153,9 +153,10 @@ pub(crate) fn plan_codex_rule_file(
 # Canonical verification request: Run the Volicord integration verification.\n\
 # Agent sequence: call {}, then {}; follow workflow.kind and call the returned workflow.tool once.\n\
 # Workflow states: {} uses {} once; {} uses {} once; {} and {} call no verification tool.\n\
-# Make no delay or repeated status calls, and do not begin another attempt in the same turn.\n\
+# Do not use shell sleep or poll loops, make repeated status calls, or automatically restart the workflow in the same turn.\n\
 # Begin, probe, and status expose the same tagged workflow state.\n\
 # If tools are unavailable, report managed MCP unavailable; do not synthesize raw stdio or Codex _meta.\n\
+# volicord connection verify is optional active diagnostics only; it does not replace the managed-host workflow.\n\
 prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n",
         AgentToolId::LIST_PROJECTS.wire_name(),
         AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),

@@ -120,7 +120,7 @@ Durable tests should cover, as applicable:
 - exact `HookActivationState` evidence precedence including unknown, setup
   review, current-definition observation, policy management, invocation bypass,
   and explicit disabled states, with no synthetic trusted state;
-- `ConnectionActivationState` transitions through configured, reload, hook
+- `IntegrationActivationState` transitions through configured, reload, hook
   review/unknown, managed MCP observation, Guard verification, complete, and
   failed, with `project_trust` kept independent;
 - separate ambient and correlated Guard checks: ambient passed with correlated
@@ -132,14 +132,20 @@ Durable tests should cover, as applicable:
   and Guard session roles; recoverable failed aggregation to
   `action_required`; and direct stable-code mapping for every typed repair
   reason and acquisition stage;
-- fixed typed action IDs, owners, channels, prerequisites, completed checks,
-  root-finding ordering, and strict rejection of inconsistent action metadata;
-- init output ordering for reload, hook review, new conversation, canonical
-  request, and status, with CLI verify described as optional diagnostic only;
+- the single `IntegrationActivationPlan`, fixed semantic step IDs, distinct
+  initiator/executor, `codex_chat` request channel, completed checks,
+  root-finding ordering, topological prerequisite order, and strict rejection
+  of duplicates, cycles, unknown prerequisites, inconsistent metadata,
+  top-level nested tools, and required diagnostic-only steps;
+- init output count and ordering for reload, hook review, one user-level
+  request, and status; one `Required next steps` block; no duplicate `Next`
+  block or inaccurate “one more step”; current-status suffixes; typed
+  repair-required plans; and optional active diagnostics kept separate;
 - generated AGENTS, Codex rule, and MCP server instructions preserving the
   canonical request, every tagged workflow kind, its canonical returned tool,
-  the unavailable path, and the prohibition on raw stdio, hand-authored
-  `_meta`, and resource discovery as proof;
+  the nested list/begin/probe/status order, the unavailable path, and the
+  prohibition on shell sleep/poll loops, same-turn automatic restart, raw
+  stdio, hand-authored `_meta`, and resource discovery as proof;
 - immutable semantic-coordinate begin replay, terminal same-turn replay without
   a new ID, new-turn attempts, prompt ownership, first-write-wins probe
   acknowledgement, and duplicate-begin concurrency;

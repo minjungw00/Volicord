@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 use volicord_types::{
-    AgentToolId, ConnectionActionKind, DiagnosticFactSource, DiagnosticFacts, GuardHookPhase,
+    ActivationStepId, AgentToolId, DiagnosticFactSource, DiagnosticFacts, GuardHookPhase,
     GuardProbeObservationStage, GuardVerificationRecoverability, GuardVerificationRepairReason,
     GuardVerificationRetryPolicy, IntegrationRevision,
 };
@@ -149,7 +149,7 @@ pub struct GuardProbeFacts {
     acquisition_stage: Option<GuardProbeObservationStage>,
     retry_policy: GuardVerificationRetryPolicy,
     recoverability: GuardVerificationRecoverability,
-    recovery_action: ConnectionActionKind,
+    recovery_action: ActivationStepId,
     expected_agent_tool_id: AgentToolId,
     expected_host_callable_identity: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -163,7 +163,7 @@ impl GuardProbeFacts {
         acquisition_stage: Option<GuardProbeObservationStage>,
         retry_policy: GuardVerificationRetryPolicy,
         recoverability: GuardVerificationRecoverability,
-        recovery_action: ConnectionActionKind,
+        recovery_action: ActivationStepId,
         expected_host_callable_identity: impl Into<String>,
         observed_host_callable_identity: Option<String>,
     ) -> Self {

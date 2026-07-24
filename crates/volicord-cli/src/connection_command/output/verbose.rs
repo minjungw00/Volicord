@@ -3,15 +3,14 @@ use std::collections::BTreeSet;
 use serde_json::{Map, Value};
 use volicord_types::{
     ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, DiagnosticFindingId,
-    DiagnosticReportAction,
 };
 
 use crate::connection_command::managed_host_round_trip_tool;
 
 use super::{
-    human::{headline, render_init_activation_steps, CheckCounts},
+    human::{headline, render_activation_plan, CheckCounts},
     report::{
-        projected_actions, projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
+        projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
         ConnectionCommandResult,
     },
     ConnectionCommandError, PlannedConnectionChangeKind,
@@ -25,7 +24,6 @@ pub(super) fn render_command_report_verbose(
 ) -> Result<String, ConnectionCommandError> {
     let counts = CheckCounts::from_report(report);
     let roots = projected_root_cause_ids(report)?;
-    let actions = projected_actions(report)?;
     let mut sections = vec![headline(report, counts), render_connection(report)?];
     if report.operation == CommandOperation::Verify {
         sections.push(
@@ -33,8 +31,8 @@ pub(super) fn render_command_report_verbose(
                 .to_owned(),
         );
     }
-    if let Some(steps) = render_init_activation_steps(report) {
-        sections.push(steps);
+    if let Some(plan) = render_activation_plan(report)? {
+        sections.push(plan);
     }
     sections.push(render_summary(report, counts));
 
@@ -43,9 +41,6 @@ pub(super) fn render_command_report_verbose(
     }
     if !report.findings.is_empty() {
         sections.push(render_findings(report, &roots));
-    }
-    if !actions.is_empty() {
-        sections.push(render_actions(&actions));
     }
     if let Some(result) = report.result.as_ref() {
         sections.push(render_result(result));
@@ -1292,54 +1287,6 @@ fn render_connection_removal(context: &mut DetailContext<'_>) {
     context.line("Remaining project count", remaining_project_count);
 }
 
-fn render_actions(actions: &[DiagnosticReportAction]) -> String {
-    let mut blocks = Vec::with_capacity(actions.len());
-    for action in actions {
-        let mut lines = vec![format!("  {}", action.id().as_str())];
-        lines.push(format!(
-            "    Owner/channel: {}/{}",
-            action.owner().as_str(),
-            action.channel().as_str()
-        ));
-        push_multiline(&mut lines, 4, action.instruction());
-        if !action.prerequisites().is_empty() {
-            lines.push(format!(
-                "    Prerequisites: {}",
-                action
-                    .prerequisites()
-                    .iter()
-                    .map(|check| check.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        if !action.completes_checks().is_empty() {
-            lines.push(format!(
-                "    Intended checks: {}",
-                action
-                    .completes_checks()
-                    .iter()
-                    .map(|check| check.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        if !action.root_cause_ids().is_empty() {
-            lines.push(format!(
-                "    Root findings: {}",
-                action
-                    .root_cause_ids()
-                    .iter()
-                    .map(|finding_id| finding_id.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        blocks.push(lines.join("\n"));
-    }
-    format!("Actions\n{}", blocks.join("\n\n"))
-}
-
 fn render_findings(report: &ConnectionCommandReport, roots: &[DiagnosticFindingId]) -> String {
     let mut blocks = Vec::with_capacity(report.findings.len());
     for finding in &report.findings {
@@ -1800,8 +1747,8 @@ mod tests {
 
     use serde_json::json;
     use volicord_types::{
-        ConnectionAction, ConnectionActionKind, ConnectionCheckDetails, ConnectionStatus,
-        UtcTimestamp,
+        ActivationStep, ActivationStepId, ConnectionCheckDetails, ConnectionStatus,
+        IntegrationActivationPlan, IntegrationActivationState, UtcTimestamp,
     };
 
     use super::*;
@@ -1851,8 +1798,8 @@ mod tests {
         .unwrap()
     }
 
-    fn action(id: ConnectionActionKind, instruction: &str) -> ConnectionAction {
-        ConnectionAction::try_new(id, instruction).unwrap()
+    fn action(id: ActivationStepId, instruction: &str) -> ActivationStep {
+        ActivationStep::try_new(id, Vec::new(), instruction).unwrap()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1862,24 +1809,27 @@ mod tests {
         status: ConnectionStatus,
         mode: &str,
         checks: Vec<ConnectionCheck>,
-        actions: Vec<ConnectionAction>,
+        actions: Vec<ActivationStep>,
         result: Option<ConnectionCommandResult>,
         planned_changes: Option<Vec<PlannedConnectionChange>>,
     ) -> ConnectionCommandReport {
+        let activation_state = if status == ConnectionStatus::Failed {
+            IntegrationActivationState::Failed
+        } else {
+            IntegrationActivationState::Configured
+        };
+        let activation_plan =
+            IntegrationActivationPlan::try_new(activation_state, actions, Vec::new()).unwrap();
         ConnectionCommandReport {
             operation,
             dry_run,
             status,
-            activation_state: if status == ConnectionStatus::Failed {
-                volicord_types::ConnectionActivationState::Failed
-            } else {
-                volicord_types::ConnectionActivationState::Configured
-            },
+            activation_state,
             hook_activation_state: volicord_types::HookActivationState::Unknown,
             runtime_home: "/runtime".to_owned(),
             connection: connection(mode),
             checks,
-            actions,
+            activation_plan,
             generated_at: UtcTimestamp::parse("2026-07-22T00:00:00Z").unwrap(),
             findings: Vec::new(),
             integration_revision: None,
@@ -1902,9 +1852,8 @@ mod tests {
             assert!(actual.contains("\n  Activation: "), "{actual}");
             assert!(actual.contains("\n  Hook activation: "), "{actual}");
             assert!(!actual.contains("action.host.observe_activity"), "{actual}");
-            if actual.contains("\nActions\n") {
-                assert!(actual.contains("Owner/channel:"), "{actual}");
-            }
+            assert!(!actual.contains("\nActions\n"), "{actual}");
+            assert!(!actual.contains("Host-owned activation steps"), "{actual}");
         }};
     }
 
@@ -2007,7 +1956,7 @@ mod tests {
                 ),
             ],
             vec![action(
-                ConnectionActionKind::RepairManagedConfiguration,
+                ActivationStepId::RepairManagedConfiguration,
                 "Repair the managed Codex configuration",
             )],
             Some(ConnectionCommandResult::Setup { applied: false }),
@@ -2063,7 +2012,7 @@ mod tests {
                 "    State: changed\n",
                 "    Diagnostic code: managed_config_mismatch\n",
                 "    Diagnostic: managed command differs\n\n",
-                "Actions\n",
+                "Required next steps\n",
                 "  action.managed_config.repair\n",
                 "    Repair the managed Codex configuration\n",
                 "\n",
@@ -2105,7 +2054,7 @@ mod tests {
                 None,
             )],
             vec![action(
-                ConnectionActionKind::RunMcpVerification,
+                ActivationStepId::RequestIntegrationVerification,
                 "Restart or reload Codex and use the connection",
             )],
             Some(ConnectionCommandResult::Setup { applied: true }),
@@ -2114,7 +2063,7 @@ mod tests {
         assert_current_verbose!(
             rendered(&init),
             concat!(
-                "Volicord setup was applied and needs one more step.\n\n",
+                "Setup applied; 1 host-owned activation step remains.\n\n",
                 "Connection\n",
                 "  ID: connection_1\n",
                 "  Host: codex\n",
@@ -2137,7 +2086,7 @@ mod tests {
                 "    PATH executable: /opt/codex\n",
                 "    PATH executable version: 1.2.3\n",
                 "    Initialize: not observed\n\n",
-                "Actions\n",
+                "Required next steps\n",
                 "  action.host.observe_activity\n",
                 "    Restart or reload Codex and use the connection\n\n",
                 "Result\n",
@@ -2210,7 +2159,7 @@ mod tests {
                 None,
             )],
             vec![action(
-                ConnectionActionKind::ReinstallCurrentBuild,
+                ActivationStepId::RepairManagedConfiguration,
                 "Repair the MCP server and verify again",
             )],
             None,
@@ -2252,7 +2201,7 @@ mod tests {
                 "    Shutdown: not completed\n",
                 "    Self-test diagnostic code: mcp.tools.required_missing\n",
                 "    Self-test finding: finding.tools.required_missing\n\n",
-                "Actions\n",
+                "Required next steps\n",
                 "  action.mcp.repair_server\n",
                 "    Repair the MCP server and verify again\n",
                 "\n",
@@ -2302,7 +2251,7 @@ mod tests {
                 "    Previous revision: revision_before\n",
                 "    Current revision: revision_after\n",
                 "    Rebound Guard Installation IDs: guard_1\n\n",
-                "Actions\n",
+                "Required next steps\n",
                 "  action.host.reload_after_configuration_change\n",
                 "    Restart or reload Codex, then use the current Volicord integration so new runtime and Guard observations bind revision revision_after\n\n",
                 "Result\n",
@@ -2353,7 +2302,7 @@ mod tests {
                 "    Code: connection_removal_planned\n",
                 "    Membership: planned for removal\n",
                 "    Connection: retained until changes are applied\n\n",
-                "Actions\n",
+                "Required next steps\n",
                 "  action.connection.apply_removal\n",
                 "    Run connection remove without --dry-run to apply the planned removal\n\n",
                 "Planned changes\n",

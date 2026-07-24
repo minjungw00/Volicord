@@ -349,14 +349,15 @@ Connection activation preserves these distinctions:
 - `bypassed_for_invocation` is explicit invocation-local host evidence; it is
   not durable activation.
 - `disabled` requires explicit host evidence and routes to
-  `inspect_hook_contract`.
+  `repair_hook_contract`.
 - a terminal current managed session is a failure even if an older
   `latest_managed_capability_proof` remains available.
-- a missing current Guard attempt is pending and routes to
-  `run_guard_probe` only after prerequisites pass.
+- a missing current Guard attempt is pending and routes to the user-level
+  `request_integration_verification`; the workflow-directed Guard probe is
+  nested inside that step.
 - `repair_required` remains a failed `correlated_guard_verification`; typed
   recoverability may make the aggregate `action_required`, but does not turn
-  the terminal attempt into pending.
+  the terminal attempt into pending or authorize a blind probe retry.
 - a passed `ambient_hook_coverage` never proves correlated Guard success, and
   an older `guard_verification_proof` never hides a newer failed attempt.
 
@@ -369,11 +370,12 @@ acquisition stage. The stable categories are
 `guard.probe.current_contract_changed`. Summary parsing is not a diagnostic
 classification boundary.
 
-Failures and blocked checks retain typed root finding IDs. Remediation is chosen
-from the closed connection actions `reload_host`, `review_hooks`,
-`run_mcp_verification`, `run_guard_probe`, `inspect_hook_contract`,
-`repair_managed_configuration`, `inspect_runtime_session`, and
-`reinstall_current_build`; renderers do not infer an action from prose.
+Failures and blocked checks retain typed root finding IDs. Remediation is
+chosen from the closed activation steps `reload_codex`,
+`review_project_hooks`, `request_integration_verification`,
+`read_connection_status`, `repair_hook_contract`, and
+`repair_managed_configuration`; `run_optional_active_diagnostics` remains
+outside required remediation. Renderers do not infer a step from prose.
 Project/configuration trust remains separate from hook-source activation.
 
 ## Effects and response routing

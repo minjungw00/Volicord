@@ -9,10 +9,9 @@ use volicord_store::{
     operational_sessions::{ManagedCapabilityProof, ManagedPeerObservation, McpSessionMilestones},
 };
 use volicord_types::{
-    AgentToolId, ConnectionActionKind, GuardIntegrationVerificationStatus,
-    GuardProbeObservationStage, GuardVerificationRecoverability, GuardVerificationRepairReason,
-    GuardVerificationRetryPolicy, IntegrationRevision, IntegrationVerificationWorkflowState,
-    ToolVerificationRole, UtcTimestamp,
+    ActivationStepId, AgentToolId, GuardIntegrationVerificationStatus, GuardProbeObservationStage,
+    GuardVerificationRecoverability, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
+    IntegrationRevision, IntegrationVerificationWorkflowState, ToolVerificationRole, UtcTimestamp,
 };
 
 use super::{HostExecutableStatus, Verification};
@@ -158,7 +157,7 @@ pub(super) struct CorrelatedGuardAttemptEvidence {
     #[serde(skip_serializing_if = "Option::is_none")]
     recoverability: Option<GuardVerificationRecoverability>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    recovery_action: Option<ConnectionActionKind>,
+    recovery_action: Option<ActivationStepId>,
     integration_revision: String,
     guard_installation_id: String,
     policy_digest: String,
@@ -325,18 +324,16 @@ fn parse_guard_timestamp(value: &str) -> Result<UtcTimestamp, String> {
 
 pub(super) fn recovery_action_for_retry_policy(
     policy: GuardVerificationRetryPolicy,
-) -> ConnectionActionKind {
+) -> ActivationStepId {
     match policy {
-        GuardVerificationRetryPolicy::NoAutomaticRetry => {
-            ConnectionActionKind::InspectRuntimeSession
+        GuardVerificationRetryPolicy::NoAutomaticRetry => ActivationStepId::ReadConnectionStatus,
+        GuardVerificationRetryPolicy::NewTurnRequired => {
+            ActivationStepId::RequestIntegrationVerification
         }
-        GuardVerificationRetryPolicy::NewTurnRequired => ConnectionActionKind::RunGuardProbe,
-        GuardVerificationRetryPolicy::HostReloadRequired => ConnectionActionKind::ReloadHost,
-        GuardVerificationRetryPolicy::HookReviewRequired => {
-            ConnectionActionKind::InspectHookContract
-        }
+        GuardVerificationRetryPolicy::HostReloadRequired => ActivationStepId::ReloadCodex,
+        GuardVerificationRetryPolicy::HookReviewRequired => ActivationStepId::RepairHookContract,
         GuardVerificationRetryPolicy::RepairRequired => {
-            ConnectionActionKind::RepairManagedConfiguration
+            ActivationStepId::RepairManagedConfiguration
         }
     }
 }

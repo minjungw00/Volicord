@@ -122,17 +122,18 @@ volicord connection verify codex --repo "<repo>"
 
 ## Activation 상태부터 읽기
 
-먼저 `activation_state`로 단계를 고르고, 근거 부재를 trust 주장으로 바꾸지 않으면서
-`hook_activation_state`를 읽습니다.
+먼저 `activation_state`로 단계를 확인한 뒤 현재
+`activation_plan.required_steps` suffix를 보고된 순서대로 실행합니다. 근거 부재를 trust
+주장으로 바꾸지 않으면서 `hook_activation_state`를 읽습니다.
 
-| 상태 | 다음 typed action |
+| 상태 또는 조건 | 현재 semantic step |
 |---|---|
-| `configured` 또는 `host_reload_required` | `reload_host` |
-| Setup 변경이 있는 `hook_review_required_or_unknown` | `review_hooks` |
-| 명시적인 disabled/incompatible 근거가 있는 `hook_review_required_or_unknown` | `inspect_hook_contract` |
-| `mcp_observation_required` | `run_mcp_verification`, 최신 attempt가 실패했다면 `inspect_runtime_session` |
-| `guard_verification_required` | `run_guard_probe` |
-| Managed configuration 때문에 `failed` | 보고된 `repair_managed_configuration` 또는 `reinstall_current_build` |
+| `host_reload_required` | `reload_codex`와 뒤이어 보고된 suffix |
+| Setup 변경이 있는 `hook_review_required_or_unknown` | `review_project_hooks`와 뒤이어 보고된 suffix |
+| 명시적인 disabled/incompatible hook 근거 | `repair_hook_contract` |
+| `mcp_observation_required` 또는 `guard_verification_required` | `request_integration_verification` |
+| 최신 runtime attempt 실패 | `read_connection_status` |
+| Managed configuration 실패 | `repair_managed_configuration` |
 
 `unknown`은 hook activation이 성립하지 않았다는 뜻입니다. Untrusted 또는 disabled를
 뜻하지 않습니다. `project_trust`는 별도 check이며 host가 그 관심사를 노출할 때만
@@ -141,11 +142,18 @@ volicord connection verify codex --repo "<repo>"
 verification ID를 모두 보존하며 실제 MCP peer 정보와 PATH executable probe를 분리해
 보고합니다.
 
+`request_integration_verification`은 사용자가 Codex chat에서 시작하고 agent가 실행합니다.
+Nested sequence는 project discovery, begin, workflow가 지시한 Guard probe, workflow가
+지시한 status 순서입니다. Guard probe를 최상위 복구로 실행하지 않습니다. 상관 attempt가
+`repair_required`를 보고하면 보고된 repair step을 따릅니다. `volicord connection
+verify`는 선택적인 active diagnostics이며 activation workflow가 아닙니다.
+
 ## `action_required`
 
 `action_required`는 구조화된 다음 단계이며 설명 없는 성공이나 치명적 실패가 아닙니다.
-이름 붙은 Codex 신뢰, 다시 불러오기, 구성, 저장 동작만 완료한 뒤 같은 검증 명령을
-다시 실행합니다.
+보고된 required step만 완료하고 terminal workflow 상태를 따른 뒤 connection status를
+읽습니다. Shell sleep이나 poll loop를 사용하거나 같은 turn에 workflow를 자동으로 다시
+시작하지 않습니다.
 
 ```sh
 volicord connection verify codex --shared --repo "<repo>"

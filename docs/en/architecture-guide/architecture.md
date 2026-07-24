@@ -174,15 +174,17 @@ Activation is one typed projection across existing boundaries:
 
 ```text
 host/config inspection + Store session/event evidence
-  -> volicord-cli focused checks and typed actions
-  -> volicord-types ConnectionVerificationReport
+  -> volicord-cli focused checks and one activation-plan suffix
+  -> volicord-types ConnectionVerificationReport + IntegrationActivationPlan
   -> concise / verbose / JSON projections
 ```
 
 `volicord-types` owns `HookActivationState`,
-`ConnectionActivationState`, focused check dependencies, fixed action
-metadata, and the closed `IntegrationVerificationWorkflowState` with canonical
-typed tool references. `volicord-cli` collects current managed configuration,
+`IntegrationActivationState`, focused check dependencies, stable
+`ActivationStep` metadata, deterministic prerequisite ordering, and the closed
+`IntegrationVerificationWorkflowState` with canonical typed tool references.
+The report is the only activation-plan owner; host plans and effects contain no
+parallel action list. `volicord-cli` collects current managed configuration,
 host reload, hook-source, session, capability, Guard, and separate
 project-trust evidence. `volicord-store` preserves the Guard definition
 boundary and is the single domain projector from an immutable semantic
@@ -192,7 +194,10 @@ profile selects one synchronous status read without a version branch. Begin,
 probe, get, `volicord-mcp`, CLI checks, and generated host guidance all consume
 that projection. Exact replay retains the same verification ID and state;
 `complete` and typed `repair_required` remain terminal. Adapters and renderers
-do not derive parallel state or classify summary prose.
+do not derive parallel state or classify summary prose. The user-level
+`request_integration_verification` step nests list, begin, workflow-directed
+probe, and workflow-directed status calls; the Guard probe is not a top-level
+user action.
 
 The CLI projects Guard through two independent check/evidence paths.
 `AmbientGuardCoverageEvidence` owns current-definition and configured-phase

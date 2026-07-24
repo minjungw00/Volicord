@@ -5,7 +5,7 @@ use std::{
 
 use serde::Serialize;
 use volicord_mcp::ManagedMcpLaunchSpec;
-use volicord_types::{ConnectionAction, GuardHookPhase};
+use volicord_types::GuardHookPhase;
 pub use volicord_types::{ConnectionIntent, HostKind, HostScope};
 
 pub mod codex;
@@ -122,7 +122,6 @@ pub struct HostPlan {
     pub change: PlannedChange,
     pub fingerprint: String,
     pub conflicts: Vec<HostConflict>,
-    pub actions: Vec<ConnectionAction>,
     pub(crate) file_snapshot: Option<config_edit::FileSnapshot>,
 }
 
@@ -188,7 +187,6 @@ pub struct HostEffect {
     pub target: HostTarget,
     pub change: PlannedChange,
     pub fingerprint: String,
-    pub actions: Vec<ConnectionAction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,5 +1,10 @@
 use std::{error::Error, fmt, str::FromStr};
 
+use schemars::{
+    gen::SchemaGenerator,
+    schema::{InstanceType, Schema, SchemaObject, SingleOrVec},
+    JsonSchema,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::values::{AgentConnectionMode, MethodName, OperationCategory};
@@ -60,6 +65,25 @@ enum AgentToolKind {
 /// Canonical typed identity for every Agent Connection MCP tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AgentToolId(AgentToolKind);
+
+impl JsonSchema for AgentToolId {
+    fn schema_name() -> String {
+        "AgentToolId".to_owned()
+    }
+
+    fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+        Schema::Object(SchemaObject {
+            instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::String))),
+            enum_values: Some(
+                Self::ALL
+                    .into_iter()
+                    .map(|tool| serde_json::Value::String(tool.wire_name().to_owned()))
+                    .collect(),
+            ),
+            ..Default::default()
+        })
+    }
+}
 
 impl AgentToolId {
     pub const INTAKE: Self = Self(AgentToolKind::Method(MethodName::Intake));

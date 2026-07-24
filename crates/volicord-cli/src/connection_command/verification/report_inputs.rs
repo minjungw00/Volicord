@@ -71,7 +71,7 @@ pub(super) struct ConnectionEvaluation {
     pub(super) inline_findings: Vec<CurrentDiagnosticFinding>,
     pub(super) persisted_finding_seed_ids: Vec<DiagnosticFindingId>,
     pub(super) evidence: ConnectionEvaluationEvidence,
-    pub(super) actions: Vec<ConnectionAction>,
+    pub(super) activation_plan: Option<IntegrationActivationPlan>,
     pub(super) metadata: ConnectionEvaluationMetadata,
 }
 
@@ -119,7 +119,7 @@ impl ConnectionEvaluation {
             inline_findings,
             persisted_finding_seed_ids,
             evidence,
-            actions: Vec::new(),
+            activation_plan: None,
             metadata,
         })
     }
@@ -158,11 +158,13 @@ pub(super) fn assemble_connection_evaluation(
         &overlay,
     )?;
     evaluation.checks = finalize_check_graph(evaluation.checks, &findings)?;
-    evaluation.actions = actions_for_checks(&evaluation.checks)?;
+    evaluation.activation_plan = Some(activation_plan_for_checks(&evaluation.checks)?);
     let report = ConnectionVerificationReport::try_new(
         evaluation.metadata.evaluated_at,
         evaluation.checks,
-        evaluation.actions,
+        evaluation.activation_plan.ok_or_else(|| {
+            ConnectionCommandError::runtime("connection evaluation is missing its activation plan")
+        })?,
     )
     .map_err(ConnectionCommandError::from)?;
     if integration_revision != evaluation.metadata.integration_revision {
@@ -202,8 +204,8 @@ pub(in crate::connection_command) fn connection_metadata_failure_report(
         None,
         None,
     )?);
-    let actions = actions_for_checks(&checks)?;
-    ConnectionVerificationReport::try_new(current.checked_at().clone(), checks, actions)
+    let activation_plan = activation_plan_for_checks(&checks)?;
+    ConnectionVerificationReport::try_new(current.checked_at().clone(), checks, activation_plan)
         .map_err(ConnectionCommandError::from)
 }
 
@@ -280,12 +282,15 @@ pub(in crate::connection_command) fn report_with_hook_review_required(
         }
     }
     let checks = block_failed_dependencies(checks)?;
-    let actions = actions_for_checks(&checks)?;
+    let activation_plan = activation_plan_for_checks_with_hook_state(
+        &checks,
+        HookActivationState::ReviewRequiredBySetup,
+    )?;
     ConnectionVerificationReport::try_new_with_hook_activation(
         current.checked_at().clone(),
         checks,
         HookActivationState::ReviewRequiredBySetup,
-        actions,
+        activation_plan,
     )
     .map_err(ConnectionCommandError::from)
 }

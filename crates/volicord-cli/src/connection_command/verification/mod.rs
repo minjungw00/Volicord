@@ -31,19 +31,20 @@ use volicord_store::{
     },
     sqlite::{registry_db_path, sqlite_database_write_capability},
 };
-#[cfg(test)]
-use volicord_types::ConnectionStatus;
 use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, AgentToolId, ConnectionAction, ConnectionActionKind,
-    ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
-    ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode, DiagnosticDomain,
-    DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
-    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    derive_integration_activation_state, ActivationStep, ActivationStepId, AgentConnectionId,
+    AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
+    ConnectionCheckStatus, ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode,
+    DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
+    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
     GuardIntegrationVerificationStatus, GuardManagedArtifact, GuardProbeObservationStage,
     GuardVerificationRecoverability, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
-    HookActivationEvidence, HookActivationState, IntegrationRevision,
-    IntegrationVerificationWorkflowState, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    HookActivationEvidence, HookActivationState, IntegrationActivationPlan,
+    IntegrationActivationState, IntegrationRevision, IntegrationVerificationWorkflowState,
+    UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
+#[cfg(test)]
+use volicord_types::{AgentToolId, ConnectionStatus};
 
 use crate::guard_integration::audit::{
     guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
@@ -85,6 +86,9 @@ mod mcp_checks;
 mod report_inputs;
 
 use dependency_graph::*;
+pub(in crate::connection_command) use dependency_graph::{
+    activation_plan_for_checks, activation_plan_for_checks_with_hook_state,
+};
 use evidence::*;
 use finding_projection::*;
 use guard_checks::*;

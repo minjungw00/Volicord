@@ -234,10 +234,12 @@ projection하지 않습니다. Hook occurrence fact는 사용할 수 있는 cont
 kind, 누락 또는 malformed field 범주와 정적 field label, Guard Installation ID, integration
 revision, Guard event ID로 제한합니다. 전체 prompt, tool input, tool response, parser prose,
 제한 없는 stderr는 절대 포함하지 않습니다. File, manifest, wrapper, 호환되지 않는 관찰
-finding은 typed condition에 따라 `inspect_hook_contract` 또는
-`reinstall_current_build` connection action으로 projection합니다. 현재 관찰 부재는
-prerequisite가 완료된 뒤에만 `run_guard_probe`로 projection합니다. 사람용 summary를
-parsing해 action을 고르지 않습니다.
+finding은 typed condition에 따라 `repair_hook_contract` 또는
+`repair_managed_configuration` activation step으로 projection합니다. 현재 관찰 부재는
+사용자 수준 `request_integration_verification`을 projection하며 workflow가 지시한
+`volicord.guard_probe`는 agent sequence 안에 중첩되고 최상위 형제 step이 되지 않습니다.
+Terminal `repair_required` attempt는 무조건 probe를 다시 요청하지 않고 typed repair
+step을 projection합니다. 사람용 summary를 parsing해 step을 고르지 않습니다.
 
 현재 상태 Guard 진단은 정확한 관리 artifact, installation, 필수 phase 또는 호환되지 않는
 event를 typed subject로 사용합니다. 안정적인 ID는 Connection scope, code, domain, stage,

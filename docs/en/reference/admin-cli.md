@@ -210,10 +210,11 @@ problems before waiting observations, and current next actions. For a failed
 report, each problem is an independent root finding and includes its namespaced
 code, one bounded typed summary, the most useful safe actual-versus-expected
 facts, affected blocked checks, and the finding or runtime-session identifier.
-The `Next` section contains one deduplicated namespaced remediation action per
-root. It does not emit a generic inspection action when a root finding already
-contains a typed action. Human labels are presentation wording; they do not add
-report or check statuses.
+One `Required next steps` section projects the current topological suffix of
+`IntegrationActivationPlan`; `Optional active diagnostics` remains separate.
+There is no second `Next` block. A root finding that already carries a typed
+remediation does not produce a generic inspection step. Human labels are
+presentation wording; they do not add report or check statuses.
 
 The canonical check statuses are `passed`, `pending`, `failed`, `blocked`, and
 `not_applicable`. They mean, respectively: completed successfully; waiting for
@@ -231,7 +232,7 @@ not-applicable, and absent checks are not repeated under `Waiting`. Ambient
 Guard phases are reported separately by `ambient_hook_coverage`; they never
 satisfy `correlated_guard_verification`. The
 renderer does not change, remove, reorder, or persist canonical checks or
-actions. Dry-run prose groups planned-change counts by the typed
+activation steps. Dry-run prose groups planned-change counts by the typed
 `PlannedConnectionChangeKind`; it does not infer ownership from target paths.
 A terminal correlated attempt therefore renders facts such as:
 
@@ -248,12 +249,15 @@ host-owned sequence:
 1. restart or reload Codex in the repository;
 2. review the current project hook definition in the Codex hook UI or with
    `/hooks`;
-3. start a new conversation;
-4. request `Run the Volicord integration verification.`;
-5. read current connection status.
+3. start a new conversation and request
+   `Run the Volicord integration verification.`;
+4. after the agent finishes, read current connection status.
 
-`volicord connection verify` is an optional diagnostic after setup. It actively
-checks CLI-owned configuration and transport facts, but cannot replace
+The request is `request_integration_verification`: the user initiates it through
+`codex_chat` and the agent executes the nested `list_projects` → begin →
+workflow-directed Guard probe → workflow-directed status sequence.
+`volicord connection verify` is optional active diagnostics after setup. It
+actively checks CLI-owned configuration and transport facts, but cannot replace
 managed-host or correlated Guard evidence.
 
 Blocked checks contribute to the blocked count but do not produce a waiting
@@ -306,8 +310,9 @@ unknown coordinates into a placeholder command.
 
 `--verbose` renders a complete human diagnostic view. It starts with the same
 operation-aware headline as concise output, then uses the applicable
-`Connection`, `Summary`, `Checks`, `Findings`, `Actions`, `Result`, `Planned
-changes`, and `Report limits` sections in that order. It renders every check
+`Connection`, `Summary`, `Checks`, `Findings`, `Required next steps`,
+`Optional active diagnostics`, `Result`, `Planned changes`, and `Report limits`
+sections when applicable. It renders every check
 and status, every root and bounded cause-chain finding, every safe typed fact,
 requested, selected, and negotiated protocol revisions, actual MCP peer
 `clientInfo`, the PATH executable probe as a separate observation, bounded
@@ -353,7 +358,7 @@ DiagnosticReport:
   checks: ConnectionCheck[]
   findings: DiagnosticFinding[]
   root_cause_ids: DiagnosticFindingId[]
-  actions: DiagnosticReportAction[]
+  activation_plan: IntegrationActivationPlan
   operation_details: object
   limits: string[]
 ```
@@ -544,9 +549,9 @@ personal Connections.
 
 Selecting the current mode is an exact no-op: it changes no Registry row,
 timestamp, report, generation, manifest, host configuration, or Product
-Repository file, and emits no reload action. A successful real transition also
+Repository file, and emits no reload step. A successful real transition also
 does not rewrite host configuration or Product Repository files; it emits
-exactly one `reload_host` action because the existing managed host must be
+exactly one `reload_codex` step because the existing managed host must be
 reloaded against the new revision. Prior runtime sessions, project Agent
 Sessions, and Guard events remain historical and cannot satisfy current checks,
 including when a later transition returns to a previously used mode.
@@ -671,19 +676,18 @@ renders each entry as an indexed block with `Kind`, `Operation`, and `Target`
 labels.
 
 `checks` use the canonical [`ConnectionVerificationReport`](agent-connection.md#connection-verification-report)
-member type and ordering. `findings`, `root_cause_ids`, and schema-2 `actions`
-use the shared failure-model contract. Every JSON report action contains
-exactly `id`, `owner`, `channel`, `prerequisites`, `completes_checks`,
-`root_cause_ids`, and `instruction`. Human output may group pending checks but
-does not recompute causes or actions from prose. Operation-aware
+member type and ordering. `findings` and `root_cause_ids` use the shared
+failure-model contract, while schema-2 `activation_plan` reuses the exact
+connection-report `IntegrationActivationPlan`. Human output may group pending
+checks but does not recompute causes or steps from prose. Operation-aware
 executable follow-up guidance is generated separately from the current typed
 host, repository, Runtime Home, scope, and output-selection coordinates.
 
 Mode no-op reports `changed=false`, equal previous/current modes and revisions,
-no rebound Guard Installation IDs, a passed `mode_transition` check, no action,
+no rebound Guard Installation IDs, a passed `mode_transition` check, no required step,
 and `status=complete`. A real transition reports `changed=true`, the exact
 previous/current modes and revisions, the rebound Guard Installation IDs, one
-passed `mode_transition` check, exactly one current `reload_host` action, and
+passed `mode_transition` check, exactly one current `reload_codex` step, and
 `status=action_required`.
 
 Successful applied removal reports a passed `connection_removal` check,
@@ -692,14 +696,14 @@ Successful applied removal reports a passed `connection_removal` check,
 pending removal check only when an actual removal is planned; it reports that
 plan through typed `planned_changes` and performs no mutation. Removal
 application guidance remains operation-specific and is not a connection
-activation action.
+activation step.
 
 `volicord connection status` is a complete read-only evaluation. It evaluates
 current managed configuration, trust, Guard audit, integration revision, and
 managed-host session observations together with the last active executable and
-MCP-server probe, and assembles the checks, findings, roots, and actions in
+MCP-server probe, and assembles the checks, findings, roots, and activation plan in
 memory. It neither launches a process nor changes files, timestamps, reports,
-actions, observations, or database rows. Active verification is not required
+activation steps, observations, or database rows. Active verification is not required
 to materialize or explain this status report.
 
 `volicord connection verify` is the optional active-verification operation. It
@@ -839,17 +843,19 @@ remain separate role-bearing evidence; neither fills milestones in the other.
 setup even when a later operational check fails. They do not roll back managed
 configuration because Codex is unavailable or the self-test fails. A fresh
 valid setup with no managed-host observation is `action_required` and includes
-the typed `reload_host`, `review_hooks`, `run_mcp_verification`, and
-`run_guard_probe` actions required by its current stage.
+the typed `reload_codex`, `review_project_hooks`,
+`request_integration_verification`, and `read_connection_status` steps.
 These setup commands apply or adopt host configuration before committing its
 managed fingerprint, complete owner-coherent Registry and Guard state, derive
 the final Connection revision, and only then verify the current configuration
 and observed host behavior and conditionally persist the report.
 
-Actions are an ordered, deduplicated list derived from pending and failed
-checks. Each carries its fixed owner, channel, prerequisites, intended checks,
-and current root finding IDs. A passing `ambient_hook_coverage` check never
-produces `reinstall_current_build`.
+Required steps are a topologically ordered, deduplicated plan derived from
+pending and failed checks. Each carries fixed initiator, executor, execution
+channel, step prerequisites, intended checks, and current root finding IDs.
+The internal Guard probe exists only in the nested agent sequence. A passing
+`ambient_hook_coverage` check never produces a managed-configuration repair
+step.
 
 <a id="external-host-configuration"></a>
 ## Managed Codex Configuration

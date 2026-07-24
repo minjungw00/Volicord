@@ -183,7 +183,7 @@ ConnectionVerificationReport:
   checked_at: UtcTimestamp
   checks: ConnectionCheck[]
   root_cause_ids: DiagnosticFindingId[]
-  actions: ConnectionAction[]
+  activation_plan: IntegrationActivationPlan
 
 ConnectionCheck:
   id: ConnectionCheckKind
@@ -195,31 +195,47 @@ ConnectionCheck:
   details?: object
   observed_at?: UtcTimestamp
 
-ConnectionAction:
-  id: ConnectionActionKind
-  owner: user | host | volicord | agent
-  channel: cli | codex_ui | mcp_tool | documentation
-  prerequisites: ConnectionCheckKind[]
+IntegrationActivationPlan:
+  state: IntegrationActivationState
+  required_steps: ActivationStep[]
+  optional_diagnostics: ActivationStep[]
+
+ActivationStep:
+  id: ActivationStepId
+  initiator: user | host | volicord | agent
+  executor: user | host | volicord | agent
+  execution_channel: cli | codex_ui | codex_chat | mcp_tool
+  prerequisites: ActivationStepId[]
   completes_checks: ConnectionCheckKind[]
   root_finding_ids: DiagnosticFindingId[]
   instruction: string
+  diagnostic_only: boolean
+  agent_sequence: AgentSequenceStep[]
+
+AgentSequenceStep:
+  tool: AgentToolId
+  condition: always | workflow_awaiting_probe |
+    workflow_awaiting_observation
 ```
 
-`status`, `checked_at`, `checks`, `root_cause_ids`, `actions`, 각 check 또는 action의 선택 사항이 아닌
-구성원은 필수입니다. 선택적인 `code`, `details`, `observed_at` 값이 없으면 null로
-직렬화하지 않고 구성원을 생략합니다. 알 수 없는 구성원, 중복 JSON key, 중복 check kind,
-중복 action kind, 비정규 순서, 선택 구성원의 명시적 null, 알 수 없는 상태, check kind,
-action kind 값은 유효하지 않습니다. Null이 아닌 check code는 ASCII 1~128 byte이고
-`[a-z][a-z0-9_]*`와 일치해야 합니다. `summary`와 `instruction`은 UTF-8 1~4,096
-byte이고 NUL을 포함하지 않습니다. Null이 아닌 `details`는 직렬화 형태가 최대 16 KiB인
-JSON 객체입니다. Check 하나에는 dependency edge를 최대 16개, root finding reference를
-최대 32개 둘 수 있습니다. 보고서는 check를 최대 64개, action을 최대 32개 포함하며
-직렬화 형태는 최대 64 KiB입니다.
+`status`, `activation_state`, `hook_activation_state`, `checked_at`, `checks`,
+`root_cause_ids`, `activation_plan`과 위에 표시한 plan 및 step 구성원은 모두
+필수입니다. 선택적인 check 구성원 `code`, `details`, `observed_at` 값이 없으면 null로
+직렬화하지 않고 생략합니다. 알 수 없는 구성원, 중복 JSON key, 중복 check kind, 중복
+activation step ID, 선택 구성원의 명시적 null, 알 수 없는 enum 값은 유효하지 않습니다.
+Null이 아닌 check code는 ASCII 1~128 byte이고 `[a-z][a-z0-9_]*`와 일치해야 합니다.
+`summary`와 `instruction`은 UTF-8 1~4,096 byte이고 NUL을 포함하지 않습니다. Null이
+아닌 `details`는 직렬화 형태가 최대 16 KiB인 JSON 객체입니다. Check 또는 activation
+step 하나에는 dependency edge를 최대 16개, root finding reference를 최대 32개 둘 수
+있습니다. 보고서는 check를 최대 64개 포함하고 activation plan은 필수 및 선택 step을
+합쳐 최대 32개 포함합니다. 직렬화한 보고서는 최대 64 KiB입니다.
 
 Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로 UTF-8 byte
-오름차순 정렬합니다. Action도 `ConnectionActionKind`의 안정적인 snake-case 표기를
-기준으로 같은 순서를 사용합니다. 엄격한 decoding은 다른 순서를 조용히 정규화하지 않고
-거부합니다. Enum 선언 순서는 wire 순서 계약이 아닙니다.
+오름차순 정렬합니다. Activation step은 `prerequisites`의 결정적 위상 순서를 사용하고,
+서로 독립인 step은 현재 workflow 순서로 정합니다. 직렬화 ID 표기는 정렬 규칙이
+아닙니다. 엄격한 decoding은 비정규 위상 순서를 조용히 정규화하지 않고 거부합니다.
+Plan 생성은 cycle, 알 수 없는 prerequisite, 중복 step ID, 최상위에 노출된 nested
+agent tool, `required_steps` 안의 diagnostic-only step을 거부합니다.
 
 `ConnectionCheckKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
 `connection_removal`, `diagnostic_lookup`, `guard_files`, `ambient_hook_coverage`,
@@ -233,17 +249,20 @@ Check는 `ConnectionCheckKind`의 안정적인 snake-case 표기를 기준으로
 `diagnostic_lookup`과 `runtime_session_lookup`은 한도가 있는 해당 관리 diagnostic
 operation에서만 사용하며, 어댑터가 임의로 정한 check ID는 받지 않습니다.
 
-`ConnectionActionKind`는 현재 제품의 닫힌 어휘입니다. 정확한 값은
-`inspect_hook_contract`, `inspect_runtime_session`, `reinstall_current_build`,
-`reload_host`, `repair_managed_configuration`, `review_hooks`,
-`run_guard_probe`, `run_mcp_verification`입니다. `HostPlan`, `HostEffect`, 검증
-보고서, 명령 보고서는 이 정규 typed `ConnectionAction` 계약을 직접 사용합니다.
+`ActivationStepId`는 현재 제품의 닫힌 어휘입니다. 정확한 값은 `reload_codex`,
+`review_project_hooks`, `request_integration_verification`,
+`read_connection_status`, `run_optional_active_diagnostics`,
+`repair_hook_contract`, `repair_managed_configuration`입니다.
+검증 보고서의 `IntegrationActivationPlan`이 유일한 activation plan 소유자이며,
+`HostPlan`과 `HostEffect`에는 별도 step 목록이 없습니다.
 
-Connection action은 안정적인 kind, owner, channel, prerequisite, 완료 의도 check,
-root finding, 사용자 지시로 의미 있는 작업을 표현하며 실행 가능한 셸 텍스트를 포함하지
-않습니다. JSON 소비자는 action 내용을 실행하지 않고 이 구성원을 보고서 사실로 사용합니다.
+Activation step은 안정적인 ID, 서로 구분된 initiator와 executor, 실행 channel, step
+prerequisite, 완료 의도 check, root finding, 한도 있는 instruction, diagnostic 분류,
+선택적인 nested agent sequence로 의미 있는 작업을 표현합니다. 실행 가능한 셸 텍스트는
+포함하지 않습니다. JSON 소비자는 instruction 내용을 실행하지 않고 이 구성원을 보고서
+사실로 사용합니다.
 완전한 현재 selector 좌표가 있으면 사람용 렌더러가 typed
-현재 CLI 호출 맥락에서 실행 안내를 구성합니다. 렌더러가 담당하는 이 안내는 action JSON이나
+현재 CLI 호출 맥락에서 실행 안내를 구성합니다. 렌더러가 담당하는 이 안내는 step JSON이나
 영속 보고서에 복사하지 않습니다.
 
 ### Hook activation 근거
@@ -273,7 +292,7 @@ definition content hash와 주변 prompt/pre/post phase detail을 분리해 보�
 
 ### Connection activation 진행 상태
 
-`ConnectionActivationState`의 정확한 variant와 안정적인 wire 값은 다음과 같습니다.
+`IntegrationActivationState`의 정확한 variant와 안정적인 wire 값은 다음과 같습니다.
 
 | Variant | Wire 값 | 의미 |
 |---|---|---|
@@ -382,38 +401,46 @@ managed runtime session을 선택하거나 제외하는 기준이 아닙니다.
 가용성, protocol/host version, capability 관찰, 관찰 timestamp는 check 사실에 두며
 별도 공개 또는 영속 상태 enum을 만들지 않습니다.
 
-각 action ID의 owner, channel, prerequisite, 완료 의도 check metadata는 고정되어
-있습니다.
+각 step ID의 actor, channel, diagnostic 분류, agent sequence, 완료 의도 check
+metadata는 고정되어 있습니다.
 
-| ID | Owner/channel | Prerequisite | 완료 의도 check |
-|---|---|---|---|
-| `reload_host` | `user` / `codex_ui` | `managed_config` | `host_reload` |
-| `review_hooks` | `user` / `codex_ui` | `host_reload` | `hook_source_activation` |
-| `run_mcp_verification` | `agent` / `mcp_tool` | `hook_source_activation` | `managed_session_health`, `managed_capability_proof` |
-| `run_guard_probe` | `agent` / `mcp_tool` | `managed_capability_proof` | `ambient_hook_coverage`, `correlated_guard_verification` |
-| `inspect_hook_contract` | `user` / `codex_ui` | 없음 | `hook_source_activation` |
-| `repair_managed_configuration` | `volicord` / `cli` | 없음 | `managed_config` |
-| `inspect_runtime_session` | `agent` / `documentation` | `host_reload` | `managed_session_health`, `managed_capability_proof` |
-| `reinstall_current_build` | `volicord` / `cli` | 없음 | `managed_config`, `ambient_hook_coverage` |
+| ID | Initiator / executor / channel | 완료 의도 check |
+|---|---|---|
+| `reload_codex` | `user` / `host` / `codex_ui` | `host_reload` |
+| `review_project_hooks` | `user` / `user` / `codex_ui` | `hook_source_activation` |
+| `request_integration_verification` | `user` / `agent` / `codex_chat` | `managed_session_health`, `managed_capability_proof`, `ambient_hook_coverage`, `correlated_guard_verification` |
+| `read_connection_status` | `user` / `volicord` / `cli` | 없음 |
+| `run_optional_active_diagnostics` | `user` / `volicord` / `cli` | active diagnostic check, 선택 사항만 해당 |
+| `repair_hook_contract` | `user` / `user` / `codex_ui` | `hook_source_activation`, `ambient_hook_coverage` |
+| `repair_managed_configuration` | `user` / `volicord` / `cli` | `managed_config` |
 
-엄격한 생성과 decoding은 ID와 맞지 않는 action metadata를 거부합니다.
-`root_finding_ids`는 action을 현재 독립 원인과 연결합니다.
+`request_integration_verification`에는 `volicord.list_projects`,
+`volicord.begin_integration_verification`, workflow가 지시한
+`volicord.guard_probe`, workflow가 지시한
+`volicord.get_integration_verification` 순서가 중첩됩니다. 사용자가 Codex chat 요청을
+시작하고 agent가 tool을 실행합니다. Guard probe는 최상위 형제 step이 아닙니다.
+`awaiting_probe`는 probe를 한 번 허용하고 `awaiting_observation`은 status tool을 한 번
+허용하며, `repair_required`와 `complete`는 tool 실행 및 같은 turn의 재시작을
+중단합니다.
 
-사용자 지시는 이 보고서의 `actions`에만 둡니다. Root finding과 현재 check 상태에서
-만들고 안정적인 ID 순서로 정렬해 중복을 제거합니다. Blocked downstream check는 관찰
-action을 만들지 않으며 blocker의 repair action을 먼저 제공합니다. 여러 symptom에서 나온
-동등한 action은 안정적인 action 하나로 합칩니다. 다시 불러오기와 최초 사용 action은
-실제 Codex 활동을 관찰해야 한다고 명시합니다. `ambient_hook_coverage` check가
-통과했다면 Guard 재설치를 요청하지 않습니다. Registry 저장소는 독립된 검증 상태나 action 배열을
-저장하지 않습니다. 완료된 영속 보고서가 없는 연결은
-`verification_not_run` pending check 하나와 검증 action 하나를 포함하는 합성
+엄격한 생성과 decoding은 ID와 맞지 않는 step metadata를 거부합니다.
+`root_finding_ids`는 step을 현재 독립 원인과 연결합니다. 필수 step은 root finding과
+현재 check 상태에서 만듭니다. Blocked downstream check는 관찰 step을 만들지 않고
+blocker의 repair step을 먼저 제공합니다. 여러 symptom에서 나온 같은 step은 하나로
+합칩니다. Repair가 필요한 상관 attempt는 무조건 Guard probe를 다시 요청하지 않고
+상황에 맞는 `repair_hook_contract` 또는 `repair_managed_configuration`을 projection합니다.
+`run_optional_active_diagnostics`는 필수 activation과 분리합니다. Registry 저장소는
+독립된 검증 상태나 activation 배열을 저장하지 않습니다. 완료된 영속 보고서가 없는
+연결은 `verification_not_run` pending check 하나, 필수
+`request_integration_verification` step 하나, 선택적인
+`run_optional_active_diagnostics` step 하나를 포함하는 합성
 `status=action_required` 보고서로 projection합니다. 읽었다는 이유로 이를 저장하지
 않습니다.
 
 관리 CLI는 init, add, status, verify, mode, remove를 현재 schema 2
 `DiagnosticReport`로 projection합니다. 정규 check, 현재 평가 overlay와 Store API에서
-해석한 한도 있는 finding과 cause edge, 계산한 root ID, root마다 중복 제거한 typed action
-하나, Connection context,
+해석한 한도 있는 finding과 cause edge, 계산한 root ID, 같은 root-scoped
+`IntegrationActivationPlan`, Connection context,
 operation별 result detail, report limit을 담습니다. Concise, verbose, JSON 출력은 같은
 report의 projection이며 같은 root를 식별합니다. 렌더러는 summary 산문에서 cause나
 remediation category를 만들지 않고 `DiagnosticFinding`이 가린 fact를 다시 노출하지

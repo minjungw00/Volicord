@@ -14,12 +14,12 @@ use serde::{
 };
 use serde_json::{Map, Number, Value};
 
-use crate::{DiagnosticFindingId, JsonObject, UtcTimestamp};
+use crate::{AgentToolId, DiagnosticFindingId, JsonObject, UtcTimestamp};
 
 /// Maximum number of required checks in one connection report.
 pub const MAX_CONNECTION_CHECKS: usize = 64;
-/// Maximum number of user actions in one connection report.
-pub const MAX_CONNECTION_ACTIONS: usize = 32;
+/// Maximum number of top-level steps in one integration activation plan.
+pub const MAX_ACTIVATION_STEPS: usize = 32;
 /// Maximum number of prerequisite check edges on one connection check.
 pub const MAX_CONNECTION_CHECK_DEPENDENCIES: usize = 16;
 /// Maximum number of independent root-finding references on one check.
@@ -98,7 +98,7 @@ impl HookActivationState {
         }
     }
 
-    fn from_stable_str(value: &str) -> Option<Self> {
+    pub fn from_stable_str(value: &str) -> Option<Self> {
         match value {
             "unknown" => Some(Self::Unknown),
             "review_required_by_setup" => Some(Self::ReviewRequiredBySetup),
@@ -139,7 +139,7 @@ impl HookActivationState {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectionActivationState {
+pub enum IntegrationActivationState {
     /// Managed configuration exists, but no later activation stage is yet decisive.
     Configured,
     /// The managed host must reload the current configuration.
@@ -156,7 +156,7 @@ pub enum ConnectionActivationState {
     Failed,
 }
 
-impl ConnectionActivationState {
+impl IntegrationActivationState {
     /// Returns the stable serialized spelling.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -618,82 +618,70 @@ impl ConnectionCheck {
     }
 }
 
-/// Closed current-product vocabulary for one connection action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+/// Stable semantic identifier for one top-level integration activation step.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectionActionKind {
-    /// Reload the managed host against current configuration.
-    ReloadHost,
-    /// Review the current project hook definition in the host UI.
-    ReviewHooks,
-    /// Run the managed in-chat MCP verification workflow.
-    RunMcpVerification,
-    /// Execute the Guard probe returned by the first-party verification workflow.
-    RunGuardProbe,
-    /// Inspect an incompatible or disabled hook contract.
-    InspectHookContract,
-    /// Repair or recreate the Volicord-managed host configuration.
+pub enum ActivationStepId {
+    ReloadCodex,
+    ReviewProjectHooks,
+    RequestIntegrationVerification,
+    ReadConnectionStatus,
+    RunOptionalActiveDiagnostics,
+    RepairHookContract,
     RepairManagedConfiguration,
-    /// Inspect the latest current-revision managed runtime session.
-    InspectRuntimeSession,
-    /// Reinstall the current Volicord build and regenerate its managed integration.
-    ReinstallCurrentBuild,
 }
 
-impl ConnectionActionKind {
-    /// Every current action kind in canonical serialized-spelling order.
-    pub const ALL: [Self; 8] = [
-        Self::InspectHookContract,
-        Self::InspectRuntimeSession,
-        Self::ReinstallCurrentBuild,
-        Self::ReloadHost,
+impl ActivationStepId {
+    pub const ALL: [Self; 7] = [
+        Self::ReloadCodex,
+        Self::ReviewProjectHooks,
+        Self::RequestIntegrationVerification,
+        Self::ReadConnectionStatus,
+        Self::RunOptionalActiveDiagnostics,
+        Self::RepairHookContract,
         Self::RepairManagedConfiguration,
-        Self::ReviewHooks,
-        Self::RunGuardProbe,
-        Self::RunMcpVerification,
     ];
 
-    /// Returns the stable serialized spelling.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::ReloadHost => "reload_host",
-            Self::ReviewHooks => "review_hooks",
-            Self::RunMcpVerification => "run_mcp_verification",
-            Self::RunGuardProbe => "run_guard_probe",
-            Self::InspectHookContract => "inspect_hook_contract",
+            Self::ReloadCodex => "reload_codex",
+            Self::ReviewProjectHooks => "review_project_hooks",
+            Self::RequestIntegrationVerification => "request_integration_verification",
+            Self::ReadConnectionStatus => "read_connection_status",
+            Self::RunOptionalActiveDiagnostics => "run_optional_active_diagnostics",
+            Self::RepairHookContract => "repair_hook_contract",
             Self::RepairManagedConfiguration => "repair_managed_configuration",
-            Self::InspectRuntimeSession => "inspect_runtime_session",
-            Self::ReinstallCurrentBuild => "reinstall_current_build",
+        }
+    }
+
+    const fn workflow_order(self) -> u8 {
+        match self {
+            Self::RepairManagedConfiguration => 0,
+            Self::ReloadCodex => 10,
+            Self::ReviewProjectHooks => 20,
+            Self::RepairHookContract => 25,
+            Self::RequestIntegrationVerification => 30,
+            Self::ReadConnectionStatus => 40,
+            Self::RunOptionalActiveDiagnostics => 50,
         }
     }
 }
 
-impl PartialOrd for ConnectionActionKind {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ConnectionActionKind {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.as_str().cmp(other.as_str())
-    }
-}
-
-/// Owner expected to perform one current connection action.
+/// Actor that initiates or executes an activation step.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectionActionOwner {
+pub enum ActivationActor {
     User,
     Host,
     Volicord,
     Agent,
 }
 
-impl ConnectionActionOwner {
-    /// Returns the stable serialized spelling.
+impl ActivationActor {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",
@@ -704,171 +692,215 @@ impl ConnectionActionOwner {
     }
 }
 
-/// Channel in which one current connection action is performed.
+/// Channel through which one activation step executes.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectionActionChannel {
+pub enum ActivationExecutionChannel {
     Cli,
     CodexUi,
+    CodexChat,
     McpTool,
-    Documentation,
 }
 
-impl ConnectionActionChannel {
-    /// Returns the stable serialized spelling.
+impl ActivationExecutionChannel {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Cli => "cli",
             Self::CodexUi => "codex_ui",
+            Self::CodexChat => "codex_chat",
             Self::McpTool => "mcp_tool",
-            Self::Documentation => "documentation",
         }
     }
 }
 
-/// One bounded user instruction produced by connection verification.
+/// Condition that permits one nested agent tool step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSequenceCondition {
+    Always,
+    WorkflowAwaitingProbe,
+    WorkflowAwaitingObservation,
+}
+
+/// One internal agent tool call nested under a user-level activation step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSequenceStep {
+    tool: AgentToolId,
+    condition: AgentSequenceCondition,
+}
+
+impl AgentSequenceStep {
+    pub const fn tool(&self) -> AgentToolId {
+        self.tool
+    }
+
+    pub const fn condition(&self) -> AgentSequenceCondition {
+        self.condition
+    }
+}
+
+/// One bounded top-level step in the integration activation plan.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
-pub struct ConnectionAction {
-    id: ConnectionActionKind,
-    owner: ConnectionActionOwner,
-    channel: ConnectionActionChannel,
-    prerequisites: Vec<ConnectionCheckKind>,
+pub struct ActivationStep {
+    id: ActivationStepId,
+    initiator: ActivationActor,
+    executor: ActivationActor,
+    execution_channel: ActivationExecutionChannel,
+    prerequisites: Vec<ActivationStepId>,
     completes_checks: Vec<ConnectionCheckKind>,
     root_finding_ids: Vec<DiagnosticFindingId>,
     instruction: String,
+    diagnostic_only: bool,
+    agent_sequence: Vec<AgentSequenceStep>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ConnectionActionWire {
-    id: ConnectionActionKind,
-    owner: ConnectionActionOwner,
-    channel: ConnectionActionChannel,
-    prerequisites: Vec<ConnectionCheckKind>,
+struct ActivationStepWire {
+    id: ActivationStepId,
+    initiator: ActivationActor,
+    executor: ActivationActor,
+    execution_channel: ActivationExecutionChannel,
+    prerequisites: Vec<ActivationStepId>,
     completes_checks: Vec<ConnectionCheckKind>,
     root_finding_ids: Vec<DiagnosticFindingId>,
     instruction: String,
+    diagnostic_only: bool,
+    agent_sequence: Vec<AgentSequenceStep>,
 }
 
-impl<'de> Deserialize<'de> for ConnectionAction {
+impl<'de> Deserialize<'de> for ActivationStep {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let wire = ConnectionActionWire::deserialize(deserializer)?;
-        let supplied_prerequisites = wire.prerequisites.clone();
-        let supplied_completes_checks = wire.completes_checks.clone();
-        let supplied_root_finding_ids = wire.root_finding_ids.clone();
-        let action = Self::try_new_with_context(
+        let wire = ActivationStepWire::deserialize(deserializer)?;
+        let prerequisites = wire.prerequisites.clone();
+        let completes_checks = wire.completes_checks.clone();
+        let root_finding_ids = wire.root_finding_ids.clone();
+        let step = Self::try_new_with_context(
             wire.id,
-            wire.owner,
-            wire.channel,
+            wire.initiator,
+            wire.executor,
+            wire.execution_channel,
             wire.prerequisites,
             wire.completes_checks,
             wire.root_finding_ids,
             wire.instruction,
+            wire.diagnostic_only,
+            wire.agent_sequence,
         )
         .map_err(de::Error::custom)?;
-        if supplied_prerequisites != action.prerequisites
-            || supplied_completes_checks != action.completes_checks
-            || supplied_root_finding_ids != action.root_finding_ids
+        if prerequisites != step.prerequisites
+            || completes_checks != step.completes_checks
+            || root_finding_ids != step.root_finding_ids
         {
             return Err(de::Error::custom(
-                "connection action check and root references are not unique and canonically ordered",
+                "activation step references are not unique and canonically ordered",
             ));
         }
-        Ok(action)
+        Ok(step)
     }
 }
 
-impl ConnectionAction {
-    /// Validates and constructs one connection action.
+impl ActivationStep {
     pub fn try_new(
-        id: ConnectionActionKind,
+        id: ActivationStepId,
+        prerequisites: Vec<ActivationStepId>,
         instruction: impl Into<String>,
     ) -> Result<Self, ConnectionVerificationError> {
-        let (owner, channel, prerequisites, completes_checks) = canonical_action_context(id);
+        let context = canonical_activation_step_context(id);
         Self::try_new_with_context(
             id,
-            owner,
-            channel,
-            prerequisites.to_vec(),
-            completes_checks.to_vec(),
+            context.initiator,
+            context.executor,
+            context.channel,
+            prerequisites,
+            context.completes_checks.to_vec(),
             Vec::new(),
             instruction,
+            context.diagnostic_only,
+            context.agent_sequence.to_vec(),
         )
     }
 
-    /// Validates and constructs one action with explicit current root findings.
     #[allow(clippy::too_many_arguments)]
     pub fn try_new_with_context(
-        id: ConnectionActionKind,
-        owner: ConnectionActionOwner,
-        channel: ConnectionActionChannel,
-        mut prerequisites: Vec<ConnectionCheckKind>,
+        id: ActivationStepId,
+        initiator: ActivationActor,
+        executor: ActivationActor,
+        execution_channel: ActivationExecutionChannel,
+        mut prerequisites: Vec<ActivationStepId>,
         mut completes_checks: Vec<ConnectionCheckKind>,
         mut root_finding_ids: Vec<DiagnosticFindingId>,
         instruction: impl Into<String>,
+        diagnostic_only: bool,
+        agent_sequence: Vec<AgentSequenceStep>,
     ) -> Result<Self, ConnectionVerificationError> {
         let instruction = instruction.into();
-        validate_text("action instruction", &instruction)?;
+        validate_text("activation step instruction", &instruction)?;
         prerequisites.sort();
         prerequisites.dedup();
         completes_checks.sort();
         completes_checks.dedup();
         root_finding_ids.sort();
         root_finding_ids.dedup();
-        let (
-            canonical_owner,
-            canonical_channel,
-            canonical_prerequisites,
-            canonical_completes_checks,
-        ) = canonical_action_context(id);
-        if owner != canonical_owner
-            || channel != canonical_channel
-            || prerequisites != canonical_prerequisites
-            || completes_checks != canonical_completes_checks
-        {
-            return Err(invalid(
-                "connection action owner, channel, prerequisites, or completed checks do not match its stable ID",
-            ));
-        }
         if prerequisites.len() > MAX_CONNECTION_CHECK_DEPENDENCIES
             || completes_checks.len() > MAX_CONNECTION_CHECK_DEPENDENCIES
         {
-            return Err(invalid("connection action has too many check references"));
+            return Err(invalid("activation step has too many references"));
         }
         if root_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
-            return Err(invalid("connection action has too many root findings"));
+            return Err(invalid("activation step has too many root findings"));
         }
         Ok(Self {
             id,
-            owner,
-            channel,
+            initiator,
+            executor,
+            execution_channel,
             prerequisites,
             completes_checks,
             root_finding_ids,
             instruction,
+            diagnostic_only,
+            agent_sequence,
         })
     }
 
-    /// Returns the stable action ID.
-    pub const fn id(&self) -> ConnectionActionKind {
+    pub fn with_root_finding_ids(
+        mut self,
+        mut root_finding_ids: Vec<DiagnosticFindingId>,
+    ) -> Result<Self, ConnectionVerificationError> {
+        root_finding_ids.sort();
+        root_finding_ids.dedup();
+        if root_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
+            return Err(invalid("activation step has too many root findings"));
+        }
+        self.root_finding_ids = root_finding_ids;
+        Ok(self)
+    }
+
+    pub const fn id(&self) -> ActivationStepId {
         self.id
     }
 
-    pub const fn owner(&self) -> ConnectionActionOwner {
-        self.owner
+    pub const fn initiator(&self) -> ActivationActor {
+        self.initiator
     }
 
-    pub const fn channel(&self) -> ConnectionActionChannel {
-        self.channel
+    pub const fn executor(&self) -> ActivationActor {
+        self.executor
     }
 
-    pub fn prerequisites(&self) -> &[ConnectionCheckKind] {
+    pub const fn execution_channel(&self) -> ActivationExecutionChannel {
+        self.execution_channel
+    }
+
+    pub fn prerequisites(&self) -> &[ActivationStepId] {
         &self.prerequisites
     }
 
@@ -880,120 +912,305 @@ impl ConnectionAction {
         &self.root_finding_ids
     }
 
-    /// Replaces root findings while preserving the action's typed owner and check contract.
-    pub fn with_root_finding_ids(
-        mut self,
-        mut root_finding_ids: Vec<DiagnosticFindingId>,
-    ) -> Result<Self, ConnectionVerificationError> {
-        root_finding_ids.sort();
-        root_finding_ids.dedup();
-        if root_finding_ids.len() > MAX_CONNECTION_CHECK_CAUSES {
-            return Err(invalid("connection action has too many root findings"));
-        }
-        self.root_finding_ids = root_finding_ids;
-        Ok(self)
-    }
-
-    /// Returns the user-visible instruction.
     pub fn instruction(&self) -> &str {
         &self.instruction
     }
+
+    pub const fn diagnostic_only(&self) -> bool {
+        self.diagnostic_only
+    }
+
+    pub fn agent_sequence(&self) -> &[AgentSequenceStep] {
+        &self.agent_sequence
+    }
 }
 
-fn canonical_action_context(
-    id: ConnectionActionKind,
-) -> (
-    ConnectionActionOwner,
-    ConnectionActionChannel,
-    &'static [ConnectionCheckKind],
-    &'static [ConnectionCheckKind],
-) {
+struct CanonicalActivationStepContext {
+    initiator: ActivationActor,
+    executor: ActivationActor,
+    channel: ActivationExecutionChannel,
+    completes_checks: &'static [ConnectionCheckKind],
+    diagnostic_only: bool,
+    agent_sequence: &'static [AgentSequenceStep],
+}
+
+const INTEGRATION_VERIFICATION_AGENT_SEQUENCE: [AgentSequenceStep; 4] = [
+    AgentSequenceStep {
+        tool: AgentToolId::LIST_PROJECTS,
+        condition: AgentSequenceCondition::Always,
+    },
+    AgentSequenceStep {
+        tool: AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+        condition: AgentSequenceCondition::Always,
+    },
+    AgentSequenceStep {
+        tool: AgentToolId::GUARD_PROBE,
+        condition: AgentSequenceCondition::WorkflowAwaitingProbe,
+    },
+    AgentSequenceStep {
+        tool: AgentToolId::GET_INTEGRATION_VERIFICATION,
+        condition: AgentSequenceCondition::WorkflowAwaitingObservation,
+    },
+];
+
+fn canonical_activation_step_context(id: ActivationStepId) -> CanonicalActivationStepContext {
     match id {
-        ConnectionActionKind::ReloadHost => (
-            ConnectionActionOwner::User,
-            ConnectionActionChannel::CodexUi,
-            &[ConnectionCheckKind::ManagedConfig],
-            &[ConnectionCheckKind::HostReload],
-        ),
-        ConnectionActionKind::ReviewHooks => (
-            ConnectionActionOwner::User,
-            ConnectionActionChannel::CodexUi,
-            &[ConnectionCheckKind::HostReload],
-            &[ConnectionCheckKind::HookSourceActivation],
-        ),
-        ConnectionActionKind::RunMcpVerification => (
-            ConnectionActionOwner::Agent,
-            ConnectionActionChannel::McpTool,
-            &[ConnectionCheckKind::HookSourceActivation],
-            &[
-                ConnectionCheckKind::ManagedCapabilityProof,
-                ConnectionCheckKind::ManagedSessionHealth,
-            ],
-        ),
-        ConnectionActionKind::RunGuardProbe => (
-            ConnectionActionOwner::Agent,
-            ConnectionActionChannel::McpTool,
-            &[ConnectionCheckKind::ManagedCapabilityProof],
-            &[
+        ActivationStepId::ReloadCodex => CanonicalActivationStepContext {
+            initiator: ActivationActor::User,
+            executor: ActivationActor::Host,
+            channel: ActivationExecutionChannel::CodexUi,
+            completes_checks: &[ConnectionCheckKind::HostReload],
+            diagnostic_only: false,
+            agent_sequence: &[],
+        },
+        ActivationStepId::ReviewProjectHooks => CanonicalActivationStepContext {
+            initiator: ActivationActor::User,
+            executor: ActivationActor::User,
+            channel: ActivationExecutionChannel::CodexUi,
+            completes_checks: &[ConnectionCheckKind::HookSourceActivation],
+            diagnostic_only: false,
+            agent_sequence: &[],
+        },
+        ActivationStepId::RequestIntegrationVerification => CanonicalActivationStepContext {
+            initiator: ActivationActor::User,
+            executor: ActivationActor::Agent,
+            channel: ActivationExecutionChannel::CodexChat,
+            completes_checks: &[
                 ConnectionCheckKind::AmbientHookCoverage,
                 ConnectionCheckKind::CorrelatedGuardVerification,
-            ],
-        ),
-        ConnectionActionKind::InspectHookContract => (
-            ConnectionActionOwner::User,
-            ConnectionActionChannel::CodexUi,
-            &[],
-            &[ConnectionCheckKind::HookSourceActivation],
-        ),
-        ConnectionActionKind::RepairManagedConfiguration => (
-            ConnectionActionOwner::Volicord,
-            ConnectionActionChannel::Cli,
-            &[],
-            &[ConnectionCheckKind::ManagedConfig],
-        ),
-        ConnectionActionKind::InspectRuntimeSession => (
-            ConnectionActionOwner::Agent,
-            ConnectionActionChannel::Documentation,
-            &[ConnectionCheckKind::HostReload],
-            &[
                 ConnectionCheckKind::ManagedCapabilityProof,
                 ConnectionCheckKind::ManagedSessionHealth,
             ],
-        ),
-        ConnectionActionKind::ReinstallCurrentBuild => (
-            ConnectionActionOwner::Volicord,
-            ConnectionActionChannel::Cli,
-            &[],
-            &[
-                ConnectionCheckKind::AmbientHookCoverage,
+            diagnostic_only: false,
+            agent_sequence: &INTEGRATION_VERIFICATION_AGENT_SEQUENCE,
+        },
+        ActivationStepId::ReadConnectionStatus => CanonicalActivationStepContext {
+            initiator: ActivationActor::User,
+            executor: ActivationActor::Volicord,
+            channel: ActivationExecutionChannel::Cli,
+            completes_checks: &[],
+            diagnostic_only: false,
+            agent_sequence: &[],
+        },
+        ActivationStepId::RunOptionalActiveDiagnostics => CanonicalActivationStepContext {
+            initiator: ActivationActor::User,
+            executor: ActivationActor::Volicord,
+            channel: ActivationExecutionChannel::Cli,
+            completes_checks: &[
+                ConnectionCheckKind::HostExecutable,
                 ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckKind::ProcessStartup,
+                ConnectionCheckKind::RequiredTools,
+                ConnectionCheckKind::ToolRoundTrip,
             ],
-        ),
+            diagnostic_only: true,
+            agent_sequence: &[],
+        },
+        ActivationStepId::RepairHookContract => CanonicalActivationStepContext {
+            initiator: ActivationActor::User,
+            executor: ActivationActor::User,
+            channel: ActivationExecutionChannel::CodexUi,
+            completes_checks: &[
+                ConnectionCheckKind::AmbientHookCoverage,
+                ConnectionCheckKind::HookSourceActivation,
+            ],
+            diagnostic_only: false,
+            agent_sequence: &[],
+        },
+        ActivationStepId::RepairManagedConfiguration => CanonicalActivationStepContext {
+            initiator: ActivationActor::User,
+            executor: ActivationActor::Volicord,
+            channel: ActivationExecutionChannel::Cli,
+            completes_checks: &[ConnectionCheckKind::ManagedConfig],
+            diagnostic_only: false,
+            agent_sequence: &[],
+        },
     }
+}
+
+/// One authoritative hierarchical plan for current integration activation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct IntegrationActivationPlan {
+    state: IntegrationActivationState,
+    required_steps: Vec<ActivationStep>,
+    optional_diagnostics: Vec<ActivationStep>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IntegrationActivationPlanWire {
+    state: IntegrationActivationState,
+    required_steps: Vec<ActivationStep>,
+    optional_diagnostics: Vec<ActivationStep>,
+}
+
+impl<'de> Deserialize<'de> for IntegrationActivationPlan {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = IntegrationActivationPlanWire::deserialize(deserializer)?;
+        let required_steps = wire.required_steps.clone();
+        let optional_diagnostics = wire.optional_diagnostics.clone();
+        let plan = Self::try_new(wire.state, wire.required_steps, wire.optional_diagnostics)
+            .map_err(de::Error::custom)?;
+        if required_steps != plan.required_steps
+            || optional_diagnostics != plan.optional_diagnostics
+        {
+            return Err(de::Error::custom(
+                "activation plan steps are not in canonical topological order",
+            ));
+        }
+        Ok(plan)
+    }
+}
+
+impl IntegrationActivationPlan {
+    pub fn try_new(
+        state: IntegrationActivationState,
+        required_steps: Vec<ActivationStep>,
+        optional_diagnostics: Vec<ActivationStep>,
+    ) -> Result<Self, ConnectionVerificationError> {
+        if required_steps.len() + optional_diagnostics.len() > MAX_ACTIVATION_STEPS {
+            return Err(invalid("activation plan has too many steps"));
+        }
+        let mut seen = BTreeSet::new();
+        for step in required_steps.iter().chain(&optional_diagnostics) {
+            if !seen.insert(step.id) {
+                return Err(invalid("activation plan contains a duplicate step id"));
+            }
+            if step.execution_channel == ActivationExecutionChannel::McpTool {
+                return Err(invalid(
+                    "nested agent tool step cannot be exposed as a top-level activation step",
+                ));
+            }
+            validate_activation_step_context(step)?;
+        }
+        if required_steps.iter().any(ActivationStep::diagnostic_only) {
+            return Err(invalid(
+                "diagnostic-only step cannot appear in the required activation plan",
+            ));
+        }
+        if optional_diagnostics
+            .iter()
+            .any(|step| !step.diagnostic_only())
+        {
+            return Err(invalid(
+                "required activation step cannot appear in optional diagnostics",
+            ));
+        }
+        Ok(Self {
+            state,
+            required_steps: topological_activation_steps(required_steps)?,
+            optional_diagnostics: topological_activation_steps(optional_diagnostics)?,
+        })
+    }
+
+    pub fn empty(state: IntegrationActivationState) -> Self {
+        Self {
+            state,
+            required_steps: Vec::new(),
+            optional_diagnostics: Vec::new(),
+        }
+    }
+
+    pub const fn state(&self) -> IntegrationActivationState {
+        self.state
+    }
+
+    pub fn required_steps(&self) -> &[ActivationStep] {
+        &self.required_steps
+    }
+
+    pub fn optional_diagnostics(&self) -> &[ActivationStep] {
+        &self.optional_diagnostics
+    }
+}
+
+fn validate_activation_step_context(
+    step: &ActivationStep,
+) -> Result<(), ConnectionVerificationError> {
+    let canonical = canonical_activation_step_context(step.id);
+    if step.initiator != canonical.initiator
+        || step.executor != canonical.executor
+        || step.execution_channel != canonical.channel
+        || step.completes_checks != canonical.completes_checks
+        || step.diagnostic_only != canonical.diagnostic_only
+        || step.agent_sequence != canonical.agent_sequence
+    {
+        return Err(invalid(
+            "activation step initiator, executor, channel, completed checks, diagnostic class, or agent sequence does not match its stable ID",
+        ));
+    }
+    Ok(())
+}
+
+fn topological_activation_steps(
+    steps: Vec<ActivationStep>,
+) -> Result<Vec<ActivationStep>, ConnectionVerificationError> {
+    let indexes = steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| (step.id, index))
+        .collect::<BTreeMap<_, _>>();
+    for step in &steps {
+        for prerequisite in &step.prerequisites {
+            if !indexes.contains_key(prerequisite) {
+                return Err(invalid(format!(
+                    "activation step {} has unknown prerequisite {}",
+                    step.id.as_str(),
+                    prerequisite.as_str()
+                )));
+            }
+        }
+    }
+    let mut emitted = BTreeSet::new();
+    let mut ordered = Vec::with_capacity(steps.len());
+    while ordered.len() < steps.len() {
+        let next = steps
+            .iter()
+            .filter(|step| !emitted.contains(&step.id))
+            .filter(|step| {
+                step.prerequisites
+                    .iter()
+                    .all(|prerequisite| emitted.contains(prerequisite))
+            })
+            .min_by_key(|step| step.id.workflow_order());
+        let Some(next) = next else {
+            return Err(invalid(
+                "activation plan prerequisite graph contains a cycle",
+            ));
+        };
+        emitted.insert(next.id);
+        ordered.push(next.clone());
+    }
+    Ok(ordered)
 }
 
 /// Canonical serialized result of connection verification.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct ConnectionVerificationReport {
     status: ConnectionStatus,
-    activation_state: ConnectionActivationState,
+    activation_state: IntegrationActivationState,
     hook_activation_state: HookActivationState,
     checked_at: UtcTimestamp,
     checks: Vec<ConnectionCheck>,
     root_cause_ids: Vec<DiagnosticFindingId>,
-    actions: Vec<ConnectionAction>,
+    activation_plan: IntegrationActivationPlan,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConnectionVerificationReportWire {
     status: ConnectionStatus,
-    activation_state: ConnectionActivationState,
+    activation_state: IntegrationActivationState,
     hook_activation_state: HookActivationState,
     checked_at: UtcTimestamp,
     checks: Vec<ConnectionCheck>,
     root_cause_ids: Vec<DiagnosticFindingId>,
-    actions: Vec<ConnectionAction>,
+    activation_plan: IntegrationActivationPlan,
 }
 
 impl<'de> Deserialize<'de> for ConnectionVerificationReport {
@@ -1009,24 +1226,23 @@ impl<'de> Deserialize<'de> for ConnectionVerificationReport {
             wire.checked_at,
             wire.checks,
             wire.root_cause_ids,
-            wire.actions,
+            wire.activation_plan,
         )
         .map_err(de::Error::custom)
     }
 }
 
 impl ConnectionVerificationReport {
-    /// Constructs a report, sorting checks and actions by their stable IDs.
+    /// Constructs a report with canonical checks and one typed activation plan.
     pub fn try_new(
         checked_at: UtcTimestamp,
         mut checks: Vec<ConnectionCheck>,
-        mut actions: Vec<ConnectionAction>,
+        activation_plan: IntegrationActivationPlan,
     ) -> Result<Self, ConnectionVerificationError> {
         checks.sort_by_key(|check| check.id);
-        actions.sort_by_key(|action| action.id);
         let status = aggregate_status(&checks);
         let hook_activation_state = derive_hook_activation_state(&checks);
-        let activation_state = derive_activation_state(&checks, hook_activation_state);
+        let activation_state = derive_integration_activation_state(&checks, hook_activation_state);
         let root_cause_ids = aggregate_root_causes(&checks);
         Self::from_canonical_parts(
             status,
@@ -1035,7 +1251,7 @@ impl ConnectionVerificationReport {
             checked_at,
             checks,
             root_cause_ids,
-            actions,
+            activation_plan,
         )
     }
 
@@ -1044,12 +1260,11 @@ impl ConnectionVerificationReport {
         checked_at: UtcTimestamp,
         mut checks: Vec<ConnectionCheck>,
         hook_activation_state: HookActivationState,
-        mut actions: Vec<ConnectionAction>,
+        activation_plan: IntegrationActivationPlan,
     ) -> Result<Self, ConnectionVerificationError> {
         checks.sort_by_key(|check| check.id);
-        actions.sort_by_key(|action| action.id);
         let status = aggregate_status(&checks);
-        let activation_state = derive_activation_state(&checks, hook_activation_state);
+        let activation_state = derive_integration_activation_state(&checks, hook_activation_state);
         let root_cause_ids = aggregate_root_causes(&checks);
         Self::from_canonical_parts(
             status,
@@ -1058,7 +1273,7 @@ impl ConnectionVerificationReport {
             checked_at,
             checks,
             root_cause_ids,
-            actions,
+            activation_plan,
         )
     }
 
@@ -1066,22 +1281,30 @@ impl ConnectionVerificationReport {
     pub fn verification_not_run(
         checked_at: UtcTimestamp,
     ) -> Result<Self, ConnectionVerificationError> {
-        Self::try_new(
-            checked_at,
-            vec![ConnectionCheck::try_new(
-                ConnectionCheckKind::VerificationNotRun,
-                ConnectionCheckStatus::Pending,
+        let checks = vec![ConnectionCheck::try_new(
+            ConnectionCheckKind::VerificationNotRun,
+            ConnectionCheckStatus::Pending,
+            Vec::new(),
+            Some("verification_not_run".to_owned()),
+            "Connection verification has not been run",
+            None,
+            None,
+        )?];
+        let state = derive_integration_activation_state(&checks, HookActivationState::Unknown);
+        let plan = IntegrationActivationPlan::try_new(
+            state,
+            vec![ActivationStep::try_new(
+                ActivationStepId::RequestIntegrationVerification,
                 Vec::new(),
-                Some("verification_not_run".to_owned()),
-                "Connection verification has not been run",
-                None,
-                None,
-            )?],
-            vec![ConnectionAction::try_new(
-                ConnectionActionKind::RunMcpVerification,
                 "In a new managed Codex conversation, request `Run the Volicord integration verification.`",
             )?],
-        )
+            vec![ActivationStep::try_new(
+                ActivationStepId::RunOptionalActiveDiagnostics,
+                Vec::new(),
+                "Run `volicord connection verify` only when optional active diagnostics are needed",
+            )?],
+        )?;
+        Self::try_new(checked_at, checks, plan)
     }
 
     /// Returns the derived aggregate status.
@@ -1089,7 +1312,7 @@ impl ConnectionVerificationReport {
         self.status
     }
 
-    pub const fn activation_state(&self) -> ConnectionActivationState {
+    pub const fn activation_state(&self) -> IntegrationActivationState {
         self.activation_state
     }
 
@@ -1112,19 +1335,19 @@ impl ConnectionVerificationReport {
         &self.root_cause_ids
     }
 
-    /// Returns user actions in canonical ID order.
-    pub fn actions(&self) -> &[ConnectionAction] {
-        &self.actions
+    /// Returns the one authoritative current activation plan.
+    pub fn activation_plan(&self) -> &IntegrationActivationPlan {
+        &self.activation_plan
     }
 
     fn from_canonical_parts(
         status: ConnectionStatus,
-        activation_state: ConnectionActivationState,
+        activation_state: IntegrationActivationState,
         hook_activation_state: HookActivationState,
         checked_at: UtcTimestamp,
         checks: Vec<ConnectionCheck>,
         root_cause_ids: Vec<DiagnosticFindingId>,
-        actions: Vec<ConnectionAction>,
+        activation_plan: IntegrationActivationPlan,
     ) -> Result<Self, ConnectionVerificationError> {
         checked_at
             .ensure_canonical_rfc3339_representable()
@@ -1132,21 +1355,22 @@ impl ConnectionVerificationReport {
         if checks.len() > MAX_CONNECTION_CHECKS {
             return Err(invalid("connection report has too many checks"));
         }
-        if actions.len() > MAX_CONNECTION_ACTIONS {
-            return Err(invalid("connection report has too many actions"));
-        }
         require_canonical_check_order(&checks)?;
         validate_check_dependency_graph(&checks)?;
-        require_canonical_action_order(&actions)?;
         let derived = aggregate_status(&checks);
         if status != derived {
             return Err(invalid(
                 "connection report status does not match its checks",
             ));
         }
-        if activation_state != derive_activation_state(&checks, hook_activation_state) {
+        if activation_state != derive_integration_activation_state(&checks, hook_activation_state) {
             return Err(invalid(
                 "connection report activation_state does not match its typed checks",
+            ));
+        }
+        if activation_plan.state() != activation_state {
+            return Err(invalid(
+                "connection report activation plan state does not match its typed checks",
             ));
         }
         let derived_roots = aggregate_root_causes(&checks);
@@ -1162,7 +1386,7 @@ impl ConnectionVerificationReport {
             checked_at,
             checks,
             root_cause_ids,
-            actions,
+            activation_plan,
         };
         let size = serde_json::to_vec(&report)
             .map_err(|_| invalid("connection report could not be serialized"))?
@@ -1187,17 +1411,17 @@ fn derive_hook_activation_state(checks: &[ConnectionCheck]) -> HookActivationSta
         .unwrap_or(HookActivationState::Unknown)
 }
 
-fn derive_activation_state(
+pub fn derive_integration_activation_state(
     checks: &[ConnectionCheck],
     hook_activation_state: HookActivationState,
-) -> ConnectionActivationState {
+) -> IntegrationActivationState {
     if checks.iter().any(|check| {
         matches!(
             check.status,
             ConnectionCheckStatus::Failed | ConnectionCheckStatus::Blocked
         )
     }) {
-        return ConnectionActivationState::Failed;
+        return IntegrationActivationState::Failed;
     }
     let passed = |kind| {
         checks
@@ -1211,26 +1435,26 @@ fn derive_activation_state(
             })
     };
     if !passed(ConnectionCheckKind::ManagedConfig) {
-        return ConnectionActivationState::Configured;
+        return IntegrationActivationState::Configured;
     }
     if !passed(ConnectionCheckKind::HostReload) {
-        return ConnectionActivationState::HostReloadRequired;
+        return IntegrationActivationState::HostReloadRequired;
     }
     if !matches!(
         hook_activation_state,
         HookActivationState::EffectiveByObservation | HookActivationState::ManagedByPolicy
     ) {
-        return ConnectionActivationState::HookReviewRequiredOrUnknown;
+        return IntegrationActivationState::HookReviewRequiredOrUnknown;
     }
     if !passed(ConnectionCheckKind::ManagedSessionHealth)
         || !passed(ConnectionCheckKind::ManagedCapabilityProof)
     {
-        return ConnectionActivationState::McpObservationRequired;
+        return IntegrationActivationState::McpObservationRequired;
     }
     if !passed(ConnectionCheckKind::CorrelatedGuardVerification) {
-        return ConnectionActivationState::GuardVerificationRequired;
+        return IntegrationActivationState::GuardVerificationRequired;
     }
-    ConnectionActivationState::Complete
+    IntegrationActivationState::Complete
 }
 
 fn aggregate_status(checks: &[ConnectionCheck]) -> ConnectionStatus {
@@ -1372,23 +1596,6 @@ fn require_canonical_check_order(
             return Err(invalid("connection checks are not in canonical id order"));
         }
         previous = Some(check.id);
-    }
-    Ok(())
-}
-
-fn require_canonical_action_order(
-    actions: &[ConnectionAction],
-) -> Result<(), ConnectionVerificationError> {
-    let mut seen = BTreeSet::new();
-    let mut previous: Option<ConnectionActionKind> = None;
-    for action in actions {
-        if !seen.insert(action.id) {
-            return Err(invalid("connection report contains a duplicate action id"));
-        }
-        if previous.is_some_and(|previous| previous >= action.id) {
-            return Err(invalid("connection actions are not in canonical id order"));
-        }
-        previous = Some(action.id);
     }
     Ok(())
 }
@@ -1577,8 +1784,19 @@ mod tests {
         .expect("test check")
     }
 
-    fn action(id: ConnectionActionKind) -> ConnectionAction {
-        ConnectionAction::try_new(id, format!("{} instruction", id.as_str())).expect("test action")
+    fn step(id: ActivationStepId, prerequisites: Vec<ActivationStepId>) -> ActivationStep {
+        ActivationStep::try_new(id, prerequisites, format!("{} instruction", id.as_str()))
+            .expect("test activation step")
+    }
+
+    fn empty_plan(
+        checks: &[ConnectionCheck],
+        hook_activation_state: HookActivationState,
+    ) -> IntegrationActivationPlan {
+        IntegrationActivationPlan::empty(derive_integration_activation_state(
+            checks,
+            hook_activation_state,
+        ))
     }
 
     #[test]
@@ -1622,110 +1840,107 @@ mod tests {
     }
 
     #[test]
-    fn every_current_action_kind_round_trips_exact_json() {
+    fn every_current_activation_step_id_round_trips_exact_json() {
         let expected = [
-            "inspect_hook_contract",
-            "inspect_runtime_session",
-            "reinstall_current_build",
-            "reload_host",
+            "reload_codex",
+            "review_project_hooks",
+            "request_integration_verification",
+            "read_connection_status",
+            "run_optional_active_diagnostics",
+            "repair_hook_contract",
             "repair_managed_configuration",
-            "review_hooks",
-            "run_guard_probe",
-            "run_mcp_verification",
         ];
-        for (kind, expected) in ConnectionActionKind::ALL.into_iter().zip(expected) {
-            assert_eq!(serde_json::to_value(kind).unwrap(), json!(expected));
+        for (id, expected) in ActivationStepId::ALL.into_iter().zip(expected) {
+            assert_eq!(serde_json::to_value(id).unwrap(), json!(expected));
             assert_eq!(
-                serde_json::from_value::<ConnectionActionKind>(json!(expected)).unwrap(),
-                kind
+                serde_json::from_value::<ActivationStepId>(json!(expected)).unwrap(),
+                id
             );
         }
     }
 
     #[test]
-    fn action_instruction_validation_is_strict() {
-        let action = ConnectionAction::try_new(
-            ConnectionActionKind::InspectRuntimeSession,
-            "Inspect the Codex protocol failure",
+    fn request_step_has_distinct_actors_codex_chat_and_nested_agent_sequence() {
+        let step = ActivationStep::try_new(
+            ActivationStepId::RequestIntegrationVerification,
+            Vec::new(),
+            "Request integration verification",
         )
-        .expect("bounded action");
+        .expect("request step");
+        assert_eq!(step.initiator(), ActivationActor::User);
+        assert_eq!(step.executor(), ActivationActor::Agent);
         assert_eq!(
-            serde_json::to_value(&action).unwrap(),
-            json!({
-                "id": "inspect_runtime_session",
-                "owner": "agent",
-                "channel": "documentation",
-                "prerequisites": ["host_reload"],
-                "completes_checks": ["managed_capability_proof", "managed_session_health"],
-                "root_finding_ids": [],
-                "instruction": "Inspect the Codex protocol failure",
-            })
+            step.execution_channel(),
+            ActivationExecutionChannel::CodexChat
         );
+        assert_eq!(
+            step.agent_sequence()
+                .iter()
+                .map(AgentSequenceStep::tool)
+                .collect::<Vec<_>>(),
+            vec![
+                AgentToolId::LIST_PROJECTS,
+                AgentToolId::BEGIN_INTEGRATION_VERIFICATION,
+                AgentToolId::GUARD_PROBE,
+                AgentToolId::GET_INTEGRATION_VERIFICATION,
+            ]
+        );
+        assert!(ActivationStepId::ALL
+            .iter()
+            .all(|id| !matches!(id.as_str(), "run_guard_probe" | "run_mcp_verification")));
+    }
 
+    #[test]
+    fn activation_step_instruction_validation_is_strict() {
         for instruction in ["", "invalid\0instruction"] {
-            assert!(
-                ConnectionAction::try_new(ConnectionActionKind::ReviewHooks, instruction,).is_err()
-            );
+            assert!(ActivationStep::try_new(
+                ActivationStepId::ReviewProjectHooks,
+                Vec::new(),
+                instruction,
+            )
+            .is_err());
         }
-        assert!(ConnectionAction::try_new(
-            ConnectionActionKind::ReviewHooks,
+        assert!(ActivationStep::try_new(
+            ActivationStepId::ReviewProjectHooks,
+            Vec::new(),
             "x".repeat(MAX_CONNECTION_TEXT_BYTES + 1),
         )
         .is_err());
     }
 
     #[test]
-    fn action_schema_and_strict_decoding_use_exactly_id_and_instruction() {
-        let schema = serde_json::to_value(schemars::schema_for!(ConnectionAction)).unwrap();
+    fn activation_step_schema_and_strict_decoding_are_closed() {
+        let schema = serde_json::to_value(schemars::schema_for!(ActivationStep)).unwrap();
         assert_eq!(
             schema["properties"]
                 .as_object()
-                .expect("ConnectionAction schema properties")
+                .expect("ActivationStep schema properties")
                 .keys()
                 .map(String::as_str)
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from([
-                "channel",
+                "agent_sequence",
                 "completes_checks",
+                "diagnostic_only",
+                "execution_channel",
+                "executor",
                 "id",
+                "initiator",
                 "instruction",
-                "owner",
                 "prerequisites",
                 "root_finding_ids",
             ])
         );
-        assert_eq!(schema["required"].as_array().map(Vec::len), Some(7));
+        assert_eq!(schema["required"].as_array().map(Vec::len), Some(10));
         assert_eq!(schema["additionalProperties"], json!(false));
 
-        for rejected in [
-            json!({
-                "id": "repair_managed_configuration",
-                "instruction": "Repair the MCP server",
-                "command": "volicord connection verify",
-            }),
-            json!({
-                "id": "repair_managed_configuration",
-                "instruction": "Repair the MCP server",
-                "command": null,
-            }),
-            json!({
-                "id": "repair_managed_configuration",
-                "instruction": "Repair the MCP server",
-                "adapter_action": "verify",
-            }),
-        ] {
-            assert!(serde_json::from_value::<ConnectionAction>(rejected).is_err());
-        }
-
-        let action = ConnectionAction::try_new(
-            ConnectionActionKind::RunGuardProbe,
-            "Run the current Guard probe",
-        )
+        let mut unknown = serde_json::to_value(step(
+            ActivationStepId::RepairManagedConfiguration,
+            Vec::new(),
+        ))
         .unwrap();
-        let mut noncanonical = serde_json::to_value(action).unwrap();
-        noncanonical["completes_checks"] =
-            json!(["correlated_guard_verification", "ambient_hook_coverage"]);
-        assert!(serde_json::from_value::<ConnectionAction>(noncanonical).is_err());
+        unknown["command"] = json!("volicord connection verify");
+        assert!(serde_json::from_value::<ActivationStep>(unknown).is_err());
     }
 
     #[test]
@@ -1795,49 +2010,44 @@ mod tests {
         guard_execution: ConnectionCheckStatus,
         guard_verification: ConnectionCheckStatus,
     ) -> ConnectionVerificationReport {
-        ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![
-                activation_check(
-                    ConnectionCheckKind::ManagedConfig,
-                    ConnectionCheckStatus::Passed,
-                    None,
-                ),
-                activation_check(ConnectionCheckKind::HostReload, host_reload, None),
-                activation_check(
-                    ConnectionCheckKind::HookSourceActivation,
-                    match hook {
-                        HookActivationState::EffectiveByObservation
-                        | HookActivationState::ManagedByPolicy => ConnectionCheckStatus::Passed,
-                        HookActivationState::Disabled => ConnectionCheckStatus::Failed,
-                        HookActivationState::Unknown
-                        | HookActivationState::ReviewRequiredBySetup
-                        | HookActivationState::BypassedForInvocation => {
-                            ConnectionCheckStatus::Pending
-                        }
-                    },
-                    Some(hook),
-                ),
-                activation_check(ConnectionCheckKind::ManagedSessionHealth, session, None),
-                activation_check(
-                    ConnectionCheckKind::ManagedCapabilityProof,
-                    capability,
-                    None,
-                ),
-                activation_check(
-                    ConnectionCheckKind::AmbientHookCoverage,
-                    guard_execution,
-                    None,
-                ),
-                activation_check(
-                    ConnectionCheckKind::CorrelatedGuardVerification,
-                    guard_verification,
-                    None,
-                ),
-            ],
-            Vec::new(),
-        )
-        .unwrap()
+        let checks = vec![
+            activation_check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Passed,
+                None,
+            ),
+            activation_check(ConnectionCheckKind::HostReload, host_reload, None),
+            activation_check(
+                ConnectionCheckKind::HookSourceActivation,
+                match hook {
+                    HookActivationState::EffectiveByObservation
+                    | HookActivationState::ManagedByPolicy => ConnectionCheckStatus::Passed,
+                    HookActivationState::Disabled => ConnectionCheckStatus::Failed,
+                    HookActivationState::Unknown
+                    | HookActivationState::ReviewRequiredBySetup
+                    | HookActivationState::BypassedForInvocation => ConnectionCheckStatus::Pending,
+                },
+                Some(hook),
+            ),
+            activation_check(ConnectionCheckKind::ManagedSessionHealth, session, None),
+            activation_check(
+                ConnectionCheckKind::ManagedCapabilityProof,
+                capability,
+                None,
+            ),
+            activation_check(
+                ConnectionCheckKind::AmbientHookCoverage,
+                guard_execution,
+                None,
+            ),
+            activation_check(
+                ConnectionCheckKind::CorrelatedGuardVerification,
+                guard_verification,
+                None,
+            ),
+        ];
+        let plan = empty_plan(&checks, hook);
+        ConnectionVerificationReport::try_new(timestamp(), checks, plan).unwrap()
     }
 
     #[test]
@@ -1854,7 +2064,7 @@ mod tests {
                 pending,
             )
             .activation_state(),
-            ConnectionActivationState::HostReloadRequired
+            IntegrationActivationState::HostReloadRequired
         );
         assert_eq!(
             activation_report(
@@ -1866,7 +2076,7 @@ mod tests {
                 pending,
             )
             .activation_state(),
-            ConnectionActivationState::HookReviewRequiredOrUnknown
+            IntegrationActivationState::HookReviewRequiredOrUnknown
         );
         assert_eq!(
             activation_report(
@@ -1878,7 +2088,7 @@ mod tests {
                 pending,
             )
             .activation_state(),
-            ConnectionActivationState::McpObservationRequired
+            IntegrationActivationState::McpObservationRequired
         );
         assert_eq!(
             activation_report(
@@ -1890,7 +2100,7 @@ mod tests {
                 pending,
             )
             .activation_state(),
-            ConnectionActivationState::GuardVerificationRequired
+            IntegrationActivationState::GuardVerificationRequired
         );
         assert_eq!(
             activation_report(
@@ -1902,7 +2112,7 @@ mod tests {
                 passed,
             )
             .activation_state(),
-            ConnectionActivationState::Complete
+            IntegrationActivationState::Complete
         );
     }
 
@@ -1922,10 +2132,11 @@ mod tests {
             ConnectionCheckStatus::NotApplicable,
             None,
         ));
-        report = ConnectionVerificationReport::try_new(timestamp(), checks, Vec::new()).unwrap();
+        let plan = empty_plan(&checks, HookActivationState::Unknown);
+        report = ConnectionVerificationReport::try_new(timestamp(), checks, plan).unwrap();
         assert_eq!(
             report.activation_state(),
-            ConnectionActivationState::HookReviewRequiredOrUnknown
+            IntegrationActivationState::HookReviewRequiredOrUnknown
         );
         assert_eq!(report.hook_activation_state(), HookActivationState::Unknown);
     }
@@ -1936,13 +2147,13 @@ mod tests {
             assert!(serde_json::from_value::<ConnectionCheckKind>(json!(value)).is_err());
         }
         for value in [
-            "unknown_action",
+            "unknown_step",
             "reload_required",
             "unsupported_reload_action",
             "reload_guard",
             "use_volicord_tool",
         ] {
-            assert!(serde_json::from_value::<ConnectionActionKind>(json!(value)).is_err());
+            assert!(serde_json::from_value::<ActivationStepId>(json!(value)).is_err());
         }
 
         let report = ConnectionVerificationReport::verification_not_run(timestamp()).unwrap();
@@ -1954,64 +2165,40 @@ mod tests {
         );
 
         for value in ["reload_guard", "use_volicord_tool"] {
-            let mut removed_action = serde_json::to_value(&report).unwrap();
-            removed_action["actions"][0]["id"] = json!(value);
+            let mut removed_step = serde_json::to_value(&report).unwrap();
+            removed_step["activation_plan"]["required_steps"][0]["id"] = json!(value);
             assert!(
-                serde_json::from_value::<ConnectionVerificationReport>(removed_action).is_err(),
-                "persisted reports must reject removed action kind {value}"
+                serde_json::from_value::<ConnectionVerificationReport>(removed_step).is_err(),
+                "persisted reports must reject removed activation step ID {value}"
             );
         }
     }
 
     #[test]
     fn report_serialization_and_strict_deserialization_are_stable() {
-        let report = ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![check(
-                ConnectionCheckKind::McpServer,
-                ConnectionCheckStatus::Passed,
-            )],
-            vec![
-                ConnectionAction::try_new(ConnectionActionKind::ReloadHost, "Reload the host")
-                    .unwrap(),
-            ],
+        let checks = vec![check(
+            ConnectionCheckKind::McpServer,
+            ConnectionCheckStatus::Passed,
+        )];
+        let plan = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Configured,
+            vec![step(ActivationStepId::ReloadCodex, Vec::new())],
+            Vec::new(),
         )
         .unwrap();
-        let expected = json!({
-            "status": "complete",
-            "activation_state": "configured",
-            "hook_activation_state": "unknown",
-            "checked_at": "2026-07-18T00:00:00Z",
-            "checks": [{
-                "id": "mcp_server",
-                "status": "passed",
-                "depends_on": ["managed_config"],
-                "cause_finding_ids": [],
-                "code": "mcp_server_result",
-                "summary": "mcp_server summary",
-            }],
-            "root_cause_ids": [],
-            "actions": [{
-                "id": "reload_host",
-                "owner": "user",
-                "channel": "codex_ui",
-                "prerequisites": ["managed_config"],
-                "completes_checks": ["host_reload"],
-                "root_finding_ids": [],
-                "instruction": "Reload the host",
-            }]
-        });
-        assert_eq!(serde_json::to_value(&report).unwrap(), expected);
+        let report = ConnectionVerificationReport::try_new(timestamp(), checks, plan).unwrap();
+        let expected = serde_json::to_value(&report).unwrap();
         assert_eq!(
-            serde_json::from_value::<ConnectionVerificationReport>(expected).unwrap(),
+            serde_json::from_value::<ConnectionVerificationReport>(expected.clone()).unwrap(),
             report
         );
 
         let mut command_bearing_report = serde_json::to_value(&report).unwrap();
-        command_bearing_report["actions"][0]["command"] = json!("volicord connection verify");
+        command_bearing_report["activation_plan"]["required_steps"][0]["command"] =
+            json!("volicord connection verify");
         assert!(
             serde_json::from_value::<ConnectionVerificationReport>(command_bearing_report).is_err(),
-            "a complete report must reject an unknown action member"
+            "a complete report must reject an unknown activation-step member"
         );
 
         for damaged in [
@@ -2019,7 +2206,11 @@ mod tests {
                 "status": "complete",
                 "checked_at": "2026-07-18T00:00:00Z",
                 "checks": [],
-                "actions": [],
+                "activation_plan": {
+                    "state": "configured",
+                    "required_steps": [],
+                    "optional_diagnostics": []
+                },
                 "extra": true
             }),
             json!({
@@ -2034,7 +2225,11 @@ mod tests {
                     "observed_at": null,
                     "extra": true
                 }],
-                "actions": []
+                "activation_plan": {
+                    "state": "configured",
+                    "required_steps": [],
+                    "optional_diagnostics": []
+                }
             }),
         ] {
             assert!(serde_json::from_value::<ConnectionVerificationReport>(damaged).is_err());
@@ -2052,16 +2247,14 @@ mod tests {
         for left in statuses {
             for right in statuses {
                 for third in statuses {
-                    let report = ConnectionVerificationReport::try_new(
-                        timestamp(),
-                        vec![
-                            check(ConnectionCheckKind::ManagedConfig, left),
-                            check(ConnectionCheckKind::HostExecutable, right),
-                            check(ConnectionCheckKind::ProjectTrust, third),
-                        ],
-                        Vec::new(),
-                    )
-                    .unwrap();
+                    let checks = vec![
+                        check(ConnectionCheckKind::ManagedConfig, left),
+                        check(ConnectionCheckKind::HostExecutable, right),
+                        check(ConnectionCheckKind::ProjectTrust, third),
+                    ];
+                    let plan = empty_plan(&checks, HookActivationState::Unknown);
+                    let report =
+                        ConnectionVerificationReport::try_new(timestamp(), checks, plan).unwrap();
                     let expected = if [left, right, third].contains(&ConnectionCheckStatus::Failed)
                     {
                         ConnectionStatus::Failed
@@ -2079,9 +2272,13 @@ mod tests {
             }
         }
         assert_eq!(
-            ConnectionVerificationReport::try_new(timestamp(), Vec::new(), Vec::new())
-                .unwrap()
-                .status(),
+            ConnectionVerificationReport::try_new(
+                timestamp(),
+                Vec::new(),
+                IntegrationActivationPlan::empty(IntegrationActivationState::Configured),
+            )
+            .unwrap()
+            .status(),
             ConnectionStatus::Complete
         );
     }
@@ -2112,18 +2309,16 @@ mod tests {
             None,
         )
         .expect("recoverable correlated failure");
-        let report = ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![
-                check(
-                    ConnectionCheckKind::AmbientHookCoverage,
-                    ConnectionCheckStatus::Passed,
-                ),
-                correlated,
-            ],
-            Vec::new(),
-        )
-        .expect("action-required report");
+        let checks = vec![
+            check(
+                ConnectionCheckKind::AmbientHookCoverage,
+                ConnectionCheckStatus::Passed,
+            ),
+            correlated,
+        ];
+        let plan = empty_plan(&checks, HookActivationState::Unknown);
+        let report = ConnectionVerificationReport::try_new(timestamp(), checks, plan)
+            .expect("action-required report");
 
         assert_eq!(report.status(), ConnectionStatus::ActionRequired);
         let correlated = report
@@ -2141,63 +2336,124 @@ mod tests {
 
     #[test]
     fn duplicate_check_ids_are_rejected() {
-        let error = ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![
-                check(
-                    ConnectionCheckKind::ManagedConfig,
-                    ConnectionCheckStatus::Passed,
-                ),
-                check(
-                    ConnectionCheckKind::ManagedConfig,
-                    ConnectionCheckStatus::Pending,
-                ),
-            ],
-            Vec::new(),
-        )
-        .expect_err("duplicate checks must fail");
+        let checks = vec![
+            check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Passed,
+            ),
+            check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Pending,
+            ),
+        ];
+        let plan = empty_plan(&checks, HookActivationState::Unknown);
+        let error = ConnectionVerificationReport::try_new(timestamp(), checks, plan)
+            .expect_err("duplicate checks must fail");
         assert!(error.detail().contains("duplicate check"));
     }
 
     #[test]
-    fn duplicate_action_ids_are_rejected() {
-        let error = ConnectionVerificationReport::try_new(
-            timestamp(),
-            Vec::new(),
+    fn duplicate_step_ids_are_rejected() {
+        let error = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Configured,
             vec![
-                action(ConnectionActionKind::ReloadHost),
-                action(ConnectionActionKind::ReloadHost),
+                step(ActivationStepId::ReloadCodex, Vec::new()),
+                step(ActivationStepId::ReloadCodex, Vec::new()),
             ],
+            Vec::new(),
         )
-        .expect_err("duplicate actions must fail");
-        assert!(error.detail().contains("duplicate action"));
+        .expect_err("duplicate steps must fail");
+        assert!(error.detail().contains("duplicate step"));
+    }
+
+    #[test]
+    fn activation_plan_rejects_unknown_cycles_nested_tools_and_required_diagnostics() {
+        let unknown = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Configured,
+            vec![step(
+                ActivationStepId::ReadConnectionStatus,
+                vec![ActivationStepId::RequestIntegrationVerification],
+            )],
+            Vec::new(),
+        )
+        .expect_err("unknown prerequisite must fail");
+        assert!(unknown.detail().contains("unknown prerequisite"));
+
+        let cycle = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Configured,
+            vec![
+                step(
+                    ActivationStepId::RequestIntegrationVerification,
+                    vec![ActivationStepId::ReadConnectionStatus],
+                ),
+                step(
+                    ActivationStepId::ReadConnectionStatus,
+                    vec![ActivationStepId::RequestIntegrationVerification],
+                ),
+            ],
+            Vec::new(),
+        )
+        .expect_err("cycle must fail");
+        assert!(cycle.detail().contains("cycle"));
+
+        let context =
+            canonical_activation_step_context(ActivationStepId::RequestIntegrationVerification);
+        let nested = ActivationStep::try_new_with_context(
+            ActivationStepId::RequestIntegrationVerification,
+            context.initiator,
+            context.executor,
+            ActivationExecutionChannel::McpTool,
+            Vec::new(),
+            context.completes_checks.to_vec(),
+            Vec::new(),
+            "Expose an internal agent tool",
+            context.diagnostic_only,
+            context.agent_sequence.to_vec(),
+        )
+        .unwrap();
+        let nested = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Configured,
+            vec![nested],
+            Vec::new(),
+        )
+        .expect_err("nested tool at top level must fail");
+        assert!(nested.detail().contains("nested agent tool"));
+
+        let diagnostic = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Configured,
+            vec![step(
+                ActivationStepId::RunOptionalActiveDiagnostics,
+                Vec::new(),
+            )],
+            Vec::new(),
+        )
+        .expect_err("diagnostic-only required step must fail");
+        assert!(diagnostic.detail().contains("diagnostic-only"));
     }
 
     #[test]
     fn report_collection_and_byte_bounds_remain_enforced() {
-        let error = ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![
-                check(
-                    ConnectionCheckKind::ManagedConfig,
-                    ConnectionCheckStatus::Passed,
-                );
-                MAX_CONNECTION_CHECKS + 1
-            ],
-            Vec::new(),
-        )
-        .expect_err("the check collection bound must fail before duplicate validation");
+        let checks = vec![
+            check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Passed,
+            );
+            MAX_CONNECTION_CHECKS + 1
+        ];
+        let plan = empty_plan(&checks, HookActivationState::Unknown);
+        let error = ConnectionVerificationReport::try_new(timestamp(), checks, plan)
+            .expect_err("the check collection bound must fail before duplicate validation");
         assert!(error.detail().contains("too many checks"));
 
-        let error = ConnectionVerificationReport::try_new(
-            timestamp(),
+        let error = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Configured,
+            vec![step(ActivationStepId::ReloadCodex, Vec::new()); MAX_ACTIVATION_STEPS + 1],
             Vec::new(),
-            vec![action(ConnectionActionKind::ReloadHost); MAX_CONNECTION_ACTIONS + 1],
         )
-        .expect_err("the action collection bound must fail before duplicate validation");
-        assert!(error.detail().contains("too many actions"));
+        .expect_err("the step collection bound must fail before duplicate validation");
+        assert!(error.detail().contains("too many steps"));
 
-        let checks = ConnectionCheckKind::ALL
+        let checks: Vec<ConnectionCheck> = ConnectionCheckKind::ALL
             .into_iter()
             .map(|id| {
                 ConnectionCheck::try_new(
@@ -2212,51 +2468,70 @@ mod tests {
                 .expect("individually bounded check")
             })
             .collect();
-        let actions = ConnectionActionKind::ALL
+        let steps = ActivationStepId::ALL
             .into_iter()
+            .filter(|id| *id != ActivationStepId::RunOptionalActiveDiagnostics)
             .map(|id| {
-                ConnectionAction::try_new(id, "x".repeat(MAX_CONNECTION_TEXT_BYTES))
-                    .expect("individually bounded action")
+                ActivationStep::try_new(id, Vec::new(), "x".repeat(MAX_CONNECTION_TEXT_BYTES))
+                    .expect("individually bounded step")
             })
             .collect();
-        let error = ConnectionVerificationReport::try_new(timestamp(), checks, actions)
+        let optional = vec![ActivationStep::try_new(
+            ActivationStepId::RunOptionalActiveDiagnostics,
+            Vec::new(),
+            "x".repeat(MAX_CONNECTION_TEXT_BYTES),
+        )
+        .expect("individually bounded diagnostic step")];
+        let state = derive_integration_activation_state(&checks, HookActivationState::Unknown);
+        let plan = IntegrationActivationPlan::try_new(state, steps, optional)
+            .expect("individually bounded plan");
+        let error = ConnectionVerificationReport::try_new(timestamp(), checks, plan)
             .expect_err("the complete serialized report bound must still apply");
         assert!(error.detail().contains("serialized size bound"));
     }
 
     #[test]
-    fn ordering_is_canonical_and_noncanonical_wire_order_is_rejected() {
-        let report = ConnectionVerificationReport::try_new(
-            timestamp(),
+    fn checks_and_activation_steps_use_canonical_graph_order() {
+        let checks = vec![
+            check(
+                ConnectionCheckKind::VerificationNotRun,
+                ConnectionCheckStatus::Passed,
+            ),
+            check(
+                ConnectionCheckKind::ConnectionRemoval,
+                ConnectionCheckStatus::Passed,
+            ),
+        ];
+        let state = derive_integration_activation_state(&checks, HookActivationState::Unknown);
+        let plan = IntegrationActivationPlan::try_new(
+            state,
             vec![
-                check(
-                    ConnectionCheckKind::VerificationNotRun,
-                    ConnectionCheckStatus::Passed,
+                step(
+                    ActivationStepId::ReadConnectionStatus,
+                    vec![ActivationStepId::RequestIntegrationVerification],
                 ),
-                check(
-                    ConnectionCheckKind::ConnectionRemoval,
-                    ConnectionCheckStatus::Passed,
-                ),
+                step(ActivationStepId::RepairManagedConfiguration, Vec::new()),
+                step(ActivationStepId::RequestIntegrationVerification, Vec::new()),
             ],
-            vec![
-                action(ConnectionActionKind::RunMcpVerification),
-                action(ConnectionActionKind::InspectHookContract),
-            ],
+            Vec::new(),
         )
         .unwrap();
+        let report = ConnectionVerificationReport::try_new(timestamp(), checks, plan).unwrap();
         assert_eq!(
             report.checks()[0].id(),
             ConnectionCheckKind::ConnectionRemoval
         );
         assert_eq!(
             report
-                .actions()
+                .activation_plan()
+                .required_steps()
                 .iter()
-                .map(ConnectionAction::id)
+                .map(ActivationStep::id)
                 .collect::<Vec<_>>(),
             vec![
-                ConnectionActionKind::InspectHookContract,
-                ConnectionActionKind::RunMcpVerification,
+                ActivationStepId::RepairManagedConfiguration,
+                ActivationStepId::RequestIntegrationVerification,
+                ActivationStepId::ReadConnectionStatus,
             ]
         );
 
@@ -2265,7 +2540,10 @@ mod tests {
         assert!(serde_json::from_value::<ConnectionVerificationReport>(value).is_err());
 
         let mut value = serde_json::to_value(&report).unwrap();
-        value["actions"].as_array_mut().unwrap().swap(0, 1);
+        value["activation_plan"]["required_steps"]
+            .as_array_mut()
+            .unwrap()
+            .swap(0, 1);
         assert!(serde_json::from_value::<ConnectionVerificationReport>(value).is_err());
     }
 
@@ -2279,8 +2557,8 @@ mod tests {
         );
         assert_eq!(report.checks()[0].status(), ConnectionCheckStatus::Pending);
         assert_eq!(
-            report.actions()[0].id(),
-            ConnectionActionKind::RunMcpVerification
+            report.activation_plan().required_steps()[0].id(),
+            ActivationStepId::RequestIntegrationVerification
         );
     }
 
@@ -2299,12 +2577,9 @@ mod tests {
         )
         .blocked_by(vec![root.clone()])
         .unwrap();
-        let report = ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![process, managed_config],
-            Vec::new(),
-        )
-        .unwrap();
+        let checks = vec![process, managed_config];
+        let plan = empty_plan(&checks, HookActivationState::Unknown);
+        let report = ConnectionVerificationReport::try_new(timestamp(), checks, plan).unwrap();
         assert_eq!(report.status(), ConnectionStatus::Failed);
         assert_eq!(report.root_cause_ids(), std::slice::from_ref(&root));
 
@@ -2315,38 +2590,35 @@ mod tests {
         )
         .blocked_by(vec![unrelated])
         .unwrap();
-        assert!(ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![
-                check(
-                    ConnectionCheckKind::ManagedConfig,
-                    ConnectionCheckStatus::Failed,
-                )
-                .with_cause_finding_ids(vec![root])
-                .unwrap(),
-                mismatched,
-            ],
-            Vec::new(),
-        )
-        .unwrap_err()
-        .detail()
-        .contains("root causes do not match"));
+        let checks = vec![
+            check(
+                ConnectionCheckKind::ManagedConfig,
+                ConnectionCheckStatus::Failed,
+            )
+            .with_cause_finding_ids(vec![root])
+            .unwrap(),
+            mismatched,
+        ];
+        let plan = empty_plan(&checks, HookActivationState::Unknown);
+        assert!(
+            ConnectionVerificationReport::try_new(timestamp(), checks, plan)
+                .unwrap_err()
+                .detail()
+                .contains("root causes do not match")
+        );
     }
 
     #[test]
-    fn not_applicable_checks_do_not_require_actions_or_degrade_the_report() {
-        let report = ConnectionVerificationReport::try_new(
-            timestamp(),
-            vec![check(
-                ConnectionCheckKind::ProjectTrust,
-                ConnectionCheckStatus::NotApplicable,
-            )],
-            Vec::new(),
-        )
-        .unwrap();
+    fn not_applicable_checks_do_not_require_steps_or_degrade_the_report() {
+        let checks = vec![check(
+            ConnectionCheckKind::ProjectTrust,
+            ConnectionCheckStatus::NotApplicable,
+        )];
+        let plan = empty_plan(&checks, HookActivationState::Unknown);
+        let report = ConnectionVerificationReport::try_new(timestamp(), checks, plan).unwrap();
         assert_eq!(report.status(), ConnectionStatus::Complete);
         assert!(report.root_cause_ids().is_empty());
-        assert!(report.actions().is_empty());
+        assert!(report.activation_plan().required_steps().is_empty());
     }
 
     #[test]
@@ -2373,16 +2645,23 @@ mod tests {
     fn details_reject_duplicate_keys_at_any_depth() {
         let json = r#"{
             "status":"complete",
+            "activation_state":"configured",
+            "hook_activation_state":"unknown",
             "checked_at":"2026-07-18T00:00:00Z",
-                "checks":[{
+            "checks":[{
                 "id":"host_session",
                 "status":"passed",
-                "code":null,
+                "depends_on":[],
+                "cause_finding_ids":[],
                 "summary":"host",
-                "details":{"nested":{"same":1,"same":2}},
-                "observed_at":null
+                "details":{"nested":{"same":1,"same":2}}
             }],
-            "actions":[]
+            "root_cause_ids":[],
+            "activation_plan":{
+                "state":"configured",
+                "required_steps":[],
+                "optional_diagnostics":[]
+            }
         }"#;
         assert!(serde_json::from_str::<ConnectionVerificationReport>(json).is_err());
     }

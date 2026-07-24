@@ -1,4 +1,4 @@
-//! Verification dependency graph, blocking, actions, and canonical checks.
+//! Verification dependency graph, blocking, activation planning, and canonical checks.
 
 use super::*;
 
@@ -111,14 +111,29 @@ pub(super) fn block_failed_dependencies(
     ))
 }
 
-pub(super) fn actions_for_checks(
+pub(in crate::connection_command) fn activation_plan_for_checks(
     checks: &[ConnectionCheck],
-) -> Result<Vec<ConnectionAction>, ConnectionCommandError> {
-    let mut actions =
-        BTreeMap::<ConnectionActionKind, (String, BTreeSet<DiagnosticFindingId>)>::new();
-    let mut add = |kind: ConnectionActionKind, instruction: &str, check: &ConnectionCheck| {
-        let entry = actions
-            .entry(kind)
+) -> Result<IntegrationActivationPlan, ConnectionCommandError> {
+    let hook_activation_state = checks
+        .iter()
+        .find(|check| check.id() == ConnectionCheckKind::HookSourceActivation)
+        .and_then(ConnectionCheck::details)
+        .and_then(|details| details.as_object().get("activation_state"))
+        .and_then(Value::as_str)
+        .and_then(HookActivationState::from_stable_str)
+        .unwrap_or(HookActivationState::Unknown);
+    activation_plan_for_checks_with_hook_state(checks, hook_activation_state)
+}
+
+pub(in crate::connection_command) fn activation_plan_for_checks_with_hook_state(
+    checks: &[ConnectionCheck],
+    hook_activation_state: HookActivationState,
+) -> Result<IntegrationActivationPlan, ConnectionCommandError> {
+    let state = derive_integration_activation_state(checks, hook_activation_state);
+    let mut steps = BTreeMap::<ActivationStepId, (String, BTreeSet<DiagnosticFindingId>)>::new();
+    let mut add = |id: ActivationStepId, instruction: &str, check: &ConnectionCheck| {
+        let entry = steps
+            .entry(id)
             .or_insert_with(|| (instruction.to_owned(), BTreeSet::new()));
         entry.1.extend(check.cause_finding_ids().iter().cloned());
     };
@@ -126,7 +141,7 @@ pub(super) fn actions_for_checks(
         match (check.id(), check.status()) {
             (ConnectionCheckKind::ManagedConfig, ConnectionCheckStatus::Failed) => {
                 add(
-                    ConnectionActionKind::RepairManagedConfiguration,
+                    ActivationStepId::RepairManagedConfiguration,
                     "Run the current Volicord setup command to repair or recreate the managed Codex configuration",
                     check,
                 );
@@ -136,7 +151,7 @@ pub(super) fn actions_for_checks(
                 ConnectionCheckStatus::Failed,
             ) => {
                 add(
-                    ConnectionActionKind::ReinstallCurrentBuild,
+                    ActivationStepId::RepairManagedConfiguration,
                     "Reinstall the current Volicord build, regenerate the managed integration, and inspect the separate Codex PATH probe",
                     check,
                 );
@@ -146,14 +161,14 @@ pub(super) fn actions_for_checks(
                 ConnectionCheckStatus::Pending,
             ) => {
                 add(
-                    ConnectionActionKind::ReloadHost,
+                    ActivationStepId::ReloadCodex,
                     "Restart or reload Codex in this repository after completing any separately applicable project-trust step",
                     check,
                 );
             }
             (ConnectionCheckKind::HookSourceActivation, ConnectionCheckStatus::Pending) => {
                 add(
-                    ConnectionActionKind::ReviewHooks,
+                    ActivationStepId::ReviewProjectHooks,
                     "Review the current project hook definition in the Codex hook UI or with `/hooks`; Volicord does not approve hook trust",
                     check,
                 );
@@ -164,7 +179,7 @@ pub(super) fn actions_for_checks(
                 ConnectionCheckStatus::Failed,
             ) => {
                 add(
-                    ConnectionActionKind::InspectHookContract,
+                    ActivationStepId::RepairHookContract,
                     "Inspect the current hook definition, explicit disabled state, and recorded contract facts before changing host-owned trust",
                     check,
                 );
@@ -175,7 +190,7 @@ pub(super) fn actions_for_checks(
                 ConnectionCheckStatus::Pending,
             ) => {
                 add(
-                    ConnectionActionKind::RunMcpVerification,
+                    ActivationStepId::RequestIntegrationVerification,
                     "Start a new managed Codex conversation and request `Run the Volicord integration verification.`",
                     check,
                 );
@@ -186,8 +201,8 @@ pub(super) fn actions_for_checks(
                 ConnectionCheckStatus::Failed,
             ) => {
                 add(
-                    ConnectionActionKind::InspectRuntimeSession,
-                    "Inspect the latest attempt and latest complete-proof runtime sessions, including actual MCP peer and PATH-probe facts",
+                    ActivationStepId::ReadConnectionStatus,
+                    "Read current connection status and inspect the latest attempt and latest complete-proof runtime sessions",
                     check,
                 );
             }
@@ -197,78 +212,145 @@ pub(super) fn actions_for_checks(
                 ConnectionCheckStatus::Pending,
             ) => {
                 add(
-                    ConnectionActionKind::RunGuardProbe,
-                    &format!(
-                        "Call `{}`, then follow its tagged workflow: `{}` uses `{}` once, `{}` uses `{}` once, and `{}` plus `{}` call no verification tool",
-                        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
-                        IntegrationVerificationWorkflowState::AWAITING_PROBE_KIND,
-                        AgentToolId::GUARD_PROBE.wire_name(),
-                        IntegrationVerificationWorkflowState::AWAITING_OBSERVATION_KIND,
-                        AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
-                        IntegrationVerificationWorkflowState::REPAIR_REQUIRED_KIND,
-                        IntegrationVerificationWorkflowState::COMPLETE_KIND,
-                    ),
+                    ActivationStepId::RequestIntegrationVerification,
+                    "Start a new managed Codex conversation and request `Run the Volicord integration verification.`; the agent follows the returned workflow state",
                     check,
                 );
             }
             (ConnectionCheckKind::CorrelatedGuardVerification, ConnectionCheckStatus::Failed) => {
-                let kind = guard_recovery_action(check)
-                    .unwrap_or(ConnectionActionKind::InspectRuntimeSession);
-                let instruction = match kind {
-                    ConnectionActionKind::ReloadHost => {
+                let id =
+                    guard_recovery_step(check).unwrap_or(ActivationStepId::ReadConnectionStatus);
+                let instruction = match id {
+                    ActivationStepId::ReloadCodex => {
                         "Reload Codex before starting a later correlated Guard verification attempt"
                     }
-                    ConnectionActionKind::RunGuardProbe => {
-                        "Start a later correlated Guard verification attempt with the typed new-turn policy"
+                    ActivationStepId::RequestIntegrationVerification => {
+                        "Start a new Codex conversation and request the complete Volicord integration verification workflow"
                     }
-                    ConnectionActionKind::InspectHookContract => {
+                    ActivationStepId::RepairHookContract => {
                         "Inspect and repair the current hook contract before starting a later Guard verification attempt"
                     }
-                    ConnectionActionKind::RepairManagedConfiguration => {
+                    ActivationStepId::RepairManagedConfiguration => {
                         "Repair the current managed integration contract before starting a later Guard verification attempt"
                     }
-                    ConnectionActionKind::InspectRuntimeSession => {
+                    ActivationStepId::ReadConnectionStatus => {
                         "Inspect the failed correlated integration-verification record and its current managed runtime session"
                     }
                     _ => {
                         "Inspect the failed correlated integration-verification record before retrying"
                     }
                 };
-                add(kind, instruction, check);
+                add(id, instruction, check);
             }
             _ => {}
         }
     }
-    if actions.contains_key(&ConnectionActionKind::RepairManagedConfiguration) {
-        actions.retain(|kind, _| {
-            matches!(
-                kind,
-                ConnectionActionKind::RepairManagedConfiguration
-                    | ConnectionActionKind::ReinstallCurrentBuild
-            )
-        });
+    if steps.contains_key(&ActivationStepId::RepairManagedConfiguration) {
+        steps.retain(|id, _| *id == ActivationStepId::RepairManagedConfiguration);
     }
-    actions
+    let mut required_steps = steps
         .into_iter()
         .map(|(id, (instruction, roots))| {
-            ConnectionAction::try_new(id, instruction)?
+            ActivationStep::try_new(id, Vec::new(), instruction)?
                 .with_root_finding_ids(roots.into_iter().collect())
                 .map_err(ConnectionCommandError::from)
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if matches!(
+        state,
+        IntegrationActivationState::HostReloadRequired
+            | IntegrationActivationState::HookReviewRequiredOrUnknown
+    ) && !required_steps.iter().any(|step| {
+        matches!(
+            step.id(),
+            ActivationStepId::RepairHookContract
+                | ActivationStepId::RepairManagedConfiguration
+                | ActivationStepId::ReadConnectionStatus
+        )
+    }) {
+        required_steps = activation_journey_suffix(state, hook_activation_state)?;
+    } else if matches!(
+        state,
+        IntegrationActivationState::McpObservationRequired
+            | IntegrationActivationState::GuardVerificationRequired
+    ) && !required_steps
+        .iter()
+        .any(|step| step.id() == ActivationStepId::RequestIntegrationVerification)
+    {
+        required_steps.push(ActivationStep::try_new(
+            ActivationStepId::RequestIntegrationVerification,
+            Vec::new(),
+            "Start a new managed Codex conversation and request `Run the Volicord integration verification.`",
+        )?);
+    }
+
+    let optional_diagnostics = if state == IntegrationActivationState::Complete {
+        Vec::new()
+    } else {
+        vec![ActivationStep::try_new(
+            ActivationStepId::RunOptionalActiveDiagnostics,
+            Vec::new(),
+            "Run `volicord connection verify` only when optional active diagnostics are needed",
+        )?]
+    };
+    IntegrationActivationPlan::try_new(state, required_steps, optional_diagnostics)
+        .map_err(ConnectionCommandError::from)
 }
 
-fn guard_recovery_action(check: &ConnectionCheck) -> Option<ConnectionActionKind> {
-    let action = check
+fn activation_journey_suffix(
+    state: IntegrationActivationState,
+    hook_activation_state: HookActivationState,
+) -> Result<Vec<ActivationStep>, ConnectionCommandError> {
+    let include_reload = state == IntegrationActivationState::HostReloadRequired;
+    let include_review = include_reload
+        || state == IntegrationActivationState::HookReviewRequiredOrUnknown
+        || hook_activation_state == HookActivationState::ReviewRequiredBySetup;
+    let mut steps = Vec::new();
+    if include_reload {
+        steps.push(ActivationStep::try_new(
+            ActivationStepId::ReloadCodex,
+            Vec::new(),
+            "Restart or reload Codex in this repository.",
+        )?);
+    }
+    if include_review {
+        steps.push(ActivationStep::try_new(
+            ActivationStepId::ReviewProjectHooks,
+            include_reload
+                .then_some(ActivationStepId::ReloadCodex)
+                .into_iter()
+                .collect(),
+            "Review the current project hooks.",
+        )?);
+    }
+    steps.push(ActivationStep::try_new(
+        ActivationStepId::RequestIntegrationVerification,
+        include_review
+            .then_some(ActivationStepId::ReviewProjectHooks)
+            .into_iter()
+            .collect(),
+        "Start a new Codex conversation and request: \"Run the Volicord integration verification.\"",
+    )?);
+    steps.push(ActivationStep::try_new(
+        ActivationStepId::ReadConnectionStatus,
+        vec![ActivationStepId::RequestIntegrationVerification],
+        "After the agent finishes, read connection status.",
+    )?);
+    Ok(steps)
+}
+
+fn guard_recovery_step(check: &ConnectionCheck) -> Option<ActivationStepId> {
+    let step = check
         .details()?
         .as_object()
         .get("latest_attempt")?
         .as_object()?
         .get("recovery_action")?
         .as_str()?;
-    ConnectionActionKind::ALL
+    ActivationStepId::ALL
         .into_iter()
-        .find(|kind| kind.as_str() == action)
+        .find(|id| id.as_str() == step)
 }
 
 pub(super) fn canonical_check(

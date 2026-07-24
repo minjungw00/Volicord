@@ -107,7 +107,6 @@ impl<R: CommandRunner> CodexAdapter<R> {
             change,
             fingerprint,
             conflicts,
-            actions: Vec::new(),
             file_snapshot: Some(snapshot),
         })
     }
@@ -141,7 +140,6 @@ impl<R: CommandRunner> CodexAdapter<R> {
             change: PlannedChange::Noop,
             fingerprint,
             conflicts: Vec::new(),
-            actions: Vec::new(),
             file_snapshot: None,
         })
     }
@@ -338,7 +336,6 @@ fn effect_from_plan(plan: &HostPlan) -> HostEffect {
         target: plan.target.clone(),
         change: plan.change,
         fingerprint: plan.fingerprint.clone(),
-        actions: plan.actions.clone(),
     }
 }
 
@@ -352,22 +349,14 @@ fn remove_effect(request: HostRemoveRequest, change: PlannedChange) -> HostEffec
         target: request.target,
         change,
         fingerprint: request.expected_fingerprint,
-        actions: Vec::new(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use volicord_types::{ConnectionAction, ConnectionActionKind};
-
     use super::*;
     #[test]
-    fn host_effect_preserves_canonical_action_kind_and_instruction() {
-        let action = ConnectionAction::try_new(
-            ConnectionActionKind::InspectRuntimeSession,
-            "Inspect the Codex protocol failure",
-        )
-        .expect("canonical host action");
+    fn host_effect_preserves_the_host_plan_without_activation_steps() {
         let plan = HostPlan {
             host_kind: HostKind::Codex,
             connection_intent: ConnectionIntent::Personal,
@@ -384,25 +373,11 @@ mod tests {
             change: PlannedChange::Noop,
             fingerprint: "sha256:test".to_owned(),
             conflicts: Vec::new(),
-            actions: vec![action.clone()],
             file_snapshot: None,
         };
 
         let effect = effect_from_plan(&plan);
 
-        assert_eq!(plan.actions, vec![action.clone()]);
-        assert_eq!(effect.actions, vec![action]);
-        assert_eq!(
-            serde_json::to_value(&effect.actions[0]).expect("action JSON"),
-            serde_json::json!({
-                "id": "inspect_runtime_session",
-                "owner": "agent",
-                "channel": "documentation",
-                "prerequisites": ["host_reload"],
-                "completes_checks": ["managed_capability_proof", "managed_session_health"],
-                "root_finding_ids": [],
-                "instruction": "Inspect the Codex protocol failure",
-            })
-        );
+        assert_eq!(effect.fingerprint, plan.fingerprint);
     }
 }

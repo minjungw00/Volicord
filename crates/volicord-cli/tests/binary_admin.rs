@@ -35,31 +35,33 @@ const CONNECTION_LIST_TEXT_HEADER: &str =
 
 type SqliteMasterRow = (String, String, Option<String>);
 
-fn assert_current_action_shape(action: &Value) {
-    let action = action.as_object().expect("typed action object");
+fn assert_current_activation_step_shape(step: &Value) {
+    let step = step.as_object().expect("typed activation step object");
     assert_eq!(
-        action.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        step.keys().map(String::as_str).collect::<BTreeSet<_>>(),
         BTreeSet::from([
-            "channel",
+            "agent_sequence",
             "completes_checks",
+            "diagnostic_only",
+            "execution_channel",
+            "executor",
             "id",
+            "initiator",
             "instruction",
-            "owner",
             "prerequisites",
-            "root_cause_ids",
+            "root_finding_ids",
         ])
     );
     assert!(matches!(
-        action["id"].as_str(),
+        step["id"].as_str(),
         Some(
-            "reload_host"
-                | "review_hooks"
-                | "run_mcp_verification"
-                | "run_guard_probe"
-                | "inspect_hook_contract"
+            "reload_codex"
+                | "review_project_hooks"
+                | "request_integration_verification"
+                | "read_connection_status"
+                | "run_optional_active_diagnostics"
+                | "repair_hook_contract"
                 | "repair_managed_configuration"
-                | "inspect_runtime_session"
-                | "reinstall_current_build"
         )
     ));
 }
@@ -257,7 +259,7 @@ fn failed_init_is_one_stdout_document_and_exit_one() -> Result<(), Box<dyn Error
     assert_eq!(value["operation_details"]["result"]["applied"], true);
     assert!(value["operation_details"].get("planned_changes").is_none());
     assert!(value["checks"].is_array());
-    assert!(value["actions"].is_array());
+    assert!(value["activation_plan"].is_object());
     assert_eq!(value["limits"].as_array().map(Vec::len), Some(3));
     Ok(())
 }
@@ -322,16 +324,16 @@ fn dry_run_init_is_one_stdout_document_and_exit_zero() -> Result<(), Box<dyn Err
     canonical.sort();
     canonical.dedup();
     assert_eq!(triples, canonical);
-    let action_ids = value["actions"]
+    let step_ids = value["activation_plan"]["required_steps"]
         .as_array()
-        .expect("typed actions")
+        .expect("typed activation steps")
         .iter()
-        .map(|action| action["id"].as_str().expect("action id"))
+        .map(|step| step["id"].as_str().expect("activation step id"))
         .collect::<Vec<_>>();
-    assert!(action_ids.contains(&"reload_host"));
-    assert!(action_ids.contains(&"review_hooks"));
-    assert!(action_ids.contains(&"run_mcp_verification"));
-    assert!(action_ids.contains(&"run_guard_probe"));
+    assert!(step_ids.contains(&"reload_codex"));
+    assert!(step_ids.contains(&"review_project_hooks"));
+    assert!(step_ids.contains(&"request_integration_verification"));
+    assert!(!step_ids.contains(&"guard_probe"));
     assert!(!fixture.runtime_home.join("registry.sqlite").exists());
     assert!(!fixture.codex_home.join("config.toml").exists());
     assert!(directory_contents(&fixture.repo_root)?.is_empty());
@@ -1126,11 +1128,11 @@ fn connection_verify_replaces_a_command_bearing_report_without_changing_connecti
             .as_deref()
             .expect("init persisted a verification report"),
     )?;
-    invalid["actions"]
+    invalid["activation_plan"]["required_steps"]
         .as_array_mut()
-        .and_then(|actions| actions.first_mut())
+        .and_then(|steps| steps.first_mut())
         .and_then(Value::as_object_mut)
-        .expect("failed init report has an action")
+        .expect("failed init report has an activation step")
         .insert(
             "command".to_owned(),
             Value::String("volicord connection verify".to_owned()),
@@ -1147,15 +1149,21 @@ fn connection_verify_replaces_a_command_bearing_report_without_changing_connecti
     assert_eq!(stderr(&output)?, "");
     let generated: Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(generated["operation"], "verify");
-    for action in generated["actions"].as_array().expect("generated actions") {
-        assert_current_action_shape(action);
+    for step in generated["activation_plan"]["required_steps"]
+        .as_array()
+        .expect("generated activation steps")
+    {
+        assert_current_activation_step_shape(step);
     }
-    assert!(!serde_json::to_string(&generated)?.contains("volicord connection verify"));
+    assert!(generated["activation_plan"]["optional_diagnostics"]
+        .as_array()
+        .is_some_and(|steps| steps
+            .iter()
+            .any(|step| step["id"] == "run_optional_active_diagnostics")));
 
     let stored = stored_verification_report(&fixture, &connection_id)?
         .expect("active verification replaced the report");
     serde_json::from_str::<ConnectionVerificationReport>(&stored)?;
-    assert!(!stored.contains("volicord connection verify"));
 
     let after_connection = fixture.registry_snapshot().agent_connections[0].clone();
     let mut expected_connection = before_connection;
@@ -1376,13 +1384,15 @@ fn default_init_uses_concise_human_output() -> Result<(), Box<dyn Error>> {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(stderr(&output)?, "");
     let text = stdout(&output)?;
-    assert!(text.starts_with("Volicord setup was applied and needs one more step.\n\n"));
+    assert!(text.starts_with("Setup applied; 4 host-owned activation steps remain.\n\n"));
     assert!(text.contains(&format!("Repository: {}\n", fixture.repo_root.display())));
     assert!(text.contains("Mode: workflow\nActivation: "));
     assert!(text.contains("\nHook activation: "));
     assert!(text.contains("\nChecks: "));
     assert!(text.contains("Waiting\n"));
-    assert!(text.contains("Next\n"));
+    assert_eq!(text.matches("Required next steps\n").count(), 1);
+    assert!(!text.contains("\nNext\n"));
+    assert!(text.contains("Optional active diagnostics\n"));
     assert!(text.contains("volicord connection status codex --repo"));
     assert!(text.ends_with("for detailed current Connection diagnostics.\n"));
     for hidden in [
@@ -1402,7 +1412,7 @@ fn concise_follow_up_argument_vector_preserves_custom_runtime_home() -> Result<(
     fixture.install_codex_executable()?;
     let init = fixture.run_init_with_output(false, None)?;
     assert_eq!(init.status.code(), Some(0), "{}", stderr(&init)?);
-    assert!(stdout(&init)?.starts_with("Volicord setup was applied and needs one more step.\n\n"));
+    assert!(stdout(&init)?.starts_with("Setup applied; 4 host-owned activation steps remain.\n\n"));
 
     let default_runtime_home = fixture.user_home.join(".volicord");
     assert!(!default_runtime_home.exists());
@@ -1529,7 +1539,12 @@ fn connection_remove_dry_run_has_no_registry_host_or_repository_effect(
     assert!(report["checks"].as_array().is_some_and(|checks| checks
         .iter()
         .any(|check| check["id"] == "connection_removal")));
-    assert_eq!(report["actions"].as_array().map(Vec::len), Some(0));
+    assert_eq!(
+        report["activation_plan"]["required_steps"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
     assert_eq!(fixture.registry_snapshot(), registry_before);
     assert_eq!(directory_contents(&fixture.runtime_home)?, runtime_before);
     assert_eq!(directory_contents(&fixture.codex_home)?, host_before);
@@ -1538,8 +1553,8 @@ fn connection_remove_dry_run_has_no_registry_host_or_repository_effect(
 }
 
 #[test]
-fn connection_add_dry_run_preserves_setup_check_and_activation_actions(
-) -> Result<(), Box<dyn Error>> {
+fn connection_add_dry_run_preserves_setup_check_and_activation_plan() -> Result<(), Box<dyn Error>>
+{
     let fixture = IsolatedInitFixture::new("binary-add-dry-run-kinds")?;
     fixture.install_codex_executable()?;
     assert_eq!(fixture.run(false)?.status.code(), Some(0));
@@ -1553,9 +1568,11 @@ fn connection_add_dry_run_preserves_setup_check_and_activation_actions(
     assert!(report["checks"]
         .as_array()
         .is_some_and(|checks| checks.iter().any(|check| check["id"] == "setup_plan")));
-    assert!(report["actions"]
+    assert!(report["activation_plan"]["required_steps"]
         .as_array()
-        .is_some_and(|actions| actions.iter().any(|action| action["id"] == "review_hooks")));
+        .is_some_and(|steps| steps
+            .iter()
+            .any(|step| step["id"] == "review_project_hooks")));
     Ok(())
 }
 
@@ -1577,7 +1594,7 @@ fn connection_add_operational_failure_is_one_stdout_document_and_exit_one(
     assert_eq!(report["operation_details"]["result"]["kind"], "setup");
     assert_eq!(report["operation_details"]["result"]["applied"], true);
     assert!(report["checks"].is_array());
-    assert!(report["actions"].is_array());
+    assert!(report["activation_plan"].is_object());
     Ok(())
 }
 
@@ -1594,7 +1611,10 @@ fn connection_mode_preserves_transition_check_and_typed_reload_action() -> Resul
     assert_eq!(stderr(&output)?, "");
     let report: Value = serde_json::from_str(&stdout(&output)?)?;
     assert_eq!(report["checks"][0]["id"], "mode_transition");
-    assert_eq!(report["actions"][0]["id"], "reload_host");
+    assert_eq!(
+        report["activation_plan"]["required_steps"][0]["id"],
+        "reload_codex"
+    );
     Ok(())
 }
 
@@ -1823,16 +1843,17 @@ fn failed_verify_json_is_one_stdout_document_and_empty_stderr() -> Result<(), Bo
     assert_eq!(value["status"], "failed");
     assert!(value["operation_details"].get("result").is_none());
     assert!(value["operation_details"].get("planned_changes").is_none());
-    for action in value["actions"].as_array().expect("verification actions") {
-        assert_current_action_shape(action);
+    for step in value["activation_plan"]["required_steps"]
+        .as_array()
+        .expect("verification activation steps")
+    {
+        assert_current_activation_step_shape(step);
     }
-    assert!(!stdout(&output)?.contains("volicord connection verify"));
 
     let connection_id = fixture.only_connection_id();
     let stored = stored_verification_report(&fixture, &connection_id)?
         .expect("verification report was persisted");
     serde_json::from_str::<ConnectionVerificationReport>(&stored)?;
-    assert!(!stored.contains("volicord connection verify"));
     Ok(())
 }
 
@@ -1848,7 +1869,8 @@ fn failed_verify_human_report_is_written_to_stdout() -> Result<(), Box<dyn Error
     assert!(text.starts_with("Verification completed:"));
     assert!(text.contains(" failed.\n\n"));
     assert!(text.contains("Problems\n"));
-    assert!(text.contains("Next\n"));
+    assert!(text.contains("Required next steps\n"));
+    assert!(!text.contains("\nNext\n"));
     if text.contains("`volicord connection verify") {
         assert!(text.contains(" codex --repo "));
         assert!(text.contains(&format!(
@@ -1881,10 +1903,11 @@ fn verbose_connection_report_retains_the_full_diagnostic_renderer() -> Result<()
     assert!(text.contains("  Runtime home:"));
     assert!(text.contains("\n\nSummary\n  Status: failed\n"));
     assert!(text.contains("\n\nChecks\n"));
-    assert!(text.contains("\n\nActions\n"));
+    assert!(text.contains("\n\nRequired next steps\n"));
+    assert!(text.contains("\n\nOptional active diagnostics\n"));
     assert!(text.contains("\n\nReport limits\n"));
     assert!(!text.contains("Command:"));
-    assert!(!text.contains("volicord connection verify"));
+    assert!(text.contains("volicord connection verify"));
     assert!(!text.contains("Details: {"));
     assert!(!text.contains("\":["));
     assert!(text.ends_with('\n'));

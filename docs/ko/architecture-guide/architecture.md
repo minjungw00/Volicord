@@ -160,14 +160,16 @@ Activation은 기존 경계를 가로지르는 typed projection 하나입니다.
 
 ```text
 host/config 조사 + Store session/event 근거
-  -> volicord-cli 집중 check와 typed action
-  -> volicord-types ConnectionVerificationReport
+  -> volicord-cli 집중 check와 activation-plan suffix 하나
+  -> volicord-types ConnectionVerificationReport + IntegrationActivationPlan
   -> concise / verbose / JSON projection
 ```
 
-`volicord-types`는 `HookActivationState`, `ConnectionActivationState`, 집중 check
-dependency, 고정 action metadata, 정규 typed tool reference를 포함하는 폐쇄형
-`IntegrationVerificationWorkflowState`를 담당합니다. `volicord-cli`는 현재 managed
+`volicord-types`는 `HookActivationState`, `IntegrationActivationState`, 집중 check
+dependency, 안정적인 `ActivationStep` metadata, 결정적인 prerequisite 순서, 정규 typed
+tool reference를 포함하는 폐쇄형 `IntegrationVerificationWorkflowState`를 담당합니다.
+보고서가 유일한 activation plan 소유자이며 host plan과 effect에는 병렬 action 목록이
+없습니다. `volicord-cli`는 현재 managed
 configuration, host reload, hook source, session, capability, Guard, 별도 project-trust
 근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존하며 불변 semantic
 verification 좌표에서 공유 workflow 상태를 만드는 유일한 domain projector입니다.
@@ -176,7 +178,10 @@ verification 좌표에서 공유 workflow 상태를 만드는 유일한 domain p
 Begin, probe, get, `volicord-mcp`, CLI check, 생성 host guidance는 모두 그 projection을
 사용합니다. 정확한 replay는 같은 verification ID와 상태를 유지하고 `complete`와 typed
 `repair_required`는 terminal로 남습니다. Adapter와 renderer는 별도의 상태를 파생하거나
-summary 산문을 분류하지 않습니다.
+summary 산문을 분류하지 않습니다. 사용자 수준
+`request_integration_verification` step은 list, begin, workflow가 지시한 probe,
+workflow가 지시한 status 호출을 중첩하며 Guard probe는 최상위 사용자 action이
+아닙니다.
 
 CLI는 Guard를 독립된 check/evidence 경로 둘로 projection합니다.
 `AmbientGuardCoverageEvidence`는 현재 definition과 configured-phase coverage를

@@ -200,7 +200,7 @@ fn changed_hook_definition_resets_activation_to_the_host_owned_workflow() {
             passed(ConnectionCheckKind::AmbientHookCoverage, None),
             passed(ConnectionCheckKind::CorrelatedGuardVerification, None),
         ],
-        Vec::new(),
+        IntegrationActivationPlan::empty(IntegrationActivationState::Complete),
     )
     .unwrap();
     assert_eq!(
@@ -208,9 +208,10 @@ fn changed_hook_definition_resets_activation_to_the_host_owned_workflow() {
         HookActivationState::EffectiveByObservation
     );
     assert!(!current
-        .actions()
+        .activation_plan()
+        .required_steps()
         .iter()
-        .any(|action| action.id() == ConnectionActionKind::ReviewHooks));
+        .any(|action| action.id() == ActivationStepId::ReviewProjectHooks));
 
     let changed = report_with_hook_review_required(&current).unwrap();
     assert_eq!(
@@ -219,19 +220,20 @@ fn changed_hook_definition_resets_activation_to_the_host_owned_workflow() {
     );
     assert_eq!(
         changed.activation_state(),
-        volicord_types::ConnectionActivationState::HostReloadRequired
+        volicord_types::IntegrationActivationState::HostReloadRequired
     );
     assert_eq!(
         changed
-            .actions()
+            .activation_plan()
+            .required_steps()
             .iter()
-            .map(ConnectionAction::id)
+            .map(ActivationStep::id)
             .collect::<Vec<_>>(),
         vec![
-            ConnectionActionKind::ReloadHost,
-            ConnectionActionKind::ReviewHooks,
-            ConnectionActionKind::RunGuardProbe,
-            ConnectionActionKind::RunMcpVerification,
+            ActivationStepId::ReloadCodex,
+            ActivationStepId::ReviewProjectHooks,
+            ActivationStepId::RequestIntegrationVerification,
+            ActivationStepId::ReadConnectionStatus,
         ]
     );
 }
@@ -287,7 +289,7 @@ fn arbitrary_future_version_can_complete_managed_host_checks() {
     let report = ConnectionVerificationReport::try_new(
         current_timestamp(),
         checks.clone(),
-        actions_for_checks(&checks).expect("actions"),
+        activation_plan_for_checks(&checks).expect("activation plan"),
     )
     .expect("canonical report");
     assert_eq!(report.status(), ConnectionStatus::Complete);
@@ -589,12 +591,13 @@ fn managed_config_failure_blocks_process_and_protocol_checks() {
         ConnectionCheckStatus::Blocked
     );
     assert_eq!(
-        actions_for_checks(&checks)
+        activation_plan_for_checks(&checks)
             .unwrap()
+            .required_steps()
             .iter()
-            .map(ConnectionAction::id)
+            .map(ActivationStep::id)
             .collect::<Vec<_>>(),
-        vec![ConnectionActionKind::RepairManagedConfiguration]
+        vec![ActivationStepId::RepairManagedConfiguration]
     );
 }
 
@@ -643,12 +646,13 @@ fn guard_file_failure_blocks_hook_execution_and_phase_observation() {
         ConnectionCheckStatus::Blocked
     );
     assert_eq!(
-        actions_for_checks(&checks)
+        activation_plan_for_checks(&checks)
             .unwrap()
+            .required_steps()
             .iter()
-            .map(ConnectionAction::id)
+            .map(ActivationStep::id)
             .collect::<Vec<_>>(),
-        vec![ConnectionActionKind::InspectHookContract]
+        vec![ActivationStepId::RepairHookContract]
     );
 }
 
@@ -677,12 +681,13 @@ fn actual_current_protocol_incompatibility_fails_only_demonstrated_checks() {
         ConnectionCheckStatus::Blocked,
     );
     assert_eq!(
-        actions_for_checks(&checks)
+        activation_plan_for_checks(&checks)
             .expect("protocol action")
+            .required_steps()
             .iter()
-            .map(ConnectionAction::id)
+            .map(ActivationStep::id)
             .collect::<Vec<_>>(),
-        vec![ConnectionActionKind::InspectRuntimeSession]
+        vec![ActivationStepId::ReadConnectionStatus]
     );
 }
 
@@ -782,22 +787,136 @@ fn successful_cli_self_test_without_host_observation_is_action_required() {
     let report = ConnectionVerificationReport::try_new(
         current_timestamp(),
         checks.clone(),
-        actions_for_checks(&checks).expect("actions"),
+        activation_plan_for_checks(&checks).expect("activation plan"),
     )
     .expect("canonical report");
 
     assert_eq!(report.status(), ConnectionStatus::ActionRequired);
     assert_eq!(
         report
-            .actions()
+            .activation_plan()
+            .required_steps()
             .iter()
-            .map(ConnectionAction::id)
+            .map(ActivationStep::id)
             .collect::<Vec<_>>(),
         vec![
-            ConnectionActionKind::ReloadHost,
-            ConnectionActionKind::RunMcpVerification,
+            ActivationStepId::ReloadCodex,
+            ActivationStepId::ReviewProjectHooks,
+            ActivationStepId::RequestIntegrationVerification,
+            ActivationStepId::ReadConnectionStatus,
         ]
     );
+}
+
+#[test]
+fn current_status_activation_plan_projects_only_the_remaining_suffix() {
+    let checks = vec![
+        canonical_check(
+            ConnectionCheckKind::ManagedConfig,
+            ConnectionCheckStatus::Passed,
+            "managed_config_ready",
+            "Managed configuration is ready",
+            None,
+            None,
+        )
+        .unwrap(),
+        canonical_check(
+            ConnectionCheckKind::HostReload,
+            ConnectionCheckStatus::Passed,
+            "host_reload_observed",
+            "Codex loaded the current integration",
+            None,
+            None,
+        )
+        .unwrap(),
+        canonical_check(
+            ConnectionCheckKind::HookSourceActivation,
+            ConnectionCheckStatus::Passed,
+            "hook_source_effective",
+            "Current hooks were observed",
+            Some(json!({"activation_state": "effective_by_observation"})),
+            None,
+        )
+        .unwrap(),
+        canonical_check(
+            ConnectionCheckKind::ManagedSessionHealth,
+            ConnectionCheckStatus::Pending,
+            "managed_session_not_observed",
+            "Managed session has not been observed",
+            None,
+            None,
+        )
+        .unwrap(),
+        canonical_check(
+            ConnectionCheckKind::ManagedCapabilityProof,
+            ConnectionCheckStatus::Pending,
+            "managed_capability_not_observed",
+            "Managed capability proof has not been observed",
+            None,
+            None,
+        )
+        .unwrap(),
+    ];
+    let plan = activation_plan_for_checks(&checks).unwrap();
+
+    assert_eq!(
+        plan.state(),
+        IntegrationActivationState::McpObservationRequired
+    );
+    assert_eq!(
+        plan.required_steps()
+            .iter()
+            .map(ActivationStep::id)
+            .collect::<Vec<_>>(),
+        vec![ActivationStepId::RequestIntegrationVerification]
+    );
+    assert_eq!(
+        plan.optional_diagnostics()[0].id(),
+        ActivationStepId::RunOptionalActiveDiagnostics
+    );
+}
+
+#[test]
+fn correlated_repair_required_projects_the_typed_repair_step_without_a_guard_probe() {
+    let checks = vec![
+        canonical_check(
+            ConnectionCheckKind::AmbientHookCoverage,
+            ConnectionCheckStatus::Passed,
+            "ambient_hook_coverage_passed",
+            "Current hook coverage passed",
+            None,
+            None,
+        )
+        .unwrap(),
+        canonical_check(
+            ConnectionCheckKind::CorrelatedGuardVerification,
+            ConnectionCheckStatus::Failed,
+            "correlated_guard_verification_failed",
+            "The correlated attempt requires repair",
+            Some(json!({
+                "recoverability": "recoverable",
+                "latest_attempt": {
+                    "attempt_state": "repair_required",
+                    "recovery_action": "repair_hook_contract"
+                }
+            })),
+            None,
+        )
+        .unwrap(),
+    ];
+    let plan = activation_plan_for_checks(&checks).unwrap();
+
+    assert_eq!(
+        plan.required_steps()
+            .iter()
+            .map(ActivationStep::id)
+            .collect::<Vec<_>>(),
+        vec![ActivationStepId::RepairHookContract]
+    );
+    assert!(plan.required_steps().iter().all(|step| step
+        .agent_sequence()
+        .iter()
+        .all(|nested| nested.tool() != AgentToolId::GUARD_PROBE)));
 }
 
 #[test]
@@ -836,7 +955,7 @@ fn unavailable_executable_is_a_failed_behavioral_check() {
 }
 
 #[test]
-fn aggregation_and_actions_are_deterministic() {
+fn aggregation_and_activation_plans_are_deterministic() {
     let checks = vec![
         canonical_check(
             ConnectionCheckKind::GuardFiles,
@@ -866,20 +985,21 @@ fn aggregation_and_actions_are_deterministic() {
         )
         .expect("executable check"),
     ];
-    let first = actions_for_checks(&checks).expect("actions");
-    let second = actions_for_checks(&checks).expect("repeat actions");
+    let first = activation_plan_for_checks(&checks).expect("activation plan");
+    let second = activation_plan_for_checks(&checks).expect("repeat actions");
     assert_eq!(first, second);
     assert_eq!(
-        first.iter().map(ConnectionAction::id).collect::<Vec<_>>(),
-        vec![
-            ConnectionActionKind::ReinstallCurrentBuild,
-            ConnectionActionKind::RepairManagedConfiguration,
-        ]
+        first
+            .required_steps()
+            .iter()
+            .map(ActivationStep::id)
+            .collect::<Vec<_>>(),
+        vec![ActivationStepId::RepairManagedConfiguration]
     );
     let report = ConnectionVerificationReport::try_new(current_timestamp(), checks, first.clone())
         .expect("canonical report");
     assert_eq!(report.status(), ConnectionStatus::Failed);
-    assert_eq!(report.actions(), first);
+    assert_eq!(report.activation_plan(), &first);
 }
 
 #[test]
@@ -1169,7 +1289,7 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
     let report = ConnectionVerificationReport::try_new(
         UtcTimestamp::parse("2026-07-22T01:02:04Z").expect("time"),
         checks.clone(),
-        actions_for_checks(&checks).expect("actions"),
+        activation_plan_for_checks(&checks).expect("activation plan"),
     )
     .expect("report");
     let (findings, _) = current_report_findings(fixture.runtime_home_path(), &connection, &report)

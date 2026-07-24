@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use volicord_types::{ConnectionAction, ConnectionActionKind};
+use volicord_types::{
+    ActivationStep, ActivationStepId, IntegrationActivationPlan, IntegrationActivationState,
+};
 
 use super::verification::report_with_hook_review_required;
 use super::*;
@@ -1164,12 +1166,19 @@ fn migration_partial_application(
         "retryable": true,
         "retry_arguments": retry_arguments,
     });
-    let actions = ConnectionAction::try_new(
-        ConnectionActionKind::RepairManagedConfiguration,
-        "Resolve the reported setup conflict, then rerun the same init migration using the retry arguments in the failed check details",
-    )
-    .map(|action| vec![action])
-    .unwrap_or_default();
+    let activation_plan = ActivationStep::try_new(
+            ActivationStepId::RepairManagedConfiguration,
+            Vec::new(),
+            "Resolve the reported setup conflict, then rerun the same init migration using the retry arguments in the failed check details",
+        )
+        .and_then(|step| {
+            IntegrationActivationPlan::try_new(
+                IntegrationActivationState::Failed,
+                vec![step],
+                Vec::new(),
+            )
+        })
+        .unwrap_or_else(|_| IntegrationActivationPlan::empty(IntegrationActivationState::Failed));
     let report = ConnectionCommandReport::setup_failure(
         CommandOperation::Init,
         &plan.runtime_home,
@@ -1183,7 +1192,7 @@ fn migration_partial_application(
         ),
         "Setup migration was only partially applied",
         details,
-        actions,
+        activation_plan,
     );
     let output = report
         .and_then(|report| render_command_report(plan.output_format, &report))

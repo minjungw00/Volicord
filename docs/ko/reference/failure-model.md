@@ -308,14 +308,15 @@ Connection activation은 다음 구분을 보존합니다.
   뜻이며 configuration failure가 아닙니다.
 - `bypassed_for_invocation`은 호출에 한정된 명시적 host 근거이며 지속적인 activation이
   아닙니다.
-- `disabled`에는 명시적 host 근거가 필요하며 `inspect_hook_contract`로 routing합니다.
+- `disabled`에는 명시적 host 근거가 필요하며 `repair_hook_contract`로 routing합니다.
 - 이전 `latest_managed_capability_proof`가 남아 있어도 현재 managed session이 terminal이면
   failure입니다.
-- 현재 Guard attempt가 없으면 pending이며 prerequisite가 통과한 뒤에만
-  `run_guard_probe`로 routing합니다.
+- 현재 Guard attempt가 없으면 pending이며 사용자 수준
+  `request_integration_verification`으로 routing합니다. Workflow가 지시한 Guard probe는
+  그 step 안에 중첩됩니다.
 - `repair_required`는 failed `correlated_guard_verification`으로 유지합니다. Typed
   recoverability가 집계를 `action_required`로 만들 수 있지만 terminal attempt를
-  pending으로 바꾸지는 않습니다.
+  pending으로 바꾸거나 무조건 probe를 다시 실행하도록 허용하지 않습니다.
 - `ambient_hook_coverage` 통과는 상관관계가 확인된 Guard 성공을 증명하지 않으며 오래된
   `guard_verification_proof`는 더 최신 실패 attempt를 숨기지 못합니다.
 
@@ -328,10 +329,12 @@ Guard probe root finding은 typed repair reason과 acquisition stage에서 직�
 아닙니다.
 
 Failed 및 blocked check는 typed root finding ID를 유지합니다. Remediation은 닫힌
-connection action `reload_host`, `review_hooks`, `run_mcp_verification`,
-`run_guard_probe`, `inspect_hook_contract`, `repair_managed_configuration`,
-`inspect_runtime_session`, `reinstall_current_build`에서 고르며 렌더러가 산문에서 action을
-추론하지 않습니다. Project/configuration trust는 hook-source activation과 분리합니다.
+activation step `reload_codex`, `review_project_hooks`,
+`request_integration_verification`, `read_connection_status`,
+`repair_hook_contract`, `repair_managed_configuration`에서 고릅니다.
+`run_optional_active_diagnostics`는 필수 remediation 밖에 둡니다. 렌더러는 산문에서
+step을 추론하지 않습니다. Project/configuration trust는 hook-source activation과
+분리합니다.
 
 ## 효과와 응답 처리 경로
 

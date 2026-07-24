@@ -19,11 +19,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    AgentConnectionId, AgentRuntimeSessionId, ConnectionAction, ConnectionActionChannel,
-    ConnectionActionKind, ConnectionActionOwner, ConnectionActivationState, ConnectionCheck,
-    ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, DurableIdGenerator,
-    DurableIdKind, GuardIntegrationVerificationId, HookActivationState, IntegrationRevision,
-    JsonObject, ProjectId, RandomDurableIdGenerator, UtcTimestamp,
+    AgentConnectionId, AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckStatus,
+    ConnectionStatus, DurableIdGenerator, DurableIdKind, GuardIntegrationVerificationId,
+    HookActivationState, IntegrationActivationPlan, IntegrationActivationState,
+    IntegrationRevision, JsonObject, ProjectId, RandomDurableIdGenerator, UtcTimestamp,
 };
 
 /// The only current JSON representation version for [`DiagnosticReport`].
@@ -2850,166 +2849,20 @@ where
     }
 }
 
-/// One deduplicated report action with the root causes it remediates.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-pub struct DiagnosticReportAction {
-    id: ConnectionActionKind,
-    owner: ConnectionActionOwner,
-    channel: ConnectionActionChannel,
-    prerequisites: Vec<ConnectionCheckKind>,
-    completes_checks: Vec<ConnectionCheckKind>,
-    root_cause_ids: Vec<DiagnosticFindingId>,
-    instruction: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DiagnosticReportActionWire {
-    id: ConnectionActionKind,
-    owner: ConnectionActionOwner,
-    channel: ConnectionActionChannel,
-    prerequisites: Vec<ConnectionCheckKind>,
-    completes_checks: Vec<ConnectionCheckKind>,
-    root_cause_ids: Vec<DiagnosticFindingId>,
-    instruction: String,
-}
-
-impl<'de> Deserialize<'de> for DiagnosticReportAction {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let wire = DiagnosticReportActionWire::deserialize(deserializer)?;
-        let supplied_prerequisites = wire.prerequisites.clone();
-        let supplied_completes_checks = wire.completes_checks.clone();
-        let supplied_root_cause_ids = wire.root_cause_ids.clone();
-        let action = Self::try_new(
-            wire.id,
-            wire.owner,
-            wire.channel,
-            wire.prerequisites,
-            wire.completes_checks,
-            wire.root_cause_ids,
-            wire.instruction,
-        )
-        .map_err(de::Error::custom)?;
-        if supplied_prerequisites != action.prerequisites
-            || supplied_completes_checks != action.completes_checks
-            || supplied_root_cause_ids != action.root_cause_ids
-        {
-            return Err(de::Error::custom(
-                "diagnostic action check and root references are not unique and canonically ordered",
-            ));
-        }
-        Ok(action)
-    }
-}
-
-impl DiagnosticReportAction {
-    pub fn try_new(
-        id: ConnectionActionKind,
-        owner: ConnectionActionOwner,
-        channel: ConnectionActionChannel,
-        mut prerequisites: Vec<ConnectionCheckKind>,
-        mut completes_checks: Vec<ConnectionCheckKind>,
-        mut root_cause_ids: Vec<DiagnosticFindingId>,
-        instruction: impl Into<String>,
-    ) -> Result<Self, DiagnosticError> {
-        let instruction = instruction.into();
-        validate_bounded_text(
-            "diagnostic report action instruction",
-            &instruction,
-            MAX_DIAGNOSTIC_FACT_STRING_BYTES,
-        )?;
-        prerequisites.sort();
-        prerequisites.dedup();
-        completes_checks.sort();
-        completes_checks.dedup();
-        root_cause_ids.sort();
-        root_cause_ids.dedup();
-        let canonical = ConnectionAction::try_new(id, instruction.clone())
-            .map_err(|error| invalid(error.to_string()))?;
-        if owner != canonical.owner()
-            || channel != canonical.channel()
-            || prerequisites != canonical.prerequisites()
-            || completes_checks != canonical.completes_checks()
-        {
-            return Err(invalid(
-                "diagnostic report action owner, channel, prerequisites, or completed checks do not match its stable ID",
-            ));
-        }
-        if root_cause_ids.len() > MAX_DIAGNOSTIC_ROOT_CAUSES {
-            return Err(invalid("diagnostic report action has too many root causes"));
-        }
-        Ok(Self {
-            id,
-            owner,
-            channel,
-            prerequisites,
-            completes_checks,
-            root_cause_ids,
-            instruction,
-        })
-    }
-
-    pub fn from_connection_action(
-        action: &ConnectionAction,
-        root_cause_ids: Vec<DiagnosticFindingId>,
-    ) -> Result<Self, DiagnosticError> {
-        Self::try_new(
-            action.id(),
-            action.owner(),
-            action.channel(),
-            action.prerequisites().to_vec(),
-            action.completes_checks().to_vec(),
-            root_cause_ids,
-            action.instruction(),
-        )
-    }
-
-    pub const fn id(&self) -> ConnectionActionKind {
-        self.id
-    }
-
-    pub const fn owner(&self) -> ConnectionActionOwner {
-        self.owner
-    }
-
-    pub const fn channel(&self) -> ConnectionActionChannel {
-        self.channel
-    }
-
-    pub fn prerequisites(&self) -> &[ConnectionCheckKind] {
-        &self.prerequisites
-    }
-
-    pub fn completes_checks(&self) -> &[ConnectionCheckKind] {
-        &self.completes_checks
-    }
-
-    pub fn instruction(&self) -> &str {
-        &self.instruction
-    }
-
-    pub fn root_cause_ids(&self) -> &[DiagnosticFindingId] {
-        &self.root_cause_ids
-    }
-}
-
 /// Current shared JSON diagnostic report.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct DiagnosticReport {
     schema_version: u32,
     operation: DiagnosticOperation,
     status: ConnectionStatus,
-    activation_state: ConnectionActivationState,
+    activation_state: IntegrationActivationState,
     hook_activation_state: HookActivationState,
     generated_at: UtcTimestamp,
     connection: Option<DiagnosticConnectionContext>,
     checks: Vec<ConnectionCheck>,
     findings: Vec<DiagnosticFinding>,
     root_cause_ids: Vec<DiagnosticFindingId>,
-    actions: Vec<DiagnosticReportAction>,
+    activation_plan: IntegrationActivationPlan,
     #[serde(skip_serializing_if = "Option::is_none")]
     operation_details: Option<JsonObject>,
     limits: Vec<String>,
@@ -3021,14 +2874,14 @@ struct DiagnosticReportWire {
     schema_version: u32,
     operation: DiagnosticOperation,
     status: ConnectionStatus,
-    activation_state: ConnectionActivationState,
+    activation_state: IntegrationActivationState,
     hook_activation_state: HookActivationState,
     generated_at: UtcTimestamp,
     connection: Option<DiagnosticConnectionContext>,
     checks: Vec<ConnectionCheck>,
     findings: Vec<DiagnosticFinding>,
     root_cause_ids: Vec<DiagnosticFindingId>,
-    actions: Vec<DiagnosticReportAction>,
+    activation_plan: IntegrationActivationPlan,
     operation_details: Option<JsonObject>,
     limits: Vec<String>,
 }
@@ -3054,7 +2907,7 @@ impl<'de> Deserialize<'de> for DiagnosticReport {
             wire.connection,
             wire.checks,
             wire.findings,
-            wire.actions,
+            wire.activation_plan,
             wire.operation_details,
             wire.limits,
         )
@@ -3074,13 +2927,13 @@ impl DiagnosticReport {
     pub fn try_new(
         operation: DiagnosticOperation,
         status: ConnectionStatus,
-        activation_state: ConnectionActivationState,
+        activation_state: IntegrationActivationState,
         hook_activation_state: HookActivationState,
         generated_at: UtcTimestamp,
         connection: Option<DiagnosticConnectionContext>,
         mut checks: Vec<ConnectionCheck>,
         mut findings: Vec<DiagnosticFinding>,
-        mut actions: Vec<DiagnosticReportAction>,
+        activation_plan: IntegrationActivationPlan,
         operation_details: Option<JsonObject>,
         mut limits: Vec<String>,
     ) -> Result<Self, DiagnosticError> {
@@ -3137,19 +2990,24 @@ impl DiagnosticReport {
         } else {
             diagnostic_root_cause_ids(&findings, &selected, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH)?
         };
-        actions.sort_by_key(DiagnosticReportAction::id);
-        if actions.windows(2).any(|pair| pair[0].id == pair[1].id) {
-            return Err(invalid("diagnostic report contains duplicate action ids"));
-        }
         let root_set = root_cause_ids.iter().collect::<BTreeSet<_>>();
-        if actions.iter().any(|action| {
-            action
-                .root_cause_ids
-                .iter()
-                .any(|finding_id| !root_set.contains(finding_id))
-        }) {
+        if activation_plan
+            .required_steps()
+            .iter()
+            .chain(activation_plan.optional_diagnostics())
+            .any(|step| {
+                step.root_finding_ids()
+                    .iter()
+                    .any(|finding_id| !root_set.contains(finding_id))
+            })
+        {
             return Err(invalid(
-                "diagnostic report action references a non-root finding",
+                "diagnostic report activation step references a non-root finding",
+            ));
+        }
+        if activation_plan.state() != activation_state {
+            return Err(invalid(
+                "diagnostic report activation plan state does not match activation_state",
             ));
         }
         let report = Self {
@@ -3163,7 +3021,7 @@ impl DiagnosticReport {
             checks,
             findings,
             root_cause_ids,
-            actions,
+            activation_plan,
             operation_details,
             limits,
         };
@@ -3192,7 +3050,7 @@ impl DiagnosticReport {
         self.status
     }
 
-    pub const fn activation_state(&self) -> ConnectionActivationState {
+    pub const fn activation_state(&self) -> IntegrationActivationState {
         self.activation_state
     }
 
@@ -3223,8 +3081,8 @@ impl DiagnosticReport {
         &self.root_cause_ids
     }
 
-    pub fn actions(&self) -> &[DiagnosticReportAction] {
-        &self.actions
+    pub fn activation_plan(&self) -> &IntegrationActivationPlan {
+        &self.activation_plan
     }
 
     pub fn operation_details(&self) -> Option<&JsonObject> {
@@ -3989,13 +3847,13 @@ mod tests {
         DiagnosticReport::try_new(
             DiagnosticOperation::Verify,
             status,
-            ConnectionActivationState::Failed,
+            IntegrationActivationState::Failed,
             HookActivationState::Unknown,
             timestamp(),
             None,
             checks,
             findings,
-            Vec::new(),
+            IntegrationActivationPlan::empty(IntegrationActivationState::Failed),
             None,
             limits,
         )
@@ -4545,25 +4403,27 @@ mod tests {
         )
         .is_err());
 
-        let action = DiagnosticReportAction::try_new(
-            ConnectionActionKind::InspectRuntimeSession,
-            ConnectionActionOwner::Agent,
-            ConnectionActionChannel::Documentation,
-            vec![ConnectionCheckKind::HostReload],
-            vec![
-                ConnectionCheckKind::ManagedCapabilityProof,
-                ConnectionCheckKind::ManagedSessionHealth,
-            ],
-            vec![
-                DiagnosticFindingId::parse("finding.root_b").unwrap(),
-                DiagnosticFindingId::parse("finding.root_a").unwrap(),
-            ],
-            "Repair both independent roots",
+        let step = crate::ActivationStep::try_new(
+            crate::ActivationStepId::ReadConnectionStatus,
+            Vec::new(),
+            "Read status for both independent roots",
+        )
+        .unwrap()
+        .with_root_finding_ids(vec![
+            DiagnosticFindingId::parse("finding.root_b").unwrap(),
+            DiagnosticFindingId::parse("finding.root_a").unwrap(),
+        ])
+        .unwrap();
+        let plan = IntegrationActivationPlan::try_new(
+            IntegrationActivationState::Failed,
+            vec![step],
+            Vec::new(),
         )
         .unwrap();
-        let mut noncanonical_action = serde_json::to_value(action).unwrap();
-        noncanonical_action["root_cause_ids"] = json!(["finding.root_b", "finding.root_a"]);
-        assert!(serde_json::from_value::<DiagnosticReportAction>(noncanonical_action).is_err());
+        let mut noncanonical_plan = serde_json::to_value(plan).unwrap();
+        noncanonical_plan["required_steps"][0]["root_finding_ids"] =
+            json!(["finding.root_b", "finding.root_a"]);
+        assert!(serde_json::from_value::<IntegrationActivationPlan>(noncanonical_plan).is_err());
     }
 
     #[test]

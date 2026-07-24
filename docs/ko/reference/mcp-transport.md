@@ -429,21 +429,25 @@ Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지
 <a id="in-chat-integration-verification-schemas"></a>
 ### 채팅 내 통합 검증 스키마
 
-정규 사용자 요청은 `Run the Volicord integration verification.`입니다. Agent는
+정규 사용자 수준 activation step은 `request_integration_verification`이며 사용자가
+`codex_chat`으로 시작하고 agent가 실행합니다. Nested sequence는
+`Run the Volicord integration verification.` 요청에서 시작합니다. Agent는
 `volicord.list_projects`로 정확한 프로젝트를 선택한 뒤
 `volicord.begin_integration_verification`을 호출합니다. 반환된 tagged `workflow`를
 따릅니다. `awaiting_probe`와 `awaiting_observation`은 호출할 정확한 정규 `tool`을
 담고, `complete`와 `repair_required`는 tool이 없는 terminal 상태입니다. Begin,
 probe, status는 모두 같은 상태 지향 계약을 노출합니다. 현재 Codex semantic host
 profile은 status read를 한 번만 허용하는 synchronous observation을 사용하므로 agent는
-sleep, 반복 polling, 같은 turn의 새 attempt를 수행하지 않습니다. 이 first-party
+shell sleep이나 poll loop를 사용하지 않고 같은 turn에 자동으로 다시 시작하지 않습니다.
+Guard probe는 내부 nested tool step이며 최상위 사용자 action이 아닙니다. 이 first-party
 sequence만 현재 managed MCP와 Guard 상관관계 근거를 만들 수 있습니다.
 
 Volicord tool이 노출되지 않으면 agent는 managed MCP connection이 unavailable이라고
 보고합니다. Raw stdio를 시작하거나 Codex `_meta`를 직접 만들거나 `resources/list`,
 resource template, CLI preflight, connection status를 managed tool availability의
 proof로 취급하지 않습니다. 이 표면은 읽기 전용 diagnostic으로 남습니다. Hook review와
-project/configuration trust는 user/host가 소유합니다.
+project/configuration trust는 user/host가 소유합니다. `volicord connection verify`는
+선택적인 active diagnostics이며 managed-host sequence를 대신하지 않습니다.
 
 이 sequence는 읽기 전용 project discovery와 세 Connection-integration 도구를
 결합합니다. 네 도구 모두 MCP adapter 작업이며 Core method나 Task 작업 흐름이 아닙니다.

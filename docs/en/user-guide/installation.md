@@ -290,9 +290,11 @@ you want Codex to work. The first release uses the `record` profile on every
 supported platform.
 
 This command applies the canonical managed launcher, Connection, and current
-Guard setup before it reports the remaining host-owned activation actions. A
+Guard setup before it reports one hierarchical `IntegrationActivationPlan`. A
 successful apply does not by itself prove that a reloaded managed host or the
-current hooks have run.
+current hooks have run. Default init output has one `Required next steps`
+section and keeps `Optional active diagnostics` separate; it does not repeat
+the work in a second `Next` block.
 
 This shared setup requires the host launch environment to provide the same
 nonempty, absolute `VOLICORD_HOME` selected by init. The repository-visible
@@ -304,18 +306,19 @@ If init reports `review_required_by_setup`, finish activation in the host:
 1. restart or reload Codex in this repository;
 2. review the current project hook definition in the Codex hook UI or with
    `/hooks`;
-3. start a new conversation;
-4. ask `Run the Volicord integration verification.`;
-5. read the current connection status.
+3. start a new conversation and ask
+   `Run the Volicord integration verification.`;
+4. after the agent finishes, read the current connection status.
 
 The in-chat agent must use `volicord.list_projects`,
 `volicord.begin_integration_verification`, the returned
 `volicord.guard_probe`, and `volicord.get_integration_verification` in that
 order. If the tools are not exposed, report managed MCP unavailable. Do not
 substitute raw stdio, hand-authored Codex `_meta`, resources, resource
-templates, or CLI preflight as proof. `volicord connection verify` remains an
-optional diagnostic and does not replace host-owned hook review or managed
-in-chat evidence.
+templates, or CLI preflight as proof. Obey terminal workflow states; do not use
+shell sleep or poll loops or restart verification automatically in the same
+turn. `volicord connection verify` remains optional active diagnostics and
+does not replace host-owned hook review or managed in-chat evidence.
 
 For the full first-run path, continue with the [Quickstart](quickstart.md). For
 host-specific details, see [Agent Host Setup](../user-guide/agent-host-setup.md).

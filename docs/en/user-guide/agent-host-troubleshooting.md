@@ -133,17 +133,18 @@ Keep the scope selector consistent. A shared connection must use `--shared` on
 
 ## Read The Activation State First
 
-Use `activation_state` to choose the stage, then read
+Use `activation_state` to identify the stage, then execute the current
+`activation_plan.required_steps` suffix in its reported order. Read
 `hook_activation_state` without turning missing evidence into a trust claim:
 
-| State | Next typed action |
+| State or condition | Current semantic step |
 |---|---|
-| `configured` or `host_reload_required` | `reload_host` |
-| `hook_review_required_or_unknown` with setup change | `review_hooks` |
-| `hook_review_required_or_unknown` with explicit disabled/incompatible evidence | `inspect_hook_contract` |
-| `mcp_observation_required` | `run_mcp_verification` or `inspect_runtime_session` when the latest attempt failed |
-| `guard_verification_required` | `run_guard_probe` |
-| `failed` managed configuration | `repair_managed_configuration` or `reinstall_current_build` as reported |
+| `host_reload_required` | `reload_codex`, followed by the remaining reported suffix |
+| `hook_review_required_or_unknown` with setup change | `review_project_hooks`, followed by the remaining reported suffix |
+| Explicit disabled or incompatible hook evidence | `repair_hook_contract` |
+| `mcp_observation_required` or `guard_verification_required` | `request_integration_verification` |
+| Failed latest runtime attempt | `read_connection_status` |
+| Failed managed configuration | `repair_managed_configuration` |
 
 `unknown` means hook activation has not been established. It does not mean
 untrusted or disabled. `project_trust` is a separate check and applies only
@@ -153,11 +154,19 @@ when the host exposes that concern. Compare `latest_managed_attempt`,
 ID, and report actual MCP peer information separately from the PATH executable
 probe.
 
+`request_integration_verification` is initiated by the user in Codex chat and
+executed by the agent. Its nested sequence is project discovery, begin,
+workflow-directed Guard probe, and workflow-directed status. Do not run the
+Guard probe as a top-level recovery. When the correlated attempt reports
+`repair_required`, follow the reported repair step. `volicord connection
+verify` is optional active diagnostics, not the activation workflow.
+
 ## `action_required`
 
 `action_required` is a structured next step, not an unexplained success or
-fatal failure. Complete only the named Codex trust, reload, configuration, or
-storage action, then rerun the same verification command.
+fatal failure. Complete only the reported required steps, obey terminal
+workflow states, and then read connection status. Do not use shell sleep or
+poll loops or restart the workflow automatically in the same turn.
 
 ```sh
 volicord connection verify codex --shared --repo "<repo>"

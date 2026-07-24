@@ -214,7 +214,6 @@ pub fn run_init_command(
             connection,
             outcome.current_report.as_ref(),
             outcome.planned_changes,
-            &outcome.host_plan.actions,
         )?;
         attach_current_diagnostic_projection(
             report,
@@ -283,7 +282,6 @@ pub fn run_connect_command(
                 ),
                 plan.current_report.as_ref(),
                 plan.planned_changes,
-                &plan.host_plan.actions,
             )?;
             let report = attach_current_diagnostic_projection(
                 report,
@@ -1882,10 +1880,18 @@ mod persisted_metadata_tests {
         };
         let _guard_root = finding_id_for_code("guard.manifest.mismatch");
         let managed_config_root = finding_id_for_code("managed_config.entry.missing");
-        assert_eq!(output["actions"].as_array().map(Vec::len), Some(1));
-        assert_eq!(output["actions"][0]["id"], "repair_managed_configuration");
         assert_eq!(
-            output["actions"][0]["root_cause_ids"],
+            output["activation_plan"]["required_steps"]
+                .as_array()
+                .map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            output["activation_plan"]["required_steps"][0]["id"],
+            "repair_managed_configuration"
+        );
+        assert_eq!(
+            output["activation_plan"]["required_steps"][0]["root_finding_ids"],
             serde_json::json!([managed_config_root])
         );
         Ok(())

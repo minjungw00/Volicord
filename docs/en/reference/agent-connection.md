@@ -203,7 +203,7 @@ ConnectionVerificationReport:
   checked_at: UtcTimestamp
   checks: ConnectionCheck[]
   root_cause_ids: DiagnosticFindingId[]
-  actions: ConnectionAction[]
+  activation_plan: IntegrationActivationPlan
 
 ConnectionCheck:
   id: ConnectionCheckKind
@@ -215,34 +215,51 @@ ConnectionCheck:
   details?: object
   observed_at?: UtcTimestamp
 
-ConnectionAction:
-  id: ConnectionActionKind
-  owner: user | host | volicord | agent
-  channel: cli | codex_ui | mcp_tool | documentation
-  prerequisites: ConnectionCheckKind[]
+IntegrationActivationPlan:
+  state: IntegrationActivationState
+  required_steps: ActivationStep[]
+  optional_diagnostics: ActivationStep[]
+
+ActivationStep:
+  id: ActivationStepId
+  initiator: user | host | volicord | agent
+  executor: user | host | volicord | agent
+  execution_channel: cli | codex_ui | codex_chat | mcp_tool
+  prerequisites: ActivationStepId[]
   completes_checks: ConnectionCheckKind[]
   root_finding_ids: DiagnosticFindingId[]
   instruction: string
+  diagnostic_only: boolean
+  agent_sequence: AgentSequenceStep[]
+
+AgentSequenceStep:
+  tool: AgentToolId
+  condition: always | workflow_awaiting_probe |
+    workflow_awaiting_observation
 ```
 
-`status`, `checked_at`, `checks`, `root_cause_ids`, `actions`, and each check or action's
-non-optional members are required. Optional `code`, `details`, `observed_at`,
-members are omitted when absent rather than serialized as null. Unknown
-members, duplicate JSON keys, duplicate check kinds, duplicate action kinds,
-noncanonical ordering, explicit null for an optional member, and unknown status,
-check-kind, or action-kind values are invalid. Non-null check codes are 1
-through 128 ASCII bytes and match `[a-z][a-z0-9_]*`. `summary` and
+`status`, `activation_state`, `hook_activation_state`, `checked_at`, `checks`,
+`root_cause_ids`, `activation_plan`, and every plan or step member shown above
+are required. Optional check members `code`, `details`, and `observed_at` are
+omitted when absent rather than serialized as null. Unknown members, duplicate
+JSON keys, duplicate check kinds, duplicate activation-step IDs, explicit null
+for an optional member, and unknown enum values are invalid. Non-null check
+codes are 1 through 128 ASCII bytes and match `[a-z][a-z0-9_]*`. `summary` and
 `instruction` values are 1 through 4,096 UTF-8 bytes and contain no NUL. A
 non-null `details` value is a JSON object whose serialized form is at most 16
-KiB. A check contains at most 16 dependency edges and 32 root-finding
-references. A report contains at most 64 checks and 32 actions, and its
-serialized form is at most 64 KiB.
+KiB. A check or activation step contains at most 16 dependency edges and 32
+root-finding references. A report contains at most 64 checks and an activation
+plan contains at most 32 total required and optional steps. The serialized
+report is at most 64 KiB.
 
 Checks are sorted by the stable snake-case spelling of `ConnectionCheckKind` in
-ascending UTF-8 byte order. Actions use the same ordering by the stable
-snake-case spelling of `ConnectionActionKind`. Strict decoding rejects another
-order rather than silently normalizing it; enum declaration order is not the
-wire-order contract.
+ascending UTF-8 byte order. Activation steps use deterministic topological
+ordering over `prerequisites`, with the current workflow order resolving
+independent steps; serialized ID spelling is not the ordering rule. Strict
+decoding rejects a noncanonical topological order rather than silently
+normalizing it. Plan construction rejects cycles, unknown prerequisites,
+duplicate step IDs, a nested agent tool exposed at top level, and a
+diagnostic-only step in `required_steps`.
 
 `ConnectionCheckKind` is the closed current-product vocabulary:
 `connection_removal`, `diagnostic_lookup`, `guard_files`, `ambient_hook_coverage`,
@@ -258,20 +275,21 @@ remaining named kinds. `diagnostic_lookup` and `runtime_session_lookup` are
 used only by their bounded administrative diagnostic operations; arbitrary
 adapter-defined check IDs are not accepted.
 
-`ConnectionActionKind` is the closed current-product vocabulary:
-`inspect_hook_contract`, `inspect_runtime_session`, `reinstall_current_build`,
-`reload_host`, `repair_managed_configuration`, `review_hooks`,
-`run_guard_probe`, and `run_mcp_verification`. Host plans, host effects,
-verification reports, and command reports use this canonical typed action
-contract directly.
+`ActivationStepId` is the closed current-product vocabulary:
+`reload_codex`, `review_project_hooks`, `request_integration_verification`,
+`read_connection_status`, `run_optional_active_diagnostics`,
+`repair_hook_contract`, and `repair_managed_configuration`.
+`IntegrationActivationPlan` in the verification report is the one activation
+plan owner; host plans and host effects do not carry a second step list.
 
-A Connection action expresses semantic work through its stable kind, owner,
-channel, prerequisites, intended checks, root findings, and user instruction.
-It contains no executable shell text. JSON consumers use these members as
-report facts rather than executing action content.
+An activation step expresses semantic work through its stable ID, distinct
+initiator and executor, execution channel, step prerequisites, intended checks,
+root findings, bounded instruction, diagnostic class, and optional nested agent
+sequence. It contains no executable shell text. JSON consumers use these
+members as report facts rather than executing instruction content.
 When complete current selector coordinates are available, the human renderer
 constructs executable follow-up guidance from its typed current CLI invocation
-context. That renderer-owned guidance is not copied into action JSON or the
+context. That renderer-owned guidance is not copied into step JSON or the
 persisted report.
 
 ### Hook activation evidence
@@ -304,7 +322,7 @@ prompt/pre/post phase details.
 
 ### Connection activation progression
 
-`ConnectionActivationState` has these exact variants and stable wire values:
+`IntegrationActivationState` has these exact variants and stable wire values:
 
 | Variant | Wire value | Meaning |
 |---|---|---|
@@ -422,41 +440,49 @@ Configuration matching, executable availability, protocol and host versions,
 capability observations, and observation timestamps belong in check facts;
 they do not introduce another public or persisted status enum.
 
-Each action ID has fixed owner, channel, prerequisite, and intended-check
-metadata:
+Each step ID has fixed actor, channel, diagnostic class, agent sequence, and
+intended-check metadata:
 
-| ID | Owner/channel | Prerequisites | Intended completed checks |
-|---|---|---|---|
-| `reload_host` | `user` / `codex_ui` | `managed_config` | `host_reload` |
-| `review_hooks` | `user` / `codex_ui` | `host_reload` | `hook_source_activation` |
-| `run_mcp_verification` | `agent` / `mcp_tool` | `hook_source_activation` | `managed_session_health`, `managed_capability_proof` |
-| `run_guard_probe` | `agent` / `mcp_tool` | `managed_capability_proof` | `ambient_hook_coverage`, `correlated_guard_verification` |
-| `inspect_hook_contract` | `user` / `codex_ui` | none | `hook_source_activation` |
-| `repair_managed_configuration` | `volicord` / `cli` | none | `managed_config` |
-| `inspect_runtime_session` | `agent` / `documentation` | `host_reload` | `managed_session_health`, `managed_capability_proof` |
-| `reinstall_current_build` | `volicord` / `cli` | none | `managed_config`, `ambient_hook_coverage` |
+| ID | Initiator / executor / channel | Intended completed checks |
+|---|---|---|
+| `reload_codex` | `user` / `host` / `codex_ui` | `host_reload` |
+| `review_project_hooks` | `user` / `user` / `codex_ui` | `hook_source_activation` |
+| `request_integration_verification` | `user` / `agent` / `codex_chat` | `managed_session_health`, `managed_capability_proof`, `ambient_hook_coverage`, `correlated_guard_verification` |
+| `read_connection_status` | `user` / `volicord` / `cli` | none |
+| `run_optional_active_diagnostics` | `user` / `volicord` / `cli` | active diagnostic checks; optional only |
+| `repair_hook_contract` | `user` / `user` / `codex_ui` | `hook_source_activation`, `ambient_hook_coverage` |
+| `repair_managed_configuration` | `user` / `volicord` / `cli` | `managed_config` |
 
-Strict construction and decoding reject action metadata that does not match
-the ID. `root_finding_ids` connects the action to its current independent
-causes.
+`request_integration_verification` contains this nested sequence:
+`volicord.list_projects`, `volicord.begin_integration_verification`,
+workflow-directed `volicord.guard_probe`, and workflow-directed
+`volicord.get_integration_verification`. The user initiates the Codex chat
+request and the agent executes the tools. The Guard probe is never a sibling
+top-level step. `awaiting_probe` permits the probe once,
+`awaiting_observation` permits the status tool once, and `repair_required` or
+`complete` stops tool execution and same-turn restart.
 
-User instructions appear only in `actions` inside this report. They are ordered
-and deduplicated by stable ID and are derived from root findings and current
-check state. A blocked downstream check does not emit an observation action;
-its blocker's repair action comes first. Equivalent actions from several
-symptoms collapse to one stable action. Reload and first-use actions require
-actual Codex activity to be observed. A passing `ambient_hook_coverage` check
-does not request Guard reinstallation. Registry storage does not keep an independent verification
-status or action array. A
+Strict construction and decoding reject step metadata that does not match its
+ID. `root_finding_ids` connects a step to its current independent causes.
+Required steps are derived from root findings and current check state. A
+blocked downstream check does not emit an observation step; its blocker's
+repair step comes first. Equivalent steps from several symptoms collapse to
+one stable step. A repair-required correlated attempt projects
+`repair_hook_contract` or `repair_managed_configuration` as applicable, not a
+blind Guard probe. `run_optional_active_diagnostics` stays separate from
+required activation. Registry storage does not keep an independent
+verification status or activation array. A
 connection with no completed persisted report is projected as a synthesized
 `status=action_required` report containing one `verification_not_run` pending
-check and one verification action. Reading that projection does not persist it.
+check, one required `request_integration_verification` step, and one optional
+`run_optional_active_diagnostics` step. Reading that projection does not
+persist it.
 
 The administrative CLI projects init, add, status, verify, mode, and remove
 through the current schema-2 `DiagnosticReport`. It carries the canonical
 checks, bounded findings and cause edges resolved from the current evaluation
 overlay and Store APIs, derived
-root IDs, one deduplicated typed action per root, Connection context,
+root IDs, the same root-scoped `IntegrationActivationPlan`, Connection context,
 operation-specific result details, and report limits. Concise, verbose, and
 JSON output are projections of this same report and identify the same roots.
 No renderer derives a cause or remediation category from summary prose, and no
