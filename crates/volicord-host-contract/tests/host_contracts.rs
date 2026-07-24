@@ -11,6 +11,8 @@ use volicord_host_contract::{
 };
 use volicord_types::AgentToolId;
 
+const REVIEWED_GUARD_PROBE_CALLABLE: &str = "mcp__volicord__volicord_guard_probe";
+
 #[derive(Debug, Deserialize)]
 struct Manifest {
     manifest_version: u64,
@@ -165,18 +167,85 @@ fn guard_probe_hook_fixtures_preserve_exact_typed_correlation() {
         parse_callable_name(&callable, &catalog).unwrap().tool(),
         AgentToolId::GUARD_PROBE
     );
-    assert_eq!(
-        pre.tool_name.as_str(),
-        project_mcp_tool(&server, AgentToolId::GUARD_PROBE)
-            .unwrap()
-            .callable_name()
-            .as_str()
-    );
+    assert_eq!(pre.tool_name.as_str(), REVIEWED_GUARD_PROBE_CALLABLE);
     assert_eq!(
         pre_input.as_value(),
         &json!({"verification_id": "guard_verification_fixture_001"})
     );
     assert_eq!(pre_input, post_input);
+}
+
+#[test]
+fn reviewed_guard_fixture_covers_the_complete_callable_identity_chain() {
+    let fixture: CallableFixture =
+        serde_json::from_value(read_json("callable-names/mcp-tools.json")).unwrap();
+    let reviewed = fixture
+        .catalog
+        .iter()
+        .find(|entry| entry.raw_tool_name == "volicord.guard_probe")
+        .expect("reviewed Guard probe callable fixture");
+    assert_eq!(reviewed.server_key, "volicord");
+    assert_eq!(reviewed.raw_tool_name, "volicord.guard_probe");
+    assert_eq!(
+        reviewed.expected_callable_name,
+        REVIEWED_GUARD_PROBE_CALLABLE
+    );
+
+    let server = McpServerKey::parse(reviewed.server_key.clone()).unwrap();
+    let tool = AgentToolId::from_wire_name(&reviewed.raw_tool_name).unwrap();
+    assert_eq!(tool, AgentToolId::GUARD_PROBE);
+    let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL).unwrap();
+    let projected = catalog.require(&server, tool).unwrap();
+    assert_eq!(projected.source().server(), &server);
+    assert_eq!(projected.source().tool(), tool);
+    assert_eq!(
+        projected.source().raw_tool_name().as_str(),
+        reviewed.raw_tool_name
+    );
+    assert_eq!(
+        projected.callable_name().as_str(),
+        reviewed.expected_callable_name
+    );
+    assert_eq!(
+        parse_callable_name(projected.callable_name(), &catalog).unwrap(),
+        projected.source().clone()
+    );
+
+    let matcher = HostHookMatcherStrategy::codex_guard(&server).unwrap();
+    assert_eq!(
+        matcher.codex_matcher().unwrap(),
+        "Bash|apply_patch|Edit|Write|mcp__volicord__.*"
+    );
+    assert!(
+        matcher.routes(&CanonicalToolName::parse(reviewed.expected_callable_name.clone()).unwrap())
+    );
+
+    let pre = CodexCommandHooks
+        .parse(&read_json("command-hooks/pre-tool-use-mcp.json"))
+        .expect("reviewed PreToolUse fixture");
+    let post = CodexCommandHooks
+        .parse(&read_json("command-hooks/post-tool-use-mcp.json"))
+        .expect("reviewed PostToolUse fixture");
+    let (
+        CodexHookEvent::PreToolUse {
+            correlation: pre, ..
+        },
+        CodexHookEvent::PostToolUse {
+            correlation: post, ..
+        },
+    ) = (pre, post)
+    else {
+        panic!("reviewed Guard fixtures must remain tool-hook events");
+    };
+    for parsed in [&pre, &post] {
+        assert_eq!(parsed.tool_name.as_str(), REVIEWED_GUARD_PROBE_CALLABLE);
+        let callable = HostCallableName::parse(parsed.tool_name.as_str()).unwrap();
+        let source = parse_callable_name(&callable, &catalog).unwrap();
+        assert_eq!(source.server(), &server);
+        assert_eq!(source.raw_tool_name().as_str(), reviewed.raw_tool_name);
+        assert_eq!(source.tool(), AgentToolId::GUARD_PROBE);
+    }
+    assert_eq!(pre, post);
 }
 
 #[test]

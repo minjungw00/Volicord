@@ -159,6 +159,54 @@ fn ordinary_ci_builds_then_smokes_the_debug_binary_exactly_once() {
 }
 
 #[test]
+fn ci_runs_the_complete_activation_journey_on_every_native_runtime_platform() {
+    let workflow = read_yaml(".github/workflows/ci.yml");
+    let linux = &workflow["jobs"]["checks"];
+    assert_eq!(linux["runs-on"].as_str(), Some("ubuntu-24.04"));
+    assert!(linux["steps"]
+        .as_sequence()
+        .expect("Linux CI steps")
+        .iter()
+        .filter_map(|step| step["run"].as_str())
+        .any(|run| {
+            run.contains("cargo test")
+                && run.contains("--workspace")
+                && run.contains("--all-targets")
+                && run.contains("--all-features")
+        }));
+
+    let native = &workflow["jobs"]["operational-host-native-platforms"];
+    let matrix = native["strategy"]["matrix"]["include"]
+        .as_sequence()
+        .expect("native operational matrix");
+    let platforms = matrix
+        .iter()
+        .map(|entry| {
+            (
+                entry["platform"].as_str().expect("platform label"),
+                entry["os"].as_str().expect("runner image"),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        platforms,
+        BTreeSet::from([("macOS", "macos-15"), ("native Windows", "windows-2022"),])
+    );
+    let journey_invocations = native["steps"]
+        .as_sequence()
+        .expect("native operational steps")
+        .iter()
+        .filter_map(|step| step["run"].as_str())
+        .filter(|run| {
+            run.contains("cargo test")
+                && run.contains("-p volicord-cli")
+                && run.contains("--test operational_host_e2e")
+        })
+        .count();
+    assert_eq!(journey_invocations, 1);
+}
+
+#[test]
 fn workflow_filters_cover_the_shared_smoke_boundary_and_contract_inputs() {
     let required = BTreeSet::from([
         ".github/actions/volicord-release-smoke/**",
