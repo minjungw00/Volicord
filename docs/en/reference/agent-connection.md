@@ -215,6 +215,27 @@ ConnectionCheck:
   details?: object
   observed_at?: UtcTimestamp
 
+McpPreflightEvidence:
+  configuration: passed | failed
+  registry_read: passed | failed
+  project_reads: McpProjectReadEvidence[]
+  schema_validation: passed | failed
+  protocol_profiles: passed | failed
+  host_contracts: passed | failed
+  writeability:
+    status: not_checked
+    requires: connection_verify
+  side_effects: []
+
+McpActiveVerificationEvidence:
+  registry_write: passed | failed
+  project_writes: McpProjectWriteEvidence[]
+  protocol_conformance: McpRevisionConformance[]
+  host_compatibility: McpHostCompatibilityEvidence[]
+  observed_at: UtcTimestamp
+  source: connection_verify
+  side_effects: McpSideEffectKind[]
+
 IntegrationActivationPlan:
   state: IntegrationActivationState
   required_steps: ActivationStep[]
@@ -274,6 +295,27 @@ the table below. Missing-report and administrative command planning use the
 remaining named kinds. `diagnostic_lookup` and `runtime_session_lookup` are
 used only by their bounded administrative diagnostic operations; arbitrary
 adapter-defined check IDs are not accepted.
+
+The `mcp_server` check details contain sibling `preflight` and
+`last_active_verification` members. `preflight.evidence` is one immutable
+`McpPreflightEvidence` created only from the read-only preflight report.
+`last_active_verification` is either null when no active run exists or one
+`McpActiveVerificationEvidence`; it is never stored inside, merged into, or
+projected as a mutation of preflight evidence. Preflight writeability is always
+`not_checked`, requires `connection_verify`, and has exactly
+`side_effects=[]`.
+
+Active verification records Registry and per-project write results separately,
+records each disposable protocol-revision and host-compatibility result, and
+identifies its own `observed_at` and `source=connection_verify`. Its closed MCP
+side-effect values are `rollback_only_registry_write_probe`,
+`rollback_only_project_write_probe`, `disposable_protocol_conformance`, and
+`disposable_host_compatibility`. The active source and evidence shape are
+selected by the operation, not by a schema-version integer, a numeric host
+version, or a legacy combined decoder. Human, verbose, and JSON projections
+preserve this distinction. With no active evidence they say `Storage
+writeability: not checked`; with active evidence they show its separate
+timestamp and source and do not label its write result as a preflight effect.
 
 `ActivationStepId` is the closed current-product vocabulary:
 `reload_codex`, `review_project_hooks`, `request_integration_verification`,
@@ -540,6 +582,13 @@ conflict leaves the existing report and every owner field unchanged and
 requires verification to be rerun. Verification observes managed
 configuration; it never applies, adopts, or records a newly planned managed
 fingerprint.
+
+The persisted report retains the immutable preflight evidence and the latest
+active verification evidence as the separate `mcp_server` detail members
+defined above. Replacing the complete report may replace the complete
+`last_active_verification` value, but no path rewrites a field inside
+`preflight.evidence`. A preflight-only or failed-preflight evaluation has no
+active value and cannot report writeability as passed.
 
 A persisted action missing any required typed member, containing an unknown
 member, using noncanonical reference order, or carrying metadata inconsistent

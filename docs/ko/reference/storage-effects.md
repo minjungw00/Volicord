@@ -335,6 +335,13 @@ Registry와 선택한 project의 쓰기 가능성을 probe합니다. 이 probe�
 finding을 만들며 fixture disposal이 이를 제거합니다. 선택한 사용자 Runtime Home에는
 conformance session이나 finding을 만들지 않습니다.
 
+이 활성 쓰기 결과는 교체 보고서의
+`last_active_verification.registry_write`와
+`last_active_verification.project_writes`에만 저장합니다. 유일한 상태가
+`not_checked`인 `preflight.evidence.writeability`를 갱신하지 않으며 preflight에 side
+effect를 추가하지 않습니다. 활성 증거는 rollback-only Registry 및 프로젝트 probe와
+일회용 conformance를 자체 닫힌 side-effect 값으로 기록합니다.
+
 `volicord mcp preflight`는 선택한 Registry와 project database를 read-only로 엽니다. 쓰기
 가능성을 probe하거나 runtime session을 생성·갱신하거나 finding을 영속하거나 diagnostic을
 reconcile하거나 Runtime Home 또는 Product Repository에 쓰지 않습니다. 따라서 JSON

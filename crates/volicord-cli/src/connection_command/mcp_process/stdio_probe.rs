@@ -957,10 +957,17 @@ pub(super) fn read_only_required_tools() -> impl Iterator<Item = AgentToolId> {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::BTreeMap,
         fs,
+        path::Path,
         process::Command,
         sync::atomic::{AtomicU64, Ordering},
         time::Instant,
+    };
+
+    use volicord_mcp::{
+        ManagedMcpInvocationPurpose, ManagedMcpLaunchSpec, ManagedMcpMaterializationInput,
+        ManagedMcpWorkingDirectory,
     };
 
     use super::*;
@@ -992,8 +999,38 @@ mod tests {
     }
 
     #[test]
-    fn self_test_tool_is_resolved_from_the_canonical_verification_role() {
+    fn active_verification_tool_is_resolved_from_the_canonical_verification_role() {
         assert_eq!(managed_host_round_trip_tool(), AgentToolId::LIST_PROJECTS);
+    }
+
+    #[test]
+    fn active_conformance_fixture_never_uses_the_selected_live_runtime_home() {
+        let selected_live_runtime_home = Path::new("/selected/live-runtime-home");
+        let launch = ManagedMcpLaunchSpec::personal(
+            Path::new("/opt/volicord"),
+            selected_live_runtime_home,
+            "connection_live",
+        )
+        .expect("personal launch")
+        .materialize(ManagedMcpMaterializationInput::new(
+            ManagedMcpInvocationPurpose::CliStdioHandshake,
+            BTreeMap::new(),
+            ManagedMcpWorkingDirectory::Inherited,
+        ))
+        .expect("materialized launch");
+
+        let fixture = DisposableConformanceFixture::new(&launch, CONNECTION_MODE_READ_ONLY)
+            .expect("disposable fixture");
+        assert_ne!(fixture.runtime_home, selected_live_runtime_home);
+        assert!(fixture.runtime_home.starts_with(fixture._temp_dir.path()));
+        let command = fixture.command();
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(name, _)| *name == VOLICORD_HOME_ENV)
+                .and_then(|(_, value)| value),
+            Some(fixture.runtime_home.as_os_str())
+        );
     }
 
     #[test]

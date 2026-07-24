@@ -1,6 +1,7 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 use volicord_mcp::MaterializedManagedMcpLaunch;
+use volicord_types::McpActiveVerificationEvidence;
 
 use super::verification::VerificationStep;
 
@@ -73,6 +74,7 @@ impl ConnectionProcess for ProductionConnectionProcess {
 pub(super) struct McpVerification {
     pub(super) step: VerificationStep,
     pub(super) exchange: Option<McpExchangeOutcome>,
+    pub(super) active_evidence: Option<McpActiveVerificationEvidence>,
 }
 
 impl McpVerification {
@@ -106,16 +108,31 @@ impl McpVerification {
         Self {
             step,
             exchange: Some(exchange),
+            active_evidence: None,
+        }
+    }
+
+    pub(super) fn writeability_failed(details: impl Into<String>) -> Self {
+        Self {
+            step: VerificationStep::failed_with_code("mcp_storage_writeability_failed", details),
+            exchange: None,
+            active_evidence: None,
         }
     }
 
     pub(super) fn not_run() -> Self {
         Self {
             step: VerificationStep::pending(
-                "MCP server self-test did not run after failed preflight",
+                "MCP server active verification did not run after failed preflight",
             ),
             exchange: None,
+            active_evidence: None,
         }
+    }
+
+    pub(super) fn with_active_evidence(mut self, evidence: McpActiveVerificationEvidence) -> Self {
+        self.active_evidence = Some(evidence);
+        self
     }
 }
 
@@ -132,7 +149,7 @@ pub(super) fn run_connection_preflight(
                     "mcp_server_preflight_passed",
                     "volicord mcp preflight passed",
                 )
-                .with_preflight_diagnostics(diagnostics),
+                .with_preflight_evidence(diagnostics),
                 Err(message) => VerificationStep::failed_with_code(
                     "mcp_server_preflight_invalid",
                     message.clone(),

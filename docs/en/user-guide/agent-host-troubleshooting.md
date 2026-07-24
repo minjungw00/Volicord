@@ -223,10 +223,11 @@ volicord connection verify codex --repo "<repo>" --json
 
 Match `root_cause_ids` to `findings[].id`, then inspect that finding's `code`,
 typed `facts.data`, `causes`, correlations, and actions. The failed check still
-retains stage-specific detail, including `details.self_test.diagnostic_code`,
-`failure_stage`, and `finding_id` where applicable. Retain the finding ID when
-inspecting or sharing bounded Registry facts such as exit code, timeout,
-missing tools, or stderr excerpt.
+retains stage-specific detail under
+`details.last_active_verification.protocol_conformance[]`, including
+`diagnostic_code`, `failure_stage`, and `finding_id` where applicable. Retain
+the finding ID when inspecting or sharing bounded Registry facts such as exit
+code, timeout, missing tools, or stderr excerpt.
 
 In `connection.runtime_sessions`, read `latest_managed_attempt` as current
 managed-session health and `latest_managed_capability_proof` as the newest single session that

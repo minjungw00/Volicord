@@ -506,6 +506,15 @@ cannot be stored or changed independently. SQL null means no completed report.
 Reads project that absence through the Agent Connection owner's synthesized
 `verification_not_run` report without mutating Registry storage.
 
+Within the report's `mcp_server` check, `preflight` and
+`last_active_verification` are separate sibling evidence records.
+`preflight.evidence` is immutable after construction, always keeps
+writeability `not_checked`, and always has an empty side-effect array.
+`last_active_verification` is null when no active evidence exists or contains
+the latest active Registry/project write results, disposable conformance
+results, timestamp, source, and side effects. Store accepts no combined
+preflight/write result and no decoder migrates an older combined shape.
+
 Report replacement accepts the exact expected typed Connection integration
 revision, not a caller-supplied fingerprint. In one immediate Registry
 transaction Store loads and validates the revision owner fields, compares the

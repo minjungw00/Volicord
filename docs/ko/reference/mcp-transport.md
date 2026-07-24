@@ -44,7 +44,10 @@ Registry, Connection, project, protocol profile, 도구 schema, host contract를
 쓰기 가능성 probe를 수행하지 않고 runtime session이나 finding을 만들지 않으며, 읽을 수
 있는 read-only SQLite database와 filesystem에서 성공합니다. JSON projection은
 `side_effects: []`, 증거 class `read_only_preflight`, 쓰기 가능성 `not_checked`와
-`requires_active_verification`을 명시합니다.
+`requires_active_verification`을 명시합니다. Connection 검증은 이 결과를 불변
+`McpPreflightEvidence`로 decode하며, 이후의 활성 probe는 preflight field를 바꿀 수
+없습니다. Connection check는 활성 결과를 같은 계층의
+`last_active_verification` 구성원으로만 투영합니다.
 
 ## 환경과 시작
 
@@ -214,6 +217,15 @@ runtime source는 managed check에서 제외되고 검증 fixture와 함께 제�
 서버에서 동작함을 보여 주지만 관리 Codex process가 실행되었음을 보여 주지는 않습니다.
 Launch lease 소비에 성공해 source가 `managed_host`로 생성된 runtime의 lifecycle 관찰만
 managed-host 운영 check를 충족할 수 있습니다.
+
+활성 Connection 검증 증거는 각 matrix 결과를 `protocol_conformance` 또는
+`host_compatibility` 아래에 기록하고, 별도의 Registry 및 프로젝트 write-probe 결과와
+나란히 둡니다. 자체 `observed_at`, `source=connection_verify`, 닫힌 side-effect 목록을
+가집니다. 어떤 conformance process도 선택한 실제 Runtime Home을 사용하지 않습니다.
+모든 protocol 및 host fixture는 위의 새로운 일회용 상태에서 실행합니다. 명시적으로
+한도를 둔 SQLite 쓰기 가능성 probe만 선택한 실제 database에 접근하며, 이 probe는 probe
+table을 만들었다가 삭제한 뒤 반드시 rollback하는 최소 immediate transaction을
+사용합니다.
 
 ## Semantic Codex Host 계약
 

@@ -41,7 +41,9 @@ use volicord_types::{
     GuardVerificationRecoverability, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
     HookActivationEvidence, HookActivationState, IntegrationActivationPlan,
     IntegrationActivationState, IntegrationRevision, IntegrationVerificationWorkflowState,
-    UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    McpActiveVerificationEvidence, McpEvidenceCheckStatus, McpHostCompatibilityEvidence,
+    McpPreflightEvidence, McpProbeEvidence, McpProjectWriteEvidence, McpRevisionConformance,
+    McpSideEffectKind, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 #[cfg(test)]
 use volicord_types::{AgentToolId, ConnectionStatus};
@@ -130,7 +132,7 @@ pub(in crate::connection_command) struct VerificationStep {
     pub(in crate::connection_command) status: StepStatus,
     pub(in crate::connection_command) code: String,
     pub(in crate::connection_command) details: String,
-    pub(in crate::connection_command) preflight_diagnostics: Option<McpPreflightDiagnostics>,
+    pub(in crate::connection_command) preflight_evidence: Option<McpPreflightEvidence>,
     pub(in crate::connection_command) process_id: Option<u32>,
     pub(in crate::connection_command) failure: Option<McpProcessFailure>,
     pub(in crate::connection_command) diagnostic: Option<McpPersistedDiagnostic>,
@@ -145,7 +147,7 @@ impl VerificationStep {
             status: StepStatus::Passed,
             code: code.into(),
             details: details.into(),
-            preflight_diagnostics: None,
+            preflight_evidence: None,
             process_id: None,
             failure: None,
             diagnostic: None,
@@ -160,7 +162,7 @@ impl VerificationStep {
             status: StepStatus::Failed,
             code: code.into(),
             details: details.into(),
-            preflight_diagnostics: None,
+            preflight_evidence: None,
             process_id: None,
             failure: None,
             diagnostic: None,
@@ -172,18 +174,18 @@ impl VerificationStep {
             status: StepStatus::Pending,
             code: "pending".to_owned(),
             details: details.into(),
-            preflight_diagnostics: None,
+            preflight_evidence: None,
             process_id: None,
             failure: None,
             diagnostic: None,
         }
     }
 
-    pub(in crate::connection_command) fn with_preflight_diagnostics(
+    pub(in crate::connection_command) fn with_preflight_evidence(
         mut self,
-        diagnostics: Option<McpPreflightDiagnostics>,
+        evidence: McpPreflightEvidence,
     ) -> Self {
-        self.preflight_diagnostics = diagnostics;
+        self.preflight_evidence = Some(evidence);
         self
     }
 
@@ -196,34 +198,13 @@ impl VerificationStep {
         self.failure = Some(failure);
         self
     }
-}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::connection_command) struct McpPreflightDiagnostics {
-    pub(in crate::connection_command) storage_read: String,
-    pub(in crate::connection_command) storage_write: String,
-    pub(in crate::connection_command) effective_tool_mode: String,
-}
-
-impl McpPreflightDiagnostics {
-    pub(in crate::connection_command) fn from_preflight_report(report: &Value) -> Option<Self> {
-        Some(Self {
-            storage_read: report.get("project_state_read")?.as_str()?.to_owned(),
-            storage_write: report
-                .get("writeability")?
-                .get("status")?
-                .as_str()?
-                .to_owned(),
-            effective_tool_mode: report.get("effective_tool_mode")?.as_str()?.to_owned(),
-        })
-    }
-
-    pub(in crate::connection_command) fn to_json(&self) -> Value {
-        json!({
-            "storage_read": &self.storage_read,
-            "storage_write": &self.storage_write,
-            "effective_tool_mode": &self.effective_tool_mode,
-        })
+    pub(in crate::connection_command) fn with_persisted_diagnostic(
+        mut self,
+        diagnostic: McpPersistedDiagnostic,
+    ) -> Self {
+        self.diagnostic = Some(diagnostic);
+        self
     }
 }
 
@@ -255,41 +236,38 @@ pub(in crate::connection_command) fn verify_connection(
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
     )
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    let mut preflight = run_connection_preflight(
+    let preflight = run_connection_preflight(
         process,
         &preflight_launch,
         &connection.connection_internal_id,
         &connection.mode,
     );
-    if preflight.status == StepStatus::Passed {
-        match verify_selected_store_writeability(runtime_home, connection, project_id) {
-            Ok(()) => {
-                if let Some(diagnostics) = preflight.preflight_diagnostics.as_mut() {
-                    diagnostics.storage_write = "passed".to_owned();
-                }
-            }
-            Err(details) => {
-                preflight =
-                    VerificationStep::failed_with_code("mcp_storage_writeability_failed", details)
-                        .with_preflight_diagnostics(preflight.preflight_diagnostics);
-            }
+    let writeability = (preflight.status == StepStatus::Passed)
+        .then(|| verify_selected_store_writeability(runtime_home, connection, project_id));
+    let handshake = if let Some(writeability) = &writeability {
+        if let Some(details) = writeability.failure.as_deref() {
+            McpVerification::writeability_failed(details)
+        } else {
+            let handshake_launch = materialize_connection_invocation(
+                &host_plan.entry,
+                runtime_home,
+                repo_root,
+                ManagedMcpInvocationPurpose::CliStdioHandshake,
+            )
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+            McpVerification::from_exchange(
+                process.verify_mcp_stdio(&handshake_launch, &connection.mode),
+            )
         }
-    }
-    let mut handshake = if preflight.status == StepStatus::Passed {
-        let handshake_launch = materialize_connection_invocation(
-            &host_plan.entry,
-            runtime_home,
-            repo_root,
-            ManagedMcpInvocationPurpose::CliStdioHandshake,
-        )
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        McpVerification::from_exchange(
-            process.verify_mcp_stdio(&handshake_launch, &connection.mode),
-        )
     } else {
         McpVerification::not_run()
     };
-    persist_process_diagnostics(runtime_home, connection, &mut preflight, &mut handshake)?;
+    let (preflight, mut handshake) =
+        persist_process_diagnostics(runtime_home, connection, preflight, handshake)?;
+    if let Some(writeability) = &writeability {
+        let evidence = active_verification_evidence(writeability, &handshake, current_timestamp());
+        handshake = handshake.with_active_evidence(evidence);
+    }
     let evaluation =
         canonical_verification_evaluation(runtime_home, connection, &host, &preflight, &handshake)?;
     let scope = volicord_types::DiagnosticScope::try_new(
@@ -313,44 +291,182 @@ pub(in crate::connection_command) fn verify_connection(
     assemble_connection_evaluation(runtime_home, connection, evaluation)
 }
 
+#[derive(Debug, Clone)]
+pub(in crate::connection_command) struct McpStoreWriteabilityEvidence {
+    pub(in crate::connection_command) registry_write: McpEvidenceCheckStatus,
+    pub(in crate::connection_command) project_writes: Vec<McpProjectWriteEvidence>,
+    pub(in crate::connection_command) failure: Option<String>,
+}
+
 fn verify_selected_store_writeability(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     selected_project_id: Option<&str>,
-) -> Result<(), String> {
-    match sqlite_database_write_capability(registry_db_path(runtime_home)) {
-        Ok(true) => {}
-        Ok(false) => {
-            return Err("Registry writeability probe reported read-only storage".to_owned())
-        }
-        Err(error) => return Err(format!("Registry writeability probe failed: {error}")),
-    }
-    let projects =
-        list_connection_projects_read_only(runtime_home, &connection.connection_internal_id)
-            .map_err(|error| {
+) -> McpStoreWriteabilityEvidence {
+    let (registry_write, mut failure) =
+        match sqlite_database_write_capability(registry_db_path(runtime_home)) {
+            Ok(true) => (McpEvidenceCheckStatus::Passed, None),
+            Ok(false) => (
+                McpEvidenceCheckStatus::Failed,
+                Some("Registry writeability probe reported read-only storage".to_owned()),
+            ),
+            Err(error) => (
+                McpEvidenceCheckStatus::Failed,
+                Some(format!("Registry writeability probe failed: {error}")),
+            ),
+        };
+    let projects = match list_connection_projects_read_only(
+        runtime_home,
+        &connection.connection_internal_id,
+    ) {
+        Ok(projects) => projects,
+        Err(error) => {
+            failure.get_or_insert_with(|| {
                 format!("failed to read Connection projects for writeability probe: {error}")
-            })?;
+            });
+            return McpStoreWriteabilityEvidence {
+                registry_write,
+                project_writes: Vec::new(),
+                failure,
+            };
+        }
+    };
+    let mut project_writes = Vec::new();
     for project in projects
         .into_iter()
         .filter(|project| selected_project_id.is_none_or(|selected| project.project_id == selected))
     {
-        match sqlite_database_write_capability(&project.project.state_db_path) {
-            Ok(true) => {}
+        let state_write = match sqlite_database_write_capability(&project.project.state_db_path) {
+            Ok(true) => McpEvidenceCheckStatus::Passed,
             Ok(false) => {
-                return Err(format!(
-                    "project {} writeability probe reported read-only storage",
-                    project.project_id
-                ))
+                failure.get_or_insert_with(|| {
+                    format!(
+                        "project {} writeability probe reported read-only storage",
+                        project.project_id
+                    )
+                });
+                McpEvidenceCheckStatus::Failed
             }
             Err(error) => {
-                return Err(format!(
-                    "project {} writeability probe failed: {error}",
-                    project.project_id
-                ))
+                failure.get_or_insert_with(|| {
+                    format!(
+                        "project {} writeability probe failed: {error}",
+                        project.project_id
+                    )
+                });
+                McpEvidenceCheckStatus::Failed
             }
+        };
+        project_writes.push(McpProjectWriteEvidence::new(
+            project.project_id,
+            state_write,
+        ));
+    }
+    McpStoreWriteabilityEvidence {
+        registry_write,
+        project_writes,
+        failure,
+    }
+}
+
+pub(in crate::connection_command) fn active_verification_evidence(
+    writeability: &McpStoreWriteabilityEvidence,
+    handshake: &McpVerification,
+    observed_at: UtcTimestamp,
+) -> McpActiveVerificationEvidence {
+    let exchange = handshake.exchange.as_ref();
+    let mut protocol_conformance = exchange
+        .into_iter()
+        .flat_map(|exchange| &exchange.conformance)
+        .map(|probe| {
+            McpRevisionConformance::new(
+                &probe.revision,
+                active_probe_evidence(
+                    &probe.progress,
+                    probe.failure.as_ref(),
+                    probe.diagnostic.as_ref(),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    if protocol_conformance.is_empty() {
+        if let Some(exchange) = exchange {
+            protocol_conformance.push(McpRevisionConformance::new(
+                ProtocolRegistry::production()
+                    .preferred_server_profile()
+                    .revision()
+                    .as_str(),
+                active_probe_evidence(
+                    &exchange.progress,
+                    exchange.failure.as_ref(),
+                    exchange.diagnostic.as_ref(),
+                ),
+            ));
         }
     }
-    Ok(())
+    let host_compatibility = exchange
+        .into_iter()
+        .flat_map(|exchange| &exchange.host_compatibility)
+        .map(|probe| {
+            McpHostCompatibilityEvidence::new(
+                probe.profile.as_str(),
+                &probe.fixture_id,
+                active_probe_evidence(
+                    &probe.progress,
+                    probe.failure.as_ref(),
+                    probe.diagnostic.as_ref(),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut side_effects = vec![McpSideEffectKind::RollbackOnlyRegistryWriteProbe];
+    if !writeability.project_writes.is_empty() {
+        side_effects.push(McpSideEffectKind::RollbackOnlyProjectWriteProbe);
+    }
+    if !protocol_conformance.is_empty() {
+        side_effects.push(McpSideEffectKind::DisposableProtocolConformance);
+    }
+    if !host_compatibility.is_empty() {
+        side_effects.push(McpSideEffectKind::DisposableHostCompatibility);
+    }
+    McpActiveVerificationEvidence::new(
+        writeability.registry_write,
+        writeability.project_writes.clone(),
+        protocol_conformance,
+        host_compatibility,
+        observed_at,
+        side_effects,
+    )
+}
+
+fn active_probe_evidence(
+    progress: &crate::connection_command::McpExchangeProgress,
+    failure: Option<&McpProcessFailure>,
+    diagnostic: Option<&McpPersistedDiagnostic>,
+) -> McpProbeEvidence {
+    McpProbeEvidence::new(
+        if failure.is_none() {
+            McpEvidenceCheckStatus::Passed
+        } else {
+            McpEvidenceCheckStatus::Failed
+        },
+        progress.requested_revision.clone(),
+        progress.negotiated_revision.clone(),
+        progress.initialize_completed,
+        progress.initialized_notification_completed,
+        progress.pinned_schema_validated,
+        progress.tools_list.is_some(),
+        progress.tools_list.as_ref().map(Vec::len),
+        progress.required_tools_validated,
+        super::managed_host_round_trip_tool().wire_name(),
+        progress.safe_tool_call_completed,
+        progress.shutdown_completed,
+        failure
+            .map(|failure| failure.diagnostic_code().to_owned())
+            .or_else(|| diagnostic.map(|diagnostic| diagnostic.code.clone())),
+        failure.map(|failure| failure.stage().as_str().to_owned()),
+        diagnostic.map(|diagnostic| diagnostic.finding_id.clone()),
+    )
 }
 
 fn current_timestamp() -> UtcTimestamp {

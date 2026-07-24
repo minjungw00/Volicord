@@ -591,22 +591,49 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     let preflight_diagnostic_code = context.take_string("preflight.diagnostic_code");
     let _preflight_failure_stage = context.take_string("preflight.failure_stage");
     if let Some(status) = preflight.as_deref() {
-        context.line("Preflight", status);
+        context.line("Preflight status", status);
     }
-    if let Some(storage_read) = context.take_string("preflight.storage.storage_read") {
-        let storage_write = context.take_string("preflight.storage.storage_write");
-        match storage_write {
-            Some(write) => context.line(
-                "Storage",
-                format_args!("read {storage_read}, write {write}"),
-            ),
-            None => context.line("Storage read", storage_read),
+    if context
+        .peek(&DetailPath::from_dotted_keys("preflight.evidence"))
+        .is_some_and(Value::is_object)
+    {
+        if let Some(configuration) = context.take_string("preflight.evidence.configuration") {
+            context.line("Preflight configuration", configuration);
         }
-    } else if let Some(storage_write) = context.take_string("preflight.storage.storage_write") {
-        context.line("Storage write", storage_write);
-    }
-    if let Some(mode) = context.take_string("preflight.storage.effective_tool_mode") {
-        context.line("Effective mode", mode);
+        if let Some(registry_read) = context.take_string("preflight.evidence.registry_read") {
+            context.line("Registry read", registry_read);
+        }
+        if let Some(project_reads) = context
+            .take_value("preflight.evidence.project_reads")
+            .and_then(|value| value.as_array().cloned())
+        {
+            for project in project_reads {
+                let project_id = project["project_id"].as_str().unwrap_or("unknown");
+                let state_read = project["state_read"].as_str().unwrap_or("unknown");
+                context.line(&format!("Project {project_id} read"), state_read);
+            }
+        }
+        if let Some(schema_validation) = context.take_string("preflight.evidence.schema_validation")
+        {
+            context.line("Preflight schema validation", schema_validation);
+        }
+        if let Some(protocol_profiles) = context.take_string("preflight.evidence.protocol_profiles")
+        {
+            context.line("Preflight protocol profiles", protocol_profiles);
+        }
+        if let Some(host_contracts) = context.take_string("preflight.evidence.host_contracts") {
+            context.line("Preflight host contracts", host_contracts);
+        }
+        if let Some(writeability) = context.take_string("preflight.evidence.writeability.status") {
+            let requires = context
+                .take_string("preflight.evidence.writeability.requires")
+                .unwrap_or_else(|| "active verification".to_owned());
+            context.line(
+                "Preflight writeability",
+                format_args!("{writeability} (requires {requires})"),
+            );
+        }
+        let _side_effects = context.take_string_array("preflight.evidence.side_effects");
     }
     if let Some(code) = preflight_diagnostic_code {
         context.line("Preflight diagnostic code", code);
@@ -615,137 +642,14 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
         context.line("Preflight finding", finding_id);
     }
 
-    let self_test_status = context.take_string("self_test.status");
-    let _self_test_code = context.take_string("self_test.code");
-    let diagnostic = context.take_string("self_test.diagnostic");
-    let diagnostic_code = context.take_string("self_test.diagnostic_code");
-    let finding_id = context.take_string("self_test.finding_id");
-    let failure_stage = context.take_string("self_test.failure_stage");
-    let production_revisions = context
-        .take_string_array("self_test.production_supported_revisions")
-        .unwrap_or_default();
-    if !production_revisions.is_empty() {
-        let conformance = context
-            .take_value("self_test.conformance")
-            .and_then(|value| value.as_array().cloned())
-            .unwrap_or_default();
-        let host_profiles = context
-            .take_string_array("self_test.host_compatibility_profiles")
-            .unwrap_or_default();
-        let host_compatibility = context
-            .take_value("self_test.host_compatibility")
-            .and_then(|value| value.as_array().cloned())
-            .unwrap_or_default();
-        let safe_tool = context
-            .take_string("self_test.safe_read_only_tool")
-            .unwrap_or_else(|| managed_host_round_trip_tool().wire_name().to_owned());
-        let tools = context
-            .take_string_array("self_test.tools_list")
-            .unwrap_or_default();
-        render_mcp_probe_matrix(
-            context,
-            &production_revisions,
-            &conformance,
-            &host_profiles,
-            &host_compatibility,
-            &safe_tool,
-            &tools,
-        );
-        if let Some(code) = diagnostic_code {
-            context.line("Self-test diagnostic code", code);
+    let active_path = DetailPath::from_dotted_keys("last_active_verification");
+    match context.peek(&active_path) {
+        Some(Value::Object(_)) => render_mcp_active_verification(context),
+        Some(Value::Null) => {
+            context.consume(&active_path);
+            context.line("Storage writeability", "not checked");
         }
-        if let Some(finding_id) = finding_id {
-            context.line("Self-test finding", finding_id);
-        }
-        if self_test_status.as_deref() != Some("passed")
-            && diagnostic.as_deref().is_some_and(|diagnostic| {
-                diagnostic_adds_information(diagnostic, context.check.summary())
-            })
-        {
-            context.diagnostic(
-                "Self-test diagnostic",
-                diagnostic.as_deref().expect("diagnostic was checked"),
-            );
-        }
-        if preflight.as_deref() != Some("passed") {
-            if let Some(code) = preflight_code {
-                context.line("Preflight code", code);
-            }
-            if let Some(diagnostic) = preflight_diagnostic {
-                if diagnostic_adds_information(&diagnostic, context.check.summary()) {
-                    context.diagnostic("Preflight diagnostic", &diagnostic);
-                }
-            }
-        }
-        return;
-    }
-    let initialize = context.take_bool("self_test.initialize");
-    let tools_list_observed = context.take_bool("self_test.tools_list_observed");
-    let tools = context
-        .take_string_array("self_test.tools_list")
-        .unwrap_or_default();
-    let required_tools_validated = context.take_bool("self_test.required_tools_validated");
-    let safe_tool = context
-        .take_string("self_test.safe_read_only_tool")
-        .unwrap_or_else(|| managed_host_round_trip_tool().wire_name().to_owned());
-    let safe_tool_completed = context.take_bool("self_test.safe_read_only_tool_completed");
-    let shutdown_completed = context.take_bool("self_test.shutdown_completed");
-    let preflight_passed = preflight.as_deref() == Some("passed");
-    let self_test_passed = self_test_status.as_deref() == Some("passed");
-
-    context.line(
-        "Initialize",
-        mcp_initialize_result(preflight_passed, initialize, failure_stage.as_deref()),
-    );
-    context.line(
-        "Required tools",
-        mcp_required_tools_result(
-            preflight_passed,
-            tools_list_observed,
-            required_tools_validated,
-        ),
-    );
-    if tools_list_observed == Some(true) {
-        context.line("Tools returned", tools.len());
-    }
-    let safe_result = mcp_safe_tool_result(
-        preflight_passed,
-        safe_tool_completed,
-        failure_stage.as_deref(),
-    );
-    if safe_result == "passed" {
-        context.line("Designated read-only tool", safe_tool);
-    } else {
-        context.line(
-            "Designated read-only tool",
-            format_args!("{safe_tool} ({safe_result})"),
-        );
-    }
-    context.line(
-        "Shutdown",
-        mcp_shutdown_result(
-            preflight_passed,
-            shutdown_completed,
-            failure_stage.as_deref(),
-        ),
-    );
-
-    if let Some(code) = diagnostic_code {
-        context.line("Self-test diagnostic code", code);
-    }
-    if let Some(finding_id) = finding_id {
-        context.line("Self-test finding", finding_id);
-    }
-    if failure_stage.is_none()
-        && !self_test_passed
-        && diagnostic.as_deref().is_some_and(|diagnostic| {
-            diagnostic_adds_information(diagnostic, context.check.summary())
-        })
-    {
-        context.diagnostic(
-            "Self-test diagnostic",
-            diagnostic.as_deref().expect("diagnostic was checked"),
-        );
+        _ => context.line("Storage writeability", "not checked"),
     }
     if preflight.as_deref() != Some("passed") {
         if let Some(code) = preflight_code {
@@ -759,18 +663,57 @@ fn render_mcp_server(context: &mut DetailContext<'_>) {
     }
 }
 
-fn render_mcp_probe_matrix(
-    context: &mut DetailContext<'_>,
-    production_revisions: &[String],
-    conformance: &[Value],
-    host_profiles: &[String],
-    host_compatibility: &[Value],
-    safe_tool: &str,
-    tools: &[String],
-) {
+fn render_mcp_active_verification(context: &mut DetailContext<'_>) {
+    if let Some(observed_at) = context.take_string("last_active_verification.observed_at") {
+        context.line("Active verification observed at", observed_at);
+    }
+    if let Some(source) = context.take_string("last_active_verification.source") {
+        context.line("Active verification source", source);
+    }
+    if let Some(registry_write) = context.take_string("last_active_verification.registry_write") {
+        context.line("Registry writeability", registry_write);
+    }
+    if let Some(project_writes) = context
+        .take_value("last_active_verification.project_writes")
+        .and_then(|value| value.as_array().cloned())
+    {
+        for project in project_writes {
+            let project_id = project["project_id"].as_str().unwrap_or("unknown");
+            let state_write = project["state_write"].as_str().unwrap_or("unknown");
+            context.line(&format!("Project {project_id} writeability"), state_write);
+        }
+    }
+    if let Some(side_effects) = context.take_string_array("last_active_verification.side_effects") {
+        context.line(
+            "Active verification side effects",
+            render_string_values(&side_effects),
+        );
+    }
+    let conformance = context
+        .take_value("last_active_verification.protocol_conformance")
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default();
+    let production_revisions = conformance
+        .iter()
+        .filter_map(|probe| probe["revision"].as_str().map(str::to_owned))
+        .collect::<Vec<_>>();
+    let host_compatibility = context
+        .take_value("last_active_verification.host_compatibility")
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default();
+    let host_profiles = host_compatibility
+        .iter()
+        .filter_map(|probe| probe["profile"].as_str().map(str::to_owned))
+        .collect::<Vec<_>>();
+    let safe_tool = conformance
+        .iter()
+        .chain(host_compatibility.iter())
+        .find_map(|probe| probe["safe_read_only_tool"].as_str())
+        .unwrap_or_else(|| managed_host_round_trip_tool().wire_name())
+        .to_owned();
     context.line(
         "Production revisions",
-        render_string_values(production_revisions),
+        render_string_values(&production_revisions),
     );
     let passed = conformance
         .iter()
@@ -796,6 +739,54 @@ fn render_mcp_probe_matrix(
             &format!("Revision {revision}"),
             format_args!("{status}; negotiated {negotiated}; {tools} tools; {shutdown} shutdown"),
         );
+        let failure_stage = probe["failure_stage"].as_str();
+        let initialize = if probe["initialize"] == true {
+            "passed"
+        } else if matches!(failure_stage, Some("startup" | "initialize")) {
+            "failed"
+        } else {
+            "not completed"
+        };
+        context.line(&format!("Revision {revision} initialize"), initialize);
+        let required_tools = if probe["required_tools_validated"] == true {
+            "passed"
+        } else if probe["tools_list_observed"] == true {
+            "failed"
+        } else {
+            "not completed"
+        };
+        context.line(
+            &format!("Revision {revision} required tools"),
+            required_tools,
+        );
+        if let Some(tools) = probe["tools_returned"].as_u64() {
+            context.line(&format!("Revision {revision} tools returned"), tools);
+        }
+        let safe_tool_result = if probe["safe_read_only_tool_completed"] == true {
+            None
+        } else if failure_stage == Some("safe_tool_call") {
+            Some("failed")
+        } else {
+            Some("not completed")
+        };
+        let safe_tool = probe["safe_read_only_tool"]
+            .as_str()
+            .unwrap_or_else(|| managed_host_round_trip_tool().wire_name());
+        context.line(
+            &format!("Revision {revision} designated read-only tool"),
+            match safe_tool_result {
+                Some(result) => format!("{safe_tool} ({result})"),
+                None => safe_tool.to_owned(),
+            },
+        );
+        let shutdown = if probe["shutdown_completed"] == true {
+            "passed"
+        } else if failure_stage == Some("shutdown") {
+            "failed"
+        } else {
+            "not completed"
+        };
+        context.line(&format!("Revision {revision} shutdown"), shutdown);
         if let Some(stage) = probe["failure_stage"].as_str() {
             context.line(
                 "Revision failure",
@@ -805,12 +796,14 @@ fn render_mcp_probe_matrix(
         if let Some(code) = probe["diagnostic_code"].as_str() {
             context.line("Revision diagnostic code", code);
         }
+        if let Some(finding_id) = probe["finding_id"].as_str() {
+            context.line("Revision finding", finding_id);
+        }
     }
-    context.line("Tools returned", tools.len());
     context.line("Designated read-only tool", safe_tool);
     context.line(
         "Host compatibility profiles",
-        render_string_values(host_profiles),
+        render_string_values(&host_profiles),
     );
     for probe in host_compatibility {
         let profile = probe["profile"].as_str().unwrap_or("unknown");
@@ -823,70 +816,6 @@ fn render_mcp_probe_matrix(
             &format!("Host profile {profile}"),
             format_args!("{status}; {fixture}; negotiated {negotiated}"),
         );
-    }
-}
-
-fn mcp_initialize_result(
-    preflight_passed: bool,
-    initialize: Option<bool>,
-    failure_stage: Option<&str>,
-) -> &'static str {
-    if initialize == Some(true) {
-        "passed"
-    } else if !preflight_passed {
-        "not run"
-    } else if matches!(failure_stage, Some("startup" | "initialize")) {
-        "failed"
-    } else {
-        "not completed"
-    }
-}
-
-fn mcp_required_tools_result(
-    preflight_passed: bool,
-    tools_list_observed: Option<bool>,
-    required_tools_validated: Option<bool>,
-) -> &'static str {
-    if required_tools_validated == Some(true) {
-        "passed"
-    } else if tools_list_observed == Some(true) {
-        "failed"
-    } else if preflight_passed {
-        "not completed"
-    } else {
-        "not run"
-    }
-}
-
-fn mcp_safe_tool_result(
-    preflight_passed: bool,
-    safe_tool_completed: Option<bool>,
-    failure_stage: Option<&str>,
-) -> &'static str {
-    if safe_tool_completed == Some(true) {
-        "passed"
-    } else if failure_stage == Some("safe_tool_call") {
-        "failed"
-    } else if preflight_passed {
-        "not completed"
-    } else {
-        "not run"
-    }
-}
-
-fn mcp_shutdown_result(
-    preflight_passed: bool,
-    shutdown_completed: Option<bool>,
-    failure_stage: Option<&str>,
-) -> &'static str {
-    if shutdown_completed == Some(true) {
-        "passed"
-    } else if failure_stage == Some("shutdown") {
-        "failed"
-    } else if preflight_passed {
-        "not completed"
-    } else {
-        "not run"
     }
 }
 
@@ -1748,7 +1677,8 @@ mod tests {
     use serde_json::json;
     use volicord_types::{
         ActivationStep, ActivationStepId, ConnectionCheckDetails, ConnectionStatus,
-        IntegrationActivationPlan, IntegrationActivationState, UtcTimestamp,
+        IntegrationActivationPlan, IntegrationActivationState, McpEvidenceCheckStatus,
+        UtcTimestamp,
     };
 
     use super::*;
@@ -1756,7 +1686,10 @@ mod tests {
         mcp_process::McpVerification,
         output::{cooperative_assurance_limits, CommandConnection, CommandOperation},
         planning::{PlannedChangeOperation, PlannedConnectionChange},
-        verification::{mcp_server_check, VerificationStep},
+        verification::{
+            active_verification_evidence, mcp_server_check, McpStoreWriteabilityEvidence,
+            VerificationStep,
+        },
         McpExchangeOutcome, McpExchangeProgress, McpProcessFailure, McpStage,
     };
 
@@ -2191,16 +2124,13 @@ mod tests {
                 "    Volicord MCP server self-test failed\n",
                 "    Code: mcp_server_tools_list_failed\n",
                 "    Depends on: managed_config\n",
-                "    Preflight: passed\n",
-                "    Storage: read passed, write passed\n",
-                "    Effective mode: workflow\n",
-                "    Initialize: passed\n",
-                "    Required tools: failed\n",
-                "    Tools returned: 0\n",
-                "    Designated read-only tool: volicord.list_projects (not completed)\n",
-                "    Shutdown: not completed\n",
-                "    Self-test diagnostic code: mcp.tools.required_missing\n",
-                "    Self-test finding: finding.tools.required_missing\n\n",
+                "    Preflight status: passed\n",
+                "    Preflight writeability: not_checked (requires connection_verify)\n",
+                "    Active verification observed at: 2026-07-20T00:00:00Z\n",
+                "    Active verification source: connection_verify\n",
+                "    Registry writeability: passed\n",
+                "    Revision diagnostic code: mcp.tools.required_missing\n",
+                "    Revision finding: finding.tools.required_missing\n\n",
                 "Required next steps\n",
                 "  action.mcp.repair_server\n",
                 "    Repair the MCP server and verify again\n",
@@ -2319,34 +2249,59 @@ mod tests {
     }
 
     fn mcp_details(status: &str, diagnostic: &str, tools: Vec<String>) -> Value {
+        let requested_revision = "2025-11-25";
         let mut details = json!({
             "preflight": {
                 "status": "passed",
                 "code": "mcp_server_preflight_passed",
                 "diagnostic": "volicord mcp preflight passed",
-                "storage": {
-                    "storage_read": "passed",
-                    "storage_write": "passed",
-                    "effective_tool_mode": "workflow",
-                },
+                "evidence": {
+                    "configuration": "passed",
+                    "registry_read": "passed",
+                    "project_reads": [],
+                    "schema_validation": "passed",
+                    "protocol_profiles": "passed",
+                    "host_contracts": "passed",
+                    "writeability": {
+                        "status": "not_checked",
+                        "requires": "connection_verify",
+                    },
+                    "side_effects": [],
+                }
             },
-            "self_test": {
-                "status": status,
-                "code": if status == "passed" { "mcp_server_ready" } else { "mcp_server_tools_list_failed" },
-                "diagnostic": diagnostic,
-                "initialize": true,
-                "tools_list_observed": true,
-                "tools_list": tools,
-                "required_tools_validated": status == "passed",
-                "safe_read_only_tool": managed_host_round_trip_tool().wire_name(),
-                "safe_read_only_tool_completed": status == "passed",
-                "shutdown_completed": status == "passed",
+            "last_active_verification": {
+                "registry_write": "passed",
+                "project_writes": [],
+                "protocol_conformance": [{
+                    "revision": requested_revision,
+                    "status": status,
+                    "requested_revision": requested_revision,
+                    "negotiated_revision": requested_revision,
+                    "initialize": true,
+                    "initialized_notification": true,
+                    "schema_validation": true,
+                    "tools_list_observed": true,
+                    "tools_returned": tools.len(),
+                    "required_tools_validated": status == "passed",
+                    "safe_read_only_tool": managed_host_round_trip_tool().wire_name(),
+                    "safe_read_only_tool_completed": status == "passed",
+                    "shutdown_completed": status == "passed",
+                }],
+                "host_compatibility": [],
+                "observed_at": "2026-07-20T00:00:00Z",
+                "source": "connection_verify",
+                "side_effects": [
+                    "rollback_only_registry_write_probe",
+                    "disposable_protocol_conformance",
+                ],
             },
         });
         if status != "passed" {
-            details["self_test"]["diagnostic_code"] = json!("mcp.tools.required_missing");
-            details["self_test"]["failure_stage"] = json!("tools_list");
-            details["self_test"]["finding_id"] = json!("finding.tools.required_missing");
+            let probe = &mut details["last_active_verification"]["protocol_conformance"][0];
+            probe["diagnostic_code"] = json!("mcp.tools.required_missing");
+            probe["failure_stage"] = json!("tools_list");
+            probe["finding_id"] = json!("finding.tools.required_missing");
+            probe["diagnostic"] = json!(diagnostic);
         }
         details
     }
@@ -2359,9 +2314,19 @@ mod tests {
             Some(failure) => McpExchangeOutcome::failed(progress, failure),
             None => McpExchangeOutcome::completed(progress),
         };
+        let handshake = McpVerification::from_exchange(exchange);
+        let active = active_verification_evidence(
+            &McpStoreWriteabilityEvidence {
+                registry_write: McpEvidenceCheckStatus::Passed,
+                project_writes: Vec::new(),
+                failure: None,
+            },
+            &handshake,
+            UtcTimestamp::parse("2026-07-20T00:00:00Z").expect("timestamp"),
+        );
         let check = mcp_server_check(
             &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
-            &McpVerification::from_exchange(exchange),
+            &handshake.with_active_evidence(active),
         )
         .expect("MCP server check");
         let status = match check.status() {
@@ -2393,9 +2358,11 @@ mod tests {
                 "startup failed",
             )),
         );
-        assert!(before_initialize.contains("    Initialize: failed\n"));
-        assert!(before_initialize.contains("    Required tools: not completed\n"));
-        assert!(!before_initialize.contains("    Tools returned:"));
+        assert!(before_initialize.contains("    Revision 2025-11-25 initialize: failed\n"));
+        assert!(
+            before_initialize.contains("    Revision 2025-11-25 required tools: not completed\n")
+        );
+        assert!(!before_initialize.contains("    Revision 2025-11-25 tools returned:"));
 
         let tools_list_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(true, None, false, false, false),
@@ -2404,9 +2371,11 @@ mod tests {
                 "tools/list failed",
             )),
         );
-        assert!(tools_list_failed.contains("    Initialize: passed\n"));
-        assert!(tools_list_failed.contains("    Required tools: not completed\n"));
-        assert!(!tools_list_failed.contains("    Tools returned:"));
+        assert!(tools_list_failed.contains("    Revision 2025-11-25 initialize: passed\n"));
+        assert!(
+            tools_list_failed.contains("    Revision 2025-11-25 required tools: not completed\n")
+        );
+        assert!(!tools_list_failed.contains("    Revision 2025-11-25 tools returned:"));
 
         let required_tools_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
@@ -2421,8 +2390,8 @@ mod tests {
                 "required tools failed",
             )),
         );
-        assert!(required_tools_failed.contains("    Required tools: failed\n"));
-        assert!(required_tools_failed.contains("    Tools returned: 2\n"));
+        assert!(required_tools_failed.contains("    Revision 2025-11-25 required tools: failed\n"));
+        assert!(required_tools_failed.contains("    Revision 2025-11-25 tools returned: 2\n"));
 
         let safe_call_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
@@ -2437,11 +2406,12 @@ mod tests {
                 "designated read-only tool call failed",
             )),
         );
-        assert!(safe_call_failed.contains("    Required tools: passed\n"));
-        assert!(safe_call_failed.contains("    Tools returned: 1\n"));
-        assert!(safe_call_failed
-            .contains("    Designated read-only tool: volicord.list_projects (failed)\n"));
-        assert!(safe_call_failed.contains("    Shutdown: not completed\n"));
+        assert!(safe_call_failed.contains("    Revision 2025-11-25 required tools: passed\n"));
+        assert!(safe_call_failed.contains("    Revision 2025-11-25 tools returned: 1\n"));
+        assert!(safe_call_failed.contains(
+            "    Revision 2025-11-25 designated read-only tool: volicord.list_projects (failed)\n"
+        ));
+        assert!(safe_call_failed.contains("    Revision 2025-11-25 shutdown: not completed\n"));
 
         let shutdown_failed = rendered_mcp_progress(
             McpExchangeProgress::observed(
@@ -2456,17 +2426,19 @@ mod tests {
                 "shutdown failed",
             )),
         );
-        assert!(shutdown_failed.contains("    Designated read-only tool: volicord.list_projects\n"));
-        assert!(shutdown_failed.contains("    Shutdown: failed\n"));
+        assert!(shutdown_failed.contains(
+            "    Revision 2025-11-25 designated read-only tool: volicord.list_projects\n"
+        ));
+        assert!(shutdown_failed.contains("    Revision 2025-11-25 shutdown: failed\n"));
 
         let completed = rendered_mcp_progress(
             McpExchangeProgress::observed(true, Some(Vec::new()), true, true, true),
             None,
         );
-        assert!(completed.contains("    Initialize: passed\n"));
-        assert!(completed.contains("    Required tools: passed\n"));
-        assert!(completed.contains("    Tools returned: 0\n"));
-        assert!(completed.contains("    Shutdown: passed\n"));
+        assert!(completed.contains("    Revision 2025-11-25 initialize: passed\n"));
+        assert!(completed.contains("    Revision 2025-11-25 required tools: passed\n"));
+        assert!(completed.contains("    Revision 2025-11-25 tools returned: 0\n"));
+        assert!(completed.contains("    Revision 2025-11-25 shutdown: passed\n"));
     }
 
     #[test]
@@ -2494,20 +2466,19 @@ mod tests {
         let output = rendered(&mcp);
         let machine = serde_json::to_value(mcp.diagnostic_report().unwrap()).unwrap();
         assert_eq!(
-            machine["checks"][0]["details"]["self_test"]["tools_list"]
-                .as_array()
-                .map(Vec::len),
-            Some(13)
+            machine["checks"][0]["details"]["last_active_verification"]["protocol_conformance"][0]
+                ["tools_returned"],
+            13
         );
         for expected in [
-            "    Preflight: passed\n",
-            "    Storage: read passed, write passed\n",
-            "    Effective mode: workflow\n",
-            "    Initialize: passed\n",
-            "    Required tools: passed\n",
-            "    Tools returned: 13\n",
+            "    Preflight status: passed\n",
+            "    Preflight writeability: not_checked (requires connection_verify)\n",
+            "    Active verification observed at: 2026-07-20T00:00:00Z\n",
+            "    Active verification source: connection_verify\n",
+            "    Registry writeability: passed\n",
+            "    Active verification side effects: rollback_only_registry_write_probe, disposable_protocol_conformance\n",
+            "    Revision 2025-11-25: passed; negotiated 2025-11-25; 13 tools; graceful shutdown\n",
             "    Designated read-only tool: volicord.list_projects\n",
-            "    Shutdown: passed\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}");
         }
@@ -2520,15 +2491,14 @@ mod tests {
             "MCP protocol failed during initialize",
             Vec::new(),
         );
-        protocol_details["self_test"]["initialize"] = json!(false);
-        protocol_details["self_test"]["tools_list_observed"] = json!(false);
-        protocol_details["self_test"]
-            .as_object_mut()
-            .expect("self-test details")
-            .remove("tools_list");
-        protocol_details["self_test"]["diagnostic_code"] = json!("mcp.json_rpc.error_response");
-        protocol_details["self_test"]["failure_stage"] = json!("initialize");
-        protocol_details["self_test"]["finding_id"] = json!("finding.protocol_failure");
+        let protocol_probe =
+            &mut protocol_details["last_active_verification"]["protocol_conformance"][0];
+        protocol_probe["initialize"] = json!(false);
+        protocol_probe["tools_list_observed"] = json!(false);
+        protocol_probe["tools_returned"] = Value::Null;
+        protocol_probe["diagnostic_code"] = json!("mcp.json_rpc.error_response");
+        protocol_probe["failure_stage"] = json!("initialize");
+        protocol_probe["finding_id"] = json!("finding.protocol_failure");
         let protocol_failure = report(
             CommandOperation::Verify,
             false,
@@ -2550,16 +2520,19 @@ mod tests {
         let protocol_machine =
             serde_json::to_value(protocol_failure.diagnostic_report().unwrap()).unwrap();
         assert_eq!(
-            protocol_machine["checks"][0]["details"]["self_test"]["diagnostic_code"],
+            protocol_machine["checks"][0]["details"]["last_active_verification"]
+                ["protocol_conformance"][0]["diagnostic_code"],
             "mcp.json_rpc.error_response"
         );
         assert_eq!(
-            protocol_machine["checks"][0]["details"]["self_test"]["failure_stage"],
+            protocol_machine["checks"][0]["details"]["last_active_verification"]
+                ["protocol_conformance"][0]["failure_stage"],
             "initialize"
         );
-        assert!(protocol_output
-            .contains("    Self-test diagnostic code: mcp.json_rpc.error_response\n"));
-        assert!(protocol_output.contains("    Self-test finding: finding.protocol_failure\n"));
+        assert!(
+            protocol_output.contains("    Revision diagnostic code: mcp.json_rpc.error_response\n")
+        );
+        assert!(protocol_output.contains("    Revision finding: finding.protocol_failure\n"));
         assert!(!protocol_output.contains("Phase:"));
 
         let guards = report(
@@ -3241,8 +3214,8 @@ mod tests {
             "Volicord MCP server self-test passed",
             vec!["private.tool".to_owned()],
         );
-        details["preflight"]["storage"]["future_storage"] = json!({"replica": "ready"});
-        details["self_test"]["future_self_test"] = json!({"attempt": 2});
+        details["preflight"]["evidence"]["future_preflight"] = json!({"replica": "ready"});
+        details["last_active_verification"]["future_active"] = json!({"attempt": 2});
         details["future_top_level"] = json!("visible");
         let extended_report = report(
             CommandOperation::Verify,
@@ -3263,17 +3236,19 @@ mod tests {
         );
         let output = rendered(&extended_report);
         for expected in [
-            "    Storage: read passed, write passed\n",
-            "    Tools returned: 1\n",
+            "    Preflight writeability: not_checked (requires connection_verify)\n",
+            "    Revision 2025-11-25: passed; negotiated 2025-11-25; 1 tools; graceful shutdown\n",
             "    Additional details\n",
             "      Future top level: visible\n",
-            "      Preflight\n        Storage\n          Future storage\n            Replica: ready\n",
-            "      Self test\n        Future self test\n          Attempt: 2\n",
+            "      Last active verification\n        Future active\n          Attempt: 2\n",
+            "      Preflight\n        Evidence\n          Future preflight\n            Replica: ready\n",
         ] {
             assert!(output.contains(expected), "missing {expected:?}\n{output}");
         }
         assert_eq!(
-            output.matches("Storage: read passed, write passed").count(),
+            output
+                .matches("Preflight writeability: not_checked")
+                .count(),
             1
         );
         assert!(!output.contains("private.tool"));
@@ -3293,19 +3268,9 @@ mod tests {
                         "status": "failed",
                         "code": "mcp_server_preflight_failed",
                         "diagnostic": "storage unavailable",
-                        "storage": "not-an-object",
+                        "evidence": "not-an-object",
                     },
-                    "self_test": {
-                        "status": "failed",
-                        "code": "mcp_server_self_test_not_run",
-                        "diagnostic": "not run",
-                        "initialize": false,
-                        "tools_list_observed": false,
-                        "required_tools_validated": false,
-                        "safe_read_only_tool": "volicord.list_projects",
-                        "safe_read_only_tool_completed": false,
-                        "shutdown_completed": false,
-                    },
+                    "last_active_verification": null,
                 })),
                 None,
             )],
@@ -3313,8 +3278,9 @@ mod tests {
             None,
             None,
         );
-        assert!(rendered(&scalar_parent)
-            .contains("    Additional details\n      Preflight\n        Storage: not-an-object\n"));
+        assert!(rendered(&scalar_parent).contains(
+            "    Additional details\n      Preflight\n        Evidence: not-an-object\n"
+        ));
     }
 
     #[test]

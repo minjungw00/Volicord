@@ -98,7 +98,7 @@ fn main() {
                     .and_then(|pair| pair[1].to_str())
                     .expect("fixture preflight connection ID");
                 println!(
-                    "{{\"operation\":\"mcp_preflight\",\"status\":\"passed\",\"side_effects\":[],\"evidence_class\":\"read_only_preflight\",\"configuration\":\"valid\",\"canonical_managed_entry\":\"passed\",\"transport\":\"stdio\",\"connection_id\":\"{connection_id}\",\"mode\":\"workflow\",\"enabled\":true,\"registry_read\":\"passed\",\"project_state_read\":\"passed\",\"writeability\":{{\"status\":\"not_checked\",\"requirement\":\"requires_active_verification\"}},\"effective_tool_mode\":\"requires_active_verification\",\"tools_list_schema_validation\":\"passed\"}}"
+                    "{{\"operation\":\"mcp_preflight\",\"status\":\"passed\",\"side_effects\":[],\"evidence_class\":\"read_only_preflight\",\"configuration\":\"valid\",\"canonical_managed_entry\":\"passed\",\"transport\":\"stdio\",\"connection_id\":\"{connection_id}\",\"mode\":\"workflow\",\"enabled\":true,\"registry_read\":\"passed\",\"project_state_read\":\"passed\",\"writeability\":{{\"status\":\"not_checked\",\"requirement\":\"requires_active_verification\"}},\"effective_tool_mode\":\"requires_active_verification\",\"tools_list_schema_validation\":\"passed\",\"protocol_profiles\":[\"2025-11-25\"],\"host_contracts\":[{{\"profile\":\"codex\",\"digest\":\"sha256:fixture\"}}],\"projects\":[]}}"
                 );
                 return;
             }
@@ -209,34 +209,51 @@ fn codex_2025_06_18_compatibility_records_managed_runtime_facts() -> Result<(), 
         .and_then(|check| check["details"].as_object())
         .ok_or("MCP server check should expose structured details")?;
     assert_eq!(
-        mcp_details["self_test"]["production_supported_revisions"],
-        json!([
+        mcp_details["preflight"]["evidence"]["writeability"],
+        json!({
+            "status": "not_checked",
+            "requires": "connection_verify"
+        })
+    );
+    assert_eq!(
+        mcp_details["preflight"]["evidence"]["side_effects"],
+        json!([])
+    );
+    assert!(mcp_details.get("self_test").is_none());
+    assert!(mcp_details["preflight"].get("storage").is_none());
+    let active = &mcp_details["last_active_verification"];
+    assert_eq!(
+        active["protocol_conformance"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|probe| probe["revision"].as_str())
+            .collect::<Vec<_>>(),
+        vec![
             "2024-10-07",
             "2024-11-05",
             "2025-03-26",
             "2025-06-18",
             "2025-11-25"
-        ])
+        ]
     );
     assert_eq!(
-        mcp_details["self_test"]["safe_read_only_tool"],
+        active["protocol_conformance"][0]["safe_read_only_tool"],
         managed_host_round_trip_tool().wire_name()
     );
-    assert!(mcp_details["self_test"]["conformance"]
+    assert!(active["protocol_conformance"]
         .as_array()
         .is_some_and(|probes| probes.len() == 5
             && probes.iter().all(|probe| {
                 probe["status"] == "passed"
                     && probe["requested_revision"] == probe["negotiated_revision"]
-                    && probe["pinned_schema_validated"] == true
+                    && probe["schema_validation"] == true
                     && probe["safe_read_only_tool_completed"] == true
                     && probe["shutdown_completed"] == true
             })));
-    assert_eq!(
-        mcp_details["self_test"]["host_compatibility_profiles"],
-        json!(["codex"])
-    );
-    let codex_probe = &mcp_details["self_test"]["host_compatibility"][0];
+    assert_eq!(active["source"], "connection_verify");
+    assert!(active["observed_at"].as_str().is_some());
+    let codex_probe = &active["host_compatibility"][0];
     assert_eq!(codex_probe["profile"], "codex");
     assert_eq!(
         codex_probe["requested_revision"],
@@ -1265,7 +1282,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     for check in complete_report["checks"].as_array().expect("checks") {
         assert!(verbose.contains(check["summary"].as_str().expect("check summary")));
     }
-    assert!(verbose.contains("    Tools returned:"));
+    assert!(verbose.contains(" tools returned:"));
     assert!(verbose.contains("    Expected verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Observed verification tool: volicord.list_projects"));
     assert!(verbose.contains("    Verification tool observed at:"));
@@ -1485,15 +1502,15 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
         "failed",
         Some("mcp_server_initialize_failed"),
     );
-    let self_test = report["checks"]
+    let active_probe = report["checks"]
         .as_array()
         .and_then(|checks| checks.iter().find(|check| check["id"] == "mcp_server"))
-        .and_then(|check| check.pointer("/details/self_test"))
+        .and_then(|check| check.pointer("/details/last_active_verification/protocol_conformance/0"))
         .ok_or("MCP early-exit diagnostic projection should be present")?;
-    assert_eq!(self_test["diagnostic_code"], "process.child.exited");
-    assert_eq!(self_test["failure_stage"], "initialize");
+    assert_eq!(active_probe["diagnostic_code"], "process.child.exited");
+    assert_eq!(active_probe["failure_stage"], "initialize");
     let finding_id = DiagnosticFindingId::parse(
-        self_test["finding_id"]
+        active_probe["finding_id"]
             .as_str()
             .ok_or("MCP early-exit finding ID")?,
     )?;

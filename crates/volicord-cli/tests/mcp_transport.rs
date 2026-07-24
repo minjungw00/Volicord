@@ -49,8 +49,11 @@ fn mcp_preflight_succeeds_with_read_only_registry_and_project_databases(
         .expect("fixture project");
     let registry = registry_db_path(fixture.runtime_home_path());
     let before = fixture.registry_observation_counts()?;
+    let before_rows = fixture.store_row_counts()?;
     fs::set_permissions(&registry, fs::Permissions::from_mode(0o444))?;
     fs::set_permissions(&project.state_db_path, fs::Permissions::from_mode(0o444))?;
+    let registry_modified = fs::metadata(&registry)?.modified()?;
+    let project_modified = fs::metadata(&project.state_db_path)?.modified()?;
 
     let output = run_child(
         fixture.connection_command([
@@ -66,6 +69,12 @@ fn mcp_preflight_succeeds_with_read_only_registry_and_project_databases(
     assert_eq!(report["status"], "passed");
     assert_eq!(report["writeability"]["status"], "not_checked");
     assert_eq!(fixture.registry_observation_counts()?, before);
+    assert_eq!(fixture.store_row_counts()?, before_rows);
+    assert_eq!(fs::metadata(&registry)?.modified()?, registry_modified);
+    assert_eq!(
+        fs::metadata(&project.state_db_path)?.modified()?,
+        project_modified
+    );
     Ok(())
 }
 

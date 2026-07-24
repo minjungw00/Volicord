@@ -204,9 +204,10 @@ volicord connection verify codex --repo "<repo>" --json
 
 `root_cause_ids`와 같은 `findings[].id`를 찾은 뒤 해당 finding의 `code`, typed
 `facts.data`, `causes`, correlation, action을 확인합니다. 적용되는 경우 실패한 check에는
-`details.self_test.diagnostic_code`, `failure_stage`, `finding_id` 같은 stage별 detail도
-남습니다. 종료 code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을
-확인하거나 전달할 때 finding ID를 함께 보존합니다.
+`details.last_active_verification.protocol_conformance[]` 아래에
+`diagnostic_code`, `failure_stage`, `finding_id` 같은 stage별 detail도 남습니다. 종료
+code, timeout, 누락 도구, stderr 발췌와 같은 제한된 Registry 사실을 확인하거나 전달할
+때 finding ID를 함께 보존합니다.
 
 `connection.runtime_sessions`에서 `latest_managed_attempt`는 현재 managed-session health로,
 `latest_managed_capability_proof`는 initialize, `tools/list`, required-tool validation, 정규 verification

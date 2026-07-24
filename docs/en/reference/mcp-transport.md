@@ -47,7 +47,10 @@ contract without entering the stdio loop. It performs no writeability probe,
 creates no runtime session or finding, and succeeds against readable read-only
 SQLite databases and filesystems. Its JSON projection declares
 `side_effects: []`, evidence class `read_only_preflight`, and writeability
-`not_checked` with `requires_active_verification`.
+`not_checked` with `requires_active_verification`. Connection verification
+decodes that result into immutable `McpPreflightEvidence`; later active probes
+cannot replace any preflight field. The connection check projects active
+results only through the sibling `last_active_verification` member.
 
 ## Environment And Startup
 
@@ -245,6 +248,16 @@ shows that the reviewed request shape works against this server; it does not
 show that a managed Codex process ran. Only lifecycle observations from a
 runtime created by successful launch-lease consumption with source
 `managed_host` can satisfy managed-host operational checks.
+
+The active connection-verification evidence records each matrix result under
+`protocol_conformance` or `host_compatibility`, next to the separate Registry
+and project write-probe results. It carries its own `observed_at`,
+`source=connection_verify`, and closed side-effect list. No conformance process
+uses the selected live Runtime Home: every protocol and host fixture runs in
+the fresh disposable state above. Only the explicitly bounded SQLite
+writeability probes touch selected live databases, and those probes use a
+minimal immediate transaction whose probe table is created and dropped before
+an unconditional rollback.
 
 ## Semantic Codex Host Contracts
 

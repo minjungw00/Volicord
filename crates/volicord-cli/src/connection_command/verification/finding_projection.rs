@@ -17,19 +17,18 @@ pub(super) fn diagnostic_occurrence_for_runtime_code(
 pub(super) fn persist_process_diagnostics(
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
-    preflight: &mut VerificationStep,
-    handshake: &mut McpVerification,
-) -> Result<(), ConnectionCommandError> {
-    if let Some(failure) = preflight.failure.as_ref() {
-        preflight.diagnostic = Some(persist_process_finding(
-            runtime_home,
-            connection,
-            preflight.process_id,
-            failure,
-        )?);
-    }
+    preflight: VerificationStep,
+    mut handshake: McpVerification,
+) -> Result<(VerificationStep, McpVerification), ConnectionCommandError> {
+    let preflight = if let Some(failure) = preflight.failure.as_ref() {
+        let diagnostic =
+            persist_process_finding(runtime_home, connection, preflight.process_id, failure)?;
+        preflight.with_persisted_diagnostic(diagnostic)
+    } else {
+        preflight
+    };
     let Some(exchange) = handshake.exchange.as_mut() else {
-        return Ok(());
+        return Ok((preflight, handshake));
     };
     if !exchange.conformance.is_empty() || !exchange.host_compatibility.is_empty() {
         for probe in &mut exchange.conformance {
@@ -70,7 +69,7 @@ pub(super) fn persist_process_diagnostics(
             failure,
         )?);
     }
-    Ok(())
+    Ok((preflight, handshake))
 }
 
 pub(super) fn persist_process_finding(

@@ -449,6 +449,14 @@ check, 사용자 action을 독립적으로 저장하거나 변경할 수 없습�
 보고서가 없다는 뜻입니다. 읽기 경로는 Registry 저장소를 바꾸지 않고 그 부재를 Agent
 Connection 담당 문서의 합성 `verification_not_run` 보고서로 projection합니다.
 
+보고서의 `mcp_server` check 안에서 `preflight`와
+`last_active_verification`은 서로 같은 계층의 분리된 증거 record입니다.
+`preflight.evidence`는 생성 뒤 불변이고 쓰기 가능성을 항상 `not_checked`로 유지하며
+side-effect 배열은 항상 비어 있습니다. `last_active_verification`은 활성 증거가 없으면
+null이고, 있으면 마지막 활성 Registry/프로젝트 쓰기 결과, 일회용 conformance 결과,
+timestamp, source, side effect를 담습니다. Store는 결합된 preflight/write 결과를 받지
+않으며 어떤 decoder도 예전 결합 형태를 migration하지 않습니다.
+
 보고서 교체는 호출자가 준 fingerprint가 아니라 정확한 예상 typed Connection integration
 revision을 받습니다. Store는 immediate Registry transaction 하나에서 revision 소유자 field를
 읽고 검증하며 현재 revision을 비교한 뒤 `verification_report_json`과 일반 row 갱신

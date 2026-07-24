@@ -90,6 +90,11 @@ registry 직접 순회가 matrix를 정합니다.
   server-namespace/catalog-derived-exact routing, 현재 Guard probe pre/post fixture 전달, foreign-server
   제외, 생성 matcher와 catalog의 일치, 엄격한 matcher drift 거부, CLI conformance
   evidence와 실제 `managed_host` 관찰의 분리
+- 읽을 수 있는 read-only Registry 및 프로젝트 database의 불변 MCP preflight 증거,
+  선택 database의 변하지 않은 row count와 modification time, 항상 `not_checked`인 쓰기
+  가능성, `last_active_verification` 아래에만 저장되는 활성 쓰기 증거, 검증 뒤에도
+  변하지 않는 preflight 증거, 활성 timestamp/source, 일회용 conformance 상태,
+  concise/verbose/JSON 일치, 결합된 예전 증거 형태의 엄격한 거부
 - lifecycle별 진단 구성 및 Store API, 변경할 수 없는 occurrence 삽입, 완전한 current key
   digest와 영속 ID 검증, current snapshot identity 불변성, 해소와 재활성화,
   active/reportable filtering, 명시적 report seed와 한도가 있는 lifecycle-aware 정확한 cause

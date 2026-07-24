@@ -861,6 +861,15 @@ reconciliation, 검증 보고서 영속화입니다. 활성 검증도 관리 hos
 미래 시작의 지속적인 가용성, 확인한 계약 밖의 Product Repository 동작 정확성은
 입증하지 않습니다.
 
+`mcp_server` check는 불변 읽기 전용 증거를 `preflight` 아래에, 마지막 활성 증거를 같은
+계층의 `last_active_verification` 아래에 투영합니다. 활성 실행 전에는 후자가 null입니다.
+Preflight 쓰기 가능성은 항상 `not_checked`로 남으며 활성 Registry 및 프로젝트 쓰기 결과가
+이를 교체하지 않습니다. 활성 구성원이 없으면 사람용 출력은
+`Storage writeability: not checked`라고 표시합니다. 활성 구성원이 있으면 verbose와 JSON
+출력은 활성 증거의 별도 `observed_at`, `source=connection_verify`, 쓰기 결과, conformance
+결과, side effect를 표시합니다. 결합된 예전 결과나 schema-version/host-version 분기는
+없습니다.
+
 `volicord connection verify codex`는 `ambient_hook_coverage`와
 `correlated_guard_verification`을 분리해 보고합니다. Concise 출력은 결과 둘과 terminal
 attempt의 typed repair reason을 표시합니다. Verbose 출력은 한도가 있는 전체 attempt

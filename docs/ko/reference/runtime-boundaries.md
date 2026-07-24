@@ -166,8 +166,11 @@ Runtime Home finding은 `runtime_home.path.missing`,
 만들거나 write transaction을 열거나 runtime session을 시작하지 않고 정규 관리 구성,
 Registry, project 상태, protocol profile, 도구 schema, host contract를 읽습니다. 활성
 연결 검증은 별도 경계입니다. 선택한 store에 rollback 전용 쓰기 가능성 probe를 수행할 수
-있고, protocol conformance session은 명령 뒤 제거되는 일회용 Runtime Home과 Product
-Repository에만 만듭니다.
+있으며 이 최소 transaction은 항상 rollback합니다. 모든 protocol revision 및 host 호환성
+conformance process는 명령이 소유한 임시 directory 아래의 새로운 일회용 Runtime Home과
+Product Repository를 사용합니다. 실행 뒤 전체 fixture를 제거하며, conformance는 선택한
+실제 Runtime Home에 runtime session, finding, project record를 만들지 않습니다. 보고서
+영속과 diagnostic reconcile은 각각 담당자가 정한 선택 Runtime Home 효과를 유지합니다.
 
 ## 기준 MCP 프로세스
 

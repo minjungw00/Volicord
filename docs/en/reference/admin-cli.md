@@ -939,6 +939,16 @@ persistence. Active verification still does not prove that a managed host ran,
 that a future launch will remain available, or that Product Repository behavior
 outside the checked contracts is correct.
 
+The `mcp_server` check projects immutable read-only evidence under `preflight`
+and the latest active evidence under the sibling
+`last_active_verification`. The latter is null before an active run. Preflight
+writeability always remains `not_checked`; active Registry and project write
+results never replace it. Human output says `Storage writeability: not checked`
+when the active member is absent. When present, verbose and JSON output show
+the active evidence's separate `observed_at`, `source=connection_verify`,
+write results, conformance results, and side effects. There is no combined
+legacy result or schema-version/host-version branch.
+
 `volicord connection verify codex` reports `ambient_hook_coverage` separately
 from `correlated_guard_verification`. Concise output names both results and a
 typed repair reason for a terminal attempt. Verbose output shows the complete

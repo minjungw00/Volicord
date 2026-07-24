@@ -34,6 +34,9 @@ pub(super) fn render_command_report_concise(
         report.hook_activation_state.as_str(),
         counts.render(true)
     ));
+    if let Some(mcp) = render_mcp_verification_summary(&report.checks) {
+        sections.push(mcp);
+    }
     if let Some(guard) = render_guard_verification_summary(&report.checks) {
         sections.push(guard);
     }
@@ -63,6 +66,59 @@ pub(super) fn render_command_report_concise(
         sections.push(hint);
     }
     Ok(format!("{}\n", sections.join("\n\n")))
+}
+
+fn render_mcp_verification_summary(checks: &[ConnectionCheck]) -> Option<String> {
+    let details = checks
+        .iter()
+        .find(|check| check.id() == ConnectionCheckKind::McpServer)?
+        .details()?
+        .as_object();
+    if !details.contains_key("preflight") {
+        return None;
+    }
+    let Some(active) = details
+        .get("last_active_verification")
+        .and_then(Value::as_object)
+    else {
+        return Some("Storage writeability: not checked".to_owned());
+    };
+    let observed_at = active
+        .get("observed_at")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let source = active
+        .get("source")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let registry_write = active
+        .get("registry_write")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let project_writes = active
+        .get("project_writes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|project| {
+            Some(format!(
+                "{}={}",
+                project.get("project_id")?.as_str()?,
+                project.get("state_write")?.as_str()?
+            ))
+        })
+        .collect::<Vec<_>>();
+    let writeability = if project_writes.is_empty() {
+        registry_write.to_owned()
+    } else {
+        format!(
+            "Registry={registry_write}; projects {}",
+            project_writes.join(", ")
+        )
+    };
+    Some(format!(
+        "Active verification: {observed_at} ({source})\nStorage writeability: {writeability}"
+    ))
 }
 
 fn render_guard_verification_summary(checks: &[ConnectionCheck]) -> Option<String> {
@@ -1690,5 +1746,119 @@ mod tests {
         );
         let rendered = render_command_report(OutputFormat::Json, &report).unwrap();
         assert_eq!(rendered.output, expected);
+    }
+
+    #[test]
+    fn mcp_preflight_and_active_evidence_have_human_verbose_and_json_parity() {
+        let preflight = json!({
+            "status": "passed",
+            "code": "mcp_server_preflight_passed",
+            "diagnostic": "volicord mcp preflight passed",
+            "evidence": {
+                "configuration": "passed",
+                "registry_read": "passed",
+                "project_reads": [{
+                    "project_id": "project_1",
+                    "state_read": "passed"
+                }],
+                "schema_validation": "passed",
+                "protocol_profiles": "passed",
+                "host_contracts": "passed",
+                "writeability": {
+                    "status": "not_checked",
+                    "requires": "connection_verify"
+                },
+                "side_effects": []
+            }
+        });
+        let before = report(
+            CommandOperation::Verify,
+            None,
+            vec![check(
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckStatus::Passed,
+                "MCP preflight passed; active verification has not run",
+                Some(json!({
+                    "preflight": preflight.clone(),
+                    "last_active_verification": null
+                })),
+            )],
+            Vec::new(),
+        );
+        let before_human = concise(&before);
+        let before_verbose =
+            render_command_report(OutputFormat::Human(HumanOutputDetail::Verbose), &before)
+                .unwrap()
+                .output;
+        let before_json: Value = serde_json::from_str(
+            &render_command_report(OutputFormat::Json, &before)
+                .unwrap()
+                .output,
+        )
+        .unwrap();
+        assert!(before_human.contains("Storage writeability: not checked"));
+        assert!(before_verbose.contains("Storage writeability: not checked"));
+        let before_details = &before_json["checks"][0]["details"];
+        assert_eq!(before_details["preflight"], preflight);
+        assert_eq!(before_details["last_active_verification"], Value::Null);
+
+        let active = json!({
+            "registry_write": "passed",
+            "project_writes": [{
+                "project_id": "project_1",
+                "state_write": "passed"
+            }],
+            "protocol_conformance": [],
+            "host_compatibility": [],
+            "observed_at": "2026-07-25T01:02:03Z",
+            "source": "connection_verify",
+            "side_effects": [
+                "rollback_only_registry_write_probe",
+                "rollback_only_project_write_probe"
+            ]
+        });
+        let after = report(
+            CommandOperation::Verify,
+            None,
+            vec![check(
+                ConnectionCheckKind::McpServer,
+                ConnectionCheckStatus::Passed,
+                "MCP active verification passed",
+                Some(json!({
+                    "preflight": preflight.clone(),
+                    "last_active_verification": active.clone()
+                })),
+            )],
+            Vec::new(),
+        );
+        let after_human = concise(&after);
+        let after_verbose =
+            render_command_report(OutputFormat::Human(HumanOutputDetail::Verbose), &after)
+                .unwrap()
+                .output;
+        let after_json: Value = serde_json::from_str(
+            &render_command_report(OutputFormat::Json, &after)
+                .unwrap()
+                .output,
+        )
+        .unwrap();
+        assert!(
+            after_human.contains("Active verification: 2026-07-25T01:02:03Z (connection_verify)")
+        );
+        assert!(after_human
+            .contains("Storage writeability: Registry=passed; projects project_1=passed"));
+        assert!(after_verbose.contains("Active verification observed at: 2026-07-25T01:02:03Z"));
+        assert!(after_verbose.contains("Active verification source: connection_verify"));
+        assert!(after_verbose.contains("Registry writeability: passed"));
+        assert!(after_verbose.contains("Project project_1 writeability: passed"));
+        let after_details = &after_json["checks"][0]["details"];
+        assert_eq!(after_details["preflight"], preflight);
+        assert_eq!(after_details["last_active_verification"], active);
+        assert!(after_details.get("self_test").is_none());
+        assert!(after_details["preflight"].get("storage").is_none());
+        assert_eq!(
+            after_details["preflight"]["evidence"]["writeability"]["status"],
+            "not_checked"
+        );
     }
 }

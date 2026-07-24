@@ -346,6 +346,14 @@ conformance creates `manual_cli` sessions and possible findings only in a fresh
 disposable per-command Runtime Home; disposal removes that fixture. It creates
 no conformance session or finding in the selected user Runtime Home.
 
+These active write results are stored only in
+`last_active_verification.registry_write` and
+`last_active_verification.project_writes` in the replacement report. They do
+not update `preflight.evidence.writeability`, whose only state is
+`not_checked`, and they do not add a side effect to preflight. The active
+evidence records rollback-only Registry and project probes and disposable
+conformance through its own closed side-effect values.
+
 `volicord mcp preflight` opens the selected Registry and project databases
 read-only. It does not probe writeability, create or update a runtime session,
 persist a finding, reconcile diagnostics, or write either the Runtime Home or

@@ -2,13 +2,12 @@ use std::{process::Command, time::Duration};
 
 use serde_json::Value;
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
+use volicord_types::{McpEvidenceCheckStatus, McpPreflightEvidence, McpProjectReadEvidence};
 
 use super::{
     failure::{McpProcessFailure, McpStage},
     supervisor::{ChildSupervisor, SupervisorKind, MAX_PREFLIGHT_STDOUT_BYTES},
 };
-use crate::connection_command::verification::McpPreflightDiagnostics;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionProcessOutput {
     pub process_id: u32,
@@ -58,7 +57,7 @@ pub(super) fn validate_connection_preflight_report(
     stdout: &str,
     connection_id: &str,
     mode: &str,
-) -> Result<Option<McpPreflightDiagnostics>, String> {
+) -> Result<McpPreflightEvidence, String> {
     let report: Value =
         serde_json::from_str(stdout).map_err(|error| format!("invalid preflight JSON: {error}"))?;
     expect_report_string(&report, "operation", "mcp_preflight")?;
@@ -94,7 +93,65 @@ pub(super) fn validate_connection_preflight_report(
         "requires_active_verification",
     )?;
     expect_report_string(&report, "tools_list_schema_validation", "passed")?;
-    Ok(McpPreflightDiagnostics::from_preflight_report(&report))
+    let projects = report
+        .get("projects")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "preflight field projects was missing or invalid".to_owned())?;
+    let project_reads = projects
+        .iter()
+        .map(|project| {
+            let project_id = project
+                .get("project_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    "preflight project field project_id was missing or invalid".to_owned()
+                })?;
+            let state_read = project
+                .get("state_read")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    "preflight project field state_read was missing or invalid".to_owned()
+                })?;
+            Ok(McpProjectReadEvidence::new(
+                project_id,
+                evidence_status("projects[].state_read", state_read)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let protocol_profiles = report
+        .get("protocol_profiles")
+        .and_then(Value::as_array)
+        .filter(|values| !values.is_empty())
+        .ok_or_else(|| "preflight field protocol_profiles was missing or empty".to_owned())?;
+    if protocol_profiles.iter().any(|value| !value.is_string()) {
+        return Err("preflight field protocol_profiles contained an invalid value".to_owned());
+    }
+    let host_contracts = report
+        .get("host_contracts")
+        .and_then(Value::as_array)
+        .filter(|values| !values.is_empty())
+        .ok_or_else(|| "preflight field host_contracts was missing or empty".to_owned())?;
+    if host_contracts.iter().any(|value| !value.is_object()) {
+        return Err("preflight field host_contracts contained an invalid value".to_owned());
+    }
+    Ok(McpPreflightEvidence::new(
+        McpEvidenceCheckStatus::Passed,
+        McpEvidenceCheckStatus::Passed,
+        project_reads,
+        McpEvidenceCheckStatus::Passed,
+        McpEvidenceCheckStatus::Passed,
+        McpEvidenceCheckStatus::Passed,
+    ))
+}
+
+fn evidence_status(field: &str, value: &str) -> Result<McpEvidenceCheckStatus, String> {
+    match value {
+        "passed" => Ok(McpEvidenceCheckStatus::Passed),
+        "failed" => Ok(McpEvidenceCheckStatus::Failed),
+        other => Err(format!(
+            "preflight field {field} was {other}, expected passed or failed"
+        )),
+    }
 }
 
 fn expect_report_string(report: &Value, key: &str, expected: &str) -> Result<(), String> {
@@ -134,7 +191,7 @@ mod tests {
 
     #[test]
     fn preflight_requires_current_storage_and_tool_schema_checks() {
-        let report = r#"{"operation":"mcp_preflight","status":"passed","side_effects":[],"evidence_class":"read_only_preflight","configuration":"valid","canonical_managed_entry":"passed","transport":"stdio","connection_id":"connection_fixture","mode":"workflow","enabled":true,"registry_read":"passed","project_state_read":"passed","writeability":{"status":"not_checked","requirement":"requires_active_verification"},"effective_tool_mode":"requires_active_verification","tools_list_schema_validation":"passed"}"#;
+        let report = r#"{"operation":"mcp_preflight","status":"passed","side_effects":[],"evidence_class":"read_only_preflight","configuration":"valid","canonical_managed_entry":"passed","transport":"stdio","connection_id":"connection_fixture","mode":"workflow","enabled":true,"registry_read":"passed","project_state_read":"passed","writeability":{"status":"not_checked","requirement":"requires_active_verification"},"effective_tool_mode":"requires_active_verification","tools_list_schema_validation":"passed","protocol_profiles":["2025-11-25"],"host_contracts":[{"profile":"codex","digest":"sha256:fixture"}],"projects":[{"project_id":"project_fixture","state_read":"passed"}]}"#;
         assert!(validate_connection_preflight_report(
             report,
             "connection_fixture",

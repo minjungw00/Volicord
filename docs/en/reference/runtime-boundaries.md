@@ -186,9 +186,13 @@ it reads the canonical managed configuration, Registry, project state,
 protocol profiles, tool schemas, and host contracts without creating files,
 opening a write transaction, or starting a runtime session. Active connection
 verification is a different boundary. It may perform rollback-only
-writeability probes in the selected stores and creates its protocol-conformance
-sessions only in a disposable Runtime Home and Product Repository removed
-after the command.
+writeability probes in the selected stores; those minimal transactions always
+roll back. Every protocol-revision and host-compatibility conformance process
+uses a fresh disposable Runtime Home and Product Repository under the
+command-owned temporary directory. The complete fixture is removed after the
+run, and conformance creates no runtime session, finding, or project record in
+the selected live Runtime Home. Report persistence and diagnostic
+reconciliation retain their separately owned selected-Runtime-Home effects.
 
 ## Baseline MCP Process
 

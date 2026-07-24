@@ -101,6 +101,12 @@ Durable tests should cover, as applicable:
   exclusion; generated matcher/catalog parity; strict matcher-drift rejection;
   and CLI conformance evidence kept separate from actual `managed_host`
   observations;
+- immutable MCP preflight evidence on readable read-only Registry and project
+  databases, unchanged selected-database row counts and modification times,
+  writeability always `not_checked`, active write evidence stored only under
+  `last_active_verification`, unchanged preflight evidence after verification,
+  active timestamp/source, disposable conformance state, concise/verbose/JSON
+  parity, and strict rejection of a combined legacy evidence shape;
 - lifecycle-specific diagnostic construction and Store APIs, immutable
   occurrence insertion, complete-current-key digest and persisted-ID
   validation, current snapshot identity immutability, resolution and

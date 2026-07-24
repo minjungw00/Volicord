@@ -22,12 +22,17 @@ fn active_verification_writeability_probe_is_bounded_and_detects_read_only_proje
     )
     .expect("connection lookup")
     .expect("connection");
-    verify_selected_store_writeability(
+    let writable = verify_selected_store_writeability(
         fixture.runtime_home_path(),
         &connection,
         Some(fixture.project_id()),
-    )
-    .expect("writable stores");
+    );
+    assert!(writable.failure.is_none());
+    assert_eq!(writable.registry_write, McpEvidenceCheckStatus::Passed);
+    assert_eq!(
+        writable.project_writes[0].state_write(),
+        McpEvidenceCheckStatus::Passed
+    );
     let project = volicord_store::bootstrap::project_record_read_only(
         fixture.runtime_home_path(),
         fixture.project_id(),
@@ -39,13 +44,19 @@ fn active_verification_writeability_probe_is_bounded_and_detects_read_only_proje
         std::fs::Permissions::from_mode(0o444),
     )
     .expect("read-only project database");
-    let error = verify_selected_store_writeability(
+    let read_only = verify_selected_store_writeability(
         fixture.runtime_home_path(),
         &connection,
         Some(fixture.project_id()),
-    )
-    .expect_err("active probe must detect read-only project storage");
-    assert!(error.contains("writeability probe reported read-only storage"));
+    );
+    assert!(read_only
+        .failure
+        .as_deref()
+        .is_some_and(|error| error.contains("writeability probe reported read-only storage")));
+    assert_eq!(
+        read_only.project_writes[0].state_write(),
+        McpEvidenceCheckStatus::Failed
+    );
 
     let registry = rusqlite::Connection::open_with_flags(
         volicord_store::sqlite::registry_db_path(fixture.runtime_home_path()),
@@ -764,7 +775,7 @@ fn tool_discovery_failure_blocks_the_tool_call() {
 }
 
 #[test]
-fn successful_cli_self_test_without_host_observation_is_action_required() {
+fn successful_cli_active_verification_without_host_observation_is_action_required() {
     let host = host("unlisted-future-version");
     let mut checks = vec![
         managed_config_check(&host).expect("managed config check"),
@@ -1004,9 +1015,8 @@ fn aggregation_and_activation_plans_are_deterministic() {
 
 #[test]
 fn mcp_server_details_use_the_canonical_verification_role() {
-    let check = mcp_server_check(
-        &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
-        &McpVerification::from_exchange(crate::connection_command::McpExchangeOutcome::completed(
+    let handshake =
+        McpVerification::from_exchange(crate::connection_command::McpExchangeOutcome::completed(
             crate::connection_command::McpExchangeProgress::observed(
                 true,
                 Some(vec![AgentToolId::LIST_PROJECTS.wire_name().to_owned()]),
@@ -1014,18 +1024,38 @@ fn mcp_server_details_use_the_canonical_verification_role() {
                 true,
                 true,
             ),
-        )),
+        ));
+    let active = active_verification_evidence(
+        &McpStoreWriteabilityEvidence {
+            registry_write: McpEvidenceCheckStatus::Passed,
+            project_writes: Vec::new(),
+            failure: None,
+        },
+        &handshake,
+        UtcTimestamp::parse("2026-07-25T01:02:03Z").expect("timestamp"),
+    );
+    let check = mcp_server_check(
+        &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
+        &handshake.with_active_evidence(active),
     )
     .expect("MCP server check");
     let details = check.details().expect("MCP details").as_object();
 
     assert_eq!(
-        details["self_test"]["safe_read_only_tool"],
+        details["last_active_verification"]["protocol_conformance"][0]["safe_read_only_tool"],
         crate::connection_command::managed_host_round_trip_tool().wire_name()
+    );
+    assert_eq!(
+        details["last_active_verification"]["source"],
+        "connection_verify"
+    );
+    assert_eq!(
+        details["last_active_verification"]["observed_at"],
+        "2026-07-25T01:02:03Z"
     );
 }
 
-fn projected_self_test(
+fn projected_active_probe(
     progress: crate::connection_command::McpExchangeProgress,
     failure: Option<McpProcessFailure>,
 ) -> Value {
@@ -1033,17 +1063,29 @@ fn projected_self_test(
         Some(failure) => crate::connection_command::McpExchangeOutcome::failed(progress, failure),
         None => crate::connection_command::McpExchangeOutcome::completed(progress),
     };
+    let handshake = McpVerification::from_exchange(exchange);
+    let active = active_verification_evidence(
+        &McpStoreWriteabilityEvidence {
+            registry_write: McpEvidenceCheckStatus::Passed,
+            project_writes: Vec::new(),
+            failure: None,
+        },
+        &handshake,
+        UtcTimestamp::parse("2026-07-25T01:02:03Z").expect("timestamp"),
+    );
     let check = mcp_server_check(
         &VerificationStep::passed_with_code("mcp_preflight_ready", "ready"),
-        &McpVerification::from_exchange(exchange),
+        &handshake.with_active_evidence(active),
     )
     .expect("MCP server check");
-    check.details().expect("MCP details").as_object()["self_test"].clone()
+    check.details().expect("MCP details").as_object()["last_active_verification"]
+        ["protocol_conformance"][0]
+        .clone()
 }
 
 #[test]
-fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage() {
-    let not_started = projected_self_test(
+fn active_evidence_projects_explicit_exchange_progress_for_every_terminal_stage() {
+    let not_started = projected_active_probe(
         crate::connection_command::McpExchangeProgress::not_started(),
         Some(McpProcessFailure::protocol(
             crate::connection_command::McpStage::Startup,
@@ -1052,9 +1094,9 @@ fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage()
     );
     assert_eq!(not_started["initialize"], false);
     assert_eq!(not_started["tools_list_observed"], false);
-    assert!(not_started.get("tools_list").is_none());
+    assert_eq!(not_started["tools_returned"], Value::Null);
 
-    let tools_list_failed = projected_self_test(
+    let tools_list_failed = projected_active_probe(
         crate::connection_command::McpExchangeProgress::observed(true, None, false, false, false),
         Some(McpProcessFailure::protocol(
             crate::connection_command::McpStage::ToolsList,
@@ -1063,10 +1105,10 @@ fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage()
     );
     assert_eq!(tools_list_failed["initialize"], true);
     assert_eq!(tools_list_failed["tools_list_observed"], false);
-    assert!(tools_list_failed.get("tools_list").is_none());
+    assert_eq!(tools_list_failed["tools_returned"], Value::Null);
 
     let observed_tools = vec!["fixture.alpha".to_owned(), "fixture.beta".to_owned()];
-    let required_tools_failed = projected_self_test(
+    let required_tools_failed = projected_active_probe(
         crate::connection_command::McpExchangeProgress::observed(
             true,
             Some(observed_tools.clone()),
@@ -1079,11 +1121,14 @@ fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage()
             "required tools failed",
         )),
     );
-    assert_eq!(required_tools_failed["tools_list"], json!(observed_tools));
+    assert_eq!(
+        required_tools_failed["tools_returned"],
+        observed_tools.len()
+    );
     assert_eq!(required_tools_failed["tools_list_observed"], true);
     assert_eq!(required_tools_failed["required_tools_validated"], false);
 
-    let safe_call_failed = projected_self_test(
+    let safe_call_failed = projected_active_probe(
         crate::connection_command::McpExchangeProgress::observed(
             true,
             Some(vec![AgentToolId::LIST_PROJECTS.wire_name().to_owned()]),
@@ -1097,14 +1142,11 @@ fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage()
         )),
     );
     assert_eq!(safe_call_failed["tools_list_observed"], true);
-    assert_eq!(
-        safe_call_failed["tools_list"],
-        json!([AgentToolId::LIST_PROJECTS.wire_name()])
-    );
+    assert_eq!(safe_call_failed["tools_returned"], 1);
     assert_eq!(safe_call_failed["required_tools_validated"], true);
     assert_eq!(safe_call_failed["safe_read_only_tool_completed"], false);
 
-    let shutdown_failed = projected_self_test(
+    let shutdown_failed = projected_active_probe(
         crate::connection_command::McpExchangeProgress::observed(
             true,
             Some(vec![AgentToolId::LIST_PROJECTS.wire_name().to_owned()]),
@@ -1119,16 +1161,13 @@ fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage()
     );
     assert_eq!(shutdown_failed["initialize"], true);
     assert_eq!(shutdown_failed["tools_list_observed"], true);
-    assert_eq!(
-        shutdown_failed["tools_list"],
-        json!([AgentToolId::LIST_PROJECTS.wire_name()])
-    );
+    assert_eq!(shutdown_failed["tools_returned"], 1);
     assert_eq!(shutdown_failed["required_tools_validated"], true);
     assert_eq!(shutdown_failed["safe_read_only_tool_completed"], true);
     assert_eq!(shutdown_failed["shutdown_completed"], false);
     assert_eq!(shutdown_failed["failure_stage"], "shutdown");
 
-    let completed = projected_self_test(
+    let completed = projected_active_probe(
         crate::connection_command::McpExchangeProgress::observed(
             true,
             Some(Vec::new()),
@@ -1140,7 +1179,7 @@ fn self_test_json_projects_explicit_exchange_progress_for_every_terminal_stage()
     );
     assert_eq!(completed["status"], "passed");
     assert_eq!(completed["initialize"], true);
-    assert_eq!(completed["tools_list"], json!([]));
+    assert_eq!(completed["tools_returned"], 0);
     assert_eq!(completed["tools_list_observed"], true);
     assert_eq!(completed["required_tools_validated"], true);
     assert_eq!(completed["safe_read_only_tool_completed"], true);

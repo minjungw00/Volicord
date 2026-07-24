@@ -195,6 +195,27 @@ ConnectionCheck:
   details?: object
   observed_at?: UtcTimestamp
 
+McpPreflightEvidence:
+  configuration: passed | failed
+  registry_read: passed | failed
+  project_reads: McpProjectReadEvidence[]
+  schema_validation: passed | failed
+  protocol_profiles: passed | failed
+  host_contracts: passed | failed
+  writeability:
+    status: not_checked
+    requires: connection_verify
+  side_effects: []
+
+McpActiveVerificationEvidence:
+  registry_write: passed | failed
+  project_writes: McpProjectWriteEvidence[]
+  protocol_conformance: McpRevisionConformance[]
+  host_compatibility: McpHostCompatibilityEvidence[]
+  observed_at: UtcTimestamp
+  source: connection_verify
+  side_effects: McpSideEffectKind[]
+
 IntegrationActivationPlan:
   state: IntegrationActivationState
   required_steps: ActivationStep[]
@@ -248,6 +269,25 @@ agent tool, `required_steps` 안의 diagnostic-only step을 거부합니다.
 보고서 부재와 관리 명령 계획은 나머지 이름 붙은 kind를 사용합니다.
 `diagnostic_lookup`과 `runtime_session_lookup`은 한도가 있는 해당 관리 diagnostic
 operation에서만 사용하며, 어댑터가 임의로 정한 check ID는 받지 않습니다.
+
+`mcp_server` check detail에는 서로 같은 계층의 `preflight`와
+`last_active_verification` 구성원이 있습니다. `preflight.evidence`는 읽기 전용
+preflight 보고서에서 한 번만 만드는 불변 `McpPreflightEvidence`입니다.
+`last_active_verification`은 활성 실행이 없으면 null이고, 있으면
+`McpActiveVerificationEvidence` 하나입니다. 활성 검증 증거를 preflight 증거 안에
+저장하거나 두 증거를 합치거나 preflight 증거를 변경한 것처럼 투영하지 않습니다.
+Preflight 쓰기 가능성은 항상 `not_checked`이고 `connection_verify`를 요구하며
+정확히 `side_effects=[]`입니다.
+
+활성 검증은 Registry와 프로젝트별 쓰기 결과를 따로 기록하고, 폐기 가능한 각 protocol
+revision 및 host 호환성 결과를 기록하며, 자체 `observed_at`과
+`source=connection_verify`를 식별합니다. 활성 MCP side effect의 닫힌 값은
+`rollback_only_registry_write_probe`, `rollback_only_project_write_probe`,
+`disposable_protocol_conformance`, `disposable_host_compatibility`입니다. 활성 source와
+증거 형태는 작업이 선택하며 schema-version 정수, 숫자 host version, 예전 결합 decoder가
+선택하지 않습니다. 사람용, verbose, JSON projection은 이 구분을 보존합니다. 활성 증거가
+없으면 `Storage writeability: not checked`라고 표시하고, 활성 증거가 있으면 별도 timestamp와
+source를 표시하며 그 쓰기 결과를 preflight 효과로 표시하지 않습니다.
 
 `ActivationStepId`는 현재 제품의 닫힌 어휘입니다. 정확한 값은 `reload_codex`,
 `review_project_hooks`, `request_integration_verification`,
@@ -486,6 +526,12 @@ Registry transaction 하나에서 수행합니다. 이 쓰기는 `verification_r
 갱신 timestamp만 바꿉니다. Revision 충돌이 나면 기존 보고서와 모든 소유자 field를 그대로
 두고 검증을 다시 실행하도록 요구합니다. 검증은 관리 configuration을 관찰할 뿐 새로 계획한
 managed fingerprint를 적용하거나 채택하거나 기록하지 않습니다.
+
+영속 보고서는 위에서 정의한 별도 `mcp_server` detail 구성원으로 불변 preflight 증거와
+마지막 활성 검증 증거를 유지합니다. 완전한 보고서 교체는 완전한
+`last_active_verification` 값을 바꿀 수 있지만 어떤 경로도 `preflight.evidence` 안의
+field를 다시 쓰지 않습니다. Preflight만 수행했거나 preflight가 실패한 평가는 활성 값을
+갖지 않으며 쓰기 가능성을 통과로 보고할 수 없습니다.
 
 영속 action에 필수 typed 구성원이 없거나, 알 수 없는 구성원이 있거나, reference 순서가
 비정규이거나, metadata가 ID와 일치하지 않으면 현재 보고서 형태가 잘못된 것이며 엄격한
