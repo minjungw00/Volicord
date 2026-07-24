@@ -364,6 +364,13 @@ do not repair it. Development-only databases may be deleted and recreated from
 the current sources. No records are migrated, converted, or imported during
 that recreation.
 
+The current Registry contract stores integration verification as one immutable
+attempt per complete semantic coordinate with a semantic observation policy
+and typed repair/retry fields. The former time-window lifecycle is not a
+compatible alternate layout. A Registry containing that prior table shape is
+an unsupported storage contract and follows the same recreation rule; Store
+does not reinterpret an expired or terminal legacy row as a current attempt.
+
 ## Owner Links
 
 - Cross-surface failure categories and no-default rules:

@@ -431,11 +431,12 @@ Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지
 정규 사용자 요청은 `Run the Volicord integration verification.`입니다. Agent는
 `volicord.list_projects`로 정확한 프로젝트를 선택한 뒤
 `volicord.begin_integration_verification`을 호출합니다. 반환된 tagged `workflow`를
-따릅니다. `awaiting_probe`, `awaiting_hook_completion`, `restart_required`는 각각
-호출할 정확한 정규 `tool`을 담고, `complete`에는 tool이 없습니다. 실패를 복구했거나
-이전 run이 만료된 뒤에만 재시작합니다. Begin, probe, status는 모두 같은 상태 지향
-계약을 노출합니다. 이 first-party sequence만 현재 managed MCP와 Guard 상관관계 근거를
-만들 수 있습니다.
+따릅니다. `awaiting_probe`와 `awaiting_observation`은 호출할 정확한 정규 `tool`을
+담고, `complete`와 `repair_required`는 tool이 없는 terminal 상태입니다. Begin,
+probe, status는 모두 같은 상태 지향 계약을 노출합니다. 현재 Codex semantic host
+profile은 status read를 한 번만 허용하는 synchronous observation을 사용하므로 agent는
+sleep, 반복 polling, 같은 turn의 새 attempt를 수행하지 않습니다. 이 first-party
+sequence만 현재 managed MCP와 Guard 상관관계 근거를 만들 수 있습니다.
 
 Volicord tool이 노출되지 않으면 agent는 managed MCP connection이 unavailable이라고
 보고합니다. Raw stdio를 시작하거나 Codex `_meta`를 직접 만들거나 `resources/list`,
@@ -451,9 +452,9 @@ project/configuration trust는 user/host가 소유합니다.
 | Tool | 정규 annotation | 직접 효과 |
 |---|---|---|
 | `volicord.list_projects` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Connection project allowlist를 읽으며 쓰지 않습니다. |
-| `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 현재 좌표를 검증한 뒤 한도가 있는 Registry verification run 하나를 만들거나 재개합니다. Core, Task, Product Repository에는 효과가 없습니다. |
+| `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 현재 semantic 좌표에 대한 불변 Registry verification attempt 하나를 만들거나 재개합니다. Core, Task, Product Repository에는 효과가 없습니다. |
 | `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 active run을 first-write-wins 방식으로 acknowledge하고 현재 공유 workflow 상태를 반환합니다. 정확한 replay는 효과를 반복하지 않고 현재 terminal 또는 nonterminal 상태를 반환합니다. Core, Task, project state, Product Repository에는 효과가 없습니다. |
-| `volicord.get_integration_verification` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | 정확한 run과 상관관계가 확인된 phase 상태를 읽으며 쓰지 않습니다. |
+| `volicord.get_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | host policy가 허용하는 bounded status read를 최대 한 번 소비하고 상관관계 phase 상태를 투영하며 terminal typed repair를 영속할 수 있습니다. Core, Task, project state, Product Repository에는 효과가 없습니다. |
 
 이 annotation은 도구 자체를 설명합니다. 일반 호환 Guard event 영속과 뒤따르는 Registry
 correlation refresh에는
@@ -495,51 +496,60 @@ IntegrationVerificationWorkflowState:
   awaiting_probe:
     kind: awaiting_probe
     tool: volicord.guard_probe
-    expires_at: UtcTimestamp
-  awaiting_hook_completion:
-    kind: awaiting_hook_completion
+  awaiting_observation:
+    kind: awaiting_observation
     tool: volicord.get_integration_verification
     acknowledged_at: UtcTimestamp
-    expires_at: UtcTimestamp
+    remaining_status_reads: u8
   complete:
     kind: complete
     completed_at: UtcTimestamp
-  restart_required:
-    kind: restart_required
-    reason: failed | expired
-    tool: volicord.begin_integration_verification
-    finding?: { code: string, summary: string }
+  repair_required:
+    kind: repair_required
+    reason: hook_event_not_observed | hook_payload_incompatible |
+      callable_identity_mismatch | verification_id_mismatch |
+      session_mismatch | turn_mismatch | tool_use_mismatch |
+      integration_revision_changed | hook_definition_changed |
+      policy_changed | observation_deadline_exceeded
+    retry_policy: no_automatic_retry | new_turn_required |
+      host_reload_required | hook_review_required | repair_required
+    finding: { code: string, summary: string }
 ```
 
 `project_selector`는 일반 Connection 프로젝트 선택 규칙을 따르므로 선택이 모호하지 않을
 때만 생략할 수 있습니다. Begin은 실제 현재 managed runtime과 native session/turn에
-결속하고 현재 호환 prompt-capture event를 요구하며 해당 좌표의 한도가 있는 run 하나를
-생성하거나 재개합니다. `manual_cli`, `cli_preflight`, `integration_probe` runtime 증거는
-받지 않습니다. Store가 담당하는 단일 투영은 유효한 active run이 acknowledge되지
-않았으면 `awaiting_probe`, acknowledge되었으면 `awaiting_hook_completion`, passed이면
-`complete`, failed 또는 expired이면 해당 typed reason을 가진 `restart_required`로
-변환합니다. Tool reference는 정규 `AgentToolId` wire 투영을 사용하며 임의 tool 문자열을
-받지 않습니다. Tagged alternative와 상태별 필수 필드 덕분에 모순된 조합은 typed
-decoding과 JSON Schema에서 모두 유효하지 않습니다.
+결속하고 현재 호환 prompt-capture event를 요구하며 Connection, project, managed runtime
+session, native host session과 turn, integration revision, Guard Installation, semantic
+host-contract profile, hook-definition digest, policy digest로 이루어진 좌표에 attempt 하나만
+생성하거나 재개합니다. 좌표는 terminal 상태에서도 불변이고 유일하며 시간이 지났다는
+이유로 새 attempt를 만들지 않습니다. `manual_cli`, `cli_preflight`,
+`integration_probe` runtime 증거는 받지 않습니다. Store가 담당하는 단일 투영은
+acknowledge 전 attempt를 `awaiting_probe`, acknowledge된 attempt를
+`awaiting_observation`, 성공을 `complete`, acquisition 또는 owner 검사 실패를 별도의
+typed reason과 retry policy가 있는 `repair_required`로 변환합니다. Tool reference는
+정규 `AgentToolId` wire 투영을 사용하며 임의 tool 문자열을 받지 않습니다.
 
 Probe acknowledgement는 verification ID, Connection, managed runtime session, native host
 session, native host turn으로 이루어진 좌표에서 first-write-wins입니다. 적격인 첫 active
-호출이 `probe_acknowledged_at`을 기록합니다. 동일한 active replay는 권위 있는
-acknowledgement 시각을 포함한 같은 `awaiting_hook_completion` 상태를 반환합니다. 완료
-후 정확한 replay는 `complete`를 반환합니다. 유효 상태가 failed 또는 expired인 run의
-replay는 해당 `restart_required` 상태를 유지하고 `complete`로 바꾸지 않습니다. 다른
-caller 좌표는 acknowledgement를 노출하지 않고 거부합니다. 이전 acknowledgement가 없는
-terminal 또는 expired run에는 뒤늦게 acknowledgement를 만들 수 없습니다. Probe는
-terminal run을 다시 active로 만들지 않으며 Core 상태, Task 상태, Product Repository
-파일을 변경하지 않습니다. Get은 읽기 전용이며 상관관계가 확인된 phase 관찰과 함께 같은
-workflow 상태를 보고합니다.
+호출이 `probe_acknowledged_at`을 기록합니다. 동일한 replay는 권위 있는 acknowledgement
+시각을 포함한 같은 `awaiting_observation` 상태를 반환합니다. 완료 또는 repair 뒤의
+정확한 replay는 terminal 상태를 그대로 반환합니다. 다른 caller 좌표는 acknowledgement를
+노출하지 않고 거부하며, acknowledgement가 없는 terminal attempt에는 뒤늦게 값을 만들 수
+없습니다. Probe는 terminal attempt를 다시 active로 만들지 않으며 Core 상태, Task 상태,
+Product Repository 파일을 변경하지 않습니다. Get은 semantic
+`HookObservationPolicy`를 따릅니다. 검토된 현재 Codex 계약은
+`Synchronous { allowed_status_reads: 1 }`입니다. 그 한 번의 read는 완료를 관찰하거나 가장
+정확한 `repair_required` acquisition 또는 correlation reason을 영속합니다. 나중에 정의할
+Deferred profile은 Codex version threshold가 아니라 명시적인 deadline policy를 가집니다.
 
 Run은 같은 run session과 turn에서 호환 prompt event 뒤에 같은 tool-use ID, 정확히 생성된
 host tool 이름 `mcp__volicord__volicord_guard_probe`, 정확한 `verification_id` 입력을 가진
 `PreToolUse`와 `PostToolUse`가 있을 때만 통과합니다. Guard Installation, policy hash,
 integration revision, hook-contract digest, managed runtime은 현재 상태를 유지해야 하며 event
 시각은 prompt가 pre-tool보다 앞서거나 같고 pre-tool이 post-tool보다 앞서야 합니다. 이력,
-무관한 관찰, 오래된 관찰, 불일치 관찰, 만료된 관찰은 run을 충족할 수 없습니다.
+무관한 관찰, 오래된 관찰, 불일치 관찰은 attempt를 충족할 수 없습니다. Cleanup expiry는
+보관 기록의 범위만 제한하며 synchronous observation을 판단하거나 같은 좌표의 retry를
+허용하지 않습니다.
 
 <a id="mutation-authority-receipt-projection"></a>
 ## 응답 wrapping

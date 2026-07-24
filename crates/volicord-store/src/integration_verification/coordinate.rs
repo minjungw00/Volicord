@@ -1,6 +1,15 @@
-use volicord_types::AgentToolId;
+use volicord_host_contract::{
+    HookObservationPolicy, HostContractProfileId, HostSessionId, HostTurnId,
+};
+use volicord_types::{
+    is_canonical_sha256_digest, AgentConnectionId, AgentRuntimeSessionId, AgentToolId,
+    GuardInstallationId, IntegrationRevision, PolicyHash, ProjectId,
+};
 
-use super::{GuardIntegrationVerificationCaller, GuardIntegrationVerificationRunRecord};
+use super::{
+    GuardIntegrationVerificationCaller, GuardIntegrationVerificationRunRecord,
+    GuardVerificationCoordinate,
+};
 use crate::{StoreError, StoreResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,34 +73,28 @@ impl VerificationCallerCoordinate {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct VerificationCurrentCoordinate {
     caller: VerificationCallerCoordinate,
+    semantic: GuardVerificationCoordinate,
     project_internal_id: String,
-    guard_installation_id: String,
-    integration_revision: String,
-    policy_hash: String,
-    hook_contract_digest: String,
     expected_probe_tool: String,
     expected_host_callable_name: String,
+    observation_policy: HookObservationPolicy,
 }
 
 impl VerificationCurrentCoordinate {
     pub(super) fn new(
         caller: VerificationCallerCoordinate,
         project_internal_id: impl Into<String>,
-        guard_installation_id: impl Into<String>,
-        integration_revision: impl Into<String>,
-        policy_hash: impl Into<String>,
-        hook_contract_digest: impl Into<String>,
+        semantic: GuardVerificationCoordinate,
         expected_host_callable_name: impl Into<String>,
+        observation_policy: HookObservationPolicy,
     ) -> Self {
         Self {
             caller,
+            semantic,
             project_internal_id: project_internal_id.into(),
-            guard_installation_id: guard_installation_id.into(),
-            integration_revision: integration_revision.into(),
-            policy_hash: policy_hash.into(),
-            hook_contract_digest: hook_contract_digest.into(),
             expected_probe_tool: AgentToolId::GUARD_PROBE.wire_name().to_owned(),
             expected_host_callable_name: expected_host_callable_name.into(),
+            observation_policy,
         }
     }
 
@@ -103,20 +106,28 @@ impl VerificationCurrentCoordinate {
         &self.project_internal_id
     }
 
+    pub(super) fn semantic(&self) -> &GuardVerificationCoordinate {
+        &self.semantic
+    }
+
     pub(super) fn guard_installation_id(&self) -> &str {
-        &self.guard_installation_id
+        self.semantic.guard_installation_id.as_str()
     }
 
     pub(super) fn integration_revision(&self) -> &str {
-        &self.integration_revision
+        self.semantic.integration_revision.as_str()
     }
 
-    pub(super) fn policy_hash(&self) -> &str {
-        &self.policy_hash
+    pub(super) fn policy_digest(&self) -> &str {
+        self.semantic.policy_digest.as_str()
     }
 
-    pub(super) fn hook_contract_digest(&self) -> &str {
-        &self.hook_contract_digest
+    pub(super) fn hook_definition_digest(&self) -> &str {
+        &self.semantic.hook_definition_digest
+    }
+
+    pub(super) fn host_contract_profile(&self) -> HostContractProfileId {
+        self.semantic.host_contract_profile
     }
 
     pub(super) fn expected_probe_tool(&self) -> &str {
@@ -126,43 +137,77 @@ impl VerificationCurrentCoordinate {
     pub(super) fn expected_host_callable_name(&self) -> &str {
         &self.expected_host_callable_name
     }
+
+    pub(super) const fn observation_policy(&self) -> HookObservationPolicy {
+        self.observation_policy
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct VerificationStoredCoordinate {
-    caller: VerificationCallerCoordinate,
-    project_internal_id: String,
-    guard_installation_id: String,
-    integration_revision: String,
-    policy_hash: String,
-    hook_contract_digest: String,
+    semantic: GuardVerificationCoordinate,
     expected_probe_tool: String,
     expected_host_callable_name: String,
 }
 
-impl From<&GuardIntegrationVerificationRunRecord> for VerificationStoredCoordinate {
-    fn from(run: &GuardIntegrationVerificationRunRecord) -> Self {
-        Self {
-            caller: VerificationCallerCoordinate {
-                connection_internal_id: run.connection_internal_id.clone(),
-                runtime_session_id: run.runtime_session_id.clone(),
-                host_session_id: run.host_session_id.clone(),
-                host_turn_id: run.host_turn_id.clone(),
+impl VerificationStoredCoordinate {
+    pub(super) fn from_run(run: &GuardIntegrationVerificationRunRecord) -> StoreResult<Self> {
+        if !is_canonical_sha256_digest(&run.hook_definition_digest) {
+            return Err(StoreError::corrupt_stored_value(
+                "registry",
+                "guard_integration_verification_runs.hook_definition_digest",
+            ));
+        }
+        Ok(Self {
+            semantic: GuardVerificationCoordinate {
+                connection_id: AgentConnectionId::new(&run.connection_internal_id),
+                project_id: ProjectId::new(&run.project_id),
+                runtime_session_id: AgentRuntimeSessionId::new(&run.runtime_session_id),
+                host_session_id: HostSessionId::parse(&run.host_session_id).map_err(|_| {
+                    StoreError::corrupt_stored_value(
+                        "registry",
+                        "guard_integration_verification_runs.host_session_id",
+                    )
+                })?,
+                host_turn_id: HostTurnId::parse(&run.host_turn_id).map_err(|_| {
+                    StoreError::corrupt_stored_value(
+                        "registry",
+                        "guard_integration_verification_runs.host_turn_id",
+                    )
+                })?,
+                integration_revision: IntegrationRevision::parse(&run.integration_revision)
+                    .map_err(|_| {
+                        StoreError::corrupt_stored_value(
+                            "registry",
+                            "guard_integration_verification_runs.integration_revision",
+                        )
+                    })?,
+                guard_installation_id: GuardInstallationId::new(&run.guard_installation_id),
+                host_contract_profile: HostContractProfileId::parse(&run.host_contract_profile)
+                    .map_err(|_| {
+                        StoreError::corrupt_stored_value(
+                            "registry",
+                            "guard_integration_verification_runs.host_contract_profile",
+                        )
+                    })?,
+                hook_definition_digest: run.hook_definition_digest.clone(),
+                policy_digest: PolicyHash::parse(&run.policy_digest).map_err(|_| {
+                    StoreError::corrupt_stored_value(
+                        "registry",
+                        "guard_integration_verification_runs.policy_digest",
+                    )
+                })?,
             },
-            project_internal_id: run.project_internal_id.clone(),
-            guard_installation_id: run.guard_installation_id.clone(),
-            integration_revision: run.integration_revision.clone(),
-            policy_hash: run.policy_hash.clone(),
-            hook_contract_digest: run.hook_contract_digest.clone(),
             expected_probe_tool: run.expected_probe_tool.clone(),
             expected_host_callable_name: run.expected_host_callable_name.clone(),
-        }
+        })
     }
-}
 
-impl VerificationStoredCoordinate {
     pub(super) fn require_caller(&self, caller: &VerificationCallerCoordinate) -> StoreResult<()> {
-        if self.caller != *caller
+        if self.semantic.connection_id.as_str() != caller.connection_internal_id()
+            || self.semantic.runtime_session_id.as_str() != caller.runtime_session_id()
+            || self.semantic.host_session_id.as_str() != caller.host_session_id()
+            || self.semantic.host_turn_id.as_str() != caller.host_turn_id()
             || self.expected_probe_tool != AgentToolId::GUARD_PROBE.wire_name()
         {
             return Err(
@@ -176,12 +221,7 @@ impl VerificationStoredCoordinate {
         &self,
         current: &VerificationCurrentCoordinate,
     ) -> StoreResult<()> {
-        if self.caller != current.caller
-            || self.project_internal_id != current.project_internal_id
-            || self.guard_installation_id != current.guard_installation_id
-            || self.integration_revision != current.integration_revision
-            || self.policy_hash != current.policy_hash
-            || self.hook_contract_digest != current.hook_contract_digest
+        if self.semantic != current.semantic
             || self.expected_probe_tool != current.expected_probe_tool
             || self.expected_host_callable_name != current.expected_host_callable_name
         {

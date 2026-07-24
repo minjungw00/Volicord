@@ -1158,7 +1158,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         "SELECT COUNT(*)
            FROM guard_integration_verification_runs
           WHERE connection_internal_id = ?1
-            AND status = 'passed'",
+            AND status = 'complete'",
         [&connection_id],
         |row| row.get(0),
     )?;
@@ -2132,7 +2132,7 @@ impl OperationalFixture {
             [&verification_id],
             |row| row.get(0),
         )?;
-        assert_eq!(verification_status, "passed");
+        assert_eq!(verification_status, "complete");
         let completed_before_replay: (
             String,
             Option<String>,
@@ -2277,7 +2277,7 @@ impl OperationalFixture {
         assert_eq!(probe["verification_id"], verification_id);
         assert_eq!(
             probe["workflow"]["kind"],
-            IntegrationVerificationWorkflowState::AWAITING_HOOK_COMPLETION_KIND
+            IntegrationVerificationWorkflowState::AWAITING_OBSERVATION_KIND
         );
         assert_eq!(
             probe["workflow"]["tool"],

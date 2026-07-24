@@ -1,6 +1,9 @@
 use std::error::Error;
 
-use volicord_types::{IntegrationVerificationRestartReason, IntegrationVerificationWorkflowState};
+use volicord_types::{
+    GuardVerificationRepairReason, GuardVerificationRetryPolicy,
+    IntegrationVerificationWorkflowState,
+};
 
 use super::support::*;
 use crate::{
@@ -19,13 +22,13 @@ fn first_acknowledgement_and_active_replay_preserve_timestamp() -> Result<(), Bo
     assert_eq!(first.workflow, replay.workflow);
     assert!(matches!(
         first.workflow,
-        IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+        IntegrationVerificationWorkflowState::AwaitingObservation { .. }
     ));
     Ok(())
 }
 
 #[test]
-fn passed_failed_and_expired_replay_keep_terminal_meaning() -> Result<(), Box<dyn Error>> {
+fn complete_and_repair_replay_keep_terminal_meaning() -> Result<(), Box<dyn Error>> {
     let passed_fixture = VerificationFixture::new("guard-integration-probe-passed")?;
     let passed = passed_fixture.begin()?;
     passed_fixture.complete(&passed.verification_id)?;
@@ -36,66 +39,38 @@ fn passed_failed_and_expired_replay_keep_terminal_meaning() -> Result<(), Box<dy
         IntegrationVerificationWorkflowState::Complete { .. }
     ));
 
-    let failed_fixture = VerificationFixture::new("guard-integration-probe-failed")?;
+    let failed_fixture = VerificationFixture::new("guard-integration-probe-repair")?;
     let failed = failed_fixture.begin()?;
     failed_fixture.acknowledge(&failed.verification_id, ACK_AT)?;
-    failed_fixture.set_policy_hash(&failed.verification_id, STALE_HASH)?;
+    failed_fixture.force_repair(
+        &failed.verification_id,
+        GuardVerificationRepairReason::PolicyChanged,
+        GuardVerificationRetryPolicy::RepairRequired,
+    )?;
     assert!(matches!(
         failed_fixture
             .acknowledge(&failed.verification_id, "2026-07-23T00:00:05Z")?
             .workflow,
-        IntegrationVerificationWorkflowState::RestartRequired {
-            reason: IntegrationVerificationRestartReason::Failed,
+        IntegrationVerificationWorkflowState::RepairRequired {
+            reason: GuardVerificationRepairReason::PolicyChanged,
             ..
         }
     ));
-
-    let expired_fixture = VerificationFixture::new("guard-integration-probe-expired")?;
-    let expired = expired_fixture.begin()?;
-    let original = expired_fixture.acknowledge(&expired.verification_id, ACK_AT)?;
-    let replay = expired_fixture.acknowledge(&expired.verification_id, "2026-07-23T00:05:03Z")?;
-    assert!(matches!(
-        replay.workflow,
-        IntegrationVerificationWorkflowState::RestartRequired {
-            reason: IntegrationVerificationRestartReason::Expired,
-            ..
-        }
-    ));
-    let IntegrationVerificationWorkflowState::AwaitingHookCompletion {
-        acknowledged_at, ..
-    } = original.workflow
-    else {
-        panic!("probe must be acknowledged");
-    };
-    assert_eq!(
-        expired_fixture
-            .record(&expired.verification_id)?
-            .probe_acknowledged_at
-            .as_deref(),
-        Some(acknowledged_at.to_canonical_string().as_str())
-    );
     Ok(())
 }
 
 #[test]
 fn terminal_run_without_acknowledgement_cannot_acquire_one() -> Result<(), Box<dyn Error>> {
-    let expired_fixture = VerificationFixture::new("guard-integration-probe-late-expired")?;
-    let expired = expired_fixture.begin()?;
-    let error = expired_fixture
-        .acknowledge(&expired.verification_id, "2026-07-23T00:05:03Z")
-        .expect_err("expired run cannot be acknowledged");
-    assert!(matches!(error, StoreError::Conflict { .. }));
-    assert!(expired_fixture
-        .record(&expired.verification_id)?
-        .probe_acknowledged_at
-        .is_none());
-
-    let failed_fixture = VerificationFixture::new("guard-integration-probe-late-failed")?;
+    let failed_fixture = VerificationFixture::new("guard-integration-probe-late-repair")?;
     let failed = failed_fixture.begin()?;
-    failed_fixture.set_policy_hash(&failed.verification_id, STALE_HASH)?;
+    failed_fixture.force_repair(
+        &failed.verification_id,
+        GuardVerificationRepairReason::HookEventNotObserved,
+        GuardVerificationRetryPolicy::HostReloadRequired,
+    )?;
     let error = failed_fixture
         .acknowledge(&failed.verification_id, ACK_AT)
-        .expect_err("failed run cannot be acknowledged");
+        .expect_err("terminal repair run cannot be acknowledged");
     assert!(matches!(error, StoreError::Conflict { .. }));
     assert!(failed_fixture
         .record(&failed.verification_id)?
@@ -131,7 +106,7 @@ fn wrong_caller_cannot_observe_or_change_acknowledgement() -> Result<(), Box<dyn
         )
         .expect_err("different caller coordinate must fail");
     }
-    let IntegrationVerificationWorkflowState::AwaitingHookCompletion {
+    let IntegrationVerificationWorkflowState::AwaitingObservation {
         acknowledged_at, ..
     } = acknowledged.workflow
     else {

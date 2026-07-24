@@ -1226,13 +1226,13 @@ pub(crate) fn tool_description(tool: AgentToolId, detail: ToolSchemaDetail) -> &
             "List projects explicitly allowed for this MCP connection."
         }
         (_, AgentToolId::BEGIN_INTEGRATION_VERIFICATION) => {
-            "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns the authoritative tagged workflow state and its exact typed operation."
+            "Create or resume the one immutable integration-verification attempt for the current semantic coordinate; returns the authoritative tagged workflow state and its exact typed operation."
         }
         (_, AgentToolId::GUARD_PROBE) => {
             "Record or replay a first-write-wins MCP probe acknowledgement and return the authoritative tagged workflow state without changing Product Repository workflow state; this exact call is observed by Guard PreToolUse and PostToolUse."
         }
         (_, AgentToolId::GET_INTEGRATION_VERIFICATION) => {
-            "Read the authoritative tagged workflow state and exact same-turn Guard prompt, pre-tool, and post-tool correlation with bounded findings."
+            "Observe the authoritative tagged workflow state under the semantic host policy; the bounded read may persist a typed terminal repair reason when expected same-turn Guard correlation is absent or incompatible."
         }
         _ => unreachable!("AgentToolId cannot contain a non-MCP MethodName"),
     }

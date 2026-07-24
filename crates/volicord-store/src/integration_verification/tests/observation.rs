@@ -5,7 +5,8 @@ use volicord_host_contract::{
     HostToolUseId, HostTurnId,
 };
 use volicord_types::{
-    AgentToolId, GuardHookPhase, GuardProbeObservationStage, IntegrationVerificationWorkflowState,
+    AgentToolId, GuardHookPhase, GuardProbeObservationStage, GuardVerificationRepairReason,
+    IntegrationVerificationWorkflowState,
 };
 
 use super::support::*;
@@ -129,8 +130,137 @@ fn routed_other_and_unknown_same_server_tools_do_not_satisfy_probe() -> Result<(
                 "2026-07-23T00:00:05Z",
             )?
             .workflow,
-            IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+            IntegrationVerificationWorkflowState::RepairRequired {
+                reason: GuardVerificationRepairReason::CallableIdentityMismatch,
+                ..
+            }
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn correlation_failures_map_to_distinct_terminal_repair_reasons() -> Result<(), Box<dyn Error>> {
+    for (case, expected_reason) in [
+        (
+            "payload",
+            GuardVerificationRepairReason::HookPayloadIncompatible,
+        ),
+        (
+            "callable",
+            GuardVerificationRepairReason::CallableIdentityMismatch,
+        ),
+        (
+            "verification",
+            GuardVerificationRepairReason::VerificationIdMismatch,
+        ),
+        ("session", GuardVerificationRepairReason::SessionMismatch),
+        ("turn", GuardVerificationRepairReason::TurnMismatch),
+        ("tool_use", GuardVerificationRepairReason::ToolUseMismatch),
+    ] {
+        let fixture = VerificationFixture::new(&format!("guard-observation-repair-{case}"))?;
+        let run = fixture.begin()?;
+        fixture.acknowledge(&run.verification_id, ACK_AT)?;
+        let probe = host_callable_name(AgentToolId::GUARD_PROBE);
+        let status = host_callable_name(AgentToolId::STATUS);
+        match case {
+            "payload" => fixture.insert_incompatible_tool_event(
+                "guard_event_malformed",
+                "pre_tool",
+                "2026-07-23T00:00:04.100Z",
+            )?,
+            "callable" => fixture.insert_tool_event(ToolEventFixture {
+                event_id: "guard_event_callable",
+                phase: "pre_tool",
+                turn: HOST_TURN_ID,
+                tool_use_id: "tool_use_callable",
+                tool_name: status.as_str(),
+                verification_id: &run.verification_id,
+                occurred_at: "2026-07-23T00:00:04.100Z",
+                digest: None,
+                policy_hash: None,
+                integration_revision: None,
+            })?,
+            "verification" => fixture.insert_tool_event(ToolEventFixture {
+                event_id: "guard_event_verification",
+                phase: "pre_tool",
+                turn: HOST_TURN_ID,
+                tool_use_id: "tool_use_verification",
+                tool_name: probe.as_str(),
+                verification_id: "guard_verification_other",
+                occurred_at: "2026-07-23T00:00:04.100Z",
+                digest: None,
+                policy_hash: None,
+                integration_revision: None,
+            })?,
+            "session" | "turn" => observe_unbound_guard_probe_hook_event(
+                fixture.runtime_home.path(),
+                PROJECT_ID,
+                UnboundGuardProbeHookObservation {
+                    connection_internal_id: CONNECTION_ID.to_owned(),
+                    guard_installation_id: INSTALLATION_ID.to_owned(),
+                    correlation: HostNativeCorrelation::CodexHookTool(CodexHookToolCorrelation {
+                        session_id: HostSessionId::parse(if case == "session" {
+                            "other_session"
+                        } else {
+                            HOST_SESSION_ID
+                        })?,
+                        turn_id: HostTurnId::parse(if case == "turn" {
+                            "other_turn"
+                        } else {
+                            HOST_TURN_ID
+                        })?,
+                        tool_use_id: HostToolUseId::parse(format!("tool_use_{case}"))?,
+                        tool_name: CanonicalToolName::parse(probe.as_str())?,
+                    }),
+                    phase: GuardHookPhase::PreTool,
+                    evidence: GuardProbeHookEvidence::present(Some(run.verification_id.clone())),
+                    observed_at: "2026-07-23T00:00:04.100Z".to_owned(),
+                },
+            )
+            .map(|_| ())?,
+            "tool_use" => {
+                fixture.insert_tool_event(ToolEventFixture {
+                    event_id: "guard_event_pre_tool_use",
+                    phase: "pre_tool",
+                    turn: HOST_TURN_ID,
+                    tool_use_id: "tool_use_pre",
+                    tool_name: probe.as_str(),
+                    verification_id: &run.verification_id,
+                    occurred_at: "2026-07-23T00:00:03.500Z",
+                    digest: None,
+                    policy_hash: None,
+                    integration_revision: None,
+                })?;
+                fixture.insert_tool_event(ToolEventFixture {
+                    event_id: "guard_event_post_tool_use",
+                    phase: "post_tool",
+                    turn: HOST_TURN_ID,
+                    tool_use_id: "tool_use_post",
+                    tool_name: probe.as_str(),
+                    verification_id: &run.verification_id,
+                    occurred_at: "2026-07-23T00:00:04.500Z",
+                    digest: None,
+                    policy_hash: None,
+                    integration_revision: None,
+                })?;
+            }
+            _ => unreachable!(),
+        }
+        let result = get_guard_integration_verification(
+            fixture.runtime_home.path(),
+            &run.verification_id,
+            &fixture.caller(),
+            "2026-07-23T00:00:05Z",
+        )?;
+        assert!(
+            matches!(
+                result.workflow,
+                IntegrationVerificationWorkflowState::RepairRequired { reason, .. }
+                    if reason == expected_reason
+            ),
+            "{case} must map to {expected_reason:?}",
+        );
     }
     Ok(())
 }

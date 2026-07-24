@@ -1,5 +1,9 @@
 use std::path::Path;
 
+use chrono::Duration;
+use volicord_host_contract::{
+    HookObservationPolicy, HostContractProfileId, ObservationDeadlinePolicy,
+};
 use volicord_types::{
     GuardIntegrationVerificationId, GuardIntegrationVerificationStatus, GuardProbeResult,
 };
@@ -38,7 +42,7 @@ pub fn acknowledge_guard_integration_probe(
         entity: "guard_integration_verification",
         id: verification_id.to_owned(),
     })?;
-    VerificationStoredCoordinate::from(&run).require_caller(&caller)?;
+    VerificationStoredCoordinate::from_run(&run)?.require_caller(&caller)?;
     let effective = effective_status(runtime_home, &run, &now)?;
     if run.probe_acknowledged_at.is_some() {
         let result = GuardProbeResult {
@@ -48,10 +52,42 @@ pub fn acknowledge_guard_integration_probe(
         tx.commit()?;
         return Ok(result);
     }
-    if effective != GuardIntegrationVerificationStatus::Active {
+    if effective != GuardIntegrationVerificationStatus::AwaitingProbe {
         return Err(terminal_state_conflict(&caller, effective));
     }
-    acknowledge_probe_first_write(&tx, verification_id, observed_at)?;
+    let profile = HostContractProfileId::parse(&run.host_contract_profile).map_err(|_| {
+        StoreError::corrupt_stored_value(
+            "registry",
+            "guard_integration_verification_runs.host_contract_profile",
+        )
+    })?;
+    let observation_deadline_at = match profile.hook_observation_policy() {
+        Some(HookObservationPolicy::Synchronous { .. }) => None,
+        Some(HookObservationPolicy::Deferred {
+            deadline: ObservationDeadlinePolicy::AfterProbeAcknowledgement { seconds },
+            ..
+        }) => Some(
+            now.checked_add(Duration::seconds(i64::from(seconds)))
+                .map_err(|_| StoreError::InvalidInput {
+                    detail:
+                        "verification observation deadline is outside the supported timestamp range"
+                            .to_owned(),
+                })?
+                .to_canonical_string(),
+        ),
+        None => {
+            return Err(StoreError::corrupt_stored_value(
+                "registry",
+                "guard_integration_verification_runs.host_contract_profile",
+            ))
+        }
+    };
+    acknowledge_probe_first_write(
+        &tx,
+        verification_id,
+        observed_at,
+        observation_deadline_at.as_deref(),
+    )?;
     let authoritative = run_by_id(&tx, verification_id)?.ok_or_else(|| StoreError::NotFound {
         entity: "guard_integration_verification",
         id: verification_id.to_owned(),

@@ -28,9 +28,9 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 50);
-    assert_eq!(metadata.columns.len(), 588);
-    assert_eq!(metadata.indexes.len(), 76);
+    assert_eq!(metadata.tables.len(), 53);
+    assert_eq!(metadata.columns.len(), 596);
+    assert_eq!(metadata.indexes.len(), 77);
     assert_eq!(metadata.constraints.len(), 45);
     let agent_connection_columns = metadata
         .columns
@@ -245,22 +245,30 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         "verification_id",
         "connection_internal_id",
         "project_internal_id",
+        "project_id",
         "runtime_session_id",
         "host_session_id",
         "host_turn_id",
         "guard_installation_id",
         "integration_revision",
-        "policy_hash",
-        "hook_contract_digest",
+        "host_contract_profile",
+        "hook_definition_digest",
+        "policy_digest",
         "expected_probe_tool",
+        "observation_policy_kind",
+        "observation_deadline_at",
+        "allowed_status_reads",
+        "status_read_count",
         "created_at",
-        "expires_at",
+        "cleanup_after",
         "status",
         "probe_acknowledged_at",
         "completed_at",
         "matched_prompt_event_id",
         "matched_pre_tool_event_id",
         "matched_post_tool_event_id",
+        "repair_reason",
+        "retry_policy",
         "terminal_finding_code",
         "terminal_finding_summary",
     ] {
@@ -272,9 +280,27 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert!(metadata.indexes.iter().any(|index| {
         index.database == StorageDatabaseKind::Registry
             && index.table == "guard_integration_verification_runs"
-            && index.name == "idx_guard_integration_verification_active_coordinate"
+            && index.name == "idx_guard_integration_verification_coordinate"
             && index.unique
-            && index.partial
+            && !index.partial
+    }));
+    for trigger in [
+        "guard_integration_verification_coordinate_immutable",
+        "guard_integration_verification_probe_ack_immutable",
+        "guard_integration_verification_terminal_immutable",
+    ] {
+        assert!(metadata.tables.iter().any(|relation| {
+            relation.database == StorageDatabaseKind::Registry
+                && relation.name == trigger
+                && relation.relation_kind == GeneratedRelationKind::Trigger
+        }));
+    }
+    assert!(metadata.indexes.iter().any(|index| {
+        index.database == StorageDatabaseKind::Registry
+            && index.table == "guard_integration_verification_runs"
+            && index.name == "idx_guard_integration_verification_prompt_attempt"
+            && index.unique
+            && !index.partial
     }));
     assert!(metadata.tables.iter().any(|relation| {
         relation.database == StorageDatabaseKind::ProjectState
@@ -302,11 +328,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:8b97bc29575110cf5cb44274f3fdca00583c34d6ba2b8f9f38069c581c01c344"
+        "sha256:83cdc9234204ece30a1a2c09e109849263cd055e621ac4bb65c074f5fe3d3d9f"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:2867dc0f9f663a235b2509f8537e3b7c8b2cf7bc04ee412f1a7fdc830816a996"
+        "sha256:81e220b8c31449cb64f8a54c65fbb3dca9609ffecf9f02af499717a24d8e9767"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -340,12 +366,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:8b97bc29575110cf5cb44274f3fdca00583c34d6ba2b8f9f38069c581c01c344\",",
+            "{\"canonical_ddl_digest\":\"sha256:83cdc9234204ece30a1a2c09e109849263cd055e621ac4bb65c074f5fe3d3d9f\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:2867dc0f9f663a235b2509f8537e3b7c8b2cf7bc04ee412f1a7fdc830816a996\"}"
+            "\"integrity_constraints_digest\":\"sha256:81e220b8c31449cb64f8a54c65fbb3dca9609ffecf9f02af499717a24d8e9767\"}"
         )
     );
     Ok(())

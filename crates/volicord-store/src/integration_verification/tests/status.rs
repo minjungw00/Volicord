@@ -2,7 +2,8 @@ use std::error::Error;
 
 use volicord_types::{
     GuardIntegrationVerificationPhaseStatus, GuardIntegrationVerificationPhases,
-    IntegrationVerificationRestartReason, IntegrationVerificationWorkflowState,
+    GuardVerificationRepairReason, GuardVerificationRetryPolicy,
+    IntegrationVerificationWorkflowState,
 };
 
 use super::support::*;
@@ -11,7 +12,7 @@ use crate::integration_verification::{
 };
 
 #[test]
-fn active_status_distinguishes_probe_and_hook_waiting() -> Result<(), Box<dyn Error>> {
+fn nonterminal_projection_distinguishes_probe_and_observation() -> Result<(), Box<dyn Error>> {
     let fixture = VerificationFixture::new("guard-integration-status-active")?;
     let run = fixture.begin()?;
     let awaiting_probe = get_guard_integration_verification(
@@ -29,17 +30,13 @@ fn active_status_distinguishes_probe_and_hook_waiting() -> Result<(), Box<dyn Er
         awaiting_probe.workflow
     );
     let probe = fixture.acknowledge(&run.verification_id, ACK_AT)?;
-    let awaiting_hooks = get_guard_integration_verification(
-        fixture.runtime_home.path(),
-        &run.verification_id,
-        &fixture.caller(),
-        ACK_AT,
-    )?;
     assert!(matches!(
-        awaiting_hooks.workflow,
-        IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+        probe.workflow,
+        IntegrationVerificationWorkflowState::AwaitingObservation {
+            remaining_status_reads: 1,
+            ..
+        }
     ));
-    assert_eq!(probe.workflow, awaiting_hooks.workflow);
     assert_eq!(
         begin_result_from_record(
             fixture.runtime_home.path(),
@@ -47,13 +44,13 @@ fn active_status_distinguishes_probe_and_hook_waiting() -> Result<(), Box<dyn Er
             ACK_AT,
         )?
         .workflow,
-        awaiting_hooks.workflow
+        probe.workflow
     );
     Ok(())
 }
 
 #[test]
-fn passed_failed_and_expired_status_project_exact_workflow() -> Result<(), Box<dyn Error>> {
+fn complete_projects_exact_workflow_and_remains_terminal() -> Result<(), Box<dyn Error>> {
     let passed_fixture = VerificationFixture::new("guard-integration-status-passed")?;
     let passed = passed_fixture.begin()?;
     let completed = passed_fixture.complete(&passed.verification_id)?;
@@ -104,23 +101,45 @@ fn passed_failed_and_expired_status_project_exact_workflow() -> Result<(), Box<d
     assert_eq!(begin.workflow, result.workflow);
 
     passed_fixture.set_policy_hash(&passed.verification_id, STALE_HASH)?;
-    let failed = get_guard_integration_verification(
+    let replay = get_guard_integration_verification(
         passed_fixture.runtime_home.path(),
         &passed.verification_id,
         &passed_fixture.caller(),
         "2026-07-23T00:00:06Z",
     )?;
     assert!(matches!(
-        failed.workflow,
-        IntegrationVerificationWorkflowState::RestartRequired {
-            reason: IntegrationVerificationRestartReason::Failed,
-            ..
-        }
+        replay.workflow,
+        IntegrationVerificationWorkflowState::Complete { .. }
     ));
+    assert_eq!(
+        passed_fixture.record(&passed.verification_id)?.status,
+        "complete"
+    );
+    Ok(())
+}
 
-    let owner_fixture = VerificationFixture::new("guard-integration-status-owner-facts")?;
-    let owner_run = owner_fixture.begin()?;
-    for owner_fact in ["policy", "hook_digest", "revision"] {
+#[test]
+fn current_owner_drift_maps_to_distinct_typed_repairs() -> Result<(), Box<dyn Error>> {
+    for (owner_fact, expected_reason, expected_retry) in [
+        (
+            "policy",
+            GuardVerificationRepairReason::PolicyChanged,
+            GuardVerificationRetryPolicy::RepairRequired,
+        ),
+        (
+            "hook_digest",
+            GuardVerificationRepairReason::HookDefinitionChanged,
+            GuardVerificationRetryPolicy::HookReviewRequired,
+        ),
+        (
+            "revision",
+            GuardVerificationRepairReason::IntegrationRevisionChanged,
+            GuardVerificationRetryPolicy::RepairRequired,
+        ),
+    ] {
+        let owner_fixture =
+            VerificationFixture::new(&format!("guard-integration-status-{owner_fact}"))?;
+        let owner_run = owner_fixture.begin()?;
         match owner_fact {
             "policy" => owner_fixture.set_policy_hash(&owner_run.verification_id, STALE_HASH)?,
             "hook_digest" => {
@@ -140,41 +159,44 @@ fn passed_failed_and_expired_status_project_exact_workflow() -> Result<(), Box<d
         assert!(
             matches!(
                 failed.workflow,
-                IntegrationVerificationWorkflowState::RestartRequired {
-                    reason: IntegrationVerificationRestartReason::Failed,
+                IntegrationVerificationWorkflowState::RepairRequired {
+                    reason,
+                    retry_policy,
                     ..
-                }
+                } if reason == expected_reason && retry_policy == expected_retry
             ),
-            "{owner_fact} drift must fail",
+            "{owner_fact} drift must require typed repair",
         );
-        match owner_fact {
-            "policy" => owner_fixture.set_policy_hash(&owner_run.verification_id, POLICY_HASH)?,
-            "hook_digest" => owner_fixture.set_hook_contract_digest(
-                &owner_run.verification_id,
-                &owner_run.hook_contract_digest,
-            )?,
-            "revision" => owner_fixture.set_integration_revision(
-                &owner_run.verification_id,
-                &owner_run.integration_revision,
-            )?,
-            _ => unreachable!(),
-        }
+        assert_eq!(
+            owner_fixture.record(&owner_run.verification_id)?.status,
+            "repair_required"
+        );
     }
+    Ok(())
+}
 
-    let expired_fixture = VerificationFixture::new("guard-integration-status-expired")?;
-    let expired = expired_fixture.begin()?;
-    let expired_result = get_guard_integration_verification(
-        expired_fixture.runtime_home.path(),
-        &expired.verification_id,
-        &expired_fixture.caller(),
-        "2026-07-23T00:05:03Z",
+#[test]
+fn missing_synchronous_events_require_repair_on_the_one_allowed_read() -> Result<(), Box<dyn Error>>
+{
+    let fixture = VerificationFixture::new("guard-integration-status-missing-hooks")?;
+    let run = fixture.begin()?;
+    fixture.acknowledge(&run.verification_id, ACK_AT)?;
+    let result = get_guard_integration_verification(
+        fixture.runtime_home.path(),
+        &run.verification_id,
+        &fixture.caller(),
+        "2026-07-23T00:00:04.001Z",
     )?;
     assert!(matches!(
-        expired_result.workflow,
-        IntegrationVerificationWorkflowState::RestartRequired {
-            reason: IntegrationVerificationRestartReason::Expired,
+        result.workflow,
+        IntegrationVerificationWorkflowState::RepairRequired {
+            reason: GuardVerificationRepairReason::HookEventNotObserved,
+            retry_policy: GuardVerificationRetryPolicy::HostReloadRequired,
             ..
         }
     ));
+    let stored = fixture.record(&run.verification_id)?;
+    assert_eq!(stored.status_read_count, 1);
+    assert_eq!(stored.status, "repair_required");
     Ok(())
 }

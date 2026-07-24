@@ -185,17 +185,19 @@ metadata, and the closed `IntegrationVerificationWorkflowState` with canonical
 typed tool references. `volicord-cli` collects current managed configuration,
 host reload, hook-source, session, capability, Guard, and separate
 project-trust evidence. `volicord-store` preserves the Guard definition
-boundary and is the single domain projector from a verification record to the
-shared workflow state: unchanged manifests retain current observation
-eligibility and changed managed definition content invalidates earlier events.
-Begin, probe, get, `volicord-mcp`, CLI checks, and generated host guidance all
-consume that projection. Completed exact probe replay stays `complete`;
-failed or expired replay stays `restart_required`. Adapters and renderers do
-not derive parallel state or classify summary prose.
+boundary and is the single domain projector from an immutable semantic
+verification coordinate to the shared workflow state. `volicord-host-contract`
+owns the semantic synchronous/deferred observation policy; the current Codex
+profile selects one synchronous status read without a version branch. Begin,
+probe, get, `volicord-mcp`, CLI checks, and generated host guidance all consume
+that projection. Exact replay retains the same verification ID and state;
+`complete` and typed `repair_required` remain terminal. Adapters and renderers
+do not derive parallel state or classify summary prose.
 
 Within Store, the integration-verification facade delegates create/resume,
-probe acknowledgement, event correlation, status projection, typed coordinate
-validation, and SQL row conversion to lifecycle-specific modules. Each
+probe acknowledgement, event correlation, bounded observation, typed
+repair/retry projection, coordinate validation, and SQL row conversion to
+lifecycle-specific modules. Each
 mutating entry point owns its immediate Registry transaction; row and
 coordinate helpers do not open transactions or expose database
 representations outside Store.

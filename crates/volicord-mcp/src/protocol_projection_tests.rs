@@ -331,34 +331,33 @@ fn integration_verification_results_validate_for_every_production_profile() {
     let awaiting_probe = json!({
         "kind": "awaiting_probe",
         "tool": AgentToolId::GUARD_PROBE.wire_name(),
-        "expires_at": "2026-07-23T00:05:00Z",
     });
     let awaiting_hooks = json!({
-        "kind": "awaiting_hook_completion",
+        "kind": "awaiting_observation",
         "tool": AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
         "acknowledged_at": "2026-07-23T00:00:04Z",
-        "expires_at": "2026-07-23T00:05:00Z",
+        "remaining_status_reads": 1,
     });
     let complete = json!({
         "kind": "complete",
         "completed_at": "2026-07-23T00:00:05Z",
     });
     let restart_failed = json!({
-        "kind": "restart_required",
-        "reason": "failed",
-        "tool": AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        "kind": "repair_required",
+        "reason": "hook_payload_incompatible",
+        "retry_policy": "hook_review_required",
         "finding": {
-            "code": "verification_coordinate_stale",
-            "summary": "The verification coordinate is no longer current."
+            "code": "hook_payload_incompatible",
+            "summary": "The hook payload is incompatible."
         },
     });
     let restart_expired = json!({
-        "kind": "restart_required",
-        "reason": "expired",
-        "tool": AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        "kind": "repair_required",
+        "reason": "observation_deadline_exceeded",
+        "retry_policy": "new_turn_required",
         "finding": {
-            "code": "verification_expired",
-            "summary": "The bounded verification window expired."
+            "code": "observation_deadline_exceeded",
+            "summary": "The observation deadline was exceeded."
         },
     });
     let begin = |workflow: Value| {
@@ -443,7 +442,6 @@ fn integration_verification_results_validate_for_every_production_profile() {
         begin(json!({
             "kind": "awaiting_probe",
             "tool": AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
-            "expires_at": "2026-07-23T00:05:00Z",
         })),
         begin(json!({
             "kind": "complete",
@@ -451,8 +449,8 @@ fn integration_verification_results_validate_for_every_production_profile() {
             "tool": AgentToolId::GUARD_PROBE.wire_name(),
         })),
         begin(json!({
-            "kind": "restart_required",
-            "reason": "expired",
+            "kind": "repair_required",
+            "reason": "hook_event_not_observed",
             "tool": AgentToolId::GUARD_PROBE.wire_name(),
         })),
     ] {

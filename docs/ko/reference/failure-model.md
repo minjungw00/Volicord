@@ -84,20 +84,22 @@ Volicord에 도달하지 않았음을 뜻하며 host가 event를 내지 않았�
 있는 callable identity만 넣고 제한 없는 hook payload는 넣지 않습니다.
 
 Connection-integration 검증은 도구 호출 거부와 run lifecycle을 구분합니다. Malformed ID,
-다른 runtime, native session 또는 turn의 호출은 run을 변경하지 않고 거부합니다. 필요한
-현재 prompt/pre/post 상관관계가 없으면 active run은 한도가 있는 만료 시점까지 pending으로
-남습니다. 만료는 이력 성공을 꾸며내는 대신 run 상태 `expired`가 됩니다. 이전 probe
-acknowledgement가 없는 terminal 또는 expired run은 새 값을 만들지 않고 늦은 probe를
-거부합니다. 정확한 caller 좌표의 replay에 기존 acknowledgement가 있으면 probe는 원래
-timestamp를 유지합니다. Active probe replay는 `awaiting_hook_completion`, 완료된 replay는
-`complete`, 유효 상태가 failed 또는 expired인 replay는 해당 typed `restart_required`
-상태를 반환합니다. 어떤 replay도 run을 다시 active로 만들지 않습니다. 좌표 거절은 다른
-session이나 turn에 그 timestamp를 노출하지 않습니다. 저장된 pass의
-runtime, Guard Installation, policy, integration revision 또는 hook contract가 더 이상
-현재 상태가 아니면 typed `failed` restart reason으로 투영합니다. Failed와 expired run은
-문제를 복구했거나 이전 window가 만료된 뒤 정규 begin tool을 통해 새 verification을
-지시합니다. 이 workflow 상태는 Connection check 사실이며 위의 제품 전체 실패 범주를 다시
-정의하지 않습니다.
+다른 runtime, native session 또는 turn의 호출은 attempt를 변경하지 않고 거부합니다.
+Semantic host contract가 bounded observation policy를 선택합니다. 현재 Codex command
+hook에서는 probe acknowledgement 뒤 synchronous status read 한 번이 완료를 관찰하거나
+`repair_required`를 영속하며 TTL을 기다리지 않습니다.
+
+Repair reason은 hook event 누락, 비호환 payload, callable identity, verification ID,
+session, turn, tool-use, integration revision, hook definition, policy, deferred deadline
+실패를 구분합니다. Retry policy는 별도로 `no_automatic_retry`,
+`new_turn_required`, `host_reload_required`, `hook_review_required`,
+`repair_required` 중 하나입니다. 정확한 좌표 replay는 같은 ID와 `awaiting_probe`,
+`awaiting_observation`, `complete`, `repair_required` 상태를 반환합니다. 뒤의 두 상태는
+불변 terminal 상태이며 어떤 replay도 이를 다시 활성화하거나 다른 caller 좌표에
+acknowledgement를 노출하지 않습니다. Cleanup expiry는 보관에만 영향을 줍니다. Retry
+policy가 새 attempt를 허용하더라도 필요한 repair transition으로 실제 새 semantic 좌표가
+생긴 뒤에만 가능하며 같은 turn에서 자동으로 만들지 않습니다. 이 workflow 상태는
+Connection check 사실이며 위의 제품 전체 실패 범주를 다시 정의하지 않습니다.
 
 활성 연결 검증은 구성된 Codex 실행 파일을 찾고 version 명령을 실행하며 동작 probe를
 아래에서 정의하는 다섯 가지 상태 모델로 보고합니다. 실행 파일을 찾거나 실행하지 못한

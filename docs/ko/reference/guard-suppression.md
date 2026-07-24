@@ -182,6 +182,13 @@ tool output은 저장하지 않습니다. `HookEventNotObserved`는 event가 Vol
 도달하지 않았다는 뜻일 뿐이며 host emission과 routing 중 어느 쪽이 원인인지
 증명하지 않습니다.
 
+같은 semantic host contract가 host package version과 독립적으로
+`HookObservationPolicy`를 담당합니다. 검토된 `CodexCommandHooks` profile은
+synchronous이며 probe acknowledgement 뒤 status read를 한 번 허용합니다. 정확한
+prompt/pre/post chain이 완료되지 않으면 이 read가 영속 acquisition stage를 구체적인
+terminal repair reason으로 대응시킵니다. Cleanup expiry는 이 판단을 대신하지 않으며 같은
+semantic turn에서 새 attempt를 자동 생성하지 않습니다.
+
 ## 진단과 Event Projection
 
 모든 `Unavailable` 결과는 project, Guard event 식별자,

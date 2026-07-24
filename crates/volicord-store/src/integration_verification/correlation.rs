@@ -11,8 +11,8 @@ use volicord_types::GuardProbeObservationStage;
 use super::{
     observation::{observations_for_run, GuardProbeObservationRecord},
     row::{
-        active_run_for_event, complete_run, expire_active_runs, parse_timestamp, run_by_id,
-        ActiveEventRunLookup, CorrelatedEventIds,
+        active_run_for_event, complete_run, parse_timestamp, run_by_id, ActiveEventRunLookup,
+        CorrelatedEventIds,
     },
     GuardIntegrationVerificationRunRecord,
 };
@@ -45,7 +45,6 @@ pub fn refresh_guard_integration_verification_for_event(
     let path = registry_db_path(runtime_home);
     let mut conn = open_registry_database(path)?;
     let tx = begin_immediate_transaction(&mut conn)?;
-    expire_active_runs(&tx, &trigger.occurred_at)?;
     let run = active_run_for_event(
         &tx,
         ActiveEventRunLookup {
@@ -54,7 +53,7 @@ pub fn refresh_guard_integration_verification_for_event(
             host_turn_id: correlation.turn_id().as_str(),
             guard_installation_id: &trigger.guard_installation_id,
             integration_revision: &trigger.integration_revision,
-            policy_hash: &trigger.policy_hash,
+            policy_digest: &trigger.policy_hash,
         },
     )?;
     let Some(run) = run else {
@@ -79,7 +78,7 @@ pub fn refresh_guard_integration_verification_for_event(
             session_id: trigger.session_id.as_deref().unwrap_or_default(),
             host_turn_id: &run.host_turn_id,
             guard_installation_id: &run.guard_installation_id,
-            policy_hash: &run.policy_hash,
+            policy_hash: &run.policy_digest,
             integration_revision: &run.integration_revision,
         },
     )?;
@@ -143,7 +142,7 @@ fn correlated_event_triple<'a>(
     let ack = parse_timestamp("probe_acknowledged_at", acknowledged_at)?;
     let prompt = events
         .iter()
-        .filter(|event| prompt_event_matches(event, &run.hook_contract_digest))
+        .filter(|event| prompt_event_matches(event, &run.hook_definition_digest))
         .filter(|event| run.matched_prompt_event_id.as_deref() == Some(&event.guard_event_id));
     for prompt in prompt {
         let prompt_at = parse_timestamp("occurred_at", &prompt.occurred_at)?;
@@ -155,7 +154,7 @@ fn correlated_event_triple<'a>(
                 observations,
                 catalog,
                 probe,
-                &run.hook_contract_digest,
+                &run.hook_definition_digest,
             )
         }) {
             let HostNativeCorrelation::CodexHookTool(pre_correlation) = pre
@@ -177,7 +176,7 @@ fn correlated_event_triple<'a>(
                     observations,
                     catalog,
                     probe,
-                    &run.hook_contract_digest,
+                    &run.hook_definition_digest,
                 )
             }) {
                 let HostNativeCorrelation::CodexHookTool(post_correlation) = post

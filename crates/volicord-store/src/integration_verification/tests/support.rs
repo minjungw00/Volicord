@@ -1,4 +1,7 @@
-use std::{error::Error, path::Path};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 use volicord_host_contract::{
     project_mcp_tool, CanonicalToolName, CodexHookPromptCorrelation, CodexHookToolCorrelation,
@@ -7,8 +10,9 @@ use volicord_host_contract::{
 };
 use volicord_test_support::TempRuntimeHome;
 use volicord_types::{
-    AgentToolId, GuardDecision, GuardHookContractStatus, GuardProbeResult, McpRuntimeSessionSource,
-    SequenceDurableIdGenerator,
+    guard_manifest_from_json, AgentToolId, GuardDecision, GuardHookContractStatus,
+    GuardProbeResult, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
+    IntegrationRevision, McpRuntimeSessionSource, PolicyHash, SequenceDurableIdGenerator,
 };
 
 use crate::{
@@ -27,9 +31,8 @@ use crate::{
     },
     integration_verification::{
         acknowledge_guard_integration_probe, begin_guard_integration_verification_with_generator,
-        correlation::refresh_guard_integration_verification_for_event,
         observe_guard_probe_hook_event,
-        row::{overwrite_owner_field_for_test, run_by_id, StoredOwnerField},
+        row::{mark_repair_required, run_by_id},
         BeginGuardIntegrationVerificationInput, GuardIntegrationVerificationCaller,
         GuardIntegrationVerificationRunRecord, GuardProbeHookEvidence,
     },
@@ -54,6 +57,7 @@ pub(super) const ACK_AT: &str = "2026-07-23T00:00:04Z";
 
 pub(super) struct VerificationFixture {
     pub runtime_home: TempRuntimeHome,
+    pub repo_root: PathBuf,
     pub runtime_session_id: String,
     pub project_session_id: String,
     pub integration_revision: String,
@@ -174,6 +178,7 @@ impl VerificationFixture {
         )?;
         Ok(Self {
             runtime_home,
+            repo_root,
             runtime_session_id,
             project_session_id: session.session_id,
             integration_revision,
@@ -181,11 +186,15 @@ impl VerificationFixture {
     }
 
     pub(super) fn caller(&self) -> GuardIntegrationVerificationCaller {
+        self.caller_for_turn(HOST_TURN_ID)
+    }
+
+    pub(super) fn caller_for_turn(&self, turn: &str) -> GuardIntegrationVerificationCaller {
         GuardIntegrationVerificationCaller {
             connection_internal_id: CONNECTION_ID.to_owned(),
             runtime_session_id: self.runtime_session_id.clone(),
             host_session_id: HOST_SESSION_ID.to_owned(),
-            host_turn_id: HOST_TURN_ID.to_owned(),
+            host_turn_id: turn.to_owned(),
         }
     }
 
@@ -233,43 +242,134 @@ impl VerificationFixture {
 
     pub(super) fn set_policy_hash(
         &self,
-        verification_id: &str,
+        _verification_id: &str,
         policy_hash: &str,
     ) -> StoreResult<()> {
-        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
-        overwrite_owner_field_for_test(
-            &conn,
-            verification_id,
-            StoredOwnerField::PolicyHash,
-            policy_hash,
-        )
+        self.set_current_manifest_field("$.policy_hash", policy_hash)
     }
 
     pub(super) fn set_hook_contract_digest(
         &self,
-        verification_id: &str,
+        _verification_id: &str,
         hook_contract_digest: &str,
     ) -> StoreResult<()> {
-        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
-        overwrite_owner_field_for_test(
-            &conn,
-            verification_id,
-            StoredOwnerField::HookContractDigest,
-            hook_contract_digest,
-        )
+        self.set_current_manifest_field("$.host_contract_digest", hook_contract_digest)
     }
 
     pub(super) fn set_integration_revision(
         &self,
-        verification_id: &str,
+        _verification_id: &str,
         integration_revision: &str,
     ) -> StoreResult<()> {
+        self.set_current_manifest_field("$.integration_revision", integration_revision)
+    }
+
+    fn set_current_manifest_field(&self, path: &str, value: &str) -> StoreResult<()> {
         let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
-        overwrite_owner_field_for_test(
+        let manifest_json: String = conn.query_row(
+            "SELECT manifest_json
+               FROM guard_installations
+              WHERE guard_installation_id = ?1",
+            [INSTALLATION_ID],
+            |row| row.get(0),
+        )?;
+        let updated_manifest = if path == "$.policy_hash" {
+            let connection =
+                agent_connection_record_read_only(self.runtime_home.path(), CONNECTION_ID)?
+                    .expect("fixture connection");
+            test_guard_manifest_json(
+                &connection,
+                PROJECT_ID,
+                &self.repo_root,
+                INSTALLATION_ID,
+                PolicyHash::parse(value)
+                    .expect("fixture policy hash is canonical")
+                    .as_str(),
+            )
+        } else {
+            let mut manifest = guard_manifest_from_json(&manifest_json)
+                .expect("fixture starts with an exact current Guard manifest");
+            match path {
+                "$.host_contract_digest" => manifest.host_contract_digest = value.to_owned(),
+                "$.integration_revision" => {
+                    manifest.integration_revision = IntegrationRevision::parse(value)
+                        .expect("fixture integration revision is canonical")
+                }
+                _ => panic!("unsupported fixture manifest field"),
+            }
+            serde_json::to_string(&manifest).expect("serialize fixture manifest")
+        };
+        guard_manifest_from_json(&updated_manifest)
+            .unwrap_or_else(|error| panic!("{path} must retain exact manifest semantics: {error}"));
+        conn.execute(
+            "UPDATE guard_installations
+                SET manifest_json = ?2
+              WHERE guard_installation_id = ?1",
+            rusqlite::params![INSTALLATION_ID, updated_manifest],
+        )?;
+        Ok(())
+    }
+
+    pub(super) fn force_repair(
+        &self,
+        verification_id: &str,
+        reason: GuardVerificationRepairReason,
+        retry_policy: GuardVerificationRetryPolicy,
+    ) -> StoreResult<()> {
+        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        mark_repair_required(
             &conn,
             verification_id,
-            StoredOwnerField::IntegrationRevision,
-            integration_revision,
+            ACK_AT,
+            reason,
+            retry_policy,
+            reason.as_str(),
+            "Test-owned terminal repair condition.",
+        )
+    }
+
+    pub(super) fn begin_new_turn<const N: usize>(
+        &self,
+        turn: &str,
+        prompt_event_id: &str,
+        observed_at: &str,
+        ids: [&str; N],
+    ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
+        let prompt = prompt_correlation(turn);
+        observe_event_correlation(self.runtime_home.path(), prompt.clone(), observed_at)?;
+        insert_test_event(
+            self.runtime_home.path(),
+            EventFixture {
+                integration_revision: &self.integration_revision,
+                event_id: prompt_event_id,
+                correlation: prompt,
+                phase: "prompt_capture",
+                occurred_at: observed_at,
+                verification_id: None,
+                digest: None,
+                policy_hash: POLICY_HASH,
+            },
+        )?;
+        let session = bind_agent_session_runtime(
+            self.runtime_home.path(),
+            PROJECT_ID,
+            AgentSessionRuntimeBinding {
+                runtime_session_id: self.runtime_session_id.clone(),
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                guard_installation_id: Some(INSTALLATION_ID.to_owned()),
+                correlation: mcp_correlation(turn),
+                observed_at: observed_at.to_owned(),
+            },
+        )?;
+        begin_guard_integration_verification_with_generator(
+            self.runtime_home.path(),
+            BeginGuardIntegrationVerificationInput {
+                caller: self.caller_for_turn(turn),
+                project_id: PROJECT_ID.to_owned(),
+                project_session_id: session.session_id,
+                observed_at: observed_at.to_owned(),
+            },
+            &SequenceDurableIdGenerator::new(ids),
         )
     }
 
@@ -376,12 +476,7 @@ impl VerificationFixture {
     ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
         self.acknowledge(verification_id, ACK_AT)?;
         self.insert_exact_tool_events(verification_id)?;
-        Ok(refresh_guard_integration_verification_for_event(
-            self.runtime_home.path(),
-            PROJECT_ID,
-            "guard_event_post",
-        )?
-        .expect("active verification"))
+        self.record(verification_id)
     }
 }
 

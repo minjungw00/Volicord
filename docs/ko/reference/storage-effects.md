@@ -345,11 +345,13 @@ reconcile하거나 Runtime Home 또는 Product Repository에 쓰지 않습니다
 
 `volicord.begin_integration_verification`은 immediate Registry transaction 하나보다 먼저
 현재 managed runtime, native session/turn, 선택한 Connection Project, 현재 Agent Session,
-Guard Installation, policy, revision, hook contract, prompt 관찰을 검증합니다. 만기가 지난
-active row를 만료 처리하고 `guard_integration_verification_runs` row 하나를 삽입하거나,
-정확한 현재 active 또는 passed row를 멱등 replay로 반환합니다. 거부된 호출, 수동 호출,
-preflight 호출, 오래된 호출, 모호한 호출, prompt가 없는 호출은 verification-run 효과가
-없습니다.
+Guard Installation, policy, revision, hook contract, prompt 관찰을 검증합니다. 정확한
+semantic 좌표의 기존 row는 terminal row를 포함해 그대로 반환하고, 실제로 달라진 적격
+좌표에만 `guard_integration_verification_runs` row 하나를 삽입합니다. 이전 nonterminal
+좌표가 대체되면 begin은 typed terminal repair를 기록한 다음 retry policy를 적용합니다.
+Cleanup은 오래 보관된 record만 제거하며 새 ID를 만들지 않습니다. 거부된 호출, 수동 호출,
+preflight 호출, 모호한 호출, prompt가 없는 호출, retry가 허용되지 않는 호출은 새 run
+효과가 없습니다.
 
 `volicord.guard_probe`는 immediate Registry transaction 하나를 사용합니다. 정확한 run을
 읽고 완전한 caller 좌표를 검증하며 현재 유효 상태를 계산한 뒤, 기존
@@ -357,19 +359,22 @@ preflight 호출, 오래된 호출, 모호한 호출, prompt가 없는 호출은
 run만 조건부로 값을 설정할 수 있습니다. Store는 `guard_probe_observations`에
 `probe_acknowledged`를 기록하고 pre-tool acquisition이 아직 도착하지 않았으면
 `hook_event_not_observed`도 기록한 뒤 commit 전에 권위 있는 timestamp와 상태를 다시
-읽습니다. 따라서 동시에 실행한 동일한 첫 호출은 timestamp 하나로 수렴합니다. `passed`
-뒤의 정확한 replay나 현재 공개 projection이 지원하는 다른 terminal replay는 완료 정보와
-일치한 event를 바꾸지 않고 원래 acknowledgement를 반환합니다. 다른 좌표는 값을 노출하지
-않고 거부하며 acknowledgement가 없는 terminal 또는 expired run에는 뒤늦게 값을 만들 수
-없습니다. 프로젝트 `state.sqlite`, Core 작업 흐름, Task, Product Repository에는 효과가
-없습니다. `volicord.get_integration_verification`은 읽기 전용입니다.
-호환 Guard event 영속은 일반적인 프로젝트 로컬 event 효과를 유지하지만 routing된 MCP
-event의 제한 없는 raw payload는 저장하지 않습니다. 그 commit 뒤 Registry transaction
-하나가 한도가 있는 typed acquisition stage를 기록합니다. 일치한 pre/post stage는 active
-run을 `passed`로 refresh하면서 완료 정보와 일치한 event ID를 저장할 수 있습니다. 알 수
-없는 callable, non-probe tool, malformed payload, coordinate mismatch는 진단 acquisition
-row를 추가하지만 run을 완료할 수 없습니다. 정확한 replay로 이 refresh를 완료할 수
-있습니다. 어떤 분기도 없는 Guard event를 꾸며내거나 MCP trust 상태를 변경하지 않습니다.
+읽습니다. 따라서 동시에 실행한 동일한 첫 호출은 timestamp 하나로 수렴합니다. `complete`
+또는 `repair_required` 뒤의 정확한 replay는 완료 정보와 일치한 event를 바꾸지 않고
+원래 acknowledgement를 반환합니다. 다른 caller 좌표는 값을 노출하지 않고 거부하며
+acknowledgement가 없는 terminal run에는 뒤늦게 값을 만들 수 없습니다. 프로젝트
+`state.sqlite`, Core 작업 흐름, Task, Product Repository에는 효과가 없습니다.
+
+`volicord.get_integration_verification`은 immediate Registry transaction 하나를
+사용합니다. Caller와 현재 owner 좌표를 검증하고 저장된 host policy가 허용한 status read
+수를 넘지 않으며 기존 terminal 상태는 변경하지 않고 반환합니다. 현재 synchronous Codex
+policy는 read 한 번을 허용합니다. 정확한 event correlation이 attempt를 이미 완료하지
+않았다면 이 read가 가장 구체적인 acquisition reason과 별도 retry policy가 있는
+`repair_required`를 영속합니다. 호환 Guard event 영속은 일반적인 프로젝트 로컬 효과를
+유지하며 뒤따르는 Registry acquisition write는 bounded stage를 기록할 수 있습니다.
+일치한 pre/post stage는 `complete`를 원자적으로 확정할 수 있습니다. 어떤 분기도 없는
+Guard event를 꾸며내거나 cleanup expiry를 기다리거나 terminal attempt를 다시
+활성화하거나 MCP trust 상태를 변경하지 않습니다.
 
 ## Managed Runtime 프로젝트 Session 결속
 

@@ -332,6 +332,12 @@ serialization, transaction, constraint finding은 각각의 집중 복구 action
 삭제하고 현재 원본으로 다시 만들 수 있습니다. 이 과정에서 기록을 마이그레이션,
 변환, 가져오기하지 않습니다.
 
+현재 Registry 계약은 완전한 semantic 좌표마다 불변 integration-verification attempt
+하나를 semantic observation policy 및 typed repair/retry field와 함께 저장합니다. 이전
+time-window lifecycle은 호환되는 대체 layout이 아닙니다. 이전 table 형태를 가진
+Registry는 같은 재생성 규칙을 따르는 지원되지 않는 저장소 계약이며 Store는 만료 또는
+terminal legacy row를 현재 attempt로 재해석하지 않습니다.
+
 ## 담당 문서 링크
 
 - 여러 표면에 공통인 실패 범주와 기본값 금지 규칙: [실패 모델](failure-model.md)

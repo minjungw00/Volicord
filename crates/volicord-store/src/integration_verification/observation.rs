@@ -101,7 +101,7 @@ pub fn observe_guard_probe_hook_event(
             project_internal_id: &project.project_internal_id,
             guard_installation_id: &event.guard_installation_id,
             integration_revision: &event.integration_revision,
-            policy_hash: &event.policy_hash,
+            policy_digest: &event.policy_hash,
         },
     )?;
     let Some(run) = run else {
@@ -174,7 +174,7 @@ pub fn observe_unbound_guard_probe_hook_event(
             project_internal_id: &project.project_internal_id,
             guard_installation_id: &input.guard_installation_id,
             integration_revision: manifest.integration_revision.as_str(),
-            policy_hash: manifest.policy_hash.as_str(),
+            policy_digest: manifest.policy_hash.as_str(),
         },
     )?;
     let Some(run) = run else {

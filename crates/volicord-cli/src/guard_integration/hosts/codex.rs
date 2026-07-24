@@ -151,8 +151,9 @@ pub(crate) fn plan_codex_rule_file(
         "# Hook review and trust remain user/host owned.\n\
 # Manual stdio and CLI preflight are diagnostic, not managed-host evidence.\n\
 # Canonical verification request: Run the Volicord integration verification.\n\
-# Agent sequence: call {}, then {}; follow workflow.kind and call the returned workflow.tool.\n\
-# Workflow states: {} uses {}; {} uses {}; {} uses {} after repair or expiry; {} calls no verification tool.\n\
+# Agent sequence: call {}, then {}; follow workflow.kind and call the returned workflow.tool once.\n\
+# Workflow states: {} uses {} once; {} uses {} once; {} and {} call no verification tool.\n\
+# Make no delay or repeated status calls, and do not begin another attempt in the same turn.\n\
 # Begin, probe, and status expose the same tagged workflow state.\n\
 # If tools are unavailable, report managed MCP unavailable; do not synthesize raw stdio or Codex _meta.\n\
 prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n",
@@ -160,10 +161,9 @@ prefix_rule(\n    pattern = [\"sh\", \"-c\", [\n",
         AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
         IntegrationVerificationWorkflowState::AWAITING_PROBE_KIND,
         AgentToolId::GUARD_PROBE.wire_name(),
-        IntegrationVerificationWorkflowState::AWAITING_HOOK_COMPLETION_KIND,
+        IntegrationVerificationWorkflowState::AWAITING_OBSERVATION_KIND,
         AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
-        IntegrationVerificationWorkflowState::RESTART_REQUIRED_KIND,
-        AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name(),
+        IntegrationVerificationWorkflowState::REPAIR_REQUIRED_KIND,
         IntegrationVerificationWorkflowState::COMPLETE_KIND,
     );
     for script in hook_scripts {

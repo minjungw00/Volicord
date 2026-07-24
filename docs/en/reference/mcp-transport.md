@@ -495,12 +495,13 @@ relax the complete owner-defined request validation.
 The canonical user request is `Run the Volicord integration verification.` The
 agent resolves an exact project through `volicord.list_projects`, then calls
 `volicord.begin_integration_verification`. It follows the returned tagged
-`workflow`: `awaiting_probe`, `awaiting_hook_completion`, and
-`restart_required` each carry the exact canonical `tool` to call, while
-`complete` carries no tool. A restart is attempted only after the reported
-failure is repaired or the previous run expires. Begin, probe, and status
-expose this same state-directed contract. Only this first-party sequence can
-supply current managed MCP and Guard correlation.
+`workflow`: `awaiting_probe` and `awaiting_observation` carry the exact
+canonical `tool` to call, while `complete` and `repair_required` are terminal
+and carry no tool. Begin, probe, and status expose this same state-directed
+contract. The current Codex semantic host profile uses synchronous observation
+with one allowed status read, so the agent never sleeps, polls, or begins
+another attempt in the same turn. Only this first-party sequence can supply
+current managed MCP and Guard correlation.
 
 If Volicord tools are not exposed, the agent reports the managed MCP connection
 unavailable. It does not start raw stdio, hand-author Codex `_meta`, or treat
@@ -517,9 +518,9 @@ their exact current managed-host coordinate and have these public shapes:
 | Tool | Canonical annotations | Direct effect |
 |---|---|---|
 | `volicord.list_projects` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Reads the Connection project allowlist; no write. |
-| `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Creates or resumes one bounded Registry verification run after current-coordinate validation; no Core, Task, or Product Repository effect. |
+| `volicord.begin_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Creates or resumes the one immutable Registry verification attempt for the current semantic coordinate; no Core, Task, or Product Repository effect. |
 | `volicord.guard_probe` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | First-write-wins acknowledges the exact active run and returns its current shared workflow state; exact replay returns the current terminal or nonterminal state without repeating effects. No Core, Task, project-state, or Product Repository effect. |
-| `volicord.get_integration_verification` | `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Reads the exact run and correlated phase status; no write. |
+| `volicord.get_integration_verification` | `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false` | Consumes at most the host policy's bounded status read, projects correlated phase status, and may persist terminal typed repair; no Core, Task, project-state, or Product Repository effect. |
 
 These annotations describe the tools themselves. Ordinary compatible Guard
 event persistence and its subsequent Registry correlation refresh retain the
@@ -561,48 +562,56 @@ IntegrationVerificationWorkflowState:
   awaiting_probe:
     kind: awaiting_probe
     tool: volicord.guard_probe
-    expires_at: UtcTimestamp
-  awaiting_hook_completion:
-    kind: awaiting_hook_completion
+  awaiting_observation:
+    kind: awaiting_observation
     tool: volicord.get_integration_verification
     acknowledged_at: UtcTimestamp
-    expires_at: UtcTimestamp
+    remaining_status_reads: u8
   complete:
     kind: complete
     completed_at: UtcTimestamp
-  restart_required:
-    kind: restart_required
-    reason: failed | expired
-    tool: volicord.begin_integration_verification
-    finding?: { code: string, summary: string }
+  repair_required:
+    kind: repair_required
+    reason: hook_event_not_observed | hook_payload_incompatible |
+      callable_identity_mismatch | verification_id_mismatch |
+      session_mismatch | turn_mismatch | tool_use_mismatch |
+      integration_revision_changed | hook_definition_changed |
+      policy_changed | observation_deadline_exceeded
+    retry_policy: no_automatic_retry | new_turn_required |
+      host_reload_required | hook_review_required | repair_required
+    finding: { code: string, summary: string }
 ```
 
 `project_selector` follows ordinary Connection project selection and may be
 omitted only when selection is unambiguous. Begin binds the actual current
 managed runtime and native session/turn, requires a current compatible
-prompt-capture event, and creates or resumes the one bounded run for that
-coordinate. It never accepts `manual_cli`, `cli_preflight`, or
+prompt-capture event, and creates or resumes exactly one attempt for
+Connection, project, managed runtime session, native host session and turn,
+integration revision, Guard Installation, semantic host-contract profile,
+hook-definition digest, and policy digest. The coordinate is immutable and
+unique even after the attempt becomes terminal; time passing never creates a
+new attempt. Begin never accepts `manual_cli`, `cli_preflight`, or
 `integration_probe` runtime evidence. One Store-owned projection maps an
-effective active unacknowledged run to `awaiting_probe`, an effective active
-acknowledged run to `awaiting_hook_completion`, a passed run to `complete`, and
-a failed or expired run to `restart_required` with the corresponding typed
-reason. The tool references use the canonical `AgentToolId` wire projection;
-no result accepts an arbitrary tool string. The tagged alternatives and their
-state-specific required fields make contradictory combinations invalid in both
-typed decoding and JSON Schema.
+unacknowledged attempt to `awaiting_probe`, an acknowledged attempt to
+`awaiting_observation`, a successful attempt to `complete`, and a failed
+acquisition or owner check to `repair_required` with separate typed reason and
+retry policy. The tool references use the canonical `AgentToolId` wire
+projection; no result accepts an arbitrary tool string.
 
 The probe acknowledgement is first-write-wins over verification ID,
 Connection, managed runtime session, native host session, and native host turn.
-The first eligible active call records `probe_acknowledged_at`. An exact
-active replay returns the same `awaiting_hook_completion` state, including its
-authoritative acknowledgement time. Exact replay after completion returns
-`complete`. A replay whose run is effectively failed or expired returns the
-corresponding `restart_required` state and never substitutes `complete`. A
-different caller coordinate is rejected without exposing the acknowledgement.
-A terminal or expired run with no prior acknowledgement cannot acquire one
-late. Probe does not reactivate a terminal run or mutate Core state, Task
-state, or Product Repository files. Get is read-only and reports the same
-workflow state with its correlated phase observations.
+The first eligible call records `probe_acknowledged_at`. An exact replay
+returns the same `awaiting_observation` state and authoritative acknowledgement
+time. Exact replay after completion or repair returns the unchanged terminal
+state. A different caller coordinate is rejected without exposing the
+acknowledgement, and a terminal attempt without an acknowledgement cannot
+acquire one late. Probe does not reactivate a terminal attempt or mutate Core
+state, Task state, or Product Repository files. Get follows the semantic
+`HookObservationPolicy`: the reviewed current Codex contract is
+`Synchronous { allowed_status_reads: 1 }`. Its single read either observes
+completion or persists the most precise `repair_required` acquisition or
+correlation reason. Deferred profiles, when defined, carry an explicit
+deadline policy rather than inheriting a Codex version threshold.
 
 A run passes only when the same run session and turn contain a compatible
 prompt event followed by `PreToolUse` and `PostToolUse` for the same tool-use
@@ -611,7 +620,8 @@ ID, exact generated host tool name `mcp__volicord__volicord_guard_probe`, and ex
 revision, hook-contract digest, and managed runtime must remain current, and
 the event times must satisfy prompt at or before pre-tool and pre-tool before
 post-tool. Historical, unrelated, stale, mismatched, or expired observations
-cannot satisfy the run.
+cannot satisfy the attempt. Cleanup expiry only bounds retained records; it
+does not drive synchronous observation or permit a same-coordinate retry.
 
 <a id="mutation-authority-receipt-projection"></a>
 ## Response Wrapping

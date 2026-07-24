@@ -716,44 +716,58 @@ lifecycle inputs; callers cannot select them.
 
 ### Managed in-chat integration verification
 
-`GuardIntegrationVerificationRun` is the durable, bounded proof unit for the
-first-party in-chat workflow. It records its verification ID, Connection,
-project, managed MCP runtime, native host session and turn, Guard Installation,
-integration revision, policy hash, hook-contract digest, expected probe tool,
-creation and expiry, lifecycle status, probe acknowledgement, completion,
-matched prompt/pre/post event IDs, and terminal finding. Status is exactly
-`active`, `passed`, `failed`, or `expired`. One Connection/runtime/turn/revision
-coordinate has at most one active run, and begin replay under unchanged
-ownership returns the same active or passed run.
+`GuardIntegrationVerificationRun` is the durable attempt for the first-party
+in-chat workflow. Its immutable semantic coordinate is Connection, project,
+managed MCP runtime session, native host session and turn, integration
+revision, Guard Installation, host-contract profile, hook-definition digest,
+and policy digest. Exactly one verification ID exists for that coordinate,
+including after it becomes terminal. The row also records the semantic
+observation policy, bounded status-read count, cleanup boundary, first probe
+acknowledgement, correlated prompt/pre/post event IDs, completion, and terminal
+finding. Cleanup time does not change attempt identity or workflow state.
 
 Only an actual current `managed_host` call can begin, probe, or read a run.
 Manual stdio, CLI preflight, and integration probes cannot create success.
 `IntegrationVerificationWorkflowState` is the one public projection shared by
 begin, probe, and status. Its tagged alternatives are `awaiting_probe` with the
-canonical Guard probe tool and expiry, `awaiting_hook_completion` with the
-canonical status tool, authoritative acknowledgement time, and expiry,
-`complete` with completion time, and `restart_required` with a typed `failed`
-or `expired` reason, the canonical begin tool, and a bounded current finding
-when applicable. Tool fields are typed canonical `AgentToolId` projections,
-not arbitrary strings. Terminal runs never become active merely to repeat a
-probe.
+canonical Guard probe tool, `awaiting_observation` with the canonical status
+tool, authoritative acknowledgement time, and remaining bounded reads,
+`complete` with completion time, and `repair_required` with a typed repair
+reason, separate retry policy, and bounded finding. Tool fields are typed
+canonical `AgentToolId` projections, not arbitrary strings. `complete` and
+`repair_required` are immutable terminal states.
+
+The host contract selects `HookObservationPolicy` semantically as
+`Synchronous { allowed_status_reads }` or
+`Deferred { deadline, allowed_status_reads }`. The reviewed current Codex
+command-hook profile selects synchronous observation with one status read;
+neither package version numbers nor numeric profile generations select this
+behavior. The deterministic sequence is begin or resume, call GuardProbe once
+when requested, call status according to that policy, then stop at a terminal
+state. There is no sleep loop or automatic same-turn retry.
 
 Probe acknowledgement is first-write-wins for the exact verification ID,
 Connection, managed runtime session, native host session, and native host turn.
-The first eligible active call records the timestamp. Active replay retains
-`awaiting_hook_completion` and that original timestamp. Exact replay after
-completion returns `complete`; an effectively failed or expired replay retains
-the corresponding `restart_required` state. No replay changes completion or
-matched events. A different coordinate is rejected without exposing the
-acknowledgement, and a terminal or expired run without one cannot acquire a
-late acknowledgement.
+The first eligible call records the timestamp. Replay retains
+`awaiting_observation` and that original timestamp. Exact replay after
+completion or repair returns the same terminal state. No replay changes
+completion or matched events. A different caller coordinate is rejected
+without exposing the acknowledgement, and a terminal attempt without one
+cannot acquire a late acknowledgement.
 
 A pass requires the prompt, pre-tool, and post-tool records to belong to the same
 run session and turn; pre/post must share the tool-use ID, generated exact probe
 name, and verification-ID input. The current Guard Installation, policy hash,
 integration revision, hook-contract digest, and managed runtime must still
 match. Prompt is no later than pre-tool, and pre-tool is earlier than post-tool.
-No historical event search or cross-run phase assembly is allowed.
+No historical event search or cross-attempt phase assembly is allowed.
+Exhausting synchronous reads produces the most precise typed repair reason:
+missing event, incompatible payload, callable, verification ID, session, turn,
+or tool-use mismatch. Owner drift likewise distinguishes integration revision,
+hook definition, and policy changes. Retry eligibility is represented only by
+`no_automatic_retry`, `new_turn_required`, `host_reload_required`,
+`hook_review_required`, or `repair_required`; a new attempt still requires a
+genuinely different eligible coordinate.
 
 `guard_verification` is the final Connection check for this workflow. Its check
 details expose the verification, runtime-session, host-turn, and matched Guard

@@ -169,16 +169,18 @@ host/config 조사 + Store session/event 근거
 dependency, 고정 action metadata, 정규 typed tool reference를 포함하는 폐쇄형
 `IntegrationVerificationWorkflowState`를 담당합니다. `volicord-cli`는 현재 managed
 configuration, host reload, hook source, session, capability, Guard, 별도 project-trust
-근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존하며 verification
-record에서 공유 workflow 상태를 만드는 유일한 domain projector입니다. 바뀌지 않은
-manifest는 현재 관찰의 적격성을 유지하고 관리 definition 내용이 바뀌면 이전 event를
-무효화합니다. Begin, probe, get, `volicord-mcp`, CLI check, 생성 host guidance는 모두
-그 projection을 사용합니다. 완료된 정확한 probe replay는 `complete`로 유지되고 실패
-또는 만료 replay는 `restart_required`로 유지됩니다. Adapter와 renderer는 별도의 상태를
-파생하거나 summary 산문을 분류하지 않습니다.
+근거를 수집합니다. `volicord-store`는 Guard definition 경계를 보존하며 불변 semantic
+verification 좌표에서 공유 workflow 상태를 만드는 유일한 domain projector입니다.
+`volicord-host-contract`는 semantic synchronous/deferred observation policy를 담당하고
+현재 Codex profile은 version 분기 없이 synchronous status read 한 번을 선택합니다.
+Begin, probe, get, `volicord-mcp`, CLI check, 생성 host guidance는 모두 그 projection을
+사용합니다. 정확한 replay는 같은 verification ID와 상태를 유지하고 `complete`와 typed
+`repair_required`는 terminal로 남습니다. Adapter와 renderer는 별도의 상태를 파생하거나
+summary 산문을 분류하지 않습니다.
 
 Store 내부의 integration-verification facade는 생성·재개, probe acknowledgement,
-event correlation, 상태 projection, typed coordinate 검증, SQL row 변환을
+event correlation, bounded observation, typed repair/retry projection, coordinate 검증,
+SQL row 변환을
 lifecycle별 모듈에 위임합니다. 각 변경 진입점은 자신의 즉시 Registry
 transaction을 소유하며 row 및 coordinate helper는 transaction을 열거나
 데이터베이스 표현을 Store 밖으로 노출하지 않습니다.

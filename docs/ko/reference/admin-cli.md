@@ -849,11 +849,13 @@ verification/run/event ID를 보고하지만, CLI가 채팅 내 작업 흐름을
 않습니다. Pending check는 현재 managed Codex 채팅 안에서
 `volicord.begin_integration_verification`을 사용한 뒤 반환된 tagged `workflow`와 정확한
 typed `tool`을 따르도록 안내합니다. `awaiting_probe`는 Guard probe를 호출하고,
-`awaiting_hook_completion`은 status를 읽으며, `restart_required`는 복구 또는 만료 뒤 새
-verification을 시작하고, `complete`는 verification tool을 호출하지 않습니다. Begin,
-probe, status는 같은 workflow 상태를 보고합니다. CLI preflight, 수동 stdio self-test,
-이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 명령은 Codex trust 상태를 관찰할 뿐
-프로젝트 trust를 자동화·승인·우회하거나 MCP trust configuration을 변경하지 않습니다.
+`awaiting_observation`은 semantic host policy에 따라 status를 읽습니다. `complete`와
+`repair_required`는 verification tool을 호출하지 않습니다. 현재 Codex profile은
+synchronous status read 한 번만 허용하며 sleep, 반복 poll, same-turn retry는 없습니다.
+Begin, probe, status는 같은 workflow 상태를 보고합니다. CLI preflight, 수동 stdio
+self-test, 이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 명령은 Codex trust 상태를
+관찰할 뿐 프로젝트 trust를 자동화·승인·우회하거나 MCP trust configuration을 변경하지
+않습니다.
 
 생성 Codex entry는 숨겨진 `_host-launch` 명령을 사용합니다. `_host-launch`는 host
 소유이고 일반 help에 표시하지 않으며 별도의 관리 또는 공개 API 표면이 아닙니다.

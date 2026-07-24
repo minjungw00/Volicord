@@ -368,19 +368,21 @@ Routing된 MCP hook event는 hash와 한도가 있는 정규 correlation을 저�
 raw event, tool input, tool result는 저장하지 않습니다.
 
 Registry의 `guard_integration_verification_runs`는 Core 또는 Task record가 아니라 영속적이고
-한도가 있는 Connection-integration record입니다. 각 row는 불투명 verification ID,
-Connection과 프로젝트, managed runtime, native host session과 turn, Guard Installation,
-integration revision, policy hash, hook-contract digest, 예상 probe 도구와 예상 host
-callable, 생성·만료·acknowledgement·완료 시각, lifecycle 상태, 일치한 prompt/pre/post
-Guard event ID, 선택적 terminal finding을 저장합니다. Active uniqueness 좌표는
-Connection/runtime/turn/revision입니다.
-정확한 begin replay는 같은 active 또는 passed row를 재개합니다. Probe acknowledgement는
-완전한 verification/Connection/runtime/native-session/native-turn 좌표에 적용되는 nullable
-first-write-wins 필드입니다. 정확한 replay는 완료 뒤에도 timestamp, 완료 정보, 일치한
-event를 바꾸지 않고 원래 acknowledgement와 현재 유효 lifecycle 상태를 읽습니다. 다른
-좌표는 이 값을 읽거나 바꿀 수 없으며 acknowledgement가 없는 terminal row에는 새 값을
-만들 수 없습니다. 유효 상태를 projection할 때는 현재 소유자 검증과 정확한 event
-상관관계가 필요하며, 저장된 row 자체나 무관한 이력 Guard event만으로는 충분하지 않습니다.
+한도가 있는 Connection-integration record입니다. 각 row는 불투명 verification ID와
+Connection, project, managed runtime session, native host session과 turn, integration
+revision, Guard Installation, host-contract profile, hook-definition digest, policy digest로
+이루어진 불변 semantic 좌표를 저장합니다. 무조건 unique constraint가 terminal row를
+포함해 좌표마다 row 하나만 허용합니다. Prompt event도 해당 turn의 attempt 하나만
+소유합니다. 따라서 정확한 begin replay는 같은 ID와 현재 상태를 반환하며 시간이 지나도
+이를 교체하지 않습니다.
+
+Row는 예상 typed probe와 host callable, semantic observation-policy kind, 선택적인 deferred
+deadline, 허용 및 소비한 status read 수, 생성 및 cleanup 시각, acknowledgement와 완료,
+일치한 prompt/pre/post event, typed terminal repair reason과 retry policy, code, summary도
+저장합니다. 상태는 정확히 `awaiting_probe`, `awaiting_observation`, `complete`,
+`repair_required`입니다. SQL check는 상태마다 정확한 nullable field 조합을 강제합니다.
+좌표 갱신, 두 번째 probe acknowledgement, terminal 변경, terminal-to-active 전이는
+거부합니다. Cleanup 시각은 보관 범위만 제한합니다.
 
 Registry의 `guard_probe_observations`는 acquisition 경계를 상관관계가 확인된 완료와
 분리해 기록합니다. 폐쇄형 `stage` 값은 `probe_acknowledged`,
@@ -394,12 +396,13 @@ Installation, integration revision, 관찰 시각을 저장합니다. Prompt, �
 input, tool output은 저장하지 않습니다. 따라서 event 부재는 입증된 routing 원인을
 주장하지 않고 `hook_event_not_observed`만 기록합니다.
 
-Store는 이 권위 있는 row 사실과 유효 상태를 공유 tagged
-`IntegrationVerificationWorkflowState`로 한 번만 투영합니다. 이 투영은 acknowledge되지
-않은 active, acknowledge된 active, passed, failed, expired run을 서로 다른 typed 상태와
-정규 `AgentToolId` 작업에 대응시킵니다. Begin, probe, get/status, adapter, renderer는 이
-상태를 소비합니다. 영속 계층은 사용자 대상 다음 행동 산문이나 renderer 문구를 만들지
-않습니다.
+Store는 이 권위 있는 row 사실을 공유 tagged
+`IntegrationVerificationWorkflowState`로 한 번만 투영합니다. 네 저장 상태를 직접
+대응시키고 두 nonterminal 상태에만 정규 `AgentToolId`를 노출합니다. Repair reason은
+`no_automatic_retry`, `new_turn_required`, `host_reload_required`,
+`hook_review_required`, `repair_required`와 분리됩니다. Begin, probe, get/status, adapter,
+renderer는 이 상태를 소비합니다. 영속 계층은 사용자 대상 다음 행동 산문이나 renderer
+문구를 만들지 않습니다.
 
 Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guard suppression은
 제한된 정규 correlation 데이터만 읽고 정확한 `SuppressionOutcome`을 반환합니다. Store

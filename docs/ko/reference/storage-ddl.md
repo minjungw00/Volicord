@@ -705,24 +705,28 @@ CREATE TABLE guard_integration_verification_runs (
   ),
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
   runtime_session_id TEXT NOT NULL,
   host_session_id TEXT NOT NULL,
   host_turn_id TEXT NOT NULL,
-  guard_installation_id TEXT NOT NULL,
   integration_revision TEXT NOT NULL CHECK (
     length(integration_revision) = 71
     AND substr(integration_revision, 1, 7) = 'sha256:'
     AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
   ),
-  policy_hash TEXT NOT NULL CHECK (
-    length(policy_hash) = 71
-    AND substr(policy_hash, 1, 7) = 'sha256:'
-    AND substr(policy_hash, 8) NOT GLOB '*[^0-9a-f]*'
+  guard_installation_id TEXT NOT NULL,
+  host_contract_profile TEXT NOT NULL CHECK (
+    host_contract_profile = 'codex-command-hooks'
   ),
-  hook_contract_digest TEXT NOT NULL CHECK (
-    length(hook_contract_digest) = 71
-    AND substr(hook_contract_digest, 1, 7) = 'sha256:'
-    AND substr(hook_contract_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  hook_definition_digest TEXT NOT NULL CHECK (
+    length(hook_definition_digest) = 71
+    AND substr(hook_definition_digest, 1, 7) = 'sha256:'
+    AND substr(hook_definition_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  policy_digest TEXT NOT NULL CHECK (
+    length(policy_digest) = 71
+    AND substr(policy_digest, 1, 7) = 'sha256:'
+    AND substr(policy_digest, 8) NOT GLOB '*[^0-9a-f]*'
   ),
   expected_probe_tool TEXT NOT NULL CHECK (
     expected_probe_tool = 'volicord.guard_probe'
@@ -731,14 +735,52 @@ CREATE TABLE guard_integration_verification_runs (
     length(CAST(expected_host_callable_name AS BLOB)) BETWEEN 1 AND 64
     AND expected_host_callable_name NOT GLOB '*[^A-Za-z0-9_]*'
   ),
+  observation_policy_kind TEXT NOT NULL CHECK (
+    observation_policy_kind IN ('synchronous', 'deferred')
+  ),
+  observation_deadline_at TEXT,
+  allowed_status_reads INTEGER NOT NULL CHECK (
+    allowed_status_reads BETWEEN 1 AND 255
+  ),
+  status_read_count INTEGER NOT NULL DEFAULT 0 CHECK (
+    status_read_count BETWEEN 0 AND allowed_status_reads
+  ),
   created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('active', 'passed', 'failed', 'expired')),
+  cleanup_after TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (
+    status IN ('awaiting_probe', 'awaiting_observation', 'complete', 'repair_required')
+  ),
   probe_acknowledged_at TEXT,
   completed_at TEXT,
-  matched_prompt_event_id TEXT,
+  matched_prompt_event_id TEXT NOT NULL,
   matched_pre_tool_event_id TEXT,
   matched_post_tool_event_id TEXT,
+  repair_reason TEXT CHECK (
+    repair_reason IS NULL
+    OR repair_reason IN (
+      'hook_event_not_observed',
+      'hook_payload_incompatible',
+      'callable_identity_mismatch',
+      'verification_id_mismatch',
+      'session_mismatch',
+      'turn_mismatch',
+      'tool_use_mismatch',
+      'integration_revision_changed',
+      'hook_definition_changed',
+      'policy_changed',
+      'observation_deadline_exceeded'
+    )
+  ),
+  retry_policy TEXT CHECK (
+    retry_policy IS NULL
+    OR retry_policy IN (
+      'no_automatic_retry',
+      'new_turn_required',
+      'host_reload_required',
+      'hook_review_required',
+      'repair_required'
+    )
+  ),
   terminal_finding_code TEXT CHECK (
     terminal_finding_code IS NULL
     OR (
@@ -760,14 +802,31 @@ CREATE TABLE guard_integration_verification_runs (
   FOREIGN KEY (guard_installation_id)
     REFERENCES guard_installations (guard_installation_id)
     ON DELETE RESTRICT,
-  CHECK (expires_at > created_at),
+  CHECK (cleanup_after > created_at),
+  CHECK (
+    (observation_policy_kind = 'synchronous' AND observation_deadline_at IS NULL)
+    OR (
+      observation_policy_kind = 'deferred'
+      AND (
+        (status = 'awaiting_probe' AND observation_deadline_at IS NULL)
+        OR observation_deadline_at > probe_acknowledged_at
+      )
+    )
+  ),
   CHECK (probe_acknowledged_at IS NULL OR probe_acknowledged_at >= created_at),
   CHECK (
-    (status = 'active' AND completed_at IS NULL AND terminal_finding_code IS NULL
-      AND terminal_finding_summary IS NULL)
-    OR (status = 'passed' AND completed_at IS NOT NULL AND terminal_finding_code IS NULL
-      AND terminal_finding_summary IS NULL)
-    OR (status IN ('failed', 'expired') AND completed_at IS NOT NULL
+    (status = 'awaiting_probe' AND probe_acknowledged_at IS NULL
+      AND completed_at IS NULL AND repair_reason IS NULL AND retry_policy IS NULL
+      AND terminal_finding_code IS NULL AND terminal_finding_summary IS NULL)
+    OR (status = 'awaiting_observation' AND probe_acknowledged_at IS NOT NULL
+      AND completed_at IS NULL AND repair_reason IS NULL AND retry_policy IS NULL
+      AND terminal_finding_code IS NULL AND terminal_finding_summary IS NULL)
+    OR (status = 'complete' AND probe_acknowledged_at IS NOT NULL
+      AND completed_at IS NOT NULL AND repair_reason IS NULL AND retry_policy IS NULL
+      AND terminal_finding_code IS NULL AND terminal_finding_summary IS NULL
+      AND matched_pre_tool_event_id IS NOT NULL AND matched_post_tool_event_id IS NOT NULL)
+    OR (status = 'repair_required' AND completed_at IS NOT NULL
+      AND repair_reason IS NOT NULL AND retry_policy IS NOT NULL
       AND terminal_finding_code IS NOT NULL AND terminal_finding_summary IS NOT NULL)
   ),
   CHECK (
@@ -776,15 +835,43 @@ CREATE TABLE guard_integration_verification_runs (
   )
 );
 
-CREATE UNIQUE INDEX idx_guard_integration_verification_active_coordinate
+CREATE UNIQUE INDEX idx_guard_integration_verification_coordinate
   ON guard_integration_verification_runs (
-    connection_internal_id, runtime_session_id, host_turn_id, integration_revision
-  )
-  WHERE status = 'active';
+    connection_internal_id, project_id, runtime_session_id, host_session_id,
+    host_turn_id, integration_revision, guard_installation_id,
+    host_contract_profile, hook_definition_digest, policy_digest
+  );
+CREATE UNIQUE INDEX idx_guard_integration_verification_prompt_attempt
+  ON guard_integration_verification_runs (project_internal_id, matched_prompt_event_id);
 CREATE INDEX idx_guard_integration_verification_project
   ON guard_integration_verification_runs (
     project_internal_id, connection_internal_id, created_at, verification_id
   );
+
+CREATE TRIGGER guard_integration_verification_coordinate_immutable
+BEFORE UPDATE OF
+  connection_internal_id, project_internal_id, project_id, runtime_session_id,
+  host_session_id, host_turn_id, integration_revision, guard_installation_id,
+  host_contract_profile, hook_definition_digest, policy_digest
+ON guard_integration_verification_runs
+BEGIN
+  SELECT RAISE(ABORT, 'guard integration verification coordinate is immutable');
+END;
+
+CREATE TRIGGER guard_integration_verification_probe_ack_immutable
+BEFORE UPDATE OF probe_acknowledged_at
+ON guard_integration_verification_runs
+WHEN OLD.probe_acknowledged_at IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'guard integration verification probe acknowledgement is immutable');
+END;
+
+CREATE TRIGGER guard_integration_verification_terminal_immutable
+BEFORE UPDATE ON guard_integration_verification_runs
+WHEN OLD.status IN ('complete', 'repair_required')
+BEGIN
+  SELECT RAISE(ABORT, 'guard integration verification terminal state is immutable');
+END;
 
 CREATE TABLE guard_probe_observations (
   observation_id TEXT PRIMARY KEY CHECK (
@@ -874,7 +961,7 @@ CREATE INDEX idx_guard_probe_observations_verification
 - `mcp_runtime_sessions.attempted_client_name`과 `attempted_client_version`은 한도가 있는 파싱된 client 쌍입니다. `requested_protocol_version`은 client 입력이고 `selected_protocol_version`은 server가 선택한 initialize 결과이며, `negotiated_protocol_version`은 handshake 완료와 함께 있을 때만 존재하고 선택 revision과 같아야 합니다. `initialize_completed_at`, `initialized_notification_at`, `tools_list_observed_at`은 서로 구분되는 lifecycle milestone이며, `tools/list`는 initialize 완료 뒤 initialized notification보다 먼저 올 수 있습니다. `returned_tool_identities_json`은 해당 list observation의 정규 exact inventory이고, required set 검증에 성공한 경우에만 `required_tools_validated_at`이 존재합니다. 한도가 있는 MCP 도구 이름 `verification_tool_name`과 `verification_tool_observed_at`은 정확한 null-or-present 쌍이며, observation에는 같은 session의 required-tool validation이 필요하고 그보다 앞설 수 없습니다. `terminal_finding_id`는 같은 runtime의 구조화된 error finding 하나를 가리키는 foreign key이며 graceful close와 함께 있을 수 없습니다.
 - `mcp_runtime_sessions.session_source`는 정확히 `managed_host`, `manual_cli`, `cli_preflight`, `integration_probe` 중 하나입니다. Lease-consumption transaction만 `managed_host`를 삽입할 수 있고 managed-session 조회는 나머지 세 값을 제외합니다.
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase, 정확한 `host_contract_profile`, 결정적인 `host_contract_digest`에 결속됩니다. 현재 Guard 선택은 `codex-command-hooks`입니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 모든 필수 phase의 호환되는 현재 소유 `guard_events`를 요구합니다. 이 협력적 check는 OS 수준 집행이나 쓰기 방지를 제공하지 않습니다.
-- `guard_integration_verification_runs`는 한도가 있는 managed-host 검증 좌표 하나를 저장합니다. 불투명 ID, Connection과 프로젝트, 현재 MCP runtime, native session과 turn, Guard Installation, integration revision, policy hash, hook-contract digest, 예상 probe 도구와 host callable, 수명, 상태, probe acknowledgement, 일치한 prompt/pre/post event ID, 완료 시각, 선택적 terminal finding을 포함합니다. 같은 Connection/runtime/turn/revision에는 `active` row가 최대 하나만 존재합니다. `probe_acknowledged_at`은 row가 적격일 때 한 번만 쓰며 이후 정확한 active 또는 terminal replay의 권위 있는 timestamp가 됩니다. 완료된 row를 replay 때문에 다시 active로 만들지 않으며, 값이 없는 terminal row에는 새 값을 만들 수 없습니다. Foreign key는 이 row를 Registry 소유자에 연결하며, row 자체가 아니라 현재 소유자 검증을 함께 통과해야 저장된 `passed`가 유효합니다.
+- `guard_integration_verification_runs`는 Connection, project, 현재 MCP runtime, native session과 turn, integration revision, Guard Installation, host-contract profile, hook-definition digest, policy digest로 이루어진 완전한 semantic 좌표마다 불변 managed-host attempt 하나를 저장합니다. 무조건 unique index는 terminal row도 포함하며 prompt 소유권은 별도 attempt가 prompt event 하나를 공유하지 못하게 합니다. Row는 semantic observation policy, bounded status-read 횟수, cleanup 경계, first-write acknowledgement, 일치한 event, 폐쇄형 상태, typed repair/retry field도 저장합니다. Coordinate, acknowledgement, terminal trigger는 identity 변경, 두 번째 acknowledgement, terminal 재활성화, terminal 교체를 막습니다. `cleanup_after`는 보관 metadata이며 attempt expiry나 retry eligibility가 아닙니다.
 - `guard_probe_observations`는 폐쇄형 acquisition stage, 예상 agent-tool/callable identity, 선택적인 한도 내 관찰 callable, 선택적인 hook kind, verification ID의 존재 및 일치 flag, Guard Installation, integration revision, 관찰 시각만 저장합니다. Prompt나 제한 없는 hook/tool payload는 저장할 수 없습니다. Foreign key는 각 관찰을 하나의 verification run과 현재 installation에 결속하며, `hook_event_not_observed`는 Volicord 경계에서의 부재만 기록합니다.
 - 명시적 제거 또는 migration에 따른 Connection Project 폐기는 immediate transaction 하나에서 소유자 순서로 삭제하여 제한적인 Registry foreign key를 충족합니다. 선택한 project-session binding과 integration-verification run을 선택한 Guard Installation과 membership보다 먼저 삭제합니다. 여러 프로젝트가 있는 migration은 관련 없는 프로젝트 행과 connection 전체 runtime session을 유지합니다. 마지막 프로젝트 migration은 host 정리와 최종 재검증이 성공할 때까지 비활성 membership, binding, Guard Installation, pending-cleanup marker의 완전한 inventory를 유지한 뒤 프로젝트 소유 행과 membership만 삭제합니다. 명시적으로 마지막 membership을 제거할 때는 Connection 소유의 남은 binding, integration-verification run, Guard Installation을 모두 삭제한 뒤 `mcp_runtime_sessions`, `managed_mcp_launch_leases`, `agent_connections` 순서로 삭제하며, 구조화된 finding은 영속 이력 진단으로 남습니다. 어떤 경로도 `projects`, `runtime_home`, `installation_profile`, 프로젝트 `state.sqlite` 데이터베이스로 cascade하지 않습니다.
 

@@ -9,17 +9,17 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{AgentToolId, GuardEventId, GuardIntegrationVerificationId, UtcTimestamp};
 
-/// Maximum lifetime of one active in-chat Guard integration verification.
-pub const GUARD_INTEGRATION_VERIFICATION_TTL_SECONDS: i64 = 300;
+/// Bounded retention interval used for stale-attempt cleanup.
+pub const GUARD_INTEGRATION_VERIFICATION_CLEANUP_SECONDS: i64 = 300;
 
-/// Closed durable lifecycle for one Guard integration-verification run.
+/// Closed durable state for one immutable Guard verification attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GuardIntegrationVerificationStatus {
-    Active,
-    Passed,
-    Failed,
-    Expired,
+    AwaitingProbe,
+    AwaitingObservation,
+    Complete,
+    RepairRequired,
 }
 
 /// Closed observation state for one correlated verification phase.
@@ -166,17 +166,101 @@ fixed_agent_tool_reference!(
     IntegrationVerificationStatusToolReference,
     AgentToolId::GET_INTEGRATION_VERIFICATION
 );
-fixed_agent_tool_reference!(
-    BeginIntegrationVerificationToolReference,
-    AgentToolId::BEGIN_INTEGRATION_VERIFICATION
-);
 
-/// Closed reason that requires a new bounded verification run.
+/// Typed reason why an immutable verification attempt requires repair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum IntegrationVerificationRestartReason {
-    Failed,
-    Expired,
+pub enum GuardVerificationRepairReason {
+    HookEventNotObserved,
+    HookPayloadIncompatible,
+    CallableIdentityMismatch,
+    VerificationIdMismatch,
+    SessionMismatch,
+    TurnMismatch,
+    ToolUseMismatch,
+    IntegrationRevisionChanged,
+    HookDefinitionChanged,
+    PolicyChanged,
+    ObservationDeadlineExceeded,
+}
+
+impl GuardVerificationRepairReason {
+    pub const ALL: [Self; 11] = [
+        Self::HookEventNotObserved,
+        Self::HookPayloadIncompatible,
+        Self::CallableIdentityMismatch,
+        Self::VerificationIdMismatch,
+        Self::SessionMismatch,
+        Self::TurnMismatch,
+        Self::ToolUseMismatch,
+        Self::IntegrationRevisionChanged,
+        Self::HookDefinitionChanged,
+        Self::PolicyChanged,
+        Self::ObservationDeadlineExceeded,
+    ];
+
+    /// Returns the exact persisted spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HookEventNotObserved => "hook_event_not_observed",
+            Self::HookPayloadIncompatible => "hook_payload_incompatible",
+            Self::CallableIdentityMismatch => "callable_identity_mismatch",
+            Self::VerificationIdMismatch => "verification_id_mismatch",
+            Self::SessionMismatch => "session_mismatch",
+            Self::TurnMismatch => "turn_mismatch",
+            Self::ToolUseMismatch => "tool_use_mismatch",
+            Self::IntegrationRevisionChanged => "integration_revision_changed",
+            Self::HookDefinitionChanged => "hook_definition_changed",
+            Self::PolicyChanged => "policy_changed",
+            Self::ObservationDeadlineExceeded => "observation_deadline_exceeded",
+        }
+    }
+
+    /// Parses the exact persisted spelling.
+    pub fn from_storage_str(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|reason| reason.as_str() == value)
+    }
+}
+
+/// Typed eligibility requirement for a subsequent verification attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardVerificationRetryPolicy {
+    NoAutomaticRetry,
+    NewTurnRequired,
+    HostReloadRequired,
+    HookReviewRequired,
+    RepairRequired,
+}
+
+impl GuardVerificationRetryPolicy {
+    pub const ALL: [Self; 5] = [
+        Self::NoAutomaticRetry,
+        Self::NewTurnRequired,
+        Self::HostReloadRequired,
+        Self::HookReviewRequired,
+        Self::RepairRequired,
+    ];
+
+    /// Returns the exact persisted spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoAutomaticRetry => "no_automatic_retry",
+            Self::NewTurnRequired => "new_turn_required",
+            Self::HostReloadRequired => "host_reload_required",
+            Self::HookReviewRequired => "hook_review_required",
+            Self::RepairRequired => "repair_required",
+        }
+    }
+
+    /// Parses the exact persisted spelling.
+    pub fn from_storage_str(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|policy| policy.as_str() == value)
+    }
 }
 
 /// One authoritative, state-directed integration-verification workflow state.
@@ -185,37 +269,35 @@ pub enum IntegrationVerificationRestartReason {
 pub enum IntegrationVerificationWorkflowState {
     AwaitingProbe {
         tool: GuardProbeToolReference,
-        expires_at: UtcTimestamp,
     },
-    AwaitingHookCompletion {
+    AwaitingObservation {
         tool: IntegrationVerificationStatusToolReference,
         acknowledged_at: UtcTimestamp,
-        expires_at: UtcTimestamp,
+        remaining_status_reads: u8,
     },
     Complete {
         completed_at: UtcTimestamp,
     },
-    RestartRequired {
-        reason: IntegrationVerificationRestartReason,
-        tool: BeginIntegrationVerificationToolReference,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        finding: Option<GuardIntegrationVerificationFinding>,
+    RepairRequired {
+        reason: GuardVerificationRepairReason,
+        retry_policy: GuardVerificationRetryPolicy,
+        finding: GuardIntegrationVerificationFinding,
     },
 }
 
 impl IntegrationVerificationWorkflowState {
     pub const AWAITING_PROBE_KIND: &'static str = "awaiting_probe";
-    pub const AWAITING_HOOK_COMPLETION_KIND: &'static str = "awaiting_hook_completion";
+    pub const AWAITING_OBSERVATION_KIND: &'static str = "awaiting_observation";
     pub const COMPLETE_KIND: &'static str = "complete";
-    pub const RESTART_REQUIRED_KIND: &'static str = "restart_required";
+    pub const REPAIR_REQUIRED_KIND: &'static str = "repair_required";
 
     /// Returns the exact next tool owned by this state, when one exists.
     pub const fn directed_tool(&self) -> Option<AgentToolId> {
         match self {
             Self::AwaitingProbe { tool, .. } => Some(tool.tool_id()),
-            Self::AwaitingHookCompletion { tool, .. } => Some(tool.tool_id()),
+            Self::AwaitingObservation { tool, .. } => Some(tool.tool_id()),
             Self::Complete { .. } => None,
-            Self::RestartRequired { tool, .. } => Some(tool.tool_id()),
+            Self::RepairRequired { .. } => None,
         }
     }
 
@@ -223,9 +305,9 @@ impl IntegrationVerificationWorkflowState {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::AwaitingProbe { .. } => Self::AWAITING_PROBE_KIND,
-            Self::AwaitingHookCompletion { .. } => Self::AWAITING_HOOK_COMPLETION_KIND,
+            Self::AwaitingObservation { .. } => Self::AWAITING_OBSERVATION_KIND,
             Self::Complete { .. } => Self::COMPLETE_KIND,
-            Self::RestartRequired { .. } => Self::RESTART_REQUIRED_KIND,
+            Self::RepairRequired { .. } => Self::REPAIR_REQUIRED_KIND,
         }
     }
 }
@@ -300,28 +382,26 @@ mod tests {
     fn every_workflow_variant_serializes_with_its_exact_state_directed_tool() {
         let awaiting_probe = IntegrationVerificationWorkflowState::AwaitingProbe {
             tool: GuardProbeToolReference::new(),
-            expires_at: timestamp("2026-07-23T00:05:00Z"),
         };
         assert_eq!(
             serde_json::to_value(&awaiting_probe).expect("awaiting-probe state"),
             json!({
                 "kind": "awaiting_probe",
                 "tool": AgentToolId::GUARD_PROBE.wire_name(),
-                "expires_at": "2026-07-23T00:05:00Z",
             })
         );
-        let awaiting_hooks = IntegrationVerificationWorkflowState::AwaitingHookCompletion {
+        let awaiting_hooks = IntegrationVerificationWorkflowState::AwaitingObservation {
             tool: IntegrationVerificationStatusToolReference::new(),
             acknowledged_at: timestamp("2026-07-23T00:00:04Z"),
-            expires_at: timestamp("2026-07-23T00:05:00Z"),
+            remaining_status_reads: 1,
         };
         assert_eq!(
             serde_json::to_value(&awaiting_hooks).expect("awaiting-hook state"),
             json!({
-                "kind": "awaiting_hook_completion",
+                "kind": "awaiting_observation",
                 "tool": AgentToolId::GET_INTEGRATION_VERIFICATION.wire_name(),
                 "acknowledged_at": "2026-07-23T00:00:04Z",
-                "expires_at": "2026-07-23T00:05:00Z",
+                "remaining_status_reads": 1,
             })
         );
         let complete = IntegrationVerificationWorkflowState::Complete {
@@ -334,28 +414,19 @@ mod tests {
                 "completed_at": "2026-07-23T00:00:05Z",
             })
         );
-        for reason in [
-            IntegrationVerificationRestartReason::Failed,
-            IntegrationVerificationRestartReason::Expired,
-        ] {
-            let restart = IntegrationVerificationWorkflowState::RestartRequired {
+        for reason in GuardVerificationRepairReason::ALL {
+            let restart = IntegrationVerificationWorkflowState::RepairRequired {
                 reason,
-                tool: BeginIntegrationVerificationToolReference::new(),
-                finding: Some(GuardIntegrationVerificationFinding {
-                    code: "verification_restart_required".to_owned(),
-                    summary: "Begin a new bounded verification.".to_owned(),
-                }),
+                retry_policy: GuardVerificationRetryPolicy::NoAutomaticRetry,
+                finding: GuardIntegrationVerificationFinding {
+                    code: "verification_repair_required".to_owned(),
+                    summary: "Repair the reported integration condition.".to_owned(),
+                },
             };
             let value = serde_json::to_value(&restart).expect("restart-required state");
-            assert_eq!(value["kind"], "restart_required");
-            assert_eq!(
-                value["tool"],
-                AgentToolId::BEGIN_INTEGRATION_VERIFICATION.wire_name()
-            );
-            assert_eq!(
-                restart.directed_tool(),
-                Some(AgentToolId::BEGIN_INTEGRATION_VERIFICATION)
-            );
+            assert_eq!(value["kind"], "repair_required");
+            assert!(value.get("tool").is_none());
+            assert_eq!(restart.directed_tool(), None);
         }
         assert_eq!(
             awaiting_probe.directed_tool(),
@@ -457,5 +528,21 @@ mod tests {
             GuardProbeObservationStage::from_storage_str("matcher_failed"),
             None
         );
+    }
+
+    #[test]
+    fn repair_reasons_and_retry_policies_round_trip_exactly() {
+        for reason in GuardVerificationRepairReason::ALL {
+            assert_eq!(
+                GuardVerificationRepairReason::from_storage_str(reason.as_str()),
+                Some(reason)
+            );
+        }
+        for policy in GuardVerificationRetryPolicy::ALL {
+            assert_eq!(
+                GuardVerificationRetryPolicy::from_storage_str(policy.as_str()),
+                Some(policy)
+            );
+        }
     }
 }

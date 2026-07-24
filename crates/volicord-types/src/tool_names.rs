@@ -150,9 +150,10 @@ impl AgentToolId {
             AgentToolKind::Method(
                 MethodName::Status | MethodName::GetOperationResult | MethodName::CheckClose,
             )
-            | AgentToolKind::ListProjects
-            | AgentToolKind::GetIntegrationVerification => AgentToolCategory::ReadOnly,
-            AgentToolKind::BeginIntegrationVerification | AgentToolKind::GuardProbe => {
+            | AgentToolKind::ListProjects => AgentToolCategory::ReadOnly,
+            AgentToolKind::BeginIntegrationVerification
+            | AgentToolKind::GuardProbe
+            | AgentToolKind::GetIntegrationVerification => {
                 AgentToolCategory::NonDestructiveMutation
             }
             AgentToolKind::Method(

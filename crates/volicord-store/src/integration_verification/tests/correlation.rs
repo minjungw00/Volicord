@@ -5,7 +5,8 @@ use volicord_types::{AgentToolId, IntegrationVerificationWorkflowState};
 
 use super::support::*;
 use crate::integration_verification::{
-    get_guard_integration_verification, refresh_guard_integration_verification_for_event,
+    current_guard_integration_verification_workflow, get_guard_integration_verification,
+    refresh_guard_integration_verification_for_event,
 };
 
 #[test]
@@ -14,13 +15,8 @@ fn exact_prompt_and_exact_pre_post_tool_use_complete() -> Result<(), Box<dyn Err
     let run = fixture.begin()?;
     fixture.acknowledge(&run.verification_id, ACK_AT)?;
     fixture.insert_exact_tool_events(&run.verification_id)?;
-    let updated = refresh_guard_integration_verification_for_event(
-        fixture.runtime_home.path(),
-        PROJECT_ID,
-        "guard_event_post",
-    )?
-    .expect("active verification");
-    assert_eq!(updated.status, "passed");
+    let updated = fixture.record(&run.verification_id)?;
+    assert_eq!(updated.status, "complete");
     assert_eq!(
         updated.matched_prompt_event_id.as_deref(),
         Some("guard_event_prompt")
@@ -132,7 +128,7 @@ fn mismatched_tool_identity_owner_and_contract_facts_never_complete() -> Result<
                     "2026-07-23T00:00:05Z",
                 )?
                 .workflow,
-                IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+                IntegrationVerificationWorkflowState::RepairRequired { .. }
             ),
             "{mismatch} must not complete",
         );
@@ -178,14 +174,12 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
         "guard_event_historical_post",
     )?;
     assert!(matches!(
-        get_guard_integration_verification(
+        current_guard_integration_verification_workflow(
             fixture.runtime_home.path(),
-            &run.verification_id,
-            &fixture.caller(),
+            &fixture.record(&run.verification_id)?,
             "2026-07-23T00:00:04.100Z",
-        )?
-        .workflow,
-        IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+        )?,
+        IntegrationVerificationWorkflowState::AwaitingObservation { .. }
     ));
 
     fixture.insert_tool_event(ToolEventFixture {
@@ -222,14 +216,12 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
         "guard_event_post_before_ack",
     )?;
     assert!(matches!(
-        get_guard_integration_verification(
+        current_guard_integration_verification_workflow(
             fixture.runtime_home.path(),
-            &run.verification_id,
-            &fixture.caller(),
+            &fixture.record(&run.verification_id)?,
             "2026-07-23T00:00:04.200Z",
-        )?
-        .workflow,
-        IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
+        )?,
+        IntegrationVerificationWorkflowState::AwaitingObservation { .. }
     ));
     Ok(())
 }

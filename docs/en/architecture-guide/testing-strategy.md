@@ -131,16 +131,24 @@ Durable tests should cover, as applicable:
   canonical request, every tagged workflow kind, its canonical returned tool,
   the unavailable path, and the prohibition on raw stdio, hand-authored
   `_meta`, and resource discovery as proof;
-- first-write-wins probe acknowledgement under concurrent identical calls,
-  active replay, lost-response replay after correlated completion, effective
-  terminal state, coordinate isolation, all reachable tagged variants,
-  begin/probe/get parity from one Store projection, rejection of contradictory
-  state/tool combinations, and state-correct responses across every production
-  MCP revision;
+- immutable semantic-coordinate begin replay, terminal same-turn replay without
+  a new ID, new-turn attempts, prompt ownership, first-write-wins probe
+  acknowledgement, and duplicate-begin concurrency;
+- the pinned current Codex semantic profile's synchronous one-read observation
+  policy, no numeric-version or legacy-profile branch, missing-event immediate
+  repair without TTL waiting, distinct payload/callable/verification/session/
+  turn/tool-use repair reasons, immutable complete and repair terminals, and
+  retry-policy gating of genuinely new coordinates;
+- generated guidance with the deterministic begin, one probe, one policy-owned
+  status read, and stop sequence, including explicit absence of sleep,
+  repeated polling, and automatic same-turn retry;
+- all reachable tagged variants, begin/probe/get parity from one Store
+  projection, rejection of contradictory state/tool combinations, and
+  state-correct responses across every production MCP revision;
 - `crates/volicord-cli/tests/operational_host_e2e.rs` covering the complete
   applied-setup, launch-lease, managed MCP milestone, same-turn Guard
   prompt/pre/post verification, complete begin replay, exact complete probe
-  replay, activation-complete, and matching read-only get journey without
+  replay, activation-complete, and matching bounded get journey without
   non-managed source substitution;
 - repeated Guard initialization with stable identities and preservation of
   unrelated repository content;

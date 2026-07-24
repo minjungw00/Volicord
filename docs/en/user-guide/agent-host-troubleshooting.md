@@ -271,33 +271,29 @@ Stay in the same current managed Codex chat and native turn:
 3. Follow the returned tagged `workflow` exactly:
    - for `awaiting_probe`, copy the returned `verification_id` into the
      returned `volicord.guard_probe` tool;
-   - for `awaiting_hook_completion`, call the returned
+   - for `awaiting_observation`, call the returned
      `volicord.get_integration_verification` tool with that ID;
-   - for `complete`, stop; and
-   - for `restart_required`, repair the reported `failed` problem or respond
-     to the `expired` window, then call the returned
-     `volicord.begin_integration_verification` tool.
-4. When `workflow.tool` directs the status tool, call it with that same ID and
-   continue following the returned tagged state.
+   - for `complete` or `repair_required`, stop.
+4. Follow the typed `retry_policy` on `repair_required` before starting a later
+   attempt with a genuinely new coordinate.
 
-The first and last calls are read-only. Begin and probe are idempotent,
+Project discovery is read-only. Begin, probe, and status are idempotent,
 non-destructive integration-record updates; they do not change Core or Task
-state, Product Repository files, project trust, or hook-review state. The
-exact annotations and storage effects are in
+state, Product Repository files, project trust, or hook-review state. The exact
+annotations and storage effects are in
 [MCP Transport](../reference/mcp-transport.md#in-chat-integration-verification-schemas).
 An exact probe replay returns the current shared workflow state, including
 `complete` after correlated completion; it does not repeat completion or
-matched-event effects. Failed and expired replays remain
-`restart_required`. A different session or turn cannot read the original
-acknowledgement.
+matched-event effects. Repair replay remains `repair_required`. A different
+session or turn cannot read the original acknowledgement.
 
 A passing result has `workflow.kind=complete` and matched prompt, pre-tool, and
-post-tool phases. While the result is `awaiting_probe` or
-`awaiting_hook_completion`, follow the canonical tool in `workflow.tool`
-before the five-minute window expires. For `restart_required`, begin again in
-the current turn after repairing the reported failure or allowing for the
-expired window. Do not reuse an ID from another session or turn, substitute
-another read-only tool, or treat old Guard events as success.
+post-tool phases. For the current Codex profile, call GuardProbe once when
+requested and then call status once when requested. Do not sleep, poll, or
+begin another attempt in the same turn. On `repair_required`, stop and satisfy
+the typed retry policy; cleanup time is not retry eligibility. Do not reuse an
+ID from another session or turn, substitute another read-only tool, or treat
+old Guard events as success.
 
 If Codex exposes no tools or the project is not trusted, fix that host-owned
 state first. Volicord reports trust requirements but does not click, edit,

@@ -39,6 +39,7 @@ const CODEX_HOOKS_CONTRACT_CANONICAL: &str = concat!(
     "UserPromptSubmit=prompt:string\n",
     "PreToolUse=tool_use_id:string,tool_name:string,tool_input:bounded-json\n",
     "PostToolUse=tool_use_id:string,tool_name:string,tool_input:bounded-json,tool_response:bounded-json\n",
+    "observation=synchronous,allowed-status-reads=1\n",
     "tool-matcher=union(host-tools,semantic-mcp-routing)\n",
     "host-tools=Bash,apply_patch,Edit,Write\n",
     "mcp-server-namespace=mcp__<normalized-server-key>__.*\n",
@@ -70,6 +71,49 @@ pub enum HostContractProfileId {
     CodexMcpCallableNames,
 }
 
+/// A host-contract-owned deadline for deferred hook observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ObservationDeadlinePolicy {
+    AfterProbeAcknowledgement { seconds: u32 },
+}
+
+/// The semantic policy for observing hook completion after one MCP call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HookObservationPolicy {
+    Synchronous {
+        allowed_status_reads: u8,
+    },
+    Deferred {
+        deadline: ObservationDeadlinePolicy,
+        allowed_status_reads: u8,
+    },
+}
+
+impl HookObservationPolicy {
+    /// Returns the bounded number of status reads allowed by the contract.
+    pub const fn allowed_status_reads(self) -> u8 {
+        match self {
+            Self::Synchronous {
+                allowed_status_reads,
+            }
+            | Self::Deferred {
+                allowed_status_reads,
+                ..
+            } => allowed_status_reads,
+        }
+    }
+
+    /// Returns the exact storage spelling for this policy kind.
+    pub const fn kind(self) -> &'static str {
+        match self {
+            Self::Synchronous { .. } => "synchronous",
+            Self::Deferred { .. } => "deferred",
+        }
+    }
+}
+
 impl HostContractProfileId {
     pub const ALL: [Self; 3] = [
         Self::CodexMcpTurnMetadata,
@@ -85,6 +129,14 @@ impl HostContractProfileId {
         }
     }
 
+    /// Parses one exact semantic profile identifier.
+    pub fn parse(value: &str) -> Result<Self, HostContractError> {
+        Self::ALL
+            .into_iter()
+            .find(|profile| profile.as_str() == value)
+            .ok_or_else(|| HostContractError::unexpected_value("host_contract_profile"))
+    }
+
     pub fn contract_digest(self) -> String {
         let canonical = match self {
             Self::CodexMcpTurnMetadata => CODEX_MCP_CONTRACT_CANONICAL,
@@ -92,6 +144,16 @@ impl HostContractProfileId {
             Self::CodexMcpCallableNames => CODEX_MCP_CALLABLE_NAMES_CONTRACT_CANONICAL,
         };
         format!("sha256:{:x}", Sha256::digest(canonical.as_bytes()))
+    }
+
+    /// Returns the hook-observation policy owned by this semantic profile.
+    pub const fn hook_observation_policy(self) -> Option<HookObservationPolicy> {
+        match self {
+            Self::CodexCommandHooks => Some(HookObservationPolicy::Synchronous {
+                allowed_status_reads: 1,
+            }),
+            Self::CodexMcpTurnMetadata | Self::CodexMcpCallableNames => None,
+        }
     }
 }
 

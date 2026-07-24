@@ -1627,7 +1627,7 @@
         "openWorldHint": false,
         "readOnlyHint": false
       },
-      "description": "Create or resume one bounded integration verification for the current managed Codex runtime, native session, and turn; returns the authoritative tagged workflow state and its exact typed operation.",
+      "description": "Create or resume the one immutable integration-verification attempt for the current semantic coordinate; returns the authoritative tagged workflow state and its exact typed operation.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -1640,10 +1640,10 @@
       "output_schema": {
         "definitions": [
           "BeginIntegrationVerificationResult",
-          "BeginIntegrationVerificationToolReference",
           "GuardIntegrationVerificationFinding",
           "GuardProbeToolReference",
-          "IntegrationVerificationRestartReason",
+          "GuardVerificationRepairReason",
+          "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
@@ -1654,7 +1654,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1dde8f7b2bc950d1d71608f25d34b26922f3f95ce0c84a65e825c71325c4386b"
+        "sha256": "sha256:31408bca3a03a56904f1145726efd1cfc4b7f8ffdd3c65d8c9b4807fcffa35a3"
       }
     },
     {
@@ -1678,11 +1678,11 @@
       "name": "volicord.guard_probe",
       "output_schema": {
         "definitions": [
-          "BeginIntegrationVerificationToolReference",
           "GuardIntegrationVerificationFinding",
           "GuardProbeResult",
           "GuardProbeToolReference",
-          "IntegrationVerificationRestartReason",
+          "GuardVerificationRepairReason",
+          "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
@@ -1693,7 +1693,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:22e4569eb9e9f3e7650df7b41ab4d96ad17e4099fee8e82cb6c82382c091d018"
+        "sha256": "sha256:f42e41e2ba0081df62aaca99bc0d9664542e5dd5504066310a647e201be62444"
       }
     },
     {
@@ -1701,9 +1701,9 @@
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": false
       },
-      "description": "Read the authoritative tagged workflow state and exact same-turn Guard prompt, pre-tool, and post-tool correlation with bounded findings.",
+      "description": "Observe the authoritative tagged workflow state under the semantic host policy; the bounded read may persist a typed terminal repair reason when expected same-turn Guard correlation is absent or incompatible.",
       "input_schema": {
         "definitions": [],
         "root_properties": [
@@ -1717,13 +1717,13 @@
       "name": "volicord.get_integration_verification",
       "output_schema": {
         "definitions": [
-          "BeginIntegrationVerificationToolReference",
           "GetIntegrationVerificationResult",
           "GuardIntegrationVerificationFinding",
           "GuardIntegrationVerificationPhaseStatus",
           "GuardIntegrationVerificationPhases",
           "GuardProbeToolReference",
-          "IntegrationVerificationRestartReason",
+          "GuardVerificationRepairReason",
+          "GuardVerificationRetryPolicy",
           "IntegrationVerificationStatusToolReference",
           "IntegrationVerificationWorkflowState",
           "McpToolErrorCode",
@@ -1734,7 +1734,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:db3045f174875ff4e1235f77c42d3ba1a7aaea64021b852c4c367a136b948d98"
+        "sha256": "sha256:22935261cbe7bbb6b64f8bd3927eafc3a3865803b3d35d986b8a7fe5fccad2b7"
       }
     }
   ]

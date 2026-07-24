@@ -38,8 +38,7 @@ use volicord_types::{
     DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId,
     DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject, GuardManagedArtifact,
     HookActivationEvidence, HookActivationState, IntegrationRevision,
-    IntegrationVerificationRestartReason, IntegrationVerificationWorkflowState, UtcTimestamp,
-    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    IntegrationVerificationWorkflowState, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
 };
 
 use crate::guard_integration::audit::{

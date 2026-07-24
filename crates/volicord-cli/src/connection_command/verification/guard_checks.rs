@@ -193,17 +193,12 @@ pub(super) fn guard_checks_for_connection(
         Some(IntegrationVerificationWorkflowState::Complete { .. }) => {
             ConnectionCheckStatus::Passed
         }
-        Some(IntegrationVerificationWorkflowState::RestartRequired {
-            reason: IntegrationVerificationRestartReason::Failed,
-            ..
-        }) => ConnectionCheckStatus::Failed,
+        Some(IntegrationVerificationWorkflowState::RepairRequired { .. }) => {
+            ConnectionCheckStatus::Failed
+        }
         Some(
             IntegrationVerificationWorkflowState::AwaitingProbe { .. }
-            | IntegrationVerificationWorkflowState::AwaitingHookCompletion { .. }
-            | IntegrationVerificationWorkflowState::RestartRequired {
-                reason: IntegrationVerificationRestartReason::Expired,
-                ..
-            },
+            | IntegrationVerificationWorkflowState::AwaitingObservation { .. },
         )
         | None => ConnectionCheckStatus::Pending,
     };

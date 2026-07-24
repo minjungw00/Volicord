@@ -418,21 +418,23 @@ event, tool input, or tool result.
 
 Registry `guard_integration_verification_runs` are durable bounded
 Connection-integration records, not Core or Task records. Each row stores its
-opaque verification ID; Connection and project; managed runtime; native host
-session and turn; Guard Installation; integration revision; policy hash;
-hook-contract digest; expected probe tool and expected host callable; creation,
-expiry, acknowledgement, and completion times; lifecycle status; matched
-prompt/pre/post Guard event IDs; and optional terminal finding. The active uniqueness coordinate is
-Connection/runtime/turn/revision. Exact begin replay resumes the same active or
-passed row. Probe acknowledgement is a first-write-wins nullable field for the
-complete verification/Connection/runtime/native-session/native-turn
-coordinate. Exact replay reads the original acknowledgement and current
-effective lifecycle status, including after completion, without replacing the
-timestamp, completion, or matched events. Another coordinate cannot read or
-change it, and a terminal row without an acknowledgement cannot gain one.
-Current-owner validation and exact event correlation are required when
-projecting effective status; a stored row or unrelated historical Guard event
-is insufficient by itself.
+opaque verification ID and immutable semantic coordinate: Connection, project,
+managed runtime session, native host session and turn, integration revision,
+Guard Installation, host-contract profile, hook-definition digest, and policy
+digest. An unconditional unique constraint permits exactly one row for that
+coordinate, including terminal rows. A prompt event is likewise owned by only
+one attempt in the turn. Exact begin replay therefore returns the same ID and
+current state; elapsed time never replaces it.
+
+The row also stores the expected typed probe and host callable, semantic
+observation-policy kind, optional deferred deadline, allowed and consumed
+status reads, creation and cleanup times, acknowledgement and completion,
+matched prompt/pre/post events, and typed terminal repair reason, retry policy,
+code, and summary. Status is exactly `awaiting_probe`,
+`awaiting_observation`, `complete`, or `repair_required`. SQL checks enforce
+each state's exact nullable fields. Coordinate updates, a second probe
+acknowledgement, terminal mutation, and terminal-to-active transition are
+rejected. Cleanup time only bounds retention.
 
 Registry `guard_probe_observations` records the acquisition boundary separately
 from correlated completion. Its closed `stage` values are
@@ -447,12 +449,14 @@ revision, and observation time. It stores no prompt, full payload, tool input,
 or tool output. An absent event therefore records only
 `hook_event_not_observed`, without claiming a proven routing cause.
 
-Store projects those authoritative row facts and effective status once into
-the shared tagged `IntegrationVerificationWorkflowState`. The projection maps
-active unacknowledged, active acknowledged, passed, failed, and expired runs to
-their distinct typed states and canonical `AgentToolId` operations. Begin,
-probe, get/status, adapters, and renderers consume that state. Persistence does
-not construct user-facing next-action prose or own renderer wording.
+Store projects those authoritative row facts once into the shared tagged
+`IntegrationVerificationWorkflowState`. It maps the four stored states
+directly and exposes a canonical `AgentToolId` only for the two nonterminal
+states. The repair reason is separate from
+`no_automatic_retry`, `new_turn_required`, `host_reload_required`,
+`hook_review_required`, or `repair_required`. Begin, probe, get/status,
+adapters, and renderers consume that state. Persistence does not construct
+user-facing next-action prose or own renderer wording.
 
 Expected-write and unrecorded-change records are project-local. Guard
 suppression reads only bounded canonical correlation data and returns the exact

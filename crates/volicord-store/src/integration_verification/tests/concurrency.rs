@@ -4,10 +4,49 @@ use std::{
     thread,
 };
 
-use volicord_types::IntegrationVerificationWorkflowState;
+use volicord_types::{IntegrationVerificationWorkflowState, SequenceDurableIdGenerator};
 
 use super::support::*;
-use crate::integration_verification::acknowledge_guard_integration_probe;
+use crate::integration_verification::{
+    acknowledge_guard_integration_probe, begin_guard_integration_verification_with_generator,
+    BeginGuardIntegrationVerificationInput,
+};
+
+#[test]
+fn concurrent_same_coordinate_begins_converge_on_one_attempt() -> Result<(), Box<dyn Error>> {
+    let fixture = VerificationFixture::new("guard-integration-concurrent-begin")?;
+    let barrier = Arc::new(Barrier::new(2));
+    let mut handles = Vec::new();
+    for generated in ["first", "second"] {
+        let barrier = Arc::clone(&barrier);
+        let runtime_home = fixture.runtime_home.path().to_path_buf();
+        let caller = fixture.caller();
+        let project_session_id = fixture.project_session_id.clone();
+        handles.push(thread::spawn(move || {
+            barrier.wait();
+            begin_guard_integration_verification_with_generator(
+                runtime_home,
+                BeginGuardIntegrationVerificationInput {
+                    caller,
+                    project_id: PROJECT_ID.to_owned(),
+                    project_session_id,
+                    observed_at: BEGIN_AT.to_owned(),
+                },
+                &SequenceDurableIdGenerator::new([generated]),
+            )
+        }));
+    }
+    let first = handles
+        .remove(0)
+        .join()
+        .map_err(|_| "first begin thread panicked")??;
+    let second = handles
+        .remove(0)
+        .join()
+        .map_err(|_| "second begin thread panicked")??;
+    assert_eq!(first.verification_id, second.verification_id);
+    Ok(())
+}
 
 #[test]
 fn concurrent_first_probe_calls_converge_on_one_timestamp() -> Result<(), Box<dyn Error>> {
@@ -39,7 +78,7 @@ fn concurrent_first_probe_calls_converge_on_one_timestamp() -> Result<(), Box<dy
         .join()
         .map_err(|_| "second probe thread panicked")??;
     assert_eq!(first.workflow, second.workflow);
-    let IntegrationVerificationWorkflowState::AwaitingHookCompletion {
+    let IntegrationVerificationWorkflowState::AwaitingObservation {
         acknowledged_at, ..
     } = first.workflow
     else {

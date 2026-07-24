@@ -565,24 +565,28 @@ CREATE TABLE guard_integration_verification_runs (
   ),
   connection_internal_id TEXT NOT NULL,
   project_internal_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
   runtime_session_id TEXT NOT NULL,
   host_session_id TEXT NOT NULL,
   host_turn_id TEXT NOT NULL,
-  guard_installation_id TEXT NOT NULL,
   integration_revision TEXT NOT NULL CHECK (
     length(integration_revision) = 71
     AND substr(integration_revision, 1, 7) = 'sha256:'
     AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
   ),
-  policy_hash TEXT NOT NULL CHECK (
-    length(policy_hash) = 71
-    AND substr(policy_hash, 1, 7) = 'sha256:'
-    AND substr(policy_hash, 8) NOT GLOB '*[^0-9a-f]*'
+  guard_installation_id TEXT NOT NULL,
+  host_contract_profile TEXT NOT NULL CHECK (
+    host_contract_profile = 'codex-command-hooks'
   ),
-  hook_contract_digest TEXT NOT NULL CHECK (
-    length(hook_contract_digest) = 71
-    AND substr(hook_contract_digest, 1, 7) = 'sha256:'
-    AND substr(hook_contract_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  hook_definition_digest TEXT NOT NULL CHECK (
+    length(hook_definition_digest) = 71
+    AND substr(hook_definition_digest, 1, 7) = 'sha256:'
+    AND substr(hook_definition_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  policy_digest TEXT NOT NULL CHECK (
+    length(policy_digest) = 71
+    AND substr(policy_digest, 1, 7) = 'sha256:'
+    AND substr(policy_digest, 8) NOT GLOB '*[^0-9a-f]*'
   ),
   expected_probe_tool TEXT NOT NULL CHECK (
     expected_probe_tool = 'volicord.guard_probe'
@@ -591,14 +595,52 @@ CREATE TABLE guard_integration_verification_runs (
     length(CAST(expected_host_callable_name AS BLOB)) BETWEEN 1 AND 64
     AND expected_host_callable_name NOT GLOB '*[^A-Za-z0-9_]*'
   ),
+  observation_policy_kind TEXT NOT NULL CHECK (
+    observation_policy_kind IN ('synchronous', 'deferred')
+  ),
+  observation_deadline_at TEXT,
+  allowed_status_reads INTEGER NOT NULL CHECK (
+    allowed_status_reads BETWEEN 1 AND 255
+  ),
+  status_read_count INTEGER NOT NULL DEFAULT 0 CHECK (
+    status_read_count BETWEEN 0 AND allowed_status_reads
+  ),
   created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('active', 'passed', 'failed', 'expired')),
+  cleanup_after TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (
+    status IN ('awaiting_probe', 'awaiting_observation', 'complete', 'repair_required')
+  ),
   probe_acknowledged_at TEXT,
   completed_at TEXT,
-  matched_prompt_event_id TEXT,
+  matched_prompt_event_id TEXT NOT NULL,
   matched_pre_tool_event_id TEXT,
   matched_post_tool_event_id TEXT,
+  repair_reason TEXT CHECK (
+    repair_reason IS NULL
+    OR repair_reason IN (
+      'hook_event_not_observed',
+      'hook_payload_incompatible',
+      'callable_identity_mismatch',
+      'verification_id_mismatch',
+      'session_mismatch',
+      'turn_mismatch',
+      'tool_use_mismatch',
+      'integration_revision_changed',
+      'hook_definition_changed',
+      'policy_changed',
+      'observation_deadline_exceeded'
+    )
+  ),
+  retry_policy TEXT CHECK (
+    retry_policy IS NULL
+    OR retry_policy IN (
+      'no_automatic_retry',
+      'new_turn_required',
+      'host_reload_required',
+      'hook_review_required',
+      'repair_required'
+    )
+  ),
   terminal_finding_code TEXT CHECK (
     terminal_finding_code IS NULL
     OR (
@@ -620,14 +662,31 @@ CREATE TABLE guard_integration_verification_runs (
   FOREIGN KEY (guard_installation_id)
     REFERENCES guard_installations (guard_installation_id)
     ON DELETE RESTRICT,
-  CHECK (expires_at > created_at),
+  CHECK (cleanup_after > created_at),
+  CHECK (
+    (observation_policy_kind = 'synchronous' AND observation_deadline_at IS NULL)
+    OR (
+      observation_policy_kind = 'deferred'
+      AND (
+        (status = 'awaiting_probe' AND observation_deadline_at IS NULL)
+        OR observation_deadline_at > probe_acknowledged_at
+      )
+    )
+  ),
   CHECK (probe_acknowledged_at IS NULL OR probe_acknowledged_at >= created_at),
   CHECK (
-    (status = 'active' AND completed_at IS NULL AND terminal_finding_code IS NULL
-      AND terminal_finding_summary IS NULL)
-    OR (status = 'passed' AND completed_at IS NOT NULL AND terminal_finding_code IS NULL
-      AND terminal_finding_summary IS NULL)
-    OR (status IN ('failed', 'expired') AND completed_at IS NOT NULL
+    (status = 'awaiting_probe' AND probe_acknowledged_at IS NULL
+      AND completed_at IS NULL AND repair_reason IS NULL AND retry_policy IS NULL
+      AND terminal_finding_code IS NULL AND terminal_finding_summary IS NULL)
+    OR (status = 'awaiting_observation' AND probe_acknowledged_at IS NOT NULL
+      AND completed_at IS NULL AND repair_reason IS NULL AND retry_policy IS NULL
+      AND terminal_finding_code IS NULL AND terminal_finding_summary IS NULL)
+    OR (status = 'complete' AND probe_acknowledged_at IS NOT NULL
+      AND completed_at IS NOT NULL AND repair_reason IS NULL AND retry_policy IS NULL
+      AND terminal_finding_code IS NULL AND terminal_finding_summary IS NULL
+      AND matched_pre_tool_event_id IS NOT NULL AND matched_post_tool_event_id IS NOT NULL)
+    OR (status = 'repair_required' AND completed_at IS NOT NULL
+      AND repair_reason IS NOT NULL AND retry_policy IS NOT NULL
       AND terminal_finding_code IS NOT NULL AND terminal_finding_summary IS NOT NULL)
   ),
   CHECK (
@@ -636,15 +695,43 @@ CREATE TABLE guard_integration_verification_runs (
   )
 );
 
-CREATE UNIQUE INDEX idx_guard_integration_verification_active_coordinate
+CREATE UNIQUE INDEX idx_guard_integration_verification_coordinate
   ON guard_integration_verification_runs (
-    connection_internal_id, runtime_session_id, host_turn_id, integration_revision
-  )
-  WHERE status = 'active';
+    connection_internal_id, project_id, runtime_session_id, host_session_id,
+    host_turn_id, integration_revision, guard_installation_id,
+    host_contract_profile, hook_definition_digest, policy_digest
+  );
+CREATE UNIQUE INDEX idx_guard_integration_verification_prompt_attempt
+  ON guard_integration_verification_runs (project_internal_id, matched_prompt_event_id);
 CREATE INDEX idx_guard_integration_verification_project
   ON guard_integration_verification_runs (
     project_internal_id, connection_internal_id, created_at, verification_id
   );
+
+CREATE TRIGGER guard_integration_verification_coordinate_immutable
+BEFORE UPDATE OF
+  connection_internal_id, project_internal_id, project_id, runtime_session_id,
+  host_session_id, host_turn_id, integration_revision, guard_installation_id,
+  host_contract_profile, hook_definition_digest, policy_digest
+ON guard_integration_verification_runs
+BEGIN
+  SELECT RAISE(ABORT, 'guard integration verification coordinate is immutable');
+END;
+
+CREATE TRIGGER guard_integration_verification_probe_ack_immutable
+BEFORE UPDATE OF probe_acknowledged_at
+ON guard_integration_verification_runs
+WHEN OLD.probe_acknowledged_at IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'guard integration verification probe acknowledgement is immutable');
+END;
+
+CREATE TRIGGER guard_integration_verification_terminal_immutable
+BEFORE UPDATE ON guard_integration_verification_runs
+WHEN OLD.status IN ('complete', 'repair_required')
+BEGIN
+  SELECT RAISE(ABORT, 'guard integration verification terminal state is immutable');
+END;
 
 CREATE TABLE guard_probe_observations (
   observation_id TEXT PRIMARY KEY CHECK (

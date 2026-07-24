@@ -200,6 +200,14 @@ prompt, tool input, or tool output. `HookEventNotObserved` means only that no
 event reached Volicord; it does not prove whether host emission or routing was
 responsible.
 
+The same semantic host contract owns `HookObservationPolicy`, independently of
+host package versions. The reviewed `CodexCommandHooks` profile is synchronous
+and permits one status read after probe acknowledgement. That read maps the
+persisted acquisition stages to a precise terminal repair reason if the exact
+prompt/pre/post chain did not complete; cleanup expiry is not a substitute for
+this decision. A new attempt is never created automatically in the same
+semantic turn.
+
 ## Diagnostics And Event Projection
 
 Every `Unavailable` outcome emits a bounded diagnostic containing the project,

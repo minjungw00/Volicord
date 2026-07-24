@@ -357,10 +357,13 @@ Product Repository. Its JSON `side_effects` is therefore an empty array.
 `volicord.begin_integration_verification` validates the current managed runtime,
 native session/turn, selected Connection Project, current Agent Session, Guard
 Installation, policy, revision, hook contract, and prompt observation before
-one immediate Registry transaction. It expires due active rows and inserts one
-`guard_integration_verification_runs` row, or returns the exact current active
-or passed row as idempotent replay. Rejected, manual, preflight, stale,
-ambiguous, or prompt-missing calls have no verification-run effect.
+one immediate Registry transaction. It returns the existing row for an exact
+semantic coordinate, including a terminal row, or inserts one new
+`guard_integration_verification_runs` row for a genuinely new eligible
+coordinate. If a prior nonterminal coordinate was superseded, begin records
+typed terminal repair before applying its retry policy. Cleanup removes only
+stale retained records and never creates a new ID. Rejected, manual, preflight,
+ambiguous, prompt-missing, or retry-ineligible calls have no new-run effect.
 
 `volicord.guard_probe` uses one immediate Registry transaction. It loads the
 exact run, validates the complete caller coordinate, computes current effective
@@ -370,20 +373,23 @@ Store then records `probe_acknowledged` and, if no pre-tool acquisition has
 arrived, `hook_event_not_observed` in `guard_probe_observations`, and reads back
 the authoritative timestamp and status before commit.
 Concurrent identical first calls therefore converge on one timestamp. Exact
-replay after `passed` or another supported terminal projection returns the
-original acknowledgement without changing completion or matched events.
-Another coordinate is rejected without disclosure, and a terminal or expired
-run without an acknowledgement cannot acquire one late. It has no project
-`state.sqlite`, Core workflow, Task, or Product Repository effect.
-`volicord.get_integration_verification` is read-only. Compatible Guard event
-persistence retains its ordinary project-local event effect; routed MCP events
-do not retain unrestricted raw payloads. After that commit, one Registry
-transaction records the bounded typed acquisition stage. A matching pre/post
-stage can then refresh the active run to `passed` and store its completion and
-matched event IDs. Unknown callables, non-probe tools, malformed payloads, and
-coordinate mismatches add diagnostic acquisition rows but cannot complete the
-run. Exact replay can complete the refresh. No branch fabricates missing Guard
-events or alters MCP trust state.
+replay after `complete` or `repair_required` returns the original
+acknowledgement without changing completion or matched events. Another caller
+coordinate is rejected without disclosure, and a terminal run without an
+acknowledgement cannot acquire one late. It has no project `state.sqlite`, Core
+workflow, Task, or Product Repository effect.
+
+`volicord.get_integration_verification` uses one immediate Registry
+transaction. It validates the caller and current owner coordinate, consumes no
+more than the stored host policy's allowed status reads, and returns an
+existing terminal state unchanged. The current synchronous Codex policy allows
+one read: if exact event correlation has not already completed the attempt,
+that read persists `repair_required` with the most precise acquisition reason
+and separate retry policy. Compatible Guard event persistence retains its
+ordinary project-local effect; its subsequent Registry acquisition write can
+record a bounded stage, and a matching pre/post stage can atomically finalize
+`complete`. No branch fabricates missing Guard events, waits for cleanup
+expiry, reactivates a terminal attempt, or alters MCP trust state.
 
 ## Managed Runtime Project-Session Binding
 

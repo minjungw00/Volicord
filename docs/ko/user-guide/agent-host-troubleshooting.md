@@ -246,30 +246,28 @@ capability와 Guard verification을 충족하지 않습니다.
 3. 반환된 tagged `workflow`를 정확히 따릅니다.
    - `awaiting_probe`이면 반환된 `verification_id`를 반환된
      `volicord.guard_probe` 도구에 넣습니다.
-   - `awaiting_hook_completion`이면 같은 ID로 반환된
+   - `awaiting_observation`이면 같은 ID로 반환된
      `volicord.get_integration_verification` 도구를 호출합니다.
-   - `complete`이면 중단합니다.
-   - `restart_required`이면 보고된 `failed` 문제를 고치거나 `expired` window에
-     대응한 뒤 반환된 `volicord.begin_integration_verification` 도구를 호출합니다.
-4. `workflow.tool`이 status 도구를 지시하면 같은 ID로 호출하고 새로 반환된 tagged
-   상태를 계속 따릅니다.
+   - `complete` 또는 `repair_required`이면 중단합니다.
+4. 나중에 실제로 달라진 좌표로 attempt를 시작하기 전에 `repair_required`의 typed
+   `retry_policy`를 따릅니다.
 
-첫 호출과 마지막 호출은 읽기 전용입니다. Begin과 probe는 멱등이고 비파괴적인 integration
-record update이며 Core 또는 Task 상태, Product Repository file, project trust, hook review
-상태를 바꾸지 않습니다. 정확한 annotation과 저장 효과는
+Project discovery는 읽기 전용입니다. Begin, probe, status는 멱등이고 비파괴적인
+integration record update이며 Core 또는 Task 상태, Product Repository file, project
+trust, hook review 상태를 바꾸지 않습니다. 정확한 annotation과 저장 효과는
 [MCP 전송](../reference/mcp-transport.md#in-chat-integration-verification-schemas)을
 봅니다.
 정확한 probe replay는 상관관계가 성립해 완료된 뒤에도 현재 공유 workflow 상태인
-`complete`를 반환하며 완료 또는 일치한 event 효과를 반복하지 않습니다. 실패 및 만료
-replay는 `restart_required`로 유지됩니다. 다른 session이나 turn은 원래
+`complete`를 반환하며 완료 또는 일치한 event 효과를 반복하지 않습니다. Repair replay는
+`repair_required`로 유지됩니다. 다른 session이나 turn은 원래
 acknowledgement를 읽을 수 없습니다.
 
 통과 결과는 `workflow.kind=complete`이며 일치한 prompt, pre-tool, post-tool phase를
-표시합니다. 결과가 `awaiting_probe` 또는 `awaiting_hook_completion`이면 5분 window가
-만료되기 전에 `workflow.tool`의 정규 도구를 따릅니다. `restart_required`이면 보고된
-실패를 고치거나 만료 window를 반영한 뒤 현재 turn에서 다시 시작합니다. 다른 session이나
-turn의 ID를 재사용하거나 다른 읽기 전용 도구로 대체하거나 오래된 Guard event를 성공으로
-취급하지 않습니다.
+표시합니다. 현재 Codex profile에서는 요청된 경우 GuardProbe를 한 번 호출하고, 이어서
+요청된 경우 status를 한 번 호출합니다. Sleep, polling, 같은 turn의 새 attempt는 하지
+않습니다. `repair_required`이면 중단하고 typed retry policy를 충족합니다. Cleanup 시각은
+retry eligibility가 아닙니다. 다른 session이나 turn의 ID를 재사용하거나 다른 읽기 전용
+도구로 대체하거나 오래된 Guard event를 성공으로 취급하지 않습니다.
 
 Codex가 도구를 노출하지 않거나 프로젝트를 trust하지 않은 상태라면 먼저 host 소유 상태를
 해결합니다. Volicord는 trust 요구 사항을 보고하지만 Codex trust control을 클릭·편집·승인·

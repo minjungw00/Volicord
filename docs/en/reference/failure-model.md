@@ -94,23 +94,25 @@ configured routing did not select it. Acquisition records contain categorical
 facts and bounded callable identity only, never the unrestricted hook payload.
 
 Connection-integration verification keeps tool-call rejection separate from
-run lifecycle. A malformed ID or a call from another runtime, native session,
-or turn is rejected without changing the run. Absence of the required current
-prompt/pre/post correlation leaves an active run pending until its bounded
-expiry; expiry is the run status `expired`, not fabricated historical success.
-A terminal or expired run without a prior probe acknowledgement rejects a late
-probe without creating one. When an exact caller-coordinate replay already has
-an acknowledgement, an active probe replay returns
-`awaiting_hook_completion` with the original timestamp, a completed replay
-returns `complete`, and an effectively failed or expired replay returns the
-corresponding typed `restart_required` state. No replay reactivates the run.
-Coordinate rejection never exposes that timestamp to another session or turn.
-A stored pass whose runtime, Guard Installation, policy, integration revision,
-or hook contract is no longer current projects as the typed `failed` restart
-reason. Failed and expired runs direct a new verification through the canonical
-begin tool after the condition is repaired or the previous window expires.
-These workflow states are Connection-check facts and do not redefine the
-product-wide failure categories above.
+attempt state. A malformed ID or a call from another runtime, native session,
+or turn is rejected without changing the attempt. The semantic host contract
+selects a bounded observation policy. For current Codex command hooks, one
+synchronous status read after probe acknowledgement either observes completion
+or persists `repair_required`; it does not wait for a TTL.
+
+Repair reasons distinguish missing hook events, incompatible payloads,
+callable identity, verification ID, session, turn, tool-use, integration
+revision, hook definition, policy, and deferred deadline failures. Retry policy
+is separately typed as `no_automatic_retry`, `new_turn_required`,
+`host_reload_required`, `hook_review_required`, or `repair_required`. Exact
+coordinate replay returns the same ID and `awaiting_probe`,
+`awaiting_observation`, `complete`, or `repair_required` state. The latter two
+are immutable terminal states; no replay reactivates them or exposes an
+acknowledgement to another caller coordinate. Cleanup expiry affects retention
+only. A retry policy can permit a new attempt only after its required repair
+transition produces a genuinely new semantic coordinate, never automatically
+in the same turn. These workflow states are Connection-check facts and do not
+redefine the product-wide failure categories above.
 
 Active connection verification discovers the configured Codex executable, runs
 its version command, and reports every behavioral check using the five-state

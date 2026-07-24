@@ -631,40 +631,53 @@ Integration instance ID, integration generation, 파생 integration revision은 
 
 ### 관리되는 채팅 내 통합 검증
 
-`GuardIntegrationVerificationRun`은 first-party 채팅 내 작업 흐름의 영속적이고 한도가 있는
-proof 단위입니다. Verification ID, Connection, 프로젝트, managed MCP runtime, native host
-session과 turn, Guard Installation, integration revision, policy hash, hook-contract digest,
-예상 probe 도구, 생성 및 만료 시각, lifecycle 상태, probe acknowledgement, 완료 정보,
-일치한 prompt/pre/post event ID, terminal finding을 기록합니다. 상태는 정확히 `active`,
-`passed`, `failed`, `expired` 중 하나입니다. Connection/runtime/turn/revision 좌표 하나에는
-active run이 최대 하나만 있고, 소유권이 변하지 않은 begin replay는 같은 active 또는 passed
-run을 반환합니다.
+`GuardIntegrationVerificationRun`은 first-party 채팅 내 작업 흐름의 영속 attempt입니다.
+불변 semantic 좌표는 Connection, project, managed MCP runtime session, native host
+session과 turn, integration revision, Guard Installation, host-contract profile,
+hook-definition digest, policy digest로 구성됩니다. Terminal 상태가 된 뒤에도 이 좌표에는
+verification ID가 정확히 하나만 존재합니다. Row는 semantic observation policy, bounded
+status-read 횟수, cleanup 경계, first-write probe acknowledgement, 상관관계가 확인된
+prompt/pre/post event ID, 완료 정보, terminal finding도 기록합니다. Cleanup 시각은
+attempt identity나 workflow 상태를 바꾸지 않습니다.
 
 실제 현재 `managed_host` 호출만 run을 시작하거나 probe하거나 읽을 수 있습니다. 수동 stdio,
 CLI preflight, integration probe는 성공을 만들 수 없습니다.
 `IntegrationVerificationWorkflowState`는 begin, probe, status가 공유하는 단일 공개
-투영입니다. Tagged alternative는 정규 Guard probe tool과 만료 시각을 담은
-`awaiting_probe`, 정규 status tool과 권위 있는 acknowledgement 시각 및 만료 시각을 담은
-`awaiting_hook_completion`, 완료 시각을 담은 `complete`, typed `failed` 또는 `expired`
-reason과 정규 begin tool 및 적용되는 경우의 한도 있는 현재 finding을 담은
-`restart_required`입니다. Tool 필드는 임의 문자열이 아니라 typed 정규 `AgentToolId`
-투영입니다. Probe를 반복하기 위해 terminal run을 다시 active로 만들지 않습니다.
+투영입니다. Tagged alternative는 정규 Guard probe tool을 담은 `awaiting_probe`, 정규
+status tool과 권위 있는 acknowledgement 시각 및 남은 bounded read 수를 담은
+`awaiting_observation`, 완료 시각을 담은 `complete`, typed repair reason과 별도의 retry
+policy 및 bounded finding을 담은 `repair_required`입니다. Tool 필드는 임의 문자열이
+아니라 typed 정규 `AgentToolId` 투영입니다. `complete`와 `repair_required`는 불변 terminal
+상태입니다.
+
+Host contract는 `HookObservationPolicy`를 semantic하게
+`Synchronous { allowed_status_reads }` 또는
+`Deferred { deadline, allowed_status_reads }`로 선택합니다. 검토된 현재 Codex
+command-hook profile은 status read 한 번의 synchronous observation을 선택하며 package
+version이나 numeric profile generation으로 이 동작을 고르지 않습니다. 결정적 순서는
+begin 또는 resume, 요청된 경우 GuardProbe 한 번 호출, policy에 따른 status 호출, terminal
+상태에서 중단입니다. Sleep loop와 자동 same-turn retry는 없습니다.
 
 Probe acknowledgement는 정확한 verification ID, Connection, managed runtime session,
 native host session, native host turn 좌표에서 first-write-wins입니다. 적격인 첫 active
-호출이 timestamp를 기록합니다. Active replay는 `awaiting_hook_completion`과 원래
-timestamp를 유지합니다. 완료 뒤 정확한 replay는 `complete`를 반환하고, 유효 상태가
-failed 또는 expired인 replay는 해당 `restart_required` 상태를 유지합니다. 어떤 replay도
-완료 정보나 일치한 event를 바꾸지 않습니다. 다른 좌표는 acknowledgement를 노출하지 않고
-거부하며, acknowledgement가 없는 terminal 또는 expired run에는 뒤늦게 값을 만들 수
-없습니다.
+호출이 timestamp를 기록합니다. Replay는 `awaiting_observation`과 원래 timestamp를
+유지합니다. 완료 또는 repair 뒤 정확한 replay는 같은 terminal 상태를 반환합니다. 어떤
+replay도 완료 정보나 일치한 event를 바꾸지 않습니다. 다른 caller 좌표는
+acknowledgement를 노출하지 않고 거부하며, acknowledgement가 없는 terminal attempt에는
+뒤늦게 값을 만들 수 없습니다.
 
 통과하려면 prompt, pre-tool,
 post-tool 기록이 같은 run session과 turn에 속해야 하고, pre/post는 tool-use ID, 생성된 정확한
 probe 이름, verification-ID 입력을 공유해야 합니다. 현재 Guard Installation, policy hash,
 integration revision, hook-contract digest, managed runtime도 계속 일치해야 합니다. Prompt는
 pre-tool보다 늦을 수 없고 pre-tool은 post-tool보다 앞서야 합니다. 이력 event 검색이나 서로
-다른 run의 phase 조합은 허용하지 않습니다.
+다른 attempt의 phase 조합은 허용하지 않습니다. Synchronous read를 모두 사용하면 누락
+event, 비호환 payload, callable, verification ID, session, turn, tool-use 불일치를 구분한
+가장 정확한 typed repair reason을 만듭니다. Owner drift도 integration revision, hook
+definition, policy 변경을 구분합니다. Retry eligibility는
+`no_automatic_retry`, `new_turn_required`, `host_reload_required`,
+`hook_review_required`, `repair_required` 중 하나로만 표현하며 새 attempt에는 여전히
+실제로 달라진 적격 좌표가 필요합니다.
 
 `guard_verification`은 이 작업 흐름의 최종 Connection check입니다. Check detail은
 verification, runtime-session, host-turn, 일치한 Guard event ID를 노출하므로 concise, verbose,

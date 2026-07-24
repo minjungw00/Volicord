@@ -5,8 +5,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_host_contract::{
     parse_callable_name, project_mcp_tool, CanonicalToolName, CodexCommandHooks, CodexHookEvent,
-    CodexMcpTurnMetadata, HostCallableName, HostContractErrorCode, HostContractProfileId,
-    HostHookMatcherStrategy, HostNativeCorrelation, McpServerKey, McpToolCatalog,
+    CodexMcpTurnMetadata, HookObservationPolicy, HostCallableName, HostContractErrorCode,
+    HostContractProfileId, HostHookMatcherStrategy, HostNativeCorrelation, McpServerKey,
+    McpToolCatalog,
 };
 use volicord_types::AgentToolId;
 
@@ -176,6 +177,22 @@ fn guard_probe_hook_fixtures_preserve_exact_typed_correlation() {
         &json!({"verification_id": "guard_verification_fixture_001"})
     );
     assert_eq!(pre_input, post_input);
+}
+
+#[test]
+fn reviewed_codex_hook_profile_uses_one_synchronous_status_read() {
+    assert_eq!(
+        HostContractProfileId::CodexCommandHooks.hook_observation_policy(),
+        Some(HookObservationPolicy::Synchronous {
+            allowed_status_reads: 1,
+        })
+    );
+    assert!(HostContractProfileId::CodexMcpTurnMetadata
+        .hook_observation_policy()
+        .is_none());
+    assert!(HostContractProfileId::CodexMcpCallableNames
+        .hook_observation_policy()
+        .is_none());
 }
 
 #[test]
