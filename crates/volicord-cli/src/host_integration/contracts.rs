@@ -2,8 +2,8 @@ use std::{fmt, path::Path};
 
 use serde_json::Value;
 use toml_edit::DocumentMut;
-use volicord_host_contract::{HostCallableName, HostContractError, McpServerKey, McpToolCatalog};
-use volicord_types::{AgentToolId, GuardHookPhase, GuardManagedArtifact};
+use volicord_host_contract::{HostContractError, HostHookMatcherStrategy, McpServerKey};
+use volicord_types::{GuardHookPhase, GuardManagedArtifact};
 
 use super::HostKind;
 
@@ -28,7 +28,7 @@ impl HostContractConfigKind {
 pub struct HostHookEventContract {
     pub phase: GuardHookPhase,
     pub event_name: &'static str,
-    pub write_matcher_tokens: &'static [&'static str],
+    pub routes_tools: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,24 +67,21 @@ impl fmt::Display for HostContractValidationError {
 
 impl std::error::Error for HostContractValidationError {}
 
-const MCP_WRITE_MATCHER: &str = "mcp__.*__(write|edit|create|update|delete|remove|move|patch).*";
-const CODEX_WRITE_MATCHERS: [&str; 5] = ["Bash", "apply_patch", "Edit", "Write", MCP_WRITE_MATCHER];
-
 const CODEX_HOOK_EVENTS: [HostHookEventContract; 3] = [
     HostHookEventContract {
         phase: GuardHookPhase::PreTool,
         event_name: "PreToolUse",
-        write_matcher_tokens: &CODEX_WRITE_MATCHERS,
+        routes_tools: true,
     },
     HostHookEventContract {
         phase: GuardHookPhase::PostTool,
         event_name: "PostToolUse",
-        write_matcher_tokens: &CODEX_WRITE_MATCHERS,
+        routes_tools: true,
     },
     HostHookEventContract {
         phase: GuardHookPhase::PromptCapture,
         event_name: "UserPromptSubmit",
-        write_matcher_tokens: &[],
+        routes_tools: false,
     },
 ];
 
@@ -110,30 +107,16 @@ pub fn hook_event_for_phase(
         .find(|event| event.phase == phase)
 }
 
-/// Returns the exact matcher tokens for one Codex hook event.
-pub fn codex_hook_matcher_tokens(
+/// Returns typed host-level routing for one Codex hook event.
+pub fn codex_hook_matcher_strategy(
     event: &HostHookEventContract,
     server: &McpServerKey,
-) -> Result<Vec<String>, HostContractError> {
-    let mut tokens = event
-        .write_matcher_tokens
-        .iter()
-        .map(|token| (*token).to_owned())
-        .collect::<Vec<_>>();
-    if matches!(
-        event.phase,
-        GuardHookPhase::PreTool | GuardHookPhase::PostTool
-    ) {
-        let catalog = McpToolCatalog::for_server(server, AgentToolId::ALL)?;
-        tokens.push(
-            catalog
-                .require(server, AgentToolId::GUARD_PROBE)?
-                .callable_name()
-                .as_str()
-                .to_owned(),
-        );
+) -> Result<Option<HostHookMatcherStrategy>, HostContractError> {
+    if event.routes_tools {
+        HostHookMatcherStrategy::codex_guard(server).map(Some)
+    } else {
+        Ok(None)
     }
-    Ok(tokens)
 }
 
 pub fn classify_contract_config_path(
@@ -247,11 +230,12 @@ fn validate_codex_hook_config(
                 event.event_name
             ))
         })?;
-        let matcher_tokens = server
-            .map(|server| codex_hook_matcher_tokens(&event, server))
+        let matcher_strategy = server
+            .map(|server| codex_hook_matcher_strategy(&event, server))
             .transpose()
-            .map_err(|error| HostContractValidationError::new(error.to_string()))?;
-        if event.write_matcher_tokens.is_empty() {
+            .map_err(|error| HostContractValidationError::new(error.to_string()))?
+            .flatten();
+        if !event.routes_tools {
             if group.contains_key("matcher") {
                 return Err(HostContractValidationError::new(format!(
                     "{} must not define a matcher",
@@ -260,11 +244,13 @@ fn validate_codex_hook_config(
             }
         } else {
             let actual = group.get("matcher").and_then(Value::as_str);
-            let matches = if let Some(matcher_tokens) = matcher_tokens {
-                let expected = matcher_tokens.join("|");
-                actual == Some(expected.as_str())
+            let matches = if let (Some(strategy), Some(server), Some(actual)) =
+                (matcher_strategy, server, actual)
+            {
+                HostHookMatcherStrategy::parse_codex_guard(actual, server)
+                    .is_ok_and(|reconstructed| reconstructed == strategy)
             } else {
-                valid_unbound_codex_matcher(&event, actual)
+                false
             };
             if !matches {
                 return Err(HostContractValidationError::new(format!(
@@ -309,22 +295,6 @@ fn validate_codex_hook_config(
     Ok(())
 }
 
-fn valid_unbound_codex_matcher(event: &HostHookEventContract, actual: Option<&str>) -> bool {
-    if event.write_matcher_tokens.is_empty() {
-        return actual.is_none();
-    }
-    let Some(actual) = actual else {
-        return false;
-    };
-    let prefix = format!("{}|", event.write_matcher_tokens.join("|"));
-    actual
-        .strip_prefix(&prefix)
-        .filter(|callable| !callable.contains('|'))
-        .is_some_and(|callable| {
-            callable.starts_with("mcp__") && HostCallableName::parse(callable).is_ok()
-        })
-}
-
 fn validate_codex_rule_config(text: &str) -> Result<(), HostContractValidationError> {
     let dispatch_path = GuardManagedArtifact::HostHookDispatch
         .repository_relative_path()
@@ -358,6 +328,8 @@ fn ends_with_components(components: &[String], suffix: &[&str]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
@@ -397,30 +369,51 @@ mod tests {
     }
 
     #[test]
-    fn codex_tool_matcher_derives_only_the_guard_probe_from_canonical_identity() {
+    fn codex_tool_matcher_uses_typed_host_tools_and_server_namespace() {
         let event = hook_event_for_phase(&CODEX_CONTRACT, GuardHookPhase::PreTool).unwrap();
         let server = McpServerKey::parse("volicord").unwrap();
-        let tokens = codex_hook_matcher_tokens(event, &server).unwrap();
-        let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL).unwrap();
-        let expected = catalog
-            .require(&server, AgentToolId::GUARD_PROBE)
+        let strategy = codex_hook_matcher_strategy(event, &server)
             .unwrap()
-            .callable_name()
-            .as_str()
-            .to_owned();
-        assert!(tokens.contains(&expected));
-        for excluded in [
-            AgentToolId::GET_INTEGRATION_VERIFICATION,
-            AgentToolId::STATUS,
-        ] {
-            assert!(!tokens.contains(
-                &catalog
-                    .require(&server, excluded)
-                    .unwrap()
-                    .callable_name()
-                    .as_str()
-                    .to_owned()
-            ));
-        }
+            .expect("tool event matcher");
+        assert_eq!(
+            strategy.codex_matcher().unwrap(),
+            "Bash|apply_patch|Edit|Write|mcp__volicord__.*"
+        );
+        assert_eq!(
+            HostHookMatcherStrategy::parse_codex_guard(&strategy.codex_matcher().unwrap(), &server)
+                .unwrap(),
+            strategy
+        );
+    }
+
+    #[test]
+    fn codex_hook_configuration_validation_rejects_matcher_drift() {
+        let server = McpServerKey::parse("volicord").unwrap();
+        let matcher = HostHookMatcherStrategy::codex_guard(&server)
+            .unwrap()
+            .codex_matcher()
+            .unwrap();
+        let command_handler = json!([{"type": "command", "command": "volicord guard hook"}]);
+        let canonical = json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": matcher,
+                    "hooks": command_handler
+                }],
+                "PostToolUse": [{
+                    "matcher": matcher,
+                    "hooks": command_handler
+                }],
+                "UserPromptSubmit": [{
+                    "hooks": command_handler
+                }]
+            }
+        });
+        assert!(validate_codex_hook_config(&canonical.to_string(), Some(&server)).is_ok());
+
+        let mut drifted = canonical;
+        drifted["hooks"]["PostToolUse"][0]["matcher"] =
+            Value::String("Bash|apply_patch|Edit|Write|mcp__foreign__.*".to_owned());
+        assert!(validate_codex_hook_config(&drifted.to_string(), Some(&server)).is_err());
     }
 }

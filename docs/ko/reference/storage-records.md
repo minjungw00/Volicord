@@ -364,13 +364,16 @@ tool 상관관계가 관련 pre/post record에서 일치해야 합니다. 현재
 `guard_observation`을 도출하며 이전 hash나 revision은 이력을 유지하되 현재 check를
 충족하지 못합니다. 현재 malformed 또는 incompatible event가 있으면 이 check는
 실패합니다. Prompt capture는 별도 설치 상태가 아니라 같은 관찰 summary의 사실입니다.
+Routing된 MCP hook event는 hash와 한도가 있는 정규 correlation을 저장하지만 제한 없는
+raw event, tool input, tool result는 저장하지 않습니다.
 
 Registry의 `guard_integration_verification_runs`는 Core 또는 Task record가 아니라 영속적이고
 한도가 있는 Connection-integration record입니다. 각 row는 불투명 verification ID,
 Connection과 프로젝트, managed runtime, native host session과 turn, Guard Installation,
-integration revision, policy hash, hook-contract digest, 예상 probe 도구, 생성·만료·
-acknowledgement·완료 시각, lifecycle 상태, 일치한 prompt/pre/post Guard event ID, 선택적
-terminal finding을 저장합니다. Active uniqueness 좌표는 Connection/runtime/turn/revision입니다.
+integration revision, policy hash, hook-contract digest, 예상 probe 도구와 예상 host
+callable, 생성·만료·acknowledgement·완료 시각, lifecycle 상태, 일치한 prompt/pre/post
+Guard event ID, 선택적 terminal finding을 저장합니다. Active uniqueness 좌표는
+Connection/runtime/turn/revision입니다.
 정확한 begin replay는 같은 active 또는 passed row를 재개합니다. Probe acknowledgement는
 완전한 verification/Connection/runtime/native-session/native-turn 좌표에 적용되는 nullable
 first-write-wins 필드입니다. 정확한 replay는 완료 뒤에도 timestamp, 완료 정보, 일치한
@@ -378,6 +381,18 @@ event를 바꾸지 않고 원래 acknowledgement와 현재 유효 lifecycle 상�
 좌표는 이 값을 읽거나 바꿀 수 없으며 acknowledgement가 없는 terminal row에는 새 값을
 만들 수 없습니다. 유효 상태를 projection할 때는 현재 소유자 검증과 정확한 event
 상관관계가 필요하며, 저장된 row 자체나 무관한 이력 Guard event만으로는 충분하지 않습니다.
+
+Registry의 `guard_probe_observations`는 acquisition 경계를 상관관계가 확인된 완료와
+분리해 기록합니다. 폐쇄형 `stage` 값은 `probe_acknowledged`,
+`hook_event_not_observed`, `hook_payload_incompatible`,
+`callable_identity_unknown`, `callable_identity_mismatch`,
+`verification_id_mismatch`, `session_mismatch`, `turn_mismatch`,
+`tool_use_mismatch`, `pre_tool_matched`, `post_tool_matched`입니다. 각 row는 예상
+`volicord.guard_probe` agent-tool identity와 예상 host callable, 선택적인 한도 내 관찰
+callable, 선택적인 hook kind, verification ID의 존재 및 일치 boolean, Guard
+Installation, integration revision, 관찰 시각을 저장합니다. Prompt, 전체 payload, tool
+input, tool output은 저장하지 않습니다. 따라서 event 부재는 입증된 routing 원인을
+주장하지 않고 `hook_event_not_observed`만 기록합니다.
 
 Store는 이 권위 있는 row 사실과 유효 상태를 공유 tagged
 `IntegrationVerificationWorkflowState`로 한 번만 투영합니다. 이 투영은 acknowledge되지

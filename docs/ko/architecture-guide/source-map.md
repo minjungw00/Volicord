@@ -18,14 +18,14 @@
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/프로젝트 integration revision basis와 파생. |
 | `crates/volicord-types/src/guard_manifest.rs` | 정규 Guard manifest, 관리 artifact, hook phase, typed command 계약. |
 | `crates/volicord-types/src/tool_names.rs` | 폐쇄형 `AgentToolId` catalog, Core 소유 도구의 `MethodName` 재사용, category 및 mode metadata, 컴파일 시점 verification role 결합, 안정적인 MCP wire 이름 투영. |
-| `crates/volicord-types/src/integration_verification.rs` | 공유 폐쇄형 tagged integration-verification workflow 상태, 정규 `AgentToolId`에 결속된 고정 tool-reference 타입, restart reason, begin/probe/get 공개 결과 형태. |
+| `crates/volicord-types/src/integration_verification.rs` | 공유 폐쇄형 tagged integration-verification workflow 상태, 정규 `AgentToolId`에 결속된 고정 tool-reference 타입, Guard probe acquisition stage, restart reason, begin/probe/get 공개 결과 형태. |
 
 ## Host Wire 계약
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames` 계약, 결정적인 profile digest, 한도 있는 값과 error, source별 상관관계, 명시적인 `McpServerKey`·`McpRawToolName`·`McpToolIdentity`, `HostCallableIdentity`로의 충돌 검사 투영, 정확한 `McpToolCatalog` 역방향 조회. |
-| `crates/volicord-host-contract/tests/host_contracts.rs` | 계약 parsing, source type 분리, 필수 field 및 한도 강제, MCP 일관성, 고정 fixture manifest/checksum/profile 일치. |
+| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames` 계약, typed host-tool 및 server-namespace/catalog-derived-exact hook routing, 결정적인 profile digest, 한도 있는 값과 error, source별 상관관계, 명시적인 `McpServerKey`·`McpRawToolName`·`McpToolIdentity`, `HostCallableIdentity`로의 충돌 검사 투영, 정확한 `McpToolCatalog` 역방향 조회. |
+| `crates/volicord-host-contract/tests/host_contracts.rs` | 계약 parsing, source type 분리, 필수 field 및 한도 강제, typed matcher routing 및 재구성, MCP 일관성, 고정 fixture manifest/checksum/profile 일치. |
 | `tests/conformance/codex-host/` | 검토된 오프라인 Codex command-hook, MCP turn-metadata, MCP callable-name fixture와 semantic profile coverage manifest 및 checksum. |
 
 ## 플랫폼 파일시스템 경계
@@ -63,11 +63,12 @@
 | `crates/volicord-store/src/integration_verification/mod.rs` | 공개 Store facade, 안정적인 integration-verification 입력과 레코드, lifecycle 구현을 위한 한정된 export. |
 | `crates/volicord-store/src/integration_verification/begin.rs` | 검증 생성, 정확한 coordinate 재개, begin 전 활성 run 만료, 현재 prompt 선택, 하나의 즉시 Registry transaction 안에서 수행하는 영속 ID 할당. |
 | `crates/volicord-store/src/integration_verification/probe.rs` | 최초 쓰기 probe acknowledgement, 정확한 활성 및 terminal replay, 하나의 즉시 Registry transaction 안에서 수행하는 동시 호출 수렴. |
-| `crates/volicord-store/src/integration_verification/correlation.rs` | Prompt/pre/post event matching, verification ID 및 hook contract matching, Connection server의 `McpToolCatalog`를 통한 정확한 callable 역방향 조회, tool-use 상관관계, timestamp 순서, 원자적 completion refresh. |
+| `crates/volicord-store/src/integration_verification/observation.rs` | Typed hook acquisition, Connection server의 `McpToolCatalog`를 통한 semantic callable filtering, 서로 다른 상관관계 불일치 stage, payload 없는 한도 내 관찰 영속화. |
+| `crates/volicord-store/src/integration_verification/correlation.rs` | Prompt와 acquisition을 통과한 pre/post event matching, hook contract 및 tool-use 상관관계, timestamp 순서, 원자적 completion refresh. |
 | `crates/volicord-store/src/integration_verification/status.rs` | 유효 lifecycle 상태, 최신 및 정확한 읽기, 공개 결과와 tagged workflow projection, 오래된 owner 처리. |
 | `crates/volicord-store/src/integration_verification/coordinate.rs` | Typed caller, current, stored 검증 coordinate와 caller 및 run owner 검증. |
 | `crates/volicord-store/src/integration_verification/row.rs` | 비공개 검증 SQL, row decoding, 상태와 timestamp parsing, 데이터베이스 표현 변환, 집중 row decoder 테스트. |
-| `crates/volicord-store/src/integration_verification/tests/` | Begin, probe, correlation, status, 동시 최초 acknowledgement를 위한 lifecycle 담당 테스트와 assertion에서 분리한 공유 fixture 구성. |
+| `crates/volicord-store/src/integration_verification/tests/` | Begin, probe, typed acquisition, correlation, status, 동시 최초 acknowledgement를 위한 lifecycle 담당 테스트와 assertion에서 분리한 공유 fixture 구성. |
 | `crates/volicord-store/src/workflow_records.rs` | workflow 레코드 읽기와 쓰기. |
 | `crates/volicord-store/src/core_pipeline/` | Core open, 검증, replay, commit, mutation 적용. |
 | `crates/volicord-store/src/guards.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, phase별 Guard 관찰, prompt capture, 예상 쓰기, suppression 입력. |
@@ -112,10 +113,10 @@
 | `crates/volicord-cli/src/connection_command/output/` | 선택한 Connection의 정규 진단 보고서 구성, 집계 상태와 root, 같은 보고서의 concise·verbose·lossless JSON 표시. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | Finding ID 및 runtime-session 세부 명령, 한도가 있는 lifecycle-aware cause traversal, lookup별 JSON 및 사람용 projection, finding severity와 독립적인 lookup-status 종료 결과. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex 구성 parsing 및 직렬화, 정규 관리 entry 검증, 허용된 도구 승인 overlay 보존, 관리 구성 변경, 진단용 실행 파일 관찰, 연결 검증. |
-| `crates/volicord-cli/src/host_integration/contracts.rs` | 명시적인 semantic Codex host-contract 선택과 등록된 `McpServerKey`에서 정규 callable catalog를 거치는 Guard matcher 투영. |
+| `crates/volicord-cli/src/host_integration/contracts.rs` | 명시적인 semantic Codex host-contract 선택, typed Guard routing strategy 투영, 등록된 `McpServerKey`로부터의 엄격한 구성 재구성. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest, 정확한 host-contract profile/digest, 정규 관리 artifact 기대값 생성. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
-| `crates/volicord-cli/src/guard_command/` | 명시적인 `codex-command-hooks` event decoding과 한도 있는 source별 observation. |
+| `crates/volicord-cli/src/guard_command/` | 명시적인 `codex-command-hooks` event decoding, semantic Guard probe filtering, routing된 MCP payload를 보관하지 않는 한도 있는 source별 observation. |
 | `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |
 

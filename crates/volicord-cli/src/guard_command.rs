@@ -10,7 +10,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{Clock, CorePipelineError, SystemClock};
-use volicord_host_contract::HostContractProfileId;
+use volicord_host_contract::{HostContractProfileId, HostNativeCorrelation};
 use volicord_store::{
     bootstrap::{project_record_for_execution, ProjectRecord},
     core_pipeline::CoreProjectStore,
@@ -25,7 +25,10 @@ use volicord_store::{
         current_project_agent_session_coordinates, guard_event, guard_installation,
         insert_guard_event, observe_host_correlation, GuardEventInsert, HostCorrelationObservation,
     },
-    integration_verification::refresh_guard_integration_verification_for_event,
+    integration_verification::{
+        observe_guard_probe_hook_event, observe_unbound_guard_probe_hook_event,
+        GuardProbeHookEvidence, UnboundGuardProbeHookObservation,
+    },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreResult,
 };
@@ -192,6 +195,22 @@ where
         }
     };
     if let Err(error) = bind_guard_envelope(&runtime_home, &project, phase, &input, &mut envelope) {
+        if matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
+            if let Some(guard_installation_id) = envelope.guard_installation_id.clone() {
+                let _ = observe_unbound_guard_probe_hook_event(
+                    &runtime_home,
+                    &project.project_id,
+                    UnboundGuardProbeHookObservation {
+                        connection_internal_id: envelope.connection_id.clone(),
+                        guard_installation_id,
+                        correlation: envelope.correlation.clone(),
+                        phase,
+                        evidence: guard_probe_hook_evidence(&input),
+                        observed_at: envelope.occurred_at.clone(),
+                    },
+                );
+            }
+        }
         return host_guard_failure(
             &runtime_home,
             &project,
@@ -293,10 +312,13 @@ where
         &runtime_home,
         &project,
         &envelope,
-        phase,
-        subject,
-        &phase_result,
-        &options,
+        GuardEventPersistence {
+            phase,
+            guard_input: &input,
+            subject,
+            phase_result: &phase_result,
+            options: &options,
+        },
     )
     .is_err()
     {
@@ -449,6 +471,13 @@ fn record_guard_hook_contract_failure(
         ],
     );
     if guard_event(runtime_home, &project.project_id, &event_id)?.is_some() {
+        observe_guard_probe_event_if_applicable(
+            runtime_home,
+            &project.project_id,
+            &event_id,
+            phase,
+            input,
+        )?;
         return Ok(GuardHookDiagnosticFacts {
             contract_profile: Some(HostContractProfileId::CodexCommandHooks.as_str().to_owned()),
             hook_event_kind: Some(phase.as_str().to_owned()),
@@ -519,6 +548,13 @@ fn record_guard_hook_contract_failure(
             })
             .to_string(),
         },
+    )?;
+    observe_guard_probe_event_if_applicable(
+        runtime_home,
+        &project.project_id,
+        &event_id,
+        phase,
+        input,
     )?;
     Ok(GuardHookDiagnosticFacts {
         contract_profile: Some(HostContractProfileId::CodexCommandHooks.as_str().to_owned()),
@@ -1176,15 +1212,27 @@ fn current_policy_hash(project: &ProjectRecord) -> Result<Option<String>, GuardC
         .map_err(json_error)
 }
 
+struct GuardEventPersistence<'a> {
+    phase: GuardHookPhase,
+    guard_input: &'a GuardInput,
+    subject: Value,
+    phase_result: &'a GuardPhaseResult,
+    options: &'a GuardOptions,
+}
+
 fn persist_guard_event(
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
-    phase: GuardHookPhase,
-    subject: Value,
-    phase_result: &GuardPhaseResult,
-    options: &GuardOptions,
+    persistence: GuardEventPersistence<'_>,
 ) -> Result<(), GuardCommandError> {
+    let GuardEventPersistence {
+        phase,
+        guard_input,
+        subject,
+        phase_result,
+        options,
+    } = persistence;
     let guard_installation_id = envelope.guard_installation_id.as_deref().ok_or_else(|| {
         GuardCommandError::Runtime("Guard event has no installation identity".to_owned())
     })?;
@@ -1247,10 +1295,12 @@ fn persist_guard_event(
         if guard_event_record_payload_sha256(&existing)?
             == guard_event_insert_payload_sha256(&input, envelope.session_id.as_deref())?
         {
-            refresh_guard_integration_verification_for_event(
+            observe_guard_probe_event_if_applicable(
                 runtime_home,
                 &project.project_id,
                 &envelope.event_id,
+                phase,
+                guard_input,
             )?;
             return Ok(());
         }
@@ -1260,12 +1310,49 @@ fn persist_guard_event(
         )));
     }
     insert_guard_event(runtime_home, &project.project_id, input)?;
-    refresh_guard_integration_verification_for_event(
+    observe_guard_probe_event_if_applicable(
         runtime_home,
         &project.project_id,
         &envelope.event_id,
+        phase,
+        guard_input,
     )?;
     Ok(())
+}
+
+fn observe_guard_probe_event_if_applicable(
+    runtime_home: &Path,
+    project_id: &str,
+    guard_event_id: &str,
+    phase: GuardHookPhase,
+    input: &GuardInput,
+) -> Result<(), GuardCommandError> {
+    if !matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
+        return Ok(());
+    }
+    let evidence = guard_probe_hook_evidence(input);
+    observe_guard_probe_hook_event(runtime_home, project_id, guard_event_id, evidence)?;
+    Ok(())
+}
+
+fn guard_probe_hook_evidence(input: &GuardInput) -> GuardProbeHookEvidence {
+    let Some(tool_input) = guard_event_tool_input(&input.raw_value).and_then(Value::as_object)
+    else {
+        return GuardProbeHookEvidence::absent();
+    };
+    let Some(value) = tool_input.get("verification_id") else {
+        return GuardProbeHookEvidence::absent();
+    };
+    let bounded = value
+        .as_str()
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 192
+                && value.trim() == *value
+                && !value.chars().any(char::is_control)
+        })
+        .map(str::to_owned);
+    GuardProbeHookEvidence::present(bounded)
 }
 
 fn guard_subject(
@@ -1274,7 +1361,7 @@ fn guard_subject(
     envelope: &GuardEnvelope,
     project: &ProjectRecord,
 ) -> Value {
-    json!({
+    let mut subject = json!({
         "lifecycle_phase": phase.as_str(),
         "host_kind": envelope.host_kind,
         "connection_id": envelope.connection_id,
@@ -1288,9 +1375,20 @@ fn guard_subject(
                 canonical_json_bytes(value)
                     .expect("serde_json::Value always has a canonical JSON encoding")
             })
-            .and_then(|bytes| u64::try_from(bytes.len()).ok()),
-        "raw_event": input.redacted_value
-    })
+            .and_then(|bytes| u64::try_from(bytes.len()).ok())
+    });
+    let routed_mcp_event = matches!(
+        &envelope.correlation,
+        HostNativeCorrelation::CodexHookTool(tool)
+            if tool.tool_name.as_str().starts_with("mcp__")
+    );
+    if !routed_mcp_event {
+        subject
+            .as_object_mut()
+            .expect("Guard subject is an object")
+            .insert("raw_event".to_owned(), input.redacted_value.clone());
+    }
+    subject
 }
 
 fn protect_managed_guard_input(

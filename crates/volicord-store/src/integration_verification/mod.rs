@@ -3,6 +3,7 @@
 mod begin;
 mod coordinate;
 mod correlation;
+mod observation;
 mod probe;
 mod row;
 mod status;
@@ -11,6 +12,11 @@ pub use begin::{
     begin_guard_integration_verification, begin_guard_integration_verification_with_generator,
 };
 pub use correlation::refresh_guard_integration_verification_for_event;
+pub use observation::{
+    guard_probe_observations, observe_guard_probe_hook_event,
+    observe_unbound_guard_probe_hook_event, GuardProbeHookEvidence, GuardProbeObservationRecord,
+    UnboundGuardProbeHookObservation,
+};
 pub use probe::acknowledge_guard_integration_probe;
 pub use status::{
     current_guard_integration_verification_workflow, get_guard_integration_verification,
@@ -49,6 +55,7 @@ pub struct GuardIntegrationVerificationRunRecord {
     pub policy_hash: String,
     pub hook_contract_digest: String,
     pub expected_probe_tool: String,
+    pub expected_host_callable_name: String,
     pub created_at: String,
     pub expires_at: String,
     pub status: String,

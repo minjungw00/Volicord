@@ -412,15 +412,17 @@ name, must match across related pre/post records.
 Current compatible events derive `guard_observation`; older hashes or revisions
 remain historical and cannot satisfy it. A current malformed or incompatible
 event makes that check fail. Prompt capture remains a fact within the same
-observation summary, not a separate installation state.
+observation summary, not a separate installation state. Routed MCP hook events
+retain hashes and bounded normalized correlation, but not the unrestricted raw
+event, tool input, or tool result.
 
 Registry `guard_integration_verification_runs` are durable bounded
 Connection-integration records, not Core or Task records. Each row stores its
 opaque verification ID; Connection and project; managed runtime; native host
 session and turn; Guard Installation; integration revision; policy hash;
-hook-contract digest; expected probe tool; creation, expiry, acknowledgement,
-and completion times; lifecycle status; matched prompt/pre/post Guard event
-IDs; and optional terminal finding. The active uniqueness coordinate is
+hook-contract digest; expected probe tool and expected host callable; creation,
+expiry, acknowledgement, and completion times; lifecycle status; matched
+prompt/pre/post Guard event IDs; and optional terminal finding. The active uniqueness coordinate is
 Connection/runtime/turn/revision. Exact begin replay resumes the same active or
 passed row. Probe acknowledgement is a first-write-wins nullable field for the
 complete verification/Connection/runtime/native-session/native-turn
@@ -431,6 +433,19 @@ change it, and a terminal row without an acknowledgement cannot gain one.
 Current-owner validation and exact event correlation are required when
 projecting effective status; a stored row or unrelated historical Guard event
 is insufficient by itself.
+
+Registry `guard_probe_observations` records the acquisition boundary separately
+from correlated completion. Its closed `stage` values are
+`probe_acknowledged`, `hook_event_not_observed`, `hook_payload_incompatible`,
+`callable_identity_unknown`, `callable_identity_mismatch`,
+`verification_id_mismatch`, `session_mismatch`, `turn_mismatch`,
+`tool_use_mismatch`, `pre_tool_matched`, and `post_tool_matched`. Each row
+stores the expected `volicord.guard_probe` agent-tool identity and expected
+host callable, an optional bounded observed callable, optional hook kind,
+verification-ID presence/match booleans, Guard Installation, integration
+revision, and observation time. It stores no prompt, full payload, tool input,
+or tool output. An absent event therefore records only
+`hook_event_not_observed`, without claiming a proven routing cause.
 
 Store projects those authoritative row facts and effective status once into
 the shared tagged `IntegrationVerificationWorkflowState`. The projection maps

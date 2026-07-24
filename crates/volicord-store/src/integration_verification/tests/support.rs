@@ -28,9 +28,10 @@ use crate::{
     integration_verification::{
         acknowledge_guard_integration_probe, begin_guard_integration_verification_with_generator,
         correlation::refresh_guard_integration_verification_for_event,
+        observe_guard_probe_hook_event,
         row::{overwrite_owner_field_for_test, run_by_id, StoredOwnerField},
         BeginGuardIntegrationVerificationInput, GuardIntegrationVerificationCaller,
-        GuardIntegrationVerificationRunRecord,
+        GuardIntegrationVerificationRunRecord, GuardProbeHookEvidence,
     },
     operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
     sqlite::{open_registry_database, registry_db_path},
@@ -293,7 +294,14 @@ impl VerificationFixture {
                 digest: event.digest,
                 policy_hash: event.policy_hash.unwrap_or(POLICY_HASH),
             },
-        )
+        )?;
+        observe_guard_probe_hook_event(
+            self.runtime_home.path(),
+            PROJECT_ID,
+            event.event_id,
+            GuardProbeHookEvidence::present(Some(event.verification_id.to_owned())),
+        )?;
+        Ok(())
     }
 
     pub(super) fn insert_exact_tool_events(&self, verification_id: &str) -> StoreResult<()> {
@@ -322,6 +330,44 @@ impl VerificationFixture {
             policy_hash: None,
             integration_revision: None,
         })
+    }
+
+    pub(super) fn insert_incompatible_tool_event(
+        &self,
+        event_id: &str,
+        phase: &str,
+        occurred_at: &str,
+    ) -> StoreResult<()> {
+        insert_guard_event(
+            self.runtime_home.path(),
+            PROJECT_ID,
+            GuardEventInsert {
+                guard_event_id: event_id.to_owned(),
+                correlation: None,
+                connection_internal_id: CONNECTION_ID.to_owned(),
+                guard_installation_id: INSTALLATION_ID.to_owned(),
+                policy_hash: POLICY_HASH.to_owned(),
+                integration_revision: self.integration_revision.clone(),
+                event_kind: phase.to_owned(),
+                contract_status: GuardHookContractStatus::Malformed.as_str().to_owned(),
+                decision: GuardDecision::Warn.as_str().to_owned(),
+                subject_json: "{}".to_owned(),
+                result_json: "{}".to_owned(),
+                occurred_at: occurred_at.to_owned(),
+                metadata_json: serde_json::json!({
+                    "host_contract_digest":
+                        HostContractProfileId::CodexCommandHooks.contract_digest()
+                })
+                .to_string(),
+            },
+        )?;
+        observe_guard_probe_hook_event(
+            self.runtime_home.path(),
+            PROJECT_ID,
+            event_id,
+            GuardProbeHookEvidence::absent(),
+        )?;
+        Ok(())
     }
 
     pub(super) fn complete(

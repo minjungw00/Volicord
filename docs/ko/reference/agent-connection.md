@@ -563,6 +563,24 @@ preflight diagnostic, Guard 검증은 충돌 검사를 마친 같은 `McpToolCat
 semantic 계약을 직접 선택하며 관찰한 Codex package version에서 host 동작을 도출하지
 않습니다.
 
+같은 semantic command-hook 계약이 typed tool-routing strategy도 소유합니다. Tool
+phase에서는 검토된 native host-tool 집합과 server-qualified MCP callable을
+routing합니다. Callable 투영이 등록된 namespace를 보존하면 그 namespace를 사용하고,
+그렇지 않으면 `McpToolCatalog`에서 파생한 exact token을 사용합니다. 생성 matcher는
+acquisition 경계일 뿐입니다. Event가 전달된 뒤 wrapper는
+관찰한 callable을 `McpToolCatalog`로 해석하며, 현재 verification ID, session, turn,
+tool-use chain이 정확히 일치하는 `AgentToolId::GuardProbe`만 검증을 완료할 수
+있습니다. Routing된 다른 tool, 알 수 없는 same-server callable, 호환되지 않는 payload,
+각 coordinate mismatch는 서로 다른 acquisition stage로 남습니다.
+
+영속 stage는 `ProbeAcknowledged`, `HookEventNotObserved`,
+`HookPayloadIncompatible`, `CallableIdentityUnknown`,
+`CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
+`TurnMismatch`, `ToolUseMismatch`, `PreToolMatched`, `PostToolMatched`입니다.
+각 stage는 한도가 있는 callable 및 범주형 상관관계 fact만 보관합니다. 특히
+`HookEventNotObserved`는 Volicord가 event를 받지 못했다는 뜻이며 matcher 오류나 host
+emission 오류라고 진단하지 않습니다.
+
 Guard 상관관계와 Guard policy는 별도 단계입니다. 호환되는 hook 상관관계는 policy에 도달해
 `Continue`, `ContinueWithContext`, `ContinueWithWarning`, `Deny` 중 하나를 낼 수 있습니다.
 반면 호환되지 않는 hook contract는 가능한 경우 관찰 실패를 기록하고 policy 판단을 만들지

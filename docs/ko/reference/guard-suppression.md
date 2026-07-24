@@ -155,14 +155,32 @@ Prompt, pre-tool, post-tool 관찰은 주변 phase detail입니다. Hook 실행 
 managed MCP capability나 상관관계가 확인된 Guard verification의 독립 proof는 아닙니다.
 Project/configuration trust는 host/user가 소유하는 별도 check입니다.
 
-`PreToolUse`와 `PostToolUse`의 managed hook matcher에는 정확한 Codex native 이름
-`mcp__volicord__volicord_guard_probe`가 들어갑니다. 등록된 `McpServerKey`와 완전한
-`volicord.guard_probe` raw MCP name은 `CodexMcpCallableNames` 투영의 서로 다른
-입력으로 유지됩니다. Matcher와 검증 상관관계는 충돌 검사를 마친 같은 catalog의
-`HostCallableIdentity`를 읽으며 어느 쪽도 dotted raw name에서 server를 추론하지
-않습니다. Matcher는 모든 읽기 전용 도구로 matching 범위를 넓히지 않습니다. Prompt capture에는 도구
-matcher가 없습니다. 검증 event는 현재 contract digest와 정확한 session, turn, tool-use ID,
-tool 이름, `verification_id` 입력이 한도가 있는 run과 일치할 때만 match합니다.
+`PreToolUse`와 `PostToolUse`에서는 semantic Codex command-hook 계약이 typed routing
+strategy 하나를 소유합니다. 이 strategy는 검토된 native host tool과 server-qualified
+MCP routing의 합집합입니다. Callable 투영이 등록된 `McpServerKey` namespace를 보존하면
+그 namespace를 사용하고, 그렇지 않으면 정규 catalog에서 exact callable token을
+파생합니다. 생성 matcher JSON과 엄격한 구성 검증은 모두 이 strategy를 투영하고 다시
+구성합니다. Prompt capture에는 tool matcher가 없습니다.
+같은 담당자가 충돌 검사를 마친 `McpToolCatalog`를 제공하므로 routing은 dotted raw
+name에서 server를 추론하지 않고 숫자 host version으로 동작을 선택하지 않습니다.
+
+Routing은 event를 wrapper에 전달할 뿐입니다. 그 뒤 semantic filtering이 hook kind와
+callable을 decode하고, 명시적인 server/tool identity를 `AgentToolId`로 해석하며, 현재
+session, turn, tool-use ID와 한도가 있는 `verification_id`를 비교합니다. 정확한 현재
+검증 좌표의 `AgentToolId::GuardProbe`만 Guard 검증을 충족합니다. Routing된 다른
+Volicord tool과 알 수 없는 same-server callable은 진단 관찰로만 남고 foreign server
+namespace는 routing하지 않습니다.
+
+Probe acquisition은 `ProbeAcknowledged`, `HookEventNotObserved`,
+`HookPayloadIncompatible`, `CallableIdentityUnknown`,
+`CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
+`TurnMismatch`, `ToolUseMismatch`, `PreToolMatched`, `PostToolMatched` 중 하나의
+폐쇄형 stage를 기록합니다. 이 record에는 예상 agent-tool/callable identity, 선택적인
+한도 내 관찰 callable, hook kind, 범주형 match fact, verification ID의 존재 및 일치
+여부, 현재 installation/revision만 남깁니다. 전체 hook payload, prompt, tool input,
+tool output은 저장하지 않습니다. `HookEventNotObserved`는 event가 Volicord에
+도달하지 않았다는 뜻일 뿐이며 host emission과 routing 중 어느 쪽이 원인인지
+증명하지 않습니다.
 
 ## 진단과 Event Projection
 

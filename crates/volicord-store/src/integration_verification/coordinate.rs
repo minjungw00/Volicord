@@ -70,6 +70,7 @@ pub(super) struct VerificationCurrentCoordinate {
     policy_hash: String,
     hook_contract_digest: String,
     expected_probe_tool: String,
+    expected_host_callable_name: String,
 }
 
 impl VerificationCurrentCoordinate {
@@ -80,6 +81,7 @@ impl VerificationCurrentCoordinate {
         integration_revision: impl Into<String>,
         policy_hash: impl Into<String>,
         hook_contract_digest: impl Into<String>,
+        expected_host_callable_name: impl Into<String>,
     ) -> Self {
         Self {
             caller,
@@ -89,6 +91,7 @@ impl VerificationCurrentCoordinate {
             policy_hash: policy_hash.into(),
             hook_contract_digest: hook_contract_digest.into(),
             expected_probe_tool: AgentToolId::GUARD_PROBE.wire_name().to_owned(),
+            expected_host_callable_name: expected_host_callable_name.into(),
         }
     }
 
@@ -119,6 +122,10 @@ impl VerificationCurrentCoordinate {
     pub(super) fn expected_probe_tool(&self) -> &str {
         &self.expected_probe_tool
     }
+
+    pub(super) fn expected_host_callable_name(&self) -> &str {
+        &self.expected_host_callable_name
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,6 +137,7 @@ pub(super) struct VerificationStoredCoordinate {
     policy_hash: String,
     hook_contract_digest: String,
     expected_probe_tool: String,
+    expected_host_callable_name: String,
 }
 
 impl From<&GuardIntegrationVerificationRunRecord> for VerificationStoredCoordinate {
@@ -147,6 +155,7 @@ impl From<&GuardIntegrationVerificationRunRecord> for VerificationStoredCoordina
             policy_hash: run.policy_hash.clone(),
             hook_contract_digest: run.hook_contract_digest.clone(),
             expected_probe_tool: run.expected_probe_tool.clone(),
+            expected_host_callable_name: run.expected_host_callable_name.clone(),
         }
     }
 }
@@ -174,6 +183,7 @@ impl VerificationStoredCoordinate {
             || self.policy_hash != current.policy_hash
             || self.hook_contract_digest != current.hook_contract_digest
             || self.expected_probe_tool != current.expected_probe_tool
+            || self.expected_host_callable_name != current.expected_host_callable_name
         {
             return Err(current.caller.conflict(
                 "an active verification coordinate is owned by different current facts",

@@ -41,11 +41,12 @@ fallback database opener. It also contains no development-stage diagnostics
 database migration. Ordinary open never relabels, repairs, rewrites, or infers
 an existing database shape.
 
-Adding the immutable Agent Connection integration-instance coordinate changes
-the current Registry schema identity. A Runtime Home from the preceding schema
-is a noncurrent storage contract and is rejected with explicit reinitialization
-guidance. Store does not add the column in place, synthesize a value for an old
-row, or dual-read the preceding shape.
+Adding the bounded Guard-probe acquisition record and expected host-callable
+coordinate changes the current Registry schema identity. A Runtime Home from
+the preceding schema is a noncurrent storage contract and is rejected with
+explicit reinitialization guidance. Store does not add the table or column in
+place, synthesize acquisition evidence for an old row, or dual-read the
+preceding shape.
 
 Development data is recreated in a fresh location from the canonical SQL and
 the current manifest. Recreation is not conversion and does not preserve or

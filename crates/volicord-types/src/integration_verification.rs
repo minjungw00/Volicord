@@ -30,6 +30,61 @@ pub enum GuardIntegrationVerificationPhaseStatus {
     Matched,
 }
 
+/// Closed acquisition stage for one bounded Guard-probe observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardProbeObservationStage {
+    ProbeAcknowledged,
+    HookEventNotObserved,
+    HookPayloadIncompatible,
+    CallableIdentityUnknown,
+    CallableIdentityMismatch,
+    VerificationIdMismatch,
+    SessionMismatch,
+    TurnMismatch,
+    ToolUseMismatch,
+    PreToolMatched,
+    PostToolMatched,
+}
+
+impl GuardProbeObservationStage {
+    pub const ALL: [Self; 11] = [
+        Self::ProbeAcknowledged,
+        Self::HookEventNotObserved,
+        Self::HookPayloadIncompatible,
+        Self::CallableIdentityUnknown,
+        Self::CallableIdentityMismatch,
+        Self::VerificationIdMismatch,
+        Self::SessionMismatch,
+        Self::TurnMismatch,
+        Self::ToolUseMismatch,
+        Self::PreToolMatched,
+        Self::PostToolMatched,
+    ];
+
+    /// Returns the exact storage and diagnostic spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ProbeAcknowledged => "probe_acknowledged",
+            Self::HookEventNotObserved => "hook_event_not_observed",
+            Self::HookPayloadIncompatible => "hook_payload_incompatible",
+            Self::CallableIdentityUnknown => "callable_identity_unknown",
+            Self::CallableIdentityMismatch => "callable_identity_mismatch",
+            Self::VerificationIdMismatch => "verification_id_mismatch",
+            Self::SessionMismatch => "session_mismatch",
+            Self::TurnMismatch => "turn_mismatch",
+            Self::ToolUseMismatch => "tool_use_mismatch",
+            Self::PreToolMatched => "pre_tool_matched",
+            Self::PostToolMatched => "post_tool_matched",
+        }
+    }
+
+    /// Parses the exact storage and diagnostic spelling.
+    pub fn from_storage_str(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|stage| stage.as_str() == value)
+    }
+}
+
 /// Bounded terminal or current verification finding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -384,5 +439,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn guard_probe_observation_stages_round_trip_exactly() {
+        for stage in GuardProbeObservationStage::ALL {
+            assert_eq!(
+                serde_json::to_value(stage).expect("stage serializes"),
+                json!(stage.as_str())
+            );
+            assert_eq!(
+                GuardProbeObservationStage::from_storage_str(stage.as_str()),
+                Some(stage)
+            );
+        }
+        assert_eq!(
+            GuardProbeObservationStage::from_storage_str("matcher_failed"),
+            None
+        );
     }
 }

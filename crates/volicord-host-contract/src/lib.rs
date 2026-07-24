@@ -17,6 +17,7 @@ const MAX_HOST_CALLABLE_NAME_BYTES: usize = 64;
 const CALLABLE_NAME_HASH_LEN: usize = 12;
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
 const CODEX_MCP_TOOL_PREFIX: &str = "mcp__";
+const CODEX_GUARD_HOST_TOOLS: [&str; 4] = ["Bash", "apply_patch", "Edit", "Write"];
 const MAX_PRESENTATION_TEXT_BYTES: usize = 4_096;
 const MAX_SAFE_PAYLOAD_BYTES: usize = 65_536;
 const MAX_SAFE_PAYLOAD_DEPTH: usize = 32;
@@ -38,6 +39,10 @@ const CODEX_HOOKS_CONTRACT_CANONICAL: &str = concat!(
     "UserPromptSubmit=prompt:string\n",
     "PreToolUse=tool_use_id:string,tool_name:string,tool_input:bounded-json\n",
     "PostToolUse=tool_use_id:string,tool_name:string,tool_input:bounded-json,tool_response:bounded-json\n",
+    "tool-matcher=union(host-tools,semantic-mcp-routing)\n",
+    "host-tools=Bash,apply_patch,Edit,Write\n",
+    "mcp-server-namespace=mcp__<normalized-server-key>__.*\n",
+    "mcp-routing-fallback=exact-canonical-callables\n",
     "presentation=cwd?:string,transcript_path?:string\n",
     "unknown_fields=allowed\n",
 );
@@ -304,6 +309,202 @@ impl HostCallableIdentity {
     }
 }
 
+/// One exact host-native tool identity admitted by a command-hook matcher.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct HostToolIdentity(String);
+
+impl HostToolIdentity {
+    pub fn parse(value: impl Into<String>) -> Result<Self, HostContractError> {
+        let value = value.into();
+        let valid = !value.is_empty()
+            && value.len() <= MAX_HOST_CALLABLE_NAME_BYTES
+            && value
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_');
+        valid
+            .then_some(Self(value))
+            .ok_or_else(|| HostContractError::invalid_field("host_tool_identity"))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Typed host-level routing for one command-hook event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostHookMatcherStrategy {
+    HostTools {
+        identities: Vec<HostToolIdentity>,
+    },
+    McpServerNamespace {
+        server: McpServerKey,
+    },
+    ExactCallables {
+        callables: Vec<HostCallableIdentity>,
+    },
+    Union(Vec<HostHookMatcherStrategy>),
+}
+
+impl HostHookMatcherStrategy {
+    /// Builds the current Codex Guard tool-routing strategy.
+    pub fn codex_guard(server: &McpServerKey) -> Result<Self, HostContractError> {
+        let identities = CODEX_GUARD_HOST_TOOLS
+            .into_iter()
+            .map(HostToolIdentity::parse)
+            .collect::<Result<Vec<_>, _>>()?;
+        let catalog = McpToolCatalog::for_server(server, AgentToolId::ALL)?;
+        let namespace_prefix = codex_mcp_server_namespace_prefix(server);
+        let mcp_routing = if catalog.identities().iter().all(|identity| {
+            identity
+                .callable_name()
+                .as_str()
+                .starts_with(&namespace_prefix)
+        }) {
+            Self::McpServerNamespace {
+                server: server.clone(),
+            }
+        } else {
+            Self::ExactCallables {
+                callables: catalog.identities().to_vec(),
+            }
+        };
+        Ok(Self::Union(vec![
+            Self::HostTools { identities },
+            mcp_routing,
+        ]))
+    }
+
+    /// Renders the reviewed Codex matcher representation.
+    pub fn codex_matcher(&self) -> Result<String, HostContractError> {
+        let mut tokens = Vec::new();
+        self.append_codex_tokens(&mut tokens)?;
+        if tokens.is_empty() {
+            return Err(HostContractError::invalid_field(
+                "host_hook_matcher_strategy",
+            ));
+        }
+        let mut unique = HashSet::new();
+        if tokens.iter().any(|token| !unique.insert(token.clone())) {
+            return Err(HostContractError::duplicate_tool(
+                "host_hook_matcher_strategy",
+            ));
+        }
+        Ok(tokens.join("|"))
+    }
+
+    /// Reconstructs the current typed strategy from one generated Codex matcher.
+    pub fn parse_codex_guard(
+        value: &str,
+        server: &McpServerKey,
+    ) -> Result<Self, HostContractError> {
+        let expected = Self::codex_guard(server)?;
+        let expected_mcp = match &expected {
+            Self::Union(strategies) => strategies.get(1),
+            _ => None,
+        }
+        .ok_or_else(|| HostContractError::invalid_field("host_hook_matcher"))?;
+        let mut host_tools = Vec::new();
+        let mut mcp_tokens = Vec::new();
+        let mut unique = HashSet::new();
+        for token in value.split('|') {
+            if token.is_empty() || !unique.insert(token) {
+                return Err(HostContractError::invalid_field("host_hook_matcher"));
+            }
+            if expected_mcp.matches_codex_token(token) {
+                mcp_tokens.push(token);
+            } else {
+                host_tools.push(HostToolIdentity::parse(token)?);
+            }
+        }
+        let reconstructed_mcp = match expected_mcp {
+            Self::McpServerNamespace { server } if mcp_tokens.len() == 1 => {
+                Self::McpServerNamespace {
+                    server: server.clone(),
+                }
+            }
+            Self::ExactCallables { callables } if mcp_tokens.len() == callables.len() => {
+                Self::ExactCallables {
+                    callables: callables.clone(),
+                }
+            }
+            _ => return Err(HostContractError::invalid_field("host_hook_matcher")),
+        };
+        let reconstructed = Self::Union(vec![
+            Self::HostTools {
+                identities: host_tools,
+            },
+            reconstructed_mcp,
+        ]);
+        (reconstructed.codex_matcher()? == value)
+            .then_some(reconstructed)
+            .ok_or_else(|| HostContractError::invalid_field("host_hook_matcher"))
+    }
+
+    /// Returns whether the host-level strategy routes one bounded observed tool name.
+    pub fn routes(&self, observed: &CanonicalToolName) -> bool {
+        match self {
+            Self::HostTools { identities } => identities
+                .iter()
+                .any(|identity| identity.as_str() == observed.as_str()),
+            Self::McpServerNamespace { server } => {
+                let prefix = codex_mcp_server_namespace_prefix(server);
+                observed.as_str().starts_with(&prefix)
+            }
+            Self::ExactCallables { callables } => callables
+                .iter()
+                .any(|identity| identity.callable_name().as_str() == observed.as_str()),
+            Self::Union(strategies) => strategies.iter().any(|strategy| strategy.routes(observed)),
+        }
+    }
+
+    fn matches_codex_token(&self, token: &str) -> bool {
+        match self {
+            Self::McpServerNamespace { server } => {
+                token == codex_mcp_server_namespace_matcher(server)
+            }
+            Self::ExactCallables { callables } => callables
+                .iter()
+                .any(|identity| identity.callable_name().as_str() == token),
+            _ => false,
+        }
+    }
+
+    fn append_codex_tokens(&self, tokens: &mut Vec<String>) -> Result<(), HostContractError> {
+        match self {
+            Self::HostTools { identities } => {
+                tokens.extend(
+                    identities
+                        .iter()
+                        .map(|identity| identity.as_str().to_owned()),
+                );
+            }
+            Self::McpServerNamespace { server } => {
+                tokens.push(codex_mcp_server_namespace_matcher(server));
+            }
+            Self::ExactCallables { callables } => {
+                tokens.extend(
+                    callables
+                        .iter()
+                        .map(|identity| identity.callable_name().as_str().to_owned()),
+                );
+            }
+            Self::Union(strategies) => {
+                if strategies.is_empty() {
+                    return Err(HostContractError::invalid_field(
+                        "host_hook_matcher_strategy",
+                    ));
+                }
+                for strategy in strategies {
+                    strategy.append_codex_tokens(tokens)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The current semantic Codex MCP callable-name contract.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CodexMcpCallableNames;
@@ -443,6 +644,24 @@ fn sanitize_callable_part(value: &str) -> String {
     } else {
         sanitized
     }
+}
+
+fn codex_mcp_server_namespace(server: &McpServerKey) -> String {
+    format!(
+        "{CODEX_MCP_TOOL_PREFIX}{}",
+        sanitize_callable_part(server.as_str())
+    )
+}
+
+fn codex_mcp_server_namespace_prefix(server: &McpServerKey) -> String {
+    format!(
+        "{}{MCP_TOOL_NAME_DELIMITER}",
+        codex_mcp_server_namespace(server)
+    )
+}
+
+fn codex_mcp_server_namespace_matcher(server: &McpServerKey) -> String {
+    format!("{}.*", codex_mcp_server_namespace_prefix(server))
 }
 
 fn codex_raw_tool_identity(server: &str, raw_tool_name: &str) -> String {

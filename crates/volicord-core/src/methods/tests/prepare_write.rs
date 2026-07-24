@@ -1276,7 +1276,7 @@ fn prepare_write_blocked_path_issues_no_write_ticket() -> Result<(), Box<dyn Err
 fn prepare_write_without_current_change_unit_rejects_before_policy_or_effects(
 ) -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
-    let diagnostic_time = "2026-07-17T01:02:03Z";
+    let diagnostic_time = "2099-07-17T01:02:03Z";
     harness.use_clock(ManualClock::at(diagnostic_time));
     let intake = harness.service.intake(
         intake_request(

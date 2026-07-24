@@ -248,6 +248,16 @@ server identity를 추출하지 않습니다. `McpToolCatalog`만 역방향 해�
 underscore나 구두점에서 namespace 경계를 추측하지 않습니다. Adapter는 이 semantic
 계약을 직접 선택하며 관찰한 Codex package version은 callable 투영을 제어하지 않습니다.
 
+같은 semantic 담당자가 `HostHookMatcherStrategy`를 정의합니다. 현재 Codex tool
+hook에서 검토된 strategy는 native Guard host tool과 server-qualified MCP routing의
+합집합입니다. 한도가 있는 callable 표현이 등록된 `McpServerKey` namespace를 보존하면
+그 namespace를 사용하고, 그렇지 않으면 같은 정규 catalog에서 exact callable token을
+파생합니다. Matcher JSON은 이 typed 값에서만 생성하고 엄격한 구성 검증은 이를 다시
+같은 값으로 parsing합니다. Routing은 semantic tool 수락이 아닙니다.
+Wrapper에서 `McpToolCatalog`가 계속 정확한 callable 해석을 수행하며, 해석된
+`AgentToolId`만 Guard probe 역할을 선택할 수 있습니다. 숫자 host-version branch는
+strategy를 바꾸지 않습니다.
+
 ## 권위 있는 Lifecycle 기록
 
 `mcp serve` 또는 숨겨진 launcher process는 Agent Connection을 해결한 뒤 thread

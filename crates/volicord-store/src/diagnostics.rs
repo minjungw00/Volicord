@@ -2306,8 +2306,8 @@ mod tests {
     #[test]
     fn core_rejection_diagnostics_are_exact_bounded_upserts() {
         let fixture = TempRuntimeHome::new("core-rejection-diagnostic").expect("fixture");
-        let first = UtcTimestamp::parse("2026-07-17T01:02:03Z").expect("first timestamp");
-        let second = UtcTimestamp::parse("2026-07-17T01:03:04Z").expect("second timestamp");
+        let first = UtcTimestamp::parse("2099-07-17T01:02:03Z").expect("first timestamp");
+        let second = UtcTimestamp::parse("2099-07-17T01:03:04Z").expect("second timestamp");
         let input = |occurred_at| CoreRejectionDiagnostic {
             project_id: "project_test",
             task_id: "task_test",
@@ -2327,7 +2327,7 @@ mod tests {
                 task_id: "task_test".to_owned(),
                 method_name: "volicord.prepare_write".to_owned(),
                 reason: "current_change_unit_required".to_owned(),
-                occurred_at: "2026-07-17T01:03:04Z".to_owned(),
+                occurred_at: "2099-07-17T01:03:04Z".to_owned(),
             }]
         );
 

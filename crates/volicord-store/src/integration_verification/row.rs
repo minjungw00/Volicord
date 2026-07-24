@@ -8,7 +8,8 @@ const RUN_SELECT: &str = "SELECT
     verification_id, connection_internal_id, project_internal_id,
     runtime_session_id, host_session_id, host_turn_id,
     guard_installation_id, integration_revision, policy_hash,
-    hook_contract_digest, expected_probe_tool, created_at, expires_at, status,
+    hook_contract_digest, expected_probe_tool, expected_host_callable_name,
+    created_at, expires_at, status,
     probe_acknowledged_at, completed_at, matched_prompt_event_id,
     matched_pre_tool_event_id, matched_post_tool_event_id,
     terminal_finding_code, terminal_finding_summary
@@ -31,6 +32,14 @@ pub(super) struct ActiveEventRunLookup<'a> {
     pub policy_hash: &'a str,
 }
 
+pub(super) struct ActiveAcquisitionRunLookup<'a> {
+    pub connection_internal_id: &'a str,
+    pub project_internal_id: &'a str,
+    pub guard_installation_id: &'a str,
+    pub integration_revision: &'a str,
+    pub policy_hash: &'a str,
+}
+
 pub(super) struct CorrelatedEventIds<'a> {
     pub prompt: &'a str,
     pub pre_tool: &'a str,
@@ -44,10 +53,10 @@ pub(super) fn insert_run(conn: &Connection, new_run: NewVerificationRun<'_>) -> 
             verification_id, connection_internal_id, project_internal_id,
             runtime_session_id, host_session_id, host_turn_id,
             guard_installation_id, integration_revision, policy_hash,
-            hook_contract_digest, expected_probe_tool, created_at, expires_at,
-            status, matched_prompt_event_id
+            hook_contract_digest, expected_probe_tool, expected_host_callable_name,
+            created_at, expires_at, status, matched_prompt_event_id
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                   'active', ?14)",
+                   ?14, 'active', ?15)",
         params![
             new_run.verification_id,
             caller.connection_internal_id(),
@@ -60,6 +69,7 @@ pub(super) fn insert_run(conn: &Connection, new_run: NewVerificationRun<'_>) -> 
             new_run.coordinate.policy_hash(),
             new_run.coordinate.hook_contract_digest(),
             new_run.coordinate.expected_probe_tool(),
+            new_run.coordinate.expected_host_callable_name(),
             new_run.created_at,
             new_run.expires_at,
             new_run.matched_prompt_event_id,
@@ -176,14 +186,44 @@ pub(super) fn active_run_for_event(
                 AND guard_installation_id = ?4
                 AND integration_revision = ?5
                 AND policy_hash = ?6
-                AND status = 'active'
-              ORDER BY created_at DESC, verification_id DESC
+                AND status IN ('active', 'passed')
+              ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,
+                       created_at DESC, verification_id DESC
               LIMIT 1"
         ),
         params![
             lookup.connection_internal_id,
             lookup.host_session_id,
             lookup.host_turn_id,
+            lookup.guard_installation_id,
+            lookup.integration_revision,
+            lookup.policy_hash,
+        ],
+        run_from_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(super) fn active_run_for_acquisition(
+    conn: &Connection,
+    lookup: ActiveAcquisitionRunLookup<'_>,
+) -> StoreResult<Option<GuardIntegrationVerificationRunRecord>> {
+    conn.query_row(
+        &format!(
+            "{RUN_SELECT}
+              WHERE connection_internal_id = ?1
+                AND project_internal_id = ?2
+                AND guard_installation_id = ?3
+                AND integration_revision = ?4
+                AND policy_hash = ?5
+                AND status = 'active'
+              ORDER BY created_at DESC, verification_id DESC
+              LIMIT 1"
+        ),
+        params![
+            lookup.connection_internal_id,
+            lookup.project_internal_id,
             lookup.guard_installation_id,
             lookup.integration_revision,
             lookup.policy_hash,
@@ -227,16 +267,17 @@ fn run_from_row(row: &Row<'_>) -> rusqlite::Result<GuardIntegrationVerificationR
         policy_hash: row.get(8)?,
         hook_contract_digest: row.get(9)?,
         expected_probe_tool: row.get(10)?,
-        created_at: row.get(11)?,
-        expires_at: row.get(12)?,
-        status: row.get(13)?,
-        probe_acknowledged_at: row.get(14)?,
-        completed_at: row.get(15)?,
-        matched_prompt_event_id: row.get(16)?,
-        matched_pre_tool_event_id: row.get(17)?,
-        matched_post_tool_event_id: row.get(18)?,
-        terminal_finding_code: row.get(19)?,
-        terminal_finding_summary: row.get(20)?,
+        expected_host_callable_name: row.get(11)?,
+        created_at: row.get(12)?,
+        expires_at: row.get(13)?,
+        status: row.get(14)?,
+        probe_acknowledged_at: row.get(15)?,
+        completed_at: row.get(16)?,
+        matched_prompt_event_id: row.get(17)?,
+        matched_pre_tool_event_id: row.get(18)?,
+        matched_post_tool_event_id: row.get(19)?,
+        terminal_finding_code: row.get(20)?,
+        terminal_finding_summary: row.get(21)?,
     })
 }
 
@@ -334,7 +375,8 @@ mod tests {
             "SELECT
                 'guard_verification_row', 'connection', 'project', 'runtime',
                 'session', 'turn', 'installation', '{HASH}', '{HASH}', '{HASH}',
-                'volicord.guard_probe', '2026-07-23T00:00:00Z',
+                'volicord.guard_probe', 'mcp__volicord__volicord_guard_probe',
+                '2026-07-23T00:00:00Z',
                 '2026-07-23T00:05:00Z', 'failed', NULL,
                 '2026-07-23T00:01:00Z', 'prompt', NULL, NULL,
                 'verification_coordinate_stale', ?1"
@@ -353,7 +395,8 @@ mod tests {
             "SELECT
                 NULL, 'connection', 'project', 'runtime', 'session', 'turn',
                 'installation', '{HASH}', '{HASH}', '{HASH}',
-                'volicord.guard_probe', '2026-07-23T00:00:00Z',
+                'volicord.guard_probe', 'mcp__volicord__volicord_guard_probe',
+                '2026-07-23T00:00:00Z',
                 '2026-07-23T00:05:00Z', 'active',
                 NULL, NULL, 'prompt', NULL, NULL, NULL, NULL"
         );

@@ -6,6 +6,7 @@ use volicord_types::{
 
 use super::{
     coordinate::{VerificationCallerCoordinate, VerificationStoredCoordinate},
+    observation::record_probe_acknowledgement,
     row::{acknowledge_probe_first_write, parse_timestamp, run_by_id},
     status::{effective_status, workflow_state_from_record},
     GuardIntegrationVerificationCaller,
@@ -58,6 +59,7 @@ pub fn acknowledge_guard_integration_probe(
     if authoritative.probe_acknowledged_at.is_none() {
         return Err(terminal_state_conflict(&caller, effective));
     }
+    record_probe_acknowledgement(&tx, &authoritative, observed_at)?;
     let effective = effective_status(runtime_home, &authoritative, &now)?;
     let result = GuardProbeResult {
         verification_id: GuardIntegrationVerificationId::new(verification_id),

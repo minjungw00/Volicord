@@ -636,6 +636,26 @@ lookup, not punctuation parsing. The adapter selects this semantic contract
 directly and does not derive host behavior from an observed Codex package
 version.
 
+The same semantic command-hook contract owns the typed tool-routing strategy.
+For tool phases it routes the reviewed native host-tool set plus the
+Connection's server-qualified MCP callables. It uses the registered namespace
+when the callable projection preserves that namespace, or exact tokens derived
+from `McpToolCatalog` otherwise. The generated matcher is only an acquisition
+boundary: after delivery, the wrapper resolves the observed
+callable through `McpToolCatalog` and only the exact `AgentToolId::GuardProbe`
+with the current verification ID, session, turn, and tool-use chain may
+complete verification. A routed different tool, an unknown same-server
+callable, an incompatible payload, and each coordinate mismatch remain
+distinct acquisition stages.
+
+The durable stages are `ProbeAcknowledged`, `HookEventNotObserved`,
+`HookPayloadIncompatible`, `CallableIdentityUnknown`,
+`CallableIdentityMismatch`, `VerificationIdMismatch`, `SessionMismatch`,
+`TurnMismatch`, `ToolUseMismatch`, `PreToolMatched`, and `PostToolMatched`.
+They retain bounded callable and categorical correlation facts only. In
+particular, `HookEventNotObserved` says that Volicord received no event; it
+does not diagnose a matcher fault or a host-emission fault.
+
 Guard correlation and Guard policy are separate steps. A compatible hook
 correlation may reach policy and produce `Continue`, `ContinueWithContext`,
 `ContinueWithWarning`, or `Deny`. An incompatible hook contract instead

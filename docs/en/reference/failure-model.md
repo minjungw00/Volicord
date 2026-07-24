@@ -83,6 +83,16 @@ observation outcome remains explicitly unavailable and persistence failure
 alone does not become policy denial. An actual `NotAllowed` Guard result
 requires compatible input that reached policy and produced `Deny`.
 
+Guard-probe acquisition does not collapse routing, decoding, identity, and
+correlation into one failure. `HookPayloadIncompatible`,
+`CallableIdentityUnknown`, `CallableIdentityMismatch`,
+`VerificationIdMismatch`, `SessionMismatch`, `TurnMismatch`, and
+`ToolUseMismatch` describe the last bounded stage Volicord could observe.
+`HookEventNotObserved` is intentionally weaker: it means that no hook event
+reached Volicord and cannot prove whether the host omitted the event or its
+configured routing did not select it. Acquisition records contain categorical
+facts and bounded callable identity only, never the unrestricted hook payload.
+
 Connection-integration verification keeps tool-call rejection separate from
 run lifecycle. A malformed ID or a call from another runtime, native session,
 or turn is rejected without changing the run. Absence of the required current

@@ -170,16 +170,35 @@ support hook-execution diagnosis but are not independent proof of managed MCP
 capability or correlated Guard verification. Project/configuration trust is a
 separate host/user-owned check.
 
-For `PreToolUse` and `PostToolUse`, the managed hook matcher includes the exact
-Codex-native name `mcp__volicord__volicord_guard_probe`. The registered
-`McpServerKey` and complete `volicord.guard_probe` raw MCP name remain distinct
-inputs to the `CodexMcpCallableNames` projection. The matcher and verification
-correlation read the resulting `HostCallableIdentity` from the same
-collision-checked catalog; neither infers a server from the dotted raw name.
-The matcher does not broaden matching to all read-only tools.
-Prompt capture has no tool matcher. A verification event matches only when its
-current contract digest and exact session, turn, tool-use ID, tool name, and
-`verification_id` input agree with the bounded run.
+For `PreToolUse` and `PostToolUse`, the semantic Codex command-hook contract
+owns one typed routing strategy. It forms a union of the reviewed native host
+tools and server-qualified MCP routing. It uses the registered `McpServerKey`
+namespace when the callable projection preserves that namespace; otherwise it
+derives exact callable tokens from the canonical catalog. Generated matcher
+JSON and strict configuration validation both project and reconstruct that
+strategy; prompt capture has no tool matcher. The same owner supplies the
+collision-checked `McpToolCatalog`, so routing never infers a server from a
+dotted raw name and never selects behavior from a numeric host version.
+
+Routing only delivers an event to the wrapper. Semantic filtering then decodes
+the hook kind and callable, resolves the explicit server/tool identity to
+`AgentToolId`, and compares the current session, turn, tool-use ID, and bounded
+`verification_id`. Only `AgentToolId::GuardProbe` at the exact current
+verification coordinate satisfies Guard verification. Other routed Volicord
+tools and unknown same-server callables remain diagnostic observations; a
+foreign server namespace is not routed.
+
+Probe acquisition records one closed stage:
+`ProbeAcknowledged`, `HookEventNotObserved`, `HookPayloadIncompatible`,
+`CallableIdentityUnknown`, `CallableIdentityMismatch`,
+`VerificationIdMismatch`, `SessionMismatch`, `TurnMismatch`,
+`ToolUseMismatch`, `PreToolMatched`, or `PostToolMatched`. The record retains
+only the expected agent-tool/callable identity, an optional bounded observed
+callable, hook kind, categorical match facts, verification-ID presence/match,
+and current installation/revision. It never retains the full hook payload,
+prompt, tool input, or tool output. `HookEventNotObserved` means only that no
+event reached Volicord; it does not prove whether host emission or routing was
+responsible.
 
 ## Diagnostics And Event Projection
 

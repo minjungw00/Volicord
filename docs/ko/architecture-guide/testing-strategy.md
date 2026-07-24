@@ -86,8 +86,10 @@ registry 직접 순회가 matrix를 정합니다.
   대신하지 않는 Codex host fixture, 정확한 `CodexMcpTurnMetadata`,
   `CodexCommandHooks`, `CodexMcpCallableNames` profile coverage, source별 상관관계,
   명시적 server/raw/callable fixture 일치, 완전한 raw name 투영, 정규화 충돌 거부,
-  정확한 catalog 역방향 조회, 추가 field와 한도 check, checksum 일치,
-  생성 hook과 Guard identity 일치, CLI conformance evidence와 실제 `managed_host` 관찰의 분리
+  정확한 catalog 역방향 조회, 추가 field와 한도 check, checksum 일치, typed host-tool 및
+  server-namespace/catalog-derived-exact routing, 현재 Guard probe pre/post fixture 전달, foreign-server
+  제외, 생성 matcher와 catalog의 일치, 엄격한 matcher drift 거부, CLI conformance
+  evidence와 실제 `managed_host` 관찰의 분리
 - lifecycle별 진단 구성 및 Store API, 변경할 수 없는 occurrence 삽입, 완전한 current key
   digest와 영속 ID 검증, current snapshot identity 불변성, 해소와 재활성화,
   active/reportable filtering, 명시적 report seed와 한도가 있는 lifecycle-aware 정확한 cause
@@ -98,7 +100,9 @@ registry 직접 순회가 matrix를 정합니다.
 - Guard manifest의 exact shape와 owner binding, hash가 없는 policy command와 hash에
   결속된 runtime command의 구분, wrapper/file drift, 플랫폼 독립적인 script executable
   기대값, 현재 definition hook hash, 바뀌지 않은 manifest의 관찰 보존, 바뀐 definition의
-  무효화, 현재 소유권의 hook 관찰, 이전 event 제외
+  무효화, 현재 소유권의 hook 관찰, 이전 event 제외, 서로 다른 부재/malformed/unknown
+  callable/상관관계 불일치 acquisition stage, 검증에서 same-server non-probe tool 제외,
+  payload 없이 한도가 있는 callable evidence
 - Unknown, setup review, 현재 definition 관찰, policy 관리, 호출별 bypass, 명시적
   disabled를 포함한 정확한 `HookActivationState` 근거 우선순위와 합성 trusted 상태 부재
 - `project_trust`를 독립적으로 유지하면서 configured, reload, hook review/unknown,

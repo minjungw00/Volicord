@@ -743,6 +743,10 @@ CREATE TABLE guard_integration_verification_runs (
   expected_probe_tool TEXT NOT NULL CHECK (
     expected_probe_tool = 'volicord.guard_probe'
   ),
+  expected_host_callable_name TEXT NOT NULL CHECK (
+    length(CAST(expected_host_callable_name AS BLOB)) BETWEEN 1 AND 64
+    AND expected_host_callable_name NOT GLOB '*[^A-Za-z0-9_]*'
+  ),
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('active', 'passed', 'failed', 'expired')),
@@ -797,6 +801,69 @@ CREATE INDEX idx_guard_integration_verification_project
   ON guard_integration_verification_runs (
     project_internal_id, connection_internal_id, created_at, verification_id
   );
+
+CREATE TABLE guard_probe_observations (
+  observation_id TEXT PRIMARY KEY CHECK (
+    length(CAST(observation_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  verification_id TEXT NOT NULL,
+  guard_event_id TEXT CHECK (
+    guard_event_id IS NULL
+    OR length(CAST(guard_event_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  stage TEXT NOT NULL CHECK (
+    stage IN (
+      'probe_acknowledged',
+      'hook_event_not_observed',
+      'hook_payload_incompatible',
+      'callable_identity_unknown',
+      'callable_identity_mismatch',
+      'verification_id_mismatch',
+      'session_mismatch',
+      'turn_mismatch',
+      'tool_use_mismatch',
+      'pre_tool_matched',
+      'post_tool_matched'
+    )
+  ),
+  expected_agent_tool_id TEXT NOT NULL CHECK (
+    expected_agent_tool_id = 'volicord.guard_probe'
+  ),
+  expected_host_callable_name TEXT NOT NULL CHECK (
+    length(CAST(expected_host_callable_name AS BLOB)) BETWEEN 1 AND 64
+    AND expected_host_callable_name NOT GLOB '*[^A-Za-z0-9_]*'
+  ),
+  observed_callable_name TEXT CHECK (
+    observed_callable_name IS NULL
+    OR length(CAST(observed_callable_name AS BLOB)) BETWEEN 1 AND 256
+  ),
+  hook_event_kind TEXT CHECK (
+    hook_event_kind IS NULL OR hook_event_kind IN ('pre_tool', 'post_tool')
+  ),
+  verification_id_present INTEGER NOT NULL CHECK (
+    verification_id_present IN (0, 1)
+  ),
+  verification_id_matches INTEGER NOT NULL CHECK (
+    verification_id_matches IN (0, 1)
+  ),
+  guard_installation_id TEXT NOT NULL,
+  integration_revision TEXT NOT NULL CHECK (
+    length(integration_revision) = 71
+    AND substr(integration_revision, 1, 7) = 'sha256:'
+    AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  observed_at TEXT NOT NULL,
+  CHECK (verification_id_matches = 0 OR verification_id_present = 1),
+  FOREIGN KEY (verification_id)
+    REFERENCES guard_integration_verification_runs (verification_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (guard_installation_id)
+    REFERENCES guard_installations (guard_installation_id)
+    ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_guard_probe_observations_verification
+  ON guard_probe_observations (verification_id, observed_at, observation_id);
 ```
 <!-- canonical-storage-sql: registry end -->
 
@@ -823,7 +890,8 @@ Registry constraints:
 - `mcp_runtime_sessions.attempted_client_name` and `attempted_client_version` form the bounded parsed client pair. `requested_protocol_version` is client input; `selected_protocol_version` is the server-selected initialize result; `negotiated_protocol_version` is present only with handshake completion and must equal the selected revision. `initialize_completed_at`, `initialized_notification_at`, and `tools_list_observed_at` are distinct lifecycle milestones; `tools/list` may follow initialize completion before the initialized notification. `returned_tool_identities_json` is the canonical exact inventory for that list observation, and `required_tools_validated_at` is present only for a successful required set. The bounded MCP tool name `verification_tool_name` and `verification_tool_observed_at` form an exact null-or-present pair; the observation requires same-session required-tool validation and cannot precede it. `terminal_finding_id` is a same-runtime foreign key to one structured error finding and is mutually exclusive with graceful close.
 - `mcp_runtime_sessions.session_source` is exactly `managed_host`, `manual_cli`, `cli_preflight`, or `integration_probe`. Only the lease-consumption transaction may insert `managed_host`; managed-session lookups exclude the other three values.
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, required hook phases, exact `host_contract_profile`, and deterministic `host_contract_digest`. The current Guard selection is `codex-command-hooks`. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.
-- `guard_integration_verification_runs` stores one bounded managed-host verification coordinate: its opaque ID, Connection and project, current MCP runtime, native session and turn, Guard Installation, integration revision, policy hash, hook-contract digest, expected probe tool, lifetime, status, probe acknowledgement, matched prompt/pre/post event IDs, completion time, and optional terminal finding. At most one `active` row exists for the same Connection/runtime/turn/revision. `probe_acknowledged_at` is written once only while the row is eligible and is then the authoritative timestamp for exact active or terminal replay; completed rows are never reactivated for replay, and terminal rows without it cannot acquire it. Foreign keys keep the row attached to Registry owners; current-owner validation, rather than the row alone, determines whether `passed` remains effective.
+- `guard_integration_verification_runs` stores one bounded managed-host verification coordinate: its opaque ID, Connection and project, current MCP runtime, native session and turn, Guard Installation, integration revision, policy hash, hook-contract digest, expected probe tool and host callable, lifetime, status, probe acknowledgement, matched prompt/pre/post event IDs, completion time, and optional terminal finding. At most one `active` row exists for the same Connection/runtime/turn/revision. `probe_acknowledged_at` is written once only while the row is eligible and is then the authoritative timestamp for exact active or terminal replay; completed rows are never reactivated for replay, and terminal rows without it cannot acquire it. Foreign keys keep the row attached to Registry owners; current-owner validation, rather than the row alone, determines whether `passed` remains effective.
+- `guard_probe_observations` stores only the closed acquisition stage, expected agent-tool/callable identity, optional bounded observed callable, optional hook kind, verification-ID presence/match flags, Guard Installation, integration revision, and observation time. It cannot store prompts or unrestricted hook/tool payloads. Its foreign keys attach each observation to one verification run and current installation; `hook_event_not_observed` records only absence at the Volicord boundary.
 - Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings and integration-verification runs before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding, integration-verification run, and Guard Installation, then `mcp_runtime_sessions`, then `managed_mcp_launch_leases`, and finally `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
 
 ## Project `state.sqlite`

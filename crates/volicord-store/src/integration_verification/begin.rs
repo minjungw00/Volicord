@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use chrono::Duration;
-use volicord_host_contract::HostContractProfileId;
+use volicord_host_contract::{project_mcp_tool, HostContractProfileId, McpServerKey};
 use volicord_types::{
-    guard_manifest_from_json, BeginIntegrationVerificationResult, DurableIdGenerator,
+    guard_manifest_from_json, AgentToolId, BeginIntegrationVerificationResult, DurableIdGenerator,
     DurableIdKind, RandomDurableIdGenerator, GUARD_INTEGRATION_VERIFICATION_TTL_SECONDS,
 };
 
@@ -20,6 +20,7 @@ use super::{
     BeginGuardIntegrationVerificationInput, GuardIntegrationVerificationRunRecord,
 };
 use crate::{
+    agent_connections::agent_connection_record_read_only,
     bootstrap::project_record_for_execution,
     guards::{
         agent_session, agent_session_matches_current_integration,
@@ -120,6 +121,20 @@ pub fn begin_guard_integration_verification_with_generator(
             detail: "Guard installation revision or hook contract is not current".to_owned(),
         });
     }
+    let connection =
+        agent_connection_record_read_only(runtime_home, caller.connection_internal_id())?
+            .ok_or_else(|| StoreError::NotFound {
+                entity: "agent_connection",
+                id: caller.connection_internal_id().to_owned(),
+            })?;
+    let server = McpServerKey::parse(connection.server_name).map_err(|_| {
+        StoreError::corrupt_stored_value("registry", "agent_connections.server_name")
+    })?;
+    let expected_host_callable_name = project_mcp_tool(&server, AgentToolId::GUARD_PROBE)
+        .map_err(|_| StoreError::corrupt_stored_value("registry", "agent_connections.server_name"))?
+        .callable_name()
+        .as_str()
+        .to_owned();
     let events = guard_events_for_integration_verification(
         runtime_home,
         GuardIntegrationVerificationEventQuery {
@@ -158,6 +173,7 @@ pub fn begin_guard_integration_verification_with_generator(
         manifest.integration_revision.as_str(),
         manifest.policy_hash.as_str(),
         &expected_digest,
+        expected_host_callable_name,
     );
 
     let mut conn = open_registry_database(registry_db_path(runtime_home))?;

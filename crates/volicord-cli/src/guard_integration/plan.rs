@@ -449,7 +449,9 @@ mod tests {
     use std::fs;
 
     use serde_json::Value;
-    use volicord_host_contract::{McpServerKey, McpToolCatalog};
+    use volicord_host_contract::{
+        CanonicalToolName, HostHookMatcherStrategy, McpServerKey, McpToolCatalog,
+    };
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::{AgentToolId, GuardManagedArtifact, IntegrationProfile};
 
@@ -549,12 +551,21 @@ mod tests {
             .and_then(Value::as_str)
             .expect("PreToolUse matcher");
         let server = McpServerKey::parse("volicord-test")?;
+        let strategy = HostHookMatcherStrategy::parse_codex_guard(matcher, &server)?;
         let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL)?;
         let guard_callable = catalog
             .require(&server, AgentToolId::GUARD_PROBE)?
             .callable_name()
             .as_str();
-        assert!(matcher.split('|').any(|token| token == guard_callable));
+        let status_callable = catalog
+            .require(&server, AgentToolId::STATUS)?
+            .callable_name()
+            .as_str();
+        assert!(strategy.routes(&CanonicalToolName::parse(guard_callable)?));
+        assert!(strategy.routes(&CanonicalToolName::parse(status_callable)?));
+        assert!(!strategy.routes(&CanonicalToolName::parse(
+            "mcp__foreign__volicord_guard_probe"
+        )?));
 
         let codex_rule = plan
             .generated_files

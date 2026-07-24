@@ -587,6 +587,10 @@ CREATE TABLE guard_integration_verification_runs (
   expected_probe_tool TEXT NOT NULL CHECK (
     expected_probe_tool = 'volicord.guard_probe'
   ),
+  expected_host_callable_name TEXT NOT NULL CHECK (
+    length(CAST(expected_host_callable_name AS BLOB)) BETWEEN 1 AND 64
+    AND expected_host_callable_name NOT GLOB '*[^A-Za-z0-9_]*'
+  ),
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('active', 'passed', 'failed', 'expired')),
@@ -641,3 +645,66 @@ CREATE INDEX idx_guard_integration_verification_project
   ON guard_integration_verification_runs (
     project_internal_id, connection_internal_id, created_at, verification_id
   );
+
+CREATE TABLE guard_probe_observations (
+  observation_id TEXT PRIMARY KEY CHECK (
+    length(CAST(observation_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  verification_id TEXT NOT NULL,
+  guard_event_id TEXT CHECK (
+    guard_event_id IS NULL
+    OR length(CAST(guard_event_id AS BLOB)) BETWEEN 1 AND 192
+  ),
+  stage TEXT NOT NULL CHECK (
+    stage IN (
+      'probe_acknowledged',
+      'hook_event_not_observed',
+      'hook_payload_incompatible',
+      'callable_identity_unknown',
+      'callable_identity_mismatch',
+      'verification_id_mismatch',
+      'session_mismatch',
+      'turn_mismatch',
+      'tool_use_mismatch',
+      'pre_tool_matched',
+      'post_tool_matched'
+    )
+  ),
+  expected_agent_tool_id TEXT NOT NULL CHECK (
+    expected_agent_tool_id = 'volicord.guard_probe'
+  ),
+  expected_host_callable_name TEXT NOT NULL CHECK (
+    length(CAST(expected_host_callable_name AS BLOB)) BETWEEN 1 AND 64
+    AND expected_host_callable_name NOT GLOB '*[^A-Za-z0-9_]*'
+  ),
+  observed_callable_name TEXT CHECK (
+    observed_callable_name IS NULL
+    OR length(CAST(observed_callable_name AS BLOB)) BETWEEN 1 AND 256
+  ),
+  hook_event_kind TEXT CHECK (
+    hook_event_kind IS NULL OR hook_event_kind IN ('pre_tool', 'post_tool')
+  ),
+  verification_id_present INTEGER NOT NULL CHECK (
+    verification_id_present IN (0, 1)
+  ),
+  verification_id_matches INTEGER NOT NULL CHECK (
+    verification_id_matches IN (0, 1)
+  ),
+  guard_installation_id TEXT NOT NULL,
+  integration_revision TEXT NOT NULL CHECK (
+    length(integration_revision) = 71
+    AND substr(integration_revision, 1, 7) = 'sha256:'
+    AND substr(integration_revision, 8) NOT GLOB '*[^0-9a-f]*'
+  ),
+  observed_at TEXT NOT NULL,
+  CHECK (verification_id_matches = 0 OR verification_id_present = 1),
+  FOREIGN KEY (verification_id)
+    REFERENCES guard_integration_verification_runs (verification_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (guard_installation_id)
+    REFERENCES guard_installations (guard_installation_id)
+    ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_guard_probe_observations_verification
+  ON guard_probe_observations (verification_id, observed_at, observation_id);

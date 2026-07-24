@@ -354,17 +354,22 @@ preflight 호출, 오래된 호출, 모호한 호출, prompt가 없는 호출은
 `volicord.guard_probe`는 immediate Registry transaction 하나를 사용합니다. 정확한 run을
 읽고 완전한 caller 좌표를 검증하며 현재 유효 상태를 계산한 뒤, 기존
 `probe_acknowledged_at`이 있으면 갱신 없이 반환합니다. 이 필드가 없을 때는 적격인 active
-run만 조건부로 값을 설정할 수 있고 Store는 commit 전에 권위 있는 timestamp와 상태를 다시
+run만 조건부로 값을 설정할 수 있습니다. Store는 `guard_probe_observations`에
+`probe_acknowledged`를 기록하고 pre-tool acquisition이 아직 도착하지 않았으면
+`hook_event_not_observed`도 기록한 뒤 commit 전에 권위 있는 timestamp와 상태를 다시
 읽습니다. 따라서 동시에 실행한 동일한 첫 호출은 timestamp 하나로 수렴합니다. `passed`
 뒤의 정확한 replay나 현재 공개 projection이 지원하는 다른 terminal replay는 완료 정보와
 일치한 event를 바꾸지 않고 원래 acknowledgement를 반환합니다. 다른 좌표는 값을 노출하지
 않고 거부하며 acknowledgement가 없는 terminal 또는 expired run에는 뒤늦게 값을 만들 수
 없습니다. 프로젝트 `state.sqlite`, Core 작업 흐름, Task, Product Repository에는 효과가
 없습니다. `volicord.get_integration_verification`은 읽기 전용입니다.
-호환 Guard event 영속은 일반적인 프로젝트 로컬 event 효과를 유지하고, 그 commit 뒤 Registry
-상관관계 refresh가 일치하는 active run을 `passed`로 바꾸면서 완료 정보와 일치한 event ID를
-저장할 수 있습니다. 정확한 replay로 이 refresh를 완료할 수 있습니다. 어떤 분기도 없는
-Guard event를 꾸며내거나 MCP trust 상태를 변경하지 않습니다.
+호환 Guard event 영속은 일반적인 프로젝트 로컬 event 효과를 유지하지만 routing된 MCP
+event의 제한 없는 raw payload는 저장하지 않습니다. 그 commit 뒤 Registry transaction
+하나가 한도가 있는 typed acquisition stage를 기록합니다. 일치한 pre/post stage는 active
+run을 `passed`로 refresh하면서 완료 정보와 일치한 event ID를 저장할 수 있습니다. 알 수
+없는 callable, non-probe tool, malformed payload, coordinate mismatch는 진단 acquisition
+row를 추가하지만 run을 완료할 수 없습니다. 정확한 replay로 이 refresh를 완료할 수
+있습니다. 어떤 분기도 없는 Guard event를 꾸며내거나 MCP trust 상태를 변경하지 않습니다.
 
 ## Managed Runtime 프로젝트 Session 결속
 

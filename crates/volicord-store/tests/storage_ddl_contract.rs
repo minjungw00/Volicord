@@ -28,10 +28,10 @@ use volicord_types::{
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
 ) -> Result<(), Box<dyn Error>> {
     let metadata = generated_schema_metadata()?;
-    assert_eq!(metadata.tables.len(), 49);
-    assert_eq!(metadata.columns.len(), 574);
-    assert_eq!(metadata.indexes.len(), 75);
-    assert_eq!(metadata.constraints.len(), 44);
+    assert_eq!(metadata.tables.len(), 50);
+    assert_eq!(metadata.columns.len(), 588);
+    assert_eq!(metadata.indexes.len(), 76);
+    assert_eq!(metadata.constraints.len(), 45);
     let agent_connection_columns = metadata
         .columns
         .iter()
@@ -45,6 +45,33 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert!(agent_connection_columns.contains(&"integration_instance_id"));
     assert!(!agent_connection_columns.contains(&"last_verification_status"));
     assert!(!agent_connection_columns.contains(&"last_user_actions_json"));
+    let guard_probe_observation_columns = metadata
+        .columns
+        .iter()
+        .filter(|column| {
+            column.database == StorageDatabaseKind::Registry
+                && column.table == "guard_probe_observations"
+        })
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        guard_probe_observation_columns,
+        [
+            "observation_id",
+            "verification_id",
+            "guard_event_id",
+            "stage",
+            "expected_agent_tool_id",
+            "expected_host_callable_name",
+            "observed_callable_name",
+            "hook_event_kind",
+            "verification_id_present",
+            "verification_id_matches",
+            "guard_installation_id",
+            "integration_revision",
+            "observed_at",
+        ]
+    );
     let launch_lease_columns = metadata
         .columns
         .iter()
@@ -275,11 +302,11 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     }
     assert_eq!(
         metadata.canonical_ddl_digest,
-        "sha256:3eb4125e8c1f218044f5188871d9c0b69d134e7cf4701fb1d9242cb987b10fe1"
+        "sha256:8b97bc29575110cf5cb44274f3fdca00583c34d6ba2b8f9f38069c581c01c344"
     );
     assert_eq!(
         metadata.integrity_constraints_digest,
-        "sha256:d8f68d017b8fcc8214c1ab690d69a5bccf97aa45a631571db8bb09ff2849c5b3"
+        "sha256:2867dc0f9f663a235b2509f8537e3b7c8b2cf7bc04ee412f1a7fdc830816a996"
     );
     assert!(metadata.tables.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(metadata.columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -313,12 +340,12 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
     assert_eq!(
         manifest_json,
         concat!(
-            "{\"canonical_ddl_digest\":\"sha256:3eb4125e8c1f218044f5188871d9c0b69d134e7cf4701fb1d9242cb987b10fe1\",",
+            "{\"canonical_ddl_digest\":\"sha256:8b97bc29575110cf5cb44274f3fdca00583c34d6ba2b8f9f38069c581c01c344\",",
             "\"contract_id\":\"volicord.sqlite.canonical\",",
             "\"enabled_capabilities\":[\"artifact_storage\",\"authority_event_chain\",",
             "\"exact_operation_result\",\"guard_reconciliation\",\"managed_codex_connection\",",
             "\"operational_mcp_sessions\",\"project_continuity\",\"user_action_cli_resolution\"],",
-            "\"integrity_constraints_digest\":\"sha256:d8f68d017b8fcc8214c1ab690d69a5bccf97aa45a631571db8bb09ff2849c5b3\"}"
+            "\"integrity_constraints_digest\":\"sha256:2867dc0f9f663a235b2509f8537e3b7c8b2cf7bc04ee412f1a7fdc830816a996\"}"
         )
     );
     Ok(())
@@ -425,12 +452,12 @@ fn malformed_and_noncurrent_manifests_are_corrupt() -> Result<(), Box<dyn Error>
 }
 
 #[test]
-fn preceding_connection_bound_session_schema_manifest_requires_reinitialization(
+fn preceding_guard_verification_schema_manifest_requires_reinitialization(
 ) -> Result<(), Box<dyn Error>> {
     let preceding = StorageManifest::new(
         STORAGE_CONTRACT_ID,
-        "sha256:28efe2a0d3a544481181185b4d73fb465e1bcf4158237c73217a25a1db963e4b",
-        "sha256:1549e654b8de2b08ef6327a8f3d01c68f47f83bcad4bf39d3a3d3e5c416abdd9",
+        "sha256:3eb4125e8c1f218044f5188871d9c0b69d134e7cf4701fb1d9242cb987b10fe1",
+        "sha256:d8f68d017b8fcc8214c1ab690d69a5bccf97aa45a631571db8bb09ff2849c5b3",
         STORAGE_ENABLED_CAPABILITIES
             .iter()
             .map(|capability| (*capability).to_owned())
@@ -441,7 +468,7 @@ fn preceding_connection_bound_session_schema_manifest_requires_reinitialization(
     insert_registry_owner(&registry, &persisted)?;
 
     let error = validate_registry_schema(&registry)
-        .expect_err("the preceding connection-bound session schema must not be silently upgraded");
+        .expect_err("the preceding Guard verification schema must not be silently upgraded");
     assert!(
         matches!(
             error,

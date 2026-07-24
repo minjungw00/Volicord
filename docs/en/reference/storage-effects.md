@@ -366,7 +366,9 @@ ambiguous, or prompt-missing calls have no verification-run effect.
 exact run, validates the complete caller coordinate, computes current effective
 status, and returns an existing `probe_acknowledged_at` without updating. When
 the field is absent, only an eligible active run may conditionally set it; the
-Store then reads back the authoritative timestamp and status before commit.
+Store then records `probe_acknowledged` and, if no pre-tool acquisition has
+arrived, `hook_event_not_observed` in `guard_probe_observations`, and reads back
+the authoritative timestamp and status before commit.
 Concurrent identical first calls therefore converge on one timestamp. Exact
 replay after `passed` or another supported terminal projection returns the
 original acknowledgement without changing completion or matched events.
@@ -374,10 +376,14 @@ Another coordinate is rejected without disclosure, and a terminal or expired
 run without an acknowledgement cannot acquire one late. It has no project
 `state.sqlite`, Core workflow, Task, or Product Repository effect.
 `volicord.get_integration_verification` is read-only. Compatible Guard event
-persistence retains its ordinary project-local event effect; after that commit,
-the Registry correlation refresh may mark the matching active run `passed` and
-store its completion and matched event IDs. Exact replay can complete that
-refresh. No branch fabricates missing Guard events or alters MCP trust state.
+persistence retains its ordinary project-local event effect; routed MCP events
+do not retain unrestricted raw payloads. After that commit, one Registry
+transaction records the bounded typed acquisition stage. A matching pre/post
+stage can then refresh the active run to `passed` and store its completion and
+matched event IDs. Unknown callables, non-probe tools, malformed payloads, and
+coordinate mismatches add diagnostic acquisition rows but cannot complete the
+run. Exact replay can complete the refresh. No branch fabricates missing Guard
+events or alters MCP trust state.
 
 ## Managed Runtime Project-Session Binding
 

@@ -1506,8 +1506,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1544,8 +1544,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -1688,8 +1688,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles
@@ -2538,8 +2538,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2575,8 +2575,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2614,8 +2614,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2666,8 +2666,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-22'
-  last_verified_on: '2026-07-22'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   primary_audience:
@@ -2681,7 +2681,7 @@ documents:
   - one canonical SQLite format and fail-closed exact-open validation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - noncurrent-contract corruption, unavailable, and fresh-recreation storage boundaries
-  - rejection of the preceding Agent Connection schema without migration or dual-read compatibility
+  - rejection of the preceding Guard verification schema without migration or dual-read compatibility
   - canonical Core UTC clock and persisted project-time floor
   - atomic state-version, immutable event, write-ticket, and transaction ordering
   - idempotency, strict replay rows, and exact operation-result retrieval
@@ -2700,8 +2700,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-24'
+  last_verified_on: '2026-07-24'
   applies_to:
   - volicord_workspace_0_2
   - mcp_initialize_profiles

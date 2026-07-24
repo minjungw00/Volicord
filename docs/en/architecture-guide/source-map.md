@@ -18,14 +18,14 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-types/src/integration_revision.rs` | Typed Connection/project integration revision bases and derivation. |
 | `crates/volicord-types/src/guard_manifest.rs` | Canonical Guard manifest, managed-artifact, hook-phase, and typed command contracts. |
 | `crates/volicord-types/src/tool_names.rs` | Closed `AgentToolId` catalog, `MethodName` reuse for Core-owned tools, category and mode metadata, compile-time verification-role binding, and stable MCP wire-name projection. |
-| `crates/volicord-types/src/integration_verification.rs` | Shared closed tagged integration-verification workflow state, fixed canonical `AgentToolId`-backed tool-reference types, restart reasons, and begin/probe/get public result shapes. |
+| `crates/volicord-types/src/integration_verification.rs` | Shared closed tagged integration-verification workflow state, fixed canonical `AgentToolId`-backed tool-reference types, Guard-probe acquisition stages, restart reasons, and begin/probe/get public result shapes. |
 
 ## Host Wire Contracts
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames` contracts; deterministic profile digests; bounded values and errors; source-specific correlation; explicit `McpServerKey`, `McpRawToolName`, and `McpToolIdentity`; collision-checked projection to `HostCallableIdentity`; and exact `McpToolCatalog` reverse lookup. |
-| `crates/volicord-host-contract/tests/host_contracts.rs` | Contract parsing, source-type separation, required-field and bound enforcement, MCP consistency, and pinned-fixture manifest/checksum/profile parity. |
+| `crates/volicord-host-contract/src/lib.rs` | Semantic `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames` contracts; typed host-tool and server-namespace/catalog-derived-exact hook routing; deterministic profile digests; bounded values and errors; source-specific correlation; explicit `McpServerKey`, `McpRawToolName`, and `McpToolIdentity`; collision-checked projection to `HostCallableIdentity`; and exact `McpToolCatalog` reverse lookup. |
+| `crates/volicord-host-contract/tests/host_contracts.rs` | Contract parsing, source-type separation, required-field and bound enforcement, typed matcher routing/reconstruction, MCP consistency, and pinned-fixture manifest/checksum/profile parity. |
 | `tests/conformance/codex-host/` | Reviewed offline Codex command-hook, MCP turn-metadata, and MCP callable-name fixtures plus their semantic-profile coverage manifest and checksums. |
 
 ## Platform Filesystem Boundary
@@ -63,11 +63,12 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/integration_verification/mod.rs` | Public Store facade, stable integration-verification inputs and records, and bounded exports for the lifecycle implementation. |
 | `crates/volicord-store/src/integration_verification/begin.rs` | Verification creation, exact-coordinate resume, active-run expiry before begin, current prompt selection, and durable ID allocation in one immediate Registry transaction. |
 | `crates/volicord-store/src/integration_verification/probe.rs` | First-write probe acknowledgement, exact active and terminal replay, and concurrent-call convergence in one immediate Registry transaction. |
-| `crates/volicord-store/src/integration_verification/correlation.rs` | Prompt/pre/post event matching, verification-ID and hook-contract matching, exact callable reverse lookup through the Connection server's `McpToolCatalog`, tool-use correlation, timestamp ordering, and atomic completion refresh. |
+| `crates/volicord-store/src/integration_verification/observation.rs` | Typed hook acquisition, semantic callable filtering through the Connection server's `McpToolCatalog`, distinct correlation-mismatch stages, and bounded payload-free observation persistence. |
+| `crates/volicord-store/src/integration_verification/correlation.rs` | Prompt and acquired pre/post event matching, hook-contract and tool-use correlation, timestamp ordering, and atomic completion refresh. |
 | `crates/volicord-store/src/integration_verification/status.rs` | Effective lifecycle status, latest and exact reads, public result and tagged workflow projection, and stale-owner handling. |
 | `crates/volicord-store/src/integration_verification/coordinate.rs` | Typed caller, current, and stored verification coordinates plus caller and run-owner validation. |
 | `crates/volicord-store/src/integration_verification/row.rs` | Private verification SQL, row decoding, status and timestamp parsing, database representation conversion, and focused row-decoder tests. |
-| `crates/volicord-store/src/integration_verification/tests/` | Lifecycle-owner tests for begin, probe, correlation, status, and concurrent first acknowledgement, with shared fixture construction isolated from assertions. |
+| `crates/volicord-store/src/integration_verification/tests/` | Lifecycle-owner tests for begin, probe, typed acquisition, correlation, status, and concurrent first acknowledgement, with shared fixture construction isolated from assertions. |
 | `crates/volicord-store/src/workflow_records.rs` | Workflow record reads and writes. |
 | `crates/volicord-store/src/core_pipeline/` | Core-open, validation, replay, commit, and mutation application. |
 | `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
@@ -112,10 +113,10 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/connection_command/output/` | Canonical selected-Connection diagnostic report construction, aggregate status and roots, and concise, verbose, and lossless JSON presentation of that same report. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | Finding-ID and runtime-session detail commands, bounded lifecycle-aware cause traversal, lookup-specific JSON and human projection, and lookup-status exit outcomes independent of finding severity. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex configuration parsing and serialization, canonical managed-entry validation, preservation of the allowed tool-approval overlay, managed configuration mutation, diagnostic executable observations, and connection verification. |
-| `crates/volicord-cli/src/host_integration/contracts.rs` | Explicit semantic Codex host-contract selection and Guard matcher projection from the registered `McpServerKey` through the canonical callable catalog. |
+| `crates/volicord-cli/src/host_integration/contracts.rs` | Explicit semantic Codex host-contract selection, typed Guard routing-strategy projection, and strict configuration reconstruction from the registered `McpServerKey`. |
 | `crates/volicord-cli/src/guard_integration/manifest.rs` | Guard manifest, exact host-contract profile/digest, and canonical managed-artifact expectation generation. |
 | `crates/volicord-cli/src/guard_integration/audit.rs` | Current Guard owner, artifact, command, marker, and executable-behavior audit. |
-| `crates/volicord-cli/src/guard_command/` | Explicit `codex-command-hooks` event decoding and bounded source-specific observations. |
+| `crates/volicord-cli/src/guard_command/` | Explicit `codex-command-hooks` event decoding, semantic Guard-probe filtering, and bounded source-specific observations without routed MCP payload retention. |
 | `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution. |
 | `crates/volicord-cli/src/doctor_command.rs` | Diagnostic fact collection and rendering. |
 

@@ -239,6 +239,7 @@ struct GuardAuthorityContext<'a> {
     connection_internal_id: &'a str,
     project_id: &'a str,
     connection_host_kind: &'a str,
+    connection_server_name: &'a str,
     connection_integration_revision: &'a str,
     project_repo_root: &'a Path,
 }
@@ -266,6 +267,7 @@ pub(crate) fn guard_file_findings_for_installation(
         connection_internal_id: &connection.connection_internal_id,
         project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
+        connection_server_name: &connection.server_name,
         connection_integration_revision: revision.as_str(),
         project_repo_root: &project.project.repo_root,
     };
@@ -341,6 +343,7 @@ pub(crate) fn guard_manifest_binding_valid_for_installation(
         connection_internal_id: &connection.connection_internal_id,
         project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
+        connection_server_name: &connection.server_name,
         connection_integration_revision: revision.as_str(),
         project_repo_root: &project.project.repo_root,
     };
@@ -369,6 +372,7 @@ pub(crate) fn guard_file_findings_for_inspection(
         connection_internal_id: &connection.connection_internal_id,
         project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
+        connection_server_name: &connection.server_name,
         connection_integration_revision: revision.as_str(),
         project_repo_root: &project.repo_root,
     };
@@ -395,6 +399,7 @@ pub(crate) fn guard_manifest_binding_valid_for_inspection(
         connection_internal_id: &connection.connection_internal_id,
         project_id: &installation.project_id,
         connection_host_kind: &connection.host_kind,
+        connection_server_name: &connection.server_name,
         connection_integration_revision: revision.as_str(),
         project_repo_root: &project.repo_root,
     };
@@ -503,7 +508,7 @@ fn guard_file_findings_with_context(
 
     for expectation in &manifest.managed_files {
         findings.audited_artifacts.insert(expectation.artifact());
-        verify_guard_file(expectation, &manifest, &mut findings);
+        verify_guard_file(expectation, &manifest, context, &mut findings);
     }
     findings
 }
@@ -527,6 +532,7 @@ fn missing_required_phases_from_manifest(
 fn verify_guard_file(
     file: &ManagedFileExpectation,
     manifest: &volicord_types::GuardManifest,
+    context: Option<GuardAuthorityContext<'_>>,
     findings: &mut GuardAuditFacts,
 ) {
     let artifact = file.artifact();
@@ -550,7 +556,7 @@ fn verify_guard_file(
         }
         ManagedFileExpectation::VolicordPolicy { .. }
         | ManagedFileExpectation::HostHookConfig { .. } => {
-            verify_managed_json_file(file, manifest, &text, findings)
+            verify_managed_json_file(file, manifest, context, &text, findings)
         }
         ManagedFileExpectation::HostHookDispatch { .. }
         | ManagedFileExpectation::HostHookWrapper { .. } => {
@@ -586,6 +592,7 @@ fn verify_managed_block_file(
 fn verify_managed_json_file(
     file: &ManagedFileExpectation,
     manifest: &volicord_types::GuardManifest,
+    context: Option<GuardAuthorityContext<'_>>,
     text: &str,
     findings: &mut GuardAuditFacts,
 ) {
@@ -602,13 +609,19 @@ fn verify_managed_json_file(
                 return;
             }
         }
-        let validation = validate_contract_config(
-            HostKind::Codex,
-            HostContractConfigKind::HookConfig,
-            text,
-            None,
-        );
-        if validation.is_err() {
+        let server = context.and_then(|context| {
+            volicord_host_contract::McpServerKey::parse(context.connection_server_name).ok()
+        });
+        let validation_matches = server.as_ref().is_some_and(|server| {
+            validate_contract_config(
+                HostKind::Codex,
+                HostContractConfigKind::HookConfig,
+                text,
+                Some(server),
+            )
+            .is_ok()
+        });
+        if !validation_matches {
             findings.record_finding(artifact, path, GuardArtifactIssue::HookContractMismatch);
         }
         return;
@@ -1157,6 +1170,7 @@ mod tests {
             connection_internal_id: fixture.connection_id(),
             project_id: fixture.project_id(),
             connection_host_kind: &connection.host_kind,
+            connection_server_name: &connection.server_name,
             connection_integration_revision: revision.as_str(),
             project_repo_root: &repo_root,
         };

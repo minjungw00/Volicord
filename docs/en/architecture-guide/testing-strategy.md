@@ -95,9 +95,12 @@ Durable tests should cover, as applicable:
   `CodexMcpCallableNames` profile coverage; source-specific correlation;
   explicit server/raw/callable fixture parity; complete raw-name projection;
   normalization-collision rejection; exact catalog reverse lookup; additive-
-  field and bound checks; checksum parity; generated-hook/Guard identity
-  agreement; and CLI conformance evidence kept separate from actual
-  `managed_host` observations;
+  field and bound checks; checksum parity; typed host-tool plus server-
+  namespace/catalog-derived-exact routing; current Guard-probe pre/post fixture
+  delivery; foreign-server
+  exclusion; generated matcher/catalog parity; strict matcher-drift rejection;
+  and CLI conformance evidence kept separate from actual `managed_host`
+  observations;
 - lifecycle-specific diagnostic construction and Store APIs, immutable
   occurrence insertion, complete-current-key digest and persisted-ID
   validation, current snapshot identity immutability, resolution and
@@ -111,7 +114,9 @@ Durable tests should cover, as applicable:
   hash-bound runtime commands, wrapper/file drift, platform-independent script
   executable expectations, current-definition hook hashes, unchanged-manifest
   observation preservation, changed-definition invalidation, current-owned
-  hook observations, and older-event exclusion;
+  hook observations, older-event exclusion, distinct absence/malformed/unknown-
+  callable/correlation-mismatch acquisition stages, non-probe same-server tool
+  exclusion from verification, and bounded payload-free callable evidence;
 - exact `HookActivationState` evidence precedence including unknown, setup
   review, current-definition observation, policy management, invocation bypass,
   and explicit disabled states, with no synthetic trusted state;

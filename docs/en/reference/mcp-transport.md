@@ -286,6 +286,17 @@ used to guess namespace boundaries. The adapter selects this semantic
 contract directly; an observed Codex package version does not control
 callable projection.
 
+The same semantic owner defines `HostHookMatcherStrategy`. For current Codex
+tool hooks, the reviewed strategy is a union of the native Guard host tools
+and server-qualified MCP routing. It uses the registered `McpServerKey`
+namespace where the bounded callable representation preserves it, and
+otherwise derives exact callable tokens from the same canonical catalog.
+Matcher JSON is generated only from this typed value, and strict configuration
+validation parses it back to the same value. Routing is not semantic tool acceptance:
+`McpToolCatalog` still performs exact callable resolution in the wrapper, and
+only the resolved `AgentToolId` can select the Guard-probe role. No numeric
+host-version branch changes the strategy.
+
 ## Authoritative Lifecycle Recording
 
 After `mcp serve` or the hidden launcher resolves the Agent Connection, the process creates a Registry runtime

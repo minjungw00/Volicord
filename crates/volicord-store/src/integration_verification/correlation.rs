@@ -6,8 +6,10 @@ use volicord_host_contract::{
     McpServerKey, McpToolCatalog,
 };
 use volicord_types::AgentToolId;
+use volicord_types::GuardProbeObservationStage;
 
 use super::{
+    observation::{observations_for_run, GuardProbeObservationRecord},
     row::{
         active_run_for_event, complete_run, expire_active_runs, parse_timestamp, run_by_id,
         ActiveEventRunLookup, CorrelatedEventIds,
@@ -97,7 +99,10 @@ pub fn refresh_guard_integration_verification_for_event(
         .map_err(|_| {
             StoreError::corrupt_stored_value("registry", "agent_connections.server_name")
         })?;
-    let Some((prompt, pre, post)) = correlated_event_triple(&run, &events, &catalog, probe)? else {
+    let observations = observations_for_run(&tx, &run.verification_id)?;
+    let Some((prompt, pre, post)) =
+        correlated_event_triple(&run, &events, &observations, &catalog, probe)?
+    else {
         tx.commit()?;
         return Ok(Some(run));
     };
@@ -122,6 +127,7 @@ pub fn refresh_guard_integration_verification_for_event(
 fn correlated_event_triple<'a>(
     run: &GuardIntegrationVerificationRunRecord,
     events: &'a [GuardEventRecord],
+    observations: &[GuardProbeObservationRecord],
     catalog: &McpToolCatalog,
     probe: &HostCallableIdentity,
 ) -> StoreResult<
@@ -145,9 +151,10 @@ fn correlated_event_triple<'a>(
             tool_event_matches(
                 event,
                 "pre_tool",
+                GuardProbeObservationStage::PreToolMatched,
+                observations,
                 catalog,
                 probe,
-                &run.verification_id,
                 &run.hook_contract_digest,
             )
         }) {
@@ -166,9 +173,10 @@ fn correlated_event_triple<'a>(
                 tool_event_matches(
                     event,
                     "post_tool",
+                    GuardProbeObservationStage::PostToolMatched,
+                    observations,
                     catalog,
                     probe,
-                    &run.verification_id,
                     &run.hook_contract_digest,
                 )
             }) {
@@ -205,9 +213,10 @@ pub(super) fn prompt_event_matches(event: &GuardEventRecord, digest: &str) -> bo
 fn tool_event_matches(
     event: &GuardEventRecord,
     kind: &str,
+    expected_stage: GuardProbeObservationStage,
+    observations: &[GuardProbeObservationRecord],
     catalog: &McpToolCatalog,
     expected: &HostCallableIdentity,
-    verification_id: &str,
     digest: &str,
 ) -> bool {
     let Some(HostNativeCorrelation::CodexHookTool(correlation)) = event.correlation.as_ref() else {
@@ -223,26 +232,18 @@ fn tool_event_matches(
         && event.contract_status == COMPATIBLE_CONTRACT
         && source_matches
         && event_contract_digest(event).as_deref() == Some(digest)
-        && event_verification_id(event).as_deref() == Some(verification_id)
+        && observations.iter().any(|observation| {
+            observation.guard_event_id.as_deref() == Some(event.guard_event_id.as_str())
+                && observation.stage == expected_stage
+                && observation.verification_id_present
+                && observation.verification_id_matches
+        })
 }
 
 fn event_contract_digest(event: &GuardEventRecord) -> Option<String> {
     serde_json::from_str::<Value>(&event.metadata_json)
         .ok()?
         .get("host_contract_digest")?
-        .as_str()
-        .map(str::to_owned)
-}
-
-fn event_verification_id(event: &GuardEventRecord) -> Option<String> {
-    let subject = serde_json::from_str::<Value>(&event.subject_json).ok()?;
-    let raw = subject.get("raw_event")?;
-    raw.get("tool_input")
-        .or_else(|| raw.get("input"))
-        .or_else(|| raw.pointer("/tool/input"))
-        .or_else(|| raw.pointer("/tool/arguments"))
-        .or_else(|| raw.pointer("/tool_use/input"))?
-        .get("verification_id")?
         .as_str()
         .map(str::to_owned)
 }

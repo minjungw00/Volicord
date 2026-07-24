@@ -4,9 +4,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_host_contract::{
-    parse_callable_name, project_mcp_tool, CodexCommandHooks, CodexHookEvent, CodexMcpTurnMetadata,
-    HostCallableName, HostContractErrorCode, HostContractProfileId, HostNativeCorrelation,
-    McpServerKey, McpToolCatalog,
+    parse_callable_name, project_mcp_tool, CanonicalToolName, CodexCommandHooks, CodexHookEvent,
+    CodexMcpTurnMetadata, HostCallableName, HostContractErrorCode, HostContractProfileId,
+    HostHookMatcherStrategy, HostNativeCorrelation, McpServerKey, McpToolCatalog,
 };
 use volicord_types::AgentToolId;
 
@@ -389,6 +389,15 @@ fn callable_fixture_matches_the_complete_public_catalog_and_reviewed_cases() {
             entry.expected_callable_name
         );
     }
+    let server = McpServerKey::parse("volicord").unwrap();
+    let matcher = HostHookMatcherStrategy::codex_guard(&server).unwrap();
+    for entry in &fixture.catalog {
+        assert!(
+            matcher.routes(&CanonicalToolName::parse(&entry.expected_callable_name).unwrap()),
+            "generated matcher and fixture projection differ for {}",
+            entry.raw_tool_name
+        );
+    }
 }
 
 #[test]
@@ -401,6 +410,77 @@ fn callable_projection_is_bounded_and_semantic_profiles_have_no_numeric_variants
         first.callable_name().as_str(),
         "mcp__aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa___b125f360c65b"
     );
+    let strategy = HostHookMatcherStrategy::codex_guard(&server).unwrap();
+    assert!(matches!(
+        &strategy,
+        HostHookMatcherStrategy::Union(strategies)
+            if matches!(
+                strategies.get(1),
+                Some(HostHookMatcherStrategy::ExactCallables { callables })
+                    if callables.len() == AgentToolId::ALL.len()
+            )
+    ));
+    let rendered = strategy.codex_matcher().unwrap();
+    assert_eq!(
+        HostHookMatcherStrategy::parse_codex_guard(&rendered, &server).unwrap(),
+        strategy
+    );
+    assert!(strategy.routes(&CanonicalToolName::parse(first.callable_name().as_str()).unwrap()));
+    let foreign_server = McpServerKey::parse(format!("{}b", "a".repeat(79))).unwrap();
+    let foreign =
+        project_mcp_tool(&foreign_server, AgentToolId::GET_INTEGRATION_VERIFICATION).unwrap();
+    assert!(!strategy.routes(&CanonicalToolName::parse(foreign.callable_name().as_str()).unwrap()));
+    assert!(HostContractProfileId::ALL.iter().all(|profile| !profile
+        .as_str()
+        .chars()
+        .any(|character| character.is_ascii_digit())));
+}
+
+#[test]
+fn guard_matcher_routes_typed_host_tools_and_the_registered_server_namespace() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    let strategy = HostHookMatcherStrategy::codex_guard(&server).unwrap();
+    let rendered = strategy.codex_matcher().unwrap();
+    assert_eq!(rendered, "Bash|apply_patch|Edit|Write|mcp__volicord__.*");
+    assert_eq!(
+        HostHookMatcherStrategy::parse_codex_guard(&rendered, &server).unwrap(),
+        strategy
+    );
+
+    let catalog = McpToolCatalog::for_server(&server, AgentToolId::ALL).unwrap();
+    for tool in [AgentToolId::GUARD_PROBE, AgentToolId::STATUS] {
+        let observed = CanonicalToolName::parse(
+            catalog
+                .require(&server, tool)
+                .unwrap()
+                .callable_name()
+                .as_str(),
+        )
+        .unwrap();
+        assert!(strategy.routes(&observed));
+    }
+    assert!(strategy.routes(&CanonicalToolName::parse("Bash").unwrap()));
+    assert!(strategy
+        .routes(&CanonicalToolName::parse("mcp__volicord__unknown_same_server_tool").unwrap()));
+    assert!(
+        !strategy.routes(&CanonicalToolName::parse("mcp__foreign__volicord_guard_probe").unwrap())
+    );
+}
+
+#[test]
+fn guard_matcher_reconstruction_rejects_drift_and_has_no_numeric_profile_branch() {
+    let server = McpServerKey::parse("volicord").unwrap();
+    for drifted in [
+        "Bash|apply_patch|Edit|Write|mcp__foreign__.*",
+        "Bash|apply_patch|Edit|Write|mcp__volicord__volicord_guard_probe",
+        "Bash|apply_patch|Edit|mcp__volicord__.*",
+    ] {
+        let reconstructed = HostHookMatcherStrategy::parse_codex_guard(drifted, &server);
+        assert!(
+            reconstructed.is_err()
+                || reconstructed.unwrap() != HostHookMatcherStrategy::codex_guard(&server).unwrap()
+        );
+    }
     assert!(HostContractProfileId::ALL.iter().all(|profile| !profile
         .as_str()
         .chars()
