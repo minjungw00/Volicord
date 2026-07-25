@@ -1309,6 +1309,7 @@ fn render_result(result: &ConnectionCommandResult) -> String {
             disposition,
             runtime_home_publication,
             runtime_home_rollback,
+            ..
         } => {
             lines.push(format!("  Disposition: {}", disposition.as_str()));
             lines.push(format!(
@@ -1737,6 +1738,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::connection_command::output::report::SetupLeaseStatus;
     use crate::connection_command::{
         mcp_process::McpVerification,
         output::{cooperative_assurance_limits, CommandConnection, CommandOperation},
@@ -1950,6 +1952,7 @@ mod tests {
             )],
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
+                setup_lease: SetupLeaseStatus::Acquired,
                 runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
                 runtime_home_rollback: None,
             }),
@@ -2052,6 +2055,7 @@ mod tests {
             )],
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Committed,
+                setup_lease: SetupLeaseStatus::Acquired,
                 runtime_home_publication: RuntimeHomePublicationStatus::ExistingReady,
                 runtime_home_rollback: None,
             }),
@@ -3006,6 +3010,7 @@ mod tests {
             Vec::new(),
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
+                setup_lease: SetupLeaseStatus::Acquired,
                 runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
                 runtime_home_rollback: None,
             }),

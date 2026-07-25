@@ -216,12 +216,15 @@ semantic turn.
 
 ## Managed-file setup transaction
 
-`volicord init` plans the exact final bytes for every Guard-owned hook
+After acquiring the canonical Runtime Home setup lease, `volicord init` plans
+the exact final bytes for every Guard-owned hook
 configuration, dispatch script, phase wrapper, Codex rule, policy, Git exclude
 block, and AGENTS guidance block without writing a target. Prepare validates
 the current snapshot and stages each changed file in the target directory.
 Commit replaces those files atomically in deterministic path order before
-Codex configuration and the integration revision commit.
+Codex configuration and the integration revision commit. The lease remains
+held through managed-file rollback, so another supported setup cannot accept
+Guard or Store state that this transaction can later remove.
 
 On failure, committed Guard file replacements are restored in reverse order
 only while their current digest still matches the staged setup digest. A later

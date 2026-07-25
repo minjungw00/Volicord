@@ -40,6 +40,7 @@ use volicord_store::{
         replace_agent_connection_verification_report_if_revision, AgentConnectionRecord,
         CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
     },
+    bootstrap::initialize_runtime_home,
     core_pipeline::CoreProjectStore,
     guards::{agent_session, bind_agent_session_runtime, AgentSessionRuntimeBinding},
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
@@ -72,6 +73,8 @@ struct FakeConnectionProcess {
     directory_removal_fault: Option<DirectoryTreeRemovalFault>,
     concurrent_codex_bytes: Option<Vec<u8>>,
     post_commit_codex_bytes: Option<Vec<u8>>,
+    uncoordinated_runtime_home_publish: bool,
+    setup_pause_point: Option<String>,
     setup_barrier: Option<Arc<Barrier>>,
     setup_release: Option<Arc<(Mutex<bool>, Condvar)>>,
 }
@@ -100,6 +103,8 @@ impl FakeConnectionProcess {
             directory_removal_fault: None,
             concurrent_codex_bytes: None,
             post_commit_codex_bytes: None,
+            uncoordinated_runtime_home_publish: false,
+            setup_pause_point: None,
             setup_barrier: None,
             setup_release: None,
         })
@@ -138,7 +143,17 @@ impl ConnectionProcess for FakeConnectionProcess {
     fn setup_fault(&mut self, point: &str) -> Result<(), String> {
         let call = self.setup_points.len();
         self.setup_points.push(point.to_owned());
-        if point == "after_registry_mutation_preparation" {
+        if point == "after_registry_mutation_preparation" && self.uncoordinated_runtime_home_publish
+        {
+            self.uncoordinated_runtime_home_publish = false;
+            initialize_runtime_home(
+                &self.runtime_home,
+                "runtime_home_uncoordinated_publisher",
+                "{}",
+            )
+            .map_err(|error| error.to_string())?;
+        }
+        if self.setup_pause_point.as_deref() == Some(point) {
             if let Some(barrier) = &self.setup_barrier {
                 barrier.wait();
             }
@@ -375,94 +390,256 @@ fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), B
 }
 
 #[test]
-fn competing_full_inits_preserve_the_winner_for_either_publication_order(
+fn competing_inits_are_busy_until_success_releases_the_lease_for_either_order(
 ) -> Result<(), Box<dyn Error>> {
-    for winner_name in ["a", "b"] {
-        let fixture =
-            TempRuntimeHome::new(&format!("cli-record-init-publication-race-{winner_name}"))?;
+    for first_name in ["a", "b"] {
+        let fixture = TempRuntimeHome::new(&format!("cli-record-init-setup-lease-{first_name}"))?;
         let repo_a = create_git_repo(&fixture, "repo-a")?;
         let repo_b = create_git_repo(&fixture, "repo-b")?;
-        let loser_name = if winner_name == "a" { "b" } else { "a" };
-        let (winner_repo, loser_repo) = if winner_name == "a" {
+        let second_name = if first_name == "a" { "b" } else { "a" };
+        let (first_repo, second_repo) = if first_name == "a" {
             (repo_a.clone(), repo_b.clone())
         } else {
             (repo_b.clone(), repo_a.clone())
         };
-        let loser_repo_before = directory_contents(&loser_repo)?;
+        let second_repo_before = directory_contents(&second_repo)?;
         let barrier = Arc::new(Barrier::new(2));
         let release = Arc::new((Mutex::new(false), Condvar::new()));
-        let mut winner_process = FakeConnectionProcess::named(&fixture, winner_name)?;
-        winner_process.setup_barrier = Some(Arc::clone(&barrier));
-        let mut loser_process = FakeConnectionProcess::named(&fixture, loser_name)?;
-        loser_process.setup_barrier = Some(Arc::clone(&barrier));
-        loser_process.setup_release = Some(Arc::clone(&release));
-        loser_process.fail_setup_point("before_integration_revision_commit");
-        let loser_codex_before = directory_contents(&loser_process.codex_home)?;
+        let mut first_process = FakeConnectionProcess::named(&fixture, first_name)?;
+        first_process.setup_pause_point =
+            Some("runtime_home_publication_manifest_validation".to_owned());
+        first_process.setup_barrier = Some(Arc::clone(&barrier));
+        first_process.setup_release = Some(Arc::clone(&release));
+        let mut second_process = FakeConnectionProcess::named(&fixture, second_name)?;
+        let second_codex_before = directory_contents(&second_process.codex_home)?;
         let runtime_home = fixture.path().to_path_buf();
-        let winner_repo_for_run = winner_repo.clone();
-        let loser_repo_for_run = loser_repo.clone();
+        let first_repo_for_run = first_repo.clone();
 
-        let (winner_result, loser_result) = std::thread::scope(|scope| {
-            let winner_release = Arc::clone(&release);
-            let winner_runtime_home = runtime_home.clone();
-            let winner_repo_for_snapshot = winner_repo.clone();
-            let winner = scope.spawn(move || {
-                let result = run_record_init_outcome(&winner_repo_for_run, &mut winner_process)
-                    .map_err(|error| error.to_string())
-                    .and_then(|output| {
-                        let runtime = directory_contents(&winner_runtime_home)
-                            .map_err(|error| error.to_string())?;
-                        let repo = directory_contents(&winner_repo_for_snapshot)
-                            .map_err(|error| error.to_string())?;
-                        Ok((output, runtime, repo, winner_process))
-                    });
-                let (lock, ready) = &*winner_release;
-                if let Ok(mut released) = lock.lock() {
-                    *released = true;
-                    ready.notify_all();
-                }
-                result
+        let (first_result, dry_run_busy, full_busy, runtime_while_busy) =
+            std::thread::scope(|scope| {
+                let first = scope.spawn(move || {
+                    run_record_init_outcome(&first_repo_for_run, &mut first_process)
+                        .map(|output| (output, first_process))
+                        .map_err(|error| error.to_string())
+                });
+                barrier.wait();
+                let runtime_before_busy = directory_contents(&runtime_home);
+                let dry_run_busy = run_record_init_dry_run(&second_repo, &mut second_process);
+                let full_busy = run_record_init_outcome(&second_repo, &mut second_process);
+                let runtime_after_busy = directory_contents(&runtime_home);
+                release_setup_pause(&release);
+                let first_result = first.join().expect("first init thread panicked");
+                (
+                    first_result,
+                    dry_run_busy,
+                    full_busy,
+                    runtime_before_busy
+                        .and_then(|before| runtime_after_busy.map(|after| (before, after))),
+                )
             });
-            let loser = scope.spawn(move || {
-                run_record_init_outcome(&loser_repo_for_run, &mut loser_process)
-                    .map(|output| (output, loser_process))
-                    .map_err(|error| error.to_string())
-            });
-            (
-                winner.join().expect("winner init thread panicked"),
-                loser.join().expect("loser init thread panicked"),
-            )
-        });
-        let (winner_output, winner_runtime, winner_repo_after, winner_process) =
-            winner_result.map_err(|error| format!("winner {winner_name} failed: {error}"))?;
-        let (loser_output, loser_process) =
-            loser_result.map_err(|error| format!("loser {loser_name} failed: {error}"))?;
+        let (first_output, first_process) =
+            first_result.map_err(|error| format!("first {first_name} failed: {error}"))?;
+        let dry_run_busy = dry_run_busy?;
+        let full_busy = full_busy?;
+        let (runtime_before_busy, runtime_after_busy) = runtime_while_busy?;
 
+        assert_setup_lease_busy(&dry_run_busy, "init");
+        assert_setup_lease_busy(&full_busy, "init");
+        assert_eq!(dry_run_busy["operation_details"]["dry_run"], true);
+        assert_eq!(full_busy["operation_details"]["dry_run"], false);
+        assert_eq!(runtime_after_busy, runtime_before_busy);
+        assert_eq!(directory_contents(&second_repo)?, second_repo_before);
         assert_eq!(
-            winner_output["operation_details"]["result"]["runtime_home_publication"],
+            directory_contents(&second_process.codex_home)?,
+            second_codex_before
+        );
+        assert!(
+            second_process.setup_points.is_empty(),
+            "the busy invocation reached setup planning: {:?}",
+            second_process.setup_points
+        );
+        assert_eq!(
+            first_output["operation_details"]["result"]["runtime_home_publication"],
             "published_by_this_invocation"
         );
         assert_eq!(
-            loser_output["operation_details"]["result"]["disposition"],
-            "rolled_back"
+            first_output["operation_details"]["result"]["setup_lease"],
+            "acquired"
+        );
+        assert!(!first_process.setup_points.is_empty());
+
+        let second_output = run_record_init_outcome(&second_repo, &mut second_process)?;
+        assert_eq!(
+            second_output["operation_details"]["result"]["disposition"],
+            "committed"
         );
         assert_eq!(
-            loser_output["operation_details"]["result"]["runtime_home_publication"],
-            "concurrent_winner_observed"
+            second_output["operation_details"]["result"]["runtime_home_publication"],
+            "existing_ready"
         );
-        assert_eq!(directory_contents(&runtime_home)?, winner_runtime);
-        assert_eq!(directory_contents(&winner_repo)?, winner_repo_after);
-        assert_eq!(directory_contents(&loser_repo)?, loser_repo_before);
+        let after_second = registry_snapshot(&runtime_home);
+        assert!(after_second
+            .projects
+            .iter()
+            .any(|project| project.repo_root == second_repo));
+        let project_count = after_second.projects.len();
+        let connection_count = after_second.agent_connections.len();
+        let membership_count = after_second.connection_projects.len();
+
+        let replay = run_record_init_outcome(&second_repo, &mut second_process)?;
         assert_eq!(
-            directory_contents(&loser_process.codex_home)?,
-            loser_codex_before
+            replay["operation_details"]["result"]["runtime_home_publication"],
+            "existing_ready"
         );
-        assert!(!winner_process.setup_points.is_empty());
-        let snapshot = registry_snapshot(&runtime_home);
-        assert_eq!(snapshot.projects.len(), 1);
-        assert_eq!(snapshot.agent_connections.len(), 1);
-        assert_eq!(snapshot.connection_projects.len(), 1);
+        let after_replay = registry_snapshot(&runtime_home);
+        assert_eq!(after_replay.projects.len(), project_count);
+        assert_eq!(after_replay.agent_connections.len(), connection_count);
+        assert_eq!(after_replay.connection_projects.len(), membership_count);
     }
+    Ok(())
+}
+
+#[test]
+fn publisher_rollback_finishes_before_the_waiting_init_can_create_fresh_state(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-setup-lease-rollback")?;
+    let first_repo = create_git_repo(&fixture, "repo-a")?;
+    let second_repo = create_git_repo(&fixture, "repo-b")?;
+    let second_repo_before = directory_contents(&second_repo)?;
+    let barrier = Arc::new(Barrier::new(2));
+    let release = Arc::new((Mutex::new(false), Condvar::new()));
+    let mut first_process = FakeConnectionProcess::named(&fixture, "a")?;
+    first_process.setup_pause_point =
+        Some("runtime_home_publication_manifest_validation".to_owned());
+    first_process.setup_barrier = Some(Arc::clone(&barrier));
+    first_process.setup_release = Some(Arc::clone(&release));
+    first_process.fail_setup_point("before_integration_revision_commit");
+    let mut second_process = FakeConnectionProcess::named(&fixture, "b")?;
+    let second_codex_before = directory_contents(&second_process.codex_home)?;
+    let runtime_home = fixture.path().to_path_buf();
+    let runtime_home_for_thread = runtime_home.clone();
+
+    let (first_result, busy, runtime_while_busy) = std::thread::scope(|scope| {
+        let first = scope.spawn(move || {
+            run_record_init_outcome(&first_repo, &mut first_process)
+                .map(|output| (output, first_process))
+                .map_err(|error| error.to_string())
+        });
+        barrier.wait();
+        let runtime_before_busy = directory_contents(&runtime_home_for_thread);
+        let busy = run_record_init_outcome(&second_repo, &mut second_process);
+        let runtime_after_busy = directory_contents(&runtime_home_for_thread);
+        release_setup_pause(&release);
+        (
+            first.join().expect("first init thread panicked"),
+            busy,
+            runtime_before_busy.and_then(|before| runtime_after_busy.map(|after| (before, after))),
+        )
+    });
+    let (first_output, _first_process) = first_result.map_err(|error| error.to_string())?;
+    let busy = busy?;
+    let (runtime_before_busy, runtime_after_busy) = runtime_while_busy?;
+
+    assert_setup_lease_busy(&busy, "init");
+    assert_eq!(busy["operation_details"]["dry_run"], false);
+    assert_eq!(runtime_after_busy, runtime_before_busy);
+    assert_eq!(directory_contents(&second_repo)?, second_repo_before);
+    assert_eq!(
+        directory_contents(&second_process.codex_home)?,
+        second_codex_before
+    );
+    assert!(second_process.setup_points.is_empty());
+    assert_eq!(
+        first_output["operation_details"]["result"]["disposition"],
+        "rolled_back"
+    );
+    assert_eq!(
+        first_output["operation_details"]["result"]["runtime_home_publication"],
+        "owned_publication_rolled_back"
+    );
+    assert!(
+        !runtime_home.exists(),
+        "the first transaction's rollback must complete before lease release"
+    );
+
+    let second_output = run_record_init_outcome(&second_repo, &mut second_process)?;
+    assert_eq!(
+        second_output["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    assert_eq!(
+        second_output["operation_details"]["result"]["runtime_home_publication"],
+        "published_by_this_invocation"
+    );
+    let snapshot = registry_snapshot(&runtime_home);
+    assert_eq!(snapshot.projects.len(), 1);
+    assert_eq!(snapshot.projects[0].repo_root, second_repo);
+    assert_eq!(snapshot.agent_connections.len(), 1);
+    assert_eq!(snapshot.guard_installations.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn already_exists_while_leased_aborts_the_stale_plan_without_setup_mutation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-uncoordinated-publication")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    let repo_before = directory_contents(&repo_root)?;
+    let codex_before = directory_contents(&process.codex_home)?;
+    process.uncoordinated_runtime_home_publish = true;
+
+    let failure = run_record_init_outcome(&repo_root, &mut process)?;
+
+    assert_eq!(failure["status"], "failed");
+    assert_eq!(
+        failure["operation_details"]["result"]["disposition"],
+        "preserved"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["setup_lease"],
+        "acquired"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["runtime_home_publication"],
+        "not_published"
+    );
+    assert_eq!(
+        failure["findings"][0]["code"],
+        "setup.concurrent_modification"
+    );
+    assert!(failure["checks"][0]["details"]["failure"]
+        .as_str()
+        .is_some_and(|failure| {
+            failure.contains("SETUP_CONCURRENT_MODIFICATION")
+                && failure.contains("stale setup plan was aborted")
+        }));
+    assert_eq!(directory_contents(&repo_root)?, repo_before);
+    assert_eq!(directory_contents(&process.codex_home)?, codex_before);
+    assert!(!process
+        .setup_points
+        .iter()
+        .any(|point| point == "runtime_home_parent_directory_sync"));
+    assert!(!process
+        .setup_points
+        .iter()
+        .any(|point| point.starts_with("after_managed_file:")));
+    let snapshot = registry_snapshot(fixture.path());
+    assert!(snapshot.installation_profile.is_none());
+    assert!(snapshot.projects.is_empty());
+    assert!(snapshot.agent_connections.is_empty());
+    assert!(snapshot.connection_projects.is_empty());
+    assert!(snapshot.guard_installations.is_empty());
+    let staging = fs::read_dir(fixture.root_path())?
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".volicord-runtime-staging-")
+        })
+        .count();
+    assert_eq!(staging, 0);
     Ok(())
 }
 
@@ -646,6 +823,7 @@ fn connection_add_new_targets_select_requested_mode_and_dry_run_without_mutation
         json!({
             "kind": "setup",
             "disposition": "committed",
+            "setup_lease": "acquired",
             "runtime_home_publication": "existing_ready"
         })
     );
@@ -1192,6 +1370,7 @@ fn init_migration_rolls_back_bound_cleanup_inventory_until_clean_replay(
         json!({
             "kind": "setup",
             "disposition": "rolled_back",
+            "setup_lease": "acquired",
             "runtime_home_publication": "existing_ready"
         }),
         "unexpected migration output: {failed_cleanup}"
@@ -1307,9 +1486,54 @@ fn run_record_init(
                 format!("failed init unexpectedly returned a runtime error: {message}").into(),
             );
         }
+        Err(ConnectionCommandError::ConcurrentModification(message)) => {
+            assert!(
+                !message.contains(GENERATED_SHAPE_ERROR),
+                "init returned the generated exact-shape regression: {message}"
+            );
+            return Err(format!(
+                "failed init unexpectedly returned an unrendered concurrent-modification error: {message}"
+            )
+            .into());
+        }
     };
     assert!(!output.contains(GENERATED_SHAPE_ERROR));
     Ok(serde_json::from_str(&output)?)
+}
+
+fn release_setup_pause(release: &Arc<(Mutex<bool>, Condvar)>) {
+    let (lock, ready) = &**release;
+    let mut released = lock.lock().expect("fixture setup release lock");
+    *released = true;
+    ready.notify_all();
+}
+
+fn assert_setup_lease_busy(output: &Value, operation: &str) {
+    assert_eq!(output["schema_version"], 2);
+    assert_eq!(output["operation"], operation);
+    assert_eq!(output["status"], "failed");
+    assert_eq!(output["checks"][0]["id"], "setup_plan");
+    assert_eq!(output["checks"][0]["code"], "setup_lease_busy");
+    assert_eq!(
+        output["operation_details"]["setup_lease"]["outcome"],
+        "busy"
+    );
+    assert_eq!(
+        output["operation_details"]["setup_lease"]["requested_operation"],
+        operation
+    );
+    assert_eq!(
+        output["operation_details"]["setup_lease"]["wait_policy"],
+        "immediate"
+    );
+    assert_eq!(output["findings"][0]["code"], "setup.lease_busy");
+    assert_eq!(
+        output["findings"][0]["actions"][0]["code"],
+        "action.setup.wait_for_current_transaction"
+    );
+    let rendered = serde_json::to_string(output).expect("busy report serializes");
+    assert!(!rendered.contains(".lock"));
+    assert!(!rendered.contains("delete"));
 }
 
 fn run_record_init_outcome(

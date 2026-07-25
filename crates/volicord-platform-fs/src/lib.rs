@@ -16,6 +16,14 @@ use volicord_types::{
     PINNED_WSL2_DISTRIBUTION_ID, PINNED_WSL2_DISTRIBUTION_VERSION,
 };
 
+mod setup_lease;
+
+pub use setup_lease::{
+    CanonicalRuntimeHomePath, RuntimeHomeSetupBusy, RuntimeHomeSetupLease,
+    RuntimeHomeSetupLeaseError, RuntimeHomeSetupLeaseOutcome, RuntimeHomeSetupLockIdentity,
+    RuntimeHomeSetupOperation, RuntimeHomeSetupWaitPolicy,
+};
+
 #[cfg(windows)]
 use std::fs::File;
 

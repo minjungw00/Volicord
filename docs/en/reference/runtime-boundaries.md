@@ -134,6 +134,18 @@ ancestor against the exact distribution ext4 boundary before initialization.
 Project homes and runtime-managed artifacts remain within that same boundary;
 Linux-looking `/mnt/*` or other non-ext4 locations are unsupported.
 
+`volicord init` and `volicord connection add` canonicalize the selected final
+Runtime Home and acquire one exclusive OS-backed setup lease before bootstrap
+inspection or plan construction. The coordination file is derived from a
+domain-separated full digest of that canonical path and resides outside the
+Runtime Home: under the effective user's Volicord directory in `/tmp` on
+Linux, macOS, and WSL2, or under `%TEMP%\Volicord` on native Windows. The raw
+Runtime Home path is not a file name. A coordination file may persist after
+unlock; only the live OS lock means a setup transaction owns the lease.
+Closing the handle or terminating the process releases it. The lease is a
+coordination primitive, not actor identity, a credential, or a security
+boundary.
+
 Bootstrap inspection classifies the selected final path as `Absent`, `Ready`,
 `Incompatible`, or `Corrupt`. An existing Runtime Home is opened read-only and
 becomes `Ready` only when its canonical `StorageManifest`, complete physical
@@ -158,35 +170,42 @@ exact read-only `Ready` winner, without rollback authority.
 
 ### Init setup transaction
 
-Runtime Home bootstrap is one prepared member of the larger `volicord init`
-setup transaction. Read-only planning also snapshots the existing Codex
-configuration and every owned Product Repository file, calculates exact target
-bytes, validates parents and conflicts, and orders the mutations
-deterministically. Prepare creates same-directory staging files and Store
-recovery entries before any final target is committed.
+Runtime Home bootstrap is one prepared member of the larger setup transaction.
+After the setup lease is acquired, read-only planning inspects the locked
+Runtime Home state, snapshots the existing Codex configuration and every owned
+Product Repository file, calculates exact target bytes, validates parents and
+conflicts, and orders the mutations deterministically. A dry run acquires the
+same lease, produces its coherent plan without target mutation, renders that
+result, and then releases the lease. Prepare creates same-directory staging
+files and Store recovery entries before any final target is committed.
 
 Commit publishes or validates the Runtime Home, applies checkpointed Store
 mutations, atomically replaces Product Repository files, atomically replaces
 Codex configuration last, and records the integration revision. Setup retains
-explicit states for prepared, owned published, owned confirmed, concurrent
-winner observed, owned preserved, owned removal-incomplete, and owned
-rolled-back publication. A stale
-input is a concurrent-modification failure and the newer external bytes are
-preserved. Runtime Home rollback requires the owned guard to reopen the final
-home and revalidate its publication ID, Runtime Home identity, canonical
-manifest digest, exact paths and schema, prepared installation identity, and
-absence of managed-host consumption immediately before platform-owned
-removal. Recursive-removal effect, the exact-path observation, and parent-entry
+explicit states for prepared, owned published, owned confirmed, owned
+preserved, owned removal-incomplete, and owned rolled-back publication. The
+lease remains held through setup-result construction, staging cleanup, success,
+or the complete rollback and preservation decision. Another supported setup
+for the same canonical home receives a typed immediate busy result before
+planning and performs no setup mutation. If no-replace publication nevertheless
+returns `AlreadyExists` while the lease is held, setup cleans its staging,
+inspects the final path read-only, aborts the stale plan, and requires a fresh
+attempt without applying Store or managed-file mutations. Other stale input is
+a concurrent-modification failure and the newer external bytes are preserved.
+Runtime Home rollback requires the owned guard to reopen the final home and
+revalidate its publication ID, Runtime Home identity, canonical manifest
+digest, exact paths and schema, prepared installation identity, and absence of
+managed-host consumption immediately before platform-owned removal.
+Recursive-removal effect, the exact-path observation, and parent-entry
 durability are separate typed facts. Known removal makes the guard terminal
 before parent synchronization; a synchronization failure therefore reports an
-absent publication with unconfirmed durability, never a preserved
-publication. A removal error records whether no removal occurred, partial
-removal is possible, or complete removal was observed, and an incomplete
-effect is terminal so retry cannot delete a later replacement. Exact-path
-absence is an observation, not proof against later recreation. Ownership
-mismatch, managed-host consumption, and setup policy prevent removal; an
-observer never removes or modifies the concurrent winner. Runtime Home, Codex
-configuration, and the Product Repository may
+absent publication with unconfirmed durability, never a preserved publication.
+A removal error records whether no removal occurred, partial removal is
+possible, or complete removal was observed, and an incomplete effect is
+terminal so retry cannot delete a later replacement. Exact-path absence is an
+observation, not proof against later recreation. Ownership mismatch,
+managed-host consumption, and setup policy prevent removal. Runtime Home,
+Codex configuration, and the Product Repository may
 reside on distinct filesystems, so the guarantee is complete preparation,
 atomic replacement per file, and bounded rollback—not one global filesystem
 transaction.

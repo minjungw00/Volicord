@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use volicord_mcp::ManagedMcpLaunchSpec;
 #[cfg(test)]
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
+use volicord_platform_fs::RuntimeHomeSetupOperation;
 #[cfg(test)]
 use volicord_store::bootstrap::write_installation_profile;
 use volicord_store::{
@@ -102,8 +103,8 @@ use guidance::{
     render_runtime_home_setup_guidance, ConnectionUserInvocation, RuntimeHomeSetupState,
 };
 use output::{
-    render_command_report, render_connections_output, CommandConnection, CommandOperation,
-    ConnectionCommandReport, RuntimeHomePublicationStatus, SetupDisposition,
+    render_command_report, render_connections_output, render_setup_lease_busy, CommandConnection,
+    CommandOperation, ConnectionCommandReport, RuntimeHomePublicationStatus, SetupDisposition,
     SetupFailureDiagnostic,
 };
 use persisted_state::{decode_persisted_object, PERSISTED_CONNECTION_METADATA_CORRUPT_REASON};
@@ -117,8 +118,8 @@ use selection::{
     select_connection_for_diagnostics, selected_connection_project,
 };
 use service::{
-    provision_connection, provision_init, ConnectionProvisioningOutcome, InitProvisioningRequest,
-    ProvisionConnectionRequest,
+    execute_setup_with_lease, provision_connection, provision_init, ConnectionProvisioningOutcome,
+    InitProvisioningRequest, ProvisionConnectionRequest,
 };
 use verification::{
     current_status_report, effective_connection_report, verify_connection, VerificationReport,
@@ -135,6 +136,7 @@ const INSTALLATION_ID: &str = "default";
 pub enum ConnectionCommandError {
     Usage(String),
     Runtime(String),
+    ConcurrentModification(String),
     FailureOutput(String),
 }
 
@@ -146,14 +148,19 @@ impl ConnectionCommandError {
     pub(crate) fn runtime(message: impl Into<String>) -> Self {
         Self::Runtime(message.into())
     }
+
+    pub(crate) fn concurrent_modification(message: impl Into<String>) -> Self {
+        Self::ConcurrentModification(message.into())
+    }
 }
 
 impl fmt::Display for ConnectionCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Usage(message) | Self::Runtime(message) | Self::FailureOutput(message) => {
-                formatter.write_str(message)
-            }
+            Self::Usage(message)
+            | Self::Runtime(message)
+            | Self::ConcurrentModification(message)
+            | Self::FailureOutput(message) => formatter.write_str(message),
         }
     }
 }
@@ -195,57 +202,72 @@ pub fn run_init_command(
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let parsed = init_options(args, current_dir);
-    let outcome = provision_init(
-        InitProvisioningRequest {
-            parsed: &parsed,
-            current_dir,
-        },
-        process,
+    let mut parsed = init_options(args, current_dir);
+    let requested_runtime_home = selected_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        current_dir,
     )?;
-    let connection = CommandConnection::new(
-        &outcome.connection_id,
-        outcome.host_kind.as_str(),
-        outcome.host_scope.as_str(),
-        &outcome.mode,
-        &outcome.repo_root,
-        host_target_text(&outcome.host_plan.target),
-    );
-    let report = if outcome.dry_run {
-        let report = ConnectionCommandReport::setup_dry_run(
-            CommandOperation::Init,
-            &outcome.runtime_home,
-            connection,
-            outcome.current_report.as_ref(),
-            outcome.planned_changes,
-        )?;
-        attach_current_diagnostic_projection(
-            report,
-            &outcome.runtime_home,
-            &outcome.connection_id,
-            outcome.current_report.as_ref(),
-        )?
-    } else {
-        let verification = outcome.verification.as_ref().ok_or_else(|| {
-            ConnectionCommandError::runtime(
-                "committed init requires one canonical verification report",
-            )
-        })?;
-        ConnectionCommandReport::from_verification_with_publication(
-            CommandOperation::Init,
-            Some(SetupDisposition::Committed),
-            Some(outcome.runtime_home_publication),
-            &outcome.runtime_home,
-            connection,
-            &verification.report,
-        )
-        .with_diagnostic_findings(
-            verification.findings.clone(),
-            Some(verification.integration_revision.clone()),
-        )
-    };
-    let rendered = render_command_report(init_output_format(&parsed), &report)?;
-    command_output_result(rendered.status, rendered.output)
+    execute_setup_with_lease(
+        &requested_runtime_home,
+        RuntimeHomeSetupOperation::Init,
+        init_output_format(&parsed),
+        parsed.dry_run,
+        |lease| {
+            parsed.explicit_runtime_home = Some(lease.target().as_path().to_path_buf());
+            let outcome = provision_init(
+                InitProvisioningRequest {
+                    parsed: &parsed,
+                    current_dir,
+                },
+                process,
+                lease,
+            )?;
+            let connection = CommandConnection::new(
+                &outcome.connection_id,
+                outcome.host_kind.as_str(),
+                outcome.host_scope.as_str(),
+                &outcome.mode,
+                &outcome.repo_root,
+                host_target_text(&outcome.host_plan.target),
+            );
+            let report = if outcome.dry_run {
+                let report = ConnectionCommandReport::setup_dry_run(
+                    CommandOperation::Init,
+                    &outcome.runtime_home,
+                    connection,
+                    outcome.current_report.as_ref(),
+                    outcome.planned_changes,
+                )?;
+                attach_current_diagnostic_projection(
+                    report,
+                    &outcome.runtime_home,
+                    &outcome.connection_id,
+                    outcome.current_report.as_ref(),
+                )?
+            } else {
+                let verification = outcome.verification.as_ref().ok_or_else(|| {
+                    ConnectionCommandError::runtime(
+                        "committed init requires one canonical verification report",
+                    )
+                })?;
+                ConnectionCommandReport::from_verification_with_publication(
+                    CommandOperation::Init,
+                    Some(SetupDisposition::Committed),
+                    Some(outcome.runtime_home_publication),
+                    &outcome.runtime_home,
+                    connection,
+                    &verification.report,
+                )
+                .with_diagnostic_findings(
+                    verification.findings.clone(),
+                    Some(verification.integration_revision.clone()),
+                )
+            };
+            let rendered = render_command_report(init_output_format(&parsed), &report)?;
+            command_output_result(rendered.status, rendered.output)
+        },
+    )
 }
 
 fn command_output_result(
@@ -264,63 +286,80 @@ pub fn run_connect_command(
     current_dir: &Path,
     process: &mut impl ConnectionProcess,
 ) -> Result<String, ConnectionCommandError> {
-    let parsed = connection_add_options(args, current_dir);
-    match provision_connection(
-        ProvisionConnectionRequest {
-            parsed: &parsed,
-            current_dir,
+    let mut parsed = connection_add_options(args, current_dir);
+    let requested_runtime_home = selected_runtime_home_path(
+        parsed.explicit_runtime_home.as_deref(),
+        |name| process.env_var(name),
+        current_dir,
+    )?;
+    execute_setup_with_lease(
+        &requested_runtime_home,
+        RuntimeHomeSetupOperation::ConnectionAdd,
+        connection_output_format(&parsed),
+        parsed.dry_run,
+        |lease| {
+            parsed.explicit_runtime_home = Some(lease.target().as_path().to_path_buf());
+            match provision_connection(
+                ProvisionConnectionRequest {
+                    parsed: &parsed,
+                    current_dir,
+                },
+                process,
+                lease,
+            )? {
+                ConnectionProvisioningOutcome::DryRun(plan) => {
+                    let plan = *plan;
+                    let report = ConnectionCommandReport::setup_dry_run(
+                        CommandOperation::Add,
+                        &plan.runtime_home,
+                        CommandConnection::new(
+                            &plan.connection_id,
+                            plan.host_kind.as_str(),
+                            plan.host_scope.as_str(),
+                            &plan.effective_mode,
+                            &plan.repo_root,
+                            host_target_text(&plan.host_plan.target),
+                        ),
+                        plan.current_report.as_ref(),
+                        plan.planned_changes,
+                    )?;
+                    let report = attach_current_diagnostic_projection(
+                        report,
+                        &plan.runtime_home,
+                        &plan.connection_id,
+                        plan.current_report.as_ref(),
+                    )?;
+                    let rendered =
+                        render_command_report(connection_output_format(&parsed), &report)?;
+                    command_output_result(rendered.status, rendered.output)
+                }
+                ConnectionProvisioningOutcome::Applied(outcome) => {
+                    let outcome = *outcome;
+                    let report = ConnectionCommandReport::from_verification(
+                        CommandOperation::Add,
+                        Some(SetupDisposition::Committed),
+                        &outcome.runtime_home,
+                        CommandConnection::new(
+                            &outcome.connection.connection_internal_id,
+                            &outcome.connection.host_kind,
+                            &outcome.connection.host_scope,
+                            &outcome.connection.mode,
+                            &outcome.affected_repo_root,
+                            &outcome.connection.config_target,
+                        ),
+                        &outcome.verification.report,
+                    )
+                    .with_diagnostic_findings(
+                        outcome.verification.findings.clone(),
+                        Some(outcome.verification.integration_revision.clone()),
+                    );
+                    let rendered =
+                        render_command_report(connection_output_format(&parsed), &report)?;
+                    command_output_result(rendered.status, rendered.output)
+                }
+            }
         },
-        process,
-    )? {
-        ConnectionProvisioningOutcome::DryRun(plan) => {
-            let plan = *plan;
-            let report = ConnectionCommandReport::setup_dry_run(
-                CommandOperation::Add,
-                &plan.runtime_home,
-                CommandConnection::new(
-                    &plan.connection_id,
-                    plan.host_kind.as_str(),
-                    plan.host_scope.as_str(),
-                    &plan.effective_mode,
-                    &plan.repo_root,
-                    host_target_text(&plan.host_plan.target),
-                ),
-                plan.current_report.as_ref(),
-                plan.planned_changes,
-            )?;
-            let report = attach_current_diagnostic_projection(
-                report,
-                &plan.runtime_home,
-                &plan.connection_id,
-                plan.current_report.as_ref(),
-            )?;
-            let rendered = render_command_report(connection_output_format(&parsed), &report)?;
-            command_output_result(rendered.status, rendered.output)
-        }
-        ConnectionProvisioningOutcome::Applied(outcome) => {
-            let outcome = *outcome;
-            let report = ConnectionCommandReport::from_verification(
-                CommandOperation::Add,
-                Some(SetupDisposition::Committed),
-                &outcome.runtime_home,
-                CommandConnection::new(
-                    &outcome.connection.connection_internal_id,
-                    &outcome.connection.host_kind,
-                    &outcome.connection.host_scope,
-                    &outcome.connection.mode,
-                    &outcome.affected_repo_root,
-                    &outcome.connection.config_target,
-                ),
-                &outcome.verification.report,
-            )
-            .with_diagnostic_findings(
-                outcome.verification.findings.clone(),
-                Some(outcome.verification.integration_revision.clone()),
-            );
-            let rendered = render_command_report(connection_output_format(&parsed), &report)?;
-            command_output_result(rendered.status, rendered.output)
-        }
-    }
+    )
 }
 
 fn attach_current_diagnostic_projection(

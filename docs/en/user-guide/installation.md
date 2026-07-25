@@ -199,26 +199,31 @@ For a new Runtime Home, `init` builds and validates the Registry and
 installation profile in same-parent staging, then publishes the whole
 directory by an atomic no-replace rename. The staged singleton contains one
 opaque publication ID. The successful publisher retains an invocation-specific
-guard through synchronization and read-back; a concurrent `AlreadyExists`
-caller observes the exact winner without removal authority. If the selected
-path already exists, inspection is read-only. A manifest or schema mismatch
-preserves that home; keep it for owner-approved recovery and rerun with a fresh
-explicit `--home`. Use an owner-defined importer only when the current owners
-provide one.
+guard through synchronization and read-back. If the selected path already
+exists, inspection is read-only. A manifest or schema mismatch preserves that
+home; keep it for owner-approved recovery and rerun with a fresh explicit
+`--home`. Use an owner-defined importer only when the current owners provide
+one.
 
-`init` constructs its complete setup plan without writing any target. Prepare
-then stages the exact Codex configuration and every repository hook, wrapper,
-rule, policy, exclude, and managed guidance file beside its target, and
-prepares the Store recovery boundary. Commit publishes or validates the
+`init` acquires the selected canonical Runtime Home's OS-backed setup lease
+before inspection and constructs its complete setup plan without writing any
+target. A dry run holds the same lease while generating and reporting its
+coherent plan. If another setup owns the lease, `init` reports a typed busy
+result and asks you to wait for it to finish; do not delete coordination files.
+Prepare then stages the exact Codex configuration and every repository hook,
+wrapper, rule, policy, exclude, and managed guidance file beside its target,
+and prepares the Store recovery boundary. Commit publishes or validates the
 Runtime Home, applies Store mutations, atomically replaces repository files in
 deterministic order, replaces Codex configuration last, and records the
-integration revision. A failure restores already replaced files and
+integration revision. The lease remains held until success reporting and
+cleanup or complete rollback. A failure restores already replaced files and
 checkpointed Store bytes when they remain unchanged, removes owned staging
 when safe, and reports `preserved`, `rolled_back`, or
 `partially_rolled_back` precisely. Runtime Home removal additionally requires
 the owned publication guard to revalidate the exact ID, manifest, paths,
 schema, installation, and absence of managed-host consumption; concurrent
-winners have no removal authority, and ownership mismatches stop removal.
+setup cannot enter Store mutation while that rollback authority is live, and
+ownership mismatches stop removal.
 Recursive removal effect and parent-directory durability are reported
 separately. If the Runtime Home is absent but parent synchronization failed,
 the report says it was removed with unconfirmed durability; it does not say

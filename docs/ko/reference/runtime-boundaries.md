@@ -118,6 +118,16 @@ WSL2에서는 초기화 전에 Runtime Home 또는 가장 가까운 기존 상�
 같은 경계 안에 있어야 하며 Linux 형태의 `/mnt/*` 또는 ext4가 아닌 위치는
 지원하지 않습니다.
 
+`volicord init`과 `volicord connection add`는 선택한 최종 Runtime Home을
+canonicalize하고 bootstrap 검사나 plan 구성 전에 배타적 OS 기반 setup lease 하나를
+획득합니다. Coordination 파일은 정규 경로의 domain-separated 전체 digest에서 파생하며
+Runtime Home 밖에 둡니다. Linux, macOS, WSL2에서는 `/tmp` 아래 유효 사용자별 Volicord
+directory를, 네이티브 Windows에서는 `%TEMP%\Volicord`를 사용합니다. Raw Runtime Home
+경로는 파일 이름에 넣지 않습니다. Unlock 뒤 coordination 파일이 남아 있을 수 있으며
+활성 OS lock만 setup transaction이 lease를 소유한다는 뜻입니다. Handle을 닫거나
+프로세스가 종료되면 lease가 해제됩니다. 이 lease는 coordination primitive이며 actor
+identity, credential, security boundary가 아닙니다.
+
 Bootstrap 검사는 선택한 최종 경로를 `Absent`, `Ready`, `Incompatible`, `Corrupt`로
 분류합니다. 기존 Runtime Home은 읽기 전용으로 열며 정규 `StorageManifest`, 전체 물리
 schema, singleton identity, 최종 경로가 정확히 일치할 때만 `Ready`가 됩니다. 검사는
@@ -138,17 +148,24 @@ guard를 즉시 만듭니다. `AlreadyExists`이면 이 invocation의 staging을
 
 ### Init setup transaction
 
-Runtime Home bootstrap은 더 큰 `volicord init` setup transaction에서 준비되는 구성원
-하나입니다. 읽기 전용 planning은 기존 Codex 구성과 소유한 모든 Product Repository
-파일도 snapshot하고, 정확한 target bytes를 계산하며, 상위 경로와 conflict를 검증하고,
-mutation을 결정적인 순서로 정렬합니다. Prepare 단계는 최종 target을 commit하기 전에
-같은 directory의 staging 파일과 Store 복구 entry를 만듭니다.
+Runtime Home bootstrap은 더 큰 setup transaction에서 준비되는 구성원 하나입니다.
+Setup lease를 획득한 뒤 읽기 전용 planning은 잠긴 Runtime Home 상태를 검사하고 기존
+Codex 구성과 소유한 모든 Product Repository 파일을 snapshot하며, 정확한 target bytes를
+계산하고 상위 경로와 conflict를 검증한 뒤 mutation을 결정적인 순서로 정렬합니다.
+Dry run도 같은 lease를 획득하고 target 변경 없이 일관된 plan을 만들어 결과를 렌더링한
+다음 lease를 해제합니다. Prepare 단계는 최종 target을 commit하기 전에 같은 directory의
+staging 파일과 Store 복구 entry를 만듭니다.
 
 Commit 단계는 Runtime Home을 공개하거나 검증하고 checkpoint한 Store mutation을 적용한
 뒤 Product Repository 파일을 원자 교체하고 Codex 구성을 마지막에 원자 교체한 다음
-integration revision을 기록합니다. Setup은 준비됨, 소유한 공개, 소유한 확인 완료, 동시
-승자 관찰, 소유한 보존, 소유한 제거 미완료, 소유한 rollback 완료 상태를 명시적으로
-유지합니다. 오래된 입력은
+integration revision을 기록합니다. Setup은 준비됨, 소유한 공개, 소유한 확인 완료,
+소유한 보존, 소유한 제거 미완료, 소유한 rollback 완료 상태를 명시적으로 유지합니다.
+Lease는 setup result 구성, staging 정리, 성공 또는 전체 rollback과 보존 결정을 마칠
+때까지 유지합니다. 같은 정규 home을 대상으로 하는 다른 지원 setup은 planning 전에
+typed immediate busy 결과를 받고 setup mutation을 수행하지 않습니다. Lease 보유 중에도
+no-replace publication이 `AlreadyExists`를 반환하면 setup은 자기 staging을 정리하고
+최종 경로를 읽기 전용으로 검사한 뒤 오래된 plan을 중단합니다. Store나 관리 파일
+mutation은 적용하지 않으며 새 시도를 요구합니다. 그 밖의 오래된 입력은
 concurrent-modification 실패이며 더 새로운 외부 bytes를 보존합니다. Runtime Home
 rollback은 플랫폼 소유 제거 직전에 소유 guard가 최종 home을 다시 열어 publication ID,
 Runtime Home identity, 정규 manifest digest, 정확한 경로와 schema, 준비한 installation
@@ -159,10 +176,9 @@ publication이 아니라 내구성을 확인하지 못한 부재 publication으�
 제거가 전혀 없었는지, 일부 제거 가능성이 있는지, 완전한 제거가 관찰되었는지를 기록하며
 효과가 불완전하면 terminal 상태가 되어 재시도가 나중의 대체 경로를 삭제하지 못합니다.
 정확한 경로의 부재는 관찰 사실이며 이후 재생성을 막는다는 증명이 아닙니다. 소유권
-불일치, managed-host 소비, setup 정책은 제거를 막고 관찰자는 동시 승자를 제거하거나
-변경하지 않습니다. Runtime Home, Codex 구성, Product Repository가 서로 다른 파일시스템에 있을 수
-있으므로 보장은 전역 파일시스템 transaction 하나가 아니라 완전한 준비, 파일별 원자 교체,
-한도가 있는 rollback입니다.
+불일치, managed-host 소비, setup 정책은 제거를 막습니다. Runtime Home, Codex 구성,
+Product Repository가 서로 다른 파일시스템에 있을 수 있으므로 보장은 전역 파일시스템
+transaction 하나가 아니라 완전한 준비, 파일별 원자 교체, 한도가 있는 rollback입니다.
 
 Registry는 구조화된 diagnostic finding과 cause edge의 영속 Runtime Home carrier입니다.
 Finding은 해당 Connection, project, runtime session, integration revision과 상관관계를

@@ -139,6 +139,13 @@ directory를 공개합니다. 성공한 publisher는 rename 직후 invocation별
 directory 동기화, read-back, manifest 확인까지 이를 유지합니다. `AlreadyExists`를 받은
 호출자는 자기 staging만 제거하고 제거 권한 없이 정확한 현재 승자를 관찰합니다.
 
+Setup service는 정규 Runtime Home의 외부 OS 기반 lease로 검사, planning, publication,
+Store mutation, 정리, 보고, rollback을 직렬화합니다. 이 lease는 Registry record,
+`StorageManifest` capability, schema identity, storage lock이 아닙니다. 지원되는 setup은
+no-replace 결과를 관찰했다는 이유로 Store mutation을 계속할 수 없습니다. Lease 보유
+중 예상하지 않은 `AlreadyExists`가 발생하면 읽기 전용으로 검사하고 새 plan이 필요한
+외부 concurrent modification으로 보고합니다.
+
 공개 뒤 확인이 실패하면 주 확인 오류와 guard 기반 rollback 시도를 typed 실패 하나로
 유지합니다. 이 실패는 최종 경로가 present, absent, uncertain 중 무엇으로 관찰되었는지
 기록하고 재귀 제거 효과와 상위 directory 내구성을 분리합니다. 상위 directory 동기화가

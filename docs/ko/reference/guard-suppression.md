@@ -197,11 +197,13 @@ semantic turn에서 새 attempt를 자동 생성하지 않습니다.
 
 ## 관리 파일 setup transaction
 
-`volicord init`은 target을 쓰지 않고 Guard가 소유한 hook 구성, dispatch script,
-phase wrapper, Codex rule, policy, Git exclude block, AGENTS guidance block의 정확한
-최종 bytes를 계획합니다. Prepare 단계는 현재 snapshot을 검증하고 바뀌는 각 파일을
-target directory에 staging합니다. Commit 단계는 Codex 구성과 integration revision을
-commit하기 전에 이 파일들을 결정적인 경로 순서로 원자 교체합니다.
+`volicord init`은 정규 Runtime Home setup lease를 획득한 뒤 target을 쓰지 않고 Guard가
+소유한 hook 구성, dispatch script, phase wrapper, Codex rule, policy, Git exclude block,
+AGENTS guidance block의 정확한 최종 bytes를 계획합니다. Prepare 단계는 현재 snapshot을
+검증하고 바뀌는 각 파일을 target directory에 staging합니다. Commit 단계는 Codex 구성과
+integration revision을 commit하기 전에 이 파일들을 결정적인 경로 순서로 원자
+교체합니다. Lease는 관리 파일 rollback까지 유지하므로 다른 지원 setup은 이 transaction이
+나중에 제거할 수 있는 Guard 또는 Store 상태를 받아들일 수 없습니다.
 
 실패하면 commit한 Guard 파일 교체를 역순으로 복원하되, 현재 digest가 staging한 setup
 digest와 여전히 일치할 때만 복원합니다. 이후의 외부 편집은 덮어쓰지 않고 보존하며

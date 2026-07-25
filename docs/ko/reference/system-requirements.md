@@ -166,6 +166,13 @@ Runtime Home은 하나의 플랫폼 환경 안에 있어야 합니다. 네이티
 경로가 배포판 ext4 파일 시스템에 있어야 하고 `/mnt/*` 아래에 두지 않습니다.
 Linux 형태의 경로 문자열만으로는 충분하지 않습니다.
 
+Setup에는 정규 Runtime Home의 OS 기반 배타적 file lock이 필요합니다. Linux, macOS,
+WSL2는 `/tmp` 아래 유효 사용자의 비공개 Volicord coordination directory를 사용하고,
+네이티브 Windows는 사용자의 `%TEMP%\Volicord` directory를 사용합니다. 파일 이름에는
+raw Runtime Home 경로 대신 domain-separated 전체 digest를 넣고 coordination tree는
+Runtime Home 밖에 둡니다. 영속 파일 자체는 활성 lock이 아니며 PID나 timestamp로 stale
+owner를 삭제하지 않습니다. 프로세스 종료 시 OS handle이 해제됩니다.
+
 새 개발 데이터는 현재 기준 SQLite 계약으로 만듭니다. 다른 manifest를 가진 기존
 데이터베이스를 upgrade, import 또는 재해석하지 않습니다. 새 Runtime Home이나
 명시적으로 비어 있는 새 대상을 사용합니다.

@@ -621,12 +621,14 @@ integration revision and clears the prior verification report atomically;
 compatible replay with the same fingerprint may retain that report.
 
 For `volicord init`, the fingerprint and integration revision belong to one
-typed setup plan. They are recorded only after the plan's Runtime Home and
-Store mutations are checkpointed and its repository files and Codex
-configuration have been atomically replaced. A planned, preserved,
-rolled-back, or partially rolled-back setup does not emit the committed
-activation plan. Concurrent target changes fail before stale bytes are written
-and remain external owner state.
+typed setup plan built after acquiring the canonical Runtime Home setup lease.
+They are recorded only after the plan's Runtime Home and Store mutations are
+checkpointed and its repository files and Codex configuration have been
+atomically replaced. The lease remains held through result construction,
+cleanup, or rollback. A planned, preserved, rolled-back, or partially
+rolled-back setup does not emit the committed activation plan. A competing
+setup is busy before planning, and other concurrent target changes fail before
+stale bytes are written and remain external owner state.
 
 Store generates a new opaque integration-instance ID only when it inserts a
 new physical `agent_connections` row. Compatible registration replay,

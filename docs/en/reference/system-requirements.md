@@ -187,6 +187,14 @@ and WSL2 paths are never converted or shared. Inside WSL2 its path and nearest
 existing ancestor must be on the distribution ext4 filesystem and not under
 `/mnt/*`; a path that merely has Linux spelling is insufficient.
 
+Setup requires an OS-backed exclusive file lock for the canonical Runtime Home.
+Linux, macOS, and WSL2 use the effective user's private Volicord coordination
+directory under `/tmp`; native Windows uses the user's `%TEMP%\Volicord`
+directory. The file name contains a domain-separated full digest rather than
+the raw Runtime Home path, and the coordination tree is outside the Runtime
+Home. A persistent file is not an active lock, no PID or timestamp is used for
+stale-owner deletion, and process termination releases the OS handle.
+
 Fresh development data is created from the current canonical SQLite contract.
 An existing database with another manifest is not upgraded, imported, or
 reinterpreted; use a new Runtime Home or an explicitly new empty destination.

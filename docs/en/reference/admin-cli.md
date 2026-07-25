@@ -119,8 +119,9 @@ When the final path is absent, `init` creates the Registry, singleton, and
 installation profile in a unique same-parent staging directory. The singleton
 contains a fresh opaque publication ID. A successful atomic no-replace rename
 returns invocation-specific ownership before parent synchronization and
-read-back confirmation; `AlreadyExists` cleans staging and yields only an
-observed exact current winner. Connection commands require the selected home
+read-back confirmation. `AlreadyExists` while the setup lease is held cleans
+staging, inspects the target read-only, and aborts the stale plan as an external
+concurrent modification. Connection commands require the selected home
 to have a current installation profile and fail with that exact path when it
 is missing or unusable. `connection list` and `connection status` remain
 read-only after selection. Empty, malformed, or conflicting values fail before
@@ -148,14 +149,19 @@ project-owned shared connection. `init` plans, prepares, and commits the exact
 managed binding and reports any remaining Codex trust, reload, or verification
 action. `--dry-run` performs no filesystem or storage mutation.
 
-Plan construction is read-only and calculates the exact Runtime Home, Store,
-Codex configuration, and repository managed-file mutations. Prepare validates
-all input snapshots, stages each file beside its target, and prepares Store
-recovery entries. Commit retains an owned Runtime Home publication guard or an
-observer-only concurrent-winner result, applies the Store mutations,
-atomically replaces repository files in deterministic path order, atomically
-replaces Codex configuration last, and records the current integration
-revision. Rollback may remove a fresh Runtime Home only through exact
+Before bootstrap inspection or plan construction, `init` and `connection add`
+canonicalize the selected Runtime Home and acquire its exclusive OS-backed
+setup lease. Immediate contention returns a typed busy failure before setup
+planning or mutation. Plan construction under the lease is read-only and
+calculates the exact Runtime Home, Store, Codex configuration, and repository
+managed-file mutations. A dry run holds the same lease through coherent plan
+reporting. Prepare validates all input snapshots, stages each file beside its
+target, and prepares Store recovery entries. Commit retains an owned Runtime
+Home publication guard, applies the Store mutations, atomically replaces
+repository files in deterministic path order, atomically replaces Codex
+configuration last, and records the current integration revision. The lease
+is released only after success reporting and staging cleanup or after complete
+rollback and preservation decisions. Rollback may remove a fresh Runtime Home only through exact
 guard-backed revalidation; ownership loss or managed-host consumption
 stops removal. Recursive-removal effect and parent-entry durability remain
 separate results: known removal is terminal even if parent synchronization
@@ -642,8 +648,9 @@ SetupResult:
   kind: setup
   disposition: planned | committed | rolled_back | preserved |
     partially_rolled_back
+  setup_lease: acquired
   runtime_home_publication: not_published | existing_ready |
-    published_by_this_invocation | concurrent_winner_observed |
+    published_by_this_invocation |
     owned_publication_rolled_back | owned_publication_removal_incomplete |
     owned_publication_preserved |
     ownership_lost_during_rollback
@@ -702,12 +709,27 @@ includes `planned_changes`, and never serializes
 `status=dry_run`. Its status is `action_required` when a planned change or host
 action remains and otherwise `complete`.
 
+`SetupResult.setup_lease=acquired` states that inspection, planning, mutation,
+report construction, cleanup, and any rollback ran within the canonical
+Runtime Home lease. If acquisition is busy, no `SetupResult` is fabricated.
+The failed schema-2 report instead contains
+`operation_details.setup_lease.outcome=busy`, canonical Runtime Home,
+requested operation, `wait_policy=immediate`, bounded elapsed time, failed
+`setup_plan` check code `setup_lease_busy`, finding code
+`setup.lease_busy`, and action
+`action.setup.wait_for_current_transaction`. The action tells the user to wait
+for the active setup to finish and rerun; it never exposes or recommends
+deleting a coordination file.
+
 `SetupResult.runtime_home_publication` reports the independent publication
 state. `published_by_this_invocation` is the only successful no-replace rename
-that carries rollback authority. `concurrent_winner_observed` has observation
-only. Rollback reports whether that owned publication was removed, preserved
-by setup or managed-host-consumption policy, left incomplete, or unavailable
-because exact ownership revalidation was lost.
+that carries rollback authority. Rollback reports whether that owned
+publication was removed, preserved by setup or managed-host-consumption
+policy, left incomplete, or unavailable because exact ownership revalidation
+was lost. If no-replace publication unexpectedly encounters an existing final
+path while the lease is held, setup cleans staging, inspects the target
+read-only, returns `setup.concurrent_modification`, and performs no Store or
+managed-file mutation from that stale plan.
 
 `SetupResult.runtime_home_rollback` is present when setup attempted owned
 Runtime Home rollback. `outcome=removed` means the final path was observed

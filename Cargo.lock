@@ -983,6 +983,7 @@ dependencies = [
  "rustix",
  "serde",
  "sha2",
+ "tempfile",
  "volicord-types",
  "windows-sys 0.61.2",
 ]

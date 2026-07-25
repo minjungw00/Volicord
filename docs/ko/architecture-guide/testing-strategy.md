@@ -65,8 +65,9 @@ registry 직접 순회가 matrix를 정합니다.
 - Runtime Home의 `Absent`, `Ready`, `Incompatible`, `Corrupt` 검사, singleton과
   installation metadata를 포함한 같은 상위 directory의 staged creation, 정확한
   manifest, 불투명 publication provenance 및 relation fact, 공개 전 각 실패 지점의
-  정리, Unix와 native Windows에서 소유자 하나와 관찰 전용 패자만 만드는 no-replace
-  동시 공개, token-backed rollback 재검증, 소유권 상실 및 managed-host 소비 시 보존,
+  정리, 정규 home별 setup lease의 alias 통합과 독립성, 프로세스 간 경합, 영속 coordination
+  파일의 비소유성, 프로세스 종료 시 해제, 네이티브 Unix와 Windows OS lock 동작,
+  소유자 하나만 만드는 no-replace 공개, token-backed rollback 재검증, 소유권 상실 및 managed-host 소비 시 보존,
   효과 전 재귀 실패, 일부 제거 또는 분류 불가 제거, 제거 확인 뒤 상위 directory 동기화
   실패, terminal 재시도 동작, 확인 오류와 rollback fact를 함께 담는 composite 실패,
   관련 없는 replacement 안전성, 기존 비호환 상태의 변경되지 않은 bytes와 timestamp
@@ -141,8 +142,10 @@ registry 직접 순회가 matrix를 정합니다.
 - Runtime Home 준비, Store 복구 준비, Runtime Home rename 뒤 상위 directory 동기화,
   publication read-back, manifest 검증 단계, 모든 관리 hook/rule/guidance 교체 뒤,
   Codex 구성 교체 전후, integration revision commit 전, rollback 중의 transactional
-  init fault injection, 새 상태와 기존 상태의 정확한 복원, 두 승자 순서와 이후 패자 실패를
-  포함하는 동기화 경계가 있는 전체 init 경쟁, 동시 외부 bytes 보존, 모든 setup
+  init fault injection, 새 상태와 기존 상태의 정확한 복원, 두 최초 획득 순서, 성공 뒤 해제,
+  rollback 완료 뒤 해제, mutation 없는 typed busy와 lease를 획득한 dry run, 해제 뒤 새
+  시도를 결정적으로 검증하는 전체 init 경합, lease 보유 중 외부 publisher가 최종 경로를
+  만들 때 오래된 plan 중단, 동시 외부 bytes 보존, 모든 setup
   publication 결과와 `planned`, `committed`, `preserved`, `rolled_back`,
   `partially_rolled_back` 보고 projection, 읽기 전용 dry-run 일치, replay idempotence,
   동기화된 제거·동기화되지 않은 제거·불완전한 제거·정책 보존·소유권 상실을 구분하는

@@ -59,6 +59,12 @@ lifecycle fact입니다. 확인 실패는 주 오류, rollback 결과, 최종 �
 내구성을 함께 유지합니다. 관찰된 완전한 제거는 상위 directory 동기화가 실패해도 완전한
 제거로 남으며, 불완전한 효과를 온전히 보존된 상태로 승격하지 않습니다.
 
+정규 Runtime Home별 setup lease와 영속 coordination 파일도 storage record model 밖에
+있습니다. Actor identity, publication 권한, recovery 상태, schema version, stale owner
+metadata를 담지 않습니다. 활성 OS file lock만 lease 소유권을 나타내며 setup은 정확한
+rollback identity를 위해 저장된 publication ID와 process-local publication guard를 계속
+사용합니다.
+
 프로젝트 상태 기록에는 다음이 포함됩니다.
 
 - `project_state`, 프로젝트 workflow policy, Task, acceptance criterion, supplemental

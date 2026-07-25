@@ -10,7 +10,7 @@ use serde::Serialize;
 use serde_json::Value;
 use volicord_platform_fs::{
     DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalPhase,
-    DirectoryTreeTargetState,
+    DirectoryTreeTargetState, RuntimeHomeSetupBusy, RuntimeHomeSetupOperation,
 };
 use volicord_types::{
     derive_integration_activation_state, diagnostic_root_cause_ids, ActivationStep,
@@ -106,6 +106,7 @@ impl CommandConnection {
 pub(super) enum ConnectionCommandResult {
     Setup {
         disposition: SetupDisposition,
+        setup_lease: SetupLeaseStatus,
         runtime_home_publication: RuntimeHomePublicationStatus,
         #[serde(skip_serializing_if = "Option::is_none")]
         runtime_home_rollback: Option<RuntimeHomeRollbackResult>,
@@ -123,6 +124,13 @@ pub(super) enum ConnectionCommandResult {
         connection_removed: bool,
         remaining_project_count: usize,
     },
+}
+
+/// Setup-lease state retained by a completed, planned, or rolled-back report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(in crate::connection_command) enum SetupLeaseStatus {
+    Acquired,
 }
 
 /// Stable typed Runtime Home rollback result carried by failed setup output.
@@ -153,7 +161,6 @@ pub(in crate::connection_command) enum RuntimeHomePublicationStatus {
     NotPublished,
     ExistingReady,
     PublishedByThisInvocation,
-    ConcurrentWinnerObserved,
     OwnedPublicationRolledBack,
     OwnedPublicationRemovalIncomplete,
     OwnedPublicationPreserved,
@@ -166,7 +173,6 @@ impl RuntimeHomePublicationStatus {
             Self::NotPublished => "not_published",
             Self::ExistingReady => "existing_ready",
             Self::PublishedByThisInvocation => "published_by_this_invocation",
-            Self::ConcurrentWinnerObserved => "concurrent_winner_observed",
             Self::OwnedPublicationRolledBack => "owned_publication_rolled_back",
             Self::OwnedPublicationRemovalIncomplete => "owned_publication_removal_incomplete",
             Self::OwnedPublicationPreserved => "owned_publication_preserved",
@@ -290,6 +296,7 @@ impl ConnectionCommandReport {
             integration_revision: None,
             result: setup_result.map(|disposition| ConnectionCommandResult::Setup {
                 disposition,
+                setup_lease: SetupLeaseStatus::Acquired,
                 runtime_home_publication: runtime_home_publication
                     .unwrap_or(RuntimeHomePublicationStatus::ExistingReady),
                 runtime_home_rollback: None,
@@ -440,6 +447,7 @@ impl ConnectionCommandReport {
             activation_plan,
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
+                setup_lease: SetupLeaseStatus::Acquired,
                 runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
                 runtime_home_rollback: None,
             }),
@@ -613,6 +621,7 @@ impl ConnectionCommandReport {
             activation_plan,
             Some(ConnectionCommandResult::Setup {
                 disposition,
+                setup_lease: SetupLeaseStatus::Acquired,
                 runtime_home_publication,
                 runtime_home_rollback,
             }),
@@ -1031,6 +1040,124 @@ pub(in crate::connection_command) fn render_command_report(
     })
 }
 
+/// Renders a canonical typed failure when setup cannot acquire its lease.
+pub(in crate::connection_command) fn render_setup_lease_busy(
+    format: OutputFormat,
+    busy: &RuntimeHomeSetupBusy,
+    dry_run: bool,
+) -> Result<RenderedCommandReport, ConnectionCommandError> {
+    let generated_at = current_timestamp();
+    let finding_id = DiagnosticFindingId::parse("finding.setup.lease_busy")
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let action = DiagnosticAction::try_new(
+        DiagnosticCode::parse("action.setup.wait_for_current_transaction")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        "Wait for the other setup invocation to finish, then rerun this setup operation",
+    )
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let elapsed_millis = u64::try_from(busy.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let details = serde_json::json!({
+        "dry_run": dry_run,
+        "setup_lease": {
+            "outcome": "busy",
+            "canonical_runtime_home": path_text(busy.target().as_path()),
+            "requested_operation": busy.operation().as_str(),
+            "wait_policy": busy.wait_policy().as_str(),
+            "elapsed_millis": elapsed_millis,
+            "owner_observation": "another_setup_transaction",
+        },
+        "retry": "after_current_setup_finishes",
+    });
+    let check = command_check(
+        ConnectionCheckKind::SetupPlan,
+        ConnectionCheckStatus::Failed,
+        "setup_lease_busy",
+        "Another setup transaction currently owns the Runtime Home setup lease",
+        Some(details.clone()),
+    )?
+    .with_cause_finding_ids(vec![finding_id.clone()])
+    .map_err(ConnectionCommandError::from)?;
+    let finding = DiagnosticFinding::try_new(
+        finding_id,
+        DiagnosticCode::parse("setup.lease_busy")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticDomain::parse("setup")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticStage::parse("lease_acquisition")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticSeverity::Error,
+        DiagnosticSource::parse("administrative_cli")
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticSubject::try_new("runtime_home", path_text(busy.target().as_path()))
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        DiagnosticFacts::project(&SetupLeaseBusyDiagnosticFacts {
+            outcome: "busy",
+            requested_operation: busy.operation().as_str(),
+            wait_policy: busy.wait_policy().as_str(),
+            elapsed_millis,
+            owner_observation: "another_setup_transaction",
+        })
+        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        generated_at.clone(),
+    )
+    .and_then(|finding| finding.with_actions(vec![action]))
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let activation_plan = IntegrationActivationPlan::empty(IntegrationActivationState::Failed);
+    let report = DiagnosticReport::try_new(
+        match busy.operation() {
+            RuntimeHomeSetupOperation::Init => DiagnosticOperation::Init,
+            RuntimeHomeSetupOperation::ConnectionAdd => DiagnosticOperation::Add,
+        },
+        ConnectionStatus::Failed,
+        IntegrationActivationState::Failed,
+        HookActivationState::Unknown,
+        generated_at,
+        None,
+        vec![check],
+        vec![finding],
+        activation_plan,
+        Some(
+            details
+                .as_object()
+                .cloned()
+                .expect("setup lease busy details are an object"),
+        ),
+        cooperative_assurance_limits(),
+    )
+    .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
+    let output = match format {
+        OutputFormat::Json => serde_json::to_string_pretty(&report)
+            .map(|output| format!("{output}\n"))
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
+        OutputFormat::Human(HumanOutputDetail::Concise) => format!(
+            "Setup is busy for Runtime Home {}.\nAnother setup transaction currently owns the setup lease. Wait for it to finish, then retry this operation.\n",
+            busy.target().as_path().display()
+        ),
+        OutputFormat::Human(HumanOutputDetail::Verbose) => format!(
+            "Setup lease\n  Outcome: busy\n  Runtime Home: {}\n  Requested operation: {}\n  Wait policy: {}\n  Elapsed: {} ms\n  Action: wait for the other setup invocation to finish, then retry; do not delete coordination files\n",
+            busy.target().as_path().display(),
+            busy.operation().as_str(),
+            busy.wait_policy().as_str(),
+            elapsed_millis
+        ),
+    };
+    Ok(RenderedCommandReport {
+        output,
+        status: ConnectionStatus::Failed,
+    })
+}
+
+#[derive(Serialize)]
+struct SetupLeaseBusyDiagnosticFacts {
+    outcome: &'static str,
+    requested_operation: &'static str,
+    wait_policy: &'static str,
+    elapsed_millis: u64,
+    owner_observation: &'static str,
+}
+
+impl DiagnosticFactSource for SetupLeaseBusyDiagnosticFacts {}
+
 fn command_status(report: &ConnectionVerificationReport) -> ConnectionStatus {
     if report.status() == ConnectionStatus::Complete
         && !report.activation_plan().required_steps().is_empty()
@@ -1151,6 +1278,55 @@ mod tests {
     }
 
     #[test]
+    fn setup_lease_busy_renderers_are_typed_and_never_recommend_file_deletion() {
+        use volicord_platform_fs::{
+            RuntimeHomeSetupLease, RuntimeHomeSetupLeaseOutcome, RuntimeHomeSetupWaitPolicy,
+        };
+
+        let fixture = tempfile::tempdir().unwrap();
+        let runtime_home = fixture.path().join("runtime-home");
+        let RuntimeHomeSetupLeaseOutcome::Acquired(_lease) = RuntimeHomeSetupLease::acquire(
+            &runtime_home,
+            RuntimeHomeSetupOperation::Init,
+            RuntimeHomeSetupWaitPolicy::Immediate,
+        )
+        .unwrap() else {
+            panic!("first setup lease should be acquired");
+        };
+        let RuntimeHomeSetupLeaseOutcome::Busy(busy) = RuntimeHomeSetupLease::acquire(
+            &runtime_home,
+            RuntimeHomeSetupOperation::Init,
+            RuntimeHomeSetupWaitPolicy::Immediate,
+        )
+        .unwrap() else {
+            panic!("second setup lease should be busy");
+        };
+
+        let json = render_setup_lease_busy(OutputFormat::Json, &busy, true).unwrap();
+        assert_eq!(json.status, ConnectionStatus::Failed);
+        let value: Value = serde_json::from_str(&json.output).unwrap();
+        assert_eq!(value["operation_details"]["dry_run"], true);
+        assert_eq!(value["operation_details"]["setup_lease"]["outcome"], "busy");
+        assert_eq!(value["checks"][0]["code"], "setup_lease_busy");
+        assert_eq!(value["findings"][0]["code"], "setup.lease_busy");
+        assert_eq!(
+            value["findings"][0]["actions"][0]["code"],
+            "action.setup.wait_for_current_transaction"
+        );
+
+        for format in [
+            OutputFormat::Human(HumanOutputDetail::Concise),
+            OutputFormat::Human(HumanOutputDetail::Verbose),
+        ] {
+            let rendered = render_setup_lease_busy(format, &busy, false).unwrap();
+            assert_eq!(rendered.status, ConnectionStatus::Failed);
+            assert!(rendered.output.to_ascii_lowercase().contains("wait"));
+            assert!(!rendered.output.contains(".lock"));
+            assert!(!rendered.output.contains("remove"));
+        }
+    }
+
+    #[test]
     fn every_operation_uses_the_same_exact_top_level_shape() {
         for operation in [
             CommandOperation::Init,
@@ -1194,6 +1370,7 @@ mod tests {
                     json!({
                         "kind": "setup",
                         "disposition": "committed",
+                        "setup_lease": "acquired",
                         "runtime_home_publication": "existing_ready"
                     })
                 );
@@ -1259,10 +1436,6 @@ mod tests {
             (
                 RuntimeHomePublicationStatus::PublishedByThisInvocation,
                 "published_by_this_invocation",
-            ),
-            (
-                RuntimeHomePublicationStatus::ConcurrentWinnerObserved,
-                "concurrent_winner_observed",
             ),
             (
                 RuntimeHomePublicationStatus::OwnedPublicationRolledBack,
@@ -1432,6 +1605,7 @@ mod tests {
             json!({
                 "kind": "setup",
                 "disposition": "planned",
+                "setup_lease": "acquired",
                 "runtime_home_publication": "not_published"
             })
         );

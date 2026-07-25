@@ -7,16 +7,15 @@ use std::{
 use sha2::{Digest, Sha256};
 use volicord_platform_fs::{
     DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalOutcome,
-    DirectoryTreeTargetState,
+    DirectoryTreeTargetState, RuntimeHomeSetupLease,
 };
 use volicord_store::bootstrap::{
     commit_runtime_home, inspect_runtime_home_bootstrap, prepare_runtime_home_with_installation,
-    project_record_by_repo_root_read_only, InstallationProfileRegistration, PreparedRuntimeHome,
-    RuntimeHomeBootstrapState, RuntimeHomePublicationGuard, RuntimeHomePublicationOutcome,
+    InstallationProfileRegistration, PreparedRuntimeHome, RuntimeHomeBootstrapState,
+    RuntimeHomePublicationGuard, RuntimeHomePublicationOutcome,
     RuntimeHomePublicationRollbackOutcome,
 };
 use volicord_store::setup_transaction::{PreparedStoreMutationBoundary, StoreMutationInput};
-use volicord_store::sqlite::registry_db_path;
 use volicord_types::IntegrationActivationPlan;
 
 use super::{
@@ -139,7 +138,7 @@ impl AtomicFileMutation {
             FileSnapshot::Present(bytes.to_vec())
         });
         if original != expected {
-            return Err(ConnectionCommandError::runtime(format!(
+            return Err(ConnectionCommandError::concurrent_modification(format!(
                 "SETUP_CONCURRENT_MODIFICATION: setup target changed during plan construction: {}; external bytes were preserved",
                 target.display()
             )));
@@ -220,7 +219,7 @@ impl AtomicFileMutation {
         if current == self.original {
             Ok(())
         } else {
-            Err(ConnectionCommandError::runtime(format!(
+            Err(ConnectionCommandError::concurrent_modification(format!(
                 "SETUP_CONCURRENT_MODIFICATION: setup target changed after planning: {}; external bytes were preserved",
                 self.target.display()
             )))
@@ -276,7 +275,7 @@ impl AtomicFileMutation {
         }
         self.committed = true;
         if self.current_digest()? != self.staged_digest {
-            return Err(ConnectionCommandError::runtime(format!(
+            return Err(ConnectionCommandError::concurrent_modification(format!(
                 "SETUP_CONCURRENT_MODIFICATION: setup target changed during atomic replacement: {}; external bytes were preserved",
                 self.target.display()
             )));
@@ -418,7 +417,6 @@ enum SetupRuntimeHomePublication {
     NotPublished,
     OwnedPublished(RuntimeHomePublicationGuard),
     OwnedConfirmed(RuntimeHomePublicationGuard),
-    ConcurrentWinnerObserved,
     OwnedPreserved(RuntimeHomePublicationGuard),
     OwnedRolledBack,
     OwnedRemovalIncomplete,
@@ -427,7 +425,18 @@ enum SetupRuntimeHomePublication {
 }
 
 impl PreparedSetup {
-    pub(super) fn prepare(mut plan: SetupPlan) -> Result<Self, ConnectionCommandError> {
+    pub(super) fn prepare(
+        mut plan: SetupPlan,
+        lease: &RuntimeHomeSetupLease,
+    ) -> Result<Self, ConnectionCommandError> {
+        if !lease
+            .matches_target(plan.runtime_home.final_path())
+            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
+        {
+            return Err(ConnectionCommandError::runtime(
+                "setup plan does not match the acquired canonical Runtime Home lease",
+            ));
+        }
         let runtime_home_publication = match &plan.runtime_home {
             RuntimeHomePlan::Create {
                 final_path,
@@ -446,7 +455,7 @@ impl PreparedSetup {
                         SetupRuntimeHomePublication::ExistingReady
                     }
                     RuntimeHomeBootstrapState::Absent => {
-                        return Err(ConnectionCommandError::runtime(format!(
+                        return Err(ConnectionCommandError::concurrent_modification(format!(
                             "SETUP_CONCURRENT_MODIFICATION: Runtime Home disappeared after planning: {}",
                             final_path.display()
                         )));
@@ -515,7 +524,7 @@ impl PreparedSetup {
                     inspect_runtime_home_bootstrap(final_path)?,
                     RuntimeHomeBootstrapState::Ready(_)
                 ) {
-                    return Err(ConnectionCommandError::runtime(format!(
+                    return Err(ConnectionCommandError::concurrent_modification(format!(
                         "SETUP_CONCURRENT_MODIFICATION: Runtime Home changed after setup preparation: {}",
                         final_path.display()
                     )));
@@ -543,6 +552,7 @@ impl PreparedSetup {
         );
         match state {
             SetupRuntimeHomePublication::Prepared(prepared) => {
+                let final_path = prepared.final_path().to_path_buf();
                 match commit_runtime_home(prepared) {
                     Ok(RuntimeHomePublicationOutcome::PublishedByThisInvocation {
                         publication,
@@ -551,11 +561,23 @@ impl PreparedSetup {
                             SetupRuntimeHomePublication::OwnedPublished(publication);
                     }
                     Ok(RuntimeHomePublicationOutcome::ObservedConcurrentWinner { .. }) => {
-                        self.runtime_home_publication =
-                            SetupRuntimeHomePublication::ConcurrentWinnerObserved;
+                        let observed = inspect_runtime_home_bootstrap(&final_path)?;
+                        self.runtime_home_publication = SetupRuntimeHomePublication::NotPublished;
+                        return Err(concurrent_runtime_home_modification(
+                            &final_path,
+                            bootstrap_state_name(&observed),
+                        ));
                     }
                     Err(error) => {
                         self.runtime_home_publication = SetupRuntimeHomePublication::NotPublished;
+                        if let Ok(observed) = inspect_runtime_home_bootstrap(&final_path) {
+                            if !matches!(observed, RuntimeHomeBootstrapState::Absent) {
+                                return Err(concurrent_runtime_home_modification(
+                                    &final_path,
+                                    bootstrap_state_name(&observed),
+                                ));
+                            }
+                        }
                         return Err(error.into());
                     }
                 }
@@ -598,28 +620,6 @@ impl PreparedSetup {
                 Err(error)
             }
         }
-    }
-
-    pub(super) fn prepare_concurrent_winner_store_boundary(
-        &mut self,
-        repo_root: &Path,
-    ) -> Result<(), ConnectionCommandError> {
-        if !matches!(
-            self.runtime_home_publication,
-            SetupRuntimeHomePublication::ConcurrentWinnerObserved
-        ) {
-            return Ok(());
-        }
-        let runtime_home = self.plan.runtime_home.final_path();
-        let mut paths = vec![registry_db_path(runtime_home)];
-        if let Some(project) = project_record_by_repo_root_read_only(runtime_home, repo_root)? {
-            paths.push(project.state_db_path);
-        }
-        let inputs = PreparedStoreMutationBoundary::inspect_inputs(&paths)?;
-        let boundary = PreparedStoreMutationBoundary::prepare(&inputs)?;
-        boundary.validate_inputs()?;
-        self.store_boundary = Some(boundary);
-        Ok(())
     }
 
     pub(super) fn mark_store_applied(
@@ -763,13 +763,6 @@ impl PreparedSetup {
         }
         if matches!(
             self.runtime_home_publication,
-            SetupRuntimeHomePublication::ConcurrentWinnerObserved
-        ) {
-            // This invocation observed another publisher and can restore only
-            // its checkpointed Store writes. It has no Runtime Home removal
-            // authority.
-        } else if matches!(
-            self.runtime_home_publication,
             SetupRuntimeHomePublication::OwnedRolledBack
                 | SetupRuntimeHomePublication::OwnedRemovalIncomplete
                 | SetupRuntimeHomePublication::OwnedPreserved(_)
@@ -882,9 +875,6 @@ impl PreparedSetup {
             | SetupRuntimeHomePublication::OwnedConfirmed(_) => {
                 RuntimeHomePublicationStatus::PublishedByThisInvocation
             }
-            SetupRuntimeHomePublication::ConcurrentWinnerObserved => {
-                RuntimeHomePublicationStatus::ConcurrentWinnerObserved
-            }
             SetupRuntimeHomePublication::OwnedPreserved(_) => {
                 RuntimeHomePublicationStatus::OwnedPublicationPreserved
             }
@@ -906,6 +896,25 @@ impl Drop for PreparedSetup {
         cleanup_file_staging(&mut self.plan);
         remove_empty_directories(&self.created_directories);
     }
+}
+
+fn bootstrap_state_name(state: &RuntimeHomeBootstrapState) -> &'static str {
+    match state {
+        RuntimeHomeBootstrapState::Absent => "absent",
+        RuntimeHomeBootstrapState::Ready(_) => "ready",
+        RuntimeHomeBootstrapState::Incompatible(_) => "incompatible",
+        RuntimeHomeBootstrapState::Corrupt(_) => "corrupt",
+    }
+}
+
+fn concurrent_runtime_home_modification(
+    final_path: &Path,
+    observed_state: &str,
+) -> ConnectionCommandError {
+    ConnectionCommandError::concurrent_modification(format!(
+        "SETUP_CONCURRENT_MODIFICATION: the Runtime Home target appeared while its setup lease was held (observed state: {observed_state}); the stale setup plan was aborted before Store or managed-file mutation; rerun setup against the current state: {}",
+        final_path.display()
+    ))
 }
 
 #[derive(Debug, Default, Clone)]

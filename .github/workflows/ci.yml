@@ -146,6 +146,9 @@ jobs:
       - name: Check native platform process behavior
         run: cargo test --locked -p volicord-platform-process --test platform_process
 
+      - name: Check native platform filesystem behavior
+        run: cargo test --locked -p volicord-platform-fs
+
       - name: Check native bounded test process behavior
         run: cargo test --locked -p volicord-test-process
 

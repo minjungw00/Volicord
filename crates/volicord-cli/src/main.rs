@@ -415,7 +415,8 @@ impl From<ConnectionCommandError> for CliError {
     fn from(error: ConnectionCommandError) -> Self {
         match error {
             ConnectionCommandError::Usage(message) => Self::Usage(message),
-            ConnectionCommandError::Runtime(message) => Self::Runtime(message),
+            ConnectionCommandError::Runtime(message)
+            | ConnectionCommandError::ConcurrentModification(message) => Self::Runtime(message),
             ConnectionCommandError::FailureOutput(output) => Self::FailureOutput(output),
         }
     }

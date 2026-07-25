@@ -559,11 +559,13 @@ activation 또는 다른 명시적 managed-configuration 변경만 이 값을 �
 원자적으로 비웁니다. Fingerprint가 같은 호환 replay는 그 보고서를 유지할 수 있습니다.
 
 `volicord init`에서는 fingerprint와 integration revision이 하나의 typed setup plan에
-속합니다. Plan의 Runtime Home 및 Store mutation이 checkpoint되고 repository 파일과
-Codex 구성이 원자 교체된 뒤에만 이를 기록합니다. `planned`, `preserved`,
-`rolled_back`, `partially_rolled_back`인 setup은 commit된 activation plan을 내보내지
-않습니다. 동시에 target이 바뀌면 오래된 bytes를 쓰기 전에 실패하며 그 변경은 외부
-소유자 상태로 남습니다.
+속하며 이 plan은 정규 Runtime Home setup lease를 획득한 뒤 구성합니다. Plan의 Runtime
+Home 및 Store mutation이 checkpoint되고 repository 파일과 Codex 구성이 원자 교체된
+뒤에만 이를 기록합니다. Lease는 result 구성, 정리 또는 rollback까지 유지합니다.
+`planned`, `preserved`, `rolled_back`, `partially_rolled_back`인 setup은 commit된
+activation plan을 내보내지 않습니다. 경합하는 setup은 planning 전에 busy이고, 그 밖에
+동시에 target이 바뀌면 오래된 bytes를 쓰기 전에 실패하며 그 변경은 외부 소유자 상태로
+남습니다.
 
 Store는 새 물리 `agent_connections` 행을 삽입할 때만 새 opaque 통합 instance ID를
 생성합니다. 호환 등록 replay, enabled 상태와 검증 갱신, staged activation과 cleanup 복구,

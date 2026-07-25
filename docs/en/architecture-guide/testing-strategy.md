@@ -69,8 +69,10 @@ Durable tests should cover, as applicable:
 - Runtime Home `Absent`, `Ready`, `Incompatible`, and `Corrupt` inspection;
   same-parent staged creation with singleton and installation metadata; exact
   manifest, opaque publication provenance, and relation facts; cleanup at each
-  pre-publication failure; no-replace concurrent publication with exactly one
-  owner and observer-only losers on Unix and native Windows; token-backed
+  pre-publication failure; per-canonical-home setup-lease aliasing and
+  independence; cross-process contention; persistent coordination-file
+  non-ownership; process-termination release; native Unix and Windows OS-lock
+  behavior; no-replace publication with exactly one owner; token-backed
   rollback revalidation, ownership-loss and managed-host-consumption
   preservation, recursive failure before effect, partial or unclassifiable
   removal, parent-sync failure after known removal, terminal retry behavior,
@@ -165,9 +167,12 @@ Durable tests should cover, as applicable:
   read-back, and manifest-validation phases, every managed
   hook/rule/guidance replacement, before and after Codex configuration
   replacement, before integration-revision commit, and during rollback; exact
-  fresh and existing-state restoration; bounded competing full-init coverage
-  for either winner order with a later loser failure; external concurrent-byte
-  preservation; every setup publication result and `planned`, `committed`,
+  fresh and existing-state restoration; deterministic competing full-init
+  coverage for either first-acquirer order, success release, rollback-complete
+  release, mutation-free typed busy and locked dry run, and a fresh retry after
+  release; stale-plan abort when an external publisher creates the final path
+  while the lease is held; external concurrent-byte preservation; every setup
+  publication result and `planned`, `committed`,
   `preserved`, `rolled_back`, and `partially_rolled_back` report projection;
   typed JSON and human distinctions for synchronized removal,
   removed-but-unsynchronized, incomplete removal, policy preservation, and

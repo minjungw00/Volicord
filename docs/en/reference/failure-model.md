@@ -179,10 +179,20 @@ failure preserves the primary confirmation error, whether publication
 occurred, the rollback outcome, final-path presence, and parent-entry
 durability; rollback never replaces the primary error.
 
+Setup lease contention occurs before inspection, plan construction, or setup
+mutation. It uses failed `setup_plan` check code `setup_lease_busy`, finding
+code `setup.lease_busy`, and action
+`action.setup.wait_for_current_transaction`. Bounded facts identify the
+canonical Runtime Home, requested operation, immediate wait policy, elapsed
+time, and that another setup owns the lease; they do not claim an owner PID or
+identity. The action requires waiting for that setup to finish and rerunning,
+not deleting a coordination file.
+
 Setup transaction failures use the failed `setup_plan` check.
 `finding.setup.transaction_failed` covers ordinary commit failures,
 `finding.setup.concurrent_modification` identifies an input whose bytes changed
-after planning, and `finding.setup.partial_rollback` identifies a target that
+after planning or an unexpected final path encountered during leased
+publication, and `finding.setup.partial_rollback` identifies a target that
 could not be restored without overwriting later state. Their matching diagnostic
 codes are `setup.transaction_failed`, `setup.concurrent_modification`, and
 `setup.partial_rollback`. New external bytes must be preserved. The result
@@ -198,9 +208,7 @@ after immediate exact revalidation. A publication ID, Runtime Home ID,
 manifest, path, schema, or installation mismatch is ownership loss and reports
 `runtime_home_publication=ownership_lost_during_rollback`; final-path absence
 remains absence rather than being described as preserved. Setup policy or
-managed-host consumption reports `owned_publication_preserved`. A concurrent
-winner observer has no removal authority and remains
-`concurrent_winner_observed`. Guarded removal reports
+managed-host consumption reports `owned_publication_preserved`. Guarded removal reports
 `owned_publication_rolled_back` once absence is observed, including when
 parent synchronization fails. That durability failure may make setup
 `partially_rolled_back`, but it does not change the removal effect. A recursive

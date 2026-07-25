@@ -112,8 +112,9 @@ importer가 있는 경우에만 그것을 사용하도록 안내합니다.
 최종 경로가 없으면 `init`은 같은 상위 directory의 고유 staging directory에 Registry,
 singleton, installation profile을 만들고 singleton에 새 불투명 publication ID를
 기록합니다. 기존 대상을 교체하지 않는 원자적 rename에 성공하면 상위 directory 동기화와
-read-back 확인 전에 invocation별 소유권을 반환합니다. `AlreadyExists`이면 staging을
-정리하고 정확한 현재 승자를 관찰한 결과만 반환합니다. Connection 명령은 선택한 홈에
+read-back 확인 전에 invocation별 소유권을 반환합니다. Setup lease 보유 중
+`AlreadyExists`이면 staging을 정리하고 target을 읽기 전용으로 검사한 뒤 오래된 plan을
+외부 concurrent modification으로 중단합니다. Connection 명령은 선택한 홈에
 현재 installation profile이 있어야 하며 홈이 없거나 사용할 수 없으면 그 정확한 경로를
 담아 실패합니다. 선택 뒤에도
 `connection list`와 `connection status`는 읽기 전용입니다. 비어 있거나 잘못됐거나 충돌하는
@@ -140,12 +141,16 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 정확한 관리 binding을 계획, 준비, commit하고 남은 Codex 신뢰, 다시 불러오기, 검증 동작을
 보고합니다. `--dry-run`은 파일시스템과 저장소를 변경하지 않습니다.
 
-Plan 구성은 읽기 전용이며 정확한 Runtime Home, Store, Codex 구성, repository 관리
-파일 mutation을 계산합니다. Prepare 단계는 모든 입력 snapshot을 검증하고 각 파일을
-target 옆에 staging하며 Store 복구 entry를 준비합니다. Commit 단계는 소유한 Runtime
-Home publication guard 또는 관찰 전용 동시 승자 결과를 유지하고 Store mutation을 적용한
-뒤 repository 파일을 결정적인 경로 순서로 원자 교체하고 Codex 구성을 마지막에 원자
-교체한 다음 현재 integration revision을 기록합니다. Rollback은 guard가 정확한 소유권을
+`init`과 `connection add`는 bootstrap 검사나 plan 구성 전에 선택한 Runtime Home을
+canonicalize하고 배타적 OS 기반 setup lease를 획득합니다. 즉시 경합하면 setup planning이나
+mutation 전에 typed busy 실패를 반환합니다. Lease 아래의 plan 구성은 읽기 전용이며
+정확한 Runtime Home, Store, Codex 구성, repository 관리 파일 mutation을 계산합니다.
+Dry run도 일관된 plan 보고까지 같은 lease를 유지합니다. Prepare 단계는 모든 입력
+snapshot을 검증하고 각 파일을 target 옆에 staging하며 Store 복구 entry를 준비합니다.
+Commit 단계는 소유한 Runtime Home publication guard를 유지하고 Store mutation을 적용한 뒤
+repository 파일을 결정적인 경로 순서로 원자 교체하고 Codex 구성을 마지막에 원자 교체한
+다음 현재 integration revision을 기록합니다. Lease는 성공 보고와 staging 정리 또는 전체
+rollback과 보존 결정을 마친 뒤에만 해제합니다. Rollback은 guard가 정확한 소유권을
 다시 검증한 경우에만 새 Runtime Home을 제거할 수 있으며, 소유권 상실이나 managed-host
 소비가 있으면 제거를 중단합니다. 재귀 제거 효과와 상위 entry 내구성은 별도 결과로
 유지합니다. 제거가 확인되면 상위 directory 동기화가 실패해도 terminal이며, 불완전한
@@ -600,8 +605,9 @@ SetupResult:
   kind: setup
   disposition: planned | committed | rolled_back | preserved |
     partially_rolled_back
+  setup_lease: acquired
   runtime_home_publication: not_published | existing_ready |
-    published_by_this_invocation | concurrent_winner_observed |
+    published_by_this_invocation |
     owned_publication_rolled_back | owned_publication_removal_incomplete |
     owned_publication_preserved |
     ownership_lost_during_rollback
@@ -659,11 +665,24 @@ add가 성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`�
 않습니다. 계획 변경이나 host action이 남으면 `action_required`, 둘 다 없으면
 `complete`입니다.
 
+`SetupResult.setup_lease=acquired`는 검사, planning, mutation, report 구성, 정리와
+rollback이 정규 Runtime Home lease 안에서 실행됐음을 나타냅니다. 획득 결과가 busy이면
+`SetupResult`를 합성하지 않습니다. 대신 실패한 schema 2 보고서가
+`operation_details.setup_lease.outcome=busy`, 정규 Runtime Home, 요청 operation,
+`wait_policy=immediate`, 한도 있는 elapsed time, 실패한 `setup_plan` check code
+`setup_lease_busy`, finding code `setup.lease_busy`, action
+`action.setup.wait_for_current_transaction`을 담습니다. Action은 활성 setup이 끝날 때까지
+기다렸다가 다시 실행하도록 안내하며 coordination 파일을 노출하거나 삭제하라고 권하지
+않습니다.
+
 `SetupResult.runtime_home_publication`은 독립적인 publication 상태를 보고합니다.
 `published_by_this_invocation`만 기존 대상을 교체하지 않는 rename 성공과 rollback 권한을
-함께 뜻합니다. `concurrent_winner_observed`에는 관찰 권한만 있습니다. Rollback 결과는
-소유한 publication을 제거했는지, setup 또는 managed-host 소비 정책 때문에 보존했는지,
-제거가 불완전한지, 정확한 소유권 재검증을 통과하지 못해 제거할 수 없는지를 구분합니다.
+함께 뜻합니다. Rollback 결과는 소유한 publication을 제거했는지, setup 또는 managed-host
+소비 정책 때문에 보존했는지, 제거가 불완전한지, 정확한 소유권 재검증을 통과하지 못해
+제거할 수 없는지를 구분합니다. Lease를 보유한 채 no-replace publication에서 예상하지
+않은 기존 최종 경로를 만나면 setup은 staging을 정리하고 target을 읽기 전용으로 검사한
+뒤 `setup.concurrent_modification`을 반환합니다. 그 오래된 plan의 Store나 관리 파일
+mutation은 수행하지 않습니다.
 
 Setup이 소유한 Runtime Home rollback을 시도하면
 `SetupResult.runtime_home_rollback`이 존재합니다. `outcome=removed`는 최종 경로가 부재로

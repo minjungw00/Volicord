@@ -1109,6 +1109,7 @@ fn drift_verification_preserves_owned_configuration_and_removal() -> Result<(), 
         json!({
             "kind": "setup",
             "disposition": "committed",
+            "setup_lease": "acquired",
             "runtime_home_publication": "existing_ready"
         })
     );
@@ -1264,6 +1265,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
         json!({
             "kind": "setup",
             "disposition": "committed",
+            "setup_lease": "acquired",
             "runtime_home_publication": "published_by_this_invocation"
         })
     );
@@ -1689,6 +1691,7 @@ fn dry_run_has_no_mutation() -> Result<(), Box<dyn Error>> {
         json!({
             "kind": "setup",
             "disposition": "planned",
+            "setup_lease": "acquired",
             "runtime_home_publication": "not_published"
         })
     );
@@ -1795,6 +1798,7 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
         json!({
             "kind": "setup",
             "disposition": "committed",
+            "setup_lease": "acquired",
             "runtime_home_publication": "published_by_this_invocation"
         })
     );
@@ -1818,6 +1822,7 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
         json!({
             "kind": "setup",
             "disposition": "committed",
+            "setup_lease": "acquired",
             "runtime_home_publication": "published_by_this_invocation"
         })
     );

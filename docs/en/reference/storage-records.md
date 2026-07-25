@@ -65,6 +65,13 @@ rollback outcome, final-path observation, and parent-entry durability together.
 An observed complete removal remains complete if parent synchronization fails;
 an incomplete effect cannot be promoted to preserved intact state.
 
+The per-canonical-Runtime-Home setup lease and its persistent coordination file
+are also outside the storage record model. They carry no actor identity,
+publication authority, recovery state, schema version, or stale-owner
+metadata. Only the live OS file lock denotes lease ownership; setup continues
+to use the stored publication ID and process-local publication guard for exact
+rollback identity.
+
 Project-state records include:
 
 - `project_state`, project workflow policy, Tasks, acceptance criteria,

@@ -191,22 +191,26 @@ volicord init --help
 새 Runtime Home에서는 `init`이 같은 상위 directory의 staging에서 Registry와 installation
 profile을 만들고 검증한 뒤 기존 대상을 교체하지 않는 원자적 rename으로 전체 directory를
 공개합니다. Staging한 singleton에는 불투명 publication ID 하나가 있습니다. 성공한
-publisher는 동기화와 read-back 동안 invocation별 guard를 유지하며, 동시에
-`AlreadyExists`를 받은 호출자는 제거 권한 없이 정확한 승자를 관찰합니다. 선택한 경로가
-이미 있으면 읽기 전용으로 검사합니다. Manifest 또는 schema 불일치는 해당 home을
+publisher는 동기화와 read-back 동안 invocation별 guard를 유지합니다. 선택한 경로가 이미
+있으면 읽기 전용으로 검사합니다. Manifest 또는 schema 불일치는 해당 home을
 보존하므로 담당자 승인 복구를 위해 그대로 두고 명시적 `--home`으로 새 위치를 선택해 다시
 실행합니다. 현재 담당자가 importer를 제공한 경우에만 그것을 사용합니다.
 
-`init`은 어떤 target도 쓰지 않은 채 전체 setup plan을 구성합니다. Prepare 단계는
-정확한 Codex 구성과 repository hook, wrapper, rule, policy, exclude, 관리 guidance
-파일을 각각의 target 옆에 staging하고 Store 복구 경계를 준비합니다. Commit 단계는
-Runtime Home을 공개하거나 검증하고 Store mutation을 적용한 뒤 repository 파일을
-결정적인 순서로 원자 교체하고 Codex 구성을 마지막에 교체한 다음 integration revision을
-기록합니다. 실패하면 그 뒤 외부 변경이 없는 교체 파일과 checkpoint된 Store bytes를
+`init`은 검사 전에 선택한 정규 Runtime Home의 OS 기반 setup lease를 획득하고 어떤
+target도 쓰지 않은 채 전체 setup plan을 구성합니다. Dry run도 일관된 plan을 만들고
+보고하는 동안 같은 lease를 유지합니다. 다른 setup이 lease를 소유하고 있으면 typed busy
+결과를 보고하고 완료될 때까지 기다리도록 안내합니다. Coordination 파일을 삭제하면 안
+됩니다. Prepare 단계는 정확한 Codex 구성과 repository hook, wrapper, rule, policy,
+exclude, 관리 guidance 파일을 각각의 target 옆에 staging하고 Store 복구 경계를
+준비합니다. Commit 단계는 Runtime Home을 공개하거나 검증하고 Store mutation을 적용한 뒤
+repository 파일을 결정적인 순서로 원자 교체하고 Codex 구성을 마지막에 교체한 다음
+integration revision을 기록합니다. Lease는 성공 보고와 정리 또는 전체 rollback까지
+유지합니다. 실패하면 그 뒤 외부 변경이 없는 교체 파일과 checkpoint된 Store bytes를
 복원하고 소유한 staging을 안전할 때 제거하며 `preserved`, `rolled_back`,
 `partially_rolled_back`을 정확히 보고합니다. Runtime Home을 제거하려면 소유 publication
 guard가 정확한 ID, manifest, 경로, schema, installation, managed-host 소비 부재를 다시
-검증해야 합니다. 동시 승자에는 제거 권한이 없고 소유권 불일치는 제거를 중단합니다. 재귀
+검증해야 합니다. 이 rollback 권한이 살아 있는 동안 다른 지원 setup은 Store mutation에
+들어갈 수 없고 소유권 불일치는 제거를 중단합니다. 재귀
 제거 효과와 상위 directory 내구성은 별도로 보고합니다. Runtime Home이 부재하지만 상위
 directory 동기화가 실패했다면 publication이 남아 있다고 하지 않고 내구성을 확인하지 못한
 제거로 보고합니다. 불완전하거나 불확실한 제거는 별도로 보고하며 재생성된 경로를 대상으로

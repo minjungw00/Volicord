@@ -159,9 +159,17 @@ Runtime Home bootstrap은 setup 변경 전에 이 규칙을 적용합니다. 기
 그 결과인 composite 실패는 주 확인 오류, publication 발생 여부, rollback 결과, 최종 경로
 존재 상태, 상위 entry 내구성을 보존하며 rollback 오류가 주 오류를 대체하지 않습니다.
 
+Setup lease 경합은 검사, plan 구성, setup mutation 전에 발생합니다. 실패한 `setup_plan`
+check code `setup_lease_busy`, finding code `setup.lease_busy`, action
+`action.setup.wait_for_current_transaction`을 사용합니다. 한도 있는 fact는 정규 Runtime
+Home, 요청 operation, immediate wait policy, elapsed time, 다른 setup의 lease 소유를
+식별하지만 owner PID나 identity를 주장하지 않습니다. Action은 coordination 파일을
+삭제하라고 하지 않고 해당 setup이 끝날 때까지 기다렸다가 다시 실행하도록 요구합니다.
+
 Setup transaction 실패는 실패한 `setup_plan` check를 사용합니다. 일반적인 commit
 실패에는 `finding.setup.transaction_failed`, planning 뒤 bytes가 바뀐 입력에는
-`finding.setup.concurrent_modification`, 이후 상태를 덮어쓰지 않고는 복원할 수 없는
+`finding.setup.concurrent_modification`을 사용합니다. Lease를 보유한 publication 중
+예상하지 않은 최종 경로를 만난 경우도 여기에 포함합니다. 이후 상태를 덮어쓰지 않고는 복원할 수 없는
 target에는 `finding.setup.partial_rollback`을 사용합니다. 대응하는 diagnostic code는
 각각 `setup.transaction_failed`, `setup.concurrent_modification`,
 `setup.partial_rollback`입니다. 새 외부 bytes는 보존해야 합니다. 최종 mutation을
@@ -176,8 +184,7 @@ Runtime Home rollback은 성공한 publisher의 guard가 즉시 정확한 재검
 불일치는 소유권 상실이며
 `runtime_home_publication=ownership_lost_during_rollback`을 보고합니다. 최종 경로 부재는
 보존으로 표현하지 않고 부재로 유지합니다. Setup 정책이나
-managed-host 소비는 `owned_publication_preserved`를 보고합니다. 동시 승자 관찰자는 제거
-권한이 없으며 `concurrent_winner_observed`로 남습니다. Guard를 통한 제거는 부재가
+managed-host 소비는 `owned_publication_preserved`를 보고합니다. Guard를 통한 제거는 부재가
 관찰되는 즉시 `owned_publication_rolled_back`을 보고하며, 상위 directory 동기화 실패도
 여기에 포함됩니다. 이 내구성 실패 때문에 setup이 `partially_rolled_back`이 될 수 있지만
 제거 효과는 바뀌지 않습니다. 재귀 제거가 실패하고 target이 present이거나 분류할 수 없으면

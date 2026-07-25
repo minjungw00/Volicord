@@ -150,6 +150,14 @@ rename and retains it through parent synchronization, read-back, and manifest
 confirmation. An `AlreadyExists` caller removes only its staging and observes
 the exact current winner without removal authority.
 
+The setup service serializes inspection, planning, publication, Store
+mutation, cleanup, reporting, and rollback with an external OS-backed lease
+for the canonical Runtime Home. That lease is not a Registry record,
+`StorageManifest` capability, schema identity, or storage lock. A supported
+setup cannot use an observed no-replace result to continue Store mutation. An
+unexpected `AlreadyExists` while the lease is held is read-only inspected and
+reported as an external concurrent modification that requires a fresh plan.
+
 If confirmation fails after publication, the primary confirmation error and
 the guard-backed rollback attempt form one typed failure. It records whether
 the final path was observed present, absent, or uncertain and keeps recursive
