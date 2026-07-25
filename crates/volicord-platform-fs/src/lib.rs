@@ -1089,28 +1089,411 @@ impl std::error::Error for ReplaceFileError {
     }
 }
 
+/// Namespace effect observed for one exact recursive directory removal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectoryTreeRemovalEffect {
+    /// The primitive knows that it did not remove any part of the target.
+    NotRemoved,
+    /// The target was observed absent after recursive removal completed.
+    Removed,
+    /// Some removal may have occurred, or the resulting effect could not be
+    /// observed.
+    PartiallyRemovedOrUnknown,
+}
+
+impl DirectoryTreeRemovalEffect {
+    /// Stable machine-readable value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRemoved => "not_removed",
+            Self::Removed => "removed",
+            Self::PartiallyRemovedOrUnknown => "partially_removed_or_unknown",
+        }
+    }
+}
+
+/// Durability observation for the removed directory's parent namespace entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectoryEntryDurability {
+    /// The platform synchronized the parent directory after removal.
+    ParentSynchronized,
+    /// Parent-directory synchronization was required but did not complete.
+    ParentSynchronizationFailed,
+    /// The current platform contract does not expose parent-directory
+    /// synchronization.
+    NotApplicable,
+}
+
+impl DirectoryEntryDurability {
+    /// Stable machine-readable value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ParentSynchronized => "parent_synchronized",
+            Self::ParentSynchronizationFailed => "parent_synchronization_failed",
+            Self::NotApplicable => "not_applicable",
+        }
+    }
+}
+
+/// Operation that failed during exact directory-tree removal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectoryTreeRemovalPhase {
+    TargetInspection,
+    RecursiveRemoval,
+    PostRemovalInspection,
+    ParentDirectorySynchronization,
+}
+
+impl DirectoryTreeRemovalPhase {
+    /// Stable machine-readable value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TargetInspection => "target_inspection",
+            Self::RecursiveRemoval => "recursive_removal",
+            Self::PostRemovalInspection => "post_removal_inspection",
+            Self::ParentDirectorySynchronization => "parent_directory_synchronization",
+        }
+    }
+}
+
+/// Last exact-path observation made by the removal primitive.
+///
+/// This is an observation at one instant. `Absent` does not assert that another
+/// process cannot recreate the path after the observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectoryTreeTargetState {
+    Present,
+    Absent,
+    Unknown,
+}
+
+impl DirectoryTreeTargetState {
+    /// Stable machine-readable value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Present => "present",
+            Self::Absent => "absent",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Successful exact directory-tree removal facts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DirectoryTreeRemovalOutcome {
+    pub effect: DirectoryTreeRemovalEffect,
+    pub durability: DirectoryEntryDurability,
+    pub target_state: DirectoryTreeTargetState,
+}
+
+/// Failed exact directory-tree removal facts and their underlying I/O errors.
+#[derive(Debug)]
+pub struct DirectoryTreeRemovalError {
+    pub phase: DirectoryTreeRemovalPhase,
+    pub effect: DirectoryTreeRemovalEffect,
+    pub durability: DirectoryEntryDurability,
+    pub target_state: DirectoryTreeTargetState,
+    source: io::Error,
+    preceding_error: Option<io::Error>,
+}
+
+impl DirectoryTreeRemovalError {
+    fn new(
+        phase: DirectoryTreeRemovalPhase,
+        effect: DirectoryTreeRemovalEffect,
+        durability: DirectoryEntryDurability,
+        target_state: DirectoryTreeTargetState,
+        source: io::Error,
+    ) -> Self {
+        Self {
+            phase,
+            effect,
+            durability,
+            target_state,
+            source,
+            preceding_error: None,
+        }
+    }
+
+    fn after_error(
+        phase: DirectoryTreeRemovalPhase,
+        effect: DirectoryTreeRemovalEffect,
+        durability: DirectoryEntryDurability,
+        target_state: DirectoryTreeTargetState,
+        source: io::Error,
+        preceding_error: io::Error,
+    ) -> Self {
+        Self {
+            phase,
+            effect,
+            durability,
+            target_state,
+            source,
+            preceding_error: Some(preceding_error),
+        }
+    }
+
+    /// I/O error from the operation identified by `phase`.
+    pub fn io_error(&self) -> &io::Error {
+        &self.source
+    }
+
+    /// Earlier recursive-removal error retained when post-removal inspection
+    /// also failed.
+    pub fn preceding_io_error(&self) -> Option<&io::Error> {
+        self.preceding_error.as_ref()
+    }
+}
+
+impl fmt::Display for DirectoryTreeRemovalError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "directory-tree removal failed during {} (effect: {}, target: {}, durability: {}): {}",
+            self.phase.as_str(),
+            self.effect.as_str(),
+            self.target_state.as_str(),
+            self.durability.as_str(),
+            self.source
+        )?;
+        if let Some(preceding) = &self.preceding_error {
+            write!(
+                formatter,
+                "; preceding recursive-removal error: {preceding}"
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for DirectoryTreeRemovalError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
 /// Removes one exact ordinary directory tree and synchronizes its parent where
 /// the platform exposes directory synchronization.
 ///
 /// Callers must establish product ownership immediately before invoking this
 /// primitive. This function rejects symlinks and non-directory namespace
-/// entries; it does not infer product ownership from a path.
-pub fn remove_owned_directory_tree(path: &Path) -> io::Result<()> {
-    let metadata = fs::symlink_metadata(path)?;
+/// entries; it does not infer product ownership from a path. Its exact-path
+/// observations describe the completed operation only and do not prevent a
+/// later path recreation.
+pub fn remove_owned_directory_tree(
+    path: &Path,
+) -> Result<DirectoryTreeRemovalOutcome, DirectoryTreeRemovalError> {
+    let metadata = fs::symlink_metadata(path).map_err(|source| {
+        let target_state = if matches!(
+            source.kind(),
+            io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+        ) {
+            DirectoryTreeTargetState::Absent
+        } else {
+            DirectoryTreeTargetState::Unknown
+        };
+        DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::TargetInspection,
+            DirectoryTreeRemovalEffect::NotRemoved,
+            DirectoryEntryDurability::NotApplicable,
+            target_state,
+            source,
+        )
+    })?;
     if !metadata.file_type().is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "owned directory removal requires an ordinary directory",
+        return Err(DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::TargetInspection,
+            DirectoryTreeRemovalEffect::NotRemoved,
+            DirectoryEntryDurability::NotApplicable,
+            DirectoryTreeTargetState::Present,
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "owned directory removal requires an ordinary directory",
+            ),
         ));
     }
     let parent = path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "owned directory removal requires a parent directory",
+        DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::TargetInspection,
+            DirectoryTreeRemovalEffect::NotRemoved,
+            DirectoryEntryDurability::NotApplicable,
+            DirectoryTreeTargetState::Present,
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "owned directory removal requires a parent directory",
+            ),
         )
     })?;
-    fs::remove_dir_all(path)?;
-    sync_directory_entry_parent(parent)
+
+    #[cfg(any(test, feature = "test-support"))]
+    let fault = directory_tree_removal_test_support::take_next_fault();
+
+    #[cfg(any(test, feature = "test-support"))]
+    if matches!(
+        fault,
+        Some(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::BeforeRecursiveRemoval
+        )
+    ) {
+        return Err(DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::RecursiveRemoval,
+            DirectoryTreeRemovalEffect::NotRemoved,
+            DirectoryEntryDurability::NotApplicable,
+            DirectoryTreeTargetState::Present,
+            injected_removal_error("before recursive removal"),
+        ));
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    if matches!(
+        fault,
+        Some(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::PostRemovalInspectionFailure
+        )
+    ) {
+        return Err(DirectoryTreeRemovalError::after_error(
+            DirectoryTreeRemovalPhase::PostRemovalInspection,
+            DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+            DirectoryEntryDurability::NotApplicable,
+            DirectoryTreeTargetState::Unknown,
+            injected_removal_error("during post-removal inspection"),
+            injected_removal_error("during recursive removal"),
+        ));
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    if matches!(
+        fault,
+        Some(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::RecursiveRemovalAfterPartialEffect
+        )
+    ) {
+        remove_one_test_entry(path).map_err(|source| {
+            DirectoryTreeRemovalError::new(
+                DirectoryTreeRemovalPhase::RecursiveRemoval,
+                DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+                DirectoryEntryDurability::NotApplicable,
+                DirectoryTreeTargetState::Present,
+                source,
+            )
+        })?;
+        return classify_recursive_removal_error(
+            path,
+            injected_removal_error("after partial recursive removal"),
+        );
+    }
+
+    if let Err(source) = fs::remove_dir_all(path) {
+        return classify_recursive_removal_error(path, source);
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    if matches!(
+        fault,
+        Some(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::AfterRecursiveRemovalBeforeParentSync
+        )
+    ) {
+        return Err(DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::RecursiveRemoval,
+            DirectoryTreeRemovalEffect::Removed,
+            failed_or_unavailable_parent_durability(),
+            DirectoryTreeTargetState::Absent,
+            injected_removal_error("after recursive removal before parent synchronization"),
+        ));
+    }
+
+    #[cfg(all(unix, any(test, feature = "test-support")))]
+    if matches!(
+        fault,
+        Some(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::ParentDirectorySyncFailure
+        )
+    ) {
+        return Err(DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::ParentDirectorySynchronization,
+            DirectoryTreeRemovalEffect::Removed,
+            failed_or_unavailable_parent_durability(),
+            DirectoryTreeTargetState::Absent,
+            injected_removal_error("during parent-directory synchronization"),
+        ));
+    }
+
+    sync_directory_entry_parent(parent).map_err(|source| {
+        DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::ParentDirectorySynchronization,
+            DirectoryTreeRemovalEffect::Removed,
+            DirectoryEntryDurability::ParentSynchronizationFailed,
+            DirectoryTreeTargetState::Absent,
+            source,
+        )
+    })?;
+    Ok(DirectoryTreeRemovalOutcome {
+        effect: DirectoryTreeRemovalEffect::Removed,
+        durability: supported_parent_durability(),
+        target_state: DirectoryTreeTargetState::Absent,
+    })
+}
+
+fn classify_recursive_removal_error(
+    path: &Path,
+    removal_error: io::Error,
+) -> Result<DirectoryTreeRemovalOutcome, DirectoryTreeRemovalError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Err(DirectoryTreeRemovalError::new(
+            DirectoryTreeRemovalPhase::RecursiveRemoval,
+            DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+            DirectoryEntryDurability::NotApplicable,
+            DirectoryTreeTargetState::Present,
+            removal_error,
+        )),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Err(DirectoryTreeRemovalError::new(
+                DirectoryTreeRemovalPhase::RecursiveRemoval,
+                DirectoryTreeRemovalEffect::Removed,
+                failed_or_unavailable_parent_durability(),
+                DirectoryTreeTargetState::Absent,
+                removal_error,
+            ))
+        }
+        Err(inspection_error) => Err(DirectoryTreeRemovalError::after_error(
+            DirectoryTreeRemovalPhase::PostRemovalInspection,
+            DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+            DirectoryEntryDurability::NotApplicable,
+            DirectoryTreeTargetState::Unknown,
+            inspection_error,
+            removal_error,
+        )),
+    }
+}
+
+#[cfg(unix)]
+const fn supported_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::ParentSynchronized
+}
+
+#[cfg(not(unix))]
+const fn supported_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::NotApplicable
+}
+
+#[cfg(unix)]
+const fn failed_or_unavailable_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::ParentSynchronizationFailed
+}
+
+#[cfg(not(unix))]
+const fn failed_or_unavailable_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::NotApplicable
 }
 
 #[cfg(unix)]
@@ -1121,6 +1504,60 @@ fn sync_directory_entry_parent(parent: &Path) -> io::Result<()> {
 #[cfg(not(unix))]
 fn sync_directory_entry_parent(_parent: &Path) -> io::Result<()> {
     Ok(())
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn injected_removal_error(point: &'static str) -> io::Error {
+    io::Error::other(format!("injected directory-tree removal failure {point}"))
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn remove_one_test_entry(path: &Path) -> io::Result<()> {
+    let entry = fs::read_dir(path)?
+        .next()
+        .transpose()?
+        .ok_or_else(|| io::Error::other("partial-removal fixture has no child entry"))?;
+    let metadata = fs::symlink_metadata(entry.path())?;
+    if metadata.file_type().is_dir() {
+        fs::remove_dir_all(entry.path())
+    } else {
+        fs::remove_file(entry.path())
+    }
+}
+
+/// Repository-owned fault support for directory-removal contract tests.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod directory_tree_removal_test_support {
+    use std::cell::Cell;
+
+    /// One failure injected into the next removal on the current test thread.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum DirectoryTreeRemovalFault {
+        BeforeRecursiveRemoval,
+        RecursiveRemovalAfterPartialEffect,
+        AfterRecursiveRemovalBeforeParentSync,
+        ParentDirectorySyncFailure,
+        PostRemovalInspectionFailure,
+    }
+
+    thread_local! {
+        static NEXT_FAULT: Cell<Option<DirectoryTreeRemovalFault>> = const { Cell::new(None) };
+    }
+
+    /// Arms one current-thread failure for the next removal primitive call.
+    pub fn fail_next_directory_tree_removal(fault: DirectoryTreeRemovalFault) {
+        NEXT_FAULT.with(|next| {
+            assert!(
+                next.replace(Some(fault)).is_none(),
+                "a directory-tree removal fault is already armed on this test thread"
+            );
+        });
+    }
+
+    pub(super) fn take_next_fault() -> Option<DirectoryTreeRemovalFault> {
+        NEXT_FAULT.with(Cell::take)
+    }
 }
 
 #[cfg(windows)]
@@ -1244,18 +1681,153 @@ mod tests {
         fs::create_dir(&owned)?;
         fs::write(owned.join("record"), b"owned")?;
 
-        remove_owned_directory_tree(&owned)?;
+        let outcome = remove_owned_directory_tree(&owned)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        assert_eq!(outcome.effect, DirectoryTreeRemovalEffect::Removed);
+        assert_eq!(outcome.target_state, DirectoryTreeTargetState::Absent);
+        #[cfg(unix)]
+        assert_eq!(
+            outcome.durability,
+            DirectoryEntryDurability::ParentSynchronized
+        );
+        #[cfg(not(unix))]
+        assert_eq!(outcome.durability, DirectoryEntryDurability::NotApplicable);
         assert!(!owned.exists());
 
         let file = directory.path().join("ordinary-file");
         fs::write(&file, b"preserve")?;
-        assert_eq!(
-            remove_owned_directory_tree(&file)
-                .expect_err("ordinary file must not be removed")
-                .kind(),
-            io::ErrorKind::InvalidInput
-        );
+        let error =
+            remove_owned_directory_tree(&file).expect_err("ordinary file must not be removed");
+        assert_eq!(error.phase, DirectoryTreeRemovalPhase::TargetInspection);
+        assert_eq!(error.effect, DirectoryTreeRemovalEffect::NotRemoved);
+        assert_eq!(error.target_state, DirectoryTreeTargetState::Present);
+        assert_eq!(error.io_error().kind(), io::ErrorKind::InvalidInput);
         assert_eq!(fs::read(file)?, b"preserve");
+        Ok(())
+    }
+
+    #[test]
+    fn removal_fault_before_recursive_effect_keeps_the_target() -> io::Result<()> {
+        let directory = TestDirectory::new("removal-before-recursive")?;
+        let owned = directory.path().join("owned");
+        fs::create_dir(&owned)?;
+        fs::write(owned.join("record"), b"owned")?;
+        directory_tree_removal_test_support::fail_next_directory_tree_removal(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::BeforeRecursiveRemoval,
+        );
+
+        let error = remove_owned_directory_tree(&owned).expect_err("injected removal must fail");
+
+        assert_eq!(error.phase, DirectoryTreeRemovalPhase::RecursiveRemoval);
+        assert_eq!(error.effect, DirectoryTreeRemovalEffect::NotRemoved);
+        assert_eq!(error.target_state, DirectoryTreeTargetState::Present);
+        assert!(owned.is_dir());
+        assert_eq!(fs::read(owned.join("record"))?, b"owned");
+        Ok(())
+    }
+
+    #[test]
+    fn recursive_failure_after_partial_effect_is_observed_without_retry() -> io::Result<()> {
+        let directory = TestDirectory::new("removal-partial-effect")?;
+        let owned = directory.path().join("owned");
+        fs::create_dir(&owned)?;
+        fs::write(owned.join("first"), b"first")?;
+        fs::write(owned.join("second"), b"second")?;
+        directory_tree_removal_test_support::fail_next_directory_tree_removal(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::RecursiveRemovalAfterPartialEffect,
+        );
+
+        let error =
+            remove_owned_directory_tree(&owned).expect_err("injected partial removal must fail");
+
+        assert_eq!(error.phase, DirectoryTreeRemovalPhase::RecursiveRemoval);
+        assert_eq!(
+            error.effect,
+            DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown
+        );
+        assert_eq!(error.target_state, DirectoryTreeTargetState::Present);
+        assert!(owned.is_dir());
+        assert_eq!(fs::read_dir(&owned)?.count(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn failed_post_removal_inspection_retains_both_io_errors() -> io::Result<()> {
+        let directory = TestDirectory::new("removal-post-inspection")?;
+        let owned = directory.path().join("owned");
+        fs::create_dir(&owned)?;
+        directory_tree_removal_test_support::fail_next_directory_tree_removal(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::PostRemovalInspectionFailure,
+        );
+
+        let error =
+            remove_owned_directory_tree(&owned).expect_err("post-removal inspection must fail");
+
+        assert_eq!(
+            error.phase,
+            DirectoryTreeRemovalPhase::PostRemovalInspection
+        );
+        assert_eq!(
+            error.effect,
+            DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown
+        );
+        assert_eq!(error.target_state, DirectoryTreeTargetState::Unknown);
+        assert!(error
+            .io_error()
+            .to_string()
+            .contains("post-removal inspection"));
+        assert!(error
+            .preceding_io_error()
+            .is_some_and(|source| source.to_string().contains("recursive removal")));
+        assert!(owned.is_dir());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parent_sync_failure_preserves_known_removal_effect() -> io::Result<()> {
+        let directory = TestDirectory::new("removal-parent-sync")?;
+        let owned = directory.path().join("owned");
+        fs::create_dir(&owned)?;
+        fs::write(owned.join("record"), b"owned")?;
+        directory_tree_removal_test_support::fail_next_directory_tree_removal(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::ParentDirectorySyncFailure,
+        );
+
+        let error =
+            remove_owned_directory_tree(&owned).expect_err("parent synchronization must fail");
+
+        assert_eq!(
+            error.phase,
+            DirectoryTreeRemovalPhase::ParentDirectorySynchronization
+        );
+        assert_eq!(error.effect, DirectoryTreeRemovalEffect::Removed);
+        assert_eq!(error.target_state, DirectoryTreeTargetState::Absent);
+        assert_eq!(
+            error.durability,
+            DirectoryEntryDurability::ParentSynchronizationFailed
+        );
+        assert!(!owned.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn post_recursive_pre_sync_fault_preserves_known_removal_effect() -> io::Result<()> {
+        let directory = TestDirectory::new("removal-after-recursive")?;
+        let owned = directory.path().join("owned");
+        fs::create_dir(&owned)?;
+        fs::write(owned.join("record"), b"owned")?;
+        directory_tree_removal_test_support::fail_next_directory_tree_removal(
+            directory_tree_removal_test_support::DirectoryTreeRemovalFault::AfterRecursiveRemovalBeforeParentSync,
+        );
+
+        let error =
+            remove_owned_directory_tree(&owned).expect_err("post-recursive fault must fail");
+
+        assert_eq!(error.phase, DirectoryTreeRemovalPhase::RecursiveRemoval);
+        assert_eq!(error.effect, DirectoryTreeRemovalEffect::Removed);
+        assert_eq!(error.target_state, DirectoryTreeTargetState::Absent);
+        assert!(!owned.exists());
         Ok(())
     }
 
@@ -1765,6 +2337,21 @@ mod windows_tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn directory_removal_reports_parent_sync_as_not_applicable() {
+        let directory = TestDirectory::new("directory-removal-durability");
+        let target = directory.join("owned");
+        fs::create_dir(&target).expect("owned directory should be created");
+
+        let outcome =
+            remove_owned_directory_tree(&target).expect("owned directory should be removed");
+
+        assert_eq!(outcome.effect, DirectoryTreeRemovalEffect::Removed);
+        assert_eq!(outcome.durability, DirectoryEntryDurability::NotApplicable);
+        assert_eq!(outcome.target_state, DirectoryTreeTargetState::Absent);
+        assert!(!target.exists());
     }
 
     #[test]

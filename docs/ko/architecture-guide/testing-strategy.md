@@ -67,6 +67,8 @@ registry 직접 순회가 matrix를 정합니다.
   manifest, 불투명 publication provenance 및 relation fact, 공개 전 각 실패 지점의
   정리, Unix와 native Windows에서 소유자 하나와 관찰 전용 패자만 만드는 no-replace
   동시 공개, token-backed rollback 재검증, 소유권 상실 및 managed-host 소비 시 보존,
+  효과 전 재귀 실패, 일부 제거 또는 분류 불가 제거, 제거 확인 뒤 상위 directory 동기화
+  실패, terminal 재시도 동작, 확인 오류와 rollback fact를 함께 담는 composite 실패,
   관련 없는 replacement 안전성, 기존 비호환 상태의 변경되지 않은 bytes와 timestamp
 - 행 없음 또는 비적격 operation result에서 유지되는
   `OPERATION_RESULT_UNAVAILABLE`
@@ -143,7 +145,8 @@ registry 직접 순회가 matrix를 정합니다.
   포함하는 동기화 경계가 있는 전체 init 경쟁, 동시 외부 bytes 보존, 모든 setup
   publication 결과와 `planned`, `committed`, `preserved`, `rolled_back`,
   `partially_rolled_back` 보고 projection, 읽기 전용 dry-run 일치, replay idempotence,
-  commit 뒤에만 activation
+  동기화된 제거·동기화되지 않은 제거·불완전한 제거·정책 보존·소유권 상실을 구분하는
+  typed JSON 및 사람용 출력, 효과를 인식하는 Project Home 정리, commit 뒤에만 activation
 - 정규 요청, 모든 tagged workflow kind와 그 상태가 반환하는 정규 tool, nested
   list/begin/probe/status 순서, unavailable 경로, shell sleep/poll loop, same-turn 자동
   재시작, raw stdio, 직접 작성한 `_meta`, resource discovery를 proof로 쓰지 않는다는

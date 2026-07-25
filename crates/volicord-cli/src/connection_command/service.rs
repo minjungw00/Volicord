@@ -912,6 +912,7 @@ fn setup_transaction_failure(
     let rollback_errors = rollback
         .map(|summary| summary.errors.clone())
         .unwrap_or_default();
+    let runtime_home_rollback = rollback.and_then(|summary| summary.runtime_home_rollback.clone());
     let details = json!({
         "failure": error.to_string(),
         "disposition": disposition.as_str(),
@@ -919,6 +920,7 @@ fn setup_transaction_failure(
             "rolled_back": summary.rolled_back,
             "partially_rolled_back": summary.partially_rolled_back,
             "errors": rollback_errors,
+            "runtime_home": summary.runtime_home_rollback.clone(),
         })),
         "retryable": true,
     });
@@ -935,6 +937,7 @@ fn setup_transaction_failure(
         ),
         disposition,
         runtime_home_publication,
+        runtime_home_rollback,
         if disposition == SetupDisposition::PartiallyRolledBack {
             SetupFailureDiagnostic::PartialRollback
         } else if error.to_string().contains("SETUP_CONCURRENT_MODIFICATION") {

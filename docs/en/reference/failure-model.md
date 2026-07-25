@@ -174,7 +174,10 @@ enter staged creation and atomic no-replace publication. A failure before
 publication removes staging and does not create the final path. After a
 successful rename, the caller already holds the invocation-specific
 publication guard, so parent-sync, read-back, and manifest-validation failures
-retain explicit rollback or preservation authority.
+retain explicit rollback or preservation authority. The resulting composite
+failure preserves the primary confirmation error, whether publication
+occurred, the rollback outcome, final-path presence, and parent-entry
+durability; rollback never replaces the primary error.
 
 Setup transaction failures use the failed `setup_plan` check.
 `finding.setup.transaction_failed` covers ordinary commit failures,
@@ -192,13 +195,18 @@ setup.
 
 Runtime Home rollback is allowed only to the successful publisher's guard
 after immediate exact revalidation. A publication ID, Runtime Home ID,
-manifest, path, schema, or installation mismatch is ownership loss: the final
-path is preserved and the result reports
-`runtime_home_publication=ownership_lost_during_rollback`. Setup policy or
+manifest, path, schema, or installation mismatch is ownership loss and reports
+`runtime_home_publication=ownership_lost_during_rollback`; final-path absence
+remains absence rather than being described as preserved. Setup policy or
 managed-host consumption reports `owned_publication_preserved`. A concurrent
 winner observer has no removal authority and remains
-`concurrent_winner_observed`; successful guarded removal reports
-`owned_publication_rolled_back`.
+`concurrent_winner_observed`. Guarded removal reports
+`owned_publication_rolled_back` once absence is observed, including when
+parent synchronization fails. That durability failure may make setup
+`partially_rolled_back`, but it does not change the removal effect. A recursive
+failure with a present or unclassifiable target reports
+`owned_publication_removal_incomplete` and retains the exact failure phase,
+effect, and path observation.
 
 These categories do not claim global filesystem atomicity. Prepare completes
 before commit, each managed file uses a same-directory atomic replacement, and

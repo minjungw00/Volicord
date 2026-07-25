@@ -150,6 +150,14 @@ rename and retains it through parent synchronization, read-back, and manifest
 confirmation. An `AlreadyExists` caller removes only its staging and observes
 the exact current winner without removal authority.
 
+If confirmation fails after publication, the primary confirmation error and
+the guard-backed rollback attempt form one typed failure. It records whether
+the final path was observed present, absent, or uncertain and keeps recursive
+removal effect separate from parent-directory durability. Complete removal is
+terminal even when parent synchronization fails; an incomplete or unknown
+effect is also terminal and cannot be retried against a later path occupant.
+These lifecycle facts do not select another storage profile or schema.
+
 An existing Runtime Home follows the exact-open checks above through a
 read-only connection before any setup mutation. The result is `Ready`,
 `Incompatible`, or `Corrupt`; a mismatch includes bounded manifest-digest and

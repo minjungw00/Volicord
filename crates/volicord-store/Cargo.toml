@@ -20,9 +20,10 @@ tempfile = "3"
 rustix = { version = "1", features = ["fs"] }
 
 [features]
-test-support = []
+test-support = ["volicord-platform-fs/test-support"]
 
 [dev-dependencies]
+volicord-platform-fs = { path = "../volicord-platform-fs", features = ["test-support"] }
 volicord-test-support = { path = "../volicord-test-support" }
 
 [lib]

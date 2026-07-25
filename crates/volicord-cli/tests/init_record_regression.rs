@@ -31,6 +31,9 @@ use volicord_cli::{
 };
 use volicord_host_contract::{CodexMcpCorrelation, HostSessionId, HostThreadId, HostTurnId};
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
+use volicord_platform_fs::directory_tree_removal_test_support::{
+    fail_next_directory_tree_removal, DirectoryTreeRemovalFault,
+};
 use volicord_store::{
     agent_connections::{
         agent_connection_record, connection_metadata_contains_pending_host_cleanup_key,
@@ -66,6 +69,7 @@ struct FakeConnectionProcess {
     fail_setup_call: Option<usize>,
     fail_setup_point: Option<String>,
     fail_during_rollback: bool,
+    directory_removal_fault: Option<DirectoryTreeRemovalFault>,
     concurrent_codex_bytes: Option<Vec<u8>>,
     post_commit_codex_bytes: Option<Vec<u8>>,
     setup_barrier: Option<Arc<Barrier>>,
@@ -93,6 +97,7 @@ impl FakeConnectionProcess {
             fail_setup_call: None,
             fail_setup_point: None,
             fail_during_rollback: false,
+            directory_removal_fault: None,
             concurrent_codex_bytes: None,
             post_commit_codex_bytes: None,
             setup_barrier: None,
@@ -159,6 +164,11 @@ impl ConnectionProcess for FakeConnectionProcess {
             if let Some(bytes) = self.post_commit_codex_bytes.take() {
                 fs::write(self.codex_home.join("config.toml"), bytes)
                     .map_err(|error| error.to_string())?;
+            }
+        }
+        if point == "during_rollback" {
+            if let Some(fault) = self.directory_removal_fault.take() {
+                fail_next_directory_tree_removal(fault);
             }
         }
         if (point == "during_rollback" && self.fail_during_rollback)
@@ -543,6 +553,76 @@ fn init_reports_partial_rollback_fault_but_continues_best_effort_restoration(
         fs::read(process.codex_home.join("config.toml"))?,
         external_bytes
     );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_reports_removed_runtime_home_with_failed_parent_sync_without_claiming_preservation(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-removal-parent-sync")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    process.fail_setup_point("runtime_home_publication_read_back");
+    process.directory_removal_fault = Some(DirectoryTreeRemovalFault::ParentDirectorySyncFailure);
+
+    let failure = run_record_init_outcome(&repo_root, &mut process)?;
+
+    assert_eq!(
+        failure["operation_details"]["result"]["disposition"],
+        "partially_rolled_back"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["runtime_home_publication"],
+        "owned_publication_rolled_back"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["runtime_home_rollback"]["outcome"],
+        "removed"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["runtime_home_rollback"]["durability"],
+        "parent_synchronization_failed"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["runtime_home_rollback"]["failure_phase"],
+        "parent_directory_synchronization"
+    );
+    assert!(!fixture.path().exists());
+    let output = serde_json::to_string(&failure)?;
+    assert!(!output.contains("publication remains"));
+    assert!(!output.contains("final path was preserved"));
+    Ok(())
+}
+
+#[test]
+fn init_reports_typed_incomplete_runtime_home_removal() -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-removal-incomplete")?;
+    let repo_root = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::new(&fixture)?;
+    process.fail_setup_point("runtime_home_publication_read_back");
+    process.directory_removal_fault = Some(DirectoryTreeRemovalFault::BeforeRecursiveRemoval);
+
+    let failure = run_record_init_outcome(&repo_root, &mut process)?;
+
+    assert_eq!(
+        failure["operation_details"]["result"]["disposition"],
+        "partially_rolled_back"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["runtime_home_publication"],
+        "owned_publication_removal_incomplete"
+    );
+    assert_eq!(
+        failure["operation_details"]["result"]["runtime_home_rollback"],
+        json!({
+            "outcome": "removal_incomplete",
+            "effect": "not_removed",
+            "phase": "recursive_removal",
+            "final_path": "present"
+        })
+    );
+    assert!(fixture.path().is_dir());
     Ok(())
 }
 

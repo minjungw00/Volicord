@@ -169,15 +169,24 @@ Commit publishes or validates the Runtime Home, applies checkpointed Store
 mutations, atomically replaces Product Repository files, atomically replaces
 Codex configuration last, and records the integration revision. Setup retains
 explicit states for prepared, owned published, owned confirmed, concurrent
-winner observed, owned preserved, and owned rolled-back publication. A stale
+winner observed, owned preserved, owned removal-incomplete, and owned
+rolled-back publication. A stale
 input is a concurrent-modification failure and the newer external bytes are
 preserved. Runtime Home rollback requires the owned guard to reopen the final
 home and revalidate its publication ID, Runtime Home identity, canonical
 manifest digest, exact paths and schema, prepared installation identity, and
 absence of managed-host consumption immediately before platform-owned
-removal. Any mismatch or consumption preserves the final path and reports a
-partial rollback. An observer never removes or modifies the concurrent
-winner. Runtime Home, Codex configuration, and the Product Repository may
+removal. Recursive-removal effect, the exact-path observation, and parent-entry
+durability are separate typed facts. Known removal makes the guard terminal
+before parent synchronization; a synchronization failure therefore reports an
+absent publication with unconfirmed durability, never a preserved
+publication. A removal error records whether no removal occurred, partial
+removal is possible, or complete removal was observed, and an incomplete
+effect is terminal so retry cannot delete a later replacement. Exact-path
+absence is an observation, not proof against later recreation. Ownership
+mismatch, managed-host consumption, and setup policy prevent removal; an
+observer never removes or modifies the concurrent winner. Runtime Home, Codex
+configuration, and the Product Repository may
 reside on distinct filesystems, so the guarantee is complete preparation,
 atomic replacement per file, and bounded rollback—not one global filesystem
 transaction.

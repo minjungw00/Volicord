@@ -11,7 +11,7 @@ use super::{
     human::{headline, render_activation_plan, CheckCounts},
     report::{
         projected_root_cause_ids, CommandOperation, ConnectionCommandReport,
-        ConnectionCommandResult,
+        ConnectionCommandResult, RuntimeHomeRollbackResult,
     },
     ConnectionCommandError, PlannedConnectionChangeKind,
 };
@@ -1308,12 +1308,60 @@ fn render_result(result: &ConnectionCommandResult) -> String {
         ConnectionCommandResult::Setup {
             disposition,
             runtime_home_publication,
+            runtime_home_rollback,
         } => {
             lines.push(format!("  Disposition: {}", disposition.as_str()));
             lines.push(format!(
                 "  Runtime Home publication: {}",
                 runtime_home_publication.as_str()
             ));
+            if let Some(rollback) = runtime_home_rollback {
+                match rollback {
+                    RuntimeHomeRollbackResult::Removed {
+                        durability,
+                        failure_phase,
+                    } => {
+                        lines.push("  Runtime Home rollback: removed".to_owned());
+                        lines.push(format!(
+                            "  Runtime Home rollback durability: {}",
+                            durability.as_str()
+                        ));
+                        if let Some(phase) = failure_phase {
+                            lines.push(format!(
+                                "  Runtime Home rollback failure phase: {}",
+                                phase.as_str()
+                            ));
+                        }
+                    }
+                    RuntimeHomeRollbackResult::RemovalIncomplete {
+                        effect,
+                        phase,
+                        final_path,
+                    } => {
+                        lines.push("  Runtime Home rollback: removal incomplete".to_owned());
+                        lines.push(format!(
+                            "  Runtime Home rollback effect: {}",
+                            effect.as_str()
+                        ));
+                        lines.push(format!(
+                            "  Runtime Home rollback failure phase: {}",
+                            phase.as_str()
+                        ));
+                        lines.push(format!(
+                            "  Runtime Home final path: {}",
+                            final_path.as_str()
+                        ));
+                    }
+                    RuntimeHomeRollbackResult::Preserved { reason } => {
+                        lines.push(format!("  Runtime Home rollback: preserved ({reason})"));
+                    }
+                    RuntimeHomeRollbackResult::OwnershipLost { reason } => {
+                        lines.push(format!(
+                            "  Runtime Home rollback: ownership lost ({reason})"
+                        ));
+                    }
+                }
+            }
         }
         ConnectionCommandResult::ModeTransition {
             changed,
@@ -1903,6 +1951,7 @@ mod tests {
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
                 runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
+                runtime_home_rollback: None,
             }),
             Some(vec![PlannedConnectionChange::new(
                 PlannedConnectionChangeKind::ManagedHostConfiguration,
@@ -2004,6 +2053,7 @@ mod tests {
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Committed,
                 runtime_home_publication: RuntimeHomePublicationStatus::ExistingReady,
+                runtime_home_rollback: None,
             }),
             None,
         );
@@ -2957,6 +3007,7 @@ mod tests {
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
                 runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
+                runtime_home_rollback: None,
             }),
             None,
         );

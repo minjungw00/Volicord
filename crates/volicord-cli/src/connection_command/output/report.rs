@@ -8,6 +8,10 @@ use std::{
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
+use volicord_platform_fs::{
+    DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalPhase,
+    DirectoryTreeTargetState,
+};
 use volicord_types::{
     derive_integration_activation_state, diagnostic_root_cause_ids, ActivationStep,
     ActivationStepId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
@@ -103,6 +107,8 @@ pub(super) enum ConnectionCommandResult {
     Setup {
         disposition: SetupDisposition,
         runtime_home_publication: RuntimeHomePublicationStatus,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        runtime_home_rollback: Option<RuntimeHomeRollbackResult>,
     },
     ModeTransition {
         changed: bool,
@@ -119,6 +125,28 @@ pub(super) enum ConnectionCommandResult {
     },
 }
 
+/// Stable typed Runtime Home rollback result carried by failed setup output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub(in crate::connection_command) enum RuntimeHomeRollbackResult {
+    Removed {
+        durability: DirectoryEntryDurability,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        failure_phase: Option<DirectoryTreeRemovalPhase>,
+    },
+    RemovalIncomplete {
+        effect: DirectoryTreeRemovalEffect,
+        phase: DirectoryTreeRemovalPhase,
+        final_path: DirectoryTreeTargetState,
+    },
+    Preserved {
+        reason: String,
+    },
+    OwnershipLost {
+        reason: String,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(in crate::connection_command) enum RuntimeHomePublicationStatus {
@@ -127,6 +155,7 @@ pub(in crate::connection_command) enum RuntimeHomePublicationStatus {
     PublishedByThisInvocation,
     ConcurrentWinnerObserved,
     OwnedPublicationRolledBack,
+    OwnedPublicationRemovalIncomplete,
     OwnedPublicationPreserved,
     OwnershipLostDuringRollback,
 }
@@ -139,6 +168,7 @@ impl RuntimeHomePublicationStatus {
             Self::PublishedByThisInvocation => "published_by_this_invocation",
             Self::ConcurrentWinnerObserved => "concurrent_winner_observed",
             Self::OwnedPublicationRolledBack => "owned_publication_rolled_back",
+            Self::OwnedPublicationRemovalIncomplete => "owned_publication_removal_incomplete",
             Self::OwnedPublicationPreserved => "owned_publication_preserved",
             Self::OwnershipLostDuringRollback => "ownership_lost_during_rollback",
         }
@@ -262,6 +292,7 @@ impl ConnectionCommandReport {
                 disposition,
                 runtime_home_publication: runtime_home_publication
                     .unwrap_or(RuntimeHomePublicationStatus::ExistingReady),
+                runtime_home_rollback: None,
             }),
             planned_changes: None,
             limits: cooperative_assurance_limits(),
@@ -410,6 +441,7 @@ impl ConnectionCommandReport {
             Some(ConnectionCommandResult::Setup {
                 disposition: SetupDisposition::Planned,
                 runtime_home_publication: RuntimeHomePublicationStatus::NotPublished,
+                runtime_home_rollback: None,
             }),
             Some(planned_changes),
         )
@@ -540,6 +572,7 @@ impl ConnectionCommandReport {
         connection: CommandConnection,
         disposition: SetupDisposition,
         runtime_home_publication: RuntimeHomePublicationStatus,
+        runtime_home_rollback: Option<RuntimeHomeRollbackResult>,
         diagnostic: SetupFailureDiagnostic,
         summary: &str,
         details: Value,
@@ -581,6 +614,7 @@ impl ConnectionCommandReport {
             Some(ConnectionCommandResult::Setup {
                 disposition,
                 runtime_home_publication,
+                runtime_home_rollback,
             }),
             None,
         )?;
@@ -1235,6 +1269,10 @@ mod tests {
                 "owned_publication_rolled_back",
             ),
             (
+                RuntimeHomePublicationStatus::OwnedPublicationRemovalIncomplete,
+                "owned_publication_removal_incomplete",
+            ),
+            (
                 RuntimeHomePublicationStatus::OwnedPublicationPreserved,
                 "owned_publication_preserved",
             ),
@@ -1257,6 +1295,89 @@ mod tests {
                 expected
             );
             assert_eq!(status.as_str(), expected);
+        }
+    }
+
+    #[test]
+    fn setup_results_serialize_typed_runtime_home_rollback_effects() {
+        for (status, rollback, expected) in [
+            (
+                RuntimeHomePublicationStatus::OwnedPublicationRolledBack,
+                RuntimeHomeRollbackResult::Removed {
+                    durability: DirectoryEntryDurability::ParentSynchronized,
+                    failure_phase: None,
+                },
+                json!({
+                    "outcome": "removed",
+                    "durability": "parent_synchronized",
+                }),
+            ),
+            (
+                RuntimeHomePublicationStatus::OwnedPublicationRolledBack,
+                RuntimeHomeRollbackResult::Removed {
+                    durability: DirectoryEntryDurability::ParentSynchronizationFailed,
+                    failure_phase: Some(DirectoryTreeRemovalPhase::ParentDirectorySynchronization),
+                },
+                json!({
+                    "outcome": "removed",
+                    "durability": "parent_synchronization_failed",
+                    "failure_phase": "parent_directory_synchronization",
+                }),
+            ),
+            (
+                RuntimeHomePublicationStatus::OwnedPublicationRemovalIncomplete,
+                RuntimeHomeRollbackResult::RemovalIncomplete {
+                    effect: DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+                    phase: DirectoryTreeRemovalPhase::PostRemovalInspection,
+                    final_path: DirectoryTreeTargetState::Unknown,
+                },
+                json!({
+                    "outcome": "removal_incomplete",
+                    "effect": "partially_removed_or_unknown",
+                    "phase": "post_removal_inspection",
+                    "final_path": "unknown",
+                }),
+            ),
+            (
+                RuntimeHomePublicationStatus::OwnedPublicationPreserved,
+                RuntimeHomeRollbackResult::Preserved {
+                    reason: "setup_policy".to_owned(),
+                },
+                json!({
+                    "outcome": "preserved",
+                    "reason": "setup_policy",
+                }),
+            ),
+            (
+                RuntimeHomePublicationStatus::OwnershipLostDuringRollback,
+                RuntimeHomeRollbackResult::OwnershipLost {
+                    reason: "final_path_missing".to_owned(),
+                },
+                json!({
+                    "outcome": "ownership_lost",
+                    "reason": "final_path_missing",
+                }),
+            ),
+        ] {
+            let report = ConnectionCommandReport::setup_failure(
+                CommandOperation::Init,
+                Path::new("/runtime"),
+                connection(),
+                SetupDisposition::PartiallyRolledBack,
+                status,
+                Some(rollback),
+                SetupFailureDiagnostic::PartialRollback,
+                "Setup rollback retained typed Runtime Home facts",
+                json!({"retryable": true}),
+                IntegrationActivationPlan::empty(IntegrationActivationState::Failed),
+            )
+            .expect("setup failure report");
+
+            let value = diagnostic_value(&report);
+            assert_eq!(
+                value["operation_details"]["result"]["runtime_home_rollback"],
+                expected
+            );
         }
     }
 

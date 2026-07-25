@@ -139,6 +139,13 @@ directory를 공개합니다. 성공한 publisher는 rename 직후 invocation별
 directory 동기화, read-back, manifest 확인까지 이를 유지합니다. `AlreadyExists`를 받은
 호출자는 자기 staging만 제거하고 제거 권한 없이 정확한 현재 승자를 관찰합니다.
 
+공개 뒤 확인이 실패하면 주 확인 오류와 guard 기반 rollback 시도를 typed 실패 하나로
+유지합니다. 이 실패는 최종 경로가 present, absent, uncertain 중 무엇으로 관찰되었는지
+기록하고 재귀 제거 효과와 상위 directory 내구성을 분리합니다. 상위 directory 동기화가
+실패해도 완전한 제거는 terminal이며, 불완전하거나 알 수 없는 효과도 terminal이어서 이후
+경로 점유자를 대상으로 재시도할 수 없습니다. 이 lifecycle fact는 다른 storage profile이나
+schema를 선택하지 않습니다.
+
 기존 Runtime Home은 setup 변경 전에 읽기 전용 연결로 위의 정확한 열기 검사를 수행합니다.
 결과는 `Ready`, `Incompatible`, `Corrupt`이며 불일치는 manifest digest와 물리 relation
 사실을 한도 안에서 포함합니다. Store는 호환되지 않거나 손상된 home 위에 staging을

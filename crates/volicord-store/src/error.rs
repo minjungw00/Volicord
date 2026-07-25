@@ -2,7 +2,9 @@ use std::{error::Error, fmt, io};
 
 use rusqlite::{ffi, ErrorCode as SqliteErrorCode};
 
-use crate::bootstrap::{RuntimeHomeCorruption, RuntimeHomeSchemaMismatch};
+use crate::bootstrap::{
+    RuntimeHomeCorruption, RuntimeHomePublicationConfirmationFailure, RuntimeHomeSchemaMismatch,
+};
 
 /// Store-layer result type.
 pub type StoreResult<T> = Result<T, StoreError>;
@@ -80,6 +82,9 @@ pub enum StoreError {
     RuntimeHomeSchemaMismatch(Box<RuntimeHomeSchemaMismatch>),
     /// An existing Runtime Home cannot be decoded as one valid storage instance.
     RuntimeHomeCorruption(RuntimeHomeCorruption),
+    /// An owned Runtime Home was published but confirmation failed; the
+    /// rollback attempt and final-path observation remain attached.
+    RuntimeHomePublicationConfirmation(Box<RuntimeHomePublicationConfirmationFailure>),
 }
 
 impl StoreError {
@@ -341,6 +346,15 @@ impl StoreError {
                 field: None,
                 owner_state_error: None,
             },
+            Self::RuntimeHomePublicationConfirmation(_) => StoreFailureClassification {
+                route: StoreFailureRoute::OperationalUnavailable,
+                category: "runtime_home_publication_confirmation_failed",
+                retryable: true,
+                database_kind: Some("registry"),
+                entity: Some("runtime_home"),
+                field: None,
+                owner_state_error: None,
+            },
         }
     }
 }
@@ -557,6 +571,7 @@ impl fmt::Display for StoreError {
             ),
             Self::RuntimeHomeSchemaMismatch(mismatch) => mismatch.fmt(formatter),
             Self::RuntimeHomeCorruption(corruption) => corruption.fmt(formatter),
+            Self::RuntimeHomePublicationConfirmation(failure) => failure.fmt(formatter),
         }
     }
 }
@@ -580,6 +595,7 @@ impl Error for StoreError {
             | Self::SchemaInvariant { .. }
             | Self::RuntimeHomeSchemaMismatch(_)
             | Self::RuntimeHomeCorruption(_) => None,
+            Self::RuntimeHomePublicationConfirmation(failure) => Some(failure),
         }
     }
 }

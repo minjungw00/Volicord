@@ -156,6 +156,8 @@ Runtime Home bootstrap은 setup 변경 전에 이 규칙을 적용합니다. 기
 수 있습니다. 공개 전 실패는 staging을 제거하고 최종 경로를 만들지 않습니다. Rename이
 성공한 뒤에는 호출자가 이미 invocation별 publication guard를 보유하므로 상위 directory
 동기화, read-back, manifest 검증 실패에도 명시적인 rollback 또는 보존 권한이 남습니다.
+그 결과인 composite 실패는 주 확인 오류, publication 발생 여부, rollback 결과, 최종 경로
+존재 상태, 상위 entry 내구성을 보존하며 rollback 오류가 주 오류를 대체하지 않습니다.
 
 Setup transaction 실패는 실패한 `setup_plan` check를 사용합니다. 일반적인 commit
 실패에는 `finding.setup.transaction_failed`, planning 뒤 bytes가 바뀐 입력에는
@@ -171,11 +173,16 @@ activation plan에는 host activation step이 없습니다.
 
 Runtime Home rollback은 성공한 publisher의 guard가 즉시 정확한 재검증을 통과한 경우에만
 허용됩니다. Publication ID, Runtime Home ID, manifest, 경로, schema, installation
-불일치는 소유권 상실이며 최종 경로를 보존하고
-`runtime_home_publication=ownership_lost_during_rollback`을 보고합니다. Setup 정책이나
+불일치는 소유권 상실이며
+`runtime_home_publication=ownership_lost_during_rollback`을 보고합니다. 최종 경로 부재는
+보존으로 표현하지 않고 부재로 유지합니다. Setup 정책이나
 managed-host 소비는 `owned_publication_preserved`를 보고합니다. 동시 승자 관찰자는 제거
-권한이 없으며 `concurrent_winner_observed`로 남고, guard를 통한 제거가 성공하면
-`owned_publication_rolled_back`을 보고합니다.
+권한이 없으며 `concurrent_winner_observed`로 남습니다. Guard를 통한 제거는 부재가
+관찰되는 즉시 `owned_publication_rolled_back`을 보고하며, 상위 directory 동기화 실패도
+여기에 포함됩니다. 이 내구성 실패 때문에 setup이 `partially_rolled_back`이 될 수 있지만
+제거 효과는 바뀌지 않습니다. 재귀 제거가 실패하고 target이 present이거나 분류할 수 없으면
+`owned_publication_removal_incomplete`를 보고하고 정확한 실패 단계, 효과, 경로 관찰을
+유지합니다.
 
 이 범주는 전역 파일시스템 원자성을 주장하지 않습니다. Prepare는 commit 전에 끝나고,
 각 관리 파일은 같은 directory의 원자 교체를 사용하며, 서로 독립적인 Runtime Home,

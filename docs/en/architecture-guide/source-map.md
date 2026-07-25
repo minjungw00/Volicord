@@ -32,7 +32,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, platform-native namespace operations, and canonical read-only Git layout discovery. |
+| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, effect-aware exact directory-tree removal and parent-entry durability, platform-native namespace operations, and canonical read-only Git layout discovery. |
 | `crates/volicord-cli/src/host_integration/process.rs` | Process-target validation and target-path filesystem enforcement from platform-boundary observations. |
 
 ## Platform Process Boundary
@@ -50,7 +50,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-store/src/schema/registry.sql` | Canonical Runtime Home registry DDL source. |
 | `crates/volicord-store/src/schema/project.sql` | Canonical project Store DDL source. |
-| `crates/volicord-store/src/bootstrap.rs` | Runtime Home staging, opaque publication provenance, atomic no-replace publication outcomes, token-backed confirmation and rollback, and Store bootstrap. |
+| `crates/volicord-store/src/bootstrap.rs` | Runtime Home staging, opaque publication provenance, atomic no-replace publication outcomes, token-backed terminal rollback states, composite confirmation failures, and Store bootstrap. |
 | `crates/volicord-store/src/setup_transaction.rs` | Explicit prepare, input validation, mutation checkpoint, commit, and guarded rollback boundary for the existing Store files touched by setup. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection records, project allowlists, managed fingerprints, and persisted verification-report boundary. |
 | `crates/volicord-store/src/diagnostic_findings/mod.rs` | Lifecycle-specific diagnostic persistence facade and public Store API exports. |
@@ -94,7 +94,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
 | `crates/volicord-cli/src/host_launch.rs` | Hidden same-process host launcher, exact current Codex entry revalidation, launch-lease issue/cleanup, and in-memory transition into managed stdio. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
-| `crates/volicord-cli/src/connection_command/setup_transaction.rs` | Typed `SetupPlan`, explicit Runtime Home publication ownership states, same-directory atomic file mutations, freshness validation, deterministic commit, and guarded bounded rollback for `volicord init`. |
+| `crates/volicord-cli/src/connection_command/setup_transaction.rs` | Typed `SetupPlan`, explicit Runtime Home publication ownership and removal-effect states, same-directory atomic file mutations, freshness validation, deterministic commit, effect-aware Project Home cleanup, and guarded bounded rollback for `volicord init`. |
 | `crates/volicord-cli/src/connection_command/verification/mod.rs` | Connection verification coordinator, shared step/report types, and bounded package exports. |
 | `crates/volicord-cli/src/connection_command/verification/host_checks.rs` | Managed configuration, host executable, project trust, and managed-host session checks. |
 | `crates/volicord-cli/src/connection_command/verification/mcp_checks.rs` | MCP preflight/handshake check projection and MCP finding-ID inputs. |
@@ -112,7 +112,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/connection_command/mcp_process/` | Managed launch materialization, bounded child-process supervision policy and deadlines, preflight interpretation, stdio JSON-RPC framing and probe sequencing, exchange progress, and typed lifecycle or protocol diagnostics. Low-level containment and pipe readiness route through `volicord-platform-process`. |
 | `crates/volicord-cli/src/connection_command/mcp_process/host_compatibility.rs` | Independently pinned host-profile fixtures and Codex request/tool-call shapes; these are not derived from the production protocol registry. |
 | `crates/volicord-cli/src/connection_command/mcp_process/pinned_schema.rs` | Revision-specific validation of initialize, `tools/list`, and `tools/call` probe messages against the pinned offline schemas. |
-| `crates/volicord-cli/src/connection_command/output/` | Canonical selected-Connection diagnostic report construction, aggregate status and roots, and concise, verbose, and lossless JSON presentation of the same required and optional activation plan without a second renderer-owned step list. |
+| `crates/volicord-cli/src/connection_command/output/` | Canonical selected-Connection diagnostic report construction, aggregate status and roots, typed Runtime Home rollback effect/durability output, and concise, verbose, and lossless JSON presentation of the same required and optional activation plan without a second renderer-owned step list. |
 | `crates/volicord-cli/tests/init_record_regression.rs` | Init plan/read-only, replay, migration, exact owner record, post-rename and all-stage setup fault injection, bounded competing full-init publication, concurrent modification, full rollback, and partial-rollback reporting regressions. |
 | `crates/volicord-cli/src/diagnostics_command.rs` | Finding-ID and runtime-session detail commands, bounded lifecycle-aware cause traversal, lookup-specific JSON and human projection, and lookup-status exit outcomes independent of finding severity. |
 | `crates/volicord-cli/src/host_integration/codex/` | Codex configuration parsing and serialization, canonical managed-entry validation, preservation of the allowed tool-approval overlay, managed configuration mutation, diagnostic executable observations, and connection verification. |

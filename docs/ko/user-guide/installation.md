@@ -206,7 +206,11 @@ Runtime Home을 공개하거나 검증하고 Store mutation을 적용한 뒤 rep
 복원하고 소유한 staging을 안전할 때 제거하며 `preserved`, `rolled_back`,
 `partially_rolled_back`을 정확히 보고합니다. Runtime Home을 제거하려면 소유 publication
 guard가 정확한 ID, manifest, 경로, schema, installation, managed-host 소비 부재를 다시
-검증해야 하며 동시 승자와 소유권 불일치는 보존합니다. 이후 writer 때문에 복원이 안전하지
+검증해야 합니다. 동시 승자에는 제거 권한이 없고 소유권 불일치는 제거를 중단합니다. 재귀
+제거 효과와 상위 directory 내구성은 별도로 보고합니다. Runtime Home이 부재하지만 상위
+directory 동기화가 실패했다면 publication이 남아 있다고 하지 않고 내구성을 확인하지 못한
+제거로 보고합니다. 불완전하거나 불확실한 제거는 별도로 보고하며 재생성된 경로를 대상으로
+재시도하지 않습니다. 이후 writer 때문에 복원이 안전하지
 않은 상황에서 복구 entry 삭제가 pre-existing file을 잃게 한다면 그 entry를 보존하고
 diagnostic에 경로를 기록합니다. Runtime Home, Codex home, Product
 Repository가 서로 다른 파일시스템에 있을 수 있으므로 commit 전에 준비는 모두 끝나고

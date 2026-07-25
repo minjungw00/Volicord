@@ -5,6 +5,10 @@ use std::{
 };
 
 use sha2::{Digest, Sha256};
+use volicord_platform_fs::{
+    DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalOutcome,
+    DirectoryTreeTargetState,
+};
 use volicord_store::bootstrap::{
     commit_runtime_home, inspect_runtime_home_bootstrap, prepare_runtime_home_with_installation,
     project_record_by_repo_root_read_only, InstallationProfileRegistration, PreparedRuntimeHome,
@@ -15,7 +19,10 @@ use volicord_store::setup_transaction::{PreparedStoreMutationBoundary, StoreMuta
 use volicord_store::sqlite::registry_db_path;
 use volicord_types::IntegrationActivationPlan;
 
-use super::{output::RuntimeHomePublicationStatus, ConnectionCommandError};
+use super::{
+    output::{RuntimeHomePublicationStatus, RuntimeHomeRollbackResult},
+    ConnectionCommandError,
+};
 
 pub(super) const FAULT_AFTER_RUNTIME_HOME_PREPARATION: &str = "after_runtime_home_preparation";
 pub(super) const FAULT_AFTER_REGISTRY_MUTATION_PREPARATION: &str =
@@ -414,6 +421,7 @@ enum SetupRuntimeHomePublication {
     ConcurrentWinnerObserved,
     OwnedPreserved(RuntimeHomePublicationGuard),
     OwnedRolledBack,
+    OwnedRemovalIncomplete,
     OwnershipLost,
     Transitioning,
 }
@@ -660,16 +668,69 @@ impl PreparedSetup {
             | SetupRuntimeHomePublication::OwnedConfirmed(mut publication)
             | SetupRuntimeHomePublication::OwnedPreserved(mut publication) => {
                 match publication.rollback_if_owned() {
-                    Ok(
-                        RuntimeHomePublicationRollbackOutcome::RolledBack
-                        | RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack,
-                    ) => {
-                        summary.rolled_back += 1;
+                    Ok(RuntimeHomePublicationRollbackOutcome::RolledBack {
+                        durability,
+                        failure,
+                    }) => {
+                        summary.runtime_home_rollback = Some(RuntimeHomeRollbackResult::Removed {
+                            durability,
+                            failure_phase: failure.as_ref().map(|error| error.phase),
+                        });
+                        if failure.is_some()
+                            || durability == DirectoryEntryDurability::ParentSynchronizationFailed
+                        {
+                            summary.partially_rolled_back += 1;
+                            summary.errors.push(format!(
+                                "SETUP_PARTIAL_ROLLBACK: the owned Runtime Home publication was removed, but parent-directory durability was not confirmed ({})",
+                                durability.as_str()
+                            ));
+                        } else {
+                            summary.rolled_back += 1;
+                        }
                         self.runtime_home_publication =
                             SetupRuntimeHomePublication::OwnedRolledBack;
                     }
+                    Ok(RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack { durability }) => {
+                        summary.runtime_home_rollback = Some(RuntimeHomeRollbackResult::Removed {
+                            durability,
+                            failure_phase: None,
+                        });
+                        if durability == DirectoryEntryDurability::ParentSynchronizationFailed {
+                            summary.partially_rolled_back += 1;
+                            summary.errors.push(
+                                "SETUP_PARTIAL_ROLLBACK: the owned Runtime Home publication was already removed, but parent-directory synchronization had failed"
+                                    .to_owned(),
+                            );
+                        } else {
+                            summary.rolled_back += 1;
+                        }
+                        self.runtime_home_publication =
+                            SetupRuntimeHomePublication::OwnedRolledBack;
+                    }
+                    Ok(RuntimeHomePublicationRollbackOutcome::RemovalIncomplete { failure }) => {
+                        summary.partially_rolled_back += 1;
+                        summary.runtime_home_rollback =
+                            Some(RuntimeHomeRollbackResult::RemovalIncomplete {
+                                effect: failure.effect,
+                                phase: failure.phase,
+                                final_path: failure.target_state,
+                            });
+                        summary.errors.push(format!(
+                            "SETUP_PARTIAL_ROLLBACK: Runtime Home removal was incomplete or uncertain (effect: {}, phase: {}, final path: {}): {}",
+                            failure.effect.as_str(),
+                            failure.phase.as_str(),
+                            failure.target_state.as_str(),
+                            failure.io_error()
+                        ));
+                        self.runtime_home_publication =
+                            SetupRuntimeHomePublication::OwnedRemovalIncomplete;
+                    }
                     Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason }) => {
                         summary.partially_rolled_back += 1;
+                        summary.runtime_home_rollback =
+                            Some(RuntimeHomeRollbackResult::Preserved {
+                                reason: reason.as_str().to_owned(),
+                            });
                         summary.errors.push(format!(
                             "SETUP_PARTIAL_ROLLBACK: the owned Runtime Home publication was preserved ({})",
                             reason.as_str()
@@ -679,8 +740,12 @@ impl PreparedSetup {
                     }
                     Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost { reason }) => {
                         summary.partially_rolled_back += 1;
+                        summary.runtime_home_rollback =
+                            Some(RuntimeHomeRollbackResult::OwnershipLost {
+                                reason: reason.as_str().to_owned(),
+                            });
                         summary.errors.push(format!(
-                            "SETUP_PARTIAL_ROLLBACK: Runtime Home publication ownership was lost and the final path was preserved ({})",
+                            "SETUP_PARTIAL_ROLLBACK: Runtime Home publication ownership was lost ({})",
                             reason.as_str()
                         ));
                         self.runtime_home_publication = SetupRuntimeHomePublication::OwnershipLost;
@@ -706,6 +771,7 @@ impl PreparedSetup {
         } else if matches!(
             self.runtime_home_publication,
             SetupRuntimeHomePublication::OwnedRolledBack
+                | SetupRuntimeHomePublication::OwnedRemovalIncomplete
                 | SetupRuntimeHomePublication::OwnedPreserved(_)
                 | SetupRuntimeHomePublication::OwnershipLost
         ) {
@@ -722,10 +788,26 @@ impl PreparedSetup {
         }
         if let Some(project_home) = self.created_project_home.take() {
             match remove_created_project_home(&project_home) {
-                Ok(()) => summary.rolled_back += 1,
+                Ok(outcome) => {
+                    debug_assert_eq!(outcome.effect, DirectoryTreeRemovalEffect::Removed);
+                    summary.rolled_back += 1;
+                }
+                Err(error)
+                    if error.effect == DirectoryTreeRemovalEffect::NotRemoved
+                        && error.target_state == DirectoryTreeTargetState::Absent =>
+                {
+                    summary.rolled_back += 1;
+                }
                 Err(error) => {
                     summary.partially_rolled_back += 1;
-                    summary.errors.push(error.to_string());
+                    summary.errors.push(format!(
+                        "SETUP_PARTIAL_ROLLBACK: project Store cleanup effect {}, phase {}, final path {}, durability {}: {}",
+                        error.effect.as_str(),
+                        error.phase.as_str(),
+                        error.target_state.as_str(),
+                        error.durability.as_str(),
+                        error.io_error()
+                    ));
                 }
             }
         }
@@ -752,6 +834,7 @@ impl PreparedSetup {
             SetupRuntimeHomePublication::OwnedPublished(_)
                 | SetupRuntimeHomePublication::OwnedConfirmed(_)
                 | SetupRuntimeHomePublication::OwnedPreserved(_)
+                | SetupRuntimeHomePublication::OwnedRemovalIncomplete
                 | SetupRuntimeHomePublication::OwnershipLost
         ) || self.store_applied
             || self
@@ -808,6 +891,9 @@ impl PreparedSetup {
             SetupRuntimeHomePublication::OwnedRolledBack => {
                 RuntimeHomePublicationStatus::OwnedPublicationRolledBack
             }
+            SetupRuntimeHomePublication::OwnedRemovalIncomplete => {
+                RuntimeHomePublicationStatus::OwnedPublicationRemovalIncomplete
+            }
             SetupRuntimeHomePublication::OwnershipLost => {
                 RuntimeHomePublicationStatus::OwnershipLostDuringRollback
             }
@@ -827,6 +913,7 @@ pub(super) struct RollbackSummary {
     pub(super) rolled_back: usize,
     pub(super) partially_rolled_back: usize,
     pub(super) errors: Vec<String>,
+    pub(super) runtime_home_rollback: Option<RuntimeHomeRollbackResult>,
 }
 
 impl RollbackSummary {
@@ -1120,19 +1207,52 @@ fn remove_empty_directories(directories: &[PathBuf]) {
     }
 }
 
-fn remove_created_project_home(path: &Path) -> Result<(), ConnectionCommandError> {
-    if !path.try_exists().map_err(|error| {
-        ConnectionCommandError::runtime(format!(
-            "failed to inspect project Store created by setup {}: {error}",
-            path.display()
-        ))
-    })? {
-        return Ok(());
+fn remove_created_project_home(
+    path: &Path,
+) -> Result<DirectoryTreeRemovalOutcome, volicord_platform_fs::DirectoryTreeRemovalError> {
+    volicord_platform_fs::remove_owned_directory_tree(path)
+}
+
+#[cfg(test)]
+mod removal_tests {
+    use tempfile::tempdir;
+    use volicord_platform_fs::directory_tree_removal_test_support::{
+        fail_next_directory_tree_removal, DirectoryTreeRemovalFault,
+    };
+
+    use super::*;
+
+    #[test]
+    fn created_project_home_cleanup_uses_effect_aware_removal() -> io::Result<()> {
+        let root = tempdir()?;
+        let project_home = root.path().join("project-home");
+        fs::create_dir(&project_home)?;
+        fs::write(project_home.join("state.sqlite"), b"fixture")?;
+
+        let outcome = remove_created_project_home(&project_home)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+
+        assert_eq!(outcome.effect, DirectoryTreeRemovalEffect::Removed);
+        assert_eq!(outcome.target_state, DirectoryTreeTargetState::Absent);
+        assert!(!project_home.exists());
+        Ok(())
     }
-    fs::remove_dir_all(path).map_err(|error| {
-        ConnectionCommandError::runtime(format!(
-            "failed to remove project Store created by this setup invocation {}: {error}",
-            path.display()
-        ))
-    })
+
+    #[cfg(unix)]
+    #[test]
+    fn created_project_home_cleanup_retains_removed_parent_sync_failure() -> io::Result<()> {
+        let root = tempdir()?;
+        let project_home = root.path().join("project-home");
+        fs::create_dir(&project_home)?;
+        fs::write(project_home.join("state.sqlite"), b"fixture")?;
+        fail_next_directory_tree_removal(DirectoryTreeRemovalFault::ParentDirectorySyncFailure);
+
+        let error = remove_created_project_home(&project_home)
+            .expect_err("parent synchronization fault must be retained");
+
+        assert_eq!(error.effect, DirectoryTreeRemovalEffect::Removed);
+        assert_eq!(error.target_state, DirectoryTreeTargetState::Absent);
+        assert!(!project_home.exists());
+        Ok(())
+    }
 }

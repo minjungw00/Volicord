@@ -2,12 +2,17 @@ use std::{
     collections::BTreeSet,
     fmt, fs, io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tempfile::{Builder as TempDirBuilder, TempDir};
+use volicord_platform_fs::{
+    DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalError,
+    DirectoryTreeTargetState,
+};
 use volicord_types::{
     canonical_json_string, GeneratedRelationKind, RuntimeHomePublicationId, StorageDatabaseKind,
     StorageManifest, UtcTimestamp, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
@@ -288,12 +293,16 @@ pub struct RuntimeHomePublicationGuard {
     state: RuntimeHomePublicationGuardState,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 enum RuntimeHomePublicationGuardState {
     Published,
     Confirmed,
     Preserved(RuntimeHomePublicationPreservationReason),
-    RolledBack,
+    OwnershipLost(RuntimeHomePublicationOwnershipLoss),
+    RemovalIncomplete(Arc<DirectoryTreeRemovalError>),
+    RolledBack {
+        durability: DirectoryEntryDurability,
+    },
 }
 
 /// Closed reason why an owned publication remains at its final path.
@@ -344,10 +353,18 @@ impl RuntimeHomePublicationOwnershipLoss {
 }
 
 /// Result of an explicit token-backed publication rollback attempt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum RuntimeHomePublicationRollbackOutcome {
-    RolledBack,
-    AlreadyRolledBack,
+    RolledBack {
+        durability: DirectoryEntryDurability,
+        failure: Option<Arc<DirectoryTreeRemovalError>>,
+    },
+    AlreadyRolledBack {
+        durability: DirectoryEntryDurability,
+    },
+    RemovalIncomplete {
+        failure: Arc<DirectoryTreeRemovalError>,
+    },
     Preserved {
         reason: RuntimeHomePublicationPreservationReason,
     },
@@ -364,11 +381,123 @@ enum RuntimeHomeBootstrapPhase {
     AtomicRename,
 }
 
+/// Confirmation operation that failed after an owned Runtime Home publication.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RuntimeHomePublicationConfirmationPhase {
+pub enum RuntimeHomePublicationConfirmationPhase {
     ParentDirectorySync,
     PublicationReadBack,
     PublicationManifestValidation,
+}
+
+impl RuntimeHomePublicationConfirmationPhase {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ParentDirectorySync => "parent_directory_sync",
+            Self::PublicationReadBack => "publication_read_back",
+            Self::PublicationManifestValidation => "publication_manifest_validation",
+        }
+    }
+}
+
+/// Typed primary failure from confirmation of an owned publication.
+#[derive(Debug)]
+pub struct RuntimeHomePublicationConfirmationError {
+    pub phase: RuntimeHomePublicationConfirmationPhase,
+    pub parent_durability: DirectoryEntryDurability,
+    source: Box<StoreError>,
+}
+
+impl RuntimeHomePublicationConfirmationError {
+    fn new(
+        phase: RuntimeHomePublicationConfirmationPhase,
+        parent_durability: DirectoryEntryDurability,
+        source: StoreError,
+    ) -> Self {
+        Self {
+            phase,
+            parent_durability,
+            source: Box::new(source),
+        }
+    }
+
+    pub fn store_error(&self) -> &StoreError {
+        &self.source
+    }
+}
+
+impl fmt::Display for RuntimeHomePublicationConfirmationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "Runtime Home publication confirmation failed during {} (parent durability: {}): {}",
+            self.phase.as_str(),
+            self.parent_durability.as_str(),
+            self.source
+        )
+    }
+}
+
+impl std::error::Error for RuntimeHomePublicationConfirmationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+/// Final-path observation retained with a publication-confirmation failure.
+///
+/// This is evidence at rollback completion, not a promise that another process
+/// cannot recreate the path later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeHomeFinalPathState {
+    Present,
+    Absent,
+    Uncertain,
+}
+
+impl RuntimeHomeFinalPathState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Present => "present",
+            Self::Absent => "absent",
+            Self::Uncertain => "uncertain",
+        }
+    }
+}
+
+/// Rollback attempt retained by a publication-confirmation failure.
+#[derive(Debug)]
+pub enum RuntimeHomePublicationRollbackAttempt {
+    Completed(RuntimeHomePublicationRollbackOutcome),
+    Failed(StoreError),
+}
+
+/// Composite failure for a published Runtime Home that could not be confirmed.
+#[derive(Debug)]
+pub struct RuntimeHomePublicationConfirmationFailure {
+    pub primary: RuntimeHomePublicationConfirmationError,
+    pub publication_occurred: bool,
+    pub rollback: RuntimeHomePublicationRollbackAttempt,
+    pub final_path_state: RuntimeHomeFinalPathState,
+    pub rollback_parent_durability: DirectoryEntryDurability,
+}
+
+impl fmt::Display for RuntimeHomePublicationConfirmationFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}; publication occurred: {}; rollback final path: {}; rollback parent durability: {}",
+            self.primary,
+            self.publication_occurred,
+            self.final_path_state.as_str(),
+            self.rollback_parent_durability.as_str()
+        )
+    }
+}
+
+impl std::error::Error for RuntimeHomePublicationConfirmationFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.primary)
+    }
 }
 
 const BOOTSTRAP_MISMATCH_FACT_LIMIT: usize = 32;
@@ -629,7 +758,7 @@ impl RuntimeHomePublicationGuard {
     /// Synchronizes the final path's parent directory after publication.
     ///
     /// The guard remains owned by the caller when this operation fails.
-    pub fn synchronize_parent_directory(&mut self) -> StoreResult<()> {
+    pub fn synchronize_parent_directory(&mut self) -> StoreResult<DirectoryEntryDurability> {
         self.require_live("synchronize")?;
         let parent = self
             .final_path
@@ -637,7 +766,8 @@ impl RuntimeHomePublicationGuard {
             .ok_or_else(|| StoreError::InvalidInput {
                 detail: "runtime_home must have a parent directory".to_owned(),
             })?;
-        sync_directory(parent)
+        sync_directory(parent)?;
+        Ok(runtime_home_parent_durability())
     }
 
     /// Reads back and validates the exact publication identity without yet
@@ -677,7 +807,9 @@ impl RuntimeHomePublicationGuard {
 
     /// Completes parent synchronization, read-back, and exact manifest
     /// validation while keeping the guard in the caller's ownership on error.
-    pub fn confirm(&mut self) -> StoreResult<RuntimeHomeRecord> {
+    pub fn confirm(
+        &mut self,
+    ) -> Result<RuntimeHomeRecord, RuntimeHomePublicationConfirmationError> {
         let mut hook = |_| Ok(());
         confirm_runtime_home_inner(self, &mut hook)
     }
@@ -685,7 +817,11 @@ impl RuntimeHomePublicationGuard {
     /// Permanently disables rollback authority for this guard under the
     /// caller's setup policy.
     pub fn preserve(&mut self) {
-        if !matches!(self.state, RuntimeHomePublicationGuardState::RolledBack) {
+        if matches!(
+            self.state,
+            RuntimeHomePublicationGuardState::Published
+                | RuntimeHomePublicationGuardState::Confirmed
+        ) {
             self.state = RuntimeHomePublicationGuardState::Preserved(
                 RuntimeHomePublicationPreservationReason::SetupPolicy,
             );
@@ -696,12 +832,24 @@ impl RuntimeHomePublicationGuard {
     /// exact publication identity, manifest, paths, schema, and consumption
     /// state.
     pub fn rollback_if_owned(&mut self) -> StoreResult<RuntimeHomePublicationRollbackOutcome> {
-        match self.state {
-            RuntimeHomePublicationGuardState::RolledBack => {
-                return Ok(RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack);
+        match &self.state {
+            RuntimeHomePublicationGuardState::RolledBack { durability } => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack {
+                    durability: *durability,
+                });
             }
             RuntimeHomePublicationGuardState::Preserved(reason) => {
-                return Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason });
+                return Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason: *reason });
+            }
+            RuntimeHomePublicationGuardState::OwnershipLost(reason) => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                    reason: *reason,
+                });
+            }
+            RuntimeHomePublicationGuardState::RemovalIncomplete(failure) => {
+                return Ok(RuntimeHomePublicationRollbackOutcome::RemovalIncomplete {
+                    failure: Arc::clone(failure),
+                });
             }
             RuntimeHomePublicationGuardState::Published
             | RuntimeHomePublicationGuardState::Confirmed => {}
@@ -715,14 +863,14 @@ impl RuntimeHomePublicationGuard {
                     io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
                 ) =>
             {
-                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
-                    reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
-                });
+                return Ok(
+                    self.lose_ownership(RuntimeHomePublicationOwnershipLoss::FinalPathMissing)
+                );
             }
             Err(StoreError::NotFound { .. }) => {
-                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
-                    reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
-                });
+                return Ok(
+                    self.lose_ownership(RuntimeHomePublicationOwnershipLoss::FinalPathMissing)
+                );
             }
             Err(
                 StoreError::RuntimeHomeSchemaMismatch(_)
@@ -732,36 +880,36 @@ impl RuntimeHomePublicationGuard {
                 | StoreError::SchemaInvariant { .. }
                 | StoreError::Sqlite(_),
             ) => {
-                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
-                    reason: RuntimeHomePublicationOwnershipLoss::SchemaOrRecordInvalid,
-                });
+                return Ok(
+                    self.lose_ownership(RuntimeHomePublicationOwnershipLoss::SchemaOrRecordInvalid)
+                );
             }
             Err(error) => return Err(error),
         };
         if let Some(reason) = self.ownership_loss(&candidate) {
-            return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost { reason });
+            return Ok(self.lose_ownership(reason));
         }
         if self
             .validate_installation_identity(&candidate.conn)
             .is_err()
         {
-            return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
-                reason: RuntimeHomePublicationOwnershipLoss::InstallationIdentityMismatch,
-            });
+            return Ok(self.lose_ownership(
+                RuntimeHomePublicationOwnershipLoss::InstallationIdentityMismatch,
+            ));
         }
         match inspect_runtime_home_bootstrap(&self.final_path)? {
             RuntimeHomeBootstrapState::Ready(record) if record == candidate.record => {}
             RuntimeHomeBootstrapState::Absent => {
-                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
-                    reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
-                });
+                return Ok(
+                    self.lose_ownership(RuntimeHomePublicationOwnershipLoss::FinalPathMissing)
+                );
             }
             RuntimeHomeBootstrapState::Ready(_)
             | RuntimeHomeBootstrapState::Incompatible(_)
             | RuntimeHomeBootstrapState::Corrupt(_) => {
-                return Ok(RuntimeHomePublicationRollbackOutcome::OwnershipLost {
-                    reason: RuntimeHomePublicationOwnershipLoss::SchemaOrRecordInvalid,
-                });
+                return Ok(
+                    self.lose_ownership(RuntimeHomePublicationOwnershipLoss::SchemaOrRecordInvalid)
+                );
             }
         }
         let managed_host_consumed = candidate.conn.query_row(
@@ -780,13 +928,47 @@ impl RuntimeHomePublicationGuard {
             return Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason });
         }
 
-        volicord_platform_fs::remove_owned_directory_tree(&self.final_path)?;
-        self.state = RuntimeHomePublicationGuardState::RolledBack;
-        Ok(RuntimeHomePublicationRollbackOutcome::RolledBack)
+        match volicord_platform_fs::remove_owned_directory_tree(&self.final_path) {
+            Ok(outcome) => {
+                self.state = RuntimeHomePublicationGuardState::RolledBack {
+                    durability: outcome.durability,
+                };
+                Ok(RuntimeHomePublicationRollbackOutcome::RolledBack {
+                    durability: outcome.durability,
+                    failure: None,
+                })
+            }
+            Err(error)
+                if error.phase
+                    == volicord_platform_fs::DirectoryTreeRemovalPhase::TargetInspection
+                    && error.effect == DirectoryTreeRemovalEffect::NotRemoved
+                    && error.target_state == DirectoryTreeTargetState::Absent =>
+            {
+                Ok(self.lose_ownership(RuntimeHomePublicationOwnershipLoss::FinalPathMissing))
+            }
+            Err(error) if error.effect == DirectoryTreeRemovalEffect::Removed => {
+                let durability = error.durability;
+                let failure = Arc::new(error);
+                self.state = RuntimeHomePublicationGuardState::RolledBack { durability };
+                Ok(RuntimeHomePublicationRollbackOutcome::RolledBack {
+                    durability,
+                    failure: Some(failure),
+                })
+            }
+            Err(error) => {
+                let failure = Arc::new(error);
+                self.state =
+                    RuntimeHomePublicationGuardState::RemovalIncomplete(Arc::clone(&failure));
+                Ok(RuntimeHomePublicationRollbackOutcome::RemovalIncomplete { failure })
+            }
+        }
     }
 
     fn require_live(&self, operation: &'static str) -> StoreResult<()> {
-        if matches!(self.state, RuntimeHomePublicationGuardState::RolledBack) {
+        if matches!(
+            self.state,
+            RuntimeHomePublicationGuardState::RolledBack { .. }
+        ) {
             return Err(StoreError::Conflict {
                 entity: "runtime_home_publication",
                 id: self.publication_id.to_string(),
@@ -800,7 +982,28 @@ impl RuntimeHomePublicationGuard {
                 detail: format!("cannot {operation} a preserved Runtime Home publication"),
             });
         }
+        if matches!(
+            self.state,
+            RuntimeHomePublicationGuardState::OwnershipLost(_)
+                | RuntimeHomePublicationGuardState::RemovalIncomplete(_)
+        ) {
+            return Err(StoreError::Conflict {
+                entity: "runtime_home_publication",
+                id: self.publication_id.to_string(),
+                detail: format!(
+                    "cannot {operation} a Runtime Home publication without live rollback ownership"
+                ),
+            });
+        }
         Ok(())
+    }
+
+    fn lose_ownership(
+        &mut self,
+        reason: RuntimeHomePublicationOwnershipLoss,
+    ) -> RuntimeHomePublicationRollbackOutcome {
+        self.state = RuntimeHomePublicationGuardState::OwnershipLost(reason);
+        RuntimeHomePublicationRollbackOutcome::OwnershipLost { reason }
     }
 
     fn ownership_loss(
@@ -861,13 +1064,55 @@ impl RuntimeHomePublicationGuard {
 fn confirm_runtime_home_inner(
     publication: &mut RuntimeHomePublicationGuard,
     hook: &mut impl FnMut(RuntimeHomePublicationConfirmationPhase) -> StoreResult<()>,
-) -> StoreResult<RuntimeHomeRecord> {
-    hook(RuntimeHomePublicationConfirmationPhase::ParentDirectorySync)?;
-    publication.synchronize_parent_directory()?;
-    hook(RuntimeHomePublicationConfirmationPhase::PublicationReadBack)?;
-    let _ = publication.read_back()?;
-    hook(RuntimeHomePublicationConfirmationPhase::PublicationManifestValidation)?;
-    publication.validate_manifest_and_confirm()
+) -> Result<RuntimeHomeRecord, RuntimeHomePublicationConfirmationError> {
+    hook(RuntimeHomePublicationConfirmationPhase::ParentDirectorySync).map_err(|source| {
+        RuntimeHomePublicationConfirmationError::new(
+            RuntimeHomePublicationConfirmationPhase::ParentDirectorySync,
+            failed_runtime_home_parent_durability(),
+            source,
+        )
+    })?;
+    let parent_durability = publication
+        .synchronize_parent_directory()
+        .map_err(|source| {
+            RuntimeHomePublicationConfirmationError::new(
+                RuntimeHomePublicationConfirmationPhase::ParentDirectorySync,
+                failed_runtime_home_parent_durability(),
+                source,
+            )
+        })?;
+    hook(RuntimeHomePublicationConfirmationPhase::PublicationReadBack).map_err(|source| {
+        RuntimeHomePublicationConfirmationError::new(
+            RuntimeHomePublicationConfirmationPhase::PublicationReadBack,
+            parent_durability,
+            source,
+        )
+    })?;
+    let _ = publication.read_back().map_err(|source| {
+        RuntimeHomePublicationConfirmationError::new(
+            RuntimeHomePublicationConfirmationPhase::PublicationReadBack,
+            parent_durability,
+            source,
+        )
+    })?;
+    hook(RuntimeHomePublicationConfirmationPhase::PublicationManifestValidation).map_err(
+        |source| {
+            RuntimeHomePublicationConfirmationError::new(
+                RuntimeHomePublicationConfirmationPhase::PublicationManifestValidation,
+                parent_durability,
+                source,
+            )
+        },
+    )?;
+    publication
+        .validate_manifest_and_confirm()
+        .map_err(|source| {
+            RuntimeHomePublicationConfirmationError::new(
+                RuntimeHomePublicationConfirmationPhase::PublicationManifestValidation,
+                parent_durability,
+                source,
+            )
+        })
 }
 
 /// Creates a fresh Runtime Home atomically or validates an existing one read-only.
@@ -935,17 +1180,104 @@ pub fn initialize_runtime_home_with_installation(
 fn publish_and_confirm_runtime_home(
     prepared: PreparedRuntimeHome,
 ) -> StoreResult<RuntimeHomeRecord> {
+    let mut confirmation_hook = |_| Ok(());
+    let mut before_rollback = |_: &mut RuntimeHomePublicationGuard| Ok(());
+    publish_and_confirm_runtime_home_inner(prepared, &mut confirmation_hook, &mut before_rollback)
+}
+
+fn publish_and_confirm_runtime_home_inner(
+    prepared: PreparedRuntimeHome,
+    confirmation_hook: &mut impl FnMut(RuntimeHomePublicationConfirmationPhase) -> StoreResult<()>,
+    before_rollback: &mut impl FnMut(&mut RuntimeHomePublicationGuard) -> StoreResult<()>,
+) -> StoreResult<RuntimeHomeRecord> {
     match commit_runtime_home(prepared)? {
         RuntimeHomePublicationOutcome::ObservedConcurrentWinner { record } => Ok(record),
         RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } => {
-            match publication.confirm() {
+            match confirm_runtime_home_inner(&mut publication, confirmation_hook) {
                 Ok(record) => Ok(record),
-                Err(error) => {
-                    let _ = publication.rollback_if_owned();
-                    Err(error)
+                Err(primary) => {
+                    let rollback = match before_rollback(&mut publication) {
+                        Ok(()) => publication
+                            .rollback_if_owned()
+                            .map(RuntimeHomePublicationRollbackAttempt::Completed)
+                            .unwrap_or_else(RuntimeHomePublicationRollbackAttempt::Failed),
+                        Err(error) => RuntimeHomePublicationRollbackAttempt::Failed(error),
+                    };
+                    let (final_path_state, rollback_parent_durability) =
+                        rollback_observation(&publication.final_path, &rollback);
+                    Err(StoreError::RuntimeHomePublicationConfirmation(Box::new(
+                        RuntimeHomePublicationConfirmationFailure {
+                            primary,
+                            publication_occurred: true,
+                            rollback,
+                            final_path_state,
+                            rollback_parent_durability,
+                        },
+                    )))
                 }
             }
         }
+    }
+}
+
+fn rollback_observation(
+    final_path: &Path,
+    rollback: &RuntimeHomePublicationRollbackAttempt,
+) -> (RuntimeHomeFinalPathState, DirectoryEntryDurability) {
+    match rollback {
+        RuntimeHomePublicationRollbackAttempt::Completed(
+            RuntimeHomePublicationRollbackOutcome::RolledBack { durability, .. }
+            | RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack { durability },
+        ) => (RuntimeHomeFinalPathState::Absent, *durability),
+        RuntimeHomePublicationRollbackAttempt::Completed(
+            RuntimeHomePublicationRollbackOutcome::RemovalIncomplete { failure },
+        ) => (
+            final_path_state_from_removal(failure.target_state),
+            failure.durability,
+        ),
+        RuntimeHomePublicationRollbackAttempt::Completed(
+            RuntimeHomePublicationRollbackOutcome::Preserved { .. },
+        ) => (
+            RuntimeHomeFinalPathState::Present,
+            DirectoryEntryDurability::NotApplicable,
+        ),
+        RuntimeHomePublicationRollbackAttempt::Completed(
+            RuntimeHomePublicationRollbackOutcome::OwnershipLost { reason },
+        ) => (
+            if *reason == RuntimeHomePublicationOwnershipLoss::FinalPathMissing {
+                RuntimeHomeFinalPathState::Absent
+            } else {
+                observe_final_path_state(final_path)
+            },
+            DirectoryEntryDurability::NotApplicable,
+        ),
+        RuntimeHomePublicationRollbackAttempt::Failed(_) => (
+            observe_final_path_state(final_path),
+            DirectoryEntryDurability::NotApplicable,
+        ),
+    }
+}
+
+fn final_path_state_from_removal(state: DirectoryTreeTargetState) -> RuntimeHomeFinalPathState {
+    match state {
+        DirectoryTreeTargetState::Present => RuntimeHomeFinalPathState::Present,
+        DirectoryTreeTargetState::Absent => RuntimeHomeFinalPathState::Absent,
+        DirectoryTreeTargetState::Unknown => RuntimeHomeFinalPathState::Uncertain,
+    }
+}
+
+fn observe_final_path_state(path: &Path) -> RuntimeHomeFinalPathState {
+    match fs::symlink_metadata(path) {
+        Ok(_) => RuntimeHomeFinalPathState::Present,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            RuntimeHomeFinalPathState::Absent
+        }
+        Err(_) => RuntimeHomeFinalPathState::Uncertain,
     }
 }
 
@@ -1364,6 +1696,26 @@ fn sync_directory(path: &Path) -> StoreResult<()> {
 #[cfg(not(unix))]
 fn sync_directory(_path: &Path) -> StoreResult<()> {
     Ok(())
+}
+
+#[cfg(unix)]
+const fn runtime_home_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::ParentSynchronized
+}
+
+#[cfg(not(unix))]
+const fn runtime_home_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::NotApplicable
+}
+
+#[cfg(unix)]
+const fn failed_runtime_home_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::ParentSynchronizationFailed
+}
+
+#[cfg(not(unix))]
+const fn failed_runtime_home_parent_durability() -> DirectoryEntryDurability {
+    DirectoryEntryDurability::NotApplicable
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -2752,10 +3104,13 @@ mod tests {
             inspect_runtime_home_bootstrap(fixture.path())?,
             RuntimeHomeBootstrapState::Ready(_)
         ));
-        assert_eq!(
+        assert!(matches!(
             winner.rollback_if_owned()?,
-            RuntimeHomePublicationRollbackOutcome::RolledBack
-        );
+            RuntimeHomePublicationRollbackOutcome::RolledBack {
+                durability,
+                failure: None,
+            } if durability == runtime_home_parent_durability()
+        ));
         assert!(!fixture.path().exists());
         Ok(())
     }
@@ -2816,16 +3171,21 @@ mod tests {
             };
             confirm_runtime_home_inner(&mut publication, &mut hook)
                 .expect_err("post-rename confirmation fault must be visible");
-            assert_eq!(
+            assert!(matches!(
                 publication.rollback_if_owned()?,
-                RuntimeHomePublicationRollbackOutcome::RolledBack
-            );
+                RuntimeHomePublicationRollbackOutcome::RolledBack {
+                    durability,
+                    failure: None,
+                } if durability == runtime_home_parent_durability()
+            ));
             assert!(!fixture.path().exists());
             initialize_runtime_home(fixture.path(), "runtime_home_unrelated_replacement", "{}")?;
-            assert_eq!(
+            assert!(matches!(
                 publication.rollback_if_owned()?,
-                RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack
-            );
+                RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack {
+                    durability,
+                } if durability == runtime_home_parent_durability()
+            ));
             let RuntimeHomeBootstrapState::Ready(replacement) =
                 inspect_runtime_home_bootstrap(fixture.path())?
             else {
@@ -2835,6 +3195,275 @@ mod tests {
                 replacement.runtime_home_id,
                 "runtime_home_unrelated_replacement"
             );
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removed_but_unsynchronized_guard_is_terminal_and_preserves_replacement(
+    ) -> Result<(), Box<dyn Error>> {
+        use volicord_platform_fs::directory_tree_removal_test_support::{
+            fail_next_directory_tree_removal, DirectoryTreeRemovalFault,
+        };
+
+        let fixture = TempRuntimeHome::new("bootstrap-removed-unsynchronized")?;
+        let prepared =
+            prepare_runtime_home(fixture.path(), "runtime_home_removed_unsynchronized", "{}")?;
+        let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
+            commit_runtime_home(prepared)?
+        else {
+            panic!("fresh publication must be owned");
+        };
+        fail_next_directory_tree_removal(DirectoryTreeRemovalFault::ParentDirectorySyncFailure);
+
+        let outcome = publication.rollback_if_owned()?;
+
+        assert!(matches!(
+            outcome,
+            RuntimeHomePublicationRollbackOutcome::RolledBack {
+                durability,
+                failure: Some(failure),
+            } if durability == failed_runtime_home_parent_durability()
+                && failure.effect == DirectoryTreeRemovalEffect::Removed
+                && failure.target_state == DirectoryTreeTargetState::Absent
+        ));
+        assert!(!fixture.path().exists());
+
+        initialize_runtime_home(fixture.path(), "runtime_home_replacement", "{}")?;
+        assert!(matches!(
+            publication.rollback_if_owned()?,
+            RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack {
+                durability,
+            } if durability == failed_runtime_home_parent_durability()
+        ));
+        let RuntimeHomeBootstrapState::Ready(replacement) =
+            inspect_runtime_home_bootstrap(fixture.path())?
+        else {
+            panic!("replacement must remain ready");
+        };
+        assert_eq!(replacement.runtime_home_id, "runtime_home_replacement");
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_removal_is_terminal_and_does_not_blindly_retry() -> Result<(), Box<dyn Error>> {
+        use volicord_platform_fs::directory_tree_removal_test_support::{
+            fail_next_directory_tree_removal, DirectoryTreeRemovalFault,
+        };
+
+        for (fault, expected_effect, expected_state) in [
+            (
+                DirectoryTreeRemovalFault::BeforeRecursiveRemoval,
+                DirectoryTreeRemovalEffect::NotRemoved,
+                DirectoryTreeTargetState::Present,
+            ),
+            (
+                DirectoryTreeRemovalFault::RecursiveRemovalAfterPartialEffect,
+                DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+                DirectoryTreeTargetState::Present,
+            ),
+            (
+                DirectoryTreeRemovalFault::PostRemovalInspectionFailure,
+                DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+                DirectoryTreeTargetState::Unknown,
+            ),
+        ] {
+            let fixture = TempRuntimeHome::new(&format!(
+                "bootstrap-incomplete-removal-{}",
+                expected_effect.as_str()
+            ))?;
+            let prepared =
+                prepare_runtime_home(fixture.path(), "runtime_home_incomplete_removal", "{}")?;
+            let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
+                commit_runtime_home(prepared)?
+            else {
+                panic!("fresh publication must be owned");
+            };
+            fail_next_directory_tree_removal(fault);
+
+            let first = publication.rollback_if_owned()?;
+            let RuntimeHomePublicationRollbackOutcome::RemovalIncomplete { failure } = first else {
+                panic!("fault must retain incomplete removal");
+            };
+            assert_eq!(failure.effect, expected_effect);
+            assert_eq!(failure.target_state, expected_state);
+            assert!(fixture.path().is_dir());
+            fs::write(fixture.path().join("replacement-marker"), b"preserve")?;
+
+            let second = publication.rollback_if_owned()?;
+            assert!(matches!(
+                second,
+                RuntimeHomePublicationRollbackOutcome::RemovalIncomplete { failure }
+                    if failure.effect == expected_effect
+                        && failure.target_state == expected_state
+            ));
+            assert_eq!(
+                fs::read(fixture.path().join("replacement-marker"))?,
+                b"preserve"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn confirmation_failure_retains_every_rollback_result() -> Result<(), Box<dyn Error>> {
+        use volicord_platform_fs::directory_tree_removal_test_support::{
+            fail_next_directory_tree_removal, DirectoryTreeRemovalFault,
+        };
+
+        #[derive(Clone, Copy)]
+        enum RollbackFixture {
+            Synchronized,
+            #[cfg(unix)]
+            ParentSyncFailure,
+            Preserved,
+            OwnershipLost,
+            Incomplete,
+        }
+
+        let rollback_fixtures = [
+            RollbackFixture::Synchronized,
+            #[cfg(unix)]
+            RollbackFixture::ParentSyncFailure,
+            RollbackFixture::Preserved,
+            RollbackFixture::OwnershipLost,
+            RollbackFixture::Incomplete,
+        ];
+        for rollback_fixture in rollback_fixtures {
+            let label = match rollback_fixture {
+                RollbackFixture::Synchronized => "synchronized",
+                #[cfg(unix)]
+                RollbackFixture::ParentSyncFailure => "parent-sync-failure",
+                RollbackFixture::Preserved => "preserved",
+                RollbackFixture::OwnershipLost => "ownership-lost",
+                RollbackFixture::Incomplete => "incomplete",
+            };
+            let fixture =
+                TempRuntimeHome::new(&format!("bootstrap-confirmation-composite-{label}"))?;
+            let prepared =
+                prepare_runtime_home(fixture.path(), "runtime_home_confirmation_composite", "{}")?;
+            let mut confirmation_hook = |phase| {
+                if phase == RuntimeHomePublicationConfirmationPhase::PublicationReadBack {
+                    Err(StoreError::InvalidInput {
+                        detail: "injected primary confirmation failure".to_owned(),
+                    })
+                } else {
+                    Ok(())
+                }
+            };
+            let mut displaced = None;
+            let mut before_rollback = |publication: &mut RuntimeHomePublicationGuard| {
+                match rollback_fixture {
+                    RollbackFixture::Synchronized => {}
+                    #[cfg(unix)]
+                    RollbackFixture::ParentSyncFailure => {
+                        fail_next_directory_tree_removal(
+                            DirectoryTreeRemovalFault::ParentDirectorySyncFailure,
+                        );
+                    }
+                    RollbackFixture::Preserved => publication.preserve(),
+                    RollbackFixture::OwnershipLost => {
+                        let path = publication.final_path();
+                        let replacement = path.with_extension("displaced");
+                        fs::rename(path, &replacement)?;
+                        displaced = Some(replacement);
+                    }
+                    RollbackFixture::Incomplete => {
+                        fail_next_directory_tree_removal(
+                            DirectoryTreeRemovalFault::BeforeRecursiveRemoval,
+                        );
+                    }
+                }
+                Ok(())
+            };
+
+            let error = publish_and_confirm_runtime_home_inner(
+                prepared,
+                &mut confirmation_hook,
+                &mut before_rollback,
+            )
+            .expect_err("confirmation failure must retain rollback");
+            let StoreError::RuntimeHomePublicationConfirmation(failure) = error else {
+                panic!("confirmation failure must use the composite Store error");
+            };
+
+            assert_eq!(
+                failure.primary.phase,
+                RuntimeHomePublicationConfirmationPhase::PublicationReadBack
+            );
+            assert!(failure
+                .primary
+                .store_error()
+                .to_string()
+                .contains("injected primary confirmation failure"));
+            assert!(failure.publication_occurred);
+            match rollback_fixture {
+                RollbackFixture::Synchronized => {
+                    assert_eq!(failure.final_path_state, RuntimeHomeFinalPathState::Absent);
+                    assert_eq!(
+                        failure.rollback_parent_durability,
+                        runtime_home_parent_durability()
+                    );
+                    assert!(matches!(
+                        failure.rollback,
+                        RuntimeHomePublicationRollbackAttempt::Completed(
+                            RuntimeHomePublicationRollbackOutcome::RolledBack { failure: None, .. }
+                        )
+                    ));
+                }
+                #[cfg(unix)]
+                RollbackFixture::ParentSyncFailure => {
+                    assert_eq!(failure.final_path_state, RuntimeHomeFinalPathState::Absent);
+                    assert_eq!(
+                        failure.rollback_parent_durability,
+                        failed_runtime_home_parent_durability()
+                    );
+                    assert!(matches!(
+                        failure.rollback,
+                        RuntimeHomePublicationRollbackAttempt::Completed(
+                            RuntimeHomePublicationRollbackOutcome::RolledBack {
+                                failure: Some(_),
+                                ..
+                            }
+                        )
+                    ));
+                }
+                RollbackFixture::Preserved => {
+                    assert_eq!(failure.final_path_state, RuntimeHomeFinalPathState::Present);
+                    assert!(matches!(
+                        failure.rollback,
+                        RuntimeHomePublicationRollbackAttempt::Completed(
+                            RuntimeHomePublicationRollbackOutcome::Preserved {
+                                reason: RuntimeHomePublicationPreservationReason::SetupPolicy,
+                            }
+                        )
+                    ));
+                }
+                RollbackFixture::OwnershipLost => {
+                    assert_eq!(failure.final_path_state, RuntimeHomeFinalPathState::Absent);
+                    assert!(matches!(
+                        failure.rollback,
+                        RuntimeHomePublicationRollbackAttempt::Completed(
+                            RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                                reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
+                            }
+                        )
+                    ));
+                    assert!(displaced.as_ref().is_some_and(|path| path.is_dir()));
+                }
+                RollbackFixture::Incomplete => {
+                    assert_eq!(failure.final_path_state, RuntimeHomeFinalPathState::Present);
+                    assert!(matches!(
+                        failure.rollback,
+                        RuntimeHomePublicationRollbackAttempt::Completed(
+                            RuntimeHomePublicationRollbackOutcome::RemovalIncomplete {
+                                failure,
+                            }
+                        ) if failure.effect == DirectoryTreeRemovalEffect::NotRemoved
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -2896,14 +3525,52 @@ mod tests {
             }
             drop(conn);
 
-            assert_eq!(
+            assert!(matches!(
                 publication.rollback_if_owned()?,
-                RuntimeHomePublicationRollbackOutcome::OwnershipLost {
-                    reason: expected_reason,
-                }
-            );
+                RuntimeHomePublicationRollbackOutcome::OwnershipLost { reason }
+                    if reason == expected_reason
+            ));
             assert!(fixture.path().is_dir(), "{field}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn pre_removal_absence_is_terminal_ownership_loss() -> Result<(), Box<dyn Error>> {
+        let fixture = TempRuntimeHome::new("bootstrap-pre-removal-absence")?;
+        let prepared =
+            prepare_runtime_home(fixture.path(), "runtime_home_pre_removal_absence", "{}")?;
+        let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
+            commit_runtime_home(prepared)?
+        else {
+            panic!("fresh publication must be owned");
+        };
+        let displaced = fixture.root_path().join("displaced-runtime-home");
+        fs::rename(fixture.path(), &displaced)?;
+
+        assert!(matches!(
+            publication.rollback_if_owned()?,
+            RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
+            }
+        ));
+        initialize_runtime_home(fixture.path(), "runtime_home_later_replacement", "{}")?;
+        assert!(matches!(
+            publication.rollback_if_owned()?,
+            RuntimeHomePublicationRollbackOutcome::OwnershipLost {
+                reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
+            }
+        ));
+        let RuntimeHomeBootstrapState::Ready(replacement) =
+            inspect_runtime_home_bootstrap(fixture.path())?
+        else {
+            panic!("replacement must remain ready");
+        };
+        assert_eq!(
+            replacement.runtime_home_id,
+            "runtime_home_later_replacement"
+        );
+        assert!(displaced.is_dir());
         Ok(())
     }
 
@@ -2948,19 +3615,19 @@ mod tests {
             },
         )?;
 
-        assert_eq!(
+        assert!(matches!(
             publication.rollback_if_owned()?,
             RuntimeHomePublicationRollbackOutcome::Preserved {
                 reason: RuntimeHomePublicationPreservationReason::ManagedHostConsumption,
             }
-        );
+        ));
         assert!(fixture.path().is_dir());
-        assert_eq!(
+        assert!(matches!(
             publication.rollback_if_owned()?,
             RuntimeHomePublicationRollbackOutcome::Preserved {
                 reason: RuntimeHomePublicationPreservationReason::ManagedHostConsumption,
             }
-        );
+        ));
         Ok(())
     }
 

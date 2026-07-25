@@ -59,6 +59,12 @@ records become reachable at the selected Runtime Home path. An existing
 Registry is inspected read-only first; incompatible record or relation facts
 are reported without rewriting any Registry record.
 
+Publication guards and their rollback results are process-local typed lifecycle
+facts, not Registry rows. Confirmation failure retains its primary error,
+rollback outcome, final-path observation, and parent-entry durability together.
+An observed complete removal remains complete if parent synchronization fails;
+an incomplete effect cannot be promoted to preserved intact state.
+
 Project-state records include:
 
 - `project_state`, project workflow policy, Tasks, acceptance criteria,

@@ -873,9 +873,9 @@ pub(crate) fn concise_store_reason(error: &StoreError) -> String {
         }
         StoreError::UnsupportedPlatformEnvironment { reason, .. }
         | StoreError::PlatformEnvironmentUnavailable { reason, .. } => (*reason).to_owned(),
-        StoreError::RuntimeHomeSchemaMismatch(_) | StoreError::RuntimeHomeCorruption(_) => {
-            error.to_string()
-        }
+        StoreError::RuntimeHomeSchemaMismatch(_)
+        | StoreError::RuntimeHomeCorruption(_)
+        | StoreError::RuntimeHomePublicationConfirmation(_) => error.to_string(),
         StoreError::Sqlite(_) | StoreError::Io(_) => "storage access failed".to_owned(),
     }
 }

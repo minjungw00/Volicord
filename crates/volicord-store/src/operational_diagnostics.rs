@@ -140,7 +140,8 @@ impl RuntimeHomeDiagnostic {
             | StoreError::UnsupportedStorageProfile { .. }
             | StoreError::SchemaInvariant { .. }
             | StoreError::RuntimeHomeSchemaMismatch(_)
-            | StoreError::RuntimeHomeCorruption(_) => None,
+            | StoreError::RuntimeHomeCorruption(_)
+            | StoreError::RuntimeHomePublicationConfirmation(_) => None,
         }
     }
 }
@@ -332,6 +333,7 @@ impl StoreDiagnostic {
             | StoreError::PlatformEnvironmentUnavailable { .. }
             | StoreError::InvalidProjectRegistration { .. }
             | StoreError::Conflict { .. } => Self::Unexpected,
+            StoreError::RuntimeHomePublicationConfirmation(_) => Self::TransactionFailure,
         }
     }
 

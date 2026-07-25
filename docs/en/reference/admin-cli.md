@@ -157,7 +157,10 @@ atomically replaces repository files in deterministic path order, atomically
 replaces Codex configuration last, and records the current integration
 revision. Rollback may remove a fresh Runtime Home only through exact
 guard-backed revalidation; ownership loss or managed-host consumption
-preserves it. Activation steps are produced only for a committed setup. This
+stops removal. Recursive-removal effect and parent-entry durability remain
+separate results: known removal is terminal even if parent synchronization
+fails, while incomplete removal is terminal without a blind retry. Activation
+steps are produced only for a committed setup. This
 is not global cross-filesystem atomicity; it is complete preparation, atomic
 per-file replacement, and bounded rollback.
 
@@ -641,8 +644,26 @@ SetupResult:
     partially_rolled_back
   runtime_home_publication: not_published | existing_ready |
     published_by_this_invocation | concurrent_winner_observed |
-    owned_publication_rolled_back | owned_publication_preserved |
+    owned_publication_rolled_back | owned_publication_removal_incomplete |
+    owned_publication_preserved |
     ownership_lost_during_rollback
+  runtime_home_rollback?:
+    outcome: removed
+    durability: parent_synchronized | parent_synchronization_failed |
+      not_applicable
+    failure_phase?: target_inspection | recursive_removal |
+      post_removal_inspection | parent_directory_synchronization
+  # or
+  runtime_home_rollback?:
+    outcome: removal_incomplete
+    effect: not_removed | partially_removed_or_unknown
+    phase: target_inspection | recursive_removal |
+      post_removal_inspection | parent_directory_synchronization
+    final_path: present | absent | unknown
+  # or
+  runtime_home_rollback?:
+    outcome: preserved | ownership_lost
+    reason: string
 
 ModeTransitionResult:
   kind: mode_transition
@@ -685,8 +706,18 @@ action remains and otherwise `complete`.
 state. `published_by_this_invocation` is the only successful no-replace rename
 that carries rollback authority. `concurrent_winner_observed` has observation
 only. Rollback reports whether that owned publication was removed, preserved
-by setup or managed-host-consumption policy, or preserved because exact
-ownership revalidation was lost.
+by setup or managed-host-consumption policy, left incomplete, or unavailable
+because exact ownership revalidation was lost.
+
+`SetupResult.runtime_home_rollback` is present when setup attempted owned
+Runtime Home rollback. `outcome=removed` means the final path was observed
+absent; `durability` independently says whether its parent entry was
+synchronized or the current platform exposes no such operation. A
+`parent_synchronization_failed` result remains `removed` and may make the setup
+disposition `partially_rolled_back`. `outcome=removal_incomplete` retains the
+recursive effect, failed phase, and exact-path observation. The observation is
+not a guarantee against later path recreation, and terminal guard state
+prevents a retry from treating a replacement as the removed publication.
 
 If setup fails before any commit, it reports `preserved`. If committed
 replaceable state was restored, it reports `rolled_back`. A restoration that

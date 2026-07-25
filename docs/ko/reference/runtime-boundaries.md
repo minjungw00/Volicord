@@ -147,13 +147,20 @@ mutation을 결정적인 순서로 정렬합니다. Prepare 단계는 최종 tar
 Commit 단계는 Runtime Home을 공개하거나 검증하고 checkpoint한 Store mutation을 적용한
 뒤 Product Repository 파일을 원자 교체하고 Codex 구성을 마지막에 원자 교체한 다음
 integration revision을 기록합니다. Setup은 준비됨, 소유한 공개, 소유한 확인 완료, 동시
-승자 관찰, 소유한 보존, 소유한 rollback 완료 상태를 명시적으로 유지합니다. 오래된 입력은
+승자 관찰, 소유한 보존, 소유한 제거 미완료, 소유한 rollback 완료 상태를 명시적으로
+유지합니다. 오래된 입력은
 concurrent-modification 실패이며 더 새로운 외부 bytes를 보존합니다. Runtime Home
 rollback은 플랫폼 소유 제거 직전에 소유 guard가 최종 home을 다시 열어 publication ID,
 Runtime Home identity, 정규 manifest digest, 정확한 경로와 schema, 준비한 installation
-identity, managed-host 소비 부재를 다시 검증해야 합니다. 불일치나 소비가 있으면 최종
-경로를 보존하고 partial rollback을 보고합니다. 관찰자는 동시 승자를 제거하거나 변경하지
-않습니다. Runtime Home, Codex 구성, Product Repository가 서로 다른 파일시스템에 있을 수
+identity, managed-host 소비 부재를 다시 검증해야 합니다. 재귀 제거 효과, 정확한 경로의
+관찰 결과, 상위 entry의 내구성은 서로 분리된 typed fact입니다. 제거가 확인되면 상위
+directory를 동기화하기 전에 guard가 terminal 상태가 되므로 동기화 실패는 보존된
+publication이 아니라 내구성을 확인하지 못한 부재 publication으로 보고합니다. 제거 오류는
+제거가 전혀 없었는지, 일부 제거 가능성이 있는지, 완전한 제거가 관찰되었는지를 기록하며
+효과가 불완전하면 terminal 상태가 되어 재시도가 나중의 대체 경로를 삭제하지 못합니다.
+정확한 경로의 부재는 관찰 사실이며 이후 재생성을 막는다는 증명이 아닙니다. 소유권
+불일치, managed-host 소비, setup 정책은 제거를 막고 관찰자는 동시 승자를 제거하거나
+변경하지 않습니다. Runtime Home, Codex 구성, Product Repository가 서로 다른 파일시스템에 있을 수
 있으므로 보장은 전역 파일시스템 transaction 하나가 아니라 완전한 준비, 파일별 원자 교체,
 한도가 있는 rollback입니다.
 

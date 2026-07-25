@@ -218,7 +218,12 @@ when safe, and reports `preserved`, `rolled_back`, or
 `partially_rolled_back` precisely. Runtime Home removal additionally requires
 the owned publication guard to revalidate the exact ID, manifest, paths,
 schema, installation, and absence of managed-host consumption; concurrent
-winners and ownership mismatches are preserved. A recovery entry is retained
+winners have no removal authority, and ownership mismatches stop removal.
+Recursive removal effect and parent-directory durability are reported
+separately. If the Runtime Home is absent but parent synchronization failed,
+the report says it was removed with unconfirmed durability; it does not say
+the publication remains. An incomplete or uncertain removal is reported
+separately and is not retried against a recreated path. A recovery entry is retained
 and named in the diagnostic if deleting it would discard a pre-existing file
 after a later writer made restoration unsafe.
 Runtime Home, Codex home, and Product Repository may be on different

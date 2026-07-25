@@ -72,7 +72,10 @@ Durable tests should cover, as applicable:
   pre-publication failure; no-replace concurrent publication with exactly one
   owner and observer-only losers on Unix and native Windows; token-backed
   rollback revalidation, ownership-loss and managed-host-consumption
-  preservation, unrelated replacement safety; and unchanged bytes and
+  preservation, recursive failure before effect, partial or unclassifiable
+  removal, parent-sync failure after known removal, terminal retry behavior,
+  composite confirmation error plus rollback facts, unrelated replacement
+  safety; and unchanged bytes and
   timestamps for existing incompatible state;
 - missing or ineligible operation-result rows remaining
   `OPERATION_RESULT_UNAVAILABLE`;
@@ -166,6 +169,9 @@ Durable tests should cover, as applicable:
   for either winner order with a later loser failure; external concurrent-byte
   preservation; every setup publication result and `planned`, `committed`,
   `preserved`, `rolled_back`, and `partially_rolled_back` report projection;
+  typed JSON and human distinctions for synchronized removal,
+  removed-but-unsynchronized, incomplete removal, policy preservation, and
+  ownership loss; effect-aware Project Home cleanup;
   read-only dry-run parity; replay idempotence; and activation only after
   commit;
 - generated AGENTS, Codex rule, and MCP server instructions preserving the

@@ -54,6 +54,11 @@ schema version이 아닙니다. 이 record들이 선택한 Runtime Home 경로�
 전용으로 검사하며, 호환되지 않는 record 또는 relation 사실을 어떤 Registry record도
 다시 쓰지 않고 보고합니다.
 
+Publication guard와 그 rollback 결과는 Registry row가 아니라 process-local typed
+lifecycle fact입니다. 확인 실패는 주 오류, rollback 결과, 최종 경로 관찰, 상위 entry
+내구성을 함께 유지합니다. 관찰된 완전한 제거는 상위 directory 동기화가 실패해도 완전한
+제거로 남으며, 불완전한 효과를 온전히 보존된 상태로 승격하지 않습니다.
+
 프로젝트 상태 기록에는 다음이 포함됩니다.
 
 - `project_state`, 프로젝트 workflow policy, Task, acceptance criterion, supplemental

@@ -147,7 +147,10 @@ Home publication guard 또는 관찰 전용 동시 승자 결과를 유지하고
 뒤 repository 파일을 결정적인 경로 순서로 원자 교체하고 Codex 구성을 마지막에 원자
 교체한 다음 현재 integration revision을 기록합니다. Rollback은 guard가 정확한 소유권을
 다시 검증한 경우에만 새 Runtime Home을 제거할 수 있으며, 소유권 상실이나 managed-host
-소비가 있으면 보존합니다. Activation step은 setup이 `committed`일 때만 만듭니다. 이는
+소비가 있으면 제거를 중단합니다. 재귀 제거 효과와 상위 entry 내구성은 별도 결과로
+유지합니다. 제거가 확인되면 상위 directory 동기화가 실패해도 terminal이며, 불완전한
+제거도 맹목적으로 재시도하지 않는 terminal 상태입니다. Activation step은 setup이
+`committed`일 때만 만듭니다. 이는
 여러 파일시스템 전체의 전역 원자성을 뜻하지 않으며, 완전한 사전 준비, 파일별 원자 교체,
 한도가 있는 rollback을 뜻합니다.
 
@@ -599,8 +602,26 @@ SetupResult:
     partially_rolled_back
   runtime_home_publication: not_published | existing_ready |
     published_by_this_invocation | concurrent_winner_observed |
-    owned_publication_rolled_back | owned_publication_preserved |
+    owned_publication_rolled_back | owned_publication_removal_incomplete |
+    owned_publication_preserved |
     ownership_lost_during_rollback
+  runtime_home_rollback?:
+    outcome: removed
+    durability: parent_synchronized | parent_synchronization_failed |
+      not_applicable
+    failure_phase?: target_inspection | recursive_removal |
+      post_removal_inspection | parent_directory_synchronization
+  # 또는
+  runtime_home_rollback?:
+    outcome: removal_incomplete
+    effect: not_removed | partially_removed_or_unknown
+    phase: target_inspection | recursive_removal |
+      post_removal_inspection | parent_directory_synchronization
+    final_path: present | absent | unknown
+  # 또는
+  runtime_home_rollback?:
+    outcome: preserved | ownership_lost
+    reason: string
 
 ModeTransitionResult:
   kind: mode_transition
@@ -642,7 +663,16 @@ add가 성공하면 뒤의 로컬 또는 운영 check 때문에 `status=failed`�
 `published_by_this_invocation`만 기존 대상을 교체하지 않는 rename 성공과 rollback 권한을
 함께 뜻합니다. `concurrent_winner_observed`에는 관찰 권한만 있습니다. Rollback 결과는
 소유한 publication을 제거했는지, setup 또는 managed-host 소비 정책 때문에 보존했는지,
-정확한 소유권 재검증을 통과하지 못해 보존했는지를 구분합니다.
+제거가 불완전한지, 정확한 소유권 재검증을 통과하지 못해 제거할 수 없는지를 구분합니다.
+
+Setup이 소유한 Runtime Home rollback을 시도하면
+`SetupResult.runtime_home_rollback`이 존재합니다. `outcome=removed`는 최종 경로가 부재로
+관찰되었다는 뜻이며, `durability`는 상위 entry를 동기화했는지 또는 현재 플랫폼에서 그런
+연산을 제공하지 않는지를 별도로 나타냅니다. `parent_synchronization_failed`여도 결과는
+`removed`이고 setup disposition은 `partially_rolled_back`이 될 수 있습니다.
+`outcome=removal_incomplete`는 재귀 제거 효과, 실패 단계, 정확한 경로 관찰을 유지합니다.
+이 관찰은 이후 경로 재생성을 막는다는 보장이 아니며 terminal guard 상태는 대체 경로를
+제거된 publication으로 취급하는 재시도를 막습니다.
 
 Commit 전에 실패하면 `preserved`를 보고합니다. Commit한 교체 가능 상태를 복원했으면
 `rolled_back`을 보고합니다. 이후 외부 변경을 안전하게 교체할 수 없어 복원이

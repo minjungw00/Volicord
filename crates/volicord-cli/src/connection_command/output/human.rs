@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use serde_json::Value;
+use volicord_platform_fs::DirectoryEntryDurability;
 use volicord_types::{
     ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, HostKind,
     HostScope,
@@ -8,7 +9,8 @@ use volicord_types::{
 
 use super::report::{
     projected_activation_plan, projected_check_root_cause_ids, projected_root_cause_ids,
-    CommandOperation, ConnectionCommandReport, ConnectionCommandResult, SetupDisposition,
+    CommandOperation, ConnectionCommandReport, ConnectionCommandResult, RuntimeHomeRollbackResult,
+    SetupDisposition,
 };
 use crate::connection_command::{
     guidance::{ConnectionUserInvocation, DiagnosticOperation},
@@ -514,6 +516,13 @@ fn setup_headline(report: &ConnectionCommandReport) -> String {
         Some(ConnectionCommandResult::Setup { disposition, .. }) => disposition,
         _ => SetupDisposition::Preserved,
     };
+    let runtime_home_rollback = match report.result.as_ref() {
+        Some(ConnectionCommandResult::Setup {
+            runtime_home_rollback,
+            ..
+        }) => runtime_home_rollback.as_ref(),
+        _ => None,
+    };
     match (report.status, disposition) {
         (ConnectionStatus::Complete, _) => "Volicord setup is ready.".to_owned(),
         (ConnectionStatus::ActionRequired, SetupDisposition::Committed) => format!(
@@ -543,13 +552,33 @@ fn setup_headline(report: &ConnectionCommandReport) -> String {
             "Volicord setup was committed, but verification failed.".to_owned()
         }
         (ConnectionStatus::Failed, SetupDisposition::RolledBack) => {
-            "Volicord setup failed; committed changes were rolled back.".to_owned()
+            match runtime_home_rollback {
+                Some(RuntimeHomeRollbackResult::Removed {
+                    durability: DirectoryEntryDurability::ParentSynchronized,
+                    ..
+                }) => "Volicord setup failed; the Runtime Home was removed and its parent entry was synchronized.".to_owned(),
+                Some(RuntimeHomeRollbackResult::Removed {
+                    durability: DirectoryEntryDurability::NotApplicable,
+                    ..
+                }) => "Volicord setup failed; the Runtime Home was removed and parent-directory synchronization is not exposed on this platform.".to_owned(),
+                _ => "Volicord setup failed; committed changes were rolled back.".to_owned(),
+            }
         }
         (ConnectionStatus::Failed, SetupDisposition::Preserved) => {
             "Volicord setup failed before commit; existing state was preserved.".to_owned()
         }
         (ConnectionStatus::Failed, SetupDisposition::PartiallyRolledBack) => {
-            "Volicord setup failed and was only partially rolled back.".to_owned()
+            match runtime_home_rollback {
+                Some(RuntimeHomeRollbackResult::Removed {
+                    durability: DirectoryEntryDurability::ParentSynchronizationFailed,
+                    ..
+                }) => "Volicord setup failed; the Runtime Home was removed, but parent-directory synchronization failed.".to_owned(),
+                Some(RuntimeHomeRollbackResult::Removed { .. }) => "Volicord setup failed; the Runtime Home was removed, but another rollback effect was incomplete.".to_owned(),
+                Some(RuntimeHomeRollbackResult::RemovalIncomplete { .. }) => "Volicord setup failed; Runtime Home removal is incomplete or uncertain.".to_owned(),
+                Some(RuntimeHomeRollbackResult::Preserved { .. }) => "Volicord setup failed; the owned Runtime Home was preserved by policy.".to_owned(),
+                Some(RuntimeHomeRollbackResult::OwnershipLost { .. }) => "Volicord setup failed; Runtime Home rollback ownership was lost.".to_owned(),
+                None => "Volicord setup failed and was only partially rolled back.".to_owned(),
+            }
         }
         (ConnectionStatus::Failed, SetupDisposition::Planned) => {
             "Volicord setup plan could not be committed.".to_owned()
@@ -768,6 +797,10 @@ mod tests {
     use std::path::Path;
 
     use serde_json::{json, Value};
+    use volicord_platform_fs::{
+        DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalPhase,
+        DirectoryTreeTargetState,
+    };
     use volicord_types::{
         derive_integration_activation_state, ActivationStep, ActivationStepId, ConnectionCheck,
         ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus,
@@ -779,7 +812,8 @@ mod tests {
         args::{HumanOutputDetail, OutputFormat},
         output::report::{
             render_command_report, CommandConnection, CommandOperation, ConnectionCommandReport,
-            RuntimeHomePublicationStatus, SetupDisposition, SetupFailureDiagnostic,
+            RuntimeHomePublicationStatus, RuntimeHomeRollbackResult, SetupDisposition,
+            SetupFailureDiagnostic,
         },
         planning::{PlannedChangeOperation, PlannedConnectionChange, PlannedConnectionChangeKind},
     };
@@ -1035,6 +1069,7 @@ mod tests {
             connection("workflow"),
             SetupDisposition::Preserved,
             RuntimeHomePublicationStatus::NotPublished,
+            None,
             SetupFailureDiagnostic::TransactionFailed,
             "Setup migration could not be completed",
             json!({"retry_arguments": ["init", "--verbose"]}),
@@ -1282,6 +1317,7 @@ mod tests {
                 connection("workflow"),
                 SetupDisposition::Preserved,
                 RuntimeHomePublicationStatus::NotPublished,
+                None,
                 SetupFailureDiagnostic::TransactionFailed,
                 "Setup could not be applied",
                 json!({"retryable": true}),
@@ -1301,6 +1337,89 @@ mod tests {
             .unwrap();
             assert!(concise(&dry_run)
                 .contains("Run the same dry-run command with --verbose for detailed diagnostics."));
+        }
+    }
+
+    #[test]
+    fn concise_setup_failure_says_removed_when_parent_sync_failed() {
+        let report = ConnectionCommandReport::setup_failure(
+            CommandOperation::Init,
+            Path::new("/runtime"),
+            connection("workflow"),
+            SetupDisposition::PartiallyRolledBack,
+            RuntimeHomePublicationStatus::OwnedPublicationRolledBack,
+            Some(RuntimeHomeRollbackResult::Removed {
+                durability: DirectoryEntryDurability::ParentSynchronizationFailed,
+                failure_phase: Some(DirectoryTreeRemovalPhase::ParentDirectorySynchronization),
+            }),
+            SetupFailureDiagnostic::PartialRollback,
+            "Setup could not be fully rolled back",
+            json!({"retryable": true}),
+            IntegrationActivationPlan::empty(IntegrationActivationState::Failed),
+        )
+        .expect("failure report");
+
+        let output = concise(&report);
+        assert!(output
+            .contains("the Runtime Home was removed, but parent-directory synchronization failed"));
+        assert!(!output.contains("Runtime Home was preserved"));
+        assert!(!output.contains("Runtime Home remains"));
+    }
+
+    #[test]
+    fn concise_setup_failure_distinguishes_other_runtime_home_rollback_effects() {
+        for (disposition, publication, rollback, expected) in [
+            (
+                SetupDisposition::RolledBack,
+                RuntimeHomePublicationStatus::OwnedPublicationRolledBack,
+                RuntimeHomeRollbackResult::Removed {
+                    durability: DirectoryEntryDurability::ParentSynchronized,
+                    failure_phase: None,
+                },
+                "the Runtime Home was removed and its parent entry was synchronized",
+            ),
+            (
+                SetupDisposition::PartiallyRolledBack,
+                RuntimeHomePublicationStatus::OwnedPublicationRemovalIncomplete,
+                RuntimeHomeRollbackResult::RemovalIncomplete {
+                    effect: DirectoryTreeRemovalEffect::PartiallyRemovedOrUnknown,
+                    phase: DirectoryTreeRemovalPhase::PostRemovalInspection,
+                    final_path: DirectoryTreeTargetState::Unknown,
+                },
+                "Runtime Home removal is incomplete or uncertain",
+            ),
+            (
+                SetupDisposition::PartiallyRolledBack,
+                RuntimeHomePublicationStatus::OwnedPublicationPreserved,
+                RuntimeHomeRollbackResult::Preserved {
+                    reason: "setup_policy".to_owned(),
+                },
+                "the owned Runtime Home was preserved by policy",
+            ),
+            (
+                SetupDisposition::PartiallyRolledBack,
+                RuntimeHomePublicationStatus::OwnershipLostDuringRollback,
+                RuntimeHomeRollbackResult::OwnershipLost {
+                    reason: "final_path_missing".to_owned(),
+                },
+                "Runtime Home rollback ownership was lost",
+            ),
+        ] {
+            let report = ConnectionCommandReport::setup_failure(
+                CommandOperation::Init,
+                Path::new("/runtime"),
+                connection("workflow"),
+                disposition,
+                publication,
+                Some(rollback),
+                SetupFailureDiagnostic::PartialRollback,
+                "Setup could not be fully rolled back",
+                json!({"retryable": true}),
+                IntegrationActivationPlan::empty(IntegrationActivationState::Failed),
+            )
+            .expect("failure report");
+
+            assert!(concise(&report).contains(expected));
         }
     }
 
