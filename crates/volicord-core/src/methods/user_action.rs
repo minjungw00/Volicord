@@ -4,19 +4,21 @@ impl CoreService {
     /// Executes `volicord.request_user_action` through the shared Core mutation pipeline.
     pub fn request_user_action(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: RequestUserActionRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
-        execute_request_user_action(self, request, invocation)
+        execute_request_user_action(self, context, request, invocation)
     }
 
     /// Resolves one pending action from a verified User Channel invocation.
     pub fn resolve_user_action(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: ResolveUserActionRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
-        execute_resolve_user_action(self, request, invocation)
+        execute_resolve_user_action(self, context, request, invocation)
     }
 
     /// Projects pending user-action forms only for an authenticated User
@@ -473,6 +475,7 @@ fn user_action_resolution_replay_projection(
 
 fn execute_request_user_action(
     service: &CoreService,
+    context: &RuntimeHomeMutationContext<'_>,
     request: RequestUserActionRequest,
     invocation: InvocationContext,
 ) -> CoreResult<PipelineResponse> {
@@ -495,6 +498,7 @@ fn execute_request_user_action(
     }
     let prepared = match prepare_or_response(
         service,
+        Some(context),
         MethodName::RequestUserAction,
         request.envelope.clone(),
         request_json,
@@ -971,7 +975,7 @@ pub(super) struct MaterializedUserActionRequest {
 
 pub(super) struct MaterializeUserActionRequestInput<'a> {
     pub(super) service: &'a CoreService,
-    pub(super) store: &'a CoreProjectStore,
+    pub(super) store: &'a CoreProjectStore<'a>,
     pub(super) project_state: &'a ProjectStateHeader,
     pub(super) verified_invocation: &'a VerifiedInvocationContext,
     pub(super) envelope: &'a ToolEnvelope,
@@ -1586,6 +1590,7 @@ fn projected_user_action_state(
 
 fn execute_resolve_user_action(
     service: &CoreService,
+    context: &RuntimeHomeMutationContext<'_>,
     request: ResolveUserActionRequest,
     invocation: InvocationContext,
 ) -> CoreResult<PipelineResponse> {
@@ -1629,6 +1634,7 @@ fn execute_resolve_user_action(
     }
     let prepared = match prepare_or_response(
         service,
+        Some(context),
         MethodName::ResolveUserAction,
         request.envelope.clone(),
         serde_json::to_value(&request)?,
@@ -1717,7 +1723,7 @@ fn execute_resolve_user_action(
     )?;
     if response_committed_fresh_effect(&response) {
         record_core_workflow_metric_best_effort(
-            service,
+            context,
             session_id.as_deref(),
             WorkflowMetricKind::UserRoundtrip,
             1,

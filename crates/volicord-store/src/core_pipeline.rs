@@ -24,7 +24,7 @@ use crate::{
     bootstrap::ProjectRecord,
     guards::{agent_session_from_conn, AgentSessionRecord},
     sqlite::ARTIFACTS_DIR,
-    StoreError, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 pub use crate::evidence_capture::{
@@ -64,12 +64,34 @@ const WRITE_TICKET_RECORD_COLUMNS: &str = "
 
 /// Project-local store handle used by the Core request pipeline.
 #[derive(Debug)]
-pub struct CoreProjectStore {
+pub struct CoreProjectStore<'mutation> {
     pub(crate) runtime_home: PathBuf,
     pub(crate) project: ProjectRecord,
     pub(crate) conn: Connection,
     pub(crate) writable: bool,
+    pub(crate) mutation_context: Option<RuntimeHomeMutationContext<'mutation>>,
     pub(crate) last_clock_sample: RefCell<Option<UtcTimestamp>>,
+}
+
+impl<'mutation> CoreProjectStore<'mutation> {
+    /// Returns the live Runtime Home mutation capability retained by a mutation store.
+    pub fn mutation_context(&self) -> Option<&RuntimeHomeMutationContext<'mutation>> {
+        self.mutation_context.as_ref()
+    }
+
+    pub(crate) fn require_mutation_context(
+        &self,
+    ) -> StoreResult<&RuntimeHomeMutationContext<'mutation>> {
+        let context = self
+            .mutation_context
+            .as_ref()
+            .ok_or_else(|| StoreError::InvalidInput {
+                detail: "Core project mutation requires a live Runtime Home mutation context"
+                    .to_owned(),
+            })?;
+        context.ensure_runtime_home(&self.runtime_home)?;
+        Ok(context)
+    }
 }
 
 /// Current project-state header values needed by request routing.
@@ -978,7 +1000,7 @@ mod open;
 mod replay;
 pub(crate) mod validation;
 
-impl CoreProjectStore {
+impl CoreProjectStore<'_> {
     /// Runs related read-only lookups against one SQLite snapshot.
     ///
     /// The deferred transaction pins its snapshot at the closure's first read,
@@ -4044,7 +4066,8 @@ mod tests {
     use crate::bootstrap::{
         initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     };
-    use crate::sqlite::open_project_state_database;
+    use crate::mutation::TestRuntimeHomeAdmission;
+    use crate::sqlite::open_project_state_database_for_test;
 
     const PROJECT_ID: &str = "project_store";
     const CONNECTION_ID: &str = "conn_store";
@@ -4052,15 +4075,23 @@ mod tests {
 
     struct StoreHarness {
         _runtime_home: TempRuntimeHome,
+        mutation: TestRuntimeHomeAdmission,
         runtime_home_path: PathBuf,
     }
 
     impl StoreHarness {
         fn new() -> Result<Self, Box<dyn Error>> {
             let runtime_home = TempRuntimeHome::new("store-replay-context")?;
-            initialize_runtime_home(runtime_home.path(), "runtime_home_store", "{}")?;
-            register_project(
+            let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
+            let setup_context = setup.context()?;
+            initialize_runtime_home(
+                &setup_context,
                 runtime_home.path(),
+                "runtime_home_store",
+                "{}",
+            )?;
+            register_project(
+                &setup_context,
                 ProjectRegistration {
                     project_id: PROJECT_ID.to_owned(),
                     repo_root: runtime_home.create_product_repo("repo")?,
@@ -4069,15 +4100,22 @@ mod tests {
                     metadata_json: "{}".to_owned(),
                 },
             )?;
+            drop(setup_context);
+            drop(setup);
+            let mutation = TestRuntimeHomeAdmission::shared(runtime_home.path())?;
 
             Ok(Self {
                 runtime_home_path: runtime_home.path().to_path_buf(),
+                mutation,
                 _runtime_home: runtime_home,
             })
         }
 
-        fn store(&self) -> StoreResult<CoreProjectStore> {
-            CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))
+        fn store(&self) -> StoreResult<CoreProjectStore<'_>> {
+            CoreProjectStore::open_for_mutation(
+                &self.mutation.context()?,
+                &ProjectId::new(PROJECT_ID),
+            )
         }
     }
 
@@ -4244,7 +4282,7 @@ mod tests {
         )?;
         assert_eq!(store.effect_counts()?, before);
         drop(store);
-        let mut conn = open_project_state_database(
+        let mut conn = open_project_state_database_for_test(
             harness
                 .runtime_home_path
                 .join("projects")
@@ -4928,7 +4966,7 @@ mod tests {
         assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
         drop(store);
 
-        let conn = open_project_state_database(
+        let conn = open_project_state_database_for_test(
             harness
                 .runtime_home_path
                 .join("projects")
@@ -7168,7 +7206,7 @@ mod tests {
             response_json,
         )?;
 
-        let conn = open_project_state_database(
+        let conn = open_project_state_database_for_test(
             harness
                 .runtime_home_path
                 .join("projects")

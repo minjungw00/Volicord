@@ -281,7 +281,12 @@ pub struct RuntimeHomeMutationPermit<'lease> {
     lease: &'lease RuntimeHomeMutationLease,
 }
 
-impl RuntimeHomeMutationPermit<'_> {
+impl<'lease> RuntimeHomeMutationPermit<'lease> {
+    /// Reborrows this permit without extending the lifetime of its live lease.
+    pub fn reborrow(&self) -> RuntimeHomeMutationPermit<'lease> {
+        RuntimeHomeMutationPermit { lease: self.lease }
+    }
+
     /// Exact canonical Runtime Home covered by this permit.
     pub fn target(&self) -> &CanonicalRuntimeHomePath {
         self.lease.target()
@@ -290,6 +295,14 @@ impl RuntimeHomeMutationPermit<'_> {
     /// Admission mode held by the borrowed lease.
     pub const fn mode(&self) -> RuntimeHomeMutationLeaseMode {
         self.lease.mode()
+    }
+
+    /// Returns whether a path resolves to this permit's exact canonical target.
+    pub fn matches_target(
+        &self,
+        target: impl AsRef<Path>,
+    ) -> Result<bool, RuntimeHomeMutationLeaseError> {
+        self.lease.matches_target(target)
     }
 }
 

@@ -12,12 +12,13 @@ use volicord_store::{
         initialize_project_state_schema, initialize_registry_schema,
     },
     sqlite::{
-        enable_foreign_keys, open_project_state_database, open_project_state_database_read_only,
-        validate_project_state_schema, validate_registry_schema,
+        enable_foreign_keys, open_project_state_database_for_test,
+        open_project_state_database_read_only, validate_project_state_schema,
+        validate_registry_schema,
     },
     StoreError, StoreFailureRoute,
 };
-use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
+use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome, TestRuntimeHomeMutation};
 use volicord_types::{
     canonical_json_string, AgentToolId, GeneratedRelationKind, ManagedMcpClientInfo,
     McpRuntimeSessionSource, StorageDatabaseKind, StorageManifest, STORAGE_CONTRACT_ID,
@@ -541,7 +542,7 @@ fn preceding_guard_verification_schema_manifest_requires_reinitialization(
 fn physical_schema_mismatch_is_corrupt_before_reopen() -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("physical-schema-mismatch")?;
     let path = runtime_home.project_state_db_path("project_schema");
-    let conn = open_project_state_database(&path)?;
+    let conn = open_project_state_database_for_test(&path)?;
     insert_project_owner(&conn, current_storage_manifest_json()?)?;
     validate_project_state_schema(&conn)?;
     conn.execute(
@@ -615,7 +616,7 @@ fn ordinary_open_rejects_a_tampered_manifest_before_returning_a_write_handle(
 ) -> Result<(), Box<dyn Error>> {
     let runtime_home = TempRuntimeHome::new("manifest-before-write")?;
     let path = runtime_home.project_state_db_path("project_manifest");
-    let conn = open_project_state_database(&path)?;
+    let conn = open_project_state_database_for_test(&path)?;
     insert_project_owner(
         &conn,
         json!("unsupported_numeric_profile_shape")
@@ -624,7 +625,7 @@ fn ordinary_open_rejects_a_tampered_manifest_before_returning_a_write_handle(
     )?;
     drop(conn);
 
-    let error = open_project_state_database(&path)
+    let error = open_project_state_database_for_test(&path)
         .expect_err("ordinary open must reject before exposing a writable connection");
     assert_eq!(
         error.classification().route,
@@ -935,6 +936,8 @@ fn diagnostic_lifecycle_columns_enforce_fresh_schema_invariants() -> Result<(), 
 fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("storage-runtime-verification-tool-constraints")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
@@ -947,26 +950,26 @@ fn runtime_verification_tool_columns_enforce_pair_name_and_milestone_order(
     )?;
     let client = ManagedMcpClientInfo::new("fixture-client", "1.0")?;
     record_mcp_initialize_attempt(
-        fixture.runtime_home_path(),
+        &context,
         &runtime.runtime_session_id,
         &client,
         "2025-11-25",
         "2026-07-22T00:00:01Z",
     )?;
     record_mcp_initialize_completion(
-        fixture.runtime_home_path(),
+        &context,
         &runtime.runtime_session_id,
         "2025-11-25",
         "2026-07-22T00:00:01Z",
     )?;
     record_mcp_initialized_notification(
-        fixture.runtime_home_path(),
+        &context,
         &runtime.runtime_session_id,
         "2025-11-25",
         "2026-07-22T00:00:02Z",
     )?;
     record_mcp_tools_list(
-        fixture.runtime_home_path(),
+        &context,
         &runtime.runtime_session_id,
         &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
         true,

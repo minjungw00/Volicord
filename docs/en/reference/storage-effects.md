@@ -180,6 +180,7 @@ These failures return no-effect branches:
 
 - malformed requests
 - validation failures before commit
+- `runtime_home.mutation.setup_in_progress` before a supported writer begins
 - connection routing or mode-gating failures before a protected operation can proceed
 - stale `expected_state_version`
 - invalid, consumed, revoked, or state-bound incompatible write ticket on a consuming attempt
@@ -199,6 +200,13 @@ No-effect branches must not:
 - set `consumed_by_run_id` or `promoted_artifact_id`
 - promote or link artifacts
 - increment `project_state.state_version`
+
+Setup-busy applies to CLI, MCP lifecycle and tool observations, Core commits,
+Guard persistence, diagnostics, operational sessions, integration
+verification, evidence capture, and artifact staging. It creates no database
+row, artifact byte, receipt, checkpoint, or observation. After the exclusive
+setup lease is released, a new admitted operation follows its ordinary effect
+contract.
 
 When preflight returns `ToolRejectedResponse`, the requested committed operation does not proceed. This principle applies to `dry_run` requests too. `dry_run` does not bypass validation, access, capability, or stale-state rejection.
 

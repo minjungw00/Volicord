@@ -222,7 +222,8 @@ fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
         "resolved"
     );
 
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let replay = store
         .tool_invocation(
             MethodName::ReconcileChanges,

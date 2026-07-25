@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     fs,
+    ops::Deref,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -24,11 +25,12 @@ use volicord_store::{
         insert_unrecorded_change, unrecorded_change, upsert_guard_installation,
         GuardInstallationUpsert, UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
-    sqlite::open_project_state_database,
+    sqlite::open_project_state_database_for_test,
     workflow_records::{project_write_authority_fingerprint, ProjectWorkflowPolicyUpsert},
+    RuntimeHomeMutationContext,
 };
 use volicord_test_support::{
-    TempRuntimeHome,
+    with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
     TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use volicord_types::CloseMutationIntent;
@@ -146,7 +148,115 @@ impl DurableIdGenerator for CountingDurableIdGenerator {
 struct MethodHarness {
     _runtime_home: TempRuntimeHome,
     runtime_home_path: PathBuf,
-    service: CoreService,
+    service: AdmittedCoreService,
+}
+
+struct AdmittedCoreService {
+    inner: CoreService,
+    mutation: TestRuntimeHomeMutation,
+}
+
+impl AdmittedCoreService {
+    fn context(&self) -> RuntimeHomeMutationContext<'_> {
+        self.mutation
+            .context()
+            .expect("test mutation lease must match its Runtime Home")
+    }
+
+    fn intake(
+        &self,
+        request: IntakeRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner.intake(&self.context(), request, invocation)
+    }
+
+    fn update_scope(
+        &self,
+        request: UpdateScopeRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .update_scope(&self.context(), request, invocation)
+    }
+
+    fn prepare_write(
+        &self,
+        request: PrepareWriteRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .prepare_write(&self.context(), request, invocation)
+    }
+
+    fn record_run(
+        &self,
+        request: RecordRunRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner.record_run(&self.context(), request, invocation)
+    }
+
+    fn stage_artifact(
+        &self,
+        request: StageArtifactRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .stage_artifact(&self.context(), request, invocation)
+    }
+
+    fn prepare_evidence_capture(
+        &self,
+        request: PrepareEvidenceCaptureRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .prepare_evidence_capture(&self.context(), request, invocation)
+    }
+
+    fn request_user_action(
+        &self,
+        request: RequestUserActionRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .request_user_action(&self.context(), request, invocation)
+    }
+
+    fn resolve_user_action(
+        &self,
+        request: ResolveUserActionRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .resolve_user_action(&self.context(), request, invocation)
+    }
+
+    fn reconcile_changes(
+        &self,
+        request: ReconcileChangesRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner
+            .reconcile_changes(&self.context(), request, invocation)
+    }
+
+    fn close_task(
+        &self,
+        request: CloseTaskRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.inner.close_task(&self.context(), request, invocation)
+    }
+}
+
+impl Deref for AdmittedCoreService {
+    type Target = CoreService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -158,47 +268,50 @@ impl MethodHarness {
     fn new() -> Result<Self, Box<dyn Error>> {
         let runtime_home = TempRuntimeHome::new("core-methods")?;
         let repo_root = runtime_home.create_product_repo("repo")?;
-        initialize_runtime_home(runtime_home.path(), "runtime_home_methods", "{}")?;
-        register_project(
-            runtime_home.path(),
-            ProjectRegistration {
-                project_id: PROJECT_ID.to_owned(),
-                repo_root,
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        ensure_agent_connection(
-            runtime_home.path(),
-            AgentConnectionRegistration {
-                connection_internal_id: CONNECTION_ID.to_owned(),
-                host_kind: HOST_KIND_CODEX.to_owned(),
-                intent: volicord_store::agent_connections::CONNECTION_INTENT_SHARED.to_owned(),
-                host_scope: HOST_SCOPE_PROJECT.to_owned(),
-                server_name: "volicord-method-test".to_owned(),
-                config_target: runtime_home
-                    .path()
-                    .join("agent-connections")
-                    .join(CONNECTION_ID)
-                    .to_string_lossy()
-                    .into_owned(),
-                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                enabled: true,
-                managed_fingerprint: "fixture:methods".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        add_connection_project(
-            runtime_home.path(),
-            ConnectionProjectRegistration {
-                connection_internal_id: CONNECTION_ID.to_owned(),
-                project_id: PROJECT_ID.to_owned(),
-            },
-        )?;
+        with_test_runtime_home_setup(runtime_home.path(), |context| {
+            initialize_runtime_home(context, runtime_home.path(), "runtime_home_methods", "{}")?;
+            register_project(
+                context,
+                ProjectRegistration {
+                    project_id: PROJECT_ID.to_owned(),
+                    repo_root,
+                    project_home: None,
+                    status: ACTIVE_PROJECT_STATUS.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            ensure_agent_connection(
+                context,
+                AgentConnectionRegistration {
+                    connection_internal_id: CONNECTION_ID.to_owned(),
+                    host_kind: HOST_KIND_CODEX.to_owned(),
+                    intent: volicord_store::agent_connections::CONNECTION_INTENT_SHARED.to_owned(),
+                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
+                    server_name: "volicord-method-test".to_owned(),
+                    config_target: runtime_home
+                        .path()
+                        .join("agent-connections")
+                        .join(CONNECTION_ID)
+                        .to_string_lossy()
+                        .into_owned(),
+                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                    enabled: true,
+                    managed_fingerprint: "fixture:methods".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            add_connection_project(
+                context,
+                ConnectionProjectRegistration {
+                    connection_internal_id: CONNECTION_ID.to_owned(),
+                    project_id: PROJECT_ID.to_owned(),
+                },
+            )?;
+            Ok(())
+        })?;
 
         let runtime_home_path = runtime_home.path().to_path_buf();
-        open_project_state_database(
+        open_project_state_database_for_test(
             runtime_home_path
                 .join("projects")
                 .join(PROJECT_ID)
@@ -212,20 +325,25 @@ impl MethodHarness {
             &runtime_home_path,
             ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
         );
+        let mutation = TestRuntimeHomeMutation::acquire(&runtime_home_path)?;
         Ok(Self {
             _runtime_home: runtime_home,
-            runtime_home_path,
-            service,
+            runtime_home_path: runtime_home_path.clone(),
+            service: AdmittedCoreService {
+                inner: service,
+                mutation,
+            },
         })
     }
 
     fn counts(&self) -> Result<StorageEffectCounts, Box<dyn Error>> {
-        let store = CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        let store =
+            CoreProjectStore::open_read_only(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
         Ok(store.effect_counts()?)
     }
 
     fn conn(&self) -> Result<rusqlite::Connection, Box<dyn Error>> {
-        Ok(open_project_state_database(
+        Ok(open_project_state_database_for_test(
             self.runtime_home_path
                 .join("projects")
                 .join(PROJECT_ID)
@@ -291,8 +409,8 @@ impl MethodHarness {
         let policy_fingerprint = volicord_types::canonical_json_sha256(&policy_value)?
             .as_str()
             .to_owned();
-        let mut store =
-            CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        let context = self.service.context();
+        let mut store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
         store.upsert_project_workflow_policy(ProjectWorkflowPolicyUpsert {
             policy_version,
             policy_json,
@@ -309,12 +427,12 @@ impl MethodHarness {
         generator: CountingDurableIdGenerator,
         clock: ManualClock,
     ) {
-        self.service =
+        self.service.inner =
             CoreService::with_id_generator_and_clock(&self.runtime_home_path, generator, clock);
     }
 
     fn use_clock(&mut self, clock: ManualClock) {
-        self.service = CoreService::with_clock(&self.runtime_home_path, clock);
+        self.service.inner = CoreService::with_clock(&self.runtime_home_path, clock);
     }
 }
 
@@ -504,7 +622,8 @@ fn create_close_ready_task(
 }
 
 fn product_repo_root(harness: &MethodHarness) -> Result<PathBuf, Box<dyn Error>> {
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     Ok(store.project_record().repo_root.clone())
 }
 
@@ -993,8 +1112,9 @@ fn record_guard_installation(
         "sha256:0000000000000000000000000000000000000000000000000000000000000000";
     let guard_installation_id = format!("guard_installation_{suffix}");
     let repo_root = harness._runtime_home.product_repo_path("repo");
+    let context = harness.service.context();
     upsert_guard_installation(
-        &harness.runtime_home_path,
+        &context,
         GuardInstallationUpsert {
             guard_installation_id: guard_installation_id.clone(),
             connection_internal_id: CONNECTION_ID.to_owned(),
@@ -1053,8 +1173,9 @@ fn insert_project_unrecorded_change(
     observed_paths_json: &str,
 ) -> Result<String, Box<dyn Error>> {
     let unrecorded_change_id = format!("unrecorded_change_{suffix}");
+    let context = harness.service.context();
     insert_unrecorded_change(
-        &harness.runtime_home_path,
+        &context,
         project_id,
         UnrecordedChangeInsert {
             unrecorded_change_id: unrecorded_change_id.clone(),
@@ -1079,8 +1200,9 @@ fn register_additional_project(
     let repo_root = harness
         ._runtime_home
         .create_product_repo(format!("repo-{project_id}"))?;
+    let context = harness.service.context();
     register_project(
-        &harness.runtime_home_path,
+        &context,
         ProjectRegistration {
             project_id: project_id.to_owned(),
             repo_root,
@@ -1090,7 +1212,7 @@ fn register_additional_project(
         },
     )?;
     add_connection_project(
-        &harness.runtime_home_path,
+        &context,
         ConnectionProjectRegistration {
             connection_internal_id: CONNECTION_ID.to_owned(),
             project_id: project_id.to_owned(),
@@ -1239,7 +1361,8 @@ fn request_and_resolve_user_observation(
             raw_resolution.1
         )
     });
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     store
         .user_action_resolution_record(resolution_ref.record_id.as_str())
         .unwrap_or_else(|error| {
@@ -2860,7 +2983,8 @@ fn task_revision(
     harness: &MethodHarness,
     task_id: &str,
 ) -> Result<TaskRevisionRecord, Box<dyn Error>> {
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     store
         .task_revision_record(&TaskId::new(task_id))?
         .ok_or_else(|| format!("missing task revision for {task_id}").into())

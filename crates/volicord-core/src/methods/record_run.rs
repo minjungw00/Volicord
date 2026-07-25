@@ -4,6 +4,7 @@ impl CoreService {
     /// Executes `volicord.record_run` through the shared Core mutation pipeline.
     pub fn record_run(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: RecordRunRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -20,6 +21,7 @@ impl CoreService {
         }
         let prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::RecordRun,
             request.envelope.clone(),
             request_json,
@@ -101,7 +103,7 @@ impl CoreService {
         if response_committed_fresh_effect(&response) {
             if let Some(duration) = first_product_write_duration {
                 record_core_workflow_metric_best_effort(
-                    self,
+                    context,
                     session_id.as_deref(),
                     WorkflowMetricKind::FirstProductWriteDurationMicros,
                     duration,
@@ -259,7 +261,7 @@ enum RecordRunObservationOrigin {
 }
 
 struct RecordRunArtifactContext<'a> {
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_state: &'a ProjectStateHeader,
     request: &'a RecordRunRequest,
     verified_invocation: &'a VerifiedInvocationContext,
@@ -2131,7 +2133,7 @@ fn capture_authority_for_input<'a>(
 
 struct RecordRunObservationContext<'a> {
     service: &'a CoreService,
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_state: &'a ProjectStateHeader,
     request: &'a RecordRunRequest,
     verified_invocation: &'a VerifiedInvocationContext,
@@ -4106,7 +4108,7 @@ fn observation_refs_by_target(
 
 struct RecordRunCloseBasisContext<'a> {
     service: &'a CoreService,
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_state: &'a ProjectStateHeader,
     request: &'a RecordRunRequest,
     task: &'a TaskRecord,
@@ -4120,7 +4122,7 @@ struct RecordRunCloseBasisContext<'a> {
 }
 
 struct CloseBasisRefResolutionContext<'a> {
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_state: &'a ProjectStateHeader,
     request: &'a RecordRunRequest,
     current_scope_revision: u64,
@@ -5347,7 +5349,7 @@ fn plan_existing_artifact_input(
 }
 
 struct WriteTicketRunValidationContext<'a> {
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_state: &'a ProjectStateHeader,
     request: &'a RecordRunRequest,
     change_unit: &'a ChangeUnitRecord,

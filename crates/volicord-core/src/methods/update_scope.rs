@@ -4,6 +4,7 @@ impl CoreService {
     /// Executes `volicord.update_scope` through the shared Core mutation pipeline.
     pub fn update_scope(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: UpdateScopeRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -25,6 +26,7 @@ impl CoreService {
         );
         let prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::UpdateScope,
             request.envelope.clone(),
             request_json,

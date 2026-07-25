@@ -49,6 +49,13 @@ SQLite foreign keys are part of this DDL contract. Every connection that reads o
 PRAGMA foreign_keys = ON;
 ```
 
+Production code opens `registry.sqlite` or project `state.sqlite` for writing
+only through crate-private helpers that require a live
+`RuntimeHomeMutationContext`. The project record and database path must belong
+to that context's exact canonical Runtime Home. Read-only helpers remain
+separate and require no mutation context. Setup-only staged database creation
+requires an exclusive setup context and stays within bootstrap.
+
 Mutating transactions must use `BEGIN IMMEDIATE` or an equivalent serialized
 write boundary before reading freshness, write-ticket compatibility rows,
 staging, replay rows, or the persisted canonical-UTC floor for a commit.

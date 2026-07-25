@@ -25,10 +25,10 @@ use crate::{
     },
     operational_sessions::connection_integration_revision,
     sqlite::{
-        begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
-        registry_db_path,
+        begin_immediate_transaction, open_registry_database_for_mutation,
+        open_registry_database_read_only, registry_db_path,
     },
-    StoreError, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 /// Baseline-valid Codex host kind.
@@ -435,13 +435,13 @@ struct AgentConnectionWriteRegistration {
 
 /// Registers or updates one Agent Connection.
 pub fn ensure_agent_connection(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     registration: AgentConnectionRegistration,
 ) -> StoreResult<AgentConnectionRecord> {
     validate_agent_connection_registration(&registration)?;
 
     write_agent_connection(
-        runtime_home,
+        context,
         AgentConnectionWriteRegistration {
             connection_internal_id: registration.connection_internal_id,
             host_kind: registration.host_kind,
@@ -462,7 +462,7 @@ pub fn ensure_agent_connection(
 /// Registers or updates a migration target while preserving a concurrently
 /// enabled existing connection. New targets remain disabled until activation.
 pub fn ensure_staged_agent_connection(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     registration: AgentConnectionRegistration,
 ) -> StoreResult<AgentConnectionRecord> {
     validate_agent_connection_registration(&registration)?;
@@ -472,7 +472,7 @@ pub fn ensure_staged_agent_connection(
         });
     }
     write_agent_connection(
-        runtime_home,
+        context,
         AgentConnectionWriteRegistration {
             connection_internal_id: registration.connection_internal_id,
             host_kind: registration.host_kind,
@@ -492,13 +492,13 @@ pub fn ensure_staged_agent_connection(
 
 /// Ensures an Agent Connection by its natural host target.
 pub fn ensure_agent_connection_for_target(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     registration: AgentConnectionNaturalKeyRegistration,
 ) -> StoreResult<AgentConnectionRecord> {
     validate_agent_connection_natural_key_registration(&registration)?;
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
-    let conn = open_registry_database(&registry_path)?;
+    let conn = open_registry_database_read_only(&registry_path)?;
     let project_internal_id = registration
         .project_ref
         .as_deref()
@@ -521,7 +521,7 @@ pub fn ensure_agent_connection_for_target(
     );
 
     write_agent_connection(
-        &runtime_home,
+        context,
         AgentConnectionWriteRegistration {
             connection_internal_id,
             host_kind: registration.host_kind,
@@ -551,7 +551,7 @@ pub fn agent_connection_record_for_target(
         return Ok(None);
     }
 
-    let conn = open_registry_database(&registry_path)?;
+    let conn = open_registry_database_read_only(&registry_path)?;
     let project_internal_id = key
         .project_ref
         .as_deref()
@@ -575,14 +575,14 @@ pub fn agent_connection_record_for_target(
 }
 
 fn write_agent_connection(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     registration: AgentConnectionWriteRegistration,
     preserve_existing_enabled: bool,
 ) -> StoreResult<AgentConnectionRecord> {
     validate_agent_connection_write_registration(&registration)?;
 
-    let registry_path = registry_db_path(&runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let registry_path = registry_db_path(context.runtime_home().as_path());
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
 
@@ -739,7 +739,7 @@ pub fn agent_connection_record(
         return Ok(None);
     }
 
-    let conn = open_registry_database(registry_path)?;
+    let conn = open_registry_database_read_only(registry_path)?;
     agent_connection_record_from_conn(&conn, connection_internal_id)
 }
 
@@ -783,7 +783,7 @@ pub fn list_agent_connections(
         return Ok(Vec::new());
     }
 
-    let conn = open_registry_database(registry_path)?;
+    let conn = open_registry_database_read_only(registry_path)?;
     list_agent_connections_from_conn(&conn)
 }
 
@@ -855,13 +855,13 @@ fn list_raw_agent_connections_from_conn(
 
 /// Enables or disables an Agent Connection.
 pub fn set_connection_enabled(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     connection_internal_id: &str,
     enabled: bool,
 ) -> StoreResult<AgentConnectionRecord> {
     validate_identifier("connection_internal_id", connection_internal_id)?;
-    let registry_path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let registry_path = registry_db_path(context.runtime_home().as_path());
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, connection_internal_id)?;
@@ -891,7 +891,7 @@ pub fn set_connection_enabled(
 
 /// Rebinds one Connection and every owned Guard manifest as one mode revision transition.
 pub fn transition_connection_mode(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: ConnectionModeTransition,
 ) -> StoreResult<ConnectionModeTransitionOutcome> {
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
@@ -920,9 +920,9 @@ pub fn transition_connection_mode(
         }
     }
 
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, &input.connection_internal_id)?;
@@ -1184,7 +1184,7 @@ pub fn transition_connection_mode(
 /// Replaces only the canonical verification report when the Connection
 /// integration revision still matches the revision that was verified.
 pub fn replace_agent_connection_verification_report_if_revision(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     connection_internal_id: &str,
     expected_integration_revision: &IntegrationRevision,
     verification_report: Option<&ConnectionVerificationReport>,
@@ -1196,8 +1196,8 @@ pub fn replace_agent_connection_verification_report_if_revision(
         .map_err(|error| StoreError::InvalidInput {
             detail: format!("verification_report could not be serialized: {error}"),
         })?;
-    let registry_path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let registry_path = registry_db_path(context.runtime_home().as_path());
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let existing =
@@ -1248,13 +1248,13 @@ pub fn replace_agent_connection_verification_report_if_revision(
 
 /// Adds a registered project to a connection allowlist.
 pub fn add_connection_project(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     registration: ConnectionProjectRegistration,
 ) -> StoreResult<ConnectionProjectRecord> {
     validate_connection_project_registration(&registration)?;
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, &registration.connection_internal_id)?;
@@ -1297,15 +1297,15 @@ pub fn add_connection_project(
 /// Atomically removes one Connection Project and its connection-owned Registry
 /// integration state.
 pub fn remove_connection_project(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     connection_internal_id: &str,
     project_id: &str,
 ) -> StoreResult<ConnectionProjectRemovalOutcome> {
     validate_identifier("connection_internal_id", connection_internal_id)?;
     validate_project_id(project_id)?;
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let connection = require_agent_connection(&tx, connection_internal_id)?;
@@ -1379,7 +1379,7 @@ pub fn remove_connection_project(
 /// transaction. A disabled last-project binding remains as durable pending
 /// host-cleanup inventory until the caller completes that cleanup.
 pub fn staged_connection_migration_state(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     connection_internal_id: &str,
     project_id: &str,
     expected_superseded: &[SupersededConnectionProject],
@@ -1408,9 +1408,9 @@ pub fn staged_connection_migration_state(
         });
     }
 
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
@@ -1502,7 +1502,7 @@ pub fn staged_connection_migration_state(
 }
 
 pub fn activate_staged_connection(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     connection_internal_id: &str,
     project_id: &str,
     superseded: &[SupersededConnectionProject],
@@ -1536,9 +1536,9 @@ pub fn activate_staged_connection(
         }
     }
 
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let staged_connection = require_agent_connection(&tx, connection_internal_id)?;
@@ -1691,7 +1691,7 @@ pub fn activate_staged_connection(
 /// External callback effects cannot be rolled back if the later Registry
 /// commit fails; the retained disabled memberships make cleanup retryable.
 pub fn complete_pending_host_cleanup<E>(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     replacement_connection_id: &str,
     pending_connection_ids: &[String],
@@ -1713,7 +1713,7 @@ pub fn complete_pending_host_cleanup<E>(
         validate_identifier("pending.connection_internal_id", connection_id)?;
     }
 
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let registry_path = registry_db_path(&runtime_home);
     validate_pending_host_cleanup_inventory(
         &runtime_home,
@@ -1724,7 +1724,7 @@ pub fn complete_pending_host_cleanup<E>(
     )?;
     cleanup_host_configuration(pending_connection_ids).map_err(PendingHostCleanupError::Host)?;
 
-    let mut conn = open_registry_database(&registry_path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     require_runtime_home(&tx, &registry_path)?;
     let project = require_current_project_registration(&tx, &runtime_home, project_id)?;
@@ -1770,18 +1770,16 @@ fn validate_pending_host_cleanup_inventory<E>(
     replacement_connection_id: &str,
     pending_connection_ids: &[String],
 ) -> Result<(), PendingHostCleanupError<E>> {
-    let mut conn = open_registry_database(registry_path)?;
-    let tx = begin_immediate_transaction(&mut conn)?;
-    require_runtime_home(&tx, registry_path)?;
-    let project = require_current_project_registration(&tx, runtime_home, project_id)?;
+    let conn = open_registry_database_read_only(registry_path)?;
+    require_runtime_home(&conn, registry_path)?;
+    let project = require_current_project_registration(&conn, runtime_home, project_id)?;
     validate_pending_host_cleanup_inventory_in_transaction(
-        &tx,
+        &conn,
         &project,
         project_id,
         replacement_connection_id,
         pending_connection_ids,
     )?;
-    tx.commit()?;
     Ok(())
 }
 
@@ -1918,7 +1916,7 @@ pub fn list_connection_projects(
         });
     }
 
-    let conn = open_registry_database(registry_path)?;
+    let conn = open_registry_database_read_only(registry_path)?;
     require_agent_connection(&conn, connection_internal_id)?;
     list_connection_projects_from_conn(&conn, &runtime_home, connection_internal_id)
 }
@@ -2016,7 +2014,7 @@ pub fn agent_connection_project_access(
         return Ok(None);
     }
 
-    let conn = open_registry_database(registry_path)?;
+    let conn = open_registry_database_read_only(registry_path)?;
     let Some(connection) = agent_connection_record_from_conn(&conn, connection_internal_id)? else {
         return Ok(None);
     };
@@ -2636,10 +2634,12 @@ mod tests {
         initialize_runtime_home, project_record_for_execution, register_project,
         ProjectRegistration, ACTIVE_PROJECT_STATUS,
     };
+    use crate::mutation::{with_test_runtime_home_setup, TestRuntimeHomeAdmission};
     use crate::operational_sessions::{
         mcp_runtime_session, start_mcp_runtime_session_for_test, McpRuntimeSessionRecord,
         McpRuntimeSessionStart,
     };
+    use crate::sqlite::open_registry_database_for_test;
 
     const PROJECT_ID: &str = "project_a";
     const PRIOR_OTHER_PROJECT_ID: &str = "project_b";
@@ -2651,10 +2651,10 @@ mod tests {
     fn agent_connection_registration_updates_and_lists() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-register")?;
 
-        let created = ensure_agent_connection(fixture.runtime_home.path(), connection("conn_a"))?;
+        let created = ensure_agent_connection(&fixture.context()?, connection("conn_a"))?;
         assert!(matches!(
             ensure_agent_connection(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 AgentConnectionRegistration {
                     mode: CONNECTION_MODE_READ_ONLY.to_owned(),
                     ..connection("conn_a")
@@ -2663,7 +2663,7 @@ mod tests {
             Err(StoreError::Conflict { .. })
         ));
         let updated = ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 mode: CONNECTION_MODE_WORKFLOW.to_owned(),
                 enabled: false,
@@ -2695,9 +2695,9 @@ mod tests {
     fn connection_instances_are_unique_and_stable_across_compatible_updates(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-instance-stability")?;
-        let first = ensure_agent_connection(fixture.runtime_home.path(), connection("conn_first"))?;
+        let first = ensure_agent_connection(&fixture.context()?, connection("conn_first"))?;
         let second = ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 config_target: "/tmp/volicord-test-second-config.toml".to_owned(),
                 ..connection("conn_second")
@@ -2713,15 +2713,14 @@ mod tests {
         .is_ok());
 
         let initial_revision = connection_integration_revision(&first)?;
-        let replay =
-            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_first"))?;
+        let replay = ensure_agent_connection(&fixture.context()?, connection("conn_first"))?;
         assert_eq!(
             replay.integration_instance_id,
             first.integration_instance_id
         );
         assert_eq!(connection_integration_revision(&replay)?, initial_revision);
 
-        let disabled = set_connection_enabled(fixture.runtime_home.path(), "conn_first", false)?;
+        let disabled = set_connection_enabled(&fixture.context()?, "conn_first", false)?;
         assert_eq!(
             disabled.integration_instance_id,
             first.integration_instance_id
@@ -2732,7 +2731,7 @@ mod tests {
         );
 
         let verified = replace_agent_connection_verification_report_if_revision(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_first",
             &initial_revision,
             Some(&verification_report()),
@@ -2752,10 +2751,9 @@ mod tests {
     fn connection_instance_is_sql_immutable_and_malformed_storage_is_corrupt(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-instance-storage")?;
-        let created =
-            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_instance"))?;
+        let created = ensure_agent_connection(&fixture.context()?, connection("conn_instance"))?;
         let registry_path = registry_db_path(fixture.runtime_home.path());
-        let conn = open_registry_database(&registry_path)?;
+        let conn = open_registry_database_for_test(&registry_path)?;
         let replacement = "connection_instance_11223344-5566-4abb-8cdd-eeff10203040";
         assert!(conn
             .execute(
@@ -2817,17 +2815,16 @@ mod tests {
     fn report_replacement_changes_only_the_report_and_row_timestamp() -> Result<(), Box<dyn Error>>
     {
         let fixture = registry_fixture("connection-report-only")?;
-        let connection =
-            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_report"))?;
+        let connection = ensure_agent_connection(&fixture.context()?, connection("conn_report"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_report".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_report",
@@ -2836,7 +2833,7 @@ mod tests {
             ),
         )?;
         let registry_path = registry_db_path(fixture.runtime_home.path());
-        open_registry_database(&registry_path)?.execute(
+        open_registry_database_for_test(&registry_path)?.execute(
             "UPDATE agent_connections
                 SET updated_at = '2000-01-01T00:00:00.000Z'
               WHERE connection_internal_id = 'conn_report'",
@@ -2850,7 +2847,7 @@ mod tests {
             .expect("Guard Installation before report replacement");
 
         let replaced = replace_agent_connection_verification_report_if_revision(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_report",
             &before_revision,
             Some(&verification_report()),
@@ -2890,8 +2887,7 @@ mod tests {
     #[test]
     fn missing_report_synthesizes_action_required_without_writing() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-report-missing")?;
-        let connection =
-            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_missing"))?;
+        let connection = ensure_agent_connection(&fixture.context()?, connection("conn_missing"))?;
         assert!(connection.verification_report_json.is_none());
 
         let projected = connection.effective_verification_report(test_timestamp())?;
@@ -2925,11 +2921,10 @@ mod tests {
     fn applied_fingerprint_change_clears_the_prior_report_and_changes_revision(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-fingerprint-report-invalidation")?;
-        let initial =
-            ensure_agent_connection(fixture.runtime_home.path(), connection("conn_fingerprint"))?;
+        let initial = ensure_agent_connection(&fixture.context()?, connection("conn_fingerprint"))?;
         let initial_revision = connection_integration_revision(&initial)?;
         let verified = replace_agent_connection_verification_report_if_revision(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_fingerprint",
             &initial_revision,
             Some(&verification_report()),
@@ -2937,7 +2932,7 @@ mod tests {
         assert!(verified.verification_report_json.is_some());
 
         let changed = ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 managed_fingerprint: "fingerprint-next".to_owned(),
                 ..connection("conn_fingerprint")
@@ -2949,13 +2944,13 @@ mod tests {
         assert_ne!(changed_revision, initial_revision);
 
         let reverified = replace_agent_connection_verification_report_if_revision(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_fingerprint",
             &changed_revision,
             Some(&verification_report()),
         )?;
         let compatible_replay = ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 managed_fingerprint: "fingerprint-next".to_owned(),
                 ..connection("conn_fingerprint")
@@ -2976,16 +2971,16 @@ mod tests {
     fn damaged_stored_verification_report_is_raw_only_until_explicit_replacement(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-report-stored")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_report"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_report"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_report".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         let registry_path = registry_db_path(fixture.runtime_home.path());
-        let conn = open_registry_database(&registry_path)?;
+        let conn = open_registry_database_for_test(&registry_path)?;
         let expected_revision = connection_integration_revision(
             &agent_connection_record(fixture.runtime_home.path(), "conn_report")?
                 .expect("connection before report corruption"),
@@ -3031,7 +3026,7 @@ mod tests {
                 "verification_report_json",
             );
             assert_connection_owner_json_corrupt(
-                set_connection_enabled(fixture.runtime_home.path(), "conn_report", false)
+                set_connection_enabled(&fixture.context()?, "conn_report", false)
                     .expect_err("mutation must reject a damaged report before effects"),
                 "conn_report",
                 "verification_report_json",
@@ -3063,7 +3058,7 @@ mod tests {
             );
 
             replace_agent_connection_verification_report_if_revision(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 "conn_report",
                 &expected_revision,
                 Some(&verification_report()),
@@ -3086,16 +3081,16 @@ mod tests {
     #[test]
     fn damaged_stored_metadata_is_raw_only_and_blocks_mutation() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-metadata-stored")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_metadata"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_metadata"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_metadata".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         let registry_path = registry_db_path(fixture.runtime_home.path());
-        let conn = open_registry_database(&registry_path)?;
+        let conn = open_registry_database_for_test(&registry_path)?;
         let expected_revision = connection_integration_revision(
             &agent_connection_record(fixture.runtime_home.path(), "conn_metadata")?
                 .expect("connection before metadata corruption"),
@@ -3117,10 +3112,10 @@ mod tests {
                     .expect_err("strict list must reject damaged metadata"),
                 list_agent_connections_read_only(fixture.runtime_home.path())
                     .expect_err("strict read-only list must reject damaged metadata"),
-                set_connection_enabled(fixture.runtime_home.path(), "conn_metadata", false)
+                set_connection_enabled(&fixture.context()?, "conn_metadata", false)
                     .expect_err("mutation must reject damaged metadata before effects"),
                 replace_agent_connection_verification_report_if_revision(
-                    fixture.runtime_home.path(),
+                    &fixture.context()?,
                     "conn_metadata",
                     &expected_revision,
                     Some(&verification_report()),
@@ -3199,10 +3194,10 @@ mod tests {
     #[test]
     fn agent_connection_rejects_conflicting_target() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-conflict")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_a"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_a"))?;
 
         let error = ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 connection_internal_id: "conn_b".to_owned(),
                 ..connection("conn_a")
@@ -3218,17 +3213,17 @@ mod tests {
     fn staged_registration_preserves_a_concurrently_enabled_target() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-staged-upsert-race")?;
         let staged = ensure_staged_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 enabled: false,
                 ..connection("conn_staged_race")
             },
         )?;
         assert!(!staged.enabled);
-        set_connection_enabled(fixture.runtime_home.path(), "conn_staged_race", true)?;
+        set_connection_enabled(&fixture.context()?, "conn_staged_race", true)?;
 
         let refreshed = ensure_staged_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 enabled: false,
                 managed_fingerprint: "refreshed-staging-plan".to_owned(),
@@ -3245,7 +3240,7 @@ mod tests {
     fn generic_registration_rejects_store_owned_cleanup_metadata() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-reserved-cleanup-metadata")?;
         let error = ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 metadata_json: format!(
                     r#"{{"{PENDING_HOST_CLEANUP_METADATA_KEY}":{{"project_id":"{PROJECT_ID}","replacement_connection_id":"conn_next"}}}}"#
@@ -3263,7 +3258,7 @@ mod tests {
     #[test]
     fn connection_projects_gate_current_project_access() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-projects")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_project"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_project"))?;
         assert!(!is_agent_connection_project_allowed(
             fixture.runtime_home.path(),
             "conn_project",
@@ -3271,14 +3266,14 @@ mod tests {
         )?);
 
         let added = add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_project".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         let repeated = add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_project".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
@@ -3304,15 +3299,14 @@ mod tests {
             PROJECT_ID
         )?);
 
-        set_connection_enabled(fixture.runtime_home.path(), "conn_project", false)?;
+        set_connection_enabled(&fixture.context()?, "conn_project", false)?;
         assert!(!is_agent_connection_project_allowed(
             fixture.runtime_home.path(),
             "conn_project",
             PROJECT_ID
         )?);
 
-        let removal =
-            remove_connection_project(fixture.runtime_home.path(), "conn_project", PROJECT_ID)?;
+        let removal = remove_connection_project(&fixture.context()?, "conn_project", PROJECT_ID)?;
         assert_eq!(
             removal,
             ConnectionProjectRemovalOutcome {
@@ -3329,24 +3323,24 @@ mod tests {
     fn intentionally_disabled_membership_is_not_pending_host_cleanup() -> Result<(), Box<dyn Error>>
     {
         let fixture = registry_fixture("connection-disabled-not-cleanup")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_disabled"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_disabled"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_disabled".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
-        set_connection_enabled(fixture.runtime_home.path(), "conn_disabled", false)?;
+        set_connection_enabled(&fixture.context()?, "conn_disabled", false)?;
         ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 config_target: "/tmp/conn-replacement-config.toml".to_owned(),
                 ..connection("conn_replacement")
             },
         )?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_replacement".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
@@ -3354,7 +3348,7 @@ mod tests {
         )?;
 
         let error = complete_pending_host_cleanup(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             PROJECT_ID,
             "conn_replacement",
             &["conn_disabled".to_owned()],
@@ -3380,7 +3374,7 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-staged-activation")?;
         register_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ProjectRegistration {
                 project_id: PRIOR_OTHER_PROJECT_ID.to_owned(),
                 repo_root: fixture
@@ -3392,7 +3386,7 @@ mod tests {
             },
         )?;
         register_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ProjectRegistration {
                 project_id: TARGET_OTHER_PROJECT_ID.to_owned(),
                 repo_root: fixture
@@ -3403,16 +3397,16 @@ mod tests {
                 metadata_json: "{}".to_owned(),
             },
         )?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_prior"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_prior"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PRIOR_OTHER_PROJECT_ID.to_owned(),
@@ -3423,7 +3417,7 @@ mod tests {
             ("guard_prior_retained", PRIOR_OTHER_PROJECT_ID),
         ] {
             crate::guards::upsert_guard_installation(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 guard_installation_upsert(
                     fixture.runtime_home.path(),
                     guard_id,
@@ -3458,7 +3452,7 @@ mod tests {
             )?);
         }
         ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 connection_internal_id: "conn_staged".to_owned(),
                 config_target: "/tmp/volicord-test-staged.toml".to_owned(),
@@ -3466,21 +3460,21 @@ mod tests {
             },
         )?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_staged".to_owned(),
                 project_id: TARGET_OTHER_PROJECT_ID.to_owned(),
             },
         )?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_staged".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         let invalid = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -3506,7 +3500,7 @@ mod tests {
             2
         );
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_staged",
@@ -3520,7 +3514,7 @@ mod tests {
             PROJECT_ID,
         )?;
         let conflict = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -3550,7 +3544,7 @@ mod tests {
         )?
         .is_none());
         ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 connection_internal_id: "conn_competing".to_owned(),
                 config_target: "/tmp/volicord-test-competing.toml".to_owned(),
@@ -3558,14 +3552,14 @@ mod tests {
             },
         )?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_competing".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         let stale_inventory = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -3581,10 +3575,10 @@ mod tests {
         )
         .expect_err("a competing project binding must invalidate the staged inventory");
         assert!(matches!(stale_inventory, StoreError::Conflict { .. }));
-        set_connection_enabled(fixture.runtime_home.path(), "conn_competing", false)?;
+        set_connection_enabled(&fixture.context()?, "conn_competing", false)?;
 
         let (activated, installation, disabled_superseded) = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -3674,16 +3668,16 @@ mod tests {
     fn staged_connection_activation_rolls_back_flags_on_late_guard_conflict(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-staged-activation-rollback")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_prior"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_prior"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_prior_pending",
@@ -3712,13 +3706,11 @@ mod tests {
             enabled: false,
             ..connection("conn_staged")
         };
-        let staged = ensure_staged_agent_connection(
-            fixture.runtime_home.path(),
-            staged_registration.clone(),
-        )?;
+        let staged =
+            ensure_staged_agent_connection(&fixture.context()?, staged_registration.clone())?;
         let staged_revision = connection_integration_revision(&staged)?;
         let staged_replay =
-            ensure_staged_agent_connection(fixture.runtime_home.path(), staged_registration)?;
+            ensure_staged_agent_connection(&fixture.context()?, staged_registration)?;
         assert_eq!(
             staged_replay.integration_instance_id,
             staged.integration_instance_id
@@ -3728,14 +3720,14 @@ mod tests {
             staged_revision
         );
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_staged".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_existing",
@@ -3750,7 +3742,7 @@ mod tests {
         )?;
 
         let conflict = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -3792,7 +3784,7 @@ mod tests {
         )?
         .is_none());
         let (activated_connection, _, pending_host_cleanup) = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -3848,7 +3840,7 @@ mod tests {
             1
         );
         let (resumed_connection, resumed_state) = staged_connection_migration_state(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -3874,7 +3866,7 @@ mod tests {
         );
 
         register_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ProjectRegistration {
                 project_id: TARGET_OTHER_PROJECT_ID.to_owned(),
                 repo_root: fixture
@@ -3886,7 +3878,7 @@ mod tests {
             },
         )?;
         let marked_target = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_prior",
             TARGET_OTHER_PROJECT_ID,
             &[],
@@ -3901,7 +3893,7 @@ mod tests {
         assert!(matches!(marked_target, StoreError::Conflict { .. }));
 
         let generic_update = ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 enabled: false,
                 ..connection("conn_prior")
@@ -3909,12 +3901,11 @@ mod tests {
         )
         .expect_err("generic ensure must not overwrite a cleanup marker");
         assert!(matches!(generic_update, StoreError::Conflict { .. }));
-        let generic_enable =
-            set_connection_enabled(fixture.runtime_home.path(), "conn_prior", true)
-                .expect_err("generic enable must not bypass cleanup recovery");
+        let generic_enable = set_connection_enabled(&fixture.context()?, "conn_prior", true)
+            .expect_err("generic enable must not bypass cleanup recovery");
         assert!(matches!(generic_enable, StoreError::Conflict { .. }));
         let generic_add = add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
@@ -3923,12 +3914,12 @@ mod tests {
         .expect_err("generic membership addition must not mutate cleanup inventory");
         assert!(matches!(generic_add, StoreError::Conflict { .. }));
         let generic_remove =
-            remove_connection_project(fixture.runtime_home.path(), "conn_prior", PROJECT_ID)
+            remove_connection_project(&fixture.context()?, "conn_prior", PROJECT_ID)
                 .expect_err("generic membership removal must not orphan cleanup inventory");
         assert!(matches!(generic_remove, StoreError::Conflict { .. }));
 
         let cleanup_failure = complete_pending_host_cleanup(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             PROJECT_ID,
             "conn_staged",
             &pending_host_cleanup,
@@ -3965,13 +3956,13 @@ mod tests {
         )?
         .is_some());
         let revalidation_failure = complete_pending_host_cleanup(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             PROJECT_ID,
             "conn_staged",
             &pending_host_cleanup,
             |_| {
                 let registry_path = registry_db_path(fixture.runtime_home.path());
-                let conn = open_registry_database(&registry_path)?;
+                let conn = open_registry_database_for_test(&registry_path)?;
                 let prior = require_agent_connection(&conn, "conn_prior")?;
                 let rebased_metadata = metadata_with_pending_host_cleanup(
                     &prior.metadata_json,
@@ -4009,7 +4000,7 @@ mod tests {
         )?
         .is_some());
         let registry_path = registry_db_path(fixture.runtime_home.path());
-        let registry = open_registry_database(&registry_path)?;
+        let registry = open_registry_database_for_test(&registry_path)?;
         let prior = require_agent_connection(&registry, "conn_prior")?;
         let restored_metadata =
             metadata_with_pending_host_cleanup(&prior.metadata_json, PROJECT_ID, "conn_staged")?;
@@ -4019,7 +4010,7 @@ mod tests {
         )?;
         drop(registry);
         complete_pending_host_cleanup(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             PROJECT_ID,
             "conn_staged",
             &pending_host_cleanup,
@@ -4029,7 +4020,7 @@ mod tests {
                     "conn_staged",
                     CONNECTION_MODE_READ_ONLY,
                 )?;
-                transition_connection_mode(fixture.runtime_home.path(), transition)?;
+                transition_connection_mode(&fixture.context()?, transition)?;
                 Ok::<(), StoreError>(())
             },
         )?;
@@ -4096,16 +4087,16 @@ mod tests {
     fn staged_activation_rebases_older_pending_cleanup_to_the_new_replacement(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-cleanup-marker-chain")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_prior"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_prior"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_prior_chain",
@@ -4133,7 +4124,7 @@ mod tests {
             ("conn_next", "/tmp/volicord-test-next.toml"),
         ] {
             ensure_agent_connection(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 AgentConnectionRegistration {
                     connection_internal_id: connection_id.to_owned(),
                     config_target: target.to_owned(),
@@ -4143,7 +4134,7 @@ mod tests {
             )?;
         }
         let (_, _, first_pending) = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_middle",
             PROJECT_ID,
             &[SupersededConnectionProject {
@@ -4175,7 +4166,7 @@ mod tests {
         )?;
 
         let (_, _, rebased_pending) = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_next",
             PROJECT_ID,
             &[
@@ -4211,7 +4202,7 @@ mod tests {
             ));
         }
         complete_pending_host_cleanup(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             PROJECT_ID,
             "conn_next",
             &["conn_prior".to_owned(), "conn_middle".to_owned()],
@@ -4264,16 +4255,16 @@ mod tests {
     #[test]
     fn last_membership_removal_cleans_initialized_registry_state() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-remove-initialized")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_initialized"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_initialized"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_initialized".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_initialized",
@@ -4289,7 +4280,7 @@ mod tests {
         )?;
 
         let outcome =
-            remove_connection_project(fixture.runtime_home.path(), "conn_initialized", PROJECT_ID)?;
+            remove_connection_project(&fixture.context()?, "conn_initialized", PROJECT_ID)?;
 
         assert_eq!(
             outcome,
@@ -4322,10 +4313,9 @@ mod tests {
     fn physical_recreation_reuses_connection_id_with_a_new_instance_and_revision(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-instance-recreation")?;
-        let first =
-            ensure_agent_connection_for_target(fixture.runtime_home.path(), natural_connection())?;
+        let first = ensure_agent_connection_for_target(&fixture.context()?, natural_connection())?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: first.connection_internal_id.clone(),
                 project_id: PROJECT_ID.to_owned(),
@@ -4333,7 +4323,7 @@ mod tests {
         )?;
         let first_revision = connection_integration_revision(&first)?;
         let outcome = remove_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             &first.connection_internal_id,
             PROJECT_ID,
         )?;
@@ -4345,7 +4335,7 @@ mod tests {
         .is_none());
 
         let recreated =
-            ensure_agent_connection_for_target(fixture.runtime_home.path(), natural_connection())?;
+            ensure_agent_connection_for_target(&fixture.context()?, natural_connection())?;
         assert_eq!(
             recreated.connection_internal_id,
             first.connection_internal_id
@@ -4368,16 +4358,16 @@ mod tests {
             PRIOR_OTHER_PROJECT_ID,
             "remove-bound-runtime-other-repo",
         )?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_selected"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_selected"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_selected".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_selected",
@@ -4402,21 +4392,21 @@ mod tests {
         )?;
 
         ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 config_target: "/tmp/volicord-test-unrelated.toml".to_owned(),
                 ..connection("conn_unrelated")
             },
         )?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_unrelated".to_owned(),
                 project_id: PRIOR_OTHER_PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_unrelated",
@@ -4440,8 +4430,7 @@ mod tests {
             "2026-07-19T00:00:01Z",
         )?;
 
-        let outcome =
-            remove_connection_project(fixture.runtime_home.path(), "conn_selected", PROJECT_ID)?;
+        let outcome = remove_connection_project(&fixture.context()?, "conn_selected", PROJECT_ID)?;
 
         assert!(outcome.connection_removed);
         assert!(mcp_runtime_session(
@@ -4499,10 +4488,10 @@ mod tests {
             PRIOR_OTHER_PROJECT_ID,
             "remove-one-membership-other-repo",
         )?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_multi"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_multi"))?;
         for project_id in [PROJECT_ID, PRIOR_OTHER_PROJECT_ID] {
             add_connection_project(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 ConnectionProjectRegistration {
                     connection_internal_id: "conn_multi".to_owned(),
                     project_id: project_id.to_owned(),
@@ -4514,7 +4503,7 @@ mod tests {
             ("guard_multi_retained", PRIOR_OTHER_PROJECT_ID),
         ] {
             crate::guards::upsert_guard_installation(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 guard_installation_upsert(
                     fixture.runtime_home.path(),
                     guard_id,
@@ -4548,8 +4537,7 @@ mod tests {
             )?;
         }
 
-        let outcome =
-            remove_connection_project(fixture.runtime_home.path(), "conn_multi", PROJECT_ID)?;
+        let outcome = remove_connection_project(&fixture.context()?, "conn_multi", PROJECT_ID)?;
 
         assert_eq!(
             outcome,
@@ -4599,16 +4587,16 @@ mod tests {
     #[test]
     fn pending_cleanup_conflict_preserves_all_removal_inputs() -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-remove-pending-conflict")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_pending"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_pending"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_pending".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_pending",
@@ -4632,7 +4620,7 @@ mod tests {
             "2026-07-19T00:00:01Z",
         )?;
         let registry_path = registry_db_path(fixture.runtime_home.path());
-        let conn = open_registry_database(&registry_path)?;
+        let conn = open_registry_database_for_test(&registry_path)?;
         conn.execute(
             "UPDATE agent_connections SET metadata_json = ?2 WHERE connection_internal_id = ?1",
             params![
@@ -4642,9 +4630,8 @@ mod tests {
         )?;
         drop(conn);
 
-        let error =
-            remove_connection_project(fixture.runtime_home.path(), "conn_pending", PROJECT_ID)
-                .expect_err("pending host cleanup must block generic removal");
+        let error = remove_connection_project(&fixture.context()?, "conn_pending", PROJECT_ID)
+            .expect_err("pending host cleanup must block generic removal");
 
         assert!(matches!(error, StoreError::Conflict { .. }));
         assert_eq!(
@@ -4679,9 +4666,9 @@ mod tests {
     fn missing_connection_project_removal_is_explicit_and_has_no_effect(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-remove-missing-membership")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_blocked"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_blocked"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_blocked".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
@@ -4693,12 +4680,9 @@ mod tests {
             "remove-missing-membership-other-repo",
         )?;
 
-        let error = remove_connection_project(
-            fixture.runtime_home.path(),
-            "conn_blocked",
-            PRIOR_OTHER_PROJECT_ID,
-        )
-        .expect_err("a missing selected membership must not be reported as removed");
+        let error =
+            remove_connection_project(&fixture.context()?, "conn_blocked", PRIOR_OTHER_PROJECT_ID)
+                .expect_err("a missing selected membership must not be reported as removed");
         assert!(matches!(
             error,
             StoreError::NotFound {
@@ -4719,16 +4703,16 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture("connection-mode-transition")?;
         let report = report_json(&verification_report())?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_mode"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_mode"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_mode".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_mode",
@@ -4740,7 +4724,7 @@ mod tests {
             agent_connection_record(fixture.runtime_home.path(), "conn_mode")?
                 .expect("connection before report");
         replace_agent_connection_verification_report_if_revision(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_mode",
             &connection_integration_revision(&connection_before_report)?,
             Some(&verification_report()),
@@ -4757,7 +4741,7 @@ mod tests {
             "conn_mode",
             CONNECTION_MODE_READ_ONLY,
         )?;
-        let outcome = transition_connection_mode(fixture.runtime_home.path(), transition)?;
+        let outcome = transition_connection_mode(&fixture.context()?, transition)?;
 
         assert_eq!(outcome.kind, ConnectionModeTransitionKind::Updated);
         assert_eq!(outcome.connection.mode, CONNECTION_MODE_READ_ONLY);
@@ -4797,7 +4781,7 @@ mod tests {
         );
 
         let stale_error = replace_agent_connection_verification_report_if_revision(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_mode",
             &outcome.previous_integration_revision,
             Some(&verification_report()),
@@ -4816,7 +4800,7 @@ mod tests {
         );
 
         let connection_with_report = replace_agent_connection_verification_report_if_revision(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_mode",
             &outcome.current_integration_revision,
             Some(&verification_report()),
@@ -4825,7 +4809,7 @@ mod tests {
             crate::guards::guard_installation(fixture.runtime_home.path(), "guard_mode")?
                 .expect("Guard Installation");
         let no_op = transition_connection_mode(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionModeTransition {
                 connection_internal_id: "conn_mode".to_owned(),
                 expected_mode: CONNECTION_MODE_READ_ONLY.to_owned(),
@@ -4879,7 +4863,7 @@ mod tests {
             PRIOR_OTHER_PROJECT_ID,
             "mode-multi-project-other-repo",
         )?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_multi_mode"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_multi_mode"))?;
         for (project_id, guard_id, policy_hash) in [
             (PROJECT_ID, "guard_mode_a", TEST_POLICY_HASH),
             (
@@ -4889,14 +4873,14 @@ mod tests {
             ),
         ] {
             add_connection_project(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 ConnectionProjectRegistration {
                     connection_internal_id: "conn_multi_mode".to_owned(),
                     project_id: project_id.to_owned(),
                 },
             )?;
             crate::guards::upsert_guard_installation(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 guard_installation_upsert_with_policy_hash(
                     fixture.runtime_home.path(),
                     guard_id,
@@ -4923,7 +4907,7 @@ mod tests {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        let outcome = transition_connection_mode(fixture.runtime_home.path(), transition)?;
+        let outcome = transition_connection_mode(&fixture.context()?, transition)?;
         assert_eq!(outcome.rebound_guard_installation_ids.len(), 2);
         for guard_id in ["guard_mode_a", "guard_mode_b"] {
             let manifest = guard_manifest_from_json(
@@ -4949,7 +4933,7 @@ mod tests {
             "mode-multi-rollback-other-repo",
         )?;
         ensure_agent_connection(
-            rollback_fixture.runtime_home.path(),
+            &rollback_fixture.context()?,
             connection("conn_multi_rollback"),
         )?;
         for (project_id, guard_id) in [
@@ -4957,14 +4941,14 @@ mod tests {
             (PRIOR_OTHER_PROJECT_ID, "guard_rollback_b"),
         ] {
             add_connection_project(
-                rollback_fixture.runtime_home.path(),
+                &rollback_fixture.context()?,
                 ConnectionProjectRegistration {
                     connection_internal_id: "conn_multi_rollback".to_owned(),
                     project_id: project_id.to_owned(),
                 },
             )?;
             crate::guards::upsert_guard_installation(
-                rollback_fixture.runtime_home.path(),
+                &rollback_fixture.context()?,
                 guard_installation_upsert(
                     rollback_fixture.runtime_home.path(),
                     guard_id,
@@ -4993,7 +4977,7 @@ mod tests {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        assert!(transition_connection_mode(rollback_fixture.runtime_home.path(), invalid).is_err());
+        assert!(transition_connection_mode(&rollback_fixture.context()?, invalid).is_err());
         assert_eq!(
             agent_connection_record(rollback_fixture.runtime_home.path(), "conn_multi_rollback")?
                 .expect("connection"),
@@ -5014,12 +4998,9 @@ mod tests {
     fn mode_transition_rejects_missing_stale_duplicate_and_owner_mismatched_inventory(
     ) -> Result<(), Box<dyn Error>> {
         let missing = registry_fixture("connection-mode-missing-guard")?;
-        ensure_agent_connection(
-            missing.runtime_home.path(),
-            connection("conn_missing_guard"),
-        )?;
+        ensure_agent_connection(&missing.context()?, connection("conn_missing_guard"))?;
         add_connection_project(
-            missing.runtime_home.path(),
+            &missing.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_missing_guard".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
@@ -5029,7 +5010,7 @@ mod tests {
             agent_connection_record(missing.runtime_home.path(), "conn_missing_guard")?
                 .expect("connection");
         let missing_error = transition_connection_mode(
-            missing.runtime_home.path(),
+            &missing.context()?,
             ConnectionModeTransition {
                 connection_internal_id: "conn_missing_guard".to_owned(),
                 expected_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
@@ -5050,16 +5031,16 @@ mod tests {
         );
 
         let fixture = registry_fixture("connection-mode-invalid-inventory")?;
-        ensure_agent_connection(fixture.runtime_home.path(), connection("conn_invalid_mode"))?;
+        ensure_agent_connection(&fixture.context()?, connection("conn_invalid_mode"))?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_invalid_mode".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         crate::guards::upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             guard_installation_upsert(
                 fixture.runtime_home.path(),
                 "guard_invalid_mode",
@@ -5076,7 +5057,7 @@ mod tests {
         let mut incomplete = valid.clone();
         incomplete.guard_manifests.clear();
         assert!(matches!(
-            transition_connection_mode(fixture.runtime_home.path(), incomplete),
+            transition_connection_mode(&fixture.context()?, incomplete),
             Err(StoreError::Conflict { .. })
         ));
 
@@ -5084,7 +5065,7 @@ mod tests {
         stale.expected_integration_revision =
             IntegrationRevision::parse(format!("sha256:{}", "f".repeat(64)))?;
         assert!(matches!(
-            transition_connection_mode(fixture.runtime_home.path(), stale),
+            transition_connection_mode(&fixture.context()?, stale),
             Err(StoreError::Conflict { .. })
         ));
 
@@ -5093,7 +5074,7 @@ mod tests {
             .guard_manifests
             .push(duplicate.guard_manifests[0].clone());
         assert!(matches!(
-            transition_connection_mode(fixture.runtime_home.path(), duplicate),
+            transition_connection_mode(&fixture.context()?, duplicate),
             Err(StoreError::InvalidInput { .. })
         ));
 
@@ -5102,13 +5083,14 @@ mod tests {
                 .expect("Guard Installation");
         let mut mismatched = guard_manifest_from_json(&installation.manifest_json)?;
         mismatched.connection_id = volicord_types::AgentConnectionId::new("conn_other");
-        let registry = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        let registry =
+            open_registry_database_for_test(registry_db_path(fixture.runtime_home.path()))?;
         registry.execute(
             "UPDATE guard_installations SET manifest_json = ?2 WHERE guard_installation_id = ?1",
             params!["guard_invalid_mode", serde_json::to_string(&mismatched)?],
         )?;
         drop(registry);
-        assert!(transition_connection_mode(fixture.runtime_home.path(), valid.clone()).is_err());
+        assert!(transition_connection_mode(&fixture.context()?, valid.clone()).is_err());
         assert_eq!(
             agent_connection_record(fixture.runtime_home.path(), "conn_invalid_mode")?
                 .expect("connection")
@@ -5116,7 +5098,8 @@ mod tests {
             CONNECTION_MODE_WORKFLOW
         );
 
-        let registry = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        let registry =
+            open_registry_database_for_test(registry_db_path(fixture.runtime_home.path()))?;
         registry.execute(
             "UPDATE guard_installations SET manifest_json = '{}' WHERE guard_installation_id = ?1",
             ["guard_invalid_mode"],
@@ -5124,7 +5107,7 @@ mod tests {
         drop(registry);
         let mut malformed = valid;
         malformed.guard_manifests[0].expected_manifest_json = "{}".to_owned();
-        assert!(transition_connection_mode(fixture.runtime_home.path(), malformed).is_err());
+        assert!(transition_connection_mode(&fixture.context()?, malformed).is_err());
         assert_eq!(
             agent_connection_record(fixture.runtime_home.path(), "conn_invalid_mode")?
                 .expect("connection")
@@ -5135,23 +5118,38 @@ mod tests {
     }
 
     struct RegistryFixture {
+        mutation: TestRuntimeHomeAdmission,
         runtime_home: TempRuntimeHome,
     }
 
     fn registry_fixture(name: &str) -> Result<RegistryFixture, Box<dyn Error>> {
         let runtime_home = TempRuntimeHome::new(name)?;
-        initialize_runtime_home(runtime_home.path(), "runtime_home_test", "{}")?;
-        register_project(
-            runtime_home.path(),
-            ProjectRegistration {
-                project_id: PROJECT_ID.to_owned(),
-                repo_root: runtime_home.create_product_repo("repo")?,
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        Ok(RegistryFixture { runtime_home })
+        let repo_root = runtime_home.create_product_repo("repo")?;
+        with_test_runtime_home_setup(runtime_home.path(), |context| {
+            initialize_runtime_home(context, runtime_home.path(), "runtime_home_test", "{}")?;
+            register_project(
+                context,
+                ProjectRegistration {
+                    project_id: PROJECT_ID.to_owned(),
+                    repo_root,
+                    project_home: None,
+                    status: ACTIVE_PROJECT_STATUS.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            Ok(())
+        })?;
+        let mutation = TestRuntimeHomeAdmission::shared(runtime_home.path())?;
+        Ok(RegistryFixture {
+            mutation,
+            runtime_home,
+        })
+    }
+
+    impl RegistryFixture {
+        fn context(&self) -> StoreResult<RuntimeHomeMutationContext<'_>> {
+            self.mutation.context()
+        }
     }
 
     fn register_additional_project(
@@ -5160,7 +5158,7 @@ mod tests {
         repo_name: &str,
     ) -> StoreResult<ProjectRecord> {
         register_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ProjectRegistration {
                 project_id: project_id.to_owned(),
                 repo_root: fixture.runtime_home.create_product_repo(repo_name)?,
@@ -5178,7 +5176,7 @@ mod tests {
         process_id: u32,
     ) -> StoreResult<McpRuntimeSessionRecord> {
         start_mcp_runtime_session_for_test(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             McpRuntimeSessionStart {
                 connection_internal_id: connection_internal_id.to_owned(),
                 session_source,
@@ -5199,7 +5197,7 @@ mod tests {
         observed_at: &str,
     ) -> StoreResult<crate::guards::AgentSessionRecord> {
         crate::guards::bind_agent_session_runtime(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             project_id,
             crate::guards::AgentSessionRuntimeBinding {
                 runtime_session_id: runtime_session_id.to_owned(),
@@ -5263,7 +5261,7 @@ mod tests {
         project_id: &str,
     ) -> StoreResult<()> {
         let registry_path = registry_db_path(runtime_home);
-        let conn = open_registry_database(&registry_path)?;
+        let conn = open_registry_database_for_test(&registry_path)?;
         let project = raw_project_record_from_conn(&conn, project_id)?.ok_or_else(|| {
             StoreError::NotFound {
                 entity: "project",
@@ -5291,21 +5289,21 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = registry_fixture(fixture_name)?;
         ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 enabled: false,
                 ..connection("conn_prior")
             },
         )?;
         add_connection_project(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: "conn_prior".to_owned(),
                 project_id: PROJECT_ID.to_owned(),
             },
         )?;
         ensure_agent_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             AgentConnectionRegistration {
                 connection_internal_id: "conn_staged".to_owned(),
                 config_target: "/tmp/volicord-test-non-rebasable-marker.toml".to_owned(),
@@ -5315,7 +5313,7 @@ mod tests {
         )?;
 
         let registry_path = registry_db_path(fixture.runtime_home.path());
-        let conn = open_registry_database(&registry_path)?;
+        let conn = open_registry_database_for_test(&registry_path)?;
         assert_eq!(
             conn.execute(
                 "UPDATE agent_connections
@@ -5328,7 +5326,7 @@ mod tests {
         drop(conn);
 
         let error = activate_staged_connection(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "conn_staged",
             PROJECT_ID,
             &[SupersededConnectionProject {

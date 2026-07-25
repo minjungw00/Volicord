@@ -72,7 +72,7 @@ fn current_pre_and_post_events_record_bounded_stages_and_complete() -> Result<()
     }
     assert!(matches!(
         get_guard_integration_verification(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             &run.verification_id,
             &fixture.caller(),
             "2026-07-23T00:00:05Z",
@@ -206,7 +206,7 @@ fn known_non_probe_tools_are_nonterminal_even_with_current_probe_coordinates(
             ),
         ] {
             observe_unbound_guard_probe_hook_event(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 PROJECT_ID,
                 UnboundGuardProbeHookObservation {
                     connection_internal_id: CONNECTION_ID.to_owned(),
@@ -250,7 +250,7 @@ fn known_non_probe_tools_are_nonterminal_even_with_current_probe_coordinates(
         assert_eq!(fixture.record(&run.verification_id)?.status_read_count, 0);
         assert!(matches!(
             get_guard_integration_verification(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 &run.verification_id,
                 &fixture.caller(),
                 "2026-07-23T00:00:05Z",
@@ -292,7 +292,7 @@ fn unknown_same_server_callable_is_terminal_only_when_it_claims_the_current_id(
             evidence
         };
         observe_unbound_guard_probe_hook_event(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             PROJECT_ID,
             UnboundGuardProbeHookObservation {
                 connection_internal_id: CONNECTION_ID.to_owned(),
@@ -315,7 +315,7 @@ fn unknown_same_server_callable_is_terminal_only_when_it_claims_the_current_id(
             .any(|observation| observation.stage == expected_stage));
         assert!(matches!(
             get_guard_integration_verification(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 &run.verification_id,
                 &fixture.caller(),
                 "2026-07-23T00:00:05Z",
@@ -351,7 +351,7 @@ fn status_tool_self_observation_cannot_poison_missing_probe_result() -> Result<(
     assert_eq!(before_get.status_read_count, 0);
 
     let first = get_guard_integration_verification(
-        fixture.runtime_home.path(),
+        &fixture.context()?,
         &run.verification_id,
         &fixture.caller(),
         "2026-07-23T00:00:04.200Z",
@@ -376,7 +376,7 @@ fn status_tool_self_observation_cannot_poison_missing_probe_result() -> Result<(
         integration_revision: None,
     })?;
     let second = get_guard_integration_verification(
-        fixture.runtime_home.path(),
+        &fixture.context()?,
         &run.verification_id,
         &fixture.caller(),
         "2026-07-23T00:00:04.400Z",
@@ -466,7 +466,7 @@ fn correlation_failures_map_to_distinct_terminal_repair_reasons() -> Result<(), 
                 integration_revision: None,
             })?,
             "session" | "turn" => observe_unbound_guard_probe_hook_event(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 PROJECT_ID,
                 UnboundGuardProbeHookObservation {
                     connection_internal_id: CONNECTION_ID.to_owned(),
@@ -520,7 +520,7 @@ fn correlation_failures_map_to_distinct_terminal_repair_reasons() -> Result<(), 
             _ => unreachable!(),
         }
         let result = get_guard_integration_verification(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             &run.verification_id,
             &fixture.caller(),
             "2026-07-23T00:00:05Z",
@@ -564,7 +564,7 @@ fn absence_malformed_payload_and_correlation_mismatches_are_distinct() -> Result
         ),
     ] {
         observe_unbound_guard_probe_hook_event(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             PROJECT_ID,
             UnboundGuardProbeHookObservation {
                 connection_internal_id: CONNECTION_ID.to_owned(),

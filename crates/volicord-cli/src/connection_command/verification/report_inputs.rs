@@ -296,6 +296,7 @@ pub(in crate::connection_command) fn report_with_hook_review_required(
 }
 
 pub(super) fn canonical_verification_evaluation(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     host: &Verification,
@@ -307,7 +308,13 @@ pub(super) fn canonical_verification_evaluation(
         current_managed_runtime_sessions(runtime_home, &connection.connection_internal_id)?;
     let session_evidence =
         McpSessionEvidenceSelection::select(&current_revision, &current_sessions)?;
-    persist_peer_path_mismatch_findings(runtime_home, connection, host, &current_sessions)?;
+    persist_peer_path_mismatch_findings(
+        context,
+        runtime_home,
+        connection,
+        host,
+        &current_sessions,
+    )?;
     let latest_session =
         latest_managed_runtime_session(runtime_home, &connection.connection_internal_id)?;
     let host_findings = host_boundary_findings(

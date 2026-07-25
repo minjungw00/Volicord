@@ -72,6 +72,14 @@ metadata. Only the live OS file lock denotes lease ownership; setup continues
 to use the stored publication ID and process-local publication guard for exact
 rollback identity.
 
+Every supported Store mutation requires a live, permit-derived
+`RuntimeHomeMutationContext` for the exact canonical Runtime Home. The context
+is process-local capability state rather than a persisted record and conveys
+neither user authority nor Product Repository write permission. Ordinary
+writers derive it from `SharedWriter`; setup derives it from
+`ExclusiveSetup`. A setup conflict is rejected before Registry, project,
+diagnostic, artifact, or operational-session records change.
+
 Project-state records include:
 
 - `project_state`, project workflow policy, Tasks, acceptance criteria,

@@ -61,19 +61,22 @@ impl CoreService {
         };
 
         let request_json = serde_json::to_value(&request)?;
-        let prepared = match self.prepare_request(PipelinePreflightRequest {
-            method_name: MethodName::GetOperationResult,
-            envelope: request.envelope.clone(),
-            request_json,
-            invocation,
-            policy: MethodPolicy::exact(
-                request.operation_category(),
-                TaskRequirement::None,
-                ReplayPolicy::None,
-                FreshnessPolicy::None,
-                MethodEffectPolicy::ReadOnly,
-            ),
-        })? {
+        let prepared = match self.prepare_request(
+            None,
+            PipelinePreflightRequest {
+                method_name: MethodName::GetOperationResult,
+                envelope: request.envelope.clone(),
+                request_json,
+                invocation,
+                policy: MethodPolicy::exact(
+                    request.operation_category(),
+                    TaskRequirement::None,
+                    ReplayPolicy::None,
+                    FreshnessPolicy::None,
+                    MethodEffectPolicy::ReadOnly,
+                ),
+            },
+        )? {
             PipelinePreflightOutcome::Prepared(prepared) => *prepared,
             PipelinePreflightOutcome::Response(response) => return Ok(*response),
         };

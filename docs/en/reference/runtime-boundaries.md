@@ -152,9 +152,19 @@ instead of being classified as an I/O failure.
 Runtime Home and acquire `ExclusiveSetup` before bootstrap inspection or plan
 construction. The platform boundary also exposes a non-cloneable lease for
 `SharedWriter` and a permit that borrows a live lease while carrying its exact
-canonical target and held mode. The current Store mutation APIs do not require
-that permit from every writer, so the presence of this platform primitive does
-not state that every current writer is already admitted through it.
+canonical target and held mode. Every supported ordinary Runtime Home writer
+acquires `SharedWriter`; Store turns the borrowed permit into a non-cloneable,
+target-bound `RuntimeHomeMutationContext` required by its mutation APIs.
+Writable Registry and project-database opens require that context, while
+read-only opens remain available without it. Setup derives the same Store
+context from its one `ExclusiveSetup` permit and does not acquire a nested
+shared lease.
+
+An ordinary writer that conflicts with setup returns
+`runtime_home.mutation.setup_in_progress` before any Runtime Home effect. Its
+bounded facts identify the canonical Runtime Home, mutation domain, requested
+mode, wait policy, elapsed wait, and retryability without exposing the
+coordination-file path.
 
 The coordination file is derived from a domain-separated full digest of the
 canonical path and resides outside the Runtime Home: under the effective

@@ -6,6 +6,7 @@ impl CoreService {
     /// Executes `volicord.stage_artifact` as storage-owned transient staging.
     pub fn stage_artifact(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: StageArtifactRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -34,6 +35,7 @@ impl CoreService {
         );
         let mut prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::StageArtifact,
             request.envelope.clone(),
             request_json,

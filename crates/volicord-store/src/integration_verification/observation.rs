@@ -20,8 +20,8 @@ use crate::{
     agent_connections::agent_connection_record_read_only,
     bootstrap::project_record_for_execution,
     guards::{guard_event, guard_installation, GuardEventRecord},
-    sqlite::{begin_immediate_transaction, open_registry_database, registry_db_path},
-    StoreError, StoreResult,
+    sqlite::{begin_immediate_transaction, open_registry_database_for_mutation, registry_db_path},
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 /// Bounded semantic evidence extracted from one routed hook event.
@@ -78,12 +78,12 @@ pub struct GuardProbeObservationRecord {
 
 /// Records one routed event after semantic hook decoding.
 pub fn observe_guard_probe_hook_event(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     guard_event_id: &str,
     evidence: GuardProbeHookEvidence,
 ) -> StoreResult<Option<GuardIntegrationVerificationRunRecord>> {
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let Some(event) = guard_event(runtime_home, project_id, guard_event_id)? else {
         return Ok(None);
     };
@@ -93,7 +93,7 @@ pub fn observe_guard_probe_hook_event(
             id: project_id.to_owned(),
         }
     })?;
-    let mut conn = open_registry_database(registry_db_path(runtime_home))?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let run = active_run_for_acquisition(
         &tx,
@@ -132,7 +132,7 @@ pub fn observe_guard_probe_hook_event(
                 | GuardProbeObservationStage::PostToolMatched
         )
     }) {
-        refresh_guard_integration_verification_for_event(runtime_home, project_id, guard_event_id)
+        refresh_guard_integration_verification_for_event(context, project_id, guard_event_id)
     } else {
         Ok(Some(run))
     }
@@ -140,11 +140,11 @@ pub fn observe_guard_probe_hook_event(
 
 /// Records bounded correlation diagnostics when a decoded event cannot be bound.
 pub fn observe_unbound_guard_probe_hook_event(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: UnboundGuardProbeHookObservation,
 ) -> StoreResult<Option<GuardIntegrationVerificationRunRecord>> {
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let project = project_record_for_execution(runtime_home, project_id)?.ok_or_else(|| {
         StoreError::NotFound {
             entity: "project",
@@ -166,7 +166,7 @@ pub fn observe_unbound_guard_probe_hook_event(
             logical_column: "manifest_json",
         }
     })?;
-    let mut conn = open_registry_database(registry_db_path(runtime_home))?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let run = active_run_for_acquisition(
         &tx,

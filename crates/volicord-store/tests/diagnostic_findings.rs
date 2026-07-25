@@ -16,7 +16,7 @@ use volicord_store::{
     sqlite::{enable_foreign_keys, registry_db_path},
     StoreError,
 };
-use volicord_test_support::core_fixtures::CoreFixture;
+use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeMutation};
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, CurrentDiagnosticFinding, CurrentDiagnosticKey,
     CurrentDiagnosticSnapshot, CurrentDiagnosticStatus, DiagnosticAction, DiagnosticCause,
@@ -159,13 +159,15 @@ fn current_finding(
 #[test]
 fn occurrence_graph_is_insert_only_without_runtime_heuristics() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-occurrence-round-trip")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let first = occurrence(&fixture, "first", Vec::new())?;
     let repeated_observation = occurrence(&fixture, "first", Vec::new())?;
     assert_ne!(first.id(), repeated_observation.id());
 
     let child = occurrence(&fixture, "child", vec![DiagnosticCause::new(first.id())])?;
     insert_occurrence_finding_graph(
-        fixture.runtime_home_path(),
+        &context,
         &[child.clone(), first.clone(), repeated_observation.clone()],
     )?;
 
@@ -179,7 +181,7 @@ fn occurrence_graph_is_insert_only_without_runtime_heuristics() -> Result<(), Bo
         .expect("occurrence lifecycle")
         .runtime_session_id()
         .is_none()));
-    assert!(insert_occurrence_finding(fixture.runtime_home_path(), &first).is_err());
+    assert!(insert_occurrence_finding(&context, &first).is_err());
 
     let conn = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
     assert!(conn
@@ -206,6 +208,8 @@ fn occurrence_graph_is_insert_only_without_runtime_heuristics() -> Result<(), Bo
 #[test]
 fn runtime_terminal_occurrence_is_inserted_and_linked_atomically() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-terminal-occurrence")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
@@ -226,7 +230,7 @@ fn runtime_terminal_occurrence_is_inserted_and_linked_atomically() -> Result<(),
         OBSERVED,
         Vec::new(),
     )?;
-    upsert_current_snapshot(fixture.runtime_home_path(), &current)?;
+    upsert_current_snapshot(&context, &current)?;
     let conn = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
     enable_foreign_keys(&conn)?;
     assert!(conn
@@ -243,7 +247,7 @@ fn runtime_terminal_occurrence_is_inserted_and_linked_atomically() -> Result<(),
             .is_none()
     );
 
-    insert_and_link_runtime_terminal_occurrence(fixture.runtime_home_path(), &finding)?;
+    insert_and_link_runtime_terminal_occurrence(&context, &finding)?;
 
     let linked = mcp_runtime_session(fixture.runtime_home_path(), &runtime.runtime_session_id)?
         .ok_or("linked runtime")?;
@@ -264,6 +268,8 @@ fn runtime_terminal_occurrence_is_inserted_and_linked_atomically() -> Result<(),
 #[test]
 fn occurrence_graph_rejects_missing_causes_atomically() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-occurrence-atomic")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let missing =
         DiagnosticFindingId::parse("finding.occurrence_00000000-0000-4000-8000-000000000001")?;
     let child = occurrence(
@@ -271,7 +277,7 @@ fn occurrence_graph_rejects_missing_causes_atomically() -> Result<(), Box<dyn Er
         "missing-child",
         vec![DiagnosticCause::new(missing)],
     )?;
-    assert!(insert_occurrence_finding(fixture.runtime_home_path(), &child).is_err());
+    assert!(insert_occurrence_finding(&context, &child).is_err());
     assert!(stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         std::slice::from_ref(&child.id()),
@@ -284,12 +290,11 @@ fn occurrence_graph_rejects_missing_causes_atomically() -> Result<(), Box<dyn Er
 fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-current-lifecycle")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let first_cause = occurrence(&fixture, "first-cause", Vec::new())?;
     let second_cause = occurrence(&fixture, "second-cause", Vec::new())?;
-    insert_occurrence_finding_graph(
-        fixture.runtime_home_path(),
-        &[first_cause.clone(), second_cause.clone()],
-    )?;
+    insert_occurrence_finding_graph(&context, &[first_cause.clone(), second_cause.clone()])?;
 
     let key = current_key(&fixture, ".volicord/guard-a.json");
     let first = current_finding(
@@ -300,7 +305,7 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         "2026-07-21T01:02:03Z",
         vec![DiagnosticCause::new(first_cause.id())],
     )?;
-    upsert_current_snapshot(fixture.runtime_home_path(), &first)?;
+    upsert_current_snapshot(&context, &first)?;
     let changed = current_finding(
         &fixture,
         key.clone(),
@@ -310,7 +315,7 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         vec![DiagnosticCause::new(second_cause.id())],
     )?;
     assert_eq!(first.id(), changed.id());
-    upsert_current_snapshot(fixture.runtime_home_path(), &changed)?;
+    upsert_current_snapshot(&context, &changed)?;
 
     let graph = bounded_stored_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),
@@ -336,7 +341,7 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         "2026-07-21T02:04:05Z",
         vec![DiagnosticCause::new(missing.clone())],
     )?;
-    assert!(upsert_current_snapshot(fixture.runtime_home_path(), &rejected).is_err());
+    assert!(upsert_current_snapshot(&context, &rejected).is_err());
     let preserved = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
         std::slice::from_ref(changed.id()),
@@ -371,11 +376,8 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         active_current_findings_for_scope(fixture.runtime_home_path(), &scope)?.len(),
         1
     );
-    let resolved = resolve_current_finding(
-        fixture.runtime_home_path(),
-        &key,
-        UtcTimestamp::parse("2026-07-21T03:04:05Z")?,
-    )?;
+    let resolved =
+        resolve_current_finding(&context, &key, UtcTimestamp::parse("2026-07-21T03:04:05Z")?)?;
     assert_eq!(
         resolved.snapshot().status(),
         CurrentDiagnosticStatus::Resolved
@@ -425,7 +427,7 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
         "2026-07-21T04:05:06Z",
         vec![DiagnosticCause::new(first_cause.id())],
     )?;
-    upsert_current_snapshot(fixture.runtime_home_path(), &reactivated)?;
+    upsert_current_snapshot(&context, &reactivated)?;
     let active = active_current_findings_for_scope(fixture.runtime_home_path(), &scope)?;
     assert_eq!(active.len(), 1);
     assert_eq!(
@@ -456,8 +458,10 @@ fn current_snapshot_replaces_only_snapshot_and_supports_resolution_reactivation(
 fn exact_lookup_and_graph_preserve_occurrence_active_and_resolved_lifecycles(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-mixed-lifecycle-graph")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let occurrence_cause = occurrence(&fixture, "occurrence-cause", Vec::new())?;
-    insert_occurrence_finding(fixture.runtime_home_path(), &occurrence_cause)?;
+    insert_occurrence_finding(&context, &occurrence_cause)?;
 
     let active_key = current_key(&fixture, "active-current");
     let active = current_finding(
@@ -468,7 +472,7 @@ fn exact_lookup_and_graph_preserve_occurrence_active_and_resolved_lifecycles(
         "2026-07-21T02:03:04Z",
         vec![DiagnosticCause::new(occurrence_cause.id())],
     )?;
-    upsert_current_snapshot(fixture.runtime_home_path(), &active)?;
+    upsert_current_snapshot(&context, &active)?;
 
     let resolved_key = current_key(&fixture, "resolved-current");
     let resolved = current_finding(
@@ -479,13 +483,9 @@ fn exact_lookup_and_graph_preserve_occurrence_active_and_resolved_lifecycles(
         "2026-07-21T02:04:05Z",
         Vec::new(),
     )?;
-    upsert_current_snapshot(fixture.runtime_home_path(), &resolved)?;
+    upsert_current_snapshot(&context, &resolved)?;
     let resolved_at = UtcTimestamp::parse("2026-07-21T03:04:05Z")?;
-    resolve_current_finding(
-        fixture.runtime_home_path(),
-        &resolved_key,
-        resolved_at.clone(),
-    )?;
+    resolve_current_finding(&context, &resolved_key, resolved_at.clone())?;
 
     let root = occurrence(
         &fixture,
@@ -495,7 +495,7 @@ fn exact_lookup_and_graph_preserve_occurrence_active_and_resolved_lifecycles(
             DiagnosticCause::new(resolved.id().clone()),
         ],
     )?;
-    insert_occurrence_finding(fixture.runtime_home_path(), &root)?;
+    insert_occurrence_finding(&context, &root)?;
 
     let exact = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
@@ -585,6 +585,8 @@ fn exact_lookup_and_graph_preserve_occurrence_active_and_resolved_lifecycles(
 fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-current-integrity")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let current = current_finding(
         &fixture,
         current_key(&fixture, ".volicord/guard-a.json"),
@@ -593,7 +595,7 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
         OBSERVED,
         Vec::new(),
     )?;
-    upsert_current_snapshot(fixture.runtime_home_path(), &current)?;
+    upsert_current_snapshot(&context, &current)?;
 
     let conn = rusqlite::Connection::open(registry_db_path(fixture.runtime_home_path()))?;
     enable_foreign_keys(&conn)?;
@@ -652,7 +654,7 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
             current.id().as_str(),
         ],
     )?;
-    assert!(upsert_current_snapshot(fixture.runtime_home_path(), &expected).is_err());
+    assert!(upsert_current_snapshot(&context, &expected).is_err());
     let mismatched_subject: String = conn.query_row(
         "SELECT subject_json FROM diagnostic_findings WHERE finding_id = ?1",
         [expected.id().as_str()],
@@ -696,13 +698,12 @@ fn current_identity_columns_are_immutable_and_corrupt_digests_fail_reads(
 #[test]
 fn cause_edges_and_bounded_traversal_keep_graph_integrity() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("diagnostic-cause-integrity")?;
+    let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
     let root = occurrence(&fixture, "root", Vec::new())?;
     let middle = occurrence(&fixture, "middle", vec![DiagnosticCause::new(root.id())])?;
     let leaf = occurrence(&fixture, "leaf", vec![DiagnosticCause::new(middle.id())])?;
-    insert_occurrence_finding_graph(
-        fixture.runtime_home_path(),
-        &[leaf.clone(), root.clone(), middle.clone()],
-    )?;
+    insert_occurrence_finding_graph(&context, &[leaf.clone(), root.clone(), middle.clone()])?;
 
     let bounded = bounded_stored_diagnostic_graph_from_seeds(
         fixture.runtime_home_path(),

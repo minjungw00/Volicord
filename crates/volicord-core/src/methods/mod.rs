@@ -19,7 +19,7 @@ use volicord_store::{
         EvidenceProducerInsert, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
     },
     guards::UnrecordedChangeRecord,
-    StoreError,
+    RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::*;
 
@@ -157,7 +157,7 @@ struct ProjectContinuityDraft {
 #[derive(Clone, Copy)]
 struct ProjectContinuityPlanContext<'a> {
     service: &'a CoreService,
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_id: &'a ProjectId,
     source_task_id: &'a TaskId,
     source_change_unit_id: Option<&'a ChangeUnitId>,
@@ -216,7 +216,7 @@ fn first_product_write_duration_micros(
 }
 
 fn record_core_workflow_metric_best_effort(
-    service: &CoreService,
+    context: &RuntimeHomeMutationContext<'_>,
     session_id: Option<&str>,
     metric_kind: WorkflowMetricKind,
     value: u64,
@@ -225,7 +225,7 @@ fn record_core_workflow_metric_best_effort(
         return;
     };
     let _ = record_workflow_metric_event(
-        service.runtime_home(),
+        context,
         &WorkflowMetricEvent {
             session_id: session_id.to_owned(),
             metric_kind,
@@ -534,21 +534,25 @@ fn plan_project_continuity_record(
     })
 }
 
-fn prepare_or_response(
+fn prepare_or_response<'mutation>(
     service: &CoreService,
+    context: Option<&'mutation RuntimeHomeMutationContext<'mutation>>,
     method_name: MethodName,
     envelope: ToolEnvelope,
     request_json: Value,
     invocation: InvocationContext,
     policy: MethodPolicy,
-) -> CoreResult<Result<PreparedRequest, PipelineResponse>> {
-    match service.prepare_request(PipelinePreflightRequest {
-        method_name,
-        envelope,
-        request_json,
-        invocation,
-        policy,
-    })? {
+) -> CoreResult<Result<PreparedRequest<'mutation>, PipelineResponse>> {
+    match service.prepare_request(
+        context,
+        PipelinePreflightRequest {
+            method_name,
+            envelope,
+            request_json,
+            invocation,
+            policy,
+        },
+    )? {
         PipelinePreflightOutcome::Prepared(prepared) => Ok(Ok(*prepared)),
         PipelinePreflightOutcome::Response(response) => Ok(Err(*response)),
     }
@@ -1787,7 +1791,7 @@ fn change_unit_effect_contract(
 }
 
 struct SensitiveApprovalSearch<'a> {
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_state: &'a ProjectStateHeader,
     request: &'a PrepareWriteRequest,
     task_id: &'a TaskId,
@@ -2269,7 +2273,7 @@ fn agent_safe_pending_user_action_summaries(
 }
 
 struct SummaryBuild<'a> {
-    store: &'a CoreProjectStore,
+    store: &'a CoreProjectStore<'a>,
     project_id: &'a ProjectId,
     state_version: u64,
     task: &'a TaskRecord,

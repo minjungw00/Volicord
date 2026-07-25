@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use serde_json::Value;
 use volicord_host_contract::{
     parse_callable_name, HostCallableIdentity, HostCallableName, HostNativeCorrelation,
@@ -23,27 +21,26 @@ use crate::{
         GuardIntegrationVerificationEventQuery,
     },
     operational_sessions::current_managed_mcp_runtime_session_for_connection,
-    sqlite::{begin_immediate_transaction, open_registry_database, registry_db_path},
-    StoreError, StoreResult,
+    sqlite::{begin_immediate_transaction, open_registry_database_for_mutation},
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 const COMPATIBLE_CONTRACT: &str = "compatible";
 
 /// Re-evaluates an active run after one compatible Guard event is persisted.
 pub fn refresh_guard_integration_verification_for_event(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     guard_event_id: &str,
 ) -> StoreResult<Option<GuardIntegrationVerificationRunRecord>> {
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let Some(trigger) = guard_event(runtime_home, project_id, guard_event_id)? else {
         return Ok(None);
     };
     let Some(correlation) = trigger.correlation.as_ref() else {
         return Ok(None);
     };
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let run = active_run_for_event(
         &tx,

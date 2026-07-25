@@ -316,6 +316,21 @@ branch changes the strategy.
 
 ## Authoritative Lifecycle Recording
 
+Each bounded MCP lifecycle observation or tool operation that can persist
+Runtime Home state acquires `SharedWriter` for that operation only. The lease
+is not held for the server process lifetime and remains live through Core,
+Store, milestone, receipt, and terminal-finding effects. This covers
+managed-launch consumption, runtime/session creation and updates, initialize
+and initialized observations, `tools/list`, designated verification tools,
+integration verification, public method mutations, operational evidence, and
+terminal failure linkage.
+
+If setup owns `ExclusiveSetup`, the message or call returns the typed
+`runtime_home.mutation.setup_in_progress` lifecycle/tool error before any
+partial effect. It does not emit protocol success, advise raw stdio fallback,
+or silently claim that an observation was stored. A later message or call may
+retry after setup releases the lease.
+
 After `mcp serve` or the hidden launcher resolves the Agent Connection, the process creates a Registry runtime
 session before validating thread metadata or reading a protocol message. The
 row identifies this Volicord-generated process launch, its Connection, one of

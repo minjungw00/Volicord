@@ -19,7 +19,7 @@ use volicord_store::{
         commit_input, CommitMutationInput, CommittedEventRef, CoreProjectStore,
         CoreStorageMutation, MutationCommitOutcome, PendingTaskEvent, ProjectStateHeader,
     },
-    StoreError, StoreFailureRoute, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreFailureRoute, StoreResult,
 };
 use volicord_types::{
     canonical_request_hash, ActorSource, ChangeUnitId, CloseTaskResult, DryRunSummary,
@@ -363,18 +363,18 @@ pub(crate) struct VerifiedRequestContext {
 }
 
 /// Store-backed request prepared for method-specific planning or effect routing.
-pub(crate) struct PreparedRequest {
+pub(crate) struct PreparedRequest<'mutation> {
     pub method_name: MethodName,
     pub envelope: ToolEnvelope,
     pub request_hash: RequestHash,
-    pub store: CoreProjectStore,
+    pub store: CoreProjectStore<'mutation>,
     pub context: VerifiedRequestContext,
     pub operation_now: UtcTimestamp,
 }
 
 /// Preflight may either prepare a request or return an authoritative response.
-pub(crate) enum PipelinePreflightOutcome {
-    Prepared(Box<PreparedRequest>),
+pub(crate) enum PipelinePreflightOutcome<'mutation> {
+    Prepared(Box<PreparedRequest<'mutation>>),
     Response(Box<PipelineResponse>),
 }
 
@@ -498,6 +498,7 @@ impl CoreService {
     #[cfg(test)]
     pub(crate) fn execute_pipeline(
         &self,
+        context: Option<&RuntimeHomeMutationContext<'_>>,
         request: PipelineRequest,
     ) -> CoreResult<PipelineResponse> {
         validate_branch_shape(&request.branch, request.envelope.dry_run)?;
@@ -513,7 +514,7 @@ impl CoreService {
             invocation: request.invocation,
             policy,
         };
-        match self.prepare_request(preflight)? {
+        match self.prepare_request(context, preflight)? {
             PipelinePreflightOutcome::Prepared(prepared) => {
                 self.execute_prepared_request(*prepared, request.branch)
             }
@@ -522,10 +523,11 @@ impl CoreService {
     }
 
     /// Runs the authoritative preflight sequence before method-specific planning.
-    pub(crate) fn prepare_request(
+    pub(crate) fn prepare_request<'mutation>(
         &self,
+        context: Option<&'mutation RuntimeHomeMutationContext<'mutation>>,
         request: PipelinePreflightRequest,
-    ) -> CoreResult<PipelinePreflightOutcome> {
+    ) -> CoreResult<PipelinePreflightOutcome<'mutation>> {
         let envelope_errors = validate_envelope(&request.envelope, &request.request_json);
         if !envelope_errors.is_empty() {
             return response_outcome_from_rejected(
@@ -548,6 +550,7 @@ impl CoreService {
         let request_hash = canonical_request_hash(&request.request_json)?;
 
         let store = match open_store_for_policy(
+            context,
             &self.runtime_home,
             &request.invocation.project_id,
             &request.policy,
@@ -703,7 +706,7 @@ impl CoreService {
     /// Routes a prepared request to the selected storage/effect branch.
     pub(crate) fn execute_prepared_request(
         &self,
-        mut prepared: PreparedRequest,
+        mut prepared: PreparedRequest<'_>,
         branch: OwnerPipelineBranch,
     ) -> CoreResult<PipelineResponse> {
         validate_branch_shape(&branch, prepared.envelope.dry_run)?;
@@ -822,15 +825,20 @@ impl CoreService {
     }
 }
 
-fn open_store_for_policy(
+fn open_store_for_policy<'mutation>(
+    context: Option<&'mutation RuntimeHomeMutationContext<'mutation>>,
     runtime_home: &Path,
     project_id: &ProjectId,
     policy: &MethodPolicy,
-) -> Result<CoreProjectStore, StoreError> {
+) -> Result<CoreProjectStore<'mutation>, StoreError> {
     if policy.effect == MethodEffectPolicy::ReadOnly {
         CoreProjectStore::open_read_only(runtime_home, project_id)
     } else {
-        CoreProjectStore::open(runtime_home, project_id)
+        let context = context.ok_or_else(|| StoreError::InvalidInput {
+            detail: "Core mutation requires Runtime Home mutation admission".to_owned(),
+        })?;
+        context.ensure_runtime_home(runtime_home)?;
+        CoreProjectStore::open_for_mutation(context, project_id)
     }
 }
 
@@ -1666,11 +1674,11 @@ fn response_from_rejected(
     )
 }
 
-fn response_outcome_from_rejected(
+fn response_outcome_from_rejected<'mutation>(
     response: ToolRejectedResponse,
     verified_invocation: Option<VerifiedInvocationContext>,
     resolved_task_id: Option<TaskId>,
-) -> CoreResult<PipelinePreflightOutcome> {
+) -> CoreResult<PipelinePreflightOutcome<'mutation>> {
     response_from_rejected(response, verified_invocation, resolved_task_id)
         .map(|response| PipelinePreflightOutcome::Response(Box::new(response)))
 }
@@ -1934,10 +1942,12 @@ mod tests {
             initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
         },
         core_pipeline::{ChangeUnitInsert, CoreProjectStore, StorageEffectCounts},
-        sqlite::{open_project_state_database, open_registry_database, registry_db_path},
+        sqlite::{
+            open_project_state_database_for_test, open_registry_database_for_test, registry_db_path,
+        },
     };
     use volicord_test_support::{
-        TempRuntimeHome,
+        with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
         TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
     use volicord_types::{
@@ -2052,6 +2062,7 @@ mod tests {
     }
 
     struct PipelineHarness {
+        mutation: TestRuntimeHomeMutation,
         _runtime_home: TempRuntimeHome,
         runtime_home_path: PathBuf,
         service: CoreService,
@@ -2060,21 +2071,25 @@ mod tests {
     impl PipelineHarness {
         fn new() -> Result<Self, Box<dyn Error>> {
             let runtime_home = TempRuntimeHome::new("core-pipeline")?;
-            initialize_runtime_home(runtime_home.path(), "runtime_home_a", "{}")?;
-            register_project(
-                runtime_home.path(),
-                ProjectRegistration {
-                    project_id: PROJECT_ID.to_owned(),
-                    repo_root: runtime_home.create_product_repo("repo")?,
-                    project_home: None,
-                    status: ACTIVE_PROJECT_STATUS.to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
+            let repo_root = runtime_home.create_product_repo("repo")?;
+            with_test_runtime_home_setup(runtime_home.path(), |context| {
+                initialize_runtime_home(context, runtime_home.path(), "runtime_home_a", "{}")?;
+                register_project(
+                    context,
+                    ProjectRegistration {
+                        project_id: PROJECT_ID.to_owned(),
+                        repo_root,
+                        project_home: None,
+                        status: ACTIVE_PROJECT_STATUS.to_owned(),
+                        metadata_json: "{}".to_owned(),
+                    },
+                )?;
 
-            let conn = open_project_state_database(runtime_home.project_state_db_path(PROJECT_ID))?;
-            conn.execute(
-                "INSERT INTO tasks (
+                let conn = open_project_state_database_for_test(
+                    runtime_home.project_state_db_path(PROJECT_ID),
+                )?;
+                conn.execute(
+                    "INSERT INTO tasks (
                     project_id,
                     task_id,
                     created_by_actor_source,
@@ -2106,18 +2121,22 @@ mod tests {
                     't0',
                     't0'
                 )",
-                [],
-            )?;
-            conn.execute(
-                "UPDATE project_state
+                    [],
+                )?;
+                conn.execute(
+                    "UPDATE project_state
                     SET active_task_id = 'task_a'
                   WHERE project_id = 'project_a'",
-                [],
-            )?;
+                    [],
+                )?;
+                Ok(())
+            })?;
 
             let runtime_home_path = runtime_home.path().to_path_buf();
             let service = CoreService::new(&runtime_home_path);
+            let mutation = TestRuntimeHomeMutation::acquire(&runtime_home_path)?;
             Ok(Self {
+                mutation,
                 _runtime_home: runtime_home,
                 runtime_home_path,
                 service,
@@ -2125,13 +2144,15 @@ mod tests {
         }
 
         fn counts(&self) -> Result<StorageEffectCounts, Box<dyn Error>> {
-            let store =
-                CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+            let store = CoreProjectStore::open_read_only(
+                &self.runtime_home_path,
+                &ProjectId::new(PROJECT_ID),
+            )?;
             Ok(store.effect_counts()?)
         }
 
         fn conn(&self) -> Result<rusqlite::Connection, StoreError> {
-            open_project_state_database(
+            open_project_state_database_for_test(
                 self.runtime_home_path
                     .join("projects")
                     .join(PROJECT_ID)
@@ -2140,7 +2161,8 @@ mod tests {
         }
 
         fn execute(&self, request: PipelineRequest) -> CoreResult<PipelineResponse> {
-            self.service.execute_pipeline(request)
+            let context = self.mutation.context().map_err(CorePipelineError::from)?;
+            self.service.execute_pipeline(Some(&context), request)
         }
 
         fn state_db_path(&self) -> PathBuf {
@@ -2151,7 +2173,7 @@ mod tests {
         }
 
         fn replace_project_repo_root(&self, repo_root: &Path) -> Result<(), Box<dyn Error>> {
-            let conn = open_registry_database(registry_db_path(&self.runtime_home_path))?;
+            let conn = open_registry_database_for_test(registry_db_path(&self.runtime_home_path))?;
             conn.execute(
                 "UPDATE projects SET repo_root = ?2 WHERE project_internal_id = ?1",
                 rusqlite::params![PROJECT_ID, repo_root.to_string_lossy().as_ref()],
@@ -2390,20 +2412,27 @@ mod tests {
             &envelope,
             "current-state-default",
         );
-        let prepared = match harness.service.prepare_request(PipelinePreflightRequest {
-            method_name: MethodName::ResolveUserAction,
-            envelope,
-            request_json,
-            invocation: invocation_with_actor(ActorSource::LocalUser, OperationCategory::UserOnly),
-            policy: MethodPolicy::exact(
-                OperationCategory::UserOnly,
-                TaskRequirement::Required,
-                ReplayPolicy::Committed,
-                FreshnessPolicy::IfPresent,
-                MethodEffectPolicy::CoreMutation,
-            )
-            .with_current_state_default(),
-        })? {
+        let context = harness.mutation.context()?;
+        let prepared = match harness.service.prepare_request(
+            Some(&context),
+            PipelinePreflightRequest {
+                method_name: MethodName::ResolveUserAction,
+                envelope,
+                request_json,
+                invocation: invocation_with_actor(
+                    ActorSource::LocalUser,
+                    OperationCategory::UserOnly,
+                ),
+                policy: MethodPolicy::exact(
+                    OperationCategory::UserOnly,
+                    TaskRequirement::Required,
+                    ReplayPolicy::Committed,
+                    FreshnessPolicy::IfPresent,
+                    MethodEffectPolicy::CoreMutation,
+                )
+                .with_current_state_default(),
+            },
+        )? {
             PipelinePreflightOutcome::Prepared(prepared) => *prepared,
             PipelinePreflightOutcome::Response(response) => {
                 panic!(
@@ -2481,13 +2510,17 @@ mod tests {
             TaskRequirement::Required,
             &branch,
         );
-        let prepared = match harness.service.prepare_request(PipelinePreflightRequest {
-            method_name: MethodName::UpdateScope,
-            envelope: envelope.clone(),
-            request_json: request_json.clone(),
-            invocation: invocation.clone(),
-            policy,
-        })? {
+        let context = harness.mutation.context()?;
+        let prepared = match harness.service.prepare_request(
+            Some(&context),
+            PipelinePreflightRequest {
+                method_name: MethodName::UpdateScope,
+                envelope: envelope.clone(),
+                request_json: request_json.clone(),
+                invocation: invocation.clone(),
+                policy,
+            },
+        )? {
             PipelinePreflightOutcome::Prepared(prepared) => *prepared,
             PipelinePreflightOutcome::Response(response) => {
                 panic!("preflight unexpectedly returned {}", response.response_json)

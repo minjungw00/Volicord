@@ -4,6 +4,7 @@ impl CoreService {
     /// Executes `volicord.prepare_write` through the shared Core mutation pipeline.
     pub fn prepare_write(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: PrepareWriteRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -25,6 +26,7 @@ impl CoreService {
         let policy = prepare_write_policy(&request);
         let prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::PrepareWrite,
             request.envelope.clone(),
             request_json,
@@ -108,7 +110,7 @@ impl CoreService {
         if response_committed_fresh_effect(&response) {
             if let Some(metric_kind) = metric_kind {
                 record_core_workflow_metric_best_effort(
-                    self,
+                    context,
                     session_id.as_deref(),
                     metric_kind,
                     1,
@@ -116,7 +118,7 @@ impl CoreService {
             }
             if sensitive_approval_missing {
                 record_core_workflow_metric_best_effort(
-                    self,
+                    context,
                     session_id.as_deref(),
                     WorkflowMetricKind::SensitiveApprovalMissingBlock,
                     1,
@@ -243,7 +245,6 @@ impl PrepareWriteResponseProjection {
 }
 
 fn resolve_prepare_write_context(
-    service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     normalized: PrepareWriteNormalizedRequest,
@@ -260,7 +261,9 @@ fn resolve_prepare_write_context(
         Some(change_unit) => change_unit,
         None => {
             let _ = record_core_rejection_diagnostic(
-                service.runtime_home(),
+                store
+                    .mutation_context()
+                    .expect("prepare_write planning retains a mutation context"),
                 CoreRejectionDiagnostic {
                     project_id: request.envelope.project_id.as_str(),
                     task_id: task_id.as_str(),
@@ -329,7 +332,7 @@ fn plan_prepare_write(
 ) -> Result<PrepareWritePlan, PlanError> {
     let raw = PrepareWriteRawRequest::new(request, operation_now);
     let normalized = normalize_prepare_write_request(store, project_state, raw)?;
-    let resolved = resolve_prepare_write_context(service, store, project_state, normalized)?;
+    let resolved = resolve_prepare_write_context(store, project_state, normalized)?;
     let policy = decide_prepare_write_policy(store, project_state, resolved)?;
     let mutations =
         plan_prepare_write_mutations(service, store, project_state, verified_invocation, policy)?;

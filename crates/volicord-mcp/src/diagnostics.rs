@@ -94,6 +94,10 @@ impl From<&McpAdapterError> for McpDiagnostic {
             McpAdapterError::ToolOutputSchema { .. } => {
                 Self::ToolCall(McpToolCallDiagnostic::OutputSchemaFailure)
             }
+            McpAdapterError::MutationAdmission(_)
+            | McpAdapterError::MutationAdmissionAcquisition { .. } => {
+                Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
+            }
             McpAdapterError::Core(_) => Self::ToolCall(McpToolCallDiagnostic::CoreExecutionError),
             McpAdapterError::Store(_) | McpAdapterError::Environment(_) => {
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)

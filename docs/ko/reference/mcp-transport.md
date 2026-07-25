@@ -275,6 +275,18 @@ branch는 strategy를 바꾸지 않습니다.
 
 ## 권위 있는 Lifecycle 기록
 
+Runtime Home 상태를 영속할 수 있는 한도가 있는 MCP lifecycle 관찰이나 tool 연산은 각
+연산마다 `SharedWriter`를 획득합니다. Server process 전체 수명 동안 lease를 보유하지
+않으며 Core, Store, milestone, receipt, terminal-finding 효과가 끝날 때까지 유지합니다.
+Managed-launch 소비, runtime/session 생성과 갱신, initialize 및 initialized 관찰,
+`tools/list`, 지정 verification tool, integration verification, 공개 메서드 변경,
+operational evidence, terminal failure 연결에 이 경계가 적용됩니다.
+
+Setup이 `ExclusiveSetup`을 보유하면 message나 call은 일부 효과도 만들기 전에 typed
+`runtime_home.mutation.setup_in_progress` lifecycle/tool error를 반환합니다. Protocol
+성공을 내보내거나 raw stdio fallback을 안내하거나 관찰을 저장했다고 조용히 주장하지
+않습니다. Setup이 lease를 해제한 뒤 이후 message나 call이 다시 시도할 수 있습니다.
+
 `mcp serve` 또는 숨겨진 launcher process는 Agent Connection을 해결한 뒤 thread
 metadata를 검증하거나 protocol message를
 읽기 전에 Registry runtime session을 만듭니다. 이 row는 Volicord가 생성한 process

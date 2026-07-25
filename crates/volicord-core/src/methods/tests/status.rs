@@ -1023,7 +1023,8 @@ fn fresh_project_registration_creates_baseline_enforcement_profile() -> Result<(
     let profile_json = harness.project_enforcement_profile_json()?;
     assert_eq!(profile_json, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON);
 
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let record = store.project_enforcement_profile()?;
     assert_eq!(record.project_id, PROJECT_ID);
     assert_eq!(record.profile.profile_id, "baseline_cooperative");

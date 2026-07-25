@@ -133,6 +133,15 @@ Codex `record` profile에서 호환 event를 기록하고 denial이 아닌 polic
 `0`을 냅니다. 영속화 실패만으로 policy denial을 만들지 않습니다. `PostToolUse` warning은
 이미 끝난 동작을 설명하며 Guard가 그 동작을 막거나 되돌렸다고 주장하지 않습니다.
 
+각 prompt, pre-tool, post-tool invocation은 command 실행, prompt/event data, expected
+write, unrecorded change, integration-verification 관찰, operational finding을 기록하기
+전에 `SharedWriter`를 획득합니다. Invocation의 전체 효과 집합이 끝날 때까지 같은
+승인을 유지합니다. Setup이 `ExclusiveSetup`을 보유하면 이 기록을 하나도 만들지
+않습니다. `record` profile은 exit `0`으로 host prompt나 tool을 계속하고,
+`runtime_home.mutation.setup_in_progress`와 `persisted=false`를 한도가 있는
+persistence-unavailable warning으로 보고하며 `Deny`를 projection하지 않습니다.
+Enforcing policy를 사용하는 profile은 자신의 명시적인 담당 계약을 따릅니다.
+
 Codex adapter만 `hookSpecificOutput`, `permissionDecision`, `additionalContext`, stderr,
 exit-code projection을 담당합니다. Core-facing type과 Store record는 Codex process-exit
 동작을 encode하지 않습니다.

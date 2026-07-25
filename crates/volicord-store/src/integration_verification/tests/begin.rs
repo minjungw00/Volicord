@@ -30,7 +30,7 @@ fn first_begin_and_same_coordinate_resume_use_one_id() -> Result<(), Box<dyn Err
 fn immutable_coordinate_columns_reject_update() -> Result<(), Box<dyn Error>> {
     let fixture = VerificationFixture::new("guard-integration-coordinate-immutable")?;
     let run = fixture.begin()?;
-    let conn = crate::sqlite::open_registry_database(crate::sqlite::registry_db_path(
+    let conn = crate::sqlite::open_registry_database_for_test(crate::sqlite::registry_db_path(
         fixture.runtime_home.path(),
     ))?;
     let error = conn
@@ -73,7 +73,7 @@ fn terminal_same_turn_begin_never_creates_a_new_id() -> Result<(), Box<dyn Error
 fn prompt_event_cannot_be_shared_across_attempts() -> Result<(), Box<dyn Error>> {
     let fixture = VerificationFixture::new("guard-integration-prompt-owner")?;
     fixture.begin()?;
-    let conn = crate::sqlite::open_registry_database(crate::sqlite::registry_db_path(
+    let conn = crate::sqlite::open_registry_database_for_test(crate::sqlite::registry_db_path(
         fixture.runtime_home.path(),
     ))?;
     let error = conn
@@ -161,7 +161,7 @@ fn manual_and_preflight_runtime_sources_cannot_begin() -> Result<(), Box<dyn Err
     .enumerate()
     {
         let runtime = start_mcp_runtime_session_for_test(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             McpRuntimeSessionStart {
                 connection_internal_id: CONNECTION_ID.to_owned(),
                 session_source: source,
@@ -171,7 +171,7 @@ fn manual_and_preflight_runtime_sources_cannot_begin() -> Result<(), Box<dyn Err
             },
         )?;
         let error = begin_guard_integration_verification_with_generator(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             BeginGuardIntegrationVerificationInput {
                 caller: GuardIntegrationVerificationCaller {
                     runtime_session_id: runtime.runtime_session_id,

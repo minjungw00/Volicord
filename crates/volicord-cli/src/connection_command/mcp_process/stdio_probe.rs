@@ -4,6 +4,10 @@ use serde_json::{json, Value};
 use tempfile::TempDir;
 use volicord_mcp::{MaterializedManagedMcpLaunch, VOLICORD_HOME_ENV};
 use volicord_mcp_protocol::{McpProtocolRevision, ProtocolRegistry};
+use volicord_platform_fs::{
+    RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
+    RuntimeHomeMutationWaitPolicy,
+};
 use volicord_store::{
     agent_connections::{
         add_connection_project, ensure_agent_connection, AgentConnectionRegistration,
@@ -14,6 +18,7 @@ use volicord_store::{
         initialize_runtime_home, register_project, write_installation_profile,
         InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
+    RuntimeHomeMutationContext,
 };
 use volicord_types::{AgentConnectionMode, AgentToolId};
 
@@ -239,10 +244,34 @@ impl DisposableConformanceFixture {
         let repo_root = temp_dir.path().join("product-repository");
         fs::create_dir_all(&repo_root)
             .map_err(|error| format!("failed to create disposable Product Repository: {error}"))?;
-        initialize_runtime_home(&runtime_home, "runtime_home_verification_fixture", "{}")
-            .map_err(|error| format!("failed to initialize disposable Runtime Home: {error}"))?;
-        write_installation_profile(
+        let lease = match RuntimeHomeMutationLease::acquire(
             &runtime_home,
+            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+            RuntimeHomeMutationWaitPolicy::Immediate,
+        )
+        .map_err(|error| {
+            format!("failed to acquire disposable Runtime Home setup admission: {error}")
+        })? {
+            RuntimeHomeMutationLeaseOutcome::Acquired(lease) => lease,
+            RuntimeHomeMutationLeaseOutcome::Busy(_) => {
+                return Err(
+                    "disposable Runtime Home setup admission was unexpectedly busy".to_owned(),
+                );
+            }
+        };
+        let mutation_context = RuntimeHomeMutationContext::new(lease.permit(), &runtime_home)
+            .map_err(|error| {
+                format!("failed to authorize disposable Runtime Home setup: {error}")
+            })?;
+        initialize_runtime_home(
+            &mutation_context,
+            &runtime_home,
+            "runtime_home_verification_fixture",
+            "{}",
+        )
+        .map_err(|error| format!("failed to initialize disposable Runtime Home: {error}"))?;
+        write_installation_profile(
+            &mutation_context,
             InstallationProfileRegistration {
                 installation_id: "default".to_owned(),
                 volicord_command: launch.command().to_owned(),
@@ -254,7 +283,7 @@ impl DisposableConformanceFixture {
         )
         .map_err(|error| format!("failed to write disposable installation profile: {error}"))?;
         register_project(
-            &runtime_home,
+            &mutation_context,
             ProjectRegistration {
                 project_id: Self::PROJECT_ID.to_owned(),
                 repo_root: repo_root.clone(),
@@ -265,7 +294,7 @@ impl DisposableConformanceFixture {
         )
         .map_err(|error| format!("failed to register disposable project: {error}"))?;
         ensure_agent_connection(
-            &runtime_home,
+            &mutation_context,
             AgentConnectionRegistration {
                 connection_internal_id: Self::CONNECTION_ID.to_owned(),
                 host_kind: HOST_KIND_CODEX.to_owned(),
@@ -285,7 +314,7 @@ impl DisposableConformanceFixture {
         )
         .map_err(|error| format!("failed to register disposable connection: {error}"))?;
         add_connection_project(
-            &runtime_home,
+            &mutation_context,
             ConnectionProjectRegistration {
                 connection_internal_id: Self::CONNECTION_ID.to_owned(),
                 project_id: Self::PROJECT_ID.to_owned(),

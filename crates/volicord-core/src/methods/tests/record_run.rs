@@ -360,7 +360,8 @@ fn non_product_category_signal_requires_final_without_manufacturing_sensitive_co
         after.user_action_requests, before.user_action_requests,
         "observed categories must not manufacture sensitive-approval authority"
     );
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let stored_task = store
         .task_record(&TaskId::new(&task_id))?
         .expect("recorded Run Task remains current");
@@ -3857,8 +3858,10 @@ fn user_channel_observation_preserves_relevance_resolution_time_and_supported_on
             stored_metadata["relevance_assessment"]["status"],
             relevance_value
         );
-        let store =
-            CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        let store = CoreProjectStore::open_read_only(
+            &harness.runtime_home_path,
+            &ProjectId::new(PROJECT_ID),
+        )?;
         let observation_record = store
             .evidence_observation_record(observation_id)?
             .expect("committed user observation should be readable");

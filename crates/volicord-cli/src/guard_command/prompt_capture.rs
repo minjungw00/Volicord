@@ -8,6 +8,7 @@ use volicord_store::{
         guard_health_record, insert_prompt_capture, prompt_capture, prompt_capture_availability,
         PromptCaptureAvailability, PromptCaptureInsert,
     },
+    RuntimeHomeMutationContext,
 };
 use volicord_types::{
     guard_manifest_from_json, ActorSource, AgentSafeUserActionRequestSummary, GuardPolicyDecision,
@@ -57,6 +58,7 @@ pub(super) fn prompt_capture_availability_for_event(
 }
 
 fn record_prompt_capture(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
@@ -76,7 +78,7 @@ fn record_prompt_capture(
     .unwrap_or_else(|| stable_id("prompt_capture", &[session_id, &prompt_sha256]));
     if prompt_capture(runtime_home, &project.project_id, &capture_id)?.is_none() {
         insert_prompt_capture(
-            runtime_home,
+            context,
             &project.project_id,
             PromptCaptureInsert {
                 prompt_capture_id: capture_id.clone(),
@@ -107,13 +109,14 @@ fn record_prompt_capture(
 }
 
 pub(super) fn handle_prompt_capture(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<(GuardPolicyDecision, Value, bool), GuardCommandError> {
     let availability = prompt_capture_availability_for_event(runtime_home, project, envelope)?;
-    let capture = record_prompt_capture(runtime_home, project, envelope, input)?;
+    let capture = record_prompt_capture(context, runtime_home, project, envelope, input)?;
     let available = availability.is_operational();
     let decision = if available {
         GuardPolicyDecision::Continue

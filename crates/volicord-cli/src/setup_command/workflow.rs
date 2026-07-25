@@ -4,6 +4,10 @@ use std::{
 };
 
 use serde_json::json;
+use volicord_platform_fs::{
+    RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
+    RuntimeHomeMutationWaitPolicy,
+};
 use volicord_store::{
     agent_connections::CONNECTION_MODE_WORKFLOW,
     bootstrap::{
@@ -13,7 +17,7 @@ use volicord_store::{
     },
     runtime_home::resolve_runtime_home,
     sqlite::registry_db_path,
-    StoreError,
+    RuntimeHomeMutationContext, StoreError,
 };
 
 use crate::{
@@ -121,6 +125,25 @@ pub(super) fn run_setup_workflow(
 ) -> Result<SetupWorkflowOutcome, SetupCommandError> {
     let output = parsed.output;
     let runtime_home = resolve_setup_runtime_home(&parsed, current_dir, process)?;
+    let lease = match RuntimeHomeMutationLease::acquire(
+        &runtime_home,
+        RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+        RuntimeHomeMutationWaitPolicy::Immediate,
+    )
+    .map_err(|error| SetupCommandError::Runtime(error.to_string()))?
+    {
+        RuntimeHomeMutationLeaseOutcome::Acquired(lease) => lease,
+        RuntimeHomeMutationLeaseOutcome::Busy(busy) => {
+            return Err(SetupCommandError::Runtime(format!(
+                "Runtime Home setup could not acquire exclusive mutation admission for {}; retry after active writers finish (requested mode: {}, wait policy: {}, elapsed: {:?})",
+                busy.target().as_path().display(),
+                busy.requested_mode().as_str(),
+                busy.wait_policy().as_str(),
+                busy.elapsed(),
+            )));
+        }
+    };
+    let mutation_context = RuntimeHomeMutationContext::new(lease.permit(), &runtime_home)?;
     let runtime_home_id = runtime_home_id_for_path(&runtime_home)?;
     let existing_runtime_home = match inspect_runtime_home_bootstrap(&runtime_home)? {
         RuntimeHomeBootstrapState::Absent => None,
@@ -275,6 +298,7 @@ pub(super) fn run_setup_workflow(
         &state.link_results,
     )?;
     let (runtime_home_record, profile) = initialize_runtime_home_with_installation(
+        &mutation_context,
         &runtime_home,
         &runtime_home_id,
         ADMIN_METADATA_JSON,

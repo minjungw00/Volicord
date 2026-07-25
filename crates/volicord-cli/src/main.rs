@@ -418,6 +418,7 @@ impl From<ConnectionCommandError> for CliError {
             ConnectionCommandError::Runtime(message)
             | ConnectionCommandError::ConcurrentModification(message) => Self::Runtime(message),
             ConnectionCommandError::FailureOutput(output) => Self::FailureOutput(output),
+            ConnectionCommandError::MutationAdmission(error) => Self::Runtime(error.to_string()),
         }
     }
 }
@@ -427,6 +428,7 @@ impl From<UserCommandError> for CliError {
         match error {
             UserCommandError::Usage(message) => Self::Usage(message),
             UserCommandError::Runtime(message) => Self::Runtime(message),
+            UserCommandError::MutationAdmission(error) => Self::Runtime(error.to_string()),
         }
     }
 }
@@ -437,6 +439,7 @@ impl From<ChangesCommandError> for CliError {
             ChangesCommandError::Usage(message) => Self::Usage(message),
             ChangesCommandError::Runtime(message) => Self::Runtime(message),
             ChangesCommandError::FailureOutput(output) => Self::FailureOutput(output),
+            ChangesCommandError::MutationAdmission(error) => Self::Runtime(error.to_string()),
         }
     }
 }
@@ -455,6 +458,7 @@ impl From<ProjectCommandError> for CliError {
         match error {
             ProjectCommandError::Usage(message) => Self::Usage(message),
             ProjectCommandError::Runtime(message) => Self::Runtime(message),
+            ProjectCommandError::MutationAdmission(error) => Self::Runtime(error.to_string()),
         }
     }
 }
@@ -489,6 +493,7 @@ impl From<PolicyCommandError> for CliError {
             } => Self::Runtime(format!("{code} at {field_path}: {message}")),
             PolicyCommandError::FailureOutput(output) => Self::FailureOutput(output),
             PolicyCommandError::Runtime(message) => Self::Runtime(message),
+            PolicyCommandError::MutationAdmission(error) => Self::Runtime(error.to_string()),
         }
     }
 }
@@ -509,6 +514,7 @@ impl From<EvidenceCommandError> for CliError {
         match error {
             EvidenceCommandError::Usage(message) => Self::Usage(message),
             EvidenceCommandError::Runtime(message) => Self::Runtime(message),
+            EvidenceCommandError::MutationAdmission(error) => Self::Runtime(error.to_string()),
         }
     }
 }

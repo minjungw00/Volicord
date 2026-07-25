@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{sqlite::begin_immediate_transaction, StoreError, StoreResult};
 
-impl CoreProjectStore {
+impl CoreProjectStore<'_> {
     /// Commits one state-changing Core mutation or returns replay/conflict outcomes.
     ///
     /// The helper performs replay lookup, stale-state checking, project clock
@@ -25,6 +25,7 @@ impl CoreProjectStore {
         ) -> StoreResult<()>,
         build_response_json: impl FnOnce(CommittedMutationFacts) -> StoreResult<String>,
     ) -> StoreResult<MutationCommitOutcome> {
+        self.require_mutation_context()?;
         if input.project_id != self.project.project_id {
             return Err(StoreError::InvalidInput {
                 detail: "commit project_id must match the opened project".to_owned(),

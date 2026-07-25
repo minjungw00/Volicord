@@ -33,7 +33,7 @@ use volicord_store::{
         validate_stored_guard_installation_manifest_binding, GuardEventRecord,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    StoreError,
+    RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_string, evidence_capture_input_sha256, ActorSource,
@@ -46,6 +46,7 @@ use volicord_types::{
 };
 
 use crate::cli::{EvidenceArgs, EvidenceCommand};
+use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -59,6 +60,7 @@ const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(10);
 pub enum EvidenceCommandError {
     Usage(String),
     Runtime(String),
+    MutationAdmission(CliMutationAdmissionError),
 }
 
 impl EvidenceCommandError {
@@ -71,11 +73,18 @@ impl fmt::Display for EvidenceCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Usage(message) | Self::Runtime(message) => formatter.write_str(message),
+            Self::MutationAdmission(error) => write!(formatter, "{error}"),
         }
     }
 }
 
 impl std::error::Error for EvidenceCommandError {}
+
+impl From<CliMutationAdmissionError> for EvidenceCommandError {
+    fn from(error: CliMutationAdmissionError) -> Self {
+        Self::MutationAdmission(error)
+    }
+}
 
 impl From<StoreError> for EvidenceCommandError {
     fn from(error: StoreError) -> Self {
@@ -94,15 +103,16 @@ impl From<ProjectCommandError> for EvidenceCommandError {
         match error {
             ProjectCommandError::Usage(message) => Self::Usage(message),
             ProjectCommandError::Runtime(message) => Self::Runtime(message),
+            ProjectCommandError::MutationAdmission(error) => Self::MutationAdmission(error),
         }
     }
 }
 
 #[derive(Debug)]
-struct EvidenceContext {
+struct EvidenceContext<'mutation> {
     runtime_home: PathBuf,
     project: ProjectRecord,
-    store: CoreProjectStore,
+    store: CoreProjectStore<'mutation>,
 }
 
 #[derive(Debug)]
@@ -135,41 +145,59 @@ pub fn run_evidence_command<F>(
 where
     F: Fn(&str) -> Option<OsString>,
 {
-    match args.command {
-        EvidenceCommand::CaptureCommand(options) => {
-            let mut context = resolve_context(env_var, current_dir, options.repo.as_deref())?;
-            let intent = load_and_validate_intent(&context, &options.intent)?;
-            let facts = fulfill_command(&context, &intent, &options.program)?;
-            persist_fulfillment(&mut context, &intent, facts, options.json)
-        }
-        EvidenceCommand::CaptureTool(options) => {
-            let mut context = resolve_context(env_var, current_dir, options.repo.as_deref())?;
-            let intent = load_and_validate_intent(&context, &options.intent)?;
-            let facts = fulfill_tool(&context, &intent, &options.pre_event, &options.post_event)?;
-            persist_fulfillment(&mut context, &intent, facts, options.json)
-        }
-    }
+    let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+    with_cli_runtime_home_mutation(&runtime_home, "cli.evidence.capture", |mutation_context| {
+        let result = (|| -> Result<String, EvidenceCommandError> {
+            match args.command {
+                EvidenceCommand::CaptureCommand(options) => {
+                    let mut context = resolve_context(
+                        mutation_context,
+                        &runtime_home,
+                        current_dir,
+                        options.repo.as_deref(),
+                    )?;
+                    let intent = load_and_validate_intent(&context, &options.intent)?;
+                    let facts = fulfill_command(&context, &intent, &options.program)?;
+                    persist_fulfillment(&mut context, &intent, facts, options.json)
+                }
+                EvidenceCommand::CaptureTool(options) => {
+                    let mut context = resolve_context(
+                        mutation_context,
+                        &runtime_home,
+                        current_dir,
+                        options.repo.as_deref(),
+                    )?;
+                    let intent = load_and_validate_intent(&context, &options.intent)?;
+                    let facts =
+                        fulfill_tool(&context, &intent, &options.pre_event, &options.post_event)?;
+                    persist_fulfillment(&mut context, &intent, facts, options.json)
+                }
+            }
+        })();
+        result.map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
+    })
+    .map_err(Into::into)
 }
 
-fn resolve_context<F>(
-    env_var: F,
+fn resolve_context<'mutation>(
+    mutation_context: &'mutation RuntimeHomeMutationContext<'mutation>,
+    runtime_home: &Path,
     current_dir: &Path,
     selected_repo: Option<&Path>,
-) -> Result<EvidenceContext, EvidenceCommandError>
-where
-    F: Fn(&str) -> Option<OsString>,
-{
-    let runtime_home = resolve_runtime_home(env_var, current_dir)?;
+) -> Result<EvidenceContext<'mutation>, EvidenceCommandError> {
     let repo_root = resolve_repository_root(current_dir, selected_repo)?;
-    let project = registered_project_for_repo(&runtime_home, &repo_root)?;
+    let project = registered_project_for_repo(runtime_home, &repo_root)?;
     if project.status != ACTIVE_PROJECT_STATUS {
         return Err(EvidenceCommandError::runtime(
             "evidence capture requires an active registered project",
         ));
     }
-    let store = CoreProjectStore::open(&runtime_home, &ProjectId::new(&project.project_id))?;
+    let store = CoreProjectStore::open_for_mutation(
+        mutation_context,
+        &ProjectId::new(&project.project_id),
+    )?;
     Ok(EvidenceContext {
-        runtime_home,
+        runtime_home: runtime_home.to_path_buf(),
         project,
         store,
     })

@@ -8,19 +8,22 @@ use volicord_host_contract::{
 };
 use volicord_store::{
     agent_connections::{set_connection_enabled, CONNECTION_MODE_READ_ONLY},
+    core_pipeline::CoreProjectStore,
     guards::{
         agent_session, bind_agent_session_runtime, observe_host_correlation,
         AgentSessionRuntimeBinding, HostCorrelationObservation,
     },
     operational_sessions::{mcp_runtime_project_session_binding, McpRuntimeSessionStart},
     sqlite::registry_db_path,
+    workflow_records::ProjectWorkflowPolicyAuthorityApply,
 };
 use volicord_test_support::{
     core_fixtures::CoreFixture, seed_test_agent_session, transition_test_connection_mode,
 };
 use volicord_types::{
-    ActorSource, AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, FailureCategory,
-    McpRuntimeSessionSource, OperationCategory, ProjectId,
+    canonical_json_sha256, canonical_json_string, ActorSource, AgentConnectionId,
+    AgentRuntimeSessionId, AgentSessionId, FailureCategory, McpRuntimeSessionSource,
+    OperationCategory, ProjectId, WORKFLOW_POLICY_CONTRACT_ID,
 };
 
 fn mcp_correlation(session: &str, thread: &str, turn: &str) -> CodexMcpCorrelation {
@@ -174,7 +177,7 @@ fn disabled_connection_and_disallowed_mode_fail_closed() -> Result<(), Box<dyn E
         None,
     )?;
     set_connection_enabled(
-        disabled_fixture.runtime_home_path(),
+        &disabled_fixture.mutation_context()?,
         disabled_fixture.connection_id(),
         false,
     )?;
@@ -250,18 +253,35 @@ fn stale_connection_and_project_revisions_fail_closed() -> Result<(), Box<dyn Er
         project_fixture.connection_id(),
         None,
     )?;
-    let conn = project_fixture.conn()?;
-    conn.execute(
-        "INSERT INTO project_workflow_policies (
-            project_id, policy_schema, policy_version, policy_json,
-            policy_fingerprint, source, applied_at, created_at
-         ) VALUES (?1, 'volicord.workflow_policy', 1, '{}', ?2, 'test', ?3, ?3)",
-        params![
-            project_fixture.project_id(),
-            format!("sha256:{}", "9".repeat(64)),
-            project_fixture.store()?.current_timestamp()?,
-        ],
+    let policy = serde_json::json!({
+        "schema": WORKFLOW_POLICY_CONTRACT_ID,
+        "workflow": {
+            "default_direct_control": "tracked",
+            "default_work_control": "tracked",
+            "light": {
+                "enabled": false,
+                "max_intended_paths": 3,
+                "allowed_path_patterns": [],
+                "denied_path_patterns": [],
+                "final_acceptance": "policy_dependent"
+            },
+            "write_ticket": {"idle_timeout_minutes": null}
+        }
+    });
+    let policy_json = canonical_json_string(&policy)?;
+    let policy_fingerprint = canonical_json_sha256(&policy)?.into_inner();
+    let context = project_fixture.mutation_context()?;
+    let mut store = CoreProjectStore::open_for_mutation(
+        &context,
+        &ProjectId::new(project_fixture.project_id()),
     )?;
+    store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
+        policy_version: 1,
+        policy_json,
+        policy_fingerprint,
+        source: "test".to_owned(),
+        expected_prior_fingerprint: None,
+    })?;
     let error = CoreService::new(project_fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(project_fixture.connection_id()),
@@ -316,7 +336,7 @@ fn hook_only_host_session_cannot_authorize_until_mcp_runtime_attach() -> Result<
         observed_at: observed_at.clone(),
     };
     let project_session_id = observe_host_correlation(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         fixture.project_id(),
         observation,
     )?
@@ -356,7 +376,7 @@ fn hook_only_host_session_cannot_authorize_until_mcp_runtime_attach() -> Result<
     assert_eq!(error.reason(), "agent_project_session_not_current");
 
     let attached = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         fixture.project_id(),
         AgentSessionRuntimeBinding {
             runtime_session_id: runtime.runtime_session_id.clone(),
@@ -395,7 +415,7 @@ fn registry_reservation_without_mcp_project_anchor_cannot_authorize() -> Result<
     let observed_at = fixture.store()?.current_timestamp()?;
     let host_session_id = "host.session.reservation-only";
     let session = observe_host_correlation(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         fixture.project_id(),
         HostCorrelationObservation {
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -444,7 +464,7 @@ fn registry_reservation_without_mcp_project_anchor_cannot_authorize() -> Result<
     assert_eq!(error.reason(), "agent_project_session_not_current");
 
     let attached = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         fixture.project_id(),
         AgentSessionRuntimeBinding {
             runtime_session_id: runtime.runtime_session_id.clone(),

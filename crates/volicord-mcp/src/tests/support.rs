@@ -78,7 +78,7 @@ pub(super) fn adapter_for_additional_connection(
     let existing = agent_connection_record(fixture.runtime_home_path(), fixture.connection_id())?
         .expect("fixture connection should exist");
     ensure_agent_connection(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         AgentConnectionRegistration {
             connection_internal_id: connection_id.to_owned(),
             host_kind: existing.host_kind,
@@ -93,7 +93,7 @@ pub(super) fn adapter_for_additional_connection(
         },
     )?;
     add_connection_project(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         ConnectionProjectRegistration {
             connection_internal_id: connection_id.to_owned(),
             project_id: fixture.project_id().to_owned(),
@@ -134,7 +134,7 @@ pub(super) fn install_record_guard(fixture: &CoreFixture) -> Result<(), Box<dyn 
     let guard_installation_id = "guard_installation_mcp_record";
     let policy_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
     upsert_guard_installation(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         GuardInstallationUpsert {
             guard_installation_id: guard_installation_id.to_owned(),
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -169,7 +169,7 @@ pub(super) fn add_allowed_project(
 ) -> Result<(), Box<dyn Error>> {
     let repo_root = fixture.create_product_repo(format!("repo-{project_id}"))?;
     register_project(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         ProjectRegistration {
             project_id: project_id.to_owned(),
             repo_root,
@@ -179,7 +179,7 @@ pub(super) fn add_allowed_project(
         },
     )?;
     add_connection_project(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         ConnectionProjectRegistration {
             connection_internal_id: fixture.connection_id().to_owned(),
             project_id: project_id.to_owned(),
@@ -554,6 +554,7 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
     let core = CoreService::new(fixture.runtime_home_path());
     let invocation = || test_agent_invocation(fixture, OperationCategory::AgentWorkflow);
     let intake = core.intake(
+        &fixture.mutation_context()?,
         fixture.intake_request(
             &format!("req_mcp_user_action_{}_task", case.name),
             &format!("idem_mcp_user_action_{}_task", case.name),
@@ -569,6 +570,7 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
     let scope_request_id = format!("req_mcp_user_action_{}_scope", case.name);
     let scope_idempotency_key = format!("idem_mcp_user_action_{}_scope", case.name);
     let scope = core.update_scope(
+        &fixture.mutation_context()?,
         fixture.update_scope_request(UpdateScopeFixture {
             request_id: &scope_request_id,
             idempotency_key: &scope_idempotency_key,
@@ -624,7 +626,7 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
                 recovery_constraints: Vec::new(),
             })
             .into();
-            let recorded = core.record_run(request, invocation())?;
+            let recorded = core.record_run(&fixture.mutation_context()?, request, invocation())?;
             state_version = recorded.response_value["base"]["state_version"]
                 .as_u64()
                 .ok_or("record_run response should expose state_version")?;
@@ -634,6 +636,7 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
         let staged_request_id = format!("req_mcp_user_action_{}_stage", case.name);
         let staged_idempotency_key = format!("idem_mcp_user_action_{}_stage", case.name);
         let staged = core.stage_artifact(
+            &fixture.mutation_context()?,
             fixture.stage_artifact_request(
                 &staged_request_id,
                 Some(&staged_idempotency_key),
@@ -661,7 +664,7 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
             Some("user_action_candidate"),
             None,
         )];
-        let recorded = core.record_run(request, invocation())?;
+        let recorded = core.record_run(&fixture.mutation_context()?, request, invocation())?;
         state_version = recorded.response_value["base"]["state_version"]
             .as_u64()
             .ok_or("record_run response should expose state_version")?;
@@ -875,7 +878,12 @@ pub(super) fn projected_authoritative_tool_result(result: &Value) -> Result<Valu
 }
 
 pub(super) fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>> {
-    assert_eq!(response["result"]["isError"], json!(false));
+    assert_eq!(
+        response["result"]["isError"],
+        json!(false),
+        "{}",
+        serde_json::to_string_pretty(response)?
+    );
     let structured = response["result"]
         .get("structuredContent")
         .filter(|value| value.is_object())
@@ -923,7 +931,7 @@ pub(super) fn stored_action_record(
         .or_else(|| response.pointer("/user_action_request_summary/user_action_request_id"))
         .and_then(Value::as_str)
         .ok_or("response should include user_action_request_summary.user_action_request_id")?;
-    let store = CoreProjectStore::open(
+    let store = CoreProjectStore::open_read_only(
         fixture.runtime_home_path(),
         &ProjectId::new(fixture.project_id()),
     )?;

@@ -557,7 +557,7 @@ mod tests {
     use super::*;
     use crate::runtime_home::{RuntimePathBoundaryViolation, RuntimePlatformDiagnostic};
     use crate::sqlite::{
-        begin_immediate_transaction, open_project_state_database,
+        begin_immediate_transaction, open_project_state_database_for_test,
         open_project_state_database_read_only, open_read_only_database,
         open_registry_database_read_only,
     };
@@ -720,7 +720,7 @@ mod tests {
     {
         let runtime_home = TempRuntimeHome::new("operational-readonly-busy")?;
         let path = runtime_home.project_state_db_path("PRJ-diagnostic");
-        let mut first = open_project_state_database(&path)?;
+        let mut first = open_project_state_database_for_test(&path)?;
 
         let readonly = open_read_only_database(&path)?;
         let readonly_error = readonly
@@ -731,7 +731,7 @@ mod tests {
             StoreDiagnostic::SqliteReadonly
         );
 
-        let mut second = open_project_state_database(&path)?;
+        let mut second = open_project_state_database_for_test(&path)?;
         first.busy_timeout(Duration::from_millis(0))?;
         second.busy_timeout(Duration::from_millis(0))?;
         let transaction = begin_immediate_transaction(&mut first)?;
@@ -769,7 +769,7 @@ mod tests {
 
         let mismatch = TempRuntimeHome::new("operational-schema-mismatch")?;
         let mismatch_path = mismatch.project_state_db_path("PRJ-mismatch");
-        let conn = open_project_state_database(&mismatch_path)?;
+        let conn = open_project_state_database_for_test(&mismatch_path)?;
         conn.execute("ALTER TABLE tasks ADD COLUMN unexpected TEXT", [])?;
         drop(conn);
         let error = open_project_state_database_read_only(&mismatch_path)

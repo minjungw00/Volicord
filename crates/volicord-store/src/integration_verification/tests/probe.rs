@@ -99,7 +99,7 @@ fn wrong_caller_cannot_observe_or_change_acknowledgement() -> Result<(), Box<dyn
         },
     ] {
         acknowledge_guard_integration_probe(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             &run.verification_id,
             &caller,
             "2026-07-23T00:00:05Z",

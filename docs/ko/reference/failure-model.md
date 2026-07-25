@@ -51,6 +51,23 @@ diagnostic입니다.
 잘못되었거나 알려지지 않은 경우는 `Corrupt`가 아니라 `Rejected`이며 지원되는
 형태로 추정하지 않습니다.
 
+### Runtime Home setup 진행 중
+
+`runtime_home.mutation.setup_in_progress`는 setup이 `ExclusiveSetup`을 보유해
+지원하는 일반 writer가 `SharedWriter`를 획득하지 못할 때 반환하는 안정적인 typed
+coordination condition입니다. Policy `NotAllowed`, 영속 데이터 `Corrupt`, type 없는
+SQLite busy failure가 아닙니다. Fact는 정규 Runtime Home, 변경 domain, 요청 mode,
+wait policy, 경과 시간, 재시도 가능 여부로 제한하며 coordination 파일 경로를
+노출하지 않습니다.
+
+필수 CLI 또는 MCP 변경·관찰에서는 연산이 `Unavailable`이며 typed 비성공 결과를
+반환하고 Runtime Home 효과를 만들지 않습니다. `record` Guard hook에서는 기존
+nonblocking policy에 따라 host 동작을 계속하면서 관찰 영속화를 사용할 수 없음을
+명시합니다. 응답은 `persisted=false`를 보고하며 `Deny`를 만들어 내지 않습니다.
+Setup은 publication, checkpoint, 확인, rollback 전체에서 배타 context 하나를
+유지합니다. Publication ID 소유권 검증과 함께 적용되어 setup이 삭제하거나 복원할
+상태에 승인된 외부 변경이 끼어들지 못하게 합니다.
+
 ### Semantic host contract 거부
 
 Codex wire 입력은 명시적으로 선택한 profile로만 decode합니다.

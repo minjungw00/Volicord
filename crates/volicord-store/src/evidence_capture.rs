@@ -222,7 +222,7 @@ pub struct EvidenceProducerRecord {
     pub metadata_json: String,
 }
 
-impl CoreProjectStore {
+impl CoreProjectStore<'_> {
     /// Reads one immutable capture intent by exact project-local identity.
     pub fn evidence_capture_intent_record(
         &self,
@@ -348,6 +348,7 @@ impl CoreProjectStore {
         &mut self,
         input: EvidenceCaptureReceiptInsert,
     ) -> StoreResult<EvidenceCaptureReceiptRecord> {
+        self.require_mutation_context()?;
         validate_receipt_input(&input)?;
         let intent = self
             .evidence_capture_intent_record(&input.evidence_capture_intent_id)?

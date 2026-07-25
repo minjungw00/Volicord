@@ -251,7 +251,7 @@ fn add_project(
 ) -> Result<(), Box<dyn Error>> {
     let repo_root = fixture.create_product_repo(format!("repo-{project_id}"))?;
     register_project(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         ProjectRegistration {
             project_id: project_id.to_owned(),
             repo_root,
@@ -262,7 +262,7 @@ fn add_project(
     )?;
     if allow_connection {
         add_connection_project(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context()?,
             ConnectionProjectRegistration {
                 connection_internal_id: fixture.connection_id().to_owned(),
                 project_id: project_id.to_owned(),

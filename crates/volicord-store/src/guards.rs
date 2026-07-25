@@ -33,11 +33,11 @@ use crate::{
         reserve_mcp_runtime_project_session, McpRuntimeProjectSessionReservation,
     },
     sqlite::{
-        begin_immediate_transaction, open_project_state_database,
-        open_project_state_database_read_only, open_registry_database,
+        begin_immediate_transaction, open_project_state_database_for_mutation,
+        open_project_state_database_read_only, open_registry_database_for_mutation,
         open_registry_database_read_only, registry_db_path,
     },
-    StoreError, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 /// Maximum prior post-tool Guard events considered for one exact correlation window.
@@ -403,12 +403,11 @@ impl PromptCaptureAvailability {
 
 /// Creates or updates one guard installation in the Runtime Home registry.
 pub fn upsert_guard_installation(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: GuardInstallationUpsert,
 ) -> StoreResult<GuardInstallationRecord> {
-    let runtime_home = runtime_home.as_ref().to_path_buf();
-    let registry_path = registry_db_path(&runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     upsert_guard_installation_in_transaction(&tx, &input)?;
     tx.commit()?;
@@ -691,12 +690,12 @@ pub fn current_project_agent_session_coordinates(
 
 /// Creates or updates normalized host session, turn, and optional tool records.
 pub fn observe_host_correlation(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: HostCorrelationObservation,
 ) -> StoreResult<HostSessionRecord> {
     validate_host_correlation_observation(&input)?;
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let observed_at = canonical_agent_session_observed_at(&input.observed_at)?;
     let coordinates = current_project_agent_session_coordinates(
         &runtime_home,
@@ -706,6 +705,7 @@ pub fn observe_host_correlation(
         &input.correlation,
     )?;
     establish_host_correlation(
+        context,
         &runtime_home,
         project_id,
         &coordinates,
@@ -717,13 +717,13 @@ pub fn observe_host_correlation(
 
 /// Validates, reserves, and attaches one managed runtime to a project Agent Session.
 pub fn bind_agent_session_runtime(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: AgentSessionRuntimeBinding,
 ) -> StoreResult<AgentSessionRecord> {
     validate_agent_session_runtime_binding(&input)?;
     let correlation = &input.correlation;
-    let runtime_home = runtime_home.as_ref().to_path_buf();
+    let runtime_home = context.runtime_home().as_path().to_path_buf();
     let observed_at = canonical_agent_session_observed_at(&input.observed_at)?;
 
     // Phase 0: validate current managed-runtime facts without project mutation.
@@ -756,6 +756,7 @@ pub fn bind_agent_session_runtime(
 
     // Phase 1: establish normalized host records and the exact MCP-only anchor.
     establish_host_correlation(
+        context,
         &runtime_home,
         project_id,
         &coordinates,
@@ -764,6 +765,7 @@ pub fn bind_agent_session_runtime(
         &observed_at,
     )?;
     establish_agent_session_anchor(
+        context,
         &runtime_home,
         project_id,
         &coordinates,
@@ -777,7 +779,7 @@ pub fn bind_agent_session_runtime(
 
     // Phase 2: reserve only the exact current coordinates validated by Phase 1.
     reserve_mcp_runtime_project_session(
-        &runtime_home,
+        context,
         McpRuntimeProjectSessionReservation {
             runtime_session_id: &input.runtime_session_id,
             connection_internal_id: &input.connection_internal_id,
@@ -791,6 +793,7 @@ pub fn bind_agent_session_runtime(
 
     // Phase 3: attach only after the authoritative Registry reservation exists.
     attach_agent_session_runtime(
+        context,
         &runtime_home,
         project_id,
         &coordinates,
@@ -809,6 +812,7 @@ struct AgentSessionAnchorInput<'a> {
 }
 
 fn establish_host_correlation(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project_id: &str,
     coordinates: &ProjectAgentSessionCoordinates,
@@ -816,7 +820,8 @@ fn establish_host_correlation(
     correlation: &HostNativeCorrelation,
     observed_at: &str,
 ) -> StoreResult<HostSessionRecord> {
-    let mut project = open_guard_project(runtime_home, project_id, connection_internal_id)?;
+    let mut project =
+        open_guard_project(context, runtime_home, project_id, connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let host_session_id = correlation.session_id().as_str();
     if let Some(existing) =
@@ -1042,12 +1047,18 @@ fn later_timestamp<'a>(
 }
 
 fn establish_agent_session_anchor(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project_id: &str,
     coordinates: &ProjectAgentSessionCoordinates,
     input: AgentSessionAnchorInput<'_>,
 ) -> StoreResult<AgentSessionRecord> {
-    let mut project = open_guard_project(runtime_home, project_id, input.connection_internal_id)?;
+    let mut project = open_guard_project(
+        context,
+        runtime_home,
+        project_id,
+        input.connection_internal_id,
+    )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     if let Some(runtime_session_id) = input.requested_runtime_session_id {
         let attached_session_id = tx
@@ -1170,6 +1181,7 @@ fn establish_agent_session_anchor(
 }
 
 fn attach_agent_session_runtime(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project_id: &str,
     coordinates: &ProjectAgentSessionCoordinates,
@@ -1177,7 +1189,8 @@ fn attach_agent_session_runtime(
     connection_internal_id: &str,
     correlation: &CodexMcpCorrelation,
 ) -> StoreResult<AgentSessionRecord> {
-    let mut project = open_guard_project(runtime_home, project_id, connection_internal_id)?;
+    let mut project =
+        open_guard_project(context, runtime_home, project_id, connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let existing =
         agent_session_from_conn(&tx, &project.project.project_id, &coordinates.session_id)?
@@ -1283,12 +1296,12 @@ pub fn agent_session_matches_current_integration(
 
 /// Inserts one project-scoped guard event row.
 pub fn insert_guard_event(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: GuardEventInsert,
 ) -> StoreResult<GuardEventRecord> {
     validate_guard_event_insert(&input)?;
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let installation =
         guard_installation(runtime_home, &input.guard_installation_id)?.ok_or_else(|| {
             StoreError::NotFound {
@@ -1322,7 +1335,12 @@ pub fn insert_guard_event(
             )
         })
         .transpose()?;
-    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
+    let mut project = open_guard_project(
+        context,
+        runtime_home,
+        project_id,
+        &input.connection_internal_id,
+    )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO guard_events (
@@ -1574,12 +1592,12 @@ pub fn prior_guard_event_exists_for_session_kind(
 
 /// Inserts one project-scoped prompt capture row.
 pub fn insert_prompt_capture(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: PromptCaptureInsert,
 ) -> StoreResult<PromptCaptureRecord> {
     validate_prompt_capture_insert(&input)?;
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let fields = guard_correlation_fields(
         runtime_home,
         project_id,
@@ -1587,7 +1605,12 @@ pub fn insert_prompt_capture(
         None,
         &input.correlation,
     )?;
-    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
+    let mut project = open_guard_project(
+        context,
+        runtime_home,
+        project_id,
+        &input.connection_internal_id,
+    )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO prompt_captures (
@@ -1648,7 +1671,7 @@ pub fn prompt_capture(
 
 /// Inserts one project-scoped expected-write row or returns the existing row.
 pub fn insert_expected_write(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: ExpectedWriteInsert,
 ) -> StoreResult<ExpectedWriteRecord> {
@@ -1668,7 +1691,7 @@ pub fn insert_expected_write(
                 detail: format!("write-ticket IDs cannot be serialized: {error}"),
             }
         })?;
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let fields = guard_correlation_fields(
         runtime_home,
         project_id,
@@ -1676,7 +1699,12 @@ pub fn insert_expected_write(
         input.guard_installation_id.as_deref(),
         &input.correlation,
     )?;
-    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
+    let mut project = open_guard_project(
+        context,
+        runtime_home,
+        project_id,
+        &input.connection_internal_id,
+    )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT OR IGNORE INTO expected_writes (
@@ -1899,7 +1927,7 @@ pub fn list_expected_writes_matched_by_post_event(
 
 /// Marks one pending expected-write row matched by a post-tool observation.
 pub fn mark_expected_write_matched(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     expected_write_id: &str,
     input: ExpectedWriteMatch,
@@ -1911,7 +1939,11 @@ pub fn mark_expected_write_matched(
         serde_json::to_string(&input.matched_paths).map_err(|error| StoreError::InvalidInput {
             detail: format!("matched paths cannot be serialized: {error}"),
         })?;
-    let mut project = open_project_for_required_read(runtime_home, project_id)?;
+    let mut project =
+        open_project_for_mutation(context, project_id)?.ok_or_else(|| StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        })?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let changed = tx.execute(
         "UPDATE expected_writes
@@ -1959,12 +1991,12 @@ pub fn mark_expected_write_matched(
 
 /// Inserts one unresolved unrecorded-change row.
 pub fn insert_unrecorded_change(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     input: UnrecordedChangeInsert,
 ) -> StoreResult<UnrecordedChangeRecord> {
     validate_unrecorded_change_insert(&input)?;
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let fields = input
         .correlation
         .as_ref()
@@ -1978,7 +2010,12 @@ pub fn insert_unrecorded_change(
             )
         })
         .transpose()?;
-    let mut project = open_guard_project(runtime_home, project_id, &input.connection_internal_id)?;
+    let mut project = open_guard_project(
+        context,
+        runtime_home,
+        project_id,
+        &input.connection_internal_id,
+    )?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO unrecorded_changes (
@@ -2057,7 +2094,7 @@ pub fn unrecorded_change(
 
 /// Promotes one unresolved suspected change after deterministic observation.
 pub fn promote_suspected_unrecorded_change(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     unrecorded_change_id: &str,
     promotion: UnrecordedChangePromotion,
@@ -2074,7 +2111,11 @@ pub fn promote_suspected_unrecorded_change(
     )?;
     validate_timestamp_text("confirmed_at", &promotion.confirmed_at)?;
 
-    let mut project = open_project_for_required_read(runtime_home, project_id)?;
+    let mut project =
+        open_project_for_mutation(context, project_id)?.ok_or_else(|| StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        })?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let changed = tx.execute(
         "UPDATE unrecorded_changes
@@ -2601,7 +2642,7 @@ fn latest_guard_events(
 
 /// Resolves one unresolved unrecorded-change row.
 pub fn resolve_unrecorded_change(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     unrecorded_change_id: &str,
     resolution: UnrecordedChangeResolution,
@@ -2609,7 +2650,11 @@ pub fn resolve_unrecorded_change(
     validate_identifier("project_id", project_id)?;
     validate_identifier("unrecorded_change_id", unrecorded_change_id)?;
     validate_unrecorded_change_resolution(&resolution)?;
-    let mut project = open_project_for_required_read(runtime_home, project_id)?;
+    let mut project =
+        open_project_for_mutation(context, project_id)?.ok_or_else(|| StoreError::NotFound {
+            entity: "project",
+            id: project_id.to_owned(),
+        })?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let changed = tx.execute(
         "UPDATE unrecorded_changes
@@ -2661,6 +2706,7 @@ struct OpenGuardProject {
 }
 
 fn open_guard_project(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: impl AsRef<Path>,
     project_id: &str,
     connection_internal_id: &str,
@@ -2674,7 +2720,10 @@ fn open_guard_project(
             id: format!("{connection_internal_id}/{project_id}"),
         });
     }
-    open_project_for_required_read(runtime_home, project_id)
+    open_project_for_mutation(context, project_id)?.ok_or_else(|| StoreError::NotFound {
+        entity: "project",
+        id: project_id.to_owned(),
+    })
 }
 
 fn open_project_for_read(
@@ -2688,27 +2737,15 @@ fn open_project_for_read(
     Ok(Some(OpenGuardProject { project, conn }))
 }
 
-fn open_project_for_required_read(
-    runtime_home: impl AsRef<Path>,
-    project_id: &str,
-) -> StoreResult<OpenGuardProject> {
-    let Some(project) = open_project_for_write(runtime_home, project_id)? else {
-        return Err(StoreError::NotFound {
-            entity: "project",
-            id: project_id.to_owned(),
-        });
-    };
-    Ok(project)
-}
-
-fn open_project_for_write(
-    runtime_home: impl AsRef<Path>,
+fn open_project_for_mutation(
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
 ) -> StoreResult<Option<OpenGuardProject>> {
-    let Some(project) = project_record_for_execution(runtime_home, project_id)? else {
+    let Some(project) = project_record_for_execution(context.runtime_home().as_path(), project_id)?
+    else {
         return Ok(None);
     };
-    let conn = open_project_state_database(&project.state_db_path)?;
+    let conn = open_project_state_database_for_mutation(context, &project)?;
     Ok(Some(OpenGuardProject { project, conn }))
 }
 
@@ -4067,7 +4104,7 @@ pub(crate) fn test_guard_manifest_json(
 
 #[cfg(test)]
 mod tests {
-    use std::{error::Error, path::Path};
+    use std::error::Error;
 
     use volicord_test_support::TempRuntimeHome;
 
@@ -4081,7 +4118,9 @@ mod tests {
         bootstrap::{
             initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
         },
+        mutation::{with_test_runtime_home_setup, TestRuntimeHomeAdmission},
         operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
+        sqlite::{open_project_state_database_for_test, open_registry_database_for_test},
     };
     use volicord_types::McpRuntimeSessionSource;
 
@@ -4119,12 +4158,12 @@ mod tests {
     }
 
     fn start_guard_runtime(
-        runtime_home: &Path,
+        context: &RuntimeHomeMutationContext<'_>,
         connection_id: &str,
         started_at: &str,
     ) -> StoreResult<String> {
         Ok(start_mcp_runtime_session_for_test(
-            runtime_home,
+            context,
             McpRuntimeSessionStart {
                 connection_internal_id: connection_id.to_owned(),
                 session_source: McpRuntimeSessionSource::ManagedHost,
@@ -4164,7 +4203,7 @@ mod tests {
         fixture.add_project_connection("project_shape", "conn_shape", "repo-shape")?;
         let project = project_record_for_execution(fixture.runtime_home.path(), "project_shape")?
             .expect("fixture project");
-        let conn = open_project_state_database(&project.state_db_path)?;
+        let conn = open_project_state_database_for_test(&project.state_db_path)?;
         let invalid = conn.execute(
             "INSERT INTO guard_events (
                 project_id, guard_event_id, session_id, connection_internal_id,
@@ -4192,7 +4231,7 @@ mod tests {
         fixture.add_project_connection("project_tool", "conn_tool", "repo-tool")?;
         let observe = |correlation| {
             observe_host_correlation(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 "project_tool",
                 HostCorrelationObservation {
                     connection_internal_id: "conn_tool".to_owned(),
@@ -4224,11 +4263,8 @@ mod tests {
     {
         let fixture = GuardFixture::new("guard-runtime-attach-replay")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        let runtime_session_id = start_guard_runtime(
-            fixture.runtime_home.path(),
-            "conn_guard_a",
-            "2026-07-19T00:00:00Z",
-        )?;
+        let runtime_session_id =
+            start_guard_runtime(&fixture.context()?, "conn_guard_a", "2026-07-19T00:00:00Z")?;
         let observed_at = "2026-07-19T00:00:01Z";
         let correlation = mcp_correlation("session_guard_a", "thread_guard_a", "turn_guard_a");
         let coordinates = current_project_agent_session_coordinates(
@@ -4240,6 +4276,7 @@ mod tests {
         )?;
 
         establish_host_correlation(
+            &fixture.context()?,
             fixture.runtime_home.path(),
             "project_guard_a",
             &coordinates,
@@ -4249,6 +4286,7 @@ mod tests {
         )?;
 
         establish_agent_session_anchor(
+            &fixture.context()?,
             fixture.runtime_home.path(),
             "project_guard_a",
             &coordinates,
@@ -4260,7 +4298,7 @@ mod tests {
             },
         )?;
         reserve_mcp_runtime_project_session(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             McpRuntimeProjectSessionReservation {
                 runtime_session_id: &runtime_session_id,
                 connection_internal_id: "conn_guard_a",
@@ -4289,7 +4327,7 @@ mod tests {
         );
 
         let attached = bind_agent_session_runtime(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             AgentSessionRuntimeBinding {
                 runtime_session_id: runtime_session_id.clone(),
@@ -4306,14 +4344,15 @@ mod tests {
 
         let project = project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
             .expect("fixture project");
-        let project_conn = open_project_state_database(&project.state_db_path)?;
+        let project_conn = open_project_state_database_for_test(&project.state_db_path)?;
         let project_count: i64 = project_conn.query_row(
             "SELECT COUNT(*) FROM managed_mcp_sessions WHERE session_id = ?1",
             [&coordinates.session_id],
             |row| row.get(0),
         )?;
         assert_eq!(project_count, 1);
-        let registry_conn = open_registry_database(registry_db_path(fixture.runtime_home.path()))?;
+        let registry_conn =
+            open_registry_database_for_test(registry_db_path(fixture.runtime_home.path()))?;
         let binding_count: i64 = registry_conn.query_row(
             "SELECT COUNT(*) FROM mcp_runtime_project_session_bindings WHERE session_id = ?1",
             [&coordinates.session_id],
@@ -4322,7 +4361,7 @@ mod tests {
         assert_eq!(binding_count, 1);
 
         let changed_owner = bind_agent_session_runtime(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             AgentSessionRuntimeBinding {
                 runtime_session_id,
@@ -4352,11 +4391,8 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = GuardFixture::new("guard-runtime-anchor-revision-race")?;
         fixture.add_project_connection("project_guard_a", "conn_guard_a", "repo-a")?;
-        let runtime_session_id = start_guard_runtime(
-            fixture.runtime_home.path(),
-            "conn_guard_a",
-            "2026-07-19T00:00:00Z",
-        )?;
+        let runtime_session_id =
+            start_guard_runtime(&fixture.context()?, "conn_guard_a", "2026-07-19T00:00:00Z")?;
         let observed_at = "2026-07-19T00:00:01Z";
         let correlation = mcp_correlation("session_guard_a", "thread_guard_a", "turn_guard_a");
         let prior_coordinates = current_project_agent_session_coordinates(
@@ -4367,6 +4403,7 @@ mod tests {
             &HostNativeCorrelation::CodexMcp(correlation.clone()),
         )?;
         establish_host_correlation(
+            &fixture.context()?,
             fixture.runtime_home.path(),
             "project_guard_a",
             &prior_coordinates,
@@ -4375,6 +4412,7 @@ mod tests {
             observed_at,
         )?;
         establish_agent_session_anchor(
+            &fixture.context()?,
             fixture.runtime_home.path(),
             "project_guard_a",
             &prior_coordinates,
@@ -4388,7 +4426,7 @@ mod tests {
 
         let project = project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
             .expect("fixture project");
-        let project_conn = open_project_state_database(&project.state_db_path)?;
+        let project_conn = open_project_state_database_for_test(&project.state_db_path)?;
         project_conn.execute(
             "INSERT INTO project_workflow_policies (
                 project_id, policy_schema, policy_version, policy_json,
@@ -4402,7 +4440,7 @@ mod tests {
         )?;
 
         let error = reserve_mcp_runtime_project_session(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             McpRuntimeProjectSessionReservation {
                 runtime_session_id: &runtime_session_id,
                 connection_internal_id: "conn_guard_a",
@@ -4432,7 +4470,7 @@ mod tests {
         assert!(old_anchor.runtime_session_id.is_none());
 
         let current = bind_agent_session_runtime(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             AgentSessionRuntimeBinding {
                 runtime_session_id,
@@ -4467,7 +4505,7 @@ mod tests {
             .to_owned();
 
         let installation = upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             GuardInstallationUpsert {
                 guard_installation_id: "guard_installation_a".to_owned(),
                 connection_internal_id: "conn_guard_a".to_owned(),
@@ -4485,15 +4523,12 @@ mod tests {
         let manifest = guard_manifest_from_json(&installation.manifest_json)?;
         assert_eq!(manifest.policy_hash.as_str(), TEST_POLICY_HASH);
 
-        let runtime_session_id = start_guard_runtime(
-            fixture.runtime_home.path(),
-            "conn_guard_a",
-            "2026-06-30T00:00:00Z",
-        )?;
+        let runtime_session_id =
+            start_guard_runtime(&fixture.context()?, "conn_guard_a", "2026-06-30T00:00:00Z")?;
         let host_session_id = "session_guard_a";
         let mcp_correlation = mcp_correlation(host_session_id, "thread_guard_a", "turn_guard_a");
         let session = bind_agent_session_runtime(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             AgentSessionRuntimeBinding {
                 runtime_session_id,
@@ -4510,7 +4545,7 @@ mod tests {
         let prompt_correlation = prompt_correlation(host_session_id, "turn_guard_prompt_a");
         for correlation in [&tool_correlation, &prompt_correlation] {
             observe_host_correlation(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 "project_guard_a",
                 HostCorrelationObservation {
                     connection_internal_id: "conn_guard_a".to_owned(),
@@ -4522,7 +4557,7 @@ mod tests {
         }
 
         let event = insert_guard_event(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             GuardEventInsert {
                 guard_event_id: "guard_event_a".to_owned(),
@@ -4543,7 +4578,7 @@ mod tests {
         assert_eq!(event.decision, "warn");
 
         let capture = insert_prompt_capture(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             PromptCaptureInsert {
                 prompt_capture_id: "prompt_capture_a".to_owned(),
@@ -4563,7 +4598,7 @@ mod tests {
 
         fixture.insert_task("project_guard_a", "task_guard_a")?;
         let expected = insert_expected_write(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             ExpectedWriteInsert {
                 expected_write_id: "expected_write_a".to_owned(),
@@ -4596,7 +4631,7 @@ mod tests {
             1
         );
         let matched = mark_expected_write_matched(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             "expected_write_a",
             ExpectedWriteMatch {
@@ -4614,7 +4649,7 @@ mod tests {
         .is_empty());
 
         let change = insert_unrecorded_change(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             UnrecordedChangeInsert {
                 unrecorded_change_id: "unrecorded_change_a".to_owned(),
@@ -4642,7 +4677,7 @@ mod tests {
         );
 
         let resolved = resolve_unrecorded_change(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             "unrecorded_change_a",
             UnrecordedChangeResolution {
@@ -4662,7 +4697,7 @@ mod tests {
 
         let project = project_record_for_execution(fixture.runtime_home.path(), "project_guard_a")?
             .expect("fixture project should exist");
-        let conn = open_project_state_database(&project.state_db_path)?;
+        let conn = open_project_state_database_for_test(&project.state_db_path)?;
         for (column, corrupt_text, restored_text) in [
             (
                 "expected_paths_json",
@@ -4710,7 +4745,7 @@ mod tests {
             .as_str()
             .to_owned();
         upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             GuardInstallationUpsert {
                 guard_installation_id: "guard_installation_a".to_owned(),
                 connection_internal_id: "conn_guard_a".to_owned(),
@@ -4725,13 +4760,10 @@ mod tests {
             },
         )?;
 
-        let runtime_session_id = start_guard_runtime(
-            fixture.runtime_home.path(),
-            "conn_guard_a",
-            "2026-06-30T00:59:00Z",
-        )?;
+        let runtime_session_id =
+            start_guard_runtime(&fixture.context()?, "conn_guard_a", "2026-06-30T00:59:00Z")?;
         let session_id = bind_agent_session_runtime(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             AgentSessionRuntimeBinding {
                 runtime_session_id,
@@ -4743,7 +4775,7 @@ mod tests {
         )?
         .session_id;
         insert_unrecorded_change(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_a",
             UnrecordedChangeInsert {
                 unrecorded_change_id: "unrecorded_change_a".to_owned(),
@@ -4770,7 +4802,7 @@ mod tests {
         .is_empty());
 
         let error = insert_guard_event(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             "project_guard_b",
             GuardEventInsert {
                 guard_event_id: "guard_event_cross".to_owned(),
@@ -4799,7 +4831,7 @@ mod tests {
         ));
 
         let error = upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             GuardInstallationUpsert {
                 guard_installation_id: "guard_installation_cross".to_owned(),
                 connection_internal_id: "conn_guard_a".to_owned(),
@@ -4846,7 +4878,7 @@ mod tests {
             .to_owned();
         let upsert = |policy_hash: &str| {
             upsert_guard_installation(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 GuardInstallationUpsert {
                     guard_installation_id: "guard_installation_a".to_owned(),
                     connection_internal_id: "conn_guard_a".to_owned(),
@@ -4878,7 +4910,7 @@ mod tests {
                 ),
             };
             observe_host_correlation(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 "project_guard_a",
                 HostCorrelationObservation {
                     connection_internal_id: "conn_guard_a".to_owned(),
@@ -4888,7 +4920,7 @@ mod tests {
                 },
             )?;
             insert_guard_event(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 "project_guard_a",
                 GuardEventInsert {
                     guard_event_id: format!("guard_event_{suffix}"),
@@ -4909,7 +4941,7 @@ mod tests {
         };
 
         let old = upsert(OLD_POLICY_HASH)?;
-        open_registry_database(registry_db_path(fixture.runtime_home.path()))?.execute(
+        open_registry_database_for_test(registry_db_path(fixture.runtime_home.path()))?.execute(
             "UPDATE guard_installations
                 SET updated_at = '2000-01-01T00:00:00Z'
               WHERE guard_installation_id = 'guard_installation_a'",
@@ -4943,7 +4975,7 @@ mod tests {
             guard_observation_summary(fixture.runtime_home.path(), "project_guard_a", &current)?;
         assert!(pending.observed_phases.is_empty());
         assert!(!pending.all_required_phases_observed());
-        open_registry_database(registry_db_path(fixture.runtime_home.path()))?.execute(
+        open_registry_database_for_test(registry_db_path(fixture.runtime_home.path()))?.execute(
             "UPDATE guard_installations
                 SET updated_at = '2000-01-01T00:00:00Z'
               WHERE guard_installation_id = 'guard_installation_a'",
@@ -4988,7 +5020,7 @@ mod tests {
         );
         assert_ne!(changed_manifest, current.manifest_json);
         let changed_definition = upsert_guard_installation(
-            fixture.runtime_home.path(),
+            &fixture.context()?,
             GuardInstallationUpsert {
                 guard_installation_id: "guard_installation_a".to_owned(),
                 connection_internal_id: "conn_guard_a".to_owned(),
@@ -5009,14 +5041,31 @@ mod tests {
     }
 
     struct GuardFixture {
+        mutation: TestRuntimeHomeAdmission,
         runtime_home: TempRuntimeHome,
     }
 
     impl GuardFixture {
         fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
             let runtime_home = TempRuntimeHome::new(prefix)?;
-            initialize_runtime_home(runtime_home.path(), &format!("runtime_home_{prefix}"), "{}")?;
-            Ok(Self { runtime_home })
+            with_test_runtime_home_setup(runtime_home.path(), |context| {
+                initialize_runtime_home(
+                    context,
+                    runtime_home.path(),
+                    &format!("runtime_home_{prefix}"),
+                    "{}",
+                )?;
+                Ok(())
+            })?;
+            let mutation = TestRuntimeHomeAdmission::shared(runtime_home.path())?;
+            Ok(Self {
+                mutation,
+                runtime_home,
+            })
+        }
+
+        fn context(&self) -> StoreResult<RuntimeHomeMutationContext<'_>> {
+            self.mutation.context()
         }
 
         fn add_project_connection(
@@ -5027,7 +5076,7 @@ mod tests {
         ) -> Result<(), Box<dyn Error>> {
             let repo_root = self.runtime_home.create_product_repo(repo_name)?;
             register_project(
-                self.runtime_home.path(),
+                &self.context()?,
                 ProjectRegistration {
                     project_id: project_id.to_owned(),
                     repo_root,
@@ -5037,7 +5086,7 @@ mod tests {
                 },
             )?;
             ensure_agent_connection(
-                self.runtime_home.path(),
+                &self.context()?,
                 AgentConnectionRegistration {
                     connection_internal_id: connection_id.to_owned(),
                     host_kind: HOST_KIND_CODEX.to_owned(),
@@ -5058,7 +5107,7 @@ mod tests {
                 },
             )?;
             add_connection_project(
-                self.runtime_home.path(),
+                &self.context()?,
                 ConnectionProjectRegistration {
                     connection_internal_id: connection_id.to_owned(),
                     project_id: project_id.to_owned(),
@@ -5070,7 +5119,7 @@ mod tests {
         fn insert_task(&self, project_id: &str, task_id: &str) -> Result<(), Box<dyn Error>> {
             let project = project_record_for_execution(self.runtime_home.path(), project_id)?
                 .expect("project should be registered");
-            let conn = open_project_state_database(&project.state_db_path)?;
+            let conn = open_project_state_database_for_test(&project.state_db_path)?;
             conn.execute(
                 "INSERT INTO tasks (
                     project_id,

@@ -18,6 +18,7 @@ mod guard_integration;
 pub mod host_integration;
 pub mod host_launch;
 mod managed_block;
+pub mod mutation_admission;
 pub mod operational_diagnostics;
 pub mod policy_command;
 pub mod project_context;

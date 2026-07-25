@@ -20,6 +20,7 @@ pub mod guards;
 pub mod inspection;
 pub mod integration_verification;
 pub mod managed_launch_leases;
+pub mod mutation;
 pub mod operational_diagnostics;
 pub mod operational_sessions;
 pub mod runtime_home;
@@ -29,6 +30,10 @@ pub mod sqlite;
 pub mod workflow_records;
 
 pub use error::{StoreError, StoreFailureRoute, StoreResult};
+pub use mutation::{
+    RuntimeHomeMutationContext, RuntimeHomeMutationSetupInProgress,
+    RUNTIME_HOME_MUTATION_SETUP_IN_PROGRESS,
+};
 
 /// Identifies the shared type boundary this crate depends on.
 pub const fn shared_type_boundary() -> TypeBoundary {

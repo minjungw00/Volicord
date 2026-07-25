@@ -302,7 +302,7 @@ fn authority_next_actor(action: Option<&NextActionSummary>) -> AuthorityNextActo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_test_support::core_fixtures::CoreFixture;
+    use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeMutation};
     use volicord_types::{ActorSource, OperationCategory};
 
     use crate::{CoreService, InvocationContext};
@@ -314,7 +314,10 @@ mod tests {
     ) -> Result<(CoreFixture, TaskId, Value, AuthorityStatusExpectation), Box<dyn Error>> {
         let fixture = CoreFixture::new(prefix)?;
         let service = CoreService::new(fixture.runtime_home_path());
+        let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+        let context = admission.context()?;
         let intake = service.intake(
+            &context,
             fixture.intake_request(
                 "req_authority_status_intake",
                 "idem_authority_status",

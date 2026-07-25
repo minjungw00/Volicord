@@ -584,7 +584,7 @@ impl McpFixture {
             volicord_mcp::ManagedMcpLaunchSpec::shared_repository(volicord_types::HostKind::Codex)?;
         let fingerprint = launch.managed_fingerprint(&connection.server_name);
         ensure_agent_connection(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context()?,
             AgentConnectionRegistration {
                 connection_internal_id: connection.connection_internal_id.clone(),
                 host_kind: connection.host_kind.clone(),
@@ -691,6 +691,7 @@ impl McpFixture {
             OperationCategory::AgentWorkflow,
         )?;
         let response = core.intake(
+            &self.fixture.mutation_context()?,
             self.fixture.intake_request(
                 &format!("req_mcp_bin_{suffix}_task"),
                 &format!("idem_mcp_bin_{suffix}_task"),

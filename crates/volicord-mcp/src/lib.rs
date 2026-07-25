@@ -13,6 +13,7 @@ mod constants;
 mod diagnostics;
 mod errors;
 mod managed_launch;
+mod mutation_admission;
 mod prelude;
 #[cfg(test)]
 mod protocol_projection_tests;

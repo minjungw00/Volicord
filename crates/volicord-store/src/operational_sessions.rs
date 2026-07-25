@@ -16,10 +16,10 @@ use crate::{
     bootstrap::raw_project_record_from_conn,
     diagnostic_findings::insert_and_link_runtime_terminal_occurrence,
     sqlite::{
-        begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
-        registry_db_path,
+        begin_immediate_transaction, open_registry_database_for_mutation,
+        open_registry_database_read_only, registry_db_path,
     },
-    StoreError, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 const MAX_DIAGNOSTIC_FIELD_BYTES: usize = 1024;
@@ -400,7 +400,7 @@ pub fn connection_integration_revision(
 
 /// Creates a new runtime session at MCP process startup.
 pub fn start_mcp_runtime_session(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: McpRuntimeSessionStart,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     validate_start(&input)?;
@@ -410,8 +410,7 @@ pub fn start_mcp_runtime_session(
                 .to_owned(),
         });
     }
-    let registry_path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(&registry_path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let generator = RandomDurableIdGenerator;
     for _ in 0..DURABLE_ID_RETRY_LIMIT {
         let runtime_session_id = generator
@@ -437,13 +436,13 @@ pub fn start_mcp_runtime_session(
 
 #[cfg(test)]
 pub(crate) fn start_mcp_runtime_session_for_test(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: McpRuntimeSessionStart,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     if input.session_source != McpRuntimeSessionSource::ManagedHost {
-        return start_mcp_runtime_session(runtime_home, input);
+        return start_mcp_runtime_session(context, input);
     }
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let connection = crate::agent_connections::agent_connection_record_read_only(
         runtime_home,
         &input.connection_internal_id,
@@ -454,7 +453,7 @@ pub(crate) fn start_mcp_runtime_session_for_test(
     })?;
     let revision = connection_integration_revision(&connection)?;
     let lease = crate::managed_launch_leases::issue_managed_mcp_launch_lease(
-        runtime_home,
+        context,
         crate::managed_launch_leases::ManagedMcpLaunchLeaseIssue {
             connection_internal_id: connection.connection_internal_id,
             host_kind: volicord_types::HostKind::Codex,
@@ -463,7 +462,7 @@ pub(crate) fn start_mcp_runtime_session_for_test(
         },
     )?;
     crate::managed_launch_leases::consume_managed_mcp_launch_lease_and_start_runtime(
-        runtime_home,
+        context,
         crate::managed_launch_leases::ManagedMcpLaunchLeaseConsumption {
             launch_lease_id: lease.launch_lease_id,
             connection_internal_id: lease.connection_internal_id,
@@ -600,7 +599,7 @@ pub(crate) struct McpRuntimeProjectSessionReservation<'a> {
 /// Reserves one runtime/host session for the exact validated project anchor.
 /// This phase helper is crate-private so callers cannot bypass project validation.
 pub(crate) fn reserve_mcp_runtime_project_session(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: McpRuntimeProjectSessionReservation<'_>,
 ) -> StoreResult<McpRuntimeProjectSessionBindingRecord> {
     let McpRuntimeProjectSessionReservation {
@@ -622,9 +621,8 @@ pub(crate) fn reserve_mcp_runtime_project_session(
     ] {
         validate_text(field, value, MAX_DIAGNOSTIC_FIELD_BYTES)?;
     }
-    let runtime_home = runtime_home.as_ref();
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let runtime_home = context.runtime_home().as_path();
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let runtime = runtime_session_from_conn(&tx, runtime_session_id)?.ok_or_else(|| {
         StoreError::NotFound {
@@ -860,7 +858,7 @@ pub fn mcp_runtime_project_session_binding(
 
 /// Records parsed client/request data even when initialize later fails.
 pub fn record_mcp_initialize_attempt(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_session_id: &str,
     client_info: &ManagedMcpClientInfo,
     requested_protocol_version: &str,
@@ -872,7 +870,7 @@ pub fn record_mcp_initialize_attempt(
         MAX_PROTOCOL_FIELD_BYTES,
     )?;
     validate_timestamp("initialize_attempted_at", observed_at)?;
-    update_session(runtime_home, runtime_session_id, |tx, prior| {
+    update_session(context, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.attempted_client_name.is_some() || prior.requested_protocol_version.is_some() {
             return Err(StoreError::Conflict {
@@ -900,7 +898,7 @@ pub fn record_mcp_initialize_attempt(
 
 /// Records initialize completion and the server-selected revision before response emission.
 pub fn record_mcp_initialize_completion(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_session_id: &str,
     selected_protocol_version: &str,
     observed_at: &str,
@@ -911,7 +909,7 @@ pub fn record_mcp_initialize_completion(
         MAX_PROTOCOL_FIELD_BYTES,
     )?;
     validate_timestamp("initialize_completed_at", observed_at)?;
-    update_session(runtime_home, runtime_session_id, |tx, prior| {
+    update_session(context, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.attempted_client_name.is_none() || prior.requested_protocol_version.is_none() {
             return Err(milestone_order(
@@ -939,7 +937,7 @@ pub fn record_mcp_initialize_completion(
 
 /// Records the initialized notification. A duplicate valid notification is idempotent.
 pub fn record_mcp_initialized_notification(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_session_id: &str,
     negotiated_protocol_version: &str,
     observed_at: &str,
@@ -950,7 +948,7 @@ pub fn record_mcp_initialized_notification(
         MAX_PROTOCOL_FIELD_BYTES,
     )?;
     validate_timestamp("initialized_notification_at", observed_at)?;
-    update_session(runtime_home, runtime_session_id, |tx, prior| {
+    update_session(context, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.initialize_completed_at.is_none() {
             return Err(milestone_order(
@@ -991,7 +989,7 @@ pub fn record_mcp_initialized_notification(
 
 /// Records one actual tools/list response and its required-tool-set fact.
 pub fn record_mcp_tools_list(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_session_id: &str,
     returned_tool_identities: &[String],
     required_tools_present: bool,
@@ -1008,7 +1006,7 @@ pub fn record_mcp_tools_list(
                 detail: format!("returned MCP tool identities cannot be encoded: {error}"),
             }
         })?;
-    update_session(runtime_home, runtime_session_id, |tx, prior| {
+    update_session(context, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.initialize_completed_at.is_none() {
             return Err(milestone_order(
@@ -1036,7 +1034,7 @@ pub fn record_mcp_tools_list(
 
 /// Records successful completion of the exact tool selected for MCP verification.
 pub fn record_mcp_verification_tool_observation(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_session_id: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
@@ -1044,7 +1042,7 @@ pub fn record_mcp_verification_tool_observation(
         .tool()
         .wire_name();
     validate_timestamp("verification_tool_observed_at", observed_at)?;
-    update_session(runtime_home, runtime_session_id, |tx, prior| {
+    update_session(context, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.initialized_notification_at.is_none() {
             return Err(milestone_order(
@@ -1107,7 +1105,7 @@ pub fn record_mcp_verification_tool_observation(
 
 /// Atomically inserts and links one structured terminal finding.
 pub fn record_mcp_terminal_finding(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     finding: &OccurrenceDiagnosticFinding,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     let runtime_session_id = finding
@@ -1116,21 +1114,23 @@ pub fn record_mcp_terminal_finding(
         .ok_or_else(|| StoreError::InvalidInput {
             detail: "terminal finding requires runtime_session_id".to_owned(),
         })?;
-    insert_and_link_runtime_terminal_occurrence(&runtime_home, finding)?;
-    mcp_runtime_session(runtime_home, runtime_session_id)?.ok_or_else(|| StoreError::NotFound {
-        entity: "mcp_runtime_session",
-        id: runtime_session_id.to_owned(),
+    insert_and_link_runtime_terminal_occurrence(context, finding)?;
+    mcp_runtime_session(context.runtime_home().as_path(), runtime_session_id)?.ok_or_else(|| {
+        StoreError::NotFound {
+            entity: "mcp_runtime_session",
+            id: runtime_session_id.to_owned(),
+        }
     })
 }
 
 /// Records observable graceful transport close. A duplicate close is idempotent.
 pub fn record_mcp_graceful_close(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_session_id: &str,
     observed_at: &str,
 ) -> StoreResult<McpRuntimeSessionRecord> {
     validate_timestamp("graceful_close_at", observed_at)?;
-    update_session(runtime_home, runtime_session_id, |tx, prior| {
+    update_session(context, runtime_session_id, |tx, prior| {
         require_observation_time(prior, observed_at)?;
         if prior.terminal_finding_id.is_some() {
             return Err(milestone_order(
@@ -1316,7 +1316,7 @@ pub fn current_managed_runtime_sessions(
 }
 
 fn update_session<F>(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_session_id: &str,
     update: F,
 ) -> StoreResult<McpRuntimeSessionRecord>
@@ -1328,8 +1328,7 @@ where
         runtime_session_id,
         MAX_DIAGNOSTIC_FIELD_BYTES,
     )?;
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let prior = runtime_session_from_conn(&tx, runtime_session_id)?.ok_or_else(|| {
         StoreError::NotFound {

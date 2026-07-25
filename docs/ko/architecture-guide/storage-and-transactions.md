@@ -103,11 +103,19 @@ flowchart LR
    멤버십을 만듭니다.
 3. 빈 레지스트리와 프로젝트 상태 데이터베이스는 기준 SQL에서 초기화하고,
    기존 상태는 SQLite 도우미가 현재 스키마 형태와 저장소 프로필을 검증한 뒤에만 엽니다.
-4. 이후 공개 메서드 호출은 CLI 설정 코드를 거치지 않고
-   `CoreProjectStore::open`으로 프로젝트를 엽니다.
+4. 이후 공개 메서드 읽기는 `CoreProjectStore::open_read_only`를 사용하고, 커밋
+   경로는 caller가 유지하는 활성 `RuntimeHomeMutationContext`와 함께
+   `CoreProjectStore::open_for_mutation`을 사용합니다.
 
 이 구조는 로컬 관리 준비와 Core 메서드 의미를 분리합니다. 정확한 CLI
 동작은 [관리 CLI](../reference/admin-cli.md)가 담당합니다.
+
+모든 일반 Runtime Home writer는 변경에 의존하는 읽기 전에 `SharedWriter`를 획득하고
+빌린 permit에서 target에 결합된 Store context 하나를 만듭니다. 쓰기 가능 Registry와
+project database helper는 Store 내부 전용이며 그 context를 요구합니다. Setup은
+대신 하나의 `ExclusiveSetup` permit에서 context를 만들고 중첩 획득 없이 bootstrap,
+checkpoint, publication 확인, rollback에 전달합니다. 충돌하면 transaction, artifact
+staging, observation 효과 전에 `runtime_home.mutation.setup_in_progress`를 반환합니다.
 
 새 프로젝트에서 bootstrap은 SQLite 현재 UTC로 `project_state.created_at`과
 `project_state.updated_at`을 초기화합니다. 기존 프로젝트를 다시 등록하면 정확한

@@ -21,6 +21,7 @@ pub(crate) use volicord_mcp_protocol::{
     InitializedNotification, JsonRpcBatching, McpNegotiationOutcome, McpProtocolProfile,
     ProtocolRegistry, ServerCapabilityField, ToolDefinitionField, ToolResultField,
 };
+pub(crate) use volicord_platform_fs::RuntimeHomeMutationLeaseError;
 pub(crate) use volicord_store::{
     agent_connections::{
         agent_connection_project_access_read_only, agent_connection_record_read_only,
@@ -62,8 +63,8 @@ pub(crate) use volicord_store::{
     runtime_home::{
         resolve_runtime_home as resolve_shared_runtime_home, RuntimeHomeResolutionError,
     },
-    sqlite::{open_project_state_database_read_only, sqlite_database_write_capability},
-    StoreError,
+    sqlite::{open_project_state_database_read_only, project_state_database_write_capability},
+    RuntimeHomeMutationContext, RuntimeHomeMutationSetupInProgress, StoreError,
 };
 
 #[cfg(test)]

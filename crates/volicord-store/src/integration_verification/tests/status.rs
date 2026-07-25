@@ -18,7 +18,7 @@ fn nonterminal_projection_distinguishes_probe_and_observation() -> Result<(), Bo
     let fixture = VerificationFixture::new("guard-integration-status-active")?;
     let run = fixture.begin()?;
     let awaiting_probe = get_guard_integration_verification(
-        fixture.runtime_home.path(),
+        &fixture.context()?,
         &run.verification_id,
         &fixture.caller(),
         BEGIN_AT,
@@ -57,7 +57,7 @@ fn complete_projects_exact_workflow_and_remains_terminal() -> Result<(), Box<dyn
     let passed = passed_fixture.begin()?;
     let completed = passed_fixture.complete(&passed.verification_id)?;
     let result = get_guard_integration_verification(
-        passed_fixture.runtime_home.path(),
+        &passed_fixture.context()?,
         &passed.verification_id,
         &passed_fixture.caller(),
         "2026-07-23T00:00:05Z",
@@ -104,7 +104,7 @@ fn complete_projects_exact_workflow_and_remains_terminal() -> Result<(), Box<dyn
 
     passed_fixture.set_policy_hash(&passed.verification_id, STALE_HASH)?;
     let replay = get_guard_integration_verification(
-        passed_fixture.runtime_home.path(),
+        &passed_fixture.context()?,
         &passed.verification_id,
         &passed_fixture.caller(),
         "2026-07-23T00:00:06Z",
@@ -191,7 +191,7 @@ fn current_owner_drift_maps_to_distinct_typed_repairs() -> Result<(), Box<dyn Er
             _ => unreachable!(),
         }
         let failed = get_guard_integration_verification(
-            owner_fixture.runtime_home.path(),
+            &owner_fixture.context()?,
             &owner_run.verification_id,
             &owner_fixture.caller(),
             "2026-07-23T00:00:04Z",
@@ -222,7 +222,7 @@ fn missing_synchronous_events_require_repair_on_the_one_allowed_read() -> Result
     let run = fixture.begin()?;
     fixture.acknowledge(&run.verification_id, ACK_AT)?;
     let result = get_guard_integration_verification(
-        fixture.runtime_home.path(),
+        &fixture.context()?,
         &run.verification_id,
         &fixture.caller(),
         "2026-07-23T00:00:04.001Z",

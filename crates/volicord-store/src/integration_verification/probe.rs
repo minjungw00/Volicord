@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use chrono::Duration;
 use volicord_host_contract::{
     HookObservationPolicy, HostContractProfileId, ObservationDeadlinePolicy,
@@ -17,18 +15,18 @@ use super::{
 };
 use crate::{
     operational_sessions::current_managed_mcp_runtime_session_for_connection,
-    sqlite::{begin_immediate_transaction, open_registry_database, registry_db_path},
-    StoreError, StoreResult,
+    sqlite::{begin_immediate_transaction, open_registry_database_for_mutation},
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 /// Records the exact bounded, idempotent MCP probe acknowledgement.
 pub fn acknowledge_guard_integration_probe(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     verification_id: &str,
     caller: &GuardIntegrationVerificationCaller,
     observed_at: &str,
 ) -> StoreResult<GuardProbeResult> {
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let caller = VerificationCallerCoordinate::from_caller(caller)?;
     let now = parse_timestamp("observed_at", observed_at)?;
     current_managed_mcp_runtime_session_for_connection(
@@ -36,7 +34,7 @@ pub fn acknowledge_guard_integration_probe(
         caller.runtime_session_id(),
         caller.connection_internal_id(),
     )?;
-    let mut conn = open_registry_database(registry_db_path(runtime_home))?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let run = run_by_id(&tx, verification_id)?.ok_or_else(|| StoreError::NotFound {
         entity: "guard_integration_verification",

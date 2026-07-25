@@ -608,6 +608,15 @@ invocation authorization is evaluated separately for each managed MCP call.
 
 ## Integration Revisions And Operational Sessions
 
+Agent Connection mutations, managed-launch lease issue/consumption/cleanup,
+runtime and project-session observations, lifecycle milestones, verification
+writes, and terminal finding links acquire per-operation `SharedWriter`
+admission for their exact Runtime Home. They retain the permit-derived Store
+context through every Registry and project-database effect. Setup instead uses
+its existing `ExclusiveSetup` context. While setup is exclusive, these
+operations return `runtime_home.mutation.setup_in_progress` with no partial
+Connection, session, finding, or verification record.
+
 The current Connection integration revision is a typed, domain-separated
 canonical SHA-256 digest. Its basis is the Agent Connection identity, immutable
 Store-owned integration-instance ID, host kind, intent, scope, mode, server

@@ -41,6 +41,7 @@ impl CoreService {
     /// Executes `volicord.reconcile_changes` for unrecorded-change findings.
     pub fn reconcile_changes(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: ReconcileChangesRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -67,6 +68,7 @@ impl CoreService {
             reconcile_policy_operation_category(invocation.operation_category);
         let prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::ReconcileChanges,
             request.envelope.clone(),
             request_json,
@@ -133,7 +135,7 @@ impl CoreService {
         if response_committed_fresh_effect(&response) {
             for sample in confirmed_false_positive_samples {
                 record_core_workflow_metric_best_effort(
-                    self,
+                    context,
                     session_id.as_deref(),
                     WorkflowMetricKind::ConfirmedUnrecordedFalsePositive,
                     sample,

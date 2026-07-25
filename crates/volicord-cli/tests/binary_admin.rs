@@ -21,7 +21,9 @@ use volicord_store::{
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
     sqlite::registry_db_path,
 };
-use volicord_test_support::TempRuntimeHome;
+use volicord_test_support::{
+    with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
+};
 use volicord_types::{
     ConnectionVerificationReport, DiagnosticCode, DiagnosticDomain, DiagnosticFacts,
     DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
@@ -368,32 +370,45 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
     let schema_less_master_before = sqlite_master_rows(&schema_less_registry)?;
     assert!(schema_less_master_before.is_empty());
     let no_profile_home = fixture._temporary_root.root_path().join("no-profile-home");
-    initialize_runtime_home(&no_profile_home, "runtime_home_without_profile", "{}")?;
+    with_test_runtime_home_setup(&no_profile_home, |context| {
+        initialize_runtime_home(
+            context,
+            &no_profile_home,
+            "runtime_home_without_profile",
+            "{}",
+        )?;
+        Ok(())
+    })?;
     let no_profile_registry = registry_db_path(&no_profile_home);
     let current_profile_home = fixture
         ._temporary_root
         .root_path()
         .join("current-profile-home");
-    initialize_runtime_home(
-        &current_profile_home,
-        "runtime_home_with_current_profile",
-        "{}",
-    )?;
     let current_binary = fs::canonicalize(env!("CARGO_BIN_EXE_volicord"))?;
-    write_installation_profile(
-        &current_profile_home,
-        InstallationProfileRegistration {
-            installation_id: "default".to_owned(),
-            volicord_command: path_text(&current_binary),
-            volicord_mcp_command: path_text(&current_binary),
-            bin_dir: current_binary
-                .parent()
-                .ok_or("test binary path has no parent")?
-                .to_path_buf(),
-            default_connection_mode: "workflow".to_owned(),
-            metadata_json: r#"{"source":"binary-test"}"#.to_owned(),
-        },
-    )?;
+    let current_bin_dir = current_binary
+        .parent()
+        .ok_or("test binary path has no parent")?
+        .to_path_buf();
+    with_test_runtime_home_setup(&current_profile_home, |context| {
+        initialize_runtime_home(
+            context,
+            &current_profile_home,
+            "runtime_home_with_current_profile",
+            "{}",
+        )?;
+        write_installation_profile(
+            context,
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: path_text(&current_binary),
+                volicord_mcp_command: path_text(&current_binary),
+                bin_dir: current_bin_dir.clone(),
+                default_connection_mode: "workflow".to_owned(),
+                metadata_json: r#"{"source":"binary-test"}"#.to_owned(),
+            },
+        )?;
+        Ok(())
+    })?;
     let current_profile_registry = registry_db_path(&current_profile_home);
     let fallback_home = fixture._temporary_root.root_path().join("fallback-home");
 
@@ -829,7 +844,15 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
         ._temporary_root
         .root_path()
         .join("no-profile-explicit-home");
-    initialize_runtime_home(&no_profile_home, "runtime_home_without_profile", "{}")?;
+    with_test_runtime_home_setup(&no_profile_home, |context| {
+        initialize_runtime_home(
+            context,
+            &no_profile_home,
+            "runtime_home_without_profile",
+            "{}",
+        )?;
+        Ok(())
+    })?;
 
     let zero_byte_modified = fs::metadata(&zero_byte_registry)?.modified()?;
     let empty_sqlite_modified = fs::metadata(&empty_sqlite_registry)?.modified()?;
@@ -1340,7 +1363,9 @@ fn diagnostics_show_exit_status_depends_on_lookup_not_finding_severity(
         None,
     )?;
     let finding_id = finding.id().to_string();
-    insert_occurrence_finding(&runtime_home, &finding)?;
+    let mutation = TestRuntimeHomeMutation::acquire(&runtime_home)?;
+    let context = mutation.context()?;
+    insert_occurrence_finding(&context, &finding)?;
 
     let found = run_diagnostics_show(&runtime_home, &finding_id)?;
     assert_eq!(found.status.code(), Some(0), "{}", stderr(&found)?);

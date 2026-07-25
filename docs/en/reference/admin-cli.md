@@ -135,6 +135,22 @@ volicord init --host codex --repo "<repo>" --profile record --home "/srv/volicor
 volicord connection status codex --repo "<repo>" --home "/srv/volicord/team-a"
 ```
 
+Every mutating administrative command resolves the exact selected Runtime Home
+and acquires `SharedWriter` before mutation-dependent reads or planning. It
+retains that admission through Store effects, diagnostic persistence, result
+construction, and cleanup. This includes project use/rename/forget, policy
+apply, inbox resolution, change reconciliation, evidence fulfillment,
+Connection mode/remove/verification writes, managed-launch lease operations,
+and diagnostic persistence. Pure status, list, lookup, validation, and export
+reads do not acquire a writer lease.
+
+If setup owns `ExclusiveSetup`, a mutating command returns the typed
+`runtime_home.mutation.setup_in_progress` non-success result, performs no
+mutation, and advises retry after setup completes. The diagnostic includes the
+canonical Runtime Home, command mutation domain, requested mode, bounded wait
+policy, elapsed wait, and retryability; it does not expose the coordination
+file as a remediation target.
+
 <a id="volicord-agent-install"></a>
 <a id="agent-host-setup-and-init"></a>
 ## Codex Setup

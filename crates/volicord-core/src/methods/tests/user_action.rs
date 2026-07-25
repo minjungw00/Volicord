@@ -132,7 +132,8 @@ fn custom_clock_is_bounded_by_persisted_and_same_handle_floors() -> Result<(), B
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at("2026-06-18T01:00:00Z");
     harness.use_clock(clock.clone());
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let first = harness.service.project_now(&store)?;
     assert_eq!(first.to_string(), "2026-06-18T01:00:00Z");
     clock.advance(Duration::hours(-1));
@@ -146,7 +147,8 @@ fn custom_clock_is_bounded_by_persisted_and_same_handle_floors() -> Result<(), B
         rusqlite::params![PROJECT_ID, persisted_floor],
     )?;
     harness.use_clock(ManualClock::at("2026-06-18T00:00:00Z"));
-    let reopened = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let reopened =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     assert_eq!(
         harness.service.project_now(&reopened)?.to_string(),
         persisted_floor
@@ -1803,8 +1805,14 @@ fn read_snapshot_prevents_mixed_projection_rows_across_concurrent_resolution_com
 
             writer_clock.advance(Duration::seconds(1));
             let writer = std::thread::spawn(move || {
+                let mutation = TestRuntimeHomeMutation::acquire(&runtime_home)
+                    .expect("concurrent resolution mutation admission");
+                let context = mutation
+                    .context()
+                    .expect("concurrent resolution mutation context");
                 CoreService::with_clock(&runtime_home, writer_clock)
                     .resolve_user_action(
+                        &context,
                         resolve_user_action_request(
                             "req_read_snapshot_resolution",
                             "submission_read_snapshot_resolution",
@@ -1912,7 +1920,10 @@ fn concurrent_distinct_submissions_create_only_one_resolution() -> Result<(), Bo
             let action_id = action_id.clone();
             let barrier = Arc::clone(&barrier);
             handles.push(scope.spawn(move || {
-                let service = CoreService::new(runtime_home);
+                let service = CoreService::new(&runtime_home);
+                let mutation = TestRuntimeHomeMutation::acquire(&runtime_home)
+                    .map_err(|error| error.to_string())?;
+                let context = mutation.context().map_err(|error| error.to_string())?;
                 let request = resolve_user_action_request(
                     &format!("req_concurrent_resolution_{index}"),
                     &format!("submission_concurrent_{index}"),
@@ -1923,7 +1934,7 @@ fn concurrent_distinct_submissions_create_only_one_resolution() -> Result<(), Bo
                 );
                 barrier.wait();
                 service
-                    .resolve_user_action(request, invocation(OperationCategory::UserOnly))
+                    .resolve_user_action(&context, request, invocation(OperationCategory::UserOnly))
                     .map(|response| {
                         response.response_value["base"]["response_kind"]
                             .as_str()
@@ -2524,7 +2535,8 @@ fn residual_risk_private_note_stays_only_in_resolution_body() -> Result<(), Box<
     )?;
     assert!(source_replay_response.contains(PRIVATE_NOTE));
 
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let repo_root = store.project_record().repo_root.clone();
     drop(store);
     let export = volicord_store::export::read_authority_bundle_snapshot(

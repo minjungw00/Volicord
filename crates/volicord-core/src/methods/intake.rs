@@ -4,6 +4,7 @@ impl CoreService {
     /// Executes `volicord.intake` through the shared Core mutation pipeline.
     pub fn intake(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: volicord_types::IntakeRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -15,6 +16,7 @@ impl CoreService {
         );
         let prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::Intake,
             request.envelope.clone(),
             request_json,

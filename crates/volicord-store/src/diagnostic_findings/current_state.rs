@@ -1,15 +1,13 @@
 //! Current-state diagnostic activation, resolution, and reactivation.
 
-use std::path::Path;
-
 use rusqlite::params;
 use volicord_types::{
     CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticStatus, UtcTimestamp,
 };
 
 use crate::{
-    sqlite::{begin_immediate_transaction, open_registry_database, registry_db_path},
-    StoreError, StoreResult,
+    sqlite::{begin_immediate_transaction, open_registry_database_for_mutation},
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 use super::{
@@ -26,7 +24,7 @@ use super::{
 /// never updated. A successful refresh always leaves the condition active and
 /// atomically replaces its outgoing causes.
 pub fn upsert_current_snapshot(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     finding: &CurrentDiagnosticFinding,
 ) -> StoreResult<CurrentDiagnosticFinding> {
     if finding.snapshot().status() != CurrentDiagnosticStatus::Active
@@ -37,8 +35,7 @@ pub fn upsert_current_snapshot(
         });
     }
     let prepared = PreparedFinding::current(finding)?;
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     validate_current_references(&tx, finding, &prepared)?;
     replace_current_snapshot(&tx, &prepared)?;
@@ -48,12 +45,11 @@ pub fn upsert_current_snapshot(
 
 /// Marks one current condition resolved and removes current actions and causes.
 pub fn resolve_current_finding(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     key: &CurrentDiagnosticKey,
     resolved_at: UtcTimestamp,
 ) -> StoreResult<CurrentDiagnosticFinding> {
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let finding_id = key.finding_id();
     let stored = stored_finding_from_conn(&tx, finding_id.as_str())?.ok_or_else(|| {

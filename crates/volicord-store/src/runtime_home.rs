@@ -717,7 +717,7 @@ pub(crate) fn paths_equal_for_boundary(left: &Path, right: &Path) -> bool {
     path_starts_with_for_boundary(left, right) && path_starts_with_for_boundary(right, left)
 }
 
-fn path_starts_with_for_boundary(path: &Path, base: &Path) -> bool {
+pub(crate) fn path_starts_with_for_boundary(path: &Path, base: &Path) -> bool {
     #[cfg(not(windows))]
     {
         path.starts_with(base)

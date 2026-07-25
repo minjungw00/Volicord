@@ -9,8 +9,9 @@ fn start_metrics_session(
     native_session_id: &str,
 ) -> Result<String, Box<dyn Error>> {
     let session_id = format!("mcp_runtime_{native_session_id}");
+    let context = harness.service.context();
     start_diagnostic_session(
-        &harness.runtime_home_path,
+        &context,
         DiagnosticSessionStart {
             session_id: &session_id,
             connection_id: Some(CONNECTION_ID),
@@ -71,8 +72,9 @@ fn write_ticket_and_first_write_metrics_are_fresh_effect_only() -> Result<(), Bo
     )?;
     assert_eq!(reused.response_value["write_ticket_effect"], "reused");
 
+    let context = harness.service.context();
     insert_unrecorded_change(
-        &harness.runtime_home_path,
+        &context,
         PROJECT_ID,
         UnrecordedChangeInsert {
             unrecorded_change_id: "unrecorded_core_metrics_first_write".to_owned(),

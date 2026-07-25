@@ -29,7 +29,8 @@ use volicord_store::{
         latest_managed_runtime_session, mcp_runtime_session_for_process, McpRuntimeSessionRecord,
         McpSessionEvidenceSelection, McpSessionMilestones,
     },
-    sqlite::{registry_db_path, sqlite_database_write_capability},
+    sqlite::{project_state_database_write_capability, registry_database_write_capability},
+    RuntimeHomeMutationContext,
 };
 use volicord_types::{
     derive_integration_activation_state, ActivationStep, ActivationStepId, AgentConnectionId,
@@ -216,6 +217,7 @@ pub(in crate::connection_command) struct VerificationReport {
 }
 
 pub(in crate::connection_command) fn verify_connection(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     host_plan: &HostPlan,
@@ -243,7 +245,7 @@ pub(in crate::connection_command) fn verify_connection(
         &connection.mode,
     );
     let writeability = (preflight.status == StepStatus::Passed)
-        .then(|| verify_selected_store_writeability(runtime_home, connection, project_id));
+        .then(|| verify_selected_store_writeability(context, runtime_home, connection, project_id));
     let handshake = if let Some(writeability) = &writeability {
         if let Some(details) = writeability.failure.as_deref() {
             McpVerification::writeability_failed(details)
@@ -263,19 +265,26 @@ pub(in crate::connection_command) fn verify_connection(
         McpVerification::not_run()
     };
     let (preflight, mut handshake) =
-        persist_process_diagnostics(runtime_home, connection, preflight, handshake)?;
+        persist_process_diagnostics(context, runtime_home, connection, preflight, handshake)?;
     if let Some(writeability) = &writeability {
         let evidence = active_verification_evidence(writeability, &handshake, current_timestamp());
         handshake = handshake.with_active_evidence(evidence);
     }
-    let evaluation =
-        canonical_verification_evaluation(runtime_home, connection, &host, &preflight, &handshake)?;
+    let evaluation = canonical_verification_evaluation(
+        context,
+        runtime_home,
+        connection,
+        &host,
+        &preflight,
+        &handshake,
+    )?;
     let scope = volicord_types::DiagnosticScope::try_new(
         volicord_types::DiagnosticScopeKind::Connection,
         &connection.connection_internal_id,
     )
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     reconcile_current_findings_for_scope(
+        context,
         runtime_home,
         &scope,
         &[
@@ -299,22 +308,22 @@ pub(in crate::connection_command) struct McpStoreWriteabilityEvidence {
 }
 
 fn verify_selected_store_writeability(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     selected_project_id: Option<&str>,
 ) -> McpStoreWriteabilityEvidence {
-    let (registry_write, mut failure) =
-        match sqlite_database_write_capability(registry_db_path(runtime_home)) {
-            Ok(true) => (McpEvidenceCheckStatus::Passed, None),
-            Ok(false) => (
-                McpEvidenceCheckStatus::Failed,
-                Some("Registry writeability probe reported read-only storage".to_owned()),
-            ),
-            Err(error) => (
-                McpEvidenceCheckStatus::Failed,
-                Some(format!("Registry writeability probe failed: {error}")),
-            ),
-        };
+    let (registry_write, mut failure) = match registry_database_write_capability(context) {
+        Ok(true) => (McpEvidenceCheckStatus::Passed, None),
+        Ok(false) => (
+            McpEvidenceCheckStatus::Failed,
+            Some("Registry writeability probe reported read-only storage".to_owned()),
+        ),
+        Err(error) => (
+            McpEvidenceCheckStatus::Failed,
+            Some(format!("Registry writeability probe failed: {error}")),
+        ),
+    };
     let projects = match list_connection_projects_read_only(
         runtime_home,
         &connection.connection_internal_id,
@@ -336,7 +345,7 @@ fn verify_selected_store_writeability(
         .into_iter()
         .filter(|project| selected_project_id.is_none_or(|selected| project.project_id == selected))
     {
-        let state_write = match sqlite_database_write_capability(&project.project.state_db_path) {
+        let state_write = match project_state_database_write_capability(context, &project.project) {
             Ok(true) => McpEvidenceCheckStatus::Passed,
             Ok(false) => {
                 failure.get_or_insert_with(|| {

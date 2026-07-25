@@ -128,6 +128,19 @@ volicord init --host codex --repo "<repo>" --profile record --home "/srv/volicor
 volicord connection status codex --repo "<repo>" --home "/srv/volicord/team-a"
 ```
 
+모든 변경 관리 명령은 정확히 선택한 Runtime Home을 해석하고 변경에 의존하는 읽기나
+planning 전에 `SharedWriter`를 획득합니다. Store 효과, diagnostic 영속화, 결과 구성,
+정리가 끝날 때까지 승인을 유지합니다. 여기에는 project use/rename/forget, policy
+apply, inbox resolution, change reconciliation, evidence fulfillment, Connection
+mode/remove/verification write, managed-launch lease 연산, diagnostic 영속화가 포함됩니다.
+순수 status, list, lookup, validation, export 읽기는 writer lease를 획득하지 않습니다.
+
+Setup이 `ExclusiveSetup`을 보유하면 변경 명령은 typed
+`runtime_home.mutation.setup_in_progress` 비성공 결과를 반환하고 아무것도 변경하지
+않으며 setup 완료 뒤 재시도하도록 안내합니다. Diagnostic에는 정규 Runtime Home,
+명령 변경 domain, 요청 mode, 한도가 있는 wait policy, 경과 시간, 재시도 가능 여부가
+포함되며 coordination 파일을 복구 대상으로 노출하지 않습니다.
+
 <a id="volicord-agent-install"></a>
 <a id="agent-host-setup-and-init"></a>
 ## Codex 설정

@@ -11,6 +11,7 @@ use volicord_store::{
         project_write_authority_fingerprint, task_policy_control_reevaluation,
         TaskPolicyControlReevaluation,
     },
+    RuntimeHomeMutationContext,
 };
 use volicord_types::{
     canonical_json_bare_sha256, AcceptancePolicy, BaselineRef, JudgmentResolutionOutcome,
@@ -87,12 +88,13 @@ pub(super) struct GuardReason {
 }
 
 pub(super) fn guard_state_summary(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<GuardStateSummary, GuardCommandError> {
-    let store = CoreProjectStore::open(runtime_home, &ProjectId::new(&project.project_id))?;
+    let store = CoreProjectStore::open_for_mutation(context, &ProjectId::new(&project.project_id))?;
     let project_state = store.project_state()?;
     let workflow_policy = store.project_workflow_policy()?;
     let current_write_authority_fingerprint = project_write_authority_fingerprint(

@@ -10,6 +10,7 @@ impl CoreService {
         let request_json = serde_json::to_value(&request)?;
         let prepared = match prepare_or_response(
             self,
+            None,
             MethodName::Status,
             request.envelope.clone(),
             request_json,

@@ -13,7 +13,9 @@ use volicord_store::{
         initialize_runtime_home, write_installation_profile, InstallationProfileRegistration,
     },
 };
-use volicord_test_support::TempRuntimeHome;
+use volicord_test_support::{
+    with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
+};
 
 #[cfg(unix)]
 use super::assertions::{stderr, stdout};
@@ -74,27 +76,37 @@ pub(crate) fn prepare_runtime_home(
     runtime_home: &Path,
     mcp_command: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    initialize_runtime_home(runtime_home, "runtime_home_binary_admin_fixture", "{}")?;
-    write_installation_profile(
-        runtime_home,
-        InstallationProfileRegistration {
-            installation_id: "default".to_owned(),
-            volicord_command: path_text(mcp_command),
-            volicord_mcp_command: path_text(mcp_command),
-            bin_dir: mcp_command
-                .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| runtime_home.join("bin")),
-            default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-            metadata_json: "{}".to_owned(),
-        },
-    )?;
+    with_test_runtime_home_setup(runtime_home, |context| {
+        initialize_runtime_home(
+            context,
+            runtime_home,
+            "runtime_home_binary_admin_fixture",
+            "{}",
+        )?;
+        write_installation_profile(
+            context,
+            InstallationProfileRegistration {
+                installation_id: "default".to_owned(),
+                volicord_command: path_text(mcp_command),
+                volicord_mcp_command: path_text(mcp_command),
+                bin_dir: mcp_command
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| runtime_home.join("bin")),
+                default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        Ok(())
+    })?;
     Ok(())
 }
 
 pub(crate) fn write_test_installation_profile(runtime_home: &Path) -> Result<(), Box<dyn Error>> {
+    let mutation = TestRuntimeHomeMutation::acquire(runtime_home)?;
+    let context = mutation.context()?;
     write_installation_profile(
-        runtime_home,
+        &context,
         InstallationProfileRegistration {
             installation_id: "default".to_owned(),
             volicord_command: "volicord".to_owned(),

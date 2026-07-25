@@ -1,4 +1,5 @@
 use super::*;
+use volicord_test_support::TestRuntimeHomeSetup;
 
 #[test]
 fn known_tool_validation_aggregates_independent_issues_without_core_effects(
@@ -304,7 +305,12 @@ fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
     let responses = stdio_responses(&output)?;
     let result = &responses[1]["result"];
     let structured = &result["structuredContent"];
-    assert_eq!(result["isError"], false);
+    assert_eq!(
+        result["isError"],
+        false,
+        "{}",
+        serde_json::to_string_pretty(&responses)?
+    );
     assert_eq!(structured["base"]["response_kind"], "result");
     assert_eq!(structured["start_offset_bytes"], 0);
     assert_eq!(structured["complete"], true);
@@ -325,7 +331,7 @@ fn stdio_operation_result_retrieval_is_exact_bounded_and_read_only_visible(
     assert!(serde_json::to_vec(result)?.len() <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES);
 
     let stale_adapter = adapter(&fixture)?;
-    set_connection_enabled(fixture.runtime_home_path(), fixture.connection_id(), false)?;
+    set_connection_enabled(&fixture.mutation_context()?, fixture.connection_id(), false)?;
     let disabled = stale_adapter
         .call_tool(
             AgentToolId::GET_OPERATION_RESULT.wire_name(),
@@ -546,6 +552,114 @@ fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<
         read_only_table_count(&fixture, "tool_invocations")?,
         before_invocations
     );
+    Ok(())
+}
+
+#[test]
+fn mcp_mutation_is_typed_no_effect_while_setup_is_exclusive_and_succeeds_after_release(
+) -> Result<(), Box<dyn Error>> {
+    let mut fixture = CoreFixture::new("mcp-mutation-setup-busy")?;
+    let adapter = adapter(&fixture)?;
+    let arguments = intake_args(None);
+    let before = fixture.counts()?;
+    fixture.release_mutation_admission();
+    let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
+
+    let error = adapter
+        .call_tool(AgentToolId::INTAKE.wire_name(), arguments.clone())
+        .expect_err("MCP mutation must be rejected before Core while setup is exclusive");
+    let McpAdapterError::MutationAdmission(condition) = error else {
+        panic!("MCP mutation must return the typed setup condition: {error}");
+    };
+    assert_eq!(condition.code(), "runtime_home.mutation.setup_in_progress");
+    assert_eq!(condition.mutation_domain(), "mcp.tool_call");
+    assert_eq!(fixture.counts()?, before);
+    drop(setup);
+
+    let committed = adapter.call_tool(AgentToolId::INTAKE.wire_name(), arguments)?;
+    assert_eq!(committed.response_value["base"]["response_kind"], "result");
+    assert_eq!(fixture.counts()?.state_version, before.state_version + 1);
+    Ok(())
+}
+
+#[test]
+fn artifact_staging_is_no_effect_while_setup_is_exclusive() -> Result<(), Box<dyn Error>> {
+    let mut fixture = CoreFixture::new("mcp-artifact-staging-setup-busy")?;
+    let adapter = adapter(&fixture)?;
+    let (task_id, _) = create_task(&adapter)?;
+    let before_rows = read_only_table_count(&fixture, "artifact_staging")?;
+    let tmp_dir = fixture
+        .runtime_home_path()
+        .join("projects")
+        .join(fixture.project_id())
+        .join("artifacts/tmp");
+    assert!(!tmp_dir.exists());
+    fixture.release_mutation_admission();
+    let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
+    let arguments = json!({
+        "task_id": task_id,
+        "display_name": "setup-busy.txt",
+        "content_type": "text/plain",
+        "redaction_state": "redacted",
+        "safe_bytes_or_notice": "must not be staged while setup is exclusive"
+    });
+
+    let error = adapter
+        .call_tool(AgentToolId::STAGE_ARTIFACT.wire_name(), arguments.clone())
+        .expect_err("artifact staging must be rejected before creating a file or row");
+    assert!(matches!(error, McpAdapterError::MutationAdmission(_)));
+    assert_eq!(
+        read_only_table_count(&fixture, "artifact_staging")?,
+        before_rows
+    );
+    assert!(!tmp_dir.exists());
+    drop(setup);
+
+    let staged = adapter.call_tool(AgentToolId::STAGE_ARTIFACT.wire_name(), arguments)?;
+    assert_eq!(
+        staged.response_value["base"]["effect_kind"],
+        "staging_created"
+    );
+    assert_eq!(
+        read_only_table_count(&fixture, "artifact_staging")?,
+        before_rows + 1
+    );
+    assert!(tmp_dir.is_dir());
+    Ok(())
+}
+
+#[test]
+fn mcp_initialize_observation_is_no_effect_while_setup_is_exclusive() -> Result<(), Box<dyn Error>>
+{
+    let mut fixture = CoreFixture::new("mcp-initialize-setup-busy")?;
+    let adapter = adapter(&fixture)?;
+    let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
+    let before_sessions: i64 = registry.query_row(
+        "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1",
+        [fixture.connection_id()],
+        |row| row.get(0),
+    )?;
+    drop(registry);
+    fixture.release_mutation_admission();
+    let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
+    let input = Cursor::new(json_lines(&[initialize_request(1, json!({}))])?);
+    let mut output = Vec::new();
+
+    let error = run_stdio(adapter, BufReader::new(input), &mut output)
+        .expect_err("initialize observation must return the typed setup condition");
+    let McpAdapterError::MutationAdmission(condition) = error else {
+        panic!("initialize observation must preserve the typed setup condition: {error}");
+    };
+    assert_eq!(condition.code(), "runtime_home.mutation.setup_in_progress");
+    assert!(output.is_empty());
+    let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
+    let after_sessions: i64 = registry.query_row(
+        "SELECT COUNT(*) FROM mcp_runtime_sessions WHERE connection_internal_id = ?1",
+        [fixture.connection_id()],
+        |row| row.get(0),
+    )?;
+    assert_eq!(after_sessions, before_sessions);
+    drop(setup);
     Ok(())
 }
 
@@ -1303,6 +1417,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
 
     let core = CoreService::new(fixture.runtime_home_path());
     let resolved = core.resolve_user_action(
+        &fixture.mutation_context()?,
         fixture.resolve_user_action_request(ResolveUserActionFixture {
             request_id: "req_cli_inbox_resolution",
             task_id: &task_id,
@@ -1341,6 +1456,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
     );
 
     let unrelated = core.request_user_action(
+        &fixture.mutation_context()?,
         fixture.user_action_request(UserActionFixture {
             request_id: "req_mcp_cross_channel_unrelated_action",
             idempotency_key: "idem_mcp_cross_channel_unrelated_action",
@@ -1450,6 +1566,7 @@ fn invented_session_coordinates_do_not_authorize_or_insert_a_project_session(
 
     let error = adapter
         .call_tool_for_session(
+            &fixture.mutation_context()?,
             AgentToolId::STATUS,
             json!({"detail": "workflow"}),
             Some(AgentSessionCoordinates {

@@ -21,7 +21,9 @@ use volicord_types::{
     ObservationConfidence, UtcTimestamp,
 };
 
-use crate::{sqlite::enable_foreign_keys, StoreError, StoreResult};
+use crate::{
+    mutation::RuntimeHomeMutationContext, sqlite::enable_foreign_keys, StoreError, StoreResult,
+};
 
 /// Runtime Home filename for the non-authoritative diagnostics store.
 pub const DIAGNOSTICS_DB_FILE: &str = "diagnostics.sqlite";
@@ -848,12 +850,12 @@ pub struct DiagnosticSessionAggregate {
 
 /// Creates or refreshes a local diagnostic session and enforces retention.
 pub fn start_diagnostic_session(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: DiagnosticSessionStart<'_>,
 ) -> StoreResult<()> {
     validate_diagnostic_session_start_shape(&input)?;
 
-    let mut conn = open_diagnostics_database(runtime_home)?;
+    let mut conn = open_diagnostics_database(context)?;
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     validate_managed_diagnostic_session_binding(&tx, &input)?;
     tx.execute(
@@ -979,7 +981,7 @@ fn validate_managed_diagnostic_session_binding(
 
 /// Records one content-free event and enforces per-session retention.
 pub fn record_diagnostic_event(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: DiagnosticEvent<'_>,
 ) -> StoreResult<()> {
     validate_identifier("session_id", input.session_id)?;
@@ -990,7 +992,7 @@ pub fn record_diagnostic_event(
     let product_file_write_count =
         sqlite_integer(input.product_file_write_count, "product_file_write_count")?;
 
-    let mut conn = open_diagnostics_database(runtime_home)?;
+    let mut conn = open_diagnostics_database(context)?;
     let tx = conn.transaction()?;
     let retry_after_validation_failure = input.tool_name.is_some()
         && tx
@@ -1054,7 +1056,7 @@ pub fn record_diagnostic_event(
 
 /// Records one bounded Core structural rejection outside authority storage.
 pub fn record_core_rejection_diagnostic(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: CoreRejectionDiagnostic<'_>,
 ) -> StoreResult<()> {
     validate_identifier("project_id", input.project_id)?;
@@ -1074,7 +1076,7 @@ pub fn record_core_rejection_diagnostic(
             detail: "diagnostics occurred_at must be canonical RFC 3339 UTC".to_owned(),
         })?;
 
-    let mut conn = open_diagnostics_database(runtime_home)?;
+    let mut conn = open_diagnostics_database(context)?;
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     tx.execute(
         "INSERT INTO core_rejection_diagnostics (
@@ -1123,13 +1125,13 @@ pub fn read_core_rejection_diagnostics(
 
 /// Records one privacy-bounded workflow metric and enforces shared event retention.
 pub fn record_workflow_metric_event(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: &WorkflowMetricEvent,
 ) -> StoreResult<()> {
     validate_workflow_metric_event(input)?;
     let value = sqlite_integer(input.value, "workflow metric value")?;
 
-    let mut conn = open_diagnostics_database(runtime_home)?;
+    let mut conn = open_diagnostics_database(context)?;
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let project_id = tx
         .query_row(
@@ -1296,8 +1298,8 @@ pub fn read_diagnostic_session(
     Ok(Some(aggregate))
 }
 
-fn open_diagnostics_database(runtime_home: impl AsRef<Path>) -> StoreResult<Connection> {
-    let path = diagnostics_db_path(runtime_home);
+fn open_diagnostics_database(context: &RuntimeHomeMutationContext<'_>) -> StoreResult<Connection> {
+    let path = diagnostics_db_path(context.runtime_home().as_path());
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -1843,6 +1845,7 @@ fn harden_diagnostics_permissions(_path: &Path) -> StoreResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mutation::TestRuntimeHomeAdmission;
     use rusqlite::Connection;
     use volicord_test_support::TempRuntimeHome;
     fn managed_session_id(native_session_id: &str) -> String {
@@ -1901,10 +1904,13 @@ mod tests {
     #[test]
     fn diagnostics_are_separate_bounded_and_aggregate_without_content_columns() {
         let fixture = TempRuntimeHome::new("diagnostics-bounded").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_test");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
+        start_diagnostic_session(&context, start(&session_id)).expect("start");
         record_diagnostic_event(
-            fixture.path(),
+            &context,
             DiagnosticEvent {
                 validation_failure: true,
                 core_reached: false,
@@ -1914,7 +1920,7 @@ mod tests {
             },
         )
         .expect("validation event");
-        record_diagnostic_event(fixture.path(), event(&session_id, "volicord.record_run"))
+        record_diagnostic_event(&context, event(&session_id, "volicord.record_run"))
             .expect("retry event");
 
         let aggregate = read_diagnostic_session(fixture.path(), None)
@@ -1957,33 +1963,37 @@ mod tests {
     #[test]
     fn diagnostics_reject_content_bearing_identifiers() {
         let fixture = TempRuntimeHome::new("diagnostics-redaction").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_test");
         let mut input = start(&session_id);
         input.connection_id = Some("/home/user/private-file.txt");
-        assert!(start_diagnostic_session(fixture.path(), input).is_err());
+        assert!(start_diagnostic_session(&context, input).is_err());
 
         let mut input = start(&session_id);
         input.build_id = "0.2.0;target=/private/build/location";
-        assert!(start_diagnostic_session(fixture.path(), input).is_err());
+        assert!(start_diagnostic_session(&context, input).is_err());
 
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
-        let error = record_diagnostic_event(
-            fixture.path(),
-            event(&session_id, "prompt text with secret"),
-        )
-        .expect_err("content must not fit tool field");
+        start_diagnostic_session(&context, start(&session_id)).expect("start");
+        let error =
+            record_diagnostic_event(&context, event(&session_id, "prompt text with secret"))
+                .expect_err("content must not fit tool field");
         assert!(matches!(error, StoreError::InvalidInput { .. }));
     }
 
     #[test]
     fn managed_session_diagnostics_bind_native_identity_to_the_connection() {
         let fixture = TempRuntimeHome::new("diagnostics-managed-binding").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("native-session");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initial start");
-        record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
+        start_diagnostic_session(&context, start(&session_id)).expect("initial start");
+        record_diagnostic_event(&context, event(&session_id, "volicord.status"))
             .expect("initial event");
 
-        start_diagnostic_session(fixture.path(), start(&session_id))
+        start_diagnostic_session(&context, start(&session_id))
             .expect("an exact managed binding is idempotent");
         let exact = read_diagnostic_session(fixture.path(), Some(&session_id))
             .expect("read exact binding")
@@ -1994,7 +2004,7 @@ mod tests {
 
         let mut cross_connection = start(&session_id);
         cross_connection.connection_id = Some("connection_other");
-        let error = start_diagnostic_session(fixture.path(), cross_connection)
+        let error = start_diagnostic_session(&context, cross_connection)
             .expect_err("cross-connection managed reuse must fail");
         assert!(matches!(error, StoreError::Conflict { .. }));
 
@@ -2009,24 +2019,27 @@ mod tests {
     #[test]
     fn managed_transport_requires_bound_valid_native_session_correlation() {
         let fixture = TempRuntimeHome::new("diagnostics-managed-native-session").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("native-session");
 
         let mut unbound = start(&session_id);
         unbound.host_kind = None;
         assert!(matches!(
-            start_diagnostic_session(fixture.path(), unbound),
+            start_diagnostic_session(&context, unbound),
             Err(StoreError::InvalidInput { .. })
         ));
 
         let mut cli_inbox = start(&session_id);
         cli_inbox.transport = DiagnosticTransport::CliInbox;
         cli_inbox.host_kind = None;
-        start_diagnostic_session(fixture.path(), cli_inbox)
+        start_diagnostic_session(&context, cli_inbox)
             .expect("CLI inbox sessions do not require host-native correlation");
 
         let malformed = start("not a native id");
         assert!(matches!(
-            start_diagnostic_session(fixture.path(), malformed),
+            start_diagnostic_session(&context, malformed),
             Err(StoreError::InvalidInput { .. })
         ));
     }
@@ -2034,10 +2047,13 @@ mod tests {
     #[test]
     fn per_session_event_retention_is_enforced() {
         let fixture = TempRuntimeHome::new("diagnostics-event-retention").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_test");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
+        start_diagnostic_session(&context, start(&session_id)).expect("start");
         for _ in 0..(DIAGNOSTICS_MAX_EVENTS_PER_SESSION + 3) {
-            record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
+            record_diagnostic_event(&context, event(&session_id, "volicord.status"))
                 .expect("event");
         }
         let aggregate = read_diagnostic_session(fixture.path(), Some(&session_id))
@@ -2052,12 +2068,15 @@ mod tests {
     #[test]
     fn session_count_retention_is_enforced() {
         let fixture = TempRuntimeHome::new("diagnostics-session-retention").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let mut session_ids = (0..(DIAGNOSTICS_MAX_SESSIONS + 3))
             .map(|index| managed_session_id(&format!("session_{index:03}")))
             .collect::<Vec<_>>();
         session_ids.sort();
         for session_id in &session_ids {
-            start_diagnostic_session(fixture.path(), start(session_id)).expect("session");
+            start_diagnostic_session(&context, start(session_id)).expect("session");
         }
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
         let count = conn
@@ -2082,11 +2101,14 @@ mod tests {
     #[test]
     fn age_retention_compares_iso_timestamps_as_time_values() {
         let fixture = TempRuntimeHome::new("diagnostics-age-retention").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let expired_session_id = managed_session_id("session_expired");
         let recent_session_id = managed_session_id("session_recent");
         let trigger_session_id = managed_session_id("session_trigger");
-        start_diagnostic_session(fixture.path(), start(&expired_session_id)).expect("expired");
-        start_diagnostic_session(fixture.path(), start(&recent_session_id)).expect("recent");
+        start_diagnostic_session(&context, start(&expired_session_id)).expect("expired");
+        start_diagnostic_session(&context, start(&recent_session_id)).expect("recent");
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
         conn.execute(
             "UPDATE diagnostic_sessions
@@ -2104,8 +2126,7 @@ mod tests {
         .expect("backdate recent session");
         drop(conn);
 
-        start_diagnostic_session(fixture.path(), start(&trigger_session_id))
-            .expect("trigger prune");
+        start_diagnostic_session(&context, start(&trigger_session_id)).expect("trigger prune");
 
         assert!(
             read_diagnostic_session(fixture.path(), Some(&expired_session_id))
@@ -2197,27 +2218,30 @@ mod tests {
     #[test]
     fn workflow_metrics_are_exposed_only_as_bounded_aggregate_rows() {
         let fixture = TempRuntimeHome::new("workflow-metric-aggregates").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_metrics");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
+        start_diagnostic_session(&context, start(&session_id)).expect("start");
 
         let mut method_call = metric(&session_id, WorkflowMetricKind::McpMethodCall, 1);
         method_call.method_name = Some(MethodName::Status);
         method_call.integration_profile = Some(IntegrationProfile::Record);
         method_call.outcome = Some(WorkflowMetricOutcome::Success);
-        record_workflow_metric_event(fixture.path(), &method_call).expect("method call one");
-        record_workflow_metric_event(fixture.path(), &method_call).expect("method call two");
+        record_workflow_metric_event(&context, &method_call).expect("method call one");
+        record_workflow_metric_event(&context, &method_call).expect("method call two");
 
         let mut pre_tool = metric(&session_id, WorkflowMetricKind::PreToolDecision, 1);
         pre_tool.integration_profile = Some(IntegrationProfile::Record);
         pre_tool.decision = Some(WorkflowMetricDecision::Allow);
         pre_tool.observation_confidence = Some(ObservationConfidence::Confirmed);
-        record_workflow_metric_event(fixture.path(), &pre_tool).expect("pre-tool decision");
+        record_workflow_metric_event(&context, &pre_tool).expect("pre-tool decision");
 
         let mut observation = metric(&session_id, WorkflowMetricKind::ObservationAssessment, 3);
         observation.integration_profile = Some(IntegrationProfile::Record);
         observation.observation_confidence = Some(ObservationConfidence::Heuristic);
         observation.outcome = Some(WorkflowMetricOutcome::ReadOnly);
-        record_workflow_metric_event(fixture.path(), &observation).expect("observation");
+        record_workflow_metric_event(&context, &observation).expect("observation");
 
         let rows = read_workflow_metric_aggregates(fixture.path(), "project_test")
             .expect("aggregate rows");
@@ -2276,13 +2300,16 @@ mod tests {
     #[test]
     fn workflow_metrics_share_the_per_session_event_retention_limit() {
         let fixture = TempRuntimeHome::new("workflow-metric-retention").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_metrics");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("start");
-        record_diagnostic_event(fixture.path(), event(&session_id, "volicord.status"))
+        start_diagnostic_session(&context, start(&session_id)).expect("start");
+        record_diagnostic_event(&context, event(&session_id, "volicord.status"))
             .expect("diagnostic event");
         let status_reread = metric(&session_id, WorkflowMetricKind::StatusReread, 1);
         for _ in 0..DIAGNOSTICS_MAX_EVENTS_PER_SESSION {
-            record_workflow_metric_event(fixture.path(), &status_reread).expect("workflow event");
+            record_workflow_metric_event(&context, &status_reread).expect("workflow event");
         }
 
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("diagnostics db");
@@ -2306,6 +2333,9 @@ mod tests {
     #[test]
     fn core_rejection_diagnostics_are_exact_bounded_upserts() {
         let fixture = TempRuntimeHome::new("core-rejection-diagnostic").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let first = UtcTimestamp::parse("2099-07-17T01:02:03Z").expect("first timestamp");
         let second = UtcTimestamp::parse("2099-07-17T01:03:04Z").expect("second timestamp");
         let input = |occurred_at| CoreRejectionDiagnostic {
@@ -2315,9 +2345,8 @@ mod tests {
             reason: CoreRejectionReason::CurrentChangeUnitRequired,
             occurred_at,
         };
-        record_core_rejection_diagnostic(fixture.path(), input(&first)).expect("first observation");
-        record_core_rejection_diagnostic(fixture.path(), input(&second))
-            .expect("updated observation");
+        record_core_rejection_diagnostic(&context, input(&first)).expect("first observation");
+        record_core_rejection_diagnostic(&context, input(&second)).expect("updated observation");
 
         let records = read_core_rejection_diagnostics(fixture.path()).expect("records");
         assert_eq!(
@@ -2335,15 +2364,18 @@ mod tests {
             method_name: MethodName::Status,
             ..input(&second)
         };
-        assert!(record_core_rejection_diagnostic(fixture.path(), invalid).is_err());
+        assert!(record_core_rejection_diagnostic(&context, invalid).is_err());
     }
 
     #[test]
     fn core_rejection_diagnostics_enforce_global_retention() {
         let fixture = TempRuntimeHome::new("core-rejection-retention").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let now = UtcTimestamp::parse("2099-07-17T01:02:03Z").expect("timestamp");
         record_core_rejection_diagnostic(
-            fixture.path(),
+            &context,
             CoreRejectionDiagnostic {
                 project_id: "project_seed",
                 task_id: "task_seed",
@@ -2373,7 +2405,7 @@ mod tests {
         drop(conn);
 
         record_core_rejection_diagnostic(
-            fixture.path(),
+            &context,
             CoreRejectionDiagnostic {
                 project_id: "project_final",
                 task_id: "task_final",
@@ -2394,8 +2426,11 @@ mod tests {
     #[test]
     fn diagnostics_manifest_is_semantic_and_derived_from_canonical_sql() {
         let fixture = TempRuntimeHome::new("diagnostics-manifest").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_manifest");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        start_diagnostic_session(&context, start(&session_id)).expect("initialize");
 
         let current = current_diagnostics_storage_manifest().expect("current manifest");
         assert_eq!(current.contract_id, DIAGNOSTICS_CONTRACT_ID);
@@ -2418,12 +2453,15 @@ mod tests {
     #[test]
     fn existing_empty_diagnostics_database_is_rejected_without_initialization() {
         let fixture = TempRuntimeHome::new("diagnostics-existing-empty").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         fs::create_dir_all(fixture.path()).expect("runtime home directory");
         let path = diagnostics_db_path(fixture.path());
         Connection::open(&path).expect("empty database");
 
         let error = start_diagnostic_session(
-            fixture.path(),
+            &context,
             start(&managed_session_id("session_existing_empty")),
         )
         .expect_err("existing empty database must not be initialized");
@@ -2445,8 +2483,11 @@ mod tests {
     #[test]
     fn missing_diagnostics_manifest_row_is_rejected_without_repair() {
         let fixture = TempRuntimeHome::new("diagnostics-missing-manifest-row").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_missing_manifest");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        start_diagnostic_session(&context, start(&session_id)).expect("initialize");
         let path = diagnostics_db_path(fixture.path());
         let conn = Connection::open(&path).expect("database");
         conn.execute("DELETE FROM diagnostics_manifest", [])
@@ -2472,8 +2513,11 @@ mod tests {
     #[test]
     fn extra_diagnostics_manifest_row_is_rejected() {
         let fixture = TempRuntimeHome::new("diagnostics-extra-manifest-row").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_extra_manifest");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        start_diagnostic_session(&context, start(&session_id)).expect("initialize");
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
         conn.pragma_update(None, "ignore_check_constraints", "ON")
             .expect("test-only constraint bypass");
@@ -2495,8 +2539,11 @@ mod tests {
     #[test]
     fn unknown_diagnostics_manifest_contract_is_rejected() {
         let fixture = TempRuntimeHome::new("diagnostics-unknown-manifest").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_unknown_manifest");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        start_diagnostic_session(&context, start(&session_id)).expect("initialize");
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
         conn.execute(
             "UPDATE diagnostics_manifest SET contract_id = 'unknown.diagnostics.contract'",
@@ -2516,8 +2563,11 @@ mod tests {
     #[test]
     fn missing_canonical_diagnostics_index_is_rejected() {
         let fixture = TempRuntimeHome::new("diagnostics-missing-index").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_missing_index");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        start_diagnostic_session(&context, start(&session_id)).expect("initialize");
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
         conn.execute("DROP INDEX idx_diagnostic_events_tool", [])
             .expect("remove canonical index");
@@ -2531,8 +2581,11 @@ mod tests {
     #[test]
     fn unexpected_diagnostics_schema_objects_are_rejected() {
         let fixture = TempRuntimeHome::new("diagnostics-unexpected-object").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
         let session_id = managed_session_id("session_unexpected_object");
-        start_diagnostic_session(fixture.path(), start(&session_id)).expect("initialize");
+        start_diagnostic_session(&context, start(&session_id)).expect("initialize");
         let conn = Connection::open(diagnostics_db_path(fixture.path())).expect("database");
         conn.execute("CREATE TABLE unexpected_diagnostics_state (value TEXT)", [])
             .expect("unexpected object");

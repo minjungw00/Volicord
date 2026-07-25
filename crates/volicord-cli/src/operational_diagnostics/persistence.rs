@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use volicord_store::diagnostic_findings::{
     active_current_findings_for_scope, resolve_current_finding, upsert_current_snapshot,
 };
+use volicord_store::RuntimeHomeMutationContext;
 use volicord_types::{
     CurrentDiagnosticFinding, CurrentDiagnosticKey, DiagnosticFindingId, UtcTimestamp,
 };
@@ -48,6 +49,7 @@ impl CurrentOperationalOwner {
 
 /// Reconciles an owner set even when its successful observation set is empty.
 pub(crate) fn reconcile_current_findings_for_scope(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &std::path::Path,
     scope: &volicord_types::DiagnosticScope,
     owners: &[CurrentOperationalOwner],
@@ -70,7 +72,7 @@ pub(crate) fn reconcile_current_findings_for_scope(
                 "current operational finding is outside the reconciled owner or scope",
             ));
         }
-        upsert_current_snapshot(runtime_home, finding)?;
+        upsert_current_snapshot(context, finding)?;
         current_ids.insert(finding.id().clone());
     }
 
@@ -80,7 +82,7 @@ pub(crate) fn reconcile_current_findings_for_scope(
         };
         if owners.iter().any(|owner| owner.owns(diagnostic)) && !current_ids.contains(existing.id())
         {
-            resolve_current_finding(runtime_home, existing.key(), resolved_at.clone())?;
+            resolve_current_finding(context, existing.key(), resolved_at.clone())?;
         }
     }
     Ok(current_ids.into_iter().collect())
@@ -134,6 +136,7 @@ mod tests {
         .expect("finding");
         let id = first.id().clone();
         reconcile_current_findings_for_scope(
+            &fixture.mutation_context().expect("mutation context"),
             fixture.runtime_home_path(),
             first.key().scope(),
             &[CurrentOperationalOwner::Guard],
@@ -149,6 +152,7 @@ mod tests {
         );
 
         reconcile_current_findings_for_scope(
+            &fixture.mutation_context().expect("mutation context"),
             fixture.runtime_home_path(),
             first.key().scope(),
             &[CurrentOperationalOwner::Guard],
@@ -189,6 +193,7 @@ mod tests {
         .expect("recurrent finding");
         assert_eq!(recurrent.id(), &id);
         reconcile_current_findings_for_scope(
+            &fixture.mutation_context().expect("mutation context"),
             fixture.runtime_home_path(),
             recurrent.key().scope(),
             &[CurrentOperationalOwner::Guard],

@@ -1185,6 +1185,7 @@ mod tests {
             initialize_runtime_home, register_project, ProjectRecord, ProjectRegistration,
             ACTIVE_PROJECT_STATUS,
         },
+        mutation::TestRuntimeHomeAdmission,
         schema::current_storage_manifest,
         sqlite::{open_read_only_database, project_state_db_path, registry_db_path},
     };
@@ -1609,10 +1610,12 @@ mod tests {
 
     fn current_fixture(prefix: &str) -> Result<InspectionFixture, Box<dyn Error>> {
         let runtime_home = TempRuntimeHome::new(prefix)?;
+        let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
+        let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
-        initialize_runtime_home(runtime_home.path(), RUNTIME_HOME_ID, "{}")?;
+        initialize_runtime_home(&context, runtime_home.path(), RUNTIME_HOME_ID, "{}")?;
         let project = register_project(
-            runtime_home.path(),
+            &context,
             ProjectRegistration {
                 project_id: PROJECT_ID.to_owned(),
                 repo_root,

@@ -114,7 +114,7 @@ fn mismatched_tool_identity_owner_and_contract_facts_never_complete() -> Result<
         }
         if !owner_mismatch_rejected {
             refresh_guard_integration_verification_for_event(
-                fixture.runtime_home.path(),
+                &fixture.context()?,
                 PROJECT_ID,
                 "guard_event_post_bad",
             )?;
@@ -122,7 +122,7 @@ fn mismatched_tool_identity_owner_and_contract_facts_never_complete() -> Result<
         assert!(
             matches!(
                 get_guard_integration_verification(
-                    fixture.runtime_home.path(),
+                    &fixture.context()?,
                     &run.verification_id,
                     &fixture.caller(),
                     "2026-07-23T00:00:05Z",
@@ -169,7 +169,7 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
         })?;
     }
     refresh_guard_integration_verification_for_event(
-        fixture.runtime_home.path(),
+        &fixture.context()?,
         PROJECT_ID,
         "guard_event_historical_post",
     )?;
@@ -211,7 +211,7 @@ fn timestamp_ordering_and_unrelated_history_are_excluded() -> Result<(), Box<dyn
         integration_revision: None,
     })?;
     refresh_guard_integration_verification_for_event(
-        fixture.runtime_home.path(),
+        &fixture.context()?,
         PROJECT_ID,
         "guard_event_post_before_ack",
     )?;

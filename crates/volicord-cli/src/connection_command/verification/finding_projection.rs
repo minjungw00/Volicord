@@ -15,14 +15,20 @@ pub(super) fn diagnostic_occurrence_for_runtime_code(
 }
 
 pub(super) fn persist_process_diagnostics(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     preflight: VerificationStep,
     mut handshake: McpVerification,
 ) -> Result<(VerificationStep, McpVerification), ConnectionCommandError> {
     let preflight = if let Some(failure) = preflight.failure.as_ref() {
-        let diagnostic =
-            persist_process_finding(runtime_home, connection, preflight.process_id, failure)?;
+        let diagnostic = persist_process_finding(
+            context,
+            runtime_home,
+            connection,
+            preflight.process_id,
+            failure,
+        )?;
         preflight.with_persisted_diagnostic(diagnostic)
     } else {
         preflight
@@ -34,6 +40,7 @@ pub(super) fn persist_process_diagnostics(
         for probe in &mut exchange.conformance {
             if let Some(failure) = probe.failure.as_ref() {
                 probe.diagnostic = Some(persist_process_finding(
+                    context,
                     runtime_home,
                     connection,
                     probe.progress.process_id,
@@ -44,6 +51,7 @@ pub(super) fn persist_process_diagnostics(
         for probe in &mut exchange.host_compatibility {
             if let Some(failure) = probe.failure.as_ref() {
                 probe.diagnostic = Some(persist_process_finding(
+                    context,
                     runtime_home,
                     connection,
                     probe.progress.process_id,
@@ -63,6 +71,7 @@ pub(super) fn persist_process_diagnostics(
             });
     } else if let Some(failure) = exchange.failure.as_ref() {
         exchange.diagnostic = Some(persist_process_finding(
+            context,
             runtime_home,
             connection,
             exchange.progress.process_id,
@@ -73,6 +82,7 @@ pub(super) fn persist_process_diagnostics(
 }
 
 pub(super) fn persist_process_finding(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     process_id: Option<u32>,
@@ -126,7 +136,7 @@ pub(super) fn persist_process_finding(
             .map(|runtime| AgentRuntimeSessionId::new(runtime.runtime_session_id.clone())),
     )
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    volicord_store::diagnostic_findings::insert_occurrence_finding(runtime_home, &finding)?;
+    volicord_store::diagnostic_findings::insert_occurrence_finding(context, &finding)?;
     Ok(McpPersistedDiagnostic {
         finding_id: finding.id().to_string(),
         code: finding.data().code().to_string(),
@@ -277,6 +287,7 @@ pub(super) struct PeerPathMismatchFacts<'a> {
 impl DiagnosticFactSource for PeerPathMismatchFacts<'_> {}
 
 pub(super) fn persist_peer_path_mismatch_findings(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     connection: &AgentConnectionRecord,
     host: &Verification,
@@ -353,7 +364,7 @@ pub(super) fn persist_peer_path_mismatch_findings(
             )),
         )
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        insert_occurrence_finding(runtime_home, &finding)?;
+        insert_occurrence_finding(context, &finding)?;
     }
     Ok(())
 }

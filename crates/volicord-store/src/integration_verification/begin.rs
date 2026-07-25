@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use chrono::Duration;
 use volicord_host_contract::{
     project_mcp_tool, HostContractProfileId, HostSessionId, HostTurnId, McpServerKey,
@@ -33,19 +31,19 @@ use crate::{
         GuardIntegrationVerificationEventQuery,
     },
     operational_sessions::current_managed_mcp_runtime_session_for_connection,
-    sqlite::{begin_immediate_transaction, open_registry_database, registry_db_path},
-    StoreError, StoreResult,
+    sqlite::{begin_immediate_transaction, open_registry_database_for_mutation},
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 /// Begins or idempotently resumes the exact current managed-session verification.
 pub fn begin_guard_integration_verification(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: BeginGuardIntegrationVerificationInput,
 ) -> StoreResult<BeginIntegrationVerificationResult> {
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let observed_at = input.observed_at.clone();
     let record = begin_guard_integration_verification_with_generator(
-        runtime_home,
+        context,
         input,
         &RandomDurableIdGenerator,
     )?;
@@ -54,11 +52,11 @@ pub fn begin_guard_integration_verification(
 
 /// Deterministic-generator variant for durable tests.
 pub fn begin_guard_integration_verification_with_generator(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: BeginGuardIntegrationVerificationInput,
     generator: &dyn DurableIdGenerator,
 ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let caller = VerificationCallerCoordinate::from_caller(&input.caller)?;
     let now = parse_timestamp("observed_at", &input.observed_at)?;
     current_managed_mcp_runtime_session_for_connection(
@@ -211,7 +209,7 @@ pub fn begin_guard_integration_verification_with_generator(
         observation_policy,
     );
 
-    let mut conn = open_registry_database(registry_db_path(runtime_home))?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     if let Some(existing) = run_for_coordinate(&tx, &current)? {
         VerificationStoredCoordinate::from_run(&existing)?.require_current(&current)?;

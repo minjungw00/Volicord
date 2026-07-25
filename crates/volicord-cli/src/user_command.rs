@@ -15,7 +15,7 @@ use volicord_store::{
     core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    StoreError,
+    RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::{
     ActorSource, ArtifactId, EvidenceRelevanceStatus, EvidenceTarget, IdempotencyKey,
@@ -27,6 +27,7 @@ use volicord_types::{
 };
 
 use crate::cli::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
+use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -39,17 +40,25 @@ use crate::summary_card::{
 pub enum UserCommandError {
     Usage(String),
     Runtime(String),
+    MutationAdmission(CliMutationAdmissionError),
 }
 
 impl fmt::Display for UserCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Usage(message) | Self::Runtime(message) => formatter.write_str(message),
+            Self::MutationAdmission(error) => write!(formatter, "{error}"),
         }
     }
 }
 
 impl std::error::Error for UserCommandError {}
+
+impl From<CliMutationAdmissionError> for UserCommandError {
+    fn from(error: CliMutationAdmissionError) -> Self {
+        Self::MutationAdmission(error)
+    }
+}
 
 impl From<StoreError> for UserCommandError {
     fn from(error: StoreError) -> Self {
@@ -74,6 +83,7 @@ impl From<ProjectCommandError> for UserCommandError {
         match error {
             ProjectCommandError::Usage(message) => Self::Usage(message),
             ProjectCommandError::Runtime(message) => Self::Runtime(message),
+            ProjectCommandError::MutationAdmission(error) => Self::MutationAdmission(error),
         }
     }
 }
@@ -393,30 +403,38 @@ where
     };
     let (stable_request_id, channel_submission_id) = stable_cli_resolution_ids(&request_id);
     let diagnostic_session_id = generated_id("diag_cli_inbox");
-    let build = volicord_mcp::build_info();
-    let _ = start_diagnostic_session(
-        &resolved.runtime_home,
-        DiagnosticSessionStart {
-            session_id: &diagnostic_session_id,
-            connection_id: None,
-            project_id: Some(&resolved.project_id),
-            transport: DiagnosticTransport::CliInbox,
-            host_kind: None,
-            package_version: build.package_version,
-            build_id: &build.build_id,
-        },
-    );
-    let response = resolve_user_action_from_record(UserActionResolutionRecordingInput {
-        runtime_home: &resolved.runtime_home,
-        project_id: &resolved.project_id,
-        record: &record,
-        resolution,
-        verification_basis: VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-        request_id: Some(stable_request_id),
-        channel_submission_id: Some(channel_submission_id),
-        session_id: Some(&diagnostic_session_id),
-    })?;
-    render_resolve_response(&response, parsed.output)
+    with_cli_runtime_home_mutation(&resolved.runtime_home, "cli.inbox.resolve", |context| {
+        let build = volicord_mcp::build_info();
+        let _ = start_diagnostic_session(
+            context,
+            DiagnosticSessionStart {
+                session_id: &diagnostic_session_id,
+                connection_id: None,
+                project_id: Some(&resolved.project_id),
+                transport: DiagnosticTransport::CliInbox,
+                host_kind: None,
+                package_version: build.package_version,
+                build_id: &build.build_id,
+            },
+        );
+        let response = resolve_user_action_from_record(
+            context,
+            UserActionResolutionRecordingInput {
+                runtime_home: &resolved.runtime_home,
+                project_id: &resolved.project_id,
+                record: &record,
+                resolution,
+                verification_basis: VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                request_id: Some(stable_request_id),
+                channel_submission_id: Some(channel_submission_id),
+                session_id: Some(&diagnostic_session_id),
+            },
+        )
+        .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))?;
+        render_resolve_response(&response, parsed.output)
+            .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
+    })
+    .map_err(Into::into)
 }
 
 fn resolution_from_immutable_request(
@@ -682,6 +700,7 @@ fn parse_positive_index(selector: &str) -> Result<Option<usize>, UserCommandErro
 }
 
 pub(crate) fn resolve_user_action_from_record(
+    context: &RuntimeHomeMutationContext<'_>,
     input: UserActionResolutionRecordingInput<'_>,
 ) -> Result<PipelineResponse, UserCommandError> {
     if input.record.status != UserActionStatus::Pending && input.channel_submission_id.is_none() {
@@ -707,6 +726,7 @@ pub(crate) fn resolve_user_action_from_record(
     };
     CoreService::new(input.runtime_home)
         .resolve_user_action(
+            context,
             ResolveUserActionRequest {
                 envelope: envelope(
                     input.project_id,

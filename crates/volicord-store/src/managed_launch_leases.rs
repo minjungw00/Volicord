@@ -19,10 +19,10 @@ use crate::{
         McpRuntimeSessionRecord, McpRuntimeSessionStart,
     },
     sqlite::{
-        begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
-        registry_db_path,
+        begin_immediate_transaction, open_registry_database_for_mutation,
+        open_registry_database_read_only, registry_db_path,
     },
-    StoreError, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 const LAUNCH_LEASE_TTL: Duration = Duration::from_secs(30);
@@ -94,15 +94,15 @@ pub struct ManagedMcpLaunchLeaseConsumption {
 
 /// Issues one short-lived lease after revalidating current Connection facts.
 pub fn issue_managed_mcp_launch_lease(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     input: ManagedMcpLaunchLeaseIssue,
 ) -> StoreResult<ManagedMcpLaunchLeaseRecord> {
     let issued_at = SystemTime::now();
-    issue_managed_mcp_launch_lease_at(runtime_home.as_ref(), input, issued_at, LAUNCH_LEASE_TTL)
+    issue_managed_mcp_launch_lease_at(context, input, issued_at, LAUNCH_LEASE_TTL)
 }
 
 fn issue_managed_mcp_launch_lease_at(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     input: ManagedMcpLaunchLeaseIssue,
     issued_at: SystemTime,
     ttl: Duration,
@@ -121,8 +121,7 @@ fn issue_managed_mcp_launch_lease_at(
             .checked_sub(TERMINAL_LEASE_RETENTION)
             .unwrap_or(SystemTime::UNIX_EPOCH),
     );
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let generator = RandomDurableIdGenerator;
     for _ in 0..DURABLE_ID_RETRY_LIMIT {
         let lease_id = generator
@@ -169,7 +168,7 @@ fn issue_managed_mcp_launch_lease_at(
 
 /// Atomically consumes one lease and creates its managed runtime session.
 pub fn consume_managed_mcp_launch_lease_and_start_runtime(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     claim: ManagedMcpLaunchLeaseConsumption,
     runtime: McpRuntimeSessionStart,
 ) -> StoreResult<McpRuntimeSessionRecord> {
@@ -185,16 +184,11 @@ pub fn consume_managed_mcp_launch_lease_and_start_runtime(
         ));
     }
     let consumed_at = SystemTime::now();
-    consume_managed_mcp_launch_lease_and_start_runtime_at(
-        runtime_home.as_ref(),
-        claim,
-        runtime,
-        consumed_at,
-    )
+    consume_managed_mcp_launch_lease_and_start_runtime_at(context, claim, runtime, consumed_at)
 }
 
 fn consume_managed_mcp_launch_lease_and_start_runtime_at(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     claim: ManagedMcpLaunchLeaseConsumption,
     runtime: McpRuntimeSessionStart,
     consumed_at: SystemTime,
@@ -205,8 +199,7 @@ fn consume_managed_mcp_launch_lease_and_start_runtime_at(
             .checked_sub(TERMINAL_LEASE_RETENTION)
             .unwrap_or(SystemTime::UNIX_EPOCH),
     );
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let generator = RandomDurableIdGenerator;
     for _ in 0..DURABLE_ID_RETRY_LIMIT {
         let runtime_session_id = generator
@@ -273,7 +266,7 @@ fn consume_managed_mcp_launch_lease_and_start_runtime_at(
 
 /// Cancels one still-unused lease during deterministic launcher cleanup.
 pub fn cancel_managed_mcp_launch_lease(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     launch_lease_id: &str,
 ) -> StoreResult<ManagedMcpLaunchLeaseRecord> {
     validate_text("launch_lease_id", launch_lease_id, 192)?;
@@ -283,8 +276,7 @@ pub fn cancel_managed_mcp_launch_lease(
         now.checked_sub(TERMINAL_LEASE_RETENTION)
             .unwrap_or(SystemTime::UNIX_EPOCH),
     );
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     cleanup_leases(&tx, &now_text, &cleanup_cutoff)?;
     tx.execute(
@@ -524,59 +516,79 @@ mod tests {
     use crate::{
         agent_connections::{agent_connection_record, AgentConnectionRegistration},
         bootstrap::{initialize_runtime_home, register_project, ProjectRegistration},
+        mutation::{with_test_runtime_home_setup, TestRuntimeHomeAdmission},
         operational_sessions::connection_integration_revision,
+        sqlite::open_registry_database_for_test,
     };
     use volicord_types::McpRuntimeSessionSource;
 
     fn fixture(
         name: &str,
-    ) -> Result<(tempfile::TempDir, std::path::PathBuf, String, String), Box<dyn std::error::Error>>
-    {
+    ) -> Result<
+        (
+            tempfile::TempDir,
+            std::path::PathBuf,
+            TestRuntimeHomeAdmission,
+            String,
+            String,
+        ),
+        Box<dyn std::error::Error>,
+    > {
         let temp = tempfile::Builder::new().prefix(name).tempdir()?;
         let runtime_home = temp.path().join("runtime");
-        initialize_runtime_home(&runtime_home, "runtime_home_launch_lease", "{}")?;
         let repo = temp.path().join("repo");
         std::fs::create_dir_all(&repo)?;
-        register_project(
-            &runtime_home,
-            ProjectRegistration {
-                project_id: "project_alpha".to_owned(),
-                repo_root: repo,
-                project_home: None,
-                status: "active".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        crate::agent_connections::ensure_agent_connection(
-            &runtime_home,
-            AgentConnectionRegistration {
-                connection_internal_id: "connection_alpha".to_owned(),
-                host_kind: "codex".to_owned(),
-                intent: "personal".to_owned(),
-                host_scope: "user".to_owned(),
-                server_name: "volicord".to_owned(),
-                config_target: temp.path().join("config.toml").display().to_string(),
-                mode: "workflow".to_owned(),
-                enabled: true,
-                managed_fingerprint: "fingerprint-alpha".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
+        with_test_runtime_home_setup(&runtime_home, |context| {
+            initialize_runtime_home(context, &runtime_home, "runtime_home_launch_lease", "{}")?;
+            register_project(
+                context,
+                ProjectRegistration {
+                    project_id: "project_alpha".to_owned(),
+                    repo_root: repo,
+                    project_home: None,
+                    status: "active".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            crate::agent_connections::ensure_agent_connection(
+                context,
+                AgentConnectionRegistration {
+                    connection_internal_id: "connection_alpha".to_owned(),
+                    host_kind: "codex".to_owned(),
+                    intent: "personal".to_owned(),
+                    host_scope: "user".to_owned(),
+                    server_name: "volicord".to_owned(),
+                    config_target: temp.path().join("config.toml").display().to_string(),
+                    mode: "workflow".to_owned(),
+                    enabled: true,
+                    managed_fingerprint: "fingerprint-alpha".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            Ok(())
+        })?;
         let connection =
             agent_connection_record(&runtime_home, "connection_alpha")?.expect("connection");
         let revision = connection_integration_revision(&connection)?.into_inner();
-        Ok((temp, runtime_home, revision, connection.managed_fingerprint))
+        let mutation = TestRuntimeHomeAdmission::shared(&runtime_home)?;
+        Ok((
+            temp,
+            runtime_home,
+            mutation,
+            revision,
+            connection.managed_fingerprint,
+        ))
     }
 
     fn issue(
-        runtime_home: &Path,
+        context: &RuntimeHomeMutationContext<'_>,
         revision: &str,
         fingerprint: &str,
         issued_at: SystemTime,
         ttl: Duration,
     ) -> StoreResult<ManagedMcpLaunchLeaseRecord> {
         issue_managed_mcp_launch_lease_at(
-            runtime_home,
+            context,
             ManagedMcpLaunchLeaseIssue {
                 connection_internal_id: "connection_alpha".to_owned(),
                 host_kind: HostKind::Codex,
@@ -620,10 +632,11 @@ mod tests {
     #[test]
     fn lease_consumption_is_one_time_and_creates_the_managed_runtime_atomically(
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (_temp, runtime_home, revision, fingerprint) = fixture("launch-lease-once")?;
+        let (_temp, runtime_home, mutation, revision, fingerprint) = fixture("launch-lease-once")?;
+        let context = mutation.context()?;
         let now = SystemTime::now();
         let lease = issue(
-            &runtime_home,
+            &context,
             &revision,
             &fingerprint,
             now,
@@ -631,7 +644,7 @@ mod tests {
         )?;
         let consumed_at = now.checked_add(Duration::from_secs(1)).unwrap();
         let created = consume_managed_mcp_launch_lease_and_start_runtime_at(
-            &runtime_home,
+            &context,
             claim(&lease),
             runtime(consumed_at),
             consumed_at,
@@ -644,7 +657,7 @@ mod tests {
             ManagedMcpLaunchLeaseState::Consumed
         );
         let replay = consume_managed_mcp_launch_lease_and_start_runtime_at(
-            &runtime_home,
+            &context,
             claim(&lease),
             runtime(consumed_at),
             consumed_at,
@@ -656,10 +669,12 @@ mod tests {
 
     #[test]
     fn expired_and_mismatched_leases_create_no_runtime() -> Result<(), Box<dyn std::error::Error>> {
-        let (_temp, runtime_home, revision, fingerprint) = fixture("launch-lease-rejections")?;
+        let (_temp, runtime_home, mutation, revision, fingerprint) =
+            fixture("launch-lease-rejections")?;
+        let context = mutation.context()?;
         let now = SystemTime::now();
         let expired = issue(
-            &runtime_home,
+            &context,
             &revision,
             &fingerprint,
             now,
@@ -667,7 +682,7 @@ mod tests {
         )?;
         let after_expiry = now.checked_add(Duration::from_secs(2)).unwrap();
         assert!(consume_managed_mcp_launch_lease_and_start_runtime_at(
-            &runtime_home,
+            &context,
             claim(&expired),
             runtime(after_expiry),
             after_expiry,
@@ -676,7 +691,7 @@ mod tests {
         assert_eq!(runtime_count(&runtime_home)?, 0);
 
         let lease = issue(
-            &runtime_home,
+            &context,
             &revision,
             &fingerprint,
             now,
@@ -685,7 +700,7 @@ mod tests {
         let mut wrong_connection = claim(&lease);
         wrong_connection.connection_internal_id = "connection_other".to_owned();
         assert!(consume_managed_mcp_launch_lease_and_start_runtime_at(
-            &runtime_home,
+            &context,
             wrong_connection,
             runtime(now),
             now,
@@ -699,7 +714,7 @@ mod tests {
                 mismatch.expected_launch_fingerprint = "other-fingerprint".to_owned();
             }
             assert!(consume_managed_mcp_launch_lease_and_start_runtime_at(
-                &runtime_home,
+                &context,
                 mismatch,
                 runtime(now),
                 now,
@@ -714,17 +729,18 @@ mod tests {
     fn current_connection_revision_and_fingerprint_drift_reject_issued_leases(
     ) -> Result<(), Box<dyn std::error::Error>> {
         for mutation in ["revision", "fingerprint"] {
-            let (_temp, runtime_home, revision, fingerprint) =
+            let (_temp, runtime_home, admission, revision, fingerprint) =
                 fixture(&format!("launch-lease-current-{mutation}"))?;
+            let context = admission.context()?;
             let now = SystemTime::now();
             let lease = issue(
-                &runtime_home,
+                &context,
                 &revision,
                 &fingerprint,
                 now,
                 Duration::from_secs(30),
             )?;
-            let conn = open_registry_database(registry_db_path(&runtime_home))?;
+            let conn = open_registry_database_for_test(registry_db_path(&runtime_home))?;
             if mutation == "revision" {
                 conn.execute(
                     "UPDATE agent_connections
@@ -741,7 +757,7 @@ mod tests {
                 )?;
             }
             assert!(consume_managed_mcp_launch_lease_and_start_runtime_at(
-                &runtime_home,
+                &context,
                 claim(&lease),
                 runtime(now),
                 now,
@@ -755,9 +771,11 @@ mod tests {
     #[test]
     fn direct_managed_runtime_creation_is_rejected_without_a_lease(
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (_temp, runtime_home, _revision, _fingerprint) = fixture("launch-lease-required")?;
+        let (_temp, runtime_home, mutation, _revision, _fingerprint) =
+            fixture("launch-lease-required")?;
+        let context = mutation.context()?;
         assert!(crate::operational_sessions::start_mcp_runtime_session(
-            &runtime_home,
+            &context,
             runtime(SystemTime::now()),
         )
         .is_err());
@@ -767,9 +785,11 @@ mod tests {
 
     #[test]
     fn launcher_cleanup_cancels_only_an_unused_lease() -> Result<(), Box<dyn std::error::Error>> {
-        let (_temp, runtime_home, revision, fingerprint) = fixture("launch-lease-cancel")?;
+        let (_temp, _runtime_home, mutation, revision, fingerprint) =
+            fixture("launch-lease-cancel")?;
+        let context = mutation.context()?;
         let lease = issue_managed_mcp_launch_lease(
-            &runtime_home,
+            &context,
             ManagedMcpLaunchLeaseIssue {
                 connection_internal_id: "connection_alpha".to_owned(),
                 host_kind: HostKind::Codex,
@@ -777,7 +797,7 @@ mod tests {
                 expected_launch_fingerprint: fingerprint,
             },
         )?;
-        let cancelled = cancel_managed_mcp_launch_lease(&runtime_home, &lease.launch_lease_id)?;
+        let cancelled = cancel_managed_mcp_launch_lease(&context, &lease.launch_lease_id)?;
         assert_eq!(
             cancelled.terminal_state,
             ManagedMcpLaunchLeaseState::Cancelled

@@ -40,7 +40,7 @@ use volicord_store::{
     operational_sessions::{connection_integration_revision, current_managed_runtime_sessions},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     workflow_records::ProjectWorkflowPolicyAuthorityApply,
-    StoreError,
+    RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, guard_manifest_from_json, AgentToolId,
@@ -68,6 +68,7 @@ use crate::host_integration::{
     HostRemoveRequest, HostScope, HostTarget, InstallationProfile, ProjectContext,
 };
 use crate::{
+    mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError},
     operational_diagnostics::current_report_findings,
     registration::ADMIN_METADATA_JSON,
     setup_command::{is_executable_file, path_text as setup_path_text, runtime_home_id_for_path},
@@ -137,6 +138,7 @@ pub enum ConnectionCommandError {
     Runtime(String),
     ConcurrentModification(String),
     FailureOutput(String),
+    MutationAdmission(CliMutationAdmissionError),
 }
 
 impl ConnectionCommandError {
@@ -160,11 +162,18 @@ impl fmt::Display for ConnectionCommandError {
             | Self::Runtime(message)
             | Self::ConcurrentModification(message)
             | Self::FailureOutput(message) => formatter.write_str(message),
+            Self::MutationAdmission(error) => write!(formatter, "{error}"),
         }
     }
 }
 
 impl std::error::Error for ConnectionCommandError {}
+
+impl From<CliMutationAdmissionError> for ConnectionCommandError {
+    fn from(error: CliMutationAdmissionError) -> Self {
+        Self::MutationAdmission(error)
+    }
+}
 
 impl From<StoreError> for ConnectionCommandError {
     fn from(error: StoreError) -> Self {
@@ -212,7 +221,7 @@ pub fn run_init_command(
         CommandOperation::Init,
         init_output_format(&parsed),
         parsed.dry_run,
-        |lease| {
+        |lease, context| {
             parsed.explicit_runtime_home = Some(lease.target().as_path().to_path_buf());
             let outcome = provision_init(
                 InitProvisioningRequest {
@@ -221,6 +230,7 @@ pub fn run_init_command(
                 },
                 process,
                 lease,
+                context,
             )?;
             let connection = CommandConnection::new(
                 &outcome.connection_id,
@@ -296,7 +306,7 @@ pub fn run_connect_command(
         CommandOperation::Add,
         connection_output_format(&parsed),
         parsed.dry_run,
-        |lease| {
+        |lease, context| {
             parsed.explicit_runtime_home = Some(lease.target().as_path().to_path_buf());
             match provision_connection(
                 ProvisionConnectionRequest {
@@ -305,6 +315,7 @@ pub fn run_connect_command(
                 },
                 process,
                 lease,
+                context,
             )? {
                 ConnectionProvisioningOutcome::DryRun(plan) => {
                     let plan = *plan;
@@ -514,6 +525,8 @@ fn command_connection_verify(
         |name| process.env_var(name),
         current_dir,
     )?;
+    with_cli_runtime_home_mutation_result(&runtime_home, "cli.connection.verify", |context| {
+        (|| -> Result<String, ConnectionCommandError> {
     let selector = connection_selector(&parsed, current_dir, process)?;
     let (mut connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
     if decode_persisted_object(&connection.metadata_json).is_none() {
@@ -527,6 +540,7 @@ fn command_connection_verify(
     let host_plan =
         existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
     let verification = verify_connection(
+        context,
         &runtime_home,
         &connection,
         &host_plan,
@@ -535,7 +549,7 @@ fn command_connection_verify(
         process,
     )?;
     connection = persist_connection_verification_report(
-        &runtime_home,
+        context,
         &connection.connection_internal_id,
         &expected_integration_revision,
         Some(&verification.report),
@@ -560,16 +574,19 @@ fn command_connection_verify(
     );
     let rendered = render_command_report(connection_output_format(&parsed), &report)?;
     command_output_result(rendered.status, rendered.output)
+        })()
+    })
+    .map_err(ConnectionCommandError::MutationAdmission)?
 }
 
 fn persist_connection_verification_report(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     connection_internal_id: &str,
     expected_integration_revision: &IntegrationRevision,
     verification_report: Option<&ConnectionVerificationReport>,
 ) -> Result<AgentConnectionRecord, ConnectionCommandError> {
     match replace_agent_connection_verification_report_if_revision(
-        runtime_home,
+        context,
         connection_internal_id,
         expected_integration_revision,
         verification_report,
@@ -596,45 +613,50 @@ fn command_connection_mode(
         |name| process.env_var(name),
         current_dir,
     )?;
-    let selector = connection_selector(&parsed, current_dir, process)?;
-    let (connection, projects) = select_connection(&runtime_home, &selector)?;
-    let selected_project = selected_connection_project(&projects, selector.repo_root())?;
-    let previous_mode = connection.mode.clone();
-    let expected_revision = connection_integration_revision(&connection)?;
-    let guard_manifests = if connection.mode == mode {
-        Vec::new()
-    } else {
-        preflight_mode_guard_rebinds(&runtime_home, &connection, &projects, &mode)?
-    };
-    let outcome = transition_connection_mode(
-        &runtime_home,
-        ConnectionModeTransition {
-            connection_internal_id: connection.connection_internal_id.clone(),
-            expected_mode: connection.mode.clone(),
-            expected_integration_revision: expected_revision,
-            mode,
-            guard_manifests,
-        },
-    )?;
-    let report = ConnectionCommandReport::mode_transition(
-        &runtime_home,
-        CommandConnection::new(
-            &outcome.connection.connection_internal_id,
-            &outcome.connection.host_kind,
-            &outcome.connection.host_scope,
-            &outcome.connection.mode,
-            &selected_project.project.repo_root,
-            &outcome.connection.config_target,
-        ),
-        outcome.kind == ConnectionModeTransitionKind::Updated,
-        previous_mode,
-        outcome.connection.mode.clone(),
-        outcome.previous_integration_revision.as_str().to_owned(),
-        outcome.current_integration_revision.as_str().to_owned(),
-        outcome.rebound_guard_installation_ids.clone(),
-    )?;
-    let rendered = render_command_report(connection_output_format(&parsed), &report)?;
-    command_output_result(rendered.status, rendered.output)
+    with_cli_runtime_home_mutation_result(&runtime_home, "cli.connection.mode", |context| {
+        (|| -> Result<String, ConnectionCommandError> {
+            let selector = connection_selector(&parsed, current_dir, process)?;
+            let (connection, projects) = select_connection(&runtime_home, &selector)?;
+            let selected_project = selected_connection_project(&projects, selector.repo_root())?;
+            let previous_mode = connection.mode.clone();
+            let expected_revision = connection_integration_revision(&connection)?;
+            let guard_manifests = if connection.mode == mode {
+                Vec::new()
+            } else {
+                preflight_mode_guard_rebinds(&runtime_home, &connection, &projects, &mode)?
+            };
+            let outcome = transition_connection_mode(
+                context,
+                ConnectionModeTransition {
+                    connection_internal_id: connection.connection_internal_id.clone(),
+                    expected_mode: connection.mode.clone(),
+                    expected_integration_revision: expected_revision,
+                    mode,
+                    guard_manifests,
+                },
+            )?;
+            let report = ConnectionCommandReport::mode_transition(
+                &runtime_home,
+                CommandConnection::new(
+                    &outcome.connection.connection_internal_id,
+                    &outcome.connection.host_kind,
+                    &outcome.connection.host_scope,
+                    &outcome.connection.mode,
+                    &selected_project.project.repo_root,
+                    &outcome.connection.config_target,
+                ),
+                outcome.kind == ConnectionModeTransitionKind::Updated,
+                previous_mode,
+                outcome.connection.mode.clone(),
+                outcome.previous_integration_revision.as_str().to_owned(),
+                outcome.current_integration_revision.as_str().to_owned(),
+                outcome.rebound_guard_installation_ids.clone(),
+            )?;
+            let rendered = render_command_report(connection_output_format(&parsed), &report)?;
+            command_output_result(rendered.status, rendered.output)
+        })()
+    })
+    .map_err(ConnectionCommandError::MutationAdmission)?
 }
 
 fn preflight_mode_guard_rebinds(
@@ -745,85 +767,90 @@ fn command_connection_remove(
         |name| process.env_var(name),
         current_dir,
     )?;
-    let selector = connection_selector(&parsed, current_dir, process)?;
-    let (connection, projects) = select_connection(&runtime_home, &selector)?;
-    let selected_project = selected_connection_project(&projects, selector.repo_root())?;
-    let remaining_count = projects.len().saturating_sub(1);
-    let host_plan = if remaining_count == 0 {
-        Some(existing_host_plan(
-            &connection,
-            &runtime_home,
-            process,
-            Some(selected_project),
-        )?)
-    } else {
-        None
-    };
-    if parsed.dry_run {
-        let mut planned_changes = vec![PlannedConnectionChange::new(
-            PlannedConnectionChangeKind::ConnectionMembership,
-            PlannedChangeOperation::Remove,
-            path_text(&selected_project.project.repo_root),
-        )];
-        for installation in list_guard_installations(
-            &runtime_home,
-            &connection.connection_internal_id,
-            Some(&selected_project.project_id),
-        )? {
-            planned_changes.push(PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::GuardRegistrySetup,
-                PlannedChangeOperation::Remove,
-                installation.guard_installation_id,
-            ));
-        }
-        if remaining_count == 0 {
-            planned_changes.push(PlannedConnectionChange::new(
-                PlannedConnectionChangeKind::ManagedHostConfiguration,
-                PlannedChangeOperation::Remove,
-                &connection.config_target,
-            ));
-        }
-        planning::canonicalize_planned_changes(&mut planned_changes);
-        let report = ConnectionCommandReport::removal_dry_run(
-            &runtime_home,
-            CommandConnection::new(
-                &connection.connection_internal_id,
-                &connection.host_kind,
-                &connection.host_scope,
-                &connection.mode,
-                &selected_project.project.repo_root,
-                &connection.config_target,
-            ),
-            planned_changes,
-        )?;
-        let rendered = render_command_report(connection_output_format(&parsed), &report)?;
-        return command_output_result(rendered.status, rendered.output);
-    }
+    with_cli_runtime_home_mutation_result(&runtime_home, "cli.connection.remove", |context| {
+        (|| -> Result<String, ConnectionCommandError> {
+            let selector = connection_selector(&parsed, current_dir, process)?;
+            let (connection, projects) = select_connection(&runtime_home, &selector)?;
+            let selected_project = selected_connection_project(&projects, selector.repo_root())?;
+            let remaining_count = projects.len().saturating_sub(1);
+            let host_plan = if remaining_count == 0 {
+                Some(existing_host_plan(
+                    &connection,
+                    &runtime_home,
+                    process,
+                    Some(selected_project),
+                )?)
+            } else {
+                None
+            };
+            if parsed.dry_run {
+                let mut planned_changes = vec![PlannedConnectionChange::new(
+                    PlannedConnectionChangeKind::ConnectionMembership,
+                    PlannedChangeOperation::Remove,
+                    path_text(&selected_project.project.repo_root),
+                )];
+                for installation in list_guard_installations(
+                    &runtime_home,
+                    &connection.connection_internal_id,
+                    Some(&selected_project.project_id),
+                )? {
+                    planned_changes.push(PlannedConnectionChange::new(
+                        PlannedConnectionChangeKind::GuardRegistrySetup,
+                        PlannedChangeOperation::Remove,
+                        installation.guard_installation_id,
+                    ));
+                }
+                if remaining_count == 0 {
+                    planned_changes.push(PlannedConnectionChange::new(
+                        PlannedConnectionChangeKind::ManagedHostConfiguration,
+                        PlannedChangeOperation::Remove,
+                        &connection.config_target,
+                    ));
+                }
+                planning::canonicalize_planned_changes(&mut planned_changes);
+                let report = ConnectionCommandReport::removal_dry_run(
+                    &runtime_home,
+                    CommandConnection::new(
+                        &connection.connection_internal_id,
+                        &connection.host_kind,
+                        &connection.host_scope,
+                        &connection.mode,
+                        &selected_project.project.repo_root,
+                        &connection.config_target,
+                    ),
+                    planned_changes,
+                )?;
+                let rendered = render_command_report(connection_output_format(&parsed), &report)?;
+                return command_output_result(rendered.status, rendered.output);
+            }
 
-    if let Some(host_plan) = &host_plan {
-        remove_host_configuration(host_plan, &connection, process)?;
-    }
-    let removal_outcome = remove_connection_project(
-        &runtime_home,
-        &connection.connection_internal_id,
-        &selected_project.project_id,
-    )?;
-    let report = ConnectionCommandReport::removal(
-        &runtime_home,
-        CommandConnection::new(
-            &connection.connection_internal_id,
-            &connection.host_kind,
-            &connection.host_scope,
-            &connection.mode,
-            &selected_project.project.repo_root,
-            &connection.config_target,
-        ),
-        removal_outcome.membership_removed,
-        removal_outcome.connection_removed,
-        removal_outcome.remaining_project_count,
-    )?;
-    let rendered = render_command_report(connection_output_format(&parsed), &report)?;
-    command_output_result(rendered.status, rendered.output)
+            if let Some(host_plan) = &host_plan {
+                remove_host_configuration(host_plan, &connection, process)?;
+            }
+            let removal_outcome = remove_connection_project(
+                context,
+                &connection.connection_internal_id,
+                &selected_project.project_id,
+            )?;
+            let report = ConnectionCommandReport::removal(
+                &runtime_home,
+                CommandConnection::new(
+                    &connection.connection_internal_id,
+                    &connection.host_kind,
+                    &connection.host_scope,
+                    &connection.mode,
+                    &selected_project.project.repo_root,
+                    &connection.config_target,
+                ),
+                removal_outcome.membership_removed,
+                removal_outcome.connection_removed,
+                removal_outcome.remaining_project_count,
+            )?;
+            let rendered = render_command_report(connection_output_format(&parsed), &report)?;
+            command_output_result(rendered.status, rendered.output)
+        })()
+    })
+    .map_err(ConnectionCommandError::MutationAdmission)?
 }
 
 fn resolve_init_repo_root(
@@ -1647,7 +1674,7 @@ mod persisted_metadata_tests {
     };
     use volicord_test_support::{
         core_fixtures::CoreFixture, corrupt_connection_verification_report,
-        test_guard_manifest_json,
+        test_guard_manifest_json, TestRuntimeHomeMutation,
     };
 
     use super::*;
@@ -1744,7 +1771,14 @@ mod persisted_metadata_tests {
             )
             .map_err(|error| McpProcessFailure::protocol(McpStage::Startup, error.to_string()))?;
             transition_connection_mode(
-                runtime_home,
+                &TestRuntimeHomeMutation::acquire(runtime_home)
+                    .map_err(|error| {
+                        McpProcessFailure::protocol(McpStage::Startup, error.to_string())
+                    })?
+                    .context()
+                    .map_err(|error| {
+                        McpProcessFailure::protocol(McpStage::Startup, error.to_string())
+                    })?,
                 ConnectionModeTransition {
                     connection_internal_id: connection_id.to_owned(),
                     expected_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
@@ -1990,7 +2024,7 @@ mod persisted_metadata_tests {
         fs::create_dir_all(repo_root.join(".git"))?;
         let guard_installation_id = "guard_verify_mode_transition";
         upsert_guard_installation(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context()?,
             GuardInstallationUpsert {
                 guard_installation_id: guard_installation_id.to_owned(),
                 connection_internal_id: fixture.connection_id().to_owned(),

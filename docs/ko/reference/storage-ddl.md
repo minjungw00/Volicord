@@ -47,6 +47,13 @@ SQLite 외래 키는 이 DDL 계약의 일부입니다. 이 데이터베이스�
 PRAGMA foreign_keys = ON;
 ```
 
+프로덕션 코드는 활성 `RuntimeHomeMutationContext`를 요구하는 crate-private
+helper를 통해서만 `registry.sqlite` 또는 project `state.sqlite`를 쓰기 가능 상태로
+엽니다. Project record와 database 경로는 그 context의 정확한 정규 Runtime Home에
+속해야 합니다. 읽기 전용 helper는 분리되어 있고 변경 context가 필요하지 않습니다.
+Setup 전용 staging database 생성은 배타 setup context를 요구하며 bootstrap 내부에
+머뭅니다.
+
 상태 변경 커밋을 위해 최신성, 쓰기 티켓 호환성 행, 스테이징, 재실행 행, 영속
 정규 UTC 하한을 읽는 변경 트랜잭션은 `BEGIN IMMEDIATE` 또는 동등한 직렬화된 쓰기
 경계를 사용해야 합니다.

@@ -23,23 +23,23 @@ use super::{
 use crate::{
     operational_sessions::current_managed_mcp_runtime_session_for_connection,
     sqlite::{
-        begin_immediate_transaction, open_registry_database, open_registry_database_read_only,
-        registry_db_path,
+        begin_immediate_transaction, open_registry_database_for_mutation,
+        open_registry_database_read_only, registry_db_path,
     },
-    StoreError, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 /// Returns one verification using only its exact current managed caller coordinate.
 pub fn get_guard_integration_verification(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     verification_id: &str,
     caller: &GuardIntegrationVerificationCaller,
     observed_at: &str,
 ) -> StoreResult<GetIntegrationVerificationResult> {
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let caller = VerificationCallerCoordinate::from_caller(caller)?;
     let now = parse_timestamp("observed_at", observed_at)?;
-    let mut conn = open_registry_database(registry_db_path(runtime_home))?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     let mut run = run_by_id(&tx, verification_id)?.ok_or_else(|| StoreError::NotFound {
         entity: "guard_integration_verification",

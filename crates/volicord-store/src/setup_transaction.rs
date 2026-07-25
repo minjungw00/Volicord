@@ -12,11 +12,12 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::{StoreError, StoreResult};
+use crate::{RuntimeHomeMutationContext, StoreError, StoreResult};
 
 /// Prepared recovery boundary for existing Store database files.
 #[derive(Debug)]
-pub struct PreparedStoreMutationBoundary {
+pub struct PreparedStoreMutationBoundary<'mutation> {
+    context: &'mutation RuntimeHomeMutationContext<'mutation>,
     entries: Vec<StoreRecoveryEntry>,
 }
 
@@ -27,7 +28,7 @@ pub struct StoreMutationInput {
     digest: String,
 }
 
-impl PreparedStoreMutationBoundary {
+impl<'mutation> PreparedStoreMutationBoundary<'mutation> {
     /// Captures exact Store input digests without opening a writable database.
     pub fn inspect_inputs(paths: &[PathBuf]) -> StoreResult<Vec<StoreMutationInput>> {
         paths
@@ -57,7 +58,11 @@ impl PreparedStoreMutationBoundary {
     }
 
     /// Copies every existing Store input to a same-directory recovery entry.
-    pub fn prepare(inputs: &[StoreMutationInput]) -> StoreResult<Self> {
+    pub fn prepare(
+        context: &'mutation RuntimeHomeMutationContext<'mutation>,
+        inputs: &[StoreMutationInput],
+    ) -> StoreResult<Self> {
+        context.require_exclusive_setup()?;
         let mut entries = Vec::with_capacity(inputs.len());
         for input in inputs {
             match StoreRecoveryEntry::prepare(input) {
@@ -70,11 +75,12 @@ impl PreparedStoreMutationBoundary {
                 }
             }
         }
-        Ok(Self { entries })
+        Ok(Self { context, entries })
     }
 
     /// Revalidates that Store inputs still match their preparation snapshots.
     pub fn validate_inputs(&self) -> StoreResult<()> {
+        self.context.require_exclusive_setup()?;
         for entry in &self.entries {
             entry.validate_original()?;
         }
@@ -83,6 +89,7 @@ impl PreparedStoreMutationBoundary {
 
     /// Records the exact bytes produced by the last successful mutation group.
     pub fn checkpoint(&mut self) -> StoreResult<()> {
+        self.context.require_exclusive_setup()?;
         for entry in &mut self.entries {
             entry.checkpoint()?;
         }
@@ -91,6 +98,13 @@ impl PreparedStoreMutationBoundary {
 
     /// Restores checkpointed bytes when no later writer changed the Store file.
     pub fn rollback(&mut self) -> StoreMutationRollbackSummary {
+        if let Err(error) = self.context.require_exclusive_setup() {
+            return StoreMutationRollbackSummary {
+                restored: 0,
+                preserved: self.entries.len(),
+                errors: vec![error.to_string()],
+            };
+        }
         let mut summary = StoreMutationRollbackSummary::default();
         for entry in self.entries.iter_mut().rev() {
             match entry.rollback() {
@@ -106,6 +120,7 @@ impl PreparedStoreMutationBoundary {
 
     /// Discards recovery entries after the setup transaction commits.
     pub fn commit(&mut self) -> StoreResult<()> {
+        self.context.require_exclusive_setup()?;
         for entry in &mut self.entries {
             entry.commit()?;
         }
@@ -127,7 +142,7 @@ impl StoreMutationInput {
     }
 }
 
-impl Drop for PreparedStoreMutationBoundary {
+impl Drop for PreparedStoreMutationBoundary<'_> {
     fn drop(&mut self) {
         for entry in &mut self.entries {
             entry.cleanup_if_safe();
@@ -344,14 +359,17 @@ fn replace_with_recovery(_replacement: &Path, target: &Path) -> io::Result<PathB
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mutation::TestRuntimeHomeAdmission;
 
     #[test]
     fn checkpointed_store_bytes_restore_exactly() -> Result<(), Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
+        let setup = TestRuntimeHomeAdmission::exclusive(root.path())?;
+        let context = setup.context()?;
         let target = root.path().join("registry.sqlite");
         fs::write(&target, b"original")?;
         let inputs = PreparedStoreMutationBoundary::inspect_inputs(std::slice::from_ref(&target))?;
-        let mut boundary = PreparedStoreMutationBoundary::prepare(&inputs)?;
+        let mut boundary = PreparedStoreMutationBoundary::prepare(&context, &inputs)?;
         boundary.validate_inputs()?;
         fs::write(&target, b"mutated")?;
         boundary.checkpoint()?;
@@ -367,10 +385,12 @@ mod tests {
     #[test]
     fn later_store_writer_is_preserved_during_rollback() -> Result<(), Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
+        let setup = TestRuntimeHomeAdmission::exclusive(root.path())?;
+        let context = setup.context()?;
         let target = root.path().join("registry.sqlite");
         fs::write(&target, b"original")?;
         let inputs = PreparedStoreMutationBoundary::inspect_inputs(std::slice::from_ref(&target))?;
-        let mut boundary = PreparedStoreMutationBoundary::prepare(&inputs)?;
+        let mut boundary = PreparedStoreMutationBoundary::prepare(&context, &inputs)?;
         fs::write(&target, b"setup")?;
         boundary.checkpoint()?;
         fs::write(&target, b"external")?;
@@ -387,10 +407,12 @@ mod tests {
     fn successful_commit_discards_plaintext_recovery_entry(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
+        let setup = TestRuntimeHomeAdmission::exclusive(root.path())?;
+        let context = setup.context()?;
         let target = root.path().join("registry.sqlite");
         fs::write(&target, b"original")?;
         let inputs = PreparedStoreMutationBoundary::inspect_inputs(std::slice::from_ref(&target))?;
-        let mut boundary = PreparedStoreMutationBoundary::prepare(&inputs)?;
+        let mut boundary = PreparedStoreMutationBoundary::prepare(&context, &inputs)?;
         fs::write(&target, b"committed")?;
         boundary.checkpoint()?;
         boundary.commit()?;
@@ -404,12 +426,14 @@ mod tests {
     fn preparation_rejects_store_bytes_changed_after_planning(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
+        let setup = TestRuntimeHomeAdmission::exclusive(root.path())?;
+        let context = setup.context()?;
         let target = root.path().join("registry.sqlite");
         fs::write(&target, b"planned")?;
         let inputs = PreparedStoreMutationBoundary::inspect_inputs(std::slice::from_ref(&target))?;
         fs::write(&target, b"external")?;
 
-        let error = PreparedStoreMutationBoundary::prepare(&inputs)
+        let error = PreparedStoreMutationBoundary::prepare(&context, &inputs)
             .expect_err("stale Store input must be rejected");
         assert!(error.to_string().contains("SETUP_CONCURRENT_MODIFICATION"));
         assert_eq!(fs::read(&target)?, b"external");

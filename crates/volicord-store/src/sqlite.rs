@@ -12,6 +12,9 @@ use rusqlite::{
 use volicord_types::{canonical_json_string, StorageDatabaseKind, StorageManifest, UtcTimestamp};
 
 use crate::{
+    bootstrap::{validate_current_project_registration, ProjectRecord},
+    mutation::RuntimeHomeMutationContext,
+    runtime_home::{normalize_lexical_path, path_starts_with_for_boundary},
     schema::{
         current_schema_facts, current_storage_manifest, current_storage_manifest_json,
         extract_schema_facts, initialize_project_state_schema, initialize_registry_schema,
@@ -70,8 +73,14 @@ pub fn artifacts_tmp_path(runtime_home: impl AsRef<Path>, project_id: impl AsRef
         .join(ARTIFACTS_TMP_DIR)
 }
 
-/// Opens an existing `registry.sqlite` after exact-contract validation.
-pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
+/// Opens the authorized Runtime Home Registry for mutation.
+pub(crate) fn open_registry_database_for_mutation(
+    context: &RuntimeHomeMutationContext<'_>,
+) -> StoreResult<Connection> {
+    open_registry_database_at_path(registry_db_path(context.runtime_home().as_path()))
+}
+
+fn open_registry_database_at_path(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let path = path.as_ref();
     if !path.exists() {
         return Err(StoreError::NotFound {
@@ -89,7 +98,11 @@ pub fn open_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection>
 ///
 /// This is crate-private so callers cannot create a Registry at a selected
 /// final Runtime Home path outside the staged bootstrap boundary.
-pub(crate) fn create_registry_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
+pub(crate) fn create_registry_database_for_setup(
+    context: &RuntimeHomeMutationContext<'_>,
+    path: impl AsRef<Path>,
+) -> StoreResult<Connection> {
+    context.require_exclusive_setup()?;
     let path = path.as_ref();
     if let Some(parent) = path
         .parent()
@@ -119,12 +132,75 @@ pub fn open_registry_database_read_only(path: impl AsRef<Path>) -> StoreResult<C
     Ok(conn)
 }
 
-/// Opens project `state.sqlite`, creating its canonical schema only when empty.
-pub fn open_project_state_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
+/// Opens one registered project database for mutation under the exact Runtime Home context.
+pub(crate) fn open_project_state_database_for_mutation(
+    context: &RuntimeHomeMutationContext<'_>,
+    project: &ProjectRecord,
+) -> StoreResult<Connection> {
+    let project = validate_current_project_registration(context.runtime_home().as_path(), project)?;
+    if project.state_db_path != project.project_home.join(PROJECT_STATE_DB_FILE) {
+        return Err(StoreError::InvalidProjectRegistration {
+            project_id: project.project_id,
+            field: "state_db_path",
+            relationship: "state_db_path_mismatch",
+            detail: "project database does not belong to the mutation context's Runtime Home"
+                .to_owned(),
+        });
+    }
+    open_project_state_database_at_path(&project.state_db_path)
+}
+
+/// Creates a project database at a validated path inside the authorized Runtime Home.
+pub(crate) fn create_project_state_database_for_mutation(
+    context: &RuntimeHomeMutationContext<'_>,
+    path: impl AsRef<Path>,
+) -> StoreResult<Connection> {
+    let path =
+        normalize_lexical_path("project_state_database", path.as_ref()).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: error.to_string(),
+            }
+        })?;
+    if !path_starts_with_for_boundary(&path, context.runtime_home().as_path())
+        || path.file_name().and_then(|name| name.to_str()) != Some(PROJECT_STATE_DB_FILE)
+    {
+        return Err(StoreError::InvalidInput {
+            detail: format!(
+                "project database {} does not belong to mutation context Runtime Home {}",
+                path.display(),
+                context.runtime_home().as_path().display()
+            ),
+        });
+    }
+    open_project_state_database_at_path(path)
+}
+
+fn open_project_state_database_at_path(path: impl AsRef<Path>) -> StoreResult<Connection> {
     let mut conn = open_sqlite_database(path)?;
     initialize_project_state_schema(&mut conn)?;
     validate_project_state_schema(&conn)?;
     Ok(conn)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn open_registry_database_for_test(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    open_registry_database_at_path(path)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn open_project_state_database_for_test(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    open_project_state_database_at_path(path)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn open_project_state_database_for_test_mutation(
+    context: &RuntimeHomeMutationContext<'_>,
+    project: &ProjectRecord,
+) -> StoreResult<Connection> {
+    open_project_state_database_for_mutation(context, project)
 }
 
 /// Opens an existing project `state.sqlite` for read-only exact-contract validation.
@@ -155,9 +231,32 @@ pub fn open_read_only_database(path: impl AsRef<Path>) -> StoreResult<Connection
     Ok(conn)
 }
 
-/// Probes whether an existing SQLite database can acquire a write transaction.
-pub fn sqlite_database_write_capability(path: impl AsRef<Path>) -> StoreResult<bool> {
-    let path = path.as_ref();
+/// Probes whether the authorized Runtime Home Registry can acquire a write transaction.
+pub fn registry_database_write_capability(
+    context: &RuntimeHomeMutationContext<'_>,
+) -> StoreResult<bool> {
+    sqlite_database_write_capability(&registry_db_path(context.runtime_home().as_path()))
+}
+
+/// Probes whether one authorized project database can acquire a write transaction.
+pub fn project_state_database_write_capability(
+    context: &RuntimeHomeMutationContext<'_>,
+    project: &ProjectRecord,
+) -> StoreResult<bool> {
+    let project = validate_current_project_registration(context.runtime_home().as_path(), project)?;
+    if project.state_db_path != project.project_home.join(PROJECT_STATE_DB_FILE) {
+        return Err(StoreError::InvalidProjectRegistration {
+            project_id: project.project_id,
+            field: "state_db_path",
+            relationship: "state_db_path_mismatch",
+            detail: "project database does not belong to the mutation context's Runtime Home"
+                .to_owned(),
+        });
+    }
+    sqlite_database_write_capability(&project.state_db_path)
+}
+
+fn sqlite_database_write_capability(path: &Path) -> StoreResult<bool> {
     if !path.exists() {
         return Err(StoreError::NotFound {
             entity: "project_state_database",
@@ -582,21 +681,80 @@ mod tests {
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
+    use crate::bootstrap::{
+        initialize_runtime_home, project_record, register_project, ProjectRegistration,
+        ACTIVE_PROJECT_STATUS,
+    };
+    use crate::mutation::TestRuntimeHomeAdmission;
     use crate::schema::current_storage_manifest_json;
 
     #[test]
     fn canonical_schema_initialization_is_idempotent() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("canonical-schema-idempotent")?;
+        let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
+        let context = setup.context()?;
         fs::create_dir_all(runtime_home.path())?;
         let registry_path = registry_db_path(runtime_home.path());
-        create_registry_database(&registry_path)?;
-        let registry = open_registry_database(&registry_path)?;
+        create_registry_database_for_setup(&context, &registry_path)?;
+        let registry = open_registry_database_for_test(&registry_path)?;
         validate_registry_schema(&registry)?;
 
         let project_path = project_state_db_path(runtime_home.path(), "PRJ-0001");
-        open_project_state_database(&project_path)?;
-        let project = open_project_state_database(&project_path)?;
+        open_project_state_database_for_test(&project_path)?;
+        let project = open_project_state_database_for_test(&project_path)?;
         validate_project_state_schema(&project)
+    }
+
+    #[test]
+    fn project_database_from_another_runtime_home_is_not_authorized(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let first = TempRuntimeHome::new("sqlite-mutation-target-first")?;
+        let second = TempRuntimeHome::new("sqlite-mutation-target-second")?;
+        let second_repo = second.create_product_repo("repo")?;
+        let first_setup = TestRuntimeHomeAdmission::exclusive(first.path())?;
+        let first_setup_context = first_setup.context()?;
+        initialize_runtime_home(
+            &first_setup_context,
+            first.path(),
+            "runtime_home_sqlite_first",
+            "{}",
+        )?;
+        drop(first_setup_context);
+        drop(first_setup);
+        let second_setup = TestRuntimeHomeAdmission::exclusive(second.path())?;
+        let second_context = second_setup.context()?;
+        initialize_runtime_home(
+            &second_context,
+            second.path(),
+            "runtime_home_sqlite_second",
+            "{}",
+        )?;
+        register_project(
+            &second_context,
+            ProjectRegistration {
+                project_id: "project_second".to_owned(),
+                repo_root: second_repo,
+                project_home: None,
+                status: ACTIVE_PROJECT_STATUS.to_owned(),
+                metadata_json: "{}".to_owned(),
+            },
+        )?;
+        let second_project =
+            project_record(second.path(), "project_second")?.expect("second Runtime Home project");
+        drop(second_context);
+        drop(second_setup);
+        let first_mutation = TestRuntimeHomeAdmission::shared(first.path())?;
+        let first_context = first_mutation.context()?;
+
+        let error = open_project_state_database_for_mutation(&first_context, &second_project)
+            .expect_err("Runtime Home A must not authorize project state from Runtime Home B");
+
+        assert!(matches!(
+            error,
+            StoreError::InvalidProjectRegistration { .. }
+        ));
+        assert!(error.to_string().contains("Runtime Home"));
+        Ok(())
     }
 
     #[test]
@@ -609,7 +767,7 @@ mod tests {
         for (index, statement) in cases.into_iter().enumerate() {
             let runtime_home = TempRuntimeHome::new(&format!("schema-mismatch-{index}"))?;
             let path = project_state_db_path(runtime_home.path(), "PRJ-mismatch");
-            let conn = open_project_state_database(&path)?;
+            let conn = open_project_state_database_for_test(&path)?;
             conn.execute_batch(statement)?;
             let error = validate_project_state_schema(&conn)
                 .expect_err("physical schema mismatch must fail closed");
@@ -688,8 +846,8 @@ mod tests {
     fn immediate_transaction_serializes_writers() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("immediate-transaction")?;
         let path = runtime_home.project_state_db_path("PRJ-tx");
-        let mut first = open_project_state_database(&path)?;
-        let mut second = open_project_state_database(&path)?;
+        let mut first = open_project_state_database_for_test(&path)?;
+        let mut second = open_project_state_database_for_test(&path)?;
         first.busy_timeout(Duration::from_millis(0))?;
         second.busy_timeout(Duration::from_millis(0))?;
 
@@ -708,7 +866,8 @@ mod tests {
     #[test]
     fn foreign_keys_are_enabled_and_checked() -> StoreResult<()> {
         let runtime_home = TempRuntimeHome::new("foreign-keys")?;
-        let conn = open_project_state_database(runtime_home.project_state_db_path("PRJ-fk"))?;
+        let conn =
+            open_project_state_database_for_test(runtime_home.project_state_db_path("PRJ-fk"))?;
         assert!(foreign_keys_enabled(&conn)?);
         conn.execute(
             "INSERT INTO tasks (

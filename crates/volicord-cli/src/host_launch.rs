@@ -28,6 +28,7 @@ use crate::host_integration::{
     },
     verification::ManagedConfigStatus,
 };
+use crate::mutation_admission::with_cli_runtime_home_mutation;
 
 /// Connection selection accepted by the internal launcher.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,15 +79,23 @@ where
     }
 
     let revision = connection_integration_revision(&connection)?;
-    let lease = issue_managed_mcp_launch_lease(
+    let lease = with_cli_runtime_home_mutation(
         &runtime_home,
-        ManagedMcpLaunchLeaseIssue {
-            connection_internal_id: connection.connection_internal_id.clone(),
-            host_kind: host,
-            expected_integration_revision: revision.as_str().to_owned(),
-            expected_launch_fingerprint: connection.managed_fingerprint.clone(),
+        "cli.managed_launch.issue",
+        |mutation_context| {
+            issue_managed_mcp_launch_lease(
+                mutation_context,
+                ManagedMcpLaunchLeaseIssue {
+                    connection_internal_id: connection.connection_internal_id.clone(),
+                    host_kind: host,
+                    expected_integration_revision: revision.as_str().to_owned(),
+                    expected_launch_fingerprint: connection.managed_fingerprint.clone(),
+                },
+            )
+            .map_err(Into::into)
         },
-    )?;
+    )
+    .map_err(|error| HostLaunchError::contract(error.to_string()))?;
     let lease_id = lease.launch_lease_id.clone();
     let claim = ManagedMcpLaunchLeaseConsumption {
         launch_lease_id: lease.launch_lease_id,
@@ -98,9 +107,16 @@ where
     let launch_result =
         run_managed_stdio(McpAdapter::new(runtime_home.clone(), context), claim, None)
             .map_err(HostLaunchError::from);
-    let cleanup_result = cancel_managed_mcp_launch_lease(&runtime_home, &lease_id)
-        .map(|_| ())
-        .map_err(HostLaunchError::from);
+    let cleanup_result = with_cli_runtime_home_mutation(
+        &runtime_home,
+        "cli.managed_launch.cancel",
+        |mutation_context| {
+            cancel_managed_mcp_launch_lease(mutation_context, &lease_id)
+                .map(|_| ())
+                .map_err(Into::into)
+        },
+    )
+    .map_err(|error| HostLaunchError::contract(error.to_string()));
     match (launch_result, cleanup_result) {
         (Err(error), _) => Err(error),
         (Ok(()), result) => result,

@@ -55,6 +55,25 @@ trusted contract violates that contract. A malformed or unknown untrusted
 boundary input that has not become persisted owner state is `Rejected`, not
 `Corrupt`, and is not guessed into a supported shape.
 
+### Runtime Home setup in progress
+
+`runtime_home.mutation.setup_in_progress` is the stable typed coordination
+condition returned when a supported ordinary writer cannot acquire
+`SharedWriter` because setup owns `ExclusiveSetup`. It is not policy
+`NotAllowed`, persisted-data `Corrupt`, or an untyped SQLite busy failure.
+Facts are bounded to the canonical Runtime Home, mutation domain, requested
+mode, wait policy, elapsed wait, and retryability. They do not expose the
+coordination-file path.
+
+For a required CLI or MCP mutation/observation, the operation is
+`Unavailable`, returns a typed non-success result, and has no Runtime Home
+effect. For a `record` Guard hook, the host action continues under its existing
+nonblocking policy while observation persistence is explicitly unavailable;
+the response reports `persisted=false` and does not manufacture `Deny`. Setup
+retains one exclusive context across publication, checkpoints, confirmation,
+and rollback. Together with publication-ID ownership validation, this excludes
+accepted external mutations from the state that setup may delete or restore.
+
 ### Semantic host-contract rejection
 
 Codex wire input is decoded only by the explicitly selected profile.

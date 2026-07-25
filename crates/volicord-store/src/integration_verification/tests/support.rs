@@ -1,7 +1,4 @@
-use std::{
-    error::Error,
-    path::{Path, PathBuf},
-};
+use std::{error::Error, path::PathBuf};
 
 use volicord_host_contract::{
     project_mcp_tool, CanonicalToolName, CodexHookPromptCorrelation, CodexHookToolCorrelation,
@@ -36,9 +33,10 @@ use crate::{
         BeginGuardIntegrationVerificationInput, GuardIntegrationVerificationCaller,
         GuardIntegrationVerificationRunRecord, GuardProbeHookEvidence,
     },
+    mutation::{with_test_runtime_home_setup, TestRuntimeHomeAdmission},
     operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
-    sqlite::{open_registry_database, registry_db_path},
-    StoreResult,
+    sqlite::{open_registry_database_for_test, registry_db_path},
+    RuntimeHomeMutationContext, StoreResult,
 };
 
 pub(super) const POLICY_HASH: &str =
@@ -56,6 +54,7 @@ pub(super) const BEGIN_AT: &str = "2026-07-23T00:00:03Z";
 pub(super) const ACK_AT: &str = "2026-07-23T00:00:04Z";
 
 pub(super) struct VerificationFixture {
+    mutation: TestRuntimeHomeAdmission,
     pub runtime_home: TempRuntimeHome,
     pub repo_root: PathBuf,
     pub runtime_session_id: String,
@@ -79,48 +78,58 @@ pub(super) struct ToolEventFixture<'a> {
 impl VerificationFixture {
     pub(super) fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
         let runtime_home = TempRuntimeHome::new(prefix)?;
-        initialize_runtime_home(runtime_home.path(), &format!("runtime_home_{prefix}"), "{}")?;
         let repo_root = runtime_home.create_product_repo("verification-repo")?;
-        register_project(
-            runtime_home.path(),
-            ProjectRegistration {
-                project_id: PROJECT_ID.to_owned(),
-                repo_root: repo_root.clone(),
-                project_home: None,
-                status: ACTIVE_PROJECT_STATUS.to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        ensure_agent_connection(
-            runtime_home.path(),
-            AgentConnectionRegistration {
-                connection_internal_id: CONNECTION_ID.to_owned(),
-                host_kind: HOST_KIND_CODEX.to_owned(),
-                intent: CONNECTION_INTENT_SHARED.to_owned(),
-                host_scope: HOST_SCOPE_PROJECT.to_owned(),
-                server_name: SERVER_KEY.to_owned(),
-                config_target: runtime_home
-                    .path()
-                    .join("connection-verification")
-                    .to_string_lossy()
-                    .into_owned(),
-                mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                enabled: true,
-                managed_fingerprint: "fingerprint:verification".to_owned(),
-                metadata_json: "{}".to_owned(),
-            },
-        )?;
-        add_connection_project(
-            runtime_home.path(),
-            ConnectionProjectRegistration {
-                connection_internal_id: CONNECTION_ID.to_owned(),
-                project_id: PROJECT_ID.to_owned(),
-            },
-        )?;
+        with_test_runtime_home_setup(runtime_home.path(), |context| {
+            initialize_runtime_home(
+                context,
+                runtime_home.path(),
+                &format!("runtime_home_{prefix}"),
+                "{}",
+            )?;
+            register_project(
+                context,
+                ProjectRegistration {
+                    project_id: PROJECT_ID.to_owned(),
+                    repo_root: repo_root.clone(),
+                    project_home: None,
+                    status: ACTIVE_PROJECT_STATUS.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            ensure_agent_connection(
+                context,
+                AgentConnectionRegistration {
+                    connection_internal_id: CONNECTION_ID.to_owned(),
+                    host_kind: HOST_KIND_CODEX.to_owned(),
+                    intent: CONNECTION_INTENT_SHARED.to_owned(),
+                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
+                    server_name: SERVER_KEY.to_owned(),
+                    config_target: runtime_home
+                        .path()
+                        .join("connection-verification")
+                        .to_string_lossy()
+                        .into_owned(),
+                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                    enabled: true,
+                    managed_fingerprint: "fingerprint:verification".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            add_connection_project(
+                context,
+                ConnectionProjectRegistration {
+                    connection_internal_id: CONNECTION_ID.to_owned(),
+                    project_id: PROJECT_ID.to_owned(),
+                },
+            )?;
+            Ok(())
+        })?;
+        let mutation = TestRuntimeHomeAdmission::shared(runtime_home.path())?;
+        let context = mutation.context()?;
         let connection = agent_connection_record_read_only(runtime_home.path(), CONNECTION_ID)?
             .expect("test connection");
         upsert_guard_installation(
-            runtime_home.path(),
+            &context,
             GuardInstallationUpsert {
                 guard_installation_id: INSTALLATION_ID.to_owned(),
                 connection_internal_id: CONNECTION_ID.to_owned(),
@@ -139,7 +148,7 @@ impl VerificationFixture {
                 .as_str()
                 .to_owned();
         let runtime_session_id = start_mcp_runtime_session_for_test(
-            runtime_home.path(),
+            &context,
             McpRuntimeSessionStart {
                 connection_internal_id: CONNECTION_ID.to_owned(),
                 session_source: McpRuntimeSessionSource::ManagedHost,
@@ -151,9 +160,9 @@ impl VerificationFixture {
         .runtime_session_id;
 
         let prompt = prompt_correlation(HOST_TURN_ID);
-        observe_event_correlation(runtime_home.path(), prompt.clone(), "2026-07-23T00:00:01Z")?;
+        observe_event_correlation(&context, prompt.clone(), "2026-07-23T00:00:01Z")?;
         insert_test_event(
-            runtime_home.path(),
+            &context,
             EventFixture {
                 integration_revision: &integration_revision,
                 event_id: "guard_event_prompt",
@@ -166,7 +175,7 @@ impl VerificationFixture {
             },
         )?;
         let session = bind_agent_session_runtime(
-            runtime_home.path(),
+            &context,
             PROJECT_ID,
             AgentSessionRuntimeBinding {
                 runtime_session_id: runtime_session_id.clone(),
@@ -177,12 +186,17 @@ impl VerificationFixture {
             },
         )?;
         Ok(Self {
+            mutation,
             runtime_home,
             repo_root,
             runtime_session_id,
             project_session_id: session.session_id,
             integration_revision,
         })
+    }
+
+    pub(super) fn context(&self) -> StoreResult<RuntimeHomeMutationContext<'_>> {
+        self.mutation.context()
     }
 
     pub(super) fn caller(&self) -> GuardIntegrationVerificationCaller {
@@ -208,7 +222,7 @@ impl VerificationFixture {
         ids: [&str; N],
     ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
         begin_guard_integration_verification_with_generator(
-            self.runtime_home.path(),
+            &self.context()?,
             BeginGuardIntegrationVerificationInput {
                 caller: self.caller(),
                 project_id: PROJECT_ID.to_owned(),
@@ -225,7 +239,7 @@ impl VerificationFixture {
         observed_at: &str,
     ) -> StoreResult<GuardProbeResult> {
         acknowledge_guard_integration_probe(
-            self.runtime_home.path(),
+            &self.context()?,
             verification_id,
             &self.caller(),
             observed_at,
@@ -236,7 +250,7 @@ impl VerificationFixture {
         &self,
         verification_id: &str,
     ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
-        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        let conn = open_registry_database_for_test(registry_db_path(self.runtime_home.path()))?;
         Ok(run_by_id(&conn, verification_id)?.expect("verification record"))
     }
 
@@ -269,7 +283,7 @@ impl VerificationFixture {
         verification_id: &str,
         expected_host_callable_name: &str,
     ) -> StoreResult<()> {
-        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        let conn = open_registry_database_for_test(registry_db_path(self.runtime_home.path()))?;
         conn.execute(
             "UPDATE guard_integration_verification_runs
                 SET expected_host_callable_name = ?2
@@ -280,7 +294,7 @@ impl VerificationFixture {
     }
 
     fn set_current_manifest_field(&self, path: &str, value: &str) -> StoreResult<()> {
-        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        let conn = open_registry_database_for_test(registry_db_path(self.runtime_home.path()))?;
         let manifest_json: String = conn.query_row(
             "SELECT manifest_json
                FROM guard_installations
@@ -331,7 +345,7 @@ impl VerificationFixture {
         reason: GuardVerificationRepairReason,
         retry_policy: GuardVerificationRetryPolicy,
     ) -> StoreResult<()> {
-        let conn = open_registry_database(registry_db_path(self.runtime_home.path()))?;
+        let conn = open_registry_database_for_test(registry_db_path(self.runtime_home.path()))?;
         mark_repair_required(
             &conn,
             verification_id,
@@ -351,9 +365,9 @@ impl VerificationFixture {
         ids: [&str; N],
     ) -> StoreResult<GuardIntegrationVerificationRunRecord> {
         let prompt = prompt_correlation(turn);
-        observe_event_correlation(self.runtime_home.path(), prompt.clone(), observed_at)?;
+        observe_event_correlation(&self.context()?, prompt.clone(), observed_at)?;
         insert_test_event(
-            self.runtime_home.path(),
+            &self.context()?,
             EventFixture {
                 integration_revision: &self.integration_revision,
                 event_id: prompt_event_id,
@@ -366,7 +380,7 @@ impl VerificationFixture {
             },
         )?;
         let session = bind_agent_session_runtime(
-            self.runtime_home.path(),
+            &self.context()?,
             PROJECT_ID,
             AgentSessionRuntimeBinding {
                 runtime_session_id: self.runtime_session_id.clone(),
@@ -377,7 +391,7 @@ impl VerificationFixture {
             },
         )?;
         begin_guard_integration_verification_with_generator(
-            self.runtime_home.path(),
+            &self.context()?,
             BeginGuardIntegrationVerificationInput {
                 caller: self.caller_for_turn(turn),
                 project_id: PROJECT_ID.to_owned(),
@@ -390,13 +404,9 @@ impl VerificationFixture {
 
     pub(super) fn insert_tool_event(&self, event: ToolEventFixture<'_>) -> StoreResult<()> {
         let correlation = tool_correlation(event.turn, event.tool_use_id, event.tool_name);
-        observe_event_correlation(
-            self.runtime_home.path(),
-            correlation.clone(),
-            event.occurred_at,
-        )?;
+        observe_event_correlation(&self.context()?, correlation.clone(), event.occurred_at)?;
         insert_test_event(
-            self.runtime_home.path(),
+            &self.context()?,
             EventFixture {
                 integration_revision: event
                     .integration_revision
@@ -411,7 +421,7 @@ impl VerificationFixture {
             },
         )?;
         observe_guard_probe_hook_event(
-            self.runtime_home.path(),
+            &self.context()?,
             PROJECT_ID,
             event.event_id,
             GuardProbeHookEvidence::present(Some(event.verification_id.to_owned())),
@@ -454,7 +464,7 @@ impl VerificationFixture {
         occurred_at: &str,
     ) -> StoreResult<()> {
         insert_guard_event(
-            self.runtime_home.path(),
+            &self.context()?,
             PROJECT_ID,
             GuardEventInsert {
                 guard_event_id: event_id.to_owned(),
@@ -477,7 +487,7 @@ impl VerificationFixture {
             },
         )?;
         observe_guard_probe_hook_event(
-            self.runtime_home.path(),
+            &self.context()?,
             PROJECT_ID,
             event_id,
             GuardProbeHookEvidence::absent(),
@@ -539,12 +549,12 @@ fn tool_correlation(turn: &str, tool_use: &str, tool_name: &str) -> HostNativeCo
 }
 
 fn observe_event_correlation(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     correlation: HostNativeCorrelation,
     observed_at: &str,
 ) -> StoreResult<()> {
     observe_host_correlation(
-        runtime_home,
+        context,
         PROJECT_ID,
         HostCorrelationObservation {
             connection_internal_id: CONNECTION_ID.to_owned(),
@@ -556,9 +566,12 @@ fn observe_event_correlation(
     Ok(())
 }
 
-fn insert_test_event(runtime_home: &Path, event: EventFixture<'_>) -> StoreResult<()> {
+fn insert_test_event(
+    context: &RuntimeHomeMutationContext<'_>,
+    event: EventFixture<'_>,
+) -> StoreResult<()> {
     insert_guard_event(
-        runtime_home,
+        context,
         PROJECT_ID,
         GuardEventInsert {
             guard_event_id: event.event_id.to_owned(),

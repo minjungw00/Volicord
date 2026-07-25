@@ -5,6 +5,7 @@ use crate::diagnostics::{
     McpToolDiscoveryDiagnostic,
 };
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError, McpHostError};
+use crate::mutation_admission::with_mcp_runtime_home_mutation;
 use crate::prelude::*;
 use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_output;
@@ -65,34 +66,43 @@ where
         process_id: std::process::id(),
         process_started_at,
     };
-    let runtime_session = if let Some(lease) = options.managed_lease {
-        if options.session_source != McpRuntimeSessionSource::ManagedHost {
-            return Err(McpAdapterError::Environment(
-                "managed launch lease requires session_source=managed_host".to_owned(),
-            ));
-        }
-        consume_managed_mcp_launch_lease_and_start_runtime(
-            &adapter.runtime_home,
-            lease,
-            runtime_start,
-        )
-    } else {
-        start_mcp_runtime_session(&adapter.runtime_home, runtime_start)
-    };
-    let runtime_session = runtime_session.map_err(McpAdapterError::Store)?;
+    let runtime_session = with_mcp_runtime_home_mutation(
+        &adapter.runtime_home,
+        "mcp.runtime_session.start",
+        |context| {
+            let runtime_session = if let Some(lease) = options.managed_lease {
+                if options.session_source != McpRuntimeSessionSource::ManagedHost {
+                    return Err(McpAdapterError::Environment(
+                        "managed launch lease requires session_source=managed_host".to_owned(),
+                    ));
+                }
+                consume_managed_mcp_launch_lease_and_start_runtime(context, lease, runtime_start)
+            } else {
+                start_mcp_runtime_session(context, runtime_start)
+            };
+            runtime_session.map_err(McpAdapterError::Store)
+        },
+    )?;
     state.runtime_session_id = runtime_session.runtime_session_id;
 
     let transport_result = (|| {
         validate_managed_stdio_session_ownership(&adapter, &state)?;
         if !state.codex_binding.is_pending() && !state.managed_stdio_binding_active {
-            let _ = start_transport_diagnostic_session(&adapter, &state);
+            let _ = with_mcp_runtime_home_mutation(
+                &adapter.runtime_home,
+                "mcp.diagnostic_session.start",
+                |context| {
+                    start_transport_diagnostic_session(context, &adapter, &state)
+                        .map_err(McpAdapterError::Store)
+                },
+            );
         }
         loop {
             let line = match read_bounded_json_line(&mut reader)? {
                 BoundedJsonLine::Eof => break,
                 BoundedJsonLine::Line(line) => line,
                 BoundedJsonLine::InvalidUtf8 => {
-                    record_current_session_finding(
+                    record_current_session_finding_with_admission(
                         &adapter,
                         &mut state,
                         McpDiagnostic::JsonRpc(JsonRpcDiagnostic::ParseError),
@@ -109,7 +119,7 @@ where
                     continue;
                 }
                 BoundedJsonLine::TooLong => {
-                    record_current_session_finding(
+                    record_current_session_finding_with_admission(
                         &adapter,
                         &mut state,
                         McpDiagnostic::JsonRpc(JsonRpcDiagnostic::MessageSizeExceeded),
@@ -128,7 +138,7 @@ where
                     continue;
                 }
                 BoundedJsonLine::Incomplete => {
-                    record_current_session_finding(
+                    record_current_session_finding_with_admission(
                         &adapter,
                         &mut state,
                         McpDiagnostic::JsonRpc(JsonRpcDiagnostic::FramingFailure),
@@ -148,7 +158,7 @@ where
             let message: Value = match serde_json::from_str(&line) {
                 Ok(message) => message,
                 Err(error) => {
-                    record_current_session_finding(
+                    record_current_session_finding_with_admission(
                         &adapter,
                         &mut state,
                         McpDiagnostic::JsonRpc(JsonRpcDiagnostic::ParseError),
@@ -200,7 +210,7 @@ where
                     )),
                 };
                 if let Some(diagnostic) = incomplete {
-                    record_current_session_finding(
+                    record_current_session_finding_with_admission(
                         &adapter,
                         &mut state,
                         diagnostic,
@@ -211,19 +221,25 @@ where
                         true,
                     )?;
                 } else {
-                    record_mcp_graceful_close(
+                    with_mcp_runtime_home_mutation(
                         &adapter.runtime_home,
-                        &state.runtime_session_id,
-                        &authoritative_observation_timestamp(),
-                    )
-                    .map_err(McpAdapterError::Store)?;
+                        "mcp.runtime_session.close",
+                        |context| {
+                            record_mcp_graceful_close(
+                                context,
+                                &state.runtime_session_id,
+                                &authoritative_observation_timestamp(),
+                            )
+                            .map_err(McpAdapterError::Store)
+                        },
+                    )?;
                 }
             }
             Ok(())
         }
         Err(error) => {
             if !state.terminal_finding_recorded {
-                record_current_session_finding(
+                record_current_session_finding_with_admission(
                     &adapter,
                     &mut state,
                     McpDiagnostic::from(&error),
@@ -411,16 +427,22 @@ where
     .map_err(McpAdapterError::Store)?
     .ok_or_else(|| McpAdapterError::Environment("test Connection disappeared".to_owned()))?;
     let revision = connection_integration_revision(&connection).map_err(McpAdapterError::Store)?;
-    let lease = issue_managed_mcp_launch_lease(
+    let lease = crate::mutation_admission::with_mcp_runtime_home_mutation(
         &adapter.runtime_home,
-        ManagedMcpLaunchLeaseIssue {
-            connection_internal_id: connection.connection_internal_id.clone(),
-            host_kind: HostKind::Codex,
-            expected_integration_revision: revision.as_str().to_owned(),
-            expected_launch_fingerprint: connection.managed_fingerprint.clone(),
+        "mcp.test_managed_launch",
+        |context| {
+            issue_managed_mcp_launch_lease(
+                context,
+                ManagedMcpLaunchLeaseIssue {
+                    connection_internal_id: connection.connection_internal_id.clone(),
+                    host_kind: HostKind::Codex,
+                    expected_integration_revision: revision.as_str().to_owned(),
+                    expected_launch_fingerprint: connection.managed_fingerprint.clone(),
+                },
+            )
+            .map_err(McpAdapterError::Store)
         },
-    )
-    .map_err(McpAdapterError::Store)?;
+    )?;
     run_stdio_with_options(
         adapter,
         reader,
@@ -701,23 +723,47 @@ pub(crate) fn handle_json_rpc_message(
     state: &mut ConnectionState,
     message: Value,
 ) -> Result<Option<Value>, McpAdapterError> {
-    if let Value::Array(entries) = message {
-        return handle_json_rpc_batch(adapter, state, entries);
+    let response_id = message
+        .as_object()
+        .and_then(|object| object.get("id"))
+        .cloned();
+    match with_mcp_runtime_home_mutation(
+        &adapter.runtime_home,
+        "mcp.lifecycle_message",
+        |context| handle_json_rpc_message_admitted(context, adapter, state, message),
+    ) {
+        Ok(response) => Ok(response),
+        Err(error @ McpAdapterError::MutationAdmission(_)) => {
+            Ok(response_id.map(|id| json_rpc_error_for_adapter(id, error)))
+        }
+        Err(error) => Err(error),
     }
-    handle_single_json_rpc_message(adapter, state, message)
+}
+
+fn handle_json_rpc_message_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+    message: Value,
+) -> Result<Option<Value>, McpAdapterError> {
+    if let Value::Array(entries) = message {
+        return handle_json_rpc_batch(context, adapter, state, entries);
+    }
+    handle_single_json_rpc_message(context, adapter, state, message)
 }
 
 fn handle_single_json_rpc_message(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     message: Value,
 ) -> Result<Option<Value>, McpAdapterError> {
     match parse_client_message(message) {
         Ok(ClientMessage::Request(request)) => {
-            handle_json_rpc_request(adapter, state, request).map(Some)
+            handle_json_rpc_request(context, adapter, state, request).map(Some)
         }
         Ok(ClientMessage::Notification(notification)) => {
-            handle_json_rpc_notification(adapter, state, notification)?;
+            handle_json_rpc_notification(context, adapter, state, notification)?;
             Ok(None)
         }
         Err(error) => Ok(Some(json_rpc_error(
@@ -728,6 +774,7 @@ fn handle_single_json_rpc_message(
         )))
         .and_then(|response| {
             record_current_session_finding(
+                context,
                 adapter,
                 state,
                 McpDiagnostic::JsonRpc(error.diagnostic),
@@ -743,12 +790,14 @@ fn handle_single_json_rpc_message(
 }
 
 fn handle_json_rpc_batch(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     entries: Vec<Value>,
 ) -> Result<Option<Value>, McpAdapterError> {
     if entries.is_empty() {
         record_current_session_finding(
+            context,
             adapter,
             state,
             McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidRequest),
@@ -766,6 +815,7 @@ fn handle_json_rpc_batch(
 
     if let Err(rejection) = admit_json_rpc_batch(state, &entries) {
         record_current_session_finding(
+            context,
             adapter,
             state,
             rejection.diagnostic(),
@@ -783,7 +833,7 @@ fn handle_json_rpc_batch(
 
     let mut responses = Vec::new();
     for entry in entries {
-        if let Some(response) = handle_single_json_rpc_message(adapter, state, entry)? {
+        if let Some(response) = handle_single_json_rpc_message(context, adapter, state, entry)? {
             responses.push(response);
         }
     }
@@ -938,6 +988,7 @@ pub(crate) fn valid_request_id(value: &Value) -> Result<Value, JsonRpcFailure> {
 }
 
 pub(crate) fn handle_json_rpc_notification(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     notification: JsonRpcNotification,
@@ -960,7 +1011,7 @@ pub(crate) fn handle_json_rpc_notification(
             .as_str();
         if !state.runtime_session_id.is_empty() {
             record_mcp_initialized_notification(
-                &adapter.runtime_home,
+                context,
                 &state.runtime_session_id,
                 selected_revision,
                 &authoritative_observation_timestamp(),
@@ -978,6 +1029,7 @@ pub(crate) fn handle_json_rpc_notification(
             && notification_params_are_object_or_absent(notification.params.as_ref()))
     {
         record_current_session_finding(
+            context,
             adapter,
             state,
             McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InitializedNotificationInvalid),
@@ -996,6 +1048,7 @@ pub(crate) fn notification_params_are_object_or_absent(params: Option<&Value>) -
 }
 
 pub(crate) fn handle_json_rpc_request(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     request: JsonRpcRequest,
@@ -1014,7 +1067,7 @@ pub(crate) fn handle_json_rpc_request(
     } else {
         None
     };
-    let response = handle_json_rpc_request_inner(adapter, state, request)?;
+    let response = handle_json_rpc_request_inner(context, adapter, state, request)?;
     if method == "tools/call" && state.pending_finding.is_none() {
         state.pending_finding = response
             .get("result")
@@ -1058,6 +1111,7 @@ pub(crate) fn handle_json_rpc_request(
     if safe_tool_failed {
         if let Some(failure) = pending_finding {
             record_current_session_finding(
+                context,
                 adapter,
                 state,
                 failure,
@@ -1069,6 +1123,7 @@ pub(crate) fn handle_json_rpc_request(
             )?;
         }
         record_current_session_finding(
+            context,
             adapter,
             state,
             McpDiagnostic::ToolCall(McpToolCallDiagnostic::SafeReadOnlyToolFailure),
@@ -1080,6 +1135,7 @@ pub(crate) fn handle_json_rpc_request(
         )?;
     } else if let Some(failure) = pending_finding.or(fallback_failure) {
         record_current_session_finding(
+            context,
             adapter,
             state,
             failure,
@@ -1094,6 +1150,7 @@ pub(crate) fn handle_json_rpc_request(
 }
 
 fn handle_json_rpc_request_inner(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     request: JsonRpcRequest,
@@ -1111,7 +1168,7 @@ fn handle_json_rpc_request_inner(
             {
                 if !state.runtime_session_id.is_empty() {
                     record_mcp_initialize_attempt(
-                        &adapter.runtime_home,
+                        context,
                         &state.runtime_session_id,
                         &client_info,
                         &requested_protocol_version,
@@ -1129,7 +1186,7 @@ fn handle_json_rpc_request_inner(
             };
             if !state.runtime_session_id.is_empty() {
                 record_mcp_initialize_completion(
-                    &adapter.runtime_home,
+                    context,
                     &state.runtime_session_id,
                     mcp_session.selected_profile.revision().as_str(),
                     &authoritative_observation_timestamp(),
@@ -1143,6 +1200,7 @@ fn handle_json_rpc_request_inner(
             state.phase = ConnectionPhase::AwaitingInitialized;
             if counter_offer {
                 record_current_session_finding(
+                    context,
                     adapter,
                     state,
                     McpDiagnostic::Protocol(if requested_revision_well_formed {
@@ -1157,6 +1215,7 @@ fn handle_json_rpc_request_inner(
                     false,
                 )?;
                 record_current_session_finding(
+                    context,
                     adapter,
                     state,
                     McpDiagnostic::Protocol(McpProtocolDiagnostic::CounterOffer),
@@ -1168,7 +1227,7 @@ fn handle_json_rpc_request_inner(
                 )?;
             }
             if !state.codex_binding.is_pending() && state.managed_stdio_binding_active {
-                let _ = start_transport_diagnostic_session(adapter, state);
+                let _ = start_transport_diagnostic_session(context, adapter, state);
             }
             result
         }
@@ -1189,7 +1248,7 @@ fn handle_json_rpc_request_inner(
                 ));
                 return Ok(error);
             }
-            match adapter.tools() {
+            match adapter.tools_for_context(context) {
                 Ok(canonical_tools) => {
                     let required_tools_present =
                         required_tool_set_present(adapter, &canonical_tools)?;
@@ -1214,7 +1273,7 @@ fn handle_json_rpc_request_inner(
                     let result = json!({ "tools": tools });
                     if !state.runtime_session_id.is_empty() {
                         record_mcp_tools_list(
-                            &adapter.runtime_home,
+                            context,
                             &state.runtime_session_id,
                             &returned_tool_identities,
                             required_tools_present,
@@ -1231,7 +1290,12 @@ fn handle_json_rpc_request_inner(
                         }
                     } else {
                         if let Some(serialized_bytes) = serialized_bytes {
-                            record_tools_list_metric_best_effort(adapter, state, serialized_bytes);
+                            record_tools_list_metric_best_effort(
+                                context,
+                                adapter,
+                                state,
+                                serialized_bytes,
+                            );
                         }
                     }
                     result
@@ -1242,10 +1306,12 @@ fn handle_json_rpc_request_inner(
                 }
             }
         }
-        "tools/call" => match call_tool_result(adapter, &response_id, request.params, state)? {
-            Ok(result) => result,
-            Err(error) => return Ok(error),
-        },
+        "tools/call" => {
+            match call_tool_result(context, adapter, &response_id, request.params, state)? {
+                Ok(result) => result,
+                Err(error) => return Ok(error),
+            }
+        }
         _ => {
             state.pending_finding = Some(McpDiagnostic::JsonRpc(JsonRpcDiagnostic::UnknownMethod));
             return Ok(json_rpc_error(
@@ -1296,7 +1362,34 @@ fn projected_tool_error_code(result: &Value) -> Option<String> {
 }
 
 #[allow(clippy::too_many_arguments)]
+fn record_current_session_finding_with_admission(
+    adapter: &McpAdapter,
+    state: &mut ConnectionState,
+    diagnostic: McpDiagnostic,
+    json_rpc_error_code: Option<i64>,
+    safe_error_data: Option<String>,
+    tool_name: Option<String>,
+    missing_tools: Vec<String>,
+    terminal: bool,
+) -> Result<(), McpAdapterError> {
+    with_mcp_runtime_home_mutation(&adapter.runtime_home, "mcp.terminal_finding", |context| {
+        record_current_session_finding(
+            context,
+            adapter,
+            state,
+            diagnostic,
+            json_rpc_error_code,
+            safe_error_data,
+            tool_name,
+            missing_tools,
+            terminal,
+        )
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
 fn record_current_session_finding(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     diagnostic: McpDiagnostic,
@@ -1346,12 +1439,10 @@ fn record_current_session_finding(
         ))
     })?;
     if terminal {
-        record_mcp_terminal_finding(&adapter.runtime_home, &finding)
-            .map_err(McpAdapterError::Store)?;
+        record_mcp_terminal_finding(context, &finding).map_err(McpAdapterError::Store)?;
         state.terminal_finding_recorded = true;
     } else {
-        insert_occurrence_finding(&adapter.runtime_home, &finding)
-            .map_err(McpAdapterError::Store)?;
+        insert_occurrence_finding(context, &finding).map_err(McpAdapterError::Store)?;
     }
     Ok(())
 }
@@ -1799,6 +1890,7 @@ pub(crate) fn required_object_params(
 }
 
 pub(crate) fn call_tool_result(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     id: &Value,
     params: Option<Value>,
@@ -1829,6 +1921,7 @@ pub(crate) fn call_tool_result(
                 McpToolCallDiagnostic::InvalidArguments,
             ));
             record_tool_diagnostic_best_effort(
+                context,
                 adapter,
                 state,
                 diagnostic_started,
@@ -1848,6 +1941,7 @@ pub(crate) fn call_tool_result(
             McpToolCallDiagnostic::InvalidArguments,
         ));
         record_tool_diagnostic_best_effort(
+            context,
             adapter,
             state,
             diagnostic_started,
@@ -1869,6 +1963,7 @@ pub(crate) fn call_tool_result(
                 McpToolCallDiagnostic::InvalidArguments,
             ));
             record_tool_diagnostic_best_effort(
+                context,
                 adapter,
                 state,
                 diagnostic_started,
@@ -1894,6 +1989,7 @@ pub(crate) fn call_tool_result(
             state.pending_finding =
                 Some(McpDiagnostic::ToolCall(McpToolCallDiagnostic::UnknownTool));
             record_tool_diagnostic_best_effort(
+                context,
                 adapter,
                 state,
                 diagnostic_started,
@@ -1921,6 +2017,7 @@ pub(crate) fn call_tool_result(
                 McpToolCallDiagnostic::InvalidArguments,
             ));
             record_tool_diagnostic_best_effort(
+                context,
                 adapter,
                 state,
                 diagnostic_started,
@@ -1940,9 +2037,9 @@ pub(crate) fn call_tool_result(
         return Ok(Err(invalid_params_response(id, error.to_string())));
     }
     if codex_was_pending {
-        let _ = start_transport_diagnostic_session(adapter, state);
+        let _ = start_transport_diagnostic_session(context, adapter, state);
         if let Some(serialized_bytes) = state.deferred_tools_list_serialized_bytes.take() {
-            record_tools_list_metric_best_effort(adapter, state, serialized_bytes);
+            record_tools_list_metric_best_effort(context, adapter, state, serialized_bytes);
         }
     }
     if tool == AgentToolId::STATUS {
@@ -1953,18 +2050,17 @@ pub(crate) fn call_tool_result(
     let binding = state.managed_agent_session_binding();
     let coordinates = binding
         .as_ref()
-        .map(|binding| adapter.ensure_agent_session_binding_for_tool(tool, &arguments, binding))
+        .map(|binding| {
+            adapter.ensure_agent_session_binding_for_tool(context, tool, &arguments, binding)
+        })
         .transpose()?
         .flatten();
 
     let output = if matches!(tool.owner(), AgentToolOwner::CoreMethod(_)) {
-        let call_result = if let Some(coordinates) = coordinates.as_ref() {
-            adapter.call_tool_for_session(tool, arguments, Some(coordinates.borrowed()))
-        } else if adapter.has_default_agent_session() {
-            adapter.call_tool(tool_name, arguments)
-        } else {
-            adapter.call_tool_for_session(tool, arguments, None)
-        };
+        let session = coordinates
+            .as_ref()
+            .map(OwnedAgentSessionCoordinates::borrowed);
+        let call_result = adapter.call_tool_for_session(context, tool, arguments, session);
         match call_result {
             Ok(response) if tool == AgentToolId::REQUEST_USER_ACTION => {
                 let pending_response = response.clone();
@@ -1988,6 +2084,7 @@ pub(crate) fn call_tool_result(
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
+                    context,
                     adapter,
                     state,
                     diagnostic_started,
@@ -2005,6 +2102,7 @@ pub(crate) fn call_tool_result(
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
+                    context,
                     adapter,
                     state,
                     diagnostic_started,
@@ -2021,6 +2119,7 @@ pub(crate) fn call_tool_result(
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response = json_rpc_error_for_adapter(id.clone(), error);
                 record_tool_diagnostic_best_effort(
+                    context,
                     adapter,
                     state,
                     diagnostic_started,
@@ -2036,6 +2135,7 @@ pub(crate) fn call_tool_result(
         }
     } else {
         let response = match adapter.call_adapter_tool(
+            context,
             tool,
             arguments,
             binding.as_ref(),
@@ -2047,6 +2147,7 @@ pub(crate) fn call_tool_result(
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
+                    context,
                     adapter,
                     state,
                     diagnostic_started,
@@ -2064,6 +2165,7 @@ pub(crate) fn call_tool_result(
                 let response =
                     tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
                 record_tool_diagnostic_best_effort(
+                    context,
                     adapter,
                     state,
                     diagnostic_started,
@@ -2080,6 +2182,7 @@ pub(crate) fn call_tool_result(
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response = json_rpc_error_for_adapter(id.clone(), error);
                 record_tool_diagnostic_best_effort(
+                    context,
                     adapter,
                     state,
                     diagnostic_started,
@@ -2100,6 +2203,7 @@ pub(crate) fn call_tool_result(
             Ok(text) => ToolCallOutput::success(text)?,
             Err(error) => {
                 record_tool_diagnostic_best_effort(
+                    context,
                     adapter,
                     state,
                     diagnostic_started,
@@ -2114,7 +2218,8 @@ pub(crate) fn call_tool_result(
             }
         }
     };
-    let output = finalize_mutation_output(adapter, state, tool_name, mutation_detail, output)?;
+    let output =
+        finalize_mutation_output(context, adapter, state, tool_name, mutation_detail, output)?;
 
     let diagnostic_facts = output.diagnostic_facts();
     let diagnostic_outcome =
@@ -2133,7 +2238,7 @@ pub(crate) fn call_tool_result(
     {
         validate_managed_stdio_session_ownership(adapter, state)?;
         record_mcp_verification_tool_observation(
-            &adapter.runtime_home,
+            context,
             &state.runtime_session_id,
             &authoritative_observation_timestamp(),
         )
@@ -2141,6 +2246,7 @@ pub(crate) fn call_tool_result(
     }
     let response = tool_call_result_from_output_for_profile(tool_name, output, selected_profile)?;
     record_tool_diagnostic_best_effort(
+        context,
         adapter,
         state,
         diagnostic_started,
@@ -2476,6 +2582,7 @@ fn mutation_effect_anchor(response: &PipelineResponse) -> Option<String> {
 }
 
 fn finalize_mutation_output(
+    mutation_context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &ConnectionState,
     tool_name: &str,
@@ -2496,9 +2603,16 @@ fn finalize_mutation_output(
         |context| {
             let coordinates = binding
                 .as_ref()
-                .map(|binding| adapter.ensure_agent_session_binding(&context.project_id, binding))
+                .map(|binding| {
+                    adapter.ensure_agent_session_binding(
+                        mutation_context,
+                        &context.project_id,
+                        binding,
+                    )
+                })
                 .transpose()?;
             adapter.refresh_authority_status(
+                mutation_context,
                 &context.project_id,
                 &context.task_id,
                 coordinates.as_ref().map(|value| value.borrowed()),
@@ -3172,6 +3286,7 @@ fn stdio_diagnostic_project_id(adapter: &McpAdapter) -> Option<String> {
 }
 
 fn start_transport_diagnostic_session(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &ConnectionState,
 ) -> Result<(), StoreError> {
@@ -3187,7 +3302,7 @@ fn start_transport_diagnostic_session(
     let project_id = stdio_diagnostic_project_id(adapter);
     let build = crate::build_info();
     start_diagnostic_session(
-        &adapter.runtime_home,
+        context,
         DiagnosticSessionStart {
             session_id: &state.runtime_session_id,
             connection_id: Some(adapter.context.connection_internal_id.as_str()),
@@ -3201,17 +3316,18 @@ fn start_transport_diagnostic_session(
 }
 
 fn record_tools_list_metric_best_effort(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &ConnectionState,
     serialized_bytes: u64,
 ) {
     if state.codex_binding.is_pending()
-        || start_transport_diagnostic_session(adapter, state).is_err()
+        || start_transport_diagnostic_session(context, adapter, state).is_err()
     {
         return;
     }
     let _ = record_workflow_metric_event(
-        &adapter.runtime_home,
+        context,
         &WorkflowMetricEvent {
             session_id: state.runtime_session_id.clone(),
             metric_kind: WorkflowMetricKind::ToolsListSerializedBytes,
@@ -3226,7 +3342,8 @@ fn record_tools_list_metric_best_effort(
 }
 
 fn record_public_method_metrics_best_effort(
-    adapter: &McpAdapter,
+    context: &RuntimeHomeMutationContext<'_>,
+    _adapter: &McpAdapter,
     state: &ConnectionState,
     tool_name: Option<&str>,
     outcome: DiagnosticOutcome,
@@ -3236,7 +3353,7 @@ fn record_public_method_metrics_best_effort(
     };
     let outcome = workflow_metric_outcome(outcome);
     let _ = record_workflow_metric_event(
-        &adapter.runtime_home,
+        context,
         &WorkflowMetricEvent {
             session_id: state.runtime_session_id.clone(),
             metric_kind: WorkflowMetricKind::McpMethodCall,
@@ -3250,7 +3367,7 @@ fn record_public_method_metrics_best_effort(
     );
     if method_name == MethodName::Status && state.status_method_call_count > 1 {
         let _ = record_workflow_metric_event(
-            &adapter.runtime_home,
+            context,
             &WorkflowMetricEvent {
                 session_id: state.runtime_session_id.clone(),
                 metric_kind: WorkflowMetricKind::StatusReread,
@@ -3278,6 +3395,7 @@ const fn workflow_metric_outcome(outcome: DiagnosticOutcome) -> WorkflowMetricOu
 
 #[allow(clippy::too_many_arguments)]
 fn record_tool_diagnostic_best_effort(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &ConnectionState,
     started: Instant,
@@ -3296,11 +3414,11 @@ fn record_tool_diagnostic_best_effort(
         .and_then(|value| serde_json::to_vec(value).ok())
         .map(|bytes| bytes.len() as u64)
         .unwrap_or(0);
-    if start_transport_diagnostic_session(adapter, state).is_err() {
+    if start_transport_diagnostic_session(context, adapter, state).is_err() {
         return;
     }
     let _ = record_diagnostic_event(
-        &adapter.runtime_home,
+        context,
         DiagnosticEvent {
             session_id: &state.runtime_session_id,
             event_kind: DiagnosticEventKind::McpToolCall,
@@ -3319,7 +3437,7 @@ fn record_tool_diagnostic_best_effort(
             outcome,
         },
     );
-    record_public_method_metrics_best_effort(adapter, state, tool_name, outcome);
+    record_public_method_metrics_best_effort(context, adapter, state, tool_name, outcome);
 }
 
 #[cfg(test)]
@@ -3532,6 +3650,20 @@ fn tool_execution_error_result_for_profile(
                 }],
             }
         }
+        McpAdapterError::MutationAdmission(condition) => McpToolErrorResponse {
+            code: McpToolErrorCode::AdapterPreconditionFailed,
+            tool_name: requested_tool_name.to_owned(),
+            retryable: condition.retryable(),
+            reached_core: false,
+            committed: false,
+            reported_issue_count: 1,
+            truncated: false,
+            issues: vec![McpToolErrorIssue {
+                path: String::new(),
+                code: McpToolIssueCode::AdapterPreconditionFailed,
+                message: condition.to_string(),
+            }],
+        },
         _ => McpToolErrorResponse {
             code: McpToolErrorCode::AdapterPreconditionFailed,
             tool_name: requested_tool_name.to_owned(),
@@ -3644,6 +3776,8 @@ pub(crate) fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> V
         | McpAdapterError::Host(_)
         | McpAdapterError::ToolExecution { .. }
         | McpAdapterError::ToolOutputSchema { .. } => (-32602, "Invalid params"),
+        McpAdapterError::MutationAdmission(_) => (-32000, "Runtime Home setup in progress"),
+        McpAdapterError::MutationAdmissionAcquisition { .. } => (-32603, "Internal error"),
         McpAdapterError::Core(_)
         | McpAdapterError::Json(_)
         | McpAdapterError::Io(_)
@@ -3758,6 +3892,7 @@ mod mutation_output_tests {
         let core = CoreService::new(fixture.runtime_home_path());
         let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_recovery_order",
                 "idem_mcp_recovery_order",
@@ -3807,6 +3942,7 @@ mod mutation_output_tests {
                 .with_git_workspace_context(workspace.clone())
         };
         let intake = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_producer_recovery_intake",
                 "idem_mcp_producer_recovery_intake",
@@ -3820,6 +3956,7 @@ mod mutation_output_tests {
             .clone()
             .expect("intake resolves a Task");
         let scope = core.update_scope(
+            &fixture.mutation_context()?,
             fixture.update_scope_request(UpdateScopeFixture {
                 request_id: "req_mcp_producer_recovery_scope",
                 idempotency_key: "idem_mcp_producer_recovery_scope",
@@ -3842,6 +3979,7 @@ mod mutation_output_tests {
             acceptance_criterion_id: AcceptanceCriterionId::new(criterion_id),
         };
         let prepared = core.prepare_evidence_capture(
+            &fixture.mutation_context()?,
             PrepareEvidenceCaptureRequest {
                 envelope: fixture.envelope(
                     "req_mcp_producer_recovery_prepare",
@@ -3867,7 +4005,11 @@ mod mutation_output_tests {
         let capture_intent_ref: StateRecordRef =
             serde_json::from_value(prepared.response_value["capture_intent_ref"].clone())?;
 
-        let mut store = fixture.store()?;
+        let mutation_context = fixture.mutation_context()?;
+        let mut store = CoreProjectStore::open_for_mutation(
+            &mutation_context,
+            &ProjectId::new(fixture.project_id()),
+        )?;
         let intent = store
             .evidence_capture_intent_record(capture_intent_ref.record_id.as_str())?
             .expect("committed capture intent should be readable");
@@ -3943,7 +4085,11 @@ mod mutation_output_tests {
             limitations: Vec::new(),
             observed_at: UtcTimestamp::parse("2000-01-01T00:00:00Z")?,
         }];
-        let recorded = core.record_run(record_request, workflow_invocation())?;
+        let recorded = core.record_run(
+            &fixture.mutation_context()?,
+            record_request,
+            workflow_invocation(),
+        )?;
         let producer: EvidenceProducer =
             serde_json::from_value(recorded.response_value["evidence_producers"][0].clone())?;
         let producer_id = producer.evidence_producer_id.as_str().to_owned();
@@ -4090,9 +4236,13 @@ mod mutation_output_tests {
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
 
-        let committed = core.intake(request.clone(), workflow_invocation())?;
+        let committed = core.intake(
+            &fixture.mutation_context()?,
+            request.clone(),
+            workflow_invocation(),
+        )?;
         assert!(!committed.replayed);
-        let replayed = core.intake(request, workflow_invocation())?;
+        let replayed = core.intake(&fixture.mutation_context()?, request, workflow_invocation())?;
         assert!(replayed.replayed);
         let task_id = replayed
             .resolved_task_id
@@ -4163,6 +4313,7 @@ mod mutation_output_tests {
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_full_fresh_receipt",
                 "idem_mcp_full_fresh_receipt",
@@ -4178,6 +4329,7 @@ mod mutation_output_tests {
             .clone();
         let original_method_result = intake.response_value.clone();
         core.update_scope(
+            &fixture.mutation_context()?,
             fixture.update_scope_request(UpdateScopeFixture {
                 request_id: "req_mcp_full_fresh_receipt_scope",
                 idempotency_key: "idem_mcp_full_fresh_receipt_scope",
@@ -4328,6 +4480,7 @@ mod mutation_output_tests {
         let core = CoreService::new(fixture.runtime_home_path());
         let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_post_effect_adapter_failure",
                 "idem_mcp_post_effect_adapter_failure",
@@ -4398,6 +4551,7 @@ mod mutation_output_tests {
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_user_action_record_race_intake",
                 "idem_mcp_user_action_record_race_intake",
@@ -4411,6 +4565,7 @@ mod mutation_output_tests {
             .clone()
             .expect("intake resolves a Task");
         let pending_response = core.request_user_action(
+            &fixture.mutation_context()?,
             fixture.user_action_request(UserActionFixture {
                 request_id: "req_mcp_user_action_record_race_pending",
                 idempotency_key: "idem_mcp_user_action_record_race_pending",
@@ -4423,6 +4578,7 @@ mod mutation_output_tests {
             workflow_invocation(),
         )?;
         core.update_scope(
+            &fixture.mutation_context()?,
             fixture.update_scope_request(UpdateScopeFixture {
                 request_id: "req_mcp_user_action_record_race_scope",
                 idempotency_key: "idem_mcp_user_action_record_race_scope",
@@ -4501,6 +4657,7 @@ mod mutation_output_tests {
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_noncanonical_pending_intake",
                 "idem_mcp_noncanonical_pending_intake",
@@ -4514,6 +4671,7 @@ mod mutation_output_tests {
             .clone()
             .expect("committed intake resolves a Task");
         let mut pending_response = core.request_user_action(
+            &fixture.mutation_context()?,
             fixture.user_action_request(UserActionFixture {
                 request_id: "req_mcp_noncanonical_pending_action",
                 idempotency_key: "idem_mcp_noncanonical_pending_action",
@@ -4585,6 +4743,7 @@ mod mutation_output_tests {
         let core = CoreService::new(fixture.runtime_home_path());
         let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_post_effect_projection_failure",
                 "idem_mcp_post_effect_projection_failure",
@@ -4646,6 +4805,7 @@ mod mutation_output_tests {
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_staging_refresh_failure",
                 "idem_mcp_staging_refresh_failure",
@@ -4663,6 +4823,7 @@ mod mutation_output_tests {
             .as_u64()
             .expect("intake should report state version");
         let staged = core.stage_artifact(
+            &fixture.mutation_context()?,
             fixture.stage_artifact_request(
                 "req_mcp_staging_refresh_failure_stage",
                 None,
@@ -4723,6 +4884,7 @@ mod mutation_output_tests {
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_mutation_oversized_fresh_receipt",
                 "idem_mcp_mutation_oversized_fresh_receipt",
@@ -5326,6 +5488,7 @@ mod mutation_output_tests {
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
+            &fixture.mutation_context()?,
             fixture.intake_request(
                 "req_mcp_stage_oversized_intake",
                 "idem_mcp_stage_oversized_intake",
@@ -5342,6 +5505,7 @@ mod mutation_output_tests {
             .as_u64()
             .expect("intake state version");
         let staged = core.stage_artifact(
+            &fixture.mutation_context()?,
             fixture.stage_artifact_request(
                 "req_mcp_stage_oversized_stage",
                 None,

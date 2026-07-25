@@ -1154,7 +1154,11 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
         let occurrence = matrix_occurrence(&root);
         let root = occurrence.to_diagnostic_finding();
         id = root.id().to_string();
-        insert_occurrence_finding(fixture.runtime_home_path(), &occurrence).unwrap();
+        insert_occurrence_finding(
+            &fixture.mutation_context().expect("mutation context"),
+            &occurrence,
+        )
+        .unwrap();
         assert_eq!(
             stored_diagnostic_findings_by_ids(
                 fixture.runtime_home_path(),

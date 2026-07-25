@@ -23,6 +23,7 @@ fn active_verification_writeability_probe_is_bounded_and_detects_read_only_proje
     .expect("connection lookup")
     .expect("connection");
     let writable = verify_selected_store_writeability(
+        &fixture.mutation_context().expect("mutation context"),
         fixture.runtime_home_path(),
         &connection,
         Some(fixture.project_id()),
@@ -45,6 +46,7 @@ fn active_verification_writeability_probe_is_bounded_and_detects_read_only_proje
     )
     .expect("read-only project database");
     let read_only = verify_selected_store_writeability(
+        &fixture.mutation_context().expect("mutation context"),
         fixture.runtime_home_path(),
         &connection,
         Some(fixture.project_id()),
@@ -1248,7 +1250,11 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
         None,
     )
     .expect("root occurrence");
-    insert_occurrence_finding(fixture.runtime_home_path(), &root).expect("persist root cause");
+    insert_occurrence_finding(
+        &fixture.mutation_context().expect("mutation context"),
+        &root,
+    )
+    .expect("persist root cause");
     let second = volicord_types::CurrentDiagnosticFinding::try_new(
         second.key().clone(),
         second
@@ -1273,14 +1279,18 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
         None,
     )
     .expect("unrelated occurrence");
-    insert_occurrence_finding(fixture.runtime_home_path(), &unrelated_history)
-        .expect("persist unrelated occurrence");
+    insert_occurrence_finding(
+        &fixture.mutation_context().expect("mutation context"),
+        &unrelated_history,
+    )
+    .expect("persist unrelated occurrence");
     let first_id = first.id().clone();
     let second_id = second.id().clone();
     let root_id = root.id();
     let unrelated_history_id = unrelated_history.id();
     let scope = first.key().scope().clone();
     reconcile_current_findings_for_scope(
+        &fixture.mutation_context().expect("mutation context"),
         fixture.runtime_home_path(),
         &scope,
         &[CurrentOperationalOwner::Guard],
@@ -1303,6 +1313,7 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
     .expect("historical projection");
     let historical_id = historical.id().clone();
     reconcile_current_findings_for_scope(
+        &fixture.mutation_context().expect("mutation context"),
         fixture.runtime_home_path(),
         &scope,
         &[CurrentOperationalOwner::Trust],
@@ -1362,6 +1373,7 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
         .any(|finding| finding.id() == &unrelated_history_id));
 
     reconcile_current_findings_for_scope(
+        &fixture.mutation_context().expect("mutation context"),
         fixture.runtime_home_path(),
         &scope,
         &[CurrentOperationalOwner::Guard],
@@ -1461,7 +1473,11 @@ fn mixed_inline_and_persisted_causes_form_one_bounded_graph() {
         None,
     )
     .expect("persisted root");
-    insert_occurrence_finding(fixture.runtime_home_path(), &persisted_root).expect("persist root");
+    insert_occurrence_finding(
+        &fixture.mutation_context().expect("mutation context"),
+        &persisted_root,
+    )
+    .expect("persist root");
 
     let subject = GuardEventSubject::for_connection(
         fixture.connection_id(),
@@ -1546,7 +1562,11 @@ fn explicitly_persisted_reference_deleted_from_store_gets_missing_record_finding
         None,
     )
     .expect("finding");
-    insert_occurrence_finding(fixture.runtime_home_path(), &persisted).expect("persist finding");
+    insert_occurrence_finding(
+        &fixture.mutation_context().expect("mutation context"),
+        &persisted,
+    )
+    .expect("persist finding");
     let registry_path = volicord_store::sqlite::registry_db_path(fixture.runtime_home_path());
     let registry = rusqlite::Connection::open(registry_path).expect("registry");
     registry

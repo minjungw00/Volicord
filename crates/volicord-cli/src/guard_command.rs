@@ -30,7 +30,7 @@ use volicord_store::{
         GuardProbeHookEvidence, UnboundGuardProbeHookObservation,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    StoreError, StoreResult,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 use volicord_types::{
     canonical_json_bare_sha256, canonical_json_bytes, guard_manifest_from_json, DiagnosticCode,
@@ -44,6 +44,7 @@ use volicord_types::{
 
 use crate::cli::{HookArgs, HookCommand};
 use crate::disclosure::cooperative_host_decision_disclosure_json;
+use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -113,6 +114,7 @@ impl From<ProjectCommandError> for GuardCommandError {
         match error {
             ProjectCommandError::Usage(message) => Self::Usage(message),
             ProjectCommandError::Runtime(message) => Self::Runtime(message),
+            ProjectCommandError::MutationAdmission(error) => Self::Persistence(error.to_string()),
         }
     }
 }
@@ -125,6 +127,64 @@ impl From<CorePipelineError> for GuardCommandError {
 
 fn core_current_timestamp(store: &CoreProjectStore) -> StoreResult<UtcTimestamp> {
     SystemClock.project_now(store)
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeSetup};
+
+    use super::*;
+    use crate::cli::{HookEventArgs, HookOutput};
+
+    #[test]
+    fn record_hook_continues_without_persisting_while_setup_is_exclusive(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut fixture = CoreFixture::new("guard-record-setup-busy")?;
+        fs::create_dir(fixture.product_repo_path().join(".git"))?;
+        let event_path = fixture.product_repo_path().join("guard-event.json");
+        fs::write(&event_path, "{}")?;
+        let before_events: i64 =
+            fixture
+                .conn()?
+                .query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
+        fixture.release_mutation_admission();
+        let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
+        let env = |name: &str| {
+            (name == "VOLICORD_HOME").then(|| OsString::from(fixture.runtime_home_path()))
+        };
+
+        let outcome = run_guard_command(
+            HookArgs {
+                command: HookCommand::PreTool(HookEventArgs {
+                    event_file: Some(event_path),
+                    repo: Some(fixture.product_repo_path()),
+                    connection: None,
+                    guard_installation: None,
+                    host: None,
+                    integration_profile: None,
+                    policy_hash: None,
+                    output: Some(HookOutput::VolicordJson),
+                    host_output: None,
+                }),
+            },
+            env,
+            fixture.product_repo_path().as_path(),
+        )?;
+
+        assert_eq!(outcome.exit_code, 0);
+        assert!(outcome
+            .stdout
+            .contains("runtime_home.mutation.setup_in_progress"));
+        assert!(outcome.stdout.contains("\"persisted\": false"));
+        assert!(!outcome.stdout.contains("\"decision\":\"deny\""));
+        let after_events: i64 =
+            fixture
+                .conn()?
+                .query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
+        assert_eq!(after_events, before_events);
+        drop(setup);
+        Ok(())
+    }
 }
 
 pub fn run_guard_command<F>(
@@ -145,283 +205,379 @@ where
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let input = read_guard_input(options.event_file.as_deref())?;
     let project = resolve_guard_project(&runtime_home, current_dir, &options, &input.raw_value)?;
-    let mut envelope = match guard_envelope(phase, &options, &input, &project) {
-        Ok(envelope) => envelope,
-        Err(failure) => {
-            let outcome = match record_guard_hook_contract_failure(
-                &runtime_home,
-                &project,
-                phase,
-                &options,
-                &input,
-                GuardHookContractStatus::Malformed,
-                failure,
-            ) {
-                Ok(facts) => GuardHookOutcome::new(
-                    GuardObservationOutcome::IncompatibleRecorded,
-                    None,
-                    [GuardHookDiagnostic {
-                        code: GuardHookDiagnosticCode::HostContractIncompatible,
-                        facts,
-                    }],
-                    Some(GuardHostFeedback::Warning),
-                ),
-                Err(_) => GuardHookOutcome::new(
-                    GuardObservationOutcome::PersistenceUnavailable,
-                    None,
-                    [GuardHookDiagnostic {
-                        code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
-                        facts: guard_diagnostic_facts(phase, &options, None, None, None),
-                    }],
-                    Some(GuardHostFeedback::Warning),
-                ),
-            };
-            record_guard_findings_best_effort(&runtime_home, &outcome);
-            let result = hook_outcome_result(&outcome);
-            let rendered = render_guard_command_output(
-                phase,
-                &outcome,
-                None,
-                result,
-                &options,
-                &runtime_home,
-                &project,
-            )?;
-            return Ok(GuardCommandOutcome {
-                stdout: rendered.stdout,
-                stderr: rendered.stderr,
-                exit_code: rendered.exit_code,
-            });
-        }
-    };
-    if let Err(error) = bind_guard_envelope(&runtime_home, &project, phase, &input, &mut envelope) {
-        if matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
-            if let Some(guard_installation_id) = envelope.guard_installation_id.clone() {
-                let _ = observe_unbound_guard_probe_hook_event(
+    let output_format = options.output;
+    let admitted =
+        with_cli_runtime_home_mutation(&runtime_home, "guard.hook_observation", |context| {
+            (|| -> Result<GuardCommandOutcome, GuardCommandError> {
+                let mut envelope = match guard_envelope(phase, &options, &input, &project) {
+                    Ok(envelope) => envelope,
+                    Err(failure) => {
+                        let outcome = match record_guard_hook_contract_failure(
+                            context,
+                            &runtime_home,
+                            &project,
+                            phase,
+                            &options,
+                            &input,
+                            GuardHookContractStatus::Malformed,
+                            failure,
+                        ) {
+                            Ok(facts) => GuardHookOutcome::new(
+                                GuardObservationOutcome::IncompatibleRecorded,
+                                None,
+                                [GuardHookDiagnostic {
+                                    code: GuardHookDiagnosticCode::HostContractIncompatible,
+                                    facts,
+                                }],
+                                Some(GuardHostFeedback::Warning),
+                            ),
+                            Err(_) => GuardHookOutcome::new(
+                                GuardObservationOutcome::PersistenceUnavailable,
+                                None,
+                                [GuardHookDiagnostic {
+                                    code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
+                                    facts: guard_diagnostic_facts(
+                                        phase, &options, None, None, None,
+                                    ),
+                                }],
+                                Some(GuardHostFeedback::Warning),
+                            ),
+                        };
+                        record_guard_findings_best_effort(context, &outcome);
+                        let result = hook_outcome_result(&outcome);
+                        let rendered = render_guard_command_output(
+                            context,
+                            phase,
+                            &outcome,
+                            None,
+                            result,
+                            &options,
+                            &runtime_home,
+                            &project,
+                        )?;
+                        return Ok(GuardCommandOutcome {
+                            stdout: rendered.stdout,
+                            stderr: rendered.stderr,
+                            exit_code: rendered.exit_code,
+                        });
+                    }
+                };
+                if let Err(error) = bind_guard_envelope(
+                    context,
                     &runtime_home,
-                    &project.project_id,
-                    UnboundGuardProbeHookObservation {
-                        connection_internal_id: envelope.connection_id.clone(),
-                        guard_installation_id,
-                        correlation: envelope.correlation.clone(),
-                        phase,
-                        evidence: guard_probe_hook_evidence(&input),
-                        observed_at: envelope.occurred_at.clone(),
-                    },
-                );
-            }
-        }
-        return host_guard_failure(
-            &runtime_home,
-            &project,
-            phase,
-            &options,
-            Some(&envelope),
-            &error,
-        );
-    }
-    let input = match protect_managed_guard_input(input, &envelope) {
-        Ok(input) => input,
-        Err(error) if options.output == args::OutputFormat::HostNative => {
-            return host_guard_failure(
-                &runtime_home,
-                &project,
-                phase,
-                &options,
-                Some(&envelope),
-                &error,
-            );
-        }
-        Err(error) => return Err(error),
-    };
-    let subject = guard_subject(phase, &input, &envelope, &project);
-    if phase == GuardHookPhase::PostTool {
-        if let Some(replayed) =
-            replayed_guard_phase_result(&runtime_home, &project, &envelope, phase, &subject)?
-        {
-            record_guard_diagnostic_best_effort(
-                &runtime_home,
-                &project,
-                &envelope,
-                phase,
-                diagnostic_started,
-                input.raw_text.len() as u64,
-                &replayed.result,
-            );
-            record_guard_workflow_metrics_best_effort(
-                &runtime_home,
-                &envelope,
-                phase,
-                replayed.decision,
-                &replayed.result,
-                true,
-            );
-            let outcome =
-                compatible_hook_outcome(phase, replayed.decision, &options, Some(&envelope));
-            let rendered = render_guard_command_output(
-                phase,
-                &outcome,
-                Some(&envelope),
-                replayed.result,
-                &options,
-                &runtime_home,
-                &project,
-            )?;
-            return Ok(GuardCommandOutcome {
-                stdout: rendered.stdout,
-                stderr: rendered.stderr,
-                exit_code: rendered.exit_code,
-            });
-        }
-    }
-    if phase == GuardHookPhase::PromptCapture {
-        let _ = start_guard_diagnostic_session_best_effort(&runtime_home, &project, &envelope);
-    }
-    let phase_result = match phase {
-        GuardHookPhase::PreTool => {
-            phase::pre_tool::handle_pre_tool(&runtime_home, &project, &envelope, &input)
-        }
-        GuardHookPhase::PostTool => {
-            phase::post_tool::handle_post_tool(&runtime_home, &project, &envelope, &input)
-        }
-        GuardHookPhase::PromptCapture => {
-            handle_prompt_capture(&runtime_home, &project, &envelope, &input)
-                .map(|(decision, result, _exits_failure)| GuardPhaseResult::new(decision, result))
-        }
-    };
-    let mut phase_result = match phase_result {
-        Ok(result) => result,
-        Err(error) if options.output == args::OutputFormat::HostNative => {
-            return host_guard_failure(
-                &runtime_home,
-                &project,
-                phase,
-                &options,
-                Some(&envelope),
-                &error,
-            );
-        }
-        Err(error) => return Err(error),
-    };
-    attach_guard_disclosure(&mut phase_result.result);
-
-    let outcome = compatible_hook_outcome(phase, phase_result.decision, &options, Some(&envelope));
-    attach_hook_outcome(&mut phase_result.result, &outcome);
-
-    if persist_guard_event(
-        &runtime_home,
-        &project,
-        &envelope,
-        GuardEventPersistence {
-            phase,
-            guard_input: &input,
-            subject,
-            phase_result: &phase_result,
-            options: &options,
-        },
-    )
-    .is_err()
-    {
-        let persistence_outcome = GuardHookOutcome::new(
-            GuardObservationOutcome::PersistenceUnavailable,
-            Some(phase_result.decision),
-            [GuardHookDiagnostic {
-                code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
-                facts: guard_diagnostic_facts(
+                    &project,
                     phase,
-                    &options,
-                    envelope.guard_installation_id.as_deref(),
-                    envelope.integration_revision.as_deref(),
-                    Some(&envelope.event_id),
-                ),
-            }],
-            Some(GuardHostFeedback::Warning),
-        );
-        record_guard_findings_best_effort(&runtime_home, &persistence_outcome);
-        let rendered = render_guard_command_output(
-            phase,
-            &persistence_outcome,
-            Some(&envelope),
-            hook_outcome_result(&persistence_outcome),
-            &options,
-            &runtime_home,
-            &project,
-        )?;
-        return Ok(GuardCommandOutcome {
-            stdout: rendered.stdout,
-            stderr: rendered.stderr,
-            exit_code: rendered.exit_code,
-        });
-    }
-    if let Some(expected_write) = phase_result.expected_write {
-        if persist_expected_write(&runtime_home, &project, expected_write).is_err() {
-            let persistence_outcome = GuardHookOutcome::new(
-                GuardObservationOutcome::PersistenceUnavailable,
-                Some(phase_result.decision),
-                [GuardHookDiagnostic {
-                    code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
-                    facts: guard_diagnostic_facts(
+                    &input,
+                    &mut envelope,
+                ) {
+                    if matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
+                        if let Some(guard_installation_id) = envelope.guard_installation_id.clone()
+                        {
+                            let _ = observe_unbound_guard_probe_hook_event(
+                                context,
+                                &project.project_id,
+                                UnboundGuardProbeHookObservation {
+                                    connection_internal_id: envelope.connection_id.clone(),
+                                    guard_installation_id,
+                                    correlation: envelope.correlation.clone(),
+                                    phase,
+                                    evidence: guard_probe_hook_evidence(&input),
+                                    observed_at: envelope.occurred_at.clone(),
+                                },
+                            );
+                        }
+                    }
+                    return host_guard_failure(
+                        &runtime_home,
+                        context,
+                        &project,
                         phase,
                         &options,
-                        envelope.guard_installation_id.as_deref(),
-                        envelope.integration_revision.as_deref(),
-                        Some(&envelope.event_id),
+                        Some(&envelope),
+                        &error,
+                    );
+                }
+                let input = match protect_managed_guard_input(input, &envelope) {
+                    Ok(input) => input,
+                    Err(error) if options.output == args::OutputFormat::HostNative => {
+                        return host_guard_failure(
+                            &runtime_home,
+                            context,
+                            &project,
+                            phase,
+                            &options,
+                            Some(&envelope),
+                            &error,
+                        );
+                    }
+                    Err(error) => return Err(error),
+                };
+                let subject = guard_subject(phase, &input, &envelope, &project);
+                if phase == GuardHookPhase::PostTool {
+                    if let Some(replayed) = replayed_guard_phase_result(
+                        &runtime_home,
+                        &project,
+                        &envelope,
+                        phase,
+                        &subject,
+                    )? {
+                        record_guard_diagnostic_best_effort(
+                            context,
+                            &runtime_home,
+                            &project,
+                            &envelope,
+                            phase,
+                            diagnostic_started,
+                            input.raw_text.len() as u64,
+                            &replayed.result,
+                        );
+                        record_guard_workflow_metrics_best_effort(
+                            context,
+                            &runtime_home,
+                            &envelope,
+                            phase,
+                            replayed.decision,
+                            &replayed.result,
+                            true,
+                        );
+                        let outcome = compatible_hook_outcome(
+                            phase,
+                            replayed.decision,
+                            &options,
+                            Some(&envelope),
+                        );
+                        let rendered = render_guard_command_output(
+                            context,
+                            phase,
+                            &outcome,
+                            Some(&envelope),
+                            replayed.result,
+                            &options,
+                            &runtime_home,
+                            &project,
+                        )?;
+                        return Ok(GuardCommandOutcome {
+                            stdout: rendered.stdout,
+                            stderr: rendered.stderr,
+                            exit_code: rendered.exit_code,
+                        });
+                    }
+                }
+                if phase == GuardHookPhase::PromptCapture {
+                    let _ = start_guard_diagnostic_session_best_effort(
+                        context,
+                        &runtime_home,
+                        &project,
+                        &envelope,
+                    );
+                }
+                let phase_result = match phase {
+                    GuardHookPhase::PreTool => phase::pre_tool::handle_pre_tool(
+                        context,
+                        &runtime_home,
+                        &project,
+                        &envelope,
+                        &input,
                     ),
+                    GuardHookPhase::PostTool => phase::post_tool::handle_post_tool(
+                        context,
+                        &runtime_home,
+                        &project,
+                        &envelope,
+                        &input,
+                    ),
+                    GuardHookPhase::PromptCapture => {
+                        handle_prompt_capture(context, &runtime_home, &project, &envelope, &input)
+                            .map(|(decision, result, _exits_failure)| {
+                                GuardPhaseResult::new(decision, result)
+                            })
+                    }
+                };
+                let mut phase_result = match phase_result {
+                    Ok(result) => result,
+                    Err(error) if options.output == args::OutputFormat::HostNative => {
+                        return host_guard_failure(
+                            &runtime_home,
+                            context,
+                            &project,
+                            phase,
+                            &options,
+                            Some(&envelope),
+                            &error,
+                        );
+                    }
+                    Err(error) => return Err(error),
+                };
+                attach_guard_disclosure(&mut phase_result.result);
+
+                let outcome = compatible_hook_outcome(
+                    phase,
+                    phase_result.decision,
+                    &options,
+                    Some(&envelope),
+                );
+                attach_hook_outcome(&mut phase_result.result, &outcome);
+
+                if persist_guard_event(
+                    context,
+                    &runtime_home,
+                    &project,
+                    &envelope,
+                    GuardEventPersistence {
+                        phase,
+                        guard_input: &input,
+                        subject,
+                        phase_result: &phase_result,
+                        options: &options,
+                    },
+                )
+                .is_err()
+                {
+                    let persistence_outcome = GuardHookOutcome::new(
+                        GuardObservationOutcome::PersistenceUnavailable,
+                        Some(phase_result.decision),
+                        [GuardHookDiagnostic {
+                            code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
+                            facts: guard_diagnostic_facts(
+                                phase,
+                                &options,
+                                envelope.guard_installation_id.as_deref(),
+                                envelope.integration_revision.as_deref(),
+                                Some(&envelope.event_id),
+                            ),
+                        }],
+                        Some(GuardHostFeedback::Warning),
+                    );
+                    record_guard_findings_best_effort(context, &persistence_outcome);
+                    let rendered = render_guard_command_output(
+                        context,
+                        phase,
+                        &persistence_outcome,
+                        Some(&envelope),
+                        hook_outcome_result(&persistence_outcome),
+                        &options,
+                        &runtime_home,
+                        &project,
+                    )?;
+                    return Ok(GuardCommandOutcome {
+                        stdout: rendered.stdout,
+                        stderr: rendered.stderr,
+                        exit_code: rendered.exit_code,
+                    });
+                }
+                if let Some(expected_write) = phase_result.expected_write {
+                    if persist_expected_write(context, &project, expected_write).is_err() {
+                        let persistence_outcome = GuardHookOutcome::new(
+                            GuardObservationOutcome::PersistenceUnavailable,
+                            Some(phase_result.decision),
+                            [GuardHookDiagnostic {
+                                code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
+                                facts: guard_diagnostic_facts(
+                                    phase,
+                                    &options,
+                                    envelope.guard_installation_id.as_deref(),
+                                    envelope.integration_revision.as_deref(),
+                                    Some(&envelope.event_id),
+                                ),
+                            }],
+                            Some(GuardHostFeedback::Warning),
+                        );
+                        record_guard_findings_best_effort(context, &persistence_outcome);
+                        let rendered = render_guard_command_output(
+                            context,
+                            phase,
+                            &persistence_outcome,
+                            Some(&envelope),
+                            hook_outcome_result(&persistence_outcome),
+                            &options,
+                            &runtime_home,
+                            &project,
+                        )?;
+                        return Ok(GuardCommandOutcome {
+                            stdout: rendered.stdout,
+                            stderr: rendered.stderr,
+                            exit_code: rendered.exit_code,
+                        });
+                    }
+                }
+                record_guard_findings_best_effort(context, &outcome);
+                record_guard_diagnostic_best_effort(
+                    context,
+                    &runtime_home,
+                    &project,
+                    &envelope,
+                    phase,
+                    diagnostic_started,
+                    input.raw_text.len() as u64,
+                    &phase_result.result,
+                );
+                record_guard_workflow_metrics_best_effort(
+                    context,
+                    &runtime_home,
+                    &envelope,
+                    phase,
+                    phase_result.decision,
+                    &phase_result.result,
+                    false,
+                );
+                let rendered = render_guard_command_output(
+                    context,
+                    phase,
+                    &outcome,
+                    Some(&envelope),
+                    phase_result.result,
+                    &options,
+                    &runtime_home,
+                    &project,
+                )?;
+                Ok(GuardCommandOutcome {
+                    stdout: rendered.stdout,
+                    stderr: rendered.stderr,
+                    exit_code: rendered.exit_code,
+                })
+            })()
+            .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
+        });
+    match admitted {
+        Ok(outcome) => Ok(outcome),
+        Err(CliMutationAdmissionError::SetupInProgress(condition)) => {
+            let outcome = GuardHookOutcome::new(
+                GuardObservationOutcome::PersistenceUnavailable,
+                None,
+                [GuardHookDiagnostic {
+                    code: GuardHookDiagnosticCode::EventPersistenceUnavailable,
+                    facts: GuardHookDiagnosticFacts::default(),
                 }],
                 Some(GuardHostFeedback::Warning),
             );
-            record_guard_findings_best_effort(&runtime_home, &persistence_outcome);
-            let rendered = render_guard_command_output(
+            let rendered = render_guard_output(
                 phase,
-                &persistence_outcome,
-                Some(&envelope),
-                hook_outcome_result(&persistence_outcome),
-                &options,
-                &runtime_home,
-                &project,
+                &outcome,
+                None,
+                json!({
+                    "condition": condition.code(),
+                    "canonical_runtime_home": condition.runtime_home().as_path().display().to_string(),
+                    "mutation_domain": condition.mutation_domain(),
+                    "requested_mode": condition.requested_mode().as_str(),
+                    "wait_policy": condition.wait_policy().as_str(),
+                    "elapsed_millis": u64::try_from(condition.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "retryable": condition.retryable(),
+                    "persisted": false
+                }),
+                output_format,
             )?;
-            return Ok(GuardCommandOutcome {
+            Ok(GuardCommandOutcome {
                 stdout: rendered.stdout,
                 stderr: rendered.stderr,
-                exit_code: rendered.exit_code,
-            });
+                exit_code: 0,
+            })
         }
+        Err(error) => Err(GuardCommandError::Persistence(error.to_string())),
     }
-    record_guard_findings_best_effort(&runtime_home, &outcome);
-    record_guard_diagnostic_best_effort(
-        &runtime_home,
-        &project,
-        &envelope,
-        phase,
-        diagnostic_started,
-        input.raw_text.len() as u64,
-        &phase_result.result,
-    );
-    record_guard_workflow_metrics_best_effort(
-        &runtime_home,
-        &envelope,
-        phase,
-        phase_result.decision,
-        &phase_result.result,
-        false,
-    );
-    let rendered = render_guard_command_output(
-        phase,
-        &outcome,
-        Some(&envelope),
-        phase_result.result,
-        &options,
-        &runtime_home,
-        &project,
-    )?;
-    Ok(GuardCommandOutcome {
-        stdout: rendered.stdout,
-        stderr: rendered.stderr,
-        exit_code: rendered.exit_code,
-    })
 }
 
 fn record_guard_hook_contract_failure(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     phase: GuardHookPhase,
@@ -472,7 +628,7 @@ fn record_guard_hook_contract_failure(
     );
     if guard_event(runtime_home, &project.project_id, &event_id)?.is_some() {
         observe_guard_probe_event_if_applicable(
-            runtime_home,
+            context,
             &project.project_id,
             &event_id,
             phase,
@@ -506,7 +662,7 @@ fn record_guard_hook_contract_failure(
         &subject_json,
     )?;
     insert_guard_event(
-        runtime_home,
+        context,
         &project.project_id,
         GuardEventInsert {
             guard_event_id: event_id.clone(),
@@ -549,13 +705,7 @@ fn record_guard_hook_contract_failure(
             .to_string(),
         },
     )?;
-    observe_guard_probe_event_if_applicable(
-        runtime_home,
-        &project.project_id,
-        &event_id,
-        phase,
-        input,
-    )?;
+    observe_guard_probe_event_if_applicable(context, &project.project_id, &event_id, phase, input)?;
     Ok(GuardHookDiagnosticFacts {
         contract_profile: Some(HostContractProfileId::CodexCommandHooks.as_str().to_owned()),
         hook_event_kind: Some(phase.as_str().to_owned()),
@@ -568,6 +718,7 @@ fn record_guard_hook_contract_failure(
 }
 
 fn render_guard_command_output(
+    context: &RuntimeHomeMutationContext<'_>,
     phase: GuardHookPhase,
     outcome: &GuardHookOutcome,
     envelope: Option<&GuardEnvelope>,
@@ -594,7 +745,7 @@ fn render_guard_command_output(
                 }],
                 Some(GuardHostFeedback::Warning),
             );
-            record_guard_findings_best_effort(_runtime_home, &projection_outcome);
+            record_guard_findings_best_effort(context, &projection_outcome);
             let _ = error;
             Ok(codex_output::render_codex_projection_failure(
                 phase,
@@ -607,6 +758,7 @@ fn render_guard_command_output(
 
 fn host_guard_failure(
     runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     project: &ProjectRecord,
     phase: GuardHookPhase,
     options: &GuardOptions,
@@ -638,8 +790,9 @@ fn host_guard_failure(
         }],
         Some(GuardHostFeedback::Warning),
     );
-    record_guard_findings_best_effort(runtime_home, &outcome);
+    record_guard_findings_best_effort(context, &outcome);
     let rendered = render_guard_command_output(
+        context,
         phase,
         &outcome,
         envelope,
@@ -710,7 +863,10 @@ fn guard_diagnostic_facts(
     }
 }
 
-fn record_guard_findings_best_effort(runtime_home: &Path, outcome: &GuardHookOutcome) {
+fn record_guard_findings_best_effort(
+    context: &RuntimeHomeMutationContext<'_>,
+    outcome: &GuardHookOutcome,
+) {
     for diagnostic in &outcome.diagnostics {
         let stage = match diagnostic.code {
             GuardHookDiagnosticCode::HostContractIncompatible => "host_contract",
@@ -746,7 +902,7 @@ fn record_guard_findings_best_effort(runtime_home: &Path, outcome: &GuardHookOut
             OccurrenceDiagnosticFinding::try_new(data, None)
         })();
         if let Ok(finding) = finding {
-            let _ = insert_occurrence_finding(runtime_home, &finding);
+            let _ = insert_occurrence_finding(context, &finding);
         }
     }
 }
@@ -844,6 +1000,7 @@ fn replayed_guard_phase_result(
 
 #[allow(clippy::too_many_arguments)]
 fn record_guard_diagnostic_best_effort(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
@@ -898,11 +1055,11 @@ fn record_guard_diagnostic_best_effort(
     } else {
         DiagnosticOutcome::Success
     };
-    if !start_guard_diagnostic_session_best_effort(runtime_home, project, envelope) {
+    if !start_guard_diagnostic_session_best_effort(context, runtime_home, project, envelope) {
         return;
     }
     let _ = record_diagnostic_event(
-        runtime_home,
+        context,
         DiagnosticEvent {
             session_id,
             event_kind: DiagnosticEventKind::GuardHook,
@@ -925,7 +1082,8 @@ fn record_guard_diagnostic_best_effort(
 }
 
 fn start_guard_diagnostic_session_best_effort(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
+    _runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
 ) -> bool {
@@ -934,7 +1092,7 @@ fn start_guard_diagnostic_session_best_effort(
     };
     let build = volicord_mcp::build_info();
     start_diagnostic_session(
-        runtime_home,
+        context,
         DiagnosticSessionStart {
             session_id,
             connection_id: Some(&envelope.connection_id),
@@ -950,7 +1108,8 @@ fn start_guard_diagnostic_session_best_effort(
 
 #[allow(clippy::too_many_arguments)]
 fn record_guard_workflow_metrics_best_effort(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
+    _runtime_home: &Path,
     envelope: &GuardEnvelope,
     phase: GuardHookPhase,
     decision: GuardPolicyDecision,
@@ -968,7 +1127,7 @@ fn record_guard_workflow_metrics_best_effort(
                   observation_confidence: Option<ObservationConfidence>,
                   outcome: Option<WorkflowMetricOutcome>| {
         let _ = record_workflow_metric_event(
-            runtime_home,
+            context,
             &WorkflowMetricEvent {
                 session_id: session_id.to_owned(),
                 metric_kind,
@@ -1140,6 +1299,7 @@ fn resolve_guard_project(
 }
 
 fn bind_guard_envelope(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     phase: GuardHookPhase,
@@ -1155,7 +1315,7 @@ fn bind_guard_envelope(
     )?;
     envelope.guard_installation_id = coordinates.guard_installation_id;
     let session = observe_host_correlation(
-        runtime_home,
+        context,
         &project.project_id,
         HostCorrelationObservation {
             connection_internal_id: envelope.connection_id.clone(),
@@ -1221,6 +1381,7 @@ struct GuardEventPersistence<'a> {
 }
 
 fn persist_guard_event(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
@@ -1296,7 +1457,7 @@ fn persist_guard_event(
             == guard_event_insert_payload_sha256(&input, envelope.session_id.as_deref())?
         {
             observe_guard_probe_event_if_applicable(
-                runtime_home,
+                context,
                 &project.project_id,
                 &envelope.event_id,
                 phase,
@@ -1309,9 +1470,9 @@ fn persist_guard_event(
             envelope.event_id
         )));
     }
-    insert_guard_event(runtime_home, &project.project_id, input)?;
+    insert_guard_event(context, &project.project_id, input)?;
     observe_guard_probe_event_if_applicable(
-        runtime_home,
+        context,
         &project.project_id,
         &envelope.event_id,
         phase,
@@ -1321,7 +1482,7 @@ fn persist_guard_event(
 }
 
 fn observe_guard_probe_event_if_applicable(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     guard_event_id: &str,
     phase: GuardHookPhase,
@@ -1331,7 +1492,7 @@ fn observe_guard_probe_event_if_applicable(
         return Ok(());
     }
     let evidence = guard_probe_hook_evidence(input);
-    observe_guard_probe_hook_event(runtime_home, project_id, guard_event_id, evidence)?;
+    observe_guard_probe_hook_event(context, project_id, guard_event_id, evidence)?;
     Ok(())
 }
 

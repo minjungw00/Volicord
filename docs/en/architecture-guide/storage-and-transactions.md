@@ -102,11 +102,21 @@ method execution is available:
 3. Empty registry/project state databases are initialized from canonical SQL,
    and existing state is opened only after SQLite helpers validate the current
    schema shape and storage profile.
-4. Public method calls later open a project through `CoreProjectStore::open`
-   rather than going through CLI setup code.
+4. Public method reads later use `CoreProjectStore::open_read_only`; committed
+   paths use `CoreProjectStore::open_for_mutation` with the live
+   `RuntimeHomeMutationContext` retained by the caller.
 
 This keeps local administrative preparation separate from Core method
 semantics. Exact CLI behavior is owned by [Administrative CLI](../reference/admin-cli.md).
+
+All ordinary Runtime Home writers acquire `SharedWriter` before
+mutation-dependent reads and derive one target-bound Store context from its
+borrowed permit. Writable Registry and project database helpers are private to
+Store and require that context. Setup instead derives the context from its one
+`ExclusiveSetup` permit and passes it through bootstrap, checkpoints,
+publication confirmation, and rollback without nested acquisition. A conflict
+returns `runtime_home.mutation.setup_in_progress` before any transaction,
+artifact staging, or observation effect.
 
 For a new project, bootstrap initializes `project_state.created_at` and
 `project_state.updated_at` from SQLite current UTC. Re-registering an existing

@@ -7,6 +7,7 @@ impl CoreService {
     /// Executes `volicord.prepare_evidence_capture` through the shared Core mutation pipeline.
     pub fn prepare_evidence_capture(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: PrepareEvidenceCaptureRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -23,6 +24,7 @@ impl CoreService {
         }
         let prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::PrepareEvidenceCapture,
             request.envelope.clone(),
             request_json,

@@ -134,9 +134,18 @@ typed busy fact로 반환합니다.
 `volicord init`과 `volicord connection add`는 선택한 최종 Runtime Home을
 canonicalize하고 bootstrap 검사나 plan 구성 전에 `ExclusiveSetup`을 획득합니다.
 플랫폼 경계는 `SharedWriter`용으로 복제할 수 없는 lease도 노출하며, permit은 활성
-lease를 빌려 정확한 정규 target과 보유 mode를 전달합니다. 현재 Store 변경 API는 아직
-모든 writer에게 이 permit을 요구하지 않으므로, 이 플랫폼 primitive가 있다는 사실만으로
-현재 모든 writer가 이미 이 경계를 통과한다고 볼 수는 없습니다.
+lease를 빌려 정확한 정규 target과 보유 mode를 전달합니다. 지원하는 모든 일반 Runtime
+Home writer는 `SharedWriter`를 획득합니다. Store는 빌린 permit에서 복제할 수 없고
+target에 결합된 `RuntimeHomeMutationContext`를 만들며 모든 변경 API에 이 context를
+요구합니다. Registry와 project database의 쓰기 가능 open에도 이 context가 필요하고,
+읽기 전용 open은 context 없이 계속 사용할 수 있습니다. Setup은 하나의
+`ExclusiveSetup` permit에서 같은 Store context를 만들며 중첩된 공유 lease를 획득하지
+않습니다.
+
+일반 writer가 setup과 충돌하면 Runtime Home 효과를 만들기 전에
+`runtime_home.mutation.setup_in_progress`를 반환합니다. 한도가 있는 fact에는 정규
+Runtime Home, 변경 domain, 요청 mode, wait policy, 경과 시간, 재시도 가능 여부가
+포함되며 coordination 파일 경로는 노출하지 않습니다.
 
 Coordination 파일은 정규 경로의 domain-separated 전체 digest에서 파생하며 Runtime Home
 밖에 둡니다. Linux, macOS, WSL2에서는 `/tmp` 아래 유효 사용자별 Volicord coordination

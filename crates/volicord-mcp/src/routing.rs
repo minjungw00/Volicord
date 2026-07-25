@@ -562,7 +562,7 @@ pub(crate) fn storage_capability_for_projects(
 }
 
 fn inspect_allowed_project_read_only(project: &ConnectionProjectRecord) -> McpProjectAvailability {
-    inspect_allowed_project_with_write_probe(project, false)
+    inspect_allowed_project_with_write_probe(None, project)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
@@ -627,7 +627,7 @@ pub(crate) fn validate_mcp_project_allowlist(
                 project_id.as_str()
             )));
         };
-        let availability = inspect_allowed_project(&ConnectionProjectRecord {
+        let availability = inspect_allowed_project_read_only(&ConnectionProjectRecord {
             connection_internal_id: connection_id.to_owned(),
             project_internal_id: project.project_internal_id.clone(),
             project_id: project.project_id.clone(),
@@ -753,13 +753,16 @@ pub(crate) fn current_enabled_connection(
     Ok(connection)
 }
 
-pub(crate) fn inspect_allowed_project(project: &ConnectionProjectRecord) -> McpProjectAvailability {
-    inspect_allowed_project_with_write_probe(project, true)
+pub(crate) fn inspect_allowed_project(
+    context: &RuntimeHomeMutationContext<'_>,
+    project: &ConnectionProjectRecord,
+) -> McpProjectAvailability {
+    inspect_allowed_project_with_write_probe(Some(context), project)
 }
 
 fn inspect_allowed_project_with_write_probe(
+    context: Option<&RuntimeHomeMutationContext<'_>>,
     project: &ConnectionProjectRecord,
-    probe_writeability: bool,
 ) -> McpProjectAvailability {
     let repo_root_display = project.project.repo_root.display().to_string();
     if project.project.status != ACTIVE_PROJECT_STATUS {
@@ -792,8 +795,8 @@ fn inspect_allowed_project_with_write_probe(
             ),
         );
     }
-    let storage_capability = if probe_writeability {
-        match sqlite_database_write_capability(&project.project.state_db_path) {
+    let storage_capability = if let Some(context) = context {
+        match project_state_database_write_capability(context, &project.project) {
             Ok(true) => McpStorageCapability::ReadWrite,
             Ok(false) => McpStorageCapability::ReadOnly,
             Err(_) => McpStorageCapability::Unknown,
@@ -906,7 +909,7 @@ mod repository_discovery_tests {
             InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
         },
     };
-    use volicord_test_support::TempRuntimeHome;
+    use volicord_test_support::{TempRuntimeHome, TestRuntimeHomeSetup};
 
     use crate::ManagedMcpLaunchSpec;
     use volicord_types::HostKind;
@@ -925,11 +928,13 @@ mod repository_discovery_tests {
         connection_ids: &[&str],
     ) -> Result<DiscoveryFixture, Box<dyn Error>> {
         let runtime = TempRuntimeHome::new(label)?;
+        let setup = TestRuntimeHomeSetup::acquire(runtime.path())?;
+        let context = setup.context()?;
         let repo_root = runtime.create_product_repo("clone")?;
         fs::create_dir(repo_root.join(".git"))?;
-        initialize_runtime_home(runtime.path(), &format!("runtime_{label}"), "{}")?;
+        initialize_runtime_home(&context, runtime.path(), &format!("runtime_{label}"), "{}")?;
         write_installation_profile(
-            runtime.path(),
+            &context,
             InstallationProfileRegistration {
                 installation_id: "default".to_owned(),
                 volicord_command: "volicord".to_owned(),
@@ -940,7 +945,7 @@ mod repository_discovery_tests {
             },
         )?;
         register_project(
-            runtime.path(),
+            &context,
             ProjectRegistration {
                 project_id: project_id.to_owned(),
                 repo_root: repo_root.clone(),
@@ -951,7 +956,7 @@ mod repository_discovery_tests {
         )?;
         for (index, connection_id) in connection_ids.iter().enumerate() {
             ensure_agent_connection(
-                runtime.path(),
+                &context,
                 AgentConnectionRegistration {
                     connection_internal_id: (*connection_id).to_owned(),
                     host_kind: HOST_KIND_CODEX.to_owned(),
@@ -969,7 +974,7 @@ mod repository_discovery_tests {
                 },
             )?;
             add_connection_project(
-                runtime.path(),
+                &context,
                 ConnectionProjectRegistration {
                     connection_internal_id: (*connection_id).to_owned(),
                     project_id: project_id.to_owned(),

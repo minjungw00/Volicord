@@ -3,8 +3,8 @@ use std::{error::Error, fs, path::Path};
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use volicord_core::{
-    rejected_response, tool_error, Clock, CoreService, InvocationContext,
-    UserChannelInboxProjectionRequest,
+    rejected_response, tool_error, Clock, CoreResult, CoreService, InvocationContext,
+    PipelineResponse, UserChannelInboxProjectionRequest,
 };
 use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
@@ -3802,8 +3802,120 @@ fn timestamp_semantics_use_rfc3339_instants_without_sleep() -> Result<(), Box<dy
     Ok(())
 }
 
-fn core(fixture: &CoreFixture) -> CoreService {
-    CoreService::new(fixture.runtime_home_path())
+struct AdmittedCore<'fixture> {
+    service: CoreService,
+    fixture: &'fixture CoreFixture,
+}
+
+impl std::ops::Deref for AdmittedCore<'_> {
+    type Target = CoreService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.service
+    }
+}
+
+impl AdmittedCore<'_> {
+    fn mutation_context(&self) -> volicord_store::RuntimeHomeMutationContext<'_> {
+        self.fixture
+            .mutation_context()
+            .expect("Core fixture retains matching Runtime Home mutation admission")
+    }
+
+    fn intake(
+        &self,
+        request: volicord_types::IntakeRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .intake(&self.mutation_context(), request, invocation)
+    }
+
+    fn check_close(
+        &self,
+        request: volicord_types::CheckCloseRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service.check_close(request, invocation)
+    }
+
+    fn close_task(
+        &self,
+        request: volicord_types::CloseTaskRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .close_task(&self.mutation_context(), request, invocation)
+    }
+
+    fn prepare_write(
+        &self,
+        request: volicord_types::PrepareWriteRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .prepare_write(&self.mutation_context(), request, invocation)
+    }
+
+    fn record_run(
+        &self,
+        request: volicord_types::RecordRunRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .record_run(&self.mutation_context(), request, invocation)
+    }
+
+    fn request_user_action(
+        &self,
+        request: volicord_types::RequestUserActionRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .request_user_action(&self.mutation_context(), request, invocation)
+    }
+
+    fn resolve_user_action(
+        &self,
+        request: volicord_types::ResolveUserActionRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .resolve_user_action(&self.mutation_context(), request, invocation)
+    }
+
+    fn stage_artifact(
+        &self,
+        request: volicord_types::StageArtifactRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .stage_artifact(&self.mutation_context(), request, invocation)
+    }
+
+    fn status(
+        &self,
+        request: volicord_types::StatusRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service.status(request, invocation)
+    }
+
+    fn update_scope(
+        &self,
+        request: volicord_types::UpdateScopeRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<PipelineResponse> {
+        self.service
+            .update_scope(&self.mutation_context(), request, invocation)
+    }
+}
+
+fn core(fixture: &CoreFixture) -> AdmittedCore<'_> {
+    AdmittedCore {
+        service: CoreService::new(fixture.runtime_home_path()),
+        fixture,
+    }
 }
 
 fn invocation(fixture: &CoreFixture, operation_category: OperationCategory) -> InvocationContext {
@@ -3885,7 +3997,7 @@ fn insert_unrecorded_change_fixture(
     suffix: &str,
 ) -> Result<(), Box<dyn Error>> {
     insert_unrecorded_change(
-        fixture.runtime_home_path(),
+        &fixture.mutation_context()?,
         fixture.project_id(),
         UnrecordedChangeInsert {
             unrecorded_change_id: format!("unrecorded_change_{suffix}"),
@@ -3921,7 +4033,7 @@ fn latest_tool_invocation_binding(
 
 fn create_task_with_change_unit(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     suffix: &str,
 ) -> Result<(String, String), Box<dyn Error>> {
     let intake = service.intake(
@@ -3958,7 +4070,7 @@ fn create_task_with_change_unit(
 
 fn prepare_write_ticket(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4008,8 +4120,11 @@ fn format_time(value: DateTime<Utc>) -> String {
     value.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-fn service_at(fixture: &CoreFixture, now: DateTime<Utc>) -> CoreService {
-    CoreService::with_clock(fixture.runtime_home_path(), FixedClock { now })
+fn service_at(fixture: &CoreFixture, now: DateTime<Utc>) -> AdmittedCore<'_> {
+    AdmittedCore {
+        service: CoreService::with_clock(fixture.runtime_home_path(), FixedClock { now }),
+        fixture,
+    }
 }
 
 fn test_time_at_or_after_project_floor(
@@ -4077,7 +4192,7 @@ fn product_write_run(
 
 fn stage_artifact_for_record_run(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     expected_state_version: u64,
 ) -> Result<StagedArtifactHandle, Box<dyn Error>> {
@@ -4102,7 +4217,7 @@ fn stage_artifact_for_record_run(
 
 fn record_close_evidence(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4275,7 +4390,7 @@ fn require_active_acceptance_criterion(
     fixture: &CoreFixture,
     task_id: &str,
 ) -> Result<AcceptanceCriterionId, Box<dyn Error>> {
-    let conn = fixture.conn()?;
+    let conn = fixture.mutation_conn()?;
     let acceptance_criterion_id: String = conn.query_row(
         "SELECT acceptance_criterion_id
            FROM acceptance_criteria
@@ -4305,7 +4420,7 @@ fn require_active_acceptance_criterion(
 
 fn resolve_choice_user_action(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     user_action_request_id: &str,
     request_id: &str,
@@ -4338,7 +4453,7 @@ fn resolve_choice_user_action(
 
 fn record_final_acceptance(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4374,7 +4489,7 @@ fn record_final_acceptance(
 
 fn record_cancellation_authority(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4410,7 +4525,7 @@ fn record_cancellation_authority(
 
 fn record_final_acceptance_with_id(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4450,7 +4565,7 @@ fn record_final_acceptance_with_id(
 #[allow(clippy::too_many_arguments)]
 fn record_authority_user_action_with_option(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4511,7 +4626,7 @@ fn record_authority_user_action_with_option(
 
 fn record_close_basis_with_risks(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4647,7 +4762,7 @@ fn assert_sensitive_approval_change_unit_mismatch() -> Result<(), Box<dyn Error>
 
 fn record_sensitive_approval(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4691,7 +4806,7 @@ fn record_sensitive_approval(
 
 fn promote_artifact_for_record_run(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     change_unit_id: &str,
     expected_state_version: u64,
@@ -4809,7 +4924,7 @@ fn response_record_id(response_value: &Value, field: &str) -> String {
 
 fn trusted_user_channel_projection(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
 ) -> Result<volicord_core::UserChannelInboxProjection, Box<dyn Error>> {
     service
@@ -4830,7 +4945,7 @@ fn trusted_user_channel_projection(
 
 fn assert_current_authority_options(
     fixture: &CoreFixture,
-    service: &CoreService,
+    service: &AdmittedCore<'_>,
     task_id: &str,
     response_value: &Value,
 ) -> Result<(), Box<dyn Error>> {

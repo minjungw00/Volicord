@@ -20,7 +20,7 @@ impl ToolInvocationRecord {
     }
 }
 
-impl CoreProjectStore {
+impl CoreProjectStore<'_> {
     /// Reads a committed replay row without creating storage effects.
     pub fn tool_invocation(
         &self,

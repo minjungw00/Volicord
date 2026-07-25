@@ -1,4 +1,5 @@
 use crate::errors::McpAdapterError;
+use crate::mutation_admission::with_mcp_runtime_home_mutation;
 use crate::prelude::*;
 use crate::routing::*;
 use crate::schema_validation::validate_mcp_tool_arguments;
@@ -124,6 +125,7 @@ impl McpAdapter {
 
     pub(crate) fn allowed_project_availabilities(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
     ) -> Result<Vec<McpProjectAvailability>, McpAdapterError> {
         current_enabled_connection(
@@ -142,12 +144,21 @@ impl McpAdapter {
                 self.context
                     .project_allowlist_allows(project.project_id.as_str())
             })
-            .map(inspect_allowed_project)
+            .map(|project| inspect_allowed_project(context, project))
             .collect())
     }
 
     /// Returns the tools exposed by this adapter's current connection mode.
     pub fn tools(&self) -> Result<Vec<CanonicalToolDefinition>, McpAdapterError> {
+        with_mcp_runtime_home_mutation(&self.runtime_home, "mcp.tools_list", |context| {
+            self.tools_for_context(context)
+        })
+    }
+
+    pub(crate) fn tools_for_context(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+    ) -> Result<Vec<CanonicalToolDefinition>, McpAdapterError> {
         let connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
@@ -159,7 +170,7 @@ impl McpAdapter {
                 message: error.to_string(),
             }
         })?;
-        let storage_capability = self.session_storage_capability()?;
+        let storage_capability = self.session_storage_capability(context)?;
         Ok(mcp_tools_for_mode_and_storage_with_detail(
             mode,
             storage_capability,
@@ -169,19 +180,21 @@ impl McpAdapter {
 
     pub(crate) fn session_storage_capability(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
     ) -> Result<McpStorageCapability, McpAdapterError> {
-        let projects = self.allowed_project_availabilities("storage capability")?;
+        let projects = self.allowed_project_availabilities(context, "storage capability")?;
         Ok(storage_capability_for_projects(&projects))
     }
 
     /// Derives local invocation facts for one decoded request envelope.
     pub(crate) fn derive_invocation_context(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         envelope: &ToolEnvelope,
         operation_category: OperationCategory,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
-        let store = CoreProjectStore::open(&self.runtime_home, &envelope.project_id)
+        let store = CoreProjectStore::open_for_mutation(context, &envelope.project_id)
             .map_err(McpAdapterError::Store)?;
         let git_workspace_context =
             capture_git_workspace_snapshot(&store.project_record().repo_root)
@@ -281,21 +294,21 @@ impl McpAdapter {
     ) -> Result<PipelineResponse, McpAdapterError> {
         let tool = AgentToolId::from_wire_name(tool_name)
             .map_err(|_| McpAdapterError::UnknownTool(tool_name.to_owned()))?;
-        let coordinates = self
-            .default_agent_session_binding
-            .as_ref()
-            .map(|binding| self.ensure_agent_session_binding_for_tool(tool, &params, binding))
-            .transpose()?
-            .flatten();
-        self.call_tool_for_session(
-            tool,
-            params,
-            coordinates.as_ref().map(|value| value.borrowed()),
-        )
+        with_mcp_runtime_home_mutation(&self.runtime_home, "mcp.tool_call", |context| {
+            let coordinates =
+                self.default_agent_session_coordinates_for_tool(context, tool, &params)?;
+            self.call_tool_for_session(
+                context,
+                tool,
+                params,
+                coordinates.as_ref().map(|value| value.borrowed()),
+            )
+        })
     }
 
     pub(crate) fn call_tool_for_session(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool: AgentToolId,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
@@ -303,26 +316,38 @@ impl McpAdapter {
         let tool_name = tool.wire_name();
         validate_mcp_tool_arguments(tool_name, &params)?;
         match tool.method() {
-            Some(MethodName::Intake) => self.call_intake(tool_name, params, session),
-            Some(MethodName::UpdateScope) => self.call_update_scope(tool_name, params, session),
-            Some(MethodName::Status) => self.call_status(tool_name, params, session),
+            Some(MethodName::Intake) => self.call_intake(context, tool_name, params, session),
+            Some(MethodName::UpdateScope) => {
+                self.call_update_scope(context, tool_name, params, session)
+            }
+            Some(MethodName::Status) => self.call_status(context, tool_name, params, session),
             Some(MethodName::GetOperationResult) => {
-                self.call_get_operation_result(tool_name, params, session)
+                self.call_get_operation_result(context, tool_name, params, session)
             }
             Some(MethodName::PrepareEvidenceCapture) => {
-                self.call_prepare_evidence_capture(tool_name, params, session)
+                self.call_prepare_evidence_capture(context, tool_name, params, session)
             }
-            Some(MethodName::PrepareWrite) => self.call_prepare_write(tool_name, params, session),
-            Some(MethodName::StageArtifact) => self.call_stage_artifact(tool_name, params, session),
-            Some(MethodName::RecordRun) => self.call_record_run(tool_name, params, session),
+            Some(MethodName::PrepareWrite) => {
+                self.call_prepare_write(context, tool_name, params, session)
+            }
+            Some(MethodName::StageArtifact) => {
+                self.call_stage_artifact(context, tool_name, params, session)
+            }
+            Some(MethodName::RecordRun) => {
+                self.call_record_run(context, tool_name, params, session)
+            }
             Some(MethodName::RequestUserAction) => {
-                self.call_request_user_action(tool_name, params, session)
+                self.call_request_user_action(context, tool_name, params, session)
             }
             Some(MethodName::ReconcileChanges) => {
-                self.call_reconcile_changes(tool_name, params, session)
+                self.call_reconcile_changes(context, tool_name, params, session)
             }
-            Some(MethodName::CheckClose) => self.call_check_close(tool_name, params, session),
-            Some(MethodName::CloseTask) => self.call_close_task(tool_name, params, session),
+            Some(MethodName::CheckClose) => {
+                self.call_check_close(context, tool_name, params, session)
+            }
+            Some(MethodName::CloseTask) => {
+                self.call_close_task(context, tool_name, params, session)
+            }
             None | Some(MethodName::ResolveUserAction) => {
                 Err(McpAdapterError::UnknownTool(tool_name.to_owned()))
             }
@@ -331,13 +356,15 @@ impl McpAdapter {
 
     fn call_intake(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpIntakeArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             None,
@@ -345,6 +372,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             IntakeRequest {
                 envelope,
@@ -365,14 +393,16 @@ impl McpAdapter {
 
     fn call_update_scope(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpUpdateScopeArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             Some(&task_id),
@@ -380,6 +410,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             UpdateScopeRequest {
                 envelope,
@@ -401,14 +432,16 @@ impl McpAdapter {
 
     fn call_status(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStatusArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             task_id.as_ref(),
@@ -416,26 +449,29 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             StatusRequest {
                 envelope,
                 continuity_page: args.continuity_page,
                 include: args.detail.include(),
             },
-            CoreService::status,
+            |core, _, request, invocation| core.status(request, invocation),
             session,
         )
     }
 
     fn call_get_operation_result(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpGetOperationResultArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             None,
@@ -443,19 +479,21 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             GetOperationResultRequest {
                 envelope,
                 operation_result_ref: args.operation_result_ref,
                 cursor: args.cursor,
             },
-            CoreService::get_operation_result,
+            |core, _, request, invocation| core.get_operation_result(request, invocation),
             session,
         )
     }
 
     pub(crate) fn refresh_authority_status(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         project_id: &ProjectId,
         task_id: &TaskId,
         session: Option<AgentSessionCoordinates<'_>>,
@@ -463,7 +501,7 @@ impl McpAdapter {
         let owned_session = if session.is_none() {
             self.default_agent_session_binding
                 .as_ref()
-                .map(|binding| self.ensure_agent_session_binding(project_id, binding))
+                .map(|binding| self.ensure_agent_session_binding(context, project_id, binding))
                 .transpose()?
         } else {
             None
@@ -471,37 +509,52 @@ impl McpAdapter {
         let session = session.or_else(|| owned_session.as_ref().map(|value| value.borrowed()));
         let status_tool_name = AgentToolId::STATUS.wire_name();
         let envelope = self.generated_envelope(
+            context,
             status_tool_name,
             project_id,
             Some(task_id),
             OperationCategory::Read,
         )?;
         self.call_core_request(
+            context,
             status_tool_name,
             StatusRequest {
                 envelope,
                 continuity_page: None,
                 include: StatusDetailLevel::Workflow.include(),
             },
-            CoreService::status,
+            |core, _, request, invocation| core.status(request, invocation),
             session,
         )
     }
 
-    pub(crate) fn has_default_agent_session(&self) -> bool {
-        self.default_agent_session_binding.is_some()
+    pub(crate) fn default_agent_session_coordinates_for_tool(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        tool: AgentToolId,
+        params: &Value,
+    ) -> Result<Option<OwnedAgentSessionCoordinates>, McpAdapterError> {
+        self.default_agent_session_binding
+            .as_ref()
+            .map(|binding| {
+                self.ensure_agent_session_binding_for_tool(context, tool, params, binding)
+            })
+            .transpose()
+            .map(Option::flatten)
     }
 
     fn call_prepare_evidence_capture(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareEvidenceCaptureArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             Some(&task_id),
@@ -509,6 +562,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             PrepareEvidenceCaptureRequest {
                 envelope,
@@ -525,14 +579,16 @@ impl McpAdapter {
 
     fn call_prepare_write(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpPrepareWriteArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             task_id.as_ref(),
@@ -540,6 +596,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             PrepareWriteRequest {
                 envelope,
@@ -558,14 +615,16 @@ impl McpAdapter {
 
     fn call_stage_artifact(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpStageArtifactArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             Some(&task_id),
@@ -573,6 +632,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             StageArtifactRequest {
                 envelope,
@@ -592,14 +652,16 @@ impl McpAdapter {
 
     fn call_record_run(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRecordRunArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             Some(&task_id),
@@ -607,6 +669,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             RecordRunRequest {
                 envelope,
@@ -635,12 +698,13 @@ impl McpAdapter {
 
     fn call_request_user_action(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpRequestUserActionArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         match prepared.arguments.request {
             McpRequestUserActionOperation::Create {
                 task_id,
@@ -650,12 +714,14 @@ impl McpAdapter {
                 expires_at,
             } => {
                 let envelope = self.generated_envelope(
+                    context,
                     tool_name,
                     &prepared.project_id,
                     Some(&task_id),
                     OperationCategory::AgentWorkflow,
                 )?;
                 self.call_core_request(
+                    context,
                     tool_name,
                     RequestUserActionRequest {
                         envelope,
@@ -673,6 +739,22 @@ impl McpAdapter {
                 user_action_request_id,
             } => {
                 self.ensure_mode_allows(tool_name, OperationCategory::AgentWorkflow)?;
+                let owned_session = if session.is_none() {
+                    self.default_agent_session_binding
+                        .as_ref()
+                        .map(|binding| {
+                            self.ensure_agent_session_binding(
+                                context,
+                                &prepared.project_id,
+                                binding,
+                            )
+                        })
+                        .transpose()?
+                } else {
+                    None
+                };
+                let session =
+                    session.or_else(|| owned_session.as_ref().map(|value| value.borrowed()));
                 let envelope = ToolEnvelope {
                     project_id: prepared.project_id.clone(),
                     task_id: RequiredNullable::null(),
@@ -704,14 +786,16 @@ impl McpAdapter {
 
     fn call_reconcile_changes(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpReconcileChangesArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             Some(&task_id),
@@ -719,6 +803,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             ReconcileChangesRequest {
                 envelope,
@@ -732,37 +817,42 @@ impl McpAdapter {
 
     fn call_check_close(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCheckCloseArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             Some(&task_id),
             OperationCategory::Read,
         )?;
         self.call_core_request(
+            context,
             tool_name,
             CheckCloseRequest { envelope, task_id },
-            CoreService::check_close,
+            |core, _, request, invocation| core.check_close(request, invocation),
             session,
         )
     }
 
     fn call_close_task(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError> {
         let prepared: PreparedMcpArguments<McpCloseTaskArguments> =
-            self.prepare_mcp_arguments(tool_name, params, session)?;
+            self.prepare_mcp_arguments(context, tool_name, params, session)?;
         let task_id = prepared.arguments.task_id.clone();
         let envelope = self.generated_envelope(
+            context,
             tool_name,
             &prepared.project_id,
             Some(&task_id),
@@ -770,6 +860,7 @@ impl McpAdapter {
         )?;
         let args = prepared.arguments;
         self.call_core_request(
+            context,
             tool_name,
             CloseTaskRequest {
                 envelope,
@@ -786,6 +877,7 @@ impl McpAdapter {
 
     fn readonly_storage_rejection_for_tool(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
     ) -> Result<Option<PipelineResponse>, McpAdapterError> {
         let Some(operation_category) = public_tool_operation_category(tool_name) else {
@@ -794,7 +886,7 @@ impl McpAdapter {
         if operation_category == OperationCategory::Read {
             return Ok(None);
         }
-        let storage_capability = self.session_storage_capability()?;
+        let storage_capability = self.session_storage_capability(context)?;
         if storage_capability.allows_mutation() {
             return Ok(None);
         }
@@ -837,6 +929,7 @@ impl McpAdapter {
 
     fn call_core_request<T, F>(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         request: T,
         call: F,
@@ -846,25 +939,52 @@ impl McpAdapter {
         T: MethodOperationCategory + HasEnvelope,
         F: FnOnce(
             &CoreService,
+            &RuntimeHomeMutationContext<'_>,
             T,
             InvocationContext,
         ) -> Result<PipelineResponse, CorePipelineError>,
     {
-        if let Some(response) = self.readonly_storage_rejection_for_tool(tool_name)? {
+        if let Some(response) = self.readonly_storage_rejection_for_tool(context, tool_name)? {
             return Ok(response);
         }
         let operation_category = request.operation_category();
         self.ensure_mode_allows(tool_name, operation_category)?;
-        let invocation = self.derive_invocation_context(
-            request_envelope(&request),
-            operation_category,
-            session,
-        )?;
-        call(&self.core, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
+        let owned_session = if session.is_none() {
+            self.default_agent_session_binding
+                .as_ref()
+                .map(|binding| {
+                    self.ensure_agent_session_binding(
+                        context,
+                        &request_envelope(&request).project_id,
+                        binding,
+                    )
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        let session = session.or_else(|| owned_session.as_ref().map(|value| value.borrowed()));
+        let invocation = if operation_category == OperationCategory::Read {
+            self.derive_read_only_invocation_context(
+                request_envelope(&request),
+                operation_category,
+                session,
+            )?
+        } else {
+            self.derive_invocation_context(
+                context,
+                request_envelope(&request),
+                operation_category,
+                session,
+            )?
+        };
+        call(&self.core, context, request, invocation.core_invocation())
+            .map_err(McpAdapterError::Core)
     }
 
     pub(crate) fn call_adapter_tool(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool: AgentToolId,
         params: Value,
         binding: Option<&ManagedAgentSessionBinding>,
@@ -886,7 +1006,7 @@ impl McpAdapter {
                         message: format!("{tool_name} does not accept arguments"),
                     });
                 }
-                let result = self.list_projects_result()?;
+                let result = self.list_projects_result(context)?;
                 serde_json::to_value(result).map_err(McpAdapterError::Json)
             }
             AgentToolId::BEGIN_INTEGRATION_VERIFICATION => {
@@ -898,10 +1018,11 @@ impl McpAdapter {
                 })?;
                 let arguments: BeginIntegrationVerificationArguments =
                     self.decode_params(tool_name, params)?;
-                let project_id = self.select_project(arguments.project_selector.as_deref())?;
+                let project_id =
+                    self.select_project(context, arguments.project_selector.as_deref())?;
                 let observed_at = integration_verification_timestamp();
                 let result = begin_guard_integration_verification(
-                    &self.runtime_home,
+                    context,
                     BeginGuardIntegrationVerificationInput {
                         caller: integration_verification_caller(
                             self.context.connection_internal_id.as_str(),
@@ -920,7 +1041,7 @@ impl McpAdapter {
                 let arguments: IntegrationVerificationIdArguments =
                     self.decode_params(tool_name, params)?;
                 let result = acknowledge_guard_integration_probe(
-                    &self.runtime_home,
+                    context,
                     arguments.verification_id.as_str(),
                     &integration_verification_caller(
                         self.context.connection_internal_id.as_str(),
@@ -936,7 +1057,7 @@ impl McpAdapter {
                 let arguments: IntegrationVerificationIdArguments =
                     self.decode_params(tool_name, params)?;
                 let result = get_guard_integration_verification(
-                    &self.runtime_home,
+                    context,
                     arguments.verification_id.as_str(),
                     &integration_verification_caller(
                         self.context.connection_internal_id.as_str(),
@@ -951,14 +1072,17 @@ impl McpAdapter {
         }
     }
 
-    fn list_projects_result(&self) -> Result<ListProjectsResult, McpAdapterError> {
+    fn list_projects_result(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+    ) -> Result<ListProjectsResult, McpAdapterError> {
         let tool_name = AgentToolId::LIST_PROJECTS.wire_name();
         let connection = current_enabled_connection(
             &self.runtime_home,
             self.context.connection_internal_id.as_str(),
             tool_name,
         )?;
-        let availabilities = self.allowed_project_availabilities(tool_name)?;
+        let availabilities = self.allowed_project_availabilities(context, tool_name)?;
         let items = availabilities
             .iter()
             .map(|project| ListProjectItem {
@@ -984,6 +1108,7 @@ impl McpAdapter {
 
     fn prepare_mcp_arguments<T>(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         params: Value,
         _session: Option<AgentSessionCoordinates<'_>>,
@@ -1001,7 +1126,8 @@ impl McpAdapter {
         let requested_project_selector =
             optional_string_field(object, "project_selector", tool_name)?;
         let arguments = self.decode_params(tool_name, params)?;
-        let selected_project_id = self.select_project(requested_project_selector.as_deref())?;
+        let selected_project_id =
+            self.select_project(context, requested_project_selector.as_deref())?;
         Ok(PreparedMcpArguments {
             arguments,
             project_id: selected_project_id,
@@ -1010,6 +1136,7 @@ impl McpAdapter {
 
     pub(crate) fn ensure_agent_session_binding_for_tool(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool: AgentToolId,
         params: &Value,
         binding: &ManagedAgentSessionBinding,
@@ -1028,7 +1155,7 @@ impl McpAdapter {
             return Ok(None);
         }
         let project_id = if tool == AgentToolId::LIST_PROJECTS {
-            let projects = self.allowed_project_availabilities(tool_name)?;
+            let projects = self.allowed_project_availabilities(context, tool_name)?;
             let [project] = projects.as_slice() else {
                 return Ok(None);
             };
@@ -1039,14 +1166,15 @@ impl McpAdapter {
         } else {
             let requested_project_selector =
                 optional_string_field(object, "project_selector", tool_name)?;
-            self.select_project(requested_project_selector.as_deref())?
+            self.select_project(context, requested_project_selector.as_deref())?
         };
-        self.ensure_agent_session_binding(&project_id, binding)
+        self.ensure_agent_session_binding(context, &project_id, binding)
             .map(Some)
     }
 
     pub(crate) fn ensure_agent_session_binding(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         project_id: &ProjectId,
         binding: &ManagedAgentSessionBinding,
     ) -> Result<OwnedAgentSessionCoordinates, McpAdapterError> {
@@ -1088,14 +1216,14 @@ impl McpAdapter {
         }
         let guard_installation_id =
             guard_installation.map(|installation| installation.guard_installation_id.clone());
-        let session_id = if self.storage_capability_for_project(project_id)?
+        let session_id = if self.storage_capability_for_project(context, project_id)?
             == McpStorageCapability::ReadWrite
         {
-            let observed_at = CoreProjectStore::open(&self.runtime_home, project_id)
+            let observed_at = CoreProjectStore::open_for_mutation(context, project_id)
                 .and_then(|store| store.current_timestamp())
                 .map_err(McpAdapterError::Store)?;
             bind_agent_session_runtime(
-                &self.runtime_home,
+                context,
                 project_id.as_str(),
                 AgentSessionRuntimeBinding {
                     runtime_session_id: binding.runtime_session_id.clone(),
@@ -1126,6 +1254,7 @@ impl McpAdapter {
 
     fn storage_capability_for_project(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         project_id: &ProjectId,
     ) -> Result<McpStorageCapability, McpAdapterError> {
         let access = agent_connection_project_access_read_only(
@@ -1138,18 +1267,22 @@ impl McpAdapter {
         let Some(project) = access.project else {
             return Ok(McpStorageCapability::Unavailable);
         };
-        let availability = inspect_allowed_project(&ConnectionProjectRecord {
-            connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
-            project_internal_id: project.project_internal_id.clone(),
-            project_id: project.project_id.clone(),
-            created_at: String::new(),
-            project,
-        });
+        let availability = inspect_allowed_project(
+            context,
+            &ConnectionProjectRecord {
+                connection_internal_id: self.context.connection_internal_id.as_str().to_owned(),
+                project_internal_id: project.project_internal_id.clone(),
+                project_id: project.project_id.clone(),
+                created_at: String::new(),
+                project,
+            },
+        );
         Ok(availability.storage_capability)
     }
 
     fn generated_envelope(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         project_id: &ProjectId,
         task_id: Option<&volicord_types::TaskId>,
@@ -1158,7 +1291,7 @@ impl McpAdapter {
         let state_version = if operation_category == OperationCategory::Read {
             None
         } else {
-            Some(self.current_state_version(project_id)?)
+            Some(self.current_state_version(context, project_id)?)
         };
         let idempotency_key = if operation_category == OperationCategory::Read {
             RequiredNullable::null()
@@ -1185,8 +1318,12 @@ impl McpAdapter {
         })
     }
 
-    fn current_state_version(&self, project_id: &ProjectId) -> Result<u64, McpAdapterError> {
-        let store = CoreProjectStore::open(&self.runtime_home, project_id)
+    fn current_state_version(
+        &self,
+        context: &RuntimeHomeMutationContext<'_>,
+        project_id: &ProjectId,
+    ) -> Result<u64, McpAdapterError> {
+        let store = CoreProjectStore::open_for_mutation(context, project_id)
             .map_err(McpAdapterError::Store)?;
         store
             .project_state()
@@ -1196,6 +1333,7 @@ impl McpAdapter {
 
     fn select_project(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         requested_project_id: Option<&str>,
     ) -> Result<ProjectId, McpAdapterError> {
         let connection_internal_id = self.context.connection_internal_id.as_str();
@@ -1239,7 +1377,7 @@ impl McpAdapter {
                 created_at: String::new(),
                 project,
             };
-            let availability = inspect_allowed_project(&project_record);
+            let availability = inspect_allowed_project(context, &project_record);
             return selected_project_from_availability(availability);
         }
 
@@ -1264,7 +1402,7 @@ impl McpAdapter {
             ));
         }
 
-        selected_project_from_availability(inspect_allowed_project(&projects[0]))
+        selected_project_from_availability(inspect_allowed_project(context, &projects[0]))
     }
 
     fn ensure_mode_allows(

@@ -9,7 +9,7 @@ use volicord_core::{CorePipelineError, CoreService, InvocationContext, PipelineR
 use volicord_store::{
     core_pipeline::CoreProjectStore,
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
-    StoreError,
+    RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::{
     ActorSource, IdempotencyKey, OperationCategory, ProjectId, ReconcileChangesRequest, RequestId,
@@ -18,6 +18,7 @@ use volicord_types::{
 
 use crate::cli::{ChangesArgs, ChangesCommand, ChangesReconcileArgs};
 use crate::disclosure::does_not_prove_line;
+use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -30,6 +31,7 @@ pub enum ChangesCommandError {
     Usage(String),
     Runtime(String),
     FailureOutput(String),
+    MutationAdmission(CliMutationAdmissionError),
 }
 
 impl fmt::Display for ChangesCommandError {
@@ -38,11 +40,18 @@ impl fmt::Display for ChangesCommandError {
             Self::Usage(message) | Self::Runtime(message) | Self::FailureOutput(message) => {
                 formatter.write_str(message)
             }
+            Self::MutationAdmission(error) => write!(formatter, "{error}"),
         }
     }
 }
 
 impl std::error::Error for ChangesCommandError {}
+
+impl From<CliMutationAdmissionError> for ChangesCommandError {
+    fn from(error: CliMutationAdmissionError) -> Self {
+        Self::MutationAdmission(error)
+    }
+}
 
 impl From<StoreError> for ChangesCommandError {
     fn from(error: StoreError) -> Self {
@@ -67,6 +76,7 @@ impl From<ProjectCommandError> for ChangesCommandError {
         match error {
             ProjectCommandError::Usage(message) => Self::Usage(message),
             ProjectCommandError::Runtime(message) => Self::Runtime(message),
+            ProjectCommandError::MutationAdmission(error) => Self::MutationAdmission(error),
         }
     }
 }
@@ -100,11 +110,27 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
-    let repo = options.repo.map(|path| absolute_path(current_dir, path));
+    let repo = options
+        .repo
+        .as_ref()
+        .map(|path| absolute_path(current_dir, path.clone()));
     let repo_root = resolve_repository_root(current_dir, repo.as_deref())?;
+    with_cli_runtime_home_mutation(&runtime_home, "cli.changes.reconcile", |context| {
+        command_reconcile_admitted(context, &runtime_home, &repo_root, &options)
+            .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
+    })
+    .map_err(Into::into)
+}
+
+fn command_reconcile_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    runtime_home: &Path,
+    repo_root: &Path,
+    options: &ChangesReconcileArgs,
+) -> Result<String, ChangesCommandError> {
     let project = registered_project_for_repo(&runtime_home, &repo_root)?;
     let project_id = ProjectId::new(project.project_id.clone());
-    let store = CoreProjectStore::open(&runtime_home, &project_id)?;
+    let store = CoreProjectStore::open_for_mutation(context, &project_id)?;
     let task_id = match options.task.as_str() {
         "active" => store
             .active_task_record()?
@@ -114,6 +140,7 @@ where
     };
     let state_version = store.project_state()?.state_version;
     let response = CoreService::new(&runtime_home).reconcile_changes(
+        context,
         ReconcileChangesRequest {
             envelope: ToolEnvelope {
                 project_id: project_id.clone(),

@@ -177,7 +177,10 @@ pub(super) fn execute_setup_with_lease<T>(
     operation: CommandOperation,
     output_format: OutputFormat,
     dry_run: bool,
-    execute: impl FnOnce(&RuntimeHomeMutationLease) -> Result<T, ConnectionCommandError>,
+    execute: impl FnOnce(
+        &RuntimeHomeMutationLease,
+        &RuntimeHomeMutationContext<'_>,
+    ) -> Result<T, ConnectionCommandError>,
 ) -> Result<T, ConnectionCommandError> {
     match RuntimeHomeMutationLease::acquire(
         requested_runtime_home,
@@ -186,7 +189,10 @@ pub(super) fn execute_setup_with_lease<T>(
     )
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
     {
-        RuntimeHomeMutationLeaseOutcome::Acquired(lease) => execute(&lease),
+        RuntimeHomeMutationLeaseOutcome::Acquired(lease) => {
+            let context = RuntimeHomeMutationContext::new(lease.permit(), requested_runtime_home)?;
+            execute(&lease, &context)
+        }
         RuntimeHomeMutationLeaseOutcome::Busy(busy) => {
             let rendered = render_setup_lease_busy(output_format, operation, &busy, dry_run)?;
             Err(ConnectionCommandError::FailureOutput(rendered.output))
@@ -198,6 +204,7 @@ pub(super) fn provision_init(
     request: InitProvisioningRequest<'_>,
     process: &mut impl ConnectionProcess,
     lease: &RuntimeHomeMutationLease,
+    context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
     ensure_init_request_matches_lease(&request, process, lease)?;
     let dry_run = request.parsed.dry_run;
@@ -229,7 +236,7 @@ pub(super) fn provision_init(
         });
     }
 
-    apply_init_provisioning(plan, process, lease)
+    apply_init_provisioning(plan, process, lease, context)
 }
 
 fn ensure_init_request_matches_lease(
@@ -662,11 +669,12 @@ fn apply_init_provisioning(
     mut plan: InitProvisioningPlan,
     process: &mut impl ConnectionProcess,
     lease: &RuntimeHomeMutationLease,
+    context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
     ensure_setup_lease_target(lease, &plan.runtime_home)?;
     validate_init_connection_expectation(&plan)?;
     let setup_plan = build_setup_plan(&plan)?;
-    let mut prepared = match PreparedSetup::prepare(setup_plan, lease) {
+    let mut prepared = match PreparedSetup::prepare(setup_plan, context) {
         Ok(prepared) => prepared,
         Err(error) => {
             return setup_transaction_failure(
@@ -695,6 +703,7 @@ fn apply_init_provisioning(
         let runtime_home_id = runtime_home_id_for_path(&plan.runtime_home)
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
         let (_, _profile) = initialize_runtime_home_with_installation(
+            context,
             &plan.runtime_home,
             &runtime_home_id,
             ADMIN_METADATA_JSON,
@@ -704,7 +713,7 @@ fn apply_init_provisioning(
         let project_was_missing =
             project_record_by_repo_root_read_only(&plan.runtime_home, &plan.repo_root)?.is_none();
         let project = ensure_project_for_repo(
-            &plan.runtime_home,
+            context,
             RepoProjectRegistration {
                 project_name: None,
                 project_alias: None,
@@ -746,7 +755,7 @@ fn apply_init_provisioning(
         let mut cleanup_resume_pending = Vec::new();
         if is_connection_migration && existing.is_some() {
             let (_, migration_state) = staged_connection_migration_state(
-                &plan.runtime_home,
+                context,
                 &desired_connection_registration.connection_internal_id,
                 &project.project_id,
                 &superseded_bindings,
@@ -764,14 +773,14 @@ fn apply_init_provisioning(
             validate_init_connection_expectation(&plan)?;
         }
         let registered_connection = if is_connection_migration {
-            ensure_staged_agent_connection(&plan.runtime_home, desired_connection_registration)
+            ensure_staged_agent_connection(context, desired_connection_registration)
         } else {
-            ensure_agent_connection(&plan.runtime_home, desired_connection_registration)
+            ensure_agent_connection(context, desired_connection_registration)
         };
         let mut connection = registered_connection.map_err(ConnectionCommandError::from)?;
         if is_connection_migration && !cleanup_resume {
             let (current_connection, migration_state) = staged_connection_migration_state(
-                &plan.runtime_home,
+                context,
                 &connection.connection_internal_id,
                 &project.project_id,
                 &superseded_bindings,
@@ -787,7 +796,7 @@ fn apply_init_provisioning(
             }
         } else if !is_connection_migration {
             add_connection_project(
-                &plan.runtime_home,
+                context,
                 ConnectionProjectRegistration {
                     connection_internal_id: connection.connection_internal_id.clone(),
                     project_id: project.project_id.clone(),
@@ -797,11 +806,7 @@ fn apply_init_provisioning(
             .map_err(ConnectionCommandError::from)?;
         }
         enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id)?;
-        record_authoritative_workflow_policy(
-            &plan.runtime_home,
-            &project.project_id,
-            &integration.policy,
-        )?;
+        record_authoritative_workflow_policy(context, &project.project_id, &integration.policy)?;
         prepared.mark_store_applied(None)?;
         for mutation in &mut prepared.plan.repository_file_mutations {
             mutation.commit()?;
@@ -825,20 +830,16 @@ fn apply_init_provisioning(
         setup_fault(process, FAULT_AFTER_CODEX_CONFIG_REPLACE)?;
         setup_fault(process, FAULT_BEFORE_INTEGRATION_REVISION_COMMIT)?;
         let (_guard_installation, pending_host_cleanup_connections) = if cleanup_resume {
-            let guard_installation = record_guard_installation(
-                &plan.runtime_home,
-                &connection,
-                &project.project_id,
-                &integration,
-            )
-            .map_err(ConnectionCommandError::from)?;
+            let guard_installation =
+                record_guard_installation(context, &connection, &project.project_id, &integration)
+                    .map_err(ConnectionCommandError::from)?;
             (guard_installation, cleanup_resume_pending)
         } else if is_connection_migration {
             let guard_upsert =
                 guard_installation_upsert(&connection, &project.project_id, &integration)
                     .map_err(ConnectionCommandError::from)?;
             let (activated_connection, guard_installation, pending) = activate_staged_connection(
-                &plan.runtime_home,
+                context,
                 &connection.connection_internal_id,
                 &project.project_id,
                 &superseded_bindings,
@@ -849,20 +850,15 @@ fn apply_init_provisioning(
             (guard_installation, pending)
         } else {
             (
-                record_guard_installation(
-                    &plan.runtime_home,
-                    &connection,
-                    &project.project_id,
-                    &integration,
-                )
-                .map_err(ConnectionCommandError::from)?,
+                record_guard_installation(context, &connection, &project.project_id, &integration)
+                    .map_err(ConnectionCommandError::from)?,
                 Vec::new(),
             )
         };
         prepared.mark_store_applied(None)?;
         if !pending_host_cleanup_connections.is_empty() {
             let cleanup = complete_pending_host_cleanup(
-                &plan.runtime_home,
+                context,
                 &project.project_id,
                 &connection.connection_internal_id,
                 &pending_host_cleanup_connections,
@@ -879,6 +875,7 @@ fn apply_init_provisioning(
         prepared.mark_store_applied(None)?;
         let expected_integration_revision = connection_integration_revision(&connection)?;
         let mut verification = verify_connection(
+            context,
             &plan.runtime_home,
             &connection,
             &host_plan,
@@ -890,7 +887,7 @@ fn apply_init_provisioning(
             verification.report = report_with_hook_review_required(&verification.report)?;
         }
         connection = persist_connection_verification_report(
-            &plan.runtime_home,
+            context,
             &connection.connection_internal_id,
             &expected_integration_revision,
             Some(&verification.report),
@@ -1162,7 +1159,7 @@ fn setup_connection_changed_error(command: SetupCommand, detail: &str) -> Connec
 }
 
 pub(super) fn record_authoritative_workflow_policy(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
     policy: &Value,
 ) -> Result<(), ConnectionCommandError> {
@@ -1171,7 +1168,7 @@ pub(super) fn record_authoritative_workflow_policy(
     let fingerprint = canonical_json_sha256(policy)
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
         .into_inner();
-    let mut store = CoreProjectStore::open(runtime_home, &ProjectId::new(project_id))?;
+    let mut store = CoreProjectStore::open_for_mutation(context, &ProjectId::new(project_id))?;
     let prior = store.project_workflow_policy()?;
     if prior
         .as_ref()
@@ -1250,6 +1247,7 @@ pub(super) fn provision_connection(
     request: ProvisionConnectionRequest<'_>,
     process: &mut impl ConnectionProcess,
     lease: &RuntimeHomeMutationLease,
+    context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<ConnectionProvisioningOutcome, ConnectionCommandError> {
     ensure_connection_request_matches_lease(&request, process, lease)?;
     let dry_run = request.parsed.dry_run;
@@ -1258,7 +1256,7 @@ pub(super) fn provision_connection(
         return Ok(ConnectionProvisioningOutcome::DryRun(Box::new(plan)));
     }
 
-    apply_connection_provisioning(plan, process, lease)
+    apply_connection_provisioning(plan, process, lease, context)
         .map(Box::new)
         .map(ConnectionProvisioningOutcome::Applied)
 }
@@ -1422,6 +1420,7 @@ fn apply_connection_provisioning(
     plan: ConnectionProvisioningPlan,
     process: &mut impl ConnectionProcess,
     lease: &RuntimeHomeMutationLease,
+    context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<ConnectionProvisioningResult, ConnectionCommandError> {
     ensure_setup_lease_target(lease, &plan.runtime_home)?;
     let existing = validate_setup_connection_expectation(
@@ -1437,12 +1436,13 @@ fn apply_connection_provisioning(
         SetupCommand::ConnectionAdd,
     )?;
     initialize_runtime_home(
+        context,
         &plan.runtime_home,
         AGENT_RUNTIME_HOME_ID,
         metadata_json_base()?.as_str(),
     )?;
     let project = ensure_project_for_repo(
-        &plan.runtime_home,
+        context,
         RepoProjectRegistration {
             project_name: None,
             project_alias: None,
@@ -1488,11 +1488,10 @@ fn apply_connection_provisioning(
         metadata_json,
     };
     apply_host_plan(plan.host_kind, &host_plan, process)?;
-    let mut connection =
-        ensure_agent_connection(&plan.runtime_home, desired_connection_registration)?;
+    let mut connection = ensure_agent_connection(context, desired_connection_registration)?;
     enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id)?;
     add_connection_project(
-        &plan.runtime_home,
+        context,
         ConnectionProjectRegistration {
             connection_internal_id: connection.connection_internal_id.clone(),
             project_id: project.project_id.clone(),
@@ -1510,20 +1509,12 @@ fn apply_connection_provisioning(
         mcp_entry: &host_plan.entry,
         connection_intent: plan.intent,
     })?;
-    record_authoritative_workflow_policy(
-        &plan.runtime_home,
-        &project.project_id,
-        &integration.policy,
-    )?;
+    record_authoritative_workflow_policy(context, &project.project_id, &integration.policy)?;
     let integration = apply_guard_integration(integration)?;
-    record_guard_installation(
-        &plan.runtime_home,
-        &connection,
-        &project.project_id,
-        &integration,
-    )?;
+    record_guard_installation(context, &connection, &project.project_id, &integration)?;
     let expected_integration_revision = connection_integration_revision(&connection)?;
     let verification = verify_connection(
+        context,
         &plan.runtime_home,
         &connection,
         &host_plan,
@@ -1532,7 +1523,7 @@ fn apply_connection_provisioning(
         process,
     )?;
     connection = persist_connection_verification_report(
-        &plan.runtime_home,
+        context,
         &connection.connection_internal_id,
         &expected_integration_revision,
         Some(&verification.report),
@@ -1675,7 +1666,7 @@ mod init_planning_tests {
             CommandOperation::Init,
             OutputFormat::Json,
             false,
-            |lease| {
+            |lease, _context| {
                 assert_eq!(lease.mode(), RuntimeHomeMutationLeaseMode::ExclusiveSetup);
                 assert!(matches!(
                     RuntimeHomeMutationLease::acquire(
@@ -1902,7 +1893,14 @@ mod init_planning_tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("init-planning-canonical-no-profile")?;
         let repo_root = create_empty_product_repository(&fixture)?;
-        initialize_runtime_home(fixture.path(), "runtime_home_without_profile", "{}")?;
+        let lease = exclusive_setup_lease(fixture.path());
+        let context = RuntimeHomeMutationContext::new(lease.permit(), fixture.path())?;
+        initialize_runtime_home(
+            &context,
+            fixture.path(),
+            "runtime_home_without_profile",
+            "{}",
+        )?;
         let registry_path = registry_db_path(fixture.path());
         let registry_before = fs::read(&registry_path)?;
         let modified_before = fs::metadata(&registry_path)?.modified()?;
@@ -1936,9 +1934,11 @@ mod init_planning_tests {
         let repo_root = create_empty_product_repository(&fixture)?;
         let process = PlanningProcess::new()?;
         let current_exe = fs::canonicalize(&process.current_exe)?;
-        initialize_runtime_home(fixture.path(), "runtime_home_with_profile", "{}")?;
+        let lease = exclusive_setup_lease(fixture.path());
+        let context = RuntimeHomeMutationContext::new(lease.permit(), fixture.path())?;
+        initialize_runtime_home(&context, fixture.path(), "runtime_home_with_profile", "{}")?;
         let expected_profile = write_installation_profile(
-            fixture.path(),
+            &context,
             InstallationProfileRegistration {
                 installation_id: INSTALLATION_ID.to_owned(),
                 volicord_command: setup_path_text(&current_exe),
@@ -2047,7 +2047,8 @@ mod init_planning_tests {
             .map(|file| file.path.clone())
             .collect::<Vec<_>>();
         let lease = exclusive_setup_lease(fixture.path());
-        let outcome = apply_init_provisioning(plan, &mut process, &lease)?;
+        let context = RuntimeHomeMutationContext::new(lease.permit(), fixture.path())?;
+        let outcome = apply_init_provisioning(plan, &mut process, &lease, &context)?;
 
         assert!(!outcome.dry_run);
         assert!(fixture.registry_db_path().is_file());
@@ -2066,6 +2067,7 @@ mod init_planning_tests {
         let mut process = PlanningProcess::new()?;
 
         let lease = exclusive_setup_lease(fixture.path());
+        let context = RuntimeHomeMutationContext::new(lease.permit(), fixture.path())?;
         let outcome = provision_init(
             InitProvisioningRequest {
                 parsed: &parsed,
@@ -2073,6 +2075,7 @@ mod init_planning_tests {
             },
             &mut process,
             &lease,
+            &context,
         )?;
         assert!(outcome.dry_run);
         assert_eq!(outcome.mode, CONNECTION_MODE_WORKFLOW);
@@ -2092,6 +2095,8 @@ mod init_planning_tests {
         let mut process = PlanningProcess::new()?;
 
         let initial_lease = exclusive_setup_lease(fixture.path());
+        let initial_context =
+            RuntimeHomeMutationContext::new(initial_lease.permit(), fixture.path())?;
         let initial = provision_init(
             InitProvisioningRequest {
                 parsed: &parsed,
@@ -2099,7 +2104,9 @@ mod init_planning_tests {
             },
             &mut process,
             &initial_lease,
+            &initial_context,
         )?;
+        drop(initial_context);
         drop(initial_lease);
         assert_eq!(initial.mode, CONNECTION_MODE_WORKFLOW);
         let project_id = project_record_by_repo_root(fixture.path(), &repo_root)?
@@ -2133,7 +2140,9 @@ mod init_planning_tests {
                 .manifest_json;
 
         let apply_lease = exclusive_setup_lease(fixture.path());
-        let error = match apply_init_provisioning(plan, &mut process, &apply_lease) {
+        let apply_context = RuntimeHomeMutationContext::new(apply_lease.permit(), fixture.path())?;
+        let error = match apply_init_provisioning(plan, &mut process, &apply_lease, &apply_context)
+        {
             Err(error) => error,
             Ok(_) => panic!("mode conflict unexpectedly applied"),
         };
@@ -2164,6 +2173,8 @@ mod init_planning_tests {
         let mut process = PlanningProcess::for_runtime_home(fixture.path())?;
 
         let initial_lease = exclusive_setup_lease(fixture.path());
+        let initial_context =
+            RuntimeHomeMutationContext::new(initial_lease.permit(), fixture.path())?;
         let initial = provision_init(
             InitProvisioningRequest {
                 parsed: &init,
@@ -2171,7 +2182,9 @@ mod init_planning_tests {
             },
             &mut process,
             &initial_lease,
+            &initial_context,
         )?;
+        drop(initial_context);
         drop(initial_lease);
         assert_eq!(initial.mode, CONNECTION_MODE_WORKFLOW);
         let plan = plan_connection_provisioning(
@@ -2204,10 +2217,12 @@ mod init_planning_tests {
         let repository_before_apply = directory_contents(&repo_root)?;
 
         let apply_lease = exclusive_setup_lease(fixture.path());
-        let error = match apply_connection_provisioning(plan, &mut process, &apply_lease) {
-            Err(error) => error,
-            Ok(_) => panic!("stale connection add plan unexpectedly applied"),
-        };
+        let apply_context = RuntimeHomeMutationContext::new(apply_lease.permit(), fixture.path())?;
+        let error =
+            match apply_connection_provisioning(plan, &mut process, &apply_lease, &apply_context) {
+                Err(error) => error,
+                Ok(_) => panic!("stale connection add plan unexpectedly applied"),
+            };
         let message = error.to_string();
         assert!(message.contains("CONNECTION_ADD_CHANGED"));
         assert!(message.contains("mode changed from workflow to read_only"));

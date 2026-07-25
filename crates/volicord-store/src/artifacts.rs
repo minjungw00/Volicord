@@ -103,7 +103,7 @@ pub struct ArtifactStagingRecord {
     pub tmp_path: String,
 }
 
-impl CoreProjectStore {
+impl CoreProjectStore<'_> {
     /// Creates a transient `artifact_staging` row and stores safe staged bytes.
     ///
     /// This operation is storage-owned staging. It does not update
@@ -113,6 +113,7 @@ impl CoreProjectStore {
         &mut self,
         input: ArtifactStagingInsert,
     ) -> StoreResult<ArtifactStagingRecord> {
+        self.require_mutation_context()?;
         let created_at = validate_insert(&input)?;
 
         let tmp_dir = self
@@ -632,12 +633,17 @@ mod tests {
     use volicord_types::ProjectId;
 
     use super::*;
+    use crate::mutation::TestRuntimeHomeAdmission;
 
     #[test]
     fn artifact_staging_advances_utc_floor_without_advancing_state_version(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("artifact-staging-clock-floor")?;
-        fixture.conn()?.execute(
+        let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let context = mutation.context()?;
+        let mut store =
+            CoreProjectStore::open_for_mutation(&context, &ProjectId::new(fixture.project_id()))?;
+        store.conn.execute(
             "INSERT INTO tasks (
                 project_id, task_id, created_by_actor_source, mode,
                 requested_control_level, effective_control_level, control_level_reason, work_phase,
@@ -651,14 +657,10 @@ mod tests {
             )",
             params![fixture.project_id(), fixture.actor_source()],
         )?;
-        fixture.conn()?.execute(
+        store.conn.execute(
             "UPDATE project_state SET updated_at = '2026-01-01T00:00:00Z'
               WHERE project_id = ?1",
             [fixture.project_id()],
-        )?;
-        let mut store = CoreProjectStore::open(
-            fixture.runtime_home_path(),
-            &ProjectId::new(fixture.project_id()),
         )?;
         let before_state_version = store.project_state()?.state_version;
         let bytes = b"safe staged payload".to_vec();
@@ -686,7 +688,7 @@ mod tests {
             UtcTimestamp::parse(&store.current_timestamp()?)? >= UtcTimestamp::parse(created_at)?
         );
         drop(store);
-        let reopened = CoreProjectStore::open(
+        let reopened = CoreProjectStore::open_read_only(
             fixture.runtime_home_path(),
             &ProjectId::new(fixture.project_id()),
         )?;
@@ -698,7 +700,11 @@ mod tests {
     fn artifact_staging_rejects_invalid_clock_bounds_without_side_effects(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("artifact-staging-invalid-clock-bounds")?;
-        fixture.conn()?.execute(
+        let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let context = mutation.context()?;
+        let mut store =
+            CoreProjectStore::open_for_mutation(&context, &ProjectId::new(fixture.project_id()))?;
+        store.conn.execute(
             "INSERT INTO tasks (
                 project_id, task_id, created_by_actor_source, mode,
                 requested_control_level, effective_control_level, control_level_reason, work_phase,
@@ -712,14 +718,10 @@ mod tests {
             )",
             params![fixture.project_id(), fixture.actor_source()],
         )?;
-        fixture.conn()?.execute(
+        store.conn.execute(
             "UPDATE project_state SET updated_at = '2026-01-01T00:00:00Z'
               WHERE project_id = ?1",
             [fixture.project_id()],
-        )?;
-        let mut store = CoreProjectStore::open(
-            fixture.runtime_home_path(),
-            &ProjectId::new(fixture.project_id()),
         )?;
         let before_state = store.project_state()?;
         let tmp_dir = store
@@ -798,6 +800,43 @@ mod tests {
             assert_eq!(store.project_state()?, before_state);
             assert!(!tmp_dir.exists(), "{handle_id} must not create the tmp dir");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn read_only_store_cannot_stage_artifact_bytes() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("artifact-staging-read-only")?;
+        let mut store = CoreProjectStore::open_read_only(
+            fixture.runtime_home_path(),
+            &ProjectId::new(fixture.project_id()),
+        )?;
+        let tmp_dir = store
+            .project
+            .project_home
+            .join(ARTIFACTS_DIR)
+            .join(ARTIFACTS_TMP_DIR);
+        let bytes = b"must not be staged".to_vec();
+
+        let error = store
+            .create_artifact_staging(ArtifactStagingInsert {
+                handle_id: "staged_read_only".to_owned(),
+                task_id: "task_read_only".to_owned(),
+                created_by_actor_source: fixture.actor_source(),
+                display_name: "read-only.txt".to_owned(),
+                content_type: "text/plain".to_owned(),
+                sha256: sha256_hex(&bytes),
+                size_bytes: u64::try_from(bytes.len())?,
+                redaction_state: "redacted".to_owned(),
+                relation_hint: None,
+                payload_kind: StagedPayloadKind::SafeTextBody,
+                safe_bytes_or_notice: bytes,
+                created_at: "2026-07-25T00:00:00Z".to_owned(),
+                expires_at: "2026-07-25T01:00:00Z".to_owned(),
+            })
+            .expect_err("read-only Store must not authorize artifact staging");
+
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
+        assert!(!tmp_dir.exists());
         Ok(())
     }
 

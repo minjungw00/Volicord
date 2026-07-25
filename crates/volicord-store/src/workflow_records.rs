@@ -215,7 +215,7 @@ pub fn project_write_authority_fingerprint(policy_json: Option<&str>) -> StoreRe
         })
 }
 
-impl CoreProjectStore {
+impl CoreProjectStore<'_> {
     /// Reads the current authoritative workflow-policy copy, when configured.
     pub fn project_workflow_policy(&self) -> StoreResult<Option<ProjectWorkflowPolicyRecord>> {
         project_workflow_policy_from_conn(&self.conn, &self.project.project_id)
@@ -1232,7 +1232,7 @@ mod tests {
     use volicord_types::{canonical_json_sha256, canonical_json_string, ProjectId};
 
     use super::*;
-    use crate::core_pipeline::CoreStorageMutation;
+    use crate::{core_pipeline::CoreStorageMutation, mutation::TestRuntimeHomeAdmission};
 
     fn workflow_policy(
         default_direct_control: &str,
@@ -1327,10 +1327,10 @@ mod tests {
     #[test]
     fn workflow_policy_round_trip() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("workflow-record-round-trip")?;
-        let mut store = CoreProjectStore::open(
-            fixture.runtime_home_path(),
-            &ProjectId::new(fixture.project_id()),
-        )?;
+        let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let context = mutation.context()?;
+        let mut store =
+            CoreProjectStore::open_for_mutation(&context, &ProjectId::new(fixture.project_id()))?;
 
         let policy_value = json!({
             "schema": WORKFLOW_POLICY_CONTRACT_ID,
@@ -1368,10 +1368,10 @@ mod tests {
     fn workflow_policy_apply_is_atomic_versioned_and_preserves_stronger_task_mark(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("workflow-policy-atomic-authority")?;
-        let mut store = CoreProjectStore::open(
-            fixture.runtime_home_path(),
-            &ProjectId::new(fixture.project_id()),
-        )?;
+        let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let context = mutation.context()?;
+        let mut store =
+            CoreProjectStore::open_for_mutation(&context, &ProjectId::new(fixture.project_id()))?;
         store.conn.execute(
             "INSERT INTO tasks (
                 project_id, task_id, created_by_actor_source, mode,
@@ -1647,8 +1647,10 @@ mod tests {
                 assert!(ticket_path_count > case.tightened_max_paths);
             }
             let fixture = CoreFixture::new(case.name)?;
-            let mut store = CoreProjectStore::open(
-                fixture.runtime_home_path(),
+            let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+            let context = mutation.context()?;
+            let mut store = CoreProjectStore::open_for_mutation(
+                &context,
                 &ProjectId::new(fixture.project_id()),
             )?;
             let (initial_json, initial_fingerprint) = workflow_policy_with_write_authority(
@@ -1795,10 +1797,10 @@ mod tests {
     fn normalized_equivalent_write_authority_preserves_compatible_active_ticket(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("policy-binding-normalized-idempotency")?;
-        let mut store = CoreProjectStore::open(
-            fixture.runtime_home_path(),
-            &ProjectId::new(fixture.project_id()),
-        )?;
+        let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let context = mutation.context()?;
+        let mut store =
+            CoreProjectStore::open_for_mutation(&context, &ProjectId::new(fixture.project_id()))?;
         let (initial_json, initial_fingerprint) = workflow_policy_with_write_authority(
             3,
             vec!["src/**", "tests/**"],
@@ -1926,7 +1928,9 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("workflow-policy-no-op-serialized-observation")?;
         let project_id = ProjectId::new(fixture.project_id());
-        let mut store = CoreProjectStore::open(fixture.runtime_home_path(), &project_id)?;
+        let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let context = mutation.context()?;
+        let mut store = CoreProjectStore::open_for_mutation(&context, &project_id)?;
         let (policy_json, policy_fingerprint) = workflow_policy("tracked", false)?;
         let initial =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {
@@ -1938,9 +1942,11 @@ mod tests {
             })?;
         assert_eq!(initial.resulting_state_version, 1);
 
+        let concurrent_mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let concurrent_context = concurrent_mutation.context()?;
         let observation = store.workflow_policy_apply_observation_with_hook(|| {
-            let mut concurrent = CoreProjectStore::open(
-                fixture.runtime_home_path(),
+            let mut concurrent = CoreProjectStore::open_for_mutation(
+                &concurrent_context,
                 &ProjectId::new(fixture.project_id()),
             )
             .expect("concurrent store opens while the observation transaction is active");
@@ -1987,10 +1993,10 @@ mod tests {
     #[test]
     fn workflow_policy_marks_acceptance_only_strengthening() -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("workflow-policy-acceptance-strengthening")?;
-        let mut store = CoreProjectStore::open(
-            fixture.runtime_home_path(),
-            &ProjectId::new(fixture.project_id()),
-        )?;
+        let mutation = TestRuntimeHomeAdmission::shared(fixture.runtime_home_path())?;
+        let context = mutation.context()?;
+        let mut store =
+            CoreProjectStore::open_for_mutation(&context, &ProjectId::new(fixture.project_id()))?;
         store.conn.execute(
             "INSERT INTO tasks (
                 project_id, task_id, created_by_actor_source, mode,

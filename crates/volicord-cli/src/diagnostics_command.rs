@@ -842,9 +842,16 @@ mod tests {
         };
         let original = make_finding("missing", "2026-07-22T01:02:03Z");
         let latest = make_finding("drift", "2026-07-22T02:03:04Z");
-        upsert_current_snapshot(fixture.runtime_home_path(), &original).expect("initial snapshot");
-        upsert_current_snapshot(fixture.runtime_home_path(), &latest)
-            .expect("replacement snapshot");
+        upsert_current_snapshot(
+            &fixture.mutation_context().expect("mutation context"),
+            &original,
+        )
+        .expect("initial snapshot");
+        upsert_current_snapshot(
+            &fixture.mutation_context().expect("mutation context"),
+            &latest,
+        )
+        .expect("replacement snapshot");
 
         let output = run_diagnostics_command(
             DiagnosticsArgs {
@@ -898,8 +905,12 @@ mod tests {
         assert!(active_text.contains("Severity: error"));
 
         let resolved_at = UtcTimestamp::parse("2026-07-22T03:04:05Z").expect("time");
-        resolve_current_finding(fixture.runtime_home_path(), &key, resolved_at.clone())
-            .expect("resolve current finding");
+        resolve_current_finding(
+            &fixture.mutation_context().expect("mutation context"),
+            &key,
+            resolved_at.clone(),
+        )
+        .expect("resolve current finding");
         let resolved_json = run_diagnostics_command(
             DiagnosticsArgs {
                 command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
@@ -974,7 +985,11 @@ mod tests {
         .enumerate()
         {
             let finding = test_occurrence(severity, &format!("2026-07-22T04:05:0{}Z", index + 1));
-            insert_occurrence_finding(fixture.runtime_home_path(), &finding).expect("insert");
+            insert_occurrence_finding(
+                &fixture.mutation_context().expect("mutation context"),
+                &finding,
+            )
+            .expect("insert");
             let output = run_diagnostics_command(
                 DiagnosticsArgs {
                     command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
@@ -1001,8 +1016,11 @@ mod tests {
     fn diagnostics_show_json_and_text_preserve_every_lifecycle_in_the_cause_graph() {
         let fixture = CoreFixture::new("diagnostics-show-mixed-graph").expect("fixture");
         let occurrence_cause = test_occurrence(DiagnosticSeverity::Info, "2026-07-22T04:10:01Z");
-        insert_occurrence_finding(fixture.runtime_home_path(), &occurrence_cause)
-            .expect("occurrence cause");
+        insert_occurrence_finding(
+            &fixture.mutation_context().expect("mutation context"),
+            &occurrence_cause,
+        )
+        .expect("occurrence cause");
 
         let current_key = |subject: &str| {
             CurrentDiagnosticKey::new(
@@ -1031,7 +1049,11 @@ mod tests {
             .expect("active snapshot"),
         )
         .expect("active current");
-        upsert_current_snapshot(fixture.runtime_home_path(), &active).expect("active upsert");
+        upsert_current_snapshot(
+            &fixture.mutation_context().expect("mutation context"),
+            &active,
+        )
+        .expect("active upsert");
 
         let resolved_key = current_key("resolved-current");
         let resolved = CurrentDiagnosticFinding::try_new(
@@ -1046,9 +1068,13 @@ mod tests {
             .expect("resolved snapshot"),
         )
         .expect("resolved current");
-        upsert_current_snapshot(fixture.runtime_home_path(), &resolved).expect("resolved upsert");
+        upsert_current_snapshot(
+            &fixture.mutation_context().expect("mutation context"),
+            &resolved,
+        )
+        .expect("resolved upsert");
         resolve_current_finding(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context().expect("mutation context"),
             &resolved_key,
             UtcTimestamp::parse("2026-07-22T04:10:04Z").expect("time"),
         )
@@ -1075,7 +1101,11 @@ mod tests {
             None,
         )
         .expect("root occurrence");
-        insert_occurrence_finding(fixture.runtime_home_path(), &root).expect("root insert");
+        insert_occurrence_finding(
+            &fixture.mutation_context().expect("mutation context"),
+            &root,
+        )
+        .expect("root insert");
 
         let args = |json| DiagnosticsArgs {
             command: DiagnosticsCommand::Show(DiagnosticsShowArgs {
@@ -1180,8 +1210,11 @@ mod tests {
             )),
         )
         .expect("terminal occurrence");
-        record_mcp_terminal_finding(fixture.runtime_home_path(), &terminal)
-            .expect("record terminal finding");
+        record_mcp_terminal_finding(
+            &fixture.mutation_context().expect("mutation context"),
+            &terminal,
+        )
+        .expect("record terminal finding");
 
         let json_output = run_diagnostics_command(
             DiagnosticsArgs {
@@ -1271,7 +1304,7 @@ mod tests {
         let fixture = CoreFixture::new("workflow-metrics-json").expect("fixture");
         let session_id = "mcp_runtime_session_workflow_metrics".to_owned();
         start_diagnostic_session(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context().expect("mutation context"),
             DiagnosticSessionStart {
                 session_id: &session_id,
                 connection_id: Some(fixture.connection_id()),
@@ -1285,7 +1318,7 @@ mod tests {
         .expect("session");
         for duration in [100_u64, 300] {
             record_workflow_metric_event(
-                fixture.runtime_home_path(),
+                &fixture.mutation_context().expect("mutation context"),
                 &WorkflowMetricEvent {
                     session_id: session_id.clone(),
                     metric_kind: WorkflowMetricKind::TaskDurationMicros,
@@ -1300,7 +1333,7 @@ mod tests {
             .expect("task duration");
         }
         record_workflow_metric_event(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context().expect("mutation context"),
             &WorkflowMetricEvent {
                 session_id: session_id.clone(),
                 metric_kind: WorkflowMetricKind::McpMethodCall,
@@ -1314,7 +1347,7 @@ mod tests {
         )
         .expect("method call");
         record_workflow_metric_event(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context().expect("mutation context"),
             &WorkflowMetricEvent {
                 session_id: session_id.clone(),
                 metric_kind: WorkflowMetricKind::ObservationAssessment,
@@ -1329,7 +1362,7 @@ mod tests {
         .expect("observation");
         for sample in [0_u64, 1] {
             record_workflow_metric_event(
-                fixture.runtime_home_path(),
+                &fixture.mutation_context().expect("mutation context"),
                 &WorkflowMetricEvent {
                     session_id: session_id.clone(),
                     metric_kind: WorkflowMetricKind::ConfirmedUnrecordedFalsePositive,
@@ -1425,6 +1458,7 @@ mod tests {
         .with_validated_agent_session(validated);
         let intake = core
             .intake(
+                &fixture.mutation_context().expect("mutation context"),
                 fixture.intake_request("req_diag_intake", "idem_diag_intake", false, Some(0)),
                 invocation.clone(),
             )
@@ -1436,6 +1470,7 @@ mod tests {
             .as_u64()
             .expect("state version");
         core.request_user_action(
+            &fixture.mutation_context().expect("mutation context"),
             fixture.user_action_request(UserActionFixture {
                 request_id: "req_diag_user_action",
                 idempotency_key: "idem_diag_user_action",
@@ -1452,7 +1487,7 @@ mod tests {
         let session_id = "mcp_runtime_session_isolation".to_owned();
 
         start_diagnostic_session(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context().expect("mutation context"),
             DiagnosticSessionStart {
                 session_id: &session_id,
                 connection_id: Some(fixture.connection_id()),
@@ -1465,7 +1500,7 @@ mod tests {
         )
         .expect("diagnostic session");
         record_diagnostic_event(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context().expect("mutation context"),
             DiagnosticEvent {
                 session_id: &session_id,
                 event_kind: DiagnosticEventKind::McpToolCall,

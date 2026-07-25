@@ -145,6 +145,16 @@ alone does not manufacture a policy denial. A `PostToolUse` warning describes
 an action that already completed and never claims that Guard prevented or
 reversed it.
 
+Each prompt, pre-tool, or post-tool invocation acquires `SharedWriter` before
+recording command execution, prompt/event data, expected writes, unrecorded
+changes, integration-verification observations, or operational findings. The
+same admission remains live through the entire invocation effect set. If setup
+owns `ExclusiveSetup`, none of those records is created. The `record` profile
+returns exit `0`, continues the host prompt or tool, reports
+`runtime_home.mutation.setup_in_progress` and `persisted=false` as a bounded
+persistence-unavailable warning, and does not project `Deny`. Profiles with
+enforcing policy follow their own explicit owner contract.
+
 The Codex adapter exclusively owns `hookSpecificOutput`,
 `permissionDecision`, `additionalContext`, stderr, and exit-code projection.
 Core-facing types and Store records do not encode Codex process-exit behavior.

@@ -65,6 +65,7 @@ impl CoreService {
         let close_policy = check_close_policy(&request);
         let prepared = match prepare_or_response(
             self,
+            None,
             MethodName::CheckClose,
             request.envelope.clone(),
             request_json,
@@ -114,6 +115,7 @@ impl CoreService {
     /// Executes `volicord.close_task` through terminal transition rules.
     pub fn close_task(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         request: CloseTaskRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
@@ -126,6 +128,7 @@ impl CoreService {
         let close_policy = close_task_policy(&request);
         let prepared = match prepare_or_response(
             self,
+            Some(context),
             MethodName::CloseTask,
             request.envelope.clone(),
             request_json,
@@ -242,7 +245,7 @@ impl CoreService {
         if response_committed_fresh_effect(&response) {
             if let Some(duration) = task_duration {
                 record_core_workflow_metric_best_effort(
-                    self,
+                    context,
                     session_id.as_deref(),
                     WorkflowMetricKind::TaskDurationMicros,
                     duration,

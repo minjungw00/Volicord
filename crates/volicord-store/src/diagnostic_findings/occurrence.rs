@@ -1,14 +1,12 @@
 //! Insert-only diagnostic occurrence persistence.
 
-use std::path::Path;
-
 use rusqlite::{params, Transaction};
 use volicord_types::{DiagnosticSeverity, IntegrationRevision, OccurrenceDiagnosticFinding};
 
 use crate::{
     operational_sessions::runtime_session_from_conn,
-    sqlite::{begin_immediate_transaction, open_registry_database, registry_db_path},
-    StoreError, StoreResult,
+    sqlite::{begin_immediate_transaction, open_registry_database_for_mutation},
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 use super::{
@@ -18,17 +16,16 @@ use super::{
 
 /// Inserts one immutable occurrence and all of its cause edges atomically.
 pub fn insert_occurrence_finding(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     finding: &OccurrenceDiagnosticFinding,
 ) -> StoreResult<OccurrenceDiagnosticFinding> {
-    let mut inserted =
-        insert_occurrence_finding_graph(runtime_home, std::slice::from_ref(finding))?;
+    let mut inserted = insert_occurrence_finding_graph(context, std::slice::from_ref(finding))?;
     Ok(inserted.remove(0))
 }
 
 /// Inserts a complete immutable occurrence graph in one Registry transaction.
 pub fn insert_occurrence_finding_graph(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     findings: &[OccurrenceDiagnosticFinding],
 ) -> StoreResult<Vec<OccurrenceDiagnosticFinding>> {
     let prepared = prepare_occurrence_graph(findings)?;
@@ -36,8 +33,7 @@ pub fn insert_occurrence_finding_graph(
         return Ok(Vec::new());
     }
 
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     validate_graph_references(&tx, &prepared)?;
     insert_prepared_graph(&tx, &prepared)?;
@@ -50,7 +46,7 @@ pub fn insert_occurrence_finding_graph(
 
 /// Inserts one terminal occurrence and links its runtime session in one transaction.
 pub fn insert_and_link_runtime_terminal_occurrence(
-    runtime_home: impl AsRef<Path>,
+    context: &RuntimeHomeMutationContext<'_>,
     finding: &OccurrenceDiagnosticFinding,
 ) -> StoreResult<OccurrenceDiagnosticFinding> {
     let runtime_session_id = finding
@@ -60,8 +56,7 @@ pub fn insert_and_link_runtime_terminal_occurrence(
             detail: "terminal diagnostic occurrence requires runtime_session_id".to_owned(),
         })?;
     let prepared = prepare_occurrence_graph(std::slice::from_ref(finding))?;
-    let path = registry_db_path(runtime_home);
-    let mut conn = open_registry_database(path)?;
+    let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     validate_graph_references(&tx, &prepared)?;
     insert_prepared_graph(&tx, &prepared)?;

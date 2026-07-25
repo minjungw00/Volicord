@@ -40,7 +40,6 @@ use volicord_store::{
         replace_agent_connection_verification_report_if_revision, AgentConnectionRecord,
         CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
     },
-    bootstrap::initialize_runtime_home,
     core_pipeline::CoreProjectStore,
     guards::{agent_session, bind_agent_session_runtime, AgentSessionRuntimeBinding},
     inspection::{inspect_runtime_home, DatabaseInspection, RegistryInspectionSnapshot},
@@ -48,7 +47,7 @@ use volicord_store::{
         connection_integration_revision, mcp_runtime_session, McpRuntimeSessionStart,
     },
 };
-use volicord_test_support::TempRuntimeHome;
+use volicord_test_support::{TempRuntimeHome, TestRuntimeHomeMutation};
 use volicord_types::{
     canonical_json_sha256, guard_manifest_has_exact_current_shape,
     guard_manifest_managed_artifacts, guard_manifest_matches_owner_binding,
@@ -73,7 +72,6 @@ struct FakeConnectionProcess {
     directory_removal_fault: Option<DirectoryTreeRemovalFault>,
     concurrent_codex_bytes: Option<Vec<u8>>,
     post_commit_codex_bytes: Option<Vec<u8>>,
-    uncoordinated_runtime_home_publish: bool,
     setup_pause_point: Option<String>,
     setup_barrier: Option<Arc<Barrier>>,
     setup_release: Option<Arc<(Mutex<bool>, Condvar)>>,
@@ -103,7 +101,6 @@ impl FakeConnectionProcess {
             directory_removal_fault: None,
             concurrent_codex_bytes: None,
             post_commit_codex_bytes: None,
-            uncoordinated_runtime_home_publish: false,
             setup_pause_point: None,
             setup_barrier: None,
             setup_release: None,
@@ -143,16 +140,6 @@ impl ConnectionProcess for FakeConnectionProcess {
     fn setup_fault(&mut self, point: &str) -> Result<(), String> {
         let call = self.setup_points.len();
         self.setup_points.push(point.to_owned());
-        if point == "after_registry_mutation_preparation" && self.uncoordinated_runtime_home_publish
-        {
-            self.uncoordinated_runtime_home_publish = false;
-            initialize_runtime_home(
-                &self.runtime_home,
-                "runtime_home_uncoordinated_publisher",
-                "{}",
-            )
-            .map_err(|error| error.to_string())?;
-        }
         if self.setup_pause_point.as_deref() == Some(point) {
             if let Some(barrier) = &self.setup_barrier {
                 barrier.wait();
@@ -580,70 +567,6 @@ fn publisher_rollback_finishes_before_the_waiting_init_can_create_fresh_state(
 }
 
 #[test]
-fn already_exists_while_leased_aborts_the_stale_plan_without_setup_mutation(
-) -> Result<(), Box<dyn Error>> {
-    let fixture = TempRuntimeHome::new("cli-record-init-uncoordinated-publication")?;
-    let repo_root = create_git_repo(&fixture, "repo")?;
-    let mut process = FakeConnectionProcess::new(&fixture)?;
-    let repo_before = directory_contents(&repo_root)?;
-    let codex_before = directory_contents(&process.codex_home)?;
-    process.uncoordinated_runtime_home_publish = true;
-
-    let failure = run_record_init_outcome(&repo_root, &mut process)?;
-
-    assert_eq!(failure["status"], "failed");
-    assert_eq!(
-        failure["operation_details"]["result"]["disposition"],
-        "preserved"
-    );
-    assert_eq!(
-        failure["operation_details"]["result"]["setup_lease"],
-        "acquired"
-    );
-    assert_eq!(
-        failure["operation_details"]["result"]["runtime_home_publication"],
-        "not_published"
-    );
-    assert_eq!(
-        failure["findings"][0]["code"],
-        "setup.concurrent_modification"
-    );
-    assert!(failure["checks"][0]["details"]["failure"]
-        .as_str()
-        .is_some_and(|failure| {
-            failure.contains("SETUP_CONCURRENT_MODIFICATION")
-                && failure.contains("stale setup plan was aborted")
-        }));
-    assert_eq!(directory_contents(&repo_root)?, repo_before);
-    assert_eq!(directory_contents(&process.codex_home)?, codex_before);
-    assert!(!process
-        .setup_points
-        .iter()
-        .any(|point| point == "runtime_home_parent_directory_sync"));
-    assert!(!process
-        .setup_points
-        .iter()
-        .any(|point| point.starts_with("after_managed_file:")));
-    let snapshot = registry_snapshot(fixture.path());
-    assert!(snapshot.installation_profile.is_none());
-    assert!(snapshot.projects.is_empty());
-    assert!(snapshot.agent_connections.is_empty());
-    assert!(snapshot.connection_projects.is_empty());
-    assert!(snapshot.guard_installations.is_empty());
-    let staging = fs::read_dir(fixture.root_path())?
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(".volicord-runtime-staging-")
-        })
-        .count();
-    assert_eq!(staging, 0);
-    Ok(())
-}
-
-#[test]
 fn init_concurrent_codex_change_is_preserved_and_other_targets_roll_back(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = TempRuntimeHome::new("cli-record-init-concurrent-config")?;
@@ -890,9 +813,11 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
     let seeded_ids = assert_single_owned_records(&seeded_snapshot);
     assert_unavailable_codex_verification(&seeded_snapshot)?;
     let managed_bytes = managed_artifact_bytes(&seeded_snapshot)?;
+    let mutation = TestRuntimeHomeMutation::acquire(fixture.path())?;
+    let context = mutation.context()?;
 
     replace_agent_connection_verification_report_if_revision(
-        fixture.path(),
+        &context,
         &seeded_ids.connection_id,
         &connection_integration_revision(
             &agent_connection_record(fixture.path(), &seeded_ids.connection_id)?
@@ -901,6 +826,8 @@ fn record_init_repairs_missing_guard_installation_and_replays_exactly() -> Resul
         None,
     )?;
     delete_guard_installation(fixture.path(), &seeded_ids.guard_installation_id)?;
+    drop(context);
+    drop(mutation);
 
     let partial = registry_snapshot(fixture.path());
     assert_eq!(partial.projects.len(), 1);
@@ -1477,6 +1404,9 @@ fn run_record_init(
                 format!("failed init unexpectedly returned a usage error: {message}").into(),
             );
         }
+        Err(ConnectionCommandError::MutationAdmission(error)) => {
+            return Err(format!("init mutation admission unexpectedly failed: {error}").into());
+        }
         Err(ConnectionCommandError::Runtime(message)) => {
             assert!(
                 !message.contains(GENERATED_SHAPE_ERROR),
@@ -1664,8 +1594,10 @@ fn seed_project_session_on_runtime(
     host_session_id: &str,
     observed_at: &str,
 ) -> Result<String, Box<dyn Error>> {
+    let mutation = TestRuntimeHomeMutation::acquire(runtime_home)?;
+    let context = mutation.context()?;
     Ok(bind_agent_session_runtime(
-        runtime_home,
+        &context,
         project_id,
         AgentSessionRuntimeBinding {
             runtime_session_id: runtime_session_id.to_owned(),
@@ -1741,7 +1673,10 @@ fn assert_failed_init_with_recorded_guard(output: &Value) {
     );
     assert_eq!(output["operation"], "init");
     assert_eq!(output["operation_details"]["dry_run"], false);
-    assert_eq!(output["operation_details"]["result"]["kind"], "setup");
+    assert_eq!(
+        output["operation_details"]["result"]["kind"], "setup",
+        "unexpected init result details: {output}"
+    );
     assert_eq!(
         output["operation_details"]["result"]["disposition"],
         "committed"

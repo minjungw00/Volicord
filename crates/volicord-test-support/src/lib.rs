@@ -14,6 +14,10 @@ use std::{
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::{json, Map, Value};
 use tempfile::{Builder, TempDir};
+use volicord_platform_fs::{
+    RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
+    RuntimeHomeMutationWaitPolicy,
+};
 use volicord_store::{
     agent_connections::{
         add_connection_project, agent_connection_record_read_only, ensure_agent_connection,
@@ -22,8 +26,9 @@ use volicord_store::{
         CONNECTION_MODE_WORKFLOW, HOST_KIND_CODEX, HOST_SCOPE_PROJECT,
     },
     bootstrap::{
-        initialize_runtime_home, register_project, write_installation_profile,
-        InstallationProfileRegistration, ProjectRegistration, ACTIVE_PROJECT_STATUS,
+        initialize_runtime_home, project_record_read_only, register_project,
+        write_installation_profile, InstallationProfileRegistration, ProjectRegistration,
+        ACTIVE_PROJECT_STATUS,
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts},
     guards::{
@@ -38,8 +43,11 @@ use volicord_store::{
     operational_sessions::{
         connection_integration_revision, start_mcp_runtime_session, McpRuntimeSessionStart,
     },
-    sqlite::{open_project_state_database, open_registry_database, registry_db_path},
-    StoreError, StoreResult,
+    sqlite::{
+        open_project_state_database_for_test_mutation, open_project_state_database_read_only,
+        open_registry_database_for_test, registry_db_path,
+    },
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, GuardArtifactContentHash,
@@ -61,15 +69,148 @@ pub mod golden {
     pub struct GoldenBoundary;
 }
 
+/// Runs one test-only operation under an explicit Runtime Home mutation context.
+pub fn with_test_runtime_home_mutation<T>(
+    runtime_home: impl AsRef<Path>,
+    operation: impl FnOnce(&RuntimeHomeMutationContext<'_>) -> StoreResult<T>,
+) -> StoreResult<T> {
+    with_test_runtime_home_admission(
+        runtime_home.as_ref(),
+        RuntimeHomeMutationLeaseMode::SharedWriter,
+        operation,
+    )
+}
+
+/// Explicit shared-writer admission retained across one implementation test.
+#[derive(Debug)]
+pub struct TestRuntimeHomeMutation {
+    lease: RuntimeHomeMutationLease,
+    runtime_home: PathBuf,
+}
+
+/// Explicit exclusive setup admission retained across one implementation test.
+#[derive(Debug)]
+pub struct TestRuntimeHomeSetup {
+    lease: RuntimeHomeMutationLease,
+    runtime_home: PathBuf,
+}
+
+impl TestRuntimeHomeSetup {
+    /// Acquires exclusive setup admission for one disposable test Runtime Home.
+    pub fn acquire(runtime_home: impl AsRef<Path>) -> StoreResult<Self> {
+        let runtime_home = runtime_home.as_ref().to_path_buf();
+        let outcome = RuntimeHomeMutationLease::acquire(
+            &runtime_home,
+            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+            RuntimeHomeMutationWaitPolicy::Immediate,
+        )
+        .map_err(|error| StoreError::InvalidInput {
+            detail: error.to_string(),
+        })?;
+        let RuntimeHomeMutationLeaseOutcome::Acquired(lease) = outcome else {
+            return Err(StoreError::Conflict {
+                entity: "runtime_home_mutation",
+                id: runtime_home.display().to_string(),
+                detail: "test Runtime Home setup admission is busy".to_owned(),
+            });
+        };
+        Ok(Self {
+            lease,
+            runtime_home,
+        })
+    }
+
+    /// Borrows the retained exclusive setup lease as a Store mutation context.
+    pub fn context(&self) -> StoreResult<RuntimeHomeMutationContext<'_>> {
+        RuntimeHomeMutationContext::new(self.lease.permit(), &self.runtime_home)
+    }
+}
+
+impl TestRuntimeHomeMutation {
+    /// Acquires shared mutation admission for one disposable test Runtime Home.
+    pub fn acquire(runtime_home: impl AsRef<Path>) -> StoreResult<Self> {
+        let runtime_home = runtime_home.as_ref().to_path_buf();
+        let outcome = RuntimeHomeMutationLease::acquire(
+            &runtime_home,
+            RuntimeHomeMutationLeaseMode::SharedWriter,
+            RuntimeHomeMutationWaitPolicy::Immediate,
+        )
+        .map_err(|error| StoreError::InvalidInput {
+            detail: error.to_string(),
+        })?;
+        let RuntimeHomeMutationLeaseOutcome::Acquired(lease) = outcome else {
+            return Err(StoreError::Conflict {
+                entity: "runtime_home_mutation",
+                id: runtime_home.display().to_string(),
+                detail: "test Runtime Home mutation admission is busy".to_owned(),
+            });
+        };
+        Ok(Self {
+            lease,
+            runtime_home,
+        })
+    }
+
+    /// Borrows the retained test lease as a Store mutation context.
+    pub fn context(&self) -> StoreResult<RuntimeHomeMutationContext<'_>> {
+        RuntimeHomeMutationContext::new(self.lease.permit(), &self.runtime_home)
+    }
+}
+
+/// Runs one test-only setup operation under explicit exclusive Runtime Home admission.
+pub fn with_test_runtime_home_setup<T>(
+    runtime_home: &Path,
+    operation: impl FnOnce(&RuntimeHomeMutationContext<'_>) -> StoreResult<T>,
+) -> StoreResult<T> {
+    with_test_runtime_home_admission(
+        runtime_home,
+        RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+        operation,
+    )
+}
+
+fn with_test_runtime_home_admission<T>(
+    runtime_home: &Path,
+    mode: RuntimeHomeMutationLeaseMode,
+    operation: impl FnOnce(&RuntimeHomeMutationContext<'_>) -> StoreResult<T>,
+) -> StoreResult<T> {
+    let outcome = RuntimeHomeMutationLease::acquire(
+        runtime_home,
+        mode,
+        RuntimeHomeMutationWaitPolicy::Immediate,
+    )
+    .map_err(|error| StoreError::InvalidInput {
+        detail: error.to_string(),
+    })?;
+    let RuntimeHomeMutationLeaseOutcome::Acquired(lease) = outcome else {
+        return Err(StoreError::Conflict {
+            entity: "runtime_home_mutation",
+            id: runtime_home.display().to_string(),
+            detail: "test Runtime Home mutation admission is busy".to_owned(),
+        });
+    };
+    let context = RuntimeHomeMutationContext::new(lease.permit(), runtime_home)?;
+    operation(&context)
+}
+
 /// Starts a test runtime while preserving the managed-host lease invariant.
 pub fn start_test_mcp_runtime_session(
     runtime_home: impl AsRef<Path>,
     input: McpRuntimeSessionStart,
 ) -> StoreResult<volicord_store::operational_sessions::McpRuntimeSessionRecord> {
+    with_test_runtime_home_mutation(runtime_home.as_ref(), |context| {
+        start_test_mcp_runtime_session_with_context(context, input)
+    })
+}
+
+fn start_test_mcp_runtime_session_with_context(
+    context: &RuntimeHomeMutationContext<'_>,
+    input: McpRuntimeSessionStart,
+) -> StoreResult<volicord_store::operational_sessions::McpRuntimeSessionRecord> {
     if input.session_source != McpRuntimeSessionSource::ManagedHost {
-        return start_mcp_runtime_session(runtime_home, input);
+        return start_mcp_runtime_session(context, input);
     }
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let connection =
         agent_connection_record_read_only(runtime_home, &input.connection_internal_id)?
             .ok_or_else(|| StoreError::NotFound {
@@ -78,7 +219,7 @@ pub fn start_test_mcp_runtime_session(
             })?;
     let revision = connection_integration_revision(&connection)?;
     let lease = issue_managed_mcp_launch_lease(
-        runtime_home,
+        context,
         ManagedMcpLaunchLeaseIssue {
             connection_internal_id: connection.connection_internal_id,
             host_kind: HostKind::Codex,
@@ -87,7 +228,7 @@ pub fn start_test_mcp_runtime_session(
         },
     )?;
     consume_managed_mcp_launch_lease_and_start_runtime(
-        runtime_home,
+        context,
         ManagedMcpLaunchLeaseConsumption {
             launch_lease_id: lease.launch_lease_id,
             connection_internal_id: lease.connection_internal_id,
@@ -234,12 +375,31 @@ pub fn transition_test_connection_mode(
     mode: &str,
 ) -> StoreResult<ConnectionModeTransitionOutcome> {
     let runtime_home = runtime_home.as_ref();
+    with_test_runtime_home_mutation(runtime_home, |context| {
+        transition_test_connection_mode_with_context(
+            context,
+            repo_root,
+            project_id,
+            connection_id,
+            mode,
+        )
+    })
+}
+
+fn transition_test_connection_mode_with_context(
+    context: &RuntimeHomeMutationContext<'_>,
+    repo_root: &Path,
+    project_id: &str,
+    connection_id: &str,
+    mode: &str,
+) -> StoreResult<ConnectionModeTransitionOutcome> {
+    let runtime_home = context.runtime_home().as_path();
     let mut installations =
         list_guard_installations(runtime_home, connection_id, Some(project_id))?;
     if installations.is_empty() {
         let guard_installation_id = format!("guard_test_{project_id}");
         upsert_guard_installation(
-            runtime_home,
+            context,
             GuardInstallationUpsert {
                 guard_installation_id: guard_installation_id.clone(),
                 connection_internal_id: connection_id.to_owned(),
@@ -261,7 +421,7 @@ pub fn transition_test_connection_mode(
     let expected_revision = connection_integration_revision(&connection)?;
     if connection.mode == mode {
         return transition_connection_mode(
-            runtime_home,
+            context,
             ConnectionModeTransition {
                 connection_internal_id: connection_id.to_owned(),
                 expected_mode: connection.mode,
@@ -297,7 +457,7 @@ pub fn transition_test_connection_mode(
         })
         .collect();
     transition_connection_mode(
-        runtime_home,
+        context,
         ConnectionModeTransition {
             connection_internal_id: connection_id.to_owned(),
             expected_mode: connection.mode,
@@ -315,13 +475,27 @@ pub fn seed_test_agent_session(
     connection_id: &str,
     guard_installation_id: Option<&str>,
 ) -> StoreResult<TestAgentSessionFixture> {
-    let health = guard_health_record(runtime_home.as_ref(), project_id, connection_id)?;
-    if let Some(existing) = health.latest_session.as_ref() {
-        if agent_session_matches_current_integration(
-            runtime_home.as_ref(),
-            existing,
+    with_test_runtime_home_mutation(runtime_home.as_ref(), |context| {
+        seed_test_agent_session_with_context(
+            context,
+            project_id,
+            connection_id,
             guard_installation_id,
-        )? {
+        )
+    })
+}
+
+fn seed_test_agent_session_with_context(
+    context: &RuntimeHomeMutationContext<'_>,
+    project_id: &str,
+    connection_id: &str,
+    guard_installation_id: Option<&str>,
+) -> StoreResult<TestAgentSessionFixture> {
+    let runtime_home = context.runtime_home().as_path();
+    let health = guard_health_record(runtime_home, project_id, connection_id)?;
+    if let Some(existing) = health.latest_session.as_ref() {
+        if agent_session_matches_current_integration(runtime_home, existing, guard_installation_id)?
+        {
             return Ok(TestAgentSessionFixture {
                 runtime_session_id: AgentRuntimeSessionId::new(
                     existing
@@ -340,10 +514,10 @@ pub fn seed_test_agent_session(
     let host_session_id = format!("test-session-{sequence}");
     let host_thread_id = format!("test-thread-{sequence}");
     let host_turn_id = format!("test-turn-{sequence}");
-    let store = CoreProjectStore::open(runtime_home.as_ref(), &project_id.into())?;
+    let store = CoreProjectStore::open_read_only(runtime_home, &project_id.into())?;
     let observed_at = store.current_timestamp()?;
-    let runtime_session_id = start_test_mcp_runtime_session(
-        runtime_home.as_ref(),
+    let runtime_session_id = start_test_mcp_runtime_session_with_context(
+        context,
         McpRuntimeSessionStart {
             connection_internal_id: connection_id.to_owned(),
             session_source: McpRuntimeSessionSource::ManagedHost,
@@ -354,7 +528,7 @@ pub fn seed_test_agent_session(
     )?
     .runtime_session_id;
     let project_session_id = bind_agent_session_runtime(
-        runtime_home,
+        context,
         project_id,
         AgentSessionRuntimeBinding {
             runtime_session_id: runtime_session_id.clone(),
@@ -499,12 +673,13 @@ pub fn corrupt_connection_verification_report(
     connection_id: &str,
     report_json: &str,
 ) -> StoreResult<()> {
-    let changed = open_registry_database(registry_db_path(runtime_home.as_ref()))?.execute(
-        "UPDATE agent_connections
+    let changed = open_registry_database_for_test(registry_db_path(runtime_home.as_ref()))?
+        .execute(
+            "UPDATE agent_connections
             SET verification_report_json = ?2
           WHERE connection_internal_id = ?1",
-        (connection_id, report_json),
-    )?;
+            (connection_id, report_json),
+        )?;
     if changed != 1 {
         return Err(StoreError::InvalidInput {
             detail: format!(
@@ -569,6 +744,7 @@ pub mod core_fixtures {
     #[derive(Debug)]
     pub struct CoreFixture {
         _runtime_home: TempRuntimeHome,
+        mutation: Option<TestRuntimeHomeMutation>,
         runtime_home_path: PathBuf,
         product_repo_path: PathBuf,
         project_id: String,
@@ -590,63 +766,70 @@ pub mod core_fixtures {
             let project_id = DEFAULT_PROJECT_ID.to_owned();
             let connection_id = DEFAULT_CONNECTION_ID.to_owned();
 
-            initialize_runtime_home(
-                runtime_home.path(),
-                &format!("runtime_home_{component}"),
-                "{}",
-            )?;
-            write_installation_profile(
-                runtime_home.path(),
-                InstallationProfileRegistration {
-                    installation_id: "default".to_owned(),
-                    volicord_command: "volicord".to_owned(),
-                    volicord_mcp_command: "volicord".to_owned(),
-                    bin_dir: runtime_home.path().join("bin"),
-                    default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-            register_project(
-                runtime_home.path(),
-                ProjectRegistration {
-                    project_id: project_id.clone(),
-                    repo_root: repo_root.clone(),
-                    project_home: None,
-                    status: ACTIVE_PROJECT_STATUS.to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-            ensure_agent_connection(
-                runtime_home.path(),
-                AgentConnectionRegistration {
-                    connection_internal_id: connection_id.clone(),
-                    host_kind: host_kind.to_owned(),
-                    intent: volicord_store::agent_connections::CONNECTION_INTENT_SHARED.to_owned(),
-                    host_scope: HOST_SCOPE_PROJECT.to_owned(),
-                    server_name: "volicord-test".to_owned(),
-                    config_target: runtime_home
-                        .path()
-                        .join("agent-connections")
-                        .join(&component)
-                        .to_string_lossy()
-                        .into_owned(),
-                    mode: CONNECTION_MODE_WORKFLOW.to_owned(),
-                    enabled: true,
-                    managed_fingerprint: format!("fixture:{component}"),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-            add_connection_project(
-                runtime_home.path(),
-                ConnectionProjectRegistration {
-                    connection_internal_id: connection_id.clone(),
-                    project_id: project_id.clone(),
-                },
-            )?;
+            with_test_runtime_home_setup(runtime_home.path(), |context| {
+                initialize_runtime_home(
+                    context,
+                    runtime_home.path(),
+                    &format!("runtime_home_{component}"),
+                    "{}",
+                )?;
+                write_installation_profile(
+                    context,
+                    InstallationProfileRegistration {
+                        installation_id: "default".to_owned(),
+                        volicord_command: "volicord".to_owned(),
+                        volicord_mcp_command: "volicord".to_owned(),
+                        bin_dir: runtime_home.path().join("bin"),
+                        default_connection_mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                        metadata_json: "{}".to_owned(),
+                    },
+                )?;
+                register_project(
+                    context,
+                    ProjectRegistration {
+                        project_id: project_id.clone(),
+                        repo_root: repo_root.clone(),
+                        project_home: None,
+                        status: ACTIVE_PROJECT_STATUS.to_owned(),
+                        metadata_json: "{}".to_owned(),
+                    },
+                )?;
+                ensure_agent_connection(
+                    context,
+                    AgentConnectionRegistration {
+                        connection_internal_id: connection_id.clone(),
+                        host_kind: host_kind.to_owned(),
+                        intent: volicord_store::agent_connections::CONNECTION_INTENT_SHARED
+                            .to_owned(),
+                        host_scope: HOST_SCOPE_PROJECT.to_owned(),
+                        server_name: "volicord-test".to_owned(),
+                        config_target: runtime_home
+                            .path()
+                            .join("agent-connections")
+                            .join(&component)
+                            .to_string_lossy()
+                            .into_owned(),
+                        mode: CONNECTION_MODE_WORKFLOW.to_owned(),
+                        enabled: true,
+                        managed_fingerprint: format!("fixture:{component}"),
+                        metadata_json: "{}".to_owned(),
+                    },
+                )?;
+                add_connection_project(
+                    context,
+                    ConnectionProjectRegistration {
+                        connection_internal_id: connection_id.clone(),
+                        project_id: project_id.clone(),
+                    },
+                )?;
+                Ok(())
+            })?;
 
             let runtime_home_path = runtime_home.path().to_path_buf();
+            let mutation = TestRuntimeHomeMutation::acquire(&runtime_home_path)?;
             Ok(Self {
                 _runtime_home: runtime_home,
+                mutation: Some(mutation),
                 runtime_home_path,
                 product_repo_path: repo_root,
                 project_id,
@@ -657,6 +840,21 @@ pub mod core_fixtures {
         /// Returns the disposable Runtime Home path.
         pub fn runtime_home_path(&self) -> &Path {
             &self.runtime_home_path
+        }
+
+        /// Borrows the retained shared-writer admission as a Store mutation context.
+        pub fn mutation_context(&self) -> StoreResult<RuntimeHomeMutationContext<'_>> {
+            self.mutation
+                .as_ref()
+                .ok_or_else(|| StoreError::InvalidInput {
+                    detail: "Core fixture mutation admission has been released".to_owned(),
+                })?
+                .context()
+        }
+
+        /// Releases the fixture's retained writer lease for setup-busy behavior tests.
+        pub fn release_mutation_admission(&mut self) {
+            self.mutation = None;
         }
 
         /// Returns the disposable Product Repository path for this fixture project.
@@ -691,8 +889,11 @@ pub mod core_fixtures {
         }
 
         /// Opens the project-local Core store.
-        pub fn store(&self) -> Result<CoreProjectStore, StoreError> {
-            CoreProjectStore::open(&self.runtime_home_path, &ProjectId::new(&self.project_id))
+        pub fn store(&self) -> Result<CoreProjectStore<'static>, StoreError> {
+            CoreProjectStore::open_read_only(
+                &self.runtime_home_path,
+                &ProjectId::new(&self.project_id),
+            )
         }
 
         /// Reads storage-effect counters for this fixture project.
@@ -707,7 +908,18 @@ pub mod core_fixtures {
                 .join("projects")
                 .join(&self.project_id)
                 .join("state.sqlite");
-            open_project_state_database(path)
+            open_project_state_database_read_only(path)
+        }
+
+        /// Opens the raw project-local SQLite database for explicit fixture mutation.
+        pub fn mutation_conn(&self) -> Result<Connection, StoreError> {
+            let context = self.mutation_context()?;
+            let project = project_record_read_only(&self.runtime_home_path, &self.project_id)?
+                .ok_or_else(|| StoreError::NotFound {
+                    entity: "project",
+                    id: self.project_id.clone(),
+                })?;
+            open_project_state_database_for_test_mutation(&context, &project)
         }
 
         /// Captures authority-owned project state for diagnostic isolation assertions.
@@ -765,7 +977,7 @@ pub mod core_fixtures {
             &self,
             profile_json: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE project_state
                     SET enforcement_profile_json = ?2
                   WHERE project_id = ?1",
@@ -1378,7 +1590,7 @@ pub mod core_fixtures {
 
         /// Inserts a compatible replacement Task for supersede tests.
         pub fn insert_superseding_task(&self, task_id: &str) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "INSERT INTO tasks (
                     project_id,
                     task_id,
@@ -1444,7 +1656,7 @@ pub mod core_fixtures {
                   WHERE project_id = ?1
                     AND task_id = ?2"
             );
-            self.conn()?
+            self.mutation_conn()?
                 .execute(&sql, rusqlite::params![self.project_id, task_id, raw_json])?;
             Ok(())
         }
@@ -1463,7 +1675,7 @@ pub mod core_fixtures {
                   WHERE project_id = ?1
                     AND change_unit_id = ?2"
             );
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 &sql,
                 rusqlite::params![self.project_id, change_unit_id, raw_json],
             )?;
@@ -1476,7 +1688,7 @@ pub mod core_fixtures {
             artifact_id: &str,
             status: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE artifacts
                     SET status = ?3
                   WHERE project_id = ?1
@@ -1496,7 +1708,7 @@ pub mod core_fixtures {
             size_bytes: Option<u64>,
         ) -> Result<(), StoreError> {
             let size_bytes = size_bytes.and_then(|value| i64::try_from(value).ok());
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE artifacts
                     SET integrity_status = ?3,
                         content_type = ?4,
@@ -1522,7 +1734,7 @@ pub mod core_fixtures {
             user_action_request_id: &str,
             raw_json: Option<&str>,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE user_action_resolutions
                     SET resolution_json = ?3
                   WHERE project_id = ?1
@@ -1561,7 +1773,7 @@ pub mod core_fixtures {
                 }
             };
             value["machine_action"] = Value::String(machine_action.to_owned());
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE user_action_resolutions
                     SET resolution_json = ?3
                   WHERE project_id = ?1
@@ -1581,7 +1793,7 @@ pub mod core_fixtures {
             user_action_request_id: &str,
             actor_source: &str,
         ) -> Result<(), Box<dyn Error>> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE user_action_resolutions
                     SET resolved_by_actor_source = ?3
                   WHERE project_id = ?1
@@ -1597,7 +1809,7 @@ pub mod core_fixtures {
             user_action_request_id: &str,
             raw_json: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE user_action_requests
                     SET request_json = ?3
                   WHERE project_id = ?1
@@ -1613,7 +1825,7 @@ pub mod core_fixtures {
             user_action_request_id: &str,
             raw_json: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE user_action_requests
                     SET basis_json = ?3
                   WHERE project_id = ?1
@@ -1628,7 +1840,7 @@ pub mod core_fixtures {
             &self,
             user_action_request_id: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE user_action_requests
                     SET basis_json = NULL
                   WHERE project_id = ?1
@@ -1644,7 +1856,7 @@ pub mod core_fixtures {
             write_ticket_id: &str,
             raw_json: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE write_tickets
                     SET attempt_scope_json = ?3
                   WHERE project_id = ?1
@@ -1668,7 +1880,7 @@ pub mod core_fixtures {
                   WHERE project_id = ?1
                     AND artifact_id = ?2"
             );
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 &sql,
                 rusqlite::params![self.project_id, artifact_id, raw_json],
             )?;
@@ -1681,7 +1893,7 @@ pub mod core_fixtures {
             artifact_id: &str,
             source_staging_handle_id: Option<&str>,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE artifacts
                     SET source_staging_handle_id = ?3
                   WHERE project_id = ?1
@@ -1705,7 +1917,7 @@ pub mod core_fixtures {
                   WHERE project_id = ?1
                     AND evidence_summary_id = ?2"
             );
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 &sql,
                 rusqlite::params![self.project_id, evidence_summary_id, raw_json],
             )?;
@@ -1718,7 +1930,7 @@ pub mod core_fixtures {
             handle_id: &str,
             expires_at: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE artifact_staging
                     SET expires_at = ?3
                   WHERE project_id = ?1
@@ -1735,7 +1947,7 @@ pub mod core_fixtures {
             created_at: &str,
             idle_expires_at: &str,
         ) -> Result<(), StoreError> {
-            self.conn()?.execute(
+            self.mutation_conn()?.execute(
                 "UPDATE write_tickets
                     SET created_at = ?3,
                         idle_expires_at = ?4

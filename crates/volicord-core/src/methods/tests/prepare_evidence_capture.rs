@@ -80,8 +80,8 @@ fn fulfill_command_receipt(
     exit_code: i32,
     suffix: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let mut store =
-        CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let context = harness.service.context();
+    let mut store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
     let intent = store
         .evidence_capture_intent_record(intent_id)?
         .expect("capture intent should exist");
@@ -148,8 +148,8 @@ fn fulfill_registered_source_receipt(
     source: Value,
     suffix: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let mut store =
-        CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let context = harness.service.context();
+    let mut store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
     let intent = store
         .evidence_capture_intent_record(intent_id)?
         .expect("capture intent should exist");
@@ -317,7 +317,8 @@ fn command_capture_defaults_are_persisted_once_and_replay_is_exact() -> Result<(
     assert_eq!(after.evidence_producers, before.evidence_producers);
 
     let intent_id = response_record_id(&committed.response_value, "capture_intent_ref");
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let row = store
         .evidence_capture_intent_record(&intent_id)?
         .expect("committed intent should be immediately readable");
@@ -594,7 +595,8 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
     let observation_id = observation["observation_id"]
         .as_str()
         .expect("observation id");
-    let store = CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+    let store =
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let producer_row = store
         .evidence_producer_record(producer_id)?
         .expect("producer should be immediately readable");
@@ -652,7 +654,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
         ],
     )?;
     let tampered_store =
-        CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     assert_ne!(
         super::super::record_run::stored_evidence_observation_provenance_class(
             &tampered_store,
@@ -686,7 +688,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
         rusqlite::params![PROJECT_ID, producer_id],
     )?;
     let relabeled_store =
-        CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     assert_ne!(
         super::super::record_run::stored_evidence_observation_provenance_class(
             &relabeled_store,
@@ -727,7 +729,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
         ],
     )?;
     let tampered_observation_store =
-        CoreProjectStore::open(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
+        CoreProjectStore::open_read_only(&harness.runtime_home_path, &ProjectId::new(PROJECT_ID))?;
     let tampered_observation_record = tampered_observation_store
         .evidence_observation_record(observation_id)?
         .expect("tampered observation should remain readable");

@@ -37,6 +37,11 @@ pub enum McpAdapterError {
     ToolOutputSchema {
         tool_name: String,
     },
+    MutationAdmission(RuntimeHomeMutationSetupInProgress),
+    MutationAdmissionAcquisition {
+        mutation_domain: &'static str,
+        source: RuntimeHomeMutationLeaseError,
+    },
     Core(CorePipelineError),
     Store(StoreError),
     Io(io::Error),
@@ -81,6 +86,14 @@ impl fmt::Display for McpAdapterError {
                     "tool {tool_name} output failed its advertised schema"
                 )
             }
+            Self::MutationAdmission(condition) => write!(formatter, "{condition}"),
+            Self::MutationAdmissionAcquisition {
+                mutation_domain,
+                source,
+            } => write!(
+                formatter,
+                "Runtime Home mutation admission failed for {mutation_domain}: {source}"
+            ),
             Self::Core(error) => write!(formatter, "{error}"),
             Self::Store(error) => write!(formatter, "store error: {error}"),
             Self::Io(error) => write!(formatter, "{error}"),
@@ -99,6 +112,8 @@ impl Error for McpAdapterError {
                 ..
             } => Some(source),
             Self::Core(error) => Some(error),
+            Self::MutationAdmission(condition) => Some(condition),
+            Self::MutationAdmissionAcquisition { source, .. } => Some(source),
             Self::Store(error) => Some(error),
             Self::Io(error) => Some(error),
             Self::Json(error) => Some(error),

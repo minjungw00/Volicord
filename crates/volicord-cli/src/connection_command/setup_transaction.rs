@@ -7,7 +7,7 @@ use std::{
 use sha2::{Digest, Sha256};
 use volicord_platform_fs::{
     DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalOutcome,
-    DirectoryTreeTargetState, RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode,
+    DirectoryTreeTargetState, RuntimeHomeMutationLeaseMode,
 };
 use volicord_store::bootstrap::{
     commit_runtime_home, inspect_runtime_home_bootstrap, prepare_runtime_home_with_installation,
@@ -16,6 +16,7 @@ use volicord_store::bootstrap::{
     RuntimeHomePublicationRollbackOutcome,
 };
 use volicord_store::setup_transaction::{PreparedStoreMutationBoundary, StoreMutationInput};
+use volicord_store::RuntimeHomeMutationContext;
 use volicord_types::IntegrationActivationPlan;
 
 use super::{
@@ -401,11 +402,12 @@ impl AtomicFileMutation {
 }
 
 #[derive(Debug)]
-pub(super) struct PreparedSetup {
+pub(super) struct PreparedSetup<'mutation> {
+    mutation_context: &'mutation RuntimeHomeMutationContext<'mutation>,
     pub(super) plan: SetupPlan,
     runtime_home_publication: SetupRuntimeHomePublication,
     pub(super) created_directories: Vec<PathBuf>,
-    store_boundary: Option<PreparedStoreMutationBoundary>,
+    store_boundary: Option<PreparedStoreMutationBoundary<'mutation>>,
     pub(super) store_applied: bool,
     pub(super) created_project_home: Option<PathBuf>,
 }
@@ -424,24 +426,17 @@ enum SetupRuntimeHomePublication {
     Transitioning,
 }
 
-impl PreparedSetup {
+impl<'mutation> PreparedSetup<'mutation> {
     pub(super) fn prepare(
         mut plan: SetupPlan,
-        lease: &RuntimeHomeMutationLease,
+        context: &'mutation RuntimeHomeMutationContext<'mutation>,
     ) -> Result<Self, ConnectionCommandError> {
-        if lease.mode() != RuntimeHomeMutationLeaseMode::ExclusiveSetup {
+        if context.mode() != RuntimeHomeMutationLeaseMode::ExclusiveSetup {
             return Err(ConnectionCommandError::runtime(
                 "setup preparation requires an exclusive Runtime Home mutation lease",
             ));
         }
-        if !lease
-            .matches_target(plan.runtime_home.final_path())
-            .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
-        {
-            return Err(ConnectionCommandError::runtime(
-                "setup plan does not match the acquired canonical Runtime Home lease",
-            ));
-        }
+        context.ensure_runtime_home(plan.runtime_home.final_path())?;
         let runtime_home_publication = match &plan.runtime_home {
             RuntimeHomePlan::Create {
                 final_path,
@@ -449,6 +444,7 @@ impl PreparedSetup {
                 metadata_json,
                 installation,
             } => SetupRuntimeHomePublication::Prepared(prepare_runtime_home_with_installation(
+                context,
                 final_path,
                 runtime_home_id,
                 metadata_json,
@@ -499,7 +495,7 @@ impl PreparedSetup {
         }
 
         let store_boundary = if matches!(plan.runtime_home, RuntimeHomePlan::Validate { .. }) {
-            match PreparedStoreMutationBoundary::prepare(&plan.store_inputs) {
+            match PreparedStoreMutationBoundary::prepare(context, &plan.store_inputs) {
                 Ok(boundary) => Some(boundary),
                 Err(error) => {
                     cleanup_file_staging(&mut plan);
@@ -512,6 +508,7 @@ impl PreparedSetup {
         };
 
         Ok(Self {
+            mutation_context: context,
             plan,
             runtime_home_publication,
             created_directories,
@@ -558,7 +555,7 @@ impl PreparedSetup {
         match state {
             SetupRuntimeHomePublication::Prepared(prepared) => {
                 let final_path = prepared.final_path().to_path_buf();
-                match commit_runtime_home(prepared) {
+                match commit_runtime_home(self.mutation_context, prepared) {
                     Ok(RuntimeHomePublicationOutcome::PublishedByThisInvocation {
                         publication,
                     }) => {
@@ -606,11 +603,11 @@ impl PreparedSetup {
         };
         let confirmed = (|| {
             phase_fault(FAULT_RUNTIME_HOME_PARENT_DIRECTORY_SYNC)?;
-            publication.synchronize_parent_directory()?;
+            publication.synchronize_parent_directory(self.mutation_context)?;
             phase_fault(FAULT_RUNTIME_HOME_PUBLICATION_READ_BACK)?;
-            let _ = publication.read_back()?;
+            let _ = publication.read_back(self.mutation_context)?;
             phase_fault(FAULT_RUNTIME_HOME_PUBLICATION_MANIFEST_VALIDATION)?;
-            let _ = publication.validate_manifest_and_confirm()?;
+            let _ = publication.validate_manifest_and_confirm(self.mutation_context)?;
             Ok::<(), ConnectionCommandError>(())
         })();
         match confirmed {
@@ -672,7 +669,7 @@ impl PreparedSetup {
             SetupRuntimeHomePublication::OwnedPublished(mut publication)
             | SetupRuntimeHomePublication::OwnedConfirmed(mut publication)
             | SetupRuntimeHomePublication::OwnedPreserved(mut publication) => {
-                match publication.rollback_if_owned() {
+                match publication.rollback_if_owned(self.mutation_context) {
                     Ok(RuntimeHomePublicationRollbackOutcome::RolledBack {
                         durability,
                         failure,
@@ -896,7 +893,7 @@ impl PreparedSetup {
     }
 }
 
-impl Drop for PreparedSetup {
+impl Drop for PreparedSetup<'_> {
     fn drop(&mut self) {
         cleanup_file_staging(&mut self.plan);
         remove_empty_directories(&self.created_directories);

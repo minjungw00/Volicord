@@ -65,6 +65,13 @@ metadata를 담지 않습니다. 활성 OS file lock만 lease 소유권을 나�
 rollback identity를 위해 저장된 publication ID와 process-local publication guard를 계속
 사용합니다.
 
+지원하는 모든 Store 변경에는 정확한 정규 Runtime Home을 위한 활성 permit 기반
+`RuntimeHomeMutationContext`가 필요합니다. 이 context는 영속 record가 아니라
+process-local capability 상태이며 사용자 권한이나 Product Repository 쓰기 허가를
+전달하지 않습니다. 일반 writer는 `SharedWriter`에서, setup은 `ExclusiveSetup`에서
+context를 만듭니다. Setup과 충돌하면 Registry, project, diagnostic, artifact,
+operational-session 기록이 바뀌기 전에 거절합니다.
+
 프로젝트 상태 기록에는 다음이 포함됩니다.
 
 - `project_state`, 프로젝트 workflow policy, Task, acceptance criterion, supplemental

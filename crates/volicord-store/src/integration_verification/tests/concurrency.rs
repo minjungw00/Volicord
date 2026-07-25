@@ -11,6 +11,7 @@ use crate::integration_verification::{
     acknowledge_guard_integration_probe, begin_guard_integration_verification_with_generator,
     BeginGuardIntegrationVerificationInput,
 };
+use crate::mutation::TestRuntimeHomeAdmission;
 
 #[test]
 fn concurrent_same_coordinate_begins_converge_on_one_attempt() -> Result<(), Box<dyn Error>> {
@@ -24,8 +25,10 @@ fn concurrent_same_coordinate_begins_converge_on_one_attempt() -> Result<(), Box
         let project_session_id = fixture.project_session_id.clone();
         handles.push(thread::spawn(move || {
             barrier.wait();
+            let mutation = TestRuntimeHomeAdmission::shared(&runtime_home)?;
+            let context = mutation.context()?;
             begin_guard_integration_verification_with_generator(
-                runtime_home,
+                &context,
                 BeginGuardIntegrationVerificationInput {
                     caller,
                     project_id: PROJECT_ID.to_owned(),
@@ -61,12 +64,9 @@ fn concurrent_first_probe_calls_converge_on_one_timestamp() -> Result<(), Box<dy
         let caller = fixture.caller();
         handles.push(thread::spawn(move || {
             barrier.wait();
-            acknowledge_guard_integration_probe(
-                runtime_home,
-                &verification_id,
-                &caller,
-                observed_at,
-            )
+            let mutation = TestRuntimeHomeAdmission::shared(&runtime_home)?;
+            let context = mutation.context()?;
+            acknowledge_guard_integration_probe(&context, &verification_id, &caller, observed_at)
         }));
     }
     let first = handles

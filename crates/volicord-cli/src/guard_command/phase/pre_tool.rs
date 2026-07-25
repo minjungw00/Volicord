@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use volicord_store::{
     bootstrap::ProjectRecord,
     guards::{insert_expected_write, ExpectedWriteInsert},
+    RuntimeHomeMutationContext,
 };
 use volicord_types::GuardPolicyDecision;
 
@@ -30,12 +31,13 @@ pub(in crate::guard_command) struct ExpectedWriteCandidate {
 }
 
 pub(in crate::guard_command) fn handle_pre_tool(
+    context: &RuntimeHomeMutationContext<'_>,
     runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<GuardPhaseResult, GuardCommandError> {
-    let summary = guard_state_summary(runtime_home, project, envelope, input)?;
+    let summary = guard_state_summary(context, runtime_home, project, envelope, input)?;
     let observation = tool_observation(&input.raw_value, &project.repo_root);
     let (decision, reasons) = pre_tool_decision(&summary, &observation);
     let write_ticket_backing = if tool_attempts_product_write(&observation) {
@@ -258,11 +260,11 @@ fn expected_write_candidate(
 }
 
 pub(in crate::guard_command) fn persist_expected_write(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     project: &ProjectRecord,
     candidate: ExpectedWriteCandidate,
 ) -> Result<(), GuardCommandError> {
-    insert_expected_write(runtime_home, &project.project_id, candidate.insert)?;
+    insert_expected_write(context, &project.project_id, candidate.insert)?;
     Ok(())
 }
 

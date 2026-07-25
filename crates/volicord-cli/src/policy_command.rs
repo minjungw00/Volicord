@@ -22,7 +22,7 @@ use volicord_store::{
         task_policy_control_reevaluation, ProjectWorkflowPolicyAuthorityApply,
         ProjectWorkflowPolicyRecord,
     },
-    StoreError,
+    RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::{
     canonical_json_sha256, canonical_json_string, guard_manifest_from_json, AcceptancePolicy,
@@ -37,6 +37,7 @@ use crate::{
         },
         policy::{validate_workflow_policy, PolicyValidationIssue},
     },
+    mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError},
     project_context::{registered_project_for_repo, resolve_repository_root, ProjectCommandError},
 };
 
@@ -52,6 +53,7 @@ pub enum PolicyCommandError {
     },
     FailureOutput(String),
     Runtime(String),
+    MutationAdmission(CliMutationAdmissionError),
 }
 
 impl fmt::Display for PolicyCommandError {
@@ -60,6 +62,7 @@ impl fmt::Display for PolicyCommandError {
             Self::Usage(message) | Self::FailureOutput(message) | Self::Runtime(message) => {
                 formatter.write_str(message)
             }
+            Self::MutationAdmission(error) => write!(formatter, "{error}"),
             Self::Validation {
                 code,
                 field_path,
@@ -70,6 +73,12 @@ impl fmt::Display for PolicyCommandError {
 }
 
 impl std::error::Error for PolicyCommandError {}
+
+impl From<CliMutationAdmissionError> for PolicyCommandError {
+    fn from(error: CliMutationAdmissionError) -> Self {
+        Self::MutationAdmission(error)
+    }
+}
 
 impl From<StoreError> for PolicyCommandError {
     fn from(error: StoreError) -> Self {
@@ -88,6 +97,7 @@ impl From<ProjectCommandError> for PolicyCommandError {
         match error {
             ProjectCommandError::Usage(message) => Self::Usage(message),
             ProjectCommandError::Runtime(message) => Self::Runtime(message),
+            ProjectCommandError::MutationAdmission(error) => Self::MutationAdmission(error),
         }
     }
 }
@@ -230,6 +240,20 @@ where
     let candidate = read_validated_policy_file(&input_path)?;
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let repo_root = resolve_repository_root(current_dir, Some(&options.repo))?;
+    with_cli_runtime_home_mutation(&runtime_home, "cli.policy.apply", |context| {
+        apply_command_admitted(context, &runtime_home, &repo_root, &input_path, candidate)
+            .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
+    })
+    .map_err(Into::into)
+}
+
+fn apply_command_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    runtime_home: &Path,
+    repo_root: &Path,
+    input_path: &Path,
+    candidate: ValidatedPolicyFile,
+) -> Result<String, PolicyCommandError> {
     let project = registered_project_for_repo(&runtime_home, &repo_root)?;
     validate_policy_bindings(
         &candidate.value,
@@ -239,7 +263,7 @@ where
     )?;
 
     let project_id = ProjectId::new(project.project_id.clone());
-    let mut store = CoreProjectStore::open(&runtime_home, &project_id)?;
+    let mut store = CoreProjectStore::open_for_mutation(context, &project_id)?;
     let prior = store.project_workflow_policy()?;
     if let Some(prior) = &prior {
         let prior_value = authority_policy_value(prior)?;

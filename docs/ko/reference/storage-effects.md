@@ -177,6 +177,7 @@ mutation application이 생성하는 적용 가능한 Store transaction metadata
 
 - 잘못된 요청.
 - 커밋 전 검증 실패.
+- 지원 writer가 시작되기 전의 `runtime_home.mutation.setup_in_progress`.
 - 보호된 동작이 진행되기 전의 연결 처리 경로 또는 모드 관문 실패.
 - 오래된 `expected_state_version`.
 - 소비 시도에서 유효하지 않거나 소비됨, 철회됨, 상태 결합 비호환인 쓰기 티켓.
@@ -196,6 +197,12 @@ mutation application이 생성하는 적용 가능한 Store transaction metadata
 - `consumed_by_run_id` 또는 `promoted_artifact_id`.
 - 아티팩트 승격 또는 연결.
 - `project_state.state_version` 증가.
+
+Setup busy는 CLI, MCP lifecycle 및 tool 관찰, Core commit, Guard 영속화,
+diagnostic, operational session, integration verification, evidence capture,
+artifact staging에 적용됩니다. Database row, artifact byte, receipt, checkpoint,
+observation을 만들지 않습니다. 배타 setup lease가 해제된 뒤 새로 승인된 연산은
+정상 효과 계약을 따릅니다.
 
 사전 확인에서 `ToolRejectedResponse`가 반환되면 요청된 커밋 동작은 수행되지 않습니다. 이 원칙은 `dry_run` 요청에도 똑같이 적용됩니다. `dry_run`은 검증, 접근, 역량, 오래된 상태 거절을 우회하지 않습니다.
 

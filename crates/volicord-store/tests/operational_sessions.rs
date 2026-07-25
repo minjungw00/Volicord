@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    ops::Deref,
     sync::{Arc, Barrier},
     thread,
 };
@@ -33,7 +34,9 @@ use volicord_store::{
     },
     sqlite::registry_db_path,
 };
-use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
+use volicord_test_support::{
+    core_fixtures::CoreFixture, transition_test_connection_mode, TestRuntimeHomeMutation,
+};
 use volicord_types::{
     AgentConnectionId, AgentRuntimeSessionId, AgentToolId, DiagnosticCode, DiagnosticDomain,
     DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
@@ -46,6 +49,33 @@ const INIT: &str = "2026-07-18T00:00:01Z";
 const INITIALIZED: &str = "2026-07-18T00:00:02Z";
 const TOOLS: &str = "2026-07-18T00:00:03Z";
 const SAFE: &str = "2026-07-18T00:00:04Z";
+
+struct OperationalFixture {
+    mutation: TestRuntimeHomeMutation,
+    core: CoreFixture,
+}
+
+impl OperationalFixture {
+    fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
+        let core = CoreFixture::new(prefix)?;
+        let mutation = TestRuntimeHomeMutation::acquire(core.runtime_home_path())?;
+        Ok(Self { mutation, core })
+    }
+
+    fn context(
+        &self,
+    ) -> volicord_store::StoreResult<volicord_store::RuntimeHomeMutationContext<'_>> {
+        self.mutation.context()
+    }
+}
+
+impl Deref for OperationalFixture {
+    type Target = CoreFixture;
+
+    fn deref(&self) -> &Self::Target {
+        &self.core
+    }
+}
 
 fn mcp_correlation(session: &str, thread: &str, turn: &str) -> CodexMcpCorrelation {
     CodexMcpCorrelation {
@@ -62,7 +92,10 @@ fn prompt_correlation(session: &str, turn: &str) -> HostNativeCorrelation {
     })
 }
 
-fn start(fixture: &CoreFixture, source: McpRuntimeSessionSource) -> Result<String, Box<dyn Error>> {
+fn start(
+    fixture: &OperationalFixture,
+    source: McpRuntimeSessionSource,
+) -> Result<String, Box<dyn Error>> {
     Ok(volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
@@ -78,7 +111,7 @@ fn start(fixture: &CoreFixture, source: McpRuntimeSessionSource) -> Result<Strin
 
 #[test]
 fn runtime_session_process_lookup_is_connection_scoped() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-runtime-process-lookup")?;
+    let fixture = OperationalFixture::new("operational-runtime-process-lookup")?;
     let runtime_session_id = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
     let found =
         mcp_runtime_session_for_process(fixture.runtime_home_path(), fixture.connection_id(), 42)?
@@ -94,64 +127,53 @@ fn runtime_session_process_lookup_is_connection_scoped() -> Result<(), Box<dyn E
 }
 
 fn complete(
-    fixture: &CoreFixture,
+    fixture: &OperationalFixture,
     runtime_session_id: &str,
     required_tools_present: bool,
 ) -> Result<(), Box<dyn Error>> {
     let client = ManagedMcpClientInfo::new("future-client", "999.123-preview+custom")?;
     record_mcp_initialize_attempt(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         runtime_session_id,
         &client,
         "2025-11-25",
         INIT,
     )?;
-    record_mcp_initialize_completion(
-        fixture.runtime_home_path(),
-        runtime_session_id,
-        "2025-11-25",
-        INIT,
-    )?;
+    record_mcp_initialize_completion(&fixture.context()?, runtime_session_id, "2025-11-25", INIT)?;
     record_mcp_initialized_notification(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         runtime_session_id,
         "2025-11-25",
         INITIALIZED,
     )?;
     record_mcp_tools_list(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         runtime_session_id,
         &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
         required_tools_present,
         TOOLS,
     )?;
     if required_tools_present {
-        record_mcp_verification_tool_observation(
-            fixture.runtime_home_path(),
-            runtime_session_id,
-            SAFE,
-        )?;
+        record_mcp_verification_tool_observation(&fixture.context()?, runtime_session_id, SAFE)?;
     }
     Ok(())
 }
 
-fn initialize_only(fixture: &CoreFixture, runtime_session_id: &str) -> Result<(), Box<dyn Error>> {
+fn initialize_only(
+    fixture: &OperationalFixture,
+    runtime_session_id: &str,
+) -> Result<(), Box<dyn Error>> {
     let client = ManagedMcpClientInfo::new("future-client", "999.123-preview+custom")?;
     record_mcp_initialize_attempt(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         runtime_session_id,
         &client,
         "2025-11-25",
         INIT,
     )?;
-    record_mcp_initialize_completion(
-        fixture.runtime_home_path(),
-        runtime_session_id,
-        "2025-11-25",
-        INIT,
-    )?;
+    record_mcp_initialize_completion(&fixture.context()?, runtime_session_id, "2025-11-25", INIT)?;
     record_mcp_initialized_notification(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         runtime_session_id,
         "2025-11-25",
         INITIALIZED,
@@ -162,7 +184,7 @@ fn initialize_only(fixture: &CoreFixture, runtime_session_id: &str) -> Result<()
 #[test]
 fn evidence_selection_requires_one_session_to_complete_every_readiness_milestone(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-session-coherent-proof")?;
+    let fixture = OperationalFixture::new("operational-session-coherent-proof")?;
     let complete_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     complete(&fixture, &complete_runtime, true)?;
     let revision = volicord_store::operational_sessions::connection_integration_revision(
@@ -200,7 +222,7 @@ fn evidence_selection_requires_one_session_to_complete_every_readiness_milestone
     let tools_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     initialize_only(&fixture, &tools_runtime)?;
     record_mcp_tools_list(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         &tools_runtime,
         &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
         true,
@@ -221,7 +243,7 @@ fn evidence_selection_requires_one_session_to_complete_every_readiness_milestone
 
 #[test]
 fn typed_milestones_reject_implied_or_non_managed_capability_proof() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-session-impossible-proof")?;
+    let fixture = OperationalFixture::new("operational-session-impossible-proof")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     complete(&fixture, &runtime, true)?;
     let record = mcp_runtime_session(fixture.runtime_home_path(), &runtime)?.expect("runtime");
@@ -294,7 +316,7 @@ fn runtime_project_binding_count(fixture: &CoreFixture) -> Result<i64, Box<dyn E
 #[test]
 fn managed_host_and_cli_preflight_sessions_are_distinct_authority_sources(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-session-sources")?;
+    let fixture = OperationalFixture::new("operational-session-sources")?;
     let cli = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
     assert!(complete(&fixture, &cli, true).is_err());
     let cli_record = mcp_runtime_session(fixture.runtime_home_path(), &cli)?.expect("CLI session");
@@ -324,7 +346,7 @@ fn managed_host_and_cli_preflight_sessions_are_distinct_authority_sources(
 #[test]
 fn latest_queries_expose_partial_current_and_stale_managed_observations(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-session-current-and-stale")?;
+    let fixture = OperationalFixture::new("operational-session-current-and-stale")?;
     let managed = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
 
     assert_eq!(
@@ -361,10 +383,10 @@ fn latest_queries_expose_partial_current_and_stale_managed_observations(
 #[test]
 fn milestones_enforce_order_and_initialized_notification_is_idempotent(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-session-order")?;
+    let fixture = OperationalFixture::new("operational-session-order")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     assert!(record_mcp_tools_list(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         &runtime,
         &[AgentToolId::LIST_PROJECTS.wire_name().to_owned()],
         true,
@@ -372,13 +394,7 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
     )
     .is_err());
     let client = ManagedMcpClientInfo::new("unlisted-client", "2037.0")?;
-    record_mcp_initialize_attempt(
-        fixture.runtime_home_path(),
-        &runtime,
-        &client,
-        "2025-06-18",
-        INIT,
-    )?;
+    record_mcp_initialize_attempt(&fixture.context()?, &runtime, &client, "2025-06-18", INIT)?;
     let attempted = mcp_runtime_session(fixture.runtime_home_path(), &runtime)?
         .expect("initialize attempt observation");
     assert_eq!(
@@ -395,7 +411,7 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
     );
     assert!(attempted.selected_protocol_version.is_none());
     assert!(attempted.initialize_completed_at.is_none());
-    record_mcp_initialize_completion(fixture.runtime_home_path(), &runtime, "2025-11-25", INIT)?;
+    record_mcp_initialize_completion(&fixture.context()?, &runtime, "2025-11-25", INIT)?;
     let selected = mcp_runtime_session(fixture.runtime_home_path(), &runtime)?
         .expect("initialize observation");
     assert!(selected.initialize_completed_at.is_some());
@@ -405,17 +421,13 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
     );
     assert!(selected.negotiated_protocol_version.is_none());
     let first = record_mcp_initialized_notification(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         &runtime,
         "2025-11-25",
         INITIALIZED,
     )?;
-    let duplicate = record_mcp_initialized_notification(
-        fixture.runtime_home_path(),
-        &runtime,
-        "2025-11-25",
-        TOOLS,
-    )?;
+    let duplicate =
+        record_mcp_initialized_notification(&fixture.context()?, &runtime, "2025-11-25", TOOLS)?;
     assert_eq!(
         first.initialized_notification_at,
         duplicate.initialized_notification_at
@@ -433,7 +445,7 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
         Some("2025-11-25")
     );
     assert!(record_mcp_initialized_notification(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         &runtime,
         "2025-06-18",
         "2026-07-18T00:00:05Z",
@@ -444,7 +456,7 @@ fn milestones_enforce_order_and_initialized_notification_is_idempotent(
 
 #[test]
 fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-session-facts")?;
+    let fixture = OperationalFixture::new("operational-session-facts")?;
     let incomplete = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     complete(&fixture, &incomplete, false)?;
     assert!(latest_successful_managed_runtime_session(
@@ -458,12 +470,9 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
     assert!(record.required_tools_validated_at.is_none());
     assert!(record.verification_tool_name.is_none());
     assert!(record.verification_tool_observed_at.is_none());
-    assert!(record_mcp_verification_tool_observation(
-        fixture.runtime_home_path(),
-        &incomplete,
-        SAFE,
-    )
-    .is_err());
+    assert!(
+        record_mcp_verification_tool_observation(&fixture.context()?, &incomplete, SAFE,).is_err()
+    );
 
     let fatal = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let finding = terminal_finding(
@@ -473,7 +482,7 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
         "mcp.protocol_eof",
         INIT,
     )?;
-    let fatal_record = record_mcp_terminal_finding(fixture.runtime_home_path(), &finding)?;
+    let fatal_record = record_mcp_terminal_finding(&fixture.context()?, &finding)?;
     assert_eq!(
         fatal_record.terminal_finding_id.as_deref(),
         Some(finding.id().as_str())
@@ -489,7 +498,7 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
         "mcp.later_transport_failure",
         "2026-07-18T00:00:05Z",
     )?;
-    record_mcp_terminal_finding(fixture.runtime_home_path(), &finding)?;
+    record_mcp_terminal_finding(&fixture.context()?, &finding)?;
     assert_eq!(
         latest_successful_managed_runtime_session(
             fixture.runtime_home_path(),
@@ -505,7 +514,7 @@ fn required_tools_safe_success_and_fatal_failure_are_authoritative() -> Result<(
 #[test]
 fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<(), Box<dyn Error>>
 {
-    let fixture = CoreFixture::new("operational-session-authority")?;
+    let fixture = OperationalFixture::new("operational-session-authority")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     assert!(current_managed_mcp_runtime_session_for_connection(
         fixture.runtime_home_path(),
@@ -515,7 +524,7 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
     .is_err());
     let other_connection = "connection_other";
     ensure_agent_connection(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         AgentConnectionRegistration {
             connection_internal_id: other_connection.to_owned(),
             host_kind: HOST_KIND_CODEX.to_owned(),
@@ -534,7 +543,7 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
         },
     )?;
     add_connection_project(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         ConnectionProjectRegistration {
             connection_internal_id: other_connection.to_owned(),
             project_id: fixture.project_id().to_owned(),
@@ -542,7 +551,7 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
     )?;
     let other_host_session = "host.session.other";
     assert!(bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         AgentSessionRuntimeBinding {
             runtime_session_id: runtime.clone(),
@@ -582,7 +591,7 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
     .is_none());
 
     start_diagnostic_session(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         DiagnosticSessionStart {
             session_id: "diagnostic-only-success-shaped-row",
             connection_id: None,
@@ -603,10 +612,10 @@ fn runtime_session_ownership_and_diagnostics_authority_are_separate() -> Result<
 
 #[test]
 fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-project-session-scope")?;
+    let fixture = OperationalFixture::new("operational-project-session-scope")?;
     let second_project = "project_second";
     register_project(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         ProjectRegistration {
             project_id: second_project.to_owned(),
             repo_root: fixture.create_product_repo("repo-second")?,
@@ -616,7 +625,7 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         },
     )?;
     add_connection_project(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         ConnectionProjectRegistration {
             connection_internal_id: fixture.connection_id().to_owned(),
             project_id: second_project.to_owned(),
@@ -632,12 +641,12 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
         observed_at: INIT.to_owned(),
     };
     bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         input(&runtime_session_id, "host.turn.first"),
     )?;
     assert!(bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         second_project,
         input(&runtime_session_id, "host.turn.second")
     )
@@ -669,7 +678,7 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
 
     let non_conflicting_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let attached = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         second_project,
         input(&non_conflicting_runtime, "host.turn.recovery"),
     )?;
@@ -684,7 +693,7 @@ fn project_session_cannot_cross_projects() -> Result<(), Box<dyn Error>> {
 #[test]
 fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-guard-first-binding")?;
+    let fixture = OperationalFixture::new("operational-guard-first-binding")?;
     let host_session_id = "host.session.guard-first";
     let observation = |turn: &str, observed_at: &str| HostCorrelationObservation {
         connection_internal_id: fixture.connection_id().to_owned(),
@@ -702,7 +711,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
         };
 
     let unbound = observe_host_correlation(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         observation("host.turn.guard", START),
     )?;
@@ -723,7 +732,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
 
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let bound = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         binding(&runtime, "host.turn.tool", INIT),
     )?;
@@ -733,7 +742,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
     assert_eq!(bound.last_host_turn_id, "host.turn.tool");
 
     let replay = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         binding(&runtime, "host.turn.tool", INIT),
     )?;
@@ -772,7 +781,7 @@ fn guard_first_session_attaches_to_first_real_managed_runtime_idempotently(
 #[test]
 fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<(), Box<dyn Error>>
 {
-    let fixture = CoreFixture::new("operational-concurrent-runtime-binding")?;
+    let fixture = OperationalFixture::new("operational-concurrent-runtime-binding")?;
     let runtime_a = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let runtime_b = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     for (runtime, host_session, thread) in [
@@ -788,7 +797,7 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
         ),
     ] {
         observe_host_correlation(
-            fixture.runtime_home_path(),
+            &fixture.context()?,
             fixture.project_id(),
             HostCorrelationObservation {
                 connection_internal_id: fixture.connection_id().to_owned(),
@@ -798,7 +807,7 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
             },
         )?;
         bind_agent_session_runtime(
-            fixture.runtime_home_path(),
+            &fixture.context()?,
             fixture.project_id(),
             AgentSessionRuntimeBinding {
                 runtime_session_id: runtime.clone(),
@@ -812,7 +821,7 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
     let runtime_c = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session_c = "host.session.concurrent-c";
     bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         AgentSessionRuntimeBinding {
             runtime_session_id: runtime_c,
@@ -837,11 +846,11 @@ fn concurrent_runtimes_bind_distinct_host_sessions_without_guessing() -> Result<
 #[test]
 fn concurrent_runtimes_claiming_one_project_session_produce_one_winner(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-concurrent-single-session-claim")?;
+    let fixture = OperationalFixture::new("operational-concurrent-single-session-claim")?;
     let host_session = "host.session.concurrent-claim";
     let host_thread = "host.thread.concurrent-claim";
     let unbound = observe_host_correlation(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         HostCorrelationObservation {
             connection_internal_id: fixture.connection_id().to_owned(),
@@ -863,8 +872,10 @@ fn concurrent_runtimes_claiming_one_project_session_produce_one_winner(
         let connection_internal_id = fixture.connection_id().to_owned();
         claims.push(thread::spawn(move || {
             barrier.wait();
+            let mutation = TestRuntimeHomeMutation::acquire(&runtime_home)?;
+            let context = mutation.context()?;
             bind_agent_session_runtime(
-                runtime_home,
+                &context,
                 &project_id,
                 AgentSessionRuntimeBinding {
                     runtime_session_id,
@@ -906,7 +917,7 @@ fn concurrent_runtimes_claiming_one_project_session_produce_one_winner(
 #[test]
 fn managed_binding_replay_is_idempotent_and_conflicting_runtime_fails() -> Result<(), Box<dyn Error>>
 {
-    let fixture = CoreFixture::new("operational-reservation-recovery")?;
+    let fixture = OperationalFixture::new("operational-reservation-recovery")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     let host_session = "host.session.recovery";
     let input = |runtime_session_id: &str, turn: &str| AgentSessionRuntimeBinding {
@@ -917,12 +928,12 @@ fn managed_binding_replay_is_idempotent_and_conflicting_runtime_fails() -> Resul
         observed_at: INIT.to_owned(),
     };
     let attached = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         input(&runtime, "host.turn.recovery"),
     )?;
     let replay = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         input(&runtime, "host.turn.recovery"),
     )?;
@@ -930,7 +941,7 @@ fn managed_binding_replay_is_idempotent_and_conflicting_runtime_fails() -> Resul
 
     let conflicting_runtime = start(&fixture, McpRuntimeSessionSource::ManagedHost)?;
     assert!(bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         input(&conflicting_runtime, "host.turn.conflict"),
     )
@@ -940,7 +951,7 @@ fn managed_binding_replay_is_idempotent_and_conflicting_runtime_fails() -> Resul
 
 #[test]
 fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-preflight-no-binding")?;
+    let fixture = OperationalFixture::new("operational-preflight-no-binding")?;
     let runtime = start(&fixture, McpRuntimeSessionSource::CliPreflight)?;
     let host_session = "host.session.preflight";
     let coordinates = current_project_agent_session_coordinates(
@@ -955,7 +966,7 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
         )),
     )?;
     assert!(bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         AgentSessionRuntimeBinding {
             runtime_session_id: runtime,
@@ -987,7 +998,7 @@ fn cli_preflight_runtime_cannot_attach_a_project_session() -> Result<(), Box<dyn
 
 #[test]
 fn phase_zero_rejections_mutate_neither_project_nor_registry() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("operational-phase-zero-no-mutation")?;
+    let fixture = OperationalFixture::new("operational-phase-zero-no-mutation")?;
     let runtime = volicord_test_support::start_test_mcp_runtime_session(
         fixture.runtime_home_path(),
         McpRuntimeSessionStart {
@@ -1014,7 +1025,7 @@ fn phase_zero_rejections_mutate_neither_project_nor_registry() -> Result<(), Box
     let registry_count = runtime_project_binding_count(&fixture)?;
 
     let before_process_start = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         input(None, START),
     )
@@ -1027,7 +1038,7 @@ fn phase_zero_rejections_mutate_neither_project_nor_registry() -> Result<(), Box
     assert_eq!(runtime_project_binding_count(&fixture)?, registry_count);
 
     let wrong_guard = bind_agent_session_runtime(
-        fixture.runtime_home_path(),
+        &fixture.context()?,
         fixture.project_id(),
         input(Some("guard_installation_missing"), INIT),
     )

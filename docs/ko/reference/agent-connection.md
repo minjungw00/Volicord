@@ -548,6 +548,14 @@ field를 다시 쓰지 않습니다. Preflight만 수행했거나 preflight가 �
 
 ## 통합 Revision과 운영 Session
 
+Agent Connection 변경, managed-launch lease 발급·소비·정리, runtime 및 project
+session 관찰, lifecycle milestone, verification write, terminal finding 연결은 정확한
+Runtime Home마다 연산별 `SharedWriter` 승인을 획득합니다. 모든 Registry와 project
+database 효과가 끝날 때까지 permit 기반 Store context를 유지합니다. Setup은 기존
+`ExclusiveSetup` context를 사용합니다. Setup이 배타 상태인 동안 이 연산은 일부
+Connection, session, finding, verification 기록도 만들지 않고
+`runtime_home.mutation.setup_in_progress`를 반환합니다.
+
 현재 Connection 통합 revision은 타입이 지정되고 domain-separated된 canonical SHA-256
 digest입니다. Basis는 Agent Connection identity, 변경 불가능한 Store 소유 통합 instance
 ID, host kind, intent, scope, mode, server name, configuration target, 현재의 정확한

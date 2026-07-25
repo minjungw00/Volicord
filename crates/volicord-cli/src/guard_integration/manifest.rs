@@ -1,11 +1,10 @@
-use std::path::Path;
-
 use volicord_host_contract::HostContractProfileId;
 use volicord_store::agent_connections::AgentConnectionRecord;
 use volicord_store::guards::{
     upsert_guard_installation, GuardInstallationRecord, GuardInstallationUpsert,
 };
 use volicord_store::operational_sessions::connection_integration_revision;
+use volicord_store::RuntimeHomeMutationContext;
 use volicord_types::{
     AgentConnectionId, GuardArtifactContentHash, GuardInstallationId, GuardManagedArtifact,
     GuardManifest, HostKind as ManifestHostKind, IntegrationProfile, ManagedFileExpectation,
@@ -21,13 +20,13 @@ use crate::guard_integration::{
 };
 
 pub(crate) fn record_guard_installation(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     connection: &AgentConnectionRecord,
     project_id: &str,
     integration: &GuardIntegrationPlan,
 ) -> Result<GuardInstallationRecord, GuardIntegrationError> {
     let input = guard_installation_upsert(connection, project_id, integration)?;
-    upsert_guard_installation(runtime_home, input)
+    upsert_guard_installation(context, input)
         .map_err(|error| GuardIntegrationError::runtime(error.to_string()))
 }
 
@@ -406,13 +405,13 @@ mod tests {
 
         let applied = apply_guard_integration(plan)?;
         let first = record_guard_installation(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context()?,
             &connection,
             fixture.project_id(),
             &applied,
         )?;
         let second = record_guard_installation(
-            fixture.runtime_home_path(),
+            &fixture.mutation_context()?,
             &connection,
             fixture.project_id(),
             &applied,
