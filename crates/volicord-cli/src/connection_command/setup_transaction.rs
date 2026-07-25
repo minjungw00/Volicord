@@ -27,6 +27,9 @@ use super::{
 pub(super) const FAULT_AFTER_RUNTIME_HOME_PREPARATION: &str = "after_runtime_home_preparation";
 pub(super) const FAULT_AFTER_REGISTRY_MUTATION_PREPARATION: &str =
     "after_registry_mutation_preparation";
+pub(super) const FAULT_AFTER_STORE_COMMIT_BEFORE_CHECKPOINT: &str =
+    "after_store_commit_before_checkpoint";
+pub(super) const FAULT_AFTER_STORE_CHECKPOINT: &str = "after_store_checkpoint";
 pub(super) const FAULT_RUNTIME_HOME_PARENT_DIRECTORY_SYNC: &str =
     "runtime_home_parent_directory_sync";
 pub(super) const FAULT_RUNTIME_HOME_PUBLICATION_READ_BACK: &str =

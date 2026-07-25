@@ -136,17 +136,74 @@ mod admission_tests {
     use super::*;
     use crate::cli::{HookEventArgs, HookOutput};
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct GuardMutationSnapshot {
+        guard_events: i64,
+        prompt_captures: i64,
+        expected_writes: i64,
+        unrecorded_changes: i64,
+        state_version: i64,
+    }
+
+    fn guard_mutation_snapshot(
+        fixture: &CoreFixture,
+    ) -> Result<GuardMutationSnapshot, Box<dyn std::error::Error>> {
+        let conn = fixture.conn()?;
+        Ok(GuardMutationSnapshot {
+            guard_events: conn
+                .query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?,
+            prompt_captures: conn
+                .query_row("SELECT COUNT(*) FROM prompt_captures", [], |row| row.get(0))?,
+            expected_writes: conn
+                .query_row("SELECT COUNT(*) FROM expected_writes", [], |row| row.get(0))?,
+            unrecorded_changes: conn.query_row(
+                "SELECT COUNT(*) FROM unrecorded_changes",
+                [],
+                |row| row.get(0),
+            )?,
+            state_version: conn.query_row(
+                "SELECT state_version FROM project_state",
+                [],
+                |row| row.get(0),
+            )?,
+        })
+    }
+
     #[test]
     fn record_hook_continues_without_persisting_while_setup_is_exclusive(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut fixture = CoreFixture::new("guard-record-setup-busy")?;
         fs::create_dir(fixture.product_repo_path().join(".git"))?;
+        let policy_path = GuardManagedArtifact::VolicordPolicy
+            .expected_path(&fixture.product_repo_path(), None)
+            .expect("fixture Guard policy path");
+        fs::create_dir_all(
+            policy_path
+                .parent()
+                .expect("fixture Guard policy has a parent"),
+        )?;
+        fs::write(&policy_path, "{}")?;
+        let policy_hash = sha256_text("{}");
+        let guard_installation_id = "guard_setup_busy";
+        volicord_store::guards::upsert_guard_installation(
+            &fixture.mutation_context()?,
+            volicord_store::guards::GuardInstallationUpsert {
+                guard_installation_id: guard_installation_id.to_owned(),
+                connection_internal_id: fixture.connection_id().to_owned(),
+                project_id: fixture.project_id().to_owned(),
+                manifest_json: volicord_test_support::test_guard_manifest_json(
+                    fixture.runtime_home_path(),
+                    &fixture.product_repo_path(),
+                    fixture.project_id(),
+                    fixture.connection_id(),
+                    guard_installation_id,
+                    &policy_hash,
+                ),
+            },
+        )?;
         let event_path = fixture.product_repo_path().join("guard-event.json");
         fs::write(&event_path, "{}")?;
-        let before_events: i64 =
-            fixture
-                .conn()?
-                .query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
+        let before = guard_mutation_snapshot(&fixture)?;
         fixture.release_mutation_admission();
         let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
         let env = |name: &str| {
@@ -156,13 +213,13 @@ mod admission_tests {
         let outcome = run_guard_command(
             HookArgs {
                 command: HookCommand::PreTool(HookEventArgs {
-                    event_file: Some(event_path),
+                    event_file: Some(event_path.clone()),
                     repo: Some(fixture.product_repo_path()),
-                    connection: None,
-                    guard_installation: None,
+                    connection: Some(fixture.connection_id().to_owned()),
+                    guard_installation: Some(guard_installation_id.to_owned()),
                     host: None,
                     integration_profile: None,
-                    policy_hash: None,
+                    policy_hash: Some(policy_hash.clone()),
                     output: Some(HookOutput::VolicordJson),
                     host_output: None,
                 }),
@@ -177,12 +234,49 @@ mod admission_tests {
             .contains("runtime_home.mutation.setup_in_progress"));
         assert!(outcome.stdout.contains("\"persisted\": false"));
         assert!(!outcome.stdout.contains("\"decision\":\"deny\""));
-        let after_events: i64 =
-            fixture
-                .conn()?
-                .query_row("SELECT COUNT(*) FROM guard_events", [], |row| row.get(0))?;
-        assert_eq!(after_events, before_events);
+        assert!(outcome
+            .stdout
+            .contains("guard.event.persistence_unavailable"));
+        assert!(!outcome
+            .stdout
+            .contains("\"observation_outcome\": \"observed\""));
+        assert_eq!(guard_mutation_snapshot(&fixture)?, before);
         drop(setup);
+
+        let retry = run_guard_command(
+            HookArgs {
+                command: HookCommand::PreTool(HookEventArgs {
+                    event_file: Some(event_path),
+                    repo: Some(fixture.product_repo_path()),
+                    connection: Some(fixture.connection_id().to_owned()),
+                    guard_installation: Some(guard_installation_id.to_owned()),
+                    host: None,
+                    integration_profile: None,
+                    policy_hash: Some(policy_hash),
+                    output: Some(HookOutput::VolicordJson),
+                    host_output: None,
+                }),
+            },
+            env,
+            fixture.product_repo_path().as_path(),
+        )?;
+        assert_eq!(retry.exit_code, 0);
+        assert!(
+            retry
+                .stdout
+                .contains("\"observation_outcome\": \"incompatible_recorded\""),
+            "{}",
+            retry.stdout
+        );
+        assert!(!retry
+            .stdout
+            .contains("\"observation_outcome\": \"observed\""));
+        let after_retry = guard_mutation_snapshot(&fixture)?;
+        assert_eq!(after_retry.guard_events, before.guard_events + 1);
+        assert_eq!(after_retry.prompt_captures, before.prompt_captures);
+        assert_eq!(after_retry.expected_writes, before.expected_writes);
+        assert_eq!(after_retry.unrecorded_changes, before.unrecorded_changes);
+        assert_eq!(after_retry.state_version, before.state_version);
         Ok(())
     }
 }

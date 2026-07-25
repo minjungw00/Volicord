@@ -277,6 +277,14 @@ impl fmt::Debug for RuntimeHomeMutationLease {
 ///
 /// The permit cannot outlive its lease, cannot be constructed by callers, and
 /// has no destructive drop behavior.
+///
+/// ```compile_fail
+/// use volicord_platform_fs::RuntimeHomeMutationPermit;
+///
+/// fn forge_permit<'lease>() -> RuntimeHomeMutationPermit<'lease> {
+///     RuntimeHomeMutationPermit { lease: unreachable!() }
+/// }
+/// ```
 pub struct RuntimeHomeMutationPermit<'lease> {
     lease: &'lease RuntimeHomeMutationLease,
 }

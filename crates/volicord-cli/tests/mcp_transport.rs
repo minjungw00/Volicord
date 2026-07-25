@@ -21,7 +21,9 @@ use volicord_store::{
     core_pipeline::StorageEffectCounts,
     sqlite::registry_db_path,
 };
-use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
+use volicord_test_support::{
+    core_fixtures::CoreFixture, transition_test_connection_mode, TestRuntimeHomeSetup,
+};
 use volicord_types::{ActorSource, AgentConnectionId, AgentToolId, OperationCategory, ProjectId};
 
 use support::{
@@ -44,7 +46,7 @@ fn mcp_preflight_succeeds_with_read_only_registry_and_project_databases(
 ) -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::PermissionsExt;
 
-    let fixture = McpFixture::new("mcp-bin-readonly-preflight")?;
+    let mut fixture = McpFixture::new("mcp-bin-readonly-preflight")?;
     let project = project_record_read_only(fixture.runtime_home_path(), fixture.project_id())?
         .expect("fixture project");
     let registry = registry_db_path(fixture.runtime_home_path());
@@ -54,6 +56,8 @@ fn mcp_preflight_succeeds_with_read_only_registry_and_project_databases(
     fs::set_permissions(&project.state_db_path, fs::Permissions::from_mode(0o444))?;
     let registry_modified = fs::metadata(&registry)?.modified()?;
     let project_modified = fs::metadata(&project.state_db_path)?.modified()?;
+    fixture.fixture.release_mutation_admission();
+    let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
 
     let output = run_child(
         fixture.connection_command([
@@ -75,6 +79,7 @@ fn mcp_preflight_succeeds_with_read_only_registry_and_project_databases(
         fs::metadata(&project.state_db_path)?.modified()?,
         project_modified
     );
+    drop(setup);
     Ok(())
 }
 

@@ -663,6 +663,155 @@ fn mcp_initialize_observation_is_no_effect_while_setup_is_exclusive() -> Result<
     Ok(())
 }
 
+struct GatedMcpInput {
+    input: Cursor<Vec<u8>>,
+    ready: Option<std::sync::mpsc::Sender<()>>,
+    release: std::sync::mpsc::Receiver<()>,
+}
+
+impl GatedMcpInput {
+    fn wait_for_release(&mut self) -> std::io::Result<()> {
+        if let Some(ready) = self.ready.take() {
+            ready
+                .send(())
+                .map_err(|_| std::io::Error::other("MCP input ready receiver was dropped"))?;
+            self.release
+                .recv()
+                .map_err(|_| std::io::Error::other("MCP input release sender was dropped"))?;
+        }
+        Ok(())
+    }
+}
+
+impl std::io::Read for GatedMcpInput {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        self.wait_for_release()?;
+        self.input.read(buffer)
+    }
+}
+
+impl std::io::BufRead for GatedMcpInput {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.wait_for_release()?;
+        self.input.fill_buf()
+    }
+
+    fn consume(&mut self, amount: usize) {
+        self.input.consume(amount);
+    }
+}
+
+#[test]
+fn idle_managed_server_releases_admission_and_tools_list_is_no_effect_during_setup(
+) -> Result<(), Box<dyn Error>> {
+    let mut fixture = CoreFixture::new("mcp-idle-tools-list-setup-busy")?;
+    let server_adapter = adapter(&fixture)?;
+    fixture.release_mutation_admission();
+    let first = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+    ])?);
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let (processed_tx, processed_rx) = std::sync::mpsc::channel();
+    let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+    let second = GatedMcpInput {
+        input: Cursor::new(json_lines(&[request(2, "tools/list", json!({}))])?),
+        ready: Some(ready_tx),
+        release: release_rx,
+    };
+    let finish = GatedMcpInput {
+        input: Cursor::new(Vec::new()),
+        ready: Some(processed_tx),
+        release: finish_rx,
+    };
+
+    let (output, tools_list_before, tools_list_after) =
+        std::thread::scope(|scope| -> Result<_, Box<dyn Error>> {
+            let server = scope.spawn(move || {
+                let mut output = Vec::new();
+                let input = std::io::Read::chain(std::io::Read::chain(first, second), finish);
+                let result = run_stdio(server_adapter, input, &mut output);
+                (result, output)
+            });
+            ready_rx
+                .recv()
+                .map_err(|_| "managed MCP server exited before becoming idle")?;
+            let setup = TestRuntimeHomeSetup::acquire(fixture.runtime_home_path())?;
+            let tools_list_before = runtime_tools_list_observation_count(&fixture)?;
+            release_tx
+                .send(())
+                .map_err(|_| "managed MCP server stopped before tools/list release")?;
+            processed_rx
+                .recv()
+                .map_err(|_| "managed MCP server stopped before processing tools/list")?;
+            let tools_list_after = runtime_tools_list_observation_count(&fixture)?;
+            drop(setup);
+            finish_tx
+                .send(())
+                .map_err(|_| "managed MCP server stopped before normal shutdown")?;
+            let (result, output) = server.join().expect("managed MCP server thread panicked");
+            result?;
+            Ok((output, tools_list_before, tools_list_after))
+        })?;
+
+    let responses = output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(serde_json::from_slice::<Value>)
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[0]["id"], 1);
+    assert_eq!(responses[1]["id"], 2);
+    assert_eq!(responses[1]["error"]["code"], -32000);
+    assert_eq!(
+        responses[1]["error"]["message"],
+        "Runtime Home setup in progress"
+    );
+    assert!(responses[1]["error"]["data"]
+        .as_str()
+        .is_some_and(|data| data.contains("mcp.lifecycle_message")));
+    assert_eq!(tools_list_after, tools_list_before);
+
+    let retry_adapter = adapter(&fixture)?;
+    let mut retry_output = Vec::new();
+    run_stdio(
+        retry_adapter,
+        Cursor::new(json_lines(&[
+            initialize_request(3, json!({})),
+            initialized_notification(),
+            request(4, "tools/list", json!({})),
+        ])?),
+        &mut retry_output,
+    )?;
+    let retry_responses = retry_output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(serde_json::from_slice::<Value>)
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(retry_responses.len(), 2);
+    assert!(retry_responses
+        .iter()
+        .any(|response| response["id"] == 4 && response["result"]["tools"].is_array()));
+    assert_eq!(
+        runtime_tools_list_observation_count(&fixture)?,
+        tools_list_before + 1
+    );
+    Ok(())
+}
+
+fn runtime_tools_list_observation_count(fixture: &CoreFixture) -> Result<i64, Box<dyn Error>> {
+    let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
+    Ok(registry.query_row(
+        "SELECT COUNT(*)
+           FROM mcp_runtime_sessions
+          WHERE connection_internal_id = ?1
+            AND tools_list_observed_at IS NOT NULL",
+        [fixture.connection_id()],
+        |row| row.get(0),
+    )?)
+}
+
 #[cfg(unix)]
 #[test]
 fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(

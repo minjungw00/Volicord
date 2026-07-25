@@ -24,6 +24,17 @@ use crate::{
 };
 
 /// Placement marker for SQLite-backed store code.
+///
+/// Writable database opens are internal Store boundaries. External crates,
+/// including implementation tests, cannot obtain those helpers directly.
+///
+/// ```compile_fail
+/// let _ = volicord_store::sqlite::open_registry_database_for_mutation;
+/// ```
+///
+/// ```compile_fail
+/// let _ = volicord_store::sqlite::open_project_state_database_for_test;
+/// ```
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteStoreBoundary;
 
@@ -182,25 +193,18 @@ fn open_project_state_database_at_path(path: impl AsRef<Path>) -> StoreResult<Co
     Ok(conn)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 #[doc(hidden)]
-pub fn open_registry_database_for_test(path: impl AsRef<Path>) -> StoreResult<Connection> {
+pub(crate) fn open_registry_database_for_test(path: impl AsRef<Path>) -> StoreResult<Connection> {
     open_registry_database_at_path(path)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 #[doc(hidden)]
-pub fn open_project_state_database_for_test(path: impl AsRef<Path>) -> StoreResult<Connection> {
-    open_project_state_database_at_path(path)
-}
-
-#[cfg(any(test, feature = "test-support"))]
-#[doc(hidden)]
-pub fn open_project_state_database_for_test_mutation(
-    context: &RuntimeHomeMutationContext<'_>,
-    project: &ProjectRecord,
+pub(crate) fn open_project_state_database_for_test(
+    path: impl AsRef<Path>,
 ) -> StoreResult<Connection> {
-    open_project_state_database_for_mutation(context, project)
+    open_project_state_database_at_path(path)
 }
 
 /// Opens an existing project `state.sqlite` for read-only exact-contract validation.

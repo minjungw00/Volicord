@@ -8,6 +8,7 @@ use std::{
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
+    process::Command,
     sync::{Arc, Barrier, Condvar, Mutex},
 };
 
@@ -47,7 +48,7 @@ use volicord_store::{
         connection_integration_revision, mcp_runtime_session, McpRuntimeSessionStart,
     },
 };
-use volicord_test_support::{TempRuntimeHome, TestRuntimeHomeMutation};
+use volicord_test_support::{TempRuntimeHome, TestRuntimeHomeMutation, TestRuntimeHomeSetup};
 use volicord_types::{
     canonical_json_sha256, guard_manifest_has_exact_current_shape,
     guard_manifest_managed_artifacts, guard_manifest_matches_owner_binding,
@@ -56,6 +57,8 @@ use volicord_types::{
 
 const GENERATED_SHAPE_ERROR: &str =
     "generated Guard manifest does not match the current exact shape";
+
+type RuntimeHomeFileSnapshot = BTreeMap<PathBuf, (Vec<u8>, std::time::SystemTime)>;
 
 #[derive(Debug)]
 struct FakeConnectionProcess {
@@ -72,7 +75,9 @@ struct FakeConnectionProcess {
     directory_removal_fault: Option<DirectoryTreeRemovalFault>,
     concurrent_codex_bytes: Option<Vec<u8>>,
     post_commit_codex_bytes: Option<Vec<u8>>,
+    setup_pause_call: Option<usize>,
     setup_pause_point: Option<String>,
+    setup_pause_occurrence: Option<usize>,
     setup_barrier: Option<Arc<Barrier>>,
     setup_release: Option<Arc<(Mutex<bool>, Condvar)>>,
 }
@@ -101,7 +106,9 @@ impl FakeConnectionProcess {
             directory_removal_fault: None,
             concurrent_codex_bytes: None,
             post_commit_codex_bytes: None,
+            setup_pause_call: None,
             setup_pause_point: None,
+            setup_pause_occurrence: None,
             setup_barrier: None,
             setup_release: None,
         })
@@ -140,7 +147,18 @@ impl ConnectionProcess for FakeConnectionProcess {
     fn setup_fault(&mut self, point: &str) -> Result<(), String> {
         let call = self.setup_points.len();
         self.setup_points.push(point.to_owned());
-        if self.setup_pause_point.as_deref() == Some(point) {
+        let point_occurrence = self
+            .setup_points
+            .iter()
+            .filter(|observed| observed.as_str() == point)
+            .count();
+        let pause_at_call = self.setup_pause_call == Some(call);
+        let pause_at_point = self.setup_pause_call.is_none()
+            && self.setup_pause_point.as_deref() == Some(point)
+            && self
+                .setup_pause_occurrence
+                .is_none_or(|expected| expected == point_occurrence);
+        if pause_at_call || pause_at_point {
             if let Some(barrier) = &self.setup_barrier {
                 barrier.wait();
             }
@@ -309,9 +327,15 @@ fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), B
     assert!(setup_points
         .iter()
         .any(|point| point == "after_codex_config_replace"));
+    assert!(setup_points
+        .iter()
+        .any(|point| point == "before_integration_revision_commit"));
+    assert!(setup_points
+        .iter()
+        .any(|point| point == "after_store_commit_before_checkpoint"));
     assert_eq!(
         setup_points.last().map(String::as_str),
-        Some("before_integration_revision_commit")
+        Some("after_store_checkpoint")
     );
     assert!(
         setup_points
@@ -325,14 +349,59 @@ fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), B
     for (call, point) in setup_points.iter().enumerate() {
         let fixture = TempRuntimeHome::new("cli-record-init-transaction-fault")?;
         let repo_root = create_git_repo(&fixture, "repo")?;
+        let writer_repo = create_git_repo(&fixture, "writer-repo")?;
         fs::write(repo_root.join("user-notes.txt"), b"user-owned bytes\n")?;
         let mut process = FakeConnectionProcess::new(&fixture)?;
         let runtime_before = directory_contents(fixture.path())?;
         let repo_before = directory_contents(&repo_root)?;
         let codex_before = directory_contents(&process.codex_home)?;
+        let codex_home = process.codex_home.clone();
+        let barrier = Arc::new(Barrier::new(2));
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        process.setup_pause_call = Some(call);
+        process.setup_barrier = Some(Arc::clone(&barrier));
+        process.setup_release = Some(Arc::clone(&release));
         process.fail_setup_call(call);
 
-        let failure = run_record_init_outcome(&repo_root, &mut process)?;
+        let runtime_home = fixture.path().to_path_buf();
+        let repo_root_for_setup = repo_root.clone();
+        let (failure, busy, before_busy, after_busy) = std::thread::scope(|scope| {
+            let setup = scope.spawn(move || {
+                run_record_init_outcome(&repo_root_for_setup, &mut process)
+                    .map_err(|error| error.to_string())
+            });
+            barrier.wait();
+            let before_busy = directory_contents(&runtime_home);
+            let busy = run_project_use_binary(&runtime_home, &writer_repo);
+            let after_busy = directory_contents(&runtime_home);
+            release_setup_pause(&release);
+            (
+                setup.join().expect("faulted init thread panicked"),
+                busy,
+                before_busy,
+                after_busy,
+            )
+        });
+        let failure = failure.map_err(|error| error.to_string())?;
+        let busy = busy?;
+        assert_eq!(busy.status.code(), Some(1), "{point}");
+        let busy_stderr = String::from_utf8(busy.stderr)?;
+        if matches!(
+            point.as_str(),
+            "after_runtime_home_preparation" | "after_registry_mutation_preparation"
+        ) {
+            assert!(
+                busy_stderr.contains("RUNTIME_HOME_MISSING"),
+                "{point}: {busy_stderr}"
+            );
+        } else {
+            assert!(
+                busy_stderr.contains("runtime_home.mutation.setup_in_progress"),
+                "{point}: {busy_stderr}"
+            );
+            assert!(busy_stderr.contains("cli.project.use"), "{point}");
+        }
+        assert_eq!(after_busy?, before_busy?, "{point}");
         let expected_disposition = if matches!(
             point.as_str(),
             "after_runtime_home_preparation" | "after_registry_mutation_preparation"
@@ -367,11 +436,7 @@ fn fresh_init_fault_matrix_restores_every_transactional_target() -> Result<(), B
             "{point}"
         );
         assert_eq!(directory_contents(&repo_root)?, repo_before, "{point}");
-        assert_eq!(
-            directory_contents(&process.codex_home)?,
-            codex_before,
-            "{point}"
-        );
+        assert_eq!(directory_contents(&codex_home)?, codex_before, "{point}");
     }
     Ok(())
 }
@@ -563,6 +628,296 @@ fn publisher_rollback_finishes_before_the_waiting_init_can_create_fresh_state(
     assert_eq!(snapshot.projects[0].repo_root, second_repo);
     assert_eq!(snapshot.agent_connections.len(), 1);
     assert_eq!(snapshot.guard_installations.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn setup_admission_remains_exclusive_through_rollback_and_fresh_retry() -> Result<(), Box<dyn Error>>
+{
+    let fixture = TempRuntimeHome::new("cli-record-init-rollback-admission")?;
+    let setup_repo = create_git_repo(&fixture, "repo-setup")?;
+    let writer_repo = create_git_repo(&fixture, "repo-writer")?;
+    let barrier = Arc::new(Barrier::new(2));
+    let release = Arc::new((Mutex::new(false), Condvar::new()));
+    let mut setup_process = FakeConnectionProcess::named(&fixture, "setup")?;
+    setup_process.fail_setup_point("before_integration_revision_commit");
+    setup_process.setup_pause_point = Some("during_rollback".to_owned());
+    setup_process.setup_barrier = Some(Arc::clone(&barrier));
+    setup_process.setup_release = Some(Arc::clone(&release));
+    let runtime_home = fixture.path().to_path_buf();
+
+    let (setup_result, busy, before_busy, after_busy) = std::thread::scope(|scope| {
+        let setup = scope.spawn(move || {
+            run_record_init_outcome(&setup_repo, &mut setup_process)
+                .map_err(|error| error.to_string())
+        });
+        barrier.wait();
+        let before_busy = directory_contents(&runtime_home);
+        let busy = run_project_use_binary(&runtime_home, &writer_repo);
+        let after_busy = directory_contents(&runtime_home);
+        release_setup_pause(&release);
+        (
+            setup.join().expect("rollback setup thread panicked"),
+            busy,
+            before_busy,
+            after_busy,
+        )
+    });
+    let setup_result = setup_result.map_err(|error| error.to_string())?;
+    let busy = busy?;
+    assert_eq!(busy.status.code(), Some(1));
+    let busy_stderr = String::from_utf8(busy.stderr)?;
+    assert!(busy_stderr.contains("runtime_home.mutation.setup_in_progress"));
+    assert!(busy_stderr.contains("cli.project.use"));
+    assert_eq!(after_busy?, before_busy?);
+    assert_eq!(
+        setup_result["operation_details"]["result"]["disposition"],
+        "rolled_back"
+    );
+    assert!(!runtime_home.exists());
+
+    let absent_retry = run_project_use_binary(&runtime_home, &writer_repo)?;
+    assert_eq!(absent_retry.status.code(), Some(1));
+    assert!(String::from_utf8(absent_retry.stderr)?.contains("RUNTIME_HOME_MISSING"));
+
+    let mut writer_process = FakeConnectionProcess::named(&fixture, "writer")?;
+    let accepted = run_record_init_outcome(&writer_repo, &mut writer_process)?;
+    assert_eq!(
+        accepted["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    let snapshot = registry_snapshot(&runtime_home);
+    assert_eq!(snapshot.projects.len(), 1);
+    assert_eq!(snapshot.projects[0].repo_root, writer_repo);
+    Ok(())
+}
+
+#[test]
+fn existing_checkpoint_excludes_blocked_external_writer_and_retry_persists_after_rollback(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-record-init-checkpoint-admission")?;
+    let base_repo = create_git_repo(&fixture, "repo-base")?;
+    let setup_repo = create_git_repo(&fixture, "repo-setup")?;
+    let writer_repo = create_git_repo(&fixture, "repo-writer")?;
+    let mut process = FakeConnectionProcess::named(&fixture, "checkpoint")?;
+    let initial = run_record_init_outcome(&base_repo, &mut process)?;
+    assert_eq!(
+        initial["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    let original = registry_snapshot(fixture.path());
+    assert_eq!(original.projects.len(), 1);
+    process.setup_points.clear();
+    let barrier = Arc::new(Barrier::new(2));
+    let release = Arc::new((Mutex::new(false), Condvar::new()));
+    process.setup_pause_point = Some("after_store_commit_before_checkpoint".to_owned());
+    process.setup_pause_occurrence = Some(2);
+    process.setup_barrier = Some(Arc::clone(&barrier));
+    process.setup_release = Some(Arc::clone(&release));
+    process.fail_setup_point("before_integration_revision_commit");
+    let runtime_home = fixture.path().to_path_buf();
+    let runtime_home_for_setup = runtime_home.clone();
+    let setup_repo_for_thread = setup_repo.clone();
+
+    let (setup_result, busy_output, during_before, during_after) = std::thread::scope(|scope| {
+        let setup = scope.spawn(move || {
+            run_record_init_outcome(&setup_repo_for_thread, &mut process)
+                .map_err(|error| error.to_string())
+        });
+        barrier.wait();
+        let before = directory_contents(&runtime_home_for_setup);
+        let busy = run_project_use_binary(&runtime_home_for_setup, &writer_repo);
+        let after = directory_contents(&runtime_home_for_setup);
+        release_setup_pause(&release);
+        (
+            setup.join().expect("setup thread panicked"),
+            busy,
+            before,
+            after,
+        )
+    });
+    let setup_result = setup_result.map_err(|error| error.to_string())?;
+    let busy_output = busy_output?;
+    assert_eq!(busy_output.status.code(), Some(1));
+    assert!(busy_output.stdout.is_empty());
+    let busy_stderr = String::from_utf8(busy_output.stderr)?;
+    assert!(busy_stderr.contains("runtime_home.mutation.setup_in_progress"));
+    assert!(busy_stderr.contains("cli.project.use"));
+    assert_eq!(during_after?, during_before?);
+    assert_eq!(
+        setup_result["operation_details"]["result"]["disposition"],
+        "rolled_back"
+    );
+    let rolled_back = registry_snapshot(&runtime_home);
+    assert_eq!(rolled_back.projects, original.projects);
+    assert_eq!(rolled_back.agent_connections, original.agent_connections);
+    assert_eq!(
+        rolled_back.connection_projects,
+        original.connection_projects
+    );
+
+    let accepted = run_project_use_binary(&runtime_home, &writer_repo)?;
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let final_snapshot = registry_snapshot(&runtime_home);
+    assert_eq!(final_snapshot.projects.len(), 2);
+    assert!(final_snapshot
+        .projects
+        .iter()
+        .any(|project| project.repo_root == base_repo));
+    assert!(final_snapshot
+        .projects
+        .iter()
+        .any(|project| project.repo_root == writer_repo));
+    assert!(!final_snapshot
+        .projects
+        .iter()
+        .any(|project| project.repo_root == setup_repo));
+    Ok(())
+}
+
+#[test]
+fn owner_defined_read_only_commands_remain_no_effect_while_setup_is_exclusive(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-read-only-during-setup")?;
+    let repo = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::named(&fixture, "read-only")?;
+    let initialized = run_record_init_outcome(&repo, &mut process)?;
+    assert_eq!(
+        initialized["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    let export_path = fixture.root_path().join("authority-bundle.json");
+    let setup = TestRuntimeHomeSetup::acquire(fixture.path())?;
+    let before = runtime_home_file_snapshot(fixture.path())?;
+
+    let cases = [
+        (
+            "connection status",
+            vec![
+                "connection".into(),
+                "status".into(),
+                "codex".into(),
+                "--repo".into(),
+                repo.as_os_str().to_owned(),
+                "--json".into(),
+            ],
+            Some(1),
+        ),
+        (
+            "project list",
+            vec!["project".into(), "list".into(), "--json".into()],
+            Some(0),
+        ),
+        (
+            "project current",
+            vec!["project".into(), "current".into(), "--json".into()],
+            Some(0),
+        ),
+        (
+            "diagnostics lookup",
+            vec![
+                "diagnostics".into(),
+                "show".into(),
+                "finding_missing_during_setup".into(),
+                "--json".into(),
+            ],
+            Some(1),
+        ),
+        (
+            "authority export",
+            vec![
+                "export".into(),
+                "authority-bundle".into(),
+                "--output".into(),
+                export_path.as_os_str().to_owned(),
+                "--repo".into(),
+                repo.as_os_str().to_owned(),
+                "--json".into(),
+            ],
+            Some(0),
+        ),
+    ];
+    for (name, arguments, expected_exit) in cases {
+        let output = run_binary_with_fake_environment(&process, &repo, arguments)?;
+        assert_eq!(
+            output.status.code(),
+            expected_exit,
+            "{name}: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !String::from_utf8_lossy(&output.stdout)
+                .contains("runtime_home.mutation.setup_in_progress"),
+            "{name} was incorrectly writer-gated"
+        );
+        assert!(
+            !String::from_utf8_lossy(&output.stderr)
+                .contains("runtime_home.mutation.setup_in_progress"),
+            "{name} was incorrectly writer-gated"
+        );
+    }
+
+    assert!(export_path.is_dir());
+    assert_eq!(runtime_home_file_snapshot(fixture.path())?, before);
+    drop(setup);
+    Ok(())
+}
+
+#[test]
+fn connection_mode_is_no_effect_while_setup_is_exclusive_and_commits_after_release(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = TempRuntimeHome::new("cli-connection-mode-during-setup")?;
+    let repo = create_git_repo(&fixture, "repo")?;
+    let mut process = FakeConnectionProcess::named(&fixture, "connection-mode")?;
+    let initialized = run_record_init_outcome(&repo, &mut process)?;
+    assert_eq!(
+        initialized["operation_details"]["result"]["disposition"],
+        "committed"
+    );
+    let arguments = vec![
+        "connection".into(),
+        "mode".into(),
+        "codex".into(),
+        "read-only".into(),
+        "--repo".into(),
+        repo.as_os_str().to_owned(),
+        "--json".into(),
+    ];
+    let setup = TestRuntimeHomeSetup::acquire(fixture.path())?;
+    let before = runtime_home_file_snapshot(fixture.path())?;
+
+    let busy = run_binary_with_fake_environment(&process, &repo, arguments.clone())?;
+    assert_eq!(busy.status.code(), Some(1));
+    let busy_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&busy.stdout),
+        String::from_utf8_lossy(&busy.stderr)
+    );
+    assert!(busy_text.contains("runtime_home.mutation.setup_in_progress"));
+    assert!(busy_text.contains("cli.connection.mode"));
+    assert_eq!(runtime_home_file_snapshot(fixture.path())?, before);
+    drop(setup);
+
+    let accepted = run_binary_with_fake_environment(&process, &repo, arguments)?;
+    assert!(
+        accepted.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&accepted.stdout),
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let connection = agent_connection_record(
+        fixture.path(),
+        initialized["connection"]["connection_id"]
+            .as_str()
+            .expect("initialized connection ID"),
+    )?
+    .expect("initialized connection");
+    assert_eq!(connection.mode, CONNECTION_MODE_READ_ONLY);
     Ok(())
 }
 
@@ -1431,6 +1786,40 @@ fn run_record_init(
     Ok(serde_json::from_str(&output)?)
 }
 
+fn run_project_use_binary(
+    runtime_home: &Path,
+    repo_root: &Path,
+) -> Result<std::process::Output, Box<dyn Error>> {
+    Ok(Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .args(["project", "use"])
+        .arg(repo_root)
+        .arg("--json")
+        .env("VOLICORD_HOME", runtime_home)
+        .current_dir(repo_root)
+        .output()?)
+}
+
+fn run_binary_with_fake_environment(
+    process: &FakeConnectionProcess,
+    current_dir: &Path,
+    arguments: Vec<OsString>,
+) -> Result<std::process::Output, Box<dyn Error>> {
+    Ok(Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .args(arguments)
+        .env("VOLICORD_HOME", &process.runtime_home)
+        .env("CODEX_HOME", &process.codex_home)
+        .env(
+            "HOME",
+            process
+                .codex_home
+                .parent()
+                .expect("fake Codex home has a parent"),
+        )
+        .env("PATH", &process.isolated_path)
+        .current_dir(current_dir)
+        .output()?)
+}
+
 fn release_setup_pause(release: &Arc<(Mutex<bool>, Condvar)>) {
     let (lock, ready) = &**release;
     let mut released = lock.lock().expect("fixture setup release lock");
@@ -2134,6 +2523,32 @@ fn directory_contents(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn
                 visit(root, &path, output)?;
             } else {
                 output.insert(path.strip_prefix(root)?.to_path_buf(), fs::read(path)?);
+            }
+        }
+        Ok(())
+    }
+
+    let mut output = BTreeMap::new();
+    visit(root, root, &mut output)?;
+    Ok(output)
+}
+
+fn runtime_home_file_snapshot(root: &Path) -> Result<RuntimeHomeFileSnapshot, Box<dyn Error>> {
+    fn visit(
+        root: &Path,
+        current: &Path,
+        output: &mut BTreeMap<PathBuf, (Vec<u8>, std::time::SystemTime)>,
+    ) -> Result<(), Box<dyn Error>> {
+        for entry in fs::read_dir(current)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                visit(root, &path, output)?;
+            } else {
+                output.insert(
+                    path.strip_prefix(root)?.to_path_buf(),
+                    (fs::read(&path)?, entry.metadata()?.modified()?),
+                );
             }
         }
         Ok(())

@@ -87,6 +87,29 @@ impl std::error::Error for RuntimeHomeMutationSetupInProgress {}
 /// The context borrows one live platform mutation permit. It carries no user
 /// authority, Task authority, Product Repository permission, or security
 /// guarantee.
+///
+/// ```compile_fail
+/// use std::path::Path;
+/// use volicord_platform_fs::{
+///     RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode,
+///     RuntimeHomeMutationLeaseOutcome, RuntimeHomeMutationWaitPolicy,
+/// };
+/// use volicord_store::RuntimeHomeMutationContext;
+///
+/// fn detached_context(path: &Path) -> RuntimeHomeMutationContext<'static> {
+///     let RuntimeHomeMutationLeaseOutcome::Acquired(lease) =
+///         RuntimeHomeMutationLease::acquire(
+///             path,
+///             RuntimeHomeMutationLeaseMode::SharedWriter,
+///             RuntimeHomeMutationWaitPolicy::Immediate,
+///         )
+///         .unwrap()
+///     else {
+///         unreachable!()
+///     };
+///     RuntimeHomeMutationContext::new(lease.permit(), path).unwrap()
+/// }
+/// ```
 pub struct RuntimeHomeMutationContext<'lease> {
     permit: RuntimeHomeMutationPermit<'lease>,
     runtime_home: CanonicalRuntimeHomePath,
@@ -340,6 +363,17 @@ mod tests {
                 "runtime_home_exclusive_setup",
                 "{}",
             )?;
+            write_installation_profile(
+                context,
+                InstallationProfileRegistration {
+                    installation_id: "default".to_owned(),
+                    volicord_command: "volicord".to_owned(),
+                    volicord_mcp_command: "volicord".to_owned(),
+                    bin_dir: fixture.path().join("bin"),
+                    default_connection_mode: "workflow".to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
             Ok(())
         })?;
         let exclusive = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
@@ -354,6 +388,7 @@ mod tests {
             exclusive.context()?.mode(),
             RuntimeHomeMutationLeaseMode::ExclusiveSetup
         );
+        assert!(installation_profile_read_only(fixture.path())?.is_some());
         Ok(())
     }
 

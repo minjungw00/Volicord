@@ -178,6 +178,57 @@ registry 직접 순회가 matrix를 정합니다.
   Unix 프로세스 그룹, 네이티브 Windows Job Object, 공백이 있는 경로와 인자, 명시적
   환경 추가·제거를 아우르는 재사용 가능한 한도 테스트 자식 실행
 
+## Runtime Home 변경 승인 회귀 테스트
+
+변경 승인 테스트는 [Runtime Boundaries](../reference/runtime-boundaries.md), 집중된 Store
+소유자 문서, 해당 CLI·MCP·Guard 소유자 문서가 정의한 동작을 조합합니다. 이 안내서는
+coverage 구성을 설명할 뿐 해당 계약을 다시 정의하지 않습니다.
+
+재사용 가능한 자식 프로세스 프로토콜은 즉시 획득과 한도 있는 획득 모두에 대해 다음
+lock matrix 전체를 실행합니다.
+
+| 첫 번째 프로세스 | 두 번째 프로세스 | 필수 관찰 결과 |
+|---|---|---|
+| `SharedWriter` | `SharedWriter` | 두 프로세스 모두 승인을 획득합니다. |
+| `SharedWriter` | `ExclusiveSetup` | setup이 busy이거나 한도 있는 대기를 소진합니다. |
+| `ExclusiveSetup` | `SharedWriter` | writer가 busy이거나 한도 있는 대기를 소진합니다. |
+| `ExclusiveSetup` | `ExclusiveSetup` | 두 번째 setup이 busy이거나 한도 있는 대기를 소진합니다. |
+
+같은 프로토콜은 두 mode 모두에서 정상 반환, 오류 반환, panic, 강제 프로세스 종료 뒤
+OS handle이 해제되는지 증명합니다. 네이티브 runner는 각 플랫폼의 OS lock을 실제로
+실행합니다. 교차 컴파일만 한 결과는 별도로 보고하며 lock 실행으로 간주하지 않습니다.
+유지되는 네이티브 matrix에는 Linux, Windows, macOS가 포함됩니다. WSL2의 영향을 받는
+Unix case는 네이티브 Linux 분기를 검증할 때 `WSL_DISTRO_NAME`을 제거합니다.
+
+Setup 경합 coverage는 경과 시간 sleep 대신 barrier, channel, 획득 신호, setup fault
+point를 사용합니다. 새 Runtime Home 공개 matrix는 공개 뒤와 이후 Store, Product
+Repository, Codex 구성, rollback 지점에서 일시 정지합니다. 실제 외부 writer는 setup이
+보고하거나 rollback할 때까지 어떤 변경도 남기지 않아야 하며, 해제 뒤 재시도는 그
+결과인 현재 상태 또는 부재 상태만 관찰해야 합니다. 기존 Runtime Home checkpoint
+case는 setup Store commit 뒤 checkpoint 전에 멈춥니다. 외부 writer는 그 checkpoint에
+들어갈 수 없고, setup은 자체 snapshot만 복원하며, writer가 해제 뒤 받아들여진
+재시도는 계속 남아야 합니다. 경합상 어느 프로세스든 먼저 획득할 수 있는 경우 두 획득
+순서를 모두 다룹니다.
+
+대표 writer-domain matrix는 실제 프로젝트와 Connection 명령, 공개 Core commit,
+artifact staging, evidence capture, inbox resolution, change reconciliation, policy
+application, managed launch 및 runtime-session 관찰, `tools/list`와 verification
+milestone, integration-verification event, Guard hook 수집, 진단 영속화, 운영 finding을
+조합합니다. 각 case는 소유자 operation 전에 typed busy/no-effect projection을 확인하고,
+해당하는 row, 파일, `state_version`, timestamp, finding, event, receipt가 정확히
+변하지 않았는지 확인한 다음 lease 해제 뒤 같은 operation의 성공적인 재시도를
+검증합니다. 일반 dummy write로 소유자 operation을 대신할 수 없습니다.
+
+MCP lifecycle 테스트는 runtime-session 생성 전에 setup을 시작하고, Core 효과 전에
+변경 call을 거부하며, 승인을 얻을 수 없을 때 관찰을 영속화하는 read도 no-effect로
+유지합니다. 유휴 server는 `SharedWriter`를 계속 보유하면 안 되며 승인은 operation마다
+획득합니다. Guard record-profile 테스트는 협력적인 host 활동의 계속 진행을 보존하면서
+거부된 hook을 관찰 성공 phase로 세지 않고 이후 hook이 정상적으로 기록되는지
+증명합니다. Connection status, 진단 lookup, project list/current, authority export,
+MCP preflight를 포함한 소유자 정의 read-only 명령은 writer lease 없이 계속 사용할 수
+있어야 하며 Runtime Home byte, row, `state_version`, modification time을 보존해야
+합니다.
+
 운영 상호운용성 coverage는 제한 안의 임의 version 문자열을 받고, initialize와 도구 목록
 milestone을 실행하며, 필수 도구와 안전한 읽기 전용 호출, Guard artifact와 필수 phase 관찰,
 session 소유권 및 integration revision 격리를 점검합니다.

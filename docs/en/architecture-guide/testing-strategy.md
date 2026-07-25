@@ -216,6 +216,63 @@ Durable tests should cover, as applicable:
   cleanup, native Unix process groups, native Windows Job Objects, paths and
   arguments containing spaces, and explicit environment addition/removal.
 
+## Runtime Home Mutation-Admission Regressions
+
+Mutation-admission tests compose the behavior owned by
+[Runtime Boundaries](../reference/runtime-boundaries.md), the focused Store
+owners, and the applicable CLI, MCP, and Guard owners. This guide describes
+coverage organization; it does not redefine their contracts.
+
+The reusable child-process protocol runs both immediate and bounded acquisition
+for the complete lock matrix:
+
+| First process | Second process | Required observation |
+|---|---|---|
+| `SharedWriter` | `SharedWriter` | Both acquire admission. |
+| `SharedWriter` | `ExclusiveSetup` | Setup is busy or exhausts its bounded wait. |
+| `ExclusiveSetup` | `SharedWriter` | The writer is busy or exhausts its bounded wait. |
+| `ExclusiveSetup` | `ExclusiveSetup` | The second setup is busy or exhausts its bounded wait. |
+
+The same protocol proves OS-handle release after normal return, error return,
+panic, and forced process termination for both modes. Native runners exercise
+the platform OS locks; cross-compilation alone is reported separately and does
+not count as lock execution. The maintained native matrix includes Linux,
+Windows, and macOS. WSL2-sensitive Unix cases remove `WSL_DISTRO_NAME` when
+validating the native-Linux branch.
+
+Setup race coverage uses barriers, channels, acquisition signals, and setup
+fault points rather than elapsed-time sleeps. The fresh-publication matrix
+pauses after publication and at later Store, Product Repository, Codex
+configuration, and rollback points. A real external writer must remain
+mutation-free until setup reports or rolls back, and a post-release retry must
+observe only the resulting current or absent state. The existing-home
+checkpoint case pauses after a setup Store commit and before its checkpoint;
+the external writer cannot enter that checkpoint, setup restores its own
+snapshot, and the writer's accepted retry remains present afterward. Both
+first-acquirer orders are covered where the race permits either process to win.
+
+The representative writer-domain matrix combines actual project and Connection
+commands, public Core commits, artifact staging, evidence capture, inbox
+resolution, change reconciliation, policy application, managed launch and
+runtime-session observations, `tools/list` and verification milestones,
+integration-verification events, Guard hook ingestion, diagnostic persistence,
+and operational findings. Each case checks the typed busy/no-effect projection
+before the owner operation, exact unchanged rows, files, state versions,
+timestamps, findings, events, and receipts as applicable, followed by a
+successful retry after lease release. A generic dummy write cannot substitute
+for an owner operation.
+
+MCP lifecycle tests begin setup before runtime-session creation, reject
+mutating calls before Core effects, and keep observation-persisting reads
+no-effect when admission is unavailable. An idle server must not retain
+`SharedWriter`; admission is acquired per operation. Guard record-profile tests
+preserve cooperative host continuation while proving that the rejected hook is
+not counted as an observed phase and that a later hook records normally.
+Owner-defined read-only commands, including Connection status, diagnostic
+lookup, project list/current, authority export, and MCP preflight, remain
+writer-lease-free and must preserve Runtime Home bytes, rows, state versions,
+and modification times.
+
 Operational interoperability coverage accepts arbitrary bounded version
 strings, exercises initialize and tool-list milestones, checks required tools
 and safe read-only calls, audits Guard artifacts and required-phase

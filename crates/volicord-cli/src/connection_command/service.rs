@@ -14,6 +14,7 @@ use super::setup_transaction::{
     AtomicFileMutation, AtomicFileMutationRole, PreparedSetup, RuntimeHomePlan, SetupPlan,
     StoreMutation, StoreMutationKind, FAULT_AFTER_CODEX_CONFIG_REPLACE,
     FAULT_AFTER_REGISTRY_MUTATION_PREPARATION, FAULT_AFTER_RUNTIME_HOME_PREPARATION,
+    FAULT_AFTER_STORE_CHECKPOINT, FAULT_AFTER_STORE_COMMIT_BEFORE_CHECKPOINT,
     FAULT_BEFORE_CODEX_CONFIG_REPLACE, FAULT_BEFORE_INTEGRATION_REVISION_COMMIT,
     FAULT_DURING_ROLLBACK,
 };
@@ -709,7 +710,7 @@ fn apply_init_provisioning(
             ADMIN_METADATA_JSON,
             init_installation_registration(&plan.profile_plan),
         )?;
-        prepared.mark_store_applied(None)?;
+        checkpoint_setup_store(&mut prepared, None, process)?;
         let project_was_missing =
             project_record_by_repo_root_read_only(&plan.runtime_home, &plan.repo_root)?.is_none();
         let project = ensure_project_for_repo(
@@ -723,7 +724,11 @@ fn apply_init_provisioning(
                 metadata_json: metadata_json_base()?,
             },
         )?;
-        prepared.mark_store_applied(project_was_missing.then(|| project.project_home.clone()))?;
+        checkpoint_setup_store(
+            &mut prepared,
+            project_was_missing.then(|| project.project_home.clone()),
+            process,
+        )?;
         plan.project_id = Some(project.project_id.clone());
         let existing = validate_init_connection_expectation(&plan)?;
         let host_plan = plan.host_plan.clone();
@@ -807,7 +812,7 @@ fn apply_init_provisioning(
         }
         enforce_single_project_scope(&plan.runtime_home, &connection, &project.project_id)?;
         record_authoritative_workflow_policy(context, &project.project_id, &integration.policy)?;
-        prepared.mark_store_applied(None)?;
+        checkpoint_setup_store(&mut prepared, None, process)?;
         for mutation in &mut prepared.plan.repository_file_mutations {
             mutation.commit()?;
             let point = match &mutation.role {
@@ -855,7 +860,7 @@ fn apply_init_provisioning(
                 Vec::new(),
             )
         };
-        prepared.mark_store_applied(None)?;
+        checkpoint_setup_store(&mut prepared, None, process)?;
         if !pending_host_cleanup_connections.is_empty() {
             let cleanup = complete_pending_host_cleanup(
                 context,
@@ -872,7 +877,7 @@ fn apply_init_provisioning(
                 }
             }
         }
-        prepared.mark_store_applied(None)?;
+        checkpoint_setup_store(&mut prepared, None, process)?;
         let expected_integration_revision = connection_integration_revision(&connection)?;
         let mut verification = verify_connection(
             context,
@@ -892,7 +897,7 @@ fn apply_init_provisioning(
             &expected_integration_revision,
             Some(&verification.report),
         )?;
-        prepared.mark_store_applied(None)?;
+        checkpoint_setup_store(&mut prepared, None, process)?;
         let _ = connection;
         let runtime_home_publication = prepared.publication_status();
         prepared.cleanup_after_success()?;
@@ -960,6 +965,16 @@ fn setup_fault(
     process.setup_fault(point).map_err(|error| {
         ConnectionCommandError::runtime(format!("SETUP_FAULT_INJECTED at {point}: {error}"))
     })
+}
+
+fn checkpoint_setup_store(
+    prepared: &mut PreparedSetup<'_>,
+    created_project_home: Option<PathBuf>,
+    process: &mut impl ConnectionProcess,
+) -> Result<(), ConnectionCommandError> {
+    setup_fault(process, FAULT_AFTER_STORE_COMMIT_BEFORE_CHECKPOINT)?;
+    prepared.mark_store_applied(created_project_home)?;
+    setup_fault(process, FAULT_AFTER_STORE_CHECKPOINT)
 }
 
 fn setup_transaction_failure(

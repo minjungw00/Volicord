@@ -1942,11 +1942,10 @@ mod tests {
             initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
         },
         core_pipeline::{ChangeUnitInsert, CoreProjectStore, StorageEffectCounts},
-        sqlite::{
-            open_project_state_database_for_test, open_registry_database_for_test, registry_db_path,
-        },
+        sqlite::registry_db_path,
     };
     use volicord_test_support::{
+        open_project_fixture_database, open_registry_fixture_database,
         with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
         TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
@@ -2085,9 +2084,8 @@ mod tests {
                     },
                 )?;
 
-                let conn = open_project_state_database_for_test(
-                    runtime_home.project_state_db_path(PROJECT_ID),
-                )?;
+                let conn =
+                    open_project_fixture_database(runtime_home.project_state_db_path(PROJECT_ID))?;
                 conn.execute(
                     "INSERT INTO tasks (
                     project_id,
@@ -2152,7 +2150,7 @@ mod tests {
         }
 
         fn conn(&self) -> Result<rusqlite::Connection, StoreError> {
-            open_project_state_database_for_test(
+            open_project_fixture_database(
                 self.runtime_home_path
                     .join("projects")
                     .join(PROJECT_ID)
@@ -2173,7 +2171,7 @@ mod tests {
         }
 
         fn replace_project_repo_root(&self, repo_root: &Path) -> Result<(), Box<dyn Error>> {
-            let conn = open_registry_database_for_test(registry_db_path(&self.runtime_home_path))?;
+            let conn = open_registry_fixture_database(registry_db_path(&self.runtime_home_path))?;
             conn.execute(
                 "UPDATE projects SET repo_root = ?2 WHERE project_internal_id = ?1",
                 rusqlite::params![PROJECT_ID, repo_root.to_string_lossy().as_ref()],

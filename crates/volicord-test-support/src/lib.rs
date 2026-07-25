@@ -43,9 +43,10 @@ use volicord_store::{
     operational_sessions::{
         connection_integration_revision, start_mcp_runtime_session, McpRuntimeSessionStart,
     },
+    schema::initialize_project_state_schema,
     sqlite::{
-        open_project_state_database_for_test_mutation, open_project_state_database_read_only,
-        open_registry_database_for_test, registry_db_path,
+        open_project_state_database_read_only, registry_db_path, validate_project_state_schema,
+        validate_registry_schema, PROJECT_STATE_DB_FILE,
     },
     RuntimeHomeMutationContext, StoreError, StoreResult,
 };
@@ -67,6 +68,68 @@ pub mod golden {
     /// Placement marker for future golden-output helpers.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct GoldenBoundary;
+}
+
+/// Opens a raw existing Registry only for explicit fixture mutation.
+///
+/// Production crates cannot obtain this writable handle. Tests outside this
+/// support crate use this boundary instead of reaching into Store internals.
+pub fn open_registry_fixture_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    let conn = open_writable_fixture_database(path.as_ref(), false)?;
+    validate_registry_schema(&conn)?;
+    Ok(conn)
+}
+
+/// Opens or initializes a raw project database only for explicit fixture work.
+pub fn open_project_fixture_database(path: impl AsRef<Path>) -> StoreResult<Connection> {
+    let path = path.as_ref();
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    let mut conn = open_writable_fixture_database(path, true)?;
+    initialize_project_state_schema(&mut conn)?;
+    validate_project_state_schema(&conn)?;
+    Ok(conn)
+}
+
+/// Opens a registered project database for explicit fixture mutation.
+pub fn open_registered_project_fixture_database(
+    context: &RuntimeHomeMutationContext<'_>,
+    project: &volicord_store::bootstrap::ProjectRecord,
+) -> StoreResult<Connection> {
+    let runtime_home = project
+        .project_home
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| StoreError::InvalidProjectRegistration {
+            project_id: project.project_id.clone(),
+            field: "project_home",
+            relationship: "runtime_home_missing",
+            detail: "fixture project home has no Runtime Home ancestor".to_owned(),
+        })?;
+    context.ensure_runtime_home(runtime_home)?;
+    if project.state_db_path != project.project_home.join(PROJECT_STATE_DB_FILE) {
+        return Err(StoreError::InvalidProjectRegistration {
+            project_id: project.project_id.clone(),
+            field: "state_db_path",
+            relationship: "state_db_path_mismatch",
+            detail: "fixture project database is outside its registered project home".to_owned(),
+        });
+    }
+    open_project_fixture_database(&project.state_db_path)
+}
+
+fn open_writable_fixture_database(path: &Path, create: bool) -> StoreResult<Connection> {
+    let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    if create {
+        flags |= OpenFlags::SQLITE_OPEN_CREATE;
+    }
+    let conn = Connection::open_with_flags(path, flags)?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    Ok(conn)
 }
 
 /// Runs one test-only operation under an explicit Runtime Home mutation context.
@@ -673,7 +736,7 @@ pub fn corrupt_connection_verification_report(
     connection_id: &str,
     report_json: &str,
 ) -> StoreResult<()> {
-    let changed = open_registry_database_for_test(registry_db_path(runtime_home.as_ref()))?
+    let changed = open_registry_fixture_database(registry_db_path(runtime_home.as_ref()))?
         .execute(
             "UPDATE agent_connections
             SET verification_report_json = ?2
@@ -919,7 +982,7 @@ pub mod core_fixtures {
                     entity: "project",
                     id: self.project_id.clone(),
                 })?;
-            open_project_state_database_for_test_mutation(&context, &project)
+            open_registered_project_fixture_database(&context, &project)
         }
 
         /// Captures authority-owned project state for diagnostic isolation assertions.

@@ -25,12 +25,12 @@ use volicord_store::{
         insert_unrecorded_change, unrecorded_change, upsert_guard_installation,
         GuardInstallationUpsert, UnrecordedChangeInsert, UnrecordedChangeRecord,
     },
-    sqlite::open_project_state_database_for_test,
     workflow_records::{project_write_authority_fingerprint, ProjectWorkflowPolicyUpsert},
     RuntimeHomeMutationContext,
 };
 use volicord_test_support::{
-    with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
+    open_project_fixture_database, with_test_runtime_home_setup, TempRuntimeHome,
+    TestRuntimeHomeMutation,
     TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
 use volicord_types::CloseMutationIntent;
@@ -311,7 +311,7 @@ impl MethodHarness {
         })?;
 
         let runtime_home_path = runtime_home.path().to_path_buf();
-        open_project_state_database_for_test(
+        open_project_fixture_database(
             runtime_home_path
                 .join("projects")
                 .join(PROJECT_ID)
@@ -343,7 +343,7 @@ impl MethodHarness {
     }
 
     fn conn(&self) -> Result<rusqlite::Connection, Box<dyn Error>> {
-        Ok(open_project_state_database_for_test(
+        Ok(open_project_fixture_database(
             self.runtime_home_path
                 .join("projects")
                 .join(PROJECT_ID)
