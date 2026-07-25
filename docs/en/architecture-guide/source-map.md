@@ -32,7 +32,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, effect-aware exact directory-tree removal and parent-entry durability, platform-native namespace operations, safe Runtime Home mutation-lease and permit exports, and canonical read-only Git layout discovery. |
+| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, effect-aware exact directory-tree removal, typed atomic no-replace regular-file publication and parent-entry durability, platform-native namespace operations, safe Runtime Home mutation-lease and permit exports, and canonical read-only Git layout discovery. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | Canonical Runtime Home identity, domain-separated full-digest external coordination-file derivation, shared-writer and exclusive-setup modes on one OS lock region, immediate and bounded typed acquisition, borrowed mutation permits, and Unix/macOS or native Windows handle-lifetime release. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | Cross-process shared/exclusive mutation-lease contention and process-termination release regression. |
 | `crates/volicord-cli/src/host_integration/process.rs` | Process-target validation and target-path filesystem enforcement from platform-boundary observations. |
@@ -55,6 +55,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/mutation.rs` | Non-cloneable, permit-borrowing, exact-target `RuntimeHomeMutationContext`; shared/exclusive mode checks; and stable setup-in-progress condition projection. |
 | `crates/volicord-store/src/sqlite.rs` | Separate read-only opens and crate-private context-gated writable Registry/project database opens with exact Runtime Home ownership validation. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home staging, opaque publication provenance, atomic no-replace publication outcomes, token-backed terminal rollback states, composite confirmation failures, and Store bootstrap. |
+| `crates/volicord-store/src/diagnostics.rs` | Non-authority diagnostics schema and manifest, same-directory staged carrier publication, concurrent-winner validation, exact reads and writes, and retention. |
 | `crates/volicord-store/src/setup_transaction.rs` | Explicit prepare, input validation, mutation checkpoint, commit, and guarded rollback boundary for the existing Store files touched by setup. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection records, project allowlists, managed fingerprints, and persisted verification-report boundary. |
 | `crates/volicord-store/src/diagnostic_findings/mod.rs` | Lifecycle-specific diagnostic persistence facade and public Store API exports. |

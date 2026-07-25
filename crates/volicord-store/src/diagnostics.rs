@@ -7,7 +7,7 @@
 use std::{
     collections::BTreeMap,
     fs::{self, OpenOptions},
-    io::ErrorKind,
+    io,
     path::{Path, PathBuf},
     sync::OnceLock,
     time::Duration,
@@ -16,6 +16,9 @@ use std::{
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use volicord_platform_fs::{
+    publish_file_no_replace, NoReplaceFilePublicationEffect, NoReplaceFilePublicationOutcome,
+};
 use volicord_types::{
     canonical_json_bytes, validate_project_agent_session_id, IntegrationProfile, MethodName,
     ObservationConfidence, UtcTimestamp,
@@ -40,6 +43,150 @@ pub const DIAGNOSTICS_MAX_CORE_REJECTIONS: u32 = 1_024;
 
 const DATABASE_KIND: &str = "local_diagnostics";
 const BUSY_TIMEOUT_MILLIS: u64 = 250;
+const DIAGNOSTICS_STAGING_PREFIX: &str = ".volicord-diagnostics-staging-";
+const DIAGNOSTICS_STAGING_ID_BYTES: usize = 16;
+const DIAGNOSTICS_STAGING_CREATE_ATTEMPTS: usize = 8;
+const SQLITE_SIDECAR_SUFFIXES: [&str; 3] = ["-journal", "-wal", "-shm"];
+
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[doc(hidden)]
+pub enum DiagnosticsPublicationPhase {
+    AfterStagingCreated,
+    DuringSchemaInitialization,
+    AfterStagingValidation,
+    BeforePublication,
+}
+
+#[cfg(not(any(test, feature = "test-support")))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticsPublicationPhase {
+    AfterStagingCreated,
+    DuringSchemaInitialization,
+    AfterStagingValidation,
+    BeforePublication,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn diagnostics_publication_hook(
+    final_path: &Path,
+    phase: DiagnosticsPublicationPhase,
+) -> StoreResult<()> {
+    diagnostics_publication_test_support::run_hook(final_path, phase)
+}
+
+#[cfg(not(any(test, feature = "test-support")))]
+fn diagnostics_publication_hook(
+    _final_path: &Path,
+    _phase: DiagnosticsPublicationPhase,
+) -> StoreResult<()> {
+    Ok(())
+}
+
+/// Repository-owned deterministic coordination and fault support for
+/// diagnostics-publication tests.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod diagnostics_publication_test_support {
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+        sync::{Arc, Barrier, Mutex, OnceLock},
+    };
+
+    use super::{DiagnosticsPublicationPhase, StoreError, StoreResult};
+
+    #[derive(Clone)]
+    struct PublicationHook {
+        pause_at: Option<DiagnosticsPublicationPhase>,
+        fail_at: Option<DiagnosticsPublicationPhase>,
+        ready: Option<Arc<Barrier>>,
+        resume: Option<Arc<Barrier>>,
+    }
+
+    /// Handle used by a test to observe and resume paused creators.
+    pub struct DiagnosticsPublicationPause {
+        ready: Arc<Barrier>,
+        resume: Arc<Barrier>,
+    }
+
+    impl DiagnosticsPublicationPause {
+        pub fn wait_until_all_creators_are_paused(&self) {
+            self.ready.wait();
+        }
+
+        pub fn resume_all_creators(&self) {
+            self.resume.wait();
+        }
+    }
+
+    static HOOKS: OnceLock<Mutex<HashMap<PathBuf, PublicationHook>>> = OnceLock::new();
+
+    fn hooks() -> &'static Mutex<HashMap<PathBuf, PublicationHook>> {
+        HOOKS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    /// Pauses the requested number of creators at one deterministic phase.
+    pub fn pause_creators(
+        final_path: impl Into<PathBuf>,
+        phase: DiagnosticsPublicationPhase,
+        creator_count: usize,
+    ) -> DiagnosticsPublicationPause {
+        assert!(creator_count > 0, "at least one creator is required");
+        let ready = Arc::new(Barrier::new(creator_count + 1));
+        let resume = Arc::new(Barrier::new(creator_count + 1));
+        let prior = hooks().lock().expect("hook lock").insert(
+            final_path.into(),
+            PublicationHook {
+                pause_at: Some(phase),
+                fail_at: None,
+                ready: Some(Arc::clone(&ready)),
+                resume: Some(Arc::clone(&resume)),
+            },
+        );
+        assert!(prior.is_none(), "a diagnostics publication hook is active");
+        DiagnosticsPublicationPause { ready, resume }
+    }
+
+    /// Fails one creator at a deterministic phase.
+    pub fn fail_creator(final_path: impl Into<PathBuf>, phase: DiagnosticsPublicationPhase) {
+        let prior = hooks().lock().expect("hook lock").insert(
+            final_path.into(),
+            PublicationHook {
+                pause_at: None,
+                fail_at: Some(phase),
+                ready: None,
+                resume: None,
+            },
+        );
+        assert!(prior.is_none(), "a diagnostics publication hook is active");
+    }
+
+    /// Removes the hook for one exact diagnostics final path.
+    pub fn clear(final_path: &Path) {
+        hooks().lock().expect("hook lock").remove(final_path);
+    }
+
+    pub(super) fn run_hook(
+        final_path: &Path,
+        phase: DiagnosticsPublicationPhase,
+    ) -> StoreResult<()> {
+        let hook = hooks().lock().expect("hook lock").get(final_path).cloned();
+        let Some(hook) = hook else {
+            return Ok(());
+        };
+        if hook.pause_at == Some(phase) {
+            hook.ready.expect("pause ready barrier").wait();
+            hook.resume.expect("pause resume barrier").wait();
+        }
+        if hook.fail_at == Some(phase) {
+            return Err(StoreError::Io(std::io::Error::other(format!(
+                "injected diagnostics publication failure at {phase:?}"
+            ))));
+        }
+        Ok(())
+    }
+}
 
 const DIAGNOSTICS_SCHEMA_SQL: &str = r#"
 CREATE TABLE diagnostics_manifest (
@@ -1303,44 +1450,89 @@ fn open_diagnostics_database(context: &RuntimeHomeMutationContext<'_>) -> StoreR
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let created = reserve_diagnostics_database_file(&path)?;
-    let result = (|| {
-        let mut conn = Connection::open_with_flags(
-            &path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
-        enable_foreign_keys(&conn)?;
-        if created {
-            harden_diagnostics_permissions(&path)?;
-            initialize_diagnostics_database(&mut conn)?;
-        } else {
-            validate_diagnostics_schema(&conn)?;
-            harden_diagnostics_permissions(&path)?;
-        }
-        Ok(conn)
-    })();
-    if result.is_err() && created {
-        let _ = fs::remove_file(&path);
+
+    match fs::symlink_metadata(&path) {
+        Ok(_) => return open_existing_diagnostics_database(&path),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(StoreError::Io(error)),
     }
-    result
+
+    let parent = path.parent().ok_or_else(|| StoreError::InvalidInput {
+        detail: "diagnostics database path has no parent directory".to_owned(),
+    })?;
+    let mut staging = DiagnosticsStagingDatabase::create(parent)?;
+    diagnostics_publication_hook(&path, DiagnosticsPublicationPhase::AfterStagingCreated)?;
+    prepare_diagnostics_staging_database(staging.path(), &path)?;
+    diagnostics_publication_hook(&path, DiagnosticsPublicationPhase::BeforePublication)?;
+
+    match publish_file_no_replace(staging.path(), &path) {
+        Ok(NoReplaceFilePublicationOutcome::Published { .. }) => {
+            staging.cleanup()?;
+            open_existing_diagnostics_database(&path)
+        }
+        Ok(NoReplaceFilePublicationOutcome::DestinationExists) => {
+            staging.cleanup()?;
+            open_existing_diagnostics_database(&path)
+        }
+        Err(error) => {
+            if error.effect == NoReplaceFilePublicationEffect::Unknown {
+                staging.preserve();
+            }
+            Err(StoreError::Io(io::Error::new(
+                error.io_error().kind(),
+                error,
+            )))
+        }
+    }
 }
 
-fn reserve_diagnostics_database_file(path: &Path) -> StoreResult<bool> {
-    match OpenOptions::new().write(true).create_new(true).open(path) {
-        Ok(file) => {
-            drop(file);
-            Ok(true)
-        }
-        Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(false),
-        Err(error) => Err(StoreError::Io(error)),
-    }
+fn open_existing_diagnostics_database(path: &Path) -> StoreResult<Connection> {
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
+    enable_foreign_keys(&conn)?;
+    validate_diagnostics_schema(&conn)?;
+    harden_diagnostics_permissions(path)?;
+    Ok(conn)
 }
 
-fn initialize_diagnostics_database(conn: &mut Connection) -> StoreResult<()> {
+fn prepare_diagnostics_staging_database(staging_path: &Path, final_path: &Path) -> StoreResult<()> {
+    let mut conn = Connection::open_with_flags(
+        staging_path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
+    enable_foreign_keys(&conn)?;
+    conn.pragma_update(None, "journal_mode", "DELETE")?;
+    initialize_diagnostics_database(&mut conn, final_path)?;
+    validate_diagnostics_schema(&conn)?;
+    conn.close()
+        .map_err(|(_, error)| StoreError::Sqlite(error))?;
+
+    ensure_diagnostics_staging_has_no_sidecars(staging_path)?;
+    harden_diagnostics_permissions(staging_path)?;
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(staging_path)?
+        .sync_all()?;
+    diagnostics_publication_hook(
+        final_path,
+        DiagnosticsPublicationPhase::AfterStagingValidation,
+    )?;
+    Ok(())
+}
+
+fn initialize_diagnostics_database(conn: &mut Connection, final_path: &Path) -> StoreResult<()> {
     let manifest = current_diagnostics_storage_manifest()?;
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     tx.execute_batch(DIAGNOSTICS_SCHEMA_SQL)?;
+    diagnostics_publication_hook(
+        final_path,
+        DiagnosticsPublicationPhase::DuringSchemaInitialization,
+    )?;
     tx.execute(
         "INSERT INTO diagnostics_manifest (
              singleton_id, contract_id, canonical_schema_digest
@@ -1349,6 +1541,114 @@ fn initialize_diagnostics_database(conn: &mut Connection) -> StoreResult<()> {
     )?;
     validate_diagnostics_schema(&tx)?;
     tx.commit()?;
+    Ok(())
+}
+
+struct DiagnosticsStagingDatabase {
+    path: PathBuf,
+    cleanup_on_drop: bool,
+}
+
+impl DiagnosticsStagingDatabase {
+    fn create(parent: &Path) -> StoreResult<Self> {
+        for _ in 0..DIAGNOSTICS_STAGING_CREATE_ATTEMPTS {
+            let identity = diagnostics_staging_identity()?;
+            let path = parent.join(format!("{DIAGNOSTICS_STAGING_PREFIX}{identity}"));
+            match OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(file) => {
+                    drop(file);
+                    return Ok(Self {
+                        path,
+                        cleanup_on_drop: true,
+                    });
+                }
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(StoreError::Io(error)),
+            }
+        }
+        Err(StoreError::Io(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "could not allocate a unique diagnostics staging file",
+        )))
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn cleanup(&mut self) -> StoreResult<()> {
+        remove_owned_diagnostics_staging_files(&self.path)?;
+        self.cleanup_on_drop = false;
+        Ok(())
+    }
+
+    fn preserve(&mut self) {
+        self.cleanup_on_drop = false;
+    }
+}
+
+impl Drop for DiagnosticsStagingDatabase {
+    fn drop(&mut self) {
+        if self.cleanup_on_drop {
+            let _ = remove_owned_diagnostics_staging_files(&self.path);
+        }
+    }
+}
+
+fn diagnostics_staging_identity() -> StoreResult<String> {
+    use std::fmt::Write as _;
+
+    let mut bytes = [0_u8; DIAGNOSTICS_STAGING_ID_BYTES];
+    getrandom::fill(&mut bytes)
+        .map_err(|error| StoreError::Io(io::Error::other(error.to_string())))?;
+    let mut identity = String::with_capacity(DIAGNOSTICS_STAGING_ID_BYTES * 2);
+    for byte in bytes {
+        write!(&mut identity, "{byte:02x}")
+            .expect("writing hexadecimal bytes to String cannot fail");
+    }
+    Ok(identity)
+}
+
+fn diagnostics_sqlite_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut sidecar = path.as_os_str().to_os_string();
+    sidecar.push(suffix);
+    PathBuf::from(sidecar)
+}
+
+fn ensure_diagnostics_staging_has_no_sidecars(path: &Path) -> StoreResult<()> {
+    for suffix in SQLITE_SIDECAR_SUFFIXES {
+        let sidecar = diagnostics_sqlite_sidecar_path(path, suffix);
+        match fs::symlink_metadata(&sidecar) {
+            Ok(_) => {
+                return Err(StoreError::schema_invariant(
+                    DATABASE_KIND,
+                    format!("diagnostics staging database still requires SQLite sidecar {suffix}"),
+                ));
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(StoreError::Io(error)),
+        }
+    }
+    Ok(())
+}
+
+fn remove_owned_diagnostics_staging_files(path: &Path) -> StoreResult<()> {
+    for owned_path in SQLITE_SIDECAR_SUFFIXES
+        .into_iter()
+        .map(|suffix| diagnostics_sqlite_sidecar_path(path, suffix))
+        .chain(std::iter::once(path.to_path_buf()))
+    {
+        match fs::remove_file(owned_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(StoreError::Io(error)),
+        }
+    }
     Ok(())
 }
 
@@ -1847,7 +2147,9 @@ mod tests {
     use super::*;
     use crate::mutation::TestRuntimeHomeAdmission;
     use rusqlite::Connection;
+    use std::thread;
     use volicord_test_support::TempRuntimeHome;
+
     fn managed_session_id(native_session_id: &str) -> String {
         format!("mcp_runtime_{native_session_id}")
     }
@@ -1882,6 +2184,22 @@ mod tests {
             authoritative_refresh_failure: false,
             outcome: DiagnosticOutcome::Success,
         }
+    }
+
+    fn diagnostics_staging_entries(runtime_home: &Path) -> Vec<PathBuf> {
+        let mut entries = fs::read_dir(runtime_home)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with(DIAGNOSTICS_STAGING_PREFIX))
+            })
+            .collect::<Vec<_>>();
+        entries.sort();
+        entries
     }
 
     fn metric(
@@ -2451,6 +2769,316 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_final_path_is_absent_until_the_complete_carrier_is_published() {
+        let fixture = TempRuntimeHome::new("diagnostics-atomic-visibility").expect("fixture");
+        let runtime_home = fixture.path().to_path_buf();
+        let final_path = diagnostics_db_path(&runtime_home);
+        let pause = diagnostics_publication_test_support::pause_creators(
+            final_path.clone(),
+            DiagnosticsPublicationPhase::BeforePublication,
+            1,
+        );
+        let creator_home = runtime_home.clone();
+        let creator = thread::spawn(move || {
+            let mutation = TestRuntimeHomeAdmission::shared(&creator_home)
+                .map_err(|error| error.to_string())?;
+            let context = mutation.context().map_err(|error| error.to_string())?;
+            start_diagnostic_session(&context, start(&managed_session_id("atomic_visibility")))
+                .map_err(|error| error.to_string())
+        });
+
+        pause.wait_until_all_creators_are_paused();
+        assert!(!final_path.exists());
+        assert_eq!(diagnostics_staging_entries(&runtime_home).len(), 1);
+        pause.resume_all_creators();
+        creator
+            .join()
+            .expect("creator thread")
+            .expect("publication");
+        diagnostics_publication_test_support::clear(&final_path);
+
+        assert!(final_path.is_file());
+        open_diagnostics_database_read_only(&final_path).expect("complete final database");
+        assert!(
+            diagnostics_staging_entries(&runtime_home).is_empty(),
+            "successful publication must leave no staging files"
+        );
+    }
+
+    #[test]
+    fn concurrent_shared_writers_publish_once_and_persist_both_sessions() {
+        let fixture = TempRuntimeHome::new("diagnostics-concurrent-publish").expect("fixture");
+        let runtime_home = fixture.path().to_path_buf();
+        let final_path = diagnostics_db_path(&runtime_home);
+        let pause = diagnostics_publication_test_support::pause_creators(
+            final_path.clone(),
+            DiagnosticsPublicationPhase::BeforePublication,
+            2,
+        );
+        let creators = ["concurrent_first", "concurrent_second"].map(|native_session_id| {
+            let creator_home = runtime_home.clone();
+            thread::spawn(move || {
+                let mutation = TestRuntimeHomeAdmission::shared(&creator_home)
+                    .map_err(|error| error.to_string())?;
+                let context = mutation.context().map_err(|error| error.to_string())?;
+                start_diagnostic_session(&context, start(&managed_session_id(native_session_id)))
+                    .map_err(|error| error.to_string())
+            })
+        });
+
+        pause.wait_until_all_creators_are_paused();
+        assert!(!final_path.exists());
+        assert_eq!(diagnostics_staging_entries(&runtime_home).len(), 2);
+        pause.resume_all_creators();
+        for creator in creators {
+            creator
+                .join()
+                .expect("creator thread")
+                .expect("concurrent diagnostics start");
+        }
+        diagnostics_publication_test_support::clear(&final_path);
+
+        let conn =
+            open_diagnostics_database_read_only(&final_path).expect("validated final database");
+        let session_ids = conn
+            .prepare("SELECT session_id FROM diagnostic_sessions ORDER BY session_id")
+            .expect("session query")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("session rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("session values");
+        assert_eq!(
+            session_ids,
+            vec![
+                managed_session_id("concurrent_first"),
+                managed_session_id("concurrent_second")
+            ]
+        );
+        assert!(diagnostics_staging_entries(&runtime_home).is_empty());
+    }
+
+    #[test]
+    fn concurrent_transport_writers_converge_on_one_diagnostics_carrier() {
+        let fixture = TempRuntimeHome::new("diagnostics-transport-convergence").expect("fixture");
+        let runtime_home = fixture.path().to_path_buf();
+        let final_path = diagnostics_db_path(&runtime_home);
+        let pause = diagnostics_publication_test_support::pause_creators(
+            final_path.clone(),
+            DiagnosticsPublicationPhase::BeforePublication,
+            3,
+        );
+
+        let mcp_home = runtime_home.clone();
+        let mcp = thread::spawn(move || {
+            let mutation =
+                TestRuntimeHomeAdmission::shared(&mcp_home).map_err(|error| error.to_string())?;
+            let context = mutation.context().map_err(|error| error.to_string())?;
+            start_diagnostic_session(
+                &context,
+                DiagnosticSessionStart {
+                    session_id: "mcp_transport_concurrent",
+                    connection_id: Some("connection_test"),
+                    project_id: Some("project_test"),
+                    transport: DiagnosticTransport::McpStdio,
+                    host_kind: Some(DiagnosticHostKind::Codex),
+                    package_version: "0.1.0",
+                    build_id: "test",
+                },
+            )
+            .map_err(|error| error.to_string())
+        });
+        let guard_home = runtime_home.clone();
+        let guard = thread::spawn(move || {
+            let mutation =
+                TestRuntimeHomeAdmission::shared(&guard_home).map_err(|error| error.to_string())?;
+            let context = mutation.context().map_err(|error| error.to_string())?;
+            start_diagnostic_session(
+                &context,
+                DiagnosticSessionStart {
+                    session_id:
+                        "agent_session_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                    connection_id: Some("connection_test"),
+                    project_id: Some("project_test"),
+                    transport: DiagnosticTransport::GuardHook,
+                    host_kind: Some(DiagnosticHostKind::Codex),
+                    package_version: "0.1.0",
+                    build_id: "test",
+                },
+            )
+            .map_err(|error| error.to_string())
+        });
+        let cli_home = runtime_home.clone();
+        let cli = thread::spawn(move || {
+            let mutation =
+                TestRuntimeHomeAdmission::shared(&cli_home).map_err(|error| error.to_string())?;
+            let context = mutation.context().map_err(|error| error.to_string())?;
+            start_diagnostic_session(
+                &context,
+                DiagnosticSessionStart {
+                    session_id: "cli_inbox_concurrent",
+                    connection_id: None,
+                    project_id: Some("project_test"),
+                    transport: DiagnosticTransport::CliInbox,
+                    host_kind: None,
+                    package_version: "0.1.0",
+                    build_id: "test",
+                },
+            )
+            .map_err(|error| error.to_string())
+        });
+
+        pause.wait_until_all_creators_are_paused();
+        pause.resume_all_creators();
+        for creator in [mcp, guard, cli] {
+            creator
+                .join()
+                .expect("creator thread")
+                .expect("transport diagnostics start");
+        }
+        diagnostics_publication_test_support::clear(&final_path);
+
+        let conn =
+            open_diagnostics_database_read_only(&final_path).expect("validated final database");
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM diagnostic_sessions", [], |row| {
+                row.get::<_, u64>(0)
+            })
+            .expect("session count"),
+            3
+        );
+        assert!(diagnostics_staging_entries(&runtime_home).is_empty());
+    }
+
+    #[test]
+    fn diagnostics_creation_faults_remove_only_owned_staging_files() {
+        for (label, phase) in [
+            (
+                "diagnostics-initialization-fault",
+                DiagnosticsPublicationPhase::DuringSchemaInitialization,
+            ),
+            (
+                "diagnostics-post-validation-fault",
+                DiagnosticsPublicationPhase::AfterStagingValidation,
+            ),
+        ] {
+            let fixture = TempRuntimeHome::new(label).expect("fixture");
+            let mutation =
+                TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+            let context = mutation.context().expect("mutation context");
+            let final_path = diagnostics_db_path(fixture.path());
+            diagnostics_publication_test_support::fail_creator(final_path.clone(), phase);
+
+            start_diagnostic_session(&context, start("diagnostics_fault_session"))
+                .expect_err("injected creation fault must fail");
+            diagnostics_publication_test_support::clear(&final_path);
+
+            assert!(!final_path.exists());
+            assert!(
+                diagnostics_staging_entries(fixture.path()).is_empty(),
+                "failed creator must remove its staging database and sidecars"
+            );
+        }
+    }
+
+    #[test]
+    fn concurrent_external_empty_final_is_preserved_and_rejected() {
+        let fixture = TempRuntimeHome::new("diagnostics-external-empty").expect("fixture");
+        let runtime_home = fixture.path().to_path_buf();
+        let final_path = diagnostics_db_path(&runtime_home);
+        let pause = diagnostics_publication_test_support::pause_creators(
+            final_path.clone(),
+            DiagnosticsPublicationPhase::BeforePublication,
+            1,
+        );
+        let creator_home = runtime_home.clone();
+        let creator = thread::spawn(move || {
+            let mutation = TestRuntimeHomeAdmission::shared(&creator_home)
+                .map_err(|error| error.to_string())?;
+            let context = mutation.context().map_err(|error| error.to_string())?;
+            start_diagnostic_session(&context, start("external_empty_creator"))
+                .map_err(|error| error.to_string())
+        });
+
+        pause.wait_until_all_creators_are_paused();
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&final_path)
+            .expect("external empty final");
+        let original = fs::read(&final_path).expect("original final bytes");
+        pause.resume_all_creators();
+        let error = creator
+            .join()
+            .expect("creator thread")
+            .expect_err("empty concurrent winner must fail exact validation");
+        diagnostics_publication_test_support::clear(&final_path);
+
+        assert!(error.contains("storage profile"));
+        assert_eq!(fs::read(&final_path).expect("preserved bytes"), original);
+        assert!(diagnostics_staging_entries(&runtime_home).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parent_sync_failure_keeps_the_complete_published_database() {
+        use volicord_platform_fs::no_replace_file_publication_test_support::{
+            fail_next_no_replace_file_publication, NoReplaceFilePublicationFault,
+        };
+
+        let fixture = TempRuntimeHome::new("diagnostics-parent-sync-failure").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
+        let final_path = diagnostics_db_path(fixture.path());
+        fail_next_no_replace_file_publication(
+            NoReplaceFilePublicationFault::ParentDirectorySynchronizationFailure,
+        );
+
+        start_diagnostic_session(&context, start("parent_sync_first"))
+            .expect_err("parent synchronization failure must be reported");
+        assert!(final_path.is_file());
+        let conn = open_diagnostics_database_read_only(&final_path)
+            .expect("published carrier must remain complete");
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM diagnostic_sessions", [], |row| {
+                row.get::<_, u64>(0)
+            })
+            .expect("session count"),
+            0,
+            "publication does not insert the caller's session into staging"
+        );
+        drop(conn);
+        assert!(diagnostics_staging_entries(fixture.path()).is_empty());
+
+        start_diagnostic_session(&context, start("parent_sync_retry"))
+            .expect("the next caller can use the complete final database");
+        assert!(
+            read_diagnostic_session(fixture.path(), Some("parent_sync_retry"))
+                .expect("read session")
+                .is_some()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn diagnostics_file_permissions_are_hardened_after_publication() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = TempRuntimeHome::new("diagnostics-file-permissions").expect("fixture");
+        let mutation =
+            TestRuntimeHomeAdmission::shared(fixture.path()).expect("mutation admission");
+        let context = mutation.context().expect("mutation context");
+        start_diagnostic_session(&context, start("permission_session")).expect("start");
+
+        let mode = fs::metadata(diagnostics_db_path(fixture.path()))
+            .expect("diagnostics metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[test]
     fn existing_empty_diagnostics_database_is_rejected_without_initialization() {
         let fixture = TempRuntimeHome::new("diagnostics-existing-empty").expect("fixture");
         let mutation =
@@ -2611,5 +3239,32 @@ mod tests {
             .expect("empty Core rejection read")
             .is_empty());
         assert!(!diagnostics_db_path(fixture.path()).exists());
+        assert!(
+            diagnostics_staging_entries(fixture.path()).is_empty(),
+            "read-only diagnostics operations must not create staging storage"
+        );
+
+        fs::create_dir_all(fixture.path()).expect("runtime home directory");
+        let unrelated_staging = fixture
+            .path()
+            .join(format!("{DIAGNOSTICS_STAGING_PREFIX}opaque-test-identity"));
+        fs::write(
+            &unrelated_staging,
+            b"not an authoritative diagnostics carrier",
+        )
+        .expect("staging fixture");
+        assert!(read_diagnostic_session(fixture.path(), None)
+            .expect("read must ignore staging")
+            .is_none());
+        assert!(
+            read_workflow_metric_aggregates(fixture.path(), "project_test")
+                .expect("workflow read must ignore staging")
+                .is_empty()
+        );
+        assert!(!diagnostics_db_path(fixture.path()).exists());
+        assert_eq!(
+            fs::read(unrelated_staging).expect("staging bytes"),
+            b"not an authoritative diagnostics carrier"
+        );
     }
 }

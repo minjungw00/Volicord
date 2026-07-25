@@ -45,9 +45,16 @@ SQL 파일입니다.
 
 별도 비권한 `diagnostics.sqlite` 데이터베이스도 자체 의미적
 `volicord.sqlite.diagnostics` 매니페스트와 SQL inventory에서 파생한 canonical schema
-digest를 통해 같은 단일 현재 계약 규칙을 따릅니다. 경로가 없을 때만 만들며 숫자
-`PRAGMA user_version` dispatch, migration, importer, 추론한 형식, 부분 schema를 받지
-않습니다. 이 매니페스트는 권한 `StorageManifest`가 아닙니다.
+digest를 통해 같은 단일 현재 계약 규칙을 따릅니다. 최종 경로가 없으면 불투명한
+호출별 identity를 가진 같은 directory의 staging 데이터베이스 하나에서 전체 schema와
+manifest를 초기화하고 검증합니다. 모든 SQLite handle을 닫고 live sidecar가 필요하지
+않음을 확인하며 permission을 강화하고 파일을 동기화한 뒤, 기존 대상을 교체하지 않는
+원자적 공개 연산 하나로 `diagnostics.sqlite`를 보이게 합니다. 동시 shared writer는
+완전히 검증된 승자에 수렴하고 자신이 만든 staging 파일만 정리한 뒤 최종
+데이터베이스에 각 session을 기록합니다. 기존 최종 데이터베이스는 정확히 검증하며
+초기화하거나 복구하지 않습니다. 이 계약은 숫자 `PRAGMA user_version` dispatch,
+추론한 형식, 부분 schema를 받지 않으며 매니페스트는 권한 `StorageManifest`가
+아닙니다.
 
 ## `StorageManifest`
 

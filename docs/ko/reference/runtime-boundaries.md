@@ -303,7 +303,12 @@ attach가 없는 Registry 예약은 각각 권한 효력이 없습니다. 소유
 replay는 중단된 마지막 attach를 복구합니다. Process row는 lease나 liveness signal이 아니므로
 crash 뒤 열린 것처럼 남은 row와 concurrent process가 Guard 상관관계를 선택하거나 막지
 않습니다. `diagnostics.sqlite`는 분리된 best-effort carrier이며 운영 권한 출처로 사용하지
-않습니다.
+않습니다. 첫 shared writer는 같은 directory의 staging 데이터베이스 전체를 초기화하고
+검증하며, 모든 SQLite handle을 닫고 live sidecar를 거부한 뒤 파일의 permission을
+강화하고 동기화해 플랫폼의 기존 대상 비대체 원자적 연산으로 공개합니다. 동시 shared
+writer는 유효한 승자에 수렴하고 자신이 만든 staging 파일만 정리한 뒤 각자의 session을
+최종 데이터베이스에 기록합니다. 유효하지 않은 기존 최종 데이터베이스는 초기화, 복구,
+교체 없이 거부합니다. 읽기 전용 진단 접근은 최종 경로만 관찰합니다.
 
 ## 위치와 권한 경계
 

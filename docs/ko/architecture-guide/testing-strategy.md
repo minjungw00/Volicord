@@ -73,6 +73,12 @@ registry 직접 순회가 matrix를 정합니다.
   효과 전 재귀 실패, 일부 제거 또는 분류 불가 제거, 제거 확인 뒤 상위 directory 동기화
   실패, terminal 재시도 동작, 확인 오류와 rollback fact를 함께 담는 composite 실패,
   관련 없는 replacement 안전성, 기존 비호환 상태의 변경되지 않은 bytes와 timestamp
+- 완전한 같은 상위 directory의 staging carrier를 통한 진단 최초 생성, 정확한 검증이
+  끝날 때까지 유지되는 최종 경로 부재, 서로 다른 모든 session을 보존하는 결정론적 동시
+  `SharedWriter` 공개, 패배 및 공개 전 실패에서 각 호출이 만든 파일로 한정한 정리,
+  외부에서 만든 유효하지 않은 최종 파일 보존, 상위 directory 동기화 실패를 가로질러
+  유지되는 공개 확인 효과, 기존 유효하지 않은 최종 파일의 정확한 거부, read-only
+  접근의 staging 무시, Unix 최종 permission, 플랫폼 공개 primitive의 네이티브 coverage
 - 행 없음 또는 비적격 operation result에서 유지되는
   `OPERATION_RESULT_UNAVAILABLE`
 - 숨은 context의 MCP 거부와 CLI-only UserAction resolution

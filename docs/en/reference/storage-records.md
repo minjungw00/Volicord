@@ -27,6 +27,23 @@ extra manifest row, an unknown contract identifier, a noncurrent digest, or a
 missing, changed, or unexpected schema object is rejected without migration,
 repair, importer dispatch, or format inference.
 
+At an absent final path, Store creates one invocation-owned staging file in the
+same directory with an opaque unique identity. It initializes the entire
+canonical schema and manifest, validates and closes the database, verifies that
+no SQLite journal, WAL, or SHM sidecar is required, hardens and synchronizes the
+file, and then publishes it to `diagnostics.sqlite` with one atomic no-replace
+operation. The final path therefore names only a fully validated diagnostics
+carrier. Concurrent `SharedWriter` creators may prepare independently; one
+publishes, while every other creator removes only its own staging files and
+validates the published winner. Each caller inserts its diagnostic session
+only after opening that final database.
+
+An existing final `diagnostics.sqlite` is validated through the current
+read-write diagnostics path and permission-hardened without initialization or
+repair. Read-only diagnostics operations inspect only that final path; they
+return an empty result when it is absent and never read or create a staging
+file.
+
 This diagnostics manifest is not the authority `StorageManifest`, and the
 diagnostics database never uses a numeric schema version as a compatibility
 identity. Reads do not create it. Diagnostics failure cannot change a Core or

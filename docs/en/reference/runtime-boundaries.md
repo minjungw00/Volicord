@@ -346,7 +346,14 @@ non-authoritative. Exact replay under unchanged owner state repairs an
 interrupted final attach. A process row is not a lease or liveness signal, so a
 crashed apparently open row and concurrent processes never select or block
 Guard correlation. `diagnostics.sqlite` is a separate best-effort carrier and
-is never an operational authority source.
+is never an operational authority source. Its first shared writer initializes
+and validates a complete same-directory staging database, closes every SQLite
+handle, rejects live sidecars, hardens and synchronizes the file, and then uses
+platform-atomic no-replace publication. Concurrent shared writers converge on
+the valid winner, remove only their own staging files, and write their
+individual sessions to the final database. An existing invalid final database
+is rejected without initialization, repair, or replacement. Read-only
+diagnostic access observes only the final path.
 
 ## Location And Authority Boundaries
 

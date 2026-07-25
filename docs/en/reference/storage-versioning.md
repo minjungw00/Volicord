@@ -49,9 +49,17 @@ silently discarded or recreated by ordinary open.
 The separate non-authority `diagnostics.sqlite` database follows the same
 single-current-contract rule through its own semantic
 `volicord.sqlite.diagnostics` manifest and a canonical schema digest derived
-from its SQL inventory. It is created only at an absent path and accepts no
-numeric `PRAGMA user_version` dispatch, migration, importer, inferred format,
-or partial schema. Its manifest is not an authority `StorageManifest`.
+from its SQL inventory. At an absent final path, the complete schema and
+manifest are initialized and validated in one opaque, invocation-owned
+same-directory staging database. After every SQLite handle is closed, no live
+sidecar is required, permissions are hardened, and the file is synchronized,
+one atomic no-replace publication makes it visible as `diagnostics.sqlite`.
+Concurrent shared writers converge on the fully validated winner, clean only
+their own staging files, and write their sessions to the final database. An
+existing final database is validated exactly and is never initialized or
+repaired. The contract accepts no numeric `PRAGMA user_version` dispatch,
+inferred format, or partial schema, and its manifest is not an authority
+`StorageManifest`.
 
 ## `StorageManifest`
 

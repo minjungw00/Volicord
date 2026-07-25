@@ -1027,6 +1027,7 @@ name = "volicord-store"
 version = "0.9.1"
 dependencies = [
  "chrono",
+ "getrandom",
  "rusqlite",
  "rustix",
  "serde",

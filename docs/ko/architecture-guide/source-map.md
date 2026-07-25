@@ -32,7 +32,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 효과를 인식하는 정확한 directory-tree 제거 및 상위 entry 내구성, 플랫폼 고유 이름 공간 연산, 안전한 Runtime Home 변경 lease와 permit export, 정규 읽기 전용 Git layout 탐색. |
+| `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 효과를 인식하는 정확한 directory-tree 제거, typed 원자적 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 연산, 안전한 Runtime Home 변경 lease와 permit export, 정규 읽기 전용 Git layout 탐색. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | 정규 Runtime Home identity, domain-separated 전체 digest 기반 외부 coordination 파일 파생, OS lock 영역 하나를 공유하는 shared-writer 및 exclusive-setup mode, 즉시 및 한도 있는 typed 획득, 빌린 변경 permit, Unix/macOS 또는 네이티브 Windows의 handle 수명 기반 해제. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | 프로세스 간 공유·배타 변경 lease 경합과 프로세스 종료 시 해제 regression. |
 | `crates/volicord-cli/src/host_integration/process.rs` | 플랫폼 경계 관찰을 바탕으로 한 프로세스 target 검증과 target 경로 파일시스템 제한 집행. |
@@ -55,6 +55,7 @@
 | `crates/volicord-store/src/mutation.rs` | 복제할 수 없고 permit을 빌리며 정확한 target에 결합된 `RuntimeHomeMutationContext`, 공유·배타 mode 검사, 안정적인 setup-in-progress condition projection. |
 | `crates/volicord-store/src/sqlite.rs` | 분리된 읽기 전용 open과 정확한 Runtime Home 소유권을 검증하는 crate-private context-gated 쓰기 가능 Registry/project database open. |
 | `crates/volicord-store/src/bootstrap.rs` | Runtime Home staging, 불투명 publication provenance, 기존 대상을 교체하지 않는 원자적 publication 결과, token-backed terminal rollback 상태, composite 확인 실패, Store bootstrap. |
+| `crates/volicord-store/src/diagnostics.rs` | 비권한 진단 schema와 manifest, 같은 directory의 staged carrier 공개, 동시 승자 검증, 정확한 read/write, retention. |
 | `crates/volicord-store/src/setup_transaction.rs` | Setup이 변경하는 기존 Store 파일의 명시적인 prepare, 입력 검증, mutation checkpoint, commit, guarded rollback 경계. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection 레코드, project allowlist, managed fingerprint, 영속 검증 보고서 경계. |
 | `crates/volicord-store/src/diagnostic_findings/mod.rs` | Lifecycle별 진단 영속화 facade와 공개 Store API export. |

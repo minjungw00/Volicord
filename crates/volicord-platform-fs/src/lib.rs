@@ -1145,6 +1145,89 @@ impl DirectoryEntryDurability {
     }
 }
 
+/// Namespace effect of a failed atomic no-replace file publication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoReplaceFilePublicationEffect {
+    /// The source and destination retained their original names.
+    NamesUnchanged,
+    /// The source was published at the destination name.
+    Published,
+    /// The namespace effect could not be established.
+    Unknown,
+}
+
+/// Operation phase for an atomic no-replace file publication failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoReplaceFilePublicationPhase {
+    /// The source, destination, or shared parent did not satisfy the primitive.
+    Validation,
+    /// The platform no-replace namespace operation failed.
+    NamespacePublication,
+    /// Publication succeeded but parent-directory synchronization failed.
+    ParentDirectorySynchronization,
+}
+
+/// Successful atomic no-replace publication result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoReplaceFilePublicationOutcome {
+    /// This invocation published the source at the destination.
+    Published {
+        /// Durability established for the destination's parent entry.
+        durability: DirectoryEntryDurability,
+    },
+    /// The destination already existed and was not replaced.
+    DestinationExists,
+}
+
+/// Failed atomic no-replace file publication with its namespace effect.
+#[derive(Debug)]
+pub struct NoReplaceFilePublicationError {
+    pub phase: NoReplaceFilePublicationPhase,
+    pub effect: NoReplaceFilePublicationEffect,
+    pub durability: DirectoryEntryDurability,
+    source: io::Error,
+}
+
+impl NoReplaceFilePublicationError {
+    fn new(
+        phase: NoReplaceFilePublicationPhase,
+        effect: NoReplaceFilePublicationEffect,
+        durability: DirectoryEntryDurability,
+        source: io::Error,
+    ) -> Self {
+        Self {
+            phase,
+            effect,
+            durability,
+            source,
+        }
+    }
+
+    /// Underlying I/O failure.
+    pub fn io_error(&self) -> &io::Error {
+        &self.source
+    }
+}
+
+impl fmt::Display for NoReplaceFilePublicationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "no-replace file publication failed during {:?} (effect: {:?}, durability: {}): {}",
+            self.phase,
+            self.effect,
+            self.durability.as_str(),
+            self.source
+        )
+    }
+}
+
+impl std::error::Error for NoReplaceFilePublicationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
 /// Operation that failed during exact directory-tree removal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1514,6 +1597,218 @@ fn sync_directory_entry_parent(_parent: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Atomically publishes one ordinary file without replacing an existing
+/// destination and synchronizes the shared parent where supported.
+///
+/// The source and destination must be distinct names in the same parent
+/// directory. Keeping both names in one directory establishes the
+/// same-filesystem boundary required by the platform rename primitive.
+pub fn publish_file_no_replace(
+    source: &Path,
+    destination: &Path,
+) -> Result<NoReplaceFilePublicationOutcome, NoReplaceFilePublicationError> {
+    let source_parent = source.parent().ok_or_else(|| {
+        NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::Validation,
+            NoReplaceFilePublicationEffect::NamesUnchanged,
+            DirectoryEntryDurability::NotApplicable,
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "no-replace file publication requires a source parent",
+            ),
+        )
+    })?;
+    let destination_parent = destination.parent().ok_or_else(|| {
+        NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::Validation,
+            NoReplaceFilePublicationEffect::NamesUnchanged,
+            DirectoryEntryDurability::NotApplicable,
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "no-replace file publication requires a destination parent",
+            ),
+        )
+    })?;
+    if source_parent != destination_parent || source == destination {
+        return Err(NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::Validation,
+            NoReplaceFilePublicationEffect::NamesUnchanged,
+            DirectoryEntryDurability::NotApplicable,
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "no-replace file publication requires distinct names in one parent directory",
+            ),
+        ));
+    }
+
+    let source_metadata = fs::symlink_metadata(source).map_err(|source| {
+        NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::Validation,
+            NoReplaceFilePublicationEffect::NamesUnchanged,
+            DirectoryEntryDurability::NotApplicable,
+            source,
+        )
+    })?;
+    if !source_metadata.file_type().is_file() {
+        return Err(NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::Validation,
+            NoReplaceFilePublicationEffect::NamesUnchanged,
+            DirectoryEntryDurability::NotApplicable,
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "no-replace file publication requires an ordinary source file",
+            ),
+        ));
+    }
+    match fs::symlink_metadata(destination) {
+        Ok(_) => return Ok(NoReplaceFilePublicationOutcome::DestinationExists),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(source) => {
+            return Err(NoReplaceFilePublicationError::new(
+                NoReplaceFilePublicationPhase::Validation,
+                NoReplaceFilePublicationEffect::NamesUnchanged,
+                DirectoryEntryDurability::NotApplicable,
+                source,
+            ));
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    let fault = no_replace_file_publication_test_support::take_next_fault();
+
+    #[cfg(any(test, feature = "test-support"))]
+    if matches!(
+        fault,
+        Some(
+            no_replace_file_publication_test_support::NoReplaceFilePublicationFault::BeforeNamespacePublication
+        )
+    ) {
+        return Err(NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::NamespacePublication,
+            NoReplaceFilePublicationEffect::NamesUnchanged,
+            DirectoryEntryDurability::NotApplicable,
+            injected_file_publication_error("before namespace publication"),
+        ));
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    if matches!(
+        fault,
+        Some(
+            no_replace_file_publication_test_support::NoReplaceFilePublicationFault::NamespaceEffectUnknown
+        )
+    ) {
+        return Err(NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::NamespacePublication,
+            NoReplaceFilePublicationEffect::Unknown,
+            DirectoryEntryDurability::NotApplicable,
+            injected_file_publication_error("with an unknown namespace effect"),
+        ));
+    }
+
+    match move_path_no_replace(source, destination) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            return Ok(NoReplaceFilePublicationOutcome::DestinationExists);
+        }
+        Err(source) => {
+            return Err(NoReplaceFilePublicationError::new(
+                NoReplaceFilePublicationPhase::NamespacePublication,
+                NoReplaceFilePublicationEffect::NamesUnchanged,
+                DirectoryEntryDurability::NotApplicable,
+                source,
+            ));
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    if matches!(
+        fault,
+        Some(
+            no_replace_file_publication_test_support::NoReplaceFilePublicationFault::ParentDirectorySynchronizationFailure
+        )
+    ) {
+        return Err(NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::ParentDirectorySynchronization,
+            NoReplaceFilePublicationEffect::Published,
+            failed_or_unavailable_parent_durability(),
+            injected_file_publication_error("during parent-directory synchronization"),
+        ));
+    }
+
+    sync_directory_entry_parent(destination_parent).map_err(|source| {
+        NoReplaceFilePublicationError::new(
+            NoReplaceFilePublicationPhase::ParentDirectorySynchronization,
+            NoReplaceFilePublicationEffect::Published,
+            failed_or_unavailable_parent_durability(),
+            source,
+        )
+    })?;
+    Ok(NoReplaceFilePublicationOutcome::Published {
+        durability: supported_parent_durability(),
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn move_path_no_replace(source: &Path, destination: &Path) -> io::Result<()> {
+    use rustix::fs::{renameat_with, RenameFlags, CWD};
+
+    renameat_with(CWD, source, CWD, destination, RenameFlags::NOREPLACE).map_err(io::Error::from)
+}
+
+#[cfg(windows)]
+fn move_path_no_replace(source: &Path, destination: &Path) -> io::Result<()> {
+    move_file_no_replace(source, destination)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+fn move_path_no_replace(_source: &Path, _destination: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "atomic no-replace file publication is unsupported on this platform",
+    ))
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn injected_file_publication_error(point: &'static str) -> io::Error {
+    io::Error::other(format!(
+        "injected no-replace file publication failure {point}"
+    ))
+}
+
+/// Repository-owned fault support for no-replace file-publication tests.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod no_replace_file_publication_test_support {
+    use std::cell::Cell;
+
+    /// One failure injected into the next publication on the current thread.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum NoReplaceFilePublicationFault {
+        BeforeNamespacePublication,
+        NamespaceEffectUnknown,
+        ParentDirectorySynchronizationFailure,
+    }
+
+    thread_local! {
+        static NEXT_FAULT: Cell<Option<NoReplaceFilePublicationFault>> = const { Cell::new(None) };
+    }
+
+    /// Arms one current-thread failure for the next publication primitive.
+    pub fn fail_next_no_replace_file_publication(fault: NoReplaceFilePublicationFault) {
+        NEXT_FAULT.with(|next| {
+            assert!(
+                next.replace(Some(fault)).is_none(),
+                "a no-replace file-publication fault is already armed on this test thread"
+            );
+        });
+    }
+
+    pub(super) fn take_next_fault() -> Option<NoReplaceFilePublicationFault> {
+        NEXT_FAULT.with(Cell::take)
+    }
+}
+
 #[cfg(any(test, feature = "test-support"))]
 fn injected_removal_error(point: &'static str) -> io::Error {
     io::Error::other(format!("injected directory-tree removal failure {point}"))
@@ -1676,11 +1971,175 @@ fn wide_path(path: &Path) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use std::{
-        sync::atomic::{AtomicU64, Ordering},
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            Arc, Barrier,
+        },
+        thread,
         time::{SystemTime, UNIX_EPOCH},
     };
 
     use super::*;
+
+    #[test]
+    fn no_replace_file_publication_preserves_an_existing_destination() -> io::Result<()> {
+        let directory = TestDirectory::new("no-replace-file-publication")?;
+        let first_source = directory.path().join("first.staging");
+        let second_source = directory.path().join("second.staging");
+        let destination = directory.path().join("diagnostics.sqlite");
+        fs::write(&first_source, b"first complete database")?;
+        fs::write(&second_source, b"second complete database")?;
+
+        let first = publish_file_no_replace(&first_source, &destination)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        assert_eq!(
+            first,
+            NoReplaceFilePublicationOutcome::Published {
+                durability: supported_parent_durability(),
+            }
+        );
+        assert!(!first_source.exists());
+        assert_eq!(fs::read(&destination)?, b"first complete database");
+
+        let second = publish_file_no_replace(&second_source, &destination)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        assert_eq!(second, NoReplaceFilePublicationOutcome::DestinationExists);
+        assert_eq!(fs::read(&destination)?, b"first complete database");
+        assert_eq!(fs::read(&second_source)?, b"second complete database");
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_no_replace_file_publishers_select_exactly_one_winner() -> io::Result<()> {
+        let directory = TestDirectory::new("concurrent-no-replace-file-publication")?;
+        let destination = directory.path().join("diagnostics.sqlite");
+        let barrier = Arc::new(Barrier::new(3));
+        let creators = [
+            ("first.staging", b"first".as_slice()),
+            ("second.staging", b"second".as_slice()),
+        ]
+        .map(|(name, bytes)| {
+            let source = directory.path().join(name);
+            fs::write(&source, bytes).expect("staging source");
+            let destination = destination.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let outcome = publish_file_no_replace(&source, &destination)
+                    .map_err(|error| error.to_string());
+                (source, outcome)
+            })
+        });
+
+        barrier.wait();
+        let results = creators.map(|creator| creator.join().expect("publisher thread"));
+        let published = results
+            .iter()
+            .filter(|(_, outcome)| {
+                matches!(
+                    outcome,
+                    Ok(NoReplaceFilePublicationOutcome::Published { .. })
+                )
+            })
+            .count();
+        let destination_exists = results
+            .iter()
+            .filter(|(_, outcome)| {
+                matches!(
+                    outcome,
+                    Ok(NoReplaceFilePublicationOutcome::DestinationExists)
+                )
+            })
+            .count();
+        assert_eq!(published, 1);
+        assert_eq!(destination_exists, 1);
+        let published_bytes = fs::read(&destination)?;
+        assert!(published_bytes == b"first" || published_bytes == b"second");
+        assert_eq!(
+            results.iter().filter(|(source, _)| source.exists()).count(),
+            1,
+            "only the losing source name remains for caller-owned cleanup"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn no_replace_file_publication_rejects_cross_parent_sources_without_effect() -> io::Result<()> {
+        let directory = TestDirectory::new("no-replace-file-cross-parent")?;
+        let other_parent = directory.path().join("other");
+        fs::create_dir(&other_parent)?;
+        let source = directory.path().join("source.staging");
+        let destination = other_parent.join("diagnostics.sqlite");
+        fs::write(&source, b"complete database")?;
+
+        let error = publish_file_no_replace(&source, &destination)
+            .expect_err("cross-parent publication must be rejected");
+        assert_eq!(error.phase, NoReplaceFilePublicationPhase::Validation);
+        assert_eq!(error.effect, NoReplaceFilePublicationEffect::NamesUnchanged);
+        assert_eq!(fs::read(&source)?, b"complete database");
+        assert!(!destination.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn file_publication_faults_preserve_typed_namespace_effects() -> io::Result<()> {
+        let directory = TestDirectory::new("no-replace-file-effects")?;
+        for (fault, expected_effect) in [
+            (
+                no_replace_file_publication_test_support::NoReplaceFilePublicationFault::BeforeNamespacePublication,
+                NoReplaceFilePublicationEffect::NamesUnchanged,
+            ),
+            (
+                no_replace_file_publication_test_support::NoReplaceFilePublicationFault::NamespaceEffectUnknown,
+                NoReplaceFilePublicationEffect::Unknown,
+            ),
+        ] {
+            let source = directory.path().join(format!("source-{expected_effect:?}"));
+            let destination = directory
+                .path()
+                .join(format!("destination-{expected_effect:?}"));
+            fs::write(&source, b"complete database")?;
+            no_replace_file_publication_test_support::fail_next_no_replace_file_publication(fault);
+
+            let error =
+                publish_file_no_replace(&source, &destination).expect_err("fault must fail");
+            assert_eq!(error.effect, expected_effect);
+            assert_eq!(
+                error.phase,
+                NoReplaceFilePublicationPhase::NamespacePublication
+            );
+            assert_eq!(fs::read(&source)?, b"complete database");
+            assert!(!destination.exists());
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parent_sync_failure_preserves_successful_file_publication() -> io::Result<()> {
+        let directory = TestDirectory::new("no-replace-file-parent-sync")?;
+        let source = directory.path().join("source.staging");
+        let destination = directory.path().join("diagnostics.sqlite");
+        fs::write(&source, b"complete database")?;
+        no_replace_file_publication_test_support::fail_next_no_replace_file_publication(
+            no_replace_file_publication_test_support::NoReplaceFilePublicationFault::ParentDirectorySynchronizationFailure,
+        );
+
+        let error = publish_file_no_replace(&source, &destination)
+            .expect_err("parent synchronization must fail");
+        assert_eq!(
+            error.phase,
+            NoReplaceFilePublicationPhase::ParentDirectorySynchronization
+        );
+        assert_eq!(error.effect, NoReplaceFilePublicationEffect::Published);
+        assert_eq!(
+            error.durability,
+            DirectoryEntryDurability::ParentSynchronizationFailed
+        );
+        assert!(!source.exists());
+        assert_eq!(fs::read(destination)?, b"complete database");
+        Ok(())
+    }
 
     #[test]
     fn owned_directory_removal_rejects_non_directories_and_removes_exact_tree() -> io::Result<()> {

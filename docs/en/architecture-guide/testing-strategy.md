@@ -82,6 +82,14 @@ Durable tests should cover, as applicable:
   composite confirmation error plus rollback facts, unrelated replacement
   safety; and unchanged bytes and
   timestamps for existing incompatible state;
+- diagnostics first creation through a complete same-parent staging carrier;
+  final-path absence until exact validation; deterministic concurrent
+  `SharedWriter` publication with every distinct session retained; cleanup
+  scoped to each invocation on losing and pre-publication faults; preservation
+  of an externally created invalid final file; known publication retention
+  across parent-synchronization failure; exact existing-invalid rejection;
+  read-only staging ignorance; Unix final permissions; and native coverage of
+  the platform publication primitive;
 - missing or ineligible operation-result rows remaining
   `OPERATION_RESULT_UNAVAILABLE`;
 - MCP rejection of hidden context and CLI-only UserAction resolution;

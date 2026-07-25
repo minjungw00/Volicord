@@ -26,6 +26,21 @@ canonical schema digest와 `contract_id=volicord.sqlite.diagnostics`로 식별�
 현재가 아닌 digest, 빠지거나 변경되거나 예상하지 않은 schema object는 migration,
 복구, importer dispatch, 형식 추론 없이 거부합니다.
 
+최종 경로가 없으면 Store는 같은 directory에 불투명하고 고유한 identity를 가진
+호출별 staging 파일 하나를 만듭니다. 정규 schema와 manifest 전체를 초기화하고
+데이터베이스를 검증한 뒤 닫으며, SQLite journal, WAL, SHM sidecar가 필요하지 않음을
+확인한 다음 파일의 permission을 강화해 동기화합니다. 그다음 기존 대상을 교체하지 않는
+원자적 연산 하나로 `diagnostics.sqlite`에 공개합니다. 따라서 최종 경로는 완전히
+검증된 diagnostics carrier만 가리킵니다. 여러 `SharedWriter` creator가 각각 준비할
+수 있지만 하나만 공개하며, 나머지 creator는 자신이 만든 staging 파일만 제거하고
+공개된 승자를 검증합니다. 각 호출자는 최종 데이터베이스를 연 뒤에만 자신의
+diagnostic session을 삽입합니다.
+
+이미 존재하는 최종 `diagnostics.sqlite`는 현재 read-write diagnostics 경로에서
+검증하고 초기화나 복구 없이 permission을 강화합니다. Read-only diagnostics 연산은
+그 최종 경로만 검사합니다. 최종 경로가 없으면 빈 결과를 반환하며 staging 파일을
+읽거나 만들지 않습니다.
+
 이 diagnostics 매니페스트는 권한 `StorageManifest`가 아니며 diagnostics 데이터베이스는
 숫자 schema version을 compatibility identity로 사용하지 않습니다. 읽기는 이
 데이터베이스를 만들지 않습니다. Diagnostics 실패는 Core 또는 User Channel 결과를 바꿀
