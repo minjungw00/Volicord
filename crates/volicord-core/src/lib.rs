@@ -6,7 +6,10 @@
 //! Adapters may depend on this crate; this crate does not depend on adapter
 //! crates.
 
-use volicord_store::{artifacts::ArtifactStoreBoundary, sqlite::SqliteStoreBoundary};
+use volicord_store::{
+    artifacts::ArtifactStoreBoundary, core_pipeline::EffectiveUserActionRecord,
+    sqlite::SqliteStoreBoundary,
+};
 use volicord_types::{
     AgentSafeUserActionResolution, ProjectId, StateRecordRef, TaskId, TypeBoundary,
     UserActionInboxItem, UserActionRequest, UserActionRequestId, UserActionStatus,
@@ -83,6 +86,20 @@ pub struct UserChannelInboxProjection {
 pub struct UserChannelInboxProjectionItem {
     pub request: UserActionRequest,
     pub inbox_item: UserActionInboxItem,
+}
+
+/// One coherent Store snapshot used to plan a local User Channel resolution.
+///
+/// This internal, nonserialized boundary keeps the exact effective record and
+/// its pending inbox projection on the same project SQLite snapshot. Terminal
+/// records have no pending projection.
+#[derive(Clone, PartialEq)]
+pub struct UserChannelInboxResolutionSnapshot {
+    pub project_id: ProjectId,
+    pub observed_state_version: u64,
+    pub observed_at: UtcTimestamp,
+    pub record: EffectiveUserActionRecord,
+    pub pending_projection: Option<UserChannelInboxProjection>,
 }
 
 /// Minimal Core service marker for validating crate boundaries.

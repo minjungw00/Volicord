@@ -270,6 +270,16 @@ timestamps, findings, events, and receipts as applicable, followed by a
 successful retry after lease release. A generic dummy write cannot substitute
 for an owner operation.
 
+Focused inbox-resolution coverage holds `ExclusiveSetup` while the project
+database is unavailable and proves that typed setup-busy is returned before
+Registry lookup, project Store opening, candidate planning, or diagnostic
+creation. After lease release, the same command retries successfully. Choice
+and evidence-observation cases exercise canonical candidate validation from one
+admitted snapshot, no-effect invalid selections, text and JSON projection,
+exact immutable replay, concurrent Core revalidation, and best-effort
+diagnostics. Native Windows execution of this case additionally proves that no
+pre-admission SQLite handle can block setup replacement or rollback.
+
 MCP lifecycle tests begin setup before runtime-session creation, reject
 mutating calls before Core effects, and keep observation-persisting reads
 no-effect when admission is unavailable. An idle server must not retain

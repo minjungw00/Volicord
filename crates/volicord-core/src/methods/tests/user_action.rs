@@ -128,6 +128,65 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
 }
 
 #[test]
+fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "admitted_resolution_snapshot")?;
+    let requested = harness.service.request_user_action(
+        user_action_request(
+            "req_admitted_resolution_snapshot",
+            "idem_admitted_resolution_snapshot",
+            false,
+            Some(2),
+            &task_id,
+            Some(&change_unit_id),
+            JudgmentKind::ProductDecision,
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let request_id = request_id(&requested);
+    let context = harness.service.context();
+    let store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
+    assert!(store.is_writable());
+
+    let snapshot = harness
+        .service
+        .user_channel_inbox_resolution_snapshot_from_store(
+            &store,
+            &UserActionRequestId::new(&request_id),
+            InvocationContext::new(
+                ProjectId::new(PROJECT_ID),
+                ActorSource::LocalUser,
+                OperationCategory::Read,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        )?
+        .expect("the admitted local User Channel should receive the resolution snapshot");
+
+    assert_eq!(snapshot.project_id, ProjectId::new(PROJECT_ID));
+    assert_eq!(snapshot.record.request.user_action_request_id, request_id);
+    assert_eq!(
+        snapshot.observed_state_version,
+        requested.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("committed request should expose its state version")
+    );
+    let projection = snapshot
+        .pending_projection
+        .expect("a pending request should include its canonical form");
+    assert_eq!(
+        projection.observed_state_version,
+        snapshot.observed_state_version
+    );
+    assert_eq!(projection.observed_at, snapshot.observed_at);
+    assert!(projection.items.iter().any(|item| {
+        item.request.user_action_request_id.as_str() == request_id
+            && item.inbox_item.user_action_request_id == item.request.user_action_request_id
+    }));
+    Ok(())
+}
+
+#[test]
 fn custom_clock_is_bounded_by_persisted_and_same_handle_floors() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let clock = ManualClock::at("2026-06-18T01:00:00Z");

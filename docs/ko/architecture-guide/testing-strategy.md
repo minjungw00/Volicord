@@ -225,6 +225,14 @@ milestone, integration-verification event, Guard hook 수집, 진단 영속화, 
 변하지 않았는지 확인한 다음 lease 해제 뒤 같은 operation의 성공적인 재시도를
 검증합니다. 일반 dummy write로 소유자 operation을 대신할 수 없습니다.
 
+집중된 inbox resolution coverage는 project database를 사용할 수 없게 한 상태에서
+`ExclusiveSetup`을 유지하고, Registry 조회, project Store open, 후보 planning, 진단 생성
+전에 typed setup-busy가 반환됨을 증명합니다. Lease 해제 뒤에는 같은 명령이 정상적으로
+재시도됩니다. Choice 및 evidence-observation case는 승인된 단일 snapshot의 정규 후보
+검증, 잘못된 선택의 no-effect, text와 JSON projection, 정확한 immutable replay, 동시
+Core 재검증, best-effort 진단을 실행합니다. 이 case를 네이티브 Windows에서 실행하면
+승인 전에 열린 SQLite handle이 setup 교체나 rollback을 막지 않음도 함께 증명합니다.
+
 MCP lifecycle 테스트는 runtime-session 생성 전에 setup을 시작하고, Core 효과 전에
 변경 call을 거부하며, 승인을 얻을 수 없을 때 관찰을 영속화하는 read도 no-effect로
 유지합니다. 유휴 server는 `SharedWriter`를 계속 보유하면 안 되며 승인은 operation마다

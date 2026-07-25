@@ -8,7 +8,7 @@ use std::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_core::{
-    Clock, CorePipelineError, CoreService, InvocationContext, PipelineResponse, SystemClock,
+    CorePipelineError, CoreService, InvocationContext, PipelineResponse,
     UserChannelInboxProjection, UserChannelInboxProjectionRequest,
 };
 use volicord_store::{
@@ -27,7 +27,7 @@ use volicord_types::{
 };
 
 use crate::cli::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
-use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
+use crate::mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError};
 use crate::project_context::{
     registered_project_for_repo, resolve_repository_root, ProjectCommandError,
 };
@@ -281,36 +281,6 @@ fn status_response(
         .map_err(Into::into)
 }
 
-pub(crate) fn canonical_user_action_inbox_items(
-    runtime_home: &Path,
-    project_id: &str,
-    task_id: &str,
-    actor_source: ActorSource,
-    verification_basis: &str,
-    session_id: Option<&str>,
-) -> Result<Vec<UserActionInboxItem>, UserCommandError> {
-    user_channel_inbox_projection(
-        runtime_home,
-        project_id,
-        task_id,
-        actor_source,
-        verification_basis,
-        session_id,
-    )?
-    .map(|projection| {
-        projection
-            .items
-            .into_iter()
-            .map(|item| item.inbox_item)
-            .collect()
-    })
-    .ok_or_else(|| {
-        UserCommandError::Runtime(
-            "Core denied the canonical User Channel inbox projection".to_owned(),
-        )
-    })
-}
-
 fn user_channel_inbox_projection(
     runtime_home: &Path,
     project_id: &str,
@@ -369,31 +339,74 @@ where
             OutputFormat::Text
         },
     };
-    let resolved = resolve_user_project(parsed.repo.as_deref(), env_var, current_dir)?;
-    let store = CoreProjectStore::open_read_only(
-        &resolved.runtime_home,
-        &ProjectId::new(&resolved.project_id),
-    )?;
-    let now = SystemClock.project_now(&store)?;
-    let record = store
-        .user_action_record(&request_id, &now)?
+    let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
+    let repo_root = resolve_repository_root(current_dir, parsed.repo.as_deref())?;
+    with_cli_runtime_home_mutation_result(&runtime_home, "cli.inbox.resolve", |context| {
+        command_inbox_resolve_admitted(context, &runtime_home, &repo_root, &request_id, &parsed)
+    })
+    .map_err(UserCommandError::from)?
+}
+
+fn command_inbox_resolve_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    runtime_home: &Path,
+    repo_root: &Path,
+    request_id: &str,
+    parsed: &ParsedInboxOptions,
+) -> Result<String, UserCommandError> {
+    context.ensure_runtime_home(runtime_home)?;
+    let project = registered_project_for_repo(runtime_home, repo_root)?;
+    if project.repo_root != repo_root {
+        return Err(UserCommandError::Runtime(
+            "registered project does not match the requested repository".to_owned(),
+        ));
+    }
+    let project_id = ProjectId::new(&project.project_internal_id);
+    let store = CoreProjectStore::open_for_mutation(context, &project_id)?;
+    if store.runtime_home() != context.runtime_home().as_path()
+        || store.project_record().project_internal_id != project.project_internal_id
+        || store.project_record().repo_root != repo_root
+    {
+        return Err(UserCommandError::Runtime(
+            "admitted project does not match the requested Runtime Home and repository".to_owned(),
+        ));
+    }
+
+    let service = CoreService::new(runtime_home);
+    let snapshot = service
+        .user_channel_inbox_resolution_snapshot_from_store(
+            &store,
+            &UserActionRequestId::new(request_id),
+            invocation(&project.project_internal_id, OperationCategory::Read),
+        )?
         .ok_or_else(|| {
             UserCommandError::Runtime("selected user action was not found".to_owned())
         })?;
-    let resolution = match record.status {
+    let resolution = match snapshot.record.status {
         UserActionStatus::Pending => {
-            let items = canonical_user_action_inbox_items(
-                &resolved.runtime_home,
-                &resolved.project_id,
-                &record.request.task_id,
-                ActorSource::LocalUser,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-                None,
-            )?;
-            let item = canonical_inbox_item(items, &request_id)?;
-            resolution_from_form(&item.form, &parsed)?
+            let projection = snapshot.pending_projection.as_ref().ok_or_else(|| {
+                UserCommandError::Runtime(
+                    "selected user action is no longer in the canonical pending inbox; refresh `volicord inbox`"
+                        .to_owned(),
+                )
+            })?;
+            let item = projection
+                .items
+                .iter()
+                .find(|item| {
+                    item.inbox_item.user_action_request_id.as_str() == request_id
+                })
+                .ok_or_else(|| {
+                    UserCommandError::Runtime(
+                        "selected user action is no longer in the canonical pending inbox; refresh `volicord inbox`"
+                            .to_owned(),
+                    )
+                })?;
+            resolution_from_form(&item.inbox_item.form, parsed)?
         }
-        _ if record.resolution.is_some() => resolution_from_immutable_request(&record, &parsed)?,
+        _ if snapshot.record.resolution.is_some() => {
+            resolution_from_immutable_request(&snapshot.record, parsed)?
+        }
         status => {
             return Err(UserCommandError::Runtime(format!(
                 "selected user action is not pending (status: {}); refresh `volicord inbox`",
@@ -401,40 +414,37 @@ where
             )));
         }
     };
-    let (stable_request_id, channel_submission_id) = stable_cli_resolution_ids(&request_id);
+    let (stable_request_id, channel_submission_id) = stable_cli_resolution_ids(request_id);
     let diagnostic_session_id = generated_id("diag_cli_inbox");
-    with_cli_runtime_home_mutation(&resolved.runtime_home, "cli.inbox.resolve", |context| {
-        let build = volicord_mcp::build_info();
-        let _ = start_diagnostic_session(
-            context,
-            DiagnosticSessionStart {
-                session_id: &diagnostic_session_id,
-                connection_id: None,
-                project_id: Some(&resolved.project_id),
-                transport: DiagnosticTransport::CliInbox,
-                host_kind: None,
-                package_version: build.package_version,
-                build_id: &build.build_id,
-            },
-        );
-        let response = resolve_user_action_from_record(
-            context,
-            UserActionResolutionRecordingInput {
-                runtime_home: &resolved.runtime_home,
-                project_id: &resolved.project_id,
-                record: &record,
-                resolution,
-                verification_basis: VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-                request_id: Some(stable_request_id),
-                channel_submission_id: Some(channel_submission_id),
-                session_id: Some(&diagnostic_session_id),
-            },
-        )
-        .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))?;
-        render_resolve_response(&response, parsed.output)
-            .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
-    })
-    .map_err(Into::into)
+    drop(store);
+
+    let build = volicord_mcp::build_info();
+    let _ = start_diagnostic_session(
+        context,
+        DiagnosticSessionStart {
+            session_id: &diagnostic_session_id,
+            connection_id: None,
+            project_id: Some(&project.project_internal_id),
+            transport: DiagnosticTransport::CliInbox,
+            host_kind: None,
+            package_version: build.package_version,
+            build_id: &build.build_id,
+        },
+    );
+    let response = resolve_user_action_from_record(
+        context,
+        UserActionResolutionRecordingInput {
+            runtime_home,
+            project_id: &project.project_internal_id,
+            record: &snapshot.record,
+            resolution,
+            verification_basis: VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            request_id: Some(stable_request_id),
+            channel_submission_id: Some(channel_submission_id),
+            session_id: Some(&diagnostic_session_id),
+        },
+    )?;
+    render_resolve_response(&response, parsed.output)
 }
 
 fn resolution_from_immutable_request(
@@ -513,21 +523,6 @@ fn resolution_from_form(
             })
         }
     }
-}
-
-fn canonical_inbox_item(
-    items: Vec<UserActionInboxItem>,
-    request_id: &str,
-) -> Result<UserActionInboxItem, UserCommandError> {
-    items
-        .into_iter()
-        .find(|item| item.user_action_request_id.as_str() == request_id)
-        .ok_or_else(|| {
-            UserCommandError::Runtime(
-                "selected user action is no longer in the canonical pending inbox; refresh `volicord inbox`"
-                    .to_owned(),
-            )
-        })
 }
 
 pub(crate) fn select_inbox_choice(
@@ -1038,7 +1033,305 @@ fn enum_text<T: serde::Serialize>(value: T) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::{error::Error, ffi::OsString, fs};
+
+    use volicord_store::diagnostics::diagnostics_db_path;
+    use volicord_test_support::{
+        core_fixtures::{
+            artifact_input_for_handle, CoreFixture, ObservationUserActionFixture,
+            UpdateScopeFixture, UserActionFixture,
+        },
+        seed_test_agent_session, TestRuntimeHomeSetup,
+    };
+    use volicord_types::{
+        AgentConnectionId, ChangeUnitOperation, EvidenceClaimId, JudgmentKind, StagedArtifactHandle,
+    };
+
     use super::*;
+
+    struct PendingChoiceFixture {
+        fixture: CoreFixture,
+        request_id: String,
+    }
+
+    struct PendingObservationFixture {
+        fixture: CoreFixture,
+        request_id: String,
+        claim_id: String,
+        artifact_id: String,
+    }
+
+    fn pending_choice_fixture(prefix: &str) -> Result<PendingChoiceFixture, Box<dyn Error>> {
+        let fixture = CoreFixture::new(prefix)?;
+        fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let session = seed_test_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+            None,
+        )?;
+        let validated = core.validate_agent_session(
+            AgentConnectionId::new(fixture.connection_id()),
+            ProjectId::new(fixture.project_id()),
+            session.runtime_session_id,
+            session.project_session_id,
+            OperationCategory::AgentWorkflow,
+        )?;
+        let invocation = InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::agent_connection(fixture.connection_id()),
+            OperationCategory::AgentWorkflow,
+            "",
+        )
+        .with_validated_agent_session(validated);
+        let intake = core.intake(
+            &fixture.mutation_context()?,
+            fixture.intake_request(
+                "req_cli_inbox_intake",
+                "idem_cli_inbox_intake",
+                false,
+                Some(0),
+            ),
+            invocation.clone(),
+        )?;
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .expect("intake should identify its task")
+            .to_owned();
+        let state_version = intake.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("intake should expose its committed state version");
+        let requested = core.request_user_action(
+            &fixture.mutation_context()?,
+            fixture.user_action_request(UserActionFixture {
+                request_id: "req_cli_inbox_user_action",
+                idempotency_key: "idem_cli_inbox_user_action",
+                dry_run: false,
+                expected_state_version: Some(state_version),
+                task_id: &task_id,
+                change_unit_id: None,
+                judgment_kind: JudgmentKind::ProductDecision,
+            }),
+            invocation,
+        )?;
+        let request_id = requested.response_value["user_action_request_summary"]
+            ["user_action_request_id"]
+            .as_str()
+            .unwrap_or_else(|| {
+                panic!(
+                    "request result should identify the pending user action: {}",
+                    requested.response_value
+                )
+            })
+            .to_owned();
+        Ok(PendingChoiceFixture {
+            fixture,
+            request_id,
+        })
+    }
+
+    fn pending_observation_fixture(
+        prefix: &str,
+    ) -> Result<PendingObservationFixture, Box<dyn Error>> {
+        let fixture = CoreFixture::new(prefix)?;
+        fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
+        let core = CoreService::new(fixture.runtime_home_path());
+        let session = seed_test_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+            None,
+        )?;
+        let validated = core.validate_agent_session(
+            AgentConnectionId::new(fixture.connection_id()),
+            ProjectId::new(fixture.project_id()),
+            session.runtime_session_id,
+            session.project_session_id,
+            OperationCategory::AgentWorkflow,
+        )?;
+        let invocation = InvocationContext::new(
+            ProjectId::new(fixture.project_id()),
+            ActorSource::agent_connection(fixture.connection_id()),
+            OperationCategory::AgentWorkflow,
+            "",
+        )
+        .with_validated_agent_session(validated);
+        let intake = core.intake(
+            &fixture.mutation_context()?,
+            fixture.intake_request(
+                "req_cli_observation_intake",
+                "idem_cli_observation_intake",
+                false,
+                Some(0),
+            ),
+            invocation.clone(),
+        )?;
+        let task_id = intake.response_value["task_ref"]["record_id"]
+            .as_str()
+            .expect("intake should identify its task")
+            .to_owned();
+        let intake_state_version = intake.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("intake should expose its committed state version");
+        let scope = core.update_scope(
+            &fixture.mutation_context()?,
+            fixture.update_scope_request(UpdateScopeFixture {
+                request_id: "req_cli_observation_scope",
+                idempotency_key: "idem_cli_observation_scope",
+                dry_run: false,
+                expected_state_version: Some(intake_state_version),
+                task_id: &task_id,
+                operation: ChangeUnitOperation::CreateCurrent,
+                scope_summary: "Exercise CLI evidence-observation resolution.",
+            }),
+            invocation.clone(),
+        )?;
+        let change_unit_id = scope.response_value["change_unit_ref"]["record_id"]
+            .as_str()
+            .expect("scope update should identify its Change Unit")
+            .to_owned();
+        let scope_state_version = scope.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("scope update should expose its committed state version");
+        let staged = core.stage_artifact(
+            &fixture.mutation_context()?,
+            fixture.stage_artifact_request(
+                "req_cli_observation_stage",
+                Some("idem_cli_observation_stage"),
+                false,
+                Some(scope_state_version),
+                &task_id,
+            ),
+            invocation.clone(),
+        )?;
+        let handle: StagedArtifactHandle =
+            serde_json::from_value(staged.response_value["staged_artifact_handle"].clone())?;
+        let staged_state_version = staged.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("staging should expose its committed state version");
+        let claim_statement = "Classify the registered artifact.";
+        let claim_id = format!(
+            "claim_{}",
+            claim_statement
+                .as_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
+        let mut record_run = fixture.record_run_request(
+            "req_cli_observation_run",
+            "idem_cli_observation_run",
+            false,
+            Some(staged_state_version),
+            &task_id,
+            &change_unit_id,
+        );
+        record_run.artifact_inputs = vec![artifact_input_for_handle(
+            "artifact_input_cli_observation",
+            handle,
+            Some("user_action_candidate"),
+            Some(claim_statement),
+        )];
+        let recorded =
+            core.record_run(&fixture.mutation_context()?, record_run, invocation.clone())?;
+        let artifact_id = recorded.response_value["registered_artifacts"][0]["artifact_id"]
+            .as_str()
+            .expect("record_run should register the staged artifact")
+            .to_owned();
+        let recorded_state_version = recorded.response_value["base"]["state_version"]
+            .as_u64()
+            .expect("record_run should expose its committed state version");
+        let requested = core.request_user_action(
+            &fixture.mutation_context()?,
+            fixture.observation_user_action_request(ObservationUserActionFixture {
+                request_id: "req_cli_observation_user_action",
+                idempotency_key: "idem_cli_observation_user_action",
+                dry_run: false,
+                expected_state_version: Some(recorded_state_version),
+                task_id: &task_id,
+                change_unit_id: &change_unit_id,
+                target_candidates: vec![EvidenceTarget::SupplementalClaim {
+                    evidence_claim_id: EvidenceClaimId::new(&claim_id),
+                    statement: claim_statement.to_owned(),
+                }],
+                artifact_candidate_ids: vec![ArtifactId::new(&artifact_id)],
+            }),
+            invocation,
+        )?;
+        let request_id = requested.response_value["user_action_request_summary"]
+            ["user_action_request_id"]
+            .as_str()
+            .unwrap_or_else(|| {
+                panic!(
+                    "request result should identify the pending user action: {}",
+                    requested.response_value
+                )
+            })
+            .to_owned();
+        Ok(PendingObservationFixture {
+            fixture,
+            request_id,
+            claim_id,
+            artifact_id,
+        })
+    }
+
+    fn choice_args(fixture: &PendingChoiceFixture, json: bool, choice: &str) -> InboxResolveArgs {
+        InboxResolveArgs {
+            user_action_request_id: fixture.request_id.clone(),
+            choice: Some(choice.to_owned()),
+            note: None,
+            criterion: None,
+            claim: None,
+            artifact: Vec::new(),
+            summary: None,
+            contradicted: false,
+            repo: Some(fixture.fixture.product_repo_path()),
+            json,
+        }
+    }
+
+    fn resolve_choice(
+        fixture: &PendingChoiceFixture,
+        json: bool,
+        choice: &str,
+    ) -> Result<String, UserCommandError> {
+        command_inbox_resolve(
+            choice_args(fixture, json, choice),
+            |name| {
+                (name == "VOLICORD_HOME")
+                    .then(|| OsString::from(fixture.fixture.runtime_home_path()))
+            },
+            &fixture.fixture.product_repo_path(),
+        )
+    }
+
+    fn resolve_observation(
+        fixture: &PendingObservationFixture,
+        claim_id: &str,
+        artifact_id: &str,
+    ) -> Result<String, UserCommandError> {
+        command_inbox_resolve(
+            InboxResolveArgs {
+                user_action_request_id: fixture.request_id.clone(),
+                choice: None,
+                note: None,
+                criterion: None,
+                claim: Some(claim_id.to_owned()),
+                artifact: vec![artifact_id.to_owned()],
+                summary: Some("The artifact supports the requested observation.".to_owned()),
+                contradicted: false,
+                repo: Some(fixture.fixture.product_repo_path()),
+                json: true,
+            },
+            |name| {
+                (name == "VOLICORD_HOME")
+                    .then(|| OsString::from(fixture.fixture.runtime_home_path()))
+            },
+            &fixture.fixture.product_repo_path(),
+        )
+    }
 
     #[test]
     fn selector_rejects_zero() {
@@ -1056,5 +1349,168 @@ mod tests {
         assert_ne!(first, other_request);
         assert_ne!(first.0, first.1);
         assert!(!first.0.contains("Approved locally"));
+    }
+
+    #[test]
+    fn inbox_resolve_admits_before_project_reads_and_retries_after_setup(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut pending = pending_choice_fixture("cli-inbox-admission")?;
+        let state_path = pending
+            .fixture
+            .runtime_home_path()
+            .join("projects")
+            .join(pending.fixture.project_id())
+            .join("state.sqlite");
+        let unavailable_path = state_path.with_extension("sqlite.setup-busy");
+        let diagnostics_path = diagnostics_db_path(pending.fixture.runtime_home_path());
+        assert!(!diagnostics_path.exists());
+        pending.fixture.release_mutation_admission();
+        let setup = TestRuntimeHomeSetup::acquire(pending.fixture.runtime_home_path())?;
+        fs::rename(&state_path, &unavailable_path)?;
+
+        let error = resolve_choice(&pending, true, "accept")
+            .expect_err("exclusive setup must reject the mutation before project reads");
+        let UserCommandError::MutationAdmission(CliMutationAdmissionError::SetupInProgress(
+            condition,
+        )) = error
+        else {
+            panic!("inbox resolution must return the typed setup condition");
+        };
+        assert_eq!(condition.code(), "runtime_home.mutation.setup_in_progress");
+        assert_eq!(condition.mutation_domain(), "cli.inbox.resolve");
+        assert!(!diagnostics_path.exists());
+
+        fs::rename(&unavailable_path, &state_path)?;
+        drop(setup);
+        let output = resolve_choice(&pending, true, "accept")?;
+        let response: Value = serde_json::from_str(&output)?;
+        assert_eq!(response["base"]["response_kind"], "result");
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "resolved"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn inbox_resolve_setup_busy_is_no_effect_then_json_replays_exactly(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut pending = pending_choice_fixture("cli-inbox-replay")?;
+        let before = pending.fixture.authority_snapshot()?;
+        let before_counts = pending.fixture.counts()?;
+        let diagnostics_path = diagnostics_db_path(pending.fixture.runtime_home_path());
+        assert!(!diagnostics_path.exists());
+        pending.fixture.release_mutation_admission();
+        let setup = TestRuntimeHomeSetup::acquire(pending.fixture.runtime_home_path())?;
+
+        let error = resolve_choice(&pending, true, "accept")
+            .expect_err("exclusive setup must reject inbox resolution without effects");
+        assert!(matches!(
+            error,
+            UserCommandError::MutationAdmission(CliMutationAdmissionError::SetupInProgress(_))
+        ));
+        assert_eq!(pending.fixture.authority_snapshot()?, before);
+        assert_eq!(pending.fixture.counts()?, before_counts);
+        assert!(!diagnostics_path.exists());
+        drop(setup);
+
+        let first = resolve_choice(&pending, true, "accept")?;
+        let response: Value = serde_json::from_str(&first)?;
+        assert_eq!(response["base"]["response_kind"], "result");
+        assert_eq!(
+            pending
+                .fixture
+                .user_action_resolution_outcome(&pending.request_id)?,
+            Some("accepted".to_owned())
+        );
+        let after_resolution = pending.fixture.authority_snapshot()?;
+        let after_resolution_counts = pending.fixture.counts()?;
+        assert_eq!(after_resolution.state_version, before.state_version + 1);
+        assert!(diagnostics_path.is_file());
+
+        let replay = resolve_choice(&pending, true, "accept")?;
+        assert_eq!(replay, first);
+        assert_eq!(
+            pending.fixture.authority_snapshot()?,
+            after_resolution,
+            "exact replay must not create a second authority mutation"
+        );
+        assert_eq!(
+            pending.fixture.counts()?,
+            after_resolution_counts,
+            "exact replay must not create a second invocation, event, or resolution"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn inbox_resolve_preserves_text_output_and_best_effort_diagnostics(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut pending = pending_choice_fixture("cli-inbox-diagnostic-failure")?;
+        pending.fixture.release_mutation_admission();
+        fs::create_dir_all(diagnostics_db_path(pending.fixture.runtime_home_path()))?;
+
+        let output = resolve_choice(&pending, false, "accept")?;
+
+        assert_eq!(output, "User action resolved\n");
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "resolved"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn inbox_resolve_preserves_canonical_choice_validation_without_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut pending = pending_choice_fixture("cli-inbox-choice-validation")?;
+        let before = pending.fixture.authority_snapshot()?;
+        let before_counts = pending.fixture.counts()?;
+        pending.fixture.release_mutation_admission();
+
+        let error = resolve_choice(&pending, true, "not-a-candidate")
+            .expect_err("an unknown canonical option must be rejected");
+
+        assert!(matches!(error, UserCommandError::Usage(_)));
+        assert!(error.to_string().contains("does not match"));
+        assert_eq!(pending.fixture.authority_snapshot()?, before);
+        assert_eq!(pending.fixture.counts()?, before_counts);
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "pending"
+        );
+        assert!(!diagnostics_db_path(pending.fixture.runtime_home_path()).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn inbox_resolve_validates_observation_candidates_without_effect() -> Result<(), Box<dyn Error>>
+    {
+        let mut pending = pending_observation_fixture("cli-inbox-observation-validation")?;
+        let before = pending.fixture.authority_snapshot()?;
+        let before_counts = pending.fixture.counts()?;
+        pending.fixture.release_mutation_admission();
+
+        let invalid_target =
+            resolve_observation(&pending, "claim_not_a_candidate", &pending.artifact_id)
+                .expect_err("an unknown evidence target must be rejected");
+        assert!(matches!(invalid_target, UserCommandError::Usage(_)));
+        assert!(invalid_target.to_string().contains("is not a candidate"));
+        assert_eq!(pending.fixture.authority_snapshot()?, before);
+        assert_eq!(pending.fixture.counts()?, before_counts);
+
+        let invalid_artifact =
+            resolve_observation(&pending, &pending.claim_id, "artifact_not_a_candidate")
+                .expect_err("an unknown artifact candidate must be rejected");
+        assert!(matches!(invalid_artifact, UserCommandError::Usage(_)));
+        assert!(invalid_artifact.to_string().contains("is not a candidate"));
+        assert_eq!(pending.fixture.authority_snapshot()?, before);
+        assert_eq!(pending.fixture.counts()?, before_counts);
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "pending"
+        );
+        assert!(!diagnostics_db_path(pending.fixture.runtime_home_path()).exists());
+        Ok(())
     }
 }

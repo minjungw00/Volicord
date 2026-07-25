@@ -88,6 +88,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | Common preflight, replay, plan selection, response, and commit orchestration. |
 | `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. |
+| `crates/volicord-core/src/methods/user_action.rs` | UserAction method boundaries and Core-owned User Channel projection, including Store-reusing coherent inbox-resolution snapshots for admitted local consumers. |
 | `crates/volicord-core/src/policy/` | Reusable access, workflow, evidence, continuity, write-ticket, and close-readiness policy. |
 | `crates/volicord-core/src/agent_session.rs` | Current Connection, project membership, mode, and managed runtime/project-session validation. |
 | `crates/volicord-core/src/authority_status.rs` | Typed status and authority-receipt correspondence. |
@@ -128,7 +129,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/guard_integration/audit.rs` | Current Guard owner, artifact, command, marker, and executable-behavior audit. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` and `hosts/codex.rs` | Source templates for managed AGENTS and Codex rule guidance, including the nested integration-verification sequence and its stop and diagnostic boundaries. |
 | `crates/volicord-cli/src/guard_command/` | Explicit `codex-command-hooks` event decoding, semantic Guard-probe filtering, and bounded source-specific observations without routed MCP payload retention. |
-| `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution. |
+| `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution, with pre-admission syntax and repository targeting followed by admitted Registry/project selection, one-snapshot candidate planning, diagnostics, Core effect, and response rendering under the same mutation context. |
 | `crates/volicord-cli/src/doctor_command.rs` | Diagnostic fact collection and rendering. |
 
 ## MCP Protocol Profiles

@@ -88,6 +88,7 @@
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | 공통 사전 점검, replay, plan 선택, 응답, commit 조율. |
 | `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. |
+| `crates/volicord-core/src/methods/user_action.rs` | UserAction 메서드 경계와 Core 소유 User Channel projection. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 inbox resolution snapshot을 얻는 경계를 포함합니다. |
 | `crates/volicord-core/src/policy/` | 재사용 접근, workflow, evidence, continuity, write-ticket, close-readiness 정책. |
 | `crates/volicord-core/src/agent_session.rs` | 현재 Connection, project membership, mode, 관리 runtime/project session 검증. |
 | `crates/volicord-core/src/authority_status.rs` | typed status와 authority receipt 대응. |
@@ -128,7 +129,7 @@
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` 및 `hosts/codex.rs` | Nested integration-verification sequence, stop 규칙, diagnostic 경계를 포함한 managed AGENTS 및 Codex rule 안내 source template. |
 | `crates/volicord-cli/src/guard_command/` | 명시적인 `codex-command-hooks` event decoding, semantic Guard probe filtering, routing된 MCP payload를 보관하지 않는 한도 있는 source별 observation. |
-| `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. |
+| `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. 승인 전에는 구문과 repository target만 처리하고, 같은 mutation context를 유지한 채 승인 뒤 Registry/project 선택, 단일 snapshot 후보 계획, 진단, Core 효과, 응답 표시를 수행합니다. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |
 
 ## MCP 프로토콜 프로필

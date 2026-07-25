@@ -19,7 +19,7 @@ use volicord_store::{
         EvidenceProducerInsert, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
     },
     guards::UnrecordedChangeRecord,
-    RuntimeHomeMutationContext, StoreError,
+    RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 use volicord_types::*;
 
@@ -72,7 +72,7 @@ use crate::policy::{
 };
 use crate::{
     CurrentUserActionProjection, UserChannelInboxProjection, UserChannelInboxProjectionItem,
-    UserChannelInboxProjectionRequest,
+    UserChannelInboxProjectionRequest, UserChannelInboxResolutionSnapshot,
 };
 
 mod close_task;

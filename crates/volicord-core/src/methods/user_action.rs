@@ -31,50 +31,98 @@ impl CoreService {
         request: UserChannelInboxProjectionRequest,
         invocation: InvocationContext,
     ) -> CoreResult<Option<UserChannelInboxProjection>> {
-        if request.project_id != invocation.project_id
-            || invocation.operation_category != OperationCategory::Read
-            || invocation.actor_source != ActorSource::LocalUser
-            || invocation.invocation_binding_basis != VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
-        {
+        if !user_channel_projection_invocation_is_authorized(&request.project_id, &invocation) {
+            return Ok(None);
+        }
+        let store = CoreProjectStore::open_read_only(self.runtime_home(), &request.project_id)?;
+        self.user_channel_inbox_projection_from_store(&store, request, invocation)
+    }
+
+    /// Projects pending user-action forms from an already-open project Store.
+    ///
+    /// The Store owns the complete SQLite read snapshot. This lets an admitted
+    /// local User Channel operation reuse its mutation-capable handle without
+    /// opening an independent read-only connection.
+    pub fn user_channel_inbox_projection_from_store(
+        &self,
+        store: &CoreProjectStore,
+        request: UserChannelInboxProjectionRequest,
+        invocation: InvocationContext,
+    ) -> CoreResult<Option<UserChannelInboxProjection>> {
+        if !user_channel_projection_is_authorized(self, store, &request.project_id, &invocation) {
             return Ok(None);
         }
 
-        let store = CoreProjectStore::open_read_only(self.runtime_home(), &request.project_id)?;
-        let Some((project_state, observed_at, records)) = store.with_read_snapshot(|store| {
-            if !store.task_exists(&request.task_id)? {
-                return Ok(None);
-            }
-            let project_state = store.project_state()?;
-            let observed_at = self.project_store_now(store)?;
-            let records = store.pending_user_action_records(&request.task_id, &observed_at)?;
-            Ok(Some((project_state, observed_at, records)))
+        let Some((project_state, observed_at, records)) = store.with_read_snapshot(|snapshot| {
+            user_channel_inbox_projection_records(self, snapshot, &request.task_id)
         })?
         else {
             return Ok(None);
         };
-        let items = records
-            .iter()
-            .map(|record| {
-                let request = user_action_from_record(record, project_state.state_version)?;
-                let inbox_item = user_action_inbox_item_from_request(
-                    record,
-                    request.clone(),
-                    project_state.state_version,
-                )?;
-                Ok(UserChannelInboxProjectionItem {
-                    request,
-                    inbox_item,
-                })
+        user_channel_inbox_projection_from_records(
+            request.project_id,
+            request.task_id,
+            project_state,
+            observed_at,
+            records,
+        )
+        .map(Some)
+    }
+
+    /// Reads the exact effective request and its pending form from one Store
+    /// snapshot for an admitted local User Channel resolution.
+    pub fn user_channel_inbox_resolution_snapshot_from_store(
+        &self,
+        store: &CoreProjectStore,
+        user_action_request_id: &UserActionRequestId,
+        invocation: InvocationContext,
+    ) -> CoreResult<Option<UserChannelInboxResolutionSnapshot>> {
+        let project_id = invocation.project_id.clone();
+        if !user_channel_projection_is_authorized(self, store, &project_id, &invocation) {
+            return Ok(None);
+        }
+
+        let Some((project_state, observed_at, record, pending_records)) = store
+            .with_read_snapshot(|snapshot| {
+                let project_state = snapshot.project_state()?;
+                let observed_at = self.project_store_now(snapshot)?;
+                let Some(record) =
+                    snapshot.user_action_record(user_action_request_id.as_str(), &observed_at)?
+                else {
+                    return Ok(None);
+                };
+                let pending_records = if record.status == UserActionStatus::Pending
+                    && snapshot.task_exists(&TaskId::new(&record.request.task_id))?
+                {
+                    Some(snapshot.pending_user_action_records(
+                        &TaskId::new(&record.request.task_id),
+                        &observed_at,
+                    )?)
+                } else {
+                    None
+                };
+                Ok(Some((project_state, observed_at, record, pending_records)))
+            })?
+        else {
+            return Ok(None);
+        };
+        let pending_projection = pending_records
+            .map(|records| {
+                user_channel_inbox_projection_from_records(
+                    project_id.clone(),
+                    TaskId::new(&record.request.task_id),
+                    project_state.clone(),
+                    observed_at.clone(),
+                    records,
+                )
             })
-            .collect::<CoreResult<Vec<_>>>()?;
-        let user_channel_availability = user_channel_availability();
-        Ok(Some(UserChannelInboxProjection {
-            project_id: request.project_id,
-            task_id: request.task_id,
+            .transpose()?;
+        Ok(Some(UserChannelInboxResolutionSnapshot {
+            project_id,
             observed_state_version: project_state.state_version,
             observed_at,
-            user_channel_availability,
-            items,
+            record,
+            pending_projection,
         }))
     }
 
@@ -305,6 +353,79 @@ impl CoreService {
             replayed: true,
         }))
     }
+}
+
+fn user_channel_projection_is_authorized(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_id: &ProjectId,
+    invocation: &InvocationContext,
+) -> bool {
+    store.runtime_home() == service.runtime_home()
+        && store.project_record().project_internal_id == project_id.as_str()
+        && user_channel_projection_invocation_is_authorized(project_id, invocation)
+}
+
+fn user_channel_projection_invocation_is_authorized(
+    project_id: &ProjectId,
+    invocation: &InvocationContext,
+) -> bool {
+    project_id == &invocation.project_id
+        && invocation.operation_category == OperationCategory::Read
+        && invocation.actor_source == ActorSource::LocalUser
+        && invocation.invocation_binding_basis == VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+}
+
+fn user_channel_inbox_projection_records(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    task_id: &TaskId,
+) -> StoreResult<
+    Option<(
+        ProjectStateHeader,
+        UtcTimestamp,
+        Vec<EffectiveUserActionRecord>,
+    )>,
+> {
+    if !store.task_exists(task_id)? {
+        return Ok(None);
+    }
+    let project_state = store.project_state()?;
+    let observed_at = service.project_store_now(store)?;
+    let records = store.pending_user_action_records(task_id, &observed_at)?;
+    Ok(Some((project_state, observed_at, records)))
+}
+
+fn user_channel_inbox_projection_from_records(
+    project_id: ProjectId,
+    task_id: TaskId,
+    project_state: ProjectStateHeader,
+    observed_at: UtcTimestamp,
+    records: Vec<EffectiveUserActionRecord>,
+) -> CoreResult<UserChannelInboxProjection> {
+    let items = records
+        .iter()
+        .map(|record| {
+            let request = user_action_from_record(record, project_state.state_version)?;
+            let inbox_item = user_action_inbox_item_from_request(
+                record,
+                request.clone(),
+                project_state.state_version,
+            )?;
+            Ok(UserChannelInboxProjectionItem {
+                request,
+                inbox_item,
+            })
+        })
+        .collect::<CoreResult<Vec<_>>>()?;
+    Ok(UserChannelInboxProjection {
+        project_id,
+        task_id,
+        observed_state_version: project_state.state_version,
+        observed_at,
+        user_channel_availability: user_channel_availability(),
+        items,
+    })
 }
 
 fn agent_safe_user_action_resolution(
