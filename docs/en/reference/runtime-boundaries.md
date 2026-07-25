@@ -160,6 +160,18 @@ read-only opens remain available without it. Setup derives the same Store
 context from its one `ExclusiveSetup` permit and does not acquire a nested
 shared lease.
 
+Once Store creates `RuntimeHomeMutationContext`, its
+`CanonicalRuntimeHomePath` is the sole Runtime Home identity for every
+mutation-dependent read, plan, Registry lookup, Core service, Store handle,
+diagnostic write, effect, and response inside that admission. The selected path
+spelling remains a pre-admission routing input only. Admitted components retain
+and compare the typed canonical identity; they do not independently
+canonicalize or authorize another path. Lexical and symlink aliases that resolve
+to the same home therefore share one authority coordinate, while a context for
+a different home is rejected before an effect. Read-only path selection and
+read-only Core or Store construction remain separate from this admitted
+binding.
+
 An ordinary writer that conflicts with setup returns
 `runtime_home.mutation.setup_in_progress` before any Runtime Home effect. Its
 bounded facts identify the canonical Runtime Home, mutation domain, requested

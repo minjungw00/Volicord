@@ -144,6 +144,15 @@ Connection mode/remove/verification writes, managed-launch lease operations,
 and diagnostic persistence. Pure status, list, lookup, validation, and export
 reads do not acquire a writer lease.
 
+After admission, each mutating command derives Registry selection, setup
+planning, Core construction, Store access, diagnostics, effects, and result
+construction from the context's canonical Runtime Home. It does not reuse the
+pre-admission spelling as an authority coordinate. Consequently `inbox
+resolve`, `changes reconcile`, and the other admitted commands accept lexical
+or symlink aliases for the same home without selecting another Registry or
+failing Core/Store authorization. A genuinely different admitted home remains
+a mismatch and produces no effect.
+
 If setup owns `ExclusiveSetup`, a mutating command returns the typed
 `runtime_home.mutation.setup_in_progress` non-success result, performs no
 mutation, and advises retry after setup completes. The diagnostic includes the

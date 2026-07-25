@@ -55,6 +55,13 @@ second resolution.
 
 Only the local CLI adapter may enter this method. An Agent Connection, MCP
 adapter, Guard observation, or direct Store caller cannot supply a resolution.
+The adapter admits the selected Runtime Home before Registry lookup and derives
+the project selection, coherent request snapshot, diagnostic session, Core
+service, Store handle, resolution effect, replay, and response from that one
+canonical admitted identity. A lexical or symlink alias for the same Runtime
+Home therefore resolves and replays the same request; another Runtime Home is
+rejected by the existing project, invocation, and Core/Store authorization
+checks before mutation.
 
 ### Operation time
 

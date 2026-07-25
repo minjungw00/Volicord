@@ -86,8 +86,11 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
         project_id: ProjectId::new(PROJECT_ID),
         task_id: TaskId::new(&task_id),
     };
-    let cli_projection = harness
-        .service
+    let read_only_service = CoreService::for_read_only_with_clock(
+        &harness.runtime_home_path,
+        ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
+    );
+    let cli_projection = read_only_service
         .user_channel_inbox_projection(
             projection_request.clone(),
             InvocationContext::new(
@@ -112,8 +115,7 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
     );
     assert!(cli_projection.user_channel_availability.paths[0].available);
 
-    assert!(harness
-        .service
+    assert!(read_only_service
         .user_channel_inbox_projection(
             projection_request.clone(),
             InvocationContext::new(
@@ -148,6 +150,7 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
     let context = harness.service.context();
     let store = CoreProjectStore::open_for_mutation(&context, &ProjectId::new(PROJECT_ID))?;
     assert!(store.is_writable());
+    assert_eq!(store.canonical_runtime_home(), Some(context.runtime_home()));
 
     let snapshot = harness
         .service
@@ -183,6 +186,62 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
         item.request.user_action_request_id.as_str() == request_id
             && item.inbox_item.user_action_request_id == item.request.user_action_request_id
     }));
+
+    let read_only_service = CoreService::for_read_only(&harness.runtime_home_path);
+    assert!(read_only_service
+        .user_channel_inbox_resolution_snapshot_from_store(
+            &store,
+            &UserActionRequestId::new(&request_id),
+            InvocationContext::new(
+                ProjectId::new(PROJECT_ID),
+                ActorSource::LocalUser,
+                OperationCategory::Read,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        )?
+        .is_none());
+    assert!(harness
+        .service
+        .user_channel_inbox_resolution_snapshot_from_store(
+            &store,
+            &UserActionRequestId::new(&request_id),
+            InvocationContext::new(
+                ProjectId::new("project_other"),
+                ActorSource::LocalUser,
+                OperationCategory::Read,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        )?
+        .is_none());
+    assert!(harness
+        .service
+        .user_channel_inbox_resolution_snapshot_from_store(
+            &store,
+            &UserActionRequestId::new(&request_id),
+            InvocationContext::new(
+                ProjectId::new(PROJECT_ID),
+                ActorSource::LocalUser,
+                OperationCategory::Read,
+                "test:wrong_user_channel_basis",
+            ),
+        )?
+        .is_none());
+
+    let other_home = TempRuntimeHome::new("user-channel-other-runtime-home")?;
+    let other_mutation = TestRuntimeHomeMutation::acquire(other_home.path())?;
+    let other_service = CoreService::for_mutation(&other_mutation.context()?);
+    assert!(other_service
+        .user_channel_inbox_resolution_snapshot_from_store(
+            &store,
+            &UserActionRequestId::new(&request_id),
+            InvocationContext::new(
+                ProjectId::new(PROJECT_ID),
+                ActorSource::LocalUser,
+                OperationCategory::Read,
+                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            ),
+        )?
+        .is_none());
     Ok(())
 }
 
@@ -1869,7 +1928,7 @@ fn read_snapshot_prevents_mixed_projection_rows_across_concurrent_resolution_com
                 let context = mutation
                     .context()
                     .expect("concurrent resolution mutation context");
-                CoreService::with_clock(&runtime_home, writer_clock)
+                CoreService::for_mutation_with_clock(&context, writer_clock)
                     .resolve_user_action(
                         &context,
                         resolve_user_action_request(
@@ -1979,10 +2038,10 @@ fn concurrent_distinct_submissions_create_only_one_resolution() -> Result<(), Bo
             let action_id = action_id.clone();
             let barrier = Arc::clone(&barrier);
             handles.push(scope.spawn(move || {
-                let service = CoreService::new(&runtime_home);
                 let mutation = TestRuntimeHomeMutation::acquire(&runtime_home)
                     .map_err(|error| error.to_string())?;
                 let context = mutation.context().map_err(|error| error.to_string())?;
+                let service = CoreService::for_mutation(&context);
                 let request = resolve_user_action_request(
                     &format!("req_concurrent_resolution_{index}"),
                     &format!("submission_concurrent_{index}"),

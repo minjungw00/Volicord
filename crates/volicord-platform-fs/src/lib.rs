@@ -19,9 +19,10 @@ use volicord_types::{
 mod mutation_lease;
 
 pub use mutation_lease::{
-    CanonicalRuntimeHomePath, RuntimeHomeMutationBusy, RuntimeHomeMutationLease,
-    RuntimeHomeMutationLeaseError, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
-    RuntimeHomeMutationLockIdentity, RuntimeHomeMutationPermit, RuntimeHomeMutationWaitPolicy,
+    canonical_runtime_home_path, CanonicalRuntimeHomePath, RuntimeHomeMutationBusy,
+    RuntimeHomeMutationLease, RuntimeHomeMutationLeaseError, RuntimeHomeMutationLeaseMode,
+    RuntimeHomeMutationLeaseOutcome, RuntimeHomeMutationLockIdentity, RuntimeHomeMutationPermit,
+    RuntimeHomeMutationWaitPolicy,
 };
 
 #[cfg(windows)]

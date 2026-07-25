@@ -8,7 +8,8 @@ use serde_json::{json, Value};
 use volicord_store::{
     bootstrap::{
         ensure_project_for_repo, forget_project, list_projects, project_record_by_repo_root,
-        rename_project, ProjectRecord, RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
+        project_record_by_repo_root_admitted, rename_project, ProjectRecord,
+        RepoProjectRegistration, ACTIVE_PROJECT_STATUS,
     },
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     RuntimeHomeMutationContext, StoreError,
@@ -160,9 +161,8 @@ fn command_rename(
     options: ProjectRenameArgs,
     current_dir: &Path,
 ) -> Result<String, ProjectCommandError> {
-    let runtime_home = context.runtime_home().as_path();
     let repo_root = resolve_repository_root(current_dir, options.repo.as_deref())?;
-    let project = registered_project_for_repo(runtime_home, &repo_root)?;
+    let project = registered_project_for_repo_admitted(context, &repo_root)?;
     let project = rename_project(context, &project.project_internal_id, &options.name, None)?;
     render_project_action_output(
         output_format(options.json),
@@ -181,12 +181,12 @@ fn command_forget(
     let project = match options.selector.as_ref() {
         Some(selector) if selector_is_path(selector, current_dir)? => {
             let repo_root = resolve_repository_root(current_dir, Some(Path::new(selector)))?;
-            registered_project_for_repo(runtime_home, &repo_root)?
+            registered_project_for_repo_admitted(context, &repo_root)?
         }
         Some(name) => project_by_name(runtime_home, name)?,
         None => {
             let repo_root = resolve_repository_root(current_dir, None)?;
-            registered_project_for_repo(runtime_home, &repo_root)?
+            registered_project_for_repo_admitted(context, &repo_root)?
         }
     };
     if !forget_project(context, &project.project_internal_id)? {
@@ -203,116 +203,6 @@ fn output_format(json: bool) -> OutputFormat {
         OutputFormat::Json
     } else {
         OutputFormat::Text
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use volicord_platform_fs::{
-        RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
-        RuntimeHomeMutationWaitPolicy,
-    };
-    use volicord_store::bootstrap::{
-        initialize_runtime_home, project_record_by_repo_root, register_project,
-        ProjectRegistration, ACTIVE_PROJECT_STATUS,
-    };
-    use volicord_test_support::{with_test_runtime_home_setup, TempRuntimeHome};
-
-    use super::*;
-
-    #[test]
-    fn project_writers_are_typed_no_effect_while_setup_is_exclusive_and_resume_after_release(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = TempRuntimeHome::new("cli-project-setup-busy")?;
-        let existing_repo = fixture.create_product_repo("existing-repo")?;
-        let candidate_repo = fixture.create_product_repo("candidate-repo")?;
-        fs::create_dir(candidate_repo.join(".git"))?;
-        with_test_runtime_home_setup(fixture.path(), |context| {
-            initialize_runtime_home(
-                context,
-                fixture.path(),
-                "runtime_home_cli_project_busy",
-                "{}",
-            )?;
-            register_project(
-                context,
-                ProjectRegistration {
-                    project_id: "project_existing".to_owned(),
-                    repo_root: existing_repo.clone(),
-                    project_home: None,
-                    status: ACTIVE_PROJECT_STATUS.to_owned(),
-                    metadata_json: "{}".to_owned(),
-                },
-            )?;
-            Ok(())
-        })?;
-        let registry_before = fs::read(fixture.registry_db_path())?;
-        let outcome = RuntimeHomeMutationLease::acquire(
-            fixture.path(),
-            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
-            RuntimeHomeMutationWaitPolicy::Immediate,
-        )?;
-        let RuntimeHomeMutationLeaseOutcome::Acquired(exclusive) = outcome else {
-            panic!("test setup must acquire ExclusiveSetup");
-        };
-        let env = |name: &str| (name == "VOLICORD_HOME").then(|| OsString::from(fixture.path()));
-
-        let cases = [
-            (
-                ProjectCommand::Use(ProjectUseArgs {
-                    path: Some(candidate_repo.clone()),
-                    json: true,
-                }),
-                "cli.project.use",
-            ),
-            (
-                ProjectCommand::Rename(ProjectRenameArgs {
-                    name: "Renamed While Busy".to_owned(),
-                    repo: Some(existing_repo.clone()),
-                    json: true,
-                }),
-                "cli.project.rename",
-            ),
-            (
-                ProjectCommand::Forget(ProjectForgetArgs {
-                    selector: Some("project_existing".to_owned()),
-                    json: true,
-                }),
-                "cli.project.forget",
-            ),
-        ];
-        for (command, expected_domain) in cases {
-            let error = run_project_command(ProjectArgs { command }, env, &existing_repo)
-                .expect_err("project mutation must be rejected while setup is exclusive");
-            let ProjectCommandError::MutationAdmission(CliMutationAdmissionError::SetupInProgress(
-                condition,
-            )) = error
-            else {
-                panic!("project mutation must return the typed setup condition: {error}");
-            };
-            assert_eq!(condition.code(), "runtime_home.mutation.setup_in_progress");
-            assert_eq!(condition.mutation_domain(), expected_domain);
-            assert!(condition.retryable());
-            assert_eq!(fs::read(fixture.registry_db_path())?, registry_before);
-        }
-        assert!(project_record_by_repo_root(fixture.path(), &candidate_repo)?.is_none());
-        let existing = project_record_by_repo_root(fixture.path(), &existing_repo)?
-            .expect("busy project rename/forget must preserve the project");
-        assert_eq!(existing.project_name, "project_existing");
-        drop(exclusive);
-
-        run_project_command(
-            ProjectArgs {
-                command: ProjectCommand::Use(ProjectUseArgs {
-                    path: Some(candidate_repo.clone()),
-                    json: true,
-                }),
-            },
-            env,
-            &candidate_repo,
-        )?;
-        assert!(project_record_by_repo_root(fixture.path(), &candidate_repo)?.is_some());
-        Ok(())
     }
 }
 
@@ -391,6 +281,18 @@ pub(crate) fn registered_project_for_repo(
     repo_root: &Path,
 ) -> Result<ProjectRecord, ProjectCommandError> {
     project_record_by_repo_root(runtime_home, repo_root)?.ok_or_else(|| {
+        ProjectCommandError::runtime(format!(
+            "project is not registered for repository {}; run `volicord project use`",
+            repo_root.display()
+        ))
+    })
+}
+
+pub(crate) fn registered_project_for_repo_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    repo_root: &Path,
+) -> Result<ProjectRecord, ProjectCommandError> {
+    project_record_by_repo_root_admitted(context, repo_root)?.ok_or_else(|| {
         ProjectCommandError::runtime(format!(
             "project is not registered for repository {}; run `volicord project use`",
             repo_root.display()
@@ -560,4 +462,109 @@ fn absolute_path(current_dir: &Path, path: PathBuf) -> PathBuf {
 
 fn path_text(path: &Path) -> String {
     path.display().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use volicord_platform_fs::{
+        RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
+        RuntimeHomeMutationWaitPolicy,
+    };
+    use volicord_store::bootstrap::{
+        initialize_runtime_home, project_record_by_repo_root, register_project,
+        ProjectRegistration, ACTIVE_PROJECT_STATUS,
+    };
+    use volicord_test_support::{with_test_runtime_home_setup, TempRuntimeHome};
+
+    use super::*;
+
+    #[test]
+    fn project_writers_are_typed_no_effect_while_setup_is_exclusive_and_resume_after_release(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("cli-project-setup-busy")?;
+        let existing_repo = fixture.create_product_repo("existing-repo")?;
+        let candidate_repo = fixture.create_product_repo("candidate-repo")?;
+        fs::create_dir(candidate_repo.join(".git"))?;
+        with_test_runtime_home_setup(fixture.path(), |context| {
+            initialize_runtime_home(context, "runtime_home_cli_project_busy", "{}")?;
+            register_project(
+                context,
+                ProjectRegistration {
+                    project_id: "project_existing".to_owned(),
+                    repo_root: existing_repo.clone(),
+                    project_home: None,
+                    status: ACTIVE_PROJECT_STATUS.to_owned(),
+                    metadata_json: "{}".to_owned(),
+                },
+            )?;
+            Ok(())
+        })?;
+        let registry_before = fs::read(fixture.registry_db_path())?;
+        let outcome = RuntimeHomeMutationLease::acquire(
+            fixture.path(),
+            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+            RuntimeHomeMutationWaitPolicy::Immediate,
+        )?;
+        let RuntimeHomeMutationLeaseOutcome::Acquired(exclusive) = outcome else {
+            panic!("test setup must acquire ExclusiveSetup");
+        };
+        let env = |name: &str| (name == "VOLICORD_HOME").then(|| OsString::from(fixture.path()));
+
+        let cases = [
+            (
+                ProjectCommand::Use(ProjectUseArgs {
+                    path: Some(candidate_repo.clone()),
+                    json: true,
+                }),
+                "cli.project.use",
+            ),
+            (
+                ProjectCommand::Rename(ProjectRenameArgs {
+                    name: "Renamed While Busy".to_owned(),
+                    repo: Some(existing_repo.clone()),
+                    json: true,
+                }),
+                "cli.project.rename",
+            ),
+            (
+                ProjectCommand::Forget(ProjectForgetArgs {
+                    selector: Some("project_existing".to_owned()),
+                    json: true,
+                }),
+                "cli.project.forget",
+            ),
+        ];
+        for (command, expected_domain) in cases {
+            let error = run_project_command(ProjectArgs { command }, env, &existing_repo)
+                .expect_err("project mutation must be rejected while setup is exclusive");
+            let ProjectCommandError::MutationAdmission(CliMutationAdmissionError::SetupInProgress(
+                condition,
+            )) = error
+            else {
+                panic!("project mutation must return the typed setup condition: {error}");
+            };
+            assert_eq!(condition.code(), "runtime_home.mutation.setup_in_progress");
+            assert_eq!(condition.mutation_domain(), expected_domain);
+            assert!(condition.retryable());
+            assert_eq!(fs::read(fixture.registry_db_path())?, registry_before);
+        }
+        assert!(project_record_by_repo_root(fixture.path(), &candidate_repo)?.is_none());
+        let existing = project_record_by_repo_root(fixture.path(), &existing_repo)?
+            .expect("busy project rename/forget must preserve the project");
+        assert_eq!(existing.project_name, "project_existing");
+        drop(exclusive);
+
+        run_project_command(
+            ProjectArgs {
+                command: ProjectCommand::Use(ProjectUseArgs {
+                    path: Some(candidate_repo.clone()),
+                    json: true,
+                }),
+            },
+            env,
+            &candidate_repo,
+        )?;
+        assert!(project_record_by_repo_root(fixture.path(), &candidate_repo)?.is_some());
+        Ok(())
+    }
 }

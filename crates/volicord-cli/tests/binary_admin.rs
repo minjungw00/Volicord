@@ -371,12 +371,7 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
     assert!(schema_less_master_before.is_empty());
     let no_profile_home = fixture._temporary_root.root_path().join("no-profile-home");
     with_test_runtime_home_setup(&no_profile_home, |context| {
-        initialize_runtime_home(
-            context,
-            &no_profile_home,
-            "runtime_home_without_profile",
-            "{}",
-        )?;
+        initialize_runtime_home(context, "runtime_home_without_profile", "{}")?;
         Ok(())
     })?;
     let no_profile_registry = registry_db_path(&no_profile_home);
@@ -390,12 +385,7 @@ fn init_dry_run_is_read_only_for_every_initial_registry_state() -> Result<(), Bo
         .ok_or("test binary path has no parent")?
         .to_path_buf();
     with_test_runtime_home_setup(&current_profile_home, |context| {
-        initialize_runtime_home(
-            context,
-            &current_profile_home,
-            "runtime_home_with_current_profile",
-            "{}",
-        )?;
+        initialize_runtime_home(context, "runtime_home_with_current_profile", "{}")?;
         write_installation_profile(
             context,
             InstallationProfileRegistration {
@@ -845,12 +835,7 @@ fn every_connection_command_rejects_unusable_explicit_home_without_mutation_or_f
         .root_path()
         .join("no-profile-explicit-home");
     with_test_runtime_home_setup(&no_profile_home, |context| {
-        initialize_runtime_home(
-            context,
-            &no_profile_home,
-            "runtime_home_without_profile",
-            "{}",
-        )?;
+        initialize_runtime_home(context, "runtime_home_without_profile", "{}")?;
         Ok(())
     })?;
 

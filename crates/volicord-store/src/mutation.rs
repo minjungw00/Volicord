@@ -244,22 +244,19 @@ impl<'lease> RuntimeHomeMutationContext<'lease> {
         }
     }
 
-    /// Requires a selected path to resolve to this context's exact Runtime Home.
-    pub fn ensure_runtime_home(&self, runtime_home: &Path) -> StoreResult<()> {
-        let matches_target =
-            self.permit
-                .matches_target(runtime_home)
-                .map_err(|error| StoreError::InvalidInput {
-                    detail: format!("Runtime Home mutation target could not be verified: {error}"),
-                })?;
-        if matches_target {
+    /// Requires an already-canonical identity to be this context's exact Runtime Home.
+    pub fn ensure_runtime_home_identity(
+        &self,
+        runtime_home: &CanonicalRuntimeHomePath,
+    ) -> StoreResult<()> {
+        if runtime_home == &self.runtime_home {
             Ok(())
         } else {
             Err(StoreError::InvalidInput {
                 detail: format!(
                     "mutation context for {} cannot authorize Runtime Home {}",
                     self.runtime_home.as_path().display(),
-                    runtime_home.display()
+                    runtime_home.as_path().display()
                 ),
             })
         }
@@ -309,7 +306,7 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("mutation-context-shared-writer")?;
         with_test_runtime_home_setup(fixture.path(), |context| {
-            initialize_runtime_home(context, fixture.path(), "runtime_home_shared_writer", "{}")?;
+            initialize_runtime_home(context, "runtime_home_shared_writer", "{}")?;
             Ok(())
         })?;
         let admission = TestRuntimeHomeAdmission::shared(fixture.path())?;
@@ -341,9 +338,8 @@ mod tests {
         let admission = TestRuntimeHomeAdmission::shared(fixture.path())?;
         let context = admission.context()?;
 
-        let error =
-            prepare_runtime_home(&context, fixture.path(), "runtime_home_shared_setup", "{}")
-                .expect_err("setup staging requires ExclusiveSetup");
+        let error = prepare_runtime_home(&context, "runtime_home_shared_setup", "{}")
+            .expect_err("setup staging requires ExclusiveSetup");
 
         assert!(matches!(error, StoreError::InvalidInput { .. }));
         assert!(error.to_string().contains("ExclusiveSetup"));
@@ -357,12 +353,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("mutation-context-exclusive-setup")?;
         with_test_runtime_home_setup(fixture.path(), |context| {
             assert_eq!(context.mode(), RuntimeHomeMutationLeaseMode::ExclusiveSetup);
-            initialize_runtime_home(
-                context,
-                fixture.path(),
-                "runtime_home_exclusive_setup",
-                "{}",
-            )?;
+            initialize_runtime_home(context, "runtime_home_exclusive_setup", "{}")?;
             write_installation_profile(
                 context,
                 InstallationProfileRegistration {

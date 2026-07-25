@@ -117,6 +117,15 @@ project database helper는 Store 내부 전용이며 그 context를 요구합니
 checkpoint, publication 확인, rollback에 전달합니다. 충돌하면 transaction, artifact
 staging, observation 효과 전에 `runtime_home.mutation.setup_in_progress`를 반환합니다.
 
+Core 구성도 이 경계를 따릅니다. `CoreService::for_read_only(path)`는 읽기 전용 경로
+binding을 유지하고, `CoreService::for_mutation(context)`는 별도 경로를 받지 않은 채
+context의 `CanonicalRuntimeHomePath`를 유지합니다.
+`CoreProjectStore::open_for_mutation(context, project_id)`도 같은 typed identity를
+유지합니다. 변경 권한 검사는 유지된 Core와 Store identity를 직접 비교하며 읽기 전용과
+승인된 binding의 혼용 또는 다른 Runtime Home을 거부합니다. 어느 경로도 다시
+canonicalize하지 않습니다. 승인된 Registry와 setup helper도 두 번째 경로를 받지 않고
+context에서 Runtime Home을 파생합니다.
+
 새 프로젝트에서 bootstrap은 SQLite 현재 UTC로 `project_state.created_at`과
 `project_state.updated_at`을 초기화합니다. 기존 프로젝트를 다시 등록하면 정확한
 `updated_at` 정규 시계 하한을 검증하고 보존하며 등록 upsert는 담당 문서가 허용한 등록

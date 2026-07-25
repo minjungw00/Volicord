@@ -207,9 +207,8 @@ pub(super) fn provision_init(
     lease: &RuntimeHomeMutationLease,
     context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
-    ensure_init_request_matches_lease(&request, process, lease)?;
     let dry_run = request.parsed.dry_run;
-    let plan = plan_init_provisioning(request, process)?;
+    let plan = plan_init_provisioning(context, request, process)?;
     if dry_run {
         let planned_changes = plan_init_changes(InitPlannedChanges {
             runtime_home: &plan.runtime_home,
@@ -240,41 +239,16 @@ pub(super) fn provision_init(
     apply_init_provisioning(plan, process, lease, context)
 }
 
-fn ensure_init_request_matches_lease(
-    request: &InitProvisioningRequest<'_>,
-    process: &impl ConnectionProcess,
-    lease: &RuntimeHomeMutationLease,
-) -> Result<(), ConnectionCommandError> {
-    let selected = selected_runtime_home_path(
-        request.parsed.explicit_runtime_home.as_deref(),
-        |name| process.env_var(name),
-        request.current_dir,
-    )?;
-    ensure_setup_lease_target(lease, &selected)
-}
-
-fn ensure_setup_lease_target(
-    lease: &RuntimeHomeMutationLease,
-    selected: &Path,
-) -> Result<(), ConnectionCommandError> {
-    if lease.mode() != RuntimeHomeMutationLeaseMode::ExclusiveSetup {
-        return Err(ConnectionCommandError::runtime(
-            "setup requires an exclusive Runtime Home mutation lease",
-        ));
-    }
-    if lease
-        .matches_target(selected)
-        .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
-    {
-        Ok(())
-    } else {
-        Err(ConnectionCommandError::runtime(
-            "setup request does not match the acquired canonical Runtime Home lease",
-        ))
-    }
-}
-
 fn plan_init_provisioning(
+    context: &RuntimeHomeMutationContext<'_>,
+    request: InitProvisioningRequest<'_>,
+    process: &impl ConnectionProcess,
+) -> Result<InitProvisioningPlan, ConnectionCommandError> {
+    plan_init_provisioning_read_only(context.runtime_home().as_path(), request, process)
+}
+
+fn plan_init_provisioning_read_only(
+    runtime_home: &Path,
     request: InitProvisioningRequest<'_>,
     process: &impl ConnectionProcess,
 ) -> Result<InitProvisioningPlan, ConnectionCommandError> {
@@ -287,11 +261,7 @@ fn plan_init_provisioning(
         .as_deref()
         .ok_or_else(|| ConnectionCommandError::usage("--repo is required"))?;
     let repo_root = resolve_init_repo_root(request.current_dir, repo, host_kind, parsed.mode)?;
-    let runtime_home = selected_runtime_home_path(
-        parsed.explicit_runtime_home.as_deref(),
-        |name| process.env_var(name),
-        request.current_dir,
-    )?;
+    let runtime_home = runtime_home.to_path_buf();
     let runtime_home_state = inspect_runtime_home_bootstrap(&runtime_home)?;
     let runtime_home_absent = matches!(&runtime_home_state, RuntimeHomeBootstrapState::Absent);
     let mut store_inputs = if matches!(&runtime_home_state, RuntimeHomeBootstrapState::Ready(_)) {
@@ -450,16 +420,13 @@ fn plan_init_provisioning(
 fn build_setup_plan(plan: &InitProvisioningPlan) -> Result<SetupPlan, ConnectionCommandError> {
     let runtime_home = if plan.runtime_home_absent {
         RuntimeHomePlan::Create {
-            final_path: plan.runtime_home.clone(),
             runtime_home_id: runtime_home_id_for_path(&plan.runtime_home)
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
             metadata_json: ADMIN_METADATA_JSON.to_owned(),
             installation: init_installation_registration(&plan.profile_plan),
         }
     } else {
-        RuntimeHomePlan::Validate {
-            final_path: plan.runtime_home.clone(),
-        }
+        RuntimeHomePlan::Validate
     };
 
     let mut registry_mutations = Vec::new();
@@ -672,7 +639,7 @@ fn apply_init_provisioning(
     lease: &RuntimeHomeMutationLease,
     context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
-    ensure_setup_lease_target(lease, &plan.runtime_home)?;
+    context.ensure_runtime_home_identity(lease.target())?;
     validate_init_connection_expectation(&plan)?;
     let setup_plan = build_setup_plan(&plan)?;
     let mut prepared = match PreparedSetup::prepare(setup_plan, context) {
@@ -705,7 +672,6 @@ fn apply_init_provisioning(
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
         let (_, _profile) = initialize_runtime_home_with_installation(
             context,
-            &plan.runtime_home,
             &runtime_home_id,
             ADMIN_METADATA_JSON,
             init_installation_registration(&plan.profile_plan),
@@ -881,7 +847,6 @@ fn apply_init_provisioning(
         let expected_integration_revision = connection_integration_revision(&connection)?;
         let mut verification = verify_connection(
             context,
-            &plan.runtime_home,
             &connection,
             &host_plan,
             &project.repo_root,
@@ -1264,9 +1229,8 @@ pub(super) fn provision_connection(
     lease: &RuntimeHomeMutationLease,
     context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<ConnectionProvisioningOutcome, ConnectionCommandError> {
-    ensure_connection_request_matches_lease(&request, process, lease)?;
     let dry_run = request.parsed.dry_run;
-    let plan = plan_connection_provisioning(request, process)?;
+    let plan = plan_connection_provisioning(context, request, process)?;
     if dry_run {
         return Ok(ConnectionProvisioningOutcome::DryRun(Box::new(plan)));
     }
@@ -1276,20 +1240,16 @@ pub(super) fn provision_connection(
         .map(ConnectionProvisioningOutcome::Applied)
 }
 
-fn ensure_connection_request_matches_lease(
-    request: &ProvisionConnectionRequest<'_>,
+fn plan_connection_provisioning(
+    context: &RuntimeHomeMutationContext<'_>,
+    request: ProvisionConnectionRequest<'_>,
     process: &impl ConnectionProcess,
-    lease: &RuntimeHomeMutationLease,
-) -> Result<(), ConnectionCommandError> {
-    let selected = selected_runtime_home_path(
-        request.parsed.explicit_runtime_home.as_deref(),
-        |name| process.env_var(name),
-        request.current_dir,
-    )?;
-    ensure_setup_lease_target(lease, &selected)
+) -> Result<ConnectionProvisioningPlan, ConnectionCommandError> {
+    plan_connection_provisioning_read_only(context.runtime_home().as_path(), request, process)
 }
 
-fn plan_connection_provisioning(
+fn plan_connection_provisioning_read_only(
+    runtime_home: &Path,
     request: ProvisionConnectionRequest<'_>,
     process: &impl ConnectionProcess,
 ) -> Result<ConnectionProvisioningPlan, ConnectionCommandError> {
@@ -1297,14 +1257,8 @@ fn plan_connection_provisioning(
     let host_kind = resolve_connection_host(parsed.host_kind, process)?;
     let intent = connection_intent_from_flags(parsed)?;
     let host_scope = host_scope_for_intent(host_kind, intent)?;
-    let SelectedConnectionRuntimeHome {
-        path: runtime_home,
-        installation_profile,
-    } = selected_connection_runtime_home_read_only(
-        parsed.explicit_runtime_home.as_deref(),
-        |name| process.env_var(name),
-        request.current_dir,
-    )?;
+    let runtime_home = runtime_home.to_path_buf();
+    let installation_profile = required_connection_installation_profile_read_only(&runtime_home)?;
     let repo_root = resolve_connection_repo_root(request.current_dir, parsed.repo.as_deref())?;
     let server_name = DEFAULT_SERVER_NAME.to_owned();
     let target_hint = connection_target_hint(host_kind, host_scope, Some(&repo_root), process)?;
@@ -1437,7 +1391,7 @@ fn apply_connection_provisioning(
     lease: &RuntimeHomeMutationLease,
     context: &RuntimeHomeMutationContext<'_>,
 ) -> Result<ConnectionProvisioningResult, ConnectionCommandError> {
-    ensure_setup_lease_target(lease, &plan.runtime_home)?;
+    context.ensure_runtime_home_identity(lease.target())?;
     let existing = validate_setup_connection_expectation(
         SetupConnectionTarget {
             runtime_home: &plan.runtime_home,
@@ -1452,7 +1406,6 @@ fn apply_connection_provisioning(
     )?;
     initialize_runtime_home(
         context,
-        &plan.runtime_home,
         AGENT_RUNTIME_HOME_ID,
         metadata_json_base()?.as_str(),
     )?;
@@ -1530,7 +1483,6 @@ fn apply_connection_provisioning(
     let expected_integration_revision = connection_integration_revision(&connection)?;
     let verification = verify_connection(
         context,
-        &plan.runtime_home,
         &connection,
         &host_plan,
         &project.repo_root,
@@ -1781,7 +1733,8 @@ mod init_planning_tests {
         let parsed = parsed_init(fixture.path(), &repo_root, false);
         let process = PlanningProcess::new()?;
 
-        let plan = plan_init_provisioning(
+        let plan = plan_init_provisioning_read_only(
+            fixture.path(),
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -1814,7 +1767,8 @@ mod init_planning_tests {
         let parsed = parsed_init(&runtime_home, &repo_root, true);
         let process = PlanningProcess::new()?;
 
-        let plan = plan_init_provisioning(
+        let plan = plan_init_provisioning_read_only(
+            &runtime_home,
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -1845,7 +1799,8 @@ mod init_planning_tests {
         let parsed = parsed_init(fixture.path(), &repo_root, true);
         let process = PlanningProcess::new()?;
 
-        let error = match plan_init_provisioning(
+        let error = match plan_init_provisioning_read_only(
+            fixture.path(),
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -1882,7 +1837,8 @@ mod init_planning_tests {
         let parsed = parsed_init(fixture.path(), &repo_root, true);
         let process = PlanningProcess::new()?;
 
-        let error = match plan_init_provisioning(
+        let error = match plan_init_provisioning_read_only(
+            fixture.path(),
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -1910,12 +1866,7 @@ mod init_planning_tests {
         let repo_root = create_empty_product_repository(&fixture)?;
         let lease = exclusive_setup_lease(fixture.path());
         let context = RuntimeHomeMutationContext::new(lease.permit(), fixture.path())?;
-        initialize_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_without_profile",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_without_profile", "{}")?;
         let registry_path = registry_db_path(fixture.path());
         let registry_before = fs::read(&registry_path)?;
         let modified_before = fs::metadata(&registry_path)?.modified()?;
@@ -1924,7 +1875,8 @@ mod init_planning_tests {
         let parsed = parsed_init(fixture.path(), &repo_root, true);
         let process = PlanningProcess::new()?;
 
-        let plan = plan_init_provisioning(
+        let plan = plan_init_provisioning_read_only(
+            fixture.path(),
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -1951,7 +1903,7 @@ mod init_planning_tests {
         let current_exe = fs::canonicalize(&process.current_exe)?;
         let lease = exclusive_setup_lease(fixture.path());
         let context = RuntimeHomeMutationContext::new(lease.permit(), fixture.path())?;
-        initialize_runtime_home(&context, fixture.path(), "runtime_home_with_profile", "{}")?;
+        initialize_runtime_home(&context, "runtime_home_with_profile", "{}")?;
         let expected_profile = write_installation_profile(
             &context,
             InstallationProfileRegistration {
@@ -1973,7 +1925,8 @@ mod init_planning_tests {
         let repo_before = directory_contents(&repo_root)?;
         let parsed = parsed_init(fixture.path(), &repo_root, true);
 
-        let plan = plan_init_provisioning(
+        let plan = plan_init_provisioning_read_only(
+            fixture.path(),
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -2002,7 +1955,8 @@ mod init_planning_tests {
         let parsed = parsed_init(fixture.path(), &repo_root, false);
         let mut process = PlanningProcess::new()?;
 
-        let plan = plan_init_provisioning(
+        let plan = plan_init_provisioning_read_only(
+            fixture.path(),
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -2128,7 +2082,8 @@ mod init_planning_tests {
             .expect("initialized project")
             .project_id;
         let connection_id = initial.connection_id.as_str();
-        let plan = plan_init_provisioning(
+        let plan = plan_init_provisioning_read_only(
+            fixture.path(),
             InitProvisioningRequest {
                 parsed: &parsed,
                 current_dir: &repo_root,
@@ -2202,7 +2157,8 @@ mod init_planning_tests {
         drop(initial_context);
         drop(initial_lease);
         assert_eq!(initial.mode, CONNECTION_MODE_WORKFLOW);
-        let plan = plan_connection_provisioning(
+        let plan = plan_connection_provisioning_read_only(
+            fixture.path(),
             ProvisionConnectionRequest {
                 parsed: &add,
                 current_dir: &repo_root,

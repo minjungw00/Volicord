@@ -29,6 +29,12 @@ impl CanonicalRuntimeHomePath {
     }
 }
 
+impl AsRef<Path> for CanonicalRuntimeHomePath {
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
 impl fmt::Debug for CanonicalRuntimeHomePath {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -428,7 +434,11 @@ enum FileLockAttempt {
     Busy,
 }
 
-fn canonical_runtime_home_path(
+/// Resolves one selected Runtime Home to the exact canonical mutation identity.
+///
+/// Higher layers may retain this identity before an operation starts so that
+/// a later admitted context can be compared without canonicalizing again.
+pub fn canonical_runtime_home_path(
     target: &Path,
 ) -> Result<CanonicalRuntimeHomePath, RuntimeHomeMutationLeaseError> {
     if !target.is_absolute() {

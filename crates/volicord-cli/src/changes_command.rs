@@ -20,7 +20,7 @@ use crate::cli::{ChangesArgs, ChangesCommand, ChangesReconcileArgs};
 use crate::disclosure::does_not_prove_line;
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
-    registered_project_for_repo, resolve_repository_root, ProjectCommandError,
+    registered_project_for_repo_admitted, resolve_repository_root, ProjectCommandError,
 };
 use crate::summary_card::{
     render_close_and_next_action_totals_text, render_summary_card_text, summary_card_from_response,
@@ -116,7 +116,7 @@ where
         .map(|path| absolute_path(current_dir, path.clone()));
     let repo_root = resolve_repository_root(current_dir, repo.as_deref())?;
     with_cli_runtime_home_mutation(&runtime_home, "cli.changes.reconcile", |context| {
-        command_reconcile_admitted(context, &runtime_home, &repo_root, &options)
+        command_reconcile_admitted(context, &repo_root, &options)
             .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
     })
     .map_err(Into::into)
@@ -124,11 +124,10 @@ where
 
 fn command_reconcile_admitted(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     repo_root: &Path,
     options: &ChangesReconcileArgs,
 ) -> Result<String, ChangesCommandError> {
-    let project = registered_project_for_repo(&runtime_home, &repo_root)?;
+    let project = registered_project_for_repo_admitted(context, repo_root)?;
     let project_id = ProjectId::new(project.project_id.clone());
     let store = CoreProjectStore::open_for_mutation(context, &project_id)?;
     let task_id = match options.task.as_str() {
@@ -139,7 +138,7 @@ fn command_reconcile_admitted(
         value => value.to_owned(),
     };
     let state_version = store.project_state()?.state_version;
-    let response = CoreService::new(&runtime_home).reconcile_changes(
+    let response = CoreService::for_mutation(context).reconcile_changes(
         context,
         ReconcileChangesRequest {
             envelope: ToolEnvelope {
@@ -293,7 +292,11 @@ fn generated_id(prefix: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::{error::Error, ffi::OsString, fs};
+
     use serde_json::json;
+    use volicord_test_support::{core_fixtures::CoreFixture, seed_test_agent_session};
+    use volicord_types::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId};
 
     use super::*;
 
@@ -332,5 +335,70 @@ mod tests {
             }
             other => panic!("expected failure output, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn changes_reconcile_uses_the_admitted_lexical_runtime_home() -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("cli-changes-reconcile-lexical-alias")?;
+        fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
+        let session = seed_test_agent_session(
+            fixture.runtime_home_path(),
+            fixture.project_id(),
+            fixture.connection_id(),
+            None,
+        )?;
+        let validated = CoreService::for_read_only(fixture.runtime_home_path())
+            .validate_agent_session(
+                AgentConnectionId::new(fixture.connection_id()),
+                ProjectId::new(fixture.project_id()),
+                AgentRuntimeSessionId::new(session.runtime_session_id.as_str()),
+                AgentSessionId::new(session.project_session_id.as_str()),
+                OperationCategory::AgentWorkflow,
+            )?;
+        let mutation_context = fixture.mutation_context()?;
+        let intake = CoreService::for_mutation(&mutation_context).intake(
+            &mutation_context,
+            fixture.intake_request(
+                "req_cli_changes_alias_intake",
+                "idem_cli_changes_alias_intake",
+                false,
+                Some(0),
+            ),
+            InvocationContext::new(
+                ProjectId::new(fixture.project_id()),
+                ActorSource::agent_connection(fixture.connection_id()),
+                OperationCategory::AgentWorkflow,
+                "",
+            )
+            .with_validated_agent_session(validated),
+        )?;
+        assert_eq!(intake.response_value["base"]["response_kind"], "result");
+
+        let runtime_home = fixture.runtime_home_path();
+        let alias = runtime_home
+            .parent()
+            .expect("fixture Runtime Home has a parent")
+            .join(".")
+            .join(
+                runtime_home
+                    .file_name()
+                    .expect("fixture Runtime Home has a file name"),
+            );
+        let output = run_changes_command(
+            ChangesArgs {
+                command: ChangesCommand::Reconcile(ChangesReconcileArgs {
+                    repo: Some(fixture.product_repo_path()),
+                    task: "active".to_owned(),
+                    dry_run: true,
+                    json: true,
+                }),
+            },
+            |name| (name == "VOLICORD_HOME").then(|| OsString::from(&alias)),
+            &fixture.product_repo_path(),
+        )?;
+        let response: serde_json::Value = serde_json::from_str(&output)?;
+
+        assert_eq!(response["base"]["response_kind"], "dry_run");
+        Ok(())
     }
 }

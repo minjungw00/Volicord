@@ -77,12 +77,7 @@ pub(crate) fn prepare_runtime_home(
     mcp_command: &Path,
 ) -> Result<(), Box<dyn Error>> {
     with_test_runtime_home_setup(runtime_home, |context| {
-        initialize_runtime_home(
-            context,
-            runtime_home,
-            "runtime_home_binary_admin_fixture",
-            "{}",
-        )?;
+        initialize_runtime_home(context, "runtime_home_binary_admin_fixture", "{}")?;
         write_installation_profile(
             context,
             InstallationProfileRegistration {

@@ -1432,7 +1432,8 @@ mod tests {
     #[test]
     fn diagnostics_cannot_change_authority_state_evidence_close_assurance_or_user_actions() {
         let fixture = CoreFixture::new("diagnostics-authority-isolation").expect("fixture");
-        let core = CoreService::new(fixture.runtime_home_path());
+        let context = fixture.mutation_context().expect("mutation context");
+        let core = CoreService::for_mutation(&context);
         let session = volicord_test_support::seed_test_agent_session(
             fixture.runtime_home_path(),
             fixture.project_id(),
@@ -1458,7 +1459,7 @@ mod tests {
         .with_validated_agent_session(validated);
         let intake = core
             .intake(
-                &fixture.mutation_context().expect("mutation context"),
+                &context,
                 fixture.intake_request("req_diag_intake", "idem_diag_intake", false, Some(0)),
                 invocation.clone(),
             )
@@ -1470,7 +1471,7 @@ mod tests {
             .as_u64()
             .expect("state version");
         core.request_user_action(
-            &fixture.mutation_context().expect("mutation context"),
+            &context,
             fixture.user_action_request(UserActionFixture {
                 request_id: "req_diag_user_action",
                 idempotency_key: "idem_diag_user_action",
@@ -1487,7 +1488,7 @@ mod tests {
         let session_id = "mcp_runtime_session_isolation".to_owned();
 
         start_diagnostic_session(
-            &fixture.mutation_context().expect("mutation context"),
+            &context,
             DiagnosticSessionStart {
                 session_id: &session_id,
                 connection_id: Some(fixture.connection_id()),
@@ -1500,7 +1501,7 @@ mod tests {
         )
         .expect("diagnostic session");
         record_diagnostic_event(
-            &fixture.mutation_context().expect("mutation context"),
+            &context,
             DiagnosticEvent {
                 session_id: &session_id,
                 event_kind: DiagnosticEventKind::McpToolCall,

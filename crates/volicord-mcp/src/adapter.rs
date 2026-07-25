@@ -82,19 +82,19 @@ impl McpDerivedInvocationContext {
     }
 }
 
-/// Local MCP adapter bound to a Core service and one Agent Connection.
+/// Local MCP adapter bound to one pre-operation Runtime Home route and Agent Connection.
 #[derive(Debug, Clone)]
 pub struct McpAdapter {
-    pub(crate) core: CoreService,
     pub(crate) runtime_home: PathBuf,
+    routing_runtime_home_identity: Result<CanonicalRuntimeHomePath, String>,
     pub(crate) context: McpConnectionContext,
     default_agent_session_binding: Option<ManagedAgentSessionBinding>,
 }
 
 impl PartialEq for McpAdapter {
     fn eq(&self, other: &Self) -> bool {
-        self.core == other.core
-            && self.runtime_home == other.runtime_home
+        self.runtime_home == other.runtime_home
+            && self.routing_runtime_home_identity == other.routing_runtime_home_identity
             && self.context == other.context
             && self.default_agent_session_binding == other.default_agent_session_binding
     }
@@ -106,12 +106,35 @@ impl McpAdapter {
     /// Creates an adapter for a Runtime Home and connection-bound adapter context.
     pub fn new(runtime_home: impl AsRef<Path>, context: McpConnectionContext) -> Self {
         let runtime_home = runtime_home.as_ref().to_path_buf();
+        let routing_runtime_home_identity =
+            canonical_runtime_home_path(&runtime_home).map_err(|error| error.to_string());
         Self {
-            core: CoreService::new(&runtime_home),
             runtime_home,
+            routing_runtime_home_identity,
             context,
             default_agent_session_binding: None,
         }
+    }
+
+    pub(crate) fn admitted_runtime_home<'a>(
+        &self,
+        context: &'a RuntimeHomeMutationContext<'_>,
+    ) -> Result<&'a Path, McpAdapterError> {
+        let expected = self
+            .routing_runtime_home_identity
+            .as_ref()
+            .map_err(|detail| {
+                McpAdapterError::Environment(format!(
+                    "runtime_home_routing_identity_unavailable: {detail}"
+                ))
+            })?;
+        if expected != context.runtime_home() {
+            return Err(McpAdapterError::Environment(
+                "runtime_home_mutation_context_mismatch: the live mutation context does not match the MCP routing Runtime Home"
+                    .to_owned(),
+            ));
+        }
+        Ok(context.runtime_home().as_path())
     }
 
     #[cfg(test)]
@@ -128,13 +151,14 @@ impl McpAdapter {
         context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
     ) -> Result<Vec<McpProjectAvailability>, McpAdapterError> {
+        let runtime_home = self.admitted_runtime_home(context)?;
         current_enabled_connection(
-            &self.runtime_home,
+            runtime_home,
             self.context.connection_internal_id.as_str(),
             tool_name,
         )?;
         let projects = list_connection_projects_read_only(
-            &self.runtime_home,
+            runtime_home,
             self.context.connection_internal_id.as_str(),
         )
         .map_err(McpAdapterError::Store)?;
@@ -159,8 +183,9 @@ impl McpAdapter {
         &self,
         context: &RuntimeHomeMutationContext<'_>,
     ) -> Result<Vec<CanonicalToolDefinition>, McpAdapterError> {
+        let runtime_home = self.admitted_runtime_home(context)?;
         let connection = current_enabled_connection(
-            &self.runtime_home,
+            runtime_home,
             self.context.connection_internal_id.as_str(),
             "tools/list",
         )?;
@@ -194,6 +219,7 @@ impl McpAdapter {
         operation_category: OperationCategory,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
+        self.admitted_runtime_home(context)?;
         let store = CoreProjectStore::open_for_mutation(context, &envelope.project_id)
             .map_err(McpAdapterError::Store)?;
         let git_workspace_context =
@@ -210,8 +236,12 @@ impl McpAdapter {
                     head_sha: snapshot.head_sha,
                     workspace_fingerprint: snapshot.workspace_fingerprint,
                 });
-        let validated_agent_session =
-            self.validated_session_for_project(&envelope.project_id, operation_category, session)?;
+        let validated_agent_session = self.validated_session_for_project(
+            context,
+            &envelope.project_id,
+            operation_category,
+            session,
+        )?;
         Ok(McpDerivedInvocationContext {
             project_id: envelope.project_id.clone(),
             actor_source: ActorSource::agent_connection(
@@ -225,12 +255,16 @@ impl McpAdapter {
 
     fn derive_read_only_invocation_context(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         envelope: &ToolEnvelope,
         operation_category: OperationCategory,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<McpDerivedInvocationContext, McpAdapterError> {
-        let store = CoreProjectStore::open_read_only(&self.runtime_home, &envelope.project_id)
-            .map_err(McpAdapterError::Store)?;
+        let store = CoreProjectStore::open_read_only(
+            self.admitted_runtime_home(context)?,
+            &envelope.project_id,
+        )
+        .map_err(McpAdapterError::Store)?;
         let git_workspace_context =
             capture_git_workspace_snapshot(&store.project_record().repo_root)
                 .map_err(|error| {
@@ -245,8 +279,12 @@ impl McpAdapter {
                     head_sha: snapshot.head_sha,
                     workspace_fingerprint: snapshot.workspace_fingerprint,
                 });
-        let validated_agent_session =
-            self.validated_session_for_project(&envelope.project_id, operation_category, session)?;
+        let validated_agent_session = self.validated_session_for_project(
+            context,
+            &envelope.project_id,
+            operation_category,
+            session,
+        )?;
         Ok(McpDerivedInvocationContext {
             project_id: envelope.project_id.clone(),
             actor_source: ActorSource::agent_connection(
@@ -260,17 +298,19 @@ impl McpAdapter {
 
     fn validated_session_for_project(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         project_id: &ProjectId,
         operation_category: OperationCategory,
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<volicord_core::ValidatedAgentSession, McpAdapterError> {
+        self.admitted_runtime_home(context)?;
         let session = session.ok_or_else(|| {
             McpAdapterError::Environment(
                 "agent_session_missing: project tools require a current managed runtime and project session"
                     .to_owned(),
             )
         })?;
-        self.core
+        CoreService::for_mutation(context)
             .validate_agent_session(
                 self.context.connection_internal_id.clone(),
                 project_id.clone(),
@@ -738,7 +778,7 @@ impl McpAdapter {
             McpRequestUserActionOperation::Resume {
                 user_action_request_id,
             } => {
-                self.ensure_mode_allows(tool_name, OperationCategory::AgentWorkflow)?;
+                self.ensure_mode_allows(context, tool_name, OperationCategory::AgentWorkflow)?;
                 let owned_session = if session.is_none() {
                     self.default_agent_session_binding
                         .as_ref()
@@ -765,11 +805,12 @@ impl McpAdapter {
                     locale: RequiredNullable::null(),
                 };
                 let invocation = self.derive_read_only_invocation_context(
+                    context,
                     &envelope,
                     OperationCategory::AgentWorkflow,
                     session,
                 )?;
-                self.core
+                CoreService::for_mutation(context)
                     .resume_user_action_request(
                         prepared.project_id,
                         user_action_request_id,
@@ -948,7 +989,7 @@ impl McpAdapter {
             return Ok(response);
         }
         let operation_category = request.operation_category();
-        self.ensure_mode_allows(tool_name, operation_category)?;
+        self.ensure_mode_allows(context, tool_name, operation_category)?;
         let owned_session = if session.is_none() {
             self.default_agent_session_binding
                 .as_ref()
@@ -966,6 +1007,7 @@ impl McpAdapter {
         let session = session.or_else(|| owned_session.as_ref().map(|value| value.borrowed()));
         let invocation = if operation_category == OperationCategory::Read {
             self.derive_read_only_invocation_context(
+                context,
                 request_envelope(&request),
                 operation_category,
                 session,
@@ -978,8 +1020,8 @@ impl McpAdapter {
                 session,
             )?
         };
-        call(&self.core, context, request, invocation.core_invocation())
-            .map_err(McpAdapterError::Core)
+        let core = CoreService::for_mutation(context);
+        call(&core, context, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
     }
 
     pub(crate) fn call_adapter_tool(
@@ -1077,8 +1119,9 @@ impl McpAdapter {
         context: &RuntimeHomeMutationContext<'_>,
     ) -> Result<ListProjectsResult, McpAdapterError> {
         let tool_name = AgentToolId::LIST_PROJECTS.wire_name();
+        let runtime_home = self.admitted_runtime_home(context)?;
         let connection = current_enabled_connection(
-            &self.runtime_home,
+            runtime_home,
             self.context.connection_internal_id.as_str(),
             tool_name,
         )?;
@@ -1178,13 +1221,14 @@ impl McpAdapter {
         project_id: &ProjectId,
         binding: &ManagedAgentSessionBinding,
     ) -> Result<OwnedAgentSessionCoordinates, McpAdapterError> {
+        let runtime_home = self.admitted_runtime_home(context)?;
         let _connection = current_enabled_connection(
-            &self.runtime_home,
+            runtime_home,
             self.context.connection_internal_id.as_str(),
             "managed stdio session binding",
         )?;
         let guard_installations = list_guard_installations(
-            &self.runtime_home,
+            runtime_home,
             self.context.connection_internal_id.as_str(),
             Some(project_id.as_str()),
         )
@@ -1237,7 +1281,7 @@ impl McpAdapter {
             .session_id
         } else {
             current_project_agent_session_coordinates(
-                &self.runtime_home,
+                runtime_home,
                 project_id.as_str(),
                 self.context.connection_internal_id.as_str(),
                 guard_installation_id.as_deref(),
@@ -1257,8 +1301,9 @@ impl McpAdapter {
         context: &RuntimeHomeMutationContext<'_>,
         project_id: &ProjectId,
     ) -> Result<McpStorageCapability, McpAdapterError> {
+        let runtime_home = self.admitted_runtime_home(context)?;
         let access = agent_connection_project_access_read_only(
-            &self.runtime_home,
+            runtime_home,
             self.context.connection_internal_id.as_str(),
             project_id.as_str(),
         )
@@ -1336,12 +1381,10 @@ impl McpAdapter {
         context: &RuntimeHomeMutationContext<'_>,
         requested_project_id: Option<&str>,
     ) -> Result<ProjectId, McpAdapterError> {
+        let runtime_home = self.admitted_runtime_home(context)?;
         let connection_internal_id = self.context.connection_internal_id.as_str();
-        let _connection = current_enabled_connection(
-            &self.runtime_home,
-            connection_internal_id,
-            "project routing",
-        )?;
+        let _connection =
+            current_enabled_connection(runtime_home, connection_internal_id, "project routing")?;
 
         if let Some(project_id) = requested_project_id {
             if !self.context.project_allowlist_allows(project_id) {
@@ -1350,7 +1393,7 @@ impl McpAdapter {
                 )));
             }
             let access = agent_connection_project_access_read_only(
-                &self.runtime_home,
+                runtime_home,
                 connection_internal_id,
                 project_id,
             )
@@ -1381,9 +1424,8 @@ impl McpAdapter {
             return selected_project_from_availability(availability);
         }
 
-        let projects =
-            list_connection_projects_read_only(&self.runtime_home, connection_internal_id)
-                .map_err(McpAdapterError::Store)?;
+        let projects = list_connection_projects_read_only(runtime_home, connection_internal_id)
+            .map_err(McpAdapterError::Store)?;
         let projects = projects
             .into_iter()
             .filter(|project| {
@@ -1407,11 +1449,12 @@ impl McpAdapter {
 
     fn ensure_mode_allows(
         &self,
+        context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         operation_category: OperationCategory,
     ) -> Result<(), McpAdapterError> {
         let connection = current_enabled_connection(
-            &self.runtime_home,
+            self.admitted_runtime_home(context)?,
             self.context.connection_internal_id.as_str(),
             tool_name,
         )?;

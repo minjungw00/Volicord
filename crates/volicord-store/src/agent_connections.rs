@@ -5126,7 +5126,7 @@ mod tests {
         let runtime_home = TempRuntimeHome::new(name)?;
         let repo_root = runtime_home.create_product_repo("repo")?;
         with_test_runtime_home_setup(runtime_home.path(), |context| {
-            initialize_runtime_home(context, runtime_home.path(), "runtime_home_test", "{}")?;
+            initialize_runtime_home(context, "runtime_home_test", "{}")?;
             register_project(
                 context,
                 ProjectRegistration {

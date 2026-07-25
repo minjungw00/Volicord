@@ -80,12 +80,7 @@ impl VerificationFixture {
         let runtime_home = TempRuntimeHome::new(prefix)?;
         let repo_root = runtime_home.create_product_repo("verification-repo")?;
         with_test_runtime_home_setup(runtime_home.path(), |context| {
-            initialize_runtime_home(
-                context,
-                runtime_home.path(),
-                &format!("runtime_home_{prefix}"),
-                "{}",
-            )?;
+            initialize_runtime_home(context, &format!("runtime_home_{prefix}"), "{}")?;
             register_project(
                 context,
                 ProjectRegistration {

@@ -135,6 +135,13 @@ apply, inbox resolution, change reconciliation, evidence fulfillment, Connection
 mode/remove/verification write, managed-launch lease 연산, diagnostic 영속화가 포함됩니다.
 순수 status, list, lookup, validation, export 읽기는 writer lease를 획득하지 않습니다.
 
+승인 뒤 각 변경 명령은 context의 정규 Runtime Home에서 Registry 선택, setup planning,
+Core 구성, Store 접근, 진단, 효과, 결과 구성을 파생합니다. 승인 전 경로 표기를 권한
+좌표로 다시 사용하지 않습니다. 따라서 `inbox resolve`, `changes reconcile`을 비롯한
+승인 명령은 같은 home의 lexical alias나 symlink alias를 받아도 다른 Registry를
+선택하거나 Core/Store 권한 검사에 실패하지 않습니다. 실제로 다른 home의 승인은
+계속 불일치로 처리하며 아무 효과도 만들지 않습니다.
+
 Setup이 `ExclusiveSetup`을 보유하면 변경 명령은 typed
 `runtime_home.mutation.setup_in_progress` 비성공 결과를 반환하고 아무것도 변경하지
 않으며 setup 완료 뒤 재시도하도록 안내합니다. Diagnostic에는 정규 Runtime Home,

@@ -38,7 +38,10 @@ use crate::{
         policy::{validate_workflow_policy, PolicyValidationIssue},
     },
     mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError},
-    project_context::{registered_project_for_repo, resolve_repository_root, ProjectCommandError},
+    project_context::{
+        registered_project_for_repo, registered_project_for_repo_admitted, resolve_repository_root,
+        ProjectCommandError,
+    },
 };
 
 pub const MAX_POLICY_FILE_BYTES: u64 = 1024 * 1024;
@@ -241,7 +244,7 @@ where
     let runtime_home = resolve_runtime_home(env_var, current_dir)?;
     let repo_root = resolve_repository_root(current_dir, Some(&options.repo))?;
     with_cli_runtime_home_mutation(&runtime_home, "cli.policy.apply", |context| {
-        apply_command_admitted(context, &runtime_home, &repo_root, &input_path, candidate)
+        apply_command_admitted(context, &repo_root, &input_path, candidate)
             .map_err(|error| CliMutationAdmissionError::Operation(error.to_string()))
     })
     .map_err(Into::into)
@@ -249,16 +252,16 @@ where
 
 fn apply_command_admitted(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     repo_root: &Path,
     input_path: &Path,
     candidate: ValidatedPolicyFile,
 ) -> Result<String, PolicyCommandError> {
-    let project = registered_project_for_repo(&runtime_home, &repo_root)?;
+    let runtime_home = context.runtime_home().as_path();
+    let project = registered_project_for_repo_admitted(context, repo_root)?;
     validate_policy_bindings(
         &candidate.value,
-        &runtime_home,
-        &repo_root,
+        runtime_home,
+        repo_root,
         &project.project_id,
     )?;
 
@@ -306,10 +309,10 @@ fn apply_command_admitted(
     let resulting_version = authority_apply.policy.policy_version;
     let active_task_requires_escalation = authority_apply.active_task_requires_escalation;
     let managed_path = GuardManagedArtifact::VolicordPolicy
-        .expected_path(&repo_root, None)
+        .expected_path(repo_root, None)
         .expect("the Guard policy has a repository-owned path");
     let file_apply =
-        plan_policy_file(&repo_root, &managed_path, &candidate.value).and_then(|plan| {
+        plan_policy_file(repo_root, &managed_path, &candidate.value).and_then(|plan| {
             let changed = plan.status != FilePlanStatus::Unchanged;
             write_managed_file_if_fresh(&plan, &plan.content, false)?;
             Ok(changed)
@@ -319,7 +322,7 @@ fn apply_command_admitted(
         Err(_error) => (
             "failed",
             false,
-            vec![policy_repair_action(&repo_root, Some(&input_path))],
+            vec![policy_repair_action(repo_root, Some(input_path))],
         ),
     };
     let file_state =

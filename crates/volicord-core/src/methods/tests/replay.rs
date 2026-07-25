@@ -202,8 +202,8 @@ fn idempotent_replay_returns_original_generated_ids() -> Result<(), Box<dyn Erro
 fn deterministic_generated_id_collision_retries_bounded_candidates() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     insert_superseding_task(&harness, "task_collision")?;
-    harness.service.inner = CoreService::with_id_generator(
-        &harness.runtime_home_path,
+    harness.service.inner = CoreService::for_mutation_with_id_generator(
+        &harness.service.context(),
         SequenceDurableIdGenerator::new(["collision", "fresh", "criterion", "event"]),
     );
 

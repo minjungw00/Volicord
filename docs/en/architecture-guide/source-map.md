@@ -52,9 +52,9 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-store/src/schema/registry.sql` | Canonical Runtime Home registry DDL source. |
 | `crates/volicord-store/src/schema/project.sql` | Canonical project Store DDL source. |
-| `crates/volicord-store/src/mutation.rs` | Non-cloneable, permit-borrowing, exact-target `RuntimeHomeMutationContext`; shared/exclusive mode checks; and stable setup-in-progress condition projection. |
+| `crates/volicord-store/src/mutation.rs` | Non-cloneable, permit-borrowing, exact-target `RuntimeHomeMutationContext`; retained `CanonicalRuntimeHomePath`; typed identity comparison without post-admission recanonicalization; shared/exclusive mode checks; and stable setup-in-progress condition projection. |
 | `crates/volicord-store/src/sqlite.rs` | Separate read-only opens and crate-private context-gated writable Registry/project database opens with exact Runtime Home ownership validation. |
-| `crates/volicord-store/src/bootstrap.rs` | Runtime Home staging, opaque publication provenance, atomic no-replace publication outcomes, token-backed terminal rollback states, composite confirmation failures, and Store bootstrap. |
+| `crates/volicord-store/src/bootstrap.rs` | Context-owned Runtime Home staging and project lookup, opaque publication provenance, atomic no-replace publication outcomes, typed publication identity, token-backed terminal rollback states, composite confirmation failures, and Store bootstrap. |
 | `crates/volicord-store/src/diagnostics.rs` | Non-authority diagnostics schema and manifest, same-directory staged carrier publication, concurrent-winner validation, exact reads and writes, and retention. |
 | `crates/volicord-store/src/setup_transaction.rs` | Explicit prepare, input validation, mutation checkpoint, commit, and guarded rollback boundary for the existing Store files touched by setup. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection records, project allowlists, managed fingerprints, and persisted verification-report boundary. |
@@ -76,7 +76,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/integration_verification/row.rs` | Private verification SQL, row decoding, status and timestamp parsing, database representation conversion, and focused row-decoder tests. |
 | `crates/volicord-store/src/integration_verification/tests/` | Lifecycle-owner tests for begin, probe, typed acquisition, correlation, status, and concurrent first acknowledgement, with shared fixture construction isolated from assertions. |
 | `crates/volicord-store/src/workflow_records.rs` | Workflow record reads and writes. |
-| `crates/volicord-store/src/core_pipeline/` | Explicit read-only and context-retaining mutation opens, validation, replay, commit, and mutation application. |
+| `crates/volicord-store/src/core_pipeline/` | Explicit read-only opens; mutation opens that retain the context's typed canonical Runtime Home identity; Core/Store identity access; validation; replay; commit; and mutation application. |
 | `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent and producer records. |
 | `crates/volicord-store/src/artifacts.rs` | Artifact staging and durable body validation. |
@@ -86,7 +86,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-core/src/pipeline.rs` | Common preflight, replay, plan selection, response, and commit orchestration. |
+| `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, and commit orchestration. |
 | `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. |
 | `crates/volicord-core/src/methods/user_action.rs` | UserAction method boundaries and Core-owned User Channel projection, including Store-reusing coherent inbox-resolution snapshots for admitted local consumers. |
 | `crates/volicord-core/src/policy/` | Reusable access, workflow, evidence, continuity, write-ticket, and close-readiness policy. |
@@ -145,8 +145,8 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared hidden-launcher command and arguments, Runtime Home environment binding, strict launch-shape validation, public manual probe materialization, projection, and fingerprint inputs. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Per-message and per-tool `SharedWriter` acquisition, Store context construction, typed setup-busy propagation, and bounded lease lifetime across complete MCP effects. |
-| `crates/volicord-mcp/src/stdio.rs` | Public manual stdio and in-memory lease-bound managed stdio entry paths, authoritative runtime-source selection, lifecycle and framing, typed initialization-profile selection, explicit `codex-mcp-turn-metadata` parsing, revision-aware message handling, and process preflight. |
-| `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, server-owned context, Core dispatch and wrapping, plus managed in-chat begin/probe/get integration-verification orchestration outside Core that serializes the Store-owned workflow projection without adapter-local state derivation. |
+| `crates/volicord-mcp/src/stdio.rs` | Public manual stdio and in-memory lease-bound managed stdio entry paths, authoritative runtime-source selection, lifecycle and framing, typed initialization-profile selection, explicit `codex-mcp-turn-metadata` parsing, revision-aware message handling, admitted diagnostic routing, and process preflight. |
+| `crates/volicord-mcp/src/adapter.rs` | Public argument decoding, retained pre-operation routing identity, live mutation-context correlation, context-bound Core dispatch and wrapping, plus managed in-chat begin/probe/get integration-verification orchestration outside Core that serializes the Store-owned workflow projection without adapter-local state derivation. |
 | `crates/volicord-mcp/src/constants.rs` | MCP initialize instructions for the user-level verification request, nested workflow-directed sequence, stop rules, unavailable boundary, and optional active diagnostics. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed schemas, annotations, effects descriptions, and metadata into canonical tool definitions/results, including the three Connection-integration tools; raw revision-specific wire-name projection through the selected protocol profile; and construction of the explicit-server, collision-checked Codex callable catalog. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |

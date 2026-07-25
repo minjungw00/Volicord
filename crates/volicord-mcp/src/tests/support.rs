@@ -1,15 +1,18 @@
 use super::*;
+use std::path::Path;
 
 pub(super) fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error>> {
-    let context =
-        McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
-    let guard = guard_health_record(
-        fixture.runtime_home_path(),
-        fixture.project_id(),
-        fixture.connection_id(),
-    )?;
+    adapter_at_runtime_home(fixture, fixture.runtime_home_path())
+}
+
+pub(super) fn adapter_at_runtime_home(
+    fixture: &CoreFixture,
+    runtime_home: &Path,
+) -> Result<McpAdapter, Box<dyn Error>> {
+    let context = McpConnectionContext::resolve(runtime_home, fixture.connection_id())?;
+    let guard = guard_health_record(runtime_home, fixture.project_id(), fixture.connection_id())?;
     let session = volicord_test_support::seed_test_agent_session(
-        fixture.runtime_home_path(),
+        runtime_home,
         fixture.project_id(),
         fixture.connection_id(),
         guard
@@ -18,7 +21,7 @@ pub(super) fn adapter(fixture: &CoreFixture) -> Result<McpAdapter, Box<dyn Error
             .map(|installation| installation.guard_installation_id.as_str()),
     )?;
     Ok(
-        McpAdapter::new(fixture.runtime_home_path(), context).with_managed_agent_session_binding(
+        McpAdapter::new(runtime_home, context).with_managed_agent_session_binding(
             ManagedAgentSessionBinding {
                 runtime_session_id: session.runtime_session_id.as_str().to_owned(),
                 correlation: volicord_host_contract::CodexMcpCorrelation {
@@ -53,7 +56,7 @@ pub(super) fn test_agent_invocation(
             .map(|installation| installation.guard_installation_id.as_str()),
     )
     .expect("managed Agent Session fixture must seed");
-    let validated = CoreService::new(fixture.runtime_home_path())
+    let validated = CoreService::for_read_only(fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(fixture.connection_id()),
             ProjectId::new(fixture.project_id()),
@@ -551,7 +554,7 @@ pub(super) fn prepare_mcp_user_action_leakage_case(
     fixture: &CoreFixture,
     case: McpUserActionLeakageCase,
 ) -> Result<PreparedMcpUserActionLeakageCase, Box<dyn Error>> {
-    let core = CoreService::new(fixture.runtime_home_path());
+    let core = CoreService::for_mutation(&fixture.mutation_context()?);
     let invocation = || test_agent_invocation(fixture, OperationCategory::AgentWorkflow);
     let intake = core.intake(
         &fixture.mutation_context()?,

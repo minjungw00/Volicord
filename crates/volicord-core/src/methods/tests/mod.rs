@@ -269,7 +269,7 @@ impl MethodHarness {
         let runtime_home = TempRuntimeHome::new("core-methods")?;
         let repo_root = runtime_home.create_product_repo("repo")?;
         with_test_runtime_home_setup(runtime_home.path(), |context| {
-            initialize_runtime_home(context, runtime_home.path(), "runtime_home_methods", "{}")?;
+            initialize_runtime_home(context, "runtime_home_methods", "{}")?;
             register_project(
                 context,
                 ProjectRegistration {
@@ -321,11 +321,11 @@ impl MethodHarness {
             "UPDATE project_state SET updated_at = ?2 WHERE project_id = ?1",
             rusqlite::params![PROJECT_ID, DEFAULT_METHOD_TEST_CLOCK],
         )?;
-        let service = CoreService::with_clock(
-            &runtime_home_path,
+        let mutation = TestRuntimeHomeMutation::acquire(&runtime_home_path)?;
+        let service = CoreService::for_mutation_with_clock(
+            &mutation.context()?,
             ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
         );
-        let mutation = TestRuntimeHomeMutation::acquire(&runtime_home_path)?;
         Ok(Self {
             _runtime_home: runtime_home,
             runtime_home_path: runtime_home_path.clone(),
@@ -427,12 +427,15 @@ impl MethodHarness {
         generator: CountingDurableIdGenerator,
         clock: ManualClock,
     ) {
-        self.service.inner =
-            CoreService::with_id_generator_and_clock(&self.runtime_home_path, generator, clock);
+        self.service.inner = CoreService::for_mutation_with_id_generator_and_clock(
+            &self.service.context(),
+            generator,
+            clock,
+        );
     }
 
     fn use_clock(&mut self, clock: ManualClock) {
-        self.service.inner = CoreService::with_clock(&self.runtime_home_path, clock);
+        self.service.inner = CoreService::for_mutation_with_clock(&self.service.context(), clock);
     }
 }
 
@@ -468,8 +471,11 @@ fn cli_user_channel_projection(
     harness: &MethodHarness,
     task_id: &str,
 ) -> Result<UserChannelInboxProjection, Box<dyn Error>> {
-    Ok(harness
-        .service
+    let service = CoreService::for_read_only_with_clock(
+        &harness.runtime_home_path,
+        ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
+    );
+    Ok(service
         .user_channel_inbox_projection(
             UserChannelInboxProjectionRequest {
                 project_id: ProjectId::new(PROJECT_ID),

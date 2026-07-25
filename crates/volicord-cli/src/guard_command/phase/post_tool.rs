@@ -199,7 +199,6 @@ struct ObservedChanges {
 
 struct UnrecordedChangeContext<'a> {
     mutation_context: &'a RuntimeHomeMutationContext<'a>,
-    runtime_home: &'a Path,
     project: &'a ProjectRecord,
     envelope: &'a GuardEnvelope,
     summary: &'a GuardStateSummary,
@@ -227,12 +226,12 @@ const MAX_CORRELATED_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 pub(in crate::guard_command) fn handle_post_tool(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &crate::guard_command::args::GuardInput,
 ) -> Result<GuardPhaseResult, GuardCommandError> {
-    let summary = guard_state_summary(context, runtime_home, project, envelope, input)?;
+    let runtime_home = context.runtime_home().as_path();
+    let summary = guard_state_summary(context, project, envelope, input)?;
     let mut observation = tool_observation(&input.raw_value, &project.repo_root);
     let observed_changes = observed_changes(runtime_home, project, envelope, &observation)?;
     observation.changed_paths = observed_changes.paths.clone();
@@ -240,7 +239,6 @@ pub(in crate::guard_command) fn handle_post_tool(
         observed_changes.confidence == UnrecordedChangeConfidence::Confirmed;
     let correlation = record_post_tool_correlation(
         context,
-        runtime_home,
         project,
         envelope,
         &summary,
@@ -289,13 +287,13 @@ pub(in crate::guard_command) fn handle_post_tool(
 
 fn record_post_tool_correlation(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     summary: &GuardStateSummary,
     observation: &ToolObservation,
     observed_changes: &ObservedChanges,
 ) -> Result<PostToolCorrelation, GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     if observation.tool_name.as_deref() == Some(MethodName::RecordRun.as_str()) {
         return Ok(PostToolCorrelation {
             matched_expected_writes: Vec::new(),
@@ -323,7 +321,6 @@ fn record_post_tool_correlation(
     {
         suppress_previously_recorded_changes(
             context,
-            runtime_home,
             project,
             envelope,
             observed_changes.source,
@@ -347,7 +344,6 @@ fn record_post_tool_correlation(
         let resolved_suspected_changes = if confirms_no_new_change {
             resolve_matching_suspected_no_change(
                 context,
-                runtime_home,
                 project,
                 envelope,
                 summary,
@@ -360,7 +356,6 @@ fn record_post_tool_correlation(
         let unrecorded_changes = if !confirms_no_new_change && possible_product_write(observation) {
             record_unrecorded_changes(UnrecordedChangeContext {
                 mutation_context: context,
-                runtime_home,
                 project,
                 envelope,
                 summary,
@@ -390,7 +385,6 @@ fn record_post_tool_correlation(
             ticket_backed_observations: Vec::new(),
             unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                 mutation_context: context,
-                runtime_home,
                 project,
                 envelope,
                 summary,
@@ -431,7 +425,6 @@ fn record_post_tool_correlation(
             )?;
             let resolved_suspected_changes = resolve_matching_suspected_authorized(
                 context,
-                runtime_home,
                 project,
                 envelope,
                 summary,
@@ -464,7 +457,6 @@ fn record_post_tool_correlation(
             .unwrap_or(None);
             let resolved_suspected_changes = resolve_matching_suspected_authorized(
                 context,
-                runtime_home,
                 project,
                 envelope,
                 summary,
@@ -499,7 +491,6 @@ fn record_post_tool_correlation(
                     .unwrap_or(None);
                     let resolved_suspected_changes = resolve_matching_suspected_authorized(
                         context,
-                        runtime_home,
                         project,
                         envelope,
                         summary,
@@ -526,7 +517,6 @@ fn record_post_tool_correlation(
                     ticket_backed_observations: Vec::new(),
                     unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                         mutation_context: context,
-                        runtime_home,
                         project,
                         envelope,
                         summary,
@@ -547,7 +537,6 @@ fn record_post_tool_correlation(
                     ticket_backed_observations: Vec::new(),
                     unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                         mutation_context: context,
-                        runtime_home,
                         project,
                         envelope,
                         summary,
@@ -568,7 +557,6 @@ fn record_post_tool_correlation(
                     ticket_backed_observations: Vec::new(),
                     unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                         mutation_context: context,
-                        runtime_home,
                         project,
                         envelope,
                         summary,
@@ -591,7 +579,6 @@ fn record_post_tool_correlation(
             ticket_backed_observations: Vec::new(),
             unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                 mutation_context: context,
-                runtime_home,
                 project,
                 envelope,
                 summary,
@@ -612,7 +599,6 @@ fn record_post_tool_correlation(
             ticket_backed_observations: Vec::new(),
             unrecorded_changes: record_unrecorded_changes(UnrecordedChangeContext {
                 mutation_context: context,
-                runtime_home,
                 project,
                 envelope,
                 summary,
@@ -652,7 +638,7 @@ fn record_unrecorded_changes(
         ],
     );
     if unrecorded_change(
-        context.runtime_home,
+        context.mutation_context.runtime_home().as_path(),
         &context.project.project_id,
         &change_id,
     )?
@@ -727,7 +713,7 @@ fn promote_matching_suspected_changes(
     let observed_paths_json = serde_json::to_string(&context.changed).map_err(json_error)?;
     let mut promoted = Vec::new();
     for record in list_unresolved_unrecorded_changes(
-        context.runtime_home,
+        context.mutation_context.runtime_home().as_path(),
         &context.project.project_id,
         Some(&context.envelope.connection_id),
     )? {
@@ -936,7 +922,6 @@ fn git_head_oid(repo_root: &Path) -> Option<String> {
 
 fn suppress_previously_recorded_changes(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     observation_source: &str,
@@ -944,7 +929,6 @@ fn suppress_previously_recorded_changes(
 ) -> SuppressionOutcome {
     match try_suppress_previously_recorded_changes(
         context,
-        runtime_home,
         project,
         envelope,
         observation_source,
@@ -962,12 +946,12 @@ fn suppress_previously_recorded_changes(
 
 fn try_suppress_previously_recorded_changes(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     observation_source: &str,
     observed_paths: &[String],
 ) -> Result<SuppressionOutcome, SuppressionFailure> {
+    let runtime_home = context.runtime_home().as_path();
     let session_id = envelope.session_id.as_deref().ok_or_else(|| {
         SuppressionFailure::new(SuppressionUnavailableReason::CorrelationPayloadInvalid)
     })?;
@@ -1443,13 +1427,13 @@ fn git_worktree_changed_paths(repo_root: &Path) -> Option<Vec<PathAssessment>> {
 
 fn resolve_matching_suspected_no_change(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     summary: &GuardStateSummary,
     observation: &ToolObservation,
     source: &str,
 ) -> Result<Vec<Value>, GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let Some(host_invocation_id) = observation.host_invocation_id.as_deref() else {
         return Ok(Vec::new());
     };
@@ -1499,7 +1483,6 @@ fn resolve_matching_suspected_no_change(
 #[allow(clippy::too_many_arguments)]
 fn resolve_matching_suspected_authorized(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     summary: &GuardStateSummary,
@@ -1508,6 +1491,7 @@ fn resolve_matching_suspected_authorized(
     basis: UnrecordedChangeResolutionBasis,
     authority_id: &str,
 ) -> Result<Vec<Value>, GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let Some(host_invocation_id) = observation.host_invocation_id.as_deref() else {
         return Ok(Vec::new());
     };

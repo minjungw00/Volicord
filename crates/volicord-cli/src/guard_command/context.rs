@@ -89,11 +89,11 @@ pub(super) struct GuardReason {
 
 pub(super) fn guard_state_summary(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<GuardStateSummary, GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let store = CoreProjectStore::open_for_mutation(context, &ProjectId::new(&project.project_id))?;
     let project_state = store.project_state()?;
     let workflow_policy = store.project_workflow_policy()?;

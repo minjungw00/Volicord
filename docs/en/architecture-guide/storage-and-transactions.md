@@ -118,6 +118,16 @@ publication confirmation, and rollback without nested acquisition. A conflict
 returns `runtime_home.mutation.setup_in_progress` before any transaction,
 artifact staging, or observation effect.
 
+Core construction mirrors this boundary. `CoreService::for_read_only(path)`
+retains a read-only path binding, while `CoreService::for_mutation(context)`
+accepts no path and retains the context's `CanonicalRuntimeHomePath`.
+`CoreProjectStore::open_for_mutation(context, project_id)` retains that same
+typed identity. Mutation authorization compares the retained Core and Store
+identities directly and rejects a read-only/admitted mix or a different
+Runtime Home; it does not recanonicalize either path. Admitted Registry and
+setup helpers likewise derive their Runtime Home from the context instead of
+accepting a second path.
+
 For a new project, bootstrap initializes `project_state.created_at` and
 `project_state.updated_at` from SQLite current UTC. Re-registering an existing
 project validates and preserves its exact `updated_at` canonical-clock floor;

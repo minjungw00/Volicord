@@ -3913,7 +3913,11 @@ impl AdmittedCore<'_> {
 
 fn core(fixture: &CoreFixture) -> AdmittedCore<'_> {
     AdmittedCore {
-        service: CoreService::new(fixture.runtime_home_path()),
+        service: CoreService::for_mutation(
+            &fixture
+                .mutation_context()
+                .expect("conformance fixture retains mutation admission"),
+        ),
         fixture,
     }
 }
@@ -3976,7 +3980,7 @@ fn invocation_with_actor(
                     .map(|installation| installation.guard_installation_id.as_str()),
             )
             .expect("conformance managed Agent Session fixture must seed");
-            let validated = CoreService::new(fixture.runtime_home_path())
+            let validated = CoreService::for_read_only(fixture.runtime_home_path())
                 .validate_agent_session(
                     AgentConnectionId::new(fixture.connection_id()),
                     ProjectId::new(fixture.project_id()),
@@ -4122,7 +4126,12 @@ fn format_time(value: DateTime<Utc>) -> String {
 
 fn service_at(fixture: &CoreFixture, now: DateTime<Utc>) -> AdmittedCore<'_> {
     AdmittedCore {
-        service: CoreService::with_clock(fixture.runtime_home_path(), FixedClock { now }),
+        service: CoreService::for_mutation_with_clock(
+            &fixture
+                .mutation_context()
+                .expect("conformance fixture retains mutation admission"),
+            FixedClock { now },
+        ),
         fixture,
     }
 }
@@ -4924,10 +4933,11 @@ fn response_record_id(response_value: &Value, field: &str) -> String {
 
 fn trusted_user_channel_projection(
     fixture: &CoreFixture,
-    service: &AdmittedCore<'_>,
+    _service: &AdmittedCore<'_>,
     task_id: &str,
 ) -> Result<volicord_core::UserChannelInboxProjection, Box<dyn Error>> {
-    service
+    let now = fixture.store()?.current_clock_floor()?.into_datetime();
+    CoreService::for_read_only_with_clock(fixture.runtime_home_path(), FixedClock { now })
         .user_channel_inbox_projection(
             UserChannelInboxProjectionRequest {
                 project_id: ProjectId::new(fixture.project_id()),

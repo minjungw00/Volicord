@@ -110,7 +110,14 @@ pub fn open_registered_project_fixture_database(
             relationship: "runtime_home_missing",
             detail: "fixture project home has no Runtime Home ancestor".to_owned(),
         })?;
-    context.ensure_runtime_home(runtime_home)?;
+    if runtime_home != context.runtime_home().as_path() {
+        return Err(StoreError::InvalidProjectRegistration {
+            project_id: project.project_id.clone(),
+            field: "project_home",
+            relationship: "runtime_home_mismatch",
+            detail: "fixture project does not belong to the admitted Runtime Home".to_owned(),
+        });
+    }
     if project.state_db_path != project.project_home.join(PROJECT_STATE_DB_FILE) {
         return Err(StoreError::InvalidProjectRegistration {
             project_id: project.project_id.clone(),
@@ -830,12 +837,7 @@ pub mod core_fixtures {
             let connection_id = DEFAULT_CONNECTION_ID.to_owned();
 
             with_test_runtime_home_setup(runtime_home.path(), |context| {
-                initialize_runtime_home(
-                    context,
-                    runtime_home.path(),
-                    &format!("runtime_home_{component}"),
-                    "{}",
-                )?;
+                initialize_runtime_home(context, &format!("runtime_home_{component}"), "{}")?;
                 write_installation_profile(
                     context,
                     InstallationProfileRegistration {

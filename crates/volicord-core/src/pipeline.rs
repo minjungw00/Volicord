@@ -19,7 +19,8 @@ use volicord_store::{
         commit_input, CommitMutationInput, CommittedEventRef, CoreProjectStore,
         CoreStorageMutation, MutationCommitOutcome, PendingTaskEvent, ProjectStateHeader,
     },
-    RuntimeHomeMutationContext, StoreError, StoreFailureRoute, StoreResult,
+    CanonicalRuntimeHomePath, RuntimeHomeMutationContext, StoreError, StoreFailureRoute,
+    StoreResult,
 };
 use volicord_types::{
     canonical_request_hash, ActorSource, ChangeUnitId, CloseTaskResult, DryRunSummary,
@@ -389,10 +390,42 @@ pub struct PipelineResponse {
     pub replayed: bool,
 }
 
-/// Core request pipeline service bound to a local Runtime Home.
+/// Runtime Home identity used by one Core service.
+#[derive(Clone, PartialEq, Eq)]
+enum CoreRuntimeHome {
+    ReadOnly(PathBuf),
+    Admitted(CanonicalRuntimeHomePath),
+}
+
+impl CoreRuntimeHome {
+    fn as_path(&self) -> &Path {
+        match self {
+            Self::ReadOnly(path) => path,
+            Self::Admitted(path) => path.as_path(),
+        }
+    }
+
+    fn admitted(&self) -> Option<&CanonicalRuntimeHomePath> {
+        match self {
+            Self::ReadOnly(_) => None,
+            Self::Admitted(path) => Some(path),
+        }
+    }
+}
+
+impl fmt::Debug for CoreRuntimeHome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReadOnly(path) => formatter.debug_tuple("ReadOnly").field(path).finish(),
+            Self::Admitted(path) => formatter.debug_tuple("Admitted").field(path).finish(),
+        }
+    }
+}
+
+/// Core request pipeline service bound to a local Runtime Home identity.
 #[derive(Clone)]
 pub struct CoreService {
-    runtime_home: PathBuf,
+    runtime_home: CoreRuntimeHome,
     id_generator: Arc<dyn DurableIdGenerator>,
     clock: Arc<dyn Clock>,
 }
@@ -417,32 +450,90 @@ impl PartialEq for CoreService {
 impl Eq for CoreService {}
 
 impl CoreService {
-    /// Creates a service that reads and writes Core records under `runtime_home`.
-    pub fn new(runtime_home: impl AsRef<Path>) -> Self {
-        Self::with_id_generator_and_clock(runtime_home, RandomDurableIdGenerator, SystemClock)
+    /// Creates a service for read-only Core work under a selected Runtime Home path.
+    pub fn for_read_only(runtime_home: impl AsRef<Path>) -> Self {
+        Self::for_read_only_with_id_generator_and_clock(
+            runtime_home,
+            RandomDurableIdGenerator,
+            SystemClock,
+        )
     }
 
-    /// Creates a service with an injected durable ID generator.
-    pub fn with_id_generator(
+    /// Creates a service for admitted Core work from the context's sole Runtime Home identity.
+    ///
+    /// ```compile_fail
+    /// use std::path::Path;
+    /// use volicord_core::CoreService;
+    ///
+    /// fn cannot_admit_from_path(path: &Path) {
+    ///     let _ = CoreService::for_mutation(path);
+    /// }
+    /// ```
+    pub fn for_mutation(context: &RuntimeHomeMutationContext<'_>) -> Self {
+        Self::for_mutation_with_id_generator_and_clock(
+            context,
+            RandomDurableIdGenerator,
+            SystemClock,
+        )
+    }
+
+    /// Creates a read-only service with an injected durable ID generator.
+    pub fn for_read_only_with_id_generator(
         runtime_home: impl AsRef<Path>,
         id_generator: impl DurableIdGenerator + 'static,
     ) -> Self {
-        Self::with_id_generator_and_clock(runtime_home, id_generator, SystemClock)
+        Self::for_read_only_with_id_generator_and_clock(runtime_home, id_generator, SystemClock)
     }
 
-    /// Creates a service with an injected UTC clock.
-    pub fn with_clock(runtime_home: impl AsRef<Path>, clock: impl Clock + 'static) -> Self {
-        Self::with_id_generator_and_clock(runtime_home, RandomDurableIdGenerator, clock)
+    /// Creates an admitted service with an injected durable ID generator.
+    pub fn for_mutation_with_id_generator(
+        context: &RuntimeHomeMutationContext<'_>,
+        id_generator: impl DurableIdGenerator + 'static,
+    ) -> Self {
+        Self::for_mutation_with_id_generator_and_clock(context, id_generator, SystemClock)
     }
 
-    /// Creates a service with injected durable ID generation and UTC time.
-    pub fn with_id_generator_and_clock(
+    /// Creates a read-only service with an injected UTC clock.
+    pub fn for_read_only_with_clock(
+        runtime_home: impl AsRef<Path>,
+        clock: impl Clock + 'static,
+    ) -> Self {
+        Self::for_read_only_with_id_generator_and_clock(
+            runtime_home,
+            RandomDurableIdGenerator,
+            clock,
+        )
+    }
+
+    /// Creates an admitted service with an injected UTC clock.
+    pub fn for_mutation_with_clock(
+        context: &RuntimeHomeMutationContext<'_>,
+        clock: impl Clock + 'static,
+    ) -> Self {
+        Self::for_mutation_with_id_generator_and_clock(context, RandomDurableIdGenerator, clock)
+    }
+
+    /// Creates a read-only service with injected durable ID generation and UTC time.
+    pub fn for_read_only_with_id_generator_and_clock(
         runtime_home: impl AsRef<Path>,
         id_generator: impl DurableIdGenerator + 'static,
         clock: impl Clock + 'static,
     ) -> Self {
         Self {
-            runtime_home: runtime_home.as_ref().to_path_buf(),
+            runtime_home: CoreRuntimeHome::ReadOnly(runtime_home.as_ref().to_path_buf()),
+            id_generator: Arc::new(id_generator),
+            clock: Arc::new(clock),
+        }
+    }
+
+    /// Creates an admitted service with injected durable ID generation and UTC time.
+    pub fn for_mutation_with_id_generator_and_clock(
+        context: &RuntimeHomeMutationContext<'_>,
+        id_generator: impl DurableIdGenerator + 'static,
+        clock: impl Clock + 'static,
+    ) -> Self {
+        Self {
+            runtime_home: CoreRuntimeHome::Admitted(context.runtime_home().clone()),
             id_generator: Arc::new(id_generator),
             clock: Arc::new(clock),
         }
@@ -473,7 +564,29 @@ impl CoreService {
     }
 
     pub(crate) fn runtime_home(&self) -> &Path {
-        &self.runtime_home
+        self.runtime_home.as_path()
+    }
+
+    pub(crate) fn admitted_runtime_home(&self) -> Option<&CanonicalRuntimeHomePath> {
+        self.runtime_home.admitted()
+    }
+
+    fn ensure_mutation_context(&self, context: &RuntimeHomeMutationContext<'_>) -> StoreResult<()> {
+        match self.admitted_runtime_home() {
+            Some(runtime_home) if runtime_home == context.runtime_home() => Ok(()),
+            Some(runtime_home) => Err(StoreError::InvalidInput {
+                detail: format!(
+                    "Core service admitted for {} cannot use mutation context for {}",
+                    runtime_home.as_path().display(),
+                    context.runtime_home().as_path().display()
+                ),
+            }),
+            None => Err(StoreError::InvalidInput {
+                detail:
+                    "Core mutation requires a service constructed from Runtime Home mutation admission"
+                        .to_owned(),
+            }),
+        }
     }
 
     pub(crate) fn allocate_generated_id(
@@ -550,8 +663,8 @@ impl CoreService {
         let request_hash = canonical_request_hash(&request.request_json)?;
 
         let store = match open_store_for_policy(
+            self,
             context,
-            &self.runtime_home,
             &request.invocation.project_id,
             &request.policy,
         ) {
@@ -826,18 +939,18 @@ impl CoreService {
 }
 
 fn open_store_for_policy<'mutation>(
+    service: &CoreService,
     context: Option<&'mutation RuntimeHomeMutationContext<'mutation>>,
-    runtime_home: &Path,
     project_id: &ProjectId,
     policy: &MethodPolicy,
 ) -> Result<CoreProjectStore<'mutation>, StoreError> {
     if policy.effect == MethodEffectPolicy::ReadOnly {
-        CoreProjectStore::open_read_only(runtime_home, project_id)
+        CoreProjectStore::open_read_only(service.runtime_home(), project_id)
     } else {
         let context = context.ok_or_else(|| StoreError::InvalidInput {
             detail: "Core mutation requires Runtime Home mutation admission".to_owned(),
         })?;
-        context.ensure_runtime_home(runtime_home)?;
+        service.ensure_mutation_context(context)?;
         CoreProjectStore::open_for_mutation(context, project_id)
     }
 }
@@ -1960,6 +2073,31 @@ mod tests {
     const CONNECTION_ID: &str = "connection_main";
 
     #[test]
+    fn admitted_core_service_accepts_only_its_exact_mutation_identity() -> Result<(), Box<dyn Error>>
+    {
+        let first = TempRuntimeHome::new("core-service-admitted-first")?;
+        let second = TempRuntimeHome::new("core-service-admitted-second")?;
+        let first_mutation = TestRuntimeHomeMutation::acquire(first.path())?;
+        let second_mutation = TestRuntimeHomeMutation::acquire(second.path())?;
+        let first_context = first_mutation.context()?;
+        let second_context = second_mutation.context()?;
+
+        let admitted = CoreService::for_mutation(&first_context);
+        admitted.ensure_mutation_context(&first_context)?;
+        let mismatch = admitted
+            .ensure_mutation_context(&second_context)
+            .expect_err("a Core service admitted for A must reject context B");
+        assert!(matches!(mismatch, StoreError::InvalidInput { .. }));
+
+        let read_only = CoreService::for_read_only(first.path());
+        let missing_admission = read_only
+            .ensure_mutation_context(&first_context)
+            .expect_err("a read-only Core service must not accept mutation context");
+        assert!(matches!(missing_admission, StoreError::InvalidInput { .. }));
+        Ok(())
+    }
+
+    #[test]
     fn system_clock_creation_is_not_after_a_same_millisecond_core_utc_read() {
         let system_sample = DateTime::parse_from_rfc3339("2026-07-13T12:34:56.123456789Z")
             .expect("test timestamp should be RFC3339")
@@ -2072,7 +2210,7 @@ mod tests {
             let runtime_home = TempRuntimeHome::new("core-pipeline")?;
             let repo_root = runtime_home.create_product_repo("repo")?;
             with_test_runtime_home_setup(runtime_home.path(), |context| {
-                initialize_runtime_home(context, runtime_home.path(), "runtime_home_a", "{}")?;
+                initialize_runtime_home(context, "runtime_home_a", "{}")?;
                 register_project(
                     context,
                     ProjectRegistration {
@@ -2131,8 +2269,8 @@ mod tests {
             })?;
 
             let runtime_home_path = runtime_home.path().to_path_buf();
-            let service = CoreService::new(&runtime_home_path);
             let mutation = TestRuntimeHomeMutation::acquire(&runtime_home_path)?;
+            let service = CoreService::for_mutation(&mutation.context()?);
             Ok(Self {
                 mutation,
                 _runtime_home: runtime_home,

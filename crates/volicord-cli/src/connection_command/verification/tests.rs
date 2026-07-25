@@ -24,7 +24,6 @@ fn active_verification_writeability_probe_is_bounded_and_detects_read_only_proje
     .expect("connection");
     let writable = verify_selected_store_writeability(
         &fixture.mutation_context().expect("mutation context"),
-        fixture.runtime_home_path(),
         &connection,
         Some(fixture.project_id()),
     );
@@ -47,7 +46,6 @@ fn active_verification_writeability_probe_is_bounded_and_detects_read_only_proje
     .expect("read-only project database");
     let read_only = verify_selected_store_writeability(
         &fixture.mutation_context().expect("mutation context"),
-        fixture.runtime_home_path(),
         &connection,
         Some(fixture.project_id()),
     );
@@ -1291,7 +1289,6 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
     let scope = first.key().scope().clone();
     reconcile_current_findings_for_scope(
         &fixture.mutation_context().expect("mutation context"),
-        fixture.runtime_home_path(),
         &scope,
         &[CurrentOperationalOwner::Guard],
         &[first, second],
@@ -1314,7 +1311,6 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
     let historical_id = historical.id().clone();
     reconcile_current_findings_for_scope(
         &fixture.mutation_context().expect("mutation context"),
-        fixture.runtime_home_path(),
         &scope,
         &[CurrentOperationalOwner::Trust],
         &[historical],
@@ -1374,7 +1370,6 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
 
     reconcile_current_findings_for_scope(
         &fixture.mutation_context().expect("mutation context"),
-        fixture.runtime_home_path(),
         &scope,
         &[CurrentOperationalOwner::Guard],
         &[],

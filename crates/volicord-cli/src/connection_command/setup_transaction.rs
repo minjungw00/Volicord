@@ -61,22 +61,11 @@ impl SetupPlan {
 #[derive(Debug, Clone)]
 pub(super) enum RuntimeHomePlan {
     Create {
-        final_path: PathBuf,
         runtime_home_id: String,
         metadata_json: String,
         installation: InstallationProfileRegistration,
     },
-    Validate {
-        final_path: PathBuf,
-    },
-}
-
-impl RuntimeHomePlan {
-    pub(super) fn final_path(&self) -> &Path {
-        match self {
-            Self::Create { final_path, .. } | Self::Validate { final_path } => final_path,
-        }
-    }
+    Validate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -439,29 +428,27 @@ impl<'mutation> PreparedSetup<'mutation> {
                 "setup preparation requires an exclusive Runtime Home mutation lease",
             ));
         }
-        context.ensure_runtime_home(plan.runtime_home.final_path())?;
         let runtime_home_publication = match &plan.runtime_home {
             RuntimeHomePlan::Create {
-                final_path,
                 runtime_home_id,
                 metadata_json,
                 installation,
             } => SetupRuntimeHomePublication::Prepared(prepare_runtime_home_with_installation(
                 context,
-                final_path,
                 runtime_home_id,
                 metadata_json,
                 installation.clone(),
             )?),
-            RuntimeHomePlan::Validate { final_path } => {
-                match inspect_runtime_home_bootstrap(final_path)? {
+            RuntimeHomePlan::Validate => {
+                let runtime_home = context.runtime_home().as_path();
+                match inspect_runtime_home_bootstrap(runtime_home)? {
                     RuntimeHomeBootstrapState::Ready(_) => {
                         SetupRuntimeHomePublication::ExistingReady
                     }
                     RuntimeHomeBootstrapState::Absent => {
                         return Err(ConnectionCommandError::concurrent_modification(format!(
                             "SETUP_CONCURRENT_MODIFICATION: Runtime Home disappeared after planning: {}",
-                            final_path.display()
+                            runtime_home.display()
                         )));
                     }
                     RuntimeHomeBootstrapState::Incompatible(mismatch) => {
@@ -497,7 +484,7 @@ impl<'mutation> PreparedSetup<'mutation> {
             return Err(error);
         }
 
-        let store_boundary = if matches!(plan.runtime_home, RuntimeHomePlan::Validate { .. }) {
+        let store_boundary = if matches!(plan.runtime_home, RuntimeHomePlan::Validate) {
             match PreparedStoreMutationBoundary::prepare(context, &plan.store_inputs) {
                 Ok(boundary) => Some(boundary),
                 Err(error) => {
@@ -524,14 +511,15 @@ impl<'mutation> PreparedSetup<'mutation> {
     pub(super) fn validate_inputs(&self) -> Result<(), ConnectionCommandError> {
         match &self.plan.runtime_home {
             RuntimeHomePlan::Create { .. } => {}
-            RuntimeHomePlan::Validate { final_path } => {
+            RuntimeHomePlan::Validate => {
+                let runtime_home = self.mutation_context.runtime_home().as_path();
                 if !matches!(
-                    inspect_runtime_home_bootstrap(final_path)?,
+                    inspect_runtime_home_bootstrap(runtime_home)?,
                     RuntimeHomeBootstrapState::Ready(_)
                 ) {
                     return Err(ConnectionCommandError::concurrent_modification(format!(
                         "SETUP_CONCURRENT_MODIFICATION: Runtime Home changed after setup preparation: {}",
-                        final_path.display()
+                        runtime_home.display()
                     )));
                 }
             }

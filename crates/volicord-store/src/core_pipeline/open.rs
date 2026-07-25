@@ -5,7 +5,8 @@ use volicord_types::ProjectId;
 use super::CoreProjectStore;
 use crate::{
     bootstrap::{
-        project_record_for_execution, project_record_for_execution_read_only, ProjectRecord,
+        project_record_for_execution_admitted, project_record_for_execution_read_only,
+        ProjectRecord,
     },
     sqlite::{open_project_state_database_for_mutation, open_project_state_database_read_only},
     RuntimeHomeMutationContext, StoreError, StoreResult,
@@ -18,7 +19,7 @@ impl<'mutation> CoreProjectStore<'mutation> {
         project_id: &ProjectId,
     ) -> StoreResult<Self> {
         let runtime_home = context.runtime_home().as_path().to_path_buf();
-        let project = project_record_for_execution(&runtime_home, project_id.as_str())?
+        let project = project_record_for_execution_admitted(context, project_id.as_str())?
             .ok_or_else(|| StoreError::NotFound {
                 entity: "project",
                 id: project_id.as_str().to_owned(),
@@ -34,6 +35,7 @@ impl<'mutation> CoreProjectStore<'mutation> {
         let conn = open_project_state_database_for_mutation(context, &project)?;
         Ok(Self {
             runtime_home,
+            canonical_runtime_home: Some(context.runtime_home().clone()),
             project,
             conn,
             writable: true,
@@ -64,6 +66,7 @@ impl<'mutation> CoreProjectStore<'mutation> {
         let conn = open_project_state_database_read_only(&project.state_db_path)?;
         Ok(Self {
             runtime_home,
+            canonical_runtime_home: None,
             project,
             conn,
             writable: false,
@@ -75,6 +78,11 @@ impl<'mutation> CoreProjectStore<'mutation> {
     /// Returns the Runtime Home path that selected this project-local store.
     pub fn runtime_home(&self) -> &Path {
         &self.runtime_home
+    }
+
+    /// Returns the typed canonical Runtime Home retained by a mutation-capable Store.
+    pub fn canonical_runtime_home(&self) -> Option<&crate::CanonicalRuntimeHomePath> {
+        self.canonical_runtime_home.as_ref()
     }
 
     /// Returns the registry project row that selected this project-local store.

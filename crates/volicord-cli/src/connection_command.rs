@@ -527,53 +527,54 @@ fn command_connection_verify(
     )?;
     with_cli_runtime_home_mutation_result(&runtime_home, "cli.connection.verify", |context| {
         (|| -> Result<String, ConnectionCommandError> {
-    let selector = connection_selector(&parsed, current_dir, process)?;
-    let (mut connection, projects) = select_connection_for_diagnostics(&runtime_home, &selector)?;
-    if decode_persisted_object(&connection.metadata_json).is_none() {
-        return Err(ConnectionCommandError::runtime(format!(
-            "{PERSISTED_CONNECTION_METADATA_CORRUPT_REASON}: connection verification cannot repair Agent Connection registration metadata; recreate or repair the registration before retrying"
-        )));
-    }
-    let expected_integration_revision = connection_integration_revision(&connection)?;
-    let selected_project = selected_connection_project(&projects, selector.repo_root())?;
-    let selected_repo_root = selected_project.project.repo_root.clone();
-    let host_plan =
-        existing_host_plan(&connection, &runtime_home, process, Some(selected_project))?;
-    let verification = verify_connection(
-        context,
-        &runtime_home,
-        &connection,
-        &host_plan,
-        &selected_project.project.repo_root,
-        Some(&selected_project.project_id),
-        process,
-    )?;
-    connection = persist_connection_verification_report(
-        context,
-        &connection.connection_internal_id,
-        &expected_integration_revision,
-        Some(&verification.report),
-    )?;
-    let report = ConnectionCommandReport::from_verification(
-        CommandOperation::Verify,
-        None,
-        &runtime_home,
-        CommandConnection::new(
-            &connection.connection_internal_id,
-            &connection.host_kind,
-            &connection.host_scope,
-            &connection.mode,
-            &selected_repo_root,
-            &connection.config_target,
-        ),
-        &verification.report,
-    )
-    .with_diagnostic_findings(
-        verification.findings,
-        Some(verification.integration_revision),
-    );
-    let rendered = render_command_report(connection_output_format(&parsed), &report)?;
-    command_output_result(rendered.status, rendered.output)
+            let runtime_home = context.runtime_home().as_path();
+            let selector = connection_selector(&parsed, current_dir, process)?;
+            let (mut connection, projects) =
+                select_connection_for_diagnostics(runtime_home, &selector)?;
+            if decode_persisted_object(&connection.metadata_json).is_none() {
+                return Err(ConnectionCommandError::runtime(format!(
+                    "{PERSISTED_CONNECTION_METADATA_CORRUPT_REASON}: connection verification cannot repair Agent Connection registration metadata; recreate or repair the registration before retrying"
+                )));
+            }
+            let expected_integration_revision = connection_integration_revision(&connection)?;
+            let selected_project = selected_connection_project(&projects, selector.repo_root())?;
+            let selected_repo_root = selected_project.project.repo_root.clone();
+            let host_plan =
+                existing_host_plan(&connection, runtime_home, process, Some(selected_project))?;
+            let verification = verify_connection(
+                context,
+                &connection,
+                &host_plan,
+                &selected_project.project.repo_root,
+                Some(&selected_project.project_id),
+                process,
+            )?;
+            connection = persist_connection_verification_report(
+                context,
+                &connection.connection_internal_id,
+                &expected_integration_revision,
+                Some(&verification.report),
+            )?;
+            let report = ConnectionCommandReport::from_verification(
+                CommandOperation::Verify,
+                None,
+                runtime_home,
+                CommandConnection::new(
+                    &connection.connection_internal_id,
+                    &connection.host_kind,
+                    &connection.host_scope,
+                    &connection.mode,
+                    &selected_repo_root,
+                    &connection.config_target,
+                ),
+                &verification.report,
+            )
+            .with_diagnostic_findings(
+                verification.findings,
+                Some(verification.integration_revision),
+            );
+            let rendered = render_command_report(connection_output_format(&parsed), &report)?;
+            command_output_result(rendered.status, rendered.output)
         })()
     })
     .map_err(ConnectionCommandError::MutationAdmission)?
@@ -615,15 +616,16 @@ fn command_connection_mode(
     )?;
     with_cli_runtime_home_mutation_result(&runtime_home, "cli.connection.mode", |context| {
         (|| -> Result<String, ConnectionCommandError> {
+            let runtime_home = context.runtime_home().as_path();
             let selector = connection_selector(&parsed, current_dir, process)?;
-            let (connection, projects) = select_connection(&runtime_home, &selector)?;
+            let (connection, projects) = select_connection(runtime_home, &selector)?;
             let selected_project = selected_connection_project(&projects, selector.repo_root())?;
             let previous_mode = connection.mode.clone();
             let expected_revision = connection_integration_revision(&connection)?;
             let guard_manifests = if connection.mode == mode {
                 Vec::new()
             } else {
-                preflight_mode_guard_rebinds(&runtime_home, &connection, &projects, &mode)?
+                preflight_mode_guard_rebinds(runtime_home, &connection, &projects, &mode)?
             };
             let outcome = transition_connection_mode(
                 context,
@@ -636,7 +638,7 @@ fn command_connection_mode(
                 },
             )?;
             let report = ConnectionCommandReport::mode_transition(
-                &runtime_home,
+                runtime_home,
                 CommandConnection::new(
                     &outcome.connection.connection_internal_id,
                     &outcome.connection.host_kind,
@@ -769,14 +771,15 @@ fn command_connection_remove(
     )?;
     with_cli_runtime_home_mutation_result(&runtime_home, "cli.connection.remove", |context| {
         (|| -> Result<String, ConnectionCommandError> {
+            let runtime_home = context.runtime_home().as_path();
             let selector = connection_selector(&parsed, current_dir, process)?;
-            let (connection, projects) = select_connection(&runtime_home, &selector)?;
+            let (connection, projects) = select_connection(runtime_home, &selector)?;
             let selected_project = selected_connection_project(&projects, selector.repo_root())?;
             let remaining_count = projects.len().saturating_sub(1);
             let host_plan = if remaining_count == 0 {
                 Some(existing_host_plan(
                     &connection,
-                    &runtime_home,
+                    runtime_home,
                     process,
                     Some(selected_project),
                 )?)
@@ -790,7 +793,7 @@ fn command_connection_remove(
                     path_text(&selected_project.project.repo_root),
                 )];
                 for installation in list_guard_installations(
-                    &runtime_home,
+                    runtime_home,
                     &connection.connection_internal_id,
                     Some(&selected_project.project_id),
                 )? {
@@ -809,7 +812,7 @@ fn command_connection_remove(
                 }
                 planning::canonicalize_planned_changes(&mut planned_changes);
                 let report = ConnectionCommandReport::removal_dry_run(
-                    &runtime_home,
+                    runtime_home,
                     CommandConnection::new(
                         &connection.connection_internal_id,
                         &connection.host_kind,
@@ -833,7 +836,7 @@ fn command_connection_remove(
                 &selected_project.project_id,
             )?;
             let report = ConnectionCommandReport::removal(
-                &runtime_home,
+                runtime_home,
                 CommandConnection::new(
                     &connection.connection_internal_id,
                     &connection.host_kind,
@@ -1010,7 +1013,6 @@ where
 
 struct SelectedConnectionRuntimeHome {
     path: PathBuf,
-    installation_profile: InstallationProfileRecord,
 }
 
 fn selected_connection_runtime_home_read_only<F>(
@@ -1022,11 +1024,8 @@ where
     F: Fn(&str) -> Option<OsString>,
 {
     let path = selected_runtime_home_path(explicit_runtime_home, env_var, current_dir)?;
-    let installation_profile = required_connection_installation_profile_read_only(&path)?;
-    Ok(SelectedConnectionRuntimeHome {
-        path,
-        installation_profile,
-    })
+    required_connection_installation_profile_read_only(&path)?;
+    Ok(SelectedConnectionRuntimeHome { path })
 }
 
 fn init_profile_plan(

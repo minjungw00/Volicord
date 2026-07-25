@@ -932,7 +932,7 @@ mod repository_discovery_tests {
         let context = setup.context()?;
         let repo_root = runtime.create_product_repo("clone")?;
         fs::create_dir(repo_root.join(".git"))?;
-        initialize_runtime_home(&context, runtime.path(), &format!("runtime_{label}"), "{}")?;
+        initialize_runtime_home(&context, &format!("runtime_{label}"), "{}")?;
         write_installation_profile(
             &context,
             InstallationProfileRegistration {

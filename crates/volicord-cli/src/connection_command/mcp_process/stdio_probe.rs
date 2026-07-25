@@ -263,13 +263,9 @@ impl DisposableConformanceFixture {
             .map_err(|error| {
                 format!("failed to authorize disposable Runtime Home setup: {error}")
             })?;
-        initialize_runtime_home(
-            &mutation_context,
-            &runtime_home,
-            "runtime_home_verification_fixture",
-            "{}",
-        )
-        .map_err(|error| format!("failed to initialize disposable Runtime Home: {error}"))?;
+        let runtime_home = mutation_context.runtime_home().as_path().to_path_buf();
+        initialize_runtime_home(&mutation_context, "runtime_home_verification_fixture", "{}")
+            .map_err(|error| format!("failed to initialize disposable Runtime Home: {error}"))?;
         write_installation_profile(
             &mutation_context,
             InstallationProfileRegistration {

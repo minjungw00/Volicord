@@ -233,6 +233,14 @@ milestone, integration-verification event, Guard hook 수집, 진단 영속화, 
 Core 재검증, best-effort 진단을 실행합니다. 이 case를 네이티브 Windows에서 실행하면
 승인 전에 열린 SQLite handle이 setup 교체나 rollback을 막지 않음도 함께 증명합니다.
 
+Alias coverage는 대기 choice, evidence observation, 변경 불가능한 replay, change
+reconciliation, 추가 승인 Core operation을 lexical Runtime Home alias로 실행합니다.
+Unix에서는 symlink alias도 실행합니다. 이 case는 Registry project 하나, 같은 typed
+Store/Core identity와 일관된 UserAction snapshot, 한 번만 commit된 resolution, 승인된
+home의 diagnostic correlation을 확인합니다. 별도 negative case는 다른 Runtime Home,
+project, verification basis가 계속 권한을 얻지 못하는지 검증합니다. 네이티브 Windows
+runner는 지원하는 alias case를 실제 실행하며 compile-only 검증은 별도로 보고합니다.
+
 MCP lifecycle 테스트는 runtime-session 생성 전에 setup을 시작하고, Core 효과 전에
 변경 call을 거부하며, 승인을 얻을 수 없을 때 관찰을 영속화하는 read도 no-effect로
 유지합니다. 유휴 server는 `SharedWriter`를 계속 보유하면 안 되며 승인은 operation마다

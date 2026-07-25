@@ -59,11 +59,11 @@ pub(super) fn prompt_capture_availability_for_event(
 
 fn record_prompt_capture(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<Value, GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let Some(prompt) = extract_prompt_text(&input.raw_value) else {
         return Ok(json!({ "captured": false, "reason": "no_prompt_text" }));
     };
@@ -110,13 +110,13 @@ fn record_prompt_capture(
 
 pub(super) fn handle_prompt_capture(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<(GuardPolicyDecision, Value, bool), GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let availability = prompt_capture_availability_for_event(runtime_home, project, envelope)?;
-    let capture = record_prompt_capture(context, runtime_home, project, envelope, input)?;
+    let capture = record_prompt_capture(context, project, envelope, input)?;
     let available = availability.is_operational();
     let decision = if available {
         GuardPolicyDecision::Continue

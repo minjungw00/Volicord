@@ -1251,7 +1251,7 @@ fn handle_json_rpc_request_inner(
             match adapter.tools_for_context(context) {
                 Ok(canonical_tools) => {
                     let required_tools_present =
-                        required_tool_set_present(adapter, &canonical_tools)?;
+                        required_tool_set_present(context, adapter, &canonical_tools)?;
                     let returned_tool_identities = canonical_tools
                         .iter()
                         .map(|tool| tool.id.wire_name().to_owned())
@@ -1402,9 +1402,12 @@ fn record_current_session_finding(
     if state.runtime_session_id.is_empty() || (terminal && state.terminal_finding_recorded) {
         return Ok(());
     }
-    let runtime = mcp_runtime_session(&adapter.runtime_home, &state.runtime_session_id)
-        .map_err(McpAdapterError::Store)?
-        .ok_or_else(|| McpAdapterError::Protocol("MCP runtime session disappeared".to_owned()))?;
+    let runtime = mcp_runtime_session(
+        adapter.admitted_runtime_home(context)?,
+        &state.runtime_session_id,
+    )
+    .map_err(McpAdapterError::Store)?
+    .ok_or_else(|| McpAdapterError::Protocol("MCP runtime session disappeared".to_owned()))?;
     let data = data_for_diagnostic(
         diagnostic,
         &McpDiagnosticContext {
@@ -1448,11 +1451,12 @@ fn record_current_session_finding(
 }
 
 fn required_tool_set_present(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     tools: &[crate::tool_registry::CanonicalToolDefinition],
 ) -> Result<bool, McpAdapterError> {
     let connection = agent_connection_record_read_only(
-        &adapter.runtime_home,
+        adapter.admitted_runtime_home(context)?,
         adapter.context.connection_internal_id.as_str(),
     )
     .map_err(McpAdapterError::Store)?
@@ -1519,6 +1523,7 @@ fn lifecycle_error_with_diagnostic(
 }
 
 fn bind_codex_managed_tool_call(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     state: &mut ConnectionState,
     params: &Map<String, Value>,
@@ -1536,7 +1541,7 @@ fn bind_codex_managed_tool_call(
                 correlation: binding.correlation,
             };
             candidate.managed_stdio_binding_active = true;
-            validate_managed_stdio_session_ownership(adapter, &candidate)
+            validate_managed_stdio_session_ownership_admitted(context, adapter, &candidate)
                 .map_err(|_| McpHostError::RegisteredSessionCorrelationMismatch)?;
             *state = candidate;
             Ok(())
@@ -2032,7 +2037,7 @@ pub(crate) fn call_tool_result(
         }
     };
     let codex_was_pending = state.codex_binding.is_pending();
-    if let Err(error) = bind_codex_managed_tool_call(adapter, state, &object) {
+    if let Err(error) = bind_codex_managed_tool_call(context, adapter, state, &object) {
         state.pending_finding = Some(McpDiagnostic::Host(error));
         return Ok(Err(invalid_params_response(id, error.to_string())));
     }
@@ -2064,7 +2069,7 @@ pub(crate) fn call_tool_result(
         match call_result {
             Ok(response) if tool == AgentToolId::REQUEST_USER_ACTION => {
                 let pending_response = response.clone();
-                match user_action_tool_output(adapter, response) {
+                match user_action_tool_output(context, adapter, response) {
                     Ok(output) => output,
                     Err(_) => ToolCallOutput::from_pipeline_response(&pending_response)?
                         .with_post_effect_failure(
@@ -2236,7 +2241,7 @@ pub(crate) fn call_tool_result(
         && state.managed_stdio_binding_active
         && !state.runtime_session_id.is_empty()
     {
-        validate_managed_stdio_session_ownership(adapter, state)?;
+        validate_managed_stdio_session_ownership_admitted(context, adapter, state)?;
         record_mcp_verification_tool_observation(
             context,
             &state.runtime_session_id,
@@ -3266,8 +3271,41 @@ fn validate_managed_stdio_session_ownership(
     Ok(())
 }
 
-fn stdio_diagnostic_project_id(adapter: &McpAdapter) -> Option<String> {
-    adapter
+fn validate_managed_stdio_session_ownership_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    adapter: &McpAdapter,
+    state: &ConnectionState,
+) -> Result<(), McpAdapterError> {
+    if !state.managed_stdio_binding_active {
+        return Ok(());
+    }
+    let CodexManagedBinding::Bound { correlation, .. } = &state.codex_binding else {
+        return Err(McpAdapterError::Environment(
+            "managed_host_session_correlation_invalid: active managed stdio binding has no host-native session correlation"
+                .to_owned(),
+        ));
+    };
+    let _connection = agent_connection_record_read_only(
+        adapter.admitted_runtime_home(context)?,
+        adapter.context.connection_internal_id.as_str(),
+    )
+    .map_err(McpAdapterError::Store)?
+    .ok_or_else(|| {
+        McpAdapterError::Environment(
+            "managed_stdio_session_ownership_unavailable: managed stdio connection is unavailable"
+                .to_owned(),
+        )
+    })?;
+    let _validated_correlation = correlation;
+    Ok(())
+}
+
+fn stdio_diagnostic_project_id(
+    context: &RuntimeHomeMutationContext<'_>,
+    adapter: &McpAdapter,
+) -> Result<Option<String>, McpAdapterError> {
+    let runtime_home = adapter.admitted_runtime_home(context)?;
+    let project_id = adapter
         .context
         .project_allowlist
         .as_ref()
@@ -3276,13 +3314,14 @@ fn stdio_diagnostic_project_id(adapter: &McpAdapter) -> Option<String> {
         .map(|project| project.as_str().to_owned())
         .or_else(|| {
             list_connection_projects_read_only(
-                &adapter.runtime_home,
+                runtime_home,
                 adapter.context.connection_internal_id.as_str(),
             )
             .ok()
             .filter(|projects| projects.len() == 1)
             .and_then(|projects| projects.first().map(|project| project.project_id.clone()))
-        })
+        });
+    Ok(project_id)
 }
 
 fn start_transport_diagnostic_session(
@@ -3290,8 +3329,14 @@ fn start_transport_diagnostic_session(
     adapter: &McpAdapter,
     state: &ConnectionState,
 ) -> Result<(), StoreError> {
+    let runtime_home =
+        adapter
+            .admitted_runtime_home(context)
+            .map_err(|error| StoreError::InvalidInput {
+                detail: error.to_string(),
+            })?;
     let connection = agent_connection_record_read_only(
-        &adapter.runtime_home,
+        runtime_home,
         adapter.context.connection_internal_id.as_str(),
     )
     .ok()
@@ -3299,7 +3344,11 @@ fn start_transport_diagnostic_session(
     let host_kind = connection
         .as_ref()
         .and_then(|record| DiagnosticHostKind::from_connection_host_kind(&record.host_kind));
-    let project_id = stdio_diagnostic_project_id(adapter);
+    let project_id = stdio_diagnostic_project_id(context, adapter).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: error.to_string(),
+        }
+    })?;
     let build = crate::build_info();
     start_diagnostic_session(
         context,
@@ -3483,13 +3532,15 @@ fn tool_call_result_from_output_for_profile(
 }
 
 pub(crate) fn user_action_tool_output(
+    context: &RuntimeHomeMutationContext<'_>,
     adapter: &McpAdapter,
     pending_response: PipelineResponse,
 ) -> Result<ToolCallOutput, McpAdapterError> {
     let Some(coordinate) = pending_user_action_coordinate_from_response(&pending_response)? else {
         return ToolCallOutput::from_pipeline_response(&pending_response);
     };
-    let current = current_user_action_projection_for_coordinate(adapter, &coordinate)?;
+    adapter.admitted_runtime_home(context)?;
+    let current = current_user_action_projection_for_coordinate(context, &coordinate)?;
     let mut output = compound_user_action_output(&pending_response, &current)?;
     if current.status == UserActionStatus::Pending {
         output = output.with_user_action_fallback(cli_recovery_fallback());
@@ -3522,11 +3573,10 @@ fn compound_user_action_output(
 }
 
 fn current_user_action_projection_for_coordinate(
-    adapter: &McpAdapter,
+    context: &RuntimeHomeMutationContext<'_>,
     coordinate: &PendingUserActionCoordinate,
 ) -> Result<CurrentUserActionProjection, McpAdapterError> {
-    let current = adapter
-        .core
+    let current = CoreService::for_mutation(context)
         .current_user_action_projection(&coordinate.project_id, &coordinate.user_action_request_id)
         .map_err(McpAdapterError::Core)?
         .ok_or_else(|| {
@@ -3867,7 +3917,7 @@ mod mutation_output_tests {
                 .map(|installation| installation.guard_installation_id.as_str()),
         )
         .expect("managed Agent Session fixture must seed");
-        let validated = CoreService::new(fixture.runtime_home_path())
+        let validated = CoreService::for_read_only(fixture.runtime_home_path())
             .validate_agent_session(
                 AgentConnectionId::new(fixture.connection_id()),
                 ProjectId::new(fixture.project_id()),
@@ -3889,7 +3939,7 @@ mod mutation_output_tests {
         prefix: &str,
     ) -> Result<(CoreFixture, PipelineResponse, AuthorityReceipt), Box<dyn Error>> {
         let fixture = CoreFixture::new(prefix)?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
             &fixture.mutation_context()?,
@@ -3925,7 +3975,7 @@ mod mutation_output_tests {
         Box<dyn Error>,
     > {
         let fixture = CoreFixture::new(prefix)?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let workspace = GitWorkspaceContext {
             git_common_dir: fixture
                 .product_repo_path()
@@ -4226,7 +4276,7 @@ mod mutation_output_tests {
     fn idempotent_mutation_replay_default_summary_returns_refreshed_authority_receipt(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-mutation-replay-summary")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let request = fixture.intake_request(
             "req_mcp_mutation_replay_summary",
             "idem_mcp_mutation_replay_summary",
@@ -4309,7 +4359,7 @@ mod mutation_output_tests {
     fn full_projection_pairs_exact_method_result_with_newer_fresh_receipt(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-full-fresh-receipt")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
@@ -4431,7 +4481,7 @@ mod mutation_output_tests {
     ) -> Result<(), Box<dyn Error>> {
         let (fixture, committed, _) =
             committed_intake_with_receipt("mcp-refresh-freshness-mismatch")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_read_only(fixture.runtime_home_path());
         let task_id = committed
             .resolved_task_id
             .clone()
@@ -4477,7 +4527,7 @@ mod mutation_output_tests {
     fn post_effect_adapter_failure_refreshes_authority_without_recommending_replay(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-post-effect-adapter-failure")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
             &fixture.mutation_context()?,
@@ -4547,7 +4597,7 @@ mod mutation_output_tests {
     fn superseded_user_action_projects_latest_state_and_preserves_the_origin_effect(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-user-action-record-race")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
@@ -4594,7 +4644,8 @@ mod mutation_output_tests {
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
         let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
 
-        let output = user_action_tool_output(&adapter, pending_response)?;
+        let output =
+            user_action_tool_output(&fixture.mutation_context()?, &adapter, pending_response)?;
         assert_eq!(output.post_effect_failure, None);
         assert_eq!(
             output.structured_content["agent_workflow_result"]["user_action_request_summary"]
@@ -4653,7 +4704,7 @@ mod mutation_output_tests {
     fn mismatched_safe_summary_routes_to_closed_post_effect_recovery() -> Result<(), Box<dyn Error>>
     {
         let fixture = CoreFixture::new("mcp-noncanonical-pending-post-effect")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
@@ -4689,8 +4740,12 @@ mod mutation_output_tests {
         let context =
             McpConnectionContext::resolve(fixture.runtime_home_path(), fixture.connection_id())?;
         let adapter = McpAdapter::new(fixture.runtime_home_path(), context);
-        let error = user_action_tool_output(&adapter, pending_response.clone())
-            .expect_err("mismatched public summary must fail during current-state reread");
+        let error = user_action_tool_output(
+            &fixture.mutation_context()?,
+            &adapter,
+            pending_response.clone(),
+        )
+        .expect_err("mismatched public summary must fail during current-state reread");
         assert!(matches!(error, McpAdapterError::Protocol(_)));
         assert_eq!(fixture.counts()?, before);
 
@@ -4740,7 +4795,7 @@ mod mutation_output_tests {
     fn projection_failure_preserves_effect_facts_and_exact_method_result(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-post-effect-projection-failure")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let invocation = || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
             &fixture.mutation_context()?,
@@ -4801,7 +4856,7 @@ mod mutation_output_tests {
     fn staging_refresh_failure_reports_applied_handle_as_non_retryable_recovery(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-staging-refresh-failure")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(
@@ -4880,7 +4935,7 @@ mod mutation_output_tests {
     fn oversized_valid_projection_preserves_effect_and_refresh_truth_within_each_budget(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-mutation-oversized-fresh-receipt")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let committed = core.intake(
@@ -5484,7 +5539,7 @@ mod mutation_output_tests {
     fn oversized_stage_projection_preserves_the_staging_handle_in_bounded_recovery(
     ) -> Result<(), Box<dyn Error>> {
         let fixture = CoreFixture::new("mcp-stage-oversized-fresh-receipt")?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let workflow_invocation =
             || test_agent_invocation(&fixture, OperationCategory::AgentWorkflow);
         let intake = core.intake(

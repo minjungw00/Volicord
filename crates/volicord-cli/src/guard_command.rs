@@ -12,7 +12,9 @@ use sha2::{Digest, Sha256};
 use volicord_core::{Clock, CorePipelineError, SystemClock};
 use volicord_host_contract::{HostContractProfileId, HostNativeCorrelation};
 use volicord_store::{
-    bootstrap::{project_record_for_execution, ProjectRecord},
+    bootstrap::{
+        project_record_for_execution, project_record_for_execution_admitted, ProjectRecord,
+    },
     core_pipeline::CoreProjectStore,
     diagnostic_findings::insert_occurrence_finding,
     diagnostics::{
@@ -303,12 +305,18 @@ where
     let admitted =
         with_cli_runtime_home_mutation(&runtime_home, "guard.hook_observation", |context| {
             (|| -> Result<GuardCommandOutcome, GuardCommandError> {
+                let project = project_record_for_execution_admitted(context, &project.project_id)?
+                    .ok_or_else(|| {
+                        GuardCommandError::Runtime(format!(
+                            "project not found after Runtime Home mutation admission: {}",
+                            project.project_id
+                        ))
+                    })?;
                 let mut envelope = match guard_envelope(phase, &options, &input, &project) {
                     Ok(envelope) => envelope,
                     Err(failure) => {
                         let outcome = match record_guard_hook_contract_failure(
                             context,
-                            &runtime_home,
                             &project,
                             phase,
                             &options,
@@ -340,14 +348,7 @@ where
                         record_guard_findings_best_effort(context, &outcome);
                         let result = hook_outcome_result(&outcome);
                         let rendered = render_guard_command_output(
-                            context,
-                            phase,
-                            &outcome,
-                            None,
-                            result,
-                            &options,
-                            &runtime_home,
-                            &project,
+                            context, phase, &outcome, None, result, &options,
                         )?;
                         return Ok(GuardCommandOutcome {
                             stdout: rendered.stdout,
@@ -356,14 +357,9 @@ where
                         });
                     }
                 };
-                if let Err(error) = bind_guard_envelope(
-                    context,
-                    &runtime_home,
-                    &project,
-                    phase,
-                    &input,
-                    &mut envelope,
-                ) {
+                if let Err(error) =
+                    bind_guard_envelope(context, &project, phase, &input, &mut envelope)
+                {
                     if matches!(phase, GuardHookPhase::PreTool | GuardHookPhase::PostTool) {
                         if let Some(guard_installation_id) = envelope.guard_installation_id.clone()
                         {
@@ -381,23 +377,13 @@ where
                             );
                         }
                     }
-                    return host_guard_failure(
-                        &runtime_home,
-                        context,
-                        &project,
-                        phase,
-                        &options,
-                        Some(&envelope),
-                        &error,
-                    );
+                    return host_guard_failure(context, phase, &options, Some(&envelope), &error);
                 }
                 let input = match protect_managed_guard_input(input, &envelope) {
                     Ok(input) => input,
                     Err(error) if options.output == args::OutputFormat::HostNative => {
                         return host_guard_failure(
-                            &runtime_home,
                             context,
-                            &project,
                             phase,
                             &options,
                             Some(&envelope),
@@ -408,16 +394,11 @@ where
                 };
                 let subject = guard_subject(phase, &input, &envelope, &project);
                 if phase == GuardHookPhase::PostTool {
-                    if let Some(replayed) = replayed_guard_phase_result(
-                        &runtime_home,
-                        &project,
-                        &envelope,
-                        phase,
-                        &subject,
-                    )? {
+                    if let Some(replayed) =
+                        replayed_guard_phase_result(context, &project, &envelope, phase, &subject)?
+                    {
                         record_guard_diagnostic_best_effort(
                             context,
-                            &runtime_home,
                             &project,
                             &envelope,
                             phase,
@@ -427,7 +408,6 @@ where
                         );
                         record_guard_workflow_metrics_best_effort(
                             context,
-                            &runtime_home,
                             &envelope,
                             phase,
                             replayed.decision,
@@ -447,8 +427,6 @@ where
                             Some(&envelope),
                             replayed.result,
                             &options,
-                            &runtime_home,
-                            &project,
                         )?;
                         return Ok(GuardCommandOutcome {
                             stdout: rendered.stdout,
@@ -458,42 +436,28 @@ where
                     }
                 }
                 if phase == GuardHookPhase::PromptCapture {
-                    let _ = start_guard_diagnostic_session_best_effort(
-                        context,
-                        &runtime_home,
-                        &project,
-                        &envelope,
-                    );
+                    let _ =
+                        start_guard_diagnostic_session_best_effort(context, &project, &envelope);
                 }
                 let phase_result = match phase {
-                    GuardHookPhase::PreTool => phase::pre_tool::handle_pre_tool(
-                        context,
-                        &runtime_home,
-                        &project,
-                        &envelope,
-                        &input,
-                    ),
-                    GuardHookPhase::PostTool => phase::post_tool::handle_post_tool(
-                        context,
-                        &runtime_home,
-                        &project,
-                        &envelope,
-                        &input,
-                    ),
-                    GuardHookPhase::PromptCapture => {
-                        handle_prompt_capture(context, &runtime_home, &project, &envelope, &input)
-                            .map(|(decision, result, _exits_failure)| {
-                                GuardPhaseResult::new(decision, result)
-                            })
+                    GuardHookPhase::PreTool => {
+                        phase::pre_tool::handle_pre_tool(context, &project, &envelope, &input)
                     }
+                    GuardHookPhase::PostTool => {
+                        phase::post_tool::handle_post_tool(context, &project, &envelope, &input)
+                    }
+                    GuardHookPhase::PromptCapture => handle_prompt_capture(
+                        context, &project, &envelope, &input,
+                    )
+                    .map(|(decision, result, _exits_failure)| {
+                        GuardPhaseResult::new(decision, result)
+                    }),
                 };
                 let mut phase_result = match phase_result {
                     Ok(result) => result,
                     Err(error) if options.output == args::OutputFormat::HostNative => {
                         return host_guard_failure(
-                            &runtime_home,
                             context,
-                            &project,
                             phase,
                             &options,
                             Some(&envelope),
@@ -514,7 +478,6 @@ where
 
                 if persist_guard_event(
                     context,
-                    &runtime_home,
                     &project,
                     &envelope,
                     GuardEventPersistence {
@@ -550,8 +513,6 @@ where
                         Some(&envelope),
                         hook_outcome_result(&persistence_outcome),
                         &options,
-                        &runtime_home,
-                        &project,
                     )?;
                     return Ok(GuardCommandOutcome {
                         stdout: rendered.stdout,
@@ -584,8 +545,6 @@ where
                             Some(&envelope),
                             hook_outcome_result(&persistence_outcome),
                             &options,
-                            &runtime_home,
-                            &project,
                         )?;
                         return Ok(GuardCommandOutcome {
                             stdout: rendered.stdout,
@@ -597,7 +556,6 @@ where
                 record_guard_findings_best_effort(context, &outcome);
                 record_guard_diagnostic_best_effort(
                     context,
-                    &runtime_home,
                     &project,
                     &envelope,
                     phase,
@@ -607,7 +565,6 @@ where
                 );
                 record_guard_workflow_metrics_best_effort(
                     context,
-                    &runtime_home,
                     &envelope,
                     phase,
                     phase_result.decision,
@@ -621,8 +578,6 @@ where
                     Some(&envelope),
                     phase_result.result,
                     &options,
-                    &runtime_home,
-                    &project,
                 )?;
                 Ok(GuardCommandOutcome {
                     stdout: rendered.stdout,
@@ -672,7 +627,6 @@ where
 
 fn record_guard_hook_contract_failure(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     phase: GuardHookPhase,
     options: &GuardOptions,
@@ -680,6 +634,7 @@ fn record_guard_hook_contract_failure(
     contract_status: GuardHookContractStatus,
     failure: GuardEnvelopeError,
 ) -> Result<GuardHookDiagnosticFacts, GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let connection_id = options.connection_id.as_deref().ok_or_else(|| {
         GuardCommandError::Runtime("Guard connection identity is unavailable".to_owned())
     })?;
@@ -818,8 +773,6 @@ fn render_guard_command_output(
     envelope: Option<&GuardEnvelope>,
     result: Value,
     options: &GuardOptions,
-    _runtime_home: &Path,
-    _project: &ProjectRecord,
 ) -> Result<RenderedGuardOutput, GuardCommandError> {
     match render_guard_output(phase, outcome, envelope, result, options.output) {
         Ok(rendered) => Ok(rendered),
@@ -851,9 +804,7 @@ fn render_guard_command_output(
 }
 
 fn host_guard_failure(
-    runtime_home: &Path,
     context: &RuntimeHomeMutationContext<'_>,
-    project: &ProjectRecord,
     phase: GuardHookPhase,
     options: &GuardOptions,
     envelope: Option<&GuardEnvelope>,
@@ -892,8 +843,6 @@ fn host_guard_failure(
         envelope,
         hook_outcome_result(&outcome),
         options,
-        runtime_home,
-        project,
     )?;
     Ok(GuardCommandOutcome {
         stdout: rendered.stdout,
@@ -1041,12 +990,13 @@ const fn stored_guard_decision(policy: GuardPolicyDecision) -> GuardDecision {
 }
 
 fn replayed_guard_phase_result(
-    runtime_home: &Path,
+    context: &RuntimeHomeMutationContext<'_>,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     phase: GuardHookPhase,
     subject: &Value,
 ) -> Result<Option<GuardPhaseResult>, GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let Some(existing) = guard_event(runtime_home, &project.project_id, &envelope.event_id)? else {
         return Ok(None);
     };
@@ -1095,7 +1045,6 @@ fn replayed_guard_phase_result(
 #[allow(clippy::too_many_arguments)]
 fn record_guard_diagnostic_best_effort(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     phase: GuardHookPhase,
@@ -1149,7 +1098,7 @@ fn record_guard_diagnostic_best_effort(
     } else {
         DiagnosticOutcome::Success
     };
-    if !start_guard_diagnostic_session_best_effort(context, runtime_home, project, envelope) {
+    if !start_guard_diagnostic_session_best_effort(context, project, envelope) {
         return;
     }
     let _ = record_diagnostic_event(
@@ -1177,7 +1126,6 @@ fn record_guard_diagnostic_best_effort(
 
 fn start_guard_diagnostic_session_best_effort(
     context: &RuntimeHomeMutationContext<'_>,
-    _runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
 ) -> bool {
@@ -1203,7 +1151,6 @@ fn start_guard_diagnostic_session_best_effort(
 #[allow(clippy::too_many_arguments)]
 fn record_guard_workflow_metrics_best_effort(
     context: &RuntimeHomeMutationContext<'_>,
-    _runtime_home: &Path,
     envelope: &GuardEnvelope,
     phase: GuardHookPhase,
     decision: GuardPolicyDecision,
@@ -1394,12 +1341,12 @@ fn resolve_guard_project(
 
 fn bind_guard_envelope(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     phase: GuardHookPhase,
     input: &GuardInput,
     envelope: &mut GuardEnvelope,
 ) -> Result<(), GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let coordinates = current_project_agent_session_coordinates(
         runtime_home,
         &project.project_id,
@@ -1476,11 +1423,11 @@ struct GuardEventPersistence<'a> {
 
 fn persist_guard_event(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     persistence: GuardEventPersistence<'_>,
 ) -> Result<(), GuardCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let GuardEventPersistence {
         phase,
         guard_input,

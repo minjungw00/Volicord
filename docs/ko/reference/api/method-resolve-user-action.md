@@ -47,6 +47,11 @@ submission ID, canonical 해결의 replay는 원래 커밋 응답을 반환합�
 
 로컬 CLI 어댑터만 이 메서드에 진입할 수 있습니다. Agent Connection, MCP 어댑터,
 Guard 관찰, 직접 Store 호출자는 resolution을 제출할 수 없습니다.
+어댑터는 Registry 조회 전에 선택한 Runtime Home의 승인을 얻고, 그 정규 승인 identity
+하나에서 project 선택, 일관된 요청 snapshot, diagnostic session, Core service, Store
+handle, 해결 효과, replay, 응답을 파생합니다. 따라서 같은 Runtime Home의 lexical
+alias나 symlink alias는 같은 요청을 해결하고 replay합니다. 다른 Runtime Home은 변경
+전에 기존 project, invocation, Core/Store 권한 검사에서 거부됩니다.
 
 ### 동작 시각
 

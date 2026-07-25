@@ -52,9 +52,9 @@
 |---|---|
 | `crates/volicord-store/src/schema/registry.sql` | Runtime Home registry DDL 정본 소스. |
 | `crates/volicord-store/src/schema/project.sql` | project Store DDL 정본 소스. |
-| `crates/volicord-store/src/mutation.rs` | 복제할 수 없고 permit을 빌리며 정확한 target에 결합된 `RuntimeHomeMutationContext`, 공유·배타 mode 검사, 안정적인 setup-in-progress condition projection. |
+| `crates/volicord-store/src/mutation.rs` | 복제할 수 없고 permit을 빌리며 정확한 target에 결합된 `RuntimeHomeMutationContext`, 유지되는 `CanonicalRuntimeHomePath`, 승인 뒤 재정규화 없는 typed identity 비교, 공유·배타 mode 검사, 안정적인 setup-in-progress condition projection. |
 | `crates/volicord-store/src/sqlite.rs` | 분리된 읽기 전용 open과 정확한 Runtime Home 소유권을 검증하는 crate-private context-gated 쓰기 가능 Registry/project database open. |
-| `crates/volicord-store/src/bootstrap.rs` | Runtime Home staging, 불투명 publication provenance, 기존 대상을 교체하지 않는 원자적 publication 결과, token-backed terminal rollback 상태, composite 확인 실패, Store bootstrap. |
+| `crates/volicord-store/src/bootstrap.rs` | Context 소유 Runtime Home staging과 project 조회, 불투명 publication provenance, 기존 대상을 교체하지 않는 원자적 publication 결과, typed publication identity, token-backed terminal rollback 상태, composite 확인 실패, Store bootstrap. |
 | `crates/volicord-store/src/diagnostics.rs` | 비권한 진단 schema와 manifest, 같은 directory의 staged carrier 공개, 동시 승자 검증, 정확한 read/write, retention. |
 | `crates/volicord-store/src/setup_transaction.rs` | Setup이 변경하는 기존 Store 파일의 명시적인 prepare, 입력 검증, mutation checkpoint, commit, guarded rollback 경계. |
 | `crates/volicord-store/src/agent_connections.rs` | Agent Connection 레코드, project allowlist, managed fingerprint, 영속 검증 보고서 경계. |
@@ -76,7 +76,7 @@
 | `crates/volicord-store/src/integration_verification/row.rs` | 비공개 검증 SQL, row decoding, 상태와 timestamp parsing, 데이터베이스 표현 변환, 집중 row decoder 테스트. |
 | `crates/volicord-store/src/integration_verification/tests/` | Begin, probe, typed acquisition, correlation, status, 동시 최초 acknowledgement를 위한 lifecycle 담당 테스트와 assertion에서 분리한 공유 fixture 구성. |
 | `crates/volicord-store/src/workflow_records.rs` | workflow 레코드 읽기와 쓰기. |
-| `crates/volicord-store/src/core_pipeline/` | 명시적인 읽기 전용 open과 context를 유지하는 mutation open, 검증, replay, commit, mutation 적용. |
+| `crates/volicord-store/src/core_pipeline/` | 명시적인 읽기 전용 open, context의 typed canonical Runtime Home identity를 유지하는 mutation open, Core/Store identity 접근, 검증, replay, commit, mutation 적용. |
 | `crates/volicord-store/src/guards.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, phase별 Guard 관찰, prompt capture, 예상 쓰기, suppression 입력. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent와 producer 레코드. |
 | `crates/volicord-store/src/artifacts.rs` | 아티팩트 staging과 영속 본문 검증. |
@@ -86,7 +86,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-core/src/pipeline.rs` | 공통 사전 점검, replay, plan 선택, 응답, commit 조율. |
+| `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율. |
 | `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. |
 | `crates/volicord-core/src/methods/user_action.rs` | UserAction 메서드 경계와 Core 소유 User Channel projection. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 inbox resolution snapshot을 얻는 경계를 포함합니다. |
 | `crates/volicord-core/src/policy/` | 재사용 접근, workflow, evidence, continuity, write-ticket, close-readiness 정책. |
@@ -145,8 +145,8 @@
 |---|---|
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Message 및 tool별 `SharedWriter` 획득, Store context 구성, typed setup-busy 전파, 전체 MCP 효과 동안의 한정된 lease 수명. |
-| `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio 진입 경로, 권위 있는 runtime source 선택, 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-turn-metadata` parsing, revision-aware message 처리, 프로세스 사전 점검. |
-| `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 서버 소유 맥락, Core 디스패치와 wrapping, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
+| `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio 진입 경로, 권위 있는 runtime source 선택, 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-turn-metadata` parsing, revision-aware message 처리, 승인된 diagnostic routing, 프로세스 사전 점검. |
+| `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 유지되는 연산 전 routing identity, 활성 mutation-context 상관관계, context에 결합된 Core 디스패치와 wrapping, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
 | `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청, nested workflow-directed sequence, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
 | `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata를 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 raw revision별 wire 이름을 투영하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |

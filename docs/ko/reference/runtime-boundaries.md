@@ -142,6 +142,16 @@ target에 결합된 `RuntimeHomeMutationContext`를 만들며 모든 변경 API�
 `ExclusiveSetup` permit에서 같은 Store context를 만들며 중첩된 공유 lease를 획득하지
 않습니다.
 
+Store가 `RuntimeHomeMutationContext`를 만든 뒤에는 그
+`CanonicalRuntimeHomePath`가 승인 안에서 수행하는 모든 변경 의존 읽기, plan,
+Registry 조회, Core service, Store handle, diagnostic write, 효과, 응답의 유일한
+Runtime Home identity입니다. 선택한 경로 표기는 승인 전 routing 입력으로만 남습니다.
+승인된 구성 요소는 typed canonical identity를 유지하고 비교하며 다른 경로를 독립적으로
+canonicalize하거나 권한 좌표로 사용하지 않습니다. 따라서 같은 home으로 해석되는
+lexical alias와 symlink alias는 권한 좌표 하나를 공유하고, 다른 home의 context는 효과
+전에 거부됩니다. 읽기 전용 경로 선택과 읽기 전용 Core 또는 Store 구성은 이 승인
+binding과 분리됩니다.
+
 일반 writer가 setup과 충돌하면 Runtime Home 효과를 만들기 전에
 `runtime_home.mutation.setup_in_progress`를 반환합니다. 한도가 있는 fact에는 정규
 Runtime Home, 변경 domain, 요청 mode, wait policy, 경과 시간, 재시도 가능 여부가

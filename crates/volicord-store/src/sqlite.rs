@@ -717,22 +717,12 @@ mod tests {
         let second_repo = second.create_product_repo("repo")?;
         let first_setup = TestRuntimeHomeAdmission::exclusive(first.path())?;
         let first_setup_context = first_setup.context()?;
-        initialize_runtime_home(
-            &first_setup_context,
-            first.path(),
-            "runtime_home_sqlite_first",
-            "{}",
-        )?;
+        initialize_runtime_home(&first_setup_context, "runtime_home_sqlite_first", "{}")?;
         drop(first_setup_context);
         drop(first_setup);
         let second_setup = TestRuntimeHomeAdmission::exclusive(second.path())?;
         let second_context = second_setup.context()?;
-        initialize_runtime_home(
-            &second_context,
-            second.path(),
-            "runtime_home_sqlite_second",
-            "{}",
-        )?;
+        initialize_runtime_home(&second_context, "runtime_home_sqlite_second", "{}")?;
         register_project(
             &second_context,
             ProjectRegistration {

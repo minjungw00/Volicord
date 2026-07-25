@@ -313,9 +313,9 @@ mod tests {
         prefix: &str,
     ) -> Result<(CoreFixture, TaskId, Value, AuthorityStatusExpectation), Box<dyn Error>> {
         let fixture = CoreFixture::new(prefix)?;
-        let service = CoreService::new(fixture.runtime_home_path());
         let admission = TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
         let context = admission.context()?;
+        let service = CoreService::for_mutation(&context);
         let intake = service.intake(
             &context,
             fixture.intake_request(

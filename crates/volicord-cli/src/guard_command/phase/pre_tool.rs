@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use chrono::Duration as ChronoDuration;
 use serde_json::{json, Value};
 use volicord_store::{
@@ -32,12 +30,11 @@ pub(in crate::guard_command) struct ExpectedWriteCandidate {
 
 pub(in crate::guard_command) fn handle_pre_tool(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project: &ProjectRecord,
     envelope: &GuardEnvelope,
     input: &GuardInput,
 ) -> Result<GuardPhaseResult, GuardCommandError> {
-    let summary = guard_state_summary(context, runtime_home, project, envelope, input)?;
+    let summary = guard_state_summary(context, project, envelope, input)?;
     let observation = tool_observation(&input.raw_value, &project.repo_root);
     let (decision, reasons) = pre_tool_decision(&summary, &observation);
     let write_ticket_backing = if tool_attempts_product_write(&observation) {

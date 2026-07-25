@@ -7,6 +7,8 @@
 
 use volicord_types::TypeBoundary;
 
+pub use volicord_platform_fs::CanonicalRuntimeHomePath;
+
 pub mod agent_connections;
 pub mod artifacts;
 pub mod bootstrap;

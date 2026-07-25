@@ -12,6 +12,8 @@ use volicord_platform_fs::{
 };
 use volicord_types::PlatformEnvironment;
 
+use crate::CanonicalRuntimeHomePath;
+
 #[cfg(windows)]
 use std::path::{Prefix, PrefixComponent};
 
@@ -317,6 +319,47 @@ pub fn validate_runtime_home_product_repository(
     }
 }
 
+/// Validates a Product Repository against an already-admitted Runtime Home identity.
+///
+/// The Runtime Home is not selected or canonicalized again. The Product
+/// Repository remains subject to the ordinary existing-directory and platform
+/// boundary checks.
+pub fn validate_runtime_home_product_repository_admitted(
+    runtime_home: &CanonicalRuntimeHomePath,
+    repo_root: impl AsRef<Path>,
+) -> Result<RuntimeProductPathValidation, RuntimePathBoundaryError> {
+    let runtime_home = runtime_home.as_path().to_path_buf();
+    let repo_root = normalize_existing_directory("repo_root", repo_root.as_ref())?;
+    validate_runtime_product_platform_paths(&runtime_home, &repo_root)?;
+    let relation = runtime_product_path_relation(&runtime_home, &repo_root);
+    match relation {
+        RuntimeProductPathRelation::Separate => Ok(RuntimeProductPathValidation {
+            runtime_home,
+            repo_root,
+            relation,
+        }),
+        RuntimeProductPathRelation::SamePath => Err(runtime_product_violation(
+            RuntimePathBoundaryViolation::SamePath,
+            runtime_home,
+            repo_root,
+        )),
+        RuntimeProductPathRelation::RuntimeHomeContainsProductRepository => {
+            Err(runtime_product_violation(
+                RuntimePathBoundaryViolation::RuntimeHomeContainsProductRepository,
+                runtime_home,
+                repo_root,
+            ))
+        }
+        RuntimeProductPathRelation::ProductRepositoryContainsRuntimeHome => {
+            Err(runtime_product_violation(
+                RuntimePathBoundaryViolation::ProductRepositoryContainsRuntimeHome,
+                runtime_home,
+                repo_root,
+            ))
+        }
+    }
+}
+
 /// Classifies a normalized Runtime Home and Product Repository pair.
 pub fn runtime_product_path_relation(
     runtime_home: &Path,
@@ -345,6 +388,41 @@ pub fn validate_project_home_boundary(
         repo_root,
         ..
     } = validate_runtime_home_product_repository(runtime_home, repo_root)?;
+    let project_home = normalize_maybe_missing_directory("project_home", project_home.as_ref())?;
+    validate_platform_path(&project_home, "project_home")?;
+
+    if paths_overlap(&project_home, &repo_root) {
+        return Err(RuntimePathBoundaryError::BoundaryViolation {
+            violation: RuntimePathBoundaryViolation::ProjectHomeOverlapsProductRepository,
+            runtime_home,
+            repo_root,
+            project_home: Some(project_home),
+        });
+    }
+
+    if !path_starts_with_for_boundary(&project_home, &runtime_home) {
+        return Err(RuntimePathBoundaryError::BoundaryViolation {
+            violation: RuntimePathBoundaryViolation::ProjectHomeOutsideRuntimeHome,
+            runtime_home,
+            repo_root,
+            project_home: Some(project_home),
+        });
+    }
+
+    Ok(project_home)
+}
+
+/// Validates a project-home path against an admitted Runtime Home identity.
+pub fn validate_project_home_boundary_admitted(
+    runtime_home: &CanonicalRuntimeHomePath,
+    repo_root: impl AsRef<Path>,
+    project_home: impl AsRef<Path>,
+) -> Result<PathBuf, RuntimePathBoundaryError> {
+    let RuntimeProductPathValidation {
+        runtime_home,
+        repo_root,
+        ..
+    } = validate_runtime_home_product_repository_admitted(runtime_home, repo_root)?;
     let project_home = normalize_maybe_missing_directory("project_home", project_home.as_ref())?;
     validate_platform_path(&project_home, "project_home")?;
 

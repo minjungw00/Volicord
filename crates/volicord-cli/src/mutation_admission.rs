@@ -108,12 +108,7 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let fixture = TempRuntimeHome::new("cli-diagnostic-admission")?;
         with_test_runtime_home_setup(fixture.path(), |context| {
-            initialize_runtime_home(
-                context,
-                fixture.path(),
-                "runtime_home_cli_diagnostic_admission",
-                "{}",
-            )?;
+            initialize_runtime_home(context, "runtime_home_cli_diagnostic_admission", "{}")?;
             Ok(())
         })?;
         let outcome = RuntimeHomeMutationLease::acquire(

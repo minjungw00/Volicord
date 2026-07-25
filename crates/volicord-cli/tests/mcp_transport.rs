@@ -681,7 +681,8 @@ impl McpFixture {
     }
 
     fn create_task(&self, suffix: &str) -> Result<(String, u64), Box<dyn Error>> {
-        let core = CoreService::new(self.runtime_home_path());
+        let context = self.fixture.mutation_context()?;
+        let core = CoreService::for_mutation(&context);
         let session = volicord_test_support::seed_test_agent_session(
             self.runtime_home_path(),
             self.project_id(),
@@ -696,7 +697,7 @@ impl McpFixture {
             OperationCategory::AgentWorkflow,
         )?;
         let response = core.intake(
-            &self.fixture.mutation_context()?,
+            &context,
             self.fixture.intake_request(
                 &format!("req_mcp_bin_{suffix}_task"),
                 &format!("idem_mcp_bin_{suffix}_task"),

@@ -25,7 +25,7 @@ use crate::{
         is_agent_connection_project_allowed, AgentConnectionRecord,
     },
     bootstrap::{
-        project_record_for_execution, project_record_for_execution_read_only,
+        project_record_for_execution_admitted, project_record_for_execution_read_only,
         raw_project_record_from_conn, ProjectRecord,
     },
     operational_sessions::{
@@ -39,6 +39,9 @@ use crate::{
     },
     RuntimeHomeMutationContext, StoreError, StoreResult,
 };
+
+#[cfg(test)]
+use crate::bootstrap::project_record_for_execution;
 
 /// Maximum prior post-tool Guard events considered for one exact correlation window.
 pub const POST_TOOL_CORRELATION_EVENT_LIMIT: usize = 512;
@@ -406,13 +409,13 @@ pub fn upsert_guard_installation(
     context: &RuntimeHomeMutationContext<'_>,
     input: GuardInstallationUpsert,
 ) -> StoreResult<GuardInstallationRecord> {
-    let runtime_home = context.runtime_home().as_path().to_path_buf();
+    let runtime_home = context.runtime_home().as_path();
     let mut conn = open_registry_database_for_mutation(context)?;
     let tx = begin_immediate_transaction(&mut conn)?;
     upsert_guard_installation_in_transaction(&tx, &input)?;
     tx.commit()?;
 
-    guard_installation(&runtime_home, &input.guard_installation_id)?.ok_or_else(|| {
+    guard_installation(runtime_home, &input.guard_installation_id)?.ok_or_else(|| {
         StoreError::NotFound {
             entity: "guard_installation",
             id: input.guard_installation_id,
@@ -698,7 +701,7 @@ pub fn observe_host_correlation(
     let runtime_home = context.runtime_home().as_path().to_path_buf();
     let observed_at = canonical_agent_session_observed_at(&input.observed_at)?;
     let coordinates = current_project_agent_session_coordinates(
-        &runtime_home,
+        runtime_home,
         project_id,
         &input.connection_internal_id,
         input.guard_installation_id.as_deref(),
@@ -706,7 +709,6 @@ pub fn observe_host_correlation(
     )?;
     establish_host_correlation(
         context,
-        &runtime_home,
         project_id,
         &coordinates,
         &input.connection_internal_id,
@@ -723,12 +725,12 @@ pub fn bind_agent_session_runtime(
 ) -> StoreResult<AgentSessionRecord> {
     validate_agent_session_runtime_binding(&input)?;
     let correlation = &input.correlation;
-    let runtime_home = context.runtime_home().as_path().to_path_buf();
+    let runtime_home = context.runtime_home().as_path();
     let observed_at = canonical_agent_session_observed_at(&input.observed_at)?;
 
     // Phase 0: validate current managed-runtime facts without project mutation.
     let runtime = current_managed_mcp_runtime_session_for_connection(
-        &runtime_home,
+        runtime_home,
         &input.runtime_session_id,
         &input.connection_internal_id,
     )?;
@@ -747,7 +749,7 @@ pub fn bind_agent_session_runtime(
         });
     }
     let coordinates = current_project_agent_session_coordinates(
-        &runtime_home,
+        runtime_home,
         project_id,
         &input.connection_internal_id,
         input.guard_installation_id.as_deref(),
@@ -757,7 +759,6 @@ pub fn bind_agent_session_runtime(
     // Phase 1: establish normalized host records and the exact MCP-only anchor.
     establish_host_correlation(
         context,
-        &runtime_home,
         project_id,
         &coordinates,
         &input.connection_internal_id,
@@ -766,7 +767,6 @@ pub fn bind_agent_session_runtime(
     )?;
     establish_agent_session_anchor(
         context,
-        &runtime_home,
         project_id,
         &coordinates,
         AgentSessionAnchorInput {
@@ -794,7 +794,6 @@ pub fn bind_agent_session_runtime(
     // Phase 3: attach only after the authoritative Registry reservation exists.
     attach_agent_session_runtime(
         context,
-        &runtime_home,
         project_id,
         &coordinates,
         &input.runtime_session_id,
@@ -813,15 +812,13 @@ struct AgentSessionAnchorInput<'a> {
 
 fn establish_host_correlation(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project_id: &str,
     coordinates: &ProjectAgentSessionCoordinates,
     connection_internal_id: &str,
     correlation: &HostNativeCorrelation,
     observed_at: &str,
 ) -> StoreResult<HostSessionRecord> {
-    let mut project =
-        open_guard_project(context, runtime_home, project_id, connection_internal_id)?;
+    let mut project = open_guard_project(context, project_id, connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let host_session_id = correlation.session_id().as_str();
     if let Some(existing) =
@@ -1048,17 +1045,11 @@ fn later_timestamp<'a>(
 
 fn establish_agent_session_anchor(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project_id: &str,
     coordinates: &ProjectAgentSessionCoordinates,
     input: AgentSessionAnchorInput<'_>,
 ) -> StoreResult<AgentSessionRecord> {
-    let mut project = open_guard_project(
-        context,
-        runtime_home,
-        project_id,
-        input.connection_internal_id,
-    )?;
+    let mut project = open_guard_project(context, project_id, input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     if let Some(runtime_session_id) = input.requested_runtime_session_id {
         let attached_session_id = tx
@@ -1182,15 +1173,13 @@ fn establish_agent_session_anchor(
 
 fn attach_agent_session_runtime(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     project_id: &str,
     coordinates: &ProjectAgentSessionCoordinates,
     runtime_session_id: &str,
     connection_internal_id: &str,
     correlation: &CodexMcpCorrelation,
 ) -> StoreResult<AgentSessionRecord> {
-    let mut project =
-        open_guard_project(context, runtime_home, project_id, connection_internal_id)?;
+    let mut project = open_guard_project(context, project_id, connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     let existing =
         agent_session_from_conn(&tx, &project.project.project_id, &coordinates.session_id)?
@@ -1335,12 +1324,7 @@ pub fn insert_guard_event(
             )
         })
         .transpose()?;
-    let mut project = open_guard_project(
-        context,
-        runtime_home,
-        project_id,
-        &input.connection_internal_id,
-    )?;
+    let mut project = open_guard_project(context, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO guard_events (
@@ -1605,12 +1589,7 @@ pub fn insert_prompt_capture(
         None,
         &input.correlation,
     )?;
-    let mut project = open_guard_project(
-        context,
-        runtime_home,
-        project_id,
-        &input.connection_internal_id,
-    )?;
+    let mut project = open_guard_project(context, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO prompt_captures (
@@ -1699,12 +1678,7 @@ pub fn insert_expected_write(
         input.guard_installation_id.as_deref(),
         &input.correlation,
     )?;
-    let mut project = open_guard_project(
-        context,
-        runtime_home,
-        project_id,
-        &input.connection_internal_id,
-    )?;
+    let mut project = open_guard_project(context, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT OR IGNORE INTO expected_writes (
@@ -2010,12 +1984,7 @@ pub fn insert_unrecorded_change(
             )
         })
         .transpose()?;
-    let mut project = open_guard_project(
-        context,
-        runtime_home,
-        project_id,
-        &input.connection_internal_id,
-    )?;
+    let mut project = open_guard_project(context, project_id, &input.connection_internal_id)?;
     let tx = begin_immediate_transaction(&mut project.conn)?;
     tx.execute(
         "INSERT INTO unrecorded_changes (
@@ -2707,14 +2676,16 @@ struct OpenGuardProject {
 
 fn open_guard_project(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: impl AsRef<Path>,
     project_id: &str,
     connection_internal_id: &str,
 ) -> StoreResult<OpenGuardProject> {
     validate_identifier("project_id", project_id)?;
     validate_identifier("connection_internal_id", connection_internal_id)?;
-    let runtime_home = runtime_home.as_ref().to_path_buf();
-    if !is_agent_connection_project_allowed(&runtime_home, connection_internal_id, project_id)? {
+    if !is_agent_connection_project_allowed(
+        context.runtime_home().as_path(),
+        connection_internal_id,
+        project_id,
+    )? {
         return Err(StoreError::NotFound {
             entity: "connection_project",
             id: format!("{connection_internal_id}/{project_id}"),
@@ -2741,8 +2712,7 @@ fn open_project_for_mutation(
     context: &RuntimeHomeMutationContext<'_>,
     project_id: &str,
 ) -> StoreResult<Option<OpenGuardProject>> {
-    let Some(project) = project_record_for_execution(context.runtime_home().as_path(), project_id)?
-    else {
+    let Some(project) = project_record_for_execution_admitted(context, project_id)? else {
         return Ok(None);
     };
     let conn = open_project_state_database_for_mutation(context, &project)?;
@@ -4277,7 +4247,6 @@ mod tests {
 
         establish_host_correlation(
             &fixture.context()?,
-            fixture.runtime_home.path(),
             "project_guard_a",
             &coordinates,
             "conn_guard_a",
@@ -4287,7 +4256,6 @@ mod tests {
 
         establish_agent_session_anchor(
             &fixture.context()?,
-            fixture.runtime_home.path(),
             "project_guard_a",
             &coordinates,
             AgentSessionAnchorInput {
@@ -4404,7 +4372,6 @@ mod tests {
         )?;
         establish_host_correlation(
             &fixture.context()?,
-            fixture.runtime_home.path(),
             "project_guard_a",
             &prior_coordinates,
             "conn_guard_a",
@@ -4413,7 +4380,6 @@ mod tests {
         )?;
         establish_agent_session_anchor(
             &fixture.context()?,
-            fixture.runtime_home.path(),
             "project_guard_a",
             &prior_coordinates,
             AgentSessionAnchorInput {
@@ -5049,12 +5015,7 @@ mod tests {
         fn new(prefix: &str) -> Result<Self, Box<dyn Error>> {
             let runtime_home = TempRuntimeHome::new(prefix)?;
             with_test_runtime_home_setup(runtime_home.path(), |context| {
-                initialize_runtime_home(
-                    context,
-                    runtime_home.path(),
-                    &format!("runtime_home_{prefix}"),
-                    "{}",
-                )?;
+                initialize_runtime_home(context, &format!("runtime_home_{prefix}"), "{}")?;
                 Ok(())
             })?;
             let mutation = TestRuntimeHomeAdmission::shared(runtime_home.path())?;

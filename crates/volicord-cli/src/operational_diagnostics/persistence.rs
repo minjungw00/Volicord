@@ -50,12 +50,12 @@ impl CurrentOperationalOwner {
 /// Reconciles an owner set even when its successful observation set is empty.
 pub(crate) fn reconcile_current_findings_for_scope(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &std::path::Path,
     scope: &volicord_types::DiagnosticScope,
     owners: &[CurrentOperationalOwner],
     findings: &[CurrentDiagnosticFinding],
     resolved_at: UtcTimestamp,
 ) -> Result<Vec<DiagnosticFindingId>, ConnectionCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     if owners.is_empty() {
         return Err(ConnectionCommandError::runtime(
             "current-condition reconciliation requires at least one owner",
@@ -137,7 +137,6 @@ mod tests {
         let id = first.id().clone();
         reconcile_current_findings_for_scope(
             &fixture.mutation_context().expect("mutation context"),
-            fixture.runtime_home_path(),
             first.key().scope(),
             &[CurrentOperationalOwner::Guard],
             std::slice::from_ref(&first),
@@ -153,7 +152,6 @@ mod tests {
 
         reconcile_current_findings_for_scope(
             &fixture.mutation_context().expect("mutation context"),
-            fixture.runtime_home_path(),
             first.key().scope(),
             &[CurrentOperationalOwner::Guard],
             &[],
@@ -194,7 +192,6 @@ mod tests {
         assert_eq!(recurrent.id(), &id);
         reconcile_current_findings_for_scope(
             &fixture.mutation_context().expect("mutation context"),
-            fixture.runtime_home_path(),
             recurrent.key().scope(),
             &[CurrentOperationalOwner::Guard],
             std::slice::from_ref(&recurrent),

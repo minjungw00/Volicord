@@ -280,6 +280,15 @@ exact immutable replay, concurrent Core revalidation, and best-effort
 diagnostics. Native Windows execution of this case additionally proves that no
 pre-admission SQLite handle can block setup replacement or rollback.
 
+Alias coverage runs pending choice, evidence observation, immutable replay,
+change reconciliation, and another admitted Core operation through lexical
+Runtime Home aliases. Unix also runs a symlink alias. These cases assert one
+Registry project, the same typed Store/Core identity and coherent UserAction
+snapshot, one committed resolution, and diagnostic correlation in the admitted
+home. Separate negative cases keep another Runtime Home, project, or
+verification basis unauthorized. Native Windows runners execute the supported
+alias cases; compile-only validation is reported separately.
+
 MCP lifecycle tests begin setup before runtime-session creation, reject
 mutating calls before Core effects, and keep observation-persisting reads
 no-effect when admission is unavailable. An idle server must not retain

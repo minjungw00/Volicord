@@ -21,7 +21,8 @@ use volicord_types::{
 use crate::{
     runtime_home::{
         normalize_lexical_path, paths_equal_for_boundary, validate_project_home_boundary,
-        validate_runtime_home_product_repository, RuntimePathBoundaryError,
+        validate_project_home_boundary_admitted, validate_runtime_home_product_repository,
+        validate_runtime_home_product_repository_admitted, RuntimePathBoundaryError,
     },
     schema::{
         current_schema_facts, current_storage_manifest, current_storage_manifest_json,
@@ -34,7 +35,7 @@ use crate::{
         registry_db_path, validate_project_state_schema, validate_registry_schema,
         with_immediate_transaction, PROJECT_STATE_DB_FILE,
     },
-    RuntimeHomeMutationContext, StoreError, StoreResult,
+    CanonicalRuntimeHomePath, RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 /// Baseline-valid project registration status.
@@ -239,7 +240,7 @@ pub enum RuntimeHomeBootstrapState {
 /// Fully built but unpublished Runtime Home state.
 #[derive(Debug)]
 pub struct PreparedRuntimeHome {
-    final_runtime_home: PathBuf,
+    final_runtime_home: CanonicalRuntimeHomePath,
     staging_directory: TempDir,
     expected_runtime_home_id: String,
     expected_publication_id: RuntimeHomePublicationId,
@@ -250,7 +251,7 @@ pub struct PreparedRuntimeHome {
 impl PreparedRuntimeHome {
     /// Final Runtime Home path proposed by this preparation.
     pub fn final_path(&self) -> &Path {
-        &self.final_runtime_home
+        self.final_runtime_home.as_path()
     }
 
     /// Same-parent unpublished staging path owned by this preparation.
@@ -286,7 +287,7 @@ pub enum RuntimeHomePublicationOutcome {
 /// no-replace rename for one prepared Runtime Home.
 #[derive(Debug)]
 pub struct RuntimeHomePublicationGuard {
-    final_path: PathBuf,
+    final_path: CanonicalRuntimeHomePath,
     runtime_home_id: String,
     publication_id: RuntimeHomePublicationId,
     manifest_digest: String,
@@ -663,25 +664,16 @@ pub fn inspect_runtime_home_bootstrap(
 /// Creates and validates a Runtime Home in an unpublished same-parent staging directory.
 pub fn prepare_runtime_home(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: impl AsRef<Path>,
     runtime_home_id: &str,
     metadata_json: &str,
 ) -> StoreResult<PreparedRuntimeHome> {
     let mut hook = |_| Ok(());
-    prepare_runtime_home_inner(
-        context,
-        runtime_home.as_ref(),
-        runtime_home_id,
-        metadata_json,
-        None,
-        &mut hook,
-    )
+    prepare_runtime_home_inner(context, runtime_home_id, metadata_json, None, &mut hook)
 }
 
 /// Creates a staged Runtime Home with its installation profile in the same Registry transaction.
 pub fn prepare_runtime_home_with_installation(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: impl AsRef<Path>,
     runtime_home_id: &str,
     metadata_json: &str,
     installation: InstallationProfileRegistration,
@@ -689,7 +681,6 @@ pub fn prepare_runtime_home_with_installation(
     let mut hook = |_| Ok(());
     prepare_runtime_home_inner(
         context,
-        runtime_home.as_ref(),
         runtime_home_id,
         metadata_json,
         Some(installation),
@@ -704,7 +695,7 @@ pub fn commit_runtime_home(
     prepared: PreparedRuntimeHome,
 ) -> StoreResult<RuntimeHomePublicationOutcome> {
     context.require_exclusive_setup()?;
-    context.ensure_runtime_home(prepared.final_path())?;
+    context.ensure_runtime_home_identity(&prepared.final_runtime_home)?;
     let mut hook = |_| Ok(());
     commit_runtime_home_inner(prepared, &mut hook)
 }
@@ -724,7 +715,7 @@ fn commit_runtime_home_inner(
     let staging_path = staging_directory.path().to_path_buf();
 
     hook(RuntimeHomeBootstrapPhase::AtomicRename)?;
-    match rename_directory_no_replace(&staging_path, &final_runtime_home) {
+    match rename_directory_no_replace(&staging_path, final_runtime_home.as_path()) {
         Ok(()) => {
             drop(staging_directory);
             Ok(RuntimeHomePublicationOutcome::PublishedByThisInvocation {
@@ -740,7 +731,7 @@ fn commit_runtime_home_inner(
         }
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
             drop(staging_directory);
-            ready_runtime_home_after_publication(&final_runtime_home)
+            ready_runtime_home_after_publication(final_runtime_home.as_path())
                 .map(|record| RuntimeHomePublicationOutcome::ObservedConcurrentWinner { record })
         }
         Err(error) => Err(StoreError::Io(error)),
@@ -750,7 +741,7 @@ fn commit_runtime_home_inner(
 impl RuntimeHomePublicationGuard {
     /// Final path on which this invocation performed its no-replace rename.
     pub fn final_path(&self) -> &Path {
-        &self.final_path
+        self.final_path.as_path()
     }
 
     /// Invocation-specific persisted publication provenance.
@@ -771,14 +762,15 @@ impl RuntimeHomePublicationGuard {
         context: &RuntimeHomeMutationContext<'_>,
     ) -> StoreResult<DirectoryEntryDurability> {
         context.require_exclusive_setup()?;
-        context.ensure_runtime_home(&self.final_path)?;
+        context.ensure_runtime_home_identity(&self.final_path)?;
         self.require_live("synchronize")?;
-        let parent = self
-            .final_path
-            .parent()
-            .ok_or_else(|| StoreError::InvalidInput {
-                detail: "runtime_home must have a parent directory".to_owned(),
-            })?;
+        let parent =
+            self.final_path
+                .as_path()
+                .parent()
+                .ok_or_else(|| StoreError::InvalidInput {
+                    detail: "runtime_home must have a parent directory".to_owned(),
+                })?;
         sync_directory(parent)?;
         Ok(runtime_home_parent_durability())
     }
@@ -792,9 +784,9 @@ impl RuntimeHomePublicationGuard {
         context: &RuntimeHomeMutationContext<'_>,
     ) -> StoreResult<RuntimeHomeRecord> {
         context.require_exclusive_setup()?;
-        context.ensure_runtime_home(&self.final_path)?;
+        context.ensure_runtime_home_identity(&self.final_path)?;
         self.require_live("read back")?;
-        let candidate = runtime_home_publication_candidate(&self.final_path)?;
+        let candidate = runtime_home_publication_candidate(self.final_path.as_path())?;
         if let Some(reason) = self.ownership_loss(&candidate) {
             return Err(self.ownership_error(reason));
         }
@@ -811,10 +803,10 @@ impl RuntimeHomePublicationGuard {
         context: &RuntimeHomeMutationContext<'_>,
     ) -> StoreResult<RuntimeHomeRecord> {
         context.require_exclusive_setup()?;
-        context.ensure_runtime_home(&self.final_path)?;
+        context.ensure_runtime_home_identity(&self.final_path)?;
         self.require_live("confirm")?;
-        let record = ready_runtime_home_after_publication(&self.final_path)?;
-        let candidate = runtime_home_publication_candidate(&self.final_path)?;
+        let record = ready_runtime_home_after_publication(self.final_path.as_path())?;
+        let candidate = runtime_home_publication_candidate(self.final_path.as_path())?;
         if let Some(reason) = self.ownership_loss(&candidate) {
             return Err(self.ownership_error(reason));
         }
@@ -860,7 +852,7 @@ impl RuntimeHomePublicationGuard {
         context: &RuntimeHomeMutationContext<'_>,
     ) -> StoreResult<RuntimeHomePublicationRollbackOutcome> {
         context.require_exclusive_setup()?;
-        context.ensure_runtime_home(&self.final_path)?;
+        context.ensure_runtime_home_identity(&self.final_path)?;
         match &self.state {
             RuntimeHomePublicationGuardState::RolledBack { durability } => {
                 return Ok(RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack {
@@ -884,7 +876,7 @@ impl RuntimeHomePublicationGuard {
             | RuntimeHomePublicationGuardState::Confirmed => {}
         }
 
-        let candidate = match runtime_home_publication_candidate(&self.final_path) {
+        let candidate = match runtime_home_publication_candidate(self.final_path.as_path()) {
             Ok(candidate) => candidate,
             Err(StoreError::Io(error))
                 if matches!(
@@ -957,7 +949,7 @@ impl RuntimeHomePublicationGuard {
             return Ok(RuntimeHomePublicationRollbackOutcome::Preserved { reason });
         }
 
-        match volicord_platform_fs::remove_owned_directory_tree(&self.final_path) {
+        match volicord_platform_fs::remove_owned_directory_tree(self.final_path.as_path()) {
             Ok(outcome) => {
                 self.state = RuntimeHomePublicationGuardState::RolledBack {
                     durability: outcome.durability,
@@ -1039,7 +1031,7 @@ impl RuntimeHomePublicationGuard {
         &self,
         candidate: &RuntimeHomePublicationCandidate,
     ) -> Option<RuntimeHomePublicationOwnershipLoss> {
-        if candidate.stored_runtime_home != self.final_path {
+        if candidate.stored_runtime_home != self.final_path.as_path() {
             return Some(RuntimeHomePublicationOwnershipLoss::FinalPathMismatch);
         }
         if candidate.stored_registry_path != registry_db_path(&self.final_path) {
@@ -1149,18 +1141,17 @@ fn confirm_runtime_home_inner(
 /// Creates a fresh Runtime Home atomically or validates an existing one read-only.
 pub fn initialize_runtime_home(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: impl AsRef<Path>,
     runtime_home_id: &str,
     metadata_json: &str,
 ) -> StoreResult<RuntimeHomeRecord> {
     validate_identifier("runtime_home_id", runtime_home_id)?;
     validate_json_object("runtime_home.metadata_json", metadata_json)?;
 
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     match inspect_runtime_home_bootstrap(runtime_home)? {
         RuntimeHomeBootstrapState::Absent => publish_and_confirm_runtime_home(
             context,
-            prepare_runtime_home(context, runtime_home, runtime_home_id, metadata_json)?,
+            prepare_runtime_home(context, runtime_home_id, metadata_json)?,
         ),
         RuntimeHomeBootstrapState::Ready(record) => Ok(record),
         RuntimeHomeBootstrapState::Incompatible(mismatch) => {
@@ -1176,7 +1167,6 @@ pub fn initialize_runtime_home(
 /// installation metadata only after an existing home validates as Ready.
 pub fn initialize_runtime_home_with_installation(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: impl AsRef<Path>,
     runtime_home_id: &str,
     metadata_json: &str,
     installation: InstallationProfileRegistration,
@@ -1185,14 +1175,13 @@ pub fn initialize_runtime_home_with_installation(
     validate_json_object("runtime_home.metadata_json", metadata_json)?;
     validate_installation_profile_registration(&installation)?;
 
-    let runtime_home = runtime_home.as_ref();
+    let runtime_home = context.runtime_home().as_path();
     let (runtime_home_record, fresh_profile) = match inspect_runtime_home_bootstrap(runtime_home)? {
         RuntimeHomeBootstrapState::Absent => {
             let record = publish_and_confirm_runtime_home(
                 context,
                 prepare_runtime_home_with_installation(
                     context,
-                    runtime_home,
                     runtime_home_id,
                     metadata_json,
                     installation.clone(),
@@ -1249,7 +1238,7 @@ fn publish_and_confirm_runtime_home_inner(
                         Err(error) => RuntimeHomePublicationRollbackAttempt::Failed(error),
                     };
                     let (final_path_state, rollback_parent_durability) =
-                        rollback_observation(&publication.final_path, &rollback);
+                        rollback_observation(publication.final_path.as_path(), &rollback);
                     Err(StoreError::RuntimeHomePublicationConfirmation(Box::new(
                         RuntimeHomePublicationConfirmationFailure {
                             primary,
@@ -1328,14 +1317,14 @@ fn observe_final_path_state(path: &Path) -> RuntimeHomeFinalPathState {
 
 fn prepare_runtime_home_inner(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     runtime_home_id: &str,
     metadata_json: &str,
     installation: Option<InstallationProfileRegistration>,
     hook: &mut impl FnMut(RuntimeHomeBootstrapPhase) -> StoreResult<()>,
 ) -> StoreResult<PreparedRuntimeHome> {
     context.require_exclusive_setup()?;
-    context.ensure_runtime_home(runtime_home)?;
+    let runtime_home_identity = context.runtime_home().clone();
+    let runtime_home = runtime_home_identity.as_path();
     validate_identifier("runtime_home_id", runtime_home_id)?;
     validate_json_object("runtime_home.metadata_json", metadata_json)?;
     if let Some(registration) = installation.as_ref() {
@@ -1429,7 +1418,7 @@ fn prepare_runtime_home_inner(
     sync_staged_runtime_home(staging_directory.path())?;
 
     Ok(PreparedRuntimeHome {
-        final_runtime_home: runtime_home.to_path_buf(),
+        final_runtime_home: runtime_home_identity,
         staging_directory,
         expected_runtime_home_id: runtime_home_id.to_owned(),
         expected_publication_id: publication_id,
@@ -2000,7 +1989,6 @@ pub fn ensure_project_for_repo(
         .unwrap_or_else(|| default_project_alias(&project_name, &project_internal_id));
     write_project_registration_from_validated_paths(
         context,
-        path_validation.runtime_home,
         path_validation.repo_root,
         ProjectWriteRegistration {
             project_internal_id,
@@ -2042,7 +2030,6 @@ fn write_project_registration(
     .map_err(path_boundary_input)?;
     write_project_registration_from_validated_paths(
         context,
-        path_validation.runtime_home,
         path_validation.repo_root,
         registration,
     )
@@ -2050,30 +2037,32 @@ fn write_project_registration(
 
 fn write_project_registration_from_validated_paths(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: PathBuf,
     repo_root: PathBuf,
     registration: ProjectWriteRegistration,
 ) -> StoreResult<ProjectRecord> {
-    context.ensure_runtime_home(&runtime_home)?;
+    let runtime_home = context.runtime_home().as_path();
     validate_project_id(&registration.project_internal_id)?;
     validate_project_name(&registration.project_name)?;
     validate_project_alias(&registration.project_alias)?;
     validate_project_status(&registration.status)?;
     validate_json_object("projects.metadata_json", &registration.metadata_json)?;
 
-    let registry_path = registry_db_path(&runtime_home);
+    let registry_path = registry_db_path(runtime_home);
     let mut registry = open_registry_database_for_mutation(context)?;
-    let runtime_home_row =
-        runtime_home_record_from_conn(&registry, runtime_home.clone(), registry_path.clone())?
-            .ok_or_else(|| StoreError::NotFound {
-                entity: "runtime_home",
-                id: registry_path.display().to_string(),
-            })?;
+    let runtime_home_row = runtime_home_record_from_conn(
+        &registry,
+        runtime_home.to_path_buf(),
+        registry_path.clone(),
+    )?
+    .ok_or_else(|| StoreError::NotFound {
+        entity: "runtime_home",
+        id: registry_path.display().to_string(),
+    })?;
 
     let project_home = registration
         .project_home
-        .unwrap_or_else(|| project_home_path(&runtime_home, &registration.project_internal_id));
-    let project_home = validate_project_home_boundary(&runtime_home, &repo_root, &project_home)
+        .unwrap_or_else(|| project_home_path(runtime_home, &registration.project_internal_id));
+    let project_home = validate_project_home_boundary(runtime_home, &repo_root, &project_home)
         .map_err(path_boundary_input)?;
     let state_db_path = project_home.join(PROJECT_STATE_DB_FILE);
     let repo_root_text = path_to_text("repo_root", &repo_root)?;
@@ -2205,7 +2194,7 @@ fn write_project_registration_from_validated_paths(
         Ok(())
     })?;
 
-    project_record_from_conn(&registry, &runtime_home, &registration.project_internal_id)?
+    project_record_from_conn(&registry, runtime_home, &registration.project_internal_id)?
         .ok_or_else(|| StoreError::NotFound {
             entity: "project",
             id: registration.project_internal_id,
@@ -2314,6 +2303,44 @@ pub fn project_record_by_repo_root(
     }
     let conn = open_registry_database_read_only(registry_path)?;
     project_record_by_repo_root_from_conn(&conn, path_validation)
+}
+
+/// Reads a registered project by repository root through the admitted Runtime Home identity.
+pub fn project_record_by_repo_root_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    repo_root: impl AsRef<Path>,
+) -> StoreResult<Option<ProjectRecord>> {
+    let path_validation =
+        validate_runtime_home_product_repository_admitted(context.runtime_home(), repo_root)
+            .map_err(path_boundary_input)?;
+    let registry_path = registry_db_path(context.runtime_home().as_path());
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(registry_path)?;
+    let repo_root_text = path_to_text("repo_root", &path_validation.repo_root)?;
+    let project = conn
+        .query_row(
+            "SELECT
+                project_internal_id,
+                project_name,
+                project_alias,
+                runtime_home_id,
+                repo_root,
+                project_home,
+                state_db_path,
+                status,
+                metadata_json
+             FROM projects
+             WHERE repo_root = ?1",
+            [repo_root_text],
+            project_record_from_row,
+        )
+        .optional()
+        .map_err(StoreError::from)?;
+    project
+        .map(|project| validate_current_project_registration_admitted(context, &project))
+        .transpose()
 }
 
 /// Reads a registered project by canonical repository root without writing registry state.
@@ -2452,6 +2479,23 @@ pub fn project_record_for_execution(
     project_record_read_only(runtime_home, project_id)
 }
 
+/// Reads one registered project through the admitted Runtime Home identity.
+pub fn project_record_for_execution_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    project_id: &str,
+) -> StoreResult<Option<ProjectRecord>> {
+    validate_project_reference(project_id)?;
+    let registry_path = registry_db_path(context.runtime_home().as_path());
+    if !registry_path.exists() {
+        return Ok(None);
+    }
+    let conn = open_registry_database_read_only(registry_path)?;
+    let project = raw_project_record_from_conn(&conn, project_id)?;
+    project
+        .map(|project| validate_current_project_registration_admitted(context, &project))
+        .transpose()
+}
+
 /// Reads one registered project for execution without registry writes.
 pub fn project_record_for_execution_read_only(
     runtime_home: impl AsRef<Path>,
@@ -2478,6 +2522,49 @@ pub fn validate_current_project_registration(
             .map_err(|error| registered_project_path_error(project, "repo_root", error))?;
     let project_home = validate_project_home_boundary(
         &path_validation.runtime_home,
+        &path_validation.repo_root,
+        &project.project_home,
+    )
+    .map_err(|error| registered_project_path_error(project, "project_home", error))?;
+    let expected_state_db_path = project_home.join(PROJECT_STATE_DB_FILE);
+    let stored_state_db_path = normalize_lexical_path("state_db_path", &project.state_db_path)
+        .map_err(|error| registered_project_path_error(project, "state_db_path", error))?;
+    if !paths_equal_for_boundary(&stored_state_db_path, &expected_state_db_path) {
+        return Err(state_db_path_mismatch_error(
+            project,
+            &stored_state_db_path,
+            &expected_state_db_path,
+        ));
+    }
+
+    Ok(ProjectRecord {
+        repo_root: path_validation.repo_root,
+        project_home,
+        state_db_path: expected_state_db_path,
+        ..project.clone()
+    })
+}
+
+/// Validates a stored project registration against admitted Runtime Home identity.
+pub fn validate_current_project_registration_admitted(
+    context: &RuntimeHomeMutationContext<'_>,
+    project: &ProjectRecord,
+) -> StoreResult<ProjectRecord> {
+    validate_project_id(&project.project_id).map_err(|error| {
+        StoreError::InvalidProjectRegistration {
+            project_id: project.project_id.clone(),
+            field: "project_id",
+            relationship: "invalid_project_id",
+            detail: error.to_string(),
+        }
+    })?;
+    let path_validation = validate_runtime_home_product_repository_admitted(
+        context.runtime_home(),
+        &project.repo_root,
+    )
+    .map_err(|error| registered_project_path_error(project, "repo_root", error))?;
+    let project_home = validate_project_home_boundary_admitted(
+        context.runtime_home(),
         &path_validation.repo_root,
         &project.project_home,
     )
@@ -2909,12 +2996,7 @@ mod tests {
             RuntimeHomeBootstrapState::Absent
         ));
 
-        let prepared = prepare_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_staged_publish",
-            "{}",
-        )?;
+        let prepared = prepare_runtime_home(&context, "runtime_home_staged_publish", "{}")?;
         assert!(!fixture.path().exists());
         assert_eq!(staging_directories(fixture.path())?.len(), 1);
 
@@ -2958,7 +3040,6 @@ mod tests {
             };
             prepare_runtime_home_inner(
                 &context,
-                fixture.path(),
                 &format!("runtime_home_fail_{label}"),
                 "{}",
                 None,
@@ -2978,12 +3059,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-fail-before-rename")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        let prepared = prepare_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_fail_before_rename",
-            "{}",
-        )?;
+        let prepared = prepare_runtime_home(&context, "runtime_home_fail_before_rename", "{}")?;
         let mut hook = |phase| {
             if phase == RuntimeHomeBootstrapPhase::AtomicRename {
                 Err(StoreError::InvalidInput {
@@ -3009,7 +3085,6 @@ mod tests {
         let context = setup.context()?;
         let (_, expected) = initialize_runtime_home_with_installation(
             &context,
-            fixture.path(),
             "runtime_home_with_installation",
             "{}",
             installation_registration(fixture.path()),
@@ -3028,12 +3103,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-current-read-only")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_current_read_only",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_current_read_only", "{}")?;
         let before_bytes = fs::read(fixture.registry_db_path())?;
         let before_modified = fs::metadata(fixture.registry_db_path())?.modified()?;
 
@@ -3054,12 +3124,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-noncurrent-manifest")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_noncurrent_manifest",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_noncurrent_manifest", "{}")?;
         let current = current_storage_manifest()?;
         let noncurrent = StorageManifest::new(
             volicord_types::STORAGE_CONTRACT_ID,
@@ -3090,13 +3155,9 @@ mod tests {
             fs::metadata(fixture.registry_db_path())?.modified()?,
             before_modified
         );
-        assert!(initialize_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_noncurrent_manifest",
-            "{}"
-        )
-        .is_err());
+        assert!(
+            initialize_runtime_home(&context, "runtime_home_noncurrent_manifest", "{}").is_err()
+        );
         assert_eq!(fs::read(fixture.registry_db_path())?, before_bytes);
         Ok(())
     }
@@ -3128,12 +3189,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-relation-facts")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_relation_facts",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_relation_facts", "{}")?;
         let conn = Connection::open(fixture.registry_db_path())?;
         conn.execute_batch(
             "DROP TABLE project_aliases;
@@ -3173,14 +3229,8 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-concurrent-creators")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        let first =
-            prepare_runtime_home(&context, fixture.path(), "runtime_home_creator_first", "{}")?;
-        let second = prepare_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_creator_second",
-            "{}",
-        )?;
+        let first = prepare_runtime_home(&context, "runtime_home_creator_first", "{}")?;
+        let second = prepare_runtime_home(&context, "runtime_home_creator_second", "{}")?;
         let barrier = Arc::new(Barrier::new(2));
         let first_barrier = Arc::clone(&barrier);
         let second_barrier = Arc::clone(&barrier);
@@ -3242,18 +3292,10 @@ mod tests {
         let first_context = first_setup.context()?;
         let second_setup = TestRuntimeHomeAdmission::exclusive(second.path())?;
         let second_context = second_setup.context()?;
-        let first_prepared = prepare_runtime_home(
-            &first_context,
-            first.path(),
-            "runtime_home_same_identity",
-            "{}",
-        )?;
-        let second_prepared = prepare_runtime_home(
-            &second_context,
-            second.path(),
-            "runtime_home_same_identity",
-            "{}",
-        )?;
+        let first_prepared =
+            prepare_runtime_home(&first_context, "runtime_home_same_identity", "{}")?;
+        let second_prepared =
+            prepare_runtime_home(&second_context, "runtime_home_same_identity", "{}")?;
 
         assert_ne!(
             first_prepared.publication_id(),
@@ -3284,12 +3326,8 @@ mod tests {
             ))?;
             let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
             let context = setup.context()?;
-            let prepared = prepare_runtime_home(
-                &context,
-                fixture.path(),
-                "runtime_home_post_rename_failure",
-                "{}",
-            )?;
+            let prepared =
+                prepare_runtime_home(&context, "runtime_home_post_rename_failure", "{}")?;
             let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
                 commit_runtime_home(&context, prepared)?
             else {
@@ -3316,12 +3354,7 @@ mod tests {
                 } if durability == runtime_home_parent_durability()
             ));
             assert!(!fixture.path().exists());
-            initialize_runtime_home(
-                &context,
-                fixture.path(),
-                "runtime_home_unrelated_replacement",
-                "{}",
-            )?;
+            initialize_runtime_home(&context, "runtime_home_unrelated_replacement", "{}")?;
             assert!(matches!(
                 publication.rollback_if_owned(&context)?,
                 RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack {
@@ -3352,12 +3385,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-removed-unsynchronized")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        let prepared = prepare_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_removed_unsynchronized",
-            "{}",
-        )?;
+        let prepared = prepare_runtime_home(&context, "runtime_home_removed_unsynchronized", "{}")?;
         let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
             commit_runtime_home(&context, prepared)?
         else {
@@ -3378,7 +3406,7 @@ mod tests {
         ));
         assert!(!fixture.path().exists());
 
-        initialize_runtime_home(&context, fixture.path(), "runtime_home_replacement", "{}")?;
+        initialize_runtime_home(&context, "runtime_home_replacement", "{}")?;
         assert!(matches!(
             publication.rollback_if_owned(&context)?,
             RuntimeHomePublicationRollbackOutcome::AlreadyRolledBack {
@@ -3423,12 +3451,7 @@ mod tests {
             ))?;
             let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
             let context = setup.context()?;
-            let prepared = prepare_runtime_home(
-                &context,
-                fixture.path(),
-                "runtime_home_incomplete_removal",
-                "{}",
-            )?;
+            let prepared = prepare_runtime_home(&context, "runtime_home_incomplete_removal", "{}")?;
             let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
                 commit_runtime_home(&context, prepared)?
             else {
@@ -3497,12 +3520,8 @@ mod tests {
                 TempRuntimeHome::new(&format!("bootstrap-confirmation-composite-{label}"))?;
             let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
             let context = setup.context()?;
-            let prepared = prepare_runtime_home(
-                &context,
-                fixture.path(),
-                "runtime_home_confirmation_composite",
-                "{}",
-            )?;
+            let prepared =
+                prepare_runtime_home(&context, "runtime_home_confirmation_composite", "{}")?;
             let mut confirmation_hook = |phase| {
                 if phase == RuntimeHomePublicationConfirmationPhase::PublicationReadBack {
                     Err(StoreError::InvalidInput {
@@ -3648,12 +3667,7 @@ mod tests {
             let fixture = TempRuntimeHome::new(&format!("bootstrap-ownership-loss-{field}"))?;
             let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
             let context = setup.context()?;
-            let prepared = prepare_runtime_home(
-                &context,
-                fixture.path(),
-                "runtime_home_ownership_loss",
-                "{}",
-            )?;
+            let prepared = prepare_runtime_home(&context, "runtime_home_ownership_loss", "{}")?;
             let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
                 commit_runtime_home(&context, prepared)?
             else {
@@ -3707,12 +3721,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-pre-removal-absence")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        let prepared = prepare_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_pre_removal_absence",
-            "{}",
-        )?;
+        let prepared = prepare_runtime_home(&context, "runtime_home_pre_removal_absence", "{}")?;
         let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
             commit_runtime_home(&context, prepared)?
         else {
@@ -3727,12 +3736,7 @@ mod tests {
                 reason: RuntimeHomePublicationOwnershipLoss::FinalPathMissing,
             }
         ));
-        initialize_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_later_replacement",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_later_replacement", "{}")?;
         assert!(matches!(
             publication.rollback_if_owned(&context)?,
             RuntimeHomePublicationRollbackOutcome::OwnershipLost {
@@ -3757,12 +3761,7 @@ mod tests {
         let fixture = TempRuntimeHome::new("bootstrap-managed-consumption-preserves")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;
-        let prepared = prepare_runtime_home(
-            &context,
-            fixture.path(),
-            "runtime_home_managed_consumption",
-            "{}",
-        )?;
+        let prepared = prepare_runtime_home(&context, "runtime_home_managed_consumption", "{}")?;
         let RuntimeHomePublicationOutcome::PublishedByThisInvocation { mut publication } =
             commit_runtime_home(&context, prepared)?
         else {
@@ -3852,12 +3851,7 @@ mod tests {
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_validation",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_validation", "{}")?;
 
         let error = register_project(
             &context,
@@ -3882,12 +3876,7 @@ mod tests {
         let runtime_home = TempRuntimeHome::new("store-same-runtime-repo")?;
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_same_repo",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_same_repo", "{}")?;
 
         let error = register_project(
             &context,
@@ -3911,12 +3900,7 @@ mod tests {
         let runtime_home = TempRuntimeHome::new("store-installation-profile")?;
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_installation",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_installation", "{}")?;
 
         let profile = write_installation_profile(
             &context,
@@ -4009,12 +3993,7 @@ mod tests {
         let runtime_home = TempRuntimeHome::new("store-read-only-profile-absent")?;
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_profile_absent",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_profile_absent", "{}")?;
         let registry_path = registry_db_path(runtime_home.path());
         let bytes_before = fs::read(&registry_path)?;
         let modified_before = fs::metadata(&registry_path)?.modified()?;
@@ -4034,12 +4013,7 @@ mod tests {
         let runtime_home = TempRuntimeHome::new("store-read-only-profile-present")?;
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_profile_present",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_profile_present", "{}")?;
         let expected = write_installation_profile(
             &context,
             InstallationProfileRegistration {
@@ -4071,12 +4045,7 @@ mod tests {
         let runtime_home = TempRuntimeHome::new("store-installation-profile-invalid")?;
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_installation_invalid",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_installation_invalid", "{}")?;
 
         let error = write_installation_profile(
             &context,
@@ -4102,12 +4071,7 @@ mod tests {
         let runtime_home = TempRuntimeHome::new("store-repo-inside-runtime")?;
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_contains_repo",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_contains_repo", "{}")?;
         let repo_root = runtime_home.path().join("repo");
         fs::create_dir_all(&repo_root)?;
 
@@ -4139,7 +4103,7 @@ mod tests {
         let runtime_home = repo_root.join(".volicord");
         let setup = TestRuntimeHomeAdmission::exclusive(&runtime_home)?;
         let context = setup.context()?;
-        initialize_runtime_home(&context, &runtime_home, "runtime_home_inside_repo", "{}")?;
+        initialize_runtime_home(&context, "runtime_home_inside_repo", "{}")?;
 
         let error = register_project(
             &context,
@@ -4166,7 +4130,7 @@ mod tests {
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
-        initialize_runtime_home(&context, runtime_home.path(), "runtime_home_sibling", "{}")?;
+        initialize_runtime_home(&context, "runtime_home_sibling", "{}")?;
 
         let record = register_project(
             &context,
@@ -4266,12 +4230,7 @@ mod tests {
         let context = setup.context()?;
         let repo_a = runtime_home.create_product_repo("left/repo")?;
         let repo_b = runtime_home.create_product_repo("right/repo")?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_repo_project",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_repo_project", "{}")?;
 
         let first = ensure_project_for_repo(
             &context,
@@ -4312,12 +4271,7 @@ mod tests {
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_repo_reuse",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_repo_reuse", "{}")?;
 
         let original = ensure_project_for_repo(
             &context,
@@ -4362,12 +4316,7 @@ mod tests {
         let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
         let project_home = runtime_home.path().join("custom-projects/project_custom");
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_custom_project",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_custom_project", "{}")?;
 
         let record = register_project(
             &context,
@@ -4409,12 +4358,7 @@ mod tests {
             .parent()
             .expect("runtime home has parent")
             .join("outside-project-home");
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_project_home_outside",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_project_home_outside", "{}")?;
 
         let error = register_project(
             &context,
@@ -4441,12 +4385,7 @@ mod tests {
         let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
         let project_home = repo_root.join(".volicord-project");
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            "runtime_home_project_home_overlap",
-            "{}",
-        )?;
+        initialize_runtime_home(&context, "runtime_home_project_home_overlap", "{}")?;
 
         let error = register_project(
             &context,
@@ -4714,12 +4653,7 @@ mod tests {
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
-        initialize_runtime_home(
-            &context,
-            runtime_home.path(),
-            &format!("runtime_home_{project_id}"),
-            "{}",
-        )?;
+        initialize_runtime_home(&context, &format!("runtime_home_{project_id}"), "{}")?;
         register_project(
             &context,
             ProjectRegistration {

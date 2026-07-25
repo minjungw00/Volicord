@@ -29,7 +29,8 @@ use volicord_types::{
 use crate::cli::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
 use crate::mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError};
 use crate::project_context::{
-    registered_project_for_repo, resolve_repository_root, ProjectCommandError,
+    registered_project_for_repo, registered_project_for_repo_admitted, resolve_repository_root,
+    ProjectCommandError,
 };
 use crate::summary_card::{
     count_state_text, render_close_and_next_action_totals_text, render_summary_card_text,
@@ -147,7 +148,6 @@ struct ResolvedUserProject {
 }
 
 pub(crate) struct UserActionResolutionRecordingInput<'a> {
-    pub runtime_home: &'a Path,
     pub project_id: &'a str,
     pub record: &'a EffectiveUserActionRecord,
     pub resolution: UserActionResolutionInput,
@@ -256,7 +256,7 @@ fn status_response(
     resolved: &ResolvedUserProject,
     task_id: Option<&str>,
 ) -> Result<PipelineResponse, UserCommandError> {
-    CoreService::new(&resolved.runtime_home)
+    CoreService::for_read_only(&resolved.runtime_home)
         .status(
             StatusRequest {
                 envelope: envelope(
@@ -299,7 +299,7 @@ fn user_channel_inbox_projection(
         Some(session_id) => invocation.with_session_id(session_id),
         None => invocation,
     };
-    CoreService::new(runtime_home)
+    CoreService::for_read_only(runtime_home)
         .user_channel_inbox_projection(
             UserChannelInboxProjectionRequest {
                 project_id: ProjectId::new(project_id),
@@ -342,20 +342,18 @@ where
     let runtime_home = resolve_runtime_home(&env_var, current_dir)?;
     let repo_root = resolve_repository_root(current_dir, parsed.repo.as_deref())?;
     with_cli_runtime_home_mutation_result(&runtime_home, "cli.inbox.resolve", |context| {
-        command_inbox_resolve_admitted(context, &runtime_home, &repo_root, &request_id, &parsed)
+        command_inbox_resolve_admitted(context, &repo_root, &request_id, &parsed)
     })
     .map_err(UserCommandError::from)?
 }
 
 fn command_inbox_resolve_admitted(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     repo_root: &Path,
     request_id: &str,
     parsed: &ParsedInboxOptions,
 ) -> Result<String, UserCommandError> {
-    context.ensure_runtime_home(runtime_home)?;
-    let project = registered_project_for_repo(runtime_home, repo_root)?;
+    let project = registered_project_for_repo_admitted(context, repo_root)?;
     if project.repo_root != repo_root {
         return Err(UserCommandError::Runtime(
             "registered project does not match the requested repository".to_owned(),
@@ -372,7 +370,7 @@ fn command_inbox_resolve_admitted(
         ));
     }
 
-    let service = CoreService::new(runtime_home);
+    let service = CoreService::for_mutation(context);
     let snapshot = service
         .user_channel_inbox_resolution_snapshot_from_store(
             &store,
@@ -434,7 +432,6 @@ fn command_inbox_resolve_admitted(
     let response = resolve_user_action_from_record(
         context,
         UserActionResolutionRecordingInput {
-            runtime_home,
             project_id: &project.project_internal_id,
             record: &snapshot.record,
             resolution,
@@ -719,7 +716,7 @@ pub(crate) fn resolve_user_action_from_record(
         Some(session_id) => invocation.with_session_id(session_id),
         None => invocation,
     };
-    CoreService::new(input.runtime_home)
+    CoreService::for_mutation(context)
         .resolve_user_action(
             context,
             ResolveUserActionRequest {
@@ -1064,7 +1061,7 @@ mod tests {
     fn pending_choice_fixture(prefix: &str) -> Result<PendingChoiceFixture, Box<dyn Error>> {
         let fixture = CoreFixture::new(prefix)?;
         fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let session = seed_test_agent_session(
             fixture.runtime_home_path(),
             fixture.project_id(),
@@ -1136,7 +1133,7 @@ mod tests {
     ) -> Result<PendingObservationFixture, Box<dyn Error>> {
         let fixture = CoreFixture::new(prefix)?;
         fs::create_dir_all(fixture.product_repo_path().join(".git"))?;
-        let core = CoreService::new(fixture.runtime_home_path());
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
         let session = seed_test_agent_session(
             fixture.runtime_home_path(),
             fixture.project_id(),
@@ -1297,18 +1294,38 @@ mod tests {
         json: bool,
         choice: &str,
     ) -> Result<String, UserCommandError> {
+        resolve_choice_at_runtime_home(fixture, fixture.fixture.runtime_home_path(), json, choice)
+    }
+
+    fn resolve_choice_at_runtime_home(
+        fixture: &PendingChoiceFixture,
+        runtime_home: &Path,
+        json: bool,
+        choice: &str,
+    ) -> Result<String, UserCommandError> {
         command_inbox_resolve(
             choice_args(fixture, json, choice),
-            |name| {
-                (name == "VOLICORD_HOME")
-                    .then(|| OsString::from(fixture.fixture.runtime_home_path()))
-            },
+            |name| (name == "VOLICORD_HOME").then(|| OsString::from(runtime_home)),
             &fixture.fixture.product_repo_path(),
         )
     }
 
     fn resolve_observation(
         fixture: &PendingObservationFixture,
+        claim_id: &str,
+        artifact_id: &str,
+    ) -> Result<String, UserCommandError> {
+        resolve_observation_at_runtime_home(
+            fixture,
+            fixture.fixture.runtime_home_path(),
+            claim_id,
+            artifact_id,
+        )
+    }
+
+    fn resolve_observation_at_runtime_home(
+        fixture: &PendingObservationFixture,
+        runtime_home: &Path,
         claim_id: &str,
         artifact_id: &str,
     ) -> Result<String, UserCommandError> {
@@ -1325,10 +1342,7 @@ mod tests {
                 repo: Some(fixture.fixture.product_repo_path()),
                 json: true,
             },
-            |name| {
-                (name == "VOLICORD_HOME")
-                    .then(|| OsString::from(fixture.fixture.runtime_home_path()))
-            },
+            |name| (name == "VOLICORD_HOME").then(|| OsString::from(runtime_home)),
             &fixture.fixture.product_repo_path(),
         )
     }
@@ -1349,6 +1363,118 @@ mod tests {
         assert_ne!(first, other_request);
         assert_ne!(first.0, first.1);
         assert!(!first.0.contains("Approved locally"));
+    }
+
+    #[test]
+    fn inbox_choice_resolution_and_replay_use_the_admitted_lexical_runtime_home(
+    ) -> Result<(), Box<dyn Error>> {
+        let pending = pending_choice_fixture("cli-inbox-choice-lexical-alias")?;
+        let runtime_home = pending.fixture.runtime_home_path();
+        let alias = runtime_home
+            .parent()
+            .expect("fixture Runtime Home has a parent")
+            .join(".")
+            .join(
+                runtime_home
+                    .file_name()
+                    .expect("fixture Runtime Home has a file name"),
+            );
+        let before = pending.fixture.counts()?;
+
+        let first = resolve_choice_at_runtime_home(&pending, &alias, true, "accept")?;
+        let after_first = pending.fixture.counts()?;
+        let replay = resolve_choice_at_runtime_home(&pending, &alias, true, "accept")?;
+        let after_replay = pending.fixture.counts()?;
+
+        assert_eq!(replay, first);
+        assert_eq!(after_replay, after_first);
+        assert_eq!(after_first.state_version, before.state_version + 1);
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "resolved"
+        );
+        let diagnostic = volicord_store::diagnostics::read_diagnostic_session(
+            pending.fixture.runtime_home_path(),
+            None,
+        )?
+        .expect("alias resolution should write its diagnostic session to the admitted home");
+        assert_eq!(diagnostic.transport, "cli_inbox");
+        assert_eq!(
+            diagnostic.project_id.as_deref(),
+            Some(pending.fixture.project_id())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn inbox_evidence_observation_uses_the_admitted_lexical_runtime_home(
+    ) -> Result<(), Box<dyn Error>> {
+        let pending = pending_observation_fixture("cli-inbox-observation-lexical-alias")?;
+        let runtime_home = pending.fixture.runtime_home_path();
+        let alias = runtime_home
+            .parent()
+            .expect("fixture Runtime Home has a parent")
+            .join(".")
+            .join(
+                runtime_home
+                    .file_name()
+                    .expect("fixture Runtime Home has a file name"),
+            );
+
+        let output = resolve_observation_at_runtime_home(
+            &pending,
+            &alias,
+            &pending.claim_id,
+            &pending.artifact_id,
+        )?;
+        let response: Value = serde_json::from_str(&output)?;
+
+        assert_eq!(response["base"]["response_kind"], "result");
+        assert_eq!(
+            response["user_action_resolution"]["body"]["resolution_type"],
+            "evidence_observation"
+        );
+        assert_eq!(
+            response["user_action_resolution"]["body"]["observation"]["target"]
+                ["evidence_claim_id"],
+            pending.claim_id
+        );
+        assert_eq!(
+            response["user_action_resolution"]["body"]["observation"]["output_artifact_refs"][0]
+                ["artifact_id"],
+            pending.artifact_id
+        );
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "resolved"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inbox_choice_resolution_uses_the_admitted_symlink_runtime_home() -> Result<(), Box<dyn Error>>
+    {
+        use std::os::unix::fs::symlink;
+
+        let pending = pending_choice_fixture("cli-inbox-choice-symlink-alias")?;
+        let link = pending
+            .fixture
+            .runtime_home_path()
+            .parent()
+            .expect("fixture Runtime Home has a parent")
+            .join("runtime-home-symlink");
+        symlink(pending.fixture.runtime_home_path(), &link)?;
+
+        let output = resolve_choice_at_runtime_home(&pending, &link, true, "accept")?;
+        let response: Value = serde_json::from_str(&output)?;
+
+        assert_eq!(response["base"]["response_kind"], "result");
+        assert_eq!(
+            pending.fixture.user_action_status(&pending.request_id)?,
+            "resolved"
+        );
+        Ok(())
     }
 
     #[test]

@@ -361,7 +361,17 @@ fn user_channel_projection_is_authorized(
     project_id: &ProjectId,
     invocation: &InvocationContext,
 ) -> bool {
-    store.runtime_home() == service.runtime_home()
+    let same_runtime_home = match (
+        store.canonical_runtime_home(),
+        service.admitted_runtime_home(),
+    ) {
+        (Some(store_runtime_home), Some(service_runtime_home)) => {
+            store_runtime_home == service_runtime_home
+        }
+        (None, None) => store.runtime_home() == service.runtime_home(),
+        _ => false,
+    };
+    same_runtime_home
         && store.project_record().project_internal_id == project_id.as_str()
         && user_channel_projection_invocation_is_authorized(project_id, invocation)
 }

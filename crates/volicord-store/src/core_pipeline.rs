@@ -24,7 +24,7 @@ use crate::{
     bootstrap::ProjectRecord,
     guards::{agent_session_from_conn, AgentSessionRecord},
     sqlite::ARTIFACTS_DIR,
-    RuntimeHomeMutationContext, StoreError, StoreResult,
+    CanonicalRuntimeHomePath, RuntimeHomeMutationContext, StoreError, StoreResult,
 };
 
 pub use crate::evidence_capture::{
@@ -66,6 +66,7 @@ const WRITE_TICKET_RECORD_COLUMNS: &str = "
 #[derive(Debug)]
 pub struct CoreProjectStore<'mutation> {
     pub(crate) runtime_home: PathBuf,
+    pub(crate) canonical_runtime_home: Option<CanonicalRuntimeHomePath>,
     pub(crate) project: ProjectRecord,
     pub(crate) conn: Connection,
     pub(crate) writable: bool,
@@ -89,7 +90,13 @@ impl<'mutation> CoreProjectStore<'mutation> {
                 detail: "Core project mutation requires a live Runtime Home mutation context"
                     .to_owned(),
             })?;
-        context.ensure_runtime_home(&self.runtime_home)?;
+        if self.canonical_runtime_home.as_ref() != Some(context.runtime_home()) {
+            return Err(StoreError::InvalidInput {
+                detail:
+                    "Core project mutation Store does not retain the admitted Runtime Home identity"
+                        .to_owned(),
+            });
+        }
         Ok(context)
     }
 }
@@ -4084,12 +4091,7 @@ mod tests {
             let runtime_home = TempRuntimeHome::new("store-replay-context")?;
             let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
             let setup_context = setup.context()?;
-            initialize_runtime_home(
-                &setup_context,
-                runtime_home.path(),
-                "runtime_home_store",
-                "{}",
-            )?;
+            initialize_runtime_home(&setup_context, "runtime_home_store", "{}")?;
             register_project(
                 &setup_context,
                 ProjectRegistration {

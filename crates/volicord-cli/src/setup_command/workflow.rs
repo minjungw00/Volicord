@@ -144,6 +144,7 @@ pub(super) fn run_setup_workflow(
         }
     };
     let mutation_context = RuntimeHomeMutationContext::new(lease.permit(), &runtime_home)?;
+    let runtime_home = mutation_context.runtime_home().as_path().to_path_buf();
     let runtime_home_id = runtime_home_id_for_path(&runtime_home)?;
     let existing_runtime_home = match inspect_runtime_home_bootstrap(&runtime_home)? {
         RuntimeHomeBootstrapState::Absent => None,
@@ -299,7 +300,6 @@ pub(super) fn run_setup_workflow(
     )?;
     let (runtime_home_record, profile) = initialize_runtime_home_with_installation(
         &mutation_context,
-        &runtime_home,
         &runtime_home_id,
         ADMIN_METADATA_JSON,
         InstallationProfileRegistration {

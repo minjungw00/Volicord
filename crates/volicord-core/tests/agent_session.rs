@@ -51,7 +51,7 @@ fn current_managed_session_authorizes_and_derives_deterministic_audit_basis(
         fixture.connection_id(),
         None,
     )?;
-    let service = CoreService::new(fixture.runtime_home_path());
+    let service = CoreService::for_read_only(fixture.runtime_home_path());
     let validated = service.validate_agent_session(
         AgentConnectionId::new(fixture.connection_id()),
         ProjectId::new(fixture.project_id()),
@@ -119,7 +119,7 @@ fn wrong_connection_project_runtime_and_project_session_coordinates_fail_closed(
         fixture.connection_id(),
         None,
     )?;
-    let service = CoreService::new(fixture.runtime_home_path());
+    let service = CoreService::for_read_only(fixture.runtime_home_path());
 
     let cases = [
         (
@@ -181,7 +181,7 @@ fn disabled_connection_and_disallowed_mode_fail_closed() -> Result<(), Box<dyn E
         disabled_fixture.connection_id(),
         false,
     )?;
-    let error = CoreService::new(disabled_fixture.runtime_home_path())
+    let error = CoreService::for_read_only(disabled_fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(disabled_fixture.connection_id()),
             ProjectId::new(disabled_fixture.project_id()),
@@ -206,7 +206,7 @@ fn disabled_connection_and_disallowed_mode_fail_closed() -> Result<(), Box<dyn E
         readonly_fixture.connection_id(),
         None,
     )?;
-    let error = CoreService::new(readonly_fixture.runtime_home_path())
+    let error = CoreService::for_read_only(readonly_fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(readonly_fixture.connection_id()),
             ProjectId::new(readonly_fixture.project_id()),
@@ -235,7 +235,7 @@ fn stale_connection_and_project_revisions_fail_closed() -> Result<(), Box<dyn Er
         connection_fixture.connection_id(),
         CONNECTION_MODE_READ_ONLY,
     )?;
-    let error = CoreService::new(connection_fixture.runtime_home_path())
+    let error = CoreService::for_read_only(connection_fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(connection_fixture.connection_id()),
             ProjectId::new(connection_fixture.project_id()),
@@ -282,7 +282,7 @@ fn stale_connection_and_project_revisions_fail_closed() -> Result<(), Box<dyn Er
         source: "test".to_owned(),
         expected_prior_fingerprint: None,
     })?;
-    let error = CoreService::new(project_fixture.runtime_home_path())
+    let error = CoreService::for_read_only(project_fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(project_fixture.connection_id()),
             ProjectId::new(project_fixture.project_id()),
@@ -310,7 +310,7 @@ fn cli_preflight_and_invented_project_session_coordinates_never_authorize(
             process_started_at: observed_at.clone(),
         },
     )?;
-    let error = CoreService::new(fixture.runtime_home_path())
+    let error = CoreService::for_read_only(fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(fixture.connection_id()),
             ProjectId::new(fixture.project_id()),
@@ -351,7 +351,7 @@ fn hook_only_host_session_cannot_authorize_until_mcp_runtime_attach() -> Result<
             process_started_at: observed_at.clone(),
         },
     )?;
-    let service = CoreService::new(fixture.runtime_home_path());
+    let service = CoreService::for_read_only(fixture.runtime_home_path());
     assert!(agent_session(
         fixture.runtime_home_path(),
         fixture.project_id(),
@@ -451,7 +451,7 @@ fn registry_reservation_without_mcp_project_anchor_cannot_authorize() -> Result<
         ],
     )?;
 
-    let service = CoreService::new(fixture.runtime_home_path());
+    let service = CoreService::for_read_only(fixture.runtime_home_path());
     let error = service
         .validate_agent_session(
             AgentConnectionId::new(fixture.connection_id()),
@@ -508,7 +508,7 @@ fn mismatched_registry_host_session_binding_fails_closed() -> Result<(), Box<dyn
           WHERE session_id = ?1",
         [session.project_session_id.as_str()],
     )?;
-    let error = CoreService::new(fixture.runtime_home_path())
+    let error = CoreService::for_read_only(fixture.runtime_home_path())
         .validate_agent_session(
             AgentConnectionId::new(fixture.connection_id()),
             ProjectId::new(fixture.project_id()),

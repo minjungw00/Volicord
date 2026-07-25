@@ -1613,7 +1613,7 @@ mod tests {
         let setup = TestRuntimeHomeAdmission::exclusive(runtime_home.path())?;
         let context = setup.context()?;
         let repo_root = runtime_home.create_product_repo("repo")?;
-        initialize_runtime_home(&context, runtime_home.path(), RUNTIME_HOME_ID, "{}")?;
+        initialize_runtime_home(&context, RUNTIME_HOME_ID, "{}")?;
         let project = register_project(
             &context,
             ProjectRegistration {

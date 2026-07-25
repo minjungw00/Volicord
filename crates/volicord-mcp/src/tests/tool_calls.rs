@@ -2,6 +2,49 @@ use super::*;
 use volicord_test_support::TestRuntimeHomeSetup;
 
 #[test]
+fn admitted_tool_routing_rejects_a_different_runtime_home_context() -> Result<(), Box<dyn Error>> {
+    let routed = CoreFixture::new("mcp-routing-runtime-home")?;
+    let different = CoreFixture::new("mcp-context-runtime-home")?;
+    let adapter = adapter(&routed)?;
+    let different_context = different.mutation_context()?;
+    let before = different.counts()?;
+
+    let error = adapter
+        .tools_for_context(&different_context)
+        .expect_err("MCP routing home A must reject admitted context B");
+
+    assert!(matches!(error, McpAdapterError::Environment(_)));
+    assert!(error
+        .to_string()
+        .contains("runtime_home_mutation_context_mismatch"));
+    assert_eq!(different.counts()?, before);
+    Ok(())
+}
+
+#[test]
+fn mcp_mutation_uses_the_admitted_lexical_runtime_home() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-mutation-runtime-home-alias")?;
+    let runtime_home = fixture.runtime_home_path();
+    let alias = runtime_home
+        .parent()
+        .expect("fixture Runtime Home has a parent")
+        .join(".")
+        .join(
+            runtime_home
+                .file_name()
+                .expect("fixture Runtime Home has a file name"),
+        );
+    let adapter = adapter_at_runtime_home(&fixture, &alias)?;
+    let before = fixture.counts()?;
+
+    let committed = adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))?;
+
+    assert_eq!(committed.response_value["base"]["response_kind"], "result");
+    assert_eq!(fixture.counts()?.state_version, before.state_version + 1);
+    Ok(())
+}
+
+#[test]
 fn known_tool_validation_aggregates_independent_issues_without_core_effects(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-aggregated-validation")?;
@@ -1511,8 +1554,12 @@ fn stdio_rejects_tampered_summaries_and_noncanonical_full_form_before_delivery(
         ("invalid_summary", invalid_summary),
         ("noncanonical_full_form", noncanonical_full_form),
     ] {
-        let error = crate::stdio::user_action_tool_output(&adapter(&fixture)?, response)
-            .expect_err("untrusted public pending data must fail before delivery");
+        let error = crate::stdio::user_action_tool_output(
+            &fixture.mutation_context()?,
+            &adapter(&fixture)?,
+            response,
+        )
+        .expect_err("untrusted public pending data must fail before delivery");
         assert!(matches!(
             error,
             McpAdapterError::Protocol(_) | McpAdapterError::Json(_)
@@ -1564,9 +1611,10 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
         .to_owned();
     let after_create = fixture.counts()?;
 
-    let core = CoreService::new(fixture.runtime_home_path());
+    let context = fixture.mutation_context()?;
+    let core = CoreService::for_mutation(&context);
     let resolved = core.resolve_user_action(
-        &fixture.mutation_context()?,
+        &context,
         fixture.resolve_user_action_request(ResolveUserActionFixture {
             request_id: "req_cli_inbox_resolution",
             task_id: &task_id,
@@ -1605,7 +1653,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
     );
 
     let unrelated = core.request_user_action(
-        &fixture.mutation_context()?,
+        &context,
         fixture.user_action_request(UserActionFixture {
             request_id: "req_mcp_cross_channel_unrelated_action",
             idempotency_key: "idem_mcp_cross_channel_unrelated_action",

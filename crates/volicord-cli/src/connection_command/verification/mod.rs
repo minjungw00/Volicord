@@ -218,13 +218,13 @@ pub(in crate::connection_command) struct VerificationReport {
 
 pub(in crate::connection_command) fn verify_connection(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     connection: &AgentConnectionRecord,
     host_plan: &HostPlan,
     repo_root: &Path,
     project_id: Option<&str>,
     process: &mut impl ConnectionProcess,
 ) -> Result<VerificationReport, ConnectionCommandError> {
+    let runtime_home = context.runtime_home().as_path();
     let host_kind = parse_host_kind(&connection.host_kind)?;
     let host = verify_host_plan(host_kind, host_plan, process)?;
     let preflight_launch = materialize_connection_invocation(
@@ -245,7 +245,7 @@ pub(in crate::connection_command) fn verify_connection(
         &connection.mode,
     );
     let writeability = (preflight.status == StepStatus::Passed)
-        .then(|| verify_selected_store_writeability(context, runtime_home, connection, project_id));
+        .then(|| verify_selected_store_writeability(context, connection, project_id));
     let handshake = if let Some(writeability) = &writeability {
         if let Some(details) = writeability.failure.as_deref() {
             McpVerification::writeability_failed(details)
@@ -265,19 +265,13 @@ pub(in crate::connection_command) fn verify_connection(
         McpVerification::not_run()
     };
     let (preflight, mut handshake) =
-        persist_process_diagnostics(context, runtime_home, connection, preflight, handshake)?;
+        persist_process_diagnostics(context, connection, preflight, handshake)?;
     if let Some(writeability) = &writeability {
         let evidence = active_verification_evidence(writeability, &handshake, current_timestamp());
         handshake = handshake.with_active_evidence(evidence);
     }
-    let evaluation = canonical_verification_evaluation(
-        context,
-        runtime_home,
-        connection,
-        &host,
-        &preflight,
-        &handshake,
-    )?;
+    let evaluation =
+        canonical_verification_evaluation(context, connection, &host, &preflight, &handshake)?;
     let scope = volicord_types::DiagnosticScope::try_new(
         volicord_types::DiagnosticScopeKind::Connection,
         &connection.connection_internal_id,
@@ -285,7 +279,6 @@ pub(in crate::connection_command) fn verify_connection(
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     reconcile_current_findings_for_scope(
         context,
-        runtime_home,
         &scope,
         &[
             CurrentOperationalOwner::ManagedConfiguration,
@@ -309,10 +302,10 @@ pub(in crate::connection_command) struct McpStoreWriteabilityEvidence {
 
 fn verify_selected_store_writeability(
     context: &RuntimeHomeMutationContext<'_>,
-    runtime_home: &Path,
     connection: &AgentConnectionRecord,
     selected_project_id: Option<&str>,
 ) -> McpStoreWriteabilityEvidence {
+    let runtime_home = context.runtime_home().as_path();
     let (registry_write, mut failure) = match registry_database_write_capability(context) {
         Ok(true) => (McpEvidenceCheckStatus::Passed, None),
         Ok(false) => (

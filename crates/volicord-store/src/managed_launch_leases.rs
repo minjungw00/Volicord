@@ -539,7 +539,7 @@ mod tests {
         let repo = temp.path().join("repo");
         std::fs::create_dir_all(&repo)?;
         with_test_runtime_home_setup(&runtime_home, |context| {
-            initialize_runtime_home(context, &runtime_home, "runtime_home_launch_lease", "{}")?;
+            initialize_runtime_home(context, "runtime_home_launch_lease", "{}")?;
             register_project(
                 context,
                 ProjectRegistration {

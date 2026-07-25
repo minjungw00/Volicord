@@ -21,7 +21,9 @@ pub(crate) use volicord_mcp_protocol::{
     InitializedNotification, JsonRpcBatching, McpNegotiationOutcome, McpProtocolProfile,
     ProtocolRegistry, ServerCapabilityField, ToolDefinitionField, ToolResultField,
 };
-pub(crate) use volicord_platform_fs::RuntimeHomeMutationLeaseError;
+pub(crate) use volicord_platform_fs::{
+    canonical_runtime_home_path, CanonicalRuntimeHomePath, RuntimeHomeMutationLeaseError,
+};
 pub(crate) use volicord_store::{
     agent_connections::{
         agent_connection_project_access_read_only, agent_connection_record_read_only,
