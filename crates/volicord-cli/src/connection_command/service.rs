@@ -4,8 +4,8 @@ use std::{
 };
 
 use volicord_platform_fs::{
-    RuntimeHomeSetupLease, RuntimeHomeSetupLeaseOutcome, RuntimeHomeSetupOperation,
-    RuntimeHomeSetupWaitPolicy,
+    RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
+    RuntimeHomeMutationWaitPolicy,
 };
 use volicord_store::setup_transaction::PreparedStoreMutationBoundary;
 use volicord_types::{IntegrationActivationPlan, IntegrationActivationState};
@@ -174,21 +174,21 @@ struct SupersededIntegration {
 
 pub(super) fn execute_setup_with_lease<T>(
     requested_runtime_home: &Path,
-    operation: RuntimeHomeSetupOperation,
+    operation: CommandOperation,
     output_format: OutputFormat,
     dry_run: bool,
-    execute: impl FnOnce(&RuntimeHomeSetupLease) -> Result<T, ConnectionCommandError>,
+    execute: impl FnOnce(&RuntimeHomeMutationLease) -> Result<T, ConnectionCommandError>,
 ) -> Result<T, ConnectionCommandError> {
-    match RuntimeHomeSetupLease::acquire(
+    match RuntimeHomeMutationLease::acquire(
         requested_runtime_home,
-        operation,
-        RuntimeHomeSetupWaitPolicy::Immediate,
+        RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+        RuntimeHomeMutationWaitPolicy::Immediate,
     )
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
     {
-        RuntimeHomeSetupLeaseOutcome::Acquired(lease) => execute(&lease),
-        RuntimeHomeSetupLeaseOutcome::Busy(busy) => {
-            let rendered = render_setup_lease_busy(output_format, &busy, dry_run)?;
+        RuntimeHomeMutationLeaseOutcome::Acquired(lease) => execute(&lease),
+        RuntimeHomeMutationLeaseOutcome::Busy(busy) => {
+            let rendered = render_setup_lease_busy(output_format, operation, &busy, dry_run)?;
             Err(ConnectionCommandError::FailureOutput(rendered.output))
         }
     }
@@ -197,7 +197,7 @@ pub(super) fn execute_setup_with_lease<T>(
 pub(super) fn provision_init(
     request: InitProvisioningRequest<'_>,
     process: &mut impl ConnectionProcess,
-    lease: &RuntimeHomeSetupLease,
+    lease: &RuntimeHomeMutationLease,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
     ensure_init_request_matches_lease(&request, process, lease)?;
     let dry_run = request.parsed.dry_run;
@@ -235,7 +235,7 @@ pub(super) fn provision_init(
 fn ensure_init_request_matches_lease(
     request: &InitProvisioningRequest<'_>,
     process: &impl ConnectionProcess,
-    lease: &RuntimeHomeSetupLease,
+    lease: &RuntimeHomeMutationLease,
 ) -> Result<(), ConnectionCommandError> {
     let selected = selected_runtime_home_path(
         request.parsed.explicit_runtime_home.as_deref(),
@@ -246,9 +246,14 @@ fn ensure_init_request_matches_lease(
 }
 
 fn ensure_setup_lease_target(
-    lease: &RuntimeHomeSetupLease,
+    lease: &RuntimeHomeMutationLease,
     selected: &Path,
 ) -> Result<(), ConnectionCommandError> {
+    if lease.mode() != RuntimeHomeMutationLeaseMode::ExclusiveSetup {
+        return Err(ConnectionCommandError::runtime(
+            "setup requires an exclusive Runtime Home mutation lease",
+        ));
+    }
     if lease
         .matches_target(selected)
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?
@@ -656,7 +661,7 @@ fn build_setup_plan(plan: &InitProvisioningPlan) -> Result<SetupPlan, Connection
 fn apply_init_provisioning(
     mut plan: InitProvisioningPlan,
     process: &mut impl ConnectionProcess,
-    lease: &RuntimeHomeSetupLease,
+    lease: &RuntimeHomeMutationLease,
 ) -> Result<InitProvisioningOutcome, ConnectionCommandError> {
     ensure_setup_lease_target(lease, &plan.runtime_home)?;
     validate_init_connection_expectation(&plan)?;
@@ -1244,7 +1249,7 @@ fn superseded_integrations_for_project(
 pub(super) fn provision_connection(
     request: ProvisionConnectionRequest<'_>,
     process: &mut impl ConnectionProcess,
-    lease: &RuntimeHomeSetupLease,
+    lease: &RuntimeHomeMutationLease,
 ) -> Result<ConnectionProvisioningOutcome, ConnectionCommandError> {
     ensure_connection_request_matches_lease(&request, process, lease)?;
     let dry_run = request.parsed.dry_run;
@@ -1261,7 +1266,7 @@ pub(super) fn provision_connection(
 fn ensure_connection_request_matches_lease(
     request: &ProvisionConnectionRequest<'_>,
     process: &impl ConnectionProcess,
-    lease: &RuntimeHomeSetupLease,
+    lease: &RuntimeHomeMutationLease,
 ) -> Result<(), ConnectionCommandError> {
     let selected = selected_runtime_home_path(
         request.parsed.explicit_runtime_home.as_deref(),
@@ -1416,7 +1421,7 @@ fn plan_connection_provisioning(
 fn apply_connection_provisioning(
     plan: ConnectionProvisioningPlan,
     process: &mut impl ConnectionProcess,
-    lease: &RuntimeHomeSetupLease,
+    lease: &RuntimeHomeMutationLease,
 ) -> Result<ConnectionProvisioningResult, ConnectionCommandError> {
     ensure_setup_lease_target(lease, &plan.runtime_home)?;
     let existing = validate_setup_connection_expectation(
@@ -1645,22 +1650,46 @@ mod init_planning_tests {
         }
     }
 
-    fn setup_lease(
-        runtime_home: &Path,
-        operation: RuntimeHomeSetupOperation,
-    ) -> RuntimeHomeSetupLease {
-        match RuntimeHomeSetupLease::acquire(
+    fn exclusive_setup_lease(runtime_home: &Path) -> RuntimeHomeMutationLease {
+        match RuntimeHomeMutationLease::acquire(
             runtime_home,
-            operation,
-            RuntimeHomeSetupWaitPolicy::Immediate,
+            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+            RuntimeHomeMutationWaitPolicy::Immediate,
         )
-        .expect("setup lease acquisition")
+        .expect("exclusive setup mutation lease acquisition")
         {
-            RuntimeHomeSetupLeaseOutcome::Acquired(lease) => lease,
-            RuntimeHomeSetupLeaseOutcome::Busy(_) => {
-                panic!("unit-test Runtime Home setup lease is unexpectedly busy")
+            RuntimeHomeMutationLeaseOutcome::Acquired(lease) => lease,
+            RuntimeHomeMutationLeaseOutcome::Busy(_) => {
+                panic!("unit-test Runtime Home mutation lease is unexpectedly busy")
             }
         }
+    }
+
+    #[test]
+    fn setup_service_holds_exclusive_mutation_admission_before_its_callback(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = TempRuntimeHome::new("setup-exclusive-mutation-admission")?;
+
+        execute_setup_with_lease(
+            fixture.path(),
+            CommandOperation::Init,
+            OutputFormat::Json,
+            false,
+            |lease| {
+                assert_eq!(lease.mode(), RuntimeHomeMutationLeaseMode::ExclusiveSetup);
+                assert!(matches!(
+                    RuntimeHomeMutationLease::acquire(
+                        fixture.path(),
+                        RuntimeHomeMutationLeaseMode::SharedWriter,
+                        RuntimeHomeMutationWaitPolicy::Immediate,
+                    )
+                    .expect("conflicting shared request"),
+                    RuntimeHomeMutationLeaseOutcome::Busy(_)
+                ));
+                Ok(())
+            },
+        )?;
+        Ok(())
     }
 
     fn parsed_connection(
@@ -2017,7 +2046,7 @@ mod init_planning_tests {
             .iter()
             .map(|file| file.path.clone())
             .collect::<Vec<_>>();
-        let lease = setup_lease(fixture.path(), RuntimeHomeSetupOperation::Init);
+        let lease = exclusive_setup_lease(fixture.path());
         let outcome = apply_init_provisioning(plan, &mut process, &lease)?;
 
         assert!(!outcome.dry_run);
@@ -2036,7 +2065,7 @@ mod init_planning_tests {
         let parsed = parsed_init(fixture.path(), &repo_root, true);
         let mut process = PlanningProcess::new()?;
 
-        let lease = setup_lease(fixture.path(), RuntimeHomeSetupOperation::Init);
+        let lease = exclusive_setup_lease(fixture.path());
         let outcome = provision_init(
             InitProvisioningRequest {
                 parsed: &parsed,
@@ -2062,7 +2091,7 @@ mod init_planning_tests {
         let parsed = parsed_init(fixture.path(), &repo_root, false);
         let mut process = PlanningProcess::new()?;
 
-        let initial_lease = setup_lease(fixture.path(), RuntimeHomeSetupOperation::Init);
+        let initial_lease = exclusive_setup_lease(fixture.path());
         let initial = provision_init(
             InitProvisioningRequest {
                 parsed: &parsed,
@@ -2103,7 +2132,7 @@ mod init_planning_tests {
                 .expect("concurrently rebound Guard Installation")
                 .manifest_json;
 
-        let apply_lease = setup_lease(fixture.path(), RuntimeHomeSetupOperation::Init);
+        let apply_lease = exclusive_setup_lease(fixture.path());
         let error = match apply_init_provisioning(plan, &mut process, &apply_lease) {
             Err(error) => error,
             Ok(_) => panic!("mode conflict unexpectedly applied"),
@@ -2134,7 +2163,7 @@ mod init_planning_tests {
         let add = parsed_connection(&repo_root, false, false);
         let mut process = PlanningProcess::for_runtime_home(fixture.path())?;
 
-        let initial_lease = setup_lease(fixture.path(), RuntimeHomeSetupOperation::Init);
+        let initial_lease = exclusive_setup_lease(fixture.path());
         let initial = provision_init(
             InitProvisioningRequest {
                 parsed: &init,
@@ -2174,7 +2203,7 @@ mod init_planning_tests {
         let runtime_before_apply = directory_contents(fixture.path())?;
         let repository_before_apply = directory_contents(&repo_root)?;
 
-        let apply_lease = setup_lease(fixture.path(), RuntimeHomeSetupOperation::ConnectionAdd);
+        let apply_lease = exclusive_setup_lease(fixture.path());
         let error = match apply_connection_provisioning(plan, &mut process, &apply_lease) {
             Err(error) => error,
             Ok(_) => panic!("stale connection add plan unexpectedly applied"),

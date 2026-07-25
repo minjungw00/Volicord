@@ -65,8 +65,10 @@ registry 직접 순회가 matrix를 정합니다.
 - Runtime Home의 `Absent`, `Ready`, `Incompatible`, `Corrupt` 검사, singleton과
   installation metadata를 포함한 같은 상위 directory의 staged creation, 정확한
   manifest, 불투명 publication provenance 및 relation fact, 공개 전 각 실패 지점의
-  정리, 정규 home별 setup lease의 alias 통합과 독립성, 프로세스 간 경합, 영속 coordination
-  파일의 비소유성, 프로세스 종료 시 해제, 네이티브 Unix와 Windows OS lock 동작,
+  정리, 정규 home별 공유·배타 변경 승인, 동시 shared writer, 같은 lock 영역에서의
+  배타 충돌, lexical 및 symlink alias 통합, 서로 다른 home의 독립성, 즉시 및 한도 있는
+  획득, 영속 coordination 파일의 비소유성, 공유·배타 lease의 프로세스 종료 시 해제,
+  네이티브 Unix와 Windows OS lock 동작, 빌린 permit의 target/mode 결속,
   소유자 하나만 만드는 no-replace 공개, token-backed rollback 재검증, 소유권 상실 및 managed-host 소비 시 보존,
   효과 전 재귀 실패, 일부 제거 또는 분류 불가 제거, 제거 확인 뒤 상위 directory 동기화
   실패, terminal 재시도 동작, 확인 오류와 rollback fact를 함께 담는 composite 실패,

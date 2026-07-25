@@ -7,7 +7,7 @@ use std::{
 use sha2::{Digest, Sha256};
 use volicord_platform_fs::{
     DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalOutcome,
-    DirectoryTreeTargetState, RuntimeHomeSetupLease,
+    DirectoryTreeTargetState, RuntimeHomeMutationLease, RuntimeHomeMutationLeaseMode,
 };
 use volicord_store::bootstrap::{
     commit_runtime_home, inspect_runtime_home_bootstrap, prepare_runtime_home_with_installation,
@@ -427,8 +427,13 @@ enum SetupRuntimeHomePublication {
 impl PreparedSetup {
     pub(super) fn prepare(
         mut plan: SetupPlan,
-        lease: &RuntimeHomeSetupLease,
+        lease: &RuntimeHomeMutationLease,
     ) -> Result<Self, ConnectionCommandError> {
+        if lease.mode() != RuntimeHomeMutationLeaseMode::ExclusiveSetup {
+            return Err(ConnectionCommandError::runtime(
+                "setup preparation requires an exclusive Runtime Home mutation lease",
+            ));
+        }
         if !lease
             .matches_target(plan.runtime_home.final_path())
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?

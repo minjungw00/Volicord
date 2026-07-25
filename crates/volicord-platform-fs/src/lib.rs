@@ -16,12 +16,12 @@ use volicord_types::{
     PINNED_WSL2_DISTRIBUTION_ID, PINNED_WSL2_DISTRIBUTION_VERSION,
 };
 
-mod setup_lease;
+mod mutation_lease;
 
-pub use setup_lease::{
-    CanonicalRuntimeHomePath, RuntimeHomeSetupBusy, RuntimeHomeSetupLease,
-    RuntimeHomeSetupLeaseError, RuntimeHomeSetupLeaseOutcome, RuntimeHomeSetupLockIdentity,
-    RuntimeHomeSetupOperation, RuntimeHomeSetupWaitPolicy,
+pub use mutation_lease::{
+    CanonicalRuntimeHomePath, RuntimeHomeMutationBusy, RuntimeHomeMutationLease,
+    RuntimeHomeMutationLeaseError, RuntimeHomeMutationLeaseMode, RuntimeHomeMutationLeaseOutcome,
+    RuntimeHomeMutationLockIdentity, RuntimeHomeMutationPermit, RuntimeHomeMutationWaitPolicy,
 };
 
 #[cfg(windows)]

@@ -134,17 +134,36 @@ ancestor against the exact distribution ext4 boundary before initialization.
 Project homes and runtime-managed artifacts remain within that same boundary;
 Linux-looking `/mnt/*` or other non-ext4 locations are unsupported.
 
+Each exact canonical Runtime Home has one OS-backed mutation-admission
+coordinate outside the Runtime Home. `SharedWriter` is the mode for an ordinary
+Runtime Home writer and may coexist with other `SharedWriter` leases.
+`ExclusiveSetup` conflicts with every shared or exclusive lease. Both modes
+lock the same coordination-file region. Acquisition is either immediate or
+bounded by a caller-supplied timeout; a conflict returns typed busy facts
+instead of being classified as an I/O failure.
+
+| Held lease | Requested `SharedWriter` | Requested `ExclusiveSetup` |
+|---|---:|---:|
+| none | acquire | acquire |
+| `SharedWriter` | acquire | busy |
+| `ExclusiveSetup` | busy | busy |
+
 `volicord init` and `volicord connection add` canonicalize the selected final
-Runtime Home and acquire one exclusive OS-backed setup lease before bootstrap
-inspection or plan construction. The coordination file is derived from a
-domain-separated full digest of that canonical path and resides outside the
-Runtime Home: under the effective user's Volicord directory in `/tmp` on
-Linux, macOS, and WSL2, or under `%TEMP%\Volicord` on native Windows. The raw
-Runtime Home path is not a file name. A coordination file may persist after
-unlock; only the live OS lock means a setup transaction owns the lease.
-Closing the handle or terminating the process releases it. The lease is a
-coordination primitive, not actor identity, a credential, or a security
-boundary.
+Runtime Home and acquire `ExclusiveSetup` before bootstrap inspection or plan
+construction. The platform boundary also exposes a non-cloneable lease for
+`SharedWriter` and a permit that borrows a live lease while carrying its exact
+canonical target and held mode. The current Store mutation APIs do not require
+that permit from every writer, so the presence of this platform primitive does
+not state that every current writer is already admitted through it.
+
+The coordination file is derived from a domain-separated full digest of the
+canonical path and resides outside the Runtime Home: under the effective
+user's Volicord coordination directory in `/tmp` on Linux, macOS, and WSL2, or
+under `%TEMP%\Volicord` on native Windows. The raw Runtime Home path is not a
+file name. A coordination file may persist after unlock; only a live shared or
+exclusive OS lock means a lease is held. Closing the handle or terminating the
+process releases it. The lease and permit coordinate mutation admission; they
+are not actor identity, credentials, or a security boundary.
 
 Bootstrap inspection classifies the selected final path as `Absent`, `Ready`,
 `Incompatible`, or `Corrupt`. An existing Runtime Home is opened read-only and
@@ -171,13 +190,13 @@ exact read-only `Ready` winner, without rollback authority.
 ### Init setup transaction
 
 Runtime Home bootstrap is one prepared member of the larger setup transaction.
-After the setup lease is acquired, read-only planning inspects the locked
-Runtime Home state, snapshots the existing Codex configuration and every owned
-Product Repository file, calculates exact target bytes, validates parents and
-conflicts, and orders the mutations deterministically. A dry run acquires the
-same lease, produces its coherent plan without target mutation, renders that
-result, and then releases the lease. Prepare creates same-directory staging
-files and Store recovery entries before any final target is committed.
+After exclusive mutation admission is acquired, read-only planning inspects the
+locked Runtime Home state, snapshots the existing Codex configuration and every
+owned Product Repository file, calculates exact target bytes, validates parents
+and conflicts, and orders the mutations deterministically. A dry run acquires
+the same exclusive lease, produces its coherent plan without target mutation,
+renders that result, and then releases the lease. Prepare creates same-directory
+staging files and Store recovery entries before any final target is committed.
 
 Commit publishes or validates the Runtime Home, applies checkpointed Store
 mutations, atomically replaces Product Repository files, atomically replaces

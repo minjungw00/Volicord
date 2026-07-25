@@ -10,7 +10,7 @@ use serde::Serialize;
 use serde_json::Value;
 use volicord_platform_fs::{
     DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalPhase,
-    DirectoryTreeTargetState, RuntimeHomeSetupBusy, RuntimeHomeSetupOperation,
+    DirectoryTreeTargetState, RuntimeHomeMutationBusy, RuntimeHomeMutationLeaseMode,
 };
 use volicord_types::{
     derive_integration_activation_state, diagnostic_root_cause_ids, ActivationStep,
@@ -45,7 +45,6 @@ pub(in crate::connection_command) enum CommandOperation {
 }
 
 impl CommandOperation {
-    #[cfg(test)]
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Init => "init",
@@ -1043,9 +1042,15 @@ pub(in crate::connection_command) fn render_command_report(
 /// Renders a canonical typed failure when setup cannot acquire its lease.
 pub(in crate::connection_command) fn render_setup_lease_busy(
     format: OutputFormat,
-    busy: &RuntimeHomeSetupBusy,
+    operation: CommandOperation,
+    busy: &RuntimeHomeMutationBusy,
     dry_run: bool,
 ) -> Result<RenderedCommandReport, ConnectionCommandError> {
+    if busy.requested_mode() != RuntimeHomeMutationLeaseMode::ExclusiveSetup {
+        return Err(ConnectionCommandError::runtime(
+            "setup busy rendering requires an exclusive Runtime Home mutation request",
+        ));
+    }
     let generated_at = current_timestamp();
     let finding_id = DiagnosticFindingId::parse("finding.setup.lease_busy")
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
@@ -1061,7 +1066,7 @@ pub(in crate::connection_command) fn render_setup_lease_busy(
         "setup_lease": {
             "outcome": "busy",
             "canonical_runtime_home": path_text(busy.target().as_path()),
-            "requested_operation": busy.operation().as_str(),
+            "requested_operation": operation.as_str(),
             "wait_policy": busy.wait_policy().as_str(),
             "elapsed_millis": elapsed_millis,
             "owner_observation": "another_setup_transaction",
@@ -1092,7 +1097,7 @@ pub(in crate::connection_command) fn render_setup_lease_busy(
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
         DiagnosticFacts::project(&SetupLeaseBusyDiagnosticFacts {
             outcome: "busy",
-            requested_operation: busy.operation().as_str(),
+            requested_operation: operation.as_str(),
             wait_policy: busy.wait_policy().as_str(),
             elapsed_millis,
             owner_observation: "another_setup_transaction",
@@ -1104,10 +1109,7 @@ pub(in crate::connection_command) fn render_setup_lease_busy(
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
     let activation_plan = IntegrationActivationPlan::empty(IntegrationActivationState::Failed);
     let report = DiagnosticReport::try_new(
-        match busy.operation() {
-            RuntimeHomeSetupOperation::Init => DiagnosticOperation::Init,
-            RuntimeHomeSetupOperation::ConnectionAdd => DiagnosticOperation::Add,
-        },
+        operation.diagnostic_operation(),
         ConnectionStatus::Failed,
         IntegrationActivationState::Failed,
         HookActivationState::Unknown,
@@ -1136,7 +1138,7 @@ pub(in crate::connection_command) fn render_setup_lease_busy(
         OutputFormat::Human(HumanOutputDetail::Verbose) => format!(
             "Setup lease\n  Outcome: busy\n  Runtime Home: {}\n  Requested operation: {}\n  Wait policy: {}\n  Elapsed: {} ms\n  Action: wait for the other setup invocation to finish, then retry; do not delete coordination files\n",
             busy.target().as_path().display(),
-            busy.operation().as_str(),
+            operation.as_str(),
             busy.wait_policy().as_str(),
             elapsed_millis
         ),
@@ -1280,45 +1282,54 @@ mod tests {
     #[test]
     fn setup_lease_busy_renderers_are_typed_and_never_recommend_file_deletion() {
         use volicord_platform_fs::{
-            RuntimeHomeSetupLease, RuntimeHomeSetupLeaseOutcome, RuntimeHomeSetupWaitPolicy,
+            RuntimeHomeMutationLease, RuntimeHomeMutationLeaseOutcome,
+            RuntimeHomeMutationWaitPolicy,
         };
 
         let fixture = tempfile::tempdir().unwrap();
         let runtime_home = fixture.path().join("runtime-home");
-        let RuntimeHomeSetupLeaseOutcome::Acquired(_lease) = RuntimeHomeSetupLease::acquire(
+        let RuntimeHomeMutationLeaseOutcome::Acquired(_lease) = RuntimeHomeMutationLease::acquire(
             &runtime_home,
-            RuntimeHomeSetupOperation::Init,
-            RuntimeHomeSetupWaitPolicy::Immediate,
+            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+            RuntimeHomeMutationWaitPolicy::Immediate,
         )
         .unwrap() else {
             panic!("first setup lease should be acquired");
         };
-        let RuntimeHomeSetupLeaseOutcome::Busy(busy) = RuntimeHomeSetupLease::acquire(
+        let RuntimeHomeMutationLeaseOutcome::Busy(busy) = RuntimeHomeMutationLease::acquire(
             &runtime_home,
-            RuntimeHomeSetupOperation::Init,
-            RuntimeHomeSetupWaitPolicy::Immediate,
+            RuntimeHomeMutationLeaseMode::ExclusiveSetup,
+            RuntimeHomeMutationWaitPolicy::Immediate,
         )
         .unwrap() else {
             panic!("second setup lease should be busy");
         };
 
-        let json = render_setup_lease_busy(OutputFormat::Json, &busy, true).unwrap();
-        assert_eq!(json.status, ConnectionStatus::Failed);
-        let value: Value = serde_json::from_str(&json.output).unwrap();
-        assert_eq!(value["operation_details"]["dry_run"], true);
-        assert_eq!(value["operation_details"]["setup_lease"]["outcome"], "busy");
-        assert_eq!(value["checks"][0]["code"], "setup_lease_busy");
-        assert_eq!(value["findings"][0]["code"], "setup.lease_busy");
-        assert_eq!(
-            value["findings"][0]["actions"][0]["code"],
-            "action.setup.wait_for_current_transaction"
-        );
+        for operation in [CommandOperation::Init, CommandOperation::Add] {
+            let json = render_setup_lease_busy(OutputFormat::Json, operation, &busy, true).unwrap();
+            assert_eq!(json.status, ConnectionStatus::Failed);
+            let value: Value = serde_json::from_str(&json.output).unwrap();
+            assert_eq!(value["operation"], operation.as_str());
+            assert_eq!(value["operation_details"]["dry_run"], true);
+            assert_eq!(value["operation_details"]["setup_lease"]["outcome"], "busy");
+            assert_eq!(
+                value["operation_details"]["setup_lease"]["requested_operation"],
+                operation.as_str()
+            );
+            assert_eq!(value["checks"][0]["code"], "setup_lease_busy");
+            assert_eq!(value["findings"][0]["code"], "setup.lease_busy");
+            assert_eq!(
+                value["findings"][0]["actions"][0]["code"],
+                "action.setup.wait_for_current_transaction"
+            );
+        }
 
         for format in [
             OutputFormat::Human(HumanOutputDetail::Concise),
             OutputFormat::Human(HumanOutputDetail::Verbose),
         ] {
-            let rendered = render_setup_lease_busy(format, &busy, false).unwrap();
+            let rendered =
+                render_setup_lease_busy(format, CommandOperation::Init, &busy, false).unwrap();
             assert_eq!(rendered.status, ConnectionStatus::Failed);
             assert!(rendered.output.to_ascii_lowercase().contains("wait"));
             assert!(!rendered.output.contains(".lock"));

@@ -118,14 +118,32 @@ WSL2에서는 초기화 전에 Runtime Home 또는 가장 가까운 기존 상�
 같은 경계 안에 있어야 하며 Linux 형태의 `/mnt/*` 또는 ext4가 아닌 위치는
 지원하지 않습니다.
 
+정규 Runtime Home마다 Runtime Home 밖에 OS 기반 변경 승인 coordinate 하나가 있습니다.
+`SharedWriter`는 일반 Runtime Home writer가 사용하는 mode이며 다른 `SharedWriter`
+lease와 공존할 수 있습니다. `ExclusiveSetup`은 모든 공유 또는 배타 lease와
+충돌합니다. 두 mode는 같은 coordination 파일 영역을 잠급니다. 획득 방식은 즉시
+시도하거나 caller가 지정한 시간 안에서 기다리는 방식이며, 충돌은 I/O failure가 아니라
+typed busy fact로 반환합니다.
+
+| 보유 lease | `SharedWriter` 요청 | `ExclusiveSetup` 요청 |
+|---|---:|---:|
+| 없음 | 획득 | 획득 |
+| `SharedWriter` | 획득 | busy |
+| `ExclusiveSetup` | busy | busy |
+
 `volicord init`과 `volicord connection add`는 선택한 최종 Runtime Home을
-canonicalize하고 bootstrap 검사나 plan 구성 전에 배타적 OS 기반 setup lease 하나를
-획득합니다. Coordination 파일은 정규 경로의 domain-separated 전체 digest에서 파생하며
-Runtime Home 밖에 둡니다. Linux, macOS, WSL2에서는 `/tmp` 아래 유효 사용자별 Volicord
+canonicalize하고 bootstrap 검사나 plan 구성 전에 `ExclusiveSetup`을 획득합니다.
+플랫폼 경계는 `SharedWriter`용으로 복제할 수 없는 lease도 노출하며, permit은 활성
+lease를 빌려 정확한 정규 target과 보유 mode를 전달합니다. 현재 Store 변경 API는 아직
+모든 writer에게 이 permit을 요구하지 않으므로, 이 플랫폼 primitive가 있다는 사실만으로
+현재 모든 writer가 이미 이 경계를 통과한다고 볼 수는 없습니다.
+
+Coordination 파일은 정규 경로의 domain-separated 전체 digest에서 파생하며 Runtime Home
+밖에 둡니다. Linux, macOS, WSL2에서는 `/tmp` 아래 유효 사용자별 Volicord coordination
 directory를, 네이티브 Windows에서는 `%TEMP%\Volicord`를 사용합니다. Raw Runtime Home
 경로는 파일 이름에 넣지 않습니다. Unlock 뒤 coordination 파일이 남아 있을 수 있으며
-활성 OS lock만 setup transaction이 lease를 소유한다는 뜻입니다. Handle을 닫거나
-프로세스가 종료되면 lease가 해제됩니다. 이 lease는 coordination primitive이며 actor
+활성 공유 또는 배타 OS lock만 lease가 유지되고 있다는 뜻입니다. Handle을 닫거나
+프로세스가 종료되면 lease가 해제됩니다. Lease와 permit은 변경 진입을 조율하며 actor
 identity, credential, security boundary가 아닙니다.
 
 Bootstrap 검사는 선택한 최종 경로를 `Absent`, `Ready`, `Incompatible`, `Corrupt`로
@@ -149,12 +167,12 @@ guard를 즉시 만듭니다. `AlreadyExists`이면 이 invocation의 staging을
 ### Init setup transaction
 
 Runtime Home bootstrap은 더 큰 setup transaction에서 준비되는 구성원 하나입니다.
-Setup lease를 획득한 뒤 읽기 전용 planning은 잠긴 Runtime Home 상태를 검사하고 기존
-Codex 구성과 소유한 모든 Product Repository 파일을 snapshot하며, 정확한 target bytes를
-계산하고 상위 경로와 conflict를 검증한 뒤 mutation을 결정적인 순서로 정렬합니다.
-Dry run도 같은 lease를 획득하고 target 변경 없이 일관된 plan을 만들어 결과를 렌더링한
-다음 lease를 해제합니다. Prepare 단계는 최종 target을 commit하기 전에 같은 directory의
-staging 파일과 Store 복구 entry를 만듭니다.
+배타 변경 승인을 획득한 뒤 읽기 전용 planning은 잠긴 Runtime Home 상태를 검사하고
+기존 Codex 구성과 소유한 모든 Product Repository 파일을 snapshot하며, 정확한 target
+bytes를 계산하고 상위 경로와 conflict를 검증한 뒤 mutation을 결정적인 순서로
+정렬합니다. Dry run도 같은 배타 lease를 획득하고 target 변경 없이 일관된 plan을 만들어
+결과를 렌더링한 다음 lease를 해제합니다. Prepare 단계는 최종 target을 commit하기 전에
+같은 directory의 staging 파일과 Store 복구 entry를 만듭니다.
 
 Commit 단계는 Runtime Home을 공개하거나 검증하고 checkpoint한 Store mutation을 적용한
 뒤 Product Repository 파일을 원자 교체하고 Codex 구성을 마지막에 원자 교체한 다음

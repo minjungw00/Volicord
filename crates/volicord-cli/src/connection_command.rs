@@ -10,7 +10,6 @@ use sha2::{Digest, Sha256};
 use volicord_mcp::ManagedMcpLaunchSpec;
 #[cfg(test)]
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
-use volicord_platform_fs::RuntimeHomeSetupOperation;
 #[cfg(test)]
 use volicord_store::bootstrap::write_installation_profile;
 use volicord_store::{
@@ -210,7 +209,7 @@ pub fn run_init_command(
     )?;
     execute_setup_with_lease(
         &requested_runtime_home,
-        RuntimeHomeSetupOperation::Init,
+        CommandOperation::Init,
         init_output_format(&parsed),
         parsed.dry_run,
         |lease| {
@@ -294,7 +293,7 @@ pub fn run_connect_command(
     )?;
     execute_setup_with_lease(
         &requested_runtime_home,
-        RuntimeHomeSetupOperation::ConnectionAdd,
+        CommandOperation::Add,
         connection_output_format(&parsed),
         parsed.dry_run,
         |lease| {

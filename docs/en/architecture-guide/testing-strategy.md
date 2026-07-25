@@ -69,10 +69,13 @@ Durable tests should cover, as applicable:
 - Runtime Home `Absent`, `Ready`, `Incompatible`, and `Corrupt` inspection;
   same-parent staged creation with singleton and installation metadata; exact
   manifest, opaque publication provenance, and relation facts; cleanup at each
-  pre-publication failure; per-canonical-home setup-lease aliasing and
-  independence; cross-process contention; persistent coordination-file
-  non-ownership; process-termination release; native Unix and Windows OS-lock
-  behavior; no-replace publication with exactly one owner; token-backed
+  pre-publication failure; per-canonical-home shared/exclusive mutation
+  admission with concurrent shared writers and exclusive conflict on the same
+  lock region; lexical and symlink aliasing and distinct-home independence;
+  immediate and bounded acquisition; persistent coordination-file
+  non-ownership; shared and exclusive process-termination release; native Unix
+  and Windows OS-lock behavior; borrowed permit target/mode binding; no-replace
+  publication with exactly one owner; token-backed
   rollback revalidation, ownership-loss and managed-host-consumption
   preservation, recursive failure before effect, partial or unclassifiable
   removal, parent-sync failure after known removal, terminal retry behavior,
