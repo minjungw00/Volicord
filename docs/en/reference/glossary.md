@@ -5,9 +5,9 @@ need to decide what to do in ordinary Volicord workflows.
 
 Complete structured terminology metadata lives in
 [`docs/terminology-map.yaml`](../../terminology-map.yaml). The terminology map
-also records visibility, allowed document layers, avoided synonyms, identifier
-preservation, and owner routing. For exact contracts, use the focused owner
-documents linked below or the [Reference Index](README.md).
+also records visibility, allowed document layers, contextual term forms,
+identifier preservation, and owner routing. For exact contracts, use the
+focused owner documents linked below or the [Reference Index](README.md).
 
 Architecture and reference documents may use technical terms where precision is
 needed. Terms such as `Core`, `Change Unit`, `Expected Write`, host-hook installation,

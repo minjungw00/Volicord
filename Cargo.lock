@@ -1340,6 +1340,7 @@ version = "0.9.1"
 dependencies = [
  "anyhow",
  "pulldown-cmark",
+ "schemars",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1349,6 +1350,7 @@ dependencies = [
  "toml_edit",
  "volicord-command-model",
  "volicord-mcp-protocol",
+ "volicord-types",
 ]
 
 [[package]]

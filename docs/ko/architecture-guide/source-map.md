@@ -242,7 +242,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-command-model`에서 문서 예시용 공개 명령 grammar를 받고 `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받으며 `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트를 끌어오지 않습니다. |
+| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-command-model`에서 문서 예시용 공개 명령 grammar를 받고, `volicord-types`에서 런타임 담당 계약 식별자를 받으며, `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받습니다. `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트는 끌어오지 않습니다. |
 | `xtask/src/lib.rs` | 간결한 저장소 점검 조합과 공개 보고 타입 재노출. |
 | `xtask/src/diagnostics.rs` | 경로, 범주, 선택적 줄 번호, 메시지를 담는 공통 검증 이슈 표현. |
 | `xtask/src/doc_index.rs` | 현재 문서 색인 스키마, 적용 가능성 원본 해석, 담당 경로, 색인 경로, 유지 문서 coverage. |
@@ -251,12 +251,13 @@
 | `xtask/src/parity.rs` | 한영 제목 구조와 용어 기반 정확한 식별자 일치. |
 | `xtask/src/terminology.rs` | 용어 지도 경로, 역할, 정확한 식별자 카탈로그 구성. |
 | `xtask/src/cli_docs.rs` | 생성 관리 CLI 영역과 `volicord-command-model`을 통한 문서 invocation 검증. 셸 tokenization은 두 번째 명령 grammar가 아닙니다. |
-| `xtask/src/document_structure.rs` | 현재 표면 안정성 및 작업 범주 문서 구조. |
-| `xtask/src/workspace_manifests.rs` | 공유 workspace manifest parsing과 현재 package, Rust, 의존 metadata. |
-| `xtask/src/architecture.rs` | 정보 제공용 유지보수성 보고와 유지보수 도구 의존 경계 검증. |
+| `xtask/src/document_structure.rs` | 현재 아키텍처 설계 절과 표면 안정성 구조. |
+| `xtask/src/contract_identifiers.rs` | 런타임 enum에서 생성한 JSON Schema를 기준으로 한영 API 값 집합 담당 문서와 용어 식별자 카탈로그의 작업 범주를 맞추는 검증. |
+| `xtask/src/workspace_manifests.rs` | 공유 workspace manifest parsing과 현재 package 및 Rust 적용 가능성 값. |
+| `xtask/src/architecture.rs` | Cargo metadata에서 가져온 package manifest, target source root, 의존 edge, workspace 아키텍처 검증, 정보 제공용 유지보수성 보고. |
 | `xtask/src/release_metadata.rs` | workspace release version 상속과 release tag 검증. |
 | `xtask/src/storage.rs` | 기준 Storage DDL 문서 검증. |
-| `xtask/src/hygiene.rs` | 공개 문구 주장과 유지 문서 표현 hygiene. |
+| `xtask/src/artifact_hygiene.rs` | `.gitignore`가 담당하는 저장소 아티팩트 제외 규칙과 Git 색인의 일치 검증. |
 | `xtask/src/repository.rs` | 집중 validator가 사용하는 공유 repository 경로 정규화. |
 | `xtask/src/mcp_spec/mod.rs` | MCP 명세 유지보수 facade와 명령 진입점. |
 | `xtask/src/mcp_spec/manifest.rs` | 엄격한 고정 manifest 모델, parsing, 결정론적 rendering. |
@@ -264,7 +265,7 @@
 | `xtask/src/mcp_spec/report.rs` | 결정론적 검사와 동기화 보고 타입. |
 | `xtask/src/mcp_spec/sync.rs` | 교체 전에 검증된 임시 후보를 사용하는 유일한 네트워크 MCP 명세 경로. |
 | `xtask/tests/docs_check.rs` | 중립적인 공유 fixture 구성과 현재 문서 점검 테스트 조합. |
-| `xtask/tests/docs_check/*.rs` | 현재 스키마, 링크, 구조, 용어, hygiene, CLI, 아키텍처 집중 테스트를 담당 validator별로 묶은 모듈. |
+| `xtask/tests/docs_check/*.rs` | 현재 스키마, 링크, 구조, 계약 식별자, 용어, 아티팩트, CLI, 아키텍처 집중 테스트를 담당 validator별로 묶은 모듈. |
 | `xtask/tests/mcp_spec.rs` | 엄격한 manifest parsing, 분류, 집합 불일치, 변경 불가능한 pin, checksum, 필수 artifact, ordering, 보고, 오프라인 성공 coverage. |
 
 지속되는 책임이 이동하면 이 맵을 갱신합니다. 삭제된 경로, 생성 경로, 개인 scratch 경로를

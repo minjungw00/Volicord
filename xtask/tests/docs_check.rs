@@ -250,15 +250,14 @@ fn valid_doc_index_with_root_readme_pair() -> String {
     index
 }
 
-fn install_admin_cli_fixture(root: &Path, indexed: bool) {
+fn install_admin_cli_fixture(root: &Path) {
     let owner = "# Administrative CLI\n\n## Command Model\n\n<!-- BEGIN GENERATED: volicord-cli-synopses -->\n<!-- END GENERATED: volicord-cli-synopses -->\n";
     write(root, "docs/en/reference/admin-cli.md", owner);
     write(root, "docs/ko/reference/admin-cli.md", owner);
 
-    if indexed {
-        let mut index = valid_doc_index();
-        index.push_str(
-            r#"- doc_id: reference.admin-cli
+    let mut index = valid_doc_index();
+    index.push_str(
+        r#"- doc_id: reference.admin-cli
   path_en: docs/en/reference/admin-cli.md
   path_ko: docs/ko/reference/admin-cli.md
   kind: reference
@@ -270,9 +269,8 @@ fn install_admin_cli_fixture(root: &Path, indexed: bool) {
   last_updated_on: '2026-06-20'
   last_verified_on: '2026-06-23'
 "#,
-        );
-        write(root, "docs/doc-index.yaml", &index);
-    }
+    );
+    write(root, "docs/doc-index.yaml", &index);
 }
 
 fn root_readme_shared_entry() -> &'static str {
@@ -437,11 +435,30 @@ fn index_admin_cli_surface_doc(root: &Path) {
     write(root, "docs/doc-index.yaml", &index);
 }
 
+fn index_architecture_design_pair(root: &Path) {
+    let mut index = valid_doc_index();
+    index.push_str(
+        r#"- doc_id: architecture-guide.design.example-boundary
+  path_en: docs/en/architecture-guide/design/example-boundary.md
+  path_ko: docs/ko/architecture-guide/design/example-boundary.md
+  kind: explanation
+  summary: Example architecture boundary.
+  normative_level: guide
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+"#,
+    );
+    write(root, "docs/doc-index.yaml", &index);
+}
+
 fn install_operation_category_fixture(
     root: &Path,
-    en_values: &[&str],
-    ko_values: &[&str],
-    preserved_identifiers: &[&str],
+    en_values: &[String],
+    ko_values: &[String],
+    preserved_identifiers: &[String],
 ) {
     write(
         root,
@@ -492,7 +509,7 @@ fn install_operation_category_fixture(
     write(root, "docs/terminology-map.yaml", &terminology);
 }
 
-fn operation_category_owner(title: &str, value_heading: &str, values: &[&str]) -> String {
+fn operation_category_owner(title: &str, value_heading: &str, values: &[String]) -> String {
     let rows = values
         .iter()
         .map(|value| format!("| `{value}` | Description. |\n"))
@@ -504,18 +521,22 @@ fn operation_category_owner(title: &str, value_heading: &str, values: &[&str]) -
 
 #[path = "docs_check/architecture.rs"]
 mod architecture;
+#[path = "docs_check/artifact_hygiene.rs"]
+mod artifact_hygiene;
 #[path = "docs_check/cli_docs.rs"]
 mod cli_docs;
 #[path = "docs_check/cli_generation.rs"]
 mod cli_generation;
+#[path = "docs_check/composition.rs"]
+mod composition;
+#[path = "docs_check/contract_identifiers.rs"]
+mod contract_identifiers;
 #[path = "docs_check/doc_index.rs"]
 mod doc_index;
 #[path = "docs_check/doc_index_applicability.rs"]
 mod doc_index_applicability;
 #[path = "docs_check/document_structure.rs"]
 mod document_structure;
-#[path = "docs_check/hygiene.rs"]
-mod hygiene;
 #[path = "docs_check/links.rs"]
 mod links;
 #[path = "docs_check/terminology.rs"]

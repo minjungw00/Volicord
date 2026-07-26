@@ -3,9 +3,10 @@ use super::*;
 #[test]
 fn accepts_current_architecture_design_section_schema_without_scanning_prose() {
     let fixture = valid_fixture();
+    index_architecture_design_pair(fixture.path());
     write(
         fixture.path(),
-        "docs/en/architecture-guide/design/core-adapter-boundary.md",
+        "docs/en/architecture-guide/design/example-boundary.md",
         &architecture_design_document(
             "# Core and adapter dependency boundary",
             &[
@@ -19,12 +20,12 @@ fn accepts_current_architecture_design_section_schema_without_scanning_prose() {
                 "Implementation routes",
                 "Reference owners",
             ],
-            "\nRejected alternatives can be ordinary prose without becoming a section.\n",
+            "\nOrdinary prose remains outside structural heading validation.\n",
         ),
     );
     write(
         fixture.path(),
-        "docs/ko/architecture-guide/design/core-adapter-boundary.md",
+        "docs/ko/architecture-guide/design/example-boundary.md",
         &architecture_design_document(
             "# Core와 어댑터 의존 경계",
             &[
@@ -38,7 +39,7 @@ fn accepts_current_architecture_design_section_schema_without_scanning_prose() {
                 "구현 경로",
                 "참조 담당 문서",
             ],
-            "\n거부한 대안이라는 표현은 절 제목이 아닌 일반 본문에 쓸 수 있습니다.\n",
+            "\n일반 산문은 구조 제목 검증 대상이 아닙니다.\n",
         ),
     );
 
@@ -50,7 +51,7 @@ fn accepts_current_architecture_design_section_schema_without_scanning_prose() {
         report.issues()
     );
     assert!(
-        category_errors(&report, "architecture_design.prohibited_heading").is_empty(),
+        category_errors(&report, "architecture_design.unknown_section").is_empty(),
         "{:#?}",
         report.issues()
     );
@@ -59,9 +60,10 @@ fn accepts_current_architecture_design_section_schema_without_scanning_prose() {
 #[test]
 fn reports_invalid_current_architecture_design_section_sequence() {
     let fixture = valid_fixture();
+    index_architecture_design_pair(fixture.path());
     write(
         fixture.path(),
-        "docs/en/architecture-guide/design/core-adapter-boundary.md",
+        "docs/en/architecture-guide/design/example-boundary.md",
         &architecture_design_document(
             "# Core and adapter dependency boundary",
             &[
@@ -74,6 +76,25 @@ fn reports_invalid_current_architecture_design_section_sequence() {
                 "Scope exclusions",
                 "Implementation routes",
                 "Reference owners",
+            ],
+            "",
+        ),
+    );
+    write(
+        fixture.path(),
+        "docs/ko/architecture-guide/design/example-boundary.md",
+        &architecture_design_document(
+            "# 예시 경계",
+            &[
+                "목적",
+                "설계",
+                "불변 조건",
+                "책임 경계",
+                "실행 흐름",
+                "실패 동작",
+                "범위 제외",
+                "구현 경로",
+                "참조 담당 문서",
             ],
             "",
         ),
@@ -91,11 +112,12 @@ fn reports_invalid_current_architecture_design_section_sequence() {
 }
 
 #[test]
-fn reports_transitional_architecture_design_heading_at_any_level() {
+fn reports_unknown_architecture_design_section() {
     let fixture = valid_fixture();
+    index_architecture_design_pair(fixture.path());
     write(
         fixture.path(),
-        "docs/en/architecture-guide/design/core-adapter-boundary.md",
+        "docs/en/architecture-guide/design/example-boundary.md",
         &architecture_design_document(
             "# Core and adapter dependency boundary",
             &[
@@ -109,75 +131,36 @@ fn reports_transitional_architecture_design_heading_at_any_level() {
                 "Implementation routes",
                 "Reference owners",
             ],
-            "\n### Before-and-after\n\nTransitional comparison.\n",
+            "\n### Operational detail\n\nNested section.\n",
+        ),
+    );
+    write(
+        fixture.path(),
+        "docs/ko/architecture-guide/design/example-boundary.md",
+        &architecture_design_document(
+            "# 예시 경계",
+            &[
+                "목적",
+                "설계",
+                "불변 조건",
+                "책임 경계",
+                "실행 흐름",
+                "실패 동작",
+                "범위 제외",
+                "구현 경로",
+                "참조 담당 문서",
+            ],
+            "",
         ),
     );
 
     let report = report(fixture.path());
-    let errors = category_errors(&report, "architecture_design.prohibited_heading");
+    let errors = category_errors(&report, "architecture_design.unknown_section");
 
     assert_eq!(errors.len(), 1, "{:#?}", report.issues());
     assert_eq!(errors[0].line(), Some(39), "{:#?}", report.issues());
 }
 
-#[test]
-fn accepts_synchronized_operation_category_value_sets() {
-    let fixture = valid_fixture();
-    let values = ["read", "agent_workflow", "user_only"];
-    let preserved = ["operation_category", "read", "agent_workflow", "user_only"];
-    install_operation_category_fixture(fixture.path(), &values, &values, &preserved);
-
-    let report = report(fixture.path());
-
-    assert!(report.is_ok(), "{:#?}", report.issues());
-}
-
-#[test]
-fn reports_operation_category_language_value_set_drift() {
-    let fixture = valid_fixture();
-    let en_values = ["read", "agent_workflow", "user_only"];
-    let ko_values = ["read", "agent_workflow"];
-    let preserved = ["operation_category", "read", "agent_workflow", "user_only"];
-    install_operation_category_fixture(fixture.path(), &en_values, &ko_values, &preserved);
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "operation_category_values.language_drift");
-
-    assert_eq!(errors.len(), 1, "{:#?}", report.issues());
-    assert!(
-        errors[0].message().contains("`user_only`"),
-        "{:#?}",
-        report.issues()
-    );
-}
-
-#[test]
-fn reports_missing_operation_category_terminology_identifiers() {
-    let values = ["read", "agent_workflow", "user_only"];
-    let all_identifiers = ["operation_category", "read", "agent_workflow", "user_only"];
-
-    for missing_identifier in ["operation_category", "user_only"] {
-        let fixture = valid_fixture();
-        let preserved = all_identifiers
-            .iter()
-            .copied()
-            .filter(|identifier| *identifier != missing_identifier)
-            .collect::<Vec<_>>();
-        install_operation_category_fixture(fixture.path(), &values, &values, &preserved);
-
-        let report = report(fixture.path());
-        let errors = category_errors(&report, "operation_category_values.terminology_missing");
-
-        assert_eq!(errors.len(), 1, "{:#?}", report.issues());
-        assert!(
-            errors[0]
-                .message()
-                .contains(&format!("`{missing_identifier}`")),
-            "{:#?}",
-            report.issues()
-        );
-    }
-}
 #[test]
 fn reports_missing_required_surface_stability_section() {
     let fixture = valid_fixture();

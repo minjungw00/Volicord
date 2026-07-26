@@ -260,13 +260,13 @@ shared_documents:
   - identity-sensitive terminology role metadata
   - bilingual terminology controls
   - identifier preservation rules
-  - English and Korean discouraged-expression metadata
+  - English and Korean contextual terminology guidance
   - Volicord product identity routing to User Guide Overview
   - Volicord, Core, Volicord implementation, Volicord source repository, Volicord installation, Volicord Runtime Home, Product Repository, Agent Connection, Connection Projects, and User Channel terminology routing
   - write ticket, write approval, sensitive-action approval, final-acceptance, residual-risk acceptance,
     and verification-criteria terminology distinctions
   - actor_source and operation_category terminology distinctions
-  - Korean mixed-language expressions to avoid
+  - natural Korean terminology guidance
 documents:
 - doc_id: readme.root
   path_en: README.md
@@ -2944,8 +2944,8 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structure, links, terminology, bilingual parity, workspace
-    architecture enforcement, generated CLI synchronization and source drift, onboarding usability,
+  summary: Maintenance policy for owner-derived structure, links, terminology, bilingual parity, workspace
+    architecture enforcement, generated CLI synchronization and source drift, tracked artifact hygiene, onboarding usability,
     dedicated cross-platform release-binary smoke, semantic release integrity, optional host smoke,
     Rust checks, and result reporting.
   normative_level: maintenance
@@ -2967,6 +2967,7 @@ documents:
   - documentation metadata, path, link, terminology, parity, example, stability-label, and reporting validation
   - workspace package declaration and internal dependency-direction validation
   - deterministic Administrative CLI syntax synchronization and executable CLI-example validation
+  - tracked-file artifact exclusion derived from repository ignore rules
   - contract-boundary and generated-source drift checks
   - durable repository-test selection and reporting boundaries
   - representative-user Codex onboarding usability validation

@@ -242,7 +242,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-command-model` supplies the public command grammar for documentation examples and `volicord-mcp-protocol` supplies production profiles for pinned specification parity, without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
+| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-command-model` supplies the public command grammar for documentation examples, `volicord-types` supplies runtime-owned contract identifiers, and `volicord-mcp-protocol` supplies production profiles for pinned specification parity, without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
 | `xtask/src/lib.rs` | Thin repository-check orchestration and public report re-exports. |
 | `xtask/src/diagnostics.rs` | Shared path, category, optional line, and message representation for validation issues. |
 | `xtask/src/doc_index.rs` | Current documentation-index schema, applicability-source resolution, owner routing, indexed paths, and maintained-document coverage. |
@@ -251,12 +251,13 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/src/parity.rs` | English/Korean heading structure and terminology-driven exact-identifier parity. |
 | `xtask/src/terminology.rs` | Terminology-map paths, roles, and exact-identifier catalog construction. |
 | `xtask/src/cli_docs.rs` | Generated Administrative CLI regions and documented invocation validation through `volicord-command-model`; shell tokenization is not a second command grammar. |
-| `xtask/src/document_structure.rs` | Current surface-stability and operation-category document structure. |
-| `xtask/src/workspace_manifests.rs` | Shared workspace-manifest parsing and current package, Rust, and dependency metadata. |
-| `xtask/src/architecture.rs` | Informational maintainability reporting and maintenance-tool dependency-boundary validation. |
+| `xtask/src/document_structure.rs` | Current architecture-design section and surface-stability structure. |
+| `xtask/src/contract_identifiers.rs` | Operation-category parity from the runtime enum's generated JSON Schema to the paired API value-set owners and terminology identifier catalog. |
+| `xtask/src/workspace_manifests.rs` | Shared workspace-manifest parsing and current package and Rust applicability values. |
+| `xtask/src/architecture.rs` | Cargo-metadata-derived package manifests, target source roots, dependency edges, workspace architecture validation, and informational maintainability reporting. |
 | `xtask/src/release_metadata.rs` | Workspace release-version inheritance and release-tag validation. |
 | `xtask/src/storage.rs` | Canonical Storage DDL documentation validation. |
-| `xtask/src/hygiene.rs` | Public-language claims and maintained-document wording hygiene. |
+| `xtask/src/artifact_hygiene.rs` | Git-index validation against repository artifact-exclusion rules owned by `.gitignore`. |
 | `xtask/src/repository.rs` | Shared repository path normalization used by focused validators. |
 | `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
 | `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
@@ -264,7 +265,7 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/src/mcp_spec/report.rs` | Deterministic check and synchronization report types. |
 | `xtask/src/mcp_spec/sync.rs` | The sole networked MCP specification path, using a verified temporary candidate before replacement. |
 | `xtask/tests/docs_check.rs` | Shared neutral fixture construction and current documentation-check test composition. |
-| `xtask/tests/docs_check/*.rs` | Focused current-schema, link, structure, terminology, hygiene, CLI, and architecture tests grouped with their owning validators. |
+| `xtask/tests/docs_check/*.rs` | Focused current-schema, link, structure, contract-identifier, terminology, artifact, CLI, and architecture tests grouped with their owning validators. |
 | `xtask/tests/mcp_spec.rs` | Strict manifest parsing, classification, parity failures, immutable-pin, checksum, required-artifact, ordering, reporting, and offline-success coverage. |
 
 Update this map when a durable responsibility moves. Do not list removed,

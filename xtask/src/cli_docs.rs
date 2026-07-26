@@ -6,10 +6,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-const ADMIN_CLI_REFERENCE_PATHS: &[&str] = &[
-    "docs/en/reference/admin-cli.md",
-    "docs/ko/reference/admin-cli.md",
-];
+const ADMIN_CLI_DOC_ID: &str = "reference.admin-cli";
 const CLI_SYNOPSIS_BEGIN_MARKER: &str = "<!-- BEGIN GENERATED: volicord-cli-synopses -->";
 const CLI_SYNOPSIS_END_MARKER: &str = "<!-- END GENERATED: volicord-cli-synopses -->";
 #[derive(Debug, Clone)]
@@ -40,10 +37,27 @@ pub fn run_docs_sync(root: &Path) -> Result<DocsSyncReport> {
             DOC_INDEX_PATH
         );
     }
+    let mut index_issues = Vec::new();
+    let index = crate::doc_index::validate_doc_index(&root, &mut index_issues)
+        .context("docs-sync could not load docs/doc-index.yaml")?;
+    if !index_issues.is_empty() {
+        let messages = index_issues
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        anyhow::bail!("docs-sync requires a valid documentation index:\n{messages}");
+    }
+    let owner = index
+        .paired_documents
+        .get(ADMIN_CLI_DOC_ID)
+        .with_context(|| {
+            format!("docs/doc-index.yaml is missing paired owner {ADMIN_CLI_DOC_ID}")
+        })?;
 
     let generated_region = generated_cli_synopsis_region();
     let mut candidates = Vec::new();
-    for relative in ADMIN_CLI_REFERENCE_PATHS {
+    for relative in [&owner.path_en, &owner.path_ko] {
         let path = root.join(relative);
         let contents = fs::read_to_string(&path)
             .with_context(|| format!("failed to read generated CLI owner at {}", path.display()))?;
@@ -139,15 +153,15 @@ pub(crate) fn validate_generated_cli_synopsis_regions(
     errors: &mut Vec<ValidationIssue>,
 ) {
     let expected = generated_cli_synopsis_region();
-    for path in ADMIN_CLI_REFERENCE_PATHS {
-        if !index.indexed_paths.contains(*path) {
-            continue;
-        }
+    let Some(owner) = index.paired_documents.get(ADMIN_CLI_DOC_ID) else {
+        return;
+    };
+    for path in [&owner.path_en, &owner.path_ko] {
         let contents = match fs::read_to_string(root.join(path)) {
             Ok(contents) => contents,
             Err(error) => {
                 errors.push(ValidationIssue::new(
-                    *path,
+                    path,
                     "generated_cli.read",
                     format!("failed to read generated CLI owner: {error}"),
                 ));
@@ -158,7 +172,7 @@ pub(crate) fn validate_generated_cli_synopsis_regions(
             Ok(range) => range,
             Err(error) => {
                 errors.push(ValidationIssue::new(
-                    *path,
+                    path,
                     "generated_cli.markers",
                     error.to_string(),
                 ));
@@ -167,7 +181,7 @@ pub(crate) fn validate_generated_cli_synopsis_regions(
         };
         if contents[range] != expected {
             errors.push(ValidationIssue::new(
-                *path,
+                path,
                 "generated_cli.drift",
                 "generated CLI synopsis region differs from the command model; run `cargo run -p xtask -- docs-sync`",
             ));

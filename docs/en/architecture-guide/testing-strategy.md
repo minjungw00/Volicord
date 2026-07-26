@@ -402,9 +402,8 @@ cargo run -p xtask -- docs-check
 git diff --check
 ```
 
-Then run the targeted stale-surface scan appropriate to the change and inspect
-the diff for owner routing, exact identifiers, paths, anchors, and repository
-hygiene.
+Then inspect the diff for owner routing, exact identifiers, paths, anchors, and
+repository hygiene.
 
 ## Rust Validation
 

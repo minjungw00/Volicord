@@ -337,8 +337,7 @@ cargo run -p xtask -- docs-check
 git diff --check
 ```
 
-그다음 변경에 맞는 구식 표면 targeted scan을 실행하고 diff에서 owner routing, 정확한
-식별자, 경로, anchor, 저장소 위생을 확인합니다.
+그다음 diff에서 담당 경로, 정확한 식별자, 경로, 앵커, 저장소 위생을 확인합니다.
 
 ## Rust 검증
 

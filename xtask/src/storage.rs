@@ -1,24 +1,29 @@
 use crate::diagnostics::ValidationIssue;
+use crate::doc_index::DocIndex;
 use std::fs;
 use std::path::Path;
 
 const STORAGE_REGISTRY_SQL_PATH: &str = "crates/volicord-store/src/schema/registry.sql";
 const STORAGE_PROJECT_SQL_PATH: &str = "crates/volicord-store/src/schema/project.sql";
-const STORAGE_DDL_DOC_PATHS: &[&str] = &[
-    "docs/en/reference/storage-ddl.md",
-    "docs/ko/reference/storage-ddl.md",
-];
-pub(crate) fn validate_storage_ddl_sql_blocks(root: &Path, errors: &mut Vec<ValidationIssue>) {
+const STORAGE_DDL_DOC_ID: &str = "reference.storage-ddl";
+
+pub(crate) fn validate_storage_ddl_sql_blocks(
+    root: &Path,
+    index: &DocIndex,
+    errors: &mut Vec<ValidationIssue>,
+) {
     let schema_sources = [
         ("registry", STORAGE_REGISTRY_SQL_PATH),
         ("project", STORAGE_PROJECT_SQL_PATH),
     ];
+    let Some(owner) = index.paired_documents.get(STORAGE_DDL_DOC_ID) else {
+        return;
+    };
+    let doc_paths = [&owner.path_en, &owner.path_ko];
     if !schema_sources
         .iter()
         .any(|(_, relative_path)| root.join(relative_path).exists())
-        && !STORAGE_DDL_DOC_PATHS
-            .iter()
-            .any(|relative_path| root.join(relative_path).exists())
+        && !doc_paths.iter().any(|path| root.join(path).exists())
     {
         return;
     }
@@ -36,12 +41,12 @@ pub(crate) fn validate_storage_ddl_sql_blocks(root: &Path, errors: &mut Vec<Vali
             }
         };
 
-        for doc_path in STORAGE_DDL_DOC_PATHS {
+        for doc_path in doc_paths {
             let contents = match fs::read_to_string(root.join(doc_path)) {
                 Ok(contents) => contents,
                 Err(error) => {
                     errors.push(ValidationIssue::new(
-                        *doc_path,
+                        doc_path,
                         "storage_ddl_sql.read",
                         format!("failed to read Storage DDL document: {error}"),
                     ));
@@ -51,12 +56,12 @@ pub(crate) fn validate_storage_ddl_sql_blocks(root: &Path, errors: &mut Vec<Vali
             match extract_canonical_storage_sql_block(&contents, label) {
                 Some(actual) if normalize_canonical_sql_block(&actual) == expected => {}
                 Some(_) => errors.push(ValidationIssue::new(
-                    *doc_path,
+                    doc_path,
                     "storage_ddl_sql.drift",
                     format!("canonical {label} SQL block differs from {schema_path}"),
                 )),
                 None => errors.push(ValidationIssue::new(
-                    *doc_path,
+                    doc_path,
                     "storage_ddl_sql.missing",
                     format!("missing canonical {label} SQL block"),
                 )),

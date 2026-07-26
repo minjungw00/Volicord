@@ -1,9 +1,10 @@
 mod architecture;
+mod artifact_hygiene;
 mod cli_docs;
+mod contract_identifiers;
 mod diagnostics;
 mod doc_index;
 mod document_structure;
-mod hygiene;
 mod links;
 mod markdown;
 mod mcp_spec;
@@ -18,8 +19,8 @@ use anyhow::Result;
 use std::path::Path;
 
 pub use architecture::{
-    run_architecture_check, run_maintainability_report, CoverageHint, FileMetric,
-    MaintainabilityReport, MixedSignalFile,
+    derive_workspace_package_inputs, run_architecture_check, run_maintainability_report,
+    CoverageHint, FileMetric, MaintainabilityReport, MixedSignalFile, WorkspacePackageInput,
 };
 pub use cli_docs::{run_docs_sync, DocsSyncReport};
 pub use diagnostics::{CheckReport, ValidationIssue};
@@ -54,15 +55,19 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
             &mut issues,
         );
         parity::validate_bilingual_structure(&root, index, &exact_identifiers, &mut issues);
+        contract_identifiers::validate_operation_category_values(
+            &root,
+            index,
+            &exact_identifiers,
+            &mut issues,
+        );
         cli_docs::validate_generated_cli_synopsis_regions(&root, index, &mut issues);
         cli_docs::validate_volicord_command_examples(&root, index, &mut issues);
-        hygiene::validate_public_document_language(&root, index, &mut issues);
+        document_structure::validate_architecture_design_documents(&root, index, &mut issues);
+        document_structure::validate_surface_stability_sections(&root, index, &mut issues);
+        storage::validate_storage_ddl_sql_blocks(&root, index, &mut issues);
     }
-    document_structure::validate_architecture_design_documents(&root, &mut issues);
-    document_structure::validate_surface_stability_sections(&root, &mut issues);
-    hygiene::validate_public_language_claims(&root, &mut issues);
-    storage::validate_storage_ddl_sql_blocks(&root, &mut issues);
-    document_structure::validate_operation_category_values(&root, &mut issues);
+    artifact_hygiene::validate_tracked_artifacts(&root, &mut issues);
 
     issues.sort();
     issues.dedup();

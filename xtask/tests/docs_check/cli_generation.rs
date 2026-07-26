@@ -14,7 +14,7 @@ fn repository_documentation_and_cli_examples_match_their_sources() {
 #[test]
 fn cli_synopsis_generator_is_idempotent() {
     let fixture = valid_fixture();
-    install_admin_cli_fixture(fixture.path(), false);
+    install_admin_cli_fixture(fixture.path());
 
     let first = xtask::run_docs_sync(fixture.path()).expect("first docs sync");
     let first_en =
@@ -44,9 +44,51 @@ fn cli_synopsis_generator_is_idempotent() {
 }
 
 #[test]
+fn cli_owner_inputs_come_from_the_document_index() {
+    let fixture = valid_fixture();
+    let owner = "# Administrative CLI\n\n<!-- BEGIN GENERATED: volicord-cli-synopses -->\n<!-- END GENERATED: volicord-cli-synopses -->\n";
+    write(
+        fixture.path(),
+        "docs/en/contracts/command-surface.md",
+        owner,
+    );
+    write(
+        fixture.path(),
+        "docs/ko/contracts/command-surface.md",
+        owner,
+    );
+    let mut index = valid_doc_index();
+    index.push_str(
+        r#"- doc_id: reference.admin-cli
+  path_en: docs/en/contracts/command-surface.md
+  path_ko: docs/ko/contracts/command-surface.md
+  kind: reference
+  summary: Administrative command surface.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+"#,
+    );
+    write(fixture.path(), "docs/doc-index.yaml", &index);
+
+    let report = xtask::run_docs_sync(fixture.path()).expect("docs sync");
+
+    assert_eq!(
+        report.updated_paths(),
+        [
+            "docs/en/contracts/command-surface.md",
+            "docs/ko/contracts/command-surface.md"
+        ]
+    );
+}
+
+#[test]
 fn docs_check_reports_generated_cli_region_drift() {
     let fixture = valid_fixture();
-    install_admin_cli_fixture(fixture.path(), true);
+    install_admin_cli_fixture(fixture.path());
     xtask::run_docs_sync(fixture.path()).expect("docs sync");
 
     let path = "docs/en/reference/admin-cli.md";
@@ -65,7 +107,7 @@ fn docs_check_reports_generated_cli_region_drift() {
 #[test]
 fn generated_cli_regions_exclude_every_hidden_command_path() {
     let fixture = valid_fixture();
-    install_admin_cli_fixture(fixture.path(), false);
+    install_admin_cli_fixture(fixture.path());
     xtask::run_docs_sync(fixture.path()).expect("docs sync");
 
     let generated =

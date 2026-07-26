@@ -159,7 +159,8 @@ title followed by this exact H2 sequence:
 The paired Korean pages use the semantically equivalent sequence `목적`, `설계`,
 `불변 조건`, `책임 경계`, `실행 흐름`, `실패 동작`, `범위 제외`, `구현 경로`,
 `참조 담당 문서`. The family index remains a reader route rather than an
-individual design page.
+individual design page. Individual design pages do not add nested heading
+sections outside this positive schema.
 
 Design pages own current implementation structure, module responsibility,
 execution flow, and durable implementation invariants. Exact product behavior,
@@ -167,12 +168,11 @@ schema meaning, storage effects, security guarantees, and Core authority
 semantics remain in focused Reference owners and are linked from `Reference
 owners`.
 
-Do not add architecture-design sections whose purpose is migration notes,
-before-and-after comparison, review findings, change history, decision
-chronology, consequences of a past choice, or rejected alternatives. Do not
-preserve an obsolete architecture route through a redirect, duplicate,
-numeric-version branch, or archived copy. Structural validation applies these
-rules to Markdown headings; it is not a broad forbidden-word scan of prose.
+Architecture-design pages contain only the current implementation structure
+described by the positive heading schema. Each current design has one maintained
+route and no duplicate or numeric-version-selected representation. Structural
+validation enforces the heading schema; prose quality remains an owner and
+review concern.
 
 ## Examples And Source Links
 

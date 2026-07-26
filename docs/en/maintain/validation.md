@@ -84,10 +84,8 @@ read-only and verifies the machine-checkable shape:
 - Every individual current architecture-design document under
   `docs/en/architecture-guide/design/` and
   `docs/ko/architecture-guide/design/` uses the language-specific exact H2
-  sequence defined by the Documentation Policy. Heading-aware validation also
-  rejects transitional sections such as migration notes, before-and-after,
-  review findings, change history, and rejected alternatives. This is a
-  structural heading check, not a broad natural-language forbidden-word scan.
+  sequence defined by the Documentation Policy and has no nested heading
+  sections outside that positive schema.
 - Code literals identified by `docs/terminology-map.yaml` remain present in
   corresponding headings or section meaning units. The check compares only
   catalog-driven exact identifiers found in inline or fenced code.
@@ -106,32 +104,40 @@ read-only and verifies the machine-checkable shape:
   `text` fences, and displayed output are not inferred to be executable CLI
   examples.
 - Generated Administrative CLI synopsis regions match the current public Clap
-  command tree and exclude hidden internal commands.
+  command tree and exclude hidden internal commands. The maintained owner paths
+  come from the `reference.admin-cli` entry in `docs/doc-index.yaml`.
 - Terminology role metadata for identity-sensitive terms uses the allowed role
   set and includes the required roles for public selectors, storage internals,
   MCP process bindings, and diagnostics.
 - `docs/terminology-map.yaml` primary-owner and related-reference paths exist
   and are represented in `doc-index.yaml`.
+- The operation-category table in the paired API value-set owners matches
+  the generated JSON Schema for
+  `volicord_types::values::OperationCategory`, and its exact values remain in
+  the terminology-driven identifier catalog.
 - Focused Reference owner pages that the documentation policy marks as needing
   surface labels include a `Surface Stability` section, link to the canonical
   vocabulary, and use only `stable`, `beta`, `internal`, or `diagnostic` labels.
-- Public-output source avoids unqualified broad security words that would
-  overstate Volicord guarantees; exact security guarantee meaning remains with
-  the Security and brand-claim owners.
-- Maintained prose and public-output source avoid ambiguous whole-host and
-  whole-profile support wording, as well as adjectives and predicates that
-  claim an Agent Connection as a whole. This check uses word boundaries so
-  aggregate claims about agent hosts, named managed hosts, profiles, or
-  connections do not arise from substring matches.
-  Exact identifiers and status values such as
-  `unsupported_by_host`, and explicit `unsupported host` statements, remain
-  allowed.
+  These paths resolve from their focused `doc_id` entries.
+- The paired Storage DDL owner paths resolve from
+  `reference.storage-ddl`, and their marked SQL regions match the canonical
+  Store SQL sources.
+- A tracked file must not match the repository artifact-exclusion rules owned
+  by `.gitignore`.
 
-After automated structural validation, manually confirm repository hygiene:
+`docs-check` does not search Rust or Markdown lines for prohibited words or
+phrases. Prose quality, brand claims, security wording, and host-support wording
+remain owner and review concerns. Diagnostic identity is covered by typed
+diagnostic registries and rendering tests, not by documentation vocabulary
+searches.
+
+After automated structural validation, manually confirm the remaining
+repository hygiene:
 
 - No generated records, runtime homes, SQLite files, generated logs, archive
   copies, conversion notes, scratch notes, local inventories, or work logs
-  remain in maintained documentation.
+  remain in maintained documentation, including untracked working files that
+  are outside the Git-index check.
 
 ## Workspace Architecture Validation
 
@@ -164,8 +170,8 @@ Reference owner. Non-owner pages should summarize and link, not become second
 contract bodies.
 
 For terminology changes, check the terminology map for exact identifiers,
-preferred expressions, avoid expressions, Korean mixed-language controls, and
-owner path integrity.
+preferred and contextual forms, natural Korean guidance, and owner path
+integrity.
 
 For brand-presentation or broad-claim changes, check the [Brand Guidelines](brand-guidelines.md)
 for Volicord spelling, official bilingual brand copy, component presentation,
@@ -232,6 +238,9 @@ Tests for a closed surface assert its positive current shape:
 - Terminology validation checks identity-sensitive role metadata instead of
   adding broad prose forbidden-word searches for identifiers such as
   `connection_id` or `project_id`.
+- Diagnostic tests construct typed registry entries and compare human and
+  structured rendering from those entries instead of searching arbitrary
+  source lines for diagnostic words.
 
 Name durable tests after the current contract, for example
 `connect_help_exposes_only_public_connect_options`,

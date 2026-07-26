@@ -203,6 +203,6 @@ build = []
 description = "Repository maintenance tooling outside product runtime."
 kind = "repository-tool"
 boundary = "neutral"
-normal = ["command-model", "mcp-protocol"]
+normal = ["shared-types", "command-model", "mcp-protocol"]
 development = []
 build = []

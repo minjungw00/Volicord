@@ -117,12 +117,44 @@ struct CargoMetadataPackage {
     name: String,
     manifest_path: PathBuf,
     dependencies: Vec<CargoMetadataDependency>,
+    targets: Vec<CargoMetadataTarget>,
 }
 
 #[derive(Debug, Deserialize)]
 struct CargoMetadataDependency {
     kind: Option<String>,
     path: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoMetadataTarget {
+    src_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct WorkspacePackageInput {
+    name: String,
+    manifest_path: String,
+    source_roots: Vec<String>,
+    target_source_paths: Vec<String>,
+}
+
+impl WorkspacePackageInput {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn manifest_path(&self) -> &str {
+        &self.manifest_path
+    }
+
+    pub fn source_roots(&self) -> &[String] {
+        &self.source_roots
+    }
+
+    pub fn target_source_paths(&self) -> &[String] {
+        &self.target_source_paths
+    }
 }
 
 pub fn run_architecture_check(root: &Path) -> Result<crate::diagnostics::CheckReport> {
@@ -143,6 +175,12 @@ pub fn run_architecture_check(root: &Path) -> Result<crate::diagnostics::CheckRe
     Ok(crate::diagnostics::CheckReport { issues })
 }
 
+pub fn derive_workspace_package_inputs(root: &Path) -> Result<Vec<WorkspacePackageInput>> {
+    let root = normalize_existing_root(root)?;
+    let metadata = read_cargo_metadata(&root)?;
+    workspace_package_inputs_from_metadata(&root, &metadata)
+}
+
 fn read_architecture_owner(path: &Path) -> Result<ArchitectureOwner> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("failed to read architecture owner {}", path.display()))?;
@@ -157,6 +195,10 @@ fn read_architecture_owner(path: &Path) -> Result<ArchitectureOwner> {
 }
 
 fn read_workspace_graph(root: &Path) -> Result<ArchitectureGraph> {
+    workspace_graph_from_metadata(root, read_cargo_metadata(root)?)
+}
+
+fn read_cargo_metadata(root: &Path) -> Result<CargoMetadata> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let output = Command::new(cargo)
         .current_dir(root)
@@ -179,7 +221,47 @@ fn read_workspace_graph(root: &Path) -> Result<ArchitectureGraph> {
     }
     let metadata = serde_json::from_slice::<CargoMetadata>(&output.stdout)
         .context("failed to decode cargo metadata for architecture-check")?;
-    workspace_graph_from_metadata(root, metadata)
+    Ok(metadata)
+}
+
+fn workspace_package_inputs_from_metadata(
+    root: &Path,
+    metadata: &CargoMetadata,
+) -> Result<Vec<WorkspacePackageInput>> {
+    let workspace_members = metadata.workspace_members.iter().collect::<BTreeSet<_>>();
+    let mut inputs = Vec::new();
+
+    for package in metadata
+        .packages
+        .iter()
+        .filter(|package| workspace_members.contains(&package.id))
+    {
+        let mut target_source_paths = package
+            .targets
+            .iter()
+            .map(|target| repo_relative(root, &target.src_path))
+            .collect::<Vec<_>>();
+        target_source_paths.sort();
+        target_source_paths.dedup();
+
+        let mut source_roots = package
+            .targets
+            .iter()
+            .filter_map(|target| target.src_path.parent())
+            .map(|path| repo_relative(root, path))
+            .collect::<Vec<_>>();
+        source_roots.sort();
+        source_roots.dedup();
+
+        inputs.push(WorkspacePackageInput {
+            name: package.name.clone(),
+            manifest_path: repo_relative(root, &package.manifest_path),
+            source_roots,
+            target_source_paths,
+        });
+    }
+    inputs.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(inputs)
 }
 
 fn workspace_graph_from_metadata(

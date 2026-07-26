@@ -5,7 +5,7 @@
 
 완전한 구조화 용어 메타데이터는
 [`docs/terminology-map.yaml`](../../terminology-map.yaml)에 있습니다. 용어 지도는
-`visibility`, 사용할 수 있는 문서 계층, 피해야 할 동의어, 식별자 보존, 담당
+`visibility`, 사용할 수 있는 문서 계층, 문맥별 용어 형태, 식별자 보존, 담당
 경로도 기록합니다.
 정확한 계약은 아래 집중 담당 문서나 [참조 색인](README.md)을 봅니다.
 

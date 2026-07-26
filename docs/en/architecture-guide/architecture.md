@@ -88,7 +88,7 @@ the public method execution path.
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection session, operation-category, and public schema snapshot tests. |
 | `tests/release-integrity` | Generic five-target coverage, version consistency, canonical text bytes, package shape, packaged-binary identity, checksum output, and release-workflow structure. It owns no production runtime behavior. |
 | `tests/release-smoke` | Publish-disabled cross-platform actual-binary smoke package. It executes an exact supplied `volicord` binary through public `init` and `mcp serve`, owns disposable runtime fixtures and a stable test-owned Codex executable, validates the preferred initialize revision and representative canonical tool identities, and delegates bounded child execution to `volicord-test-process`. It does not link the CLI, MCP adapter, Core, Store, or `xtask`. |
-| `xtask` | Lightweight repository maintenance tooling for workspace architecture validation, documentation validation, pinned MCP specification manifest handling, and release-version checks. The architecture validator reads actual package and dependency data from Cargo and compares it with the workspace metadata owner. Documentation command examples are parsed through `volicord-command-model`; only MCP specification synchronization performs network operations. `xtask` does not link the runtime adapter, Core, Store, CLI, or platform crates and remains outside Volicord runtime architecture. |
+| `xtask` | Lightweight repository maintenance tooling for workspace architecture validation, documentation validation, pinned MCP specification manifest handling, and release-version checks. The architecture validator reads actual package manifests, target source roots, and dependency data from Cargo and compares the graph with the workspace metadata owner. Documentation command examples are parsed through `volicord-command-model`, and runtime-owned operation-category identifiers come from `volicord-types`; only MCP specification synchronization performs network operations. `xtask` does not link the runtime adapter, Core, Store, CLI, or platform crates and remains outside Volicord runtime architecture. |
 
 ## Dependency boundaries
 
@@ -163,7 +163,8 @@ The durable dependency direction is:
 - Other test-support and test packages compose implementation crates only for
   disposable fixtures and cross-layer verification.
 - `xtask` remains repository maintenance tooling outside product runtime. It
-  uses `volicord-command-model` to parse documented public CLI invocations and
+  uses `volicord-command-model` to parse documented public CLI invocations,
+  `volicord-types` for runtime-owned contract identifiers, and
   `volicord-mcp-protocol` for compiled production-profile parity without
   linking the MCP adapter, Core, Store, CLI, or host integration crates.
   Ordinary checks remain offline; only the explicitly invoked specification

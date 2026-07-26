@@ -83,7 +83,7 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 | `tests/integration` | MCP, Core, Store, Agent Connection session, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
 | `tests/release-integrity` | 일반 target 다섯 개 범위, 버전 일치, 기준 텍스트 바이트, 패키지 형태, 패키징한 binary identity, checksum 출력, 릴리스 workflow 구조. 운영 런타임 동작을 담당하지 않습니다. |
 | `tests/release-smoke` | 게시하지 않는 플랫폼 공통 실제 바이너리 스모크 패키지. 전달받은 정확한 `volicord` 바이너리를 공개 `init` 및 `mcp serve`로 실행하고, 폐기 가능한 런타임 fixture와 안정적인 테스트 소유 Codex 실행 파일을 담당하며, 선호 initialize 리비전과 대표 정규 도구 identity를 검증합니다. 한도가 있는 자식 실행은 `volicord-test-process`에 위임하며 CLI, MCP 어댑터, Core, Store, `xtask`를 링크하지 않습니다. |
-| `xtask` | 워크스페이스 아키텍처 검증, 문서 검증, 고정 MCP 명세 manifest 처리, 릴리스 버전 검사를 위한 가벼운 저장소 유지보수 도구. 아키텍처 검증기는 Cargo에서 실제 패키지와 의존성 데이터를 읽어 워크스페이스 메타데이터 담당 원본과 비교합니다. 문서의 명령 예시는 `volicord-command-model`로 parsing하고 네트워크 작업은 MCP 명세 동기화만 수행합니다. `xtask`는 런타임 어댑터, Core, Store, CLI, platform 크레이트를 링크하지 않으며 Volicord 런타임 아키텍처 밖에 있습니다. |
+| `xtask` | 워크스페이스 아키텍처 검증, 문서 검증, 고정 MCP 명세 manifest 처리, 릴리스 버전 검사를 위한 가벼운 저장소 유지보수 도구. 아키텍처 검증기는 Cargo에서 실제 패키지 manifest, target source root, 의존성 데이터를 읽어 graph를 워크스페이스 메타데이터 담당 원본과 비교합니다. 문서의 명령 예시는 `volicord-command-model`로 parsing하고 런타임 담당 작업 범주 식별자는 `volicord-types`에서 가져오며, 네트워크 작업은 MCP 명세 동기화만 수행합니다. `xtask`는 런타임 어댑터, Core, Store, CLI, platform 크레이트를 링크하지 않으며 Volicord 런타임 아키텍처 밖에 있습니다. |
 
 ## 의존 경계
 
@@ -147,9 +147,10 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 - 그 밖의 테스트 지원 크레이트와 테스트 패키지는 폐기 가능한 fixture와 계층 간
   검증을 위해서만 구현 크레이트를 조합합니다.
 - `xtask`는 제품 런타임 밖의 저장소 유지보수 도구로 남습니다. 문서의 공개 CLI
-  invocation은 `volicord-command-model`로 parsing하고,
-  `volicord-mcp-protocol`을 사용하여 컴파일된 프로덕션 profile의 일치를 확인하며
-  MCP 어댑터, Core, Store, CLI, host integration 크레이트를 링크하지 않습니다.
+  invocation은 `volicord-command-model`로 parsing하고, 런타임 담당 계약 식별자는
+  `volicord-types`에서 가져오며, `volicord-mcp-protocol`을 사용하여 컴파일된
+  프로덕션 profile의 일치를 확인합니다. MCP 어댑터, Core, Store, CLI, host
+  integration 크레이트를 링크하지 않습니다.
   일반 검사는 오프라인으로 실행되고, 명시적으로 호출한 명세 sync 명령만 네트워크를
   사용합니다.
 
