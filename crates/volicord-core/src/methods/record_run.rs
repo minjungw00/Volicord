@@ -75,7 +75,7 @@ impl CoreService {
         };
 
         if request.envelope.dry_run {
-            return self.execute_prepared_request(
+            return self.execute_prepared_request::<RecordRunResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
                     dry_run_summary: dry_run_summary(
@@ -182,19 +182,19 @@ struct RecordRunResponseProjection {
     change_unit_id: ChangeUnitId,
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
-    result: RecordRunResult,
+    result_fields: RecordRunResultFields,
 }
 
 impl RecordRunResponseProjection {
-    fn into_plan(self) -> Result<MethodPlan, PlanError> {
-        Ok(MethodPlan {
+    fn into_plan(self) -> MethodPlan<RecordRunResultFields> {
+        MethodPlan {
             task_id: self.task_id,
             change_unit_id: Some(self.change_unit_id),
             storage_mutations: self.storage_mutations,
             event_payload: self.event_payload,
-            result_fields: strip_base(serde_json::to_value(self.result)?)?,
+            result_fields: self.result_fields,
             next_actions: Vec::new(),
-        })
+        }
     }
 }
 
@@ -444,7 +444,7 @@ fn plan_record_run(
     request: RecordRunRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan, PlanError> {
+) -> Result<MethodPlan<RecordRunResultFields>, PlanError> {
     let raw = RecordRunRawRequest::new(request, operation_now);
     let normalized = normalize_record_run_request(store, project_state, raw)?;
     let resolved =
@@ -453,7 +453,10 @@ fn plan_record_run(
         decide_record_run_policy(service, store, project_state, verified_invocation, resolved)?;
     let mutations =
         plan_record_run_mutations(service, store, project_state, verified_invocation, policy)?;
-    project_record_run_response(store, project_state, verified_invocation, mutations)?.into_plan()
+    Ok(
+        project_record_run_response(store, project_state, verified_invocation, mutations)?
+            .into_plan(),
+    )
 }
 
 fn normalize_record_run_request(
@@ -1447,8 +1450,7 @@ fn project_record_run_response(
         close_blockers: close_plan.blockers,
         guarantee_display: Some(guarantee_display),
     })?;
-    let result = RecordRunResult {
-        base: placeholder_base(),
+    let result_fields = RecordRunResultFields {
         run_summary: RunSummary {
             run_ref: run_ref.clone(),
             kind: request.kind,
@@ -1469,7 +1471,7 @@ fn project_record_run_response(
         change_unit_id: request.change_unit_id,
         storage_mutations,
         event_payload,
-        result,
+        result_fields,
     })
 }
 

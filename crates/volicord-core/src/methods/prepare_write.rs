@@ -66,7 +66,7 @@ impl CoreService {
         };
 
         if request.envelope.dry_run {
-            return self.execute_prepared_request(
+            return self.execute_prepared_request::<PrepareWriteResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
                     dry_run_summary: plan.dry_run_summary,
@@ -74,27 +74,19 @@ impl CoreService {
             );
         }
 
-        let metric_kind = match plan
-            .result_fields
-            .get("write_ticket_effect")
-            .and_then(Value::as_str)
-        {
-            Some("reused") => Some(WorkflowMetricKind::WriteTicketReused),
-            Some("issued") if had_prior_write_ticket => {
+        let metric_kind = match plan.result_fields.write_ticket_effect {
+            WriteTicketEffect::Reused => Some(WorkflowMetricKind::WriteTicketReused),
+            WriteTicketEffect::Issued if had_prior_write_ticket => {
                 Some(WorkflowMetricKind::WriteTicketReissued)
             }
-            Some("issued") => Some(WorkflowMetricKind::WriteTicketIssued),
+            WriteTicketEffect::Issued => Some(WorkflowMetricKind::WriteTicketIssued),
             _ => None,
         };
         let sensitive_approval_missing = plan
             .result_fields
-            .get("write_decision_reasons")
-            .and_then(Value::as_array)
-            .is_some_and(|reasons| {
-                reasons.iter().any(|reason| {
-                    reason.get("code").and_then(Value::as_str) == Some("sensitive_approval_missing")
-                })
-            });
+            .write_decision_reasons
+            .iter()
+            .any(|reason| reason.code == "sensitive_approval_missing");
         let session_id = prepared.context.verified_invocation.session_id.clone();
         let response = self.execute_prepared_request(
             prepared,
@@ -226,21 +218,21 @@ struct PrepareWriteResponseProjection {
     storage_mutations: Vec<CoreStorageMutation>,
     event_kind: String,
     event_payload: JsonObject,
-    result: PrepareWriteResult,
+    result_fields: PrepareWriteResultFields,
     dry_run_summary: DryRunSummary,
 }
 
 impl PrepareWriteResponseProjection {
-    fn into_plan(self) -> Result<PrepareWritePlan, PlanError> {
-        Ok(PrepareWritePlan {
+    fn into_plan(self) -> PrepareWritePlan {
+        PrepareWritePlan {
             task_id: self.task_id,
             change_unit_id: self.change_unit_id,
             storage_mutations: self.storage_mutations,
             event_kind: self.event_kind,
             event_payload: self.event_payload,
-            result_fields: strip_base(serde_json::to_value(self.result)?)?,
+            result_fields: self.result_fields,
             dry_run_summary: self.dry_run_summary,
-        })
+        }
     }
 }
 
@@ -336,8 +328,10 @@ fn plan_prepare_write(
     let policy = decide_prepare_write_policy(store, project_state, resolved)?;
     let mutations =
         plan_prepare_write_mutations(service, store, project_state, verified_invocation, policy)?;
-    project_prepare_write_response(store, project_state, verified_invocation, mutations)?
-        .into_plan()
+    Ok(
+        project_prepare_write_response(store, project_state, verified_invocation, mutations)?
+            .into_plan(),
+    )
 }
 
 fn normalize_prepare_write_request(
@@ -1131,8 +1125,7 @@ fn project_prepare_write_response(
         close_blockers,
         guarantee_display: guarantee_display.clone(),
     })?;
-    let result = PrepareWriteResult {
-        base: placeholder_base(),
+    let result_fields = PrepareWriteResultFields {
         decision,
         state: Some(state),
         write_ticket_id: write_ticket_id.clone(),
@@ -1176,7 +1169,7 @@ fn project_prepare_write_response(
         storage_mutations,
         event_kind,
         event_payload,
-        result,
+        result_fields,
         dry_run_summary: prepare_write_dry_run_summary(
             allowed,
             &reasons,

@@ -8,6 +8,7 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::OptionalExtension;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
@@ -49,6 +50,29 @@ const CONNECTION_ID: &str = "connection_methods";
 const AGENT_ACTOR_SOURCE: &str = "agent_connection:connection_methods";
 const LOCAL_USER_ACTOR_SOURCE: &str = "local_user";
 const DEFAULT_METHOD_TEST_CLOCK: &str = "2026-06-18T00:00:00Z";
+
+fn assert_typed_result_contract<T>(response: &PipelineResponse)
+where
+    T: DeserializeOwned + Serialize,
+{
+    let decoded: T =
+        serde_json::from_str(&response.response_json).expect("typed method result should decode");
+    assert_eq!(
+        serde_json::to_value(decoded).expect("typed method result should serialize"),
+        response.response_value,
+        "typed method result should round-trip without changing the public JSON"
+    );
+
+    let mut unknown = response.response_value.clone();
+    unknown
+        .as_object_mut()
+        .expect("method result should be an object")
+        .insert("__unexpected_result_field".to_owned(), Value::Bool(true));
+    assert!(
+        serde_json::from_value::<T>(unknown).is_err(),
+        "typed method result should reject an unknown top-level field"
+    );
+}
 
 #[derive(Debug, Clone)]
 struct ManualClock {

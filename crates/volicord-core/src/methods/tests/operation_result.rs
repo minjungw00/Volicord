@@ -40,6 +40,7 @@ fn read_all_pages(
             ),
             invocation(OperationCategory::Read),
         )?;
+        assert_typed_result_contract::<GetOperationResultResult>(&response);
         let page = operation_result_page(&response);
         assert_eq!(page.start_offset_bytes, reconstructed.len() as u64);
         assert!(page.chunk_utf8.len() <= MAX_OPERATION_RESULT_PAGE_BYTES);

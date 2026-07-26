@@ -58,6 +58,7 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    assert_typed_result_contract::<RequestUserActionResult>(&own);
     let own_id = own.response_value["user_action_request_summary"]["user_action_request_id"]
         .as_str()
         .expect("safe request summary should identify the request")
@@ -1320,6 +1321,7 @@ fn resolution_omits_expected_state_and_survives_unrelated_commit() -> Result<(),
     let resolved = harness
         .service
         .resolve_user_action(request, invocation(OperationCategory::UserOnly))?;
+    assert_typed_result_contract::<ResolveUserActionResult>(&resolved);
     let after = harness.counts()?;
 
     assert_eq!(resolved.response_value["base"]["response_kind"], "result");

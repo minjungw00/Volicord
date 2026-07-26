@@ -113,9 +113,9 @@
           "ShapingReadiness",
           "StateRecordKind",
           "StateRecordRef",
-          "StateSummary",
           "StatusCloseState",
           "StatusResult",
+          "StatusStateSummary",
           "SummaryCard",
           "TaskControlLevel",
           "TaskFlowItem",
@@ -141,7 +141,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:076223550b9000ebe13e83b8044a1d3c0da96f694fafe2498c7d4e3927786212"
+        "sha256": "sha256:88581b09c998d07b8a099c09f667b0d276f32ceb26e9c94bb23df23936e8836f"
       }
     },
     {
@@ -321,7 +321,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7507602f3affa703bbe38a52e416bb4885679c2a2fd7e82c7556da6c8fca7191"
+        "sha256": "sha256:a9c4fe53b67f772b18f8961c505f67ae8b3dcf0fac25bdeded05d8dbd1c6bdad"
       }
     },
     {

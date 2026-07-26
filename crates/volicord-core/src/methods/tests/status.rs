@@ -13,6 +13,7 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
         },
         invocation(OperationCategory::Read),
     )?;
+    assert_typed_result_contract::<StatusResult>(&response);
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
     assert_eq!(response.response_value["base"]["dry_run"], false);
@@ -33,6 +34,7 @@ fn status_is_read_only_including_dry_run() -> Result<(), Box<dyn Error>> {
         },
         invocation(OperationCategory::Read),
     )?;
+    assert_typed_result_contract::<StatusResult>(&dry_run);
 
     assert_eq!(dry_run.response_value["base"]["response_kind"], "result");
     assert_eq!(dry_run.response_value["base"]["effect_kind"], "read_only");

@@ -275,6 +275,7 @@ fn command_capture_defaults_are_persisted_once_and_replay_is_exact() -> Result<(
         request.clone(),
         invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace.clone()),
     )?;
+    assert_typed_result_contract::<PrepareEvidenceCaptureResult>(&committed);
     let after = harness.counts()?;
 
     assert_eq!(committed.response_value["base"]["response_kind"], "result");
@@ -336,6 +337,7 @@ fn command_capture_defaults_are_persisted_once_and_replay_is_exact() -> Result<(
         request,
         invocation(OperationCategory::AgentWorkflow).with_git_workspace_context(workspace.clone()),
     )?;
+    assert_typed_result_contract::<PrepareEvidenceCaptureResult>(&replayed);
     assert!(replayed.replayed);
     assert_eq!(replayed.response_json, committed.response_json);
     assert_eq!(harness.counts()?, after);

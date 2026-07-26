@@ -52,7 +52,7 @@ impl CoreService {
         };
 
         if request.envelope.dry_run {
-            return self.execute_prepared_request(
+            return self.execute_prepared_request::<IntakeResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
                     dry_run_summary: dry_run_summary(
@@ -544,12 +544,12 @@ struct IntakeResponseProjection {
     task_id: TaskId,
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
-    result_fields: JsonObject,
+    result_fields: IntakeResultFields,
     next_actions: Vec<NextActionSummary>,
 }
 
 impl IntakeResponseProjection {
-    fn into_method_plan(self) -> MethodPlan {
+    fn into_method_plan(self) -> MethodPlan<IntakeResultFields> {
         MethodPlan {
             task_id: self.task_id,
             change_unit_id: None,
@@ -568,7 +568,7 @@ fn plan_intake(
     request: volicord_types::IntakeRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan, PlanError> {
+) -> Result<MethodPlan<IntakeResultFields>, PlanError> {
     let normalized = normalize_intake_request(request);
     let resolved = resolve_intake_context(store, project_state, verified_invocation, normalized)?;
     let policy = decide_intake_policy(resolved)?;
@@ -708,8 +708,7 @@ fn project_intake_response(
         close_blockers: close_plan.blockers,
         guarantee_display: Some(guarantee_display),
     })?;
-    let result = volicord_types::IntakeResult {
-        base: placeholder_base(),
+    let result_fields = IntakeResultFields {
         task_ref: task_ref.clone(),
         change_unit_ref,
         state,
@@ -731,7 +730,7 @@ fn project_intake_response(
         task_id,
         storage_mutations,
         event_payload,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
+        result_fields,
         next_actions,
     })
 }

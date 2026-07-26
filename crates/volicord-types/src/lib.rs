@@ -70,7 +70,7 @@ impl TypeBoundary {
 mod tests {
     use std::collections::BTreeSet;
 
-    use schemars::schema_for;
+    use schemars::{schema_for, JsonSchema};
     use serde_json::{json, Value};
 
     use super::*;
@@ -1245,6 +1245,57 @@ mod tests {
         }
 
         assert!(public_response_schema("volicord.unknown").is_none());
+    }
+
+    #[test]
+    fn method_result_fields_compose_every_affected_public_result_schema() {
+        assert_method_result_schema::<IntakeResultFields, IntakeResult>(
+            "volicord.intake",
+            "IntakeResult",
+        );
+        assert_method_result_schema::<UpdateScopeResultFields, UpdateScopeResult>(
+            "volicord.update_scope",
+            "UpdateScopeResult",
+        );
+        assert_method_result_schema::<StatusResultFields, StatusResult>(
+            "volicord.status",
+            "StatusResult",
+        );
+        assert_method_result_schema::<GetOperationResultResultFields, GetOperationResultResult>(
+            "volicord.get_operation_result",
+            "GetOperationResultResult",
+        );
+        assert_method_result_schema::<
+            PrepareEvidenceCaptureResultFields,
+            PrepareEvidenceCaptureResult,
+        >(
+            "volicord.prepare_evidence_capture",
+            "PrepareEvidenceCaptureResult",
+        );
+        assert_method_result_schema::<PrepareWriteResultFields, PrepareWriteResult>(
+            "volicord.prepare_write",
+            "PrepareWriteResult",
+        );
+        assert_method_result_schema::<RecordRunResultFields, RecordRunResult>(
+            "volicord.record_run",
+            "RecordRunResult",
+        );
+        assert_method_result_schema::<RequestUserActionResultFields, RequestUserActionResult>(
+            "volicord.request_user_action",
+            "RequestUserActionResult",
+        );
+        assert_method_result_schema::<ResolveUserActionResultFields, ResolveUserActionResult>(
+            "volicord.resolve_user_action",
+            "ResolveUserActionResult",
+        );
+        assert_method_result_schema::<ReconcileChangesResultFields, ReconcileChangesResult>(
+            "volicord.reconcile_changes",
+            "ReconcileChangesResult",
+        );
+        assert_method_result_schema::<CloseTaskResultFields, CloseTaskResult>(
+            "volicord.close_task",
+            "CloseTaskResult",
+        );
     }
 
     #[test]
@@ -2846,6 +2897,81 @@ mod tests {
                     })
                     .unwrap_or_else(|| panic!("missing schema definition {name}"))
             })
+    }
+
+    fn assert_method_result_schema<F, R>(method_name: &str, result_name: &str)
+    where
+        F: MethodResultFields<Result = R> + JsonSchema,
+        R: JsonSchema,
+    {
+        let fields = serde_json::to_value(schema_for!(F)).expect("fields schema should serialize");
+        let result = serde_json::to_value(schema_for!(R)).expect("result schema should serialize");
+        let public = public_response_schema(method_name)
+            .unwrap_or_else(|| panic!("missing public response schema for {method_name}"));
+        let public_result = definition(&public, result_name);
+
+        assert_eq!(
+            fields["additionalProperties"], false,
+            "{result_name} fields"
+        );
+        assert_eq!(result["additionalProperties"], false, "{result_name}");
+        assert_eq!(
+            public_result["additionalProperties"], false,
+            "{result_name} public response"
+        );
+
+        let mut expected_properties = fields["properties"]
+            .as_object()
+            .expect("fields schema should expose properties")
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        assert!(
+            expected_properties.insert("base".to_owned()),
+            "method fields must not declare base"
+        );
+        let result_properties = result["properties"]
+            .as_object()
+            .expect("result schema should expose properties")
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let public_properties = public_result["properties"]
+            .as_object()
+            .expect("public result schema should expose properties")
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        assert_eq!(result_properties, expected_properties, "{result_name}");
+        assert_eq!(
+            public_properties, expected_properties,
+            "{result_name} public response"
+        );
+
+        let mut expected_required = fields["required"]
+            .as_array()
+            .expect("fields schema should expose required properties")
+            .iter()
+            .map(|value| value.as_str().expect("required field").to_owned())
+            .collect::<BTreeSet<_>>();
+        assert!(expected_required.insert("base".to_owned()));
+        let result_required = result["required"]
+            .as_array()
+            .expect("result schema should expose required properties")
+            .iter()
+            .map(|value| value.as_str().expect("required field").to_owned())
+            .collect::<BTreeSet<_>>();
+        let public_required = public_result["required"]
+            .as_array()
+            .expect("public result schema should expose required properties")
+            .iter()
+            .map(|value| value.as_str().expect("required field").to_owned())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(result_required, expected_required, "{result_name}");
+        assert_eq!(
+            public_required, expected_required,
+            "{result_name} public response"
+        );
     }
 
     fn assert_required(schema: &Value, expected: &[&str], label: &str) {

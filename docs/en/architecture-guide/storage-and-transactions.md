@@ -169,8 +169,11 @@ selection belongs to
 [Storage Versioning](../reference/storage-versioning.md#canonical-core-utc-clock).
 
 Read-only methods and dry runs can return without a Core mutation commit.
-Committed branches provide result fields, event data, and a list of
-`CoreStorageMutation` values.
+`OwnerPipelineBranch<F>` retains the typed method-fields owner across
+read-only, no-effect, dry-run, and committed branch selection. Committed
+branches also provide event data and a list of `CoreStorageMutation` values.
+The pipeline constructs a complete method result from `F` only after the
+branch's common result facts are known.
 
 ## Effect path boundary summary
 
@@ -232,9 +235,10 @@ is the atomic Store boundary. It:
    `ProjectMutation`;
 8. writes `project_state.updated_at=committed_at` and appends authority events
    with `created_at=committed_at`;
-9. builds and validates response JSON;
-10. stores an idempotency replay row with `created_at=committed_at` when the
-    committed call is idempotent;
+9. combines the typed method fields with the final common result facts, then
+   builds and validates the complete response JSON;
+10. stores that complete response in an idempotency replay row with
+    `created_at=committed_at` when the committed call is idempotent;
 11. commits the transaction, or rolls back the whole attempt on error.
 
 Store transaction metadata that mutation application generates, including
@@ -259,7 +263,8 @@ The normal commit path advances project state once for a newly committed Core
 mutation and stores the corresponding `authority_events` row or owner-defined
 event batch with that resulting state version. Replay returns the stored
 original response for an eligible idempotent call instead of applying another
-mutation.
+mutation. Before returning it, Core strictly decodes the complete stored result
+as the current method result type.
 
 `state_version` and the persisted UTC floor are independent coordinates. The
 first orders authority-state transitions; the second prevents later temporal

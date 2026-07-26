@@ -163,8 +163,10 @@ context에서 Runtime Home을 파생합니다.
 [저장소 버전 관리](../reference/storage-versioning.md#canonical-core-utc-clock)가 담당합니다.
 
 읽기 전용 메서드와 `dry-run` 미리보기는 Core 변이 커밋 없이 반환할 수 있습니다.
-커밋 분기는 결과 필드, 이벤트 데이터, `CoreStorageMutation` 값 목록을
-제공합니다.
+`OwnerPipelineBranch<F>`는 읽기 전용, 효과 없음, dry-run, 커밋 분기를 선택하는 동안
+typed 메서드 필드 담당 타입을 유지합니다. 커밋 분기는 이벤트 데이터와
+`CoreStorageMutation` 값 목록도 제공합니다. 파이프라인은 분기의 공통 결과 사실이
+확정된 뒤에만 `F`에서 완전한 메서드 결과를 구성합니다.
 
 ## 효과 경로 경계 요약
 
@@ -226,9 +228,10 @@ context에서 Runtime Home을 파생합니다.
    적용합니다.
 8. `project_state.updated_at=committed_at`을 쓰고
    `created_at=committed_at`인 권한 event를 추가합니다.
-9. 응답 JSON을 만들고 검증합니다.
-10. 커밋 호출에 멱등성 키가 있으면 `created_at=committed_at`인 재실행 기록 행을
-    저장합니다.
+9. typed 메서드 필드와 최종 공통 결과 사실을 결합한 뒤 완전한 응답 JSON을
+   만들고 검증합니다.
+10. 커밋 호출에 멱등성 키가 있으면 그 완전한 응답을
+    `created_at=committed_at`인 재실행 기록 행에 저장합니다.
 11. 트랜잭션을 커밋하거나 오류 시 전체 시도를 롤백합니다.
 
 Mutation application이 생성하는 적용 가능한 Store transaction metadata인
@@ -253,6 +256,8 @@ Core 파이프라인 테스트가 있습니다.
 전진시키고, 그 결과 상태 버전을 가진 해당 `authority_events` 행이나
 담당 문서가 정의한 이벤트 배치를 저장합니다. 재실행은 적격 멱등
 호출에 대해 또 다른 변이를 적용하지 않고 저장된 원래 응답을 반환합니다.
+반환 전에는 Core가 저장된 완전한 결과를 현재 메서드 결과 타입으로 엄격하게
+decode합니다.
 
 `state_version`과 영속 UTC 하한은 서로 독립된 좌표입니다. 전자는 권한 상태 전이의
 순서를 정하고 후자는 이후 시간 확인에서 더 이른 프로젝트 시각을 관찰하지 못하게

@@ -141,7 +141,7 @@ impl CoreService {
         let plan_now = prepared.operation_now.clone();
 
         if request.envelope.dry_run {
-            return self.execute_prepared_request(
+            return self.execute_prepared_request::<CloseTaskResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
                     dry_run_summary: close_task_dry_run_summary(request.intent),
@@ -208,10 +208,7 @@ impl CoreService {
                 .iter()
                 .map(|plan| plan.summary.clone())
                 .collect::<Vec<_>>();
-            plan.result_fields.insert(
-                "continuity_summary".to_owned(),
-                serde_json::to_value(&continuity_summary)?,
-            );
+            plan.result_fields.continuity_summary = continuity_summary;
             let continuity_record_ids = continuity_plans
                 .iter()
                 .map(|plan| plan.record_ref.record_id.as_str().to_owned())
@@ -347,7 +344,7 @@ struct CloseTaskResponseProjection {
     storage_mutations: Vec<CoreStorageMutation>,
     event_kind: String,
     event_payload: JsonObject,
-    result: CloseTaskResult,
+    result_fields: CloseTaskResultFields,
     close_state: CloseState,
     current_close_basis: Option<CurrentCloseBasis>,
     risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
@@ -356,20 +353,20 @@ struct CloseTaskResponseProjection {
 }
 
 impl CloseTaskResponseProjection {
-    fn into_plan(self) -> Result<CloseTaskPlan, PlanError> {
-        Ok(CloseTaskPlan {
+    fn into_plan(self) -> CloseTaskPlan {
+        CloseTaskPlan {
             task_id: self.task_id,
             change_unit_id: self.change_unit_id,
             storage_mutations: self.storage_mutations,
             event_kind: self.event_kind,
             event_payload: self.event_payload,
-            result_fields: strip_base(serde_json::to_value(self.result)?)?,
+            result_fields: self.result_fields,
             close_state: self.close_state,
             current_close_basis: self.current_close_basis,
             risk_acceptance_coverage: self.risk_acceptance_coverage,
             blockers: self.blockers,
             evidence_gate: self.evidence_gate,
-        })
+        }
     }
 }
 
@@ -544,14 +541,14 @@ pub(super) fn plan_close_task_with_context(
     let resolved = resolve_close_task_context(store, request, context)?;
     let decision = decide_close_task_policy(store, project_state, now, resolved)?;
     let mutations = plan_close_task_mutations(now, decision)?;
-    project_close_task_response(
+    Ok(project_close_task_response(
         store,
         verified_invocation,
         guarantee_profile,
         now,
         mutations,
     )?
-    .into_plan()
+    .into_plan())
 }
 
 fn resolve_close_task_context(
@@ -985,8 +982,7 @@ fn project_close_task_response(
         next_actor,
         next_action,
     };
-    let result = CloseTaskResult {
-        base: placeholder_base(),
+    let result_fields = CloseTaskResultFields {
         summary_card,
         close_state,
         current_close_basis: current_close_basis.clone(),
@@ -1011,7 +1007,7 @@ fn project_close_task_response(
         storage_mutations,
         event_kind,
         event_payload,
-        result,
+        result_fields,
         close_state,
         current_close_basis,
         risk_acceptance_coverage,

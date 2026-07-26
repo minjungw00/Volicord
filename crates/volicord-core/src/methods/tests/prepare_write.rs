@@ -80,6 +80,7 @@ fn prepare_write_allowed_issues_one_write_ticket_with_post_commit_basis(
     let response = harness
         .service
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_typed_result_contract::<PrepareWriteResult>(&response);
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["decision"], "allowed");

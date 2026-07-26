@@ -16,6 +16,7 @@ fn intake_commits_once_and_replays_without_effect() -> Result<(), Box<dyn Error>
         request.clone(),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    assert_typed_result_contract::<IntakeResult>(&first);
     let after_first = harness.counts()?;
 
     assert_eq!(first.response_value["base"]["response_kind"], "result");
@@ -42,6 +43,7 @@ fn intake_commits_once_and_replays_without_effect() -> Result<(), Box<dyn Error>
     let second = harness
         .service
         .intake(request, invocation(OperationCategory::AgentWorkflow))?;
+    assert_typed_result_contract::<IntakeResult>(&second);
     assert!(second.replayed);
     assert_eq!(second.response_json, first.response_json);
     assert_eq!(harness.counts()?, after_first);

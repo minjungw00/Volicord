@@ -89,12 +89,12 @@ mod tests;
 mod update_scope;
 mod user_action;
 
-struct MethodPlan {
+struct MethodPlan<F> {
     task_id: TaskId,
     change_unit_id: Option<ChangeUnitId>,
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
-    result_fields: JsonObject,
+    result_fields: F,
     next_actions: Vec<NextActionSummary>,
 }
 
@@ -104,7 +104,7 @@ struct PrepareWritePlan {
     storage_mutations: Vec<CoreStorageMutation>,
     event_kind: String,
     event_payload: JsonObject,
-    result_fields: JsonObject,
+    result_fields: PrepareWriteResultFields,
     dry_run_summary: DryRunSummary,
 }
 
@@ -114,7 +114,7 @@ struct CloseTaskPlan {
     storage_mutations: Vec<CoreStorageMutation>,
     event_kind: String,
     event_payload: JsonObject,
-    result_fields: JsonObject,
+    result_fields: CloseTaskResultFields,
     close_state: CloseState,
     current_close_basis: Option<CurrentCloseBasis>,
     risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
@@ -3781,12 +3781,6 @@ fn stored_refs_to_state_refs(records: Vec<StoredRecordRef>) -> Vec<StateRecordRe
     records.into_iter().map(state_ref_from_stored).collect()
 }
 
-fn strip_base(value: Value) -> CoreResult<JsonObject> {
-    let mut object = object_from_value(value)?;
-    object.remove("base");
-    Ok(object)
-}
-
 fn object_from_value(value: Value) -> CoreResult<JsonObject> {
     match value {
         Value::Object(object) => Ok(object),
@@ -3794,10 +3788,6 @@ fn object_from_value(value: Value) -> CoreResult<JsonObject> {
             detail: "expected JSON object".to_owned(),
         }),
     }
-}
-
-fn placeholder_base() -> ToolResultBase {
-    method_result_base(EffectKind::NoEffect, false, None, Vec::new())
 }
 
 fn validation_rejected(

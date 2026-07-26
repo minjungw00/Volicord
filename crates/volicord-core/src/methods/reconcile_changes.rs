@@ -6,7 +6,7 @@ struct ReconciliationPlan {
     task_id: TaskId,
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
-    result_fields: JsonObject,
+    result_fields: ReconcileChangesResultFields,
     dry_run_summary: DryRunSummary,
     confirmed_false_positive_samples: Vec<u64>,
 }
@@ -102,7 +102,7 @@ impl CoreService {
         };
 
         if request.envelope.dry_run {
-            return self.execute_prepared_request(
+            return self.execute_prepared_request::<ReconcileChangesResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
                     dry_run_summary: plan.dry_run_summary,
@@ -468,8 +468,7 @@ fn plan_reconcile_changes(
         verified_invocation,
         next_action: primary_next_action(&result_next_actions, &close_plan.blockers),
     });
-    let result = ReconcileChangesResult {
-        base: placeholder_base(),
+    let result_fields = ReconcileChangesResultFields {
         summary_card,
         task_ref,
         unresolved_changes: unresolved_findings.clone(),
@@ -493,7 +492,7 @@ fn plan_reconcile_changes(
             .filter_map(|user_action| user_action.user_action.as_ref())
             .map(|action| action.user_action_request_id.as_str().to_owned())
             .collect::<Vec<_>>(),
-        "rejected_resolution_count": result.rejected_resolution_requests.len()
+        "rejected_resolution_count": result_fields.rejected_resolution_requests.len()
     }))?;
     let dry_run_summary = dry_run_summary_for_reconciliation(
         &planned_resolutions,
@@ -525,7 +524,7 @@ fn plan_reconcile_changes(
         task_id: request.task_id,
         storage_mutations,
         event_payload,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
+        result_fields,
         dry_run_summary,
         confirmed_false_positive_samples,
     })

@@ -97,6 +97,7 @@ fn update_scope_commits_once_and_creates_one_current_change_unit() -> Result<(),
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    assert_typed_result_contract::<UpdateScopeResult>(&response);
     let after = harness.counts()?;
 
     assert_eq!(

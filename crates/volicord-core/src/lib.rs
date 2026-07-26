@@ -29,9 +29,9 @@ pub use authority_status::{
     ValidatedAuthorityStatus,
 };
 pub use pipeline::{
-    dry_run_response, method_result_base, method_result_value, rejected_response, tool_error,
-    Clock, CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,
-    PipelineResponse, SystemClock, VerifiedInvocationContext,
+    dry_run_response, method_result_base, rejected_response, tool_error, Clock, CorePipelineError,
+    CoreResult, CoreService, GitWorkspaceContext, InvocationContext, PipelineResponse, SystemClock,
+    VerifiedInvocationContext,
 };
 
 /// Current Core-owned, agent-safe view of one user-action request.

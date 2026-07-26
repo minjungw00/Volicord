@@ -177,7 +177,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b8ad6371305e5d6d4d9228aff1924dc44c222dda1230cf07b9a8c1d719206a13"
+        "sha256": "sha256:8ffa21ae2192c1ff593e9c2333e320fc5e913ce5ec21ec79ce78aef1bfad8745"
       }
     },
     {
@@ -320,7 +320,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9c1bc2f7d27ec2ed2aef66fd2585ef2efc9f3d6d5f587bf6142f1bbd719f1dec"
+        "sha256": "sha256:db2dfcbb6b8833d75b3fda6504d83c4debfced86024b9ba9ad1eaec968c1306d"
       }
     },
     {
@@ -419,9 +419,9 @@
           "ShapingReadiness",
           "StateRecordKind",
           "StateRecordRef",
-          "StateSummary",
           "StatusCloseState",
           "StatusResult",
+          "StatusStateSummary",
           "SummaryCard",
           "TaskControlLevel",
           "TaskFlowItem",
@@ -447,7 +447,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:076223550b9000ebe13e83b8044a1d3c0da96f694fafe2498c7d4e3927786212"
+        "sha256": "sha256:88581b09c998d07b8a099c09f667b0d276f32ceb26e9c94bb23df23936e8836f"
       }
     },
     {
@@ -603,7 +603,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:64cb9140380881e3878325578446d63972280cede6f9527c562b2778a00bcd63"
+        "sha256": "sha256:80866d4c0b09391efedcee87257e621a5a675a85169f621563094f074933a048"
       }
     },
     {
@@ -752,7 +752,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a43ac4782454a85983752298d7bb17089826e830ea4bdf3603a2fe43119926fd"
+        "sha256": "sha256:181a2880b182d072e34cb73893c6ca8344513296dd6679c037debee0306d1487"
       }
     },
     {
@@ -1043,7 +1043,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5bc40da22cfbb29d6396721063a348ea21d4819791b900961b3bf93fba713ef8"
+        "sha256": "sha256:0ed72c949b7ca03a8391084d307ff0cb44308e986046871f1be5f9ae6e117e77"
       }
     },
     {
@@ -1195,7 +1195,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e439932464243c951c377522be6121d3f93f081c92fb93b30ec82a1c6d694330"
+        "sha256": "sha256:34775e0a09bd3a1233513f98cc73dc1f89fa875e4973d05c989c860e223c906f"
       }
     },
     {
@@ -1330,7 +1330,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:abf68a7ea379a77952aec8aeb2b5d7525a14ee4d0ec85ac17d31f310dadf7a93"
+        "sha256": "sha256:370726bd9b0c46e859ec8ce6bec78fad6d0da6fe19b3dbd84264ed111a6c1196"
       }
     },
     {
@@ -1448,7 +1448,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7507602f3affa703bbe38a52e416bb4885679c2a2fd7e82c7556da6c8fca7191"
+        "sha256": "sha256:a9c4fe53b67f772b18f8961c505f67ae8b3dcf0fac25bdeded05d8dbd1c6bdad"
       }
     },
     {
@@ -1587,7 +1587,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:4710dfc2d9eeaf4d6a6d3070600587ee785076b55ab9a900c0a7475a15a19e9f"
+        "sha256": "sha256:294b84942fa312676f03141a37f3fbe2129dfb0ad0cb9b86dbbfdcd5f3d62027"
       }
     },
     {

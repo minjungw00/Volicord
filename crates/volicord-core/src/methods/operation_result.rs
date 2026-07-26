@@ -192,8 +192,7 @@ impl CoreService {
         } else {
             RequiredNullable::some(cursor_for_ref(&request.operation_result_ref, end as u64))
         };
-        let result = GetOperationResultResult {
-            base: placeholder_base(),
+        let result_fields = GetOperationResultResultFields {
             operation_result_ref: request.operation_result_ref,
             start_offset_bytes: start as u64,
             end_offset_bytes: end as u64,
@@ -203,7 +202,6 @@ impl CoreService {
             historical: true,
             current_authority_refresh_required: true,
         };
-        let result_fields = strip_base(serde_json::to_value(result)?)?;
         self.execute_prepared_request(prepared, OwnerPipelineBranch::ReadOnly { result_fields })
     }
 }

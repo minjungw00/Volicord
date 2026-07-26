@@ -164,7 +164,7 @@ fn status_result_fields(
     task: Option<&TaskRecord>,
     projection: StatusProjectionOptions<'_>,
     now: DateTime<Utc>,
-) -> Result<JsonObject, PlanError> {
+) -> Result<StatusResultFields, PlanError> {
     let include = projection.include;
     let continuity_page_request = projection.continuity_page;
     let user_action_now = UtcTimestamp::from_datetime(now);
@@ -347,7 +347,7 @@ fn status_result_fields(
                 },
                 guarantee_display: guarantee_projection.clone(),
             })?;
-            active_task = Some(status_state_summary_value(state, include)?);
+            active_task = Some(StatusStateSummary::from_state_summary(state, include));
         }
         let latest_run = store
             .run_observed_changes_for_task(&task_id)
@@ -450,10 +450,9 @@ fn status_result_fields(
         next_action: primary_next_action(&next_actions, close_blockers_slice),
     });
 
-    let result = volicord_types::StatusResult {
-        base: placeholder_base(),
+    Ok(StatusResultFields {
         summary_card,
-        active_task: None,
+        active_task,
         status_summary: status_summary_for(task, close_state, close_blockers.as_deref()),
         next_actions,
         pending_user_action_summaries,
@@ -469,12 +468,7 @@ fn status_result_fields(
         continuity_summary,
         task_flow,
         authority_receipt,
-    };
-    let mut result_fields = strip_base(serde_json::to_value(result)?)?;
-    if let Some(active_task) = active_task {
-        result_fields.insert("active_task".to_owned(), active_task);
-    }
-    Ok(result_fields)
+    })
 }
 
 fn authority_next_actor(action: &NextActionSummary) -> AuthorityNextActor {
@@ -671,33 +665,4 @@ pub(super) fn unique_next_actions(actions: Vec<NextActionSummary>) -> Vec<NextAc
             seen.insert(key).then_some(action)
         })
         .collect()
-}
-
-fn status_state_summary_value(
-    state: volicord_types::StateSummary,
-    include: &StatusInclude,
-) -> CoreResult<Value> {
-    let mut value = serde_json::to_value(state)?;
-    let object = value
-        .as_object_mut()
-        .ok_or_else(|| CorePipelineError::InvalidDispatch {
-            detail: "state summary must serialize to a JSON object".to_owned(),
-        })?;
-    if !include.write_ticket {
-        object.remove("write_ticket_summary");
-    }
-    if !include.evidence {
-        object.remove("evidence_summary");
-    }
-    if !include.evidence && !include.close {
-        object.remove("evidence_gate");
-    }
-    if !include.close {
-        object.remove("close_state");
-        object.remove("close_blockers");
-    }
-    if !include.guarantees {
-        object.remove("guarantee_display");
-    }
-    Ok(value)
 }

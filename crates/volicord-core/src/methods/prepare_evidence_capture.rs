@@ -57,7 +57,7 @@ impl CoreService {
         };
 
         if request.envelope.dry_run {
-            return self.execute_prepared_request(
+            return self.execute_prepared_request::<PrepareEvidenceCaptureResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
                     dry_run_summary: dry_run_summary(
@@ -91,7 +91,7 @@ fn plan_prepare_evidence_capture(
     mut request: PrepareEvidenceCaptureRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan, PlanError> {
+) -> Result<MethodPlan<PrepareEvidenceCaptureResultFields>, PlanError> {
     let connection_id = verified_invocation
         .actor_source
         .agent_connection_id()
@@ -242,8 +242,7 @@ fn plan_prepare_evidence_capture(
         created_at: created_at.clone(),
         expires_at: expires_at.clone(),
     };
-    let result = PrepareEvidenceCaptureResult {
-        base: placeholder_base(),
+    let result_fields = PrepareEvidenceCaptureResultFields {
         capture_intent_ref: capture_intent_ref.clone(),
         capture_intent: capture_intent.clone(),
         expires_at: expires_at.clone(),
@@ -291,7 +290,7 @@ fn plan_prepare_evidence_capture(
         change_unit_id: Some(capture_intent.change_unit_id),
         storage_mutations,
         event_payload,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
+        result_fields,
         next_actions: Vec::new(),
     })
 }

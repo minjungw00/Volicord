@@ -657,7 +657,7 @@ fn execute_request_user_action(
         }
     };
     if request.envelope.dry_run {
-        return service.execute_prepared_request(
+        return service.execute_prepared_request::<RequestUserActionResultFields>(
             prepared,
             OwnerPipelineBranch::DryRunPreview {
                 dry_run_summary: dry_run_summary(
@@ -689,7 +689,7 @@ fn plan_request_user_action(
     request: RequestUserActionRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan, PlanError> {
+) -> Result<MethodPlan<RequestUserActionResultFields>, PlanError> {
     let now = operation_now.clone();
     if request.required_for.is_empty() {
         return user_action_validation_error(
@@ -911,8 +911,7 @@ fn plan_request_user_action(
         Some(request_ref.clone()),
         None,
     )?;
-    let result = RequestUserActionResult {
-        base: placeholder_base(),
+    let result_fields = RequestUserActionResultFields {
         user_action_request_summary: AgentSafeUserActionRequestSummary::pending(request_id.clone()),
         blocker_refs,
         state,
@@ -930,7 +929,7 @@ fn plan_request_user_action(
             "action_kind": action_kind,
             "required_for": request.required_for,
         }))?,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
+        result_fields,
         next_actions,
     })
 }
@@ -1828,7 +1827,7 @@ fn execute_resolve_user_action(
         }
     };
     if request.envelope.dry_run {
-        return service.execute_prepared_request(
+        return service.execute_prepared_request::<ResolveUserActionResultFields>(
             prepared,
             OwnerPipelineBranch::DryRunPreview {
                 dry_run_summary: dry_run_summary(
@@ -1864,7 +1863,7 @@ fn execute_resolve_user_action(
 }
 
 struct ResolveUserActionPlan {
-    method: MethodPlan,
+    method: MethodPlan<ResolveUserActionResultFields>,
 }
 
 fn channel_kind_from_verified_invocation(
@@ -2091,8 +2090,7 @@ fn plan_resolve_user_action(
         None,
         Some(&request.user_action_request_id),
     )?;
-    let result = ResolveUserActionResult {
-        base: placeholder_base(),
+    let result_fields = ResolveUserActionResultFields {
         user_action_request_ref: request_ref,
         user_action_resolution_ref: resolution_ref,
         user_action_request: public_request,
@@ -2133,7 +2131,7 @@ fn plan_resolve_user_action(
                 "channel_kind": channel_kind,
                 "channel_submission_id": request.channel_submission_id,
             }))?,
-            result_fields: strip_base(serde_json::to_value(result)?)?,
+            result_fields,
             next_actions,
         },
     })

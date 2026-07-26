@@ -209,6 +209,7 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    assert_typed_result_contract::<RecordRunResult>(&response);
     let after = harness.counts()?;
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");

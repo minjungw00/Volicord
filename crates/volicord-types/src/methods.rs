@@ -42,6 +42,75 @@ pub trait MethodOperationCategory {
     fn operation_category(&self) -> OperationCategory;
 }
 
+/// Method-specific fields that become a complete public result only when
+/// paired with the common result facts selected by the execution pipeline.
+pub trait MethodResultFields {
+    /// Complete public result type produced from these method fields.
+    type Result;
+
+    /// Attaches the final common result facts to these method fields.
+    fn with_base(self, base: ToolResultBase) -> Self::Result;
+}
+
+macro_rules! declare_method_result {
+    (
+        $(#[$result_meta:meta])*
+        pub struct $result:ident from $fields:ident {
+            $(
+                $(#[$field_meta:meta])*
+                pub $field:ident: $field_type:ty
+            ),* $(,)?
+        }
+    ) => {
+        $(#[$result_meta])*
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+        #[serde(deny_unknown_fields)]
+        pub struct $fields {
+            $(
+                $(#[$field_meta])*
+                pub $field: $field_type,
+            )*
+        }
+
+        $(#[$result_meta])*
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+        #[serde(deny_unknown_fields)]
+        pub struct $result {
+            pub base: ToolResultBase,
+            $(
+                $(#[$field_meta])*
+                pub $field: $field_type,
+            )*
+        }
+
+        impl MethodResultFields for $fields {
+            type Result = $result;
+
+            fn with_base(self, base: ToolResultBase) -> Self::Result {
+                let Self {
+                    $($field,)*
+                } = self;
+                $result {
+                    base,
+                    $($field,)*
+                }
+            }
+        }
+    };
+}
+
+fn deserialize_present_nullable<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<RequiredNullable<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+        .map(RequiredNullable::from)
+        .map(Some)
+}
+
 /// Response branch type for `volicord.intake`.
 pub type IntakeResponse = ToolResponse<IntakeResult>;
 
@@ -498,14 +567,14 @@ pub struct InitialScope {
     pub acceptance_criteria: Vec<AcceptanceCriterionInput>,
 }
 
-/// `volicord.intake` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct IntakeResult {
-    pub base: ToolResultBase,
-    pub task_ref: StateRecordRef,
-    pub change_unit_ref: Option<StateRecordRef>,
-    pub state: StateSummary,
-    pub next_actions: Vec<NextActionSummary>,
+declare_method_result! {
+    /// `volicord.intake` method result branch and its method-specific fields.
+    pub struct IntakeResult from IntakeResultFields {
+        pub task_ref: StateRecordRef,
+        pub change_unit_ref: Option<StateRecordRef>,
+        pub state: StateSummary,
+        pub next_actions: Vec<NextActionSummary>,
+    }
 }
 
 /// `volicord.update_scope` request params.
@@ -581,17 +650,17 @@ pub struct ChangeUnitUpdate {
     pub fields: JsonObject,
 }
 
-/// `volicord.update_scope` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct UpdateScopeResult {
-    pub base: ToolResultBase,
-    pub task_ref: StateRecordRef,
-    pub change_unit_ref: Option<StateRecordRef>,
-    pub linked_scope_decision_refs: Vec<StateRecordRef>,
-    pub stale_write_ticket_refs: Vec<StateRecordRef>,
-    pub blocker_refs: Vec<StateRecordRef>,
-    pub state: StateSummary,
-    pub next_actions: Vec<NextActionSummary>,
+declare_method_result! {
+    /// `volicord.update_scope` method result branch and its method-specific fields.
+    pub struct UpdateScopeResult from UpdateScopeResultFields {
+        pub task_ref: StateRecordRef,
+        pub change_unit_ref: Option<StateRecordRef>,
+        pub linked_scope_decision_refs: Vec<StateRecordRef>,
+        pub stale_write_ticket_refs: Vec<StateRecordRef>,
+        pub blocker_refs: Vec<StateRecordRef>,
+        pub state: StateSummary,
+        pub next_actions: Vec<NextActionSummary>,
+    }
 }
 
 /// `volicord.status` request params.
@@ -676,37 +745,195 @@ pub struct StatusInclude {
     pub continuity: bool,
 }
 
-/// `volicord.status` method result branch.
+/// Status-owned projection of `StateSummary` with include-controlled members
+/// represented as optional object members instead of dynamically edited JSON.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct StatusResult {
-    pub base: ToolResultBase,
-    pub summary_card: SummaryCard,
-    pub active_task: Option<StateSummary>,
-    pub status_summary: String,
-    pub next_actions: Vec<NextActionSummary>,
+pub struct StatusStateSummary {
+    pub project_id: ProjectId,
+    pub state_version: u64,
+    pub task_ref: Option<StateRecordRef>,
+    pub mode: Option<crate::values::TaskMode>,
+    pub requested_control_level: Option<RequestedControlLevel>,
+    pub effective_control_level: Option<crate::values::TaskControlLevel>,
+    pub control_level_reason: Option<String>,
+    pub project_policy: Option<crate::schema::ProjectWorkflowPolicySummary>,
+    pub work_phase: Option<crate::values::WorkPhase>,
+    pub acceptance_policy: Option<AcceptancePolicy>,
+    pub acceptance_policy_reason: Option<String>,
+    pub lineage: Option<crate::schema::TaskLineageSummary>,
+    pub lifecycle: Option<crate::schema::TaskLifecycleState>,
+    pub scope_revision: u64,
+    pub goal_summary: Option<String>,
+    pub scope_summary: Option<String>,
+    pub non_goals: Vec<String>,
+    pub acceptance_criteria: Vec<crate::schema::AcceptanceCriterion>,
+    pub autonomy_boundary: Option<String>,
+    pub active_change_unit_ref: Option<StateRecordRef>,
+    pub effect_contract: Option<ChangeUnitEffectContract>,
+    pub baseline_ref: Option<BaselineRef>,
+    pub workspace_context: Option<crate::schema::WorkspaceContext>,
+    pub shaping_readiness: Option<crate::schema::ShapingReadiness>,
     pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
     pub blocker_refs: Vec<StateRecordRef>,
-    pub write_ticket_summary: Option<WriteTicketStateSummary>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub write_ticket_summary: Option<RequiredNullable<WriteTicketStateSummary>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub evidence_summary: Option<RequiredNullable<EvidenceSummary>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub evidence_gate: Option<RequiredNullable<EvidenceGateSummary>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub close_state: Option<StatusCloseState>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_close_basis: Option<RequiredNullable<CurrentCloseBasis>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub risk_acceptance_coverage: Option<Vec<RiskAcceptanceCoverage>>,
+    pub close_state: Option<crate::values::CloseState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub close_blockers: Option<Vec<CloseReadinessBlocker>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub guarantee_display: Option<RequiredNullable<GuaranteeDisplay>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub continuity_summary: Option<ProjectContinuityPage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub task_flow: Option<Vec<TaskFlowItem>>,
-    pub authority_receipt: Option<AuthorityReceipt>,
+}
+
+impl StatusStateSummary {
+    /// Selects the include-controlled members while retaining the typed state
+    /// summary for every field that is present.
+    pub fn from_state_summary(summary: StateSummary, include: &StatusInclude) -> Self {
+        let StateSummary {
+            project_id,
+            state_version,
+            task_ref,
+            mode,
+            requested_control_level,
+            effective_control_level,
+            control_level_reason,
+            project_policy,
+            work_phase,
+            acceptance_policy,
+            acceptance_policy_reason,
+            lineage,
+            lifecycle,
+            scope_revision,
+            goal_summary,
+            scope_summary,
+            non_goals,
+            acceptance_criteria,
+            autonomy_boundary,
+            active_change_unit_ref,
+            effect_contract,
+            baseline_ref,
+            workspace_context,
+            shaping_readiness,
+            pending_user_action_summaries,
+            blocker_refs,
+            write_ticket_summary,
+            evidence_summary,
+            evidence_gate,
+            close_state,
+            close_blockers,
+            guarantee_display,
+        } = summary;
+        Self {
+            project_id,
+            state_version,
+            task_ref,
+            mode,
+            requested_control_level,
+            effective_control_level,
+            control_level_reason,
+            project_policy,
+            work_phase,
+            acceptance_policy,
+            acceptance_policy_reason,
+            lineage,
+            lifecycle,
+            scope_revision,
+            goal_summary,
+            scope_summary,
+            non_goals,
+            acceptance_criteria,
+            autonomy_boundary,
+            active_change_unit_ref,
+            effect_contract,
+            baseline_ref,
+            workspace_context,
+            shaping_readiness,
+            pending_user_action_summaries,
+            blocker_refs,
+            write_ticket_summary: include
+                .write_ticket
+                .then(|| RequiredNullable::from(write_ticket_summary)),
+            evidence_summary: include
+                .evidence
+                .then(|| RequiredNullable::from(evidence_summary)),
+            evidence_gate: (include.evidence || include.close)
+                .then(|| RequiredNullable::from(evidence_gate)),
+            close_state: include.close.then_some(close_state).flatten(),
+            close_blockers: include.close.then_some(close_blockers),
+            guarantee_display: include
+                .guarantees
+                .then(|| RequiredNullable::from(guarantee_display)),
+        }
+    }
+}
+
+declare_method_result! {
+    /// `volicord.status` method result branch and its method-specific fields.
+    pub struct StatusResult from StatusResultFields {
+        pub summary_card: SummaryCard,
+        pub active_task: Option<StatusStateSummary>,
+        pub status_summary: String,
+        pub next_actions: Vec<NextActionSummary>,
+        pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
+        pub blocker_refs: Vec<StateRecordRef>,
+        pub write_ticket_summary: Option<WriteTicketStateSummary>,
+        #[serde(
+            default,
+            deserialize_with = "deserialize_present_nullable",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub evidence_summary: Option<RequiredNullable<EvidenceSummary>>,
+        #[serde(
+            default,
+            deserialize_with = "deserialize_present_nullable",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub evidence_gate: Option<RequiredNullable<EvidenceGateSummary>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub close_state: Option<StatusCloseState>,
+        #[serde(
+            default,
+            deserialize_with = "deserialize_present_nullable",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub current_close_basis: Option<RequiredNullable<CurrentCloseBasis>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub risk_acceptance_coverage: Option<Vec<RiskAcceptanceCoverage>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub close_blockers: Option<Vec<CloseReadinessBlocker>>,
+        #[serde(
+            default,
+            deserialize_with = "deserialize_present_nullable",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub guarantee_display: Option<RequiredNullable<GuaranteeDisplay>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub continuity_summary: Option<ProjectContinuityPage>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub task_flow: Option<Vec<TaskFlowItem>>,
+        pub authority_receipt: Option<AuthorityReceipt>,
+    }
 }
 
 /// `volicord.get_operation_result` request params.
@@ -739,19 +966,18 @@ pub struct McpGetOperationResultArguments {
     pub cursor: RequiredNullable<String>,
 }
 
-/// One bounded page of an immutable historical mutation response.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct GetOperationResultResult {
-    pub base: ToolResultBase,
-    pub operation_result_ref: OperationResultRef,
-    pub start_offset_bytes: u64,
-    pub end_offset_bytes: u64,
-    pub chunk_utf8: String,
-    pub next_cursor: RequiredNullable<String>,
-    pub complete: bool,
-    pub historical: bool,
-    pub current_authority_refresh_required: bool,
+declare_method_result! {
+    /// One bounded page of an immutable historical mutation response.
+    pub struct GetOperationResultResult from GetOperationResultResultFields {
+        pub operation_result_ref: OperationResultRef,
+        pub start_offset_bytes: u64,
+        pub end_offset_bytes: u64,
+        pub chunk_utf8: String,
+        pub next_cursor: RequiredNullable<String>,
+        pub complete: bool,
+        pub historical: bool,
+        pub current_authority_refresh_required: bool,
+    }
 }
 
 /// `volicord.prepare_evidence_capture` request params.
@@ -834,14 +1060,13 @@ pub struct McpPrepareEvidenceCaptureArguments {
     pub capture: McpEvidenceCaptureSpec,
 }
 
-/// `volicord.prepare_evidence_capture` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PrepareEvidenceCaptureResult {
-    pub base: ToolResultBase,
-    pub capture_intent_ref: StateRecordRef,
-    pub capture_intent: EvidenceCaptureIntent,
-    pub expires_at: UtcTimestamp,
+declare_method_result! {
+    /// `volicord.prepare_evidence_capture` method result branch and its method-specific fields.
+    pub struct PrepareEvidenceCaptureResult from PrepareEvidenceCaptureResultFields {
+        pub capture_intent_ref: StateRecordRef,
+        pub capture_intent: EvidenceCaptureIntent,
+        pub expires_at: UtcTimestamp,
+    }
 }
 
 /// `volicord.prepare_write` request params.
@@ -888,22 +1113,22 @@ pub struct McpPrepareWriteArguments {
     pub baseline_ref: BaselineRef,
 }
 
-/// `volicord.prepare_write` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct PrepareWriteResult {
-    pub base: ToolResultBase,
-    pub decision: PrepareWriteDecision,
-    pub state: Option<StateSummary>,
-    pub write_ticket_id: Option<WriteTicketId>,
-    pub write_ticket_ref: Option<StateRecordRef>,
-    pub write_ticket: Option<WriteTicket>,
-    pub write_ticket_effect: WriteTicketEffect,
-    pub allowed_path_patterns: Vec<String>,
-    pub denied_path_patterns: Vec<String>,
-    pub active_user_action_refs: Vec<StateRecordRef>,
-    pub write_decision_reasons: Vec<WriteDecisionReason>,
-    pub user_action_draft: Option<UserActionDraft>,
-    pub guarantee_display: Option<GuaranteeDisplay>,
+declare_method_result! {
+    /// `volicord.prepare_write` method result branch and its method-specific fields.
+    pub struct PrepareWriteResult from PrepareWriteResultFields {
+        pub decision: PrepareWriteDecision,
+        pub state: Option<StateSummary>,
+        pub write_ticket_id: Option<WriteTicketId>,
+        pub write_ticket_ref: Option<StateRecordRef>,
+        pub write_ticket: Option<WriteTicket>,
+        pub write_ticket_effect: WriteTicketEffect,
+        pub allowed_path_patterns: Vec<String>,
+        pub denied_path_patterns: Vec<String>,
+        pub active_user_action_refs: Vec<StateRecordRef>,
+        pub write_decision_reasons: Vec<WriteDecisionReason>,
+        pub user_action_draft: Option<UserActionDraft>,
+        pub guarantee_display: Option<GuaranteeDisplay>,
+    }
 }
 
 /// `volicord.stage_artifact` request params.
@@ -1099,18 +1324,18 @@ impl From<McpEvidenceObservationInput> for EvidenceObservationInput {
     }
 }
 
-/// `volicord.record_run` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct RecordRunResult {
-    pub base: ToolResultBase,
-    pub run_summary: RunSummary,
-    pub registered_artifacts: Vec<ArtifactRef>,
-    pub evidence_summary: Option<EvidenceSummary>,
-    pub evidence_observations: Vec<EvidenceObservation>,
-    pub evidence_producers: Vec<EvidenceProducer>,
-    pub current_close_basis: Option<CurrentCloseBasis>,
-    pub blocker_refs: Vec<StateRecordRef>,
-    pub state: StateSummary,
+declare_method_result! {
+    /// `volicord.record_run` method result branch and its method-specific fields.
+    pub struct RecordRunResult from RecordRunResultFields {
+        pub run_summary: RunSummary,
+        pub registered_artifacts: Vec<ArtifactRef>,
+        pub evidence_summary: Option<EvidenceSummary>,
+        pub evidence_observations: Vec<EvidenceObservation>,
+        pub evidence_producers: Vec<EvidenceProducer>,
+        pub current_close_basis: Option<CurrentCloseBasis>,
+        pub blocker_refs: Vec<StateRecordRef>,
+        pub state: StateSummary,
+    }
 }
 
 /// `volicord.request_user_action` request params.
@@ -1164,14 +1389,13 @@ pub enum McpRequestUserActionOperation {
     },
 }
 
-/// `volicord.request_user_action` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RequestUserActionResult {
-    pub base: ToolResultBase,
-    pub user_action_request_summary: AgentSafeUserActionRequestSummary,
-    pub blocker_refs: Vec<StateRecordRef>,
-    pub state: StateSummary,
+declare_method_result! {
+    /// `volicord.request_user_action` method result branch and its method-specific fields.
+    pub struct RequestUserActionResult from RequestUserActionResultFields {
+        pub user_action_request_summary: AgentSafeUserActionRequestSummary,
+        pub blocker_refs: Vec<StateRecordRef>,
+        pub state: StateSummary,
+    }
 }
 
 /// `volicord.resolve_user_action` request params.
@@ -1198,17 +1422,17 @@ impl MethodOperationCategory for ResolveUserActionRequest {
     }
 }
 
-/// `volicord.resolve_user_action` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct ResolveUserActionResult {
-    pub base: ToolResultBase,
-    pub user_action_request_ref: StateRecordRef,
-    pub user_action_resolution_ref: StateRecordRef,
-    pub user_action_request: UserActionRequest,
-    pub user_action_resolution: UserActionResolution,
-    pub derived_refs: Vec<StateRecordRef>,
-    pub state: StateSummary,
-    pub next_actions: Vec<NextActionSummary>,
+declare_method_result! {
+    /// `volicord.resolve_user_action` method result branch and its method-specific fields.
+    pub struct ResolveUserActionResult from ResolveUserActionResultFields {
+        pub user_action_request_ref: StateRecordRef,
+        pub user_action_resolution_ref: StateRecordRef,
+        pub user_action_request: UserActionRequest,
+        pub user_action_resolution: UserActionResolution,
+        pub derived_refs: Vec<StateRecordRef>,
+        pub state: StateSummary,
+        pub next_actions: Vec<NextActionSummary>,
+    }
 }
 
 /// `volicord.reconcile_changes` request params.
@@ -1254,20 +1478,19 @@ pub struct UnrecordedChangeResolutionRequest {
     pub user_action_resolution_id: RequiredNullable<UserActionResolutionId>,
 }
 
-/// `volicord.reconcile_changes` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ReconcileChangesResult {
-    pub base: ToolResultBase,
-    pub summary_card: SummaryCard,
-    pub task_ref: StateRecordRef,
-    pub unresolved_changes: Vec<UnrecordedChangeFinding>,
-    pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
-    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
-    pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
-    pub state: StateSummary,
-    pub close_blockers: Vec<CloseReadinessBlocker>,
-    pub next_actions: Vec<NextActionSummary>,
+declare_method_result! {
+    /// `volicord.reconcile_changes` method result branch and its method-specific fields.
+    pub struct ReconcileChangesResult from ReconcileChangesResultFields {
+        pub summary_card: SummaryCard,
+        pub task_ref: StateRecordRef,
+        pub unresolved_changes: Vec<UnrecordedChangeFinding>,
+        pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
+        pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
+        pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
+        pub state: StateSummary,
+        pub close_blockers: Vec<CloseReadinessBlocker>,
+        pub next_actions: Vec<NextActionSummary>,
+    }
 }
 
 /// Rejected requested reconciliation item.
@@ -1347,23 +1570,22 @@ pub struct McpCloseTaskArguments {
     pub user_note: RequiredNullable<String>,
 }
 
-/// `volicord.close_task` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CloseTaskResult {
-    pub base: ToolResultBase,
-    pub summary_card: SummaryCard,
-    pub close_state: CloseState,
-    pub current_close_basis: Option<CurrentCloseBasis>,
-    pub risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
-    pub continuity_summary: Vec<ProjectContinuitySummary>,
-    pub state: StateSummary,
-    pub blockers: Vec<CloseReadinessBlocker>,
-    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
-    pub evidence_summary: Option<EvidenceSummary>,
-    pub evidence_gate: EvidenceGateSummary,
-    pub artifact_refs: Vec<ArtifactRef>,
-    pub authority_receipt: AuthorityReceipt,
+declare_method_result! {
+    /// `volicord.close_task` method result branch and its method-specific fields.
+    pub struct CloseTaskResult from CloseTaskResultFields {
+        pub summary_card: SummaryCard,
+        pub close_state: CloseState,
+        pub current_close_basis: Option<CurrentCloseBasis>,
+        pub risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
+        pub continuity_summary: Vec<ProjectContinuitySummary>,
+        pub state: StateSummary,
+        pub blockers: Vec<CloseReadinessBlocker>,
+        pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
+        pub evidence_summary: Option<EvidenceSummary>,
+        pub evidence_gate: EvidenceGateSummary,
+        pub artifact_refs: Vec<ArtifactRef>,
+        pub authority_receipt: AuthorityReceipt,
+    }
 }
 
 /// Returns the generated JSON Schema for one public method request shape.

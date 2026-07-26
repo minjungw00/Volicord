@@ -25,9 +25,9 @@ use volicord_store::{
 use volicord_types::{
     canonical_request_hash, ActorSource, ChangeUnitId, CloseTaskResult, DryRunSummary,
     DurableIdError, DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef,
-    GuaranteeDisclosure, IdempotencyKey, IntakeResult, JsonObject, MethodName, OperationCategory,
-    OperationResultRef, PrepareEvidenceCaptureResult, PrepareWriteResult, ProjectId,
-    RandomDurableIdGenerator, ReconcileChangesResult, RecordRunResult, RequestHash,
+    GuaranteeDisclosure, IdempotencyKey, IntakeResult, JsonObject, MethodName, MethodResultFields,
+    OperationCategory, OperationResultRef, PrepareEvidenceCaptureResult, PrepareWriteResult,
+    ProjectId, RandomDurableIdGenerator, ReconcileChangesResult, RecordRunResult, RequestHash,
     RequestUserActionResult, ResolveUserActionResult, ResponseKind, TaskId, ToolDryRunResponse,
     ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase, UpdateScopeResult, UtcTimestamp,
     DURABLE_ID_RETRY_LIMIT,
@@ -271,10 +271,10 @@ impl MethodPolicy {
     }
 
     #[cfg(test)]
-    fn for_branch(
+    fn for_branch<F>(
         operation_category: OperationCategory,
         task: TaskRequirement,
-        branch: &OwnerPipelineBranch,
+        branch: &OwnerPipelineBranch<F>,
     ) -> Self {
         match branch {
             OwnerPipelineBranch::ReadOnly { .. } => Self::exact(
@@ -311,18 +311,18 @@ impl MethodPolicy {
 
 /// Owner-selected branch shape used by the shared pipeline.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum OwnerPipelineBranch {
+pub(crate) enum OwnerPipelineBranch<F> {
     ReadOnly {
-        result_fields: JsonObject,
+        result_fields: F,
     },
     NoEffectResult {
-        result_fields: JsonObject,
+        result_fields: F,
     },
     DryRunPreview {
         dry_run_summary: DryRunSummary,
     },
     CommitMutation {
-        result_fields: JsonObject,
+        result_fields: F,
         event_kind: String,
         event_payload: JsonObject,
         task_id: Option<TaskId>,
@@ -334,14 +334,14 @@ pub(crate) enum OwnerPipelineBranch {
 /// Input to the shared Core request pipeline.
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PipelineRequest {
+pub(crate) struct PipelineRequest<F> {
     pub method_name: MethodName,
     pub envelope: ToolEnvelope,
     pub request_json: Value,
     pub invocation: InvocationContext,
     pub operation_category: OperationCategory,
     pub task_requirement: TaskRequirement,
-    pub branch: OwnerPipelineBranch,
+    pub branch: OwnerPipelineBranch<F>,
 }
 
 /// Input to the shared preflight boundary before method-specific planning.
@@ -609,11 +609,15 @@ impl CoreService {
 
     /// Runs the shared envelope, context, freshness, replay, and effect pipeline.
     #[cfg(test)]
-    pub(crate) fn execute_pipeline(
+    pub(crate) fn execute_pipeline<F>(
         &self,
         context: Option<&RuntimeHomeMutationContext<'_>>,
-        request: PipelineRequest,
-    ) -> CoreResult<PipelineResponse> {
+        request: PipelineRequest<F>,
+    ) -> CoreResult<PipelineResponse>
+    where
+        F: MethodResultFields,
+        F::Result: Serialize,
+    {
         validate_branch_shape(&request.branch, request.envelope.dry_run)?;
         let policy = MethodPolicy::for_branch(
             request.operation_category,
@@ -817,11 +821,15 @@ impl CoreService {
     }
 
     /// Routes a prepared request to the selected storage/effect branch.
-    pub(crate) fn execute_prepared_request(
+    pub(crate) fn execute_prepared_request<F>(
         &self,
         mut prepared: PreparedRequest<'_>,
-        branch: OwnerPipelineBranch,
-    ) -> CoreResult<PipelineResponse> {
+        branch: OwnerPipelineBranch<F>,
+    ) -> CoreResult<PipelineResponse>
+    where
+        F: MethodResultFields,
+        F::Result: Serialize,
+    {
         validate_branch_shape(&branch, prepared.envelope.dry_run)?;
         let project_state = prepared.context.project_state.clone();
         let verified_invocation = prepared.context.verified_invocation.clone();
@@ -836,7 +844,7 @@ impl CoreService {
                     Vec::new(),
                 );
                 response_from_value(
-                    method_result_value(base, result_fields)?,
+                    serde_json::to_value(result_fields.with_base(base))?,
                     Some(verified_invocation),
                     resolved_task_id,
                     false,
@@ -850,7 +858,7 @@ impl CoreService {
                     Vec::new(),
                 );
                 response_from_value(
-                    method_result_value(base, result_fields)?,
+                    serde_json::to_value(result_fields.with_base(base))?,
                     Some(verified_invocation),
                     resolved_task_id,
                     false,
@@ -1021,20 +1029,6 @@ pub fn method_result_base(
     }
 }
 
-/// Builds a method result JSON object by adding the common `base` field.
-pub fn method_result_value(
-    base: ToolResultBase,
-    mut result_fields: JsonObject,
-) -> CoreResult<Value> {
-    if result_fields.contains_key("base") {
-        return Err(CorePipelineError::InvalidDispatch {
-            detail: "method result fields must not contain base".to_owned(),
-        });
-    }
-    result_fields.insert("base".to_owned(), serde_json::to_value(base)?);
-    Ok(Value::Object(result_fields))
-}
-
 /// Builds a rejected response and applies public error precedence.
 pub fn rejected_response(
     dry_run: bool,
@@ -1147,12 +1141,10 @@ fn validate_committed_effect_envelope(
     Vec::new()
 }
 
-fn validate_branch_shape(branch: &OwnerPipelineBranch, dry_run: bool) -> CoreResult<()> {
+fn validate_branch_shape<F>(branch: &OwnerPipelineBranch<F>, dry_run: bool) -> CoreResult<()> {
     match (branch, dry_run) {
-        (OwnerPipelineBranch::ReadOnly { result_fields }, _) => ensure_no_base_field(result_fields),
-        (OwnerPipelineBranch::NoEffectResult { result_fields }, false) => {
-            ensure_no_base_field(result_fields)
-        }
+        (OwnerPipelineBranch::ReadOnly { .. }, _) => Ok(()),
+        (OwnerPipelineBranch::NoEffectResult { .. }, false) => Ok(()),
         (OwnerPipelineBranch::NoEffectResult { .. }, true) => {
             Err(CorePipelineError::InvalidDispatch {
                 detail: "no-effect result branch requires ToolEnvelope.dry_run=false".to_owned(),
@@ -1164,15 +1156,7 @@ fn validate_branch_shape(branch: &OwnerPipelineBranch, dry_run: bool) -> CoreRes
                 detail: "dry-run preview branch requires ToolEnvelope.dry_run=true".to_owned(),
             })
         }
-        (
-            OwnerPipelineBranch::CommitMutation {
-                result_fields,
-                event_kind,
-                ..
-            },
-            false,
-        ) => {
-            ensure_no_base_field(result_fields)?;
+        (OwnerPipelineBranch::CommitMutation { event_kind, .. }, false) => {
             if event_kind.trim().is_empty() {
                 return Err(CorePipelineError::InvalidDispatch {
                     detail: "committed mutation event_kind must not be empty".to_owned(),
@@ -1185,16 +1169,6 @@ fn validate_branch_shape(branch: &OwnerPipelineBranch, dry_run: bool) -> CoreRes
                 detail: "commit branch requires ToolEnvelope.dry_run=false".to_owned(),
             })
         }
-    }
-}
-
-fn ensure_no_base_field(result_fields: &JsonObject) -> CoreResult<()> {
-    if result_fields.contains_key("base") {
-        Err(CorePipelineError::InvalidDispatch {
-            detail: "method result fields must not contain base".to_owned(),
-        })
-    } else {
-        Ok(())
     }
 }
 
@@ -1553,12 +1527,12 @@ fn ensure_task_exists(store: &CoreProjectStore, task_id: &TaskId) -> Result<Task
     }
 }
 
-struct CommitPipelineArgs<'a> {
+struct CommitPipelineArgs<'a, F> {
     envelope: &'a ToolEnvelope,
     method_name: MethodName,
     request_hash: &'a RequestHash,
     event_id: String,
-    result_fields: JsonObject,
+    result_fields: F,
     event_kind: String,
     event_payload: JsonObject,
     change_unit_id: Option<ChangeUnitId>,
@@ -1569,10 +1543,14 @@ struct CommitPipelineArgs<'a> {
     include_live_storage_time: bool,
 }
 
-fn commit_mutation(
+fn commit_mutation<F>(
     store: &mut CoreProjectStore,
-    args: CommitPipelineArgs<'_>,
-) -> CoreResult<PipelineResponse> {
+    args: CommitPipelineArgs<'_, F>,
+) -> CoreResult<PipelineResponse>
+where
+    F: MethodResultFields,
+    F::Result: Serialize,
+{
     let CommitPipelineArgs {
         envelope,
         method_name,
@@ -1752,11 +1730,15 @@ pub(crate) fn operation_result_ref(
     })
 }
 
-fn committed_response_json(
-    result_fields: JsonObject,
+fn committed_response_json<F>(
+    result_fields: F,
     committed_state_version: u64,
     events: Vec<CommittedEventRef>,
-) -> CoreResult<String> {
+) -> CoreResult<String>
+where
+    F: MethodResultFields,
+    F::Result: Serialize,
+{
     let event_refs = events
         .into_iter()
         .map(|event| EventRef {
@@ -1770,7 +1752,7 @@ fn committed_response_json(
         Some(committed_state_version),
         event_refs,
     );
-    let response = method_result_value(base, result_fields)?;
+    let response = serde_json::to_value(result_fields.with_base(base))?;
     serde_json::to_string(&response).map_err(CorePipelineError::from)
 }
 
@@ -2049,6 +2031,7 @@ mod tests {
         path::{Path, PathBuf},
     };
 
+    use serde::{Deserialize, Serialize};
     use serde_json::{json, Map, Value};
     use volicord_store::{
         bootstrap::{
@@ -2071,6 +2054,28 @@ mod tests {
     const PROJECT_ID: &str = "project_a";
     const TASK_ID: &str = "task_a";
     const CONNECTION_ID: &str = "connection_main";
+
+    #[derive(Debug, Clone, PartialEq, Serialize)]
+    struct PipelineTestResultFields {
+        pipeline_marker: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct PipelineTestResult {
+        base: ToolResultBase,
+        pipeline_marker: String,
+    }
+
+    impl MethodResultFields for PipelineTestResultFields {
+        type Result = PipelineTestResult;
+
+        fn with_base(self, base: ToolResultBase) -> Self::Result {
+            PipelineTestResult {
+                base,
+                pipeline_marker: self.pipeline_marker,
+            }
+        }
+    }
 
     #[test]
     fn admitted_core_service_accepts_only_its_exact_mutation_identity() -> Result<(), Box<dyn Error>>
@@ -2296,7 +2301,10 @@ mod tests {
             )
         }
 
-        fn execute(&self, request: PipelineRequest) -> CoreResult<PipelineResponse> {
+        fn execute(
+            &self,
+            request: PipelineRequest<PipelineTestResultFields>,
+        ) -> CoreResult<PipelineResponse> {
             let context = self.mutation.context().map_err(CorePipelineError::from)?;
             self.service.execute_pipeline(Some(&context), request)
         }
@@ -2375,6 +2383,8 @@ mod tests {
 
         assert_eq!(response.response_value["base"]["response_kind"], "dry_run");
         assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
+        assert_eq!(response.response_value["base"]["state_version"], 0);
+        assert_eq!(response.response_value["base"]["events"], json!([]));
         assert_eq!(harness.counts()?, before);
         Ok(())
     }
@@ -2399,6 +2409,47 @@ mod tests {
 
         assert_eq!(response.response_value["base"]["response_kind"], "result");
         assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
+        assert_eq!(response.response_value["base"]["state_version"], 0);
+        assert_eq!(response.response_value["base"]["events"], json!([]));
+        let typed: PipelineTestResult = serde_json::from_str(&response.response_json)?;
+        assert_eq!(typed.pipeline_marker, "read_only");
+        assert_eq!(serde_json::to_value(typed)?, response.response_value);
+        assert_eq!(harness.counts()?, before);
+        Ok(())
+    }
+
+    #[test]
+    fn no_effect_result_branch_composes_typed_fields_without_storage_effect(
+    ) -> Result<(), Box<dyn Error>> {
+        let harness = PipelineHarness::new()?;
+        let before = harness.counts()?;
+        let envelope = envelope(
+            "req_no_effect",
+            Some("idem_no_effect"),
+            false,
+            Some(0),
+            Some(TASK_ID),
+        );
+
+        let response = harness.execute(PipelineRequest {
+            method_name: MethodName::PrepareWrite,
+            request_json: request_json(MethodName::PrepareWrite, &envelope, "no-effect"),
+            envelope,
+            invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
+            operation_category: OperationCategory::AgentWorkflow,
+            task_requirement: TaskRequirement::Required,
+            branch: OwnerPipelineBranch::NoEffectResult {
+                result_fields: result_fields("no_effect"),
+            },
+        })?;
+
+        assert_eq!(response.response_value["base"]["response_kind"], "result");
+        assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
+        assert_eq!(response.response_value["base"]["state_version"], 0);
+        assert_eq!(response.response_value["base"]["events"], json!([]));
+        let typed: PipelineTestResult = serde_json::from_str(&response.response_json)?;
+        assert_eq!(typed.pipeline_marker, "no_effect");
+        assert_eq!(serde_json::to_value(typed)?, response.response_value);
         assert_eq!(harness.counts()?, before);
         Ok(())
     }
@@ -2530,6 +2581,9 @@ mod tests {
         assert_eq!(after.authority_events, before.authority_events + 1);
         assert_eq!(after.tool_invocations, before.tool_invocations + 1);
         assert_eq!(after.tasks, before.tasks);
+        let typed: PipelineTestResult = serde_json::from_str(&response.response_json)?;
+        assert_eq!(typed.pipeline_marker, "commit");
+        assert_eq!(serde_json::to_value(typed)?, response.response_value);
         Ok(())
     }
 
@@ -3102,35 +3156,44 @@ mod tests {
         json!({
             "method": method_name.as_str(),
             "envelope": envelope,
-            "pipeline_placeholder": marker
+            "pipeline_marker": marker
         })
     }
 
-    fn result_fields(marker: &str) -> JsonObject {
+    fn result_fields(marker: &str) -> PipelineTestResultFields {
+        PipelineTestResultFields {
+            pipeline_marker: marker.to_owned(),
+        }
+    }
+
+    fn event_payload(marker: &str) -> JsonObject {
         let mut fields = Map::new();
         fields.insert(
-            "pipeline_placeholder".to_owned(),
+            "pipeline_marker".to_owned(),
             Value::String(marker.to_owned()),
         );
         fields
     }
 
-    fn commit_branch(marker: &str) -> OwnerPipelineBranch {
+    fn commit_branch(marker: &str) -> OwnerPipelineBranch<PipelineTestResultFields> {
         OwnerPipelineBranch::CommitMutation {
             result_fields: result_fields(marker),
-            event_kind: "core.pipeline_placeholder_commit".to_owned(),
-            event_payload: result_fields(marker),
+            event_kind: "core.pipeline_test_commit".to_owned(),
+            event_payload: event_payload(marker),
             task_id: None,
             change_unit_id: None,
             storage_mutations: Vec::new(),
         }
     }
 
-    fn change_unit_commit_branch(change_unit_id: &str, marker: &str) -> OwnerPipelineBranch {
+    fn change_unit_commit_branch(
+        change_unit_id: &str,
+        marker: &str,
+    ) -> OwnerPipelineBranch<PipelineTestResultFields> {
         OwnerPipelineBranch::CommitMutation {
             result_fields: result_fields(marker),
-            event_kind: "core.pipeline_placeholder_commit".to_owned(),
-            event_payload: result_fields(marker),
+            event_kind: "core.pipeline_test_commit".to_owned(),
+            event_payload: event_payload(marker),
             task_id: None,
             change_unit_id: None,
             storage_mutations: vec![CoreStorageMutation::InsertCurrentChangeUnit(
@@ -3199,7 +3262,7 @@ mod tests {
             would_blockers: Vec::new(),
             would_errors: Vec::new(),
             next_actions: Vec::new(),
-            diagnostics: vec!["pipeline placeholder dry-run".to_owned()],
+            diagnostics: vec!["pipeline test dry-run".to_owned()],
         }
     }
 }

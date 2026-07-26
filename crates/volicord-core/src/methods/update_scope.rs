@@ -55,7 +55,7 @@ impl CoreService {
         };
 
         if request.envelope.dry_run {
-            return self.execute_prepared_request(
+            return self.execute_prepared_request::<UpdateScopeResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
                     dry_run_summary: dry_run_summary(
@@ -622,12 +622,12 @@ struct UpdateScopeResponseProjection {
     change_unit_id: Option<ChangeUnitId>,
     storage_mutations: Vec<CoreStorageMutation>,
     event_payload: JsonObject,
-    result_fields: JsonObject,
+    result_fields: UpdateScopeResultFields,
     next_actions: Vec<NextActionSummary>,
 }
 
 impl UpdateScopeResponseProjection {
-    fn into_method_plan(self) -> MethodPlan {
+    fn into_method_plan(self) -> MethodPlan<UpdateScopeResultFields> {
         MethodPlan {
             task_id: self.task_id,
             change_unit_id: self.change_unit_id,
@@ -646,7 +646,7 @@ fn plan_update_scope(
     request: UpdateScopeRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan, PlanError> {
+) -> Result<MethodPlan<UpdateScopeResultFields>, PlanError> {
     let policy = decide_update_scope_policy(
         store,
         project_state,
@@ -804,8 +804,7 @@ fn project_update_scope_response(
         close_blockers: close_plan.blockers,
         guarantee_display: Some(guarantee_display),
     })?;
-    let result = volicord_types::UpdateScopeResult {
-        base: placeholder_base(),
+    let result_fields = UpdateScopeResultFields {
         task_ref,
         change_unit_ref,
         linked_scope_decision_refs,
@@ -827,7 +826,7 @@ fn project_update_scope_response(
         change_unit_id: branch_change_unit_id,
         storage_mutations,
         event_payload,
-        result_fields: strip_base(serde_json::to_value(result)?)?,
+        result_fields,
         next_actions,
     })
 }

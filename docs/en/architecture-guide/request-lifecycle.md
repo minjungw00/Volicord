@@ -21,12 +21,15 @@ Codex -> stdio MCP -> public argument DTO -> Core request -> plan
 4. Core common preflight validates the typed Agent Session, actor, operation
    category, project, replay identity, expected state, current Task context,
    and structural input.
-5. The method planner reads one coherent snapshot and produces a typed outcome
-   plus exact proposed effects.
-6. Read-only branches return without mutation. Mutation branches revalidate
-   commit preconditions and apply one atomic Store transaction.
-7. The public response is serialized once. MCP projects the owner-defined
-   detail without changing authority meaning.
+5. The method planner reads one coherent snapshot and produces typed
+   method-specific result fields plus exact proposed effects. It does not
+   construct the common result base.
+6. The shared pipeline selects the typed read-only, no-effect, dry-run, or
+   committed branch. Mutation branches revalidate commit preconditions and
+   apply one atomic Store transaction.
+7. After the branch effect, state-version, event, and replay facts are known,
+   the pipeline constructs and serializes the complete public response once.
+   MCP projects the owner-defined detail without changing authority meaning.
 
 Failures before Core have no Core or Store effects. A failure after commit
 preserves operation-result recovery coordinates and never retries the mutation
@@ -49,10 +52,20 @@ ticket lookup, invalidation, policy evaluation, or any other effect. This is
 
 ## Mutation Planning And Commit
 
-Planners return a closed outcome and exact commit inputs. Store performs
-owner-defined final validation inside the transaction, inserts immutable rows,
-updates current pointers, appends authority events and replay when applicable,
-and advances `state_version` exactly once.
+Planners return a closed outcome, a typed method-fields value, and exact commit
+inputs. The matching method-fields and complete public-result types are emitted
+from one declaration in
+[`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs).
+The shared pipeline carries that fields type through branch selection. Store
+performs owner-defined final validation inside the transaction, inserts
+immutable rows, updates current pointers, appends authority events and replay
+when applicable, and advances `state_version` exactly once.
+
+For a method-result branch, the pipeline attaches the final `ToolResultBase`
+only after those common facts are available. Read-only, no-effect, and
+committed results therefore use the same typed composition boundary. A dry-run
+branch remains the typed `ToolDryRunResponse` branch defined by the public
+response owner.
 
 Rejected, dry-run, unavailable, corrupt, unsupported-contract, and conflict
 branches follow [Storage Effects](../reference/storage-effects.md). They never
@@ -86,10 +99,14 @@ correlation never becomes an empty success.
 
 ## Response Projection
 
-Public method results remain the authority-bearing response. MCP structured
-content conforms to the advertised schema; text is a bounded human rendering.
-Compact schemas and summary views may omit display detail but cannot omit
-required authority coordinates or relax server validation.
+Public method results remain the authority-bearing response. Their flat JSON
+shape and generated schema come from the complete public result type, while
+method planning handles only its method-specific fields. A committed replay row
+stores that complete serialized result and replay decoding validates the same
+current type. MCP structured content conforms to the advertised schema; text is
+a bounded human rendering. Compact schemas and summary views may omit display
+detail but cannot omit required authority coordinates or relax server
+validation.
 
 ## Related Owners
 

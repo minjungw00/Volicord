@@ -211,11 +211,15 @@ pub fn validate_authority_status(
             expectation.expected_change_unit_id.as_ref(),
             receipt.change_unit_ref.as_ref(),
         )
-        || active_task.evidence_gate.as_ref() != receipt.evidence_gate.as_ref()
+        || active_task
+            .evidence_gate
+            .as_ref()
+            .and_then(|gate| gate.as_ref())
+            != receipt.evidence_gate.as_ref()
         || status_evidence_gate.as_ref() != receipt.evidence_gate.as_ref()
         || !close_state_matches(active_task.close_state, receipt.close_state)
         || status_close_state != receipt.close_state
-        || active_task.close_blockers != receipt.close_blockers
+        || active_task.close_blockers.as_deref() != Some(receipt.close_blockers.as_slice())
         || status_close_blockers != &receipt.close_blockers
         || status.next_actions.first() != receipt.next_action.as_ref()
         || authority_next_actor(receipt.next_action.as_ref()) != receipt.next_actor

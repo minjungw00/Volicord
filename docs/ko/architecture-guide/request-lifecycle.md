@@ -20,12 +20,15 @@ Codex -> stdio MCP -> public argument DTO -> Core request -> plan
    완전한 Core 요청을 만듭니다.
 4. Core 공통 preflight가 typed Agent Session, actor, operation category, project,
    replay identity, expected state, 현재 Task context, 구조 입력을 검증합니다.
-5. 메서드 planner가 일관된 snapshot 하나를 읽고 typed outcome과 정확한 제안 효과를
-   만듭니다.
-6. 읽기 전용 분기는 변경 없이 반환합니다. Mutation 분기는 commit 전제 조건을 다시
-   검증하고 Store transaction 하나를 원자적으로 적용합니다.
-7. 공개 응답을 한 번 직렬화하고 MCP가 권한 의미를 바꾸지 않은 채 담당 문서의 detail을
-   projection합니다.
+5. 메서드 계획 코드는 일관된 snapshot 하나를 읽고 메서드별 결과 필드를 담은
+   typed 값과 정확한 제안 효과를 만듭니다. 공통 결과 base는 이 단계에서 만들지
+   않습니다.
+6. 공유 파이프라인이 typed 읽기 전용, 효과 없음, dry-run, 커밋 분기를 선택합니다.
+   Mutation 분기는 commit 전제 조건을 다시 검증하고 Store transaction 하나를
+   원자적으로 적용합니다.
+7. 분기의 효과, 상태 버전, 이벤트, 재실행 사실이 확정된 뒤 파이프라인이 완전한
+   공개 응답을 한 번 구성하고 직렬화합니다. MCP는 권한 의미를 바꾸지 않은 채
+   담당 문서의 세부 내용을 projection합니다.
 
 Core 전 실패는 Core 또는 Store 효과가 없습니다. Commit 뒤 실패는 operation-result
 복구 좌표를 보존하고 mutation을 암시적으로 다시 시도하지 않습니다.
@@ -47,9 +50,18 @@ policy 평가, 그 밖의 효과 전에 `NO_ACTIVE_CHANGE_UNIT`과
 
 ## Mutation planning과 commit
 
-Planner는 닫힌 outcome과 정확한 commit input을 반환합니다. Store는 transaction 안에서
-담당 문서의 최종 검증을 수행하고 immutable row 삽입, current pointer 갱신, 해당할 때
-authority event와 replay 추가, `state_version` 정확히 한 번 증가를 수행합니다.
+계획 코드는 닫힌 outcome, typed 메서드 필드 값, 정확한 commit input을 반환합니다.
+서로 대응하는 메서드 필드 타입과 완전한 공개 결과 타입은
+[`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)의
+선언 하나에서 함께 만들어집니다. 공유 파이프라인은 분기를 선택하는 동안 이 필드
+타입을 유지합니다. Store는 transaction 안에서 담당 문서의 최종 검증을 수행하고
+immutable row 삽입, current pointer 갱신, 해당할 때 authority event와 replay 추가,
+`state_version` 정확히 한 번 증가를 수행합니다.
+
+메서드 결과 분기에서는 공통 사실이 확정된 뒤에만 파이프라인이 최종
+`ToolResultBase`를 결합합니다. 따라서 읽기 전용, 효과 없음, 커밋 결과는 같은 typed
+구성 경계를 사용합니다. Dry-run 분기는 공개 응답 담당 문서가 정의한 typed
+`ToolDryRunResponse` 분기로 유지됩니다.
 
 Rejected, dry-run, unavailable, corrupt, unsupported-contract, conflict 분기는
 [저장 효과](../reference/storage-effects.md)를 따릅니다. 가까운 성공 분기의 효과를
@@ -80,10 +92,12 @@ observed count를 보존합니다. Store 실패나 손상 correlation이 빈 성
 
 ## 응답 projection
 
-공개 메서드 결과가 권한을 담는 응답으로 남습니다. MCP structured content는 광고한
-schema를 만족하고 text는 제한된 사람용 rendering입니다. Compact schema와 summary
-view는 표시 detail을 생략할 수 있지만 필요한 권한 좌표를 빼거나 server validation을
-느슨하게 할 수 없습니다.
+공개 메서드 결과가 권한을 담는 응답으로 남습니다. 평면 JSON 형태와 생성 schema는
+완전한 공개 결과 타입에서 나오며, 메서드 계획은 메서드별 필드만 다룹니다. 커밋된
+재실행 행은 완전한 직렬화 결과를 저장하고, 재실행 decode도 같은 현재 타입으로
+검증합니다. MCP structured content는 광고한 schema를 만족하고 text는 제한된 사람용
+rendering입니다. Compact schema와 summary view는 표시 detail을 생략할 수 있지만
+필요한 권한 좌표를 빼거나 server validation을 느슨하게 할 수 없습니다.
 
 ## 관련 담당 문서
 

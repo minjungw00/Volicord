@@ -116,6 +116,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         ),
         invocation(OperationCategory::AgentWorkflow),
     )?;
+    assert_typed_result_contract::<ReconcileChangesResult>(&response);
 
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_authority_disclosure(&response.response_value);
