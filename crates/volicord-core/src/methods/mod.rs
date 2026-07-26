@@ -35,23 +35,22 @@ use crate::pipeline::{
 };
 use crate::policy::{
     close_readiness::{
-        accepted_current_scope_decision_authority, close_basis_is_current, close_basis_run_refs,
-        close_blocker, close_next_action, current_acceptance_required_risk_ids,
-        current_cancellation_authority, current_final_acceptance,
-        current_residual_risk_acceptance_coverage, final_acceptance_requirement,
-        is_terminal_lifecycle, run_record_matches_close_basis_context,
-        user_action_has_current_basis, verified_user_channel_provenance,
-        CancellationAuthorityRequirement, ScopeDecisionAuthorityRequirement, UserActionAuthority,
+        accepted_current_scope_decision_authority, close_blocker, close_next_action,
+        current_acceptance_required_risk_ids, current_cancellation_authority,
+        current_final_acceptance, current_residual_risk_acceptance_coverage,
+        final_acceptance_requirement, is_terminal_lifecycle, user_action_has_current_basis,
+        verified_user_channel_provenance, CancellationAuthorityRequirement,
+        ScopeDecisionAuthorityRequirement, UserActionAuthority,
     },
+    close_readiness_evidence::{project_close_evidence_summary, required_acceptance_criterion_ids},
     continuity::{decision_title_prefix, judgment_continuity_kind},
     effect_contract::{
         product_write_violations, validate_effect_contract, validate_effect_contract_paths,
         EffectContractValidationError, EffectContractViolation,
     },
     evidence::{
-        evidence_assurance_matches_source, evidence_item_has_no_support,
         evidence_item_related_refs, evidence_status_for_items, state_record_ref_identity_key,
-        unique_artifact_refs, unique_state_record_refs, EvidenceProvenanceClass,
+        unique_artifact_refs, unique_state_record_refs,
     },
     path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
     user_action_relevance::{
@@ -76,6 +75,7 @@ use crate::{
 };
 
 mod close_task;
+mod evidence_facts;
 mod intake;
 mod operation_result;
 mod prepare_evidence_capture;
@@ -2777,14 +2777,16 @@ fn projected_evidence_summary(
     let record = store
         .latest_evidence_summary(&task_id)
         .map_err(CorePipelineError::from)?;
-    Ok(close_task::close_evidence_summary(
+    let required = evidence_facts::load_required_evidence_criterion_ids(store, &task_id)?;
+    let facts = evidence_facts::load_close_evidence_summary_facts(
         store,
         record.as_ref(),
         task,
         project_id,
         &task_id,
         state_version,
-    )?)
+    )?;
+    Ok(project_close_evidence_summary(facts, &required))
 }
 
 fn projected_evidence_summary_for_criteria(
@@ -2799,15 +2801,15 @@ fn projected_evidence_summary_for_criteria(
         .latest_evidence_summary(&task_id)
         .map_err(CorePipelineError::from)?;
     let required = required_acceptance_criterion_ids(acceptance_criteria);
-    Ok(close_task::close_evidence_summary_with_required(
+    let facts = evidence_facts::load_close_evidence_summary_facts(
         store,
         record.as_ref(),
         task,
         project_id,
         &task_id,
         state_version,
-        &required,
-    )?)
+    )?;
+    Ok(project_close_evidence_summary(facts, &required))
 }
 
 fn projected_pending_user_action_refs(
@@ -2897,185 +2899,6 @@ fn close_context_with_projected_acceptance_criteria(
     context.projected_required_criterion_ids =
         Some(required_acceptance_criterion_ids(acceptance_criteria));
     context
-}
-
-fn required_acceptance_criterion_ids(
-    acceptance_criteria: &[AcceptanceCriterion],
-) -> BTreeSet<String> {
-    acceptance_criteria
-        .iter()
-        .filter(|criterion| criterion.evidence_requirement == EvidenceRequirement::Required)
-        .map(|criterion| criterion.acceptance_criterion_id.as_str().to_owned())
-        .collect()
-}
-
-fn evidence_summary_with_required_criteria(
-    summary: Option<EvidenceSummary>,
-    acceptance_criteria: &[AcceptanceCriterion],
-) -> Option<EvidenceSummary> {
-    let required = required_acceptance_criterion_ids(acceptance_criteria);
-    if summary.is_none() && required.is_empty() {
-        return None;
-    }
-    let mut summary = summary.unwrap_or(EvidenceSummary {
-        evidence_state: None,
-        status: EvidenceStatus::Unknown,
-        coverage_items: Vec::new(),
-        artifact_refs: Vec::new(),
-        observation_refs: Vec::new(),
-        updated_by_run_ref: None,
-    });
-    for acceptance_criterion_id in required {
-        if !summary.coverage_items.iter().any(|item| {
-            matches!(
-                &item.target,
-                EvidenceTarget::AcceptanceCriterion {
-                    acceptance_criterion_id: existing
-                } if existing.as_str() == acceptance_criterion_id
-            )
-        }) {
-            summary.coverage_items.push(EvidenceCoverageItem {
-                target: EvidenceTarget::AcceptanceCriterion {
-                    acceptance_criterion_id: AcceptanceCriterionId::new(acceptance_criterion_id),
-                },
-                coverage_state: EvidenceCoverageState::Unsupported,
-                supporting_run_refs: Vec::new(),
-                observation_refs: Vec::new(),
-                supporting_artifact_refs: Vec::new(),
-                gap_refs: Vec::new(),
-            });
-        }
-    }
-    summary.status = evidence_status_for_items(&summary.coverage_items);
-    Some(summary)
-}
-
-fn evaluate_evidence_gate(
-    acceptance_criteria: &[AcceptanceCriterion],
-    evidence_summary: Option<&EvidenceSummary>,
-    close_blockers: &[CloseReadinessBlocker],
-) -> EvidenceGateSummary {
-    let required_ids = acceptance_criteria
-        .iter()
-        .filter(|criterion| criterion.evidence_requirement == EvidenceRequirement::Required)
-        .map(|criterion| criterion.acceptance_criterion_id.as_str())
-        .collect::<BTreeSet<_>>();
-    let optional_ids = acceptance_criteria
-        .iter()
-        .filter(|criterion| criterion.evidence_requirement == EvidenceRequirement::Optional)
-        .map(|criterion| criterion.acceptance_criterion_id.as_str())
-        .collect::<BTreeSet<_>>();
-
-    if required_ids.is_empty() && optional_ids.is_empty() {
-        return EvidenceGateSummary {
-            state: EvidenceGateState::NotRequired,
-        };
-    }
-
-    let coverage_items = evidence_summary
-        .map(|summary| summary.coverage_items.as_slice())
-        .unwrap_or_default();
-    let criterion_item = |criterion_id: &str| {
-        coverage_items.iter().find(|item| {
-            matches!(
-                &item.target,
-                EvidenceTarget::AcceptanceCriterion {
-                    acceptance_criterion_id
-                } if acceptance_criterion_id.as_str() == criterion_id
-            )
-        })
-    };
-    let required_items = coverage_items.iter().filter(|item| {
-        matches!(
-            &item.target,
-            EvidenceTarget::AcceptanceCriterion {
-                acceptance_criterion_id
-            } if required_ids.contains(acceptance_criterion_id.as_str())
-        )
-    });
-    let required_artifact_ids = required_items
-        .clone()
-        .flat_map(|item| item.supporting_artifact_refs.iter())
-        .map(|artifact_ref| artifact_ref.artifact_id.as_str())
-        .collect::<BTreeSet<_>>();
-
-    let has_blocking_evidence_condition = close_blockers.iter().any(|blocker| {
-        blocker.category == CloseReadinessBlockerCategory::Evidence
-            || (blocker.category == CloseReadinessBlockerCategory::ArtifactAvailability
-                && blocker.related_refs.iter().any(|record_ref| {
-                    record_ref.record_kind == StateRecordKind::Artifact
-                        && required_artifact_ids.contains(record_ref.record_id.as_str())
-                }))
-            || (blocker.category == CloseReadinessBlockerCategory::EvidenceProvenance
-                && blocker.code != "evidence_provenance_stale")
-    }) || required_items
-        .clone()
-        .any(|item| item.coverage_state == EvidenceCoverageState::Contradicted);
-    if has_blocking_evidence_condition {
-        return EvidenceGateSummary {
-            state: EvidenceGateState::Blocked,
-        };
-    }
-
-    let has_stale_evidence = close_blockers.iter().any(|blocker| {
-        blocker.category == CloseReadinessBlockerCategory::EvidenceProvenance
-            && blocker.code == "evidence_provenance_stale"
-    }) || required_items
-        .clone()
-        .any(|item| item.coverage_state == EvidenceCoverageState::Stale);
-    if has_stale_evidence {
-        return EvidenceGateSummary {
-            state: EvidenceGateState::Stale,
-        };
-    }
-
-    let item_is_sufficient =
-        |item: &EvidenceCoverageItem| item.coverage_state == EvidenceCoverageState::Supported;
-    let item_has_recorded_evidence =
-        |item: &EvidenceCoverageItem| !evidence_item_has_no_support(item);
-    let has_evidence_claim_blocker = close_blockers
-        .iter()
-        .any(|blocker| blocker.category == CloseReadinessBlockerCategory::EvidenceClaim);
-
-    if !required_ids.is_empty() {
-        if !has_evidence_claim_blocker
-            && required_ids
-                .iter()
-                .all(|criterion_id| criterion_item(criterion_id).is_some_and(item_is_sufficient))
-        {
-            return EvidenceGateSummary {
-                state: EvidenceGateState::Sufficient,
-            };
-        }
-        let any_required_evidence = required_ids.iter().any(|criterion_id| {
-            criterion_item(criterion_id).is_some_and(item_has_recorded_evidence)
-        });
-        return EvidenceGateSummary {
-            state: if any_required_evidence {
-                EvidenceGateState::Partial
-            } else {
-                EvidenceGateState::RequiredMissing
-            },
-        };
-    }
-
-    let optional_items = optional_ids
-        .iter()
-        .filter_map(|criterion_id| criterion_item(criterion_id))
-        .filter(|item| item_has_recorded_evidence(item))
-        .collect::<Vec<_>>();
-    if optional_items.is_empty() {
-        return EvidenceGateSummary {
-            state: EvidenceGateState::OptionalNone,
-        };
-    }
-    EvidenceGateSummary {
-        state: if optional_items.iter().all(|item| item_is_sufficient(item)) {
-            EvidenceGateState::Sufficient
-        } else {
-            EvidenceGateState::Partial
-        },
-    }
 }
 
 fn close_context_with_record_run_projection(

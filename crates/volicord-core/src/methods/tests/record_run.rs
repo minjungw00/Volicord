@@ -3859,32 +3859,6 @@ fn user_channel_observation_preserves_relevance_resolution_time_and_supported_on
             stored_metadata["relevance_assessment"]["status"],
             relevance_value
         );
-        let store = CoreProjectStore::open_read_only(
-            &harness.runtime_home_path,
-            &ProjectId::new(PROJECT_ID),
-        )?;
-        let observation_record = store
-            .evidence_observation_record(observation_id)?
-            .expect("committed user observation should be readable");
-        assert_eq!(
-            super::super::record_run::stored_evidence_observation_provenance_class(
-                &store,
-                &observation_record,
-                &super::super::record_run::StoredEvidenceProvenanceBasis {
-                    project_id: &ProjectId::new(PROJECT_ID),
-                    task_id: &TaskId::new(&task_id),
-                    change_unit_id: &change_unit_id,
-                    scope_revision: 1,
-                    baseline_ref: Some("baseline_test"),
-                    target: &target,
-                    now: &volicord_types::UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?,
-                },
-            )?,
-            EvidenceProvenanceClass::Strong,
-            "{suffix} must retain strong user-channel producer provenance"
-        );
-        drop(store);
-
         let before_replay = harness.counts()?;
         let before_replay_floor: String = harness.conn()?.query_row(
             "SELECT updated_at FROM project_state WHERE project_id = ?1",

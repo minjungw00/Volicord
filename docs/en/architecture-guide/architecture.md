@@ -157,6 +157,29 @@ The durable dependency direction is:
 Exact Cargo dependency edges remain with the Cargo manifests. Exact source
 placement remains with the Source Map.
 
+## Core evidence policy boundary
+
+Core separates evidence fact acquisition from evidence policy evaluation.
+`crates/volicord-core/src/methods/evidence_facts.rs` performs shared Store
+reads, strict owner-row decoding, and construction of typed policy inputs for
+stored and projected evidence. The responsibility-owned modules under
+`crates/volicord-core/src/policy/` evaluate provenance, relevance and support,
+target and `CurrentCloseBasis` matching, producer and artifact binding, and
+close-readiness evidence interpretation. These evaluations are pure where
+their inputs are already available.
+
+`prepare_evidence_capture`, `record_run`, `close_task`, `update_scope`, and the
+shared status and projection paths consume the applicable policy owner
+directly. Method modules retain request validation, method planning, and
+translation of policy results into method results or close-readiness blockers;
+they do not provide shared evidence policy to sibling method modules. Exact
+evidence and close-readiness meaning remains with
+[Core Model](../reference/core-model.md), the applicable
+[API method owners](../reference/api/methods.md), the
+[state schema](../reference/api/schema-state.md), the
+[artifact schema](../reference/api/schema-artifacts.md), and the focused
+[storage owners](../reference/storage.md).
+
 ## Canonical release boundaries
 
 Boundary adapters decode their owner-defined current inputs into one canonical

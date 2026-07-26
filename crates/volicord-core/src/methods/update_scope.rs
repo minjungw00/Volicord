@@ -1,4 +1,5 @@
 use super::*;
+use crate::policy::close_readiness_evidence::evidence_summary_with_required_criteria;
 
 impl CoreService {
     /// Executes `volicord.update_scope` through the shared Core mutation pipeline.

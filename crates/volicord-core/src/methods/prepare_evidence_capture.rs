@@ -1,4 +1,7 @@
 use super::*;
+use crate::policy::evidence_target::{
+    acceptance_criterion_target_is_current, supplemental_claim_target_matches,
+};
 
 const MAX_CAPTURE_LABEL_BYTES: usize = 256;
 const MAX_CAPTURE_TOOL_NAME_BYTES: usize = 256;
@@ -406,9 +409,7 @@ fn validate_capture_target(
             let record = store
                 .acceptance_criterion_record(acceptance_criterion_id.as_str())
                 .map_err(CorePipelineError::from)?;
-            if record.as_ref().is_none_or(|record| {
-                record.task_id != request.task_id.as_str() || record.status != "active"
-            }) {
+            if !acceptance_criterion_target_is_current(record.as_ref(), &request.task_id) {
                 return validation_plan_error(
                     request.envelope.dry_run,
                     Some(project_state.state_version),
@@ -429,18 +430,16 @@ fn validate_capture_target(
                     "supplemental claim target requires a non-empty ID and statement",
                 );
             }
-            if let Some(record) = store
+            let record = store
                 .evidence_claim_record(&request.task_id, evidence_claim_id.as_str())
-                .map_err(CorePipelineError::from)?
-            {
-                if record.statement != *statement {
-                    return validation_plan_error(
-                        request.envelope.dry_run,
-                        Some(project_state.state_version),
-                        "target.statement",
-                        "supplemental claim statement is immutable within a Task",
-                    );
-                }
+                .map_err(CorePipelineError::from)?;
+            if !supplemental_claim_target_matches(record.as_ref(), statement) {
+                return validation_plan_error(
+                    request.envelope.dry_run,
+                    Some(project_state.state_version),
+                    "target.statement",
+                    "supplemental claim statement is immutable within a Task",
+                );
             }
         }
     }

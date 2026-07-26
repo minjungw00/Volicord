@@ -88,8 +88,19 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, and commit orchestration. |
 | `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. |
+| `crates/volicord-core/src/methods/evidence_facts.rs` | Shared Store reads and strict decoding that acquire typed facts for stored and projected evidence without owning evidence-policy classification. |
+| `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | Evidence-capture request validation and planning; consumes target policy for acceptance-criterion and supplemental-claim matching. |
+| `crates/volicord-core/src/methods/record_run.rs` | Run and evidence-update validation and planning; consumes provenance, relevance, target, binding, and close-readiness evidence policy. |
+| `crates/volicord-core/src/methods/close_task.rs` | Close method planning and translation of close-readiness evidence interpretation into method blockers and results. |
+| `crates/volicord-core/src/methods/update_scope.rs` | Scope-update planning and projected evidence-summary completion through the close-readiness evidence policy owner. |
+| `crates/volicord-core/src/methods/status.rs` | Read-only status projection, including consumption of shared close-readiness evidence policy through Core projection paths. |
 | `crates/volicord-core/src/methods/user_action.rs` | UserAction method boundaries and Core-owned User Channel projection, including Store-reusing coherent inbox-resolution snapshots for admitted local consumers. |
-| `crates/volicord-core/src/policy/` | Reusable access, workflow, evidence, continuity, write-ticket, and close-readiness policy. |
+| `crates/volicord-core/src/policy/` | Responsibility-owned reusable policy. Method implementations consume these owners directly rather than obtaining shared policy from sibling method modules. |
+| `crates/volicord-core/src/policy/evidence_provenance.rs` | Pure evidence provenance and assurance classification over typed facts. |
+| `crates/volicord-core/src/policy/evidence_relevance.rs` | Pure evidence relevance and support classification. |
+| `crates/volicord-core/src/policy/evidence_target.rs` | Evidence target, observation basis, and `CurrentCloseBasis` matching. |
+| `crates/volicord-core/src/policy/evidence_binding.rs` | Producer-reference, producer-output, and exact artifact binding policy. |
+| `crates/volicord-core/src/policy/close_readiness_evidence.rs` | Close-readiness evidence interpretation, required-criterion summary completion, and evidence-gate evaluation. |
 | `crates/volicord-core/src/agent_session.rs` | Current Connection, project membership, mode, and managed runtime/project-session validation. |
 | `crates/volicord-core/src/authority_status.rs` | Typed status and authority-receipt correspondence. |
 

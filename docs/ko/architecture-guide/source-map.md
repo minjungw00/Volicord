@@ -88,8 +88,19 @@
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율. |
 | `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. |
+| `crates/volicord-core/src/methods/evidence_facts.rs` | 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 typed 사실을 취득하는 공유 Store 조회와 엄격한 디코딩. |
+| `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | 증거 캡처 요청 검증과 계획. 수락 기준 및 보충 주장 일치에는 대상 정책을 사용합니다. |
+| `crates/volicord-core/src/methods/record_run.rs` | 실행 및 증거 갱신 검증과 계획. 출처, 관련성, 대상, 결속, 닫기 준비 상태 증거 정책을 사용합니다. |
+| `crates/volicord-core/src/methods/close_task.rs` | 닫기 메서드 계획과 닫기 준비 상태 증거 해석을 메서드 차단 사유 및 결과로 변환하는 책임. |
+| `crates/volicord-core/src/methods/update_scope.rs` | 닫기 준비 상태 증거 정책 담당 모듈을 통한 범위 갱신 계획과 투영 증거 요약 완성. |
+| `crates/volicord-core/src/methods/status.rs` | 공유 Core 투영 경로를 통해 닫기 준비 상태 증거 정책을 사용하는 읽기 전용 상태 투영. |
 | `crates/volicord-core/src/methods/user_action.rs` | UserAction 메서드 경계와 Core 소유 User Channel projection. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 inbox resolution snapshot을 얻는 경계를 포함합니다. |
-| `crates/volicord-core/src/policy/` | 재사용 접근, workflow, evidence, continuity, write-ticket, close-readiness 정책. |
+| `crates/volicord-core/src/policy/` | 책임별 재사용 정책. 메서드 구현은 형제 메서드 모듈에서 공유 정책을 얻지 않고 이 담당 모듈을 직접 사용합니다. |
+| `crates/volicord-core/src/policy/evidence_provenance.rs` | Typed 사실에 대한 순수 증거 출처 및 보증 수준 분류. |
+| `crates/volicord-core/src/policy/evidence_relevance.rs` | 순수 증거 관련성 및 뒷받침 여부 분류. |
+| `crates/volicord-core/src/policy/evidence_target.rs` | 증거 대상, 관찰 근거, `CurrentCloseBasis` 일치 정책. |
+| `crates/volicord-core/src/policy/evidence_binding.rs` | 생산자 참조, 생산자 출력, 정확한 아티팩트 결속 정책. |
+| `crates/volicord-core/src/policy/close_readiness_evidence.rs` | 닫기 준비 상태 증거 해석, 필수 수락 기준 요약 완성, 증거 게이트 평가. |
 | `crates/volicord-core/src/agent_session.rs` | 현재 Connection, project membership, mode, 관리 runtime/project session 검증. |
 | `crates/volicord-core/src/authority_status.rs` | typed status와 authority receipt 대응. |
 

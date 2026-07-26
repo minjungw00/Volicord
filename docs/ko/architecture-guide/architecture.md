@@ -144,6 +144,27 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 정확한 Cargo 의존 간선은 Cargo 매니페스트가 담당합니다. 정확한 소스 배치는 소스
 지도가 담당합니다.
 
+## Core 증거 정책 경계
+
+Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
+`crates/volicord-core/src/methods/evidence_facts.rs`는 공유 Store 조회, 담당
+레코드의 엄격한 디코딩, 저장된 증거와 투영된 증거를 위한 typed 정책 입력 구성을
+담당합니다. `crates/volicord-core/src/policy/` 아래의 책임별 모듈은 출처,
+관련성과 뒷받침 여부, 대상과 `CurrentCloseBasis` 일치, 생산자와 아티팩트 결속,
+닫기 준비 상태의 증거 해석을 평가합니다. 필요한 입력이 이미 있으면 이 평가는
+순수 함수로 수행됩니다.
+
+`prepare_evidence_capture`, `record_run`, `close_task`, `update_scope`, 공유 상태
+및 투영 경로는 적용되는 정책 담당 모듈을 직접 사용합니다. 메서드 모듈은 요청
+검증, 메서드 계획, 정책 결과를 메서드 결과나 닫기 차단 사유로 변환하는 책임을
+유지하며, 형제 메서드 모듈에 공유 증거 정책을 제공하지 않습니다. 정확한 증거와
+닫기 준비 상태의 의미는
+[Core 모델](../reference/core-model.md), 적용되는
+[API 메서드 담당 문서](../reference/api/methods.md),
+[상태 스키마](../reference/api/schema-state.md),
+[아티팩트 스키마](../reference/api/schema-artifacts.md), 집중
+[저장소 담당 문서](../reference/storage.md)에 남습니다.
+
 ## 정규 릴리스 경계
 
 경계 어댑터는 담당 문서가 정의한 현재 입력을 하나의 정규 내부 모델로 디코딩합니다. Codex

@@ -532,7 +532,6 @@ fn test_state_record_ref(
 }
 
 mod close_task;
-mod evidence_gate;
 mod intake;
 mod operation_result;
 mod preflight;

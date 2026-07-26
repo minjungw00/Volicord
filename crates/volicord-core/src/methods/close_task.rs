@@ -1,5 +1,23 @@
+use super::evidence_facts::{
+    load_close_evidence_summary_facts, load_required_evidence_criterion_ids,
+    projected_evidence_observation_provenance_facts, stored_evidence_observation_capture_relevance,
+    stored_evidence_observation_provenance_facts,
+};
 use super::*;
-use crate::policy::workflow::ResolvedTaskControlAuthority;
+use crate::policy::{
+    close_readiness_evidence::{
+        evaluate_evidence_gate, interpret_close_evidence_item, project_close_evidence_summary,
+        CloseEvidenceIssueKind, CloseEvidenceObservationDisposition,
+    },
+    evidence_provenance::{classify_evidence_provenance, EvidenceProvenanceClass},
+    evidence_relevance::capture_relevance_is_unsupported,
+    evidence_target::{
+        close_basis_is_current, close_basis_run_refs, projected_observation_matches_close_basis,
+        run_record_matches_close_basis_context, stored_observation_matches_close_basis,
+        EvidenceObservationBasis,
+    },
+    workflow::ResolvedTaskControlAuthority,
+};
 
 /// Public close-family input before request-local identity and intent validation.
 enum CloseTaskRawRequest {
@@ -1241,7 +1259,8 @@ fn load_close_task_context(
         })
         .transpose()?
         .flatten();
-    let evidence_summary = close_evidence_summary(
+    let required_criterion_ids = load_required_evidence_criterion_ids(store, &request.task_id)?;
+    let evidence_facts = load_close_evidence_summary_facts(
         store,
         evidence_record.as_ref(),
         &task,
@@ -1249,6 +1268,7 @@ fn load_close_task_context(
         &request.task_id,
         project_state.state_version,
     )?;
+    let evidence_summary = project_close_evidence_summary(evidence_facts, &required_criterion_ids);
     let artifact_refs = evidence_summary
         .as_ref()
         .map(|summary| summary.artifact_refs.clone())
@@ -2059,197 +2079,6 @@ fn completion_close_blockers(
     Ok(blockers)
 }
 
-pub(super) fn close_evidence_summary(
-    store: &CoreProjectStore,
-    record: Option<&EvidenceSummaryRecord>,
-    task: &TaskRecord,
-    project_id: &ProjectId,
-    task_id: &TaskId,
-    state_version: u64,
-) -> CoreResult<Option<EvidenceSummary>> {
-    let required_criteria = store
-        .active_acceptance_criteria(task_id)
-        .map_err(CorePipelineError::from)?
-        .into_iter()
-        .map(|criterion| {
-            let requirement: EvidenceRequirement = parse_owner_storage_value(
-                "acceptance_criteria",
-                criterion.acceptance_criterion_id.clone(),
-                "evidence_requirement",
-                &criterion.evidence_requirement,
-            )?;
-            Ok::<_, CorePipelineError>((criterion.acceptance_criterion_id, requirement))
-        })
-        .collect::<CoreResult<Vec<_>>>()?
-        .into_iter()
-        .filter_map(|(id, requirement)| {
-            (requirement == EvidenceRequirement::Required).then_some(id)
-        })
-        .collect::<BTreeSet<_>>();
-    close_evidence_summary_with_required(
-        store,
-        record,
-        task,
-        project_id,
-        task_id,
-        state_version,
-        &required_criteria,
-    )
-}
-
-pub(super) fn close_evidence_summary_with_required(
-    store: &CoreProjectStore,
-    record: Option<&EvidenceSummaryRecord>,
-    task: &TaskRecord,
-    project_id: &ProjectId,
-    task_id: &TaskId,
-    state_version: u64,
-    required_criteria: &BTreeSet<String>,
-) -> CoreResult<Option<EvidenceSummary>> {
-    let updated_by_run_id = record
-        .map(|record| {
-            decode_required_json::<PersistedEvidenceMetadata>(
-                "evidence_summaries",
-                record.evidence_summary_id.clone(),
-                "metadata_json",
-                Some(&record.metadata_json),
-            )
-            .map(|metadata| metadata.updated_by_run_id)
-        })
-        .transpose()?;
-    let evidence_scope_is_stale = match updated_by_run_id.as_ref() {
-        Some(run_id) => store.run_record(run_id.as_str())?.is_none_or(|run| {
-            run.project_id != task.project_id
-                || run.task_id != task.task_id
-                || run.scope_revision != task.scope_revision
-                || run.change_unit_id != task.current_change_unit_id
-                || record.and_then(|record| record.change_unit_id.as_ref())
-                    != task.current_change_unit_id.as_ref()
-        }),
-        None => false,
-    };
-    let mut coverage_items = record
-        .map(|record| {
-            decode_required_json::<Vec<EvidenceCoverageItem>>(
-                "evidence_summaries",
-                record.evidence_summary_id.clone(),
-                "coverage_json",
-                Some(&record.coverage_json),
-            )
-        })
-        .transpose()?
-        .unwrap_or_default();
-    if let Some(record) = record {
-        let _supporting_refs: Vec<StateRecordRef> = decode_required_json(
-            "evidence_summaries",
-            record.evidence_summary_id.clone(),
-            "supporting_refs_json",
-            Some(&record.supporting_refs_json),
-        )?;
-        let _gap_refs: Vec<StateRecordRef> = decode_required_json(
-            "evidence_summaries",
-            record.evidence_summary_id.clone(),
-            "gap_refs_json",
-            Some(&record.gap_refs_json),
-        )?;
-    }
-    for item in &mut coverage_items {
-        item.supporting_artifact_refs = item
-            .supporting_artifact_refs
-            .iter()
-            .map(|artifact_ref| {
-                sanitize_evidence_artifact_ref(
-                    store,
-                    artifact_ref,
-                    project_id,
-                    task_id,
-                    state_version,
-                )
-            })
-            .collect::<CoreResult<Vec<_>>>()?;
-        if item.coverage_state == EvidenceCoverageState::Supported
-            && (evidence_scope_is_stale
-                || item.supporting_artifact_refs.iter().any(|artifact_ref| {
-                    artifact_ref.availability != ArtifactAvailability::Available
-                        || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified
-                }))
-        {
-            item.coverage_state = EvidenceCoverageState::Stale;
-        }
-    }
-    for acceptance_criterion_id in required_criteria {
-        if !coverage_items.iter().any(|item| {
-            matches!(
-                &item.target,
-                EvidenceTarget::AcceptanceCriterion {
-                    acceptance_criterion_id: id
-                } if id.as_str() == acceptance_criterion_id
-            )
-        }) {
-            coverage_items.push(EvidenceCoverageItem {
-                target: EvidenceTarget::AcceptanceCriterion {
-                    acceptance_criterion_id: AcceptanceCriterionId::new(
-                        acceptance_criterion_id.clone(),
-                    ),
-                },
-                coverage_state: EvidenceCoverageState::Unsupported,
-                supporting_run_refs: Vec::new(),
-                observation_refs: Vec::new(),
-                supporting_artifact_refs: Vec::new(),
-                gap_refs: Vec::new(),
-            });
-        }
-    }
-    if coverage_items.is_empty() && required_criteria.is_empty() {
-        return Ok(None);
-    }
-    let artifact_refs = unique_artifact_refs(
-        coverage_items
-            .iter()
-            .flat_map(|item| item.supporting_artifact_refs.clone())
-            .collect(),
-    );
-    let observation_refs = unique_state_record_refs(
-        coverage_items
-            .iter()
-            .flat_map(|item| item.observation_refs.clone())
-            .collect(),
-    );
-    let status = if coverage_items.is_empty() {
-        record
-            .map(|record| {
-                parse_owner_storage_value(
-                    "evidence_summaries",
-                    record.evidence_summary_id.clone(),
-                    "status",
-                    &record.status,
-                )
-            })
-            .transpose()?
-            .unwrap_or(EvidenceStatus::Unknown)
-    } else {
-        evidence_status_for_items(&coverage_items)
-    };
-    let updated_by_run_ref = updated_by_run_id.as_ref().map(|updated_by_run_id| {
-        state_ref(
-            StateRecordKind::Run,
-            updated_by_run_id.as_str(),
-            project_id,
-            Some(task_id),
-            Some(state_version),
-        )
-    });
-
-    Ok(Some(EvidenceSummary {
-        evidence_state: None,
-        status,
-        coverage_items,
-        artifact_refs,
-        observation_refs,
-        updated_by_run_ref,
-    }))
-}
-
 fn evidence_target_required_by(target: &EvidenceTarget, required: &BTreeSet<String>) -> bool {
     matches!(
         target,
@@ -2289,54 +2118,6 @@ fn required_criteria_for_close_context(
                 })
                 .collect()
         })
-}
-
-fn sanitize_evidence_artifact_ref(
-    store: &CoreProjectStore,
-    artifact_ref: &ArtifactRef,
-    project_id: &ProjectId,
-    task_id: &TaskId,
-    state_version: u64,
-) -> CoreResult<ArtifactRef> {
-    if artifact_ref.project_id != *project_id || artifact_ref.task_id != *task_id {
-        return Ok(unavailable_artifact_ref_from_raw(
-            artifact_ref,
-            ArtifactAvailability::Unusable,
-        ));
-    }
-    let Some(record) = store.artifact_record(artifact_ref.artifact_id.as_str())? else {
-        return Ok(unavailable_artifact_ref_from_raw(
-            artifact_ref,
-            ArtifactAvailability::Missing,
-        ));
-    };
-    artifact_ref_from_verified_record(
-        store,
-        &record,
-        Some(artifact_ref.display_name.clone()),
-        Some(state_version),
-    )
-}
-
-fn unavailable_artifact_ref_from_raw(
-    artifact_ref: &ArtifactRef,
-    availability: ArtifactAvailability,
-) -> ArtifactRef {
-    ArtifactRef {
-        artifact_id: artifact_ref.artifact_id.clone(),
-        project_id: artifact_ref.project_id.clone(),
-        task_id: artifact_ref.task_id.clone(),
-        display_name: artifact_ref.display_name.clone(),
-        content_type: artifact_ref.content_type.clone(),
-        sha256: artifact_ref.sha256.clone(),
-        size_bytes: artifact_ref.size_bytes.clone(),
-        integrity_status: artifact_ref.integrity_status,
-        redaction_state: artifact_ref.redaction_state,
-        availability,
-        created_by_run_ref: artifact_ref.created_by_run_ref.clone(),
-        created_by_actor_source: artifact_ref.created_by_actor_source.clone(),
-        storage_ref: artifact_ref.storage_ref.clone(),
-    }
 }
 
 fn current_close_basis_blocker(
@@ -2482,15 +2263,6 @@ fn incompatible_close_basis_run_refs_blocker(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum CloseEvidenceIssueKind {
-    Missing,
-    Unsupported,
-    Stale,
-    AgentReportOnly,
-    InsufficientProvenance,
-}
-
 struct CloseEvidenceIssue {
     kind: CloseEvidenceIssueKind,
     related_refs: Vec<StateRecordRef>,
@@ -2599,37 +2371,28 @@ fn close_evidence_issue_for_item(
     if !required_criteria.contains(acceptance_criterion_id.as_str()) {
         return Ok(None);
     }
-    if item.coverage_state != EvidenceCoverageState::Supported {
-        let kind = if item.coverage_state == EvidenceCoverageState::Stale {
-            CloseEvidenceIssueKind::Stale
-        } else if evidence_item_has_no_support(item) {
-            CloseEvidenceIssueKind::Missing
-        } else {
-            CloseEvidenceIssueKind::Unsupported
-        };
-        return Ok(Some(CloseEvidenceIssue {
-            kind,
-            related_refs: evidence_item_related_refs(item),
-        }));
-    }
-
     let Some(basis) = context.current_close_basis.as_ref() else {
-        return Ok(Some(CloseEvidenceIssue {
-            kind: CloseEvidenceIssueKind::Missing,
-            related_refs: evidence_item_related_refs(item),
-        }));
+        return Ok(
+            interpret_close_evidence_item(item, &required_criteria, false, &[]).map(|kind| {
+                CloseEvidenceIssue {
+                    kind,
+                    related_refs: evidence_item_related_refs(item),
+                }
+            }),
+        );
     };
-    if item.observation_refs.is_empty() {
-        return Ok(Some(CloseEvidenceIssue {
-            kind: CloseEvidenceIssueKind::InsufficientProvenance,
-            related_refs: evidence_item_related_refs(item),
-        }));
+    if item.coverage_state != EvidenceCoverageState::Supported || item.observation_refs.is_empty() {
+        return Ok(
+            interpret_close_evidence_item(item, &required_criteria, true, &[]).map(|kind| {
+                CloseEvidenceIssue {
+                    kind,
+                    related_refs: evidence_item_related_refs(item),
+                }
+            }),
+        );
     }
 
-    let mut has_stale = false;
-    let mut has_current_cooperative_agent_report = false;
-    let mut has_current_weak = false;
-    let mut has_current_unsupported_relevance = false;
+    let mut dispositions = Vec::new();
     let evidence_state_version = basis
         .evidence_summary_ref
         .as_ref()
@@ -2639,13 +2402,13 @@ fn close_evidence_issue_for_item(
             || observation_ref.project_id != request.envelope.project_id
             || observation_ref.task_id.as_ref() != Some(&request.task_id)
         {
-            has_current_weak = true;
+            dispositions.push(CloseEvidenceObservationDisposition::Weak);
             continue;
         }
         if evidence_state_version.is_some_and(|state_version| {
             observation_ref.produced_at_state_version.as_ref() != Some(&state_version)
         }) {
-            has_stale = true;
+            dispositions.push(CloseEvidenceObservationDisposition::Stale);
             continue;
         }
         if let Some(observation) =
@@ -2656,39 +2419,43 @@ fn close_evidence_issue_for_item(
                     observation.observation_id.as_str() == observation_ref.record_id.as_str()
                 })
         {
-            if projected_evidence_observation_is_stale_for_close_basis(
-                observation,
-                request,
-                basis,
-                item,
-            ) {
-                has_stale = true;
-                continue;
-            }
-            if matches!(
-                observation.producer_anchor.producer_kind,
-                EvidenceProducerKind::VerifiedToolInvocation
-                    | EvidenceProducerKind::VerifiedCommandExecution
-            ) && observation.relevance_assessment.status != EvidenceRelevanceStatus::Supported
+            if observation.project_id != request.envelope.project_id
+                || observation.task_id != request.task_id
+                || !projected_observation_matches_close_basis(observation, basis, &item.target)
             {
-                has_current_unsupported_relevance = true;
+                dispositions.push(CloseEvidenceObservationDisposition::Stale);
                 continue;
             }
-            match projected_evidence_observation_provenance_class(
-                store,
-                request,
-                basis,
-                context,
-                observation,
-            )? {
-                EvidenceProvenanceClass::Strong => return Ok(None),
-                EvidenceProvenanceClass::CooperativeAgentReport => {
-                    has_current_cooperative_agent_report = true;
-                }
-                EvidenceProvenanceClass::Weak => {
-                    has_current_weak = true;
-                }
+            if capture_relevance_is_unsupported(
+                observation.producer_anchor.producer_kind,
+                &observation.relevance_assessment,
+            ) {
+                dispositions.push(CloseEvidenceObservationDisposition::UnsupportedRelevance);
+                continue;
             }
+            let facts = projected_evidence_observation_provenance_facts(
+                store,
+                observation,
+                &EvidenceObservationBasis {
+                    project_id: &request.envelope.project_id,
+                    task_id: &request.task_id,
+                    change_unit_id: basis.change_unit_id.as_str(),
+                    scope_revision: basis.scope_revision,
+                    baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
+                    target: &item.target,
+                    now: &context.now,
+                },
+                &context.projected_artifacts,
+            )?;
+            dispositions.push(match classify_evidence_provenance(&facts) {
+                EvidenceProvenanceClass::Strong => {
+                    CloseEvidenceObservationDisposition::StrongSupported
+                }
+                EvidenceProvenanceClass::CooperativeAgentReport => {
+                    CloseEvidenceObservationDisposition::CooperativeAgentReport
+                }
+                EvidenceProvenanceClass::Weak => CloseEvidenceObservationDisposition::Weak,
+            });
             continue;
         }
         let record = store
@@ -2701,23 +2468,26 @@ fn close_evidence_issue_for_item(
                 )))
             })?;
         let Some(record) = record else {
-            has_current_weak = true;
+            dispositions.push(CloseEvidenceObservationDisposition::Weak);
             continue;
         };
-        if evidence_observation_is_stale_for_close_basis(&record, request, basis, item) {
-            has_stale = true;
+        if record.project_id != request.envelope.project_id.as_str()
+            || record.task_id != request.task_id.as_str()
+            || !stored_observation_matches_close_basis(&record, basis, &item.target)
+        {
+            dispositions.push(CloseEvidenceObservationDisposition::Stale);
             continue;
         }
-        if super::record_run::stored_evidence_observation_capture_relevance(&record)?
+        if stored_evidence_observation_capture_relevance(&record)?
             .is_some_and(|status| status != EvidenceRelevanceStatus::Supported)
         {
-            has_current_unsupported_relevance = true;
+            dispositions.push(CloseEvidenceObservationDisposition::UnsupportedRelevance);
             continue;
         }
-        match super::record_run::stored_evidence_observation_provenance_class(
+        let facts = stored_evidence_observation_provenance_facts(
             store,
             &record,
-            &super::record_run::StoredEvidenceProvenanceBasis {
+            &EvidenceObservationBasis {
                 project_id: &request.envelope.project_id,
                 task_id: &request.task_id,
                 change_unit_id: basis.change_unit_id.as_str(),
@@ -2726,101 +2496,23 @@ fn close_evidence_issue_for_item(
                 target: &item.target,
                 now: &context.now,
             },
-        )? {
-            EvidenceProvenanceClass::Strong => return Ok(None),
+        )?;
+        dispositions.push(match classify_evidence_provenance(&facts) {
+            EvidenceProvenanceClass::Strong => CloseEvidenceObservationDisposition::StrongSupported,
             EvidenceProvenanceClass::CooperativeAgentReport => {
-                has_current_cooperative_agent_report = true;
+                CloseEvidenceObservationDisposition::CooperativeAgentReport
             }
-            EvidenceProvenanceClass::Weak => {
-                has_current_weak = true;
-            }
-        }
+            EvidenceProvenanceClass::Weak => CloseEvidenceObservationDisposition::Weak,
+        });
     }
 
-    let kind = if has_current_unsupported_relevance {
-        CloseEvidenceIssueKind::Unsupported
-    } else if has_current_cooperative_agent_report && !has_current_weak {
-        CloseEvidenceIssueKind::AgentReportOnly
-    } else if has_stale && !has_current_cooperative_agent_report && !has_current_weak {
-        CloseEvidenceIssueKind::Stale
-    } else {
-        CloseEvidenceIssueKind::InsufficientProvenance
-    };
-    Ok(Some(CloseEvidenceIssue {
-        kind,
-        related_refs: evidence_item_related_refs(item),
-    }))
-}
-
-fn projected_evidence_observation_is_stale_for_close_basis(
-    observation: &EvidenceObservation,
-    request: &CloseTaskPlanRequest,
-    basis: &CurrentCloseBasis,
-    item: &EvidenceCoverageItem,
-) -> bool {
-    observation.project_id != request.envelope.project_id
-        || observation.task_id != request.task_id
-        || observation.change_unit_id.as_ref() != Some(&basis.change_unit_id)
-        || observation
-            .run_ref
-            .as_ref()
-            .is_none_or(|run_ref| run_ref.record_id != basis.source_run_ref.record_id)
-        || observation.target != item.target
-}
-
-fn evidence_observation_is_stale_for_close_basis(
-    record: &EvidenceObservationRecord,
-    request: &CloseTaskPlanRequest,
-    basis: &CurrentCloseBasis,
-    item: &EvidenceCoverageItem,
-) -> bool {
-    record.project_id != request.envelope.project_id.as_str()
-        || record.task_id != request.task_id.as_str()
-        || record.change_unit_id.as_deref() != Some(basis.change_unit_id.as_str())
-        || record.run_id.as_deref() != Some(basis.source_run_ref.record_id.as_str())
-        || !evidence_observation_record_matches_target(record, &item.target)
-}
-
-fn evidence_observation_record_matches_target(
-    record: &EvidenceObservationRecord,
-    target: &EvidenceTarget,
-) -> bool {
-    match target {
-        EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id,
-        } => {
-            record.acceptance_criterion_id.as_deref() == Some(acceptance_criterion_id.as_str())
-                && record.evidence_claim_id.is_none()
-        }
-        EvidenceTarget::SupplementalClaim {
-            evidence_claim_id, ..
-        } => {
-            record.evidence_claim_id.as_deref() == Some(evidence_claim_id.as_str())
-                && record.acceptance_criterion_id.is_none()
-        }
-    }
-}
-
-fn projected_evidence_observation_provenance_class(
-    store: &CoreProjectStore,
-    request: &CloseTaskPlanRequest,
-    basis: &CurrentCloseBasis,
-    context: &CloseTaskContext,
-    observation: &EvidenceObservation,
-) -> CoreResult<EvidenceProvenanceClass> {
-    super::record_run::projected_evidence_observation_provenance_class(
-        store,
-        observation,
-        &super::record_run::StoredEvidenceProvenanceBasis {
-            project_id: &request.envelope.project_id,
-            task_id: &request.task_id,
-            change_unit_id: basis.change_unit_id.as_str(),
-            scope_revision: basis.scope_revision,
-            baseline_ref: basis.baseline_ref.as_ref().map(BaselineRef::as_str),
-            target: &observation.target,
-            now: &context.now,
-        },
-        &context.projected_artifacts,
+    Ok(
+        interpret_close_evidence_item(item, &required_criteria, true, &dispositions).map(|kind| {
+            CloseEvidenceIssue {
+                kind,
+                related_refs: evidence_item_related_refs(item),
+            }
+        }),
     )
 }
 

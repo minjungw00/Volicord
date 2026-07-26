@@ -1,16 +1,9 @@
 use std::collections::BTreeSet;
 
 use volicord_types::{
-    ArtifactRef, EvidenceAssuranceLevel, EvidenceCoverageItem, EvidenceCoverageState,
-    EvidenceSourceKind, EvidenceStatus, RecordId, StateRecordKind, StateRecordRef,
+    ArtifactRef, EvidenceCoverageItem, EvidenceCoverageState, EvidenceStatus, RecordId,
+    StateRecordKind, StateRecordRef,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EvidenceProvenanceClass {
-    Strong,
-    CooperativeAgentReport,
-    Weak,
-}
 
 pub(crate) fn evidence_status_for_items(items: &[EvidenceCoverageItem]) -> EvidenceStatus {
     if items
@@ -55,30 +48,6 @@ pub(crate) fn unique_state_record_refs(refs: Vec<StateRecordRef>) -> Vec<StateRe
         }
     }
     unique
-}
-
-pub(crate) fn evidence_assurance_matches_source(
-    source_kind: EvidenceSourceKind,
-    assurance_level: EvidenceAssuranceLevel,
-) -> bool {
-    match source_kind {
-        EvidenceSourceKind::AgentReport => {
-            assurance_level == EvidenceAssuranceLevel::CooperativeReport
-        }
-        EvidenceSourceKind::ExternalTool => {
-            assurance_level == EvidenceAssuranceLevel::ExternalToolResult
-        }
-        EvidenceSourceKind::UserObservation => {
-            assurance_level == EvidenceAssuranceLevel::UserObserved
-        }
-        EvidenceSourceKind::ReusedEvidence => matches!(
-            assurance_level,
-            EvidenceAssuranceLevel::ExternalToolResult | EvidenceAssuranceLevel::UserObserved
-        ),
-        EvidenceSourceKind::UnverifiedClaim => {
-            assurance_level == EvidenceAssuranceLevel::Unverified
-        }
-    }
 }
 
 pub(crate) fn evidence_item_has_no_support(item: &EvidenceCoverageItem) -> bool {
