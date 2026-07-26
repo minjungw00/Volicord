@@ -62,7 +62,7 @@ Agent Connection과 일치하는 host configuration은 마지막 membership에�
 ## 경계
 
 - 명시적으로 저장된 membership만 선택할 수 있습니다.
-- 최초 릴리스는 관리 stdio 위의 Codex `record` 프로필을 사용합니다.
+- 지원되는 통합은 관리 stdio 위의 Codex `record` 프로필을 사용합니다.
 - 공유 연결은 Product Repository 하나의 범위에 남습니다.
 - UserAction 해결은 선택한 저장소의 로컬 CLI 동작으로 남습니다.
 - 정확한 라우팅은 [Agent Connection](../reference/agent-connection.md)과

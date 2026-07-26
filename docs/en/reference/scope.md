@@ -57,13 +57,13 @@ Supported does not mean:
 | Plain-language intake and `Task` creation | A local `Task` can be started from plain-language user intent through the supported intake path. | [Intake method](api/method-intake.md), [Core Model](core-model.md) |
 | Scope updates | `Task` and Change Unit scope can be updated through the supported scope-update path. | [Update-scope method](api/method-update-scope.md), [Core Model](core-model.md) |
 | Status and close-readiness review | Status, evidence sufficiency, known blockers, and close-readiness state can be read through supported read paths. | [Status method](api/method-status.md), [Close method](api/method-close-task.md), [API State Schemas](api/schema-state.md), [Core Model](core-model.md) |
-| First-release Agent Connection | The first-release `host_kind` is `codex`, the integration profile is `record`, connection intent is `personal` or `shared`, transport is managed stdio MCP, and user-owned actions are delivered through the CLI inbox. Connection verification observes managed configuration, MCP behavior, required tools, safe tool round trips, and Guard behavior in the current environment. | [Agent Connection](agent-connection.md), [MCP Transport](mcp-transport.md), [Administrative CLI](admin-cli.md), [System Requirements](system-requirements.md) |
-| Canonical SQLite storage | The first release creates and opens exactly one canonical SQLite contract identified by the current `StorageManifest`; it has no migration, upgrade, importer, converter, or historical format decoder. | [Storage Versioning](storage-versioning.md), [Storage DDL](storage-ddl.md), [External Contracts](external-contracts.md) |
+| Agent Connection | The supported `host_kind` is `codex`, the integration profile is `record`, connection intent is `personal` or `shared`, mode is `read_only` or `workflow`, transport is managed stdio MCP, and user-owned actions are delivered through the CLI inbox. Connection verification observes managed configuration, MCP behavior, required tools, safe tool round trips, and Guard behavior in the current environment. | [Agent Connection](agent-connection.md), [MCP Transport](mcp-transport.md), [Administrative CLI](admin-cli.md), [System Requirements](system-requirements.md) |
+| Canonical SQLite storage | Volicord creates and opens exactly one canonical SQLite contract identified by the current `StorageManifest`. Existing storage must match that contract exactly. | [Storage Versioning](storage-versioning.md), [Storage DDL](storage-ddl.md), [External Contracts](external-contracts.md) |
 | Exact historical operation-result retrieval | `volicord.get_operation_result` can read an eligible immutable `operation_category=agent_workflow` Core mutation response in bounded UTF-8 pages. Access requires the currently enabled originating Agent Connection, an allowed selected project, and the same stored actor. The result is historical rather than current authority, and `operation_category=user_only` user-action responses are excluded. | [Get-operation-result method](api/method-get-operation-result.md), [Security](security.md#historical-operation-result-access), [Storage Versioning](storage-versioning.md#exact-operation-result-retrieval) |
 | Write ticket | `volicord.prepare_write` can issue a write ticket for one compatible proposed product-file change or one exact approval-bound non-product action under effective `sensitive` control. | [Prepare-write method](api/method-prepare-write.md), [Storage Effects](storage-effects.md), [Security](security.md) |
 | Agent Connection context | Registered Agent Connections provide recorded provenance, mode, and an explicit project allowlist for scope checks. | [Agent Connection Reference](agent-connection.md), [Security](security.md) |
 | Artifact staging and compatible artifact linking | New artifact bytes can enter the baseline through the supported staging path; compatible persisted artifact references can be linked when artifact owners allow it. | See [Artifact staging owners](#artifact-staging-owners). |
-| Run and evidence recording | Runs, compact evidence summaries, and target-scoped evidence observations with provenance can be recorded for baseline work. | [Record-run method](api/method-record-run.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
+| Evidence capture and run recording | `volicord.prepare_evidence_capture` can authorize one bounded command or host-tool observation, the administrative `evidence` commands can fulfill that exact intent, and `volicord.record_run` can record Runs, compact evidence summaries, and target-scoped evidence observations with provenance. | [Prepare-evidence-capture method](api/method-prepare-evidence-capture.md), [Administrative CLI](admin-cli.md#evidence-capture-fulfillment), [Record-run method](api/method-record-run.md), [Storage Effects](storage-effects.md), [Core Model](core-model.md) |
 | Focused user-owned action capture | Choice judgments and evidence observations can be requested and resolved through the supported common User Action paths without substituting for Core-owned state, evidence, or close-readiness rules. | See [User Action owners](#user-action-owners). |
 | Project continuity records | Durable decisions, obligations, known limits, accepted residual risks, and constraints can be preserved as project-level context without replacing current Core authority. | [Core Model](core-model.md), [API State Schemas](api/schema-state.md), [Storage Records](storage-records.md), [Storage Effects](storage-effects.md) |
 | Authority bundle export | `volicord export authority-bundle` can export an integrity-labeled copy of one registered project's local records and currently available persistent artifact bodies without mutating the source Runtime Home or project state, subject to the documented non-guarantees. | [Administrative CLI](admin-cli.md#authority-bundle-export), [Storage Records](storage-records.md), [Security](security.md) |
@@ -111,7 +111,6 @@ Excluded capabilities:
 - UserAction resolution channels other than the local CLI inbox
 - network MCP transports
 - noncurrent storage formats, development-data import, conversion, and historical host-fingerprint decoding
-- deprecated compatibility APIs, aliases, placeholders, and feature flags for excluded capabilities
 - native artifact capture from host applications
 - persistent projection jobs, projection reconciliation, generated projection files, and managed projection repair
 - expanded or additional evidence collection workflows
@@ -147,7 +146,7 @@ Owner routing:
 <a id="reserved-and-profile-gated-values"></a>
 ## Reserved and profile-gated values
 
-Some value names may exist in external standards or documentation metadata without being supported user-visible capabilities. The first-release host and profile selectors are closed: only Codex and `record` are accepted by product code and public CLI.
+Some value names may exist in external standards or documentation metadata without being supported user-visible capabilities. The current host and profile selectors are closed: only Codex and `record` are accepted by product code and public CLI.
 
 Reserved value:
 
@@ -156,7 +155,7 @@ Reserved value:
 
 Profile-gated value:
 
-- A profile-gated value is available only when the relevant profile or gate is defined by the owner documents and this Scope reference includes the resulting capability. No additional integration profile is defined for the first release.
+- A profile-gated value is available only when the relevant profile or gate is defined by the owner documents and this Scope reference includes the resulting capability. The supported integration-profile set is exactly `record`.
 - If either the profile/gate or the capability owner is missing, the value is not supported baseline behavior.
 
 Point-of-use rule:

@@ -1,6 +1,6 @@
 # 저장소 기록
 
-이 문서는 최초 릴리스 단일 저장 계약의 의미와 기록 간 불변식을 담당합니다. 정확한
+이 문서는 지원되는 저장 계약의 의미와 기록 간 불변식을 담당합니다. 정확한
 테이블, column, constraint, index, 정규 SQL은 [저장소 DDL](storage-ddl.md)이
 담당합니다.
 
@@ -23,8 +23,8 @@ canonical schema digest와 `contract_id=volicord.sqlite.diagnostics`로 식별�
 비권한 저장 계약 하나를 사용합니다. 매니페스트에는 singleton row가 정확히 하나 있어야
 합니다. 새 diagnostics 저장소는 데이터베이스 경로가 없을 때만 만듭니다. 이미 존재하는
 빈 데이터베이스, 빠지거나 추가된 매니페스트 row, 알 수 없는 contract identifier,
-현재가 아닌 digest, 빠지거나 변경되거나 예상하지 않은 schema object는 migration,
-복구, importer dispatch, 형식 추론 없이 거부합니다.
+현재가 아닌 digest, 빠지거나 변경되거나 예상하지 않은 schema object는 정확한 열기
+검증에 실패합니다.
 
 최종 경로가 없으면 Store는 같은 directory에 불투명하고 고유한 identity를 가진
 호출별 staging 파일 하나를 만듭니다. 정규 schema와 manifest 전체를 초기화하고
@@ -303,11 +303,11 @@ Connection과 프로젝트 통합 revision은 현재 담당 입력에서 도출�
 없습니다.
 
 Registry 저장소는 위의 row만으로 managed operation에 권한을 부여합니다. 현재가 아닌
-권한 schema를 담은 Runtime Home은 다른 `StorageManifest`에 속하므로 migration 없이
-거부합니다.
+권한 schema를 담은 Runtime Home은 다른 `StorageManifest`에 속하므로 정확한 열기
+검증에서 거부합니다.
 
 Connection Project 폐기는 이 행들을 Connection 소유 Registry 통합 상태로 다룹니다.
-명시적 제거와 migration은 선택한 membership의
+명시적 제거와 replacement 정리는 선택한 membership의
 `mcp_runtime_project_session_bindings`, 프로젝트 범위 `guard_installations`,
 `connection_projects` 행 순서로 원자적으로 삭제합니다. 여러 프로젝트를 가진 superseded
 Connection에 membership이 남으면 Agent Connection, 모든 `mcp_runtime_sessions` 행, 다른
@@ -315,7 +315,7 @@ Connection에 membership이 남으면 Agent Connection, 모든 `mcp_runtime_sess
 제거하면 Connection 소유의 남은 binding과 Guard Installation을 모두 삭제한 뒤 runtime
 session과 `agent_connections` 행을 삭제합니다.
 
-마지막 프로젝트 migration은 host 정리와 최종 Registry 재검증이 성공할 때까지 비활성
+마지막 프로젝트 replacement 정리는 host 정리와 최종 Registry 재검증이 성공할 때까지 비활성
 기존 membership, 그 binding과 Guard Installation, pending-host-cleanup marker를 하나의
 재시도 inventory로 유지합니다. 최종 정리는 이 프로젝트 소유 행과 membership을 함께
 삭제하고 marker를 지우지만, membership이 없는 비활성 과거 Connection과 그 connection 전체

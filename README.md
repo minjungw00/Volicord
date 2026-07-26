@@ -23,7 +23,7 @@ Volicord is useful when you want an agent to keep these boundaries visible:
 - which decisions still belong to the user
 - what must be resolved before the work can close
 
-The first release is designed for local Product Repositories with
+The supported product surface is designed for local Product Repositories with
 Volicord-managed Codex MCP and Guard integration. Compatibility is determined
 from the current managed configuration and observed MCP protocol, tool,
 safe-call, and Guard behavior. It is not an OS sandbox, a file-permission
@@ -134,7 +134,7 @@ For a guided first run and host-specific checks, continue with
 |---|---|
 | `Task` | The unit of work being shaped, performed, blocked, or closed. |
 | Task control level | The Core-recorded amount of workflow control currently applied to one Task. It is separate from the host integration profile. |
-| Integration profile | The first release uses the Record host-setup profile. It is separate from the risk level of a Task. |
+| Integration profile | The accepted host-setup selector is `profile=record` (Record). It is separate from the risk level of a Task. |
 | Write Ticket | A Volicord record that one proposed product-file change was checked against the current work boundary and normalized project write authority. It is not OS permission or proof that a write occurred. |
 | Evidence | Recorded support for a specific claim. It is not user acceptance or proof of correctness. |
 | User Judgment | A decision that belongs to the user, such as product direction, material technical direction, scope, final acceptance, or residual-risk acceptance. |
@@ -195,7 +195,7 @@ flowchart TD
 
 ## Record Profile And Task Control
 
-The first release uses the Record profile (`--profile record`). It supports
+The supported integration profile is Record (`--profile record`). It provides
 cooperative workflow recording through managed stdio MCP. Record is an
 integration profile, not a Task-risk grade. Each Task also has a separate
 control level derived by Core from the request,

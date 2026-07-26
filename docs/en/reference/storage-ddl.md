@@ -33,7 +33,8 @@ This document does not own:
 <a id="surface-stability"></a>
 ## Surface Stability
 
-For canonical vocabulary, see [Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels). In this section, `stable` means a documented compatibility surface; `beta` means supported, but details may change; `internal` means an implementation or generated-integration detail, not a normal user input surface; and `diagnostic` means a troubleshooting or status-reporting surface whose prose or diagnostic wording is not a stable API contract.
+Labels use
+[Documentation Policy](../maintain/documentation-policy.md#surface-stability-labels).
 
 | Surface | Stability | Notes |
 |---|---|---|
@@ -66,9 +67,8 @@ SQLite `TEXT` columns ending in `_json` store JSON as a representation choice. J
 
 `project_state.state_version` is the only public state clock.
 `project_state.updated_at` is a distinct physical floor for the canonical Core
-UTC clock, not a public conflict version or schema version. Canonical SQLite DDL
-must not create `tasks.state_version`, storage `schema_version` columns, or a
-migration ledger table.
+UTC clock, not a public conflict version or storage-format identity. Canonical
+SQLite DDL exposes no other public state clock.
 
 The physical `write_tickets` table stores authority records for product-file
 write attempts and exact approval-bound non-product actions under effective
@@ -88,10 +88,8 @@ column. The complete manifest occupies the two existing carrier columns below:
 | `registry.sqlite` | the `runtime_home` row selected by `singleton_id=1` | `runtime_home.storage_profile` | `TEXT NOT NULL` with no SQL default |
 | project `state.sqlite` | the `project_state` row for that database's `project_id` | `project_state.storage_profile` | `TEXT NOT NULL` with no SQL default |
 
-Despite its physical name, `storage_profile` is not a profile selector,
-numeric revision, migration key, or compatibility alias. It stores the one
-deterministic canonical UTF-8 JSON encoding of the complete current
-`StorageManifest`. The object
+`storage_profile` stores the one deterministic canonical UTF-8 JSON encoding
+of the complete current `StorageManifest`. The object
 has exactly `contract_id`, `canonical_ddl_digest`,
 `integrity_constraints_digest`, and `enabled_capabilities`; missing, unknown,
 or duplicate members are invalid. The capability array must preserve the
@@ -130,8 +128,8 @@ The only executable DDL sources are
 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql) and
 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql), in that
 fixed source order. Fresh initialization applies them only to empty SQLite
-databases. There is no migration, conversion, upgrade, importer, historical SQL
-bundle, numeric profile dispatch, or alternate database opener.
+databases. Existing databases are accepted only through exact current-manifest
+and physical-schema validation.
 
 These two source files are exact-byte textual contracts. Their canonical
 repository form uses LF bytes only and ends with exactly one LF. The root
@@ -1007,7 +1005,7 @@ Registry constraints:
 - `guard_installations` stores one stable project-scoped Guard installation identity and its canonical typed Guard manifest. The manifest is bound to the row, Agent Connection, project, current integration revision, policy hash, runtime commands, complete managed-file inventory, required hook phases, exact `host_contract_profile`, and deterministic `host_contract_digest`. The current Guard selection is `codex-command-hooks`. File state is audited from the manifest and current files, while observation state requires compatible current-owned `guard_events` for every required phase. These cooperative checks do not provide OS-level enforcement or write prevention.
 - `guard_integration_verification_runs` stores one immutable managed-host attempt per full semantic coordinate: Connection, project, current MCP runtime, native session and turn, integration revision, Guard Installation, host-contract profile, hook-definition digest, and policy digest. Its unconditional unique index includes terminal rows, and prompt ownership prevents separate attempts from sharing one prompt event. The row also stores the semantic observation policy, bounded status-read count, cleanup boundary, first-write acknowledgement, matched events, closed state, and typed repair/retry fields. Coordinate, acknowledgement, and terminal triggers prevent identity mutation, a second acknowledgement, terminal reactivation, or terminal replacement. The current Codex semantic contract uses the stored synchronous policy with one allowed status read. `cleanup_after` is retention metadata, not attempt expiry, polling time, or retry eligibility.
 - `guard_probe_observations` stores only the closed acquisition stage, expected agent-tool/callable identity, optional bounded observed callable, optional hook kind, verification-ID presence/match flags, Guard Installation, integration revision, and observation time. It cannot store prompts or unrestricted hook/tool payloads. Its foreign keys attach each observation to one verification run and current installation; `hook_event_not_observed` records only absence at the Volicord boundary. `unrelated_routed_tool` is nonterminal trace and is not a repair reason, proof, acknowledgement, retry input, root finding, or status-read-budget effect.
-- Connection Project retirement by explicit removal or migration satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings and integration-verification runs before the selected Guard Installation and membership. Multi-project migration leaves unrelated project rows and connection-wide runtime sessions intact. Last-project migration retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding, integration-verification run, and Guard Installation, then `mcp_runtime_sessions`, then `managed_mcp_launch_leases`, and finally `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
+- Connection Project retirement by explicit removal or replacement cleanup satisfies the restrictive Registry foreign keys by owner-ordered deletion in one immediate transaction. It deletes selected project-session bindings and integration-verification runs before the selected Guard Installation and membership. Multi-project replacement cleanup leaves unrelated project rows and connection-wide runtime sessions intact. Last-project replacement cleanup retains the complete disabled membership, binding, Guard Installation, and pending-cleanup-marker inventory until host cleanup and final revalidation succeed, then deletes only the project-owned rows and membership. Explicit final-membership removal deletes every remaining connection-owned binding, integration-verification run, and Guard Installation, then `mcp_runtime_sessions`, then `managed_mcp_launch_leases`, and finally `agent_connections`; structured findings remain durable historical diagnostics. No path cascades into `projects`, `runtime_home`, `installation_profile`, or a project `state.sqlite` database.
 
 ## Project `state.sqlite`
 

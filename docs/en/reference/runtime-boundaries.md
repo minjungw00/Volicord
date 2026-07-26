@@ -17,10 +17,11 @@ managed Codex configuration, and the stdio MCP child process.
 ## Product Repository
 
 A Product Repository is resolved from the canonical current Git work tree. The
-first release requires the owner-defined native filesystem topology, including
-the WSL2 ext4 boundary in [System Requirements](system-requirements.md#wsl2-topology).
-Repository identity is not derived from a display name, cwd alone, a parent
-directory scan, or a copied path string.
+supported environment requires the owner-defined native filesystem topology,
+including the WSL2 ext4 boundary in
+[System Requirements](system-requirements.md#wsl2-topology). Repository identity
+is not derived from a display name, cwd alone, a parent directory scan, or a
+copied path string.
 
 Inside WSL2, canonical Linux spelling is not sufficient. Registration and
 execution validate the exact pinned distribution coordinate and observe that
@@ -194,9 +195,8 @@ schema, singleton identity, and final paths match exactly. Inspection does not
 create or write a file, and an incompatible or corrupt home is preserved
 without changing its bytes or timestamps. A schema mismatch reports bounded
 expected and observed manifest digests and relation categories; recovery keeps
-the existing home, selects a fresh explicit `--home`, or uses an owner-defined
-importer only if one exists. It never creates a missing relation, patches the
-schema, or selects a format numerically in place.
+the existing home and selects a fresh explicit `--home` for supported setup.
+It never creates a missing relation or changes the schema in place.
 
 For an `Absent` final path, initialization creates a unique staging directory
 under the same parent. It creates the Registry, Runtime Home singleton, and
@@ -390,12 +390,12 @@ diagnostic access observes only the final path.
 - The immutable Connection integration-instance ID and integration generation
   are Store-owned Runtime Home lifecycle coordinates. Together with the current
   owner inputs, they derive local lifecycle and correlation revisions.
-- Explicit removal and Connection migration retire only the selected
+- Explicit removal and Connection replacement cleanup retire only the selected
   connection/project-owned Registry integration rows in storage-owner order.
-  Pending last-project migration retains that complete Registry inventory until
-  host cleanup succeeds. Neither path deletes project registrations or
-  project-local Agent Sessions, Guard and workflow history, evidence, or other
-  authority data; retained history cannot authorize a current call without
+  Pending last-project replacement cleanup retains that complete Registry
+  inventory until host cleanup succeeds. Neither path deletes project
+  registrations or project-local Agent Sessions, Guard and workflow history,
+  evidence, or other authority data; retained history cannot authorize a current call without
   current Registry ownership.
 - Export and release-validation output belongs in an explicit external output
   location, not maintained docs or Runtime Home trust input.

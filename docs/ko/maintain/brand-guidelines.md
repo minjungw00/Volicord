@@ -88,7 +88,7 @@ Core 권한 보장을 암시하면 안 됩니다.
 
 First-party in-chat workflow에는 정확한 사용자 문구
 `Run the Volicord integration verification.`을 사용합니다. CLI preflight, raw stdio,
-resource discovery, configuration 존재, 과거 Guard event를 “connected”, “trusted”,
+resource discovery, configuration 존재, 현재가 아닌 Guard event를 “connected”, “trusted”,
 “verified”인 managed integration이라고 설명하지 않습니다. Configuration 적용, host
 reload 필요, hook review 필요, 현재 관찰로 hook 효과 확인, managed MCP 관찰,
 Guard verification 필요, complete 가운데 어떤 typed 상태를 아는지 말합니다. Project
@@ -121,7 +121,7 @@ Volicord 권한 기록을 OS 수준 강제, 샌드박스, 에이전트가 지시
 
 색만으로 상태를 전달하지 않습니다.
 
-초기 프로젝트 토큰:
+프로젝트 토큰:
 
 | 토큰 | 값 |
 |---|---|

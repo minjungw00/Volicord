@@ -1,7 +1,7 @@
 # Storage Records
 
-This document owns semantic meaning and cross-record invariants for the one
-first-release storage contract. Exact tables, columns, constraints, indexes,
+This document owns semantic meaning and cross-record invariants for the
+supported storage contract. Exact tables, columns, constraints, indexes,
 and canonical SQL remain with [Storage DDL](storage-ddl.md).
 
 ## Storage Locations
@@ -24,8 +24,7 @@ digest derived from its current SQL table, column, and index inventory. The
 manifest has exactly one singleton row. Fresh diagnostics storage is created
 only when the database path is absent. An existing empty database, a missing or
 extra manifest row, an unknown contract identifier, a noncurrent digest, or a
-missing, changed, or unexpected schema object is rejected without migration,
-repair, importer dispatch, or format inference.
+missing, changed, or unexpected schema object fails exact-open validation.
 
 At an absent final path, Store creates one invocation-owned staging file in the
 same directory with an opaque unique identity. It initializes the entire
@@ -348,10 +347,10 @@ and best-effort diagnostics cannot satisfy this boundary.
 
 Registry storage authorizes managed operations only through the rows above. A
 Runtime Home with a noncurrent authorization schema belongs to a different
-`StorageManifest` and is rejected without migration.
+`StorageManifest` and is rejected by exact-open validation.
 
 Connection Project retirement treats these rows as connection-owned Registry
-integration state. Explicit removal and migration atomically delete the
+integration state. Explicit removal and replacement cleanup atomically delete the
 selected membership's `mcp_runtime_project_session_bindings`, project-scoped
 `guard_installations`, and then the `connection_projects` row. If a superseded
 multi-project Connection retains memberships, its Agent Connection, every
@@ -360,7 +359,7 @@ remain. Explicit final-membership removal deletes every remaining binding and
 Guard Installation owned by the Connection, then its runtime sessions and
 `agent_connections` row.
 
-Last-project migration instead keeps the disabled old membership, its bindings
+Last-project replacement cleanup instead keeps the disabled old membership, its bindings
 and Guard Installation, and the pending-host-cleanup marker as one retry
 inventory until host cleanup and final Registry revalidation succeed. Final
 cleanup deletes those project-owned rows and membership together and clears the

@@ -133,7 +133,7 @@ term_entry_schema:
     visibility: "one of public, architecture, or internal"
     allowed_document_layers: "list of layer strings where the preferred term may appear without being an exact identifier or owner title"
     disallowed_synonyms: "list of public-language synonyms that should not replace the canonical term"
-    replacement_for: "list of older or ambiguous terms this term replaces in public-facing wording"
+    replacement_for: "list of noncanonical or ambiguous terms this term replaces in public-facing wording"
   field_semantics:
     category: "Term type used by terminology and maintenance checks."
     roles: "Small controlled role set used to distinguish public user terminology, storage internals, MCP process binding, diagnostics, public MCP selectors, and storage records without making a document-wide forbidden-word list."
@@ -143,7 +143,7 @@ term_entry_schema:
     visibility: "`public` is for terms suitable for README and User Guide documents; `architecture` is for Reference, Architecture Guide, Maintain, API, schema, and storage documents; `internal` is for implementation/schema/storage identifiers."
     allowed_document_layers: "Document-layer routing for prose use. Exact identifiers, paths, anchors, and owner titles can still appear where identifier preservation requires them."
     disallowed_synonyms: "Searchable avoid-list input for editors; it is not a product contract."
-    replacement_for: "Searchable migration note for older wording; it is not a legacy alias."
+    replacement_for: "Searchable avoid-list metadata for noncanonical wording; it does not define an alias."
   visibility_values:
     public: "Reader-facing terminology suitable for README, user-guide."
     architecture: "Technical terminology suitable for Reference, Architecture Guide, Maintain, API, schema, and storage documents."
@@ -2488,7 +2488,7 @@ terms:
     notes:
       - "Use for the single current schema-2 JSON report projected by init and selected Connection commands."
       - "Use `operation_details` for `dry_run`, optional tagged `result`, and `planned_changes`; these are not a second status."
-      - "Do not retain a second legacy JSON schema, require summary parsing, repeat status trees, or serialize `dry_run` as a status."
+      - "Do not retain a second JSON report schema, require summary parsing, repeat status trees, or serialize `dry_run` as a status."
       - "Concise, verbose, and JSON rendering consume the same typed report and identify the same roots; typed status controls the process exit code."
       - "Each `PlannedConnectionChange` uses a closed ownership `kind`, typed `operation`, and canonical `target`; classification does not infer meaning from target paths."
   record_profile:
@@ -2936,7 +2936,7 @@ terms:
       - "Use for the local user path that resolves judgment and evidence-observation user actions."
       - "Agent Connections may request user actions but must never resolve them."
       - "Every User Channel resolution records `actor_source=local_user`; the action kind retains its distinct authority meaning."
-      - "The first-release User Channel resolution path is the CLI inbox."
+      - "The supported User Channel resolution path is the CLI inbox."
   unrecorded_change:
     category: "product_concept"
     en: "Unrecorded Change"

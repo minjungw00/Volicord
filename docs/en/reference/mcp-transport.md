@@ -15,7 +15,8 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 | `volicord mcp serve`, initialization, `tools/list`, `tools/call`, and response wrapping | `stable` |
 | `volicord mcp preflight` read-only inspection and output contract | `stable` |
 | Authoritative runtime-session lifecycle milestones | `stable` |
-| Pre-1.0 additions not listed in the stable process and method set | `beta` |
+| The five production MCP revisions and closed 16-tool catalog, including mode/storage visibility subsets | `stable` |
+| Current beta MCP transport surface | `beta` — none; every current transport surface is classified by another row |
 | Hidden managed launcher, launch leases, and generated configuration details | `internal` |
 | Host executable version, MCP client name/version, and best-effort protocol metrics | `diagnostic` |
 
@@ -160,8 +161,8 @@ user-configurable.
 
 Missing or non-string `protocolVersion`, non-object `capabilities`, and
 malformed `clientInfo` remain `-32602` invalid parameters with bounded error
-data. The pinned pre-release `2026-07-28` revision is not a production profile,
-so an initialize request carrying it is rejected as unsupported.
+data. A `protocolVersion` outside the production revision set is rejected as
+unsupported.
 
 After valid parameter decoding, the active MCP connection owns one typed,
 session-scoped selection. It retains the exact requested string, selected

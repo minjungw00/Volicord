@@ -423,7 +423,7 @@ Membership이 남으면 connection 전체 runtime session과 다른 프로젝트
 integration-verification run, Guard Installation, 모든 Connection 소유 MCP runtime session,
 Agent Connection도 삭제합니다.
 
-Connection migration도 같은 소유자 순서의 프로젝트 폐기를 사용합니다. 여러 프로젝트를
+Connection replacement 정리도 같은 소유자 순서의 프로젝트 폐기를 사용합니다. 여러 프로젝트를
 가진 superseded Connection에서는 replacement membership, Guard Installation,
 Connection을 활성화하는 같은 Registry transaction 안에서 선택한 프로젝트의 binding,
 integration-verification run, Guard Installation, membership만 제거합니다. 다른 프로젝트

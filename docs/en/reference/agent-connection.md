@@ -1,6 +1,6 @@
 # Agent Connection Reference
 
-This document defines the first-release Agent Connection contract. It owns the
+This document defines the current `host_kind=codex` Agent Connection contract. It owns the
 exact `host_kind=codex` Record connection surface, the canonical connection
 verification report, managed configuration ownership, integration revisions,
 and the validated operational-session boundary between the Codex adapter and
@@ -50,16 +50,16 @@ Labels follow the canonical vocabulary in
 
 | Surface | Stability | Contract |
 |---|---|---|
-| First-release value sets, `ConnectionVerificationReport`, integration revisions, authoritative operational sessions, and `ValidatedAgentSession` | `stable` | These are exact boundary contracts. |
+| Supported value sets, `ConnectionVerificationReport`, integration revisions, authoritative operational sessions, and `ValidatedAgentSession` | `stable` | These are exact boundary contracts. |
 | Codex discovery, managed installation, verification, repair, uninstall, and drift result semantics | `stable` | Implementations may change without changing the observable contract. |
 | Adapter modules, filesystem helpers, the hidden launcher, and Store lease/query helpers | `internal` | They preserve the stable boundary but are not public surfaces. |
 | Human-readable verification guidance and client/host version observations | `diagnostic` | Machine-readable categories, reasons, and typed fields remain authoritative. |
 
-<a id="first-release-surface"></a>
+<a id="supported-surface"></a>
 
-## First-Release Surface
+## Supported Surface
 
-The first release accepts only this Agent Connection surface:
+Volicord accepts exactly this Agent Connection surface:
 
 | Dimension | Exact value |
 |---|---|
@@ -105,12 +105,11 @@ request an owner-defined action, but it cannot act as the local user channel or
 resolve the action on the user's behalf.
 
 For the production revision set, an exact requested `protocolVersion` selects
-the same session profile. Every other identifier, including the pinned
-pre-release `2026-07-28`, is rejected as unsupported without substituting
-another profile. Support is never inferred from lexical or date ordering,
-numeric or date parsing, ranges, prefixes, or package versions, and the user
-cannot configure the supported set. Exact parameter, capability, and response
-behavior is owned by
+the same session profile. Every other identifier is rejected as unsupported
+without substituting another profile. Support is never inferred from lexical
+or date ordering, numeric or date parsing, ranges, prefixes, or package
+versions, and the user cannot configure the supported set. Exact parameter,
+capability, and response behavior is owned by
 [MCP Transport](mcp-transport.md#protocol-revision-negotiation).
 
 <a id="managed-mcp-launch-contract"></a>
@@ -1008,11 +1007,11 @@ workflow history, evidence, and other authority records remain historical
 Product Repository state. They cannot authorize a later call without a current
 Registry membership and a current validated runtime/project session.
 
-Connection migration uses the same project-scoped Registry retirement order.
-For a superseded multi-project Connection, it removes only the selected
-project's runtime/project bindings, Guard Installation, and membership in the
-atomic replacement activation transaction. For a superseded last-project
-Connection, it keeps the old Connection disabled with that complete project
+Connection replacement cleanup uses the same project-scoped Registry
+retirement order. For a superseded multi-project Connection, it removes only
+the selected project's runtime/project bindings, Guard Installation, and
+membership in the atomic replacement activation transaction. For a superseded
+last-project Connection, it keeps the old Connection disabled with that complete project
 inventory and a pending-host-cleanup marker until external cleanup succeeds.
 The final Registry transaction revalidates the replacement and exact retained
 inventory before deleting the bindings, Guard Installation, and membership and
@@ -1037,7 +1036,7 @@ Untrusted:
 - client/host version and process metadata as identity claims.
 
 Tampering with Runtime Home by a malicious process running with the same user
-permissions is outside the first-release threat model. The local records are
+permissions is outside the current threat model. The local records are
 therefore cooperative and are not tamper-proof against another process with the
 same account access.
 

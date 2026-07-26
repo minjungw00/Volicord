@@ -1,7 +1,7 @@
 # System Requirements
 
-This document owns the operating-environment prerequisites for the first
-Volicord release. It defines eligible platform environments, the WSL2
+This document owns the operating-environment prerequisites for Volicord. It
+defines eligible platform environments, the WSL2
 topology, executable and filesystem prerequisites, Runtime Home and Product
 Repository placement, and the conditions that require setup or validation to
 stop.
@@ -16,14 +16,14 @@ verification.
 ## Surface Stability
 
 The four `PlatformEnvironment` values, five published target triples, the exact
-first-release WSL2 distribution identity, WSL2 topology and ext4 boundary,
+supported WSL2 distribution identity, WSL2 topology and ext4 boundary,
 managed stdio MCP prerequisite, and stop criteria are stable contracts. Other
 runner images, package-manager commands, executable locations, and diagnostic
 prose are release or implementation details unless another owner marks them
 stable.
 
-<a id="first-release-environment-matrix"></a>
-## First-Release Environment Matrix
+<a id="supported-environment-matrix"></a>
+## Supported Environment Matrix
 
 Volicord publishes five binary targets. The supported execution environments
 for those binaries are:
@@ -43,15 +43,17 @@ binary. One architecture or environment
 does not establish the runtime prerequisites of another. Release packaging
 still builds and checks every published target independently.
 
-The first-release product surface in every row is:
+The supported product surface in every row is:
 
 - `host_kind=codex`
 - `integration_profile=record`
 - `connection_scope=personal` or `connection_scope=shared`
+- `connection_mode=read_only` or `connection_mode=workflow`
 - managed stdio MCP
 - CLI inbox for user actions
 
-Other hosts, profiles, transports, and user channels are outside this release.
+The exact accepted host, profile, transport, and User Channel sets are owned
+by [Agent Connection](agent-connection.md#supported-surface).
 
 <a id="wsl2-topology"></a>
 ## WSL2 Topology
@@ -68,7 +70,7 @@ one pinned Ubuntu LTS WSL2 distribution
      artifacts on the distribution ext4 filesystem
 ```
 
-The first-release WSL2 boundary and distribution identity are:
+The supported WSL2 boundary and distribution identity are:
 
 | Observation | Requirement |
 |---|---|
@@ -109,8 +111,8 @@ launch:
   values, Connections, runtime sessions, or project sessions
 - reuse of native Windows Runtime Home session records in WSL2 or WSL2 session
   records on native Windows
-- a distribution whose `/etc/os-release` identity is outside the current
-  first-release WSL2 identity
+- a distribution whose `/etc/os-release` identity is outside the supported
+  WSL2 identity
 
 A WSL shutdown or restart ends the live managed runtime session. Its project
 sessions cannot authorize later calls; a new managed MCP lifecycle records a
@@ -199,8 +201,8 @@ Home. A persistent file is not an active lock, no PID or timestamp is used for
 stale-owner deletion, and process termination releases the OS handle.
 
 Fresh development data is created from the current canonical SQLite contract.
-An existing database with another manifest is not upgraded, imported, or
-reinterpreted; use a new Runtime Home or an explicitly new empty destination.
+An existing database must match the current manifest exactly. Otherwise,
+preserve it and use a new Runtime Home or an explicitly new empty destination.
 
 ## Product Repository Requirements
 
@@ -295,7 +297,7 @@ authorization, fallback host, inferred platform, or partial success.
 
 ## Adjacent Owners
 
-- First-release included and excluded surfaces: [Scope](scope.md).
+- Included and excluded supported surfaces: [Scope](scope.md).
 - Operational session, persisted setup action, and adapter/Core boundaries:
   [Agent Connection](agent-connection.md).
 - Build, package, platform, and release validation: [Validation](../maintain/validation.md).

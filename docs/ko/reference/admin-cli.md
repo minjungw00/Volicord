@@ -9,8 +9,10 @@
 
 | 표면 | 안정성 |
 |---|---|
-| 여기에 나열한 명령과 선택자 | `stable` |
-| stable 명령으로 나열하지 않은 pre-1.0 추가 표면 | `beta` |
+| 여기에 표시된 생성 명령 트리, 옵션, 관계, 허용 selector 집합 | `stable` |
+| 아래 유지 구역에서 명시적으로 정의한 기계 판독 명령 필드와 닫힌 값 | `stable` |
+| 정책 검증·적용 및 증거 캡처 충족 명령 | `stable` |
+| 현재 beta 관리 표면 | `beta` — 없음. 현재 관리 표면은 모두 다른 행에서 분류합니다. |
 | 사람용 형식과 진단 문구 | `diagnostic` |
 | 생성 Codex 구성 세부사항 | `internal` |
 
@@ -19,8 +21,8 @@
 ## 명령 모델
 
 `volicord`는 로컬 관리/bootstrap 실행 파일이며 장기 실행 네트워크 서비스가 아닙니다.
-명령 모델은 `host=codex`, `profile=record`, `personal` 또는 `shared` 연결 범위만
-받습니다.
+명령 모델은 `host=codex`, `profile=record`, `personal` 또는 `shared` 연결 의도,
+`read_only` 또는 `workflow` connection mode만 받습니다.
 
 아래 문법 전용 영역은 Clap 선언에서 생성합니다. 명령 의미, 효과, 출력 해석,
 운영 지침은 뒤의 절에서 사람이 계속 관리합니다.
@@ -454,6 +456,41 @@ Registry 조사에서는 임의의 SQLite 메시지를 projection하지 않습�
 volicord doctor --privacy-footprint
 ```
 
+`volicord doctor --privacy-footprint --json`은 다음과 같은 정확한 최상위
+projection을 반환합니다.
+
+```yaml
+status: complete
+runtime_home: string
+privacy_footprint:
+  registry_state: missing | present | unsupported | malformed | unreadable
+  registry_db_path: string
+  record_counts:
+    projects: integer
+    agent_connections: integer
+    connection_projects: integer
+    guard_installations: integer
+    project_state_databases: integer
+  stores: string[]
+  does_not_store: string[]
+  does_not_prove: string[]
+  doctor_output_scope: string
+```
+
+`registry_state=present`가 아니면 `record_counts`는 `null`입니다. 값이 있으면 위의
+다섯 key만 가집니다. 이 diagnostic은 범주와 개수만 보고하며 저장된 row 본문은
+출력하지 않습니다. 배열 항목과 `doctor_output_scope` 값은 진단 설명입니다. 위의 필드
+이름, `registry_state` 값, 개수 key가 기계 판독 계약입니다.
+
+현재 개인정보 요약은 Runtime Home 및 설치 metadata, Product Repository 및 Agent
+Connection 등록, Guard 설치와 한도가 있는 관찰 metadata, 사용하는 경우의 프로젝트
+권한 및 evidence record, 한도가 있는 비권한 diagnostic 저장을 식별합니다. Raw Guard
+prompt text는 기본적으로 저장하지 않으며 `diagnostics.sqlite`에는 prompt 본문,
+repository 경로와 파일 내용, error 본문, 비밀값, 사용자 행동 text를 저장하지 않는다고
+명시합니다. 이 보고서는 actor 귀속, 쓰기 방지, 변조 방지 감사, 전체 파일시스템 관찰,
+OS 집행 또는 격리, 정확성, 테스트 충분성, 사람 검토, 최종 수락, 잔여 위험 수락을
+증명하지 않습니다.
+
 관리 Codex 구성 finding은 다음 닫힌 code를 사용합니다.
 
 | Code | Typed 관찰 |
@@ -494,12 +531,11 @@ permission 실패에는 일반적인 restart action을 붙이지 않습니다.
 
 명시적인 경로를 선택하면 환경 변수나 플랫폼 기본 Runtime Home으로 대체하지 않습니다.
 Runtime Home 선택과 모든 connection 명령이 수행하는 설치 프로필 검증은 읽기 전용입니다.
-선택한 디렉터리나 `registry.sqlite`를 만들거나, Registry 스키마를 초기화하거나
-마이그레이션하거나, Registry 상태를 쓰지 않습니다. Registry 스키마 생성은 명시적인
-`init` 설정 변경에 속합니다. `init`은 setup 변경 전에 기존 home을 읽기 전용으로 열어
-정확한 manifest와 schema를 검증하고 분류합니다. `Incompatible` 또는 `Corrupt` 상태는
-보존하며, 기존 home을 유지하고 명시적 `--home`으로 새 위치를 선택하거나 담당자가 정의한
-importer가 있는 경우에만 그것을 사용하도록 안내합니다.
+선택한 디렉터리나 `registry.sqlite`를 만들거나, Registry 스키마를 초기화하거나,
+Registry 상태를 쓰지 않습니다. Registry 스키마 생성은 명시적인 `init` 설정 변경에
+속합니다. `init`은 setup 변경 전에 기존 home을 읽기 전용으로 열어 정확한 manifest와
+schema를 검증하고 분류합니다. `Incompatible` 또는 `Corrupt` 상태는 보존하며, 기존
+home을 유지하고 지원되는 설정에는 명시적 `--home`으로 새 위치를 선택하도록 안내합니다.
 
 최종 경로가 없으면 `init`은 같은 상위 directory의 고유 staging directory에 Registry,
 singleton, installation profile을 만들고 singleton에 새 불투명 publication ID를
@@ -598,6 +634,47 @@ volicord policy apply --repo "<repo>" --file "<policy-file>" --json
 
 검증은 효과가 없습니다. Apply는 담당 문서의 plan과 원자적 commit 경계를 사용하며 알 수
 없는 필드와 잘못된 값은 commit 전에 실패합니다.
+
+### 정책 JSON 계약
+
+정책은 최상위 key가 정확히 `schema`, `managed_by`, `storage_scope`,
+`connection_intent`, `host`, `repo_root`, `connection_id`,
+`guard_installation_id`, `selected_profile`, `mcp`, `host_hook`, `workflow`인
+JSON object 하나입니다. 고정값은 `schema=volicord.workflow_policy`,
+`managed_by=volicord`, `storage_scope=local_overlay`,
+`selected_profile=record`입니다. `connection_intent`는 `personal` 또는
+`shared`이고 `host`, `repo_root`, `connection_id`, `guard_installation_id`는
+비어 있지 않은 문자열입니다.
+
+중첩 object도 닫혀 있습니다.
+
+- `mcp`의 key는 정확히 `command`, `args`, `env`입니다. `command`는 비어 있지 않고,
+  `args`는 문자열 배열이며, `env` object에서 허용되는 유일한 구성원은 문자열 값을
+  가진 `VOLICORD_HOME`입니다.
+- `host_hook`의 key는 정확히 `enabled`, `commands`이고 `enabled=true`입니다.
+  `commands`에는 정확히 `pre_tool`, `post_tool`, `prompt_capture`가 있으며 각
+  phase는 비어 있지 않은 `command`와 문자열 배열 `args`만 가집니다. 전체 command
+  집합은 현재 hash-free Guard command 집합이어야 하고 정책 담당 필드와 일치해야 합니다.
+- `workflow`의 key는 정확히 `default_direct_control`, `default_work_control`,
+  `light`, `write_ticket`입니다. 각 기본 control 값은 `observe`, `light`,
+  `tracked`, `sensitive` 중 하나입니다.
+- `workflow.light`의 key는 정확히 `enabled`, `max_intended_paths`,
+  `allowed_path_patterns`, `denied_path_patterns`, `final_acceptance`입니다.
+  `enabled`는 boolean, `max_intended_paths`는 양의 정수이고 각 path 목록에는
+  정규화된 repository-relative 파일 또는 directory prefix만 들어갑니다.
+  `final_acceptance`는 `required`, `not_required`, `policy_dependent` 중 하나입니다.
+  각 prefix는 비어 있지 않고 앞뒤 공백이 없으며 `/` 구분자를 사용합니다. 절대 경로,
+  끝의 slash, backslash, drive prefix, control 문자, 빈 segment, `.` segment,
+  `..` segment는 허용하지 않습니다.
+- `workflow.write_ticket`의 key는 정확히 `idle_timeout_minutes`이고 값은 양의 정수
+  또는 `null`입니다.
+
+생성 정책은 두 control 필드를 `tracked`로 두고 `light`를 비활성화하며
+`max_intended_paths=3`, 빈 허용/거부 path 목록,
+`final_acceptance=policy_dependent`, `idle_timeout_minutes=null`을 사용합니다.
+`policy validate`는 상태를 바꾸지 않고 닫힌 JSON 계약을 검사합니다. `policy apply`는
+추가로 정책 binding이 선택한 프로젝트와 Connection에 일치해야 하며, 일치하면 권위
+복사본과 관리 복사본을 원자적으로 갱신합니다.
 
 ## Agent Connection 명령
 
@@ -943,7 +1020,7 @@ file을 다시 쓰지 않고, 기존 managed host를 새 revision에 맞춰 relo
 event는 이력으로 남지만 현재 check를 충족하지 못하며, 나중에 이전에 사용한 mode로 돌아가도
 다시 현재 상태가 되지 않습니다.
 
-`volicord init`이 선택한 프로젝트의 Connection을 교체할 때 migration은 superseded
+`volicord init`이 선택한 프로젝트의 Connection을 교체할 때 replacement 정리는 superseded
 membership보다 먼저 그 프로젝트의 Registry project-session binding과 Guard
 Installation을 폐기합니다. Superseded Connection에 다른 프로젝트가 있으면 이 순서의
 폐기, replacement membership과 Guard Installation, replacement 활성화를 Registry
@@ -1466,6 +1543,7 @@ snapshot을 반환하며 `active` 또는 `resolved` 상태와 `resolved_at`을 �
 `diagnostics session`은 변경할 수 없는 runtime 발생 관찰 조회를 유지합니다. 찾은 record는
 severity나 terminal condition과 관계없이 성공합니다.
 
+<a id="evidence-capture-fulfillment"></a>
 ## 증거 캡처 충족
 
 `evidence` 명령은 아직 소비하지 않은 기존 `EvidenceCaptureIntent`를 충족합니다.

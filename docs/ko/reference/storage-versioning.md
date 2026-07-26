@@ -17,31 +17,24 @@ SQLite DDL은 [저장소 DDL](storage-ddl.md)이 담당합니다.
 
 | 표면 | 안정성 | 계약 |
 |---|---|---|
-| `StorageManifest`, 기준 SQL 정체성, 정확한 열기 검증, `GeneratedSchemaMetadata` | `stable` | 최초 릴리스가 받아들이는 유일한 SQLite 형식을 식별합니다. |
+| `StorageManifest`, 기준 SQL 정체성, 정확한 열기 검증, `GeneratedSchemaMetadata` | `stable` | 유일하게 허용되는 SQLite 형식을 식별합니다. |
 | `project_state.state_version`, 정규 Core UTC 시계, 원자적 권한 커밋, 정확한 재실행 | `stable` | 받아들인 형식 안에서 권한, 최신성, 멱등성 계약으로 유지됩니다. |
 | 매니페스트 배치, 생성된 Rust 모듈, 메타데이터 추출 도우미, 질의 구현 | `internal` | 생성된 정확한 사실과 열기 동작을 보존하면서 구현을 바꿀 수 있습니다. |
 | 크기가 제한된 저장소 열기 및 손상 진단 | `diagnostic` | 진단 문구는 호환성 정체성이 아니며 원본 담당 상태, SQL 텍스트, 비밀값, 민감한 절대 경로를 노출하면 안 됩니다. |
 
 ## 단일 기준 SQLite 계약
 
-최초 릴리스는 SQLite 저장소 형식 하나만 지원합니다. 진실 공급원은 현재 기준
-SQL 파일입니다.
+Volicord는 SQLite 저장소 형식 하나만 지원합니다. 진실 공급원은 현재 기준 SQL
+파일입니다.
 
 - [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)
 - [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)
 
 새 저장소는 이 원본으로만 만듭니다. `project_state.state_version`은 Core 권한
-상태 시계입니다. 스키마 버전, 마이그레이션 버전, 저장소 형식 선택자, 호환성
-식별자가 아닙니다.
-
-제품에는 저장소 마이그레이션, 업그레이드 경로, 가져오기 도구, 변환기, 숫자 스키마
-분기, 과거 형식 디코더, 호환성 별칭, 대체 데이터베이스 열기 경로가 없습니다.
-개발 단계 진단 데이터베이스 마이그레이션도 없습니다. 일반 열기는 기존 데이터베이스
-형태의 이름을 바꾸거나, 복구하거나, 다시 쓰거나, 추정하지 않습니다.
-
-개발 데이터는 기준 SQL과 현재 매니페스트를 사용해 새 위치에 다시 만듭니다. 다시
-만들기는 conversion이 아니며 다른 형태의 기록을 보존하거나 재해석하지 않습니다.
-일반 열기는 영속 권한 데이터를 암묵적으로 버리거나 다시 만들지 않습니다.
+상태 시계이며 저장소 형식 식별자가 아닙니다. 일반 열기는 정확한 현재 manifest와
+물리 schema만 받아들이고 기존 데이터베이스를 바꾸지 않습니다. 개발 데이터는 기준
+SQL과 현재 manifest를 사용해 새 위치에 만들 수 있습니다. 일반 열기는 영속 권한
+데이터를 암묵적으로 버리거나 다시 만들지 않습니다.
 
 별도 비권한 `diagnostics.sqlite` 데이터베이스도 자체 의미적
 `volicord.sqlite.diagnostics` 매니페스트와 SQL inventory에서 파생한 canonical schema
@@ -162,8 +155,7 @@ schema를 선택하지 않습니다.
 
 기존 Runtime Home은 setup 변경 전에 읽기 전용 연결로 위의 정확한 열기 검사를 수행합니다.
 결과는 `Ready`, `Incompatible`, `Corrupt`이며 불일치는 manifest digest와 물리 relation
-사실을 한도 안에서 포함합니다. Store는 호환되지 않거나 손상된 home 위에 staging을
-덮거나 migration, patch, rewrite, timestamp 갱신을 수행하지 않습니다.
+사실을 한도 안에서 포함합니다. Store는 호환되지 않거나 손상된 home을 바꾸지 않습니다.
 
 ## 기준 SQL과 생성 메타데이터
 
@@ -288,8 +280,7 @@ Store는 커밋 트랜잭션 안에서 티켓 호환성과 소비를 다시 검�
 `MethodResult`로 직접 엄격하게 디코드되는지 확인해야 합니다. 응답 종류, 효과 종류,
 dry-run 플래그, 커밋 상태 버전은 재실행 행과 일치해야 합니다. 형태가 잘못되었거나,
 현재 형태가 아니거나, 메서드가 다르거나, 좌표가 일치하지 않는 행은 `Corrupt`이며
-재실행에 사용할 수 없습니다. Store는 이를 다시 쓰거나, 가리거나, 업그레이드하거나,
-다른 디코더에 전달하지 않습니다.
+재실행에 사용할 수 없습니다. Store는 이 행에서 재실행 byte를 반환하지 않습니다.
 
 재실행은 저장된 응답 본문을 반환합니다. 필드를 다시 계산하거나, 이벤트를 추가하거나,
 재실행 행을 하나 더 만들거나, 상태를 바꾸거나, 아티팩트를 승격 또는 연결하거나,
@@ -350,11 +341,10 @@ serialization, transaction, constraint finding은 각각의 집중 복구 action
 원인을 해결해야 하며 다른 저장소 계약을 고르거나 열기에 실패한 데이터베이스를
 변경하면 안 됩니다.
 
-지원되지 않는 저장소 계약은 현재 기준 SQL로 만든 새 Runtime Home 또는 프로젝트
+허용된 식별자 밖의 저장소 계약에는 현재 기준 SQL로 만든 새 Runtime Home 또는 프로젝트
 저장소가 필요합니다. 손상된 영속 권한 데이터는 담당 문서가 정의한 명시적 복구 판단이
 필요하며 일반 읽기와 쓰기는 이를 복구하지 않습니다. 개발 전용 데이터베이스는
-삭제하고 현재 원본으로 다시 만들 수 있습니다. 이 과정에서 기록을 마이그레이션,
-변환, 가져오기하지 않습니다.
+삭제하고 현재 원본으로 다시 만들 수 있습니다.
 
 현재 Registry 계약은 완전한 semantic 좌표마다 불변 integration-verification attempt
 하나를 semantic observation policy 및 typed repair/retry field와 함께 저장합니다. 정확한

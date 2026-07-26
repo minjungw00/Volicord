@@ -1,7 +1,7 @@
 # Security
 
 This document owns supported security guarantees and explicit non-guarantees
-for the first-release local Codex workflow. It does not define method schemas,
+for the local Codex workflow. It does not define method schemas,
 storage effects, Codex configuration syntax, or operating-system policy.
 
 ## Boundary Summary

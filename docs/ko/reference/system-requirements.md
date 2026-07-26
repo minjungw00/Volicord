@@ -1,7 +1,7 @@
 # 시스템 요구사항
 
-이 문서는 Volicord 최초 릴리스의 운영 환경 전제 조건을 담당합니다. 사용할 수
-있는 플랫폼 환경, WSL2 토폴로지, 실행 파일과 파일 시스템 전제 조건, Runtime
+이 문서는 Volicord의 운영 환경 전제 조건을 담당합니다. 사용할 수 있는 플랫폼 환경,
+WSL2 토폴로지, 실행 파일과 파일 시스템 전제 조건, Runtime
 Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 조건을 정의합니다.
 
 일반 빌드, 패키지, checksum, 플랫폼, 게시 검증은
@@ -12,14 +12,14 @@ Home과 Product Repository 배치, 설정 또는 검증을 중단해야 하는 �
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-네 `PlatformEnvironment` 값, 게시 target triple 다섯 개, 정확한 최초 릴리스 WSL2 배포판 식별 정보,
+네 `PlatformEnvironment` 값, 게시 target triple 다섯 개, 정확한 지원 WSL2 배포판 식별 정보,
 WSL2 토폴로지와 ext4 경계, 관리형 stdio MCP 전제 조건, 중단 기준은 안정
 계약입니다. 그 밖의 runner 이미지, 패키지 관리자 명령, 실행 파일 위치와 진단
 문구는 다른 담당 문서가 안정으로 지정하지 않는 한 릴리스 또는 구현
 세부사항입니다.
 
-<a id="first-release-environment-matrix"></a>
-## 최초 릴리스 환경 행렬
+<a id="supported-environment-matrix"></a>
+## 지원 환경 행렬
 
 Volicord는 binary target 다섯 개를 게시합니다. 해당 binary가 지원하는 실행 환경은
 다음과 같습니다.
@@ -38,15 +38,17 @@ native Linux와 WSL2는 별도 환경입니다. 한
 architecture나 환경은 다른 환경의 런타임 전제 조건을 성립시키지 않습니다. 릴리스
 패키징은 계속 게시 target을 각각 빌드하고 점검합니다.
 
-모든 행의 최초 릴리스 제품 표면은 다음과 같습니다.
+모든 행에서 지원되는 제품 표면은 다음과 같습니다.
 
 - `host_kind=codex`
 - `integration_profile=record`
 - `connection_scope=personal` 또는 `connection_scope=shared`
+- `connection_mode=read_only` 또는 `connection_mode=workflow`
 - 관리형 stdio MCP
 - 사용자 행동을 위한 CLI inbox
 
-다른 호스트, profile, transport와 User Channel은 이 릴리스 범위 밖입니다.
+정확히 허용되는 host, profile, transport, User Channel 집합은
+[Agent Connection](agent-connection.md#supported-surface)이 담당합니다.
 
 <a id="wsl2-topology"></a>
 ## WSL2 토폴로지
@@ -63,7 +65,7 @@ architecture나 환경은 다른 환경의 런타임 전제 조건을 성립시�
      생성된 관리 아티팩트
 ```
 
-최초 릴리스의 WSL2 경계와 배포판 식별 정보는 다음과 같습니다.
+지원되는 WSL2 경계와 배포판 식별 정보는 다음과 같습니다.
 
 | 관찰 | 요구사항 |
 |---|---|
@@ -96,7 +98,7 @@ unsupported-environment reason으로 실패해야 합니다.
 - Product Repository나 Runtime Home을 `/mnt/c`, `/mnt/d`, 다른 `/mnt/*` 경로 또는 DrvFS mount에 두는 구성
 - Windows와 Linux 경로, PID, 환경 값, Connection, runtime session 또는 project session을 변환하거나 서로 같다고 추정하는 동작
 - 네이티브 Windows Runtime Home session 기록을 WSL2에서 사용하거나 WSL2 session 기록을 네이티브 Windows에서 사용하는 동작
-- `/etc/os-release` 식별 정보가 현재 최초 릴리스 WSL2 범위 밖인 배포판
+- `/etc/os-release` 식별 정보가 지원되는 WSL2 범위 밖인 배포판
 
 WSL 종료나 재시작은 살아 있는 관리 runtime session을 끝냅니다. 그 project session은
 이후 호출에 권한을 줄 수 없으며, 새로운 관리 MCP lifecycle이 새 runtime session과
@@ -176,8 +178,8 @@ raw Runtime Home 경로 대신 domain-separated 전체 digest를 넣고 coordina
 Runtime Home 밖에 둡니다. 영속 파일 자체는 활성 lock이 아니며 PID나 timestamp로 stale
 owner를 삭제하지 않습니다. 프로세스 종료 시 OS handle이 해제됩니다.
 
-새 개발 데이터는 현재 기준 SQLite 계약으로 만듭니다. 다른 manifest를 가진 기존
-데이터베이스를 upgrade, import 또는 재해석하지 않습니다. 새 Runtime Home이나
+새 개발 데이터는 현재 기준 SQLite 계약으로 만듭니다. 기존 데이터베이스는 현재
+manifest와 정확히 일치해야 합니다. 일치하지 않으면 보존하고 새 Runtime Home이나
 명시적으로 비어 있는 새 대상을 사용합니다.
 
 ## Product Repository 요구사항
@@ -258,7 +260,7 @@ capability 동작으로 확인합니다.
 
 ## 인접 담당 문서
 
-- 최초 릴리스 포함 및 제외 표면: [범위](scope.md)
+- 지원되는 포함 및 제외 표면: [범위](scope.md)
 - 운영 session, 저장된 설정 행동 및 adapter/Core 경계: [Agent Connection](agent-connection.md)
 - 빌드, 패키지, 플랫폼, 릴리스 검증: [검증](../maintain/validation.md)
 - 런타임 경로 및 저장소 경계: [런타임 경계](runtime-boundaries.md)

@@ -18,32 +18,24 @@ For the stability vocabulary, see
 
 | Surface | Stability | Contract |
 |---|---|---|
-| `StorageManifest`, canonical SQL identity, exact-open validation, and `GeneratedSchemaMetadata` | `stable` | These identify the only SQLite format accepted by the first release. |
+| `StorageManifest`, canonical SQL identity, exact-open validation, and `GeneratedSchemaMetadata` | `stable` | These identify the only accepted SQLite format. |
 | `project_state.state_version`, the canonical Core UTC clock, atomic authority commits, and exact replay | `stable` | These remain authority, freshness, and idempotency contracts within the accepted format. |
 | Manifest placement, generated Rust modules, metadata extraction helpers, and query implementation | `internal` | Implementations may change while preserving the exact generated facts and open behavior. |
 | Bounded storage-open and corruption diagnostics | `diagnostic` | Diagnostic text is not a compatibility identity and must not expose raw owner data, SQL text, secrets, or sensitive absolute paths. |
 
 ## One Canonical SQLite Contract
 
-The first release supports exactly one SQLite storage format. Its sources of
-truth are the current canonical SQL files:
+Volicord supports exactly one SQLite storage format. Its sources of truth are
+the current canonical SQL files:
 
 - [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)
 - [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)
 
 New storage is created only from these sources. `project_state.state_version`
-is a Core authority-state clock; it is not a schema version, migration version,
-storage-format selector, or compatibility identifier.
-
-The product contains no storage migration, upgrade path, importer, converter,
-numeric schema dispatch, historical format decoder, compatibility alias, or
-fallback database opener. It also contains no development-stage diagnostics
-database migration. Ordinary open never relabels, repairs, rewrites, or infers
-an existing database shape.
-
-Development data is recreated in a fresh location from the canonical SQL and
-the current manifest. Recreation is not conversion and does not preserve or
-reinterpret records from another shape. Persisted authority data is never
+is a Core authority-state clock, not a storage-format identity. Ordinary open
+accepts only the exact current manifest and physical schema and does not alter
+an existing database. Development data can be created in a fresh location from
+the canonical SQL and current manifest. Persisted authority data is never
 silently discarded or recreated by ordinary open.
 
 The separate non-authority `diagnostics.sqlite` database follows the same
@@ -177,8 +169,7 @@ These lifecycle facts do not select another storage profile or schema.
 An existing Runtime Home follows the exact-open checks above through a
 read-only connection before any setup mutation. The result is `Ready`,
 `Incompatible`, or `Corrupt`; a mismatch includes bounded manifest-digest and
-physical relation facts. Store does not stage over, migrate, patch, rewrite,
-or update timestamps in an incompatible or corrupt home.
+physical relation facts. Store does not alter an incompatible or corrupt home.
 
 ## Canonical SQL And Generated Metadata
 
@@ -322,7 +313,7 @@ current closed `MethodResult` selected by its stored method name. Its response
 kind, effect kind, dry-run flag, and committed state version must match the
 replay row. A malformed, non-current, wrong-method, or coordinate-mismatched
 row is `Corrupt` and unavailable for replay. Store does not rewrite, redact,
-upgrade, or pass it through another decoder.
+or return replay bytes from that row.
 
 Replay returns the stored response body. It does not recompute a field, append
 an event, create another replay row, change state, promote or link an artifact,
@@ -387,12 +378,11 @@ Pre-commit and transaction failures have no partial storage effect. A retry
 addresses the reported cause; it does not select a different storage contract
 or mutate the failed database during open.
 
-An unsupported storage contract requires a fresh Runtime Home or project store
-created from the current canonical SQL. Corrupt persisted authority data
-requires an explicit owner-defined recovery decision; ordinary reads and writes
-do not repair it. Development-only databases may be deleted and recreated from
-the current sources. No records are migrated, converted, or imported during
-that recreation.
+A storage contract outside the accepted identity requires a fresh Runtime Home
+or project store created from the current canonical SQL. Corrupt persisted
+authority data requires an explicit owner-defined recovery decision; ordinary
+reads and writes do not repair it. Development-only databases may be deleted
+and recreated from the current sources.
 
 The current Registry contract stores integration verification as one immutable
 attempt per complete semantic coordinate with a semantic observation policy

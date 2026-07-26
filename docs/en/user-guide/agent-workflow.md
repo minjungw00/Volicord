@@ -173,8 +173,8 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-The first-release CLI-inbox delivery boundary belongs to
-[Agent Connection](../reference/agent-connection.md#first-release-surface), and
+The supported CLI-inbox delivery boundary belongs to
+[Agent Connection](../reference/agent-connection.md#supported-surface), and
 exact command behavior belongs to
 [Administrative CLI](../reference/admin-cli.md#user-channel-commands).
 

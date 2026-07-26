@@ -31,7 +31,7 @@ introduces a product concept, add the natural Korean equivalent in the paired
 Korean document during the same documentation update.
 
 Product-principle and maintenance-charter material must stay paired by meaning.
-Do not omit pre-major compatibility guidance, length-gate rejection, durable
+Do not omit compatibility discipline, length-gate rejection, durable
 test philosophy, brand claim boundaries, or user-judgment boundaries from one
 language when the paired language carries that meaning.
 

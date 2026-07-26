@@ -72,7 +72,7 @@ base URL을 사용합니다.
 
 ```sh
 repo=OWNER/REPO
-version=v0.8.0
+version=VERSION
 base="https://github.com/$repo/releases/download/$version"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
@@ -83,7 +83,7 @@ GitHub가 아닌 릴리스 mirror에서는 target 이름이 붙은 tarball과 ch
 디렉터리에 설치 스크립트 자산도 함께 제공합니다.
 
 ```sh
-base="https://example.invalid/releases/v0.8.0"
+base="https://example.invalid/releases/VERSION"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
 VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
@@ -123,7 +123,7 @@ Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 
 ```powershell
 $repo = "OWNER/REPO"
-$version = "v0.8.0"
+$version = "VERSION"
 $base = "https://github.com/$repo/releases/download/$version"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
@@ -133,7 +133,7 @@ Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 GitHub가 아닌 릴리스 mirror에서는 아래처럼 실행합니다.
 
 ```powershell
-$base = "https://example.invalid/releases/v0.8.0"
+$base = "https://example.invalid/releases/VERSION"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 & $tmp -ReleaseBaseUrl $base -RequireChecksum
@@ -188,38 +188,19 @@ volicord init --help
 연결하며 관리 Codex stdio 구성을 쓰고 통합 상태를 기록합니다. 이름 붙은 Codex 신뢰,
 다시 불러오기, 검증 단계가 끝날 때까지 `action_required`가 남을 수 있습니다.
 
-새 Runtime Home에서는 `init`이 같은 상위 directory의 staging에서 Registry와 installation
-profile을 만들고 검증한 뒤 기존 대상을 교체하지 않는 원자적 rename으로 전체 directory를
-공개합니다. Staging한 singleton에는 불투명 publication ID 하나가 있습니다. 성공한
-publisher는 동기화와 read-back 동안 invocation별 guard를 유지합니다. 선택한 경로가 이미
-있으면 읽기 전용으로 검사합니다. Manifest 또는 schema 불일치는 해당 home을
-보존하므로 담당자 승인 복구를 위해 그대로 두고 명시적 `--home`으로 새 위치를 선택해 다시
-실행합니다. 현재 담당자가 importer를 제공한 경우에만 그것을 사용합니다.
+`init`은 기존 Runtime Home을 변경하지 않고 검증하며, 허용되지 않는 manifest 또는
+schema를 가진 home은 그대로 보존합니다. 이 경우 지원되는 설정에는 명시적
+`--home`으로 새 위치를 선택합니다. Runtime Home이 없으면 setup lease를 보유한 채
+완전히 준비하고 검증한 home만 공개합니다. Dry run도 같은 일관된 plan을 사용하지만
+target은 바꾸지 않습니다.
 
-`init`은 검사 전에 선택한 정규 Runtime Home의 OS 기반 setup lease를 획득하고 어떤
-target도 쓰지 않은 채 전체 setup plan을 구성합니다. Dry run도 일관된 plan을 만들고
-보고하는 동안 같은 lease를 유지합니다. 다른 setup이 lease를 소유하고 있으면 typed busy
-결과를 보고하고 완료될 때까지 기다리도록 안내합니다. Coordination 파일을 삭제하면 안
-됩니다. Prepare 단계는 정확한 Codex 구성과 repository hook, wrapper, rule, policy,
-exclude, 관리 guidance 파일을 각각의 target 옆에 staging하고 Store 복구 경계를
-준비합니다. Commit 단계는 Runtime Home을 공개하거나 검증하고 Store mutation을 적용한 뒤
-repository 파일을 결정적인 순서로 원자 교체하고 Codex 구성을 마지막에 교체한 다음
-integration revision을 기록합니다. Lease는 성공 보고와 정리 또는 전체 rollback까지
-유지합니다. 실패하면 그 뒤 외부 변경이 없는 교체 파일과 checkpoint된 Store bytes를
-복원하고 소유한 staging을 안전할 때 제거하며 `preserved`, `rolled_back`,
-`partially_rolled_back`을 정확히 보고합니다. Runtime Home을 제거하려면 소유 publication
-guard가 정확한 ID, manifest, 경로, schema, installation, managed-host 소비 부재를 다시
-검증해야 합니다. 이 rollback 권한이 살아 있는 동안 다른 지원 setup은 Store mutation에
-들어갈 수 없고 소유권 불일치는 제거를 중단합니다. 재귀
-제거 효과와 상위 directory 내구성은 별도로 보고합니다. Runtime Home이 부재하지만 상위
-directory 동기화가 실패했다면 publication이 남아 있다고 하지 않고 내구성을 확인하지 못한
-제거로 보고합니다. 불완전하거나 불확실한 제거는 별도로 보고하며 재생성된 경로를 대상으로
-재시도하지 않습니다. 이후 writer 때문에 복원이 안전하지
-않은 상황에서 복구 entry 삭제가 pre-existing file을 잃게 한다면 그 entry를 보존하고
-diagnostic에 경로를 기록합니다. Runtime Home, Codex home, Product
-Repository가 서로 다른 파일시스템에 있을 수 있으므로 commit 전에 준비는 모두 끝나고
-각 파일 교체는 원자적이지만, 여러 파일시스템 전체를 아우르는 작업이 전역적으로
-원자적인 것은 아닙니다.
+설정은 commit 전에 소유하는 Runtime Home, Store, Codex, repository 변경을 모두
+준비합니다. 파일 교체는 각각 원자적이지만 여러 파일시스템을 아우르는 설정 전체가
+하나의 전역 원자 연산인 것은 아닙니다. Typed rollback과 복구 결과는 안전하게 복원할 수
+없는 상태를 보존합니다. 정확한 설정, 저장소, 위치 동작은
+[관리 CLI](../reference/admin-cli.md#agent-host-setup-and-init),
+[저장소 버전 관리](../reference/storage-versioning.md),
+[런타임 경계](../reference/runtime-boundaries.md)가 담당합니다.
 
 호스트 설정을 실행하기 전에 설치된 `volicord` 바이너리가 `PATH`에 있어야 합니다.
 셸 시작 파일 변경은 암시적으로 이루어지지 않습니다. 셸 시작 파일을 통해 `PATH`를
@@ -308,7 +289,7 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 ```
 
 `/path/to/your-product-repo`는 Codex가 작업할 Product Repository의 예시 경로입니다.
-최초 릴리스는 모든 지원 플랫폼에서 `record` 프로필을 사용합니다.
+지원되는 프로필은 모든 지원 플랫폼에서 `record`입니다.
 
 이 명령은 정규 managed launcher, Connection, 현재 Guard 설정을 적용한 뒤 계층형
 `IntegrationActivationPlan` 하나를 보고합니다. 적용에 성공했다는 사실만으로 다시

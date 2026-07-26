@@ -27,4 +27,4 @@
 | Close Status | 닫기 상태 | 현재 Volicord 기록에서 현재 작업을 정직하게 끝낼 수 있는지 판단하도록 돕는 상태입니다. | [Core 모델](core-model.md) |
 | Agent Connection | 에이전트 연결 | 에이전트가 지원되는 Volicord 작업 흐름을 조회하거나 참여할 수 있는 로컬 MCP 호스트 연결입니다. | [Agent Connection 참조](agent-connection.md) |
 | User Channel | 사용자 채널 | User Judgment와 Evidence 관찰을 포함해 권한 효력이 있는 사용자 행동을 기록하는 로컬 경로입니다. | [Core 모델](core-model.md) |
-| Record profile | 기록 프로필 | 관리 stdio MCP를 통한 협력적 Volicord 작업 기록용 최초 릴리스 Agent Connection 프로필입니다. | [관리 CLI](admin-cli.md) |
+| Record profile | 기록 프로필 | 관리 stdio MCP를 통한 협력적 Volicord 작업 기록에 허용되는 `integration_profile=record` Agent Connection 프로필입니다. | [관리 CLI](admin-cli.md) |

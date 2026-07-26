@@ -9,8 +9,10 @@ stdio behavior remains with [MCP Transport](mcp-transport.md).
 
 | Surface | Stability |
 |---|---|
-| Commands and selectors listed here | `stable` |
-| Pre-1.0 additions that are not listed as stable commands | `beta` |
+| Generated command tree, options, relationships, and accepted selector sets shown here | `stable` |
+| Machine-readable command fields and closed values explicitly defined in the maintained sections below | `stable` |
+| Policy validation/application and evidence-capture fulfillment commands | `stable` |
+| Current beta administrative surface | `beta` — none; every current administrative surface is classified by another row |
 | Human-readable formatting and diagnostics prose | `diagnostic` |
 | Generated Codex configuration details | `internal` |
 
@@ -20,7 +22,8 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 
 `volicord` is a local administrative/bootstrap executable, not a long-running
 network service. The command model accepts only `host=codex`,
-`profile=record`, and `personal` or `shared` connection scope.
+`profile=record`, `personal` or `shared` connection intent, and `read_only` or
+`workflow` connection mode.
 
 The syntax-only region below is generated from the Clap declaration. Command
 semantics, effects, output interpretation, and operational guidance remain
@@ -458,6 +461,44 @@ The privacy-footprint view is selected explicitly and may be combined with
 volicord doctor --privacy-footprint
 ```
 
+`volicord doctor --privacy-footprint --json` returns this exact top-level
+projection:
+
+```yaml
+status: complete
+runtime_home: string
+privacy_footprint:
+  registry_state: missing | present | unsupported | malformed | unreadable
+  registry_db_path: string
+  record_counts:
+    projects: integer
+    agent_connections: integer
+    connection_projects: integer
+    guard_installations: integer
+    project_state_databases: integer
+  stores: string[]
+  does_not_store: string[]
+  does_not_prove: string[]
+  doctor_output_scope: string
+```
+
+`record_counts` is `null` unless `registry_state=present`; when present it has
+exactly the five keys shown. This diagnostic reports categories and counts and
+never stored row bodies. The array entries and `doctor_output_scope` value are
+diagnostic explanations; the field names, `registry_state` values, and count
+keys above are the machine-readable contract.
+
+The current privacy summary identifies storage for Runtime Home and
+installation metadata, Product Repository and Agent Connection registrations,
+Guard installation and bounded observation metadata, project authority and
+evidence records when used, and bounded non-authority diagnostics. It also
+states that raw Guard prompt text is absent by default and that
+`diagnostics.sqlite` excludes prompt bodies, repository paths and file
+contents, error bodies, secrets, and user-action text. The report does not
+claim actor attribution, write prevention, tamper-proof audit, full filesystem
+monitoring, OS enforcement or isolation, correctness, test sufficiency, human
+review, final acceptance, or residual-risk acceptance.
+
 Managed Codex configuration findings use the following closed codes:
 
 | Code | Typed observation |
@@ -502,12 +543,12 @@ is reported as an absolute path.
 An explicit path never falls back to an environment or platform-default home.
 Runtime Home selection and the installation-profile validation performed for
 every connection command are read-only. They do not create the selected
-directory or `registry.sqlite`, initialize or migrate Registry schema, or write
-Registry state. Registry schema creation belongs to the explicit `init` setup
-mutation. Before any setup mutation, `init` classifies an existing home through
-read-only exact manifest and schema validation. It preserves `Incompatible` or
-`Corrupt` state and directs the operator to keep that home, select a fresh
-explicit `--home`, or use an owner-defined importer only if one exists.
+directory or `registry.sqlite`, initialize Registry schema, or write Registry
+state. Registry schema creation belongs to the explicit `init` setup mutation.
+Before any setup mutation, `init` classifies an existing home through read-only
+exact manifest and schema validation. It preserves `Incompatible` or `Corrupt`
+state and directs the operator to keep that home and select a fresh explicit
+`--home` for a supported setup.
 
 When the final path is absent, `init` creates the Registry, singleton, and
 installation profile in a unique same-parent staging directory. The singleton
@@ -618,6 +659,49 @@ volicord policy apply --repo "<repo>" --file "<policy-file>" --json
 
 Validation has no effect. Apply uses the owner-defined plan and atomic commit
 boundary; unknown fields and invalid values fail before commit.
+
+### Policy JSON Contract
+
+The policy is one JSON object with exactly these top-level keys:
+`schema`, `managed_by`, `storage_scope`, `connection_intent`, `host`,
+`repo_root`, `connection_id`, `guard_installation_id`, `selected_profile`,
+`mcp`, `host_hook`, and `workflow`. The fixed values are
+`schema=volicord.workflow_policy`, `managed_by=volicord`,
+`storage_scope=local_overlay`, and `selected_profile=record`.
+`connection_intent` is `personal` or `shared`; `host`, `repo_root`,
+`connection_id`, and `guard_installation_id` are non-empty strings.
+
+Nested objects are closed:
+
+- `mcp` has exactly `command`, `args`, and `env`. `command` is non-empty,
+  `args` is a string array, and `env` is an object whose only permitted member
+  is string-valued `VOLICORD_HOME`.
+- `host_hook` has exactly `enabled` and `commands`, with `enabled=true`.
+  `commands` has exactly `pre_tool`, `post_tool`, and `prompt_capture`; each
+  phase has exactly a non-empty `command` and string-array `args`. The complete
+  command set must be the current hash-free Guard command set and must match
+  the policy owner fields.
+- `workflow` has exactly `default_direct_control`, `default_work_control`,
+  `light`, and `write_ticket`. Each default control is `observe`, `light`,
+  `tracked`, or `sensitive`.
+- `workflow.light` has exactly `enabled`, `max_intended_paths`,
+  `allowed_path_patterns`, `denied_path_patterns`, and `final_acceptance`.
+  `enabled` is boolean, `max_intended_paths` is a positive integer, each path
+  list contains normalized repository-relative file or directory prefixes,
+  and `final_acceptance` is `required`, `not_required`, or
+  `policy_dependent`. Each prefix is non-empty and trimmed, uses `/`
+  separators, is not absolute, has no trailing slash, backslash, drive prefix,
+  control character, empty segment, `.` segment, or `..` segment.
+- `workflow.write_ticket` has exactly `idle_timeout_minutes`, whose value is a
+  positive integer or `null`.
+
+The generated policy defaults both control fields to `tracked`, disables
+`light`, sets `max_intended_paths=3`, uses empty allowed/denied path lists,
+sets `final_acceptance=policy_dependent`, and sets
+`idle_timeout_minutes=null`. `policy validate` checks the closed JSON
+contract without changing state. `policy apply` additionally requires the
+policy bindings to match the selected project and Connection before it updates
+the authoritative and managed copies atomically.
 
 ## Agent Connection Commands
 
@@ -989,16 +1073,16 @@ reloaded against the new revision. Prior runtime sessions, project Agent
 Sessions, and Guard events remain historical and cannot satisfy current checks,
 including when a later transition returns to a previously used mode.
 
-When `volicord init` replaces the selected project's Connection, migration
-retires that project's Registry project-session bindings and Guard Installation
-before its superseded membership. For a superseded multi-project Connection,
-that ordered retirement, the replacement membership and Guard Installation,
-and replacement activation commit in one Registry transaction; the old
-Connection, its other memberships and child rows, and connection-wide runtime
-sessions remain. For a superseded last-project Connection, migration instead
-disables the old Connection and retains its membership, bindings, Guard
-Installation, and exact pending-host-cleanup marker until host cleanup succeeds.
-Cleanup failure reports `partial_application` with that complete retry inventory
+When `volicord init` replaces the selected project's Connection, replacement
+cleanup retires that project's Registry project-session bindings and Guard
+Installation before its superseded membership. For a superseded multi-project
+Connection, that ordered retirement, the replacement membership and Guard
+Installation, and replacement activation commit in one Registry transaction;
+the old Connection, its other memberships and child rows, and connection-wide
+runtime sessions remain. For a superseded last-project Connection, replacement
+cleanup instead disables the old Connection and retains its membership,
+bindings, Guard Installation, and exact pending-host-cleanup marker until host
+cleanup succeeds. Cleanup failure reports `partial_application` with that complete retry inventory
 unchanged. After host cleanup, a final Registry transaction revalidates the
 replacement, marker, and membership inventory, retires the old project-owned
 rows and membership, and clears the marker. An already absent owned host entry
@@ -1578,6 +1662,7 @@ occurrence or the latest current-state snapshot, including `active` or
 runtime-occurrence inspection. A found record succeeds regardless of its
 severity or terminal condition.
 
+<a id="evidence-capture-fulfillment"></a>
 ## Evidence Capture Fulfillment
 
 The `evidence` commands fulfill an existing, unconsumed

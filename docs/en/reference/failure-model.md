@@ -182,8 +182,8 @@ the core operation can continue. A valid empty array or object remains a valid
 empty value only when the declared schema explicitly permits that exact value.
 
 Recoverable state may be regenerated only through an explicit owner-defined
-verify or repair flow. Reads and ordinary execution must not repair, migrate,
-guess, or silently replace the data while classifying the failure.
+verify or repair flow. Reads and ordinary execution must not mutate, guess, or
+silently replace the data while classifying the failure.
 
 Runtime Home bootstrap applies this rule before setup mutation. Existing state
 is inspected read-only and classified as `Ready`, `Incompatible`, or
@@ -415,7 +415,7 @@ Failure must not be converted into an ordinary value by using:
   fabricated capability
 - a default enum variant selected after decoding or lookup failed
 - a fallback host, adapter, decoder, external contract, or storage shape
-- a historical alias or deprecated shape treated as the current contract
+- any representation outside the current contract treated as current
 - a successful response whose only indication of failure is human text
 
 Implementation convenience such as `unwrap_or_default()` does not change this

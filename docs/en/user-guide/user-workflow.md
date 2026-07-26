@@ -127,8 +127,8 @@ the action on the user's behalf.
 
 Exact command behavior belongs to
 [Administrative CLI](../reference/admin-cli.md#user-channel-commands). The
-first-release CLI-inbox delivery boundary belongs to
-[Agent Connection](../reference/agent-connection.md#first-release-surface).
+supported CLI-inbox delivery boundary belongs to
+[Agent Connection](../reference/agent-connection.md#supported-surface).
 
 ## Separate Write Approval From A Write Ticket
 

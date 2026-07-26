@@ -7,7 +7,7 @@ session boundary belongs to [Agent Connection](../reference/agent-connection.md)
 
 ## Supported Setup
 
-The first release has one managed host and one profile:
+The supported setup has these closed value sets:
 
 - `host_kind=codex`
 - `profile=record`

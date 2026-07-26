@@ -1,6 +1,7 @@
 # Agent Host Troubleshooting
 
-Use this guide for bounded recovery of the first-release Codex `record`
+Use this guide for bounded recovery of the `host_kind=codex`,
+`integration_profile=record`
 connection. Keep the selected Product Repository, connection scope, and Runtime
 Home explicit throughout recovery.
 
@@ -58,7 +59,7 @@ Use the code family to choose the focused recovery:
 | `installation.*` | Restore a runnable current Volicord build; use `action.installation.reinstall_current_build` when present. |
 | `managed_config.*` | Run the same supported `init` repair. The finding never exposes static environment values or arguments. |
 | `store.sqlite.busy`, `store.sqlite.locked` | Finish or stop the process holding the database transaction, then retry. |
-| `store.schema.mismatch`, `store.integrity.corruption_failure` | Preserve the existing Runtime Home, select a fresh explicit `--home`, or use an owner-defined importer only if one exists. Inspection is read-only; do not edit schema tables in place. |
+| `store.schema.mismatch`, `store.integrity.corruption_failure` | Preserve the existing Runtime Home and select a fresh explicit `--home` for supported setup. Inspection is read-only; do not edit schema tables in place. |
 | `guard.*` | Repair the Guard installation, or trigger the exact unobserved phase named by the typed action. |
 | `trust.repository.not_trusted` | Approve the exact Product Repository in Codex. |
 | `revision.integration.stale` | Reload Codex after the already-applied configuration change. |

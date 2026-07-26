@@ -163,8 +163,8 @@ session을 무효화하지 않습니다.
 명시적으로 허용할 때만 유효한 빈 값입니다.
 
 복구 가능한 상태는 담당 문서가 정의한 명시적 verify 또는 repair 흐름을 통해서만
-다시 만들 수 있습니다. 읽기와 일반 실행은 실패를 분류하는 동안 데이터를 repair,
-migration, 추정, 암묵적 교체하면 안 됩니다.
+다시 만들 수 있습니다. 읽기와 일반 실행은 실패를 분류하는 동안 데이터를 변경하거나,
+추정하거나, 암묵적으로 교체하면 안 됩니다.
 
 Runtime Home bootstrap은 setup 변경 전에 이 규칙을 적용합니다. 기존 상태는 읽기 전용으로
 검사하여 `Ready`, `Incompatible`, `Corrupt`로 분류하고, manifest 또는 물리 schema
@@ -363,7 +363,7 @@ fallback은 환경 dump를 허용하지 않으며 두 번째 diagnostic model을
 - 합성 식별자, placeholder record, 조작한 timestamp, 조작한 capability
 - decode 또는 조회 실패 뒤 고른 기본 enum variant
 - fallback 호스트, 어댑터, decoder, 외부 계약, 저장소 형태
-- 현재 계약으로 취급한 과거 alias 또는 deprecated 형태
+- 현재 계약 밖의 표현을 현재 값으로 취급한 경우
 - 사람용 문구로만 실패를 표시하는 성공 응답
 
 `unwrap_or_default()` 같은 구현 편의 기능은 이 계약을 바꾸지 않습니다. 기본값은

@@ -446,7 +446,7 @@ remaining membership it additionally deletes every remaining connection-owned
 binding, integration-verification run, and Guard Installation, every
 connection-owned MCP runtime session, and the Agent Connection.
 
-Connection migration uses the same owner-ordered project retirement. A
+Connection replacement cleanup uses the same owner-ordered project retirement. A
 multi-project superseded Connection loses only the selected project's bindings,
 integration-verification runs, Guard Installation, and membership in the same
 Registry transaction that activates the replacement membership, Guard
@@ -460,7 +460,7 @@ Registry transaction revalidates the exact replacement, marker, and membership
 inventory, retires the project-owned rows before the membership, and clears the
 marker. Revalidation failure leaves that complete Registry inventory unchanged
 for retry. The disabled zero-membership historical Connection and its
-connection-wide runtime sessions remain after successful migration cleanup.
+connection-wide runtime sessions remain after successful replacement cleanup.
 
 A rejected or failed Store transaction has no Registry effect. Dry run has no
 Registry, host-configuration, or Product Repository effect. Project-local

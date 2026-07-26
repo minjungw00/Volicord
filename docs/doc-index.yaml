@@ -245,8 +245,8 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - terminology_map_schema
   primary_audience:
@@ -1325,8 +1325,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-02'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -1371,7 +1371,7 @@ documents:
   - Runtime Home, Product Repository, and Codex configuration access prerequisites
   - independent WSL2 topology, ext4 boundary, platform identity, and unsupported
     Windows/WSL crossings
-  - exact first-release WSL2 Ubuntu distribution identity
+  - exact supported WSL2 Ubuntu distribution identity
   - kernel-based native Linux and WSL2 classification, WSL2-only `/etc/os-release` observation,
     and independence from WSL environment variables
   - canonical typed platform diagnostic kinds and namespaced codes
@@ -1398,8 +1398,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - agents
   - implementers
@@ -1415,7 +1415,7 @@ documents:
   - profile-gated boundary
   - reserved behavior boundary
   - scope-level guarantee boundary
-  - Codex `record` first-release host, profile, intent, transport, User Channel, storage, and platform boundary
+  - Codex `record` supported host, profile, intent, mode, transport, User Channel, storage, and platform boundary
   depends_on:
   - reference.admin-cli
   - reference.agent-connection
@@ -1611,8 +1611,10 @@ documents:
   - exact read-only `ConnectionListReport` inventory projection, row-local persisted-state issues, and list exit routing
   - managed stdio MCP launch and preflight commands
   - CLI inbox listing and CLI-only UserAction resolution
-  - bounded finding and runtime-session diagnostic lookup commands, workflow metrics, policy,
-    authority-bundle export, and change-reconciliation commands
+  - bounded finding and runtime-session diagnostic lookup commands, workflow metrics,
+    privacy-footprint diagnostic projection, policy, authority-bundle export, and
+    change-reconciliation commands
+  - exact closed `.volicord/policy.json` object, value sets, defaults, and application bindings
   - authorized evidence-capture intent fulfillment commands
   - current-state operational finding refresh and current Connection report finding selection
   - administrative command boundary from public Volicord API methods
@@ -1679,8 +1681,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - agents
   - implementers
@@ -1708,8 +1710,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-05-06'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - terminology_map_schema
   primary_audience:
@@ -2429,8 +2431,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-25'
-  last_verified_on: '2026-07-25'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - storage implementers
   - maintainers
@@ -2464,8 +2466,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-25'
-  last_verified_on: '2026-07-25'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - storage implementers
   - API implementers
@@ -2549,8 +2551,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-25'
-  last_verified_on: '2026-07-25'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - storage implementers
   - maintainers
@@ -2562,7 +2564,7 @@ documents:
   - one canonical SQLite format and fail-closed exact-open validation
   - canonical SQL-derived `GeneratedSchemaMetadata`, DDL and integrity digests, and consumer sharing
   - noncurrent-contract corruption, unavailable, and fresh-recreation storage boundaries
-  - rejection of the preceding Guard verification schema without migration or dual-read compatibility
+  - exact-open acceptance of the current Guard verification relation and constraint inventory
   - canonical Core UTC clock and persisted project-time floor
   - atomic state-version, immutable event, write-ticket, and transaction ordering
   - idempotency, strict replay rows, and exact operation-result retrieval
@@ -2593,7 +2595,7 @@ documents:
   - operate
   - implement
   canonical_for:
-  - Codex `record`, personal/shared, managed stdio MCP, and CLI inbox first-release connection surface
+  - Codex `record`, personal/shared, read_only/workflow, managed stdio MCP, and CLI inbox supported connection surface
   - exact `ConnectionVerificationReport` shape, closed statuses, aggregation, bounds, ordering, and missing-report projection
   - shared CLI diagnostic projection of canonical verification checks, findings, cause graph, and
     root-scoped activation plan without renderer-side cause inference
@@ -2614,7 +2616,7 @@ documents:
   - separate ambient Guard coverage and correlated Guard attempt/proof reporting with exact terminal-state preservation
   - one report-contained hierarchical activation plan without an independent persisted status,
     host-plan action array, or renderer-owned step list
-  - first-release managed-host cooperative and non-identity threat boundary
+  - supported managed-host cooperative and non-identity threat boundary
   depends_on:
   - reference.mcp-transport
   - reference.failure-model
@@ -2748,14 +2750,14 @@ documents:
   path_ko: docs/ko/maintain/product-maintenance-charter.md
   kind: maintenance
   summary: Maintenance charter for Volicord product identity, service principles, documentation roles,
-    pre-major compatibility guidance, code guidance, testing philosophy, brand and translation boundaries,
+    compatibility discipline, code guidance, testing philosophy, brand and translation boundaries,
     and length-gate rejection.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-07-02'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - doc_index_schema
   - terminology_map_schema
@@ -2771,8 +2773,7 @@ documents:
   canonical_for:
   - Volicord product and maintenance charter for service principles, documentation roles, code guidance,
     testing philosophy, brand boundaries, and translation boundaries.
-  - Pre-major compatibility guidance for goal-directed design work before Volicord is ready for a first
-    major release.
+  - Compatibility discipline for owner-coherent goal-directed design work.
   - Rejection of file-length, document-length, and LOC hard gates as quality controls.
   - Durable behavior testing and one-time cleanup-test boundary guidance.
   depends_on:
@@ -2877,8 +2878,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-24'
-  last_updated_on: '2026-07-19'
-  last_verified_on: '2026-07-19'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - doc_index_schema
   - terminology_map_schema
@@ -2897,7 +2898,7 @@ documents:
     and feature-specific support.
   - Volicord product/system, Core, CLI identifier, MCP adapter identifier, Runtime Home label, and domain-concept
     presentation boundaries.
-  - Project-local visual identity principles and initial project tokens for Volicord presentation.
+  - Project-local visual identity principles and project tokens for Volicord presentation.
   - Distinction between the Volicord brand and ordinary `test harness` or `테스트 하네스` technical terms.
   depends_on:
   - terminology.map
@@ -2920,8 +2921,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-03'
-  last_verified_on: '2026-07-03'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - doc_index_schema
   - terminology_map_schema

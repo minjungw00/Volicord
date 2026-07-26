@@ -40,12 +40,10 @@ Reference owner defines a stronger guarantee. Product language,
 implementation comments, tests, CLI help, generated guidance, and examples must
 not imply stronger protection than the relevant Reference owner supports.
 
-Before Volicord is ready for a first major release, the repository does not
-need to preserve legacy CLI, API, storage, fixture, or documentation
-compatibility when goal-directed design work needs a cleaner product model.
-When older shapes conflict with the intended model, update the focused
-Reference owner, implementation, examples, and maintained documentation
-together instead of preserving older behavior only because it existed before.
+Supported compatibility is exactly what the focused Reference owners define.
+When goal-directed design changes a public contract, update the focused owner,
+implementation, examples, and maintained documentation together. An
+unsupported shape does not justify a second code path or documentation branch.
 
 Non-goals for service planning include replacing the editor, shell, tests,
 code review, or user judgment; acting as an OS security boundary; proving that
@@ -130,7 +128,7 @@ Use [Translation Policy](translation-policy.md) and
 [`docs/terminology-map.yaml`](../../terminology-map.yaml) for bilingual
 semantic parity, natural Korean technical prose, identifier preservation, and
 terminology routing. English and Korean Maintain documents must carry the same
-principles by meaning unit, including pre-major compatibility guidance, length
+principles by meaning unit, including compatibility discipline, length
 gate rejection, durable test philosophy, and user-judgment boundaries.
 
 ## Maintainer Completion Standard

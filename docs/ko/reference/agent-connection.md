@@ -1,6 +1,6 @@
 # Agent Connection 참조
 
-이 문서는 최초 릴리스 Agent Connection 계약을 정의합니다. 정확한
+이 문서는 현재 `host_kind=codex` Agent Connection 계약을 정의합니다. 정확한
 `host_kind=codex` Record 연결 표면, 정규 연결 검증 보고서, 관리 구성 소유권, 통합
 revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 담당합니다.
 
@@ -43,16 +43,16 @@ revision, Codex 어댑터와 Core 사이의 검증된 운영 session 경계를 �
 
 | 표면 | 안정성 | 계약 |
 |---|---|---|
-| 최초 릴리스 값 집합, `ConnectionVerificationReport`, 통합 revision, 권위 있는 운영 session, `ValidatedAgentSession` | `stable` | 정확한 경계 계약입니다. |
+| 지원되는 값 집합, `ConnectionVerificationReport`, 통합 revision, 권위 있는 운영 session, `ValidatedAgentSession` | `stable` | 정확한 경계 계약입니다. |
 | Codex 탐색, 관리 설치, 검증, repair, 제거, drift 결과 의미 | `stable` | 관찰 가능한 계약을 유지하면서 구현을 바꿀 수 있습니다. |
 | 어댑터 모듈, 파일시스템 helper, 숨겨진 launcher, Store lease/query helper | `internal` | 안정된 경계를 보존하지만 공개 표면은 아닙니다. |
 | 사람이 읽는 검증 안내와 client/host version 관찰 | `diagnostic` | Machine-readable 범주, 사유, typed 필드가 권위 있는 값입니다. |
 
-<a id="first-release-surface"></a>
+<a id="supported-surface"></a>
 
-## 최초 릴리스 표면
+## 지원 표면
 
-최초 릴리스는 아래 Agent Connection 표면만 허용합니다.
+Volicord는 아래 Agent Connection 표면만 허용합니다.
 
 | 차원 | 정확한 값 |
 |---|---|
@@ -93,10 +93,10 @@ Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록
 요청할 수 있지만 로컬 사용자 채널로 동작하거나 사용자를 대신해 해결할 수 없습니다.
 
 프로덕션 revision 집합에서는 정확한 `protocolVersion` 요청이 같은 session profile을
-선택합니다. 고정된 pre-release `2026-07-28`을 포함한 다른 모든 식별자는 다른 profile로
-대체하지 않고 지원하지 않는 값으로 거절합니다. 문자열이나 날짜 순서, 숫자 또는 날짜
-parsing, 범위, prefix, package version으로 지원 여부를 추론하지 않으며 사용자가 지원
-집합을 구성할 수 없습니다. 정확한 인자, capability, 응답 동작은
+선택합니다. 그 밖의 식별자는 다른 profile로 대체하지 않고 지원하지 않는 값으로
+거절합니다. 문자열이나 날짜 순서, 숫자 또는 날짜 parsing, 범위, prefix, package
+version으로 지원 여부를 추론하지 않으며 사용자가 지원 집합을 구성할 수 없습니다.
+정확한 인자, capability, 응답 동작은
 [MCP 전송](mcp-transport.md#protocol-revision-negotiation)이 담당합니다.
 
 <a id="managed-mcp-launch-contract"></a>
@@ -893,7 +893,7 @@ Session, Guard 관찰, workflow 이력, evidence와 그 밖의 권한 기록은 
 과거 상태로 유지됩니다. 현재 Registry membership과 현재 검증된 runtime/project
 session이 없으면 이 과거 기록은 이후 호출에 권한을 부여할 수 없습니다.
 
-Connection migration은 같은 프로젝트 범위 Registry 폐기 순서를 사용합니다. 여러
+Connection replacement 정리는 같은 프로젝트 범위 Registry 폐기 순서를 사용합니다. 여러
 프로젝트를 가진 superseded Connection에서는 원자적 replacement 활성화 transaction 안에서
 선택한 프로젝트의 runtime/project binding, Guard Installation, membership만 제거합니다.
 마지막 프로젝트를 가진 superseded Connection에서는 외부 정리가 성공할 때까지 기존
@@ -919,7 +919,7 @@ membership이 없는 비활성 과거 Connection과 그 connection 전체 runtim
 - 수동으로 변경한 구성
 - identity 주장으로 쓰는 client/host version과 process metadata
 
-동일 사용자 권한으로 실행되는 악성 프로세스의 Runtime Home 변조는 최초 릴리스 위협
+동일 사용자 권한으로 실행되는 악성 프로세스의 Runtime Home 변조는 현재 위협
 범위 밖입니다. 따라서 로컬 기록은 협력적이며 같은 계정 접근 권한을 가진 다른
 프로세스에 대해 변조 방지를 보장하지 않습니다.
 

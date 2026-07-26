@@ -63,7 +63,7 @@ schemas, security guarantees, or Core authority semantics.
 Use [Product and Maintenance Charter](product-maintenance-charter.md) as the
 durable maintenance charter for Volicord product identity, service planning
 principles, documentation roles, code-guidance boundaries, test philosophy,
-pre-major compatibility guidance, and length-gate rejection. The charter does
+compatibility discipline, and length-gate rejection. The charter does
 not move exact contracts out of focused Reference owners.
 
 Use [Document Charters](document-charters.md) when deciding what major documents

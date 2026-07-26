@@ -1,8 +1,8 @@
 # Quickstart
 
-This tutorial connects one Codex installation to one Product Repository by
-using the first-release managed setup. Complete [Installation](installation.md)
-first so `volicord` is available on `PATH`.
+This tutorial connects one Codex installation to one Product Repository with
+the supported managed setup. Complete [Installation](installation.md) first so
+`volicord` is available on `PATH`.
 
 ## 1. Initialize The Connection
 
@@ -13,8 +13,8 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 Use the same command without `--shared` for a personal connection. `<repo>` is
-the Git work tree where Codex will operate. The first release accepts only the
-`codex` host, the `record` profile, and `personal` or `shared` scope.
+the Git work tree where Codex will operate. The supported selector sets are
+host `codex`, profile `record`, and connection intent `personal` or `shared`.
 
 Review the reported file changes before committing project-owned configuration.
 Volicord-managed project files may include `.codex/config.toml`,
@@ -65,4 +65,4 @@ status, but it cannot resolve the request.
 - [Agent Host Troubleshooting](agent-host-troubleshooting.md) for bounded
   recovery.
 - [Agent Workflow](agent-workflow.md) for the normal Core workflow.
-- [Scope](../reference/scope.md) for the exact first-release boundary.
+- [Scope](../reference/scope.md) for the exact supported boundary.

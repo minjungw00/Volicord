@@ -22,8 +22,8 @@ Volicord(볼리코드)는 AI 지원 제품 작업을 위한 로컬 작업 권한
 - 어떤 판단이 아직 사용자에게 남아 있는지
 - 작업을 닫기 전에 무엇을 해결해야 하는지
 
-최초 릴리스 Volicord는 로컬 `Product Repository`(제품 저장소)에서 Volicord가 관리하는
-Codex MCP 및 Guard 통합을 사용합니다. 호환성은 현재 관리 구성과 관찰한 MCP protocol,
+지원되는 Volicord 제품 표면은 로컬 `Product Repository`(제품 저장소)에서 Volicord가
+관리하는 Codex MCP 및 Guard 통합을 사용합니다. 호환성은 현재 관리 구성과 관찰한 MCP protocol,
 도구, 안전 호출, Guard 동작으로 판단합니다. OS 샌드박스, 파일 권한 시스템, 정확성
 판정기, 변조 방지 감사 로그, 중앙식 다중 사용자 서비스가 아닙니다. 정확한 연결, 전송,
 보장 의미는 [Agent Connection](docs/ko/reference/agent-connection.md),
@@ -126,7 +126,7 @@ volicord status --repo /path/to/your-product-repo
 |---|---|
 | `Task` | 구체화하거나 수행하거나, 막혀 있거나, 닫으려는 작업 단위입니다. |
 | Task 통제 수준 | Task 하나에 현재 적용되는 작업 흐름 통제 정도를 Core가 기록한 값입니다. 호스트 통합 프로필과 구분됩니다. |
-| 통합 프로필 | 최초 릴리스는 Record 호스트 설정 프로필을 사용합니다. Task 위험 수준과는 별개입니다. |
+| 통합 프로필 | 허용되는 호스트 설정 selector는 `profile=record`(Record)입니다. Task 위험 수준과는 별개입니다. |
 | 쓰기 티켓 | 제안된 제품 파일 변경 하나를 현재 작업 경계와 정규화된 프로젝트 쓰기 권한에 대조한 Volicord 기록입니다. OS 권한이나 쓰기가 실제로 일어났다는 증명이 아닙니다. |
 | 증거 | 특정 주장을 뒷받침하는 기록입니다. 사용자 수락이나 정확성 증명이 아닙니다. |
 | 사용자 판단 | 제품 방향, 중요한 기술 방향, 범위, 최종 수락, 잔여 위험 수락처럼 사용자에게 속한 결정입니다. |
@@ -188,8 +188,8 @@ flowchart TD
 
 ## Record 프로필과 Task 통제
 
-최초 릴리스는 Record 프로필(`--profile record`)을 사용하며 관리형 stdio MCP를 통한
-협력적 작업 기록을 지원합니다. Record는 통합 프로필이며 Task 위험 등급이 아닙니다.
+지원되는 통합 프로필은 Record(`--profile record`)이며 관리형 stdio MCP를 통한
+협력적 작업 기록을 제공합니다. Record는 통합 프로필이며 Task 위험 등급이 아닙니다.
 각 Task에는 요청,
 프로젝트 소유 정책, 현재 적용 범위, 관련 위험 사실에서 Core가 정하는 별도 통제
 수준도 있습니다. 에이전트는 수준을 요청할 수 있지만 그 요청으로 프로젝트 정책을

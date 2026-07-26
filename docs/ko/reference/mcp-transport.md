@@ -14,7 +14,8 @@ lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 �
 | `volicord mcp serve`, 초기화, `tools/list`, `tools/call`, 응답 wrapping | `stable` |
 | `volicord mcp preflight` 읽기 전용 점검 및 출력 계약 | `stable` |
 | 권위 있는 runtime-session lifecycle milestone | `stable` |
-| stable 프로세스와 메서드 집합에 나열하지 않은 pre-1.0 추가 표면 | `beta` |
+| 프로덕션 MCP revision 다섯 개와 mode/저장소별 가시성 부분집합을 포함한 닫힌 16개 도구 catalog | `stable` |
+| 현재 beta MCP transport 표면 | `beta` — 없음. 현재 transport 표면은 모두 다른 행에서 분류합니다. |
 | 숨겨진 관리 launcher, launch lease, 생성 구성 세부사항 | `internal` |
 | Host 실행 파일 version, MCP client name/version, best-effort protocol metric | `diagnostic` |
 
@@ -143,8 +144,8 @@ version 조건으로 지원 여부를 판단하지 않으며 지원 집합은 �
 
 `protocolVersion`이 없거나 문자열이 아닌 경우, `capabilities`가 객체가 아닌 경우,
 `clientInfo`가 잘못된 경우에는 제한된 error data와 함께 계속 `-32602` invalid params를
-반환합니다. 고정된 pre-release `2026-07-28` revision은 프로덕션 profile이 아니므로
-이를 담은 initialize 요청도 지원하지 않는 revision으로 거절합니다.
+반환합니다. 프로덕션 revision 집합 밖의 `protocolVersion`은 지원하지 않는 값으로
+거절합니다.
 
 유효한 인자를 해석한 뒤 활성 MCP 연결은 session 범위의 typed selection 하나를 소유합니다.
 이 값은 정확한 요청 문자열, 선택한 profile, client capability, 제한 안의 시도된 client

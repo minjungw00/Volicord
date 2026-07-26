@@ -64,7 +64,7 @@ Repositories and their project-local history remain.
 ## Boundaries
 
 - Only explicitly stored memberships are selectable.
-- The first release uses the Codex `record` profile over managed stdio.
+- The supported integration uses the Codex `record` profile over managed stdio.
 - A shared connection remains scoped to one Product Repository.
 - UserAction resolution remains a local CLI operation for the selected
   repository.

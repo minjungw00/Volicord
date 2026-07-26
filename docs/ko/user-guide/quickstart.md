@@ -1,7 +1,7 @@
 # 빠른 시작
 
-이 튜토리얼은 최초 릴리스의 관리 설정으로 Codex 설치 하나를 Product Repository
-하나에 연결합니다. 먼저 [설치](installation.md)를 완료해 `volicord`를 `PATH`에서
+이 튜토리얼은 지원되는 관리 설정으로 Codex 설치 하나를 Product Repository 하나에
+연결합니다. 먼저 [설치](installation.md)를 완료해 `volicord`를 `PATH`에서
 사용할 수 있게 합니다.
 
 ## 1. 연결 초기화
@@ -13,8 +13,8 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
 개인 연결은 같은 명령에서 `--shared`를 뺍니다. `<repo>`는 Codex가 작업할 Git
-작업 트리입니다. 최초 릴리스는 `codex` 호스트, `record` 프로필, `personal` 또는
-`shared` 범위만 받습니다.
+작업 트리입니다. 지원되는 selector 집합은 호스트 `codex`, 프로필 `record`,
+연결 의도 `personal` 또는 `shared`입니다.
 
 프로젝트 소유 구성을 커밋하기 전에 보고된 파일 변경을 검토합니다. Volicord가
 관리하는 프로젝트 파일에는 `.codex/config.toml`, `.volicord/policy.json`,
@@ -61,4 +61,4 @@ MCP 에이전트는 요청을 만들거나 재개하고 나중에 현재 상태�
   [에이전트 호스트 설정](agent-host-setup.md)을 봅니다.
 - 제한된 복구는 [에이전트 호스트 문제 해결](agent-host-troubleshooting.md)을 봅니다.
 - 일반 Core 흐름은 [에이전트 작업 흐름](agent-workflow.md)을 봅니다.
-- 정확한 최초 릴리스 경계는 [범위](../reference/scope.md)를 봅니다.
+- 정확한 지원 경계는 [범위](../reference/scope.md)를 봅니다.

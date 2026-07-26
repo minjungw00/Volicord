@@ -77,7 +77,7 @@ install a specific tag, use the tag-specific release asset base URL:
 
 ```sh
 repo=OWNER/REPO
-version=v0.8.0
+version=VERSION
 base="https://github.com/$repo/releases/download/$version"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
@@ -88,7 +88,7 @@ For a non-GitHub release mirror, provide the directory that contains the
 installer asset, target-named tarball, and checksum:
 
 ```sh
-base="https://example.invalid/releases/v0.8.0"
+base="https://example.invalid/releases/VERSION"
 tmp="$(mktemp "${TMPDIR:-/tmp}/install-volicord.XXXXXX")"
 curl -fsSL "$base/install.sh" -o "$tmp"
 VOLICORD_RELEASE_BASE_URL="$base" VOLICORD_REQUIRE_CHECKSUM=1 sh "$tmp"
@@ -128,7 +128,7 @@ To install a specific tag:
 
 ```powershell
 $repo = "OWNER/REPO"
-$version = "v0.8.0"
+$version = "VERSION"
 $base = "https://github.com/$repo/releases/download/$version"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
@@ -138,7 +138,7 @@ Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 For a non-GitHub release mirror:
 
 ```powershell
-$base = "https://example.invalid/releases/v0.8.0"
+$base = "https://example.invalid/releases/VERSION"
 $tmp = Join-Path $env:TEMP "install-volicord.ps1"
 Invoke-WebRequest "$base/install.ps1" -OutFile $tmp
 & $tmp -ReleaseBaseUrl $base -RequireChecksum
@@ -195,45 +195,20 @@ Runtime Home, connects the Product Repository, writes the managed Codex stdio
 configuration, and records integration status. `action_required` can remain
 until the named Codex trust, reload, or verification step is complete.
 
-For a new Runtime Home, `init` builds and validates the Registry and
-installation profile in same-parent staging, then publishes the whole
-directory by an atomic no-replace rename. The staged singleton contains one
-opaque publication ID. The successful publisher retains an invocation-specific
-guard through synchronization and read-back. If the selected path already
-exists, inspection is read-only. A manifest or schema mismatch preserves that
-home; keep it for owner-approved recovery and rerun with a fresh explicit
-`--home`. Use an owner-defined importer only when the current owners provide
-one.
+`init` validates an existing Runtime Home without changing it and preserves a
+home whose manifest or schema is not accepted. Select a fresh explicit
+`--home` for a supported setup when that happens. For an absent Runtime Home,
+`init` publishes only a fully prepared and validated home while holding the
+setup lease. Dry run uses the same coherent plan without changing targets.
 
-`init` acquires the selected canonical Runtime Home's OS-backed setup lease
-before inspection and constructs its complete setup plan without writing any
-target. A dry run holds the same lease while generating and reporting its
-coherent plan. If another setup owns the lease, `init` reports a typed busy
-result and asks you to wait for it to finish; do not delete coordination files.
-Prepare then stages the exact Codex configuration and every repository hook,
-wrapper, rule, policy, exclude, and managed guidance file beside its target,
-and prepares the Store recovery boundary. Commit publishes or validates the
-Runtime Home, applies Store mutations, atomically replaces repository files in
-deterministic order, replaces Codex configuration last, and records the
-integration revision. The lease remains held until success reporting and
-cleanup or complete rollback. A failure restores already replaced files and
-checkpointed Store bytes when they remain unchanged, removes owned staging
-when safe, and reports `preserved`, `rolled_back`, or
-`partially_rolled_back` precisely. Runtime Home removal additionally requires
-the owned publication guard to revalidate the exact ID, manifest, paths,
-schema, installation, and absence of managed-host consumption; concurrent
-setup cannot enter Store mutation while that rollback authority is live, and
-ownership mismatches stop removal.
-Recursive removal effect and parent-directory durability are reported
-separately. If the Runtime Home is absent but parent synchronization failed,
-the report says it was removed with unconfirmed durability; it does not say
-the publication remains. An incomplete or uncertain removal is reported
-separately and is not retried against a recreated path. A recovery entry is retained
-and named in the diagnostic if deleting it would discard a pre-existing file
-after a later writer made restoration unsafe.
-Runtime Home, Codex home, and Product Repository may be on different
-filesystems: preparation is complete before commit and each file replacement
-is atomic, but the whole multi-filesystem operation is not globally atomic.
+Setup prepares every owned Runtime Home, Store, Codex, and repository change
+before commit. Each file replacement is atomic, but a setup spanning multiple
+filesystems is not one globally atomic operation. Typed rollback and recovery
+results preserve any state that cannot be restored safely. Exact setup,
+storage, and location behavior belongs to
+[Administrative CLI](../reference/admin-cli.md#agent-host-setup-and-init),
+[Storage Versioning](../reference/storage-versioning.md), and
+[Runtime Boundaries](../reference/runtime-boundaries.md).
 
 Ensure the installed `volicord` binary is available on `PATH` before running
 host setup. Shell startup file changes are never implicit. If you update `PATH`
@@ -325,8 +300,8 @@ volicord init --shared --host codex --repo /path/to/your-product-repo --profile 
 ```
 
 `/path/to/your-product-repo` is an example path for the Product Repository where
-you want Codex to work. The first release uses the `record` profile on every
-supported platform.
+you want Codex to work. The supported profile is `record` on every supported
+platform.
 
 This command applies the canonical managed launcher, Connection, and current
 Guard setup before it reports one hierarchical `IntegrationActivationPlan`. A

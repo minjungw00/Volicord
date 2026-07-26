@@ -16,7 +16,7 @@
 
 ## Product Repository
 
-Product Repository는 정규 현재 Git 작업 트리에서 해결합니다. 최초 릴리스는
+Product Repository는 정규 현재 Git 작업 트리에서 해결합니다. 지원되는 환경은
 [시스템 요구사항](system-requirements.md#wsl2-topology)의 WSL2 ext4 경계를 포함한 담당
 문서의 native filesystem topology를 요구합니다. 표시 이름, cwd만, 상위 디렉터리 검색,
 복사한 경로 문자열로 저장소 identity를 만들지 않습니다.
@@ -170,9 +170,9 @@ Bootstrap 검사는 선택한 최종 경로를 `Absent`, `Ready`, `Incompatible`
 schema, singleton identity, 최종 경로가 정확히 일치할 때만 `Ready`가 됩니다. 검사는
 파일을 만들거나 쓰지 않으며 호환되지 않거나 손상된 home의 bytes와 timestamp를 바꾸지
 않고 보존합니다. Schema 불일치는 예상·관찰 manifest digest와 relation 범주를 한도
-안에서 보고합니다. 복구할 때는 기존 home을 보존하고 명시적 `--home`으로 새 위치를
-선택하거나, 담당자가 정의한 importer가 있는 경우에만 그것을 사용합니다. 누락 relation을
-만들거나 schema를 patch하거나 숫자로 format을 선택해 제자리에서 복구하지 않습니다.
+안에서 보고합니다. 복구할 때는 기존 home을 보존하고 지원되는 설정에 명시적
+`--home`으로 새 위치를 선택합니다. 누락 relation을 만들거나 schema를 제자리에서
+바꾸지 않습니다.
 
 최종 경로가 `Absent`이면 초기화는 같은 상위 directory 아래에 고유 staging directory를
 만듭니다. 그 안에서 Registry, Runtime Home singleton, 최초 installation profile을 만들고
@@ -341,11 +341,11 @@ writer는 유효한 승자에 수렴하고 자신이 만든 staging 파일만 �
 - 변경 불가능한 Connection 통합 instance ID와 integration generation은 Runtime Home
   Store 소유 lifecycle 좌표입니다. 현재 소유자 입력과 함께 로컬 lifecycle 및
   상관관계 revision을 파생합니다.
-- 명시적 제거와 Connection migration은 저장소 담당자가 정한 순서로 선택한
+- 명시적 제거와 Connection replacement 정리는 저장소 담당자가 정한 순서로 선택한
   connection/project 소유 Registry 통합 행만 폐기합니다. 마지막 프로젝트의 pending
-  migration은 host 정리가 성공할 때까지 이 완전한 Registry inventory를 유지합니다. 어느
-  경로도 프로젝트 등록이나 프로젝트 로컬 Agent Session, Guard 및 workflow 이력,
-  evidence와 그 밖의 권한 데이터를 삭제하지 않으며, 유지된 이력은 현재 Registry
+  replacement 정리는 host 정리가 성공할 때까지 이 완전한 Registry inventory를
+  유지합니다. 어느 경로도 프로젝트 등록이나 프로젝트 로컬 Agent Session, Guard 및
+  workflow 이력, evidence와 그 밖의 권한 데이터를 삭제하지 않으며, 유지된 이력은 현재 Registry
   소유권이 없으면 현재 호출에 권한을 부여할 수 없습니다.
 - 내보내기와 릴리스 검증 출력은 유지 문서나 Runtime Home trust input이 아니라 명시적인
   외부 출력 위치에 둡니다.

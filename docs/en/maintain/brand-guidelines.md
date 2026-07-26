@@ -91,7 +91,7 @@ session and behavioral verification meaning to
 
 Use the exact user-facing request `Run the Volicord integration verification.`
 for the first-party in-chat workflow. Do not describe CLI preflight, raw stdio,
-resource discovery, configuration presence, or an old Guard event as a
+resource discovery, configuration presence, or a noncurrent Guard event as a
 “connected,” “trusted,” or “verified” managed integration. Say which typed
 state is known: configuration applied, host reload required, hook review
 required, hook effective by current observation, managed MCP observed, Guard
@@ -127,7 +127,7 @@ cable, and single-checkmark motifs.
 
 Do not use color as the sole status carrier.
 
-Initial project tokens:
+Project tokens:
 
 | Token | Value |
 |---|---|

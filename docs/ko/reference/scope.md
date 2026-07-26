@@ -57,13 +57,13 @@
 | 자연어 접수와 `Task` 생성 | 지원되는 접수 경로로 사용자의 자연어 의도에서 로컬 `Task`를 시작할 수 있습니다. | [접수 메서드](api/method-intake.md), [Core 모델](core-model.md) |
 | 범위 업데이트 | 지원되는 범위 업데이트 경로로 `Task`와 Change Unit 범위를 갱신할 수 있습니다. | [범위 업데이트 메서드](api/method-update-scope.md), [Core 모델](core-model.md) |
 | 상태와 닫기 준비 상태 확인 | 지원되는 읽기 경로로 상태, 증거 충분성, 알려진 차단 사유, 닫기 준비 상태를 읽을 수 있습니다. | [상태 메서드](api/method-status.md), [닫기 메서드](api/method-close-task.md), [API 상태 스키마](api/schema-state.md), [Core 모델](core-model.md) |
-| 최초 릴리스 Agent Connection | 최초 릴리스의 `host_kind`는 `codex`이고 통합 프로필은 `record`입니다. 연결 의도는 `personal` 또는 `shared`, 전송은 관리형 stdio MCP이며 사용자 소유 행동은 CLI 받은 편지함으로 전달합니다. 연결 검증은 현재 환경의 관리 구성, MCP 동작, 필수 도구, 안전한 도구 왕복, Guard 동작을 관찰합니다. | [Agent Connection](agent-connection.md), [MCP 전송](mcp-transport.md), [관리 CLI](admin-cli.md), [시스템 요구사항](system-requirements.md) |
-| 기준 SQLite 저장소 | 최초 릴리스는 현재 `StorageManifest`가 식별하는 기준 SQLite 계약 하나만 만들고 엽니다. migration, upgrade, importer, converter와 과거 형식 decoder는 없습니다. | [저장소 버전 관리](storage-versioning.md), [저장소 DDL](storage-ddl.md), [외부 계약](external-contracts.md) |
+| Agent Connection | 지원되는 `host_kind`는 `codex`, 통합 프로필은 `record`, 연결 의도는 `personal` 또는 `shared`, mode는 `read_only` 또는 `workflow`입니다. 전송은 관리형 stdio MCP이며 사용자 소유 행동은 CLI inbox로 전달합니다. 연결 검증은 현재 환경의 관리 구성, MCP 동작, 필수 도구, 안전한 도구 왕복, Guard 동작을 관찰합니다. | [Agent Connection](agent-connection.md), [MCP 전송](mcp-transport.md), [관리 CLI](admin-cli.md), [시스템 요구사항](system-requirements.md) |
+| 기준 SQLite 저장소 | Volicord는 현재 `StorageManifest`가 식별하는 기준 SQLite 계약 하나만 만들고 엽니다. 기존 저장소는 이 계약과 정확히 일치해야 합니다. | [저장소 버전 관리](storage-versioning.md), [저장소 DDL](storage-ddl.md), [외부 계약](external-contracts.md) |
 | 정확한 과거 동작 결과 조회 | `volicord.get_operation_result`는 조회할 수 있는 변경 불가능한 `operation_category=agent_workflow` Core 변경 응답을 크기가 제한된 UTF-8 페이지로 읽을 수 있습니다. 접근하려면 원래 호출을 수행한 Agent Connection이 현재 활성 상태이고 선택 프로젝트가 허용되어 있으며 현재 행위자가 저장된 행위자와 같아야 합니다. 결과는 현재 권한이 아닌 과거 기록이며 `operation_category=user_only` 사용자 행동 응답은 제외합니다. | [동작 결과 조회 메서드](api/method-get-operation-result.md), [보안](security.md#historical-operation-result-access), [저장소 버전 관리](storage-versioning.md#exact-operation-result-retrieval) |
 | 쓰기 티켓 | `volicord.prepare_write`는 호환되는 제안 제품 파일 변경 하나 또는 유효 `sensitive` 통제 아래의 정확한 승인 결속 비제품 동작 하나에 쓰기 티켓을 발급할 수 있습니다. | [쓰기 준비 메서드](api/method-prepare-write.md), [저장 효과](storage-effects.md), [보안](security.md) |
 | Agent Connection 맥락 | 등록된 Agent Connection은 범위 확인에 쓸 기록된 출처, 모드, 명시적인 프로젝트 허용 목록을 제공합니다. | [Agent Connection 참조](agent-connection.md), [보안](security.md) |
 | 아티팩트 스테이징과 호환되는 아티팩트 연결 | 새 아티팩트 바이트는 지원되는 스테이징 경로로 기준 범위에 들어올 수 있고, 호환되는 영속 아티팩트 참조는 아티팩트 담당 문서가 허용할 때 연결할 수 있습니다. | [아티팩트 스테이징 담당 문서](#artifact-staging-owners)를 봅니다. |
-| 실행 및 증거 기록 | 기준 범위 작업에 대해 실행 기록, 간결한 증거 요약, 출처를 가진 대상 단위 증거 관찰을 남길 수 있습니다. | [실행 기록 메서드](api/method-record-run.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
+| 증거 캡처와 실행 기록 | `volicord.prepare_evidence_capture`로 한도가 있는 명령 또는 호스트 도구 관찰 하나를 승인하고 관리 `evidence` 명령으로 그 정확한 intent를 충족할 수 있습니다. `volicord.record_run`은 Run, 간결한 증거 요약, 출처를 가진 대상 단위 증거 관찰을 기록할 수 있습니다. | [증거 캡처 준비 메서드](api/method-prepare-evidence-capture.md), [관리 CLI](admin-cli.md#evidence-capture-fulfillment), [실행 기록 메서드](api/method-record-run.md), [저장 효과](storage-effects.md), [Core 모델](core-model.md) |
 | 집중된 사용자 소유 행동 캡처 | 지원되는 공통 User Action 경로로 choice 판단과 Evidence 관찰을 요청하고 해결할 수 있습니다. 이 행동은 Core 소유 상태, Evidence, 닫기 준비 상태 규칙을 대체하지 않습니다. | [사용자 행동 담당 문서](#user-action-owners)를 봅니다. |
 | 프로젝트 연속성 기록 | 오래 유지해야 하는 결정, 의무, 알려진 한계, 수락된 잔여 위험, 제약을 현재 Core 권한을 대체하지 않는 프로젝트 수준 맥락으로 보존할 수 있습니다. | [Core 모델](core-model.md), [API 상태 스키마](api/schema-state.md), [저장소 기록](storage-records.md), [저장 효과](storage-effects.md) |
 | 권한 번들 내보내기 | `volicord export authority-bundle`로 원본 Runtime Home이나 프로젝트 상태를 변경하지 않고 등록된 프로젝트 하나의 로컬 기록과 현재 사용할 수 있는 영속 아티팩트 본문을 무결성 라벨이 붙은 복사본으로 내보낼 수 있습니다. 문서에 정의된 비보장이 그대로 적용됩니다. | [관리 CLI](admin-cli.md#authority-bundle-export), [저장소 기록](storage-records.md), [보안](security.md) |
@@ -111,7 +111,6 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 - 로컬 CLI inbox 이외의 UserAction 해결 채널
 - 네트워크 MCP 전송
 - 현재 형식이 아닌 저장소, 개발 데이터 가져오기, 변환, 과거 host fingerprint 판독
-- 제외 기능을 위한 deprecated 호환 API, alias, placeholder, feature flag
 - 호스트 애플리케이션의 자체 아티팩트 캡처
 - 지속 저장되는 상태 보기 작업, 상태 보기 조정, 생성된 상태 보기 파일, 관리되는 상태 보기 복구
 - 확장 또는 추가 증거 수집 흐름
@@ -147,7 +146,7 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 <a id="reserved-and-profile-gated-values"></a>
 ## 예약된 값과 프로필 조건부 값
 
-일부 값 이름은 외부 표준이나 문서 메타데이터에 존재할 수 있지만, 그것만으로 사용자에게 보이는 지원 기능이 되지는 않습니다. 최초 릴리스의 호스트와 프로필 선택자는 닫혀 있으며 제품 코드와 공개 CLI는 Codex와 `record`만 받아들입니다.
+일부 값 이름은 외부 표준이나 문서 메타데이터에 존재할 수 있지만, 그것만으로 사용자에게 보이는 지원 기능이 되지는 않습니다. 현재 호스트와 프로필 선택자는 닫혀 있으며 제품 코드와 공개 CLI는 Codex와 `record`만 받아들입니다.
 
 예약된 값:
 
@@ -156,7 +155,7 @@ Volicord는 AI 지원 작업 주변의 담당 문서가 정의한 상태를 기�
 
 프로필 조건부 값:
 
-- 프로필 조건부 값은 관련 프로필이나 게이트가 담당 문서에 정의되고 이 범위 참조가 그 결과 기능을 포함할 때만 사용할 수 있습니다. 최초 릴리스에는 추가 통합 프로필이 정의되어 있지 않습니다.
+- 프로필 조건부 값은 관련 프로필이나 게이트가 담당 문서에 정의되고 이 범위 참조가 그 결과 기능을 포함할 때만 사용할 수 있습니다. 지원되는 통합 프로필 집합은 정확히 `record`입니다.
 - 프로필/게이트나 기능 담당 문서 중 하나라도 없으면 그 값은 지원되는 기준 범위 동작이 아닙니다.
 
 사용 지점 규칙:

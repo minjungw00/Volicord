@@ -31,7 +31,8 @@ SQLite DDL 계약을 담당합니다. `registry.sqlite`, 프로젝트 `state.sql
 <a id="surface-stability"></a>
 ## 표면 안정성
 
-기준 어휘는 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)을 확인하세요. 이 섹션에서 `stable`은 문서화된 호환성 표면을 뜻합니다. `beta`는 지원되지만 세부사항이 바뀔 수 있음을 뜻합니다. `internal`은 구현 또는 생성된 통합 세부사항이며 일반 사용자 입력 표면이 아님을 뜻합니다. `diagnostic`은 문제 해결이나 상태 보고 표면이며 산문 또는 진단 문구가 안정적인 API 계약이 아님을 뜻합니다.
+라벨은 [문서 정책](../maintain/documentation-policy.md#surface-stability-labels)의
+어휘를 사용합니다.
 
 | 표면 | 안정성 | 비고 |
 |---|---|---|
@@ -64,8 +65,8 @@ Setup 전용 staging database 생성은 배타 setup context를 요구하며 boo
 
 `project_state.state_version`은 유일한 공개 상태 시계입니다.
 `project_state.updated_at`은 정규 Core UTC 시계를 위한 별도의 물리 하한이며 공개 충돌
-버전이나 스키마 버전이 아닙니다. 기준 SQLite DDL은 `tasks.state_version`, 저장소
-`schema_version` 열, 마이그레이션 이력 테이블을 만들면 안 됩니다.
+버전이나 저장소 형식 식별자가 아닙니다. 기준 SQLite DDL은 다른 공개 상태 시계를
+노출하지 않습니다.
 
 물리 `write_tickets` 테이블은 제품 파일 쓰기 시도와 유효 `sensitive` 통제 아래의
 정확한 승인 결속 비제품 동작에 대한 권한 기록을 저장합니다. 이 행은 Volicord 안에서
@@ -84,8 +85,7 @@ Setup 전용 staging database 생성은 배타 setup context를 요구하며 boo
 | `registry.sqlite` | `singleton_id=1`로 선택하는 `runtime_home` 행 | `runtime_home.storage_profile` | SQL 기본값이 없는 `TEXT NOT NULL` |
 | 프로젝트 `state.sqlite` | 해당 데이터베이스의 `project_id`에 대한 `project_state` 행 | `project_state.storage_profile` | SQL 기본값이 없는 `TEXT NOT NULL` |
 
-물리 이름과 달리 `storage_profile`은 프로필 선택자, 숫자 revision, 마이그레이션 키,
-호환성 별칭이 아닙니다. 완전한 현재 `StorageManifest`의 결정적인 단일 정규 UTF-8 JSON
+`storage_profile`은 완전한 현재 `StorageManifest`의 결정적인 단일 정규 UTF-8 JSON
 인코딩을 저장합니다. 객체에는 `contract_id`, `canonical_ddl_digest`,
 `integrity_constraints_digest`, `enabled_capabilities`만 정확히 있어야 합니다. 필드가
 누락되거나 알 수 없는 필드 또는 중복 필드가 있으면 유효하지 않습니다. Capability 배열은
@@ -118,8 +118,8 @@ envelope를 저장하거나 column 존재 여부에서 decoder를 추론하지 �
 실행 가능한 DDL 원본은 고정된 순서의
 [`registry.sql`](../../../crates/volicord-store/src/schema/registry.sql)과
 [`project.sql`](../../../crates/volicord-store/src/schema/project.sql)뿐입니다. 새 초기화는 비어
-있는 SQLite 데이터베이스에만 이 원본을 적용합니다. 마이그레이션, 변환, 업그레이드,
-가져오기 도구, 과거 SQL 묶음, 숫자 프로필 분기, 대체 데이터베이스 열기 경로는 없습니다.
+있는 SQLite 데이터베이스에만 이 원본을 적용합니다. 기존 데이터베이스는 정확한 현재
+manifest와 물리 schema 검증을 통과할 때만 받아들입니다.
 
 이 두 원본 파일은 바이트가 정확히 일치해야 하는 텍스트 계약입니다. 저장소의 기준 형식은
 LF 바이트만 사용하고 끝에 LF 하나만 둡니다. 루트 `.gitattributes` 규칙은 Git 클라이언트의
@@ -990,7 +990,7 @@ CREATE INDEX idx_guard_probe_observations_verification
 - `guard_installations`는 프로젝트 범위의 안정적인 Guard 설치 identity 하나와 정규 typed Guard manifest를 저장합니다. Manifest는 row, Agent Connection, 프로젝트, 현재 integration revision, policy hash, runtime command, 전체 managed-file inventory, 필수 hook phase, 정확한 `host_contract_profile`, 결정적인 `host_contract_digest`에 결속됩니다. 현재 Guard 선택은 `codex-command-hooks`입니다. 파일 상태는 manifest와 현재 파일을 audit해 도출하고, 관찰 상태는 모든 필수 phase의 호환되는 현재 소유 `guard_events`를 요구합니다. 이 협력적 check는 OS 수준 집행이나 쓰기 방지를 제공하지 않습니다.
 - `guard_integration_verification_runs`는 Connection, project, 현재 MCP runtime, native session과 turn, integration revision, Guard Installation, host-contract profile, hook-definition digest, policy digest로 이루어진 완전한 semantic 좌표마다 불변 managed-host attempt 하나를 저장합니다. 무조건 unique index는 terminal row도 포함하며 prompt 소유권은 별도 attempt가 prompt event 하나를 공유하지 못하게 합니다. Row는 semantic observation policy, bounded status-read 횟수, cleanup 경계, first-write acknowledgement, 일치한 event, 폐쇄형 상태, typed repair/retry field도 저장합니다. Coordinate, acknowledgement, terminal trigger는 identity 변경, 두 번째 acknowledgement, terminal 재활성화, terminal 교체를 막습니다. 현재 Codex semantic 계약은 허용 status read가 하나인 영속 synchronous policy를 사용합니다. `cleanup_after`는 보관 metadata이며 attempt expiry, polling 시간, retry eligibility가 아닙니다.
 - `guard_probe_observations`는 폐쇄형 acquisition stage, 예상 agent-tool/callable identity, 선택적인 한도 내 관찰 callable, 선택적인 hook kind, verification ID의 존재 및 일치 flag, Guard Installation, integration revision, 관찰 시각만 저장합니다. Prompt나 제한 없는 hook/tool payload는 저장할 수 없습니다. Foreign key는 각 관찰을 하나의 verification run과 현재 installation에 결속하며, `hook_event_not_observed`는 Volicord 경계에서의 부재만 기록합니다. `unrelated_routed_tool`은 nonterminal trace이며 repair reason, proof, acknowledgement, retry 입력, root finding, status-read-budget effect가 아닙니다.
-- 명시적 제거 또는 migration에 따른 Connection Project 폐기는 immediate transaction 하나에서 소유자 순서로 삭제하여 제한적인 Registry foreign key를 충족합니다. 선택한 project-session binding과 integration-verification run을 선택한 Guard Installation과 membership보다 먼저 삭제합니다. 여러 프로젝트가 있는 migration은 관련 없는 프로젝트 행과 connection 전체 runtime session을 유지합니다. 마지막 프로젝트 migration은 host 정리와 최종 재검증이 성공할 때까지 비활성 membership, binding, Guard Installation, pending-cleanup marker의 완전한 inventory를 유지한 뒤 프로젝트 소유 행과 membership만 삭제합니다. 명시적으로 마지막 membership을 제거할 때는 Connection 소유의 남은 binding, integration-verification run, Guard Installation을 모두 삭제한 뒤 `mcp_runtime_sessions`, `managed_mcp_launch_leases`, `agent_connections` 순서로 삭제하며, 구조화된 finding은 영속 이력 진단으로 남습니다. 어떤 경로도 `projects`, `runtime_home`, `installation_profile`, 프로젝트 `state.sqlite` 데이터베이스로 cascade하지 않습니다.
+- 명시적 제거 또는 replacement 정리에 따른 Connection Project 폐기는 immediate transaction 하나에서 소유자 순서로 삭제하여 제한적인 Registry foreign key를 충족합니다. 선택한 project-session binding과 integration-verification run을 선택한 Guard Installation과 membership보다 먼저 삭제합니다. 여러 프로젝트가 있는 replacement 정리는 관련 없는 프로젝트 행과 connection 전체 runtime session을 유지합니다. 마지막 프로젝트 replacement 정리는 host 정리와 최종 재검증이 성공할 때까지 비활성 membership, binding, Guard Installation, pending-cleanup marker의 완전한 inventory를 유지한 뒤 프로젝트 소유 행과 membership만 삭제합니다. 명시적으로 마지막 membership을 제거할 때는 Connection 소유의 남은 binding, integration-verification run, Guard Installation을 모두 삭제한 뒤 `mcp_runtime_sessions`, `managed_mcp_launch_leases`, `agent_connections` 순서로 삭제하며, 구조화된 finding은 영속 이력 진단으로 남습니다. 어떤 경로도 `projects`, `runtime_home`, `installation_profile`, 프로젝트 `state.sqlite` 데이터베이스로 cascade하지 않습니다.
 
 ## 프로젝트 `state.sqlite`
 

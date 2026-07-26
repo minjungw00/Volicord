@@ -27,4 +27,4 @@ needed. Terms such as `Core`, `Change Unit`, `Expected Write`, host-hook install
 | Close Status | 닫기 상태 | Decision support for whether the current task can honestly finish from current Volicord records. | [Core Model](core-model.md) |
 | Agent Connection | 에이전트 연결 | A local MCP host connection through which an agent can read or participate in supported Volicord workflows. | [Agent Connection Reference](agent-connection.md) |
 | User Channel | 사용자 채널 | The local path for recording authority-bearing user actions, including User Judgment and evidence observation. | [Core Model](core-model.md) |
-| Record profile | 기록 프로필 | The first-release Agent Connection profile for cooperative Volicord workflow recording through managed stdio MCP. | [Administrative CLI](admin-cli.md) |
+| Record profile | 기록 프로필 | The accepted `integration_profile=record` Agent Connection profile for cooperative Volicord workflow recording through managed stdio MCP. | [Administrative CLI](admin-cli.md) |

@@ -128,8 +128,8 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 채널로 동작하거나 사용자를 대신해 행동을 해결할 수 없습니다.
 
 정확한 명령 동작은 [관리 CLI](../reference/admin-cli.md#user-channel-commands)에
-있습니다. 최초 릴리스의 CLI inbox 전달 경계는
-[Agent Connection 참조](../reference/agent-connection.md#first-release-surface)를 보세요.
+있습니다. 지원되는 CLI inbox 전달 경계는
+[Agent Connection 참조](../reference/agent-connection.md#supported-surface)를 보세요.
 
 ## 쓰기 승인과 쓰기 티켓 구분하기
 

@@ -160,8 +160,8 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-최초 릴리스의 CLI inbox 전달 경계는
-[Agent Connection 참조](../reference/agent-connection.md#first-release-surface)에 있고,
+지원되는 CLI inbox 전달 경계는
+[Agent Connection 참조](../reference/agent-connection.md#supported-surface)에 있고,
 정확한 명령 동작은 [관리 CLI](../reference/admin-cli.md#user-channel-commands)에 있습니다.
 
 <a id="check-before-writes"></a>
