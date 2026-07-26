@@ -15,7 +15,9 @@ use crate::policy::evidence_target::{
 };
 use chrono::Duration;
 use serde_json::json;
-use volicord_store::core_pipeline::{CoreProjectStore, CoreStorageMutation, ProjectStateHeader};
+use volicord_store::core_pipeline::{
+    CoreProjectStore, CoreStorageMutation, EvidenceMutation, ProjectStateHeader,
+};
 use volicord_store::evidence_capture::EvidenceCaptureIntentInsert;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::methods::{
@@ -277,8 +279,8 @@ fn plan_prepare_evidence_capture(
         expires_at: expires_at.clone(),
     };
     let capture_kind = storage_value(normalized.producer_kind)?;
-    let storage_mutations = vec![CoreStorageMutation::InsertEvidenceCaptureIntent(
-        EvidenceCaptureIntentInsert {
+    let storage_mutations = vec![CoreStorageMutation::Evidence(
+        EvidenceMutation::InsertCaptureIntent(EvidenceCaptureIntentInsert {
             evidence_capture_intent_id: capture_intent_id.as_str().to_owned(),
             task_id: request.task_id.as_str().to_owned(),
             change_unit_id: request.change_unit_id.as_str().to_owned(),
@@ -300,7 +302,7 @@ fn plan_prepare_evidence_capture(
             metadata_json: serde_json::to_string(&json!({
                 "verification_basis": verified_invocation.verification_basis
             }))?,
-        },
+        }),
     )];
     let event_payload = object_from_value(json!({
         "capture_intent_ref": capture_intent_ref,

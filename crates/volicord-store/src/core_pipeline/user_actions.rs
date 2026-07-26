@@ -13,16 +13,8 @@ use volicord_types::{
 };
 
 use super::{
-    facade::CoreProjectStore,
-    record_refs::StoredRecordRef,
-    validation::{
-        parse_user_action_basis_status, parse_user_action_channel_kind, parse_user_action_kind,
-        user_action_channel_kind_as_str, validate_identifier, validate_json_text,
-        validate_stored_timestamp, validate_stored_user_action_request_column_agreement,
-        validate_user_action_resolution_column_agreement,
-        validate_user_action_resolution_provenance, validate_user_action_timestamp_order,
-        UserActionRequestColumnFacts, UserActionTimestampOrderFailure,
-    },
+    facade::CoreProjectStore, mutations::MutationContext, record_refs::StoredRecordRef,
+    validation::*,
 };
 use crate::{StoreError, StoreResult};
 
@@ -37,6 +29,86 @@ const USER_ACTION_RESOLUTION_COLUMNS: &str = "
     channel_kind, channel_submission_id, resolution_json,
     resolved_by_actor_source, resolved_verification_basis,
     resolved_assurance_level, resolved_at";
+
+/// User-action mutation applied inside one Core commit transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserActionMutation {
+    InsertRequest(UserActionRequestInsert),
+    InsertResolution(UserActionResolutionInsert),
+    UpdateBasis(UserActionBasisUpdate),
+    MarkBasesStatus(UserActionBasisStatusMark),
+    MarkSupersededOrStale(UserActionInvalidation),
+}
+
+/// Storage input for inserting a pending user-action request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserActionRequestInsert {
+    pub user_action_request_id: String,
+    pub task_id: String,
+    pub change_unit_id: Option<String>,
+    pub action_kind: UserActionKind,
+    pub request_json: String,
+    pub basis_json: String,
+    pub basis_status: UserActionBasisStatus,
+    pub required_for_json: String,
+    pub requested_by_actor_source: String,
+    pub source_method: String,
+    pub source_idempotency_key: String,
+    pub requested_at: String,
+    pub expires_at: Option<String>,
+    pub metadata_json: String,
+}
+
+/// Storage input for inserting one immutable user-action resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserActionResolutionInsert {
+    pub user_action_resolution_id: String,
+    pub user_action_request_id: String,
+    pub action_kind: UserActionKind,
+    pub channel_kind: UserActionChannelKind,
+    pub channel_submission_id: String,
+    pub resolution_json: String,
+    pub resolved_by_actor_source: String,
+    pub resolved_verification_basis: String,
+    pub resolved_assurance_level: String,
+    pub resolved_at: String,
+}
+
+/// Storage input for replacing one user-action basis snapshot and compatibility status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserActionBasisUpdate {
+    pub user_action_request_id: String,
+    pub basis_json: String,
+    pub basis_status: UserActionBasisStatus,
+}
+
+/// Storage input for marking selected user-action basis rows stale or superseded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserActionBasisStatusMark {
+    pub user_action_request_ids: Vec<String>,
+    pub basis_status: UserActionBasisStatus,
+}
+
+/// Storage input for invalidating current user-action authority after state changes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserActionInvalidation {
+    pub task_id: String,
+    pub action_kinds: Vec<UserActionKind>,
+}
+
+impl UserActionMutation {
+    pub(super) fn apply(&self, context: &mut MutationContext<'_>) -> StoreResult<()> {
+        match self {
+            Self::InsertRequest(input) => context.insert_user_action_request(input),
+            Self::InsertResolution(input) => context.insert_user_action_resolution(input),
+            Self::UpdateBasis(input) => context.update_user_action_basis(input),
+            Self::MarkBasesStatus(input) => context.mark_user_action_bases_status(input),
+            Self::MarkSupersededOrStale(input) => {
+                context.mark_user_actions_superseded_or_stale(input)
+            }
+        }
+    }
+}
 
 /// Stored user-action request row data needed by Core method implementations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -886,9 +958,423 @@ fn effective_user_action_refs(
     )
 }
 
+fn validate_user_action_resolution_timestamp_order_for_insert(
+    request: &UserActionRequestRecord,
+    resolved_at: &str,
+) -> StoreResult<()> {
+    let requested_at = UtcTimestamp::parse(&request.requested_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            &request.user_action_request_id,
+            "requested_at",
+        )
+    })?;
+    let expires_at = request
+        .expires_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "user_action_requests",
+                &request.user_action_request_id,
+                "expires_at",
+            )
+        })?;
+    let resolved_at = UtcTimestamp::parse(resolved_at).map_err(|_| StoreError::InvalidInput {
+        detail: "user_action_resolutions.resolved_at must be a valid RFC 3339 timestamp".to_owned(),
+    })?;
+    match validate_user_action_timestamp_order(
+        &requested_at,
+        expires_at.as_ref(),
+        Some(&resolved_at),
+    ) {
+        Ok(()) => Ok(()),
+        Err(UserActionTimestampOrderFailure::ExpiryNotAfterRequest) => {
+            Err(StoreError::corrupt_owner_state_value(
+                "user_action_requests",
+                &request.user_action_request_id,
+                "expires_at",
+            ))
+        }
+        Err(UserActionTimestampOrderFailure::ResolutionBeforeRequest) => {
+            Err(StoreError::InvalidInput {
+                detail: "user_action_resolutions.resolved_at must be at or after user_action_requests.requested_at".to_owned(),
+            })
+        }
+        Err(UserActionTimestampOrderFailure::ResolutionAtOrAfterExpiry) => {
+            Err(StoreError::InvalidInput {
+                detail: "user_action_resolutions.resolved_at must be before user_action_requests.expires_at".to_owned(),
+            })
+        }
+    }
+}
+
+impl MutationContext<'_> {
+    fn insert_user_action_request(&mut self, input: &UserActionRequestInsert) -> StoreResult<()> {
+        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        if let Some(change_unit_id) = &input.change_unit_id {
+            validate_identifier("change_unit_id", change_unit_id)?;
+        }
+        validate_persisted_user_action_request_json(
+            "user_action_requests.request_json",
+            &input.request_json,
+        )?;
+        validate_user_action_basis_json("user_action_requests.basis_json", &input.basis_json)?;
+        validate_user_action_required_for_json(
+            "user_action_requests.required_for_json",
+            &input.required_for_json,
+        )?;
+        validate_identifier(
+            "requested_by_actor_source",
+            &input.requested_by_actor_source,
+        )?;
+        validate_timestamp("requested_at", &input.requested_at)?;
+        if let Some(expires_at) = &input.expires_at {
+            validate_timestamp("expires_at", expires_at)?;
+        }
+        validate_json_text("user_action_requests.metadata_json", &input.metadata_json)?;
+        if input.source_method != MethodName::RequestUserAction.as_str()
+            && input.source_method != MethodName::ReconcileChanges.as_str()
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "user-action request source_method is not an allowed creator".to_owned(),
+            });
+        }
+        validate_identifier(
+            "user_action_requests.source_idempotency_key",
+            &input.source_idempotency_key,
+        )?;
+        validate_user_action_request_column_agreement(UserActionRequestColumnFacts {
+            task_id: &input.task_id,
+            change_unit_id: input.change_unit_id.as_deref(),
+            request_json: &input.request_json,
+            basis_json: &input.basis_json,
+            required_for_json: &input.required_for_json,
+            requested_at: &input.requested_at,
+            expires_at: input.expires_at.as_deref(),
+            action_kind: input.action_kind,
+            basis_status: input.basis_status,
+        })?;
+
+        self.tx.execute(
+            "INSERT INTO user_action_requests (
+                project_id,
+                user_action_request_id,
+                task_id,
+                change_unit_id,
+                action_kind,
+                request_json,
+                basis_json,
+                basis_status,
+                required_for_json,
+                requested_by_actor_source,
+                source_method,
+                source_idempotency_key,
+                requested_at,
+                expires_at,
+                metadata_json
+            )
+            VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+            )",
+            params![
+                self.project_id,
+                input.user_action_request_id,
+                input.task_id,
+                input.change_unit_id,
+                user_action_kind_as_str(input.action_kind),
+                input.request_json,
+                input.basis_json,
+                user_action_basis_status_as_str(input.basis_status),
+                input.required_for_json,
+                input.requested_by_actor_source,
+                input.source_method,
+                input.source_idempotency_key,
+                input.requested_at,
+                input.expires_at,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn insert_user_action_resolution(
+        &mut self,
+        input: &UserActionResolutionInsert,
+    ) -> StoreResult<()> {
+        validate_identifier(
+            "user_action_resolution_id",
+            &input.user_action_resolution_id,
+        )?;
+        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+        validate_channel_submission_id(&input.channel_submission_id).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: error.to_string(),
+            }
+        })?;
+        validate_persisted_user_action_resolution_json(
+            "user_action_resolutions.resolution_json",
+            &input.resolution_json,
+        )?;
+        if input.resolved_by_actor_source != "local_user" {
+            return Err(StoreError::InvalidInput {
+                detail: "user-action resolution actor must be local_user".to_owned(),
+            });
+        }
+        validate_identifier(
+            "resolved_verification_basis",
+            &input.resolved_verification_basis,
+        )?;
+        validate_identifier("resolved_assurance_level", &input.resolved_assurance_level)?;
+        validate_user_action_resolution_provenance(
+            input.channel_kind,
+            &input.resolved_by_actor_source,
+            &input.resolved_verification_basis,
+            &input.resolved_assurance_level,
+        )?;
+        validate_timestamp("resolved_at", &input.resolved_at)?;
+        validate_user_action_resolution_column_agreement(
+            &input.resolution_json,
+            input.action_kind,
+            &input.user_action_resolution_id,
+        )?;
+        if let Some(request) =
+            user_action_request_record(self.tx, self.project_id, &input.user_action_request_id)?
+        {
+            validate_user_action_resolution_timestamp_order_for_insert(
+                &request,
+                &input.resolved_at,
+            )?;
+            let candidate = UserActionResolutionRecord {
+                project_id: self.project_id.to_owned(),
+                user_action_resolution_id: input.user_action_resolution_id.clone(),
+                user_action_request_id: input.user_action_request_id.clone(),
+                action_kind: input.action_kind,
+                channel_kind: input.channel_kind,
+                channel_submission_id: input.channel_submission_id.clone(),
+                resolution_json: input.resolution_json.clone(),
+                resolved_by_actor_source: input.resolved_by_actor_source.clone(),
+                resolved_verification_basis: input.resolved_verification_basis.clone(),
+                resolved_assurance_level: input.resolved_assurance_level.clone(),
+                resolved_at: input.resolved_at.clone(),
+            };
+            validate_user_action_request_resolution_pair(&request, &candidate).map_err(|_| {
+                StoreError::InvalidInput {
+                    detail:
+                        "user-action resolution must exactly preserve its stored request authority"
+                            .to_owned(),
+                }
+            })?;
+        }
+
+        self.tx.execute(
+            "INSERT INTO user_action_resolutions (
+                project_id,
+                user_action_resolution_id,
+                user_action_request_id,
+                action_kind,
+                channel_kind,
+                channel_submission_id,
+                resolution_json,
+                resolved_by_actor_source,
+                resolved_verification_basis,
+                resolved_assurance_level,
+                resolved_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                self.project_id,
+                input.user_action_resolution_id,
+                input.user_action_request_id,
+                user_action_kind_as_str(input.action_kind),
+                user_action_channel_kind_as_str(input.channel_kind),
+                input.channel_submission_id,
+                input.resolution_json,
+                input.resolved_by_actor_source,
+                input.resolved_verification_basis,
+                input.resolved_assurance_level,
+                input.resolved_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn update_user_action_basis(&mut self, input: &UserActionBasisUpdate) -> StoreResult<()> {
+        validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+        validate_user_action_basis_json("user_action_requests.basis_json", &input.basis_json)?;
+        let basis_json = user_action_basis_json_with_status(&input.basis_json, input.basis_status)?;
+        let changed = self.tx.execute(
+            "UPDATE user_action_requests
+                SET basis_json = ?3,
+                    basis_status = ?4
+              WHERE project_id = ?1
+                AND user_action_request_id = ?2",
+            params![
+                self.project_id,
+                input.user_action_request_id,
+                basis_json,
+                user_action_basis_status_as_str(input.basis_status)
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "user-action basis update changed no rows".to_owned(),
+            })
+        }
+    }
+
+    fn mark_user_action_bases_status(
+        &mut self,
+        input: &UserActionBasisStatusMark,
+    ) -> StoreResult<()> {
+        let status = match input.basis_status {
+            UserActionBasisStatus::Stale | UserActionBasisStatus::Superseded => {
+                user_action_basis_status_as_str(input.basis_status)
+            }
+            UserActionBasisStatus::Current => {
+                return Err(StoreError::InvalidInput {
+                    detail: "selected user-action bases may only be marked stale or superseded"
+                        .to_owned(),
+                })
+            }
+        };
+
+        for request_id in &input.user_action_request_ids {
+            validate_identifier("user_action_request_id", request_id)?;
+            let basis_json = self
+                .tx
+                .query_row(
+                    "SELECT basis_json FROM user_action_requests
+                      WHERE project_id = ?1 AND user_action_request_id = ?2",
+                    params![self.project_id, request_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            let Some(basis_json) = basis_json else {
+                return Err(StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail: "selected user-action basis request does not exist".to_owned(),
+                });
+            };
+            let basis_json = user_action_basis_json_with_status(&basis_json, input.basis_status)?;
+            let changed = self.tx.execute(
+                "UPDATE user_action_requests
+                    SET basis_status = ?3,
+                        basis_json = ?4
+                  WHERE project_id = ?1
+                    AND user_action_request_id = ?2",
+                params![self.project_id, request_id, status, basis_json],
+            )?;
+            if changed != 1 {
+                return Err(StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail: format!(
+                        "selected user-action basis status update changed {changed} rows"
+                    ),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn mark_user_actions_superseded_or_stale(
+        &mut self,
+        input: &UserActionInvalidation,
+    ) -> StoreResult<()> {
+        validate_identifier("task_id", &input.task_id)?;
+        if input.action_kinds.is_empty() {
+            self.mark_user_actions_superseded_or_stale_for_kind(&input.task_id, None)?;
+        } else {
+            for action_kind in &input.action_kinds {
+                self.mark_user_actions_superseded_or_stale_for_kind(
+                    &input.task_id,
+                    Some(*action_kind),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn mark_user_actions_superseded_or_stale_for_kind(
+        &mut self,
+        task_id: &str,
+        action_kind: Option<UserActionKind>,
+    ) -> StoreResult<()> {
+        let sql = if action_kind.is_some() {
+            "SELECT
+                a.user_action_request_id,
+                a.basis_json,
+                EXISTS (
+                  SELECT 1 FROM user_action_resolutions AS r
+                   WHERE r.project_id = a.project_id
+                     AND r.user_action_request_id = a.user_action_request_id
+                )
+               FROM user_action_requests AS a
+              WHERE a.project_id = ?1
+                AND a.task_id = ?2
+                AND a.action_kind = ?3
+                AND a.basis_status = 'current'"
+        } else {
+            "SELECT
+                a.user_action_request_id,
+                a.basis_json,
+                EXISTS (
+                  SELECT 1 FROM user_action_resolutions AS r
+                   WHERE r.project_id = a.project_id
+                     AND r.user_action_request_id = a.user_action_request_id
+                )
+               FROM user_action_requests AS a
+              WHERE a.project_id = ?1
+                AND a.task_id = ?2
+                AND (?3 IS NULL OR a.action_kind = ?3)
+                AND a.basis_status = 'current'"
+        };
+        let kind = action_kind.map(user_action_kind_as_str);
+        let rows = {
+            let mut stmt = self.tx.prepare(sql)?;
+            let mapped = stmt.query_map(params![self.project_id, task_id, kind], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, bool>(2)?,
+                ))
+            })?;
+            mapped.collect::<Result<Vec<_>, _>>()?
+        };
+        for (request_id, basis_json, has_resolution) in rows {
+            let status = if has_resolution {
+                UserActionBasisStatus::Stale
+            } else {
+                UserActionBasisStatus::Superseded
+            };
+            let basis_json = user_action_basis_json_with_status(&basis_json, status)?;
+            self.tx.execute(
+                "UPDATE user_action_requests
+                    SET basis_status = ?3,
+                        basis_json = ?4
+                  WHERE project_id = ?1
+                    AND user_action_request_id = ?2",
+                params![
+                    self.project_id,
+                    request_id,
+                    user_action_basis_status_as_str(status),
+                    basis_json
+                ],
+            )?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core_pipeline::mutations::with_empty_mutation_context;
 
     #[test]
     fn request_decoder_rejects_an_unknown_source_method() {
@@ -919,5 +1405,19 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn user_action_mutation_validates_its_storage_identity_before_sql() {
+        let error = with_empty_mutation_context(|context| {
+            UserActionMutation::MarkBasesStatus(UserActionBasisStatusMark {
+                user_action_request_ids: vec![" ".to_owned()],
+                basis_status: UserActionBasisStatus::Stale,
+            })
+            .apply(context)
+            .expect_err("blank user-action request id must fail before SQL")
+        });
+
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
     }
 }

@@ -3,25 +3,57 @@ use sha2::{Digest, Sha256};
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
 use volicord_types::values::{MethodName, UtcTimestamp};
 
+use super::mutations::{AggregateMutationResult, MutationContext};
 use super::{
     clock::project_current_utc_timestamp_for_conn, project_state::read_project_state_tx,
     replay::tool_invocation_tx, validation::*, CommitMutationInput, CommittedEventRef,
-    CommittedMutationFacts, CoreProjectStore, MutationCommitOutcome, PendingTaskEvent,
-    ProjectMutation, VerifiedReplayContext,
+    CommittedMutationFacts, CoreProjectStore, CoreStorageMutation, MutationCommitOutcome,
+    PendingTaskEvent, VerifiedReplayContext,
 };
 use crate::{sqlite::begin_immediate_transaction, StoreError, StoreResult};
 
 impl CoreProjectStore<'_> {
+    /// Applies an ordered batch of responsibility-owned mutations in one Core commit.
+    pub fn commit_mutation(
+        &mut self,
+        input: CommitMutationInput,
+        mutations: &[CoreStorageMutation],
+        build_response_json: impl FnOnce(CommittedMutationFacts) -> StoreResult<String>,
+    ) -> StoreResult<MutationCommitOutcome> {
+        self.commit_mutation_with_results(input, mutations, build_response_json)
+            .map(|(outcome, _)| outcome)
+    }
+
+    pub(crate) fn commit_mutation_with_results(
+        &mut self,
+        input: CommitMutationInput,
+        mutations: &[CoreStorageMutation],
+        build_response_json: impl FnOnce(CommittedMutationFacts) -> StoreResult<String>,
+    ) -> StoreResult<(MutationCommitOutcome, Vec<AggregateMutationResult>)> {
+        let mut mutation_results = Vec::with_capacity(mutations.len());
+        let outcome = self.commit_with(
+            input,
+            |context, facts| {
+                for mutation in mutations {
+                    mutation_results.push(mutation.apply(context, facts)?);
+                }
+                Ok(())
+            },
+            build_response_json,
+        )?;
+        Ok((outcome, mutation_results))
+    }
+
     /// Commits one state-changing Core mutation or returns replay/conflict outcomes.
     ///
     /// The helper performs replay lookup, stale-state checking, project clock
     /// increment, event append, response construction, and replay-row insertion
     /// in one immediate transaction. Any error rolls back the whole attempt.
-    pub fn commit_mutation(
+    pub(crate) fn commit_with(
         &mut self,
         input: CommitMutationInput,
         apply_mutation: impl FnOnce(
-            &mut ProjectMutation<'_>,
+            &mut MutationContext<'_>,
             &CommittedMutationFacts,
         ) -> StoreResult<()>,
         build_response_json: impl FnOnce(CommittedMutationFacts) -> StoreResult<String>,
@@ -211,12 +243,12 @@ impl CoreProjectStore<'_> {
             committed_state_version,
             events: committed_events.clone(),
         };
-        let mut mutation = ProjectMutation {
-            project_id: &self.project.project_id,
-            project_home: &self.project.project_home,
-            committed_at: &committed_at_text,
-            tx: &tx,
-        };
+        let mut mutation = MutationContext::new(
+            &self.project.project_id,
+            &self.project.project_home,
+            &committed_at_text,
+            &tx,
+        );
         apply_mutation(&mut mutation, &facts)?;
 
         let first_event_seq = next_event_seq(&tx, &self.project.project_id)?;

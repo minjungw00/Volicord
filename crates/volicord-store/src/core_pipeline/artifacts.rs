@@ -7,12 +7,10 @@ use volicord_types::{
     values::UtcTimestamp,
 };
 
-use super::{
-    facade::CoreProjectStore,
-    validation::{decode_owner_json_text, nonnegative_i64_to_u64},
-};
+use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
 use crate::{
     artifacts::{
+        persistent_body_path_from_staging_tmp_path,
         verify_persistent_artifact_body as verify_persistent_artifact_body_in_store,
         PersistentArtifactBodySpec, PersistentArtifactVerification,
     },
@@ -30,6 +28,52 @@ const ARTIFACT_RECORD_COLUMNS: &str = "
     source_staging_handle_id, uri, body_path, sha256, size_bytes,
     content_type, integrity_status, redaction_state, status, producer_json,
     metadata_json";
+
+/// Artifact mutation applied inside one Core commit transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactMutation {
+    PromoteStaged(ArtifactPromotion),
+    Link(ArtifactLinkInsert),
+}
+
+/// Storage input for promoting one staged artifact to a persistent artifact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactPromotion {
+    pub handle_id: String,
+    pub artifact_id: String,
+    pub task_id: String,
+    pub run_id: String,
+    pub expected_created_by_actor_source: String,
+    pub expected_sha256: String,
+    pub expected_size_bytes: u64,
+    pub expected_redaction_state: String,
+    pub expected_created_at: String,
+    pub expected_expires_at: String,
+    pub uri: String,
+    pub retention_json: String,
+    pub producer_json: String,
+    pub metadata_json: String,
+}
+
+/// Storage input for linking a persistent artifact to an owner relation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactLinkInsert {
+    pub artifact_id: String,
+    pub task_id: String,
+    pub owner_record_kind: String,
+    pub owner_record_id: String,
+    pub created_by_run_id: String,
+    pub metadata_json: String,
+}
+
+impl ArtifactMutation {
+    pub(super) fn apply(&self, context: &mut MutationContext<'_>) -> StoreResult<()> {
+        match self {
+            Self::PromoteStaged(input) => context.promote_staged_artifact(input),
+            Self::Link(input) => context.link_artifact(input),
+        }
+    }
+}
 
 /// Stored staged artifact facts needed by `volicord.record_run`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -443,9 +487,222 @@ fn artifact_has_owner_link(
     .map_err(StoreError::from)
 }
 
+impl MutationContext<'_> {
+    fn promote_staged_artifact(&mut self, input: &ArtifactPromotion) -> StoreResult<()> {
+        validate_identifier("artifact_staging.handle_id", &input.handle_id)?;
+        validate_identifier("artifact_id", &input.artifact_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("run_id", &input.run_id)?;
+        validate_identifier(
+            "expected_created_by_actor_source",
+            &input.expected_created_by_actor_source,
+        )?;
+        validate_artifact_sha256("expected_sha256", &input.expected_sha256)?;
+        validate_identifier("expected_redaction_state", &input.expected_redaction_state)?;
+        validate_timestamp("expected_created_at", &input.expected_created_at)?;
+        validate_timestamp("expected_expires_at", &input.expected_expires_at)?;
+        validate_identifier("artifacts.uri", &input.uri)?;
+        validate_json_text("artifacts.retention_json", &input.retention_json)?;
+        validate_artifact_producer_json("artifacts.producer_json", &input.producer_json)?;
+        validate_artifact_provenance_metadata_json(
+            "artifacts.metadata_json",
+            &input.metadata_json,
+        )?;
+
+        let staging = artifact_staging_record_tx(self.tx, self.project_id, &input.handle_id)?
+            .ok_or_else(|| StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact disappeared before promotion".to_owned(),
+            })?;
+        if staging.task_id != input.task_id
+            || staging.created_by_actor_source != input.expected_created_by_actor_source
+            || staging.status != "staged"
+            || staging.sha256.as_deref() != Some(input.expected_sha256.as_str())
+            || staging.size_bytes != Some(input.expected_size_bytes)
+            || staging.redaction_state != input.expected_redaction_state
+            || staging.created_at != input.expected_created_at
+            || staging.expires_at != input.expected_expires_at
+        {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact changed before promotion".to_owned(),
+            });
+        }
+        let created_at = UtcTimestamp::parse(&staging.created_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "artifact_staging",
+                &staging.handle_id,
+                "created_at",
+            )
+        })?;
+        let expires_at = UtcTimestamp::parse(&staging.expires_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value(
+                "artifact_staging",
+                &staging.handle_id,
+                "expires_at",
+            )
+        })?;
+        let committed_at = UtcTimestamp::parse(self.committed_at).map_err(|_| {
+            StoreError::corrupt_owner_state_value("project_state", self.project_id, "updated_at")
+        })?;
+        if committed_at < created_at || committed_at >= expires_at {
+            return Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact is outside its exact eligibility window".to_owned(),
+            });
+        }
+        let staging_tmp_path =
+            staging
+                .tmp_path
+                .as_deref()
+                .ok_or_else(|| StoreError::SchemaInvariant {
+                    database_kind: "project_state",
+                    detail: "staged artifact body path is missing before promotion".to_owned(),
+                })?;
+        let body_path = persistent_body_path_from_staging_tmp_path(staging_tmp_path)?;
+        verify_staged_artifact_body(
+            self.project_home,
+            Some(staging_tmp_path),
+            &input.expected_sha256,
+            input.expected_size_bytes,
+        )?;
+
+        let size_bytes = u64_to_i64("artifacts.size_bytes", input.expected_size_bytes)?;
+        self.tx.execute(
+            "INSERT INTO artifacts (
+                project_id,
+                artifact_id,
+                task_id,
+                producer_run_id,
+                source_staging_handle_id,
+                uri,
+                body_path,
+                sha256,
+                size_bytes,
+                content_type,
+                integrity_status,
+                redaction_state,
+                status,
+                retention_json,
+                producer_json,
+                created_at,
+                updated_at,
+                metadata_json
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8,
+                ?9,
+                ?10,
+                'verified',
+                ?11,
+                'available',
+                ?12,
+                ?13,
+                ?14,
+                ?14,
+                ?15
+            )",
+            params![
+                self.project_id,
+                input.artifact_id,
+                input.task_id,
+                input.run_id,
+                input.handle_id,
+                input.uri,
+                body_path,
+                input.expected_sha256,
+                size_bytes,
+                staging.content_type,
+                input.expected_redaction_state,
+                input.retention_json,
+                input.producer_json,
+                self.committed_at,
+                input.metadata_json
+            ],
+        )?;
+
+        let changed = self.tx.execute(
+            "UPDATE artifact_staging
+                SET status = 'consumed',
+                    consumed_by_run_id = ?3,
+                    promoted_artifact_id = ?4,
+                    consumed_at = ?5
+              WHERE project_id = ?1
+                AND handle_id = ?2
+                AND status = 'staged'",
+            params![
+                self.project_id,
+                input.handle_id,
+                input.run_id,
+                input.artifact_id,
+                self.committed_at
+            ],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "staged artifact consumption changed no rows".to_owned(),
+            })
+        }
+    }
+
+    fn link_artifact(&mut self, input: &ArtifactLinkInsert) -> StoreResult<()> {
+        validate_identifier("artifact_id", &input.artifact_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_identifier("owner_record_kind", &input.owner_record_kind)?;
+        validate_identifier("owner_record_id", &input.owner_record_id)?;
+        validate_identifier("created_by_run_id", &input.created_by_run_id)?;
+        validate_json_text("artifact_links.metadata_json", &input.metadata_json)?;
+
+        self.tx.execute(
+            "INSERT OR IGNORE INTO artifact_links (
+                project_id,
+                artifact_id,
+                task_id,
+                owner_record_kind,
+                owner_record_id,
+                created_by_run_id,
+                created_at,
+                metadata_json
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8
+            )",
+            params![
+                self.project_id,
+                input.artifact_id,
+                input.task_id,
+                input.owner_record_kind,
+                input.owner_record_id,
+                input.created_by_run_id,
+                self.committed_at,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core_pipeline::mutations::with_empty_mutation_context;
 
     #[test]
     fn staged_artifact_window_uses_a_half_open_interval() {
@@ -461,5 +718,23 @@ mod tests {
         .expect("ordered window must decode");
 
         assert_eq!(decoded, (created_at, expires_at));
+    }
+
+    #[test]
+    fn artifact_mutation_validates_its_storage_identity_before_sql() {
+        let error = with_empty_mutation_context(|context| {
+            ArtifactMutation::Link(ArtifactLinkInsert {
+                artifact_id: " ".to_owned(),
+                task_id: "task".to_owned(),
+                owner_record_kind: "run".to_owned(),
+                owner_record_id: "run".to_owned(),
+                created_by_run_id: "run".to_owned(),
+                metadata_json: "{}".to_owned(),
+            })
+            .apply(context)
+            .expect_err("blank artifact id must fail before SQL")
+        });
+
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
     }
 }

@@ -1593,19 +1593,10 @@ where
     input.clock_floor = Some(clock_floor.to_string());
     input.include_live_storage_time = include_live_storage_time;
 
-    let outcome = store.commit_mutation(
-        input,
-        |mutation, facts| {
-            for storage_mutation in &storage_mutations {
-                storage_mutation.apply(mutation, facts.committed_state_version)?;
-            }
-            Ok(())
-        },
-        |facts| {
-            committed_response_json(result_fields, facts.committed_state_version, facts.events)
-                .map_err(store_invalid_input)
-        },
-    )?;
+    let outcome = store.commit_mutation(input, &storage_mutations, |facts| {
+        committed_response_json(result_fields, facts.committed_state_version, facts.events)
+            .map_err(store_invalid_input)
+    })?;
 
     match outcome {
         MutationCommitOutcome::Replayed {
@@ -3203,16 +3194,18 @@ mod tests {
             event_payload: event_payload(marker),
             task_id: None,
             change_unit_id: None,
-            storage_mutations: vec![CoreStorageMutation::InsertCurrentChangeUnit(
-                ChangeUnitInsert {
-                    change_unit_id: change_unit_id.to_owned(),
-                    task_id: TASK_ID.to_owned(),
-                    scope_summary_json: json!({"goal_summary": marker}).to_string(),
-                    bounded_paths_json: "[]".to_owned(),
-                    write_basis_json: "{}".to_owned(),
-                    effect_contract_json: "null".to_owned(),
-                    lifecycle_json: "{}".to_owned(),
-                },
+            storage_mutations: vec![CoreStorageMutation::ChangeUnit(
+                volicord_store::core_pipeline::ChangeUnitMutation::InsertCurrent(
+                    ChangeUnitInsert {
+                        change_unit_id: change_unit_id.to_owned(),
+                        task_id: TASK_ID.to_owned(),
+                        scope_summary_json: json!({"goal_summary": marker}).to_string(),
+                        bounded_paths_json: "[]".to_owned(),
+                        write_basis_json: "{}".to_owned(),
+                        effect_contract_json: "null".to_owned(),
+                        lifecycle_json: "{}".to_owned(),
+                    },
+                ),
             )],
         }
     }

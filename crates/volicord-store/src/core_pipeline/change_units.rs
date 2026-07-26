@@ -1,13 +1,49 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use volicord_types::ids::TaskId;
 
-use super::facade::CoreProjectStore;
+use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
 use crate::{StoreError, StoreResult};
 
 const CHANGE_UNIT_RECORD_COLUMNS: &str = "
     project_id, change_unit_id, task_id, status, is_current,
     basis_state_version, scope_summary_json, bounded_paths_json,
     write_basis_json, effect_contract_json, lifecycle_json";
+
+/// Change-unit mutation applied inside one Core commit transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChangeUnitMutation {
+    InsertCurrent(ChangeUnitInsert),
+    ReplaceCurrent(ChangeUnitInsert),
+}
+
+/// Storage input for inserting a current Change Unit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeUnitInsert {
+    pub change_unit_id: String,
+    pub task_id: String,
+    pub scope_summary_json: String,
+    pub bounded_paths_json: String,
+    pub write_basis_json: String,
+    pub effect_contract_json: String,
+    pub lifecycle_json: String,
+}
+
+impl ChangeUnitMutation {
+    pub(super) fn apply(
+        &self,
+        context: &mut MutationContext<'_>,
+        committed_state_version: u64,
+    ) -> StoreResult<()> {
+        match self {
+            Self::InsertCurrent(input) => {
+                context.insert_current_change_unit(input, committed_state_version)
+            }
+            Self::ReplaceCurrent(input) => {
+                context.replace_current_change_unit(input, committed_state_version)
+            }
+        }
+    }
+}
 
 /// Current Change Unit row data needed by Core method implementations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,9 +217,134 @@ fn validate_decoded_change_unit_record(
     })
 }
 
+impl MutationContext<'_> {
+    fn insert_current_change_unit(
+        &mut self,
+        input: &ChangeUnitInsert,
+        committed_state_version: u64,
+    ) -> StoreResult<()> {
+        self.insert_change_unit(input, committed_state_version)?;
+        self.set_task_current_change_unit(&input.task_id, Some(&input.change_unit_id))
+    }
+
+    fn replace_current_change_unit(
+        &mut self,
+        input: &ChangeUnitInsert,
+        committed_state_version: u64,
+    ) -> StoreResult<()> {
+        validate_identifier("task_id", &input.task_id)?;
+        self.tx.execute(
+            "UPDATE change_units
+                SET status = 'replaced',
+                    is_current = 0,
+                    closed_at = ?3,
+                    updated_at = ?3
+              WHERE project_id = ?1
+                AND task_id = ?2
+                AND status = 'active'
+                AND is_current = 1",
+            params![self.project_id, input.task_id, self.committed_at],
+        )?;
+        self.insert_current_change_unit(input, committed_state_version)
+    }
+
+    fn insert_change_unit(
+        &mut self,
+        input: &ChangeUnitInsert,
+        committed_state_version: u64,
+    ) -> StoreResult<()> {
+        validate_identifier("change_unit_id", &input.change_unit_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        validate_json_text("change_units.scope_summary_json", &input.scope_summary_json)?;
+        validate_json_text("change_units.bounded_paths_json", &input.bounded_paths_json)?;
+        validate_json_text("change_units.write_basis_json", &input.write_basis_json)?;
+        validate_effect_contract_json(
+            "change_units.effect_contract_json",
+            &input.effect_contract_json,
+        )?;
+        validate_json_text("change_units.lifecycle_json", &input.lifecycle_json)?;
+        let basis_state_version = u64_to_i64("basis_state_version", committed_state_version)?;
+
+        self.tx.execute(
+            "INSERT INTO change_units (
+                project_id,
+                change_unit_id,
+                task_id,
+                status,
+                is_current,
+                basis_state_version,
+                scope_summary_json,
+                bounded_paths_json,
+                write_basis_json,
+                effect_contract_json,
+                lifecycle_json,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                'active',
+                1,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8,
+                ?9,
+                ?10,
+                ?10
+            )",
+            params![
+                self.project_id,
+                input.change_unit_id,
+                input.task_id,
+                basis_state_version,
+                input.scope_summary_json,
+                input.bounded_paths_json,
+                input.write_basis_json,
+                input.effect_contract_json,
+                input.lifecycle_json,
+                self.committed_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn set_task_current_change_unit(
+        &mut self,
+        task_id: &str,
+        change_unit_id: Option<&str>,
+    ) -> StoreResult<()> {
+        validate_identifier("task_id", task_id)?;
+        let changed = self.tx.execute(
+            "UPDATE tasks
+                SET current_change_unit_id = ?3,
+                    lifecycle_phase = CASE
+                        WHEN ?3 IS NULL THEN lifecycle_phase
+                        ELSE 'ready'
+                    END,
+                    updated_at = ?4
+              WHERE project_id = ?1
+                AND task_id = ?2",
+            params![self.project_id, task_id, change_unit_id, self.committed_at],
+        )?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(StoreError::SchemaInvariant {
+                database_kind: "project_state",
+                detail: "Task current Change Unit update changed no rows".to_owned(),
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core_pipeline::mutations::with_empty_mutation_context;
 
     #[test]
     fn decoded_change_unit_requires_a_basis_state_version() {
@@ -203,5 +364,24 @@ mod tests {
         .expect_err("missing basis state version must fail closed");
 
         assert!(matches!(error, StoreError::CorruptOwnerStateValue { .. }));
+    }
+
+    #[test]
+    fn change_unit_mutation_validates_its_storage_identity_before_sql() {
+        let error = with_empty_mutation_context(|context| {
+            ChangeUnitMutation::InsertCurrent(ChangeUnitInsert {
+                change_unit_id: " ".to_owned(),
+                task_id: "task".to_owned(),
+                scope_summary_json: "{}".to_owned(),
+                bounded_paths_json: "[]".to_owned(),
+                write_basis_json: "{}".to_owned(),
+                effect_contract_json: "null".to_owned(),
+                lifecycle_json: "{}".to_owned(),
+            })
+            .apply(context, 1)
+            .expect_err("blank Change Unit id must fail before SQL")
+        });
+
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
     }
 }

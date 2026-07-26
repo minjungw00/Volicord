@@ -64,7 +64,7 @@ use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     CoreProjectStore, CoreStorageMutation, ProjectStateHeader, TaskCloseUpdate,
-    TaskControlLevelUpdate, TaskRecord, WriteTicketInvalidation,
+    TaskControlLevelUpdate, TaskMutation, TaskRecord, WriteTicketInvalidation, WriteTicketMutation,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::guards::UnrecordedChangeRecord;
@@ -814,7 +814,10 @@ fn plan_close_task_mutations(
     let mut synthetic_task = context.task.clone();
     let mut storage_mutations = Vec::new();
     if committed_terminal {
-        storage_mutations.extend(control_update.map(CoreStorageMutation::UpdateTaskControlLevel));
+        storage_mutations.extend(
+            control_update
+                .map(|input| CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(input))),
+        );
     }
     let mut event_kind = String::new();
     let mut event_payload = Map::new();
@@ -826,26 +829,28 @@ fn plan_close_task_mutations(
         synthetic_task.result = Some(terminal.result.to_owned());
         synthetic_task.close_summary_json = close_summary_json.clone();
         synthetic_task.closed_at = Some(now.to_string());
-        storage_mutations.push(CoreStorageMutation::InvalidateActiveWriteTickets(
-            WriteTicketInvalidation {
+        storage_mutations.push(CoreStorageMutation::WriteTicket(
+            WriteTicketMutation::InvalidateActive(WriteTicketInvalidation {
                 task_id: request.task_id.as_str().to_owned(),
                 invalidation_reason: WriteTicketInvalidationReason::TaskClosed
                     .as_str()
                     .to_owned(),
-            },
+            }),
         ));
-        storage_mutations.push(CoreStorageMutation::CloseTask(TaskCloseUpdate {
-            task_id: request.task_id.as_str().to_owned(),
-            lifecycle_phase: terminal.lifecycle_phase.to_owned(),
-            result: terminal.result.to_owned(),
-            close_summary_json,
-            closed_at: now.to_string(),
-        }));
+        storage_mutations.push(CoreStorageMutation::Task(TaskMutation::Close(
+            TaskCloseUpdate {
+                task_id: request.task_id.as_str().to_owned(),
+                lifecycle_phase: terminal.lifecycle_phase.to_owned(),
+                result: terminal.result.to_owned(),
+                close_summary_json,
+                closed_at: now.to_string(),
+            },
+        )));
         if request.intent == CloseIntent::Supersede {
             if let Some(superseding_task_id) = request.superseding_task_id.as_ref() {
-                storage_mutations.push(CoreStorageMutation::SetActiveTask {
+                storage_mutations.push(CoreStorageMutation::Task(TaskMutation::SetActive {
                     task_id: superseding_task_id.as_str().to_owned(),
-                });
+                }));
             }
         }
         event_kind = terminal.event_kind.to_owned();

@@ -35,8 +35,9 @@ workspace. The implementation keeps these locations separate:
   [`facade.rs`](../../../crates/volicord-store/src/core_pipeline/facade.rs);
   read-only and mutation-capable entry points live in
   [`open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs).
-  Aggregate modules own their read projections, SQL, row decoding, JSON
-  decoding, facade methods, and focused tests.
+  Aggregate modules own their grouped mutation types, storage-representation
+  validation and application SQL, typed application facts where needed, read
+  projections, row and JSON decoding, facade methods, and focused tests.
 - Artifact staging and persistent artifact body verification live in
   [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs).
 
@@ -53,14 +54,16 @@ without adding a second Store abstraction:
 |---|---|
 | `facade.rs`, `open.rs` | Project-database handle, retained Runtime Home and project identity, read snapshots, and read-only or mutation-capable opening. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | Project header and enforcement-profile reads, strict stored-value decoding, and the project UTC floor. |
-| `tasks.rs` | Task rows, acceptance criteria, evidence claims, and Task revisions. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change-unit, write-ticket, Run, and Run observed-change reads. |
-| `evidence.rs`, `artifacts.rs` | Evidence summary and observation reads, artifact staging records, durable artifact records, artifact links, and artifact-body verification on reads. |
-| `user_actions.rs`, `continuity.rs` | User-action request/resolution and effective-status reads, plus project-continuity rows and bounded pages. |
+| `tasks.rs` | Task and acceptance mutation inputs and SQL; Task rows, acceptance criteria, evidence claims, and Task revisions. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change-unit, write-ticket, and Run mutation inputs and SQL; their reads and Run observed-change projection. |
+| `evidence.rs`, `artifacts.rs` | Evidence and artifact mutation inputs and SQL; evidence summary and observation reads, artifact staging records, durable artifact records, artifact links, and artifact-body verification on reads. |
+| `user_actions.rs`, `continuity.rs` | User-action and continuity mutation inputs and SQL; user-action request/resolution and effective-status reads, plus project-continuity rows and bounded pages. |
 | `replay.rs` | Tool-invocation lookup, verified replay context, and immutable operation-result projection. |
 | `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | Product-write observation candidates, active blocker references, event identity lookup, and the project-local Agent Session entry point. |
 | `record_refs.rs`, `inspection.rs` | Shared stored-record references and no-effect storage counters used by verification paths. |
-| `commit.rs`, `mutation_apply.rs`, `validation.rs` | Atomic commit coordination, mutation SQL, and validation shared by current Store owners. |
+| `mutations.rs` | Thin static dispatch from each top-level mutation group to its aggregate owner and the transaction-scoped application context. |
+| `commit.rs` | Cross-aggregate transaction coordination: replay and freshness gates, ordered delegation, one canonical state-version advance, event and replay persistence, response construction, and commit or rollback. |
+| `validation.rs` | Persisted-value and mutation-input validation shared by current Store owners. |
 
 Project workflow-policy record reads and writes remain in
 [`workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs).
@@ -82,7 +85,7 @@ contract, or table relationship diagram; exact meanings stay with
 ```mermaid
 flowchart LR
   planner["Core method planner"]
-  mutations["CoreStorageMutation values<br/>and pending events"]
+  mutations["Grouped CoreStorageMutation values<br/>and pending events"]
   commit["CoreProjectStore::commit_mutation<br/>SQLite transaction"]
   current["Current Store records<br/>tasks, judgments, write tickets,<br/>runs, evidence, blockers"]
   events["authority_events<br/>ordered local event trail"]
@@ -216,10 +219,13 @@ and [Storage Effects](../reference/storage-effects.md).
 ## Mutation values
 
 `CoreStorageMutation` functions as a command-like value between method planning
-and Store persistence. Method planners create values such as `InsertTask`,
-`InsertWriteTicket`, `InsertRun`, `PromoteStagedArtifact`,
-`LinkArtifact`, and judgment updates. Store applies those values through
-`ProjectMutation` inside the active commit transaction.
+and Store persistence. Its top-level variants group Task and acceptance,
+Change Unit, Write Ticket, Run, evidence, artifact, user-action, continuity,
+and workflow-policy mutations. Each group is a static enum owned by the
+aggregate module that defines its inputs, storage-representation validation,
+SQL application, and any typed result facts required by commit coordination.
+`mutations.rs` delegates the ordered list to those owners inside the active
+transaction.
 
 This structure gives the implementation a clear split:
 
@@ -252,8 +258,8 @@ is the atomic Store boundary. It:
      same-handle accepted sample; the injected candidate replaces rather than
      supplements SQLite current UTC;
 6. advances `project_state.state_version` for a new committed mutation;
-7. applies method-provided `CoreStorageMutation` values through
-   `ProjectMutation`;
+7. delegates method-provided grouped `CoreStorageMutation` values to their
+   aggregate owners in list order;
 8. writes `project_state.updated_at=committed_at` and appends authority events
    with `created_at=committed_at`;
 9. combines the typed method fields with the final common result facts, then
@@ -271,6 +277,8 @@ sample or verified source time. The commit timestamp can be later than
 `operation_now`; it does not rewrite those semantic facts.
 
 The implementation tests that protect this boundary include
+`ordered_multi_aggregate_commit_is_versioned_replayable_and_durable`,
+`intermediate_aggregate_failure_rolls_back_every_commit_effect`,
 `transaction_replay_returns_stored_response_before_stale_expected_state`,
 `transaction_replay_hash_conflict_rejects_without_effect`, and
 `transaction_replay_context_mismatch_precedes_request_hash_conflict` in

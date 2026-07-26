@@ -38,8 +38,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
     ProjectContinuityRecordRecord, ProjectStateHeader, TaskRecord, ToolInvocationRecord,
-    UserActionRequestInsert, UserActionRequestRecord, UserActionResolutionInsert,
-    UserActionResolutionRecord,
+    UserActionMutation, UserActionRequestInsert, UserActionRequestRecord,
+    UserActionResolutionInsert, UserActionResolutionRecord,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::error::{StoreError, StoreResult};
@@ -1277,22 +1277,24 @@ pub(super) fn materialize_user_action_request(
         resolution: None,
         status: UserActionStatus::Pending,
     };
-    let mutation = CoreStorageMutation::InsertUserActionRequest(UserActionRequestInsert {
-        user_action_request_id: request_id.as_str().to_owned(),
-        task_id: task_id.as_str().to_owned(),
-        change_unit_id: coordinate_change_unit_id.map(|id| id.into_inner()),
-        action_kind,
-        request_json,
-        basis_json,
-        basis_status: UserActionBasisStatus::Current,
-        required_for_json,
-        requested_by_actor_source,
-        source_method: source_method.as_str().to_owned(),
-        source_idempotency_key: source_idempotency_key.as_str().to_owned(),
-        requested_at,
-        expires_at: stored_expires_at,
-        metadata_json,
-    });
+    let mutation = CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+        UserActionRequestInsert {
+            user_action_request_id: request_id.as_str().to_owned(),
+            task_id: task_id.as_str().to_owned(),
+            change_unit_id: coordinate_change_unit_id.map(|id| id.into_inner()),
+            action_kind,
+            request_json,
+            basis_json,
+            basis_status: UserActionBasisStatus::Current,
+            required_for_json,
+            requested_by_actor_source,
+            source_method: source_method.as_str().to_owned(),
+            source_idempotency_key: source_idempotency_key.as_str().to_owned(),
+            requested_at,
+            expires_at: stored_expires_at,
+            metadata_json,
+        },
+    ));
     Ok(MaterializedUserActionRequest {
         request_ref,
         public_request,
@@ -2171,8 +2173,8 @@ fn plan_resolve_user_action(
         state,
         next_actions: next_actions.clone(),
     };
-    let mut storage_mutations = vec![CoreStorageMutation::InsertUserActionResolution(
-        UserActionResolutionInsert {
+    let mut storage_mutations = vec![CoreStorageMutation::UserAction(
+        UserActionMutation::InsertResolution(UserActionResolutionInsert {
             user_action_resolution_id: resolution_record.user_action_resolution_id,
             user_action_request_id: resolution_record.user_action_request_id,
             action_kind: resolution_record.action_kind,
@@ -2183,7 +2185,7 @@ fn plan_resolve_user_action(
             resolved_verification_basis: resolution_record.resolved_verification_basis,
             resolved_assurance_level: resolution_record.resolved_assurance_level,
             resolved_at: resolution_record.resolved_at,
-        },
+        }),
     )];
     storage_mutations.extend(continuity_plans.into_iter().map(|plan| plan.mutation));
     if let Some(lifecycle_phase) = lifecycle_phase {

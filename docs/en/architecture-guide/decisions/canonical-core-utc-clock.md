@@ -97,8 +97,10 @@ does not reset future-valued valid time.
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)
   and [`core_pipeline/commit.rs`](../../../../crates/volicord-store/src/core_pipeline/commit.rs):
   project-time sampling and canonical transaction-time selection.
-- [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):
-  transaction-metadata application.
+- The aggregate mutation modules under
+  [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)
+  and [`workflow_records.rs`](../../../../crates/volicord-store/src/workflow_records.rs):
+  transaction-metadata application with the coordinator-selected timestamp.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs)
   and [`evidence_capture.rs`](../../../../crates/volicord-store/src/evidence_capture.rs):
   storage-owned floor writers.

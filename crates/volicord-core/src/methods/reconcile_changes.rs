@@ -28,8 +28,9 @@ use chrono::{DateTime, Utc};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, ProjectStateHeader,
-    RunObservedChangesRecord, TaskRecord, UnrecordedChangeResolutionUpdate, WriteTicketRecord,
+    ChangeUnitRecord, ContinuityMutation, CoreProjectStore, CoreStorageMutation,
+    ProjectStateHeader, RunObservedChangesRecord, TaskRecord, UnrecordedChangeResolutionUpdate,
+    WriteTicketRecord,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::error::StoreError;
@@ -1095,8 +1096,8 @@ fn projected_close_check_with_resolutions(
 }
 
 fn resolution_mutation(resolution: &PlannedResolution) -> CoreResult<CoreStorageMutation> {
-    Ok(CoreStorageMutation::ResolveUnrecordedChange(
-        UnrecordedChangeResolutionUpdate {
+    Ok(CoreStorageMutation::Continuity(
+        ContinuityMutation::ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate {
             unrecorded_change_id: resolution.record.unrecorded_change_id.clone(),
             resolution_json: serde_json::to_string(&json!({
                 "resolution_basis": resolution.basis,
@@ -1106,7 +1107,7 @@ fn resolution_mutation(resolution: &PlannedResolution) -> CoreResult<CoreStorage
             }))?,
             resolved_at: resolution.resolved_at.to_string(),
             resolved_by_actor_source: resolution.resolved_by_actor_source.to_canonical_string(),
-        },
+        }),
     ))
 }
 

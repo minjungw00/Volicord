@@ -3,10 +3,7 @@ use std::collections::BTreeMap;
 use rusqlite::{params, Connection, OptionalExtension};
 use volicord_types::{ids::TaskId, schema::ObservedChanges};
 
-use super::{
-    facade::CoreProjectStore,
-    validation::{decode_owner_json_text, validate_identifier},
-};
+use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
 use crate::{StoreError, StoreResult};
 
 const RUN_RECORD_COLUMNS: &str = "
@@ -16,6 +13,38 @@ const RUN_RECORD_COLUMNS: &str = "
 const RUN_OBSERVED_CHANGES_COLUMNS: &str = "
     rowid, project_id, run_id, task_id, change_unit_id,
     observed_changes_json, status";
+
+/// Run mutation applied inside one Core commit transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunMutation {
+    Insert(RunInsert),
+}
+
+/// Storage input for inserting one committed Run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunInsert {
+    pub run_id: String,
+    pub task_id: String,
+    pub change_unit_id: Option<String>,
+    pub scope_revision: u64,
+    pub write_ticket_id: Option<String>,
+    pub kind: String,
+    pub status: String,
+    pub summary_json: String,
+    pub observed_changes_json: String,
+    pub evidence_updates_json: String,
+    pub write_ticket_effect_json: String,
+    pub created_by_actor_source: String,
+    pub metadata_json: String,
+}
+
+impl RunMutation {
+    pub(super) fn apply(&self, context: &mut MutationContext<'_>) -> StoreResult<()> {
+        match self {
+            Self::Insert(input) => context.insert_run(input),
+        }
+    }
+}
 
 /// Stored Run facts needed when resolving close-basis references.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -268,9 +297,94 @@ fn raw_run_observed_changes_record_from_row(
     })
 }
 
+impl MutationContext<'_> {
+    fn insert_run(&mut self, input: &RunInsert) -> StoreResult<()> {
+        validate_identifier("run_id", &input.run_id)?;
+        validate_identifier("task_id", &input.task_id)?;
+        if let Some(change_unit_id) = &input.change_unit_id {
+            validate_identifier("change_unit_id", change_unit_id)?;
+        }
+        let scope_revision = u64_to_i64("runs.scope_revision", input.scope_revision)?;
+        if let Some(write_ticket_id) = &input.write_ticket_id {
+            validate_identifier("write_ticket_id", write_ticket_id)?;
+        }
+        validate_identifier("runs.kind", &input.kind)?;
+        validate_identifier("runs.status", &input.status)?;
+        validate_json_text("runs.summary_json", &input.summary_json)?;
+        validate_json_text("runs.observed_changes_json", &input.observed_changes_json)?;
+        validate_json_text("runs.evidence_updates_json", &input.evidence_updates_json)?;
+        validate_json_text(
+            "runs.write_ticket_effect_json",
+            &input.write_ticket_effect_json,
+        )?;
+        validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
+        validate_json_text("runs.metadata_json", &input.metadata_json)?;
+
+        self.tx.execute(
+            "INSERT INTO runs (
+                project_id,
+                run_id,
+                task_id,
+                change_unit_id,
+                scope_revision,
+                write_ticket_id,
+                kind,
+                status,
+                summary_json,
+                observed_changes_json,
+                evidence_updates_json,
+                write_ticket_effect_json,
+                created_by_actor_source,
+                started_at,
+                completed_at,
+                created_at,
+                metadata_json
+            )
+            VALUES (
+                ?1,
+                ?2,
+                ?3,
+                ?4,
+                ?5,
+                ?6,
+                ?7,
+                ?8,
+                ?9,
+                ?10,
+                ?11,
+                ?12,
+                ?13,
+                ?14,
+                ?14,
+                ?14,
+                ?15
+            )",
+            params![
+                self.project_id,
+                input.run_id,
+                input.task_id,
+                input.change_unit_id,
+                scope_revision,
+                input.write_ticket_id,
+                input.kind,
+                input.status,
+                input.summary_json,
+                input.observed_changes_json,
+                input.evidence_updates_json,
+                input.write_ticket_effect_json,
+                input.created_by_actor_source,
+                self.committed_at,
+                input.metadata_json
+            ],
+        )?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core_pipeline::mutations::with_empty_mutation_context;
 
     #[test]
     fn run_decoder_rejects_malformed_observed_changes_json() {
@@ -293,5 +407,30 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn run_mutation_validates_its_storage_identity_before_sql() {
+        let error = with_empty_mutation_context(|context| {
+            RunMutation::Insert(RunInsert {
+                run_id: " ".to_owned(),
+                task_id: "task".to_owned(),
+                change_unit_id: None,
+                scope_revision: 0,
+                write_ticket_id: None,
+                kind: "implementation".to_owned(),
+                status: "recorded".to_owned(),
+                summary_json: "{}".to_owned(),
+                observed_changes_json: "{}".to_owned(),
+                evidence_updates_json: "[]".to_owned(),
+                write_ticket_effect_json: "{}".to_owned(),
+                created_by_actor_source: "actor".to_owned(),
+                metadata_json: "{}".to_owned(),
+            })
+            .apply(context)
+            .expect_err("blank Run id must fail before SQL")
+        });
+
+        assert!(matches!(error, StoreError::InvalidInput { .. }));
     }
 }

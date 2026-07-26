@@ -76,21 +76,21 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/integration_verification/coordinate.rs` | Typed caller, current, and stored verification coordinates plus caller and run-owner validation. |
 | `crates/volicord-store/src/integration_verification/row.rs` | Private verification SQL, row decoding, status and timestamp parsing, database representation conversion, and focused row-decoder tests. |
 | `crates/volicord-store/src/integration_verification/tests/` | Lifecycle-owner tests for begin, probe, typed acquisition, correlation, status, and concurrent first acknowledgement, with shared fixture construction isolated from assertions. |
-| `crates/volicord-store/src/workflow_records.rs` | Project workflow-policy record reads and writes. |
+| `crates/volicord-store/src/workflow_records.rs` | Project workflow-policy record reads, workflow-policy mutation input and application, and typed policy mutation effects. |
 | `crates/volicord-store/src/core_pipeline/mod.rs` | Public Core Store type routing, commit and mutation inputs, and transaction-level Store tests. |
 | `crates/volicord-store/src/core_pipeline/facade.rs` | `CoreProjectStore` connection and project identity, retained mutation authority, facade accessors, and shared read-snapshot primitive. |
 | `crates/volicord-store/src/core_pipeline/open.rs` | Explicit read-only opening and mutation opening that retains the context's typed canonical Runtime Home identity. |
 | `crates/volicord-store/src/core_pipeline/project_state.rs` | Project-state column projection, row decoding, timestamp validation, and facade reads. |
 | `crates/volicord-store/src/core_pipeline/enforcement_profile.rs` | Project enforcement-profile projection, strict JSON decoding, validation, and facade read. |
 | `crates/volicord-store/src/core_pipeline/clock.rs` | Store-handle clock samples, project UTC-floor reads, and transactional floor advancement. |
-| `crates/volicord-store/src/core_pipeline/tasks.rs` | Task, acceptance-criterion, evidence-claim, and Task-revision projections, SQL, strict row and JSON decoding, facade reads, and focused decoder tests. |
-| `crates/volicord-store/src/core_pipeline/change_units.rs` | Change Unit projections, SQL, strict row and JSON decoding, facade reads, and focused decoder tests. |
-| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | Write Ticket projections, SQL, strict row and JSON decoding, facade reads, and focused decoder tests. |
-| `crates/volicord-store/src/core_pipeline/runs.rs` | Run and observed-change projections, SQL, strict row and JSON decoding, facade reads, and focused decoder tests. |
-| `crates/volicord-store/src/core_pipeline/evidence.rs` | Evidence-summary and observation projections, SQL, strict row decoding, record-reference projection, facade reads, and focused decoder tests. |
-| `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact-staging and durable-artifact projections, SQL, strict row and JSON decoding, link reads, persistent-body verification, facade reads, and focused boundary tests. |
-| `crates/volicord-store/src/core_pipeline/user_actions.rs` | User-action request and resolution projections, SQL, strict row and JSON decoding, effective-status derivation, facade reads, and focused decoder tests. |
-| `crates/volicord-store/src/core_pipeline/continuity.rs` | Project-continuity projection, SQL, bounded snapshot pages, facade reads, and focused row-decoder tests. |
+| `crates/volicord-store/src/core_pipeline/tasks.rs` | Task and acceptance mutation inputs, storage validation and SQL application; Task, acceptance-criterion, evidence-claim, and Task-revision projections; facade reads and focused tests. |
+| `crates/volicord-store/src/core_pipeline/change_units.rs` | Change Unit mutation inputs, storage validation and SQL application; projections, strict row and JSON decoding, facade reads, and focused tests. |
+| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | Write Ticket mutation inputs, storage validation and SQL application; projections, strict row and JSON decoding, facade reads, and focused tests. |
+| `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation inputs, storage validation and SQL application; Run and observed-change projections, strict decoding, facade reads, and focused tests. |
+| `crates/volicord-store/src/core_pipeline/evidence.rs` | Evidence mutation inputs, storage validation and SQL application; evidence-summary and observation projections, strict row decoding, record-reference projection, facade reads, and focused tests. |
+| `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact mutation inputs, storage validation and SQL application; staging and durable-artifact projections, strict decoding, link reads, persistent-body verification, facade reads, and focused tests. |
+| `crates/volicord-store/src/core_pipeline/user_actions.rs` | User-action mutation inputs, storage validation and SQL application; request and resolution projections, strict decoding, effective-status derivation, facade reads, and focused tests. |
+| `crates/volicord-store/src/core_pipeline/continuity.rs` | Continuity mutation inputs, storage validation and SQL application; project-continuity projection, bounded snapshot pages, facade reads, and focused tests. |
 | `crates/volicord-store/src/core_pipeline/replay.rs` | Tool-invocation projection, SQL, strict replay-context decoding, immutable operation-result projection, and facade reads. |
 | `crates/volicord-store/src/core_pipeline/reconciliation.rs` | Confirmed expected-write and unrecorded-change observation candidate projections and facade reads. |
 | `crates/volicord-store/src/core_pipeline/blockers.rs` | Active blocker-reference query and facade read. |
@@ -98,8 +98,8 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/core_pipeline/agent_sessions.rs` | Project-local Agent Session facade entry point over the Guard-owned strict row reader. |
 | `crates/volicord-store/src/core_pipeline/record_refs.rs` | Shared stored-record reference representation used by aggregate reads. |
 | `crates/volicord-store/src/core_pipeline/inspection.rs` | No-effect project storage counters used by verification paths. |
-| `crates/volicord-store/src/core_pipeline/commit.rs` | Replay and freshness gates, one canonical commit timestamp, atomic mutation/event/response transaction, and commit outcome. |
-| `crates/volicord-store/src/core_pipeline/mutation_apply.rs` | Current Core storage mutation application and mutation SQL. |
+| `crates/volicord-store/src/core_pipeline/mutations.rs` | Grouped `CoreStorageMutation` routing, static aggregate dispatch, transaction-scoped mutation context, and typed aggregate application results. |
+| `crates/volicord-store/src/core_pipeline/commit.rs` | Replay and freshness gates, ordered aggregate delegation, one state-version advance and canonical commit timestamp, atomic event/replay/response persistence, rollback, and final commit outcome. |
 | `crates/volicord-store/src/core_pipeline/validation.rs` | Persisted-value and mutation-input validation shared by current Store owners. |
 | `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent and producer records. |

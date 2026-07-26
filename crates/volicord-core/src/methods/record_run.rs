@@ -64,11 +64,12 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
-    ArtifactLinkInsert, ArtifactPromotion, ChangeUnitRecord, CoreProjectStore, CoreStorageMutation,
-    EvidenceClaimInsert, EvidenceObservationInsert, EvidenceSummaryUpsert, ProjectStateHeader,
-    RunInsert, RunRecord, StoredArtifactStagingRecord, TaskCloseBasisUpdate,
-    TaskControlLevelUpdate, TaskRecord, UserActionInvalidation, WriteTicketConsumption,
-    WriteTicketRecord,
+    ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, ChangeUnitRecord, CoreProjectStore,
+    CoreStorageMutation, EvidenceClaimInsert, EvidenceMutation, EvidenceObservationInsert,
+    EvidenceSummaryUpsert, ProjectStateHeader, RunInsert, RunMutation, RunRecord,
+    StoredArtifactStagingRecord, TaskCloseBasisUpdate, TaskControlLevelUpdate, TaskMutation,
+    TaskRecord, UserActionInvalidation, UserActionMutation, WriteTicketConsumption,
+    WriteTicketMutation, WriteTicketRecord,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::error::StoreError;
@@ -525,12 +526,12 @@ fn validate_record_run_evidence_targets(
                     "supplemental evidence claim statements are immutable within a Task",
                 );
             }
-            None => mutations.push(CoreStorageMutation::EnsureEvidenceClaim(
-                EvidenceClaimInsert {
+            None => mutations.push(CoreStorageMutation::Evidence(
+                EvidenceMutation::EnsureClaim(EvidenceClaimInsert {
                     evidence_claim_id,
                     task_id: request.task_id.as_str().to_owned(),
                     statement,
-                },
+                }),
             )),
         }
     }
@@ -1174,7 +1175,7 @@ fn plan_record_run_mutations(
         projected_task.acceptance_policy =
             acceptance_policy_storage(AcceptancePolicy::Required).to_owned();
         projected_task.acceptance_policy_reason = acceptance_reason.clone();
-        Some(CoreStorageMutation::UpdateTaskControlLevel(
+        Some(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: projected_task.task_id.clone(),
                 effective_control_level: projected_task.effective_control_level.clone(),
@@ -1184,7 +1185,7 @@ fn plan_record_run_mutations(
                 ),
                 acceptance_policy_reason: Some(acceptance_reason),
             },
-        ))
+        )))
     };
     if let Some(lifecycle_phase) = lifecycle_phase {
         projected_task.lifecycle_phase = lifecycle_phase.to_owned();
@@ -1300,7 +1301,7 @@ fn assemble_record_run_storage_mutations(
         registered_artifacts,
         verified_invocation,
     } = assembly;
-    let mut storage_mutations = vec![CoreStorageMutation::InsertRun(RunInsert {
+    let mut storage_mutations = vec![CoreStorageMutation::Run(RunMutation::Insert(RunInsert {
         run_id: run_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
         change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
@@ -1324,39 +1325,39 @@ fn assemble_record_run_storage_mutations(
         metadata_json: serde_json::to_string(&json!({
             "verification_basis": verified_invocation.verification_basis.clone()
         }))?,
-    })];
+    }))];
     if let Some(acceptance_update) = sensitive_category_acceptance_update {
         storage_mutations.push(acceptance_update);
     }
-    storage_mutations.push(CoreStorageMutation::UpdateTaskCloseBasis(
+    storage_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateCloseBasis(
         TaskCloseBasisUpdate {
             task_id: request.task_id.as_str().to_owned(),
             close_basis_revision,
             close_basis_json,
         },
-    ));
-    storage_mutations.push(CoreStorageMutation::MarkUserActionsSupersededOrStale(
-        UserActionInvalidation {
+    )));
+    storage_mutations.push(CoreStorageMutation::UserAction(
+        UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
             task_id: request.task_id.as_str().to_owned(),
             action_kinds: vec![
                 UserActionKind::FinalAcceptance,
                 UserActionKind::ResidualRiskAcceptance,
             ],
-        },
+        }),
     ));
     if let Some(lifecycle_phase) = lifecycle_phase {
         storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
     }
     if let Some((record, _scope)) = write_ticket_scope {
-        storage_mutations.push(CoreStorageMutation::ConsumeWriteTicket(
-            WriteTicketConsumption {
+        storage_mutations.push(CoreStorageMutation::WriteTicket(
+            WriteTicketMutation::Consume(WriteTicketConsumption {
                 write_ticket_id: record.write_ticket_id.clone(),
                 run_id: run_id.as_str().to_owned(),
                 expected_basis_state_version: record.basis_state_version,
                 expected_write_authority_fingerprint: workflow_policy
                     .write_authority_fingerprint
                     .clone(),
-            },
+            }),
         ));
     }
     storage_mutations.extend(evidence_claim_mutations);
@@ -1369,40 +1370,44 @@ fn assemble_record_run_storage_mutations(
     for plan in observation_plans {
         storage_mutations.push(plan.mutation.clone());
         for artifact_ref in &plan.observation.output_artifact_refs {
-            storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
-                artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
-                task_id: request.task_id.as_str().to_owned(),
-                owner_record_kind: "evidence_observation".to_owned(),
-                owner_record_id: plan.observation.observation_id.as_str().to_owned(),
-                created_by_run_id: run_id.as_str().to_owned(),
-                metadata_json: serde_json::to_string(&json!({
-                    "relation": "evidence_observation_output"
-                }))?,
-            }));
+            storage_mutations.push(CoreStorageMutation::Artifact(ArtifactMutation::Link(
+                ArtifactLinkInsert {
+                    artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
+                    task_id: request.task_id.as_str().to_owned(),
+                    owner_record_kind: "evidence_observation".to_owned(),
+                    owner_record_id: plan.observation.observation_id.as_str().to_owned(),
+                    created_by_run_id: run_id.as_str().to_owned(),
+                    metadata_json: serde_json::to_string(&json!({
+                        "relation": "evidence_observation_output"
+                    }))?,
+                },
+            )));
         }
         if let Some(producer_mutation) = &plan.producer_mutation {
             storage_mutations.push(producer_mutation.clone());
         }
         if let Some(producer) = &plan.producer {
             for artifact_ref in &producer.receipt_artifact_refs {
-                storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
-                    artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
-                    task_id: request.task_id.as_str().to_owned(),
-                    owner_record_kind: "evidence_producer".to_owned(),
-                    owner_record_id: producer.evidence_producer_id.as_str().to_owned(),
-                    created_by_run_id: run_id.as_str().to_owned(),
-                    metadata_json: serde_json::to_string(&json!({
-                        "relation": "evidence_capture_receipt"
-                    }))?,
-                }));
+                storage_mutations.push(CoreStorageMutation::Artifact(ArtifactMutation::Link(
+                    ArtifactLinkInsert {
+                        artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
+                        task_id: request.task_id.as_str().to_owned(),
+                        owner_record_kind: "evidence_producer".to_owned(),
+                        owner_record_id: producer.evidence_producer_id.as_str().to_owned(),
+                        created_by_run_id: run_id.as_str().to_owned(),
+                        metadata_json: serde_json::to_string(&json!({
+                            "relation": "evidence_capture_receipt"
+                        }))?,
+                    },
+                )));
             }
         }
     }
     if let (Some(evidence_summary), Some(evidence_summary_id)) =
         (recorded_evidence_summary, evidence_summary_id)
     {
-        storage_mutations.push(CoreStorageMutation::UpsertEvidenceSummary(
-            EvidenceSummaryUpsert {
+        storage_mutations.push(CoreStorageMutation::Evidence(
+            EvidenceMutation::UpsertSummary(EvidenceSummaryUpsert {
                 evidence_summary_id: evidence_summary_id.clone(),
                 task_id: request.task_id.as_str().to_owned(),
                 change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
@@ -1425,19 +1430,21 @@ fn assemble_record_run_storage_mutations(
                 metadata_json: serde_json::to_string(&json!({
                     "updated_by_run_id": run_id.as_str()
                 }))?,
-            },
+            }),
         ));
         for artifact_ref in registered_artifacts {
-            storage_mutations.push(CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
-                artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
-                task_id: request.task_id.as_str().to_owned(),
-                owner_record_kind: "evidence_summary".to_owned(),
-                owner_record_id: evidence_summary_id.clone(),
-                created_by_run_id: run_id.as_str().to_owned(),
-                metadata_json: serde_json::to_string(&json!({
-                    "relation": "evidence_support"
-                }))?,
-            }));
+            storage_mutations.push(CoreStorageMutation::Artifact(ArtifactMutation::Link(
+                ArtifactLinkInsert {
+                    artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
+                    task_id: request.task_id.as_str().to_owned(),
+                    owner_record_kind: "evidence_summary".to_owned(),
+                    owner_record_id: evidence_summary_id.clone(),
+                    created_by_run_id: run_id.as_str().to_owned(),
+                    metadata_json: serde_json::to_string(&json!({
+                        "relation": "evidence_support"
+                    }))?,
+                },
+            )));
         }
     }
     Ok(storage_mutations)
@@ -2256,48 +2263,53 @@ fn plan_record_run_observation(
             .unwrap_or_else(|| input.observed_at.clone()),
         recorded_at: context.now.clone(),
     };
-    let mutation = CoreStorageMutation::InsertEvidenceObservation(EvidenceObservationInsert {
-        evidence_observation_id: observation.observation_id.as_str().to_owned(),
-        task_id: observation.task_id.as_str().to_owned(),
-        change_unit_id: observation
-            .change_unit_id
-            .as_ref()
-            .map(|id| id.as_str().to_owned()),
-        run_id: Some(context.run_id.as_str().to_owned()),
-        acceptance_criterion_id: match &observation.target {
-            EvidenceTarget::AcceptanceCriterion {
-                acceptance_criterion_id,
-            } => Some(acceptance_criterion_id.as_str().to_owned()),
-            EvidenceTarget::SupplementalClaim { .. } => None,
+    let mutation = CoreStorageMutation::Evidence(EvidenceMutation::InsertObservation(
+        EvidenceObservationInsert {
+            evidence_observation_id: observation.observation_id.as_str().to_owned(),
+            task_id: observation.task_id.as_str().to_owned(),
+            change_unit_id: observation
+                .change_unit_id
+                .as_ref()
+                .map(|id| id.as_str().to_owned()),
+            run_id: Some(context.run_id.as_str().to_owned()),
+            acceptance_criterion_id: match &observation.target {
+                EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id,
+                } => Some(acceptance_criterion_id.as_str().to_owned()),
+                EvidenceTarget::SupplementalClaim { .. } => None,
+            },
+            evidence_claim_id: match &observation.target {
+                EvidenceTarget::SupplementalClaim {
+                    evidence_claim_id, ..
+                } => Some(evidence_claim_id.as_str().to_owned()),
+                EvidenceTarget::AcceptanceCriterion { .. } => None,
+            },
+            source_kind: storage_value(observation.source_kind)?,
+            assurance_level: storage_value(observation.assurance_level)?,
+            observed_by_actor_source: observation
+                .observed_by_actor_source
+                .as_ref()
+                .map(ActorSource::to_canonical_string),
+            tool_name: observation.tool_name.as_ref().cloned(),
+            tool_invocation_id: observation.tool_invocation_id.as_ref().cloned(),
+            tool_metadata_json: serde_json::to_string(&observation.tool_metadata)?,
+            input_refs_json: serde_json::to_string(&observation.input_refs)?,
+            source_refs_json: serde_json::to_string(&observation.source_refs)?,
+            output_artifact_refs_json: serde_json::to_string(&observation.output_artifact_refs)?,
+            limitations_json: serde_json::to_string(&observation.limitations)?,
+            observed_at: observation.observed_at.to_canonical_string(),
+            recorded_at: observation.recorded_at.to_canonical_string(),
+            metadata_json: serde_json::to_string(&PersistedEvidenceObservationAuthority {
+                recorded_by_run_id: context.run_id.clone(),
+                invocation_verification_basis: context
+                    .verified_invocation
+                    .verification_basis
+                    .clone(),
+                producer_anchor: authority.producer_anchor.clone(),
+                relevance_assessment: authority.relevance_assessment.clone(),
+            })?,
         },
-        evidence_claim_id: match &observation.target {
-            EvidenceTarget::SupplementalClaim {
-                evidence_claim_id, ..
-            } => Some(evidence_claim_id.as_str().to_owned()),
-            EvidenceTarget::AcceptanceCriterion { .. } => None,
-        },
-        source_kind: storage_value(observation.source_kind)?,
-        assurance_level: storage_value(observation.assurance_level)?,
-        observed_by_actor_source: observation
-            .observed_by_actor_source
-            .as_ref()
-            .map(ActorSource::to_canonical_string),
-        tool_name: observation.tool_name.as_ref().cloned(),
-        tool_invocation_id: observation.tool_invocation_id.as_ref().cloned(),
-        tool_metadata_json: serde_json::to_string(&observation.tool_metadata)?,
-        input_refs_json: serde_json::to_string(&observation.input_refs)?,
-        source_refs_json: serde_json::to_string(&observation.source_refs)?,
-        output_artifact_refs_json: serde_json::to_string(&observation.output_artifact_refs)?,
-        limitations_json: serde_json::to_string(&observation.limitations)?,
-        observed_at: observation.observed_at.to_canonical_string(),
-        recorded_at: observation.recorded_at.to_canonical_string(),
-        metadata_json: serde_json::to_string(&PersistedEvidenceObservationAuthority {
-            recorded_by_run_id: context.run_id.clone(),
-            invocation_verification_basis: context.verified_invocation.verification_basis.clone(),
-            producer_anchor: authority.producer_anchor.clone(),
-            relevance_assessment: authority.relevance_assessment.clone(),
-        })?,
-    });
+    ));
     let (producer, producer_mutation) = if let (Some(capture), Some(producer_id)) =
         (capture_authority, authority.producer_id.clone())
     {
@@ -2332,24 +2344,26 @@ fn plan_record_run_observation(
             run_ref: context.run_ref.clone(),
             observation_ref: observation_ref.clone(),
         };
-        let mutation = CoreStorageMutation::InsertEvidenceProducer(EvidenceProducerInsert {
-            evidence_producer_id: producer_id.as_str().to_owned(),
-            evidence_capture_intent_id: capture.intent.capture_intent_id.as_str().to_owned(),
-            evidence_capture_receipt_id: capture.receipt.evidence_capture_receipt_id.clone(),
-            evidence_observation_id: observation.observation_id.as_str().to_owned(),
-            artifact_id: capture.receipt_artifact_ref.artifact_id.as_str().to_owned(),
-            run_id: context.run_id.as_str().to_owned(),
-            task_id: context.request.task_id.as_str().to_owned(),
-            change_unit_id: context.request.change_unit_id.as_str().to_owned(),
-            scope_revision: context.current_scope_revision,
-            baseline_ref: context.request.baseline_ref.as_str().to_owned(),
-            producer_kind: storage_value(capture.producer_kind)?,
-            canonical_producer_json: canonical_json_string(&producer)?,
-            created_at: context.now.to_canonical_string(),
-            metadata_json: serde_json::to_string(&json!({
-                "verification_basis": capture.verification_basis
-            }))?,
-        });
+        let mutation = CoreStorageMutation::Evidence(EvidenceMutation::InsertProducer(
+            EvidenceProducerInsert {
+                evidence_producer_id: producer_id.as_str().to_owned(),
+                evidence_capture_intent_id: capture.intent.capture_intent_id.as_str().to_owned(),
+                evidence_capture_receipt_id: capture.receipt.evidence_capture_receipt_id.clone(),
+                evidence_observation_id: observation.observation_id.as_str().to_owned(),
+                artifact_id: capture.receipt_artifact_ref.artifact_id.as_str().to_owned(),
+                run_id: context.run_id.as_str().to_owned(),
+                task_id: context.request.task_id.as_str().to_owned(),
+                change_unit_id: context.request.change_unit_id.as_str().to_owned(),
+                scope_revision: context.current_scope_revision,
+                baseline_ref: context.request.baseline_ref.as_str().to_owned(),
+                producer_kind: storage_value(capture.producer_kind)?,
+                canonical_producer_json: canonical_json_string(&producer)?,
+                created_at: context.now.to_canonical_string(),
+                metadata_json: serde_json::to_string(&json!({
+                    "verification_basis": capture.verification_basis
+                }))?,
+            },
+        ));
         (Some(producer), Some(mutation))
     } else {
         (None, None)
@@ -3906,8 +3920,8 @@ fn plan_staged_artifact_input(
         .into(),
         storage_ref: Some(StorageRef::new(uri.clone())).into(),
     };
-    let source_mutation = Some(CoreStorageMutation::PromoteStagedArtifact(
-        ArtifactPromotion {
+    let source_mutation = Some(CoreStorageMutation::Artifact(
+        ArtifactMutation::PromoteStaged(ArtifactPromotion {
             handle_id: handle.handle_id.as_str().to_owned(),
             artifact_id: artifact_id.as_str().to_owned(),
             task_id: request.task_id.as_str().to_owned(),
@@ -3933,16 +3947,16 @@ fn plan_staged_artifact_input(
             metadata_json: serde_json::to_string(&json!({
                 "source_kind": "staged_artifact"
             }))?,
-        },
+        }),
     ));
-    let run_link = CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
+    let run_link = CoreStorageMutation::Artifact(ArtifactMutation::Link(ArtifactLinkInsert {
         artifact_id: artifact_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
         owner_record_kind: "run".to_owned(),
         owner_record_id: run_id.as_str().to_owned(),
         created_by_run_id: run_id.as_str().to_owned(),
         metadata_json: artifact_link_metadata(input)?,
-    });
+    }));
 
     Ok(RecordRunArtifactPlan {
         artifact_ref,
@@ -4265,14 +4279,14 @@ fn plan_existing_artifact_input(
         Some(existing_ref.display_name.clone()),
         None,
     )?;
-    let run_link = CoreStorageMutation::LinkArtifact(ArtifactLinkInsert {
+    let run_link = CoreStorageMutation::Artifact(ArtifactMutation::Link(ArtifactLinkInsert {
         artifact_id: existing_ref.artifact_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
         owner_record_kind: "run".to_owned(),
         owner_record_id: run_id.as_str().to_owned(),
         created_by_run_id: run_id.as_str().to_owned(),
         metadata_json: artifact_link_metadata(input)?,
-    });
+    }));
     Ok(RecordRunArtifactPlan {
         artifact_ref,
         evidence_target: input.evidence_target.as_ref().cloned(),

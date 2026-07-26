@@ -1,12 +1,9 @@
-use std::path::Path;
-
-use rusqlite::{params, OptionalExtension, Transaction};
-use volicord_types::schema::validate_channel_submission_id;
+#[cfg(test)]
+use rusqlite::params;
+#[cfg(test)]
 use volicord_types::values::{
-    MethodName, UserActionBasisStatus, UserActionChannelKind, UserActionKind, UtcTimestamp,
+    UserActionBasisStatus, UserActionChannelKind, UserActionKind, UtcTimestamp,
 };
-
-use crate::{artifacts::persistent_body_path_from_staging_tmp_path, StoreError, StoreResult};
 
 pub use crate::evidence_capture::{
     derive_evidence_capture_source_claims, EvidenceCaptureIntentInsert,
@@ -16,7 +13,6 @@ pub use crate::evidence_capture::{
 };
 
 pub use self::commit::commit_input;
-use self::validation::*;
 
 /// Pending event supplied by a method-specific commit branch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,378 +22,6 @@ pub struct PendingTaskEvent {
     pub change_unit_id: Option<String>,
     pub event_kind: String,
     pub event_payload_json: String,
-}
-
-/// Storage-level mutation applied inside one Core commit transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CoreStorageMutation {
-    InsertTask(TaskInsert),
-    SetActiveTask { task_id: String },
-    SupersedeTask { task_id: String },
-    CloseTask(TaskCloseUpdate),
-    UpdateTaskControlLevel(TaskControlLevelUpdate),
-    UpdateTaskScope(TaskScopeUpdate),
-    UpdateTaskScopeRevision(TaskScopeRevisionUpdate),
-    UpdateTaskCloseBasis(TaskCloseBasisUpdate),
-    ReplaceAcceptanceCriteria(AcceptanceCriteriaReplace),
-    EnsureEvidenceClaim(EvidenceClaimInsert),
-    InsertCurrentChangeUnit(ChangeUnitInsert),
-    ReplaceCurrentChangeUnit(ChangeUnitInsert),
-    MarkActiveWriteTicketsStale { task_id: String },
-    InvalidateActiveWriteTickets(WriteTicketInvalidation),
-    InvalidateWriteTicket(WriteTicketByIdInvalidation),
-    InsertWriteTicket(WriteTicketInsert),
-    ConsumeWriteTicket(WriteTicketConsumption),
-    InsertRun(RunInsert),
-    InsertEvidenceCaptureIntent(EvidenceCaptureIntentInsert),
-    PromoteStagedArtifact(ArtifactPromotion),
-    LinkArtifact(ArtifactLinkInsert),
-    UpsertEvidenceSummary(EvidenceSummaryUpsert),
-    InsertEvidenceObservation(EvidenceObservationInsert),
-    InsertEvidenceProducer(EvidenceProducerInsert),
-    InsertUserActionRequest(UserActionRequestInsert),
-    InsertUserActionResolution(UserActionResolutionInsert),
-    ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate),
-    InsertProjectContinuityRecord(ProjectContinuityRecordInsert),
-    UpdateUserActionBasis(UserActionBasisUpdate),
-    MarkUserActionBasesStatus(UserActionBasisStatusMark),
-    MarkUserActionsSupersededOrStale(UserActionInvalidation),
-    ApplyProjectWorkflowPolicy(ProjectWorkflowPolicyMutation),
-}
-
-/// Storage input for one authority-bound project workflow-policy replacement.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectWorkflowPolicyMutation {
-    pub policy_version: u64,
-    pub policy_json: String,
-    pub policy_fingerprint: String,
-    pub source: String,
-    pub expected_prior_fingerprint: Option<String>,
-}
-
-/// Storage input for inserting a Task current row.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaskInsert {
-    pub task_id: String,
-    pub created_by_actor_source: String,
-    pub mode: String,
-    pub requested_control_level: String,
-    pub effective_control_level: String,
-    pub control_level_reason: String,
-    pub work_phase: String,
-    pub acceptance_policy: String,
-    pub acceptance_policy_reason: String,
-    pub predecessor_task_id: Option<String>,
-    pub lineage_relation: Option<String>,
-    pub lineage_reason: Option<String>,
-    pub carry_forward_json: String,
-    pub lifecycle_phase: String,
-    pub result: Option<String>,
-    pub title: Option<String>,
-    pub summary: Option<String>,
-    pub shaping_summary_json: String,
-    pub bounded_context_json: String,
-    pub autonomy_boundary_json: String,
-    pub close_summary_json: String,
-    pub current_change_unit_id: Option<String>,
-}
-
-/// Storage input for updating Task scope-shaped current fields.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaskScopeUpdate {
-    pub task_id: String,
-    pub work_phase: Option<String>,
-    pub lifecycle_phase: Option<String>,
-    pub result: Option<String>,
-    pub title: Option<String>,
-    pub summary: Option<String>,
-    pub shaping_summary_json: Option<String>,
-    pub bounded_context_json: Option<String>,
-    pub autonomy_boundary_json: Option<String>,
-    pub close_summary_json: Option<String>,
-}
-
-/// Storage input for an upward-only Task control transition.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaskControlLevelUpdate {
-    pub task_id: String,
-    pub effective_control_level: String,
-    pub control_level_reason: String,
-    pub acceptance_policy: Option<String>,
-    pub acceptance_policy_reason: Option<String>,
-}
-
-/// One canonical acceptance criterion in a complete Task replacement set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcceptanceCriterionUpsert {
-    pub acceptance_criterion_id: String,
-    pub statement: String,
-    pub evidence_requirement: String,
-    pub position: u64,
-}
-
-/// Storage input for atomically replacing the current Task criterion set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcceptanceCriteriaReplace {
-    pub task_id: String,
-    pub criteria: Vec<AcceptanceCriterionUpsert>,
-}
-
-/// Storage input for inserting an immutable Task-scoped supplemental claim.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EvidenceClaimInsert {
-    pub evidence_claim_id: String,
-    pub task_id: String,
-    pub statement: String,
-}
-
-/// Storage input for updating a Task scope revision coordinate.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaskScopeRevisionUpdate {
-    pub task_id: String,
-    pub scope_revision: u64,
-}
-
-/// Storage input for atomically replacing a Task close-basis coordinate and JSON.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaskCloseBasisUpdate {
-    pub task_id: String,
-    pub close_basis_revision: u64,
-    pub close_basis_json: Option<String>,
-}
-
-/// Storage input for applying one terminal Task close transition.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaskCloseUpdate {
-    pub task_id: String,
-    pub lifecycle_phase: String,
-    pub result: String,
-    pub close_summary_json: String,
-    pub closed_at: String,
-}
-
-/// Storage input for inserting a current Change Unit.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChangeUnitInsert {
-    pub change_unit_id: String,
-    pub task_id: String,
-    pub scope_summary_json: String,
-    pub bounded_paths_json: String,
-    pub write_basis_json: String,
-    pub effect_contract_json: String,
-    pub lifecycle_json: String,
-}
-
-/// Storage input for inserting a pending user-action request.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserActionRequestInsert {
-    pub user_action_request_id: String,
-    pub task_id: String,
-    pub change_unit_id: Option<String>,
-    pub action_kind: UserActionKind,
-    pub request_json: String,
-    pub basis_json: String,
-    pub basis_status: UserActionBasisStatus,
-    pub required_for_json: String,
-    pub requested_by_actor_source: String,
-    pub source_method: String,
-    pub source_idempotency_key: String,
-    pub requested_at: String,
-    pub expires_at: Option<String>,
-    pub metadata_json: String,
-}
-
-/// Storage input for inserting one immutable user-action resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserActionResolutionInsert {
-    pub user_action_resolution_id: String,
-    pub user_action_request_id: String,
-    pub action_kind: UserActionKind,
-    pub channel_kind: UserActionChannelKind,
-    pub channel_submission_id: String,
-    pub resolution_json: String,
-    pub resolved_by_actor_source: String,
-    pub resolved_verification_basis: String,
-    pub resolved_assurance_level: String,
-    pub resolved_at: String,
-}
-
-/// Storage input for resolving one unrecorded Product Repository change.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnrecordedChangeResolutionUpdate {
-    pub unrecorded_change_id: String,
-    pub resolution_json: String,
-    pub resolved_at: String,
-    pub resolved_by_actor_source: String,
-}
-
-/// Storage input for inserting one project-level continuity record.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectContinuityRecordInsert {
-    pub continuity_record_id: String,
-    pub source_task_id: String,
-    pub source_change_unit_id: Option<String>,
-    pub kind: String,
-    pub title: String,
-    pub summary: String,
-    pub rationale: Option<String>,
-    pub applies_to_paths_json: String,
-    pub applies_to_refs_json: String,
-    pub source_refs_json: String,
-    pub artifact_refs_json: String,
-    pub status: String,
-    pub supersedes_refs_json: String,
-    pub review_triggers_json: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub metadata_json: String,
-}
-
-/// Storage input for replacing one user-action basis snapshot and compatibility status.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserActionBasisUpdate {
-    pub user_action_request_id: String,
-    pub basis_json: String,
-    pub basis_status: UserActionBasisStatus,
-}
-
-/// Storage input for marking selected user-action basis rows stale or superseded.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserActionBasisStatusMark {
-    pub user_action_request_ids: Vec<String>,
-    pub basis_status: UserActionBasisStatus,
-}
-
-/// Storage input for invalidating current user-action authority after state changes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserActionInvalidation {
-    pub task_id: String,
-    pub action_kinds: Vec<UserActionKind>,
-}
-
-/// Storage input for inserting one open write ticket.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteTicketInsert {
-    pub write_ticket_id: String,
-    pub task_id: String,
-    pub change_unit_id: String,
-    pub validity_basis_json: String,
-    pub allowed_path_prefixes_json: String,
-    pub denied_path_prefixes_json: String,
-    pub attempt_scope_json: String,
-    pub created_by_actor_source: String,
-    pub created_by_user_action_resolution_id: Option<String>,
-    pub idle_expires_at: Option<String>,
-    pub created_at: String,
-    pub metadata_json: String,
-}
-
-/// Storage input for invalidating every active write ticket for one Task.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteTicketInvalidation {
-    pub task_id: String,
-    pub invalidation_reason: String,
-}
-
-/// Storage input for invalidating one specifically identified active write ticket.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteTicketByIdInvalidation {
-    pub write_ticket_id: String,
-    pub invalidation_reason: String,
-}
-
-/// Storage input for closing one open write ticket through a compatible Run.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteTicketConsumption {
-    pub write_ticket_id: String,
-    pub run_id: String,
-    pub expected_basis_state_version: u64,
-    pub expected_write_authority_fingerprint: String,
-}
-
-/// Storage input for inserting one committed Run.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunInsert {
-    pub run_id: String,
-    pub task_id: String,
-    pub change_unit_id: Option<String>,
-    pub scope_revision: u64,
-    pub write_ticket_id: Option<String>,
-    pub kind: String,
-    pub status: String,
-    pub summary_json: String,
-    pub observed_changes_json: String,
-    pub evidence_updates_json: String,
-    pub write_ticket_effect_json: String,
-    pub created_by_actor_source: String,
-    pub metadata_json: String,
-}
-
-/// Storage input for promoting one staged artifact to a persistent artifact.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArtifactPromotion {
-    pub handle_id: String,
-    pub artifact_id: String,
-    pub task_id: String,
-    pub run_id: String,
-    pub expected_created_by_actor_source: String,
-    pub expected_sha256: String,
-    pub expected_size_bytes: u64,
-    pub expected_redaction_state: String,
-    pub expected_created_at: String,
-    pub expected_expires_at: String,
-    pub uri: String,
-    pub retention_json: String,
-    pub producer_json: String,
-    pub metadata_json: String,
-}
-
-/// Storage input for linking a persistent artifact to an owner relation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArtifactLinkInsert {
-    pub artifact_id: String,
-    pub task_id: String,
-    pub owner_record_kind: String,
-    pub owner_record_id: String,
-    pub created_by_run_id: String,
-    pub metadata_json: String,
-}
-
-/// Storage input for creating or replacing one evidence summary row.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EvidenceSummaryUpsert {
-    pub evidence_summary_id: String,
-    pub task_id: String,
-    pub change_unit_id: Option<String>,
-    pub status: String,
-    pub coverage_json: String,
-    pub supporting_refs_json: String,
-    pub gap_refs_json: String,
-    pub metadata_json: String,
-}
-
-/// Storage input for inserting one durable evidence observation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EvidenceObservationInsert {
-    pub evidence_observation_id: String,
-    pub task_id: String,
-    pub change_unit_id: Option<String>,
-    pub run_id: Option<String>,
-    pub acceptance_criterion_id: Option<String>,
-    pub evidence_claim_id: Option<String>,
-    pub source_kind: String,
-    pub assurance_level: String,
-    pub observed_by_actor_source: Option<String>,
-    pub tool_name: Option<String>,
-    pub tool_invocation_id: Option<String>,
-    pub tool_metadata_json: String,
-    pub input_refs_json: String,
-    pub source_refs_json: String,
-    pub output_artifact_refs_json: String,
-    pub limitations_json: String,
-    pub observed_at: String,
-    pub recorded_at: String,
-    pub metadata_json: String,
 }
 
 /// Event reference facts created by an atomic mutation commit.
@@ -460,14 +84,6 @@ pub enum MutationCommitOutcome {
     },
 }
 
-/// Storage mutation handle scoped to a single committed transaction.
-pub struct ProjectMutation<'tx> {
-    project_id: &'tx str,
-    project_home: &'tx Path,
-    committed_at: &'tx str,
-    tx: &'tx Transaction<'tx>,
-}
-
 mod agent_sessions;
 mod artifacts;
 mod blockers;
@@ -480,7 +96,7 @@ mod events;
 mod evidence;
 mod facade;
 mod inspection;
-mod mutation_apply;
+pub(crate) mod mutations;
 mod open;
 mod project_state;
 mod reconciliation;
@@ -492,24 +108,43 @@ mod user_actions;
 pub(crate) mod validation;
 mod write_tickets;
 
-pub use artifacts::{StoredArtifactRecord, StoredArtifactStagingRecord};
-pub use change_units::ChangeUnitRecord;
-pub use continuity::{ActiveProjectContinuityPage, ProjectContinuityRecordRecord};
+pub use crate::workflow_records::{ProjectWorkflowPolicyMutation, WorkflowPolicyMutation};
+pub use artifacts::{
+    ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, StoredArtifactRecord,
+    StoredArtifactStagingRecord,
+};
+pub use change_units::{ChangeUnitInsert, ChangeUnitMutation, ChangeUnitRecord};
+pub use continuity::{
+    ActiveProjectContinuityPage, ContinuityMutation, ProjectContinuityRecordInsert,
+    ProjectContinuityRecordRecord, UnrecordedChangeResolutionUpdate,
+};
 pub use enforcement_profile::ProjectEnforcementProfileRecord;
-pub use evidence::{EvidenceObservationRecord, EvidenceSummaryRecord};
+pub use evidence::{
+    EvidenceClaimInsert, EvidenceMutation, EvidenceObservationInsert, EvidenceObservationRecord,
+    EvidenceSummaryRecord, EvidenceSummaryUpsert,
+};
 pub use facade::CoreProjectStore;
 pub use inspection::StorageEffectCounts;
+pub use mutations::CoreStorageMutation;
 pub use project_state::ProjectStateHeader;
 pub use reconciliation::ProductWriteObservationCandidate;
 pub use record_refs::StoredRecordRef;
 pub use replay::{StoredOperationResult, ToolInvocationRecord, VerifiedReplayContext};
-pub use runs::{RunObservedChangesRecord, RunRecord};
-pub use tasks::{AcceptanceCriterionRecord, EvidenceClaimRecord, TaskRecord, TaskRevisionRecord};
-pub use user_actions::{
-    effective_user_action_status, EffectiveUserActionRecord, UserActionRequestRecord,
-    UserActionResolutionRecord,
+pub use runs::{RunInsert, RunMutation, RunObservedChangesRecord, RunRecord};
+pub use tasks::{
+    AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionUpsert,
+    EvidenceClaimRecord, TaskCloseBasisUpdate, TaskCloseUpdate, TaskControlLevelUpdate, TaskInsert,
+    TaskMutation, TaskRecord, TaskRevisionRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
 };
-pub use write_tickets::WriteTicketRecord;
+pub use user_actions::{
+    effective_user_action_status, EffectiveUserActionRecord, UserActionBasisStatusMark,
+    UserActionBasisUpdate, UserActionInvalidation, UserActionMutation, UserActionRequestInsert,
+    UserActionRequestRecord, UserActionResolutionInsert, UserActionResolutionRecord,
+};
+pub use write_tickets::{
+    WriteTicketByIdInvalidation, WriteTicketConsumption, WriteTicketInsert,
+    WriteTicketInvalidation, WriteTicketMutation, WriteTicketRecord,
+};
 
 #[cfg(test)]
 mod tests {
@@ -537,6 +172,7 @@ mod tests {
     };
     use crate::mutation::TestRuntimeHomeAdmission;
     use crate::sqlite::open_project_state_database_for_test;
+    use crate::{StoreError, StoreResult};
 
     const PROJECT_ID: &str = "project_store";
     const CONNECTION_ID: &str = "conn_store";
@@ -591,7 +227,7 @@ mod tests {
         let before = store.effect_counts()?;
         let mut invalid = task_insert("task_missing_close_reason_write");
         invalid.close_summary_json = "{}".to_owned();
-        let write = store.commit_mutation(
+        let write = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::Intake,
@@ -605,8 +241,9 @@ mod tests {
                 )],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(invalid)
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(invalid))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         );
@@ -614,7 +251,7 @@ mod tests {
         assert_eq!(store.effect_counts()?, before);
 
         let task_id = "task_missing_close_reason_read";
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::Intake,
@@ -625,8 +262,9 @@ mod tests {
                 vec![pending_event_for_task("missing_close_reason_read", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -673,11 +311,12 @@ mod tests {
         );
         input.clock_floor = Some(configured_floor.to_owned());
 
-        let outcome = store.commit_mutation(
+        let outcome = store.commit_with(
             input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -763,17 +402,17 @@ mod tests {
         );
         first_input.clock_floor = Some(fixed_time.to_owned());
         first_input.include_live_storage_time = false;
-        store.commit_mutation(
+        store.commit_with(
             first_input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::UpsertEvidenceSummary(evidence_summary_upsert(
-                    "summary_z_old",
-                    task_id,
-                    "run_summary_old",
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::Evidence(EvidenceMutation::UpsertSummary(
+                    evidence_summary_upsert("summary_z_old", task_id, "run_summary_old"),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -789,15 +428,14 @@ mod tests {
         );
         second_input.clock_floor = Some(fixed_time.to_owned());
         second_input.include_live_storage_time = false;
-        store.commit_mutation(
+        store.commit_with(
             second_input,
             |mutation, facts| {
-                CoreStorageMutation::UpsertEvidenceSummary(evidence_summary_upsert(
-                    "summary_a_new",
-                    task_id,
-                    "run_summary_new",
+                CoreStorageMutation::Evidence(EvidenceMutation::UpsertSummary(
+                    evidence_summary_upsert("summary_a_new", task_id, "run_summary_new"),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -840,16 +478,15 @@ mod tests {
         duplicate_input.clock_floor = Some(fixed_time.to_owned());
         duplicate_input.include_live_storage_time = false;
         let error = store
-            .commit_mutation(
+            .commit_with(
                 duplicate_input,
                 |mutation, facts| {
                     for summary_id in ["summary_duplicate_first", "summary_duplicate_second"] {
-                        CoreStorageMutation::UpsertEvidenceSummary(evidence_summary_upsert(
-                            summary_id,
-                            task_id,
-                            "run_summary_duplicate",
+                        CoreStorageMutation::Evidence(EvidenceMutation::UpsertSummary(
+                            evidence_summary_upsert(summary_id, task_id, "run_summary_duplicate"),
                         ))
-                        .apply(mutation, facts.committed_state_version)?;
+                        .apply(mutation, facts)
+                        .map(|_| ())?;
                     }
                     Ok(())
                 },
@@ -875,7 +512,7 @@ mod tests {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
         let task_id = "task_staged_exact_expiry";
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::Intake,
@@ -886,8 +523,9 @@ mod tests {
                 vec![pending_event_for_task("staged_exact_expiry", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -930,7 +568,7 @@ mod tests {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
         let task_id = "task_clock_floor";
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::Intake,
@@ -941,8 +579,9 @@ mod tests {
                 vec![pending_event_for_task("clock_floor_task", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -963,29 +602,33 @@ mod tests {
             ],
         );
         clock_floor_input.clock_floor = Some(future_floor.to_string());
-        let second = store.commit_mutation(
+        let second = store.commit_with(
             clock_floor_input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(future_task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::EnsureEvidenceClaim(EvidenceClaimInsert {
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(future_task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::Evidence(EvidenceMutation::EnsureClaim(EvidenceClaimInsert {
                     evidence_claim_id: "claim_clock_floor".to_owned(),
                     task_id: future_task_id.to_owned(),
                     statement: "The canonical commit clock is shared.".to_owned(),
-                })
-                .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::CloseTask(TaskCloseUpdate {
+                }))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+                CoreStorageMutation::Task(TaskMutation::Close(TaskCloseUpdate {
                     task_id: task_id.to_owned(),
                     lifecycle_phase: "completed".to_owned(),
                     result: "completed".to_owned(),
                     close_summary_json: "{\"close_reason\":\"completed_self_checked\"}".to_owned(),
                     closed_at: "2999-07-13T12:00:00Z".to_owned(),
-                })
-                .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::SetActiveTask {
+                }))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+                CoreStorageMutation::Task(TaskMutation::SetActive {
                     task_id: future_task_id.to_owned(),
-                }
-                .apply(mutation, facts.committed_state_version)
+                })
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -1061,7 +704,7 @@ mod tests {
             ],
         );
         replay_input.clock_floor = Some(future_attempt_floor.to_owned());
-        let replay = store.commit_mutation(
+        let replay = store.commit_with(
             replay_input,
             |_, _| panic!("replay must not invoke the mutation closure"),
             response_json,
@@ -1080,7 +723,7 @@ mod tests {
             vec![pending_event_for_task("clock_floor_stale", future_task_id)],
         );
         stale_input.clock_floor = Some(future_attempt_floor.to_owned());
-        let stale = store.commit_mutation(
+        let stale = store.commit_with(
             stale_input,
             |_, _| panic!("stale expected state must not invoke the mutation closure"),
             response_json,
@@ -1104,7 +747,7 @@ mod tests {
         );
         invalid_floor.clock_floor = Some("not-a-timestamp".to_owned());
         let error = store
-            .commit_mutation(invalid_floor, |_, _| Ok(()), response_json)
+            .commit_with(invalid_floor, |_, _| Ok(()), response_json)
             .expect_err("invalid explicit clock floor must fail before effects");
         assert!(matches!(error, StoreError::InvalidInput { .. }));
         assert_eq!(store.effect_counts()?, before_invalid);
@@ -1148,7 +791,7 @@ mod tests {
         input.include_live_storage_time = false;
 
         let error = store
-            .commit_mutation(
+            .commit_with(
                 input,
                 |_, _| panic!("invalid remembered sample must fail before mutation"),
                 response_json,
@@ -1166,7 +809,7 @@ mod tests {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
         let task_id = "task_invalid_semantic_timestamp";
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::Intake,
@@ -1177,14 +820,15 @@ mod tests {
                 vec![pending_event_for_task("invalid_timestamp_setup", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
         let before = store.effect_counts()?;
 
-        let close = store.commit_mutation(
+        let close = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::CloseTask,
@@ -1195,21 +839,22 @@ mod tests {
                 vec![pending_event_for_task("invalid_closed_at", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::CloseTask(TaskCloseUpdate {
+                CoreStorageMutation::Task(TaskMutation::Close(TaskCloseUpdate {
                     task_id: task_id.to_owned(),
                     lifecycle_phase: "completed".to_owned(),
                     result: "completed".to_owned(),
                     close_summary_json: "{\"close_reason\":\"completed_self_checked\"}".to_owned(),
                     closed_at: "tomorrow".to_owned(),
-                })
-                .apply(mutation, facts.committed_state_version)
+                }))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         );
         assert!(matches!(close, Err(StoreError::InvalidInput { .. })));
         assert_eq!(store.effect_counts()?, before);
 
-        let write_ticket = store.commit_mutation(
+        let write_ticket = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::PrepareWrite,
@@ -1223,7 +868,7 @@ mod tests {
                 )],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertWriteTicket(WriteTicketInsert {
+                CoreStorageMutation::WriteTicket(WriteTicketMutation::insert(WriteTicketInsert {
                     write_ticket_id: "write_ticket_invalid_expiry".to_owned(),
                     task_id: task_id.to_owned(),
                     change_unit_id: "change_unit_missing".to_owned(),
@@ -1236,8 +881,9 @@ mod tests {
                     idle_expires_at: Some("tomorrow".to_owned()),
                     created_at: "2026-07-13T00:00:00Z".to_owned(),
                     metadata_json: "{}".to_owned(),
-                })
-                .apply(mutation, facts.committed_state_version)
+                }))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         );
@@ -1261,11 +907,12 @@ mod tests {
             Some(0),
             vec![pending_event("first")],
         );
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             first_input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert("task_first"))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert("task_first")))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -1281,7 +928,7 @@ mod tests {
             Some(1),
             vec![pending_event("second")],
         );
-        let mismatch = store.commit_mutation(mismatch_input, |_, _| Ok(()), response_json)?;
+        let mismatch = store.commit_with(mismatch_input, |_, _| Ok(()), response_json)?;
 
         assert!(matches!(
             mismatch,
@@ -1313,11 +960,12 @@ mod tests {
             Some(0),
             vec![pending_event("workspace_first")],
         );
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             first_input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert("task_workspace_first"))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert("task_workspace_first")))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -1335,8 +983,7 @@ mod tests {
             Some(1),
             vec![pending_event("basis_second")],
         );
-        let basis_replay =
-            store.commit_mutation(basis_replay_input, |_, _| Ok(()), response_json)?;
+        let basis_replay = store.commit_with(basis_replay_input, |_, _| Ok(()), response_json)?;
         assert!(matches!(
             basis_replay,
             MutationCommitOutcome::ReplayContextMismatch { .. }
@@ -1361,7 +1008,7 @@ mod tests {
             Some(1),
             vec![pending_event("workspace_second")],
         );
-        let replay = store.commit_mutation(replay_input, |_, _| Ok(()), response_json)?;
+        let replay = store.commit_with(replay_input, |_, _| Ok(()), response_json)?;
 
         assert!(matches!(
             replay,
@@ -1385,7 +1032,7 @@ mod tests {
                 "workspace_fingerprint": format!("sha256:{}", "2".repeat(64))
             }))?);
         let idempotency_key = IdempotencyKey::new("idem_store_workspace_corrupt");
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::UpdateScope,
@@ -1396,8 +1043,11 @@ mod tests {
                 vec![pending_event("workspace_corrupt")],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert("task_workspace_corrupt"))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(
+                    "task_workspace_corrupt",
+                )))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -1455,11 +1105,14 @@ mod tests {
             Some(0),
             vec![pending_event("replay_stale_first")],
         );
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             first_input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert("task_replay_stale_first"))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(
+                    "task_replay_stale_first",
+                )))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -1481,7 +1134,7 @@ mod tests {
             Some(0),
             vec![pending_event("replay_stale_second")],
         );
-        let replay = store.commit_mutation(
+        let replay = store.commit_with(
             replay_input,
             |_, _| panic!("eligible replay must not apply a second mutation"),
             |_| panic!("eligible replay must not build a fresh response"),
@@ -1512,11 +1165,14 @@ mod tests {
             Some(0),
             vec![pending_event("operation_result")],
         );
-        let committed = store.commit_mutation(
+        let committed = store.commit_with(
             input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert("task_operation_result"))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(
+                    "task_operation_result",
+                )))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             |facts| {
                 Ok(format!(
@@ -1586,7 +1242,7 @@ mod tests {
                 vec![pending_event(&format!("invalid_replay_identity_{case}"))],
             );
             let error = store
-                .commit_mutation(
+                .commit_with(
                     input,
                     |_, _| panic!("invalid replay identity must not apply a mutation"),
                     |_| panic!("invalid replay identity must not build a response"),
@@ -1635,11 +1291,14 @@ mod tests {
             Some(0),
             vec![pending_event("loaded_replay_identity")],
         );
-        let committed = store.commit_mutation(
+        let committed = store.commit_with(
             input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert("task_loaded_replay_identity"))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(
+                    "task_loaded_replay_identity",
+                )))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -1752,7 +1411,7 @@ mod tests {
             vec![pending_event("loaded_replay_identity")],
         );
         let basis_error = store
-            .commit_mutation(
+            .commit_with(
                 replay_input,
                 |_, _| panic!("corrupt replay identity must not apply a mutation"),
                 |_| panic!("corrupt replay identity must not rebuild a response"),
@@ -1777,11 +1436,14 @@ mod tests {
             Some(0),
             vec![pending_event("hash_conflict_first")],
         );
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             first_input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert("task_hash_conflict_first"))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(
+                    "task_hash_conflict_first",
+                )))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -1797,7 +1459,7 @@ mod tests {
             Some(1),
             vec![pending_event("hash_conflict_second")],
         );
-        let conflict = store.commit_mutation(
+        let conflict = store.commit_with(
             conflict_input,
             |_, _| panic!("hash conflict must not apply a second mutation"),
             |_| panic!("hash conflict must not build a fresh response"),
@@ -1824,7 +1486,7 @@ mod tests {
         let task_id = "task_ticket_policy_transaction";
         let write_ticket_id = "ticket_policy_transaction";
         let run_id = "run_policy_transaction";
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::Intake,
@@ -1838,8 +1500,9 @@ mod tests {
                 )],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -1931,7 +1594,7 @@ mod tests {
         let before_effects = store.effect_counts()?;
 
         let error = store
-            .commit_mutation(
+            .commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::RecordRun,
@@ -1947,7 +1610,7 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertRun(RunInsert {
+                    CoreStorageMutation::Run(RunMutation::Insert(RunInsert {
                         run_id: run_id.to_owned(),
                         task_id: task_id.to_owned(),
                         change_unit_id: None,
@@ -1961,15 +1624,19 @@ mod tests {
                         write_ticket_effect_json: "{}".to_owned(),
                         created_by_actor_source: ACTOR_SOURCE.to_owned(),
                         metadata_json: "{}".to_owned(),
-                    })
-                    .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::ConsumeWriteTicket(WriteTicketConsumption {
-                        write_ticket_id: write_ticket_id.to_owned(),
-                        run_id: run_id.to_owned(),
-                        expected_basis_state_version: 1,
-                        expected_write_authority_fingerprint: issued_fingerprint.clone(),
-                    })
-                    .apply(mutation, facts.committed_state_version)
+                    }))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                    CoreStorageMutation::WriteTicket(WriteTicketMutation::Consume(
+                        WriteTicketConsumption {
+                            write_ticket_id: write_ticket_id.to_owned(),
+                            run_id: run_id.to_owned(),
+                            expected_basis_state_version: 1,
+                            expected_write_authority_fingerprint: issued_fingerprint.clone(),
+                        },
+                    ))
+                    .apply(mutation, facts)
+                    .map(|_| ())
                 },
                 response_json,
             )
@@ -2013,7 +1680,7 @@ mod tests {
         let mut store = harness.store()?;
         let task_id = "task_authority_events";
 
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::Intake,
@@ -2024,15 +1691,16 @@ mod tests {
                 vec![pending_event_for_task("authority_first", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
         assert!(matches!(first, MutationCommitOutcome::Committed { .. }));
 
         let user_context = user_replay_context();
-        let second = store.commit_mutation(
+        let second = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::ResolveUserAction,
@@ -2043,7 +1711,7 @@ mod tests {
                 vec![pending_event_for_task("authority_second", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
+                CoreStorageMutation::Task(TaskMutation::UpdateScope(TaskScopeUpdate {
                     task_id: task_id.to_owned(),
                     work_phase: None,
                     lifecycle_phase: None,
@@ -2054,8 +1722,9 @@ mod tests {
                     bounded_context_json: None,
                     autonomy_boundary_json: None,
                     close_summary_json: None,
-                })
-                .apply(mutation, facts.committed_state_version)
+                }))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -2146,16 +1815,16 @@ mod tests {
             Some(0),
             vec![pending_event_for_task("basis_initial", task_id)],
         );
-        let first = store.commit_mutation(
+        let first = store.commit_with(
             first_input,
             |mutation, facts| {
                 for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        request_id, task_id, None,
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(request_id, task_id, None),
                     )),
                 ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                    storage_mutation.apply(mutation, facts).map(|_| ())?;
                 }
                 Ok(())
             },
@@ -2187,14 +1856,17 @@ mod tests {
             Some(1),
             vec![pending_event_for_task("basis_stale", task_id)],
         );
-        let stale = store.commit_mutation(
+        let stale = store.commit_with(
             stale_input,
             |mutation, facts| {
-                CoreStorageMutation::MarkUserActionBasesStatus(UserActionBasisStatusMark {
-                    user_action_request_ids: vec![request_id.to_owned()],
-                    basis_status: UserActionBasisStatus::Stale,
-                })
-                .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::UserAction(UserActionMutation::MarkBasesStatus(
+                    UserActionBasisStatusMark {
+                        user_action_request_ids: vec![request_id.to_owned()],
+                        basis_status: UserActionBasisStatus::Stale,
+                    },
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -2219,14 +1891,17 @@ mod tests {
             Some(2),
             vec![pending_event_for_task("basis_superseded", task_id)],
         );
-        let superseded = store.commit_mutation(
+        let superseded = store.commit_with(
             superseded_input,
             |mutation, facts| {
-                CoreStorageMutation::MarkUserActionBasesStatus(UserActionBasisStatusMark {
-                    user_action_request_ids: vec![request_id.to_owned()],
-                    basis_status: UserActionBasisStatus::Superseded,
-                })
-                .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::UserAction(UserActionMutation::MarkBasesStatus(
+                    UserActionBasisStatusMark {
+                        user_action_request_ids: vec![request_id.to_owned()],
+                        basis_status: UserActionBasisStatus::Superseded,
+                    },
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -2306,7 +1981,7 @@ mod tests {
                 _ => unreachable!("test table contains only declared invalid cases"),
             }
             let error = store
-                .commit_mutation(
+                .commit_with(
                     commit_input(
                         &ProjectId::new(PROJECT_ID),
                         MethodName::RequestUserAction,
@@ -2317,10 +1992,12 @@ mod tests {
                         vec![pending_event_for_task(marker, task_id)],
                     ),
                     |mutation, facts| {
-                        CoreStorageMutation::InsertTask(task_insert(task_id))
-                            .apply(mutation, facts.committed_state_version)?;
-                        CoreStorageMutation::InsertUserActionRequest(action)
-                            .apply(mutation, facts.committed_state_version)
+                        CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                            .apply(mutation, facts)
+                            .map(|_| ())?;
+                        CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(action))
+                            .apply(mutation, facts)
+                            .map(|_| ())
                     },
                     response_json,
                 )
@@ -2352,7 +2029,7 @@ mod tests {
             let request_id = format!("action_request_timestamp_{suffix}");
             let mut action = user_action_request_insert(&request_id, &task_id, None);
             set_user_action_request_expiry(&mut action, expires_at);
-            let outcome = store.commit_mutation(
+            let outcome = store.commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::RequestUserAction,
@@ -2368,10 +2045,12 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertTask(task_insert(&task_id))
-                        .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertUserActionRequest(action)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(&task_id)))
+                        .apply(mutation, facts)
+                        .map(|_| ())?;
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(action))
+                        .apply(mutation, facts)
+                        .map(|_| ())
                 },
                 response_json,
             );
@@ -2414,7 +2093,7 @@ mod tests {
         let before_effects = store.effect_counts()?;
 
         let error = store
-            .commit_mutation(
+            .commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::RequestUserAction,
@@ -2428,10 +2107,12 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertTask(task_insert(task_id))
-                        .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertUserActionRequest(action)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                        .apply(mutation, facts)
+                        .map(|_| ())?;
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(action))
+                        .apply(mutation, facts)
+                        .map(|_| ())
                 },
                 response_json,
             )
@@ -2485,6 +2166,15 @@ mod tests {
             metadata_json: "{}".to_owned(),
         };
 
+        let mutations = [
+            CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+            CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit_insert(
+                change_unit_id,
+                task_id,
+                "null".to_owned(),
+            ))),
+            CoreStorageMutation::Evidence(EvidenceMutation::InsertCaptureIntent(capture_intent)),
+        ];
         let error = store
             .commit_mutation(
                 commit_input(
@@ -2499,18 +2189,7 @@ mod tests {
                         task_id,
                     )],
                 ),
-                |mutation, facts| {
-                    CoreStorageMutation::InsertTask(task_insert(task_id))
-                        .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertCurrentChangeUnit(change_unit_insert(
-                        change_unit_id,
-                        task_id,
-                        "null".to_owned(),
-                    ))
-                    .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertEvidenceCaptureIntent(capture_intent)
-                        .apply(mutation, facts.committed_state_version)
-                },
+                &mutations,
                 response_json,
             )
             .expect_err("a 16-minute evidence-capture intent TTL must reject atomically");
@@ -2522,82 +2201,88 @@ mod tests {
     }
 
     #[test]
-    fn evidence_observation_store_api_round_trips() -> Result<(), Box<dyn Error>> {
+    fn ordered_multi_aggregate_commit_is_versioned_replayable_and_durable(
+    ) -> Result<(), Box<dyn Error>> {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
         let task_id = "task_evidence_observation";
         let run_id = "run_evidence_observation";
         let observation_id = "evidence_observation_store";
+        let idempotency_key = IdempotencyKey::new("idem_store_evidence_observation");
 
         let input = commit_input(
             &ProjectId::new(PROJECT_ID),
             MethodName::RecordRun,
-            Some(&IdempotencyKey::new("idem_store_evidence_observation")),
+            Some(&idempotency_key),
             &RequestHash::new("sha256:evidence-observation"),
             Some(replay_context(CONNECTION_ID, "agent_workflow")),
             Some(0),
             vec![pending_event_for_task("evidence_observation", task_id)],
         );
-        let committed = store.commit_mutation(
-            input,
-            |mutation, facts| {
-                for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertRun(run_insert(run_id, task_id)),
-                    CoreStorageMutation::EnsureEvidenceClaim(EvidenceClaimInsert {
-                        task_id: task_id.to_owned(),
-                        evidence_claim_id: "claim_search_result_count".to_owned(),
-                        statement: "Search result count was verified.".to_owned(),
-                    }),
-                    CoreStorageMutation::InsertEvidenceObservation(EvidenceObservationInsert {
-                        evidence_observation_id: observation_id.to_owned(),
-                        task_id: task_id.to_owned(),
-                        change_unit_id: None,
-                        run_id: Some(run_id.to_owned()),
-                        acceptance_criterion_id: None,
-                        evidence_claim_id: Some("claim_search_result_count".to_owned()),
-                        source_kind: "external_tool".to_owned(),
-                        assurance_level: "external_tool_result".to_owned(),
-                        observed_by_actor_source: Some(ACTOR_SOURCE.to_owned()),
-                        tool_name: Some("local-test-runner".to_owned()),
-                        tool_invocation_id: Some("tool_invocation_001".to_owned()),
-                        tool_metadata_json: json!({"exit_code": 0}).to_string(),
-                        input_refs_json: "[]".to_owned(),
-                        source_refs_json: json!([{
-                            "source_kind": "user_context",
-                            "source": {"context_id": "message_store_evidence"}
-                        }])
-                        .to_string(),
-                        output_artifact_refs_json: "[]".to_owned(),
-                        limitations_json: json!(["External tool result is not a proof."])
-                            .to_string(),
-                        observed_at: "2026-06-18T00:00:00Z".to_owned(),
-                        recorded_at: "2026-06-18T00:00:01Z".to_owned(),
-                        metadata_json: json!({
-                            "recorded_by_run_id": run_id,
-                            "invocation_verification_basis": "store_test_boundary",
-                            "producer_anchor": {
-                                "producer_kind": "unverified_caller",
-                                "producer_ref": null,
-                                "output_artifact_refs": [],
-                                "verification_basis": null
-                            },
-                            "relevance_assessment": {
-                                "status": "unassessed",
-                                "assessment_ref": null,
-                                "assessed_by_actor_source": null
-                            }
-                        })
-                        .to_string(),
-                    }),
-                ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
-                }
-                Ok(())
-            },
-            response_json,
-        )?;
-        assert!(matches!(committed, MutationCommitOutcome::Committed { .. }));
+        let mutations = [
+            CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+            CoreStorageMutation::Run(RunMutation::Insert(run_insert(run_id, task_id))),
+            CoreStorageMutation::Evidence(EvidenceMutation::EnsureClaim(EvidenceClaimInsert {
+                task_id: task_id.to_owned(),
+                evidence_claim_id: "claim_search_result_count".to_owned(),
+                statement: "Search result count was verified.".to_owned(),
+            })),
+            CoreStorageMutation::Evidence(EvidenceMutation::InsertObservation(
+                EvidenceObservationInsert {
+                    evidence_observation_id: observation_id.to_owned(),
+                    task_id: task_id.to_owned(),
+                    change_unit_id: None,
+                    run_id: Some(run_id.to_owned()),
+                    acceptance_criterion_id: None,
+                    evidence_claim_id: Some("claim_search_result_count".to_owned()),
+                    source_kind: "external_tool".to_owned(),
+                    assurance_level: "external_tool_result".to_owned(),
+                    observed_by_actor_source: Some(ACTOR_SOURCE.to_owned()),
+                    tool_name: Some("local-test-runner".to_owned()),
+                    tool_invocation_id: Some("tool_invocation_001".to_owned()),
+                    tool_metadata_json: json!({"exit_code": 0}).to_string(),
+                    input_refs_json: "[]".to_owned(),
+                    source_refs_json: json!([{
+                        "source_kind": "user_context",
+                        "source": {"context_id": "message_store_evidence"}
+                    }])
+                    .to_string(),
+                    output_artifact_refs_json: "[]".to_owned(),
+                    limitations_json: json!(["External tool result is not a proof."]).to_string(),
+                    observed_at: "2026-06-18T00:00:00Z".to_owned(),
+                    recorded_at: "2026-06-18T00:00:01Z".to_owned(),
+                    metadata_json: json!({
+                        "recorded_by_run_id": run_id,
+                        "invocation_verification_basis": "store_test_boundary",
+                        "producer_anchor": {
+                            "producer_kind": "unverified_caller",
+                            "producer_ref": null,
+                            "output_artifact_refs": [],
+                            "verification_basis": null
+                        },
+                        "relevance_assessment": {
+                            "status": "unassessed",
+                            "assessment_ref": null,
+                            "assessed_by_actor_source": null
+                        }
+                    })
+                    .to_string(),
+                },
+            )),
+        ];
+        let committed = store.commit_mutation(input.clone(), &mutations, response_json)?;
+        let MutationCommitOutcome::Committed {
+            response_json: committed_response,
+            basis_state_version,
+            committed_state_version,
+            events,
+        } = committed
+        else {
+            panic!("ordered aggregate batch must commit");
+        };
+        assert_eq!(basis_state_version, 0);
+        assert_eq!(committed_state_version, 1);
+        assert_eq!(events.len(), 1);
 
         let record = store
             .evidence_observation_record(observation_id)?
@@ -2616,7 +2301,47 @@ mod tests {
             serde_json::from_str::<Vec<String>>(&record.limitations_json)?,
             vec!["External tool result is not a proof."]
         );
-        assert_eq!(store.effect_counts()?.evidence_observations, 1);
+        let committed_counts = store.effect_counts()?;
+        assert_eq!(committed_counts.state_version, 1);
+        assert_eq!(committed_counts.tasks, 1);
+        assert_eq!(committed_counts.runs, 1);
+        assert_eq!(committed_counts.evidence_claims, 1);
+        assert_eq!(committed_counts.evidence_observations, 1);
+        assert_eq!(committed_counts.authority_events, 1);
+        assert_eq!(committed_counts.tool_invocations, 1);
+
+        let replay = store.commit_mutation(input, &mutations, |_| {
+            panic!("eligible replay must reuse the stored response")
+        })?;
+        assert!(matches!(
+            replay,
+            MutationCommitOutcome::Replayed {
+                response_json,
+                basis_state_version: 0,
+                committed_state_version: 1,
+            } if response_json == committed_response
+        ));
+        assert_eq!(store.effect_counts()?, committed_counts);
+
+        drop(store);
+        let reopened = harness.store()?;
+        assert_eq!(reopened.project_state()?.state_version, 1);
+        assert!(reopened.task_record(&TaskId::new(task_id))?.is_some());
+        assert!(reopened.run_record(run_id)?.is_some());
+        assert!(reopened
+            .evidence_claim_record(&TaskId::new(task_id), "claim_search_result_count")?
+            .is_some());
+        assert!(reopened
+            .evidence_observation_record(observation_id)?
+            .is_some());
+        assert_eq!(
+            reopened
+                .tool_invocation(MethodName::RecordRun, &idempotency_key)?
+                .expect("replay row must survive reopen")
+                .response_json,
+            committed_response
+        );
+        assert_eq!(reopened.effect_counts()?, committed_counts);
         Ok(())
     }
 
@@ -2644,17 +2369,17 @@ mod tests {
             Some(0),
             vec![pending_event_for_task("effect_contract", task_id)],
         );
-        store.commit_mutation(
+        store.commit_with(
             input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertCurrentChangeUnit(change_unit_insert(
-                    "cu_effect_contract",
-                    task_id,
-                    contract.to_string(),
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(
+                    change_unit_insert("cu_effect_contract", task_id, contract.to_string()),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -2687,17 +2412,21 @@ mod tests {
             vec![pending_event_for_task("bad_effect_contract", task_id)],
         );
         let error = store
-            .commit_mutation(
+            .commit_with(
                 input,
                 |mutation, facts| {
-                    CoreStorageMutation::InsertTask(task_insert(task_id))
-                        .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertCurrentChangeUnit(change_unit_insert(
-                        "cu_bad_effect_contract",
-                        task_id,
-                        r#"{"allowed_effects":["not_an_effect"]}"#.to_owned(),
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                        .apply(mutation, facts)
+                        .map(|_| ())?;
+                    CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(
+                        change_unit_insert(
+                            "cu_bad_effect_contract",
+                            task_id,
+                            r#"{"allowed_effects":["not_an_effect"]}"#.to_owned(),
+                        ),
                     ))
-                    .apply(mutation, facts.committed_state_version)
+                    .apply(mutation, facts)
+                    .map(|_| ())
                 },
                 response_json,
             )
@@ -2715,7 +2444,7 @@ mod tests {
         let mut store = harness.store()?;
         let task_id = "task_user_action_status";
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -2726,14 +2455,18 @@ mod tests {
                 vec![pending_event_for_task("action_expiring", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    "action_expiring",
-                    task_id,
-                    Some("2026-01-01T00:15:00Z"),
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(
+                        "action_expiring",
+                        task_id,
+                        Some("2026-01-01T00:15:00Z"),
+                    ),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -2755,7 +2488,7 @@ mod tests {
             UserActionStatus::Expired
         );
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -2766,16 +2499,15 @@ mod tests {
                 vec![pending_event_for_task("action_current", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    "action_current",
-                    task_id,
-                    None,
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert("action_current", task_id, None),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::ResolveUserAction,
@@ -2791,11 +2523,11 @@ mod tests {
                 vec![pending_event_for_task("action_resolve", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
-                    "resolution_current",
-                    "action_current",
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                    user_action_resolution_insert("resolution_current", "action_current"),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -2807,7 +2539,7 @@ mod tests {
             UserActionStatus::Resolved
         );
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::UpdateScope,
@@ -2818,11 +2550,14 @@ mod tests {
                 vec![pending_event_for_task("action_stale", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::MarkUserActionBasesStatus(UserActionBasisStatusMark {
-                    user_action_request_ids: vec!["action_current".to_owned()],
-                    basis_status: UserActionBasisStatus::Stale,
-                })
-                .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::UserAction(UserActionMutation::MarkBasesStatus(
+                    UserActionBasisStatusMark {
+                        user_action_request_ids: vec!["action_current".to_owned()],
+                        basis_status: UserActionBasisStatus::Stale,
+                    },
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -2872,14 +2607,16 @@ mod tests {
             Some(0),
             vec![pending_event_for_task("defer_insert", task_id)],
         );
-        let inserted = store.commit_mutation(
+        let inserted = store.commit_with(
             insert_input,
             |mutation, facts| {
                 for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(deferred_request),
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        deferred_request,
+                    )),
                 ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                    storage_mutation.apply(mutation, facts).map(|_| ())?;
                 }
                 Ok(())
             },
@@ -2904,11 +2641,12 @@ mod tests {
             Some(1),
             vec![pending_event_for_task("defer_resolve", task_id)],
         );
-        let resolved = store.commit_mutation(
+        let resolved = store.commit_with(
             resolve_input,
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionResolution(resolution)
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(resolution))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -2998,7 +2736,7 @@ mod tests {
             let resolution_id = format!("resolution_timestamp_{suffix}");
             let mut action = user_action_request_insert(&request_id, &task_id, None);
             set_user_action_request_expiry(&mut action, "2026-01-01T00:00:10Z");
-            store.commit_mutation(
+            store.commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::RequestUserAction,
@@ -3016,17 +2754,17 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertTask(task_insert(&task_id))
-                        .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertUserActionRequest(action)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(&task_id)))
+                        .apply(mutation, facts).map(|_| ())?;
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(action))
+                        .apply(mutation, facts).map(|_| ())
                 },
                 response_json,
             )?;
 
             let mut resolution = user_action_resolution_insert(&resolution_id, &request_id);
             resolution.resolved_at = resolved_at.to_owned();
-            let outcome = store.commit_mutation(
+            let outcome = store.commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::ResolveUserAction,
@@ -3044,8 +2782,8 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertUserActionResolution(resolution)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(resolution))
+                        .apply(mutation, facts).map(|_| ())
                 },
                 response_json,
             );
@@ -3081,7 +2819,7 @@ mod tests {
         let request_id = "action_observation_resolution_reread";
         let resolution_id = "resolution_observation_reread";
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -3092,18 +2830,20 @@ mod tests {
                 vec![pending_event_for_task("observation_request", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(evidence_user_action_request_insert(
-                    request_id, task_id, 3,
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    evidence_user_action_request_insert(request_id, task_id, 3),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
 
         let before_mismatch = store.effect_counts()?;
-        let mismatch = store.commit_mutation(
+        let mismatch = store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::ResolveUserAction,
@@ -3114,10 +2854,11 @@ mod tests {
                 vec![pending_event_for_task("observation_resolution", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionResolution(
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
                     evidence_user_action_resolution_insert(resolution_id, request_id, task_id, 4),
-                )
-                .apply(mutation, facts.committed_state_version)
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         );
@@ -3127,7 +2868,7 @@ mod tests {
             .user_action_resolution_record(resolution_id)?
             .is_none());
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::ResolveUserAction,
@@ -3138,10 +2879,11 @@ mod tests {
                 vec![pending_event_for_task("observation_resolution", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionResolution(
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
                     evidence_user_action_resolution_insert(resolution_id, request_id, task_id, 3),
-                )
-                .apply(mutation, facts.committed_state_version)
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -3185,7 +2927,7 @@ mod tests {
         let first_request_id = "action_resolution_unique_first";
         let second_request_id = "action_resolution_unique_second";
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -3197,19 +2939,15 @@ mod tests {
             ),
             |mutation, facts| {
                 for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        first_request_id,
-                        task_id,
-                        None,
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(first_request_id, task_id, None),
                     )),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        second_request_id,
-                        task_id,
-                        None,
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(second_request_id, task_id, None),
                     )),
                 ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                    storage_mutation.apply(mutation, facts).map(|_| ())?;
                 }
                 Ok(())
             },
@@ -3219,7 +2957,7 @@ mod tests {
         let mut first_resolution =
             user_action_resolution_insert("resolution_unique_first", first_request_id);
         first_resolution.channel_submission_id = "submission_unique".to_owned();
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::ResolveUserAction,
@@ -3230,8 +2968,11 @@ mod tests {
                 vec![pending_event_for_task("resolution_unique_first", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionResolution(first_resolution)
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                    first_resolution,
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -3247,14 +2988,17 @@ mod tests {
             vec![pending_event_for_task("resolution_same_request", task_id)],
         );
         let error = store
-            .commit_mutation(
+            .commit_with(
                 second_for_same_request,
                 |mutation, facts| {
-                    CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
-                        "resolution_unique_duplicate_request",
-                        first_request_id,
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                        user_action_resolution_insert(
+                            "resolution_unique_duplicate_request",
+                            first_request_id,
+                        ),
                     ))
-                    .apply(mutation, facts.committed_state_version)
+                    .apply(mutation, facts)
+                    .map(|_| ())
                 },
                 response_json,
             )
@@ -3266,7 +3010,7 @@ mod tests {
             user_action_resolution_insert("resolution_unique_submission", second_request_id);
         reused_submission.channel_submission_id = "submission_unique".to_owned();
         let error = store
-            .commit_mutation(
+            .commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::ResolveUserAction,
@@ -3282,8 +3026,11 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertUserActionResolution(reused_submission)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                        reused_submission,
+                    ))
+                    .apply(mutation, facts)
+                    .map(|_| ())
                 },
                 response_json,
             )
@@ -3319,16 +3066,16 @@ mod tests {
             Some(0),
             vec![pending_event_for_task("missing_action_insert", task_id)],
         );
-        let inserted = store.commit_mutation(
+        let inserted = store.commit_with(
             insert_input,
             |mutation, facts| {
                 for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        request_id, task_id, None,
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(request_id, task_id, None),
                     )),
                 ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                    storage_mutation.apply(mutation, facts).map(|_| ())?;
                 }
                 Ok(())
             },
@@ -3350,11 +3097,14 @@ mod tests {
         resolution.action_kind = UserActionKind::TechnicalDecision;
 
         let error = store
-            .commit_mutation(
+            .commit_with(
                 resolve_input,
                 |mutation, facts| {
-                    CoreStorageMutation::InsertUserActionResolution(resolution)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                        resolution,
+                    ))
+                    .apply(mutation, facts)
+                    .map(|_| ())
                 },
                 response_json,
             )
@@ -3377,7 +3127,7 @@ mod tests {
         let task_id = "task_tampered_choice_authority";
         let request_id = "action_tampered_choice_authority";
         let resolution_id = "resolution_tampered_choice_authority";
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -3388,16 +3138,18 @@ mod tests {
                 vec![pending_event_for_task("tampered_choice_insert", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    request_id, task_id, None,
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(request_id, task_id, None),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::ResolveUserAction,
@@ -3408,11 +3160,11 @@ mod tests {
                 vec![pending_event_for_task("tampered_choice_resolve", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
-                    resolution_id,
-                    request_id,
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                    user_action_resolution_insert(resolution_id, request_id),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -3465,16 +3217,16 @@ mod tests {
             Some(0),
             vec![pending_event_for_task("blocked_resolution_insert", task_id)],
         );
-        let inserted = store.commit_mutation(
+        let inserted = store.commit_with(
             insert_input,
             |mutation, facts| {
                 for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        request_id, task_id, None,
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(request_id, task_id, None),
                     )),
                 ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                    storage_mutation.apply(mutation, facts).map(|_| ())?;
                 }
                 Ok(())
             },
@@ -3503,7 +3255,7 @@ mod tests {
 
         for (marker, resolution) in invalid_resolutions {
             let error = store
-                .commit_mutation(
+                .commit_with(
                     commit_input(
                         &ProjectId::new(PROJECT_ID),
                         MethodName::ResolveUserAction,
@@ -3516,8 +3268,11 @@ mod tests {
                         vec![pending_event_for_task(marker, task_id)],
                     ),
                     |mutation, facts| {
-                        CoreStorageMutation::InsertUserActionResolution(resolution)
-                            .apply(mutation, facts.committed_state_version)
+                        CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                            resolution,
+                        ))
+                        .apply(mutation, facts)
+                        .map(|_| ())
                     },
                     response_json,
                 )
@@ -3550,16 +3305,16 @@ mod tests {
             Some(0),
             vec![pending_event_for_task("unknown_rationale_insert", task_id)],
         );
-        let inserted = store.commit_mutation(
+        let inserted = store.commit_with(
             insert_input,
             |mutation, facts| {
                 for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        request_id, task_id, None,
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(request_id, task_id, None),
                     )),
                 ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                    storage_mutation.apply(mutation, facts).map(|_| ())?;
                 }
                 Ok(())
             },
@@ -3585,7 +3340,7 @@ mod tests {
             ("invalid_outcome", invalid_outcome),
         ] {
             let error = store
-                .commit_mutation(
+                .commit_with(
                     commit_input(
                         &ProjectId::new(PROJECT_ID),
                         MethodName::ResolveUserAction,
@@ -3598,8 +3353,11 @@ mod tests {
                         vec![pending_event_for_task(marker, task_id)],
                     ),
                     |mutation, facts| {
-                        CoreStorageMutation::InsertUserActionResolution(resolution)
-                            .apply(mutation, facts.committed_state_version)
+                        CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                            resolution,
+                        ))
+                        .apply(mutation, facts)
+                        .map(|_| ())
                     },
                     response_json,
                 )
@@ -3631,15 +3389,17 @@ mod tests {
             Some(0),
             vec![pending_event_for_task("basis_malformed", task_id)],
         );
-        store.commit_mutation(
+        store.commit_with(
             input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    request_id, task_id, None,
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(request_id, task_id, None),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -3684,7 +3444,7 @@ mod tests {
         let malformed_request_id = "action_malformed_request_column";
         let mismatched_required_for_id = "action_mismatched_required_for_column";
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -3696,19 +3456,15 @@ mod tests {
             ),
             |mutation, facts| {
                 for storage_mutation in [
-                    CoreStorageMutation::InsertTask(task_insert(task_id)),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        malformed_request_id,
-                        task_id,
-                        None,
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(malformed_request_id, task_id, None),
                     )),
-                    CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                        mismatched_required_for_id,
-                        task_id,
-                        None,
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                        user_action_request_insert(mismatched_required_for_id, task_id, None),
                     )),
                 ] {
-                    storage_mutation.apply(mutation, facts.committed_state_version)?;
+                    storage_mutation.apply(mutation, facts).map(|_| ())?;
                 }
                 Ok(())
             },
@@ -3756,7 +3512,7 @@ mod tests {
         let task_id = "task_incompatible_required_for_reread";
         let request_id = "action_incompatible_required_for_reread";
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -3772,12 +3528,14 @@ mod tests {
                 )],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    request_id, task_id, None,
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(request_id, task_id, None),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -3824,7 +3582,7 @@ mod tests {
         let request_id = "action_request_timestamp_reread";
         let mut action = user_action_request_insert(request_id, task_id, None);
         set_user_action_request_expiry(&mut action, "2026-01-01T00:00:10Z");
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -3835,10 +3593,12 @@ mod tests {
                 vec![pending_event_for_task("request_timestamp_reread", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(action)
-                    .apply(mutation, facts.committed_state_version)
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(action))
+                    .apply(mutation, facts)
+                    .map(|_| ())
             },
             response_json,
         )?;
@@ -3890,7 +3650,7 @@ mod tests {
             let resolution_id = format!("resolution_timestamp_reread_{suffix}");
             let mut action = user_action_request_insert(&request_id, &task_id, None);
             set_user_action_request_expiry(&mut action, "2026-01-01T00:00:10Z");
-            store.commit_mutation(
+            store.commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::RequestUserAction,
@@ -3908,16 +3668,18 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertTask(task_insert(&task_id))
-                        .apply(mutation, facts.committed_state_version)?;
-                    CoreStorageMutation::InsertUserActionRequest(action)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::Task(TaskMutation::insert(task_insert(&task_id)))
+                        .apply(mutation, facts)
+                        .map(|_| ())?;
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(action))
+                        .apply(mutation, facts)
+                        .map(|_| ())
                 },
                 response_json,
             )?;
             let mut resolution = user_action_resolution_insert(&resolution_id, &request_id);
             resolution.resolved_at = "2026-01-01T00:00:05Z".to_owned();
-            store.commit_mutation(
+            store.commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
                     MethodName::ResolveUserAction,
@@ -3935,8 +3697,11 @@ mod tests {
                     )],
                 ),
                 |mutation, facts| {
-                    CoreStorageMutation::InsertUserActionResolution(resolution)
-                        .apply(mutation, facts.committed_state_version)
+                    CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                        resolution,
+                    ))
+                    .apply(mutation, facts)
+                    .map(|_| ())
                 },
                 response_json,
             )?;
@@ -3971,7 +3736,7 @@ mod tests {
         let task_id = "task_resolution_future_reread";
         let request_id = "action_resolution_future_reread";
         let resolution_id = "resolution_future_reread";
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -3982,16 +3747,18 @@ mod tests {
                 vec![pending_event_for_task("resolution_future_request", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    request_id, task_id, None,
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(request_id, task_id, None),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::ResolveUserAction,
@@ -4002,11 +3769,11 @@ mod tests {
                 vec![pending_event_for_task("resolution_future_resolve", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertUserActionResolution(user_action_resolution_insert(
-                    resolution_id,
-                    request_id,
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                    user_action_resolution_insert(resolution_id, request_id),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -4042,7 +3809,7 @@ mod tests {
         let task_id = "task_requested_at_lower_bound";
         let request_id = "action_requested_at_lower_bound";
 
-        store.commit_mutation(
+        store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
                 MethodName::RequestUserAction,
@@ -4053,12 +3820,14 @@ mod tests {
                 vec![pending_event_for_task("requested_at_lower_bound", task_id)],
             ),
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertUserActionRequest(user_action_request_insert(
-                    request_id, task_id, None,
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(request_id, task_id, None),
                 ))
-                .apply(mutation, facts.committed_state_version)
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -4105,26 +3874,27 @@ mod tests {
             vec![pending_event_for_task("continuity", task_id)],
         );
 
-        store.commit_mutation(
+        store.commit_with(
             input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertCurrentChangeUnit(change_unit_insert(
-                    change_unit_id,
-                    task_id,
-                    "null".to_owned(),
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(
+                    change_unit_insert(change_unit_id, task_id, "null".to_owned()),
                 ))
-                .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertProjectContinuityRecord(
+                .apply(mutation, facts)
+                .map(|_| ())?;
+                CoreStorageMutation::Continuity(ContinuityMutation::insert_record(
                     project_continuity_record_insert(
                         "continuity_store_001",
                         task_id,
                         change_unit_id,
                         "2026-01-01T00:00:00Z",
                     ),
-                )
-                .apply(mutation, facts.committed_state_version)
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
             },
             response_json,
         )?;
@@ -4169,32 +3939,33 @@ mod tests {
             vec![pending_event_for_task("continuity_page", task_id)],
         );
 
-        store.commit_mutation(
+        store.commit_with(
             input,
             |mutation, facts| {
-                CoreStorageMutation::InsertTask(task_insert(task_id))
-                    .apply(mutation, facts.committed_state_version)?;
-                CoreStorageMutation::InsertCurrentChangeUnit(change_unit_insert(
-                    change_unit_id,
-                    task_id,
-                    "null".to_owned(),
+                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
+                CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(
+                    change_unit_insert(change_unit_id, task_id, "null".to_owned()),
                 ))
-                .apply(mutation, facts.committed_state_version)?;
+                .apply(mutation, facts)
+                .map(|_| ())?;
                 for (record_id, updated_at) in [
                     ("continuity_a", "2026-01-02T00:00:00Z"),
                     ("continuity_c", "2026-01-02T00:00:00Z"),
                     ("continuity_b", "2026-01-02T00:00:00Z"),
                     ("continuity_d", "2026-01-01T23:59:59Z"),
                 ] {
-                    CoreStorageMutation::InsertProjectContinuityRecord(
+                    CoreStorageMutation::Continuity(ContinuityMutation::insert_record(
                         project_continuity_record_insert(
                             record_id,
                             task_id,
                             change_unit_id,
                             updated_at,
                         ),
-                    )
-                    .apply(mutation, facts.committed_state_version)?;
+                    ))
+                    .apply(mutation, facts)
+                    .map(|_| ())?;
                 }
                 Ok(())
             },
@@ -4247,9 +4018,11 @@ mod tests {
     }
 
     #[test]
-    fn foreign_key_constraint_failure_is_classified() -> Result<(), Box<dyn Error>> {
+    fn intermediate_aggregate_failure_rolls_back_every_commit_effect() -> Result<(), Box<dyn Error>>
+    {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
+        let before = store.effect_counts()?;
         let input = commit_input(
             &ProjectId::new(PROJECT_ID),
             MethodName::RecordRun,
@@ -4259,16 +4032,13 @@ mod tests {
             Some(0),
             vec![pending_event("foreign_key")],
         );
+        let mutations = [
+            CoreStorageMutation::Task(TaskMutation::insert(task_insert("task_before_failure"))),
+            CoreStorageMutation::Run(RunMutation::Insert(run_insert_with_missing_task())),
+        ];
 
         let error = store
-            .commit_mutation(
-                input,
-                |mutation, facts| {
-                    CoreStorageMutation::InsertRun(run_insert_with_missing_task())
-                        .apply(mutation, facts.committed_state_version)
-                },
-                response_json,
-            )
+            .commit_mutation(input, &mutations, response_json)
             .expect_err("missing run task should fail a foreign-key constraint");
         let classification = error.classification();
 
@@ -4277,6 +4047,16 @@ mod tests {
             classification.route,
             crate::StoreFailureRoute::OperationalUnavailable
         ));
+        assert_eq!(store.effect_counts()?, before);
+        assert!(store
+            .task_record(&TaskId::new("task_before_failure"))?
+            .is_none());
+        assert!(store
+            .tool_invocation(
+                MethodName::RecordRun,
+                &IdempotencyKey::new("idem_store_foreign_key")
+            )?
+            .is_none());
         Ok(())
     }
 
@@ -4671,7 +4451,13 @@ mod tests {
             kind: "implementation".to_owned(),
             status: "completed".to_owned(),
             summary_json: "{}".to_owned(),
-            observed_changes_json: "{}".to_owned(),
+            observed_changes_json: json!({
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": null
+            })
+            .to_string(),
             evidence_updates_json: "[]".to_owned(),
             write_ticket_effect_json: "{}".to_owned(),
             created_by_actor_source: ACTOR_SOURCE.to_owned(),
@@ -4689,7 +4475,13 @@ mod tests {
             kind: "implementation".to_owned(),
             status: "recorded".to_owned(),
             summary_json: "{}".to_owned(),
-            observed_changes_json: "{}".to_owned(),
+            observed_changes_json: json!({
+                "changed_paths": [],
+                "product_file_write_observed": false,
+                "sensitive_categories": [],
+                "baseline_ref": null
+            })
+            .to_string(),
             evidence_updates_json: "[]".to_owned(),
             write_ticket_effect_json: "{}".to_owned(),
             created_by_actor_source: ACTOR_SOURCE.to_owned(),

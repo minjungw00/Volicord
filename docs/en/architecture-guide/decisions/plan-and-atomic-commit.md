@@ -35,8 +35,11 @@ not use the normal Core mutation commit.
   checks replay, freshness, and the persisted project-time floor.
 - Method code can express intended effects without embedding raw storage
   mechanics.
+- Responsibility-owned aggregate enums keep mutation inputs, storage
+  validation, SQL application, and needed typed facts beside their records and
+  focused tests. A thin static dispatcher preserves planner order.
 - Changes to committed method effects usually touch a method planner, Store
-  mutation application, focused tests, and the applicable Reference owner.
+  aggregate mutation owner, focused tests, and the applicable Reference owner.
 
 ## Non-goals
 
@@ -54,8 +57,9 @@ not use the normal Core mutation commit.
   method-specific planners such as `plan_intake` and `plan_prepare_write`.
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   `CoreStorageMutation`, `CommitMutationInput`,
-  `CoreProjectStore::commit_mutation`, `MutationCommitOutcome`, and
-  `ProjectMutation`.
+  `CoreProjectStore::commit_mutation`, `MutationCommitOutcome`, the static
+  grouped dispatcher in `mutations.rs`, aggregate mutation owners, and the
+  cross-aggregate coordinator in `commit.rs`.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
   `CoreProjectStore::create_artifact_staging`.
 
@@ -66,7 +70,9 @@ not use the normal Core mutation commit.
   `stale_expected_state_version_is_rejected_without_effect` in
   [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs).
 - `transaction_replay_returns_stored_response_before_stale_expected_state` and
-  `transaction_replay_hash_conflict_rejects_without_effect` in
+  `transaction_replay_hash_conflict_rejects_without_effect`, plus
+  `ordered_multi_aggregate_commit_is_versioned_replayable_and_durable` and
+  `intermediate_aggregate_failure_rolls_back_every_commit_effect`, in
   [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/).
 - `stage_artifact_creates_transient_handle_without_core_commit` in
   [`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../../crates/volicord-core/src/methods/tests/stage_artifact.rs).

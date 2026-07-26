@@ -38,8 +38,8 @@ use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, ProjectStateHeader,
-    TaskControlLevelUpdate, TaskRecord, WriteTicketByIdInvalidation, WriteTicketInsert,
-    WriteTicketRecord,
+    TaskControlLevelUpdate, TaskMutation, TaskRecord, WriteTicketByIdInvalidation,
+    WriteTicketInsert, WriteTicketMutation, WriteTicketRecord,
 };
 use volicord_store::diagnostics::{
     record_core_rejection_diagnostic, CoreRejectionDiagnostic, CoreRejectionReason,
@@ -538,7 +538,7 @@ fn decide_prepare_write_policy(
     };
     let mut control_mutations = Vec::new();
     if control_raised || acceptance_raised || resolved_control.policy_reevaluation_marked {
-        control_mutations.push(CoreStorageMutation::UpdateTaskControlLevel(
+        control_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: task.task_id.clone(),
                 effective_control_level: next_control.as_str().to_owned(),
@@ -547,7 +547,7 @@ fn decide_prepare_write_policy(
                     .then(|| acceptance_policy_storage(next_acceptance).to_owned()),
                 acceptance_policy_reason: acceptance_raised.then(|| next_acceptance_reason.clone()),
             },
-        ));
+        )));
         task.effective_control_level = next_control.as_str().to_owned();
         task.control_level_reason = next_control_reason;
         if acceptance_raised {
@@ -945,31 +945,31 @@ fn plan_prepare_write_mutations(
     let mut storage_mutations = control_mutations;
     if !request.envelope.dry_run {
         for write_ticket_id in active_ticket_selection.stale_approval_ticket_ids {
-            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
-                WriteTicketByIdInvalidation {
+            storage_mutations.push(CoreStorageMutation::WriteTicket(
+                WriteTicketMutation::InvalidateById(WriteTicketByIdInvalidation {
                     write_ticket_id,
                     invalidation_reason: "approval_basis_changed".to_owned(),
-                },
+                }),
             ));
         }
         for write_ticket_id in active_ticket_selection.stale_workspace_ticket_ids {
-            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
-                WriteTicketByIdInvalidation {
+            storage_mutations.push(CoreStorageMutation::WriteTicket(
+                WriteTicketMutation::InvalidateById(WriteTicketByIdInvalidation {
                     write_ticket_id,
                     invalidation_reason: WriteTicketInvalidationReason::WorkspaceChanged
                         .as_str()
                         .to_owned(),
-                },
+                }),
             ));
         }
         for write_ticket_id in active_ticket_selection.stale_policy_ticket_ids {
-            storage_mutations.push(CoreStorageMutation::InvalidateWriteTicket(
-                WriteTicketByIdInvalidation {
+            storage_mutations.push(CoreStorageMutation::WriteTicket(
+                WriteTicketMutation::InvalidateById(WriteTicketByIdInvalidation {
                     write_ticket_id,
                     invalidation_reason: WriteTicketInvalidationReason::ExplicitRevoke
                         .as_str()
                         .to_owned(),
-                },
+                }),
             ));
         }
     }
@@ -977,22 +977,24 @@ fn plan_prepare_write_mutations(
         let write_ticket_id = write_ticket_id
             .as_ref()
             .expect("new ticket issuance has an allocated ID");
-        storage_mutations.push(CoreStorageMutation::InsertWriteTicket(WriteTicketInsert {
-            write_ticket_id: write_ticket_id.as_str().to_owned(),
-            task_id: task_id.as_str().to_owned(),
-            change_unit_id: change_unit_id.as_str().to_owned(),
-            validity_basis_json: serde_json::to_string(&validity_basis)?,
-            allowed_path_prefixes_json: serde_json::to_string(&allowed_path_patterns)?,
-            denied_path_prefixes_json: serde_json::to_string(&denied_path_patterns)?,
-            attempt_scope_json,
-            created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-            created_by_user_action_resolution_id,
-            idle_expires_at: idle_expires_at_timestamp.as_ref().map(ToString::to_string),
-            created_at,
-            metadata_json: serde_json::to_string(&json!({
-                "verification_basis": verified_invocation.verification_basis.clone()
-            }))?,
-        }));
+        storage_mutations.push(CoreStorageMutation::WriteTicket(
+            WriteTicketMutation::insert(WriteTicketInsert {
+                write_ticket_id: write_ticket_id.as_str().to_owned(),
+                task_id: task_id.as_str().to_owned(),
+                change_unit_id: change_unit_id.as_str().to_owned(),
+                validity_basis_json: serde_json::to_string(&validity_basis)?,
+                allowed_path_prefixes_json: serde_json::to_string(&allowed_path_patterns)?,
+                denied_path_prefixes_json: serde_json::to_string(&denied_path_patterns)?,
+                attempt_scope_json,
+                created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
+                created_by_user_action_resolution_id,
+                idle_expires_at: idle_expires_at_timestamp.as_ref().map(ToString::to_string),
+                created_at,
+                metadata_json: serde_json::to_string(&json!({
+                    "verification_basis": verified_invocation.verification_basis.clone()
+                }))?,
+            }),
+        ));
     }
     Ok(PrepareWritePlannedMutations {
         request,

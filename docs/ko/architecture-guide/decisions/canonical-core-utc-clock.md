@@ -84,8 +84,10 @@ Bootstrap은 새 프로젝트의 하한을 초기화합니다. 재등록은 기�
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)와
   [`core_pipeline/commit.rs`](../../../../crates/volicord-store/src/core_pipeline/commit.rs): 프로젝트 시각
   샘플과 정규 transaction 시각 선택.
-- [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):
-  transaction metadata 적용.
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)의
+  aggregate mutation 모듈과
+  [`workflow_records.rs`](../../../../crates/volicord-store/src/workflow_records.rs):
+  coordinator가 선택한 timestamp를 사용하는 transaction metadata 적용.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs),
   [`evidence_capture.rs`](../../../../crates/volicord-store/src/evidence_capture.rs): Store 소유
   하한 writer.

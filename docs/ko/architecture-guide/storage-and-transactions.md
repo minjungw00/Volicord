@@ -37,8 +37,9 @@
   [`facade.rs`](../../../crates/volicord-store/src/core_pipeline/facade.rs)가 담당하고,
   읽기 전용 및 변경 가능 진입점은
   [`open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs)가 담당합니다.
-  각 aggregate 모듈은 자신의 읽기 projection, SQL, row decoding, JSON decoding,
-  facade 메서드, 집중 테스트를 소유합니다.
+  각 aggregate 모듈은 자신의 grouped mutation type, 저장 표현 검증과 적용 SQL,
+  필요할 때의 typed 적용 사실, 읽기 projection, row 및 JSON decoding, facade
+  메서드, 집중 테스트를 소유합니다.
 - 아티팩트 스테이징과 영속 아티팩트 본문 검증은
   [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)에
   있습니다.
@@ -57,14 +58,16 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 |---|---|
 | `facade.rs`, `open.rs` | 프로젝트 데이터베이스 handle, 유지되는 Runtime Home 및 프로젝트 identity, 읽기 snapshot, 읽기 전용 또는 변경 가능 열기. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | 프로젝트 header와 enforcement profile 읽기, 엄격한 저장 값 decoding, 프로젝트 UTC floor. |
-| `tasks.rs` | Task row, 수락 기준, 증거 주장, Task revision. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change Unit, Write Ticket, Run, Run observed-change 읽기. |
-| `evidence.rs`, `artifacts.rs` | 증거 요약과 관찰 읽기, artifact staging record, 영속 artifact record, artifact link, 읽기 시 artifact 본문 검증. |
-| `user_actions.rs`, `continuity.rs` | User Action 요청·해결 및 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
+| `tasks.rs` | Task 및 수락 mutation 입력과 SQL, Task row, 수락 기준, 증거 주장, Task revision. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change Unit, Write Ticket, Run mutation 입력과 SQL, 해당 읽기와 Run observed-change projection. |
+| `evidence.rs`, `artifacts.rs` | 증거 및 artifact mutation 입력과 SQL, 증거 요약과 관찰 읽기, artifact staging record, 영속 artifact record, artifact link, 읽기 시 artifact 본문 검증. |
+| `user_actions.rs`, `continuity.rs` | User Action 및 continuity mutation 입력과 SQL, User Action 요청·해결 및 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
 | `replay.rs` | Tool invocation 조회, 검증된 replay context, 변경 불가능한 operation-result projection. |
 | `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | 제품 쓰기 관찰 후보, 활성 blocker reference, event identity 조회, 프로젝트 로컬 Agent Session 진입점. |
 | `record_refs.rs`, `inspection.rs` | 공유 저장 record reference와 검증 경로에서 사용하는 무효과 저장소 counter. |
-| `commit.rs`, `mutation_apply.rs`, `validation.rs` | 원자적 commit 조율, mutation SQL, 현재 Store 담당 모듈이 공유하는 검증. |
+| `mutations.rs` | 각 최상위 mutation group에서 aggregate 담당 모듈로 이어지는 얇은 정적 dispatch와 transaction 범위 적용 context. |
+| `commit.rs` | Aggregate 간 transaction 조율: replay 및 최신성 gate, 순서 있는 위임, 정규 state-version 전진 한 번, event와 replay 영속화, 응답 구성, commit 또는 rollback. |
+| `validation.rs` | 현재 Store 담당 모듈이 공유하는 저장 값 및 mutation 입력 검증. |
 
 프로젝트 workflow policy record 읽기와 쓰기는
 [`workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs)에
@@ -86,7 +89,7 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 ```mermaid
 flowchart LR
   planner["Core 메서드 계획"]
-  mutations["CoreStorageMutation 값과<br/>대기 이벤트"]
+  mutations["Grouped CoreStorageMutation 값과<br/>대기 이벤트"]
   commit["CoreProjectStore::commit_mutation<br/>SQLite 트랜잭션"]
   current["현재 Store 기록<br/>tasks, judgments, 쓰기 티켓,<br/>runs, evidence, blockers"]
   events["authority_events<br/>순서 있는 로컬 이벤트 기록"]
@@ -208,10 +211,11 @@ typed 메서드 필드 담당 타입을 유지합니다. 커밋 분기는 이벤
 ## 변이 값
 
 `CoreStorageMutation`은 메서드 계획과 Store 저장 처리 사이의 명령값처럼
-기능합니다. 메서드 계획 코드는 `InsertTask`, `InsertWriteTicket`,
-`InsertRun`, `PromoteStagedArtifact`, `LinkArtifact`, 판단 업데이트 같은 값을
-만듭니다. Store는 활성 커밋 트랜잭션 안에서 `ProjectMutation`을 통해 그
-값을 적용합니다.
+기능합니다. 최상위 variant는 Task와 수락, Change Unit, Write Ticket, Run,
+증거, artifact, User Action, continuity, workflow policy mutation을 묶습니다.
+각 group은 입력, 저장 표현 검증, SQL 적용, commit 조율에 필요한 typed 결과
+사실을 정의하는 aggregate 담당 모듈의 정적 enum입니다. `mutations.rs`는 활성
+transaction 안에서 순서 있는 목록을 각 담당 모듈에 위임합니다.
 
 이 구조는 구현을 명확히 나눕니다.
 
@@ -244,8 +248,8 @@ typed 메서드 필드 담당 타입을 유지합니다. 커밋 분기는 이벤
      하한, 같은 handle이 받아들인 더 늦은 샘플의 최댓값을 사용합니다. 주입 후보는
      SQLite 현재 UTC를 보충하지 않고 대신합니다.
 6. 새 커밋 변이에 대해 `project_state.state_version`을 전진시킵니다.
-7. 메서드가 제공한 `CoreStorageMutation` 값을 `ProjectMutation`으로
-   적용합니다.
+7. 메서드가 제공한 grouped `CoreStorageMutation` 값을 목록 순서대로 각
+   aggregate 담당 모듈에 위임합니다.
 8. `project_state.updated_at=committed_at`을 쓰고
    `created_at=committed_at`인 권한 event를 추가합니다.
 9. typed 메서드 필드와 최종 공통 결과 사실을 결합한 뒤 완전한 응답 JSON을
@@ -264,6 +268,8 @@ Mutation application이 생성하는 적용 가능한 Store transaction metadata
 
 이 경계를 보호하는 구현 테스트에는
 [`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/)의
+`ordered_multi_aggregate_commit_is_versioned_replayable_and_durable`,
+`intermediate_aggregate_failure_rolls_back_every_commit_effect`,
 `transaction_replay_returns_stored_response_before_stale_expected_state`,
 `transaction_replay_hash_conflict_rejects_without_effect`,
 `transaction_replay_context_mismatch_precedes_request_hash_conflict`와

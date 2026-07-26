@@ -42,10 +42,11 @@ use serde_json::{json, Map, Value};
 use volicord_store::{
     artifacts::{PersistentArtifactVerificationStatus, StagedPayloadKind},
     core_pipeline::{
-        AcceptanceCriterionRecord, ChangeUnitInsert, ChangeUnitRecord, CoreProjectStore,
-        CoreStorageMutation, EffectiveUserActionRecord, ProjectContinuityRecordInsert,
-        ProjectContinuityRecordRecord, ProjectStateHeader, StoredArtifactRecord, StoredRecordRef,
-        TaskRecord, TaskScopeUpdate, WriteTicketRecord,
+        AcceptanceCriterionRecord, ChangeUnitInsert, ChangeUnitRecord, ContinuityMutation,
+        CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
+        ProjectContinuityRecordInsert, ProjectContinuityRecordRecord, ProjectStateHeader,
+        StoredArtifactRecord, StoredRecordRef, TaskMutation, TaskRecord, TaskScopeUpdate,
+        WriteTicketRecord,
     },
     diagnostics::{record_workflow_metric_event, WorkflowMetricEvent, WorkflowMetricKind},
     RuntimeHomeMutationContext, StoreError,
@@ -509,7 +510,7 @@ fn plan_project_continuity_record(
     Ok(PlannedProjectContinuityRecord {
         record_ref,
         summary,
-        mutation: CoreStorageMutation::InsertProjectContinuityRecord(
+        mutation: CoreStorageMutation::Continuity(ContinuityMutation::insert_record(
             ProjectContinuityRecordInsert {
                 continuity_record_id: continuity_record_id.as_str().to_owned(),
                 source_task_id: context.source_task_id.as_str().to_owned(),
@@ -531,7 +532,7 @@ fn plan_project_continuity_record(
                 updated_at: context.now.to_string(),
                 metadata_json: serde_json::to_string(&draft.metadata)?,
             },
-        ),
+        )),
     })
 }
 
@@ -3120,7 +3121,7 @@ fn projected_user_action_lifecycle_phase(
 }
 
 fn task_lifecycle_mutation(task_id: &TaskId, lifecycle_phase: &str) -> CoreStorageMutation {
-    CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
+    CoreStorageMutation::Task(TaskMutation::UpdateScope(TaskScopeUpdate {
         task_id: task_id.as_str().to_owned(),
         work_phase: None,
         lifecycle_phase: Some(lifecycle_phase.to_owned()),
@@ -3131,7 +3132,7 @@ fn task_lifecycle_mutation(task_id: &TaskId, lifecycle_phase: &str) -> CoreStora
         bounded_context_json: None,
         autonomy_boundary_json: None,
         close_summary_json: None,
-    })
+    }))
 }
 
 fn summary_card_for_core(input: SummaryCardBuild<'_>) -> SummaryCard {

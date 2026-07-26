@@ -34,7 +34,11 @@
   커밋 timestamp를 선택할 수 있습니다.
 - 메서드 코드는 원시 저장소 메커니즘을 품지 않고 의도 효과를 표현할 수
   있습니다.
-- 커밋된 메서드 효과 변경은 보통 메서드 계획 코드, Store 변이 적용, 집중
+- 책임별 aggregate enum이 mutation 입력, 저장 검증, SQL 적용, 필요한 typed
+  사실을 자신의 record와 집중 테스트 곁에 둡니다. 얇은 정적 dispatcher가 계획
+  순서를 보존합니다.
+- 커밋된 메서드 효과 변경은 보통 메서드 계획 코드, Store aggregate mutation 담당,
+  집중
   테스트, 적용되는 참조 담당 문서를 함께 건드립니다.
 
 ## 비목표
@@ -54,7 +58,8 @@
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   `CoreStorageMutation`, `CommitMutationInput`,
   `CoreProjectStore::commit_mutation`, `MutationCommitOutcome`,
-  `ProjectMutation`.
+  `mutations.rs`의 정적 grouped dispatcher, aggregate mutation 담당 모듈,
+  `commit.rs`의 aggregate 간 coordinator.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
   `CoreProjectStore::create_artifact_staging`.
 
@@ -66,7 +71,9 @@
   `stale_expected_state_version_is_rejected_without_effect`.
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)의
   `transaction_replay_returns_stored_response_before_stale_expected_state`,
-  `transaction_replay_hash_conflict_rejects_without_effect`.
+  `transaction_replay_hash_conflict_rejects_without_effect`,
+  `ordered_multi_aggregate_commit_is_versioned_replayable_and_durable`,
+  `intermediate_aggregate_failure_rolls_back_every_commit_effect`.
 - [`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../../crates/volicord-core/src/methods/tests/stage_artifact.rs)의
   `stage_artifact_creates_transient_handle_without_core_commit`.
 - [저장 효과](../../reference/storage-effects.md),

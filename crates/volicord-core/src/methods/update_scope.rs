@@ -34,10 +34,10 @@ use crate::policy::workflow::{
 use serde_json::json;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
-    AcceptanceCriteriaReplace, AcceptanceCriterionUpsert, ChangeUnitRecord, CoreProjectStore,
-    CoreStorageMutation, ProjectStateHeader, TaskCloseBasisUpdate, TaskControlLevelUpdate,
-    TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate, UserActionInvalidation,
-    WriteTicketInvalidation,
+    AcceptanceCriteriaReplace, AcceptanceCriterionUpsert, ChangeUnitMutation, ChangeUnitRecord,
+    CoreProjectStore, CoreStorageMutation, ProjectStateHeader, TaskCloseBasisUpdate,
+    TaskControlLevelUpdate, TaskMutation, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
+    UserActionInvalidation, UserActionMutation, WriteTicketInvalidation, WriteTicketMutation,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{ChangeUnitId, TaskId};
@@ -443,29 +443,31 @@ fn plan_update_scope_mutations(
     };
 
     let task_mode = parse_task_mode(&task.mode)?;
-    let mut storage_mutations = vec![CoreStorageMutation::UpdateTaskScope(TaskScopeUpdate {
-        task_id: task.task_id.clone(),
-        work_phase: matches!(
-            request.change_unit.operation,
-            ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
-        )
-        .then(|| work_phase_storage(WorkPhase::Implementation).to_owned())
-        .filter(|_| task_mode != TaskMode::Advisor),
-        lifecycle_phase: None,
-        result: None,
-        title: next_scope.goal_summary.clone(),
-        summary: next_scope.goal_summary.clone(),
-        shaping_summary_json: Some(serde_json::to_string(&next_scope.to_json())?),
-        bounded_context_json: Some(serde_json::to_string(&json!({
-            "scope_update": request.scope_update.clone()
-        }))?),
-        autonomy_boundary_json: Some(serde_json::to_string(&json!({
-            "autonomy_boundary": next_scope.autonomy_boundary
-        }))?),
-        close_summary_json: None,
-    })];
+    let mut storage_mutations = vec![CoreStorageMutation::Task(TaskMutation::UpdateScope(
+        TaskScopeUpdate {
+            task_id: task.task_id.clone(),
+            work_phase: matches!(
+                request.change_unit.operation,
+                ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
+            )
+            .then(|| work_phase_storage(WorkPhase::Implementation).to_owned())
+            .filter(|_| task_mode != TaskMode::Advisor),
+            lifecycle_phase: None,
+            result: None,
+            title: next_scope.goal_summary.clone(),
+            summary: next_scope.goal_summary.clone(),
+            shaping_summary_json: Some(serde_json::to_string(&next_scope.to_json())?),
+            bounded_context_json: Some(serde_json::to_string(&json!({
+                "scope_update": request.scope_update.clone()
+            }))?),
+            autonomy_boundary_json: Some(serde_json::to_string(&json!({
+                "autonomy_boundary": next_scope.autonomy_boundary
+            }))?),
+            close_summary_json: None,
+        },
+    ))];
     if control_raised || acceptance_raised {
-        storage_mutations.push(CoreStorageMutation::UpdateTaskControlLevel(
+        storage_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: task.task_id.clone(),
                 effective_control_level: next_control.as_str().to_owned(),
@@ -475,7 +477,7 @@ fn plan_update_scope_mutations(
                 acceptance_policy_reason: acceptance_raised
                     .then(|| acceptance_policy_reason.clone()),
             },
-        ));
+        )));
         task.effective_control_level = next_control.as_str().to_owned();
         task.control_level_reason = control_level_reason;
         if acceptance_raised {
@@ -484,22 +486,24 @@ fn plan_update_scope_mutations(
         }
     }
     if let Some(mutation) = acceptance_criteria_mutation {
-        storage_mutations.push(CoreStorageMutation::ReplaceAcceptanceCriteria(mutation));
+        storage_mutations.push(CoreStorageMutation::Task(
+            TaskMutation::ReplaceAcceptanceCriteria(mutation),
+        ));
     }
     if scope_changed {
-        storage_mutations.push(CoreStorageMutation::UpdateTaskScopeRevision(
-            TaskScopeRevisionUpdate {
+        storage_mutations.push(CoreStorageMutation::Task(
+            TaskMutation::UpdateScopeRevision(TaskScopeRevisionUpdate {
                 task_id: task.task_id.clone(),
                 scope_revision: next_scope_revision,
-            },
+            }),
         ));
-        storage_mutations.push(CoreStorageMutation::UpdateTaskCloseBasis(
+        storage_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateCloseBasis(
             TaskCloseBasisUpdate {
                 task_id: task.task_id.clone(),
                 close_basis_revision: next_close_basis_revision,
                 close_basis_json: None,
             },
-        ));
+        )));
     }
 
     let mut synthetic_task = task.clone();
@@ -564,7 +568,9 @@ fn plan_update_scope_mutations(
                     &insert,
                     planned_state_version,
                 );
-                storage_mutations.push(CoreStorageMutation::InsertCurrentChangeUnit(insert));
+                storage_mutations.push(CoreStorageMutation::ChangeUnit(
+                    ChangeUnitMutation::InsertCurrent(insert),
+                ));
                 synthetic_task.current_change_unit_id = Some(change_unit_id.as_str().to_owned());
                 synthetic_task.lifecycle_phase = "ready".to_owned();
                 let change_unit_ref = state_ref(
@@ -600,7 +606,9 @@ fn plan_update_scope_mutations(
                     &insert,
                     planned_state_version,
                 );
-                storage_mutations.push(CoreStorageMutation::ReplaceCurrentChangeUnit(insert));
+                storage_mutations.push(CoreStorageMutation::ChangeUnit(
+                    ChangeUnitMutation::ReplaceCurrent(insert),
+                ));
                 synthetic_task.current_change_unit_id = Some(change_unit_id.as_str().to_owned());
                 synthetic_task.lifecycle_phase = "ready".to_owned();
                 let change_unit_ref = state_ref(
@@ -625,19 +633,19 @@ fn plan_update_scope_mutations(
         } else {
             WriteTicketInvalidationReason::ScopeRevisionChanged
         };
-        storage_mutations.push(CoreStorageMutation::InvalidateActiveWriteTickets(
-            WriteTicketInvalidation {
+        storage_mutations.push(CoreStorageMutation::WriteTicket(
+            WriteTicketMutation::InvalidateActive(WriteTicketInvalidation {
                 task_id: request.task_id.as_str().to_owned(),
                 invalidation_reason: invalidation_reason.as_str().to_owned(),
-            },
+            }),
         ));
     }
     if scope_changed {
-        storage_mutations.push(CoreStorageMutation::MarkUserActionsSupersededOrStale(
-            UserActionInvalidation {
+        storage_mutations.push(CoreStorageMutation::UserAction(
+            UserActionMutation::MarkSupersededOrStale(UserActionInvalidation {
                 task_id: request.task_id.as_str().to_owned(),
                 action_kinds: Vec::new(),
-            },
+            }),
         ));
         if let Some(lifecycle_phase) = projected_user_action_lifecycle_phase(
             project_state,

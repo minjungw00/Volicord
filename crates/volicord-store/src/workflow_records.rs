@@ -1,6 +1,6 @@
 //! Store-owned workflow-policy records.
 
-use std::{cell::RefCell, collections::BTreeSet};
+use std::collections::BTreeSet;
 
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,8 @@ use volicord_types::values::{
 
 use crate::{
     core_pipeline::{
-        CommitMutationInput, CoreProjectStore, MutationCommitOutcome, PendingTaskEvent,
-        ProjectWorkflowPolicyMutation, TaskRecord, VerifiedReplayContext,
+        CommitMutationInput, CoreProjectStore, CoreStorageMutation, MutationCommitOutcome,
+        PendingTaskEvent, TaskRecord, VerifiedReplayContext,
     },
     sqlite::begin_immediate_transaction,
     StoreError, StoreResult,
@@ -22,6 +22,38 @@ use crate::{
 
 pub const POLICY_CONTROL_REEVALUATION_METADATA_KEY: &str = "policy_control_reevaluation";
 const POLICY_APPLIED_EVENT_KIND: &str = "project_workflow_policy_applied";
+
+/// Workflow-policy mutation applied inside one Core commit transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowPolicyMutation {
+    Apply(ProjectWorkflowPolicyMutation),
+}
+
+/// Storage input for one authority-bound project workflow-policy replacement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectWorkflowPolicyMutation {
+    pub policy_version: u64,
+    pub policy_json: String,
+    pub policy_fingerprint: String,
+    pub source: String,
+    pub expected_prior_fingerprint: Option<String>,
+}
+
+impl WorkflowPolicyMutation {
+    pub(crate) fn apply(
+        &self,
+        context: &crate::core_pipeline::mutations::MutationContext<'_>,
+    ) -> StoreResult<ProjectWorkflowPolicyMutationEffect> {
+        match self {
+            Self::Apply(input) => apply_project_workflow_policy_mutation(
+                context.transaction(),
+                context.project_id(),
+                context.committed_at(),
+                input,
+            ),
+        }
+    }
+}
 
 /// Authoritative project workflow-policy replacement input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -367,18 +399,11 @@ impl CoreProjectStore<'_> {
                 event_payload_json: payload,
             }],
         };
-        let mutation_effect = RefCell::new(None);
-        let outcome = self.commit_mutation(
-            commit_input,
-            |project_mutation, facts| {
-                let _ = facts.committed_state_version;
-                let effect =
-                    project_mutation.apply_project_workflow_policy_with_effect(&mutation)?;
-                mutation_effect.replace(Some(effect));
-                Ok(())
-            },
-            |_| Ok("{}".to_owned()),
-        )?;
+        let mutations = [CoreStorageMutation::WorkflowPolicy(
+            WorkflowPolicyMutation::Apply(mutation),
+        )];
+        let (outcome, mutation_results) =
+            self.commit_mutation_with_results(commit_input, &mutations, |_| Ok("{}".to_owned()))?;
         let (basis_state_version, resulting_state_version) = match outcome {
             MutationCommitOutcome::Committed {
                 basis_state_version,
@@ -395,12 +420,20 @@ impl CoreProjectStore<'_> {
         let policy = self.project_workflow_policy()?.ok_or_else(|| {
             StoreError::schema_invariant("project_state", "workflow policy write vanished")
         })?;
-        let mutation_effect = mutation_effect.into_inner().ok_or_else(|| {
-            StoreError::schema_invariant(
-                "project_state",
-                "workflow policy commit returned no mutation effect",
-            )
-        })?;
+        let mutation_effect = mutation_results
+            .into_iter()
+            .find_map(|result| match result {
+                crate::core_pipeline::mutations::AggregateMutationResult::WorkflowPolicy(
+                    effect,
+                ) => Some(effect),
+                crate::core_pipeline::mutations::AggregateMutationResult::Applied => None,
+            })
+            .ok_or_else(|| {
+                StoreError::schema_invariant(
+                    "project_state",
+                    "workflow policy commit returned no mutation effect",
+                )
+            })?;
         Ok(ProjectWorkflowPolicyApplyResult {
             policy,
             database_changed: true,
@@ -1233,7 +1266,10 @@ mod tests {
     use volicord_types::ids::ProjectId;
 
     use super::*;
-    use crate::{core_pipeline::CoreStorageMutation, mutation::TestRuntimeHomeAdmission};
+    use crate::{
+        core_pipeline::{CoreStorageMutation, TaskMutation},
+        mutation::TestRuntimeHomeAdmission,
+    };
 
     fn workflow_policy(
         default_direct_control: &str,
@@ -1558,14 +1594,10 @@ mod tests {
             acceptance_policy: Some("required".to_owned()),
             acceptance_policy_reason: Some("Tracked control requires acceptance.".to_owned()),
         };
-        let outcome = store.commit_mutation(
-            marker_commit,
-            |mutation, facts| {
-                CoreStorageMutation::UpdateTaskControlLevel(marker_raise)
-                    .apply(mutation, facts.committed_state_version)
-            },
-            |_| Ok("{}".to_owned()),
-        )?;
+        let mutations = [CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
+            marker_raise,
+        ))];
+        let outcome = store.commit_mutation(marker_commit, &mutations, |_| Ok("{}".to_owned()))?;
         assert!(matches!(outcome, MutationCommitOutcome::Committed { .. }));
         let raised = store.active_task_record()?.expect("active Task");
         assert_eq!(raised.effective_control_level, "tracked");

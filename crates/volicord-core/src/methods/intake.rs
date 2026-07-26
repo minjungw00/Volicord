@@ -28,8 +28,8 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     AcceptanceCriteriaReplace, AcceptanceCriterionUpsert, ChangeUnitRecord, CoreProjectStore,
-    CoreStorageMutation, ProjectStateHeader, TaskControlLevelUpdate, TaskInsert, TaskRecord,
-    WriteTicketInvalidation,
+    CoreStorageMutation, ProjectStateHeader, TaskControlLevelUpdate, TaskInsert, TaskMutation,
+    TaskRecord, WriteTicketInvalidation, WriteTicketMutation,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{BaselineRef, TaskId};
@@ -387,25 +387,25 @@ fn plan_intake_mutations(
     let mut storage_mutations = Vec::new();
     if create_new {
         if let Some(active) = &active_task {
-            storage_mutations.push(CoreStorageMutation::InvalidateActiveWriteTickets(
-                WriteTicketInvalidation {
+            storage_mutations.push(CoreStorageMutation::WriteTicket(
+                WriteTicketMutation::InvalidateActive(WriteTicketInvalidation {
                     task_id: active.task_id.clone(),
                     invalidation_reason: WriteTicketInvalidationReason::TaskClosed
                         .as_str()
                         .to_owned(),
-                },
+                }),
             ));
         }
     }
     if request.resume_policy == ResumePolicy::SupersedeActive {
         if let Some(active) = &active_task {
-            storage_mutations.push(CoreStorageMutation::SupersedeTask {
+            storage_mutations.push(CoreStorageMutation::Task(TaskMutation::Supersede {
                 task_id: active.task_id.clone(),
-            });
+            }));
         }
     }
     if !create_new && control_or_acceptance_raised {
-        storage_mutations.push(CoreStorageMutation::UpdateTaskControlLevel(
+        storage_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: task_id.as_str().to_owned(),
                 effective_control_level: effective_control_level.as_str().to_owned(),
@@ -413,7 +413,7 @@ fn plan_intake_mutations(
                 acceptance_policy: Some(acceptance_policy_storage(acceptance_policy).to_owned()),
                 acceptance_policy_reason: Some(acceptance_policy_reason.clone()),
             },
-        ));
+        )));
     }
 
     let acceptance_criteria = if create_new {
@@ -507,32 +507,34 @@ fn plan_intake_mutations(
             closed_at: None,
             metadata_json: "{}".to_owned(),
         };
-        storage_mutations.push(CoreStorageMutation::InsertTask(TaskInsert {
-            task_id: task.task_id.clone(),
-            created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-            mode: task.mode.clone(),
-            requested_control_level: task.requested_control_level.clone(),
-            effective_control_level: task.effective_control_level.clone(),
-            control_level_reason: task.control_level_reason.clone(),
-            work_phase: task.work_phase.clone(),
-            acceptance_policy: task.acceptance_policy.clone(),
-            acceptance_policy_reason: task.acceptance_policy_reason.clone(),
-            predecessor_task_id: task.predecessor_task_id.clone(),
-            lineage_relation: task.lineage_relation.clone(),
-            lineage_reason: task.lineage_reason.clone(),
-            carry_forward_json: task.carry_forward_json.clone(),
-            lifecycle_phase: task.lifecycle_phase.clone(),
-            result: task.result.clone(),
-            title: task.title.clone(),
-            summary: task.summary.clone(),
-            shaping_summary_json: task.shaping_summary_json.clone(),
-            bounded_context_json: task.bounded_context_json.clone(),
-            autonomy_boundary_json: task.autonomy_boundary_json.clone(),
-            close_summary_json: task.close_summary_json.clone(),
-            current_change_unit_id: None,
-        }));
-        storage_mutations.push(CoreStorageMutation::ReplaceAcceptanceCriteria(
-            AcceptanceCriteriaReplace {
+        storage_mutations.push(CoreStorageMutation::Task(TaskMutation::insert(
+            TaskInsert {
+                task_id: task.task_id.clone(),
+                created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
+                mode: task.mode.clone(),
+                requested_control_level: task.requested_control_level.clone(),
+                effective_control_level: task.effective_control_level.clone(),
+                control_level_reason: task.control_level_reason.clone(),
+                work_phase: task.work_phase.clone(),
+                acceptance_policy: task.acceptance_policy.clone(),
+                acceptance_policy_reason: task.acceptance_policy_reason.clone(),
+                predecessor_task_id: task.predecessor_task_id.clone(),
+                lineage_relation: task.lineage_relation.clone(),
+                lineage_reason: task.lineage_reason.clone(),
+                carry_forward_json: task.carry_forward_json.clone(),
+                lifecycle_phase: task.lifecycle_phase.clone(),
+                result: task.result.clone(),
+                title: task.title.clone(),
+                summary: task.summary.clone(),
+                shaping_summary_json: task.shaping_summary_json.clone(),
+                bounded_context_json: task.bounded_context_json.clone(),
+                autonomy_boundary_json: task.autonomy_boundary_json.clone(),
+                close_summary_json: task.close_summary_json.clone(),
+                current_change_unit_id: None,
+            },
+        )));
+        storage_mutations.push(CoreStorageMutation::Task(
+            TaskMutation::ReplaceAcceptanceCriteria(AcceptanceCriteriaReplace {
                 task_id: task.task_id.clone(),
                 criteria: acceptance_criteria
                     .iter()
@@ -548,11 +550,11 @@ fn plan_intake_mutations(
                         position: position as u64,
                     })
                     .collect(),
-            },
+            }),
         ));
-        storage_mutations.push(CoreStorageMutation::SetActiveTask {
+        storage_mutations.push(CoreStorageMutation::Task(TaskMutation::SetActive {
             task_id: task.task_id.clone(),
-        });
+        }));
         task
     } else {
         let mut active = active_task.expect("active_task exists when create_new is false");
