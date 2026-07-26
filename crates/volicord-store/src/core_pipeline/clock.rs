@@ -160,6 +160,9 @@ pub(crate) fn advance_project_utc_floor_tx(
 }
 
 #[cfg(test)]
+mod behavior_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

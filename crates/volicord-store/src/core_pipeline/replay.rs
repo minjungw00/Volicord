@@ -226,6 +226,9 @@ fn tool_invocation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolInv
 }
 
 #[cfg(test)]
+mod behavior_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

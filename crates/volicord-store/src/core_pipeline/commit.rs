@@ -483,3 +483,6 @@ fn authority_event_hash(input: AuthorityEventHashInput<'_>) -> String {
 
     format!("sha256:{}", lowercase_hex_bytes(&hasher.finalize()))
 }
+
+#[cfg(test)]
+mod behavior_tests;

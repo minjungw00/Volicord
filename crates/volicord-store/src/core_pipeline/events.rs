@@ -18,3 +18,6 @@ impl CoreProjectStore<'_> {
             .map_err(StoreError::from)
     }
 }
+
+#[cfg(test)]
+mod behavior_tests;

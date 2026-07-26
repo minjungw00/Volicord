@@ -1,0 +1,248 @@
+use std::error::Error;
+
+use serde_json::{json, Value};
+use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash, TaskId};
+use volicord_types::values::MethodName;
+
+use crate::core_pipeline::test_support::{
+    pending_event, pending_event_for_task, replay_context, response_json, task_insert,
+    StoreFixture as StoreHarness, ACTOR_SOURCE, CONNECTION_ID, PROJECT_ID,
+};
+use crate::core_pipeline::{
+    commit_input, CoreStorageMutation, EvidenceClaimInsert, EvidenceMutation,
+    EvidenceObservationInsert, MutationCommitOutcome, RunInsert, RunMutation, TaskMutation,
+};
+
+#[test]
+fn ordered_multi_aggregate_commit_is_versioned_replayable_and_durable() -> Result<(), Box<dyn Error>>
+{
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let task_id = "task_evidence_observation";
+    let run_id = "run_evidence_observation";
+    let observation_id = "evidence_observation_store";
+    let idempotency_key = IdempotencyKey::new("idem_store_evidence_observation");
+
+    let input = commit_input(
+        &ProjectId::new(PROJECT_ID),
+        MethodName::RecordRun,
+        Some(&idempotency_key),
+        &RequestHash::new("sha256:evidence-observation"),
+        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+        Some(0),
+        vec![pending_event_for_task("evidence_observation", task_id)],
+    );
+    let mutations = [
+        CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id))),
+        CoreStorageMutation::Run(RunMutation::Insert(run_insert(run_id, task_id))),
+        CoreStorageMutation::Evidence(EvidenceMutation::EnsureClaim(EvidenceClaimInsert {
+            task_id: task_id.to_owned(),
+            evidence_claim_id: "claim_search_result_count".to_owned(),
+            statement: "Search result count was verified.".to_owned(),
+        })),
+        CoreStorageMutation::Evidence(EvidenceMutation::InsertObservation(
+            EvidenceObservationInsert {
+                evidence_observation_id: observation_id.to_owned(),
+                task_id: task_id.to_owned(),
+                change_unit_id: None,
+                run_id: Some(run_id.to_owned()),
+                acceptance_criterion_id: None,
+                evidence_claim_id: Some("claim_search_result_count".to_owned()),
+                source_kind: "external_tool".to_owned(),
+                assurance_level: "external_tool_result".to_owned(),
+                observed_by_actor_source: Some(ACTOR_SOURCE.to_owned()),
+                tool_name: Some("local-test-runner".to_owned()),
+                tool_invocation_id: Some("tool_invocation_001".to_owned()),
+                tool_metadata_json: json!({"exit_code": 0}).to_string(),
+                input_refs_json: "[]".to_owned(),
+                source_refs_json: json!([{
+                    "source_kind": "user_context",
+                    "source": {"context_id": "message_store_evidence"}
+                }])
+                .to_string(),
+                output_artifact_refs_json: "[]".to_owned(),
+                limitations_json: json!(["External tool result is not a proof."]).to_string(),
+                observed_at: "2026-06-18T00:00:00Z".to_owned(),
+                recorded_at: "2026-06-18T00:00:01Z".to_owned(),
+                metadata_json: json!({
+                    "recorded_by_run_id": run_id,
+                    "invocation_verification_basis": "store_test_boundary",
+                    "producer_anchor": {
+                        "producer_kind": "unverified_caller",
+                        "producer_ref": null,
+                        "output_artifact_refs": [],
+                        "verification_basis": null
+                    },
+                    "relevance_assessment": {
+                        "status": "unassessed",
+                        "assessment_ref": null,
+                        "assessed_by_actor_source": null
+                    }
+                })
+                .to_string(),
+            },
+        )),
+    ];
+    let committed = store.commit_mutation(input.clone(), &mutations, response_json)?;
+    let MutationCommitOutcome::Committed {
+        response_json: committed_response,
+        basis_state_version,
+        committed_state_version,
+        events,
+    } = committed
+    else {
+        panic!("ordered aggregate batch must commit");
+    };
+    assert_eq!(basis_state_version, 0);
+    assert_eq!(committed_state_version, 1);
+    assert_eq!(events.len(), 1);
+
+    let record = store
+        .evidence_observation_record(observation_id)?
+        .expect("evidence observation should be readable");
+    assert_eq!(record.run_id.as_deref(), Some(run_id));
+    assert_eq!(record.source_kind, "external_tool");
+    assert_eq!(record.assurance_level, "external_tool_result");
+    assert_eq!(
+        serde_json::from_str::<Value>(&record.source_refs_json)?,
+        json!([{
+            "source_kind": "user_context",
+            "source": {"context_id": "message_store_evidence"}
+        }])
+    );
+    assert_eq!(
+        serde_json::from_str::<Vec<String>>(&record.limitations_json)?,
+        vec!["External tool result is not a proof."]
+    );
+    let committed_counts = store.effect_counts()?;
+    assert_eq!(committed_counts.state_version, 1);
+    assert_eq!(committed_counts.tasks, 1);
+    assert_eq!(committed_counts.runs, 1);
+    assert_eq!(committed_counts.evidence_claims, 1);
+    assert_eq!(committed_counts.evidence_observations, 1);
+    assert_eq!(committed_counts.authority_events, 1);
+    assert_eq!(committed_counts.tool_invocations, 1);
+
+    let replay = store.commit_mutation(input, &mutations, |_| {
+        panic!("eligible replay must reuse the stored response")
+    })?;
+    assert!(matches!(
+        replay,
+        MutationCommitOutcome::Replayed {
+            response_json,
+            basis_state_version: 0,
+            committed_state_version: 1,
+        } if response_json == committed_response
+    ));
+    assert_eq!(store.effect_counts()?, committed_counts);
+
+    drop(store);
+    let reopened = harness.store()?;
+    assert_eq!(reopened.project_state()?.state_version, 1);
+    assert!(reopened.task_record(&TaskId::new(task_id))?.is_some());
+    assert!(reopened.run_record(run_id)?.is_some());
+    assert!(reopened
+        .evidence_claim_record(&TaskId::new(task_id), "claim_search_result_count")?
+        .is_some());
+    assert!(reopened
+        .evidence_observation_record(observation_id)?
+        .is_some());
+    assert_eq!(
+        reopened
+            .tool_invocation(MethodName::RecordRun, &idempotency_key)?
+            .expect("replay row must survive reopen")
+            .response_json,
+        committed_response
+    );
+    assert_eq!(reopened.effect_counts()?, committed_counts);
+    Ok(())
+}
+
+#[test]
+fn intermediate_aggregate_failure_rolls_back_every_commit_effect() -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let before = store.effect_counts()?;
+    let input = commit_input(
+        &ProjectId::new(PROJECT_ID),
+        MethodName::RecordRun,
+        Some(&IdempotencyKey::new("idem_store_foreign_key")),
+        &RequestHash::new("sha256:foreign-key"),
+        Some(replay_context(CONNECTION_ID, "agent_workflow")),
+        Some(0),
+        vec![pending_event("foreign_key")],
+    );
+    let mutations = [
+        CoreStorageMutation::Task(TaskMutation::insert(task_insert("task_before_failure"))),
+        CoreStorageMutation::Run(RunMutation::Insert(run_insert_with_missing_task())),
+    ];
+
+    let error = store
+        .commit_mutation(input, &mutations, response_json)
+        .expect_err("missing run task should fail a foreign-key constraint");
+    let classification = error.classification();
+
+    assert_eq!(classification.category, "constraint_foreign_key");
+    assert!(matches!(
+        classification.route,
+        crate::StoreFailureRoute::OperationalUnavailable
+    ));
+    assert_eq!(store.effect_counts()?, before);
+    assert!(store
+        .task_record(&TaskId::new("task_before_failure"))?
+        .is_none());
+    assert!(store
+        .tool_invocation(
+            MethodName::RecordRun,
+            &IdempotencyKey::new("idem_store_foreign_key")
+        )?
+        .is_none());
+    Ok(())
+}
+fn run_insert_with_missing_task() -> RunInsert {
+    RunInsert {
+        run_id: "run_missing_task".to_owned(),
+        task_id: "missing_task".to_owned(),
+        change_unit_id: None,
+        scope_revision: 0,
+        write_ticket_id: None,
+        kind: "implementation".to_owned(),
+        status: "completed".to_owned(),
+        summary_json: "{}".to_owned(),
+        observed_changes_json: json!({
+            "changed_paths": [],
+            "product_file_write_observed": false,
+            "sensitive_categories": [],
+            "baseline_ref": null
+        })
+        .to_string(),
+        evidence_updates_json: "[]".to_owned(),
+        write_ticket_effect_json: "{}".to_owned(),
+        created_by_actor_source: ACTOR_SOURCE.to_owned(),
+        metadata_json: "{}".to_owned(),
+    }
+}
+
+fn run_insert(run_id: &str, task_id: &str) -> RunInsert {
+    RunInsert {
+        run_id: run_id.to_owned(),
+        task_id: task_id.to_owned(),
+        change_unit_id: None,
+        scope_revision: 0,
+        write_ticket_id: None,
+        kind: "implementation".to_owned(),
+        status: "recorded".to_owned(),
+        summary_json: "{}".to_owned(),
+        observed_changes_json: json!({
+            "changed_paths": [],
+            "product_file_write_observed": false,
+            "sensitive_categories": [],
+            "baseline_ref": null
+        })
+        .to_string(),
+        evidence_updates_json: "[]".to_owned(),
+        write_ticket_effect_json: "{}".to_owned(),
+        created_by_actor_source: ACTOR_SOURCE.to_owned(),
+        metadata_json: "{}".to_owned(),
+    }
+}

@@ -1122,6 +1122,9 @@ impl MutationContext<'_> {
 }
 
 #[cfg(test)]
+mod behavior_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::core_pipeline::mutations::with_empty_mutation_context;
