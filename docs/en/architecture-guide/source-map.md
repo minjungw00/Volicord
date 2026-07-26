@@ -7,7 +7,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-types/src/lib.rs` | Public owner-module routing and the small `TypeBoundary` placement marker. Shared definitions remain public through their owning modules rather than an aggregate crate-root type facade. |
+| `crates/volicord-types/src/lib.rs` | Public owner-module routing. Shared definitions are public through their owning modules. |
 | `crates/volicord-types/src/schema.rs` | Shared request, response, and stored-record shapes. |
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |

@@ -11,6 +11,7 @@
 | Crate integration test | 어댑터 경계, Store 읽기/쓰기, 프로세스 동작, 엄격한 저장 레코드 거부. |
 | Conformance test | 공개 교차 메서드 결과, 오류 범주, replay, 효과, projection. |
 | Release-integrity 테스트 | Volicord target, 버전, 패키지, checksum, workflow, 실제 바이너리 스모크 불변조건. |
+| 아키텍처 검사 | 워크스페이스 패키지 선언, 의존성 종류와 방향, 프로덕션과 테스트 지원 분리, Core와 어댑터 독립성. |
 | 문서 검사 | 소유자 경로, 링크, 용어, 언어 동등성, 예시, 생성 소스 drift. |
 
 일회용 Runtime Home과 Product Repository를 사용합니다. fixture는 최소이며 typed여야
@@ -22,6 +23,23 @@
 Windows Job Object, 비차단 파이프 primitive를 조합하며 해당 OS 구현을 복제하지
 않습니다. 제품 MCP 감독 정책, 프로토콜 프레이밍, lifecycle 진행 상태, 진단은 계속
 `volicord-cli`가 담당합니다.
+
+## 워크스페이스 아키텍처 검증
+
+`cargo run -p xtask -- architecture-check`는 Cargo가 보고하는 현재 워크스페이스
+패키지와 내부 일반, 개발, 빌드 의존 간선을 루트 `Cargo.toml`의
+`workspace.metadata.architecture` 아래에 있는 단일 선언과 비교합니다. 이 검사는
+담당 원본에 없는 워크스페이스 패키지, Cargo에 없는 담당 원본 항목, 출발 그룹의
+허용 대상 그룹 밖으로 향하는 모든 간선을 거부합니다. 또한 프로덕션에서 테스트
+지원 그룹으로 향하는 일반 또는 빌드 의존성과 Core 쪽 그룹에서 어댑터 그룹으로
+향하는 모든 의존성을 독립적으로 거부합니다.
+
+집중 검증기 테스트는 중립적인 합성 패키지와 그룹 이름으로 의존성 종류별 허용
+간선, 선언되지 않은 패키지, 허용되지 않은 방향, 프로덕션과 테스트 지원의 분리,
+Core와 어댑터의 독립성을 다룹니다. 별도 테스트는 같은 검증기를 현재 Cargo
+워크스페이스와 담당 원본에 실행합니다. 테스트에 워크스페이스 패키지 그래프의
+두 번째 사본을 두지 않습니다. 아키텍처 규칙은 현재 그래프에 직접 적용하며 패키지,
+스키마, 프로토콜 버전으로 선택하지 않습니다.
 
 ## 고정된 MCP 명세 입력
 
@@ -315,6 +333,7 @@ git diff --check
 
 ```sh
 cargo fmt
+cargo run -p xtask -- architecture-check
 cargo clippy --all-targets --all-features
 cargo test --all-targets --all-features
 ```

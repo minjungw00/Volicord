@@ -54,6 +54,7 @@ narrower crate command:
 
 ```sh
 cargo fmt
+cargo run -p xtask -- architecture-check
 cargo clippy --all-targets --all-features
 cargo test --all-targets --all-features
 ```

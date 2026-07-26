@@ -7,7 +7,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-types/src/lib.rs` | 공개 담당 모듈 경로와 작은 `TypeBoundary` 배치 표지. 공유 정의는 크레이트 루트의 타입 집계 파사드가 아니라 각 담당 모듈을 통해 공개됩니다. |
+| `crates/volicord-types/src/lib.rs` | 공개 담당 모듈 경로. 공유 정의는 각 담당 모듈을 통해 공개됩니다. |
 | `crates/volicord-types/src/schema.rs` | 공유 요청, 응답, 저장 레코드 형태. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |

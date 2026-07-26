@@ -52,6 +52,7 @@ Rust 변경은 작업 범위가 더 좁은 crate 명령을 명확히 정당화�
 
 ```sh
 cargo fmt
+cargo run -p xtask -- architecture-check
 cargo clippy --all-targets --all-features
 cargo test --all-targets --all-features
 ```

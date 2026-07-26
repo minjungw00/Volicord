@@ -35,7 +35,6 @@ use crate::{
         UPDATE_SCOPE_KEEP_CURRENT_EXAMPLE_ID,
     },
 };
-use volicord_core::CoreBoundary;
 use volicord_host_contract::{
     CodexMcpCorrelation, HostContractProfileId, HostNativeCorrelation, HostSessionId, HostThreadId,
     HostTurnId,

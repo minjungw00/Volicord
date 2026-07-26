@@ -11,6 +11,7 @@ contracts, preserve removed surfaces, or justify broader support claims.
 | Crate integration test | Adapter boundaries, Store reads/writes, process behavior, and strict persisted-record rejection. |
 | Conformance test | Public cross-method outcomes, error categories, replay, effects, and projections. |
 | Release-integrity test | Volicord target, version, package, checksum, workflow, and actual-binary smoke invariants. |
+| Architecture check | Workspace package declarations, dependency kinds and directions, production/test-support separation, and Core/adapter independence. |
 | Documentation check | Owner routing, links, terminology, parity, examples, and generated-source drift. |
 
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
@@ -22,6 +23,25 @@ and smoke harnesses. It composes the process-group, Windows Job Object, and
 nonblocking pipe primitives owned by `volicord-platform-process`; it does not
 duplicate those OS implementations. Product MCP supervision policy, protocol
 framing, lifecycle progress, and diagnostics remain owned by `volicord-cli`.
+
+## Workspace Architecture Validation
+
+`cargo run -p xtask -- architecture-check` compares Cargo's current workspace
+packages and internal normal, development, and build dependency edges with the
+single declaration under `workspace.metadata.architecture` in the root
+`Cargo.toml`. The check rejects any workspace package missing from that owner,
+any owner entry missing from Cargo, and every edge outside the source group's
+allowed target groups. It also independently rejects normal or build
+production dependencies on test-support groups and any Core-facing dependency
+on an adapter group.
+
+Focused validator tests use neutral synthetic package and group names to cover
+kind-specific allowed edges, undeclared packages, disallowed directions,
+production/test-support separation, and Core/adapter independence. A separate
+test runs the same validator against the current Cargo workspace and its owner.
+Tests do not carry a second copy of the workspace package graph. Architecture
+rules apply directly to the current graph and are not selected through package,
+schema, or protocol versions.
 
 ## Pinned MCP Specification Inputs
 
@@ -377,6 +397,7 @@ The normal workspace gate is:
 
 ```sh
 cargo fmt
+cargo run -p xtask -- architecture-check
 cargo clippy --all-targets --all-features
 cargo test --all-targets --all-features
 ```

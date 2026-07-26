@@ -66,6 +66,7 @@ fn main() -> ExitCode {
                 }
             }
         }
+        [command] if command == "architecture-check" => run_architecture_check_command(),
         [command] if command == "mcp-spec-check" => run_mcp_spec_check_command(),
         [command] if command == "mcp-spec-sync" => run_mcp_spec_sync_command(),
         [command] if command == "release-version-check" => run_release_version_check_command(None),
@@ -74,9 +75,37 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: cargo run -p xtask -- <docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]>"
+                "usage: cargo run -p xtask -- <architecture-check|docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]>"
             );
             ExitCode::from(2)
+        }
+    }
+}
+
+fn run_architecture_check_command() -> ExitCode {
+    let result = match env::current_dir() {
+        Ok(root) => xtask::run_architecture_check(&root),
+        Err(error) => Err(error.into()),
+    };
+
+    match result {
+        Ok(report) if report.is_ok() => {
+            println!("architecture-check passed");
+            ExitCode::SUCCESS
+        }
+        Ok(report) => {
+            eprintln!(
+                "architecture-check failed with {} issue(s):",
+                report.issues().len()
+            );
+            for issue in report.issues() {
+                eprintln!("- {issue}");
+            }
+            ExitCode::from(1)
+        }
+        Err(error) => {
+            eprintln!("architecture-check failed: {error:#}");
+            ExitCode::from(1)
         }
     }
 }

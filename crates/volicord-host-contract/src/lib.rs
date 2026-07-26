@@ -950,7 +950,7 @@ impl CodexHookEvent {
     }
 }
 
-/// Marker for the managed MCP turn-metadata contract.
+/// Current managed MCP turn-metadata contract parser.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CodexMcpTurnMetadata;
 
@@ -990,7 +990,7 @@ impl CodexMcpTurnMetadata {
     }
 }
 
-/// Marker for the current Codex command-hook contract.
+/// Current Codex command-hook contract parser.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CodexCommandHooks;
 

@@ -60,20 +60,6 @@ use volicord_types::ids::{
 };
 use volicord_types::integration_revision::McpRuntimeSessionSource;
 use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile};
-use volicord_types::TypeBoundary;
-
-pub mod fixtures {
-    /// Placement marker for future shared fixtures.
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct FixtureBoundary;
-}
-
-pub mod golden {
-    /// Placement marker for future golden-output helpers.
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct GoldenBoundary;
-}
-
 /// Opens a raw existing Registry only for explicit fixture mutation.
 ///
 /// Production crates cannot obtain this writable handle. Tests outside this
@@ -2432,32 +2418,21 @@ pub mod core_fixtures {
     }
 }
 
-/// Identifies the shared type boundary used by test helpers.
-pub const fn shared_type_boundary() -> TypeBoundary {
-    TypeBoundary::Domain
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         core_fixtures::{choice_user_action_resolution, observation_user_action_resolution},
-        disposable_runtime_home, shared_type_boundary, TempRuntimeHome,
+        disposable_runtime_home, TempRuntimeHome,
     };
     use volicord_types::ids::{ArtifactId, EvidenceClaimId};
     use volicord_types::schema::{EvidenceTarget, UserActionResolutionInput};
     use volicord_types::values::EvidenceRelevanceStatus;
-    use volicord_types::TypeBoundary;
 
     #[test]
     fn disposable_runtime_home_stays_under_system_temp() {
         let path = disposable_runtime_home("workspace-skeleton");
         assert!(path.is_absolute());
         assert!(path.ends_with("volicord-test-runtime/workspace-skeleton"));
-    }
-
-    #[test]
-    fn test_support_uses_domain_type_boundary() {
-        assert_eq!(shared_type_boundary(), TypeBoundary::Domain);
     }
 
     #[test]

@@ -803,9 +803,10 @@ documents:
   path_en: docs/en/architecture-guide/testing-strategy.md
   path_ko: docs/ko/architecture-guide/testing-strategy.md
   kind: explanation
-  summary: Test-layer selection, strict contract and corruption coverage, pinned MCP specification
-    inputs and offline integrity, documentation validation, cross-platform actual-binary smoke,
-    generic release integrity, and operational Codex interoperability observation.
+  summary: Test-layer selection, machine-checked workspace architecture, strict contract and corruption
+    coverage, pinned MCP specification inputs and offline integrity, documentation validation,
+    cross-platform actual-binary smoke, generic release integrity, and operational Codex
+    interoperability observation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1277,9 +1278,9 @@ documents:
   path_en: docs/en/architecture-guide/architecture.md
   path_ko: docs/ko/architecture-guide/architecture.md
   kind: explanation
-  summary: Concise top-level implementation architecture overview for workspace shape, dependency
-    direction, operational paths, durable boundaries, release integrity, dedicated binary-smoke and
-    pinned-spec tooling, and detail routes.
+  summary: Concise top-level implementation architecture overview for workspace shape,
+    machine-enforced dependency direction and visibility, operational paths, durable boundaries,
+    release integrity, dedicated binary-smoke and pinned-spec tooling, and detail routes.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -2935,7 +2936,10 @@ documents:
   path_en: docs/en/maintain/validation.md
   path_ko: docs/ko/maintain/validation.md
   kind: maintenance
-  summary: Maintenance policy for structure, links, terminology, bilingual parity, generated CLI synchronization and source drift, onboarding usability, dedicated cross-platform release-binary smoke, semantic release integrity, optional host smoke, Rust checks, and result reporting.
+  summary: Maintenance policy for structure, links, terminology, bilingual parity, workspace
+    architecture enforcement, generated CLI synchronization and source drift, onboarding usability,
+    dedicated cross-platform release-binary smoke, semantic release integrity, optional host smoke,
+    Rust checks, and result reporting.
   normative_level: maintenance
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
@@ -2953,6 +2957,7 @@ documents:
   - maintain
   canonical_for:
   - documentation metadata, path, link, terminology, parity, example, stability-label, and reporting validation
+  - workspace package declaration and internal dependency-direction validation
   - deterministic Administrative CLI syntax synchronization and executable CLI-example validation
   - contract-boundary and generated-source drift checks
   - durable repository-test selection and reporting boundaries

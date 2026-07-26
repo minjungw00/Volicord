@@ -83,9 +83,19 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 | `tests/integration` | MCP, Core, Store, Agent Connection session, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
 | `tests/release-integrity` | 일반 target 다섯 개 범위, 버전 일치, 기준 텍스트 바이트, 패키지 형태, 패키징한 binary identity, checksum 출력, 릴리스 workflow 구조. 운영 런타임 동작을 담당하지 않습니다. |
 | `tests/release-smoke` | 게시하지 않는 플랫폼 공통 실제 바이너리 스모크 패키지. 전달받은 정확한 `volicord` 바이너리를 공개 `init` 및 `mcp serve`로 실행하고, 폐기 가능한 런타임 fixture와 안정적인 테스트 소유 Codex 실행 파일을 담당하며, 선호 initialize 리비전과 대표 정규 도구 identity를 검증합니다. 한도가 있는 자식 실행은 `volicord-test-process`에 위임하며 CLI, MCP 어댑터, Core, Store, `xtask`를 링크하지 않습니다. |
-| `xtask` | 문서 검증, 고정 MCP 명세 manifest 처리, 릴리스 버전 검사를 위한 가벼운 저장소 유지보수 도구. 문서의 명령 예시는 `volicord-command-model`로 parsing하고 네트워크 작업은 MCP 명세 동기화만 수행합니다. `xtask`는 런타임 어댑터, Core, Store, CLI, platform 크레이트를 링크하지 않으며 Volicord 런타임 아키텍처 밖에 있습니다. |
+| `xtask` | 워크스페이스 아키텍처 검증, 문서 검증, 고정 MCP 명세 manifest 처리, 릴리스 버전 검사를 위한 가벼운 저장소 유지보수 도구. 아키텍처 검증기는 Cargo에서 실제 패키지와 의존성 데이터를 읽어 워크스페이스 메타데이터 담당 원본과 비교합니다. 문서의 명령 예시는 `volicord-command-model`로 parsing하고 네트워크 작업은 MCP 명세 동기화만 수행합니다. `xtask`는 런타임 어댑터, Core, Store, CLI, platform 크레이트를 링크하지 않으며 Volicord 런타임 아키텍처 밖에 있습니다. |
 
 ## 의존 경계
+
+루트 `Cargo.toml`의 `workspace.metadata.architecture`가 워크스페이스 패키지
+배정, 의미 기반 책임 그룹, 허용되는 내부 의존 방향을 위한 기계 판독 담당
+원본입니다. 각 그룹은 일반, 개발, 빌드 의존 대상 그룹을 별도로 선언합니다.
+`cargo run -p xtask -- architecture-check`는 Cargo 메타데이터에서 실제
+워크스페이스 멤버와 의존 간선을 읽고, 선언되지 않은 패키지나 대상 그룹 및
+허용되지 않은 간선을 거부합니다. 프로덕션 그룹은 명시적으로 허용된 개발
+의존성으로만 테스트 지원 그룹을 사용할 수 있고, Core 쪽 그룹은 어댑터
+그룹에서 독립적으로 유지됩니다. 이 규칙은 현재 워크스페이스에 직접 적용하며
+패키지, 스키마, 프로토콜 버전으로 다른 의존 규칙을 선택하지 않습니다.
 
 오래 유지될 의존 방향은 아래와 같습니다.
 
@@ -143,8 +153,19 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
   일반 검사는 오프라인으로 실행되고, 명시적으로 호출한 명세 sync 명령만 네트워크를
   사용합니다.
 
-정확한 Cargo 의존 간선은 Cargo 매니페스트가 담당합니다. 정확한 소스 배치는 소스
-지도가 담당합니다.
+실제 의존 간선은 Cargo 매니페스트가 담당하고,
+`workspace.metadata.architecture`는 어떤 내부 간선을 허용하는지 담당합니다.
+정확한 소스 배치는 소스 지도가 담당합니다.
+
+### Store 변경 가시성
+
+Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 crate-private으로
+유지합니다. 외부 caller는 하나의 정규 Runtime Home에 대해 보유한 정확한
+`RuntimeHomeMutationPermit`을 빌리는, 복제할 수 없는 활성
+`RuntimeHomeMutationContext`를 요구하는 공개 API를 통해서만 변경 경로에
+진입합니다. Rust 가시성과 위조할 수 없는 수명 관계가 외부 크레이트의 내부 open
+호출 및 분리된 변경 context 구성을 막습니다. Compile-fail coverage는 접근할 수
+없는 Store 진입점과 permit에 결속된 context 수명을 함께 보호합니다.
 
 ## Core 증거 정책 경계
 

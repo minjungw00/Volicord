@@ -64,6 +64,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      - name: Check workspace architecture
+        run: cargo run --locked -p xtask -- architecture-check
+
       - name: Run clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 

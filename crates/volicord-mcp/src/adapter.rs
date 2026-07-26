@@ -21,7 +21,6 @@ use volicord_core::pipeline::{
     rejected_response, tool_error, CorePipelineError, CoreService, GitWorkspaceContext,
     InvocationContext, PipelineResponse,
 };
-use volicord_core::CoreBoundary;
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
@@ -62,25 +61,6 @@ use volicord_types::values::{
     ActorSource, ErrorCode, IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel,
     UtcTimestamp,
 };
-
-/// Minimal MCP adapter marker for validating dependency direction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct McpAdapterBoundary {
-    pub(crate) core: CoreBoundary,
-}
-
-impl McpAdapterBoundary {
-    /// Creates an inert MCP adapter boundary marker.
-    pub const fn new(core: CoreBoundary) -> Self {
-        Self { core }
-    }
-
-    /// Returns the adapter boundary label.
-    pub const fn label(self) -> &'static str {
-        let _ = self.core;
-        "mcp-adapter"
-    }
-}
 
 /// Invocation context derived for one tool call before entering Core.
 #[derive(Debug, Clone, PartialEq, Eq)]

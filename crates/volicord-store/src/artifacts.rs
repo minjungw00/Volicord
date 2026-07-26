@@ -15,10 +15,6 @@ use crate::{
     StoreError, StoreResult,
 };
 
-/// Placement marker for future artifact-store plumbing.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct ArtifactStoreBoundary;
-
 /// Current-byte verification outcome for a persistent artifact body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PersistentArtifactVerificationStatus {

@@ -7,17 +7,13 @@
 //! Adapters may depend on this crate; this crate does not depend on adapter
 //! crates.
 
-use volicord_store::{
-    artifacts::ArtifactStoreBoundary, core_pipeline::EffectiveUserActionRecord,
-    sqlite::SqliteStoreBoundary,
-};
+use volicord_store::core_pipeline::EffectiveUserActionRecord;
 use volicord_types::ids::{ProjectId, TaskId, UserActionRequestId};
 use volicord_types::methods::AgentSafeUserActionResolution;
 use volicord_types::schema::{
     StateRecordRef, UserActionInboxItem, UserActionRequest, UserChannelAvailability,
 };
 use volicord_types::values::{UserActionStatus, UtcTimestamp};
-use volicord_types::TypeBoundary;
 
 mod agent_session;
 mod authority_status;
@@ -103,39 +99,4 @@ pub struct UserChannelInboxResolutionSnapshot {
     pub observed_at: UtcTimestamp,
     pub record: EffectiveUserActionRecord,
     pub pending_projection: Option<UserChannelInboxProjection>,
-}
-
-/// Minimal Core service marker for validating crate boundaries.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct CoreBoundary {
-    store: SqliteStoreBoundary,
-    artifacts: ArtifactStoreBoundary,
-}
-
-impl CoreBoundary {
-    /// Creates a Core boundary marker.
-    pub const fn new() -> Self {
-        Self {
-            store: SqliteStoreBoundary,
-            artifacts: ArtifactStoreBoundary,
-        }
-    }
-
-    /// Identifies the shared type boundary used by Core-facing APIs.
-    pub const fn api_type_boundary(self) -> TypeBoundary {
-        let _ = self.store;
-        let _ = self.artifacts;
-        TypeBoundary::Api
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::CoreBoundary;
-    use volicord_types::TypeBoundary;
-
-    #[test]
-    fn core_boundary_points_to_api_types() {
-        assert_eq!(CoreBoundary::new().api_type_boundary(), TypeBoundary::Api);
-    }
 }

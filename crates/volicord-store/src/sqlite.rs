@@ -1,3 +1,17 @@
+//! SQLite-backed Store paths and connection helpers.
+//!
+//! Writable database opens stay crate-private and require the Store's mutation
+//! context. External crates, including implementation tests, cannot bypass
+//! those entry points.
+//!
+//! ```compile_fail
+//! use volicord_store::sqlite::open_registry_database_for_mutation;
+//! ```
+//!
+//! ```compile_fail
+//! use volicord_store::sqlite::open_project_state_database_for_test;
+//! ```
+
 use std::{
     fs::{self, OpenOptions},
     io,
@@ -24,21 +38,6 @@ use crate::{
     },
     StoreError, StoreResult,
 };
-
-/// Placement marker for SQLite-backed store code.
-///
-/// Writable database opens are internal Store boundaries. External crates,
-/// including implementation tests, cannot obtain those helpers directly.
-///
-/// ```compile_fail
-/// let _ = volicord_store::sqlite::open_registry_database_for_mutation;
-/// ```
-///
-/// ```compile_fail
-/// let _ = volicord_store::sqlite::open_project_state_database_for_test;
-/// ```
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct SqliteStoreBoundary;
 
 /// Runtime Home registry database filename.
 pub const REGISTRY_DB_FILE: &str = "registry.sqlite";

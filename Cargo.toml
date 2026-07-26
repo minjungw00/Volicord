@@ -25,3 +25,184 @@ resolver = "2"
 edition = "2021"
 rust-version = "1.85"
 version = "0.9.1"
+
+[workspace.metadata.architecture.packages]
+volicord-types = { group = "shared-types" }
+volicord-host-contract = { group = "host-contract" }
+volicord-mcp-protocol = { group = "mcp-protocol" }
+volicord-store = { group = "storage" }
+volicord-core = { group = "core" }
+volicord-command-model = { group = "command-model" }
+volicord-cli = { group = "cli-adapter" }
+volicord-mcp = { group = "mcp-adapter" }
+volicord-platform-fs = { group = "platform-filesystem" }
+volicord-platform-process = { group = "platform-process" }
+volicord-test-process = { group = "test-process" }
+volicord-test-support = { group = "test-support" }
+volicord-conformance-tests = { group = "conformance-tests" }
+volicord-agent-evaluation = { group = "agent-evaluation" }
+volicord-integration-tests = { group = "integration-tests" }
+volicord-release-integrity-tests = { group = "release-integrity" }
+volicord-release-smoke = { group = "release-smoke" }
+xtask = { group = "repository-tooling" }
+
+[workspace.metadata.architecture.groups.shared-types]
+description = "Dependency-safe shared public and domain-shaped types."
+kind = "production"
+boundary = "core-facing"
+normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.host-contract]
+description = "Dependency-safe semantic host contracts."
+kind = "production"
+boundary = "core-facing"
+normal = ["shared-types"]
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.mcp-protocol]
+description = "Host-independent MCP protocol profiles."
+kind = "production"
+boundary = "neutral"
+normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.platform-filesystem]
+description = "Platform filesystem primitives used below adapters."
+kind = "production"
+boundary = "core-facing"
+normal = ["shared-types"]
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.platform-process]
+description = "Platform child-process primitives."
+kind = "production"
+boundary = "neutral"
+normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.storage]
+description = "Store persistence and Runtime Home mechanics."
+kind = "production"
+boundary = "core-facing"
+normal = ["shared-types", "host-contract", "platform-filesystem"]
+development = ["platform-filesystem", "test-support"]
+build = []
+
+[workspace.metadata.architecture.groups.core]
+description = "Adapter-independent Core services."
+kind = "production"
+boundary = "core-facing"
+normal = ["shared-types", "storage"]
+development = ["host-contract", "test-support"]
+build = []
+
+[workspace.metadata.architecture.groups.command-model]
+description = "Execution-free administrative command syntax."
+kind = "production"
+boundary = "neutral"
+normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.mcp-adapter]
+description = "MCP transport and Core invocation adapter."
+kind = "production"
+boundary = "adapter"
+normal = [
+    "shared-types",
+    "host-contract",
+    "mcp-protocol",
+    "platform-filesystem",
+    "storage",
+    "core",
+]
+development = ["test-support"]
+build = []
+
+[workspace.metadata.architecture.groups.cli-adapter]
+description = "Administrative CLI and local orchestration adapter."
+kind = "production"
+boundary = "adapter"
+normal = [
+    "shared-types",
+    "host-contract",
+    "mcp-protocol",
+    "command-model",
+    "platform-filesystem",
+    "platform-process",
+    "storage",
+    "core",
+    "mcp-adapter",
+]
+development = ["storage", "test-support"]
+build = []
+
+[workspace.metadata.architecture.groups.test-process]
+description = "Reusable bounded process execution for tests."
+kind = "test-support"
+boundary = "neutral"
+normal = ["platform-process"]
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.test-support]
+description = "Reusable implementation-test fixtures."
+kind = "test-support"
+boundary = "neutral"
+normal = ["shared-types", "host-contract", "platform-filesystem", "storage"]
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.conformance-tests]
+description = "Cross-method conformance scenarios."
+kind = "test-suite"
+boundary = "neutral"
+normal = []
+development = ["shared-types", "storage", "core", "test-support"]
+build = []
+
+[workspace.metadata.architecture.groups.integration-tests]
+description = "Cross-layer integration and public contract tests."
+kind = "test-suite"
+boundary = "neutral"
+normal = []
+development = ["shared-types", "storage", "core", "mcp-adapter", "test-support"]
+build = []
+
+[workspace.metadata.architecture.groups.release-integrity]
+description = "Release packaging and workflow integrity tests."
+kind = "test-suite"
+boundary = "neutral"
+normal = ["shared-types", "storage"]
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.release-smoke]
+description = "Actual-binary release smoke harness."
+kind = "test-suite"
+boundary = "neutral"
+normal = ["shared-types", "mcp-protocol", "test-process"]
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.agent-evaluation]
+description = "Standalone agent evaluation harness."
+kind = "test-suite"
+boundary = "neutral"
+normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.groups.repository-tooling]
+description = "Repository maintenance tooling outside product runtime."
+kind = "repository-tool"
+boundary = "neutral"
+normal = ["command-model", "mcp-protocol"]
+development = []
+build = []

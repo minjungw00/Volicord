@@ -88,9 +88,21 @@ the public method execution path.
 | `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection session, operation-category, and public schema snapshot tests. |
 | `tests/release-integrity` | Generic five-target coverage, version consistency, canonical text bytes, package shape, packaged-binary identity, checksum output, and release-workflow structure. It owns no production runtime behavior. |
 | `tests/release-smoke` | Publish-disabled cross-platform actual-binary smoke package. It executes an exact supplied `volicord` binary through public `init` and `mcp serve`, owns disposable runtime fixtures and a stable test-owned Codex executable, validates the preferred initialize revision and representative canonical tool identities, and delegates bounded child execution to `volicord-test-process`. It does not link the CLI, MCP adapter, Core, Store, or `xtask`. |
-| `xtask` | Lightweight repository maintenance tooling for documentation validation, pinned MCP specification manifest handling, and release-version checks. Documentation command examples are parsed through `volicord-command-model`; only MCP specification synchronization performs network operations. `xtask` does not link the runtime adapter, Core, Store, CLI, or platform crates and remains outside Volicord runtime architecture. |
+| `xtask` | Lightweight repository maintenance tooling for workspace architecture validation, documentation validation, pinned MCP specification manifest handling, and release-version checks. The architecture validator reads actual package and dependency data from Cargo and compares it with the workspace metadata owner. Documentation command examples are parsed through `volicord-command-model`; only MCP specification synchronization performs network operations. `xtask` does not link the runtime adapter, Core, Store, CLI, or platform crates and remains outside Volicord runtime architecture. |
 
 ## Dependency boundaries
+
+`workspace.metadata.architecture` in the root `Cargo.toml` is the
+machine-readable owner for workspace package assignments, semantic
+responsibility groups, and permitted internal dependency directions. Each
+group declares separate normal, development, and build dependency targets.
+`cargo run -p xtask -- architecture-check` reads the actual workspace members
+and dependency edges from Cargo metadata and rejects undeclared packages,
+undeclared target groups, and disallowed edges. Production groups may use
+test-support groups only through explicitly allowed development dependencies,
+and Core-facing groups remain independent of adapter groups. These rules apply
+to the current workspace directly; package, schema, and protocol versions do
+not select alternate dependency rules.
 
 The durable dependency direction is:
 
@@ -157,8 +169,20 @@ The durable dependency direction is:
   Ordinary checks remain offline; only the explicitly invoked specification
   sync command uses the network.
 
-Exact Cargo dependency edges remain with the Cargo manifests. Exact source
-placement remains with the Source Map.
+Cargo manifests own the actual dependency edges, while
+`workspace.metadata.architecture` owns which internal edges are permitted.
+Exact source placement remains with the Source Map.
+
+### Store mutation visibility
+
+Store writable database opens and low-level mutation helpers remain
+crate-private. External callers enter mutation paths through public APIs that
+require a live, non-cloneable `RuntimeHomeMutationContext`, which in turn
+borrows the exact `RuntimeHomeMutationPermit` held for one canonical Runtime
+Home. Rust visibility and the unforgeable lifetime relationship prevent an
+external crate from calling the internal opens or constructing a detached
+mutation context. Compile-fail coverage protects both inaccessible Store entry
+points and the permit-bound context lifetime.
 
 ## Core evidence policy boundary
 

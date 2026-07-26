@@ -27,7 +27,7 @@ mod tests;
 mod tool_registry;
 mod util;
 
-pub use adapter::{McpAdapter, McpAdapterBoundary};
+pub use adapter::McpAdapter;
 pub use build_info::{build_id, build_info, BuildInfo};
 pub use diagnostics::bootstrap_diagnostic_envelope;
 pub use errors::McpAdapterError;

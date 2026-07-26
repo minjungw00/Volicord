@@ -18,6 +18,12 @@ Clap 명령 모델에서 관리 CLI의 문법 전용 영역을 다시 생성할 
 cargo run -p xtask -- docs-sync
 ```
 
+현재 워크스페이스 패키지 그래프는 다음 명령으로 검증합니다.
+
+```sh
+cargo run -p xtask -- architecture-check
+```
+
 ## 구조 점검
 
 문서 메타데이터, 경로, 링크, 용어 경로를 바꿨다면 저장소 루트에서
@@ -108,6 +114,22 @@ cargo run -p xtask -- docs-sync
 
 - 생성된 기록, 런타임 홈, SQLite 파일, 생성 로그, 보관 사본, 변환 메모, 부수
   메모, 작업용 목록, 작업 로그가 유지 문서에 남아 있지 않습니다.
+
+## 워크스페이스 아키텍처 검증
+
+루트 `Cargo.toml`, 워크스페이스 멤버 매니페스트, 패키지 배치, 내부 의존성을
+변경한 뒤에는 `cargo run -p xtask -- architecture-check`를 실행합니다. 이
+명령은 Cargo 메타데이터에서 실제 워크스페이스 패키지 identity와 일반, 개발,
+빌드 의존 간선을 읽습니다. 그런 다음 패키지와 그룹의 대응 및 허용되는 내부 의존
+방향을 위한 단일 기계 판독 담당 원본인 루트 `Cargo.toml`의
+`workspace.metadata.architecture`와 비교합니다.
+
+검사는 선언되지 않았거나 Cargo에 없는 워크스페이스 패키지, 알 수 없는 그룹,
+종류별로 허용되지 않은 간선, 프로덕션의 테스트 지원 그룹 대상 일반·빌드 의존성,
+Core 쪽 그룹에서 어댑터 그룹으로 향하는 의존성을 거부합니다. CI는 이 명령을
+집중 워크스페이스 점검으로 실행합니다. 테스트는 검증기의 일반 동작에 중립적인
+합성 그래프를 사용하고, 저장소 그래프 case에서는 현재 워크스페이스를 직접
+읽습니다.
 
 ## 사람이 하는 의미 검토
 
@@ -278,6 +300,8 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
 검증을 실행합니다.
 
 - `cargo fmt`
+- 워크스페이스 메타데이터, Cargo 매니페스트, 패키지 배치, 내부 의존성을
+  변경했다면 `cargo run -p xtask -- architecture-check`
 - `cargo clippy --all-targets --all-features`
 - `cargo test --all-targets --all-features`
 

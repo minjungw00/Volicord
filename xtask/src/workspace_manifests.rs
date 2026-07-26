@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use toml_edit::{DocumentMut, Item};
@@ -26,12 +25,4 @@ fn workspace_package_string<'a>(manifest: &'a DocumentMut, field: &str) -> Optio
         .and_then(|workspace| workspace.get("package"))
         .and_then(|package| package.get(field))
         .and_then(Item::as_str)
-}
-
-pub(crate) fn dependency_names(manifest: &DocumentMut) -> BTreeSet<String> {
-    ["dependencies", "dev-dependencies", "build-dependencies"]
-        .into_iter()
-        .filter_map(|section| manifest.get(section).and_then(Item::as_table_like))
-        .flat_map(|table| table.iter().map(|(name, _)| name.to_owned()))
-        .collect()
 }

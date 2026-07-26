@@ -3,7 +3,6 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
-use toml_edit::DocumentMut;
 
 const COMMIT: &str = "38c84e9f93ad191d9eb26d92b945d17bd0efcaf3";
 const ATTRIBUTION: &str = "Copyright (c) MCP fixture authors";
@@ -285,30 +284,4 @@ fn manifest_parser_rejects_a_missing_required_current_field() {
         .expect_err("production support metadata is required by the current exact shape");
 
     assert!(format!("{error:#}").contains("missing field `production_supported`"));
-}
-
-#[test]
-fn mcp_spec_checker_keeps_the_lightweight_xtask_dependency_boundary() {
-    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
-    let manifest = fs::read_to_string(manifest_path)
-        .expect("read xtask manifest")
-        .parse::<DocumentMut>()
-        .expect("parse xtask manifest");
-    let dependencies = manifest["dependencies"]
-        .as_table()
-        .expect("xtask dependencies table");
-
-    assert!(dependencies.contains_key("volicord-mcp-protocol"));
-    for forbidden in [
-        "volicord-mcp",
-        "volicord-core",
-        "volicord-store",
-        "volicord-platform-fs",
-        "volicord-platform-process",
-    ] {
-        assert!(
-            !dependencies.contains_key(forbidden),
-            "xtask must not depend directly on {forbidden}"
-        );
-    }
 }

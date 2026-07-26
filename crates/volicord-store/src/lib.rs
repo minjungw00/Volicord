@@ -5,8 +5,6 @@
 //! This crate implements baseline SQLite schema creation and transaction
 //! utilities only. Public Volicord method behavior remains outside this crate.
 
-use volicord_types::TypeBoundary;
-
 pub use volicord_platform_fs::CanonicalRuntimeHomePath;
 
 pub mod agent_connections;
@@ -36,19 +34,3 @@ pub use mutation::{
     RuntimeHomeMutationContext, RuntimeHomeMutationSetupInProgress,
     RUNTIME_HOME_MUTATION_SETUP_IN_PROGRESS,
 };
-
-/// Identifies the shared type boundary this crate depends on.
-pub const fn shared_type_boundary() -> TypeBoundary {
-    TypeBoundary::Domain
-}
-
-#[cfg(test)]
-mod tests {
-    use super::shared_type_boundary;
-    use volicord_types::TypeBoundary;
-
-    #[test]
-    fn store_depends_on_domain_types_boundary() {
-        assert_eq!(shared_type_boundary(), TypeBoundary::Domain);
-    }
-}

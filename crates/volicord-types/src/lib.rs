@@ -28,25 +28,6 @@ pub mod storage_contract;
 pub mod tool_names;
 pub mod values;
 
-/// High-level placement marker for shared type groups.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeBoundary {
-    /// API-facing Rust types live behind this boundary.
-    Api,
-    /// Core/domain Rust types live behind this boundary.
-    Domain,
-}
-
-impl TypeBoundary {
-    /// Returns a stable implementation-facing label for the boundary marker.
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Api => "api",
-            Self::Domain => "domain",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -54,7 +35,6 @@ mod tests {
     use schemars::{schema_for, JsonSchema};
     use serde_json::{json, Value};
 
-    use super::*;
     use crate::{canonical::*, ids::*, methods::*, schema::*, tool_names::*, values::*};
 
     fn timestamp(value: &str) -> UtcTimestamp {
@@ -78,12 +58,6 @@ mod tests {
                 "missing non-guarantee {expected_value}: {disclosure}"
             );
         }
-    }
-
-    #[test]
-    fn boundary_labels_are_stable() {
-        assert_eq!(TypeBoundary::Api.label(), "api");
-        assert_eq!(TypeBoundary::Domain.label(), "domain");
     }
 
     #[test]

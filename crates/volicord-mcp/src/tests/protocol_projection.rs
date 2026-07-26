@@ -1,14 +1,6 @@
 use super::*;
 
 #[test]
-fn mcp_boundary_wraps_core_boundary() {
-    assert_eq!(
-        McpAdapterBoundary::new(CoreBoundary::new()).label(),
-        "mcp-adapter"
-    );
-}
-
-#[test]
 fn tool_sets_follow_connection_mode_and_exclude_user_only_recording() {
     let workflow = mcp_tools_for_mode(AgentConnectionMode::Workflow);
     let workflow_names = tool_names(&workflow);

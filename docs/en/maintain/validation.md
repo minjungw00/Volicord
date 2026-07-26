@@ -19,6 +19,12 @@ model with:
 cargo run -p xtask -- docs-sync
 ```
 
+Validate the current workspace package graph with:
+
+```sh
+cargo run -p xtask -- architecture-check
+```
+
 ## Structural Checks
 
 For documentation metadata, route, link, and terminology-path changes, run
@@ -119,6 +125,23 @@ After automated structural validation, manually confirm repository hygiene:
 - No generated records, runtime homes, SQLite files, generated logs, archive
   copies, conversion notes, scratch notes, local inventories, or work logs
   remain in maintained documentation.
+
+## Workspace Architecture Validation
+
+Run `cargo run -p xtask -- architecture-check` after changing the root
+`Cargo.toml`, a workspace member manifest, package placement, or an internal
+dependency. The command reads actual workspace package identity and normal,
+development, and build dependency edges from Cargo metadata. It compares them
+with `workspace.metadata.architecture` in the root `Cargo.toml`, which is the
+single machine-readable owner for package-to-group assignments and allowed
+internal dependency directions.
+
+The check rejects undeclared or missing workspace packages, unknown groups,
+disallowed kind-specific edges, production normal/build dependencies on
+test-support groups, and dependencies from Core-facing groups to adapter
+groups. CI runs this command as a focused workspace check. Its tests use neutral
+synthetic graphs for general validator behavior and read the current workspace
+directly for the repository graph case.
 
 ## Human Semantic Review
 
@@ -313,6 +336,8 @@ After Rust implementation edits, run the applicable Rust validation from the
 workspace or changed crate:
 
 - `cargo fmt`
+- `cargo run -p xtask -- architecture-check` when workspace metadata, Cargo
+  manifests, package placement, or internal dependencies change
 - `cargo clippy --all-targets --all-features`
 - `cargo test --all-targets --all-features`
 

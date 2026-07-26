@@ -18,7 +18,8 @@ use anyhow::Result;
 use std::path::Path;
 
 pub use architecture::{
-    run_maintainability_report, CoverageHint, FileMetric, MaintainabilityReport, MixedSignalFile,
+    run_architecture_check, run_maintainability_report, CoverageHint, FileMetric,
+    MaintainabilityReport, MixedSignalFile,
 };
 pub use cli_docs::{run_docs_sync, DocsSyncReport};
 pub use diagnostics::{CheckReport, ValidationIssue};
@@ -58,7 +59,6 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         hygiene::validate_public_document_language(&root, index, &mut issues);
     }
     document_structure::validate_surface_stability_sections(&root, &mut issues);
-    architecture::validate_xtask_dependency_boundary(&root.join("xtask/Cargo.toml"), &mut issues);
     hygiene::validate_public_language_claims(&root, &mut issues);
     storage::validate_storage_ddl_sql_blocks(&root, &mut issues);
     document_structure::validate_operation_category_values(&root, &mut issues);

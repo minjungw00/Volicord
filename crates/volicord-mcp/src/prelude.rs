@@ -18,7 +18,7 @@ pub(crate) use serde::Serialize;
 pub(crate) use serde_json::{json, Map, Value};
 pub(crate) use volicord_core::{
     rejected_response, tool_error, validate_authority_status, AuthorityStatusExpectation,
-    CoreBoundary, CorePipelineError, CoreService, CurrentUserActionProjection, GitWorkspaceContext,
+    CorePipelineError, CoreService, CurrentUserActionProjection, GitWorkspaceContext,
     InvocationContext, PipelineResponse,
 };
 pub(crate) use volicord_mcp_protocol::{

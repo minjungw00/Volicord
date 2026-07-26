@@ -1,52 +1,437 @@
 use crate::diagnostics::ValidationIssue;
 use crate::repository::{normalize_existing_root, repo_relative};
-use crate::workspace_manifests::{dependency_names, read_toml_document};
 use anyhow::{Context, Result};
-use std::collections::BTreeSet;
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
+use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const MAINTAINABILITY_TOP_N: usize = 10;
 const MAINTAINABILITY_SKIP_DIRS: &[&str] = &[".git", "target"];
+const ARCHITECTURE_OWNER_PATH: &str = "Cargo.toml";
 const API_METHODS_PATH: &str = "docs/en/reference/api/methods.md";
 const ADMIN_CLI_REFERENCE_PATH: &str = "docs/en/reference/admin-cli.md";
 const CORE_METHOD_TEST_HINT_DIR: &str = "crates/volicord-core/src/methods/tests";
 const CLI_BINARY_TEST_HINT_DIR: &str = "crates/volicord-cli/tests";
 const CLI_MAIN_PATH: &str = "crates/volicord-cli/src/main.rs";
-const XTASK_FORBIDDEN_RUNTIME_DEPENDENCIES: &[&str] = &[
-    "volicord-cli",
-    "volicord-core",
-    "volicord-mcp",
-    "volicord-platform-fs",
-    "volicord-platform-process",
-    "volicord-store",
-];
 
-pub(crate) fn validate_xtask_dependency_boundary(
-    manifest_path: &Path,
-    issues: &mut Vec<ValidationIssue>,
-) {
-    let manifest = match read_toml_document(manifest_path, "xtask Cargo.toml") {
-        Ok(manifest) => manifest,
-        Err(error) => {
-            issues.push(ValidationIssue::new(
-                "xtask/Cargo.toml",
-                "architecture_dependency.manifest",
-                format!("failed to inspect xtask dependencies: {error:#}"),
-            ));
-            return;
+#[derive(Debug, Deserialize)]
+struct RootArchitectureManifest {
+    workspace: WorkspaceArchitectureMetadata,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkspaceArchitectureMetadata {
+    metadata: ArchitectureMetadata,
+}
+
+#[derive(Debug, Deserialize)]
+struct ArchitectureMetadata {
+    architecture: ArchitectureOwner,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArchitectureOwner {
+    packages: BTreeMap<String, ArchitecturePackageDeclaration>,
+    groups: BTreeMap<String, ArchitectureGroupDeclaration>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArchitecturePackageDeclaration {
+    group: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArchitectureGroupDeclaration {
+    description: String,
+    kind: ArchitectureGroupKind,
+    boundary: ArchitectureBoundaryKind,
+    normal: Vec<String>,
+    development: Vec<String>,
+    build: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum ArchitectureGroupKind {
+    Production,
+    TestSupport,
+    TestSuite,
+    RepositoryTool,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum ArchitectureBoundaryKind {
+    CoreFacing,
+    Adapter,
+    Neutral,
+}
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+enum ArchitectureDependencyKind {
+    Normal,
+    Development,
+    Build,
+}
+
+impl ArchitectureDependencyKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Development => "development",
+            Self::Build => "build",
         }
-    };
-    for dependency in dependency_names(&manifest) {
-        if XTASK_FORBIDDEN_RUNTIME_DEPENDENCIES.contains(&dependency.as_str()) {
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ArchitectureDependency {
+    package: String,
+    kind: ArchitectureDependencyKind,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ArchitecturePackage {
+    manifest_path: String,
+    dependencies: Vec<ArchitectureDependency>,
+}
+
+type ArchitectureGraph = BTreeMap<String, ArchitecturePackage>;
+
+#[derive(Debug, Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoMetadataPackage>,
+    workspace_members: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoMetadataPackage {
+    id: String,
+    name: String,
+    manifest_path: PathBuf,
+    dependencies: Vec<CargoMetadataDependency>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoMetadataDependency {
+    kind: Option<String>,
+    path: Option<PathBuf>,
+}
+
+pub fn run_architecture_check(root: &Path) -> Result<crate::diagnostics::CheckReport> {
+    let root = normalize_existing_root(root)?;
+    let owner_path = root.join(ARCHITECTURE_OWNER_PATH);
+    if !owner_path.exists() {
+        anyhow::bail!(
+            "architecture-check must run from the repository root; missing {ARCHITECTURE_OWNER_PATH}"
+        );
+    }
+
+    let owner = read_architecture_owner(&owner_path)?;
+    let graph = read_workspace_graph(&root)?;
+    let mut issues = validate_architecture_graph(&owner, &graph);
+    issues.sort();
+    issues.dedup();
+
+    Ok(crate::diagnostics::CheckReport { issues })
+}
+
+fn read_architecture_owner(path: &Path) -> Result<ArchitectureOwner> {
+    let contents = fs::read_to_string(path)
+        .with_context(|| format!("failed to read architecture owner {}", path.display()))?;
+    let manifest =
+        toml_edit::de::from_str::<RootArchitectureManifest>(&contents).with_context(|| {
+            format!(
+                "failed to parse workspace.metadata.architecture from {}",
+                path.display()
+            )
+        })?;
+    Ok(manifest.workspace.metadata.architecture)
+}
+
+fn read_workspace_graph(root: &Path) -> Result<ArchitectureGraph> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
+    let output = Command::new(cargo)
+        .current_dir(root)
+        .args([
+            "metadata",
+            "--locked",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--manifest-path",
+            "Cargo.toml",
+        ])
+        .output()
+        .context("failed to execute cargo metadata for architecture-check")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "cargo metadata failed for architecture-check: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let metadata = serde_json::from_slice::<CargoMetadata>(&output.stdout)
+        .context("failed to decode cargo metadata for architecture-check")?;
+    workspace_graph_from_metadata(root, metadata)
+}
+
+fn workspace_graph_from_metadata(
+    root: &Path,
+    metadata: CargoMetadata,
+) -> Result<ArchitectureGraph> {
+    let workspace_members = metadata
+        .workspace_members
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let packages = metadata
+        .packages
+        .into_iter()
+        .filter(|package| workspace_members.contains(&package.id))
+        .collect::<Vec<_>>();
+    let mut member_directories = BTreeMap::new();
+
+    for package in &packages {
+        let directory = package
+            .manifest_path
+            .parent()
+            .context("workspace package manifest has no parent directory")?
+            .to_path_buf();
+        if let Some(existing) = member_directories.insert(directory, package.name.clone()) {
+            anyhow::bail!(
+                "workspace packages {existing} and {} share one manifest directory",
+                package.name
+            );
+        }
+    }
+
+    let mut graph = BTreeMap::new();
+    for package in packages {
+        let mut dependencies = Vec::new();
+        for dependency in package.dependencies {
+            let Some(path) = dependency.path else {
+                continue;
+            };
+            let Some(target) = member_directories.get(&path) else {
+                continue;
+            };
+            let kind = match dependency.kind.as_deref() {
+                None => ArchitectureDependencyKind::Normal,
+                Some("dev") => ArchitectureDependencyKind::Development,
+                Some("build") => ArchitectureDependencyKind::Build,
+                Some(kind) => anyhow::bail!(
+                    "cargo metadata reported unsupported dependency kind {kind:?} for {} -> {target}",
+                    package.name
+                ),
+            };
+            dependencies.push(ArchitectureDependency {
+                package: target.clone(),
+                kind,
+            });
+        }
+        dependencies
+            .sort_by(|left, right| (&left.package, left.kind).cmp(&(&right.package, right.kind)));
+        dependencies.dedup();
+        let manifest_path = repo_relative(root, &package.manifest_path);
+        if graph
+            .insert(
+                package.name.clone(),
+                ArchitecturePackage {
+                    manifest_path,
+                    dependencies,
+                },
+            )
+            .is_some()
+        {
+            anyhow::bail!(
+                "cargo metadata reported duplicate workspace package name {}",
+                package.name
+            );
+        }
+    }
+    Ok(graph)
+}
+
+fn validate_architecture_graph(
+    owner: &ArchitectureOwner,
+    graph: &ArchitectureGraph,
+) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+    validate_architecture_owner(owner, &mut issues);
+
+    for (package, actual) in graph {
+        if !owner.packages.contains_key(package) {
             issues.push(ValidationIssue::new(
-                "xtask/Cargo.toml",
-                "architecture_dependency.runtime_boundary",
+                &actual.manifest_path,
+                "architecture.package.undeclared",
                 format!(
-                    "xtask must not depend on runtime crate {dependency}; use a lightweight contract or command-model crate"
+                    "workspace package {package} is not declared in workspace.metadata.architecture.packages"
                 ),
             ));
         }
+    }
+    for package in owner.packages.keys() {
+        if !graph.contains_key(package) {
+            issues.push(ValidationIssue::new(
+                ARCHITECTURE_OWNER_PATH,
+                "architecture.package.missing",
+                format!(
+                    "architecture owner declares package {package}, but Cargo metadata does not report it as a workspace member"
+                ),
+            ));
+        }
+    }
+
+    for (source_name, source) in graph {
+        let Some(source_declaration) = owner.packages.get(source_name) else {
+            continue;
+        };
+        let Some(source_group) = owner.groups.get(&source_declaration.group) else {
+            continue;
+        };
+
+        for dependency in &source.dependencies {
+            let Some(target_declaration) = owner.packages.get(&dependency.package) else {
+                issues.push(ValidationIssue::new(
+                    &source.manifest_path,
+                    "architecture.dependency.undeclared_target",
+                    format!(
+                        "{} dependency {source_name} -> {} targets an undeclared internal package",
+                        dependency.kind.label(),
+                        dependency.package
+                    ),
+                ));
+                continue;
+            };
+            let Some(target_group) = owner.groups.get(&target_declaration.group) else {
+                continue;
+            };
+            let allowed_groups = allowed_groups(source_group, dependency.kind);
+
+            if !allowed_groups
+                .iter()
+                .any(|group| group == &target_declaration.group)
+            {
+                let allowed = if allowed_groups.is_empty() {
+                    "none".to_owned()
+                } else {
+                    allowed_groups.join(", ")
+                };
+                issues.push(ValidationIssue::new(
+                    &source.manifest_path,
+                    "architecture.dependency.disallowed",
+                    format!(
+                        "{} dependency {source_name} ({}) -> {} ({}) is not allowed; permitted target groups: {allowed}",
+                        dependency.kind.label(),
+                        source_declaration.group,
+                        dependency.package,
+                        target_declaration.group
+                    ),
+                ));
+            }
+
+            if source_group.kind == ArchitectureGroupKind::Production
+                && target_group.kind == ArchitectureGroupKind::TestSupport
+                && dependency.kind != ArchitectureDependencyKind::Development
+            {
+                issues.push(ValidationIssue::new(
+                    &source.manifest_path,
+                    "architecture.dependency.production_test_support",
+                    format!(
+                        "production package {source_name} has a {} dependency on test-support package {}; test-support is permitted only as a development dependency",
+                        dependency.kind.label(),
+                        dependency.package
+                    ),
+                ));
+            }
+
+            if source_group.boundary == ArchitectureBoundaryKind::CoreFacing
+                && target_group.boundary == ArchitectureBoundaryKind::Adapter
+            {
+                issues.push(ValidationIssue::new(
+                    &source.manifest_path,
+                    "architecture.dependency.core_adapter",
+                    format!(
+                        "Core-facing package {source_name} has a {} dependency on adapter package {}; Core-facing packages must remain adapter-independent",
+                        dependency.kind.label(),
+                        dependency.package
+                    ),
+                ));
+            }
+        }
+    }
+
+    issues
+}
+
+fn validate_architecture_owner(owner: &ArchitectureOwner, issues: &mut Vec<ValidationIssue>) {
+    for (package, declaration) in &owner.packages {
+        if !owner.groups.contains_key(&declaration.group) {
+            issues.push(ValidationIssue::new(
+                ARCHITECTURE_OWNER_PATH,
+                "architecture.owner.package_group",
+                format!(
+                    "package {package} references undeclared architecture group {}",
+                    declaration.group
+                ),
+            ));
+        }
+    }
+
+    for (group_name, group) in &owner.groups {
+        if group.description.trim().is_empty() {
+            issues.push(ValidationIssue::new(
+                ARCHITECTURE_OWNER_PATH,
+                "architecture.owner.group_description",
+                format!("architecture group {group_name} has an empty description"),
+            ));
+        }
+        for (kind, targets) in [
+            (ArchitectureDependencyKind::Normal, &group.normal),
+            (ArchitectureDependencyKind::Development, &group.development),
+            (ArchitectureDependencyKind::Build, &group.build),
+        ] {
+            let mut seen = BTreeSet::new();
+            for target in targets {
+                if !seen.insert(target) {
+                    issues.push(ValidationIssue::new(
+                        ARCHITECTURE_OWNER_PATH,
+                        "architecture.owner.duplicate_direction",
+                        format!(
+                            "architecture group {group_name} repeats {target} in its {} dependency directions",
+                            kind.label()
+                        ),
+                    ));
+                }
+                if !owner.groups.contains_key(target) {
+                    issues.push(ValidationIssue::new(
+                        ARCHITECTURE_OWNER_PATH,
+                        "architecture.owner.unknown_direction",
+                        format!(
+                            "architecture group {group_name} allows an undeclared {target} target for {} dependencies",
+                            kind.label()
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn allowed_groups(
+    group: &ArchitectureGroupDeclaration,
+    kind: ArchitectureDependencyKind,
+) -> &[String] {
+    match kind {
+        ArchitectureDependencyKind::Normal => &group.normal,
+        ArchitectureDependencyKind::Development => &group.development,
+        ArchitectureDependencyKind::Build => &group.build,
     }
 }
 #[derive(Debug, Clone)]
@@ -626,4 +1011,231 @@ fn render_coverage_hints(
         output.push_str(&format!("  - {}: {}\n", hint.item, hint.message));
     }
     output.push('\n');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn declaration(group: &str) -> ArchitecturePackageDeclaration {
+        ArchitecturePackageDeclaration {
+            group: group.to_owned(),
+        }
+    }
+
+    fn group(
+        kind: ArchitectureGroupKind,
+        boundary: ArchitectureBoundaryKind,
+        normal: &[&str],
+        development: &[&str],
+        build: &[&str],
+    ) -> ArchitectureGroupDeclaration {
+        ArchitectureGroupDeclaration {
+            description: "Synthetic responsibility group.".to_owned(),
+            kind,
+            boundary,
+            normal: normal.iter().map(|value| (*value).to_owned()).collect(),
+            development: development
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            build: build.iter().map(|value| (*value).to_owned()).collect(),
+        }
+    }
+
+    fn package(dependencies: &[(&str, ArchitectureDependencyKind)]) -> ArchitecturePackage {
+        ArchitecturePackage {
+            manifest_path: "components/synthetic/Cargo.toml".to_owned(),
+            dependencies: dependencies
+                .iter()
+                .map(|(package, kind)| ArchitectureDependency {
+                    package: (*package).to_owned(),
+                    kind: *kind,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn synthetic_graph_accepts_kind_specific_directions() {
+        let owner = ArchitectureOwner {
+            packages: BTreeMap::from([
+                ("engine".to_owned(), declaration("application")),
+                ("foundation".to_owned(), declaration("foundation")),
+                ("fixture-kit".to_owned(), declaration("fixtures")),
+                ("code-generator".to_owned(), declaration("build-tooling")),
+            ]),
+            groups: BTreeMap::from([
+                (
+                    "application".to_owned(),
+                    group(
+                        ArchitectureGroupKind::Production,
+                        ArchitectureBoundaryKind::Neutral,
+                        &["foundation"],
+                        &["fixtures"],
+                        &["build-tooling"],
+                    ),
+                ),
+                (
+                    "foundation".to_owned(),
+                    group(
+                        ArchitectureGroupKind::Production,
+                        ArchitectureBoundaryKind::Neutral,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "fixtures".to_owned(),
+                    group(
+                        ArchitectureGroupKind::TestSupport,
+                        ArchitectureBoundaryKind::Neutral,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "build-tooling".to_owned(),
+                    group(
+                        ArchitectureGroupKind::RepositoryTool,
+                        ArchitectureBoundaryKind::Neutral,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+            ]),
+        };
+        let graph = BTreeMap::from([
+            (
+                "engine".to_owned(),
+                package(&[
+                    ("foundation", ArchitectureDependencyKind::Normal),
+                    ("fixture-kit", ArchitectureDependencyKind::Development),
+                    ("code-generator", ArchitectureDependencyKind::Build),
+                ]),
+            ),
+            ("foundation".to_owned(), package(&[])),
+            ("fixture-kit".to_owned(), package(&[])),
+            ("code-generator".to_owned(), package(&[])),
+        ]);
+
+        assert!(validate_architecture_graph(&owner, &graph).is_empty());
+    }
+
+    #[test]
+    fn synthetic_graph_rejects_undeclared_packages_and_disallowed_kinds() {
+        let owner = ArchitectureOwner {
+            packages: BTreeMap::from([
+                ("engine".to_owned(), declaration("application")),
+                ("foundation".to_owned(), declaration("foundation")),
+            ]),
+            groups: BTreeMap::from([
+                (
+                    "application".to_owned(),
+                    group(
+                        ArchitectureGroupKind::Production,
+                        ArchitectureBoundaryKind::Neutral,
+                        &["foundation"],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "foundation".to_owned(),
+                    group(
+                        ArchitectureGroupKind::Production,
+                        ArchitectureBoundaryKind::Neutral,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+            ]),
+        };
+        let graph = BTreeMap::from([
+            (
+                "engine".to_owned(),
+                package(&[("foundation", ArchitectureDependencyKind::Build)]),
+            ),
+            ("foundation".to_owned(), package(&[])),
+            ("unexpected-tool".to_owned(), package(&[])),
+        ]);
+
+        let issues = validate_architecture_graph(&owner, &graph);
+
+        assert!(issues.iter().any(|issue| {
+            issue.category() == "architecture.package.undeclared"
+                && issue.message().contains("unexpected-tool")
+        }));
+        assert!(issues.iter().any(|issue| {
+            issue.category() == "architecture.dependency.disallowed"
+                && issue.message().contains("build dependency")
+        }));
+    }
+
+    #[test]
+    fn synthetic_graph_rejects_production_and_core_boundary_violations() {
+        let owner = ArchitectureOwner {
+            packages: BTreeMap::from([
+                ("engine".to_owned(), declaration("core-services")),
+                ("terminal".to_owned(), declaration("adapter")),
+                ("fixture-kit".to_owned(), declaration("fixtures")),
+            ]),
+            groups: BTreeMap::from([
+                (
+                    "core-services".to_owned(),
+                    group(
+                        ArchitectureGroupKind::Production,
+                        ArchitectureBoundaryKind::CoreFacing,
+                        &["adapter", "fixtures"],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "adapter".to_owned(),
+                    group(
+                        ArchitectureGroupKind::Production,
+                        ArchitectureBoundaryKind::Adapter,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "fixtures".to_owned(),
+                    group(
+                        ArchitectureGroupKind::TestSupport,
+                        ArchitectureBoundaryKind::Neutral,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+            ]),
+        };
+        let graph = BTreeMap::from([
+            (
+                "engine".to_owned(),
+                package(&[
+                    ("terminal", ArchitectureDependencyKind::Normal),
+                    ("fixture-kit", ArchitectureDependencyKind::Normal),
+                ]),
+            ),
+            ("terminal".to_owned(), package(&[])),
+            ("fixture-kit".to_owned(), package(&[])),
+        ]);
+
+        let issues = validate_architecture_graph(&owner, &graph);
+
+        assert!(issues
+            .iter()
+            .any(|issue| issue.category() == "architecture.dependency.core_adapter"));
+        assert!(issues.iter().any(|issue| {
+            issue.category() == "architecture.dependency.production_test_support"
+        }));
+    }
 }
