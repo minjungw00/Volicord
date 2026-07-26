@@ -1,5 +1,6 @@
 use crate::diagnostics::ValidationIssue;
 use crate::doc_index::TERMINOLOGY_MAP_PATH;
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 use serde_yaml::{Mapping, Value};
 use std::collections::BTreeSet;
 use std::fs;
@@ -16,6 +17,57 @@ const OPERATION_CATEGORY_DOC_PATHS: &[&str] = &[
 const OPERATION_CATEGORY_ANCHOR: &str = "operation-category-values";
 const OPERATION_CATEGORY_TERM_KEY: &str = "operation_category";
 const SURFACE_STABILITY_LABELS: &[&str] = &["stable", "beta", "internal", "diagnostic"];
+const EN_ARCHITECTURE_DESIGN_H2_SCHEMA: &[&str] = &[
+    "Purpose",
+    "Design",
+    "Invariants",
+    "Responsibility boundaries",
+    "Execution flow",
+    "Failure behavior",
+    "Scope exclusions",
+    "Implementation routes",
+    "Reference owners",
+];
+const KO_ARCHITECTURE_DESIGN_H2_SCHEMA: &[&str] = &[
+    "목적",
+    "설계",
+    "불변 조건",
+    "책임 경계",
+    "실행 흐름",
+    "실패 동작",
+    "범위 제외",
+    "구현 경로",
+    "참조 담당 문서",
+];
+const EN_PROHIBITED_ARCHITECTURE_DESIGN_HEADINGS: &[&str] = &[
+    "Context",
+    "Decision",
+    "Consequences",
+    "Rejected alternatives",
+    "Migration notes",
+    "Before and after",
+    "Review findings",
+    "Change history",
+    "Decision chronology",
+    "Review history",
+    "Migration narrative",
+    "Migration narratives",
+    "Release recommendations",
+];
+const KO_PROHIBITED_ARCHITECTURE_DESIGN_HEADINGS: &[&str] = &[
+    "맥락",
+    "결정",
+    "결과",
+    "거부한 대안",
+    "마이그레이션 메모",
+    "이전과 이후",
+    "검토 결과",
+    "변경 이력",
+    "결정 연대기",
+    "검토 이력",
+    "마이그레이션 설명",
+    "릴리스 권고",
+];
 const REQUIRED_SURFACE_STABILITY_DOCS: &[SurfaceStabilityRequirement] = &[
     SurfaceStabilityRequirement {
         path: "docs/en/reference/admin-cli.md",
@@ -62,6 +114,129 @@ const REQUIRED_SURFACE_STABILITY_DOCS: &[SurfaceStabilityRequirement] = &[
 struct SurfaceStabilityRequirement {
     path: &'static str,
     required_labels: &'static [&'static str],
+}
+
+pub(crate) fn validate_architecture_design_documents(
+    root: &Path,
+    errors: &mut Vec<ValidationIssue>,
+) {
+    for (directory, expected_h2, prohibited_headings) in [
+        (
+            "docs/en/architecture-guide/design",
+            EN_ARCHITECTURE_DESIGN_H2_SCHEMA,
+            EN_PROHIBITED_ARCHITECTURE_DESIGN_HEADINGS,
+        ),
+        (
+            "docs/ko/architecture-guide/design",
+            KO_ARCHITECTURE_DESIGN_H2_SCHEMA,
+            KO_PROHIBITED_ARCHITECTURE_DESIGN_HEADINGS,
+        ),
+    ] {
+        let prohibited: BTreeSet<_> = prohibited_headings
+            .iter()
+            .map(|heading| normalize_heading(heading))
+            .collect();
+
+        let directory_path = root.join(directory);
+        if !directory_path.exists() {
+            continue;
+        }
+        let entries = match fs::read_dir(&directory_path) {
+            Ok(entries) => entries,
+            Err(error) => {
+                errors.push(ValidationIssue::new(
+                    directory,
+                    "architecture_design.read_directory",
+                    format!("failed to read current architecture-design directory: {error}"),
+                ));
+                continue;
+            }
+        };
+        let mut filenames = Vec::new();
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    errors.push(ValidationIssue::new(
+                        directory,
+                        "architecture_design.read_directory",
+                        format!(
+                            "failed to read an entry in the current architecture-design directory: {error}"
+                        ),
+                    ));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|extension| extension == "md") {
+                filenames.push(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+        filenames.sort();
+
+        for filename in filenames {
+            let relative_path = format!("{directory}/{filename}");
+            let path = root.join(&relative_path);
+            let contents = match fs::read_to_string(&path) {
+                Ok(contents) => contents,
+                Err(error) => {
+                    errors.push(ValidationIssue::new(
+                        relative_path,
+                        "architecture_design.read",
+                        format!("failed to read current architecture-design document: {error}"),
+                    ));
+                    continue;
+                }
+            };
+            let headings = markdown_headings(&contents);
+
+            for heading in &headings {
+                if prohibited.contains(&normalize_heading(&heading.text)) {
+                    errors.push(ValidationIssue::at_line(
+                        &relative_path,
+                        "architecture_design.prohibited_heading",
+                        Some(heading.line),
+                        format!(
+                            "current architecture-design documents cannot use transitional heading `{}`",
+                            heading.text
+                        ),
+                    ));
+                }
+            }
+
+            if filename == "README.md" {
+                continue;
+            }
+
+            let h1_count = headings.iter().filter(|heading| heading.level == 1).count();
+            if h1_count != 1 {
+                errors.push(ValidationIssue::new(
+                    &relative_path,
+                    "architecture_design.title_schema",
+                    format!(
+                        "current architecture-design documents require exactly one H1 title; found {h1_count}"
+                    ),
+                ));
+            }
+
+            let actual_h2 = headings
+                .iter()
+                .filter(|heading| heading.level == 2)
+                .map(|heading| heading.text.as_str())
+                .collect::<Vec<_>>();
+            if actual_h2 != expected_h2 {
+                errors.push(ValidationIssue::new(
+                    &relative_path,
+                    "architecture_design.section_schema",
+                    format!(
+                        "H2 sequence must be exactly {}; found {}",
+                        format_heading_sequence(expected_h2.iter().copied()),
+                        format_heading_sequence(actual_h2.iter().copied()),
+                    ),
+                ));
+            }
+        }
+    }
 }
 
 pub(crate) fn validate_surface_stability_sections(root: &Path, errors: &mut Vec<ValidationIssue>) {
@@ -120,6 +295,92 @@ pub(crate) fn validate_surface_stability_sections(root: &Path, errors: &mut Vec<
                 ));
             }
         }
+    }
+}
+
+struct MarkdownHeading {
+    level: u8,
+    line: usize,
+    text: String,
+}
+
+fn markdown_headings(contents: &str) -> Vec<MarkdownHeading> {
+    let newline_offsets = contents
+        .bytes()
+        .enumerate()
+        .filter_map(|(offset, byte)| (byte == b'\n').then_some(offset))
+        .collect::<Vec<_>>();
+    let mut headings = Vec::new();
+    let mut active: Option<MarkdownHeading> = None;
+
+    for (event, range) in Parser::new_ext(contents, crate::markdown::options()).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                active = Some(MarkdownHeading {
+                    level: markdown_heading_level(level),
+                    line: newline_offsets.partition_point(|offset| *offset < range.start) + 1,
+                    text: String::new(),
+                });
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some(heading) = active.as_mut() {
+                    heading.text.push_str(&text);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some(heading) = active.as_mut() {
+                    heading.text.push(' ');
+                }
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some(mut heading) = active.take() {
+                    heading.text = heading.text.trim().to_string();
+                    headings.push(heading);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    headings
+}
+
+fn markdown_heading_level(level: HeadingLevel) -> u8 {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
+    }
+}
+
+fn normalize_heading(heading: &str) -> String {
+    heading
+        .to_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn format_heading_sequence<'a>(headings: impl Iterator<Item = &'a str>) -> String {
+    let headings = headings
+        .map(|heading| format!("`{heading}`"))
+        .collect::<Vec<_>>();
+    if headings.is_empty() {
+        "no H2 headings".to_string()
+    } else {
+        headings.join(", ")
     }
 }
 

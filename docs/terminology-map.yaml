@@ -3163,8 +3163,8 @@ terms:
         ko: "docs/ko/reference/core-model.md"
       - en: "docs/en/reference/storage-effects.md"
         ko: "docs/ko/reference/storage-effects.md"
-      - en: "docs/en/architecture-guide/decisions/canonical-core-utc-clock.md"
-        ko: "docs/ko/architecture-guide/decisions/canonical-core-utc-clock.md"
+      - en: "docs/en/architecture-guide/design/canonical-core-utc-clock.md"
+        ko: "docs/ko/architecture-guide/design/canonical-core-utc-clock.md"
     notes:
       - "Use for the project-scoped non-decreasing UTC clock used by Core temporal-authority decisions."
       - "Its persisted floor is `project_state.updated_at`; it is distinct from `state_version` and from host or observation timestamps."

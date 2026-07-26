@@ -58,6 +58,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         cli_docs::validate_volicord_command_examples(&root, index, &mut issues);
         hygiene::validate_public_document_language(&root, index, &mut issues);
     }
+    document_structure::validate_architecture_design_documents(&root, &mut issues);
     document_structure::validate_surface_stability_sections(&root, &mut issues);
     hygiene::validate_public_language_claims(&root, &mut issues);
     storage::validate_storage_ddl_sql_blocks(&root, &mut issues);

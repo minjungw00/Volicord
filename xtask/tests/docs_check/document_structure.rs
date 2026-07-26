@@ -1,6 +1,126 @@
 use super::*;
 
 #[test]
+fn accepts_current_architecture_design_section_schema_without_scanning_prose() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/architecture-guide/design/core-adapter-boundary.md",
+        &architecture_design_document(
+            "# Core and adapter dependency boundary",
+            &[
+                "Purpose",
+                "Design",
+                "Invariants",
+                "Responsibility boundaries",
+                "Execution flow",
+                "Failure behavior",
+                "Scope exclusions",
+                "Implementation routes",
+                "Reference owners",
+            ],
+            "\nRejected alternatives can be ordinary prose without becoming a section.\n",
+        ),
+    );
+    write(
+        fixture.path(),
+        "docs/ko/architecture-guide/design/core-adapter-boundary.md",
+        &architecture_design_document(
+            "# Core와 어댑터 의존 경계",
+            &[
+                "목적",
+                "설계",
+                "불변 조건",
+                "책임 경계",
+                "실행 흐름",
+                "실패 동작",
+                "범위 제외",
+                "구현 경로",
+                "참조 담당 문서",
+            ],
+            "\n거부한 대안이라는 표현은 절 제목이 아닌 일반 본문에 쓸 수 있습니다.\n",
+        ),
+    );
+
+    let report = report(fixture.path());
+
+    assert!(
+        category_errors(&report, "architecture_design.section_schema").is_empty(),
+        "{:#?}",
+        report.issues()
+    );
+    assert!(
+        category_errors(&report, "architecture_design.prohibited_heading").is_empty(),
+        "{:#?}",
+        report.issues()
+    );
+}
+
+#[test]
+fn reports_invalid_current_architecture_design_section_sequence() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/architecture-guide/design/core-adapter-boundary.md",
+        &architecture_design_document(
+            "# Core and adapter dependency boundary",
+            &[
+                "Purpose",
+                "Design",
+                "Invariants",
+                "Execution flow",
+                "Responsibility boundaries",
+                "Failure behavior",
+                "Scope exclusions",
+                "Implementation routes",
+                "Reference owners",
+            ],
+            "",
+        ),
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "architecture_design.section_schema");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.issues());
+    assert!(
+        errors[0].message().contains("`Responsibility boundaries`"),
+        "{:#?}",
+        report.issues()
+    );
+}
+
+#[test]
+fn reports_transitional_architecture_design_heading_at_any_level() {
+    let fixture = valid_fixture();
+    write(
+        fixture.path(),
+        "docs/en/architecture-guide/design/core-adapter-boundary.md",
+        &architecture_design_document(
+            "# Core and adapter dependency boundary",
+            &[
+                "Purpose",
+                "Design",
+                "Invariants",
+                "Responsibility boundaries",
+                "Execution flow",
+                "Failure behavior",
+                "Scope exclusions",
+                "Implementation routes",
+                "Reference owners",
+            ],
+            "\n### Before-and-after\n\nTransitional comparison.\n",
+        ),
+    );
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "architecture_design.prohibited_heading");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.issues());
+    assert_eq!(errors[0].line(), Some(39), "{:#?}", report.issues());
+}
+
+#[test]
 fn accepts_synchronized_operation_category_value_sets() {
     let fixture = valid_fixture();
     let values = ["read", "agent_workflow", "user_only"];
@@ -110,4 +230,17 @@ fn reports_missing_required_surface_stability_label() {
         "{:#?}",
         report.issues()
     );
+}
+
+fn architecture_design_document(
+    title: &str,
+    h2_headings: &[&str],
+    trailing_contents: &str,
+) -> String {
+    let sections = h2_headings
+        .iter()
+        .map(|heading| format!("## {heading}\n\nCurrent design.\n"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{title}\n\n{sections}{trailing_contents}")
 }

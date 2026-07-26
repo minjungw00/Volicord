@@ -81,6 +81,13 @@ read-only and verifies the machine-checkable shape:
   README pair; missing indexed root README paths are reported by the normal
   path-existence rules.
 - Paired documents preserve the same heading-level sequence.
+- Every individual current architecture-design document under
+  `docs/en/architecture-guide/design/` and
+  `docs/ko/architecture-guide/design/` uses the language-specific exact H2
+  sequence defined by the Documentation Policy. Heading-aware validation also
+  rejects transitional sections such as migration notes, before-and-after,
+  review findings, change history, and rejected alternatives. This is a
+  structural heading check, not a broad natural-language forbidden-word scan.
 - Code literals identified by `docs/terminology-map.yaml` remain present in
   corresponding headings or section meaning units. The check compares only
   catalog-driven exact identifiers found in inline or fenced code.
@@ -184,7 +191,10 @@ blockers, response branches, and links to applicable owners where relevant.
 For Architecture Guide changes caused by code movement, confirm the relevant
 Architecture Guide documents describe durable crates, modules, entry points, execution
 stages, and responsibility boundaries without turning implementation detail into
-product contract text.
+product contract text. For current architecture-design references, also compare
+the English and Korean pages section by section, confirm each page describes
+only the present implementation, and verify every implementation route and
+focused Reference-owner link.
 
 The automated `docs-check` command includes local documentation-link parity,
 heading-level structure parity, and terminology-driven exact-identifier parity

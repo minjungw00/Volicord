@@ -132,6 +132,48 @@ Keep baseline behavior separate from reserved, profile-gated, and out-of-scope
 material. A value name can appear in schemas, examples, storage notes, or route
 pages without becoming baseline behavior.
 
+<a id="architecture-design-references"></a>
+## Architecture Design References
+
+The maintained current-state architecture-design family lives under
+[`docs/en/architecture-guide/design/`](../architecture-guide/design/README.md)
+and
+[`docs/ko/architecture-guide/design/`](../../ko/architecture-guide/design/README.md).
+Its individual design pages describe the implementation that exists now. They
+are not chronological decision records, review reports, migration guides, or
+release histories.
+
+Except for the family index, every current architecture-design page uses one H1
+title followed by this exact H2 sequence:
+
+1. `Purpose`
+2. `Design`
+3. `Invariants`
+4. `Responsibility boundaries`
+5. `Execution flow`
+6. `Failure behavior`
+7. `Scope exclusions`
+8. `Implementation routes`
+9. `Reference owners`
+
+The paired Korean pages use the semantically equivalent sequence `목적`, `설계`,
+`불변 조건`, `책임 경계`, `실행 흐름`, `실패 동작`, `범위 제외`, `구현 경로`,
+`참조 담당 문서`. The family index remains a reader route rather than an
+individual design page.
+
+Design pages own current implementation structure, module responsibility,
+execution flow, and durable implementation invariants. Exact product behavior,
+schema meaning, storage effects, security guarantees, and Core authority
+semantics remain in focused Reference owners and are linked from `Reference
+owners`.
+
+Do not add architecture-design sections whose purpose is migration notes,
+before-and-after comparison, review findings, change history, decision
+chronology, consequences of a past choice, or rejected alternatives. Do not
+preserve an obsolete architecture route through a redirect, duplicate,
+numeric-version branch, or archived copy. Structural validation applies these
+rules to Markdown headings; it is not a broad forbidden-word scan of prose.
+
 ## Examples And Source Links
 
 Examples should be stable, self-contained product or user scenarios. They show

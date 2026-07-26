@@ -4,7 +4,8 @@ The Architecture Guide is the source-code learning entry point for
 implementers, reviewers, and source-code learners who need to understand the
 current Rust workspace. It routes workspace structure, exact source-path
 responsibilities, request flow, storage and transaction boundaries, design
-patterns, test strategy, durable decisions, and implementation change workflow.
+patterns, test strategy, current design references, and implementation change
+workflow.
 
 Use these pages to learn how the implementation is arranged and why durable
 boundaries exist. Exact public API behavior, request or response schemas,
@@ -24,7 +25,7 @@ your task.
 | Learn the workspace | [Codebase Tour](codebase-tour.md) -> [Implementation Architecture](architecture.md) -> [Source Map](source-map.md) | Which crates to read, how dependencies point, and which module owns an implementation responsibility. |
 | Follow an administrative workflow | [CLI Workflows](cli-workflows.md) -> [Source Map](source-map.md) | How setup, connection, host, guard, and diagnostic paths are assembled, then where each part lives. |
 | Follow a public method call | [Request Lifecycle](request-lifecycle.md) -> [Implementation Design Patterns](design-patterns.md) -> [Storage and Transactions](storage-and-transactions.md) | How MCP, Core, and Store cooperate, which structures recur, and where persistence begins. |
-| Plan a change | [Implementation Guide](change-guide.md) -> [Testing Strategy](testing-strategy.md) -> [Architecture Decisions](decisions/README.md) | Which owner and source area to inspect, which test layer to use, and why durable boundaries exist. |
+| Plan a change | [Implementation Guide](change-guide.md) -> [Testing Strategy](testing-strategy.md) -> [Architecture Design](design/README.md) | Which owner and source area to inspect, which test layer to use, and how durable boundaries are implemented. |
 | Plan release integrity validation | [Testing Strategy](testing-strategy.md) -> [Validation](../maintain/validation.md) | Generic target, package, checksum, workflow, and optional operational-smoke boundaries. |
 | Check exact behavior | [Reference Index](../reference/README.md) -> [API Methods](../reference/api/methods.md) | Which focused Reference document owns the API, schema, storage, security, runtime, error, or Core authority detail. |
 

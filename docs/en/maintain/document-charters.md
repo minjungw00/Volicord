@@ -247,13 +247,20 @@ Document family: [Architecture Guide](../architecture-guide/README.md),
   without turning implementation explanation into product contract text.
 - Intended reader: Implementers, reviewers, and source-code learners.
 - Should own: Durable crate and module roles, request flow, architecture
-  decisions, source-learning routes, design patterns, storage and transaction
-  architecture, testing strategy, and implementation change workflow.
+  design references, source-learning routes, design patterns, storage and
+  transaction architecture, testing strategy, and implementation change
+  workflow. Current architecture-design references live under
+  [`architecture-guide/design/`](../architecture-guide/design/README.md) and
+  use the current-state section schema defined by the
+  [Documentation Policy](documentation-policy.md#architecture-design-references).
 - Should not own: Product behavior contracts, API schema meaning, storage DDL
   contracts, storage-effect contracts, security guarantees, user-judgment
-  authority semantics, or line-number-dependent helper catalogs.
+  authority semantics, line-number-dependent helper catalogs, decision
+  chronology, review history, migration narratives, before-and-after
+  comparisons, rejected alternatives, release recommendations, or obsolete
+  route preservation.
 - Acceptable diagrams: Architecture maps, module responsibility diagrams,
-  lifecycle diagrams, request sequences, and implementation decision diagrams
+  lifecycle diagrams, request sequences, and implementation design diagrams
   that teach stable code structure.
 - Link deeper by: Sending exact product behavior to the applicable
   [Reference Index](../reference/README.md) owner, Rust edit workflow to

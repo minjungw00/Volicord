@@ -611,7 +611,7 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
-  - architecture-guide.decisions.index
+  - architecture-guide.design.index
   - architecture-guide.architecture
   - architecture-guide.change-guide
   - reference.index
@@ -840,17 +840,17 @@ documents:
   - reference.api.schema-user-action
   - reference.storage-records
   - maintain.validation
-- doc_id: architecture-guide.decisions.index
-  path_en: docs/en/architecture-guide/decisions/README.md
-  path_ko: docs/ko/architecture-guide/decisions/README.md
+- doc_id: architecture-guide.design.index
+  path_en: docs/en/architecture-guide/design/README.md
+  path_ko: docs/ko/architecture-guide/design/README.md
   kind: landing
-  summary: Architecture-decision record index for implementation rationale.
+  summary: Current architecture-design reference index for implementation structure.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -860,35 +860,35 @@ documents:
   - learn
   - implement
   depends_on:
-  - architecture-guide.decision.agent-connection-routing
-  - architecture-guide.decision.core-adapter-boundary
-  - architecture-guide.decision.state-bound-write-ticket-validity
-  - architecture-guide.decision.observation-confidence-boundary
-  - architecture-guide.decision.external-user-judgment-authority
-  - architecture-guide.decision.static-compact-mcp-tool-list
-  - architecture-guide.decision.evidence-capture-producer-finalization
-  - architecture-guide.decision.operation-result-retrieval
-  - architecture-guide.decision.unified-user-action-request-resolution
-  - architecture-guide.decision.plan-and-atomic-commit
-  - architecture-guide.decision.canonical-core-utc-clock
-  - architecture-guide.decision.runtime-home-and-product-repository
+  - architecture-guide.design.agent-connection-routing
+  - architecture-guide.design.core-adapter-boundary
+  - architecture-guide.design.state-bound-write-ticket-validity
+  - architecture-guide.design.observation-confidence-boundary
+  - architecture-guide.design.external-user-judgment-authority
+  - architecture-guide.design.static-compact-mcp-tool-list
+  - architecture-guide.design.evidence-capture-producer-finalization
+  - architecture-guide.design.operation-result-retrieval
+  - architecture-guide.design.unified-user-action-request-resolution
+  - architecture-guide.design.plan-and-atomic-commit
+  - architecture-guide.design.canonical-core-utc-clock
+  - architecture-guide.design.runtime-home-and-product-repository
   - architecture-guide.architecture
   - architecture-guide.source-map
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
-- doc_id: architecture-guide.decision.state-bound-write-ticket-validity
-  path_en: docs/en/architecture-guide/decisions/state-bound-write-ticket-validity.md
-  path_ko: docs/ko/architecture-guide/decisions/state-bound-write-ticket-validity.md
+- doc_id: architecture-guide.design.state-bound-write-ticket-validity
+  path_en: docs/en/architecture-guide/design/state-bound-write-ticket-validity.md
+  path_ko: docs/ko/architecture-guide/design/state-bound-write-ticket-validity.md
   kind: explanation
-  summary: Architecture decision binding Write Ticket validity and reuse to relevant Task, scope,
+  summary: Current design reference binding Write Ticket validity and reuse to relevant Task, scope,
     baseline, workspace, approval, and normalized current project write authority rather than
     unrelated global changes or fixed time alone.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -906,11 +906,11 @@ documents:
   - reference.storage-ddl
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.decision.observation-confidence-boundary
-  path_en: docs/en/architecture-guide/decisions/observation-confidence-boundary.md
-  path_ko: docs/ko/architecture-guide/decisions/observation-confidence-boundary.md
+- doc_id: architecture-guide.design.observation-confidence-boundary
+  path_en: docs/en/architecture-guide/design/observation-confidence-boundary.md
+  path_ko: docs/ko/architecture-guide/design/observation-confidence-boundary.md
   kind: explanation
-  summary: Architecture decision separating confirmed structured effects from heuristic observations
+  summary: Current design reference separating confirmed structured effects from heuristic observations
     for pre-action enforcement, post-action reconciliation, and close projection.
   normative_level: guide
   translation_policy: semantic_parity
@@ -936,18 +936,18 @@ documents:
   - reference.api.schema-value-sets
   - reference.storage-records
   - reference.storage-ddl
-- doc_id: architecture-guide.decision.external-user-judgment-authority
-  path_en: docs/en/architecture-guide/decisions/external-user-judgment-authority.md
-  path_ko: docs/ko/architecture-guide/decisions/external-user-judgment-authority.md
+- doc_id: architecture-guide.design.external-user-judgment-authority
+  path_en: docs/en/architecture-guide/design/external-user-judgment-authority.md
+  path_ko: docs/ko/architecture-guide/design/external-user-judgment-authority.md
   kind: explanation
-  summary: Architecture decision keeping user-owned judgment resolution outside the Agent Connection
+  summary: Current design reference keeping user-owned judgment resolution outside the Agent Connection
     while allowing agent-facing requests and policy-owned low-control close evaluation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -958,7 +958,7 @@ documents:
   - learn
   - implement
   depends_on:
-  - architecture-guide.decision.unified-user-action-request-resolution
+  - architecture-guide.design.unified-user-action-request-resolution
   - reference.core-model
   - reference.admin-cli
   - reference.agent-connection
@@ -968,18 +968,18 @@ documents:
   - reference.api.method-close-task
   - reference.api.schema-user-action
   - reference.api.schema-judgment
-- doc_id: architecture-guide.decision.static-compact-mcp-tool-list
-  path_en: docs/en/architecture-guide/decisions/static-compact-mcp-tool-list.md
-  path_ko: docs/ko/architecture-guide/decisions/static-compact-mcp-tool-list.md
+- doc_id: architecture-guide.design.static-compact-mcp-tool-list
+  path_en: docs/en/architecture-guide/design/static-compact-mcp-tool-list.md
+  path_ko: docs/ko/architecture-guide/design/static-compact-mcp-tool-list.md
   kind: explanation
-  summary: Architecture decision retaining a static mode-specific MCP tool set with compact runtime
-    schemas and next-action routing before any capability-gated dynamic-list extension.
+  summary: Current design reference for the static mode-specific MCP tool set, compact runtime
+    schemas, and next-action routing.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-16'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   - mcp_initialize_profiles
@@ -991,22 +991,22 @@ documents:
   - learn
   - implement
   depends_on:
-  - architecture-guide.decision.core-adapter-boundary
+  - architecture-guide.design.core-adapter-boundary
   - reference.mcp-transport
   - reference.agent-connection
   - reference.api.methods
   - reference.api.schema-state
-- doc_id: architecture-guide.decision.core-adapter-boundary
-  path_en: docs/en/architecture-guide/decisions/core-adapter-boundary.md
-  path_ko: docs/ko/architecture-guide/decisions/core-adapter-boundary.md
+- doc_id: architecture-guide.design.core-adapter-boundary
+  path_en: docs/en/architecture-guide/design/core-adapter-boundary.md
+  path_ko: docs/ko/architecture-guide/design/core-adapter-boundary.md
   kind: explanation
-  summary: Architecture decision explaining the Core and adapter boundary.
+  summary: Current design reference for the Core and adapter dependency boundary.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1023,11 +1023,11 @@ documents:
   - reference.admin-cli
   - reference.agent-connection
 
-- doc_id: architecture-guide.decision.operation-result-retrieval
-  path_en: docs/en/architecture-guide/decisions/operation-result-retrieval.md
-  path_ko: docs/ko/architecture-guide/decisions/operation-result-retrieval.md
+- doc_id: architecture-guide.design.operation-result-retrieval
+  path_en: docs/en/architecture-guide/design/operation-result-retrieval.md
+  path_ko: docs/ko/architecture-guide/design/operation-result-retrieval.md
   kind: explanation
-  summary: Architecture decision explaining bounded exact operation-result retrieval from immutable replay rows.
+  summary: Current design reference for bounded exact operation-result retrieval from immutable replay rows.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1043,8 +1043,8 @@ documents:
   - learn
   - implement
   depends_on:
-  - architecture-guide.decision.core-adapter-boundary
-  - architecture-guide.decision.plan-and-atomic-commit
+  - architecture-guide.design.core-adapter-boundary
+  - architecture-guide.design.plan-and-atomic-commit
   - reference.api.method-get-operation-result
   - reference.api.schema-core
   - reference.mcp-transport
@@ -1053,17 +1053,17 @@ documents:
   - reference.storage-records
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.decision.unified-user-action-request-resolution
-  path_en: docs/en/architecture-guide/decisions/unified-user-action-request-resolution.md
-  path_ko: docs/ko/architecture-guide/decisions/unified-user-action-request-resolution.md
+- doc_id: architecture-guide.design.unified-user-action-request-resolution
+  path_en: docs/en/architecture-guide/design/unified-user-action-request-resolution.md
+  path_ko: docs/ko/architecture-guide/design/unified-user-action-request-resolution.md
   kind: explanation
-  summary: Architecture decision explaining the unified user-action request and immutable resolution model.
+  summary: Current design reference for the unified user-action request and immutable resolution model.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1073,9 +1073,9 @@ documents:
   - learn
   - implement
   depends_on:
-  - architecture-guide.decision.core-adapter-boundary
-  - architecture-guide.decision.plan-and-atomic-commit
-  - architecture-guide.decision.canonical-core-utc-clock
+  - architecture-guide.design.core-adapter-boundary
+  - architecture-guide.design.plan-and-atomic-commit
+  - architecture-guide.design.canonical-core-utc-clock
   - reference.api.method-request-user-action
   - reference.api.method-resolve-user-action
   - reference.api.schema-user-action
@@ -1087,17 +1087,17 @@ documents:
   - reference.storage-ddl
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.decision.evidence-capture-producer-finalization
-  path_en: docs/en/architecture-guide/decisions/evidence-capture-producer-finalization.md
-  path_ko: docs/ko/architecture-guide/decisions/evidence-capture-producer-finalization.md
+- doc_id: architecture-guide.design.evidence-capture-producer-finalization
+  path_en: docs/en/architecture-guide/design/evidence-capture-producer-finalization.md
+  path_ko: docs/ko/architecture-guide/design/evidence-capture-producer-finalization.md
   kind: explanation
-  summary: Architecture decision explaining intent-bound source receipts and atomic evidence-producer finalization.
+  summary: Current design reference for intent-bound source receipts and atomic evidence-producer finalization.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1107,8 +1107,8 @@ documents:
   - learn
   - implement
   depends_on:
-  - architecture-guide.decision.core-adapter-boundary
-  - architecture-guide.decision.plan-and-atomic-commit
+  - architecture-guide.design.core-adapter-boundary
+  - architecture-guide.design.plan-and-atomic-commit
   - reference.api.method-prepare-evidence-capture
   - reference.api.method-record-run
   - reference.core-model
@@ -1118,11 +1118,11 @@ documents:
   - reference.storage-ddl
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.decision.plan-and-atomic-commit
-  path_en: docs/en/architecture-guide/decisions/plan-and-atomic-commit.md
-  path_ko: docs/ko/architecture-guide/decisions/plan-and-atomic-commit.md
+- doc_id: architecture-guide.design.plan-and-atomic-commit
+  path_en: docs/en/architecture-guide/design/plan-and-atomic-commit.md
+  path_ko: docs/ko/architecture-guide/design/plan-and-atomic-commit.md
   kind: explanation
-  summary: Architecture decision explaining plan and atomic commit boundaries.
+  summary: Current design reference for planning and atomic commit boundaries.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1144,11 +1144,12 @@ documents:
   - reference.api.methods
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.decision.canonical-core-utc-clock
-  path_en: docs/en/architecture-guide/decisions/canonical-core-utc-clock.md
-  path_ko: docs/ko/architecture-guide/decisions/canonical-core-utc-clock.md
+- doc_id: architecture-guide.design.canonical-core-utc-clock
+  path_en: docs/en/architecture-guide/design/canonical-core-utc-clock.md
+  path_ko: docs/ko/architecture-guide/design/canonical-core-utc-clock.md
   kind: explanation
-  summary: Architecture decision explaining the project-scoped canonical Core UTC clock, prepared-operation sampling, and persisted clock floor.
+  summary: Current design reference for the project-scoped canonical Core UTC clock,
+    prepared-operation sampling, and persisted clock floor.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
@@ -1164,7 +1165,7 @@ documents:
   - learn
   - implement
   depends_on:
-  - architecture-guide.decision.plan-and-atomic-commit
+  - architecture-guide.design.plan-and-atomic-commit
   - architecture-guide.request-lifecycle
   - architecture-guide.storage-and-transactions
   - reference.core-model
@@ -1177,17 +1178,17 @@ documents:
   - reference.storage-ddl
   - reference.storage-effects
   - reference.storage-versioning
-- doc_id: architecture-guide.decision.runtime-home-and-product-repository
-  path_en: docs/en/architecture-guide/decisions/runtime-home-and-product-repository.md
-  path_ko: docs/ko/architecture-guide/decisions/runtime-home-and-product-repository.md
+- doc_id: architecture-guide.design.runtime-home-and-product-repository
+  path_en: docs/en/architecture-guide/design/runtime-home-and-product-repository.md
+  path_ko: docs/ko/architecture-guide/design/runtime-home-and-product-repository.md
   kind: explanation
-  summary: Architecture decision explaining Runtime Home and Product Repository separation.
+  summary: Current design reference for Runtime Home and Product Repository separation.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1204,18 +1205,18 @@ documents:
   - reference.storage-artifacts
   - reference.admin-cli
   - reference.security
-- doc_id: architecture-guide.decision.agent-connection-routing
-  path_en: docs/en/architecture-guide/decisions/agent-connection-routing.md
-  path_ko: docs/ko/architecture-guide/decisions/agent-connection-routing.md
+- doc_id: architecture-guide.design.agent-connection-routing
+  path_en: docs/en/architecture-guide/design/agent-connection-routing.md
+  path_ko: docs/ko/architecture-guide/design/agent-connection-routing.md
   kind: explanation
-  summary: Architecture decision explaining Agent Connection, host routing, and explicit project
+  summary: Current design reference for Agent Connection, host routing, and explicit project
     allowlists for agent-host connections.
   normative_level: guide
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-06-22'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   - mcp_initialize_profiles
@@ -1265,7 +1266,7 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
-  - architecture-guide.decisions.index
+  - architecture-guide.design.index
   - architecture-guide.architecture
   - reference.index
   - reference.system-requirements
@@ -1304,7 +1305,7 @@ documents:
   - architecture-guide.design-patterns
   - architecture-guide.storage-and-transactions
   - architecture-guide.testing-strategy
-  - architecture-guide.decisions.index
+  - architecture-guide.design.index
   - architecture-guide.change-guide
   - reference.runtime-boundaries
   - reference.admin-cli

@@ -122,6 +122,43 @@ README, 사용자 가이드, 참조, 아키텍처 가이드 문서는 `Diagram r
 이름이 스키마, 예시, 저장소 메모, 경로 문서에 등장해도 기준 동작이 되는 것은
 아닙니다.
 
+<a id="architecture-design-references"></a>
+## 아키텍처 설계 참조
+
+유지되는 현재 상태 아키텍처 설계 문서 계열은
+[`docs/en/architecture-guide/design/`](../../en/architecture-guide/design/README.md)과
+[`docs/ko/architecture-guide/design/`](../architecture-guide/design/README.md)에
+있습니다. 개별 설계 문서는 현재 존재하는 구현을 설명합니다. 시간순 결정 기록,
+검토 보고서, 마이그레이션 가이드, 릴리스 이력이 아닙니다.
+
+문서 계열 색인을 제외한 모든 현재 아키텍처 설계 문서는 H1 제목 하나 뒤에 아래
+H2 절을 정확히 이 순서로 사용합니다.
+
+1. `목적`
+2. `설계`
+3. `불변 조건`
+4. `책임 경계`
+5. `실행 흐름`
+6. `실패 동작`
+7. `범위 제외`
+8. `구현 경로`
+9. `참조 담당 문서`
+
+대응 영어 문서는 의미가 같은 `Purpose`, `Design`, `Invariants`,
+`Responsibility boundaries`, `Execution flow`, `Failure behavior`, `Scope
+exclusions`, `Implementation routes`, `Reference owners` 순서를 사용합니다.
+문서 계열 색인은 개별 설계 문서가 아니라 독자 경로로 유지합니다.
+
+설계 문서는 현재 구현 구조, 모듈 책임, 실행 흐름, 오래 유지될 구현 불변 조건을
+담당합니다. 정확한 제품 동작, 스키마 의미, 저장 효과, 보안 보장, Core 권한 의미는
+집중 참조 담당 문서에 두고 `참조 담당 문서` 절에서 연결합니다.
+
+마이그레이션 메모, 이전과 이후 비교, 검토 결과, 변경 이력, 결정 연대기, 과거 선택의
+결과, 거부한 대안을 목적으로 하는 아키텍처 설계 절을 추가하지 않습니다. 이전
+아키텍처 경로를 redirect, 중복 문서, 숫자 버전 분기, 보관 사본으로 유지하지
+않습니다. 구조 검증은 이 규칙을 Markdown 제목에 적용하며 본문 전체의 금지어를
+검색하지 않습니다.
+
 ## 예시와 소스 링크
 
 예시는 오래 유지되고 자체적으로 이해되는 제품 또는 사용자 시나리오여야

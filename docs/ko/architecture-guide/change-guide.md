@@ -27,7 +27,7 @@
 | 릴리스 빌드 또는 패키지 무결성 | `tests/release-integrity`, 릴리스 workflow | 검증 |
 | 문서 경로 또는 용어 | `docs/doc-index.yaml`, 문서 쌍 | 문서와 번역 정책 |
 
-첫 release 어댑터 표면은 `personal`, `shared` 관리 stdio 연결을 사용하는 Codex Record
+현재 어댑터 표면은 `personal`, `shared` 관리 stdio 연결을 사용하는 Codex Record
 profile입니다. 명시적인 소유자 변경 없이 다른 어댑터, profile, transport, user-action
 resolution channel을 추가하지 않습니다.
 

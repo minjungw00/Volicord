@@ -181,18 +181,6 @@
       "reason": "The Korean runtime owner defines where the exact bootstrap diagnostic envelope may be emitted."
     },
     {
-      "path": "docs/en/user-guide/installation.md",
-      "needle": "v0.8.0",
-      "classification": "release_tag_example",
-      "reason": "The installer example uses the repository's externally visible release-tag syntax."
-    },
-    {
-      "path": "docs/ko/user-guide/installation.md",
-      "needle": "v0.8.0",
-      "classification": "release_tag_example",
-      "reason": "The installer example uses the repository's externally visible release-tag syntax."
-    },
-    {
       "path": "xtask/tests/release_version_check.rs",
       "needle": "v1.2.3",
       "classification": "release_tag_example",

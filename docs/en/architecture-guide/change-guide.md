@@ -29,7 +29,7 @@ focused Reference owner, not by current code or this guide.
 | Release build or package integrity | `tests/release-integrity`, release workflow | Validation |
 | Documentation route or terminology | `docs/doc-index.yaml`, paired docs | documentation and translation policies |
 
-The first-release adapter surface is Codex Record profile with `personal` and
+The current adapter surface is Codex Record profile with `personal` and
 `shared` managed stdio connections. Do not add another adapter, profile,
 transport, or user-action resolution channel without an explicit owner change.
 

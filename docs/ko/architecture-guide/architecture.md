@@ -21,7 +21,7 @@ Volicord는 AI 지원 제품 작업을 위한 로컬 작업 권한 기록입니�
 
 ## 운영 경로
 
-아래 그림은 최초 릴리스의 세 진입 경로인 관리형 stdio MCP, 관리 CLI, CLI
+아래 그림은 현재 세 진입 경로인 관리형 stdio MCP, 관리 CLI, CLI
 받은 편지함 `User Channel`을 구분합니다. 실선은 주된 호출 또는 저장 방향을
 나타냅니다. 점선은 검증, 관찰된 입력, 공개 메서드 실행 밖에서 일어나는 작업을
 나타냅니다.
@@ -267,9 +267,9 @@ Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니
 | 관리 명령 모델 | `volicord-command-model`은 완전한 Clap 선언, 문법 DTO와 validator, 실제 명령 tree 기반 공개/숨김 분류, root command 구성, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation을 담당합니다. 프로세스를 시작하거나 명령을 디스패치하거나 Core 또는 Store를 호출하거나 출력을 렌더링하거나 Runtime Home을 해석하거나 application service를 실행하지 않습니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md). |
 | CLI 운영 진단 | `volicord-cli`는 불변 운영 definition, 폐쇄형 typed subject와 facts, typed action 선택, 담당자 범위 current-condition 영속화를 `operational_diagnostics`에 둡니다. 별도의 Connection 검증 패키지는 host, MCP, Guard check, dependency graph 평가, 보고서 입력, 불변 preflight 생성, 활성 쓰기 및 conformance 증거를 조율하고 typed 관찰을 finding으로 투영합니다. Store는 lifecycle 및 조회 구현 담당을 유지합니다. | [소스 지도](source-map.md), [실패 모델](../reference/failure-model.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |
 | 진단 영속화와 조회 | `volicord-store`는 caller data보다 먼저 완전한 staged 초기화와 원자적 공개로 비권한 진단 carrier를 만들고, 추가 전용 occurrence, 교체 가능한 current snapshot, cause graph 검증 및 순회, lifecycle-aware 정확한 lookup 및 graph API, 현재 보고서 projection, 내부 row 인코딩을 분리합니다. 정확한 read는 occurrence/current lifecycle, active/resolved 상태, 해소 시각을 유지하고, 보고 가능한 read는 적격 occurrence와 active current finding만 projection합니다. | [소스 지도](source-map.md), [저장소](../reference/storage.md), [저장소 레코드](../reference/storage-records.md), [실패 모델](../reference/failure-model.md). |
-| Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리를 담당합니다. CLI와 MCP 어댑터는 Core 주변의 프로세스, 설정, 전송, 처리 경로, 렌더링 경계를 담당합니다. Core는 어느 어댑터 계층에도 의존하지 않습니다. 읽기 전용 caller는 경로에서 `CoreService`를 구성하고, 승인된 caller는 두 번째 Runtime Home 좌표 없이 `RuntimeHomeMutationContext`에서만 구성합니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |
+| Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리를 담당합니다. CLI와 MCP 어댑터는 Core 주변의 프로세스, 설정, 전송, 처리 경로, 렌더링 경계를 담당합니다. Core는 어느 어댑터 계층에도 의존하지 않습니다. 읽기 전용 caller는 경로에서 `CoreService`를 구성하고, 승인된 caller는 두 번째 Runtime Home 좌표 없이 `RuntimeHomeMutationContext`에서만 구성합니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](design/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |
 | Codex host-wire 계약 | `volicord-host-contract`는 `CodexMcpTurnMetadata`/`codex-mcp-turn-metadata`, `CodexCommandHooks`/`codex-command-hooks`, `CodexMcpCallableNames`/`codex-mcp-callable-names`, 결정적인 profile digest, 한도 있는 값과 failure, 서로 바꿔 쓸 수 없는 상관관계 타입, 명시적 `McpServerKey`와 완전한 `McpRawToolName`에서 `HostCallableIdentity`로 가는 투영을 담당합니다. 또한 검토된 native host tool과 server-qualified MCP routing을 통합하는 typed hook-routing strategy를 소유하며, 등록된 namespace를 표현할 수 있으면 이를 사용하고 아니면 catalog에서 파생한 exact callable을 사용합니다. 생성 구성은 이 strategy를 투영하고 엄격한 audit은 이를 다시 구성합니다. 정규 `AgentToolId` catalog는 모든 tool에 probe target, workflow control, unrelated known tool 중 정확히 하나의 integration-verification role을 부여하고, `McpToolCatalog`는 정규화 충돌뿐 아니라 모순되는 role metadata도 거부합니다. Routing이 event를 전달하면 Store는 probe 좌표보다 먼저 callable과 role을 해석합니다. Workflow control과 그 밖의 known tool은 한도 있는 nonterminal trace로만 남고, probe target만 session, turn, verification ID, tool-use 검사를 계속합니다. Codex package version에서 host 동작을 선택하지 않습니다. | [소스 맵](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [저장소 레코드](../reference/storage-records.md), [실패 모델](../reference/failure-model.md). |
-| Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
+| Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](design/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
 | Runtime Home bootstrap | `volicord-store`는 기존 Registry를 읽기 전용으로 열어 정확한 현재 manifest와 물리 schema를 검사합니다. 최종 경로가 없으면 같은 상위 directory의 staging에 불투명한 publication ID, singleton, 최초 installation profile을 함께 준비합니다. 기존 대상을 교체하지 않는 원자적 rename에 성공하면 상위 directory 동기화와 read-back 검증 전에 invocation별 publication guard를 만듭니다. `AlreadyExists`는 읽기 전용으로 정확히 검증한 현재 승자만 반환합니다. | [런타임 경계](../reference/runtime-boundaries.md), [저장소 버전 관리](../reference/storage-versioning.md), [저장소 레코드](../reference/storage-records.md), [저장소 DDL](../reference/storage-ddl.md). |
 | Runtime Home 변경 승인 | `volicord-platform-fs`는 정규 Runtime Home마다 OS 기반 공유·배타 coordination 영역 하나를 담당합니다. `SharedWriter`는 일반 writer의 동시 진입을 허용하고 `ExclusiveSetup`은 모든 공유 또는 배타 holder와 충돌합니다. 빌린 permit은 OS handle을 노출하지 않고 정확한 정규 target과 보유 mode를 `volicord-store`에 전달하며, Store는 쓰기 가능 database open과 변경 API에 필요한 복제 불가능한 `RuntimeHomeMutationContext`를 만듭니다. Setup은 하나의 배타 permit에서 이 context를 만들고 CLI, MCP, Guard, Core, operational-session, diagnostic, artifact 연산은 공유 permit에서 만든 context를 전체 효과가 끝날 때까지 유지합니다. 그 `CanonicalRuntimeHomePath`는 변경 의존 planning, 읽기, service, handle, 진단, 효과, 응답에서 승인 뒤 유일한 identity이며 alias는 두 번째 권한 좌표를 만들 수 없습니다. Coordination 파일은 Runtime Home 밖에 있으며 lock은 actor identity, credential, security boundary가 아니라 coordination 수단입니다. | [소스 지도](source-map.md), [런타임 경계](../reference/runtime-boundaries.md). |
 | Init setup transaction | `volicord-cli`는 검사와 planning 전에 정규 Runtime Home의 `ExclusiveSetup` 변경 승인을 획득한 뒤 Runtime Home, Store, Codex 구성, repository 관리 파일, activation을 아우르는 읽기 전용 typed plan 하나를 만듭니다. 복제할 수 없는 같은 lease를 준비, 공개, Store와 파일 commit, 보고, 정리, 보존 또는 전체 rollback이 끝날 때까지 유지합니다. Coordination 파일은 rollback 대상 Runtime Home 밖에 있고 OS handle을 닫으면 소유권이 해제됩니다. Prepare 단계는 snapshot을 검증하고 같은 directory에 파일을 staging하며 `volicord-store`는 복구 entry를 준비하고 checkpoint합니다. 지원되는 동시 setup은 planning 전에 busy로 보고합니다. Lease 보유 중 예상하지 않은 `AlreadyExists`가 발생하면 오래된 plan을 중단하고 Store나 관리 파일을 변경하지 않습니다. 실패하면 한도가 있는 역순 rollback을 수행하며, Runtime Home 제거에는 소유 guard가 정확한 publication ID, Runtime Home identity, manifest, 경로, schema, installation identity, managed-host 소비 부재를 다시 검증해야 합니다. Platform 제거는 재귀 효과, 정확한 경로 관찰, 실패 단계, 상위 entry 내구성을 각각 보고합니다. 확인된 제거와 불완전한 제거는 모두 guard를 terminal로 만들며, 확인 실패는 주 오류와 완전한 rollback 결과를 함께 유지합니다. 이는 여러 파일시스템 전체의 전역 원자성이 아닙니다. | [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [Agent Connection](../reference/agent-connection.md), [실패 모델](../reference/failure-model.md). |
@@ -295,15 +295,15 @@ Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니
 | Store 트랜잭션, 효과 경로, 재실행, 아티팩트 스테이징, 커밋 경계, 실패 경계 | [저장소와 트랜잭션](storage-and-transactions.md) |
 | 테스트 계층 선택, 픽스처, 생성 출력 변경 점검, 오래 유지될 테스트, 검증 책임 | [테스트 전략](testing-strategy.md) |
 | 변경 분류, 담당 경로 지정, 소스 경로 지정, 검증 명령 선택 | [구현 가이드](change-guide.md) |
-| 오래 유지될 아키텍처 근거, 결과, 비목표, 구현 영역, 테스트, 담당 경로 | [아키텍처 결정](decisions/README.md) |
+| 현재 구현 설계, 불변 조건, 책임과 실패 경계, 범위 제외, 구현 경로, 참조 담당 문서 | [아키텍처 설계](design/README.md) |
 
-## 결정 경로
+## 설계 참조 경로
 
-집중 결정의 결과와 비목표는 결정 기록에 있습니다.
+집중 구현 관심사에는 현재 설계 참조가 있습니다.
 
-| 경계 | 집중 결정 |
+| 경계 | 설계 참조 |
 |---|---|
-| Agent Connection, 호스트 처리 경로, 명시적 Connection Project 멤버십 | [Agent Connection과 호스트 라우팅](decisions/agent-connection-routing.md) |
-| Core가 MCP와 CLI 어댑터에서 독립적임 | [Core와 어댑터 의존 경계](decisions/core-adapter-boundary.md) |
-| 정상 커밋된 Store 변이 전 메서드 계획 | [원자적 변이 커밋 전 계획](decisions/plan-and-atomic-commit.md) |
-| 런타임 데이터와 제품 파일 분리 | [Runtime Home과 Product Repository 분리](decisions/runtime-home-and-product-repository.md) |
+| Agent Connection, 호스트 처리 경로, 명시적 Connection Project 멤버십 | [Agent Connection과 호스트 라우팅](design/agent-connection-routing.md) |
+| Core가 MCP와 CLI 어댑터에서 독립적임 | [Core와 어댑터 의존 경계](design/core-adapter-boundary.md) |
+| 정상 커밋된 Store 변이 전 메서드 계획 | [원자적 변이 커밋 전 계획](design/plan-and-atomic-commit.md) |
+| 런타임 데이터와 제품 파일 분리 | [Runtime Home과 Product Repository 분리](design/runtime-home-and-product-repository.md) |
