@@ -17,9 +17,9 @@ fn main() -> ExitCode {
                     ExitCode::SUCCESS
                 }
                 Ok(report) => {
-                    eprintln!("docs-check failed with {} error(s):", report.errors().len());
-                    for error in report.errors() {
-                        eprintln!("- {error}");
+                    eprintln!("docs-check failed with {} issue(s):", report.issues().len());
+                    for issue in report.issues() {
+                        eprintln!("- {issue}");
                     }
                     ExitCode::from(1)
                 }

@@ -14,7 +14,7 @@ This document owns baseline method behavior for `volicord.record_run`:
 
 This document does not own:
 
-- common request envelope, response branch, dry-run, or rejected-response schema bodies
+- common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - nested state, artifact, value-set, or error schema definitions
 - Core evidence meaning, Core authority semantics, storage DDL, storage record layouts, exact storage effects, artifact lifecycle, or security guarantees
 - public error code meaning, public error precedence, machine-readable error details, or shared response-branch routing
@@ -57,7 +57,7 @@ any attachment link or promotion according to the evidence rules below.
 
 ## Required inputs
 
-- A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
+- A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id`, `change_unit_id`, `kind`, `run_id`, `baseline_ref`, `write_ticket_id`, `summary`, `observed_changes`, `artifact_inputs`, `evidence_updates`, `evidence_observations`, and `close_assessment`.
 - Optional `performed_operation`. Omission is equivalent to `null`. Every
   effective `sensitive` non-product Run must supply a non-empty value that
@@ -72,7 +72,7 @@ any attachment link or promotion according to the evidence rules below.
   or `EvidenceCoverageUpdate.provenance` from which Core can create an evidence
   observation. Request-side `source_kind` and `assurance_level` select a claimed
   provenance pair; Core derives the committed pair from verified anchors.
-- Acceptance-criterion targets must identify a current criterion for this Task.
+- Acceptance-criterion targets must identify a current criterion for this `Task`.
   Supplemental targets use a caller-assigned Task-scoped `EvidenceClaimId`; its
   statement becomes immutable on first committed use. A required criterion
   rejects `coverage_state=not_applicable`.
@@ -148,7 +148,7 @@ Path and access notes:
   observations. They support Evidence only when this method links them to
   target-scoped evidence or observations; their presence in the request is not
   evidence sufficiency.
-- `EvidenceObservationInput.source_refs` and `EvidenceUpdateProvenance.source_refs` preserve structurally validated, non-authoritative provenance. Core performs no file read, Git resolution, command execution, URI fetch, or message lookup for these refs. Optional command or Git-diff artifact refs must canonicalize to an existing artifact owned by this project and Task. Source refs never establish evidence sufficiency or close authority.
+- `EvidenceObservationInput.source_refs` and `EvidenceUpdateProvenance.source_refs` preserve structurally validated, non-authoritative provenance. Core performs no file read, Git resolution, command execution, URI fetch, or message lookup for these refs. Optional command or Git-diff artifact refs must canonicalize to an existing artifact owned by this project and `Task`. Source refs never establish evidence sufficiency or close authority.
 - `EvidenceObservationInput.observed_by_actor_source` is not authoritative input.
   Core derives the committed observer from the validated producer record when
   one exists and otherwise from the verified invocation context.
@@ -234,7 +234,7 @@ Evidence update provenance rules:
   `created_by_run_ref.produced_at_state_version`; that field is projection
   freshness only and grants neither authority nor concurrency. No other typed
   field may be ignored, rebased, or substituted. A duplicate or mismatch
-  rejects the request before commit; dry-run performs the same validation and
+  rejects the request before commit; `dry_run` performs the same validation and
   neither branch records strong provenance or another effect.
 - For non-supported states, current target-matching cooperative or unverified
   observation refs may be retained as descriptive support; the strong-reuse
@@ -289,11 +289,13 @@ Non-claims:
 
 ## State version behavior
 
+Exact identifiers used in this section: `light`.
+
 A compatible committed result increments `project_state.state_version` exactly once.
 
 A compatible committed result increments the selected `Task.close_basis_revision` exactly once. When `close_assessment` is non-null, the commit establishes a new `CurrentCloseBasis` from the committed current Run, the assessment fields, generated residual-risk IDs, current Task, current Change Unit, selected current scope revision, and compatible baseline. When `close_assessment=null`, the committed Run explicitly does not establish a current close basis, and any existing current close basis becomes stale or absent.
 
-An empty `close_assessment.residual_risks` list explicitly means the current result has no identified residual risks. Core generates opaque `risk_id` values only for committed non-null assessments. A dry-run never reserves persistent `risk_id` values.
+An empty `close_assessment.residual_risks` list explicitly means the current result has no identified residual risks. Core generates opaque `risk_id` values only for committed non-null assessments. A `dry_run` never reserves persistent `risk_id` values.
 
 Sensitive action requirements in the resulting `CurrentCloseBasis` are derived by Core from the committed Run and any consumed write ticket. Category-only caller input in `close_assessment.sensitive_categories` can contribute display context but cannot establish, satisfy, or erase a sensitive approval requirement.
 
@@ -880,7 +882,7 @@ state:
 
 ## Owner links
 
-- Request envelope, response branches, and dry-run summaries: [API Schema Core](schema-core.md).
+- Request envelope, response branches, and `dry_run` summaries: [API Schema Core](schema-core.md).
 - `RunSummary`, `EvidenceSummary`, `EvidenceCoverageItem`, `EvidenceObservation`, `CurrentCloseBasis`, `ResidualRisk`, `StateSummary`, and refs: [API State Schemas](schema-state.md).
 - `ArtifactInput`, `StagedArtifactHandle`, and `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md).
 - Write-ticket and close-relevant evidence boundaries: [Core Model](../core-model.md).

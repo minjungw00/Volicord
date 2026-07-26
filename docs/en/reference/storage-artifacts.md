@@ -120,7 +120,7 @@ Meaning:
 Conditions:
 
 - Authority-bearing use combines this storage check with the consuming owner
-  method's project, Task, owner-relation, redaction, availability, and
+  method's project, `Task`, owner-relation, redaction, availability, and
   invocation checks.
 
 Owner boundary:
@@ -265,7 +265,7 @@ Required conditions:
 - `artifact_staging.status=staged`.
 - The handle is unexpired.
 - The handle belongs to the same project.
-- The handle belongs to the same Task.
+- The handle belongs to the same `Task`.
 - The current verified `actor_source` matches `created_by_actor_source`.
 
 Not allowed:
@@ -307,7 +307,7 @@ Required conditions:
 - integrity facts
 - redaction state
 - same-project identity
-- allowed Task scope
+- allowed `Task` scope
 
 Allowed:
 
@@ -338,7 +338,7 @@ Artifact byte integrity is also separate from evidence producer provenance and
 claim relevance. Staging or registering caller-supplied bytes never proves that
 an external tool produced them. An `available` / `verified` artifact may remain
 part of a cooperative agent report; Strong evidence additionally requires an
-authority-owned producer anchor, exact output binding, current Task/scope/
+authority-owned producer anchor, exact output binding, current `Task`/scope/
 baseline and target, and a supported relevance assessment.
 
 Before an existing artifact or inherited output can carry authority, the
@@ -482,7 +482,7 @@ artifact. This verification is separate from staged artifact promotion.
 Authority-bearing artifact use requires:
 
 - a registered persistent artifact record
-- a matching same-project Task and required `artifact_links` owner relation,
+- a matching same-project `Task` and required `artifact_links` owner relation,
   checked by the consuming owner method
 - a safe artifact-store-relative `body_path` whose resolved target remains
   inside the artifact store, including after resolving symlinks
@@ -497,6 +497,8 @@ Not allowed:
   artifact-body read capability.
 
 ## Validation and failures
+
+Exact identifiers used in this section: `Task`.
 
 Rejected staged-handle inputs remain artifact validation failures. They must not be hidden as evidence sufficiency, invocation-context mismatch, capability insufficiency, or method success.
 

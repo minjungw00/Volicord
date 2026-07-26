@@ -30,7 +30,7 @@ Adjacent owners:
 |---|---|---|
 | Rejected response | `ToolRejectedResponse.errors[]` | [Rejected response](#error-vs-blocker-rejected-response) |
 | Blocked result | method-specific result fields | [Blocked result](#error-vs-blocker-blocked-result) |
-| Dry-run preview | `ToolDryRunResponse` | [Dry-run preview](#error-vs-blocker-dry-run-preview) |
+| `dry_run` preview | `ToolDryRunResponse` | [Dry-run preview](#error-vs-blocker-dry-run-preview) |
 
 <a id="error-vs-blocker-rejected-response"></a>
 Rejected response:
@@ -110,7 +110,7 @@ Result boundary:
 
 Condition:
 - Core, MCP, invocation context, `actor_source`/`operation_category`
-  compatibility, state lookup, Task identity, persisted owner-data validation,
+  compatibility, state lookup, `Task` identity, persisted owner-data validation,
   exact-contract selection, or another required precondition fails before
   commit.
 
@@ -261,7 +261,7 @@ State effect:
 - The dry-run preview is not a committed write.
 
 <a id="dry-run-expected-blockers"></a>
-### Expected blockers in dry-run preview
+### Expected blockers in `dry_run` preview
 
 Condition:
 - A valid dry-run preview has expected blockers.

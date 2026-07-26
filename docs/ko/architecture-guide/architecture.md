@@ -163,6 +163,8 @@ runtime/project session을 검증하고 typed `ValidatedAgentSession`을 Core에
 
 ### Activation-state 소유권
 
+이 절에서 사용하는 정확한 식별자: `checks`.
+
 Activation은 기존 경계를 가로지르는 typed projection 하나입니다.
 
 ```text

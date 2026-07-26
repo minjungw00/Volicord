@@ -58,6 +58,8 @@ matrix.
 
 ## Required Boundary Coverage
 
+Exact identifiers used in this section: `state_version`.
+
 Durable tests should cover, as applicable:
 
 - unknown members, duplicate keys, malformed closed values, and corrupt stored
@@ -225,6 +227,8 @@ Durable tests should cover, as applicable:
   arguments containing spaces, and explicit environment addition/removal.
 
 ## Runtime Home Mutation-Admission Regressions
+
+Exact identifiers used in this section: `state_version`.
 
 Mutation-admission tests compose the behavior owned by
 [Runtime Boundaries](../reference/runtime-boundaries.md), the focused Store

@@ -69,6 +69,8 @@ flags cannot be used together. Exact output and exit behavior belong to
 
 ## Review Managed Changes
 
+Exact identifiers used in this section: `read_only`.
+
 Before accepting setup, review the structured result and every managed file.
 Project-owned configuration may include `.codex/config.toml`,
 `.volicord/policy.json`, and a Volicord-managed `AGENTS.md` block. Setup must
@@ -82,8 +84,8 @@ volicord connection add codex --repo "<repo>" --read-only --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
 ```
 
-Default dry-run output groups planned changes by ownership kind. Add
-`--verbose` to inspect each exact operation and target before applying it.
+Default dry-run output groups planned changes by ownership `kind`. Add
+`--verbose` to inspect each exact `operation` and target before applying it.
 
 On a matching current Connection, ordinary add and add with `--read-only`
 against an already read-only Connection are replay or repair operations. An

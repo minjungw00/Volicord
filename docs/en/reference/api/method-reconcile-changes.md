@@ -7,7 +7,7 @@
 This document owns baseline method behavior for `volicord.reconcile_changes`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
-- listing unresolved Unrecorded Changes for the current project and Task
+- listing unresolved Unrecorded Changes for the current project and `Task`
 - resolving Unrecorded Changes that Core can verify deterministically
 - creating pending user-owned actions when an Unrecorded Change requires user acceptance
 - rejecting agent-only dismissal of unresolved Unrecorded Changes
@@ -16,7 +16,7 @@ This document owns baseline method behavior for `volicord.reconcile_changes`:
 
 This document does not own:
 
-- common request envelope, response branch, dry-run, or rejected-response schema bodies
+- common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - `UserActionRequest`, `UserActionResolution`, `StateRecordRef`, `CloseReadinessBlocker`, or `NextActionSummary` field definitions
 - storage table layout, SQLite constraints, public error code meaning, public error precedence, or shared response-branch routing
 - proof of correctness, test sufficiency, review completion, final acceptance, residual-risk acceptance, or security guarantees
@@ -25,7 +25,7 @@ This document does not own:
 
 `volicord.reconcile_changes` is the public recovery path for persisted Unrecorded Changes.
 
-For the selected Task, the method:
+For the selected `Task`, the method:
 
 - lists unresolved Unrecorded Changes
 - resolves changes that Core can verify from stored Core, Run, expected-write, or write-ticket records
@@ -45,8 +45,8 @@ remove a blocker.
 
 ## Required inputs
 
-- A valid `ToolEnvelope`; committed non-dry-run requests that mutate state require non-null `idempotency_key` and current `expected_state_version`.
-- `task_id` for the Task whose unresolved Unrecorded Changes are being reconciled.
+- A valid `ToolEnvelope`; committed `dry_run=false` requests that mutate state require non-null `idempotency_key` and current `expected_state_version`.
+- `task_id` for the `Task` whose unresolved Unrecorded Changes are being reconciled.
 - Optional `resolution_requests` entries when the caller wants to point Core at a resolved user action for `accepted_by_user`.
 
 Core also scans the current project and Task for unresolved Unrecorded Changes. Callers do not provide observed paths, detection facts, actor provenance, deterministic proof, or close-blocker state.
@@ -71,7 +71,7 @@ Request field notes:
 
 - `resolution_requests` may be omitted and defaults to `[]`.
 - `user_action_resolution_id` may be omitted or set to `null`; both forms mean that no user-action resolution was supplied for that entry.
-- `basis=accepted_by_user` requires `user_action_resolution_id` for an existing resolved, current, same-Task `product_decision` user action linked to the unrecorded-change ref, recorded through a compatible User Channel with `actor_source=local_user`, `machine_action=accept`, and `resolution_outcome=accepted`.
+- `basis=accepted_by_user` requires `user_action_resolution_id` for an existing resolved, current `product_decision` user action for the same `Task`, linked to the unrecorded-change ref and recorded through a compatible User Channel with `actor_source=local_user`, `machine_action=accept`, and `resolution_outcome=accepted`.
 - Caller-supplied `reverted`, `covered_by_write_ticket`, `recorded_as_expected_write`, `not_product_change`, `superseded_by_new_observation`, or `invalid_observation` requests reject as agent-supplied system resolution bases. Core may still apply those bases itself when it can verify them deterministically.
 
 Nested owner links:
@@ -85,14 +85,14 @@ Nested owner links:
 The method requires:
 
 - verified invocation context with `operation_category=agent_workflow` for Agent Connection workflow calls or `operation_category=local_recovery` for local-user recovery calls
-- a compatible same-project Task selected by `task_id`
+- a compatible same-project `Task` selected by `task_id`
 - a workflow-capable Agent Connection when called through MCP
 
 Local administrative recovery commands may call the same Core method with `actor_source=local_user` and `operation_category=local_recovery`. That CLI path is not an MCP Agent Connection path and does not let the CLI impersonate a user-action resolution. User-owned acceptance still requires a compatible resolved User Channel action before `accepted_by_user` can resolve the Unrecorded Change.
 
 ## State version behavior
 
-A committed non-dry-run result that has planned storage effects:
+A committed `dry_run=false` result that has planned storage effects:
 
 - increments `project_state.state_version` exactly once
 - resolves one or more `unrecorded_changes` rows and stores resolution basis, capture basis, actor source, timestamp, and optional linked user-action resolution ref
@@ -133,7 +133,7 @@ Returns `ReconcileChangesResult` with:
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure`, is owned by [API Schema Core](schema-core.md#common-response). `ReconcileChangesResult` uses `base.disclosure.guarantee_class=authority_record`. |
 | `summary_card` | `SummaryCard` for the selected reconciliation result. It summarizes recording, changes, pending user action, close status, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
-| `task_ref` | `StateRecordRef` for the reconciled Task. |
+| `task_ref` | `StateRecordRef` for the reconciled `Task`. |
 | `unresolved_changes` | Remaining unresolved `UnrecordedChangeFinding` records after applying deterministic and accepted-user resolutions selected by this call. |
 | `resolved_changes` | Unrecorded Changes that this call resolved, including basis, actor source, capture basis, timestamp, and optional linked user-action resolution. |
 | `pending_user_action_summaries` | Exact three-field `AgentSafeUserActionRequestSummary[]` relevant to the Task after this call, including requests created for unresolved Unrecorded Changes. The result does not return a request ref, body, question, form, capture path, command, URL, or credential. |
@@ -150,8 +150,8 @@ Core-owned deterministic bases:
 
 - `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
 - `not_product_change`: stored observation data contains no Product Repository path to reconcile.
-- `recorded_as_expected_write`: a recorded Run for the same Task already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers those paths.
-- `covered_by_write_ticket`: one compatible consumed write ticket or one current active, unconsumed, state-bound valid write ticket for the same Task deterministically covers the observed Product Repository paths. Optional idle-timeout validity is checked when configured; there is no fixed ticket lifetime.
+- `recorded_as_expected_write`: a recorded Run for the same `Task` already covers the observed Product Repository paths, or deterministic expected-write correlation for the same Task covers those paths.
+- `covered_by_write_ticket`: one compatible consumed write ticket or one current `active`, unconsumed, state-bound valid write ticket for the same Task deterministically covers the observed Product Repository paths. Optional idle-timeout validity is checked when configured; there is no fixed ticket lifetime.
 
 User-owned basis:
 
@@ -176,7 +176,7 @@ Core does not resolve ambiguous or unauthorized Product Repository changes throu
 Returns `ToolRejectedResponse` for pre-commit failures such as:
 
 - invalid request shape
-- missing or incompatible Task identity
+- missing or incompatible `Task` identity
 - actor-source or operation-category mismatch
 - unsupported invocation context
 - stale `expected_state_version`

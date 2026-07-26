@@ -162,7 +162,7 @@ Label-selection input:
 - `NO_ACTIVE_TASK`.
 
 Suggested label:
-- no current Task
+- no current `Task`
 
 Recovery cue:
 - Select or create a Task before a Task-scoped action.
@@ -342,7 +342,7 @@ files.
 
 ### Must not imply
 
-- The card creates write tickets, records evidence, accepts risk, or closes the Task.
+- The card creates write tickets, records evidence, accepts risk, or closes the `Task`.
 - A green or positive label is a canonical enum value without support from [API Value Sets](api/schema-value-sets.md).
 - Artifact availability alone proves evidence sufficiency.
 - Missing source data can be replaced by optimistic wording.
@@ -435,7 +435,7 @@ Avoid pressure wording such as `obviously`, `just approve`, or `I can decide thi
 
 ### Input state
 
-- Run and evidence owner records for the current Task or Change Unit.
+- Run and evidence owner records for the current `Task` or Change Unit.
 - Evidence coverage items and required/optional/not-applicable status.
 - Supporting run refs, supporting `ArtifactRef` links, blockers, and validator results when present.
 - Freshness cues.
@@ -508,7 +508,7 @@ Otherwise, avoid those words.
 
 ### Must not imply
 
-- A close check closed the Task.
+- A close check closed the `Task`.
 - A `ready` label closes the Task or removes blockers.
 - Broad approval substitutes for final acceptance or residual-risk acceptance.
 - The body may hide blockers inside successful-looking prose.

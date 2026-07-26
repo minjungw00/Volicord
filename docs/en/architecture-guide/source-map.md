@@ -191,12 +191,28 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-command-model` supplies the public command grammar for documentation examples and `volicord-mcp-protocol` supplies production profiles for pinned specification parity, without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
-| `xtask/src/lib.rs` | Repository checks, including shell-token extraction and validation of documented public `volicord` invocations through `volicord-command-model`. |
+| `xtask/src/lib.rs` | Thin repository-check orchestration and public report re-exports. |
+| `xtask/src/diagnostics.rs` | Shared path, category, optional line, and message representation for validation issues. |
+| `xtask/src/doc_index.rs` | Current documentation-index schema, applicability-source resolution, owner routing, indexed paths, and maintained-document coverage. |
+| `xtask/src/markdown.rs` | Shared Markdown event parsing and catalog-driven exact-identifier meaning units. |
+| `xtask/src/links.rs` | Local Markdown target resolution, links, fragments, and anchors. |
+| `xtask/src/parity.rs` | English/Korean heading structure and terminology-driven exact-identifier parity. |
+| `xtask/src/terminology.rs` | Terminology-map paths, roles, and exact-identifier catalog construction. |
+| `xtask/src/cli_docs.rs` | Generated Administrative CLI regions and documented invocation validation through `volicord-command-model`; shell tokenization is not a second command grammar. |
+| `xtask/src/document_structure.rs` | Current surface-stability and operation-category document structure. |
+| `xtask/src/workspace_manifests.rs` | Shared workspace-manifest parsing and current package, Rust, and dependency metadata. |
+| `xtask/src/architecture.rs` | Informational maintainability reporting and maintenance-tool dependency-boundary validation. |
+| `xtask/src/release_metadata.rs` | Workspace release-version inheritance and release-tag validation. |
+| `xtask/src/storage.rs` | Canonical Storage DDL documentation validation. |
+| `xtask/src/hygiene.rs` | Public-language claims and maintained-document wording hygiene. |
+| `xtask/src/repository.rs` | Shared repository path normalization used by focused validators. |
 | `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
 | `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
 | `xtask/src/mcp_spec/validation.rs` | Offline metadata, immutable-pin, checksum, artifact, schema, ordering, and registry-parity validation. |
 | `xtask/src/mcp_spec/report.rs` | Deterministic check and synchronization report types. |
 | `xtask/src/mcp_spec/sync.rs` | The sole networked MCP specification path, using a verified temporary candidate before replacement. |
+| `xtask/tests/docs_check.rs` | Shared neutral fixture construction and current documentation-check test composition. |
+| `xtask/tests/docs_check/*.rs` | Focused current-schema, link, structure, terminology, hygiene, CLI, and architecture tests grouped with their owning validators. |
 | `xtask/tests/mcp_spec.rs` | Strict manifest parsing, classification, parity failures, immutable-pin, checksum, required-artifact, ordering, reporting, and offline-success coverage. |
 
 Update this map when a durable responsibility moves. Do not list removed,

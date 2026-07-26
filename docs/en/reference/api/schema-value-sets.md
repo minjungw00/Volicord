@@ -4,6 +4,8 @@ This document owns supported API value sets and enum-like public values for the 
 
 ## Owns / does not own
 
+Exact identifiers used in this section: `operation_category`.
+
 This document owns:
 
 - supported public method-name values
@@ -46,7 +48,7 @@ Only values listed as supported in this document are supported API values.
 | Value family | Start here |
 |---|---|
 | Methods, actor provenance, next actions, response branches, failure categories, and operation categories | [Method name values](#method-name-values), [Actor source values](#actor-source-values), [Next-action values](#next-action-values), [Response and effect values](#response-and-effect-values), [Failure category values](#failure-category-values), and [Operation category values](#operation-category-values) |
-| Record references, project continuity, and Task lifecycle | [Record and reference values](#record-and-reference-values), [Project continuity values](#project-continuity-values), and [Task lifecycle values](#task-lifecycle-values) |
+| Record references, project continuity, and `Task` lifecycle | [Record and reference values](#record-and-reference-values), [Project continuity values](#project-continuity-values), and [Task lifecycle values](#task-lifecycle-values) |
 | Method-specific request and result values | [Method-local values](#method-local-values) |
 | Observation health, evidence state, and blocker categories | [State and blocker values](#state-and-blocker-values) |
 | Evidence provenance and assurance | [Evidence observation values](#evidence-observation-values) |
@@ -74,7 +76,7 @@ volicord.reconcile_changes
 volicord.close_task
 ```
 
-Method behavior is owned by method owner documents routed from [API Methods](methods.md). Method names are not Task lifecycle values.
+Method behavior is owned by method owner documents routed from [API Methods](methods.md). Method names are not `Task` lifecycle values.
 
 <a id="actor-source-values"></a>
 <a id="actor-values"></a>
@@ -175,6 +177,8 @@ Public `ErrorCode` values are separate and are owned by [API error codes](error-
 <a id="operation-category-values"></a>
 ## Operation category values
 
+Exact identifiers used in this section: `operation_category`.
+
 Method-owned API compatibility checks use exactly one request-level operation category per public API request:
 
 | Value | Vocabulary note |
@@ -235,7 +239,7 @@ superseded
 closed
 ```
 
-These values classify durable project-level context. They do not by themselves create current Task authority, satisfy pending user actions, prove evidence, grant write-ticket authority, satisfy close readiness, or accept residual risk for a future close basis.
+These values classify durable project-level context. They do not by themselves create current `Task` authority, satisfy pending user actions, prove evidence, grant write-ticket authority, satisfy close readiness, or accept residual risk for a future close basis.
 
 <a id="task-lifecycle-values"></a>
 ## Task lifecycle values
@@ -419,7 +423,7 @@ replace_current
 ```
 
 Value meanings:
-- `keep_current` updates scope-related Task fields without changing the current Change Unit.
+- `keep_current` updates scope-related `Task` fields without changing the current Change Unit.
 - `create_current` creates the current Change Unit when there is no suitable current Change Unit.
 - `replace_current` replaces the current Change Unit with a new work boundary.
 
@@ -766,7 +770,7 @@ Assurance-level meanings:
 
 Core downgrades a requested strong pair without its required anchor to
 `agent_report` / `cooperative_report`. For `reused_evidence`, Core revalidates
-the original identity, target, Task and Change Unit, source Run, scope revision,
+the original identity, target, `Task` and Change Unit, source Run, scope revision,
 baseline, inherited assurance, exact outputs, producer anchor, and relevance
 assessment at every recursive hop. These values do not
 grant user authority, satisfy final acceptance or residual-risk acceptance,
@@ -1034,7 +1038,7 @@ Resolution outcome meaning:
 - Absence of a machine-readable outcome must never be interpreted as `accepted`.
 
 Pending-action relevance:
-- A pending choice action blocks an operation only when its current `required_for` target includes that operation, its `judgment_kind` is relevant to that operation, and its Task, Change Unit, affected refs, and basis are compatible.
+- A pending choice action blocks an operation only when its current `required_for` target includes that operation, its `judgment_kind` is relevant to that operation, and its `Task`, Change Unit, affected refs, and basis are compatible.
 - For sensitive approval, the pending question is relevant only when its sensitive-action scope overlaps the current sensitive action requirement.
 - `informational` actions are audit or display context and do not block write, run, or close operations by themselves.
 

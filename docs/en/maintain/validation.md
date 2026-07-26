@@ -28,13 +28,18 @@ read-only and verifies the machine-checkable shape:
 - `docs/doc-index.yaml` parses as YAML and has `version: 3`.
 - Required top-level sections are present and unsupported top-level fields are
   rejected.
-- The `owner_areas` catalog and `applicability` catalog use stable identifiers
-  with string descriptions. Exactly one applicability entry uses
-  `version_source: workspace_package` to mark the current workspace package
-  version description.
-- The root `Cargo.toml` parses as TOML, its `[workspace.package].version` is a
-  string, and the marked applicability description identifies that same
-  version. Historical release references elsewhere are not compared.
+- The `owner_areas` catalog uses stable identifiers with string descriptions.
+  Applicability keys use lowercase semantic words separated by underscores and
+  contain no embedded version numbers.
+- Every applicability entry declares one supported `version_source`.
+  `docs-check` reads current workspace package and Rust values from the root
+  `Cargo.toml`, MCP production revisions from `ProtocolRegistry`, and metadata
+  schema values from `docs/doc-index.yaml` or `docs/terminology-map.yaml`.
+- `default_applicability` is a non-empty duplicate-free list whose values
+  resolve to the applicability catalog.
+- `entry_schema` declares exactly the current applicability descriptions,
+  required shared and paired fields, optional fields, maintenance fields,
+  document kinds, reader journeys, normative levels, and translation policy.
 - Every shared entry uses only `doc_id`, `path`, `kind`, `summary`,
   `normative_level`, `owner_area`, `created_on`, `last_updated_on`,
   `last_verified_on`, `applies_to`, `primary_audience`, `journeys`,
@@ -43,10 +48,11 @@ read-only and verifies the machine-checkable shape:
   `summary`, `normative_level`, `translation_policy`, `owner_area`,
   `created_on`, `last_updated_on`, `last_verified_on`, `applies_to`,
   `primary_audience`, `journeys`, `canonical_for`, and `depends_on`.
-- Required fields are present for each shared or paired entry.
+- Required fields are present for each shared or paired entry; `applies_to` is
+  optional.
 - `owner_area` resolves to the top-level owner-area catalog.
-- `applies_to` is a non-empty duplicate-free list and every value resolves to
-  the top-level applicability catalog.
+- When present, `applies_to` is a non-empty duplicate-free list of additional
+  catalog values and does not repeat a root default.
 - `created_on`, `last_updated_on`, and `last_verified_on` use valid
   `YYYY-MM-DD` calendar dates ordered as
   `created_on <= last_updated_on <= last_verified_on`.
@@ -68,6 +74,10 @@ read-only and verifies the machine-checkable shape:
 - If `README.ko.md` exists, it must be indexed with `README.md` as the root
   README pair; missing indexed root README paths are reported by the normal
   path-existence rules.
+- Paired documents preserve the same heading-level sequence.
+- Code literals identified by `docs/terminology-map.yaml` remain present in
+  corresponding headings or section meaning units. The check compares only
+  catalog-driven exact identifiers found in inline or fenced code.
 - Existing-file and duplicate-path rules apply to the root README pair in the
   same way they apply to other indexed paths.
 - Relative links resolve to existing files.
@@ -153,11 +163,11 @@ Architecture Guide documents describe durable crates, modules, entry points, exe
 stages, and responsibility boundaries without turning implementation detail into
 product contract text.
 
-The automated `docs-check` command includes local documentation-link parity for
-maintained English/Korean pairs, but it does not perform semantic bilingual
-review, contract-owner review, technical-accuracy review, translation judgment,
-API example consistency review, or product meaning review. A passing local-link
-parity check only confirms the machine-comparable local reader routes. The
+The automated `docs-check` command includes local documentation-link parity,
+heading-level structure parity, and terminology-driven exact-identifier parity
+for maintained English/Korean pairs. It does not perform full semantic
+bilingual review, contract-owner review, technical-accuracy review, translation
+judgment, API example consistency review, or product meaning review. The
 remaining checks stay manual and owner-routed.
 
 ## Durable Tests
@@ -311,6 +321,8 @@ clearly calls for them, and report the reason.
 
 ## Generated Reference And Contract Drift Checks
 
+Exact identifiers used in this section: `read_only`.
+
 Generated or source-derived reference surfaces use stable check commands:
 
 - `cargo run -p xtask -- docs-sync` deterministically replaces only the marked
@@ -318,12 +330,13 @@ Generated or source-derived reference surfaces use stable check commands:
   after changing the command model and review the generated diff.
 - `cargo run -p xtask -- docs-check` checks maintained documentation structure,
   generated/source-derived documentation surfaces, executable `volicord`
-  command examples, terminology metadata owner paths and roles, and canonical
-  Storage DDL SQL blocks against `crates/volicord-store/src/schema/registry.sql`
-  and `crates/volicord-store/src/schema/project.sql`.
+  command examples, bilingual link/heading/exact-identifier parity, terminology
+  metadata owner paths and roles, and canonical Storage DDL SQL blocks against
+  `crates/volicord-store/src/schema/registry.sql` and
+  `crates/volicord-store/src/schema/project.sql`.
 - `cargo test -p volicord-integration-tests --test public_contract_snapshots`
   checks generated public contract snapshots for API request schema projections
-  and MCP workflow/read-only tool projections against their Rust sources.
+  and MCP `workflow`/read-only tool projections against their Rust sources.
 - To regenerate those public contract snapshots after an intentional source
   change, run
   `VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots`

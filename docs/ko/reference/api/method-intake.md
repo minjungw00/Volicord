@@ -290,6 +290,8 @@ params:
 
 ## 대표 응답
 
+이 절에서 사용하는 정확한 식별자: `Change Unit`, `applied`.
+
 축약한 결과 분기(`IntakeResult`, 커밋됨):
 
 ```yaml

@@ -273,6 +273,8 @@ params:
 
 ## 대표 응답
 
+이 절에서 사용하는 정확한 식별자: `applied`.
+
 축약한 결과 분기(`StatusResult`, 읽기 전용):
 
 ```yaml

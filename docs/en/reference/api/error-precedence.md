@@ -8,7 +8,7 @@ Use it to choose the primary public code for an error-bearing branch. Use adjace
 
 Owned here:
 
-- The canonical decision flow that distinguishes transport or adapter failures, Core rejected responses, dry-run previews, method-owned blocked results, and committed blocker-shaped results.
+- The canonical decision flow that distinguishes transport or adapter failures, Core rejected responses, `dry_run` previews, method-owned blocked results, and committed blocker-shaped results.
 - The primary `errors[0]` selection order for error-bearing branches.
 - The result-side and blocker-code path boundary for `STATE_VERSION_CONFLICT`.
 - Public stale `expected_state_version`, idempotency request-hash conflict, and state-bound write-ticket invalidation behavior.
@@ -31,6 +31,8 @@ Adjacent owners:
 <a id="canonical-error-blocker-decision-flow"></a>
 
 ## Canonical error/blocker decision flow
+
+Exact identifiers used in this section: `Task`.
 
 Use this flow before applying [primary error-code precedence](#primary-error-code-precedence). It chooses the response family first. The precedence table below applies only after a call has become a Volicord rejected response with `ToolRejectedResponse.errors[]`.
 
@@ -127,7 +129,7 @@ Conflict routing boundary:
 |---|---|---|
 | Conflict selection | Select `STATE_VERSION_CONFLICT` for the conflict cases below. | Public code meanings: [API error codes](error-codes.md). |
 | Response path | Use `ToolRejectedResponse.errors[]` for these conflicts. | Response branch routing: [API error routing](error-routing.md). |
-| Result, blocker, and close-readiness boundary paths | Do not use `STATE_VERSION_CONFLICT` as a blocker code, dry-run preview, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`. | Boundary routing: [API blocker routing](blocker-routing.md). Method behavior: [`volicord.close_task`](method-close-task.md). |
+| Result, blocker, and close-readiness boundary paths | Do not use `STATE_VERSION_CONFLICT` as a blocker code, `dry_run` preview, `MethodResult.decision`, `WriteDecisionReason.code`, `CloseReadinessBlocker.code`, or `PlannedBlocker.code`. | Boundary routing: [API blocker routing](blocker-routing.md). Method behavior: [`volicord.close_task`](method-close-task.md). |
 | Detail fields | Use the state-conflict detail-field family for these conflicts. | Machine-readable fields: [API error details](error-details.md#state-conflict-detail-fields). |
 
 <a id="state-conflict-expected-state-version"></a>

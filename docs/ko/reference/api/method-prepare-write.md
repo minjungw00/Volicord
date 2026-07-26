@@ -370,6 +370,8 @@ params:
 
 ### 허용 분기
 
+이 절에서 사용하는 정확한 식별자: `record`.
+
 별도의 민감 동작 승인이 이미 있을 때 적용되는 분기입니다.
 
 `uj_sensitive_pref_001`은 사용자가 `resolution_outcome=accepted`로 해결했고 프로필 환경설정 갱신에 맞는 `SensitiveActionScope`를 가진 현재 `judgment_kind=sensitive_approval`을 나타냅니다. 이는 일반 쓰기 승인, 최종 수락, 잔여 위험 수락, 쓰기 티켓이 아닙니다.
@@ -550,6 +552,8 @@ guarantee_display:
 ```
 
 ### 승인 필요 분기
+
+이 절에서 사용하는 정확한 식별자: `record`, `sensitive`.
 
 대응하는 민감 동작 승인이 없을 때 적용되는 분기입니다.
 

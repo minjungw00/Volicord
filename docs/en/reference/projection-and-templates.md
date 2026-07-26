@@ -46,7 +46,7 @@ A rendered label, status badge, Markdown section, projection, template body, cha
 - create final acceptance or accept residual risk
 - create close readiness or remove a `CloseReadinessBlocker`
 - create, retire, or re-authorize a project continuity record
-- close a Task
+- close a `Task`
 - mutate Core, storage, artifact, user-judgment, acceptance decisions, residual-risk decisions, or close-readiness state
 
 If an owner record exists for one of those outcomes, a view may show or link to

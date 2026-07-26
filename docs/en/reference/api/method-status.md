@@ -14,7 +14,7 @@ This document owns baseline method behavior for `volicord.status`:
 
 This document does not own:
 
-- common request envelope, response branch, dry-run, or rejected-response schema bodies
+- common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - nested state, artifact, judgment, value-set, or error schema definitions
 - storage DDL, storage record layouts, exact storage effects, artifact lifecycle, security guarantees, or Core authority semantics
 - public error code meaning, public error precedence, or shared response-branch routing
@@ -23,7 +23,7 @@ This document does not own:
 
 `volicord.status` returns a current-position view over Core state. Callers can select:
 
-- the current Task and Change Unit
+- the current `Task` and Change Unit
 - blockers, pending user actions, available User Channel resolution paths, and write-ticket state
 - evidence and close-readiness observations
 - project continuity, guarantee display, and next safe actions
@@ -91,6 +91,8 @@ or consume a write ticket. `WriteTicket.basis_state_version` is audit ordering
 metadata, not a validity coordinate.
 
 ## Success result
+
+Exact identifiers used in this section: `suspected`.
 
 Returns `StatusResult` with:
 
@@ -180,13 +182,15 @@ Truthful projection rules:
 
 ## Method result fields
 
+Exact identifiers used in this section: `Task`.
+
 `StatusResult` is the method-specific result branch for a successful status read. It carries `base: ToolResultBase` and these method-owned top-level fields:
 
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape is owned by [API Schema Core](schema-core.md#common-response). Read-only status results use `events: []` and an authority-record disclosure; `EventRef.event_kind`, when present in a common response branch, remains an opaque illustrative classification string. |
 | `summary_card` | `SummaryCard` for the selected status view. Its evidence display copies `evidence_gate.state` when evidence or close details are selected. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
-| `active_task` | `StateSummary | null` for the currently selected Task summary. |
+| `active_task` | `StateSummary | null` for the currently selected `Task` summary. |
 | `status_summary` | Free-form display string summarizing the current status view. When close-readiness is selected, it may summarize the current close-readiness state or the first close blocker code; the structured authority facts remain in the other result fields. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. A non-empty list has exactly one `presentation_role=primary`; `summary_card.next_action` selects that action rather than relying on array position. |
 | `pending_user_action_summaries` | `AgentSafeUserActionRequestSummary[]` containing only request ID, `status=pending`, and `next_actor=user` for each selected pending request. This is the Agent Connection projection. |
@@ -224,7 +228,7 @@ Returns `ToolRejectedResponse` only when the read cannot be safely served, such 
 - unavailable Core
 - actor-source or operation-category mismatch
 - unsupported invocation context for the requested protected detail
-- missing current Task for a Task-scoped read
+- missing current `Task` for a Task-scoped read
 - stale or unavailable projection when a projection-backed view was requested
 - corrupt Task, close-basis, evidence, or other owner state required to build
   the canonical authority receipt, even when its optional top-level projection

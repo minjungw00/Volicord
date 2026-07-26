@@ -14,7 +14,7 @@ This document owns baseline method behavior for `volicord.intake`:
 
 This document does not own:
 
-- common request envelope, response branch, dry-run, or rejected-response schema bodies
+- common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - nested state, artifact, judgment, value-set, or error schema definitions
 - storage DDL, storage record layouts, exact storage effects, artifact lifecycle, security guarantees, or Core authority semantics
 - public error code meaning, public error precedence, or shared response-branch routing
@@ -23,7 +23,7 @@ This document does not own:
 
 `volicord.intake` starts, resumes, supersedes, or rejects an ordinary user work loop.
 
-The method resolves the requested mode to a concrete Task mode:
+The method resolves the requested mode to a concrete `Task` mode:
 
 - `advisor`
 - `direct`
@@ -62,7 +62,7 @@ the stored predecessor edges to show the connected Task flow.
 
 ## Required inputs
 
-- A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
+- A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
 - `plain_language_request`, `requested_mode`, and `resume_policy`.
 - Optional `requested_control_level`. Omission is exactly `auto`; accepted
   values are `auto`, `observe`, `light`, `tracked`, and `sensitive`.
@@ -107,7 +107,7 @@ Nested owner links:
 - `initial_scope.acceptance_criteria` uses `AcceptanceCriterionInput[]`; the
   nested shape is owned by [API State Schemas](schema-state.md#evidence-and-run-snapshot-shapes).
 - `initial_context_refs` uses `StateRecordRef[]`; the nested shape is owned by [API State Schemas](schema-state.md#state-references).
-- `initial_source_refs` uses the non-authoritative `SourceRef[]` shape owned by [API State Schemas](schema-state.md#non-authoritative-source-references). Core structurally validates and stores these refs as Task context; it does not inspect their content or use them to expand scope, select a baseline, establish evidence, or create authority.
+- `initial_source_refs` uses the non-authoritative `SourceRef[]` shape owned by [API State Schemas](schema-state.md#non-authoritative-source-references). Core structurally validates and stores these refs as `Task` context; it does not inspect their content or use them to expand scope, select a baseline, establish evidence, or create authority.
 - `requested_mode` and `resume_policy` values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values) and [method-local values](schema-value-sets.md#method-local-values).
 - `requested_control_level` values and the effective control-level values are
   owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values).
@@ -187,7 +187,7 @@ Lineage and carry-forward rules:
 
 ## Access requirements
 
-A committed non-dry-run request requires:
+A committed `dry_run=false` request requires:
 
 - verified invocation context with `operation_category=agent_workflow`
 
@@ -197,12 +197,12 @@ Invocation boundary:
 
 ## State version behavior
 
-A committed non-dry-run result:
+A committed `dry_run=false` result:
 
 - increments project-wide `project_state.state_version` exactly once
 - creates the replay row for the idempotency key
 
-The following create no Task, Change Unit, event, replay row, blocker update, or state-version increment:
+The following create no `Task`, Change Unit, event, replay row, blocker update, or state-version increment:
 
 - dry run
 - read failure
@@ -230,7 +230,7 @@ If `requested_mode=auto`, the persisted and displayed mode must be the resolved 
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
-| `task_ref` | `StateRecordRef` for the Task selected by the intake result. |
+| `task_ref` | `StateRecordRef` for the `Task` selected by the intake result. |
 | `change_unit_ref` | `StateRecordRef | null` for a Change Unit selected or created during intake, or `null` when no current Change Unit applies yet. |
 | `state` | Current `StateSummary` after intake, including requested/effective control and reason, policy identity, current scope, currently applied Change Unit display fields, and any current Change Unit effect contract. |
 | `next_actions` | `NextActionSummary[]` describing the next safe API steps. |
@@ -243,7 +243,7 @@ The method may return a committed `IntakeResult` that records shaping or blocker
 
 Blocking questions must be represented through:
 
-- Task or Change Unit state
+- `Task` or Change Unit state
 - user judgment, evidence, blocker, or next-action fields
 - the schema owners linked below for nested field shapes
 
@@ -255,7 +255,7 @@ Returns `ToolRejectedResponse` for pre-commit failures such as:
 - stale `expected_state_version`
 - unavailable Core or invocation context
 - actor-source or operation-category mismatch
-- missing current Task compatibility
+- missing current `Task` compatibility
 - validator failure
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
@@ -270,7 +270,9 @@ For `dry_run=true`, a valid state-effecting preview:
 
 ## Storage effect
 
-On commit, the method may persist intake-owned Task or Change Unit state. Exact storage effects and storage record shapes are owned by the storage documents linked below.
+Exact identifiers used in this section: `volicord`, `volicord.intake`.
+
+On commit, the method may persist intake-owned `Task` or Change Unit state. Exact storage effects and storage record shapes are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the intake branch, refs, state version, lifecycle, current scope, current Change Unit, and next action.
 

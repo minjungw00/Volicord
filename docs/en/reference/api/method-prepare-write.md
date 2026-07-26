@@ -16,7 +16,7 @@ This document owns baseline method behavior for `volicord.prepare_write`:
 
 This document does not own:
 
-- common request envelope, response branch, dry-run, or rejected-response schema bodies
+- common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - nested state, judgment, value-set, or error schema definitions
 - Core meaning of write tickets, ordinary write approval, sensitive-action approval, final acceptance, residual-risk acceptance, or user-owned judgment
 - storage DDL, storage record layouts, exact storage effects, artifact lifecycle, or security guarantees
@@ -70,8 +70,8 @@ Security non-claims belong to [Security](../security.md).
 
 ## Required inputs
 
-- A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
-- `task_id` and `change_unit_id`, or `null` only when owner resolution can unambiguously use the current Task and currently applied Change Unit.
+- A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
+- `task_id` and `change_unit_id`, or `null` only when owner resolution can unambiguously use the current `Task` and currently applied Change Unit.
 - `intended_operation`, `intended_paths`, `product_file_write_intended`, `sensitive_categories`, and `baseline_ref`.
 
 ## Request schema
@@ -163,12 +163,14 @@ Ticket selection also requires a non-null
 `WriteTicketValidityBasis.write_authority_fingerprint` equal to the current
 normalized write-authority fingerprint. An active ticket with a missing
 binding and one with a different binding both fail closed and
-require reissuance under the current policy. During a committed non-dry-run
+require reissuance under the current policy. During a committed `dry_run=false`
 allowed or non-allow evaluation, Core durably invalidates each selected stale
 active ticket with `invalidation_reason=explicit_revoke`; dry-run and
 `ToolRejectedResponse` branches do not perform that invalidation mutation.
 
 ## State version behavior
+
+Exact identifiers used in this section: `dry_run`.
 
 | Result | State-version effect | Write-ticket effect |
 |---|---|---|
@@ -238,7 +240,7 @@ For `decision=allowed`:
 - idempotent replay returns the stored original committed `PrepareWriteResult` exactly; it does not recompute or reclassify `write_ticket_effect`, `base.state_version`, `base.events`, or any other response field, and it does not create another write ticket or repeat the storage effect
 - replay eligibility requires the current verified invocation to retain the exact optional Git workspace context captured with the original replay row; a changed, newly absent, or newly present workspace context returns `INVOCATION_CONTEXT_MISMATCH` without exposing the stored allowed response or its write ticket
 - the write ticket is scoped to `WriteTicketScope` using normalized repo-relative `intended_paths`
-- `write_ticket.validity_basis` reports its Task, Change Unit,
+- `write_ticket.validity_basis` reports its `Task`, Change Unit,
   `scope_revision`, baseline, optional workspace digest, current normalized
   project write-authority fingerprint, and approval-basis refs;
   `basis_state_version` is audit-only
@@ -282,7 +284,7 @@ The production meanings below apply only when this method reaches a committed no
 
 | Code | Category | Local production meaning |
 |---|---|---|
-| `scope_not_current` | `scope` | Current scope is not compatible with the addressed Task, Change Unit, or intended write basis. |
+| `scope_not_current` | `scope` | Current scope is not compatible with the addressed `Task`, Change Unit, or intended write basis. |
 | `path_out_of_scope` | `scope` | One or more `intended_paths` are outside current scope. |
 | `sensitive_approval_missing` | `sensitive_approval` | A required separate `sensitive_approval` user judgment is absent. |
 | `user_action_unresolved` | `user_action` | A user-owned action required for the write preconditions remains unresolved. |
@@ -330,7 +332,7 @@ Advisor-mode rejection creates no write decision, write ticket, event, replay ro
 The `NO_ACTIVE_CHANGE_UNIT` branch with reason `current_change_unit_required`
 creates no `WriteTicket`,
 `WriteDecision`, authority event, replay row, invocation row, or state-version
-effect. It has the same result for otherwise identical normal and dry-run
+effect. It has the same result for otherwise identical normal and `dry_run`
 requests, and repeated calls do not turn the rejection into a committed or
 replayed result.
 
@@ -605,7 +607,7 @@ guarantee_display:
 
 ## Owner links
 
-- Request envelope, common result branches, and dry-run summaries: [API Schema Core](schema-core.md).
+- Request envelope, common result branches, and `dry_run` summaries: [API Schema Core](schema-core.md).
 - `WriteTicket`, `WriteTicketStateSummary`, state summaries, and refs: [API State Schemas](schema-state.md).
 - `SensitiveActionScope` and user-owned approval shapes: [API Judgment Schemas](schema-judgment.md).
 - Write ticket, write approval, sensitive-action approval, final-acceptance, and residual-risk boundaries: [Core Model](../core-model.md).

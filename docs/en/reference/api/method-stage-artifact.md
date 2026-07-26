@@ -14,14 +14,14 @@ This document owns baseline method behavior for `volicord.stage_artifact`:
 
 This document does not own:
 
-- common request envelope, response branch, dry-run, or rejected-response schema bodies
+- common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - `ArtifactInput`, `ArtifactRef`, `StagedArtifactHandle`, value-set, or error schema definitions
 - storage DDL, storage record layouts, exact storage effects, artifact lifecycle, security guarantees, or Core authority semantics
 - public error code meaning, public error precedence, or shared response-branch routing
 
 ## Purpose
 
-`volicord.stage_artifact` prepares an Evidence attachment input by staging caller-provided safe bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and Task.
+`volicord.stage_artifact` prepares an Evidence attachment input by staging caller-provided safe bytes or a safe notice into a transient `StagedArtifactHandle` for the same project and `Task`.
 
 Staging is input preparation only. A staged handle is not recorded Evidence, does not prove the related claim, and does not satisfy close readiness by itself. Evidence recording, persistent artifact links, acceptance, residual-risk, and close-readiness effects are owned by the relevant method and storage owners.
 
@@ -84,7 +84,7 @@ A successful staging result:
 - reports the current project-wide `project_state.state_version` observed by the call in `base.state_version`
 - creates no `tool_invocations` replay row
 
-Rejected and dry-run requests have no storage effect.
+Rejected and `dry_run` requests have no storage effect.
 
 ## Complete result bound
 
@@ -213,7 +213,7 @@ expires_at: "<future-expiration-timestamp>"
 
 ## Owner links
 
-- Request envelope, response branches, and dry-run summaries: [API Schema Core](schema-core.md).
+- Request envelope, response branches, and `dry_run` summaries: [API Schema Core](schema-core.md).
 - `StagedArtifactHandle`, `ArtifactInput`, and `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md).
 - Supported artifact values and operation categories: [API Value Sets](schema-value-sets.md#operation-category-values).
 - Public errors, precedence, and rejected-response routing: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).

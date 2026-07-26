@@ -718,7 +718,7 @@ argument is a nonempty portable literal token made from ASCII letters, digits,
 argument-specific quoting in POSIX shells, PowerShell, or Command Prompt.
 
 If the repository or Runtime Home needs shell-specific quoting, the renderer
-instead labels the exact host, repository, Runtime Home, optional shared scope,
+instead labels the exact host, repository, Runtime Home, optional `shared` scope,
 and verbose-output requirement. It does not present those values as a
 universally copyable command. The user constructs the command in the current
 shell with the labelled values exactly as shown. A value containing a control

@@ -271,7 +271,7 @@ It can support evidence and close-readiness review. It cannot approve missing pr
 Evidence is recorded support for a stable evidence target at a specific scope.
 
 An evidence target is either a Core-generated `AcceptanceCriterionId` for one
-current or retired Task acceptance criterion, or a caller-assigned
+current or retired `Task` acceptance criterion, or a caller-assigned
 Task-scoped `EvidenceClaimId` whose supplemental claim statement is immutable.
 Updating a current criterion statement or evidence requirement while retaining
 its ID keeps the criterion identity, but the resulting scope revision makes
@@ -315,7 +315,7 @@ facts. Section 10 lists the close inputs in detail.
 ### Authority receipt
 
 An authority receipt is a compact Core-generated view of one freshly read
-project state version. It binds the current Task and Change Unit, scope
+project state version. It binds the current `Task` and Change Unit, scope
 revision, latest Run and observed product-file-write fact, evidence gate, full
 close-blocker set, `completion_claim_allowed`, and next actor/action. The
 completion field is true only when the current Task has a valid completion
@@ -651,7 +651,7 @@ Evidence authority:
 - Each acceptance criterion has a stable Core-generated `AcceptanceCriterionId`,
   an editable statement, and an `EvidenceRequirement` of `required`, `optional`,
   or `not_required`. Replacing the current criterion set preserves explicitly
-  selected same-Task IDs, generates IDs for new entries, and retires omitted
+  selected IDs from the same `Task`, generates IDs for new entries, and retires omitted
   entries. A retired criterion is history, not current close authority.
 - Supplemental evidence uses a caller-assigned Task-scoped `EvidenceClaimId`
   and immutable statement. It can preserve useful support but never becomes a

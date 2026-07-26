@@ -6,6 +6,8 @@ Neighboring contracts stay with their owners: method behavior routes through [AP
 
 ## Owns / Does not own
 
+Exact identifiers used in this section: `operation_category`.
+
 This document owns:
 
 - schema notation conventions for API schema owner documents
@@ -107,7 +109,7 @@ ToolEnvelope:
 ```
 
 Meaning:
-- `task_id` is a nullable request-level Task selector; the field is present and the value may be null.
+- `task_id` is a nullable request-level `Task` selector; the field is present and the value may be null.
 - `expected_state_version` is the request-level optimistic-concurrency field for a `project_state.state_version` value.
 - `idempotency_key` is a nullable opaque identifier; method owners define when a non-null value is required.
 - `expected_state_version` is nullable; method and storage owners define when a non-null value is required.
@@ -190,7 +192,7 @@ Owner links:
 - method-specific state effects: method owner documents
 - public error precedence: [API error precedence](error-precedence.md)
 
-## Dry-run summary shapes
+## `dry_run` summary shapes
 
 Meaning:
 - `DryRunSummary`, `PlannedEffect`, and `PlannedBlocker` are common dry-run branch support shapes.

@@ -49,26 +49,29 @@ owner_areas:
   documentation_maintenance:
     description: Documentation metadata, terminology, translation, validation, and route-index maintenance.
 applicability:
-  volicord_workspace_0_2:
-    description: Volicord workspace package version 0.9.1, as declared by the workspace `Cargo.toml`.
+  volicord_workspace:
+    description: Current Volicord workspace package version declared by the workspace `Cargo.toml`.
     version_source: workspace_package
-  rust_workspace_1_85:
-    description: Repository Rust workspace requiring Rust 1.85 or newer, as declared by the workspace
-      `Cargo.toml`.
+  rust_workspace:
+    description: Current repository Rust toolchain floor declared by the workspace `Cargo.toml`.
+    version_source: workspace_rust
   mcp_initialize_profiles:
-    description: Production-supported MCP initialize-handshake revisions 2024-10-07, 2024-11-05,
-      2025-03-26, 2025-06-18, and 2025-11-25, as declared by the pinned manifest; tracked
-      pre-release generations remain excluded from production support.
-  doc_index_schema_v3:
-    description: Documentation index metadata schema version 3 used by `docs/doc-index.yaml` and
-      `docs-check`.
-  terminology_map_v1:
-    description: Terminology map metadata schema version 1 used by `docs/terminology-map.yaml`.
+    description: Current production-supported MCP initialize-handshake revisions declared by the
+      closed protocol registry.
+    version_source: mcp_production_registry
+  doc_index_schema:
+    description: Current documentation index metadata schema declared by `docs/doc-index.yaml`.
+    version_source: doc_index_schema
+  terminology_map_schema:
+    description: Current terminology map metadata schema declared by `docs/terminology-map.yaml`.
+    version_source: terminology_map_schema
+default_applicability:
+- volicord_workspace
 entry_schema:
   applicability_fields:
     description: Non-empty human-readable version-applicability description.
-    version_source: The exact `workspace_package` value marks the one description whose current workspace
-      package version must match `[workspace.package].version` in the root `Cargo.toml`.
+    version_source: Exact owning file or registry from which `docs-check` reads the current value.
+  default_applicability: Non-empty root-level list applied to every maintained document.
   shared_required:
   - doc_id
   - path
@@ -79,7 +82,6 @@ entry_schema:
   - created_on
   - last_updated_on
   - last_verified_on
-  - applies_to
   paired_required:
   - doc_id
   - path_en
@@ -92,7 +94,6 @@ entry_schema:
   - created_on
   - last_updated_on
   - last_verified_on
-  - applies_to
   optional:
   - primary_audience
   - journeys
@@ -103,7 +104,8 @@ entry_schema:
     created_on: Earliest verifiable introduction date for the maintained file or bilingual pair.
     last_updated_on: Latest verifiable content-update date for the maintained file or bilingual pair.
     last_verified_on: Maintenance verification date for paths, metadata, links, pairing, and owner routing.
-    applies_to: Non-empty list of identifiers selected from the top-level applicability catalog.
+    applies_to: Optional non-empty list of additional identifiers selected from the top-level
+      applicability catalog; root defaults must not be repeated.
   kinds:
   - landing
   - tutorial
@@ -136,8 +138,7 @@ shared_documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - maintainers
@@ -163,8 +164,7 @@ shared_documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - maintainers
@@ -188,8 +188,6 @@ shared_documents:
   created_on: '2026-06-20'
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -212,8 +210,6 @@ shared_documents:
   created_on: '2026-04-23'
   last_updated_on: '2026-07-05'
   last_verified_on: '2026-07-11'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - all readers
   journeys:
@@ -227,11 +223,10 @@ shared_documents:
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-24'
-  last_verified_on: '2026-07-24'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - maintainers
@@ -253,8 +248,7 @@ shared_documents:
   last_updated_on: '2026-07-23'
   last_verified_on: '2026-07-23'
   applies_to:
-  - volicord_workspace_0_2
-  - terminology_map_v1
+  - terminology_map_schema
   primary_audience:
   - maintainers
   - translators
@@ -287,8 +281,6 @@ documents:
   created_on: '2026-04-23'
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - new users
   - operators
@@ -326,8 +318,6 @@ documents:
   created_on: '2026-04-23'
   last_updated_on: '2026-07-05'
   last_verified_on: '2026-07-11'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - all readers
   journeys:
@@ -350,7 +340,6 @@ documents:
   last_updated_on: '2026-07-15'
   last_verified_on: '2026-07-15'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - new users
@@ -384,10 +373,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - new users
   - agents
@@ -412,8 +399,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - new users
   - operators
@@ -437,7 +423,6 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - new users
@@ -463,8 +448,6 @@ documents:
   created_on: '2026-05-22'
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - users
   - agents
@@ -482,8 +465,6 @@ documents:
   created_on: '2026-05-22'
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - agents
   - agent operators
@@ -511,10 +492,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: user_workflow
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-05'
-  last_verified_on: '2026-07-11'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - users
   - agents
@@ -533,7 +512,6 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - operators
@@ -562,7 +540,6 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - operators
@@ -593,7 +570,6 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - operators
@@ -620,8 +596,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -654,9 +629,8 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
-  - doc_index_schema_v3
+  - rust_workspace
+  - doc_index_schema
   primary_audience:
   - implementers
   - reviewers
@@ -689,8 +663,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -717,8 +690,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   - mcp_initialize_profiles
   primary_audience:
   - implementers
@@ -749,8 +721,7 @@ documents:
   last_updated_on: '2026-07-18'
   last_verified_on: '2026-07-18'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -779,8 +750,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -809,8 +779,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -844,8 +813,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -883,8 +851,7 @@ documents:
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -922,8 +889,7 @@ documents:
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -952,8 +918,7 @@ documents:
   last_updated_on: '2026-07-16'
   last_verified_on: '2026-07-16'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - agent integrators
@@ -983,8 +948,7 @@ documents:
   last_updated_on: '2026-07-16'
   last_verified_on: '2026-07-16'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - agent integrators
@@ -1016,8 +980,7 @@ documents:
   last_updated_on: '2026-07-16'
   last_verified_on: '2026-07-16'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   - mcp_initialize_profiles
   primary_audience:
   - implementers
@@ -1044,8 +1007,7 @@ documents:
   last_updated_on: '2026-07-13'
   last_verified_on: '2026-07-14'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1072,8 +1034,7 @@ documents:
   last_updated_on: '2026-07-14'
   last_verified_on: '2026-07-14'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1103,8 +1064,7 @@ documents:
   last_updated_on: '2026-07-14'
   last_verified_on: '2026-07-14'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1138,8 +1098,7 @@ documents:
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1170,8 +1129,7 @@ documents:
   last_updated_on: '2026-07-13'
   last_verified_on: '2026-07-13'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1197,8 +1155,7 @@ documents:
   last_updated_on: '2026-07-13'
   last_verified_on: '2026-07-13'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1231,8 +1188,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1260,8 +1216,7 @@ documents:
   last_updated_on: '2026-07-18'
   last_verified_on: '2026-07-18'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   - mcp_initialize_profiles
   primary_audience:
   - implementers
@@ -1294,8 +1249,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1333,8 +1287,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - implementers
   - reviewers
@@ -1374,8 +1327,7 @@ documents:
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - implementers
@@ -1400,8 +1352,7 @@ documents:
   last_updated_on: '2026-07-21'
   last_verified_on: '2026-07-21'
   applies_to:
-  - volicord_workspace_0_2
-  - rust_workspace_1_85
+  - rust_workspace
   primary_audience:
   - new users
   - operators
@@ -1447,8 +1398,6 @@ documents:
   created_on: '2026-06-10'
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -1482,8 +1431,6 @@ documents:
   created_on: '2026-07-17'
   last_updated_on: '2026-07-19'
   last_verified_on: '2026-07-19'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - agent integrators
@@ -1508,8 +1455,6 @@ documents:
   created_on: '2026-07-17'
   last_updated_on: '2026-07-25'
   last_verified_on: '2026-07-25'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - agent integrators
@@ -1546,8 +1491,6 @@ documents:
   created_on: '2026-07-17'
   last_updated_on: '2026-07-25'
   last_verified_on: '2026-07-25'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - maintainers
@@ -1574,10 +1517,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - agents
   - implementers
@@ -1610,8 +1551,6 @@ documents:
   created_on: '2026-06-07'
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -1651,7 +1590,6 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - implementers
@@ -1693,7 +1631,6 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - agent integrators
@@ -1738,8 +1675,6 @@ documents:
   created_on: '2026-05-28'
   last_updated_on: '2026-07-19'
   last_verified_on: '2026-07-19'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - agents
   - implementers
@@ -1770,8 +1705,7 @@ documents:
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
   applies_to:
-  - volicord_workspace_0_2
-  - terminology_map_v1
+  - terminology_map_schema
   primary_audience:
   - readers
   - maintainers
@@ -1796,8 +1730,6 @@ documents:
   created_on: '2026-06-04'
   last_updated_on: '2026-07-13'
   last_verified_on: '2026-07-13'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1818,10 +1750,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-16'
-  last_verified_on: '2026-07-16'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1842,10 +1772,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1866,10 +1794,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1894,8 +1820,6 @@ documents:
   created_on: '2026-07-13'
   last_updated_on: '2026-07-14'
   last_verified_on: '2026-07-14'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1932,8 +1856,6 @@ documents:
   created_on: '2026-07-13'
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -1970,10 +1892,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2002,10 +1922,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2026,10 +1944,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2054,8 +1970,6 @@ documents:
   created_on: '2026-07-13'
   last_updated_on: '2026-07-14'
   last_verified_on: '2026-07-14'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2079,8 +1993,6 @@ documents:
   created_on: '2026-07-13'
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2103,10 +2015,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-01'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2137,10 +2047,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2168,10 +2076,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-07-23'
-  last_verified_on: '2026-07-23'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2200,10 +2106,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2230,8 +2134,6 @@ documents:
   created_on: '2026-06-10'
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2254,8 +2156,6 @@ documents:
   created_on: '2026-06-10'
   last_updated_on: '2026-07-13'
   last_verified_on: '2026-07-13'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2279,8 +2179,6 @@ documents:
   created_on: '2026-07-13'
   last_updated_on: '2026-07-14'
   last_verified_on: '2026-07-14'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2305,10 +2203,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2336,8 +2232,6 @@ documents:
   created_on: '2026-06-04'
   last_updated_on: '2026-07-17'
   last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2371,8 +2265,6 @@ documents:
   created_on: '2026-06-13'
   last_updated_on: '2026-07-18'
   last_verified_on: '2026-07-18'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2396,10 +2288,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2429,10 +2319,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2462,8 +2350,6 @@ documents:
   created_on: '2026-06-13'
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - API implementers
   - agent integrators
@@ -2486,10 +2372,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2518,8 +2402,6 @@ documents:
   created_on: '2026-05-06'
   last_updated_on: '2026-07-22'
   last_verified_on: '2026-07-22'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - maintainers
@@ -2542,8 +2424,6 @@ documents:
   created_on: '2026-06-10'
   last_updated_on: '2026-07-25'
   last_verified_on: '2026-07-25'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - storage implementers
   - maintainers
@@ -2579,8 +2459,6 @@ documents:
   created_on: '2026-06-17'
   last_updated_on: '2026-07-25'
   last_verified_on: '2026-07-25'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - storage implementers
   - API implementers
@@ -2616,10 +2494,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-25'
-  last_verified_on: '2026-07-25'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - storage implementers
   - API implementers
@@ -2642,10 +2518,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - storage implementers
   - API implementers
@@ -2670,8 +2544,6 @@ documents:
   created_on: '2026-06-10'
   last_updated_on: '2026-07-25'
   last_verified_on: '2026-07-25'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - storage implementers
   - maintainers
@@ -2705,7 +2577,6 @@ documents:
   last_updated_on: '2026-07-25'
   last_verified_on: '2026-07-25'
   applies_to:
-  - volicord_workspace_0_2
   - mcp_initialize_profiles
   primary_audience:
   - agent integrators
@@ -2752,10 +2623,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - implementers
   - agent integrators
@@ -2777,10 +2646,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
-  applies_to:
-  - volicord_workspace_0_2
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - implementers
   - maintainers
@@ -2804,8 +2671,6 @@ documents:
   created_on: '2026-06-07'
   last_updated_on: '2026-07-15'
   last_verified_on: '2026-07-15'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - implementers
   - reviewers
@@ -2829,8 +2694,6 @@ documents:
   created_on: '2026-06-07'
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
-  applies_to:
-  - volicord_workspace_0_2
   primary_audience:
   - agents
   - reviewers
@@ -2853,11 +2716,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-11'
-  last_verified_on: '2026-07-11'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - maintainers
@@ -2888,9 +2750,8 @@ documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
-  - terminology_map_v1
+  - doc_index_schema
+  - terminology_map_schema
   primary_audience:
   - agents
   - maintainers
@@ -2931,11 +2792,10 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - maintainers
@@ -2974,8 +2834,7 @@ documents:
   last_updated_on: '2026-07-11'
   last_verified_on: '2026-07-11'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - maintainers
@@ -3014,9 +2873,8 @@ documents:
   last_updated_on: '2026-07-19'
   last_verified_on: '2026-07-19'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
-  - terminology_map_v1
+  - doc_index_schema
+  - terminology_map_schema
   primary_audience:
   - agents
   - maintainers
@@ -3058,9 +2916,8 @@ documents:
   last_updated_on: '2026-07-03'
   last_verified_on: '2026-07-03'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
-  - terminology_map_v1
+  - doc_index_schema
+  - terminology_map_schema
   primary_audience:
   - maintainers
   - translators
@@ -3086,8 +2943,7 @@ documents:
   last_updated_on: '2026-07-26'
   last_verified_on: '2026-07-26'
   applies_to:
-  - volicord_workspace_0_2
-  - doc_index_schema_v3
+  - doc_index_schema
   primary_audience:
   - agents
   - maintainers

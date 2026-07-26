@@ -138,6 +138,8 @@ not equal the current normalized project write-authority fingerprint.
 
 ### `artifact_input_error.reason`
 
+Exact identifiers used in this section: `actor_source`.
+
 `ToolError.details.artifact_input_error.reason` uses these detail helper values. They are not top-level public `ErrorCode` values; staged-handle validation failures keep the public code `VALIDATION_FAILED` unless the actual failure is a request-level invocation-context, actor-source, or Product Repository path-boundary mismatch.
 
 | `artifact_input_error.reason` | Meaning |
@@ -145,7 +147,7 @@ not equal the current normalized project write-authority fingerprint.
 | `staged_handle_expired` | The staged handle is past its usable lifetime. |
 | `staged_handle_consumed` | The staged handle was already consumed. |
 | `staged_handle_project_mismatch` | The staged handle belongs to a different project. |
-| `staged_handle_task_mismatch` | The staged handle belongs to a different Task. |
+| `staged_handle_task_mismatch` | The staged handle belongs to a different `Task`. |
 | `staged_handle_actor_source_mismatch` | The staged handle provenance does not match the verified actor source. |
 | `staged_handle_checksum_mismatch` | The staged bytes do not match the expected checksum. |
 | `staged_handle_size_mismatch` | The staged bytes do not match the expected size. |

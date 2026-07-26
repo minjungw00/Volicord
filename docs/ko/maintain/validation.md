@@ -26,13 +26,17 @@ cargo run -p xtask -- docs-sync
 
 - `docs/doc-index.yaml`이 YAML로 파싱되고 `version: 3`을 갖습니다.
 - 필요한 최상위 섹션이 있으며 지원되지 않는 최상위 필드는 거부됩니다.
-- `owner_areas` 카탈로그와 `applicability` 카탈로그는 안정적인 식별자와 문자열
-  설명을 사용합니다. 정확히 하나의 적용 가능성 항목이
-  `version_source: workspace_package`를 사용하여 현재 작업 공간 패키지 버전
-  설명을 표시합니다.
-- 루트 `Cargo.toml`이 TOML로 파싱되고 `[workspace.package].version`이 문자열이며,
-  표시된 적용 가능성 설명이 같은 버전을 식별하는지 확인합니다. 다른 곳의 이전
-  릴리스 참조는 비교하지 않습니다.
+- `owner_areas` 카탈로그는 안정적인 식별자와 문자열 설명을 사용합니다. 적용
+  가능성 키는 밑줄로 구분한 소문자 의미 단어만 사용하고 버전 번호를 포함하지
+  않습니다.
+- 모든 적용 가능성 항목은 지원되는 `version_source` 하나를 선언합니다.
+  `docs-check`는 현재 작업 공간 패키지와 Rust 값을 루트 `Cargo.toml`에서,
+  MCP 프로덕션 revision을 `ProtocolRegistry`에서, 메타데이터 스키마 값을
+  `docs/doc-index.yaml` 또는 `docs/terminology-map.yaml`에서 읽습니다.
+- `default_applicability`는 비어 있지 않고 중복이 없으며 모든 값이 적용 가능성
+  카탈로그로 해석되는 목록입니다.
+- `entry_schema`는 현재 적용 가능성 설명, 공유·대응 필수 필드, 선택 필드,
+  유지보수 필드, 문서 종류, 독자 여정, 규범 수준, 번역 정책만 정확히 선언합니다.
 - 모든 공유 항목은 `doc_id`, `path`, `kind`, `summary`, `normative_level`,
   `owner_area`, `created_on`, `last_updated_on`, `last_verified_on`,
   `applies_to`, `primary_audience`, `journeys`, `canonical_for`,
@@ -41,10 +45,11 @@ cargo run -p xtask -- docs-sync
   `normative_level`, `translation_policy`, `owner_area`, `created_on`,
   `last_updated_on`, `last_verified_on`, `applies_to`, `primary_audience`,
   `journeys`, `canonical_for`, `depends_on`만 사용합니다.
-- 공유 항목과 대응 항목에 필요한 필드가 있습니다.
+- 공유 항목과 대응 항목에 필요한 필드가 있으며 `applies_to`는 선택
+  필드입니다.
 - `owner_area`는 최상위 담당 영역 카탈로그로 해석됩니다.
-- `applies_to`는 비어 있지 않고 중복이 없는 목록이며 모든 값이 최상위 적용
-  가능성 카탈로그로 해석됩니다.
+- `applies_to`가 있으면 비어 있지 않고 중복이 없는 추가 카탈로그 값 목록이며
+  루트 기본값을 반복하지 않습니다.
 - `created_on`, `last_updated_on`, `last_verified_on`은 유효한
   `YYYY-MM-DD` 달력 날짜이며 `created_on <= last_updated_on <= last_verified_on`
   순서를 지킵니다.
@@ -67,6 +72,10 @@ cargo run -p xtask -- docs-sync
   하며, 색인된 루트 README 경로가 없을 때는 일반 경로 존재 규칙으로 보고됩니다.
 - 루트 README 쌍에도 다른 색인 경로와 같은 기존 파일 규칙과 중복 경로 규칙이
   적용됩니다.
+- 대응 문서는 같은 제목 수준 순서를 유지합니다.
+- `docs/terminology-map.yaml`에서 식별한 코드 리터럴은 대응 제목이나 절 의미
+  단위에 남아 있어야 합니다. 이 검사는 용어 카탈로그가 지정한 정확한 식별자만
+  인라인 코드나 코드 펜스에서 찾아 비교합니다.
 - 상대 링크가 존재하는 파일로 해석됩니다.
 - 조각 링크와 숨김 앵커가 사용되는 곳에서 해석됩니다.
 - 유지되는 영어/한국어 대응 쌍의 로컬 Markdown 독자 경로 링크가, 색인된 대상은
@@ -136,11 +145,11 @@ API와 참조 예시는 필요할 때 메서드 안의 정합성, 요청과 응�
 크레이트, 모듈, 진입점, 실행 단계, 책임 경계를 설명하는지 확인합니다. 구현
 세부사항을 제품 계약 문구로 바꾸지 않습니다.
 
-자동 `docs-check` 명령에는 유지되는 영어/한국어 대응 쌍의 로컬 문서 링크 일치
-점검이 포함되지만, 한영 의미 검토, 계약 담당 문서 검토, 기술 정확성 검토, 번역
-판단, API 예시 정합성 검토, 제품 의미 검토를 수행하지 않습니다. 로컬 링크 일치
-점검 통과는 기계로 비교할 수 있는 로컬 독자 경로만 확인합니다. 나머지 점검은
-계속 사람이 하고 담당 문서로 경로를 잡습니다.
+자동 `docs-check` 명령에는 유지되는 영어/한국어 대응 쌍의 로컬 문서 링크 일치,
+제목 수준 구조 일치, 용어 기반 정확한 식별자 일치 점검이 포함됩니다. 하지만
+전체 한영 의미 검토, 계약 담당 문서 검토, 기술 정확성 검토, 번역 판단, API
+예시 정합성 검토, 제품 의미 검토를 수행하지 않습니다. 나머지 점검은 계속
+사람이 하고 담당 문서로 경로를 잡습니다.
 
 ## 오래 유지될 테스트
 
@@ -283,7 +292,8 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
   문법 영역만 결정적으로 교체합니다. 명령 모델을 변경한 뒤 실행하고 생성 diff를
   검토합니다.
 - `cargo run -p xtask -- docs-check`는 유지 문서 구조, 생성 또는 원본 파생 문서
-  표면, 실행 가능한 `volicord` 명령 예시, 용어 메타데이터 담당 경로와 역할, 그리고
+  표면, 실행 가능한 `volicord` 명령 예시, 한영 링크·제목·정확한 식별자 일치,
+  용어 메타데이터 담당 경로와 역할, 그리고
   `crates/volicord-store/src/schema/registry.sql` 및
   `crates/volicord-store/src/schema/project.sql`에 대한 기준 Storage DDL SQL
   블록을 점검합니다.

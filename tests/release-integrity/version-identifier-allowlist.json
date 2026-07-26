@@ -146,18 +146,6 @@
     },
     {
       "path": "docs/doc-index.yaml",
-      "needle": "doc_index_schema_v3",
-      "classification": "maintenance_metadata",
-      "reason": "The documentation-maintenance catalog, not a product compatibility contract, owns this schema key."
-    },
-    {
-      "path": "docs/doc-index.yaml",
-      "needle": "terminology_map_v1",
-      "classification": "maintenance_metadata",
-      "reason": "The documentation-maintenance catalog, not a product compatibility contract, owns this schema key."
-    },
-    {
-      "path": "docs/doc-index.yaml",
       "needle": "VOLICORD_DIAGNOSTIC_V1",
       "classification": "product_contract",
       "reason": "The owner catalog routes the exact bootstrap diagnostic envelope contract."
@@ -209,30 +197,6 @@
       "needle": "v0.8.0",
       "classification": "release_tag_example",
       "reason": "The installer example uses the repository's externally visible release-tag syntax."
-    },
-    {
-      "path": "xtask/tests/docs_check.rs",
-      "needle": "doc_index_schema_v3",
-      "classification": "maintenance_metadata",
-      "reason": "The fixture exercises documentation-maintenance metadata."
-    },
-    {
-      "path": "xtask/tests/docs_check.rs",
-      "needle": "Documentation index schema v3",
-      "classification": "maintenance_metadata",
-      "reason": "The fixture describes documentation-maintenance metadata."
-    },
-    {
-      "path": "xtask/tests/docs_check.rs",
-      "needle": "terminology_map_v1",
-      "classification": "maintenance_metadata",
-      "reason": "The fixture exercises documentation-maintenance metadata."
-    },
-    {
-      "path": "xtask/tests/docs_check.rs",
-      "needle": "Terminology map v1",
-      "classification": "maintenance_metadata",
-      "reason": "The fixture describes documentation-maintenance metadata."
     },
     {
       "path": "xtask/tests/release_version_check.rs",

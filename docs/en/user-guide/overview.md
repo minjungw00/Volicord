@@ -50,7 +50,7 @@ are in [Runtime Boundaries](../reference/runtime-boundaries.md),
 
 Ordinary setup registers one Product Repository, creates an Agent Connection,
 and writes project-scoped host configuration and guidance. Runtime records stay
-in the Volicord Runtime Home. The external host still controls project trust,
+in the `Volicord Runtime Home`. The external host still controls project trust,
 MCP approval, reloads, restarts, and active tool exposure.
 
 Follow [Installation](installation.md) and [Quickstart](quickstart.md) for the

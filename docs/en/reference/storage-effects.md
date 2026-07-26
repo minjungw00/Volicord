@@ -4,9 +4,11 @@ This document defines baseline method-to-storage effect semantics.
 
 ## Owns / Does not own
 
+Exact identifiers used in this section: `project_state.state_version`, `state_version`.
+
 This document owns:
 
-- read-only, dry-run, rejected, staging-created, Core-committed, and committed-blocked storage-effect distinctions
+- read-only, `dry_run`, rejected, staging-created, Core-committed, and committed-blocked storage-effect distinctions
 - whether a method branch creates replay rows, `authority_events`, record changes, state-version increments, staged-handle creation or consumption, artifact promotion, or write-ticket compatibility changes
 - the persistence boundary for blocker-like response data
 - no-effect guarantees for rejected branches and valid dry-run preview branches
@@ -40,7 +42,7 @@ Effects come from the selected method behavior and response branch. The table su
 |---|---|---|---|
 | Read-only | Read-only `MethodResult` | No Core authority-state mutation. Response data only; no replay row, authority event, artifact effect, write-ticket effect, close-state mutation, or `project_state.state_version` increment. | [Read-only result](#read-only-result) |
 | No-effect | `ToolRejectedResponse` or a valid `MethodResult` with `effect_kind=no_effect` | No ordinary requested mutation and no Core commit. The response may carry errors or blocker-shaped data, but those values are not persisted by this branch. | [`ToolRejectedResponse`](#toolrejectedresponse-effect), [No-effect branches](#no-effect-branches) |
-| Dry-run | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
+| `dry_run` | Valid `ToolDryRunResponse` | Preview only; no persistent refs, replay row, event, staged handle, artifact effect, or `project_state.state_version` increment. | [Valid dry-run preview](#valid-dry-run-preview) |
 | Staging-created | `StageArtifactResult` with `effect_kind=staging_created` | Storage-owned transient staging plus an atomic non-decreasing advance of the persisted canonical-UTC floor; not the regular Core commit transaction. | [Staging-created artifact result](#staging-created-artifact-result) |
 | Core commit | Core committed `MethodResult` | Method-owned effects through `CoreProjectStore::commit_mutation`, including the state-version increment, authority event, optional replay row, method-selected `CoreStorageMutation` values, and one canonical commit timestamp. | [Core committed result](#core-committed-result) |
 | Committed blocker-shaped result | Committed `MethodResult` whose method owner allows blocked or non-allow persistence | Only the explicitly allowed event, replay, state-version, and blocker-state effects. A blocker-shaped response alone is not enough. | [Committed blocked result](#committed-blocked-result) |
@@ -89,7 +91,7 @@ Disallowed effects:
 - persisted canonical-UTC floor update
 
 <a id="valid-dry-run-preview"></a>
-### Valid dry-run preview
+### Valid `dry_run` preview
 
 Storage effect:
 
@@ -216,7 +218,7 @@ blocked terminal attempt returns `CloseTaskResult` data without committing
 blocker rows, authority events, replay rows, or a state-version increment. This is
 separate from committed non-allow `volicord.prepare_write` results.
 
-## Dry-run preview effects
+## `dry_run` preview effects
 
 Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker[]` or planned effects. Those preview entries do not create:
 
@@ -240,7 +242,7 @@ For response computation, `volicord.status` and `volicord.check_close` may compu
 
 Storage must not persist those computed values merely because the read occurred.
 
-Read-time projections must distinguish uncomputed, unavailable, empty, and verified state. Storage must not write empty arrays, empty hashes, zero sizes, invented content types, or stronger guarantee displays merely because a read path could not compute the underlying facts.
+Read-time projections must distinguish uncomputed, `unavailable`, empty, and verified state. Storage must not write empty arrays, empty hashes, zero sizes, invented content types, or stronger guarantee displays merely because a read path could not compute the underlying facts.
 
 Read-time artifact checks may compute an effective missing, unavailable, or integrity-failed state for evidence, close, or status output when the current body cannot be verified against stored facts. That response computation does not mutate `artifacts.status`, `artifacts.integrity_status`, artifact links, or stored lifecycle rows unless a separate owner-defined mutation occurs.
 
@@ -470,6 +472,8 @@ current Registry ownership.
 <a id="method-effects"></a>
 ## Method effect summary
 
+Exact identifiers used in this section: `Task`.
+
 This table summarizes persistence effects. Method behavior and response unions remain owned by method owner documents routed from the [API Methods](api/methods.md).
 
 | Method | Primary storage effect | Details |
@@ -495,7 +499,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 
 Committed `dry_run=false` may:
 
-- create the Task
+- create the `Task`
 - store its mode, work phase, acceptance policy and reason, and optional
   predecessor relation with carry-forward dispositions
 - create ordered active `acceptance_criteria` rows with Core-generated identities
@@ -524,7 +528,7 @@ Owner links:
 
 Committed `dry_run=false` may:
 
-- update current-scope Task fields
+- update current-scope `Task` fields
 - for a non-null criterion replacement, update retained active same-Task criterion rows in replacement order, create rows for null IDs, and retire omitted active rows without reactivating retired identities
 - create or replace current `change_units`, including effect-contract JSON when supplied by the method owner
 - capture the verified optional Git workspace context in the Change Unit write
@@ -751,7 +755,7 @@ Committed `dry_run=false` may:
 
 - create `runs`
 - consume a compatible `write_tickets` row when the Run records an actual
-  Product Repository file write or when an effective `sensitive` Task records
+  Product Repository file write or when an effective `sensitive` `Task` records
   the exact approved non-product action bound by that ticket
 - consume eligible `artifact_staging`
 - promote or link `artifacts`
@@ -885,6 +889,8 @@ Owner links:
 
 <a id="volicordresolve_user_action"></a>
 ### `volicord.resolve_user_action`
+
+Exact identifiers used in this section: `operation_category`, `user_only`.
 
 Committed `dry_run=false` may:
 
@@ -1059,6 +1065,8 @@ Owner links:
 - [Storage Versioning](storage-versioning.md)
 
 ## Related owners
+
+Exact identifiers used in this section: `state_version`.
 
 - [API Methods](api/methods.md) and method owner documents for selected method behavior and response unions.
 - [API error routing](api/error-routing.md) and [API error codes](api/error-codes.md) for rejected-response public errors.

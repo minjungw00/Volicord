@@ -262,7 +262,7 @@ Before close, show the visible close facts:
 Use a read-only Close Status check when the user asks whether close is blocked
 or the current close facts need an authoritative refresh. Do not insert a
 separate check merely because a memorized ritual says that completion is near
-when the current response already provides a fresh close handoff. Change Task
+when the current response already provides a fresh close handoff. Change `Task`
 state only through the supported close path. Do not close from prose, tests
 alone, broad acceptance language, a generated view, or stale status. Final
 acceptance and residual-risk acceptance do not replace missing required

@@ -137,6 +137,8 @@ is never reset to live or host time.
 
 ## Read and planning flow
 
+Exact identifiers used in this section: `operation_category`.
+
 Normal public method execution has two implementation phases before persistence:
 
 1. The shared Core preflight in

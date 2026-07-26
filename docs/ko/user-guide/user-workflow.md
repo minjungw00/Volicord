@@ -6,6 +6,8 @@ Volicord를 사용하면 평소 말로 에이전트와 일하면서도 범위, �
 
 ## 일상 작업 순서
 
+이 절에서 사용하는 정확한 식별자: `actions`, `outcome`, `pending`, `scope`.
+
 ```mermaid
 flowchart TD
   ask["평소 말로 작업 요청"]
@@ -34,6 +36,8 @@ flowchart TD
 다룹니다.
 
 ## 원하는 결과부터 말하기
+
+이 절에서 사용하는 정확한 식별자: `scope`.
 
 평소처럼 시작하면 됩니다.
 
@@ -66,6 +70,8 @@ API 이름이나 내부 모드를 알 필요는 없습니다. 원하는 결과, 
 결정합니다. 확장 자체가 분명하지 않다면 “좋아” 같은 말은 범위를 넓히지 않습니다.
 
 ## 유용한 상태 요청하기
+
+이 절에서 사용하는 정확한 식별자: `blocked`.
 
 언제든 이렇게 물을 수 있습니다.
 
@@ -192,6 +198,8 @@ volicord inbox resolve USER_ACTION_REQUEST_ID \
 [미기록 변경 조정](../reference/api/method-reconcile-changes.md)에 있습니다.
 
 ## 닫기 상태 검토하기
+
+이 절에서 사용하는 정확한 식별자: `changed`.
 
 큰 작업을 끝났다고 보기 전에는 이렇게 묻습니다.
 

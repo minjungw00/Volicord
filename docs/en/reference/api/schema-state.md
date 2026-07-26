@@ -21,7 +21,7 @@ This document owns state-shaped API fields, nesting, references, summaries, snap
 
 | Data you need | Start here |
 |---|---|
-| State references, current Task position, lifecycle, and shaping readiness | [State references](#state-references) |
+| State references, current `Task` position, lifecycle, and shaping readiness | [State references](#state-references) |
 | Unrecorded changes and project continuity | [Unrecorded change reconciliation shapes](#unrecorded-change-reconciliation-shapes) |
 | Status cards, next actions, and write tickets | [Current-position display shapes](#current-position-display-shapes) |
 | Evidence, observations, and Run summaries | [Evidence and run snapshot shapes](#evidence-and-run-snapshot-shapes) |
@@ -48,7 +48,7 @@ Meaning:
 - `StateRecordRef` is the common public reference shape for Core-owned records that appear in API responses.
 - `record_kind` is a controlled value string.
 - `record_id`, `project_id`, and `task_id` are opaque identifiers.
-- Record identity is exactly the tuple (`project_id`, `record_kind`, `record_id`). `task_id` is nullable Task context and is not part of record identity.
+- Record identity is exactly the tuple (`project_id`, `record_kind`, `record_id`). `task_id` is nullable `Task` context and is not part of record identity.
 - `produced_at_state_version` is the nullable `project_state.state_version` of the aggregate projection that produced the reference. It is a projection-freshness cue, not record identity, a record revision, a close-basis revision, authority, or an optimistic-concurrency token. The same logical record can therefore appear with different `produced_at_state_version` values without becoming a different record.
 - When a method response emits a ref from its current projection, non-null `produced_at_state_version` matches the `project_state.state_version` used for that response projection, even when the referenced record last changed earlier. Exact replay retains the originally stored response and its original projection-freshness values.
 - A `StateRecordRef` never supplies concurrency input. A caller that invokes a mutation uses the current project clock in `ToolEnvelope.expected_state_version` when the method owner requires it.
@@ -125,7 +125,7 @@ Validation and authority boundary:
 
 ## `StateSummary`
 
-`StateSummary` is the compact current-position state returned by supported methods that need to show the current Task path.
+`StateSummary` is the compact current-position state returned by supported methods that need to show the current `Task` path.
 
 ```yaml
 StateSummary:
@@ -207,6 +207,8 @@ Owner links:
 
 <a id="task-lineage-workspace-and-authority-receipt"></a>
 ### Task lineage, workspace, and authority receipt
+
+Exact identifiers used in this section: `applied`.
 
 ```yaml
 TaskLineageSummary:
@@ -438,7 +440,7 @@ Owner links:
 - Method behavior that records the contract: [`volicord.update_scope`](method-update-scope.md)
 - Method behavior that applies the product-file write boundary: [`volicord.prepare_write`](method-prepare-write.md)
 
-## Task lifecycle state
+## `Task` lifecycle state
 
 `TaskLifecycleState` is the API shape for Task lifecycle fields that may appear inside `StateSummary` or close results.
 
@@ -457,7 +459,7 @@ Owner links:
 ## `ShapingReadiness`
 
 Meaning:
-- `ShapingReadiness` is an API view shape over Task, Change Unit, pending user action, evidence summary, blocker, and next-action fields.
+- `ShapingReadiness` is an API view shape over `Task`, Change Unit, pending user action, evidence summary, blocker, and next-action fields.
 - Its boolean fields and `gaps` array expose readiness-shaped data for the current state.
 
 ```yaml
@@ -580,7 +582,7 @@ WriteDecisionReason:
 ```
 
 Meaning:
-- `SummaryCard` is the stable compact summary shape for major user-facing status views. It uses public display strings for Task, Recording, Profile, Write Ticket, Evidence, User Judgment, Changes, Close Status, Transport, one Next action, and a concise Guarantee line.
+- `SummaryCard` is the stable compact summary shape for major user-facing status views. It uses public display strings for `Task`, Recording, Profile, Write Ticket, Evidence, User Judgment, Changes, Close Status, Transport, one Next action, and a concise Guarantee line.
 - When evidence or close projection is selected, `SummaryCard.evidence` is the exact `EvidenceGateSummary.state` value owned by [API Value Sets](schema-value-sets.md#evidence-gate-values). It does not independently infer a state from staged input or `EvidenceSummary.evidence_state`.
 - `SummaryCard.next` is the single display next action selected for the summary. Use `none` only when the owner-selected view knows no next action. `SummaryCard.next_action` may carry the matching structured `NextActionSummary` and may be omitted when no structured action applies. When a structured action applies, the summary selects the action whose `presentation_role=primary`; array position is not a selection contract.
 - `SummaryCard` is a summary of other owner-selected state fields, not a second authority record. It must not add internal identifiers unless an identifier is needed for the displayed next action.
@@ -915,7 +917,7 @@ ObservedChanges:
 Meaning:
 - `AcceptanceCriterionInput` is used by intake and never accepts an ID.
   `AcceptanceCriterionReplacement` is used only in a non-null update-scope
-  replacement set. A same-Task current ID preserves identity, `null` requests a
+  replacement set. A current ID from the same `Task` preserves identity, `null` requests a
   new Core-generated ID, and omission from the replacement set retires the
   previous current criterion. Unknown, retired, cross-Task, and duplicate IDs
   are invalid.
@@ -1113,7 +1115,7 @@ Close-basis reference rules:
   `user_action_resolution`, `blocker`, `task_event`, and `task` are not
   caller-supplied result refs for a close basis unless an owner document
   explicitly adds them.
-- Every accepted ref must exist, belong to the same project and Task, and be canonicalized by Core. Core never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
+- Every accepted ref must exist, belong to the same project and `Task`, and be canonicalized by Core. Core never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
 - Artifact refs used for close evidence must be linked to the Task and have `integrity_status=verified` plus current-byte verification at use time under [Artifact Storage](../storage-artifacts.md).
 - Evidence refs must identify the current Task evidence summary. Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
 - Core may add the current Run, current Change Unit, and current EvidenceSummary refs when constructing the canonical close basis.
@@ -1135,6 +1137,8 @@ Owner links:
 - Security guarantee meaning: [Security](../security.md)
 
 ## Related owners
+
+Exact identifiers used in this section: `CloseReadinessBlocker`, `CloseReadinessBlocker.category`.
 
 - [API Schema Core](schema-core.md) for `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, and `ToolDryRunResponse`.
 - [API Value Sets](schema-value-sets.md#state-and-blocker-values) for exact close-readiness blocker category values and neighboring state values.

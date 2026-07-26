@@ -15,7 +15,8 @@ for maintained documentation. Version 3 metadata records `doc_id`, maintained
 paths, document `kind`, summary, normative level, translation policy, primary
 audience, reader journeys, focused `canonical_for` ownership where needed,
 maintenance `owner_area`, `created_on`, `last_updated_on`, `last_verified_on`,
-`applies_to`, and `depends_on` relationships.
+root `default_applicability`, optional entry-specific `applies_to`, and
+`depends_on` relationships.
 
 `canonical_for` names the information or contract area owned by a document.
 `owner_area` names the durable maintenance responsibility domain for keeping
@@ -27,9 +28,12 @@ records the latest verifiable content-update date for that file or pair.
 `last_verified_on` records maintenance verification of the indexed paths,
 metadata, links, pairing, and owner routing; it is not product acceptance,
 runtime conformance, QA completion, close readiness, a security proof, or
-residual-risk acceptance. `applies_to` uses stable identifiers from the
-top-level applicability catalog rather than ambiguous values such as current,
-latest, or all versions.
+residual-risk acceptance. Applicability catalog keys use stable semantic
+identifiers without release, schema, or toolchain numbers. Each catalog entry
+names the owning file or registry in `version_source`; maintenance tooling reads
+the current value from that owner. `default_applicability` applies its non-empty
+list to every entry. An entry uses `applies_to` only for non-empty additional
+catalog values and does not repeat a root default.
 
 Use these document kinds by reader purpose:
 

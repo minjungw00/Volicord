@@ -4,6 +4,8 @@
 
 ## What this document owns
 
+Exact identifiers used in this section: `volicord.intake`.
+
 This document owns baseline method behavior for `volicord.update_scope`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
@@ -14,14 +16,16 @@ This document owns baseline method behavior for `volicord.update_scope`:
 
 This document does not own:
 
-- common request envelope, response branch, dry-run, or rejected-response schema bodies
+- common request envelope, response branch, `dry_run`, or rejected-response schema bodies
 - nested state, artifact, judgment, value-set, or error schema definitions
 - storage DDL, storage record layouts, exact storage effects, artifact lifecycle, security guarantees, or Core authority semantics
 - public error code meaning, public error precedence, or shared response-branch routing
 
 ## Purpose
 
-`volicord.update_scope` updates current Task and currently applied Change Unit fields after intake:
+Exact identifiers used in this section: `volicord.intake`.
+
+`volicord.update_scope` updates current `Task` and currently applied Change Unit fields after intake:
 
 - goal summary
 - scope boundary
@@ -46,11 +50,11 @@ exists, `keep_current` rejects a Task `baseline_ref` change; the caller must use
 
 ## Required inputs
 
-- A valid `ToolEnvelope`; committed non-dry-run requests require non-null `idempotency_key` and current `expected_state_version`.
+- A valid `ToolEnvelope`; committed `dry_run=false` requests require non-null `idempotency_key` and current `expected_state_version`.
 - `task_id`.
 - Any scope fields to change. For include/exclude updates, `scope_update.include` lists product work to bring into scope and `scope_update.exclude` lists product behavior that remains out of scope. `null` means leave the existing value unchanged; an empty array replaces that list with an empty list.
 - `acceptance_criteria=null` leaves the canonical criterion set unchanged. A
-  non-null array is a complete replacement set: a current same-Task ID preserves
+  non-null array is a complete replacement set: a current ID from the same `Task` preserves
   that criterion identity and may update its statement or
   `evidence_requirement`; this is an update to the same criterion, not a new
   identity. A null ID requests a new Core-generated ID, and an
@@ -99,18 +103,18 @@ Nested owner links:
 
 ## Access requirements
 
-A committed non-dry-run request requires:
+A committed `dry_run=false` request requires:
 
 - verified invocation context with `operation_category=agent_workflow`
 - a verified current workspace context when the Product Repository is Git-backed
-- a compatible same-project Task
+- a compatible same-project `Task`
 - enough scope to make the next safe action honest when creating or replacing the currently applied Change Unit
 
 ## State version behavior
 
-A committed non-dry-run result increments `project_state.state_version` exactly once.
+A committed `dry_run=false` result increments `project_state.state_version` exactly once.
 
-Before committing, Core reevaluates the Task's effective control level against
+Before committing, Core reevaluates the `Task`'s effective control level against
 the authoritative project policy and the proposed scope/effect contract. It may
 raise the level, including to `sensitive`; it never automatically lowers an
 active Task. A policy relaxation therefore does not change an active Task, while
@@ -138,6 +142,8 @@ Invalidation does not consume or silently reuse it.
 
 ## Success result
 
+Exact identifiers used in this section: `scope_decision`.
+
 Returns `UpdateScopeResult` with:
 
 - `base.response_kind=result`
@@ -157,7 +163,7 @@ Returns `UpdateScopeResult` with:
 | Field | Result-field meaning |
 |---|---|
 | `base` | Common result metadata. The `ToolResultBase` shape, including `events`, is owned by [API Schema Core](schema-core.md#common-response). `base.events[].event_kind`, when present, is an opaque illustrative classification string. |
-| `task_ref` | `StateRecordRef` for the Task updated by the scope result. |
+| `task_ref` | `StateRecordRef` for the `Task` updated by the scope result. |
 | `change_unit_ref` | `StateRecordRef | null` for the currently applied Change Unit after the operation, or `null` when no current Change Unit applies. |
 | `linked_scope_decision_refs` | `StateRecordRef[]` for `scope_decision` user judgments applied by the update. |
 | `stale_write_ticket_refs` | Compatibility field containing `StateRecordRef[]` for tickets invalidated by the committed update. Each ticket's state summary carries the structured invalidation reason; the field name does not restore global-version staleness semantics. |
@@ -191,7 +197,7 @@ Not allowed:
 Returns `ToolRejectedResponse` for pre-commit failures such as:
 
 - stale `expected_state_version`
-- invalid Task identity
+- invalid `Task` identity
 - invalid Change Unit operation
 - missing required scope
 - scope violation

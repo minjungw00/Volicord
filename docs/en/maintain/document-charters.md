@@ -87,6 +87,8 @@ Document: [User Guide Overview](../user-guide/overview.md)
 
 ## Installation
 
+Exact identifiers used in this section: `action_required`.
+
 Document: [Installation](../user-guide/installation.md)
 
 - Primary goal: Lead readers through installing, finding, and verifying the
@@ -110,6 +112,8 @@ Document: [Installation](../user-guide/installation.md)
   use to [Quickstart](../user-guide/quickstart.md).
 
 ## Quickstart
+
+Exact identifiers used in this section: `action_required`.
 
 Document: [Quickstart](../user-guide/quickstart.md)
 
