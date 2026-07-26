@@ -8,13 +8,8 @@ use std::{
     process,
 };
 
-use clap::{error::ErrorKind as ClapErrorKind, Parser};
 use volicord_cli::{
     changes_command::{run_changes_command, ChangesCommandError},
-    cli::{
-        Cli, Command as CliCommand, McpArgs, McpBindingArgs, McpCommand,
-        PolicyCommand as CliPolicyCommand,
-    },
     connection_command::{
         connection_setup_required_message, run_connection_command, run_init_command,
         ConnectionCommandError, ProductionConnectionProcess,
@@ -30,6 +25,10 @@ use volicord_cli::{
     project_context::{run_project_command, ProjectCommandError},
     setup_command::CommandOutcome,
     user_command::{run_inbox_command, run_status_command, UserCommandError},
+};
+use volicord_command_model::{
+    Cli, CodexHost, Command as CliCommand, McpArgs, McpBindingArgs, McpCommand,
+    PolicyCommand as CliPolicyCommand,
 };
 use volicord_store::bootstrap::installation_profile;
 use volicord_store::runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError};
@@ -103,14 +102,7 @@ where
 {
     let parsed = match Cli::try_parse_from(args) {
         Ok(parsed) => parsed,
-        Err(error)
-            if matches!(
-                error.kind(),
-                ClapErrorKind::DisplayHelp | ClapErrorKind::DisplayVersion
-            ) =>
-        {
-            return Ok(error.to_string())
-        }
+        Err(error) if !error.use_stderr() => return Ok(error.to_string()),
         Err(error) => return Err(CliError::usage(error.to_string())),
     };
     if parsed.version {
@@ -140,7 +132,7 @@ where
         }
         CliCommand::HostLaunch(options) => Err(CliError::HostLaunch {
             host: match options.host {
-                volicord_cli::cli::CodexHost::Codex => volicord_types::HostKind::Codex,
+                CodexHost::Codex => volicord_types::HostKind::Codex,
             },
             binding: options.connection.map_or(
                 HostLaunchBinding::DiscoverRepository,

@@ -23,6 +23,7 @@ use std::time::Instant;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_command_model::{EvidenceArgs, EvidenceCommand};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::{
     agent_connections::{agent_connection_project_access, agent_connection_record_read_only},
@@ -45,7 +46,6 @@ use volicord_types::{
     EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
 };
 
-use crate::cli::{EvidenceArgs, EvidenceCommand};
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
     registered_project_for_repo_admitted, resolve_repository_root, ProjectCommandError,
@@ -1273,9 +1273,7 @@ fn json_runtime(error: serde_json::Error) -> EvidenceCommandError {
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
-
-    use crate::cli::{Cli, Command as CliCommand};
+    use volicord_command_model::{Cli, Command as CliCommand};
 
     use super::*;
 

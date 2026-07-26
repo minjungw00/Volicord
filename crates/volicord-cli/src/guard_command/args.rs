@@ -5,8 +5,7 @@ use std::{
 };
 
 use serde_json::Value;
-
-use crate::cli::{HookEventArgs, HookOutput};
+use volicord_command_model::{HookEventArgs, HookOutput};
 
 use super::{redact_event_value, sha256_text, GuardCommandError};
 

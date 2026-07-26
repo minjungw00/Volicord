@@ -9,6 +9,7 @@ use std::{
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+use volicord_command_model::{HookArgs, HookCommand};
 use volicord_core::{Clock, CorePipelineError, SystemClock};
 use volicord_host_contract::{HostContractProfileId, HostNativeCorrelation};
 use volicord_store::{
@@ -44,7 +45,6 @@ use volicord_types::{
     UtcTimestamp,
 };
 
-use crate::cli::{HookArgs, HookCommand};
 use crate::disclosure::cooperative_host_decision_disclosure_json;
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
@@ -136,7 +136,7 @@ mod admission_tests {
     use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeSetup};
 
     use super::*;
-    use crate::cli::{HookEventArgs, HookOutput};
+    use volicord_command_model::{HookEventArgs, HookOutput};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct GuardMutationSnapshot {

@@ -8,7 +8,8 @@ CLI. Exact command behavior belongs to
 
 | Stage | Implementation responsibility |
 |---|---|
-| parse and normalize | CLI command DTOs reject unknown or conflicting input |
+| declare and inspect | `volicord-command-model` owns the complete Clap tree, command DTOs, value enums, syntax validators, public/hidden classification, canonical synopses, and command-path traversal |
+| parse and normalize | the command model rejects unknown, missing, or conflicting input and produces command DTOs for `volicord-cli` |
 | resolve context | Runtime Home, canonical Product Repository, project, and Agent Connection selection |
 | plan | read-only inspection builds exact proposed file and Store changes |
 | validate | managed configuration, Connection, session, storage, and policy checks |
@@ -89,7 +90,11 @@ authority state.
 
 ## Boundaries
 
-- CLI depends on Core and Store; Core does not depend on CLI.
+- `volicord-command-model` depends only on Clap. It does not depend on Core,
+  Store, MCP, CLI rendering, Runtime Home implementation, or application
+  services.
+- `volicord-cli` depends on the command model, Core, and Store; none of those
+  crates depends on `volicord-cli`.
 - Codex-specific configuration remains in the adapter.
 - No command starts a network transport.
 - No noninteractive command supplies user judgment.

@@ -1,8 +1,13 @@
 //! The complete command-line declaration for the `volicord` binary.
 
-use std::path::PathBuf;
+#![forbid(unsafe_code)]
 
-use clap::{ArgAction, ArgGroup, Args, Parser, Subcommand, ValueEnum};
+use std::{error::Error, ffi::OsString, fmt, path::PathBuf};
+
+use clap::{
+    error::ErrorKind, Arg, ArgAction, ArgGroup, Args, Command as ClapCommand, CommandFactory,
+    Parser, Subcommand, ValueEnum,
+};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -24,6 +29,17 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<Command>,
+}
+
+impl Cli {
+    /// Parses one `volicord` invocation with the canonical command model.
+    pub fn try_parse_from<I, T>(arguments: I) -> Result<Self, clap::Error>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<OsString> + Clone,
+    {
+        <Self as Parser>::try_parse_from(arguments)
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -643,9 +659,494 @@ fn nonempty_path(value: &str) -> Result<PathBuf, String> {
     nonempty_string(value).map(PathBuf::from)
 }
 
+/// Returns a fresh root Clap command for the complete `volicord` surface.
+pub fn root_command() -> ClapCommand {
+    <Cli as CommandFactory>::command()
+}
+
+/// Visibility inherited by a declared command path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandVisibility {
+    /// An ordinary command exposed through public traversal and help.
+    Public,
+    /// An internal command hidden by its own declaration or a hidden ancestor.
+    Hidden,
+}
+
+/// Introspection data for one explicitly declared command path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandPath {
+    components: Vec<String>,
+    visibility: CommandVisibility,
+    invocable: bool,
+    synopsis: String,
+}
+
+impl CommandPath {
+    /// Returns the command names below the `volicord` root.
+    pub fn components(&self) -> &[String] {
+        &self.components
+    }
+
+    /// Returns the visibility inherited from the actual Clap command tree.
+    pub const fn visibility(&self) -> CommandVisibility {
+        self.visibility
+    }
+
+    /// Returns whether this exact path can run without selecting another subcommand.
+    pub const fn is_invocable(&self) -> bool {
+        self.invocable
+    }
+
+    /// Returns the canonical synopsis rendered by Clap for this path.
+    pub fn synopsis(&self) -> &str {
+        &self.synopsis
+    }
+}
+
+/// Returns every explicitly declared command path, including hidden paths.
+pub fn command_paths() -> Vec<CommandPath> {
+    let root = root_command();
+    let mut paths = Vec::new();
+    collect_command_paths(
+        &root,
+        &mut Vec::new(),
+        CommandVisibility::Public,
+        &mut paths,
+    );
+    paths
+}
+
+/// Returns every public command path and excludes complete hidden subtrees.
+pub fn public_command_paths() -> Vec<CommandPath> {
+    command_paths()
+        .into_iter()
+        .filter(|path| path.visibility == CommandVisibility::Public)
+        .collect()
+}
+
+fn collect_command_paths(
+    command: &ClapCommand,
+    parent_components: &mut Vec<String>,
+    parent_visibility: CommandVisibility,
+    paths: &mut Vec<CommandPath>,
+) {
+    for subcommand in command.get_subcommands() {
+        parent_components.push(subcommand.get_name().to_owned());
+        let visibility =
+            if parent_visibility == CommandVisibility::Hidden || subcommand.is_hide_set() {
+                CommandVisibility::Hidden
+            } else {
+                CommandVisibility::Public
+            };
+        paths.push(CommandPath {
+            components: parent_components.clone(),
+            visibility,
+            invocable: !subcommand.is_subcommand_required_set(),
+            synopsis: canonical_synopsis(subcommand, parent_components),
+        });
+        collect_command_paths(subcommand, parent_components, visibility, paths);
+        parent_components.pop();
+    }
+}
+
+fn canonical_synopsis(command: &ClapCommand, components: &[String]) -> String {
+    let bin_name = std::iter::once("volicord")
+        .chain(components.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(" ");
+    command
+        .clone()
+        .bin_name(bin_name)
+        .render_usage()
+        .to_string()
+}
+
+/// One minimal public invocation generated from the command declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanonicalInvocation {
+    command_path: Vec<String>,
+    arguments: Vec<String>,
+}
+
+impl CanonicalInvocation {
+    /// Returns the command names below the `volicord` root.
+    pub fn command_path(&self) -> &[String] {
+        &self.command_path
+    }
+
+    /// Returns the complete argument vector, including the executable name.
+    pub fn arguments(&self) -> &[String] {
+        &self.arguments
+    }
+}
+
+/// Failure to derive a parseable canonical invocation from a declared path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandIntrospectionError {
+    command_path: Vec<String>,
+}
+
+impl CommandIntrospectionError {
+    /// Returns the command path whose current declaration could not be materialized.
+    pub fn command_path(&self) -> &[String] {
+        &self.command_path
+    }
+}
+
+impl fmt::Display for CommandIntrospectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "could not derive a canonical invocation for `volicord {}`",
+            self.command_path.join(" ")
+        )
+    }
+}
+
+impl Error for CommandIntrospectionError {}
+
+/// Generates one minimal parseable invocation for every invocable public path.
+pub fn canonical_public_invocations() -> Result<Vec<CanonicalInvocation>, CommandIntrospectionError>
+{
+    let root = root_command();
+    public_command_paths()
+        .into_iter()
+        .filter(CommandPath::is_invocable)
+        .map(|path| {
+            let command = find_command(&root, path.components())
+                .expect("command paths originate from this command declaration");
+            canonical_invocation(&root, &path, command).map(|arguments| CanonicalInvocation {
+                command_path: path.components,
+                arguments,
+            })
+        })
+        .collect()
+}
+
+fn find_command<'a>(root: &'a ClapCommand, command_path: &[String]) -> Option<&'a ClapCommand> {
+    let mut command = root;
+    for component in command_path {
+        command = command.find_subcommand(component)?;
+    }
+    Some(command)
+}
+
+fn canonical_invocation(
+    root: &ClapCommand,
+    command_path: &CommandPath,
+    command: &ClapCommand,
+) -> Result<Vec<String>, CommandIntrospectionError> {
+    let mut arguments = vec![root.get_name().to_owned()];
+    let mut current = root;
+    for component in command_path.components() {
+        append_required_arguments(current, &mut arguments);
+        arguments.push(component.clone());
+        current = current
+            .find_subcommand(component)
+            .expect("command paths originate from this command declaration");
+    }
+    append_required_arguments(current, &mut arguments);
+
+    if Cli::try_parse_from(&arguments).is_ok() {
+        return Ok(arguments);
+    }
+
+    let candidates = command
+        .get_arguments()
+        .filter(|argument| {
+            !argument.is_required_set()
+                && !argument.is_hide_set()
+                && !is_display_action(argument.get_action())
+        })
+        .filter_map(argument_tokens)
+        .collect::<Vec<_>>();
+
+    for count in 1..=candidates.len() {
+        for mask in 1_usize..(1_usize << candidates.len()) {
+            if mask.count_ones() as usize != count {
+                continue;
+            }
+            let mut attempt = arguments.clone();
+            let insertion = attempt
+                .iter()
+                .position(|argument| argument == "--")
+                .unwrap_or(attempt.len());
+            let additions = candidates
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| mask & (1_usize << index) != 0)
+                .flat_map(|(_, tokens)| tokens.iter().cloned())
+                .collect::<Vec<_>>();
+            attempt.splice(insertion..insertion, additions);
+            if Cli::try_parse_from(&attempt).is_ok() {
+                return Ok(attempt);
+            }
+        }
+    }
+
+    Err(CommandIntrospectionError {
+        command_path: command_path.components.clone(),
+    })
+}
+
+fn append_required_arguments(command: &ClapCommand, arguments: &mut Vec<String>) {
+    let required = command
+        .get_arguments()
+        .filter(|argument| argument.is_required_set() && argument.get_default_values().is_empty())
+        .collect::<Vec<_>>();
+    for argument in required
+        .iter()
+        .copied()
+        .filter(|argument| !argument.is_positional())
+    {
+        arguments.extend(
+            argument_tokens(argument).expect("required command options have a canonical spelling"),
+        );
+    }
+    for argument in required
+        .iter()
+        .copied()
+        .filter(|argument| argument.is_positional())
+    {
+        arguments.extend(
+            argument_tokens(argument)
+                .expect("required positional arguments accept a canonical value"),
+        );
+    }
+}
+
+fn argument_tokens(argument: &Arg) -> Option<Vec<String>> {
+    if is_display_action(argument.get_action()) {
+        return None;
+    }
+
+    let mut tokens = Vec::new();
+    if argument.is_positional() {
+        if argument.is_last_set() {
+            tokens.push("--".to_owned());
+        }
+    } else if let Some(long) = argument.get_long() {
+        tokens.push(format!("--{long}"));
+    } else if let Some(short) = argument.get_short() {
+        tokens.push(format!("-{short}"));
+    } else {
+        return None;
+    }
+
+    if argument.get_action().takes_values() {
+        let value_count = argument
+            .get_num_args()
+            .map_or(1, |range| range.min_values().max(1));
+        let value = argument
+            .get_possible_values()
+            .into_iter()
+            .find(|value| !value.is_hide_set())
+            .map_or_else(|| "value".to_owned(), |value| value.get_name().to_owned());
+        if argument.is_require_equals_set() && !argument.is_positional() {
+            let option = tokens
+                .pop()
+                .expect("value-taking non-positional arguments have an option spelling");
+            tokens.push(format!("{option}={value}"));
+            tokens.extend(std::iter::repeat_n(value, value_count.saturating_sub(1)));
+        } else {
+            tokens.extend(std::iter::repeat_n(value, value_count));
+        }
+    }
+
+    Some(tokens)
+}
+
+fn is_display_action(action: &ArgAction) -> bool {
+    matches!(
+        action,
+        ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
+    )
+}
+
+/// Failure to validate a documented invocation against the public command surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicInvocationError {
+    message: String,
+}
+
+impl fmt::Display for PublicInvocationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl Error for PublicInvocationError {}
+
+/// Validates syntax and rejects any invocation that enters a hidden command subtree.
+pub fn validate_public_invocation<I, T>(arguments: I) -> Result<(), PublicInvocationError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let arguments = arguments
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<OsString>>();
+    let parse_result = root_command().try_get_matches_from(arguments.clone());
+    if let Err(error) = parse_result {
+        if !matches!(
+            error.kind(),
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+        ) {
+            return Err(PublicInvocationError {
+                message: error.to_string(),
+            });
+        }
+    }
+
+    if invocation_visibility(&arguments) == CommandVisibility::Hidden {
+        return Err(PublicInvocationError {
+            message: "hidden `volicord` commands are not part of the public command surface"
+                .to_owned(),
+        });
+    }
+
+    Ok(())
+}
+
+fn invocation_visibility(arguments: &[OsString]) -> CommandVisibility {
+    let Ok(matches) = root_command()
+        .ignore_errors(true)
+        .try_get_matches_from(arguments)
+    else {
+        return CommandVisibility::Public;
+    };
+    let root = root_command();
+    let mut command = &root;
+    let mut matches = &matches;
+    let mut visibility = CommandVisibility::Public;
+
+    while let Some((name, subcommand_matches)) = matches.subcommand() {
+        let Some(subcommand) = command.find_subcommand(name) else {
+            break;
+        };
+        if subcommand.is_hide_set() {
+            visibility = CommandVisibility::Hidden;
+        }
+        command = subcommand;
+        matches = subcommand_matches;
+    }
+
+    visibility
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
+
+    #[test]
+    fn command_declaration_passes_clap_structural_assertions() {
+        root_command().debug_assert();
+    }
+
+    #[test]
+    fn public_commands_are_traversable_with_canonical_synopses() {
+        let root = root_command();
+        let public_paths = public_command_paths();
+        assert!(!public_paths.is_empty());
+
+        for path in &public_paths {
+            let mut command = &root;
+            for component in path.components() {
+                command = command
+                    .find_subcommand(component)
+                    .expect("public traversal must resolve every declared component");
+                assert!(!command.is_hide_set());
+            }
+            assert!(
+                path.synopsis().starts_with("Usage: volicord "),
+                "unexpected synopsis for {:?}: {}",
+                path.components(),
+                path.synopsis()
+            );
+        }
+
+        let expected = command_paths()
+            .into_iter()
+            .filter(|path| path.visibility() == CommandVisibility::Public)
+            .map(|path| path.components)
+            .collect::<BTreeSet<_>>();
+        let traversed = public_paths
+            .into_iter()
+            .map(|path| path.components)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(traversed, expected);
+    }
+
+    #[test]
+    fn hidden_command_subtrees_are_excluded_from_public_traversal() {
+        let hidden = command_paths()
+            .into_iter()
+            .filter(|path| path.visibility() == CommandVisibility::Hidden)
+            .map(|path| path.components)
+            .collect::<BTreeSet<_>>();
+        assert!(hidden.contains(&vec!["_hook".to_owned()]));
+        assert!(hidden.contains(&vec!["_host-launch".to_owned()]));
+        assert!(hidden
+            .iter()
+            .any(|path| path.starts_with(&["_hook".to_owned()]) && path.len() > 1));
+
+        let public = public_command_paths()
+            .into_iter()
+            .map(|path| path.components)
+            .collect::<BTreeSet<_>>();
+        assert!(hidden.is_disjoint(&public));
+
+        for arguments in [
+            vec!["volicord", "_hook", "pre-tool"],
+            vec![
+                "volicord",
+                "_host-launch",
+                "codex",
+                "--connection",
+                "connection_1",
+            ],
+        ] {
+            validate_public_invocation(arguments)
+                .expect_err("internal commands must not validate as public invocations");
+        }
+    }
+
+    #[test]
+    fn canonical_public_invocations_parse_with_the_same_model() {
+        let invocations =
+            canonical_public_invocations().expect("every public endpoint must materialize");
+        assert!(!invocations.is_empty());
+
+        let expected_paths = public_command_paths()
+            .into_iter()
+            .filter(CommandPath::is_invocable)
+            .map(|path| path.components)
+            .collect::<BTreeSet<_>>();
+        let actual_paths = invocations
+            .iter()
+            .map(|invocation| invocation.command_path().to_vec())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual_paths, expected_paths);
+
+        for invocation in invocations {
+            Cli::try_parse_from(invocation.arguments()).unwrap_or_else(|error| {
+                panic!(
+                    "canonical invocation for {:?} did not parse: {error}",
+                    invocation.command_path()
+                )
+            });
+            validate_public_invocation(invocation.arguments()).unwrap_or_else(|error| {
+                panic!(
+                    "canonical invocation for {:?} was not public: {error}",
+                    invocation.command_path()
+                )
+            });
+        }
+    }
 
     fn report_output_args(command: Command) -> ConnectionReportOutputArgs {
         match command {
@@ -716,7 +1217,15 @@ mod tests {
     }
 
     #[test]
-    fn declaration_rejects_unknown_hosts_and_missing_values() {
+    fn required_arguments_and_closed_values_are_enforced_by_clap() {
+        let required_error =
+            Cli::try_parse_from(["volicord", "init", "--host", "codex", "--profile", "record"])
+                .expect_err("init requires a repository");
+        assert_eq!(
+            required_error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+
         let host_error =
             Cli::try_parse_from(["volicord", "init", "--host", "unsupported", "--repo", "."])
                 .expect_err("the host value set must stay closed");
@@ -725,33 +1234,22 @@ mod tests {
         let value_error = Cli::try_parse_from(["volicord", "policy", "validate", "--file"])
             .expect_err("a missing option value must be a usage error");
         assert_eq!(value_error.kind(), clap::error::ErrorKind::InvalidValue);
-    }
 
-    #[test]
-    fn noncanonical_cli_surfaces_have_no_command_or_value_aliases() {
-        for command in ["serve", "storage", "_final-output"] {
-            let error = Cli::try_parse_from(["volicord", command])
-                .expect_err("noncanonical commands must not be accepted as hidden aliases");
-            assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
-        }
-
-        for args in [
-            vec!["volicord", "init", "--host", "claude-code", "--repo", "."],
-            vec![
-                "volicord",
-                "init",
-                "--host",
-                "codex",
-                "--repo",
-                ".",
-                "--profile",
-                "detective",
-            ],
-            vec!["volicord", "mcp", "serve", "--local-http"],
-        ] {
-            Cli::try_parse_from(args)
-                .expect_err("noncanonical values and transports must be rejected");
-        }
+        assert_eq!(
+            CodexHost::value_variants(),
+            &[CodexHost::Codex],
+            "host values come from the command model"
+        );
+        assert_eq!(
+            RecordProfile::value_variants(),
+            &[RecordProfile::Record],
+            "profile values come from the command model"
+        );
+        assert_eq!(
+            ConnectionMode::value_variants(),
+            &[ConnectionMode::Workflow, ConnectionMode::ReadOnly],
+            "connection modes come from the command model"
+        );
     }
 
     #[test]
@@ -762,7 +1260,7 @@ mod tests {
     }
 
     #[test]
-    fn current_mcp_subcommands_parse_and_removed_mode_flags_are_rejected() {
+    fn mcp_commands_parse_each_current_binding_form() {
         let serve = Cli::try_parse_from([
             "volicord",
             "mcp",
@@ -794,17 +1292,15 @@ mod tests {
             }))
         ));
 
-        for old_flag in ["--stdio", "--check"] {
-            let mcp_error = Cli::try_parse_from([
-                "volicord",
-                "mcp",
-                old_flag,
-                "--connection",
-                "connection_example",
-            ])
-            .expect_err("removed MCP mode flags must be rejected");
-            assert_eq!(mcp_error.kind(), clap::error::ErrorKind::UnknownArgument);
-        }
+        Cli::try_parse_from([
+            "volicord",
+            "mcp",
+            "serve",
+            "--discover-repository",
+            "--host",
+            "codex",
+        ])
+        .expect("repository discovery binding should parse");
     }
 
     #[test]

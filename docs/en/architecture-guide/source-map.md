@@ -93,11 +93,17 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/agent_session.rs` | Current Connection, project membership, mode, and managed runtime/project-session validation. |
 | `crates/volicord-core/src/authority_status.rs` | Typed status and authority-receipt correspondence. |
 
+## Command Model
+
+| Path | Responsibility |
+|---|---|
+| `crates/volicord-command-model/src/lib.rs` | Complete Clap command declaration for the `volicord` binary; root parser; public and hidden subcommand tree; command and argument DTOs; command-surface value enums and syntax validators; root `clap::Command` construction; actual-model visibility classification; command-path traversal; canonical synopsis rendering; public-invocation validation; and generation of canonical parseable public invocations. |
+
 ## CLI And Codex Adapter
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-cli/src/main.rs` | Process entry and administrative command dispatch. |
+| `crates/volicord-cli/src/main.rs` | Process entry, parsing through `volicord-command-model`, and administrative command dispatch. |
 | `crates/volicord-cli/src/mutation_admission.rs` | Exact Runtime Home resolution, per-operation `SharedWriter` acquisition, Store mutation-context construction, stable typed busy mapping, and lease retention for mutating CLI and Guard operations. |
 | `crates/volicord-cli/src/host_launch.rs` | Hidden same-process host launcher, exact current Codex entry revalidation, launch-lease issue/cleanup, and in-memory transition into managed stdio. |
 | `crates/volicord-cli/src/connection_command/` | Connection add, list, status, verify, mode, and remove orchestration. |
@@ -157,6 +163,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
+| `crates/volicord-command-model/src/lib.rs` module tests | Clap structural assertions, complete public traversal, hidden-subtree exclusion, canonical-invocation self-parsing, and current required-argument, conflict, and value-set behavior. |
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization ordering, rejection, shutdown, and EOF contracts. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch ordering, notification, and response contracts. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection and schema compatibility contracts. |
@@ -183,7 +190,8 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-mcp-protocol` supplies production profiles for pinned specification parity without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
+| `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-command-model` supplies the public command grammar for documentation examples and `volicord-mcp-protocol` supplies production profiles for pinned specification parity, without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
+| `xtask/src/lib.rs` | Repository checks, including shell-token extraction and validation of documented public `volicord` invocations through `volicord-command-model`. |
 | `xtask/src/mcp_spec/mod.rs` | MCP specification maintenance facade and command entry points. |
 | `xtask/src/mcp_spec/manifest.rs` | Strict pinned manifest model, parsing, and deterministic rendering. |
 | `xtask/src/mcp_spec/validation.rs` | Offline metadata, immutable-pin, checksum, artifact, schema, ordering, and registry-parity validation. |

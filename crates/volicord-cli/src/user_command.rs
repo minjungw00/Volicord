@@ -7,6 +7,7 @@ use std::{
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_command_model::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
 use volicord_core::{
     CorePipelineError, CoreService, InvocationContext, PipelineResponse,
     UserChannelInboxProjection, UserChannelInboxProjectionRequest,
@@ -26,7 +27,6 @@ use volicord_types::{
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
-use crate::cli::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
 use crate::mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError};
 use crate::project_context::{
     registered_project_for_repo, registered_project_for_repo_admitted, resolve_repository_root,

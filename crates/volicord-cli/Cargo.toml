@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+volicord-command-model = { path = "../volicord-command-model" }
 volicord-core = { path = "../volicord-core" }
 volicord-host-contract = { path = "../volicord-host-contract" }
 volicord-mcp = { path = "../volicord-mcp" }
@@ -17,7 +18,6 @@ volicord-types = { path = "../volicord-types" }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 cap-fs-ext = "3.4.4"
 cap-std = "3.4.4"
-clap = { version = "4.5.57", features = ["derive"] }
 getrandom = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

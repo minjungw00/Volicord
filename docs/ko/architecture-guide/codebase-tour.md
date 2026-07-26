@@ -7,16 +7,18 @@ Reference 소유자에 있으며, 구현 코드는 그 계약을 보존해야 �
 
 workspace를 바깥쪽에서 안쪽 순서로 읽습니다.
 
-1. `volicord-cli`는 로컬 관리 명령, Codex 연결 설정, CLI 받은 편지함, stdio 프로세스
-   시작을 소유합니다.
-2. `volicord-mcp`는 MCP 생명주기, JSON-RPC stdio 프레이밍, 공개 도구 디코딩, 응답
+1. `volicord-command-model`은 완전한 Clap 명령 선언, 명령 DTO, 문법 검증,
+   가시성, 명령 introspection을 소유합니다.
+2. `volicord-cli`는 프로세스 시작, 관리 명령 디스패치, Codex 연결 설정, CLI 받은
+   편지함, 렌더링, stdio 프로세스 시작을 소유합니다.
+3. `volicord-mcp`는 MCP 생명주기, JSON-RPC stdio 프레이밍, 공개 도구 디코딩, 응답
    projection을 소유합니다.
-3. `volicord-core`는 메서드 계획, 정책, replay 결정, 권한 결과, 원자적 commit 조율을
+4. `volicord-core`는 메서드 계획, 정책, replay 결정, 권한 결과, 원자적 commit 조율을
    소유합니다.
-4. `volicord-store`는 Runtime Home 탐색, SQLite 접근, 엄격한 저장 레코드 검증,
+5. `volicord-store`는 Runtime Home 탐색, SQLite 접근, 엄격한 저장 레코드 검증,
    transaction 적용을 소유합니다.
-5. `volicord-types`는 공유 폐쇄 값, 식별자, 정규 인코딩을 소유합니다.
-6. `volicord-platform-fs`는 좁은 내부 facade 뒤의 플랫폼별 파일시스템 검사를
+6. `volicord-types`는 공유 폐쇄 값, 식별자, 정규 인코딩을 소유합니다.
+7. `volicord-platform-fs`는 좁은 내부 facade 뒤의 플랫폼별 파일시스템 검사를
    소유합니다.
 
 Core-facing 코드는 CLI나 MCP 어댑터 세부사항에 의존하지 않습니다. 어댑터는 서버 소유
@@ -44,6 +46,8 @@ MCP 호출은 다음 순서로 추적합니다.
 
 관리 연결 작업은 다음 경로를 따릅니다.
 
+- [`crates/volicord-command-model/src/lib.rs`](../../../crates/volicord-command-model/src/lib.rs):
+  명령 선언과 parsing된 명령 DTO
 - [`crates/volicord-cli/src/connection_command/`](../../../crates/volicord-cli/src/connection_command/):
   명령 조율
 - [`crates/volicord-cli/src/host_integration/codex/`](../../../crates/volicord-cli/src/host_integration/codex/):

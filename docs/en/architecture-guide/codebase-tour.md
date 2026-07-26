@@ -8,17 +8,19 @@ must preserve those contracts.
 
 Read the workspace from the outside inward:
 
-1. `volicord-cli` owns the local administrative command surface, Codex
-   connection setup, the CLI inbox, and stdio process launch.
-2. `volicord-mcp` owns MCP lifecycle, JSON-RPC stdio framing, public tool
+1. `volicord-command-model` owns the complete Clap command declaration,
+   command DTOs, syntax validation, visibility, and command introspection.
+2. `volicord-cli` owns process startup, administrative command dispatch, Codex
+   connection setup, the CLI inbox, rendering, and stdio process launch.
+3. `volicord-mcp` owns MCP lifecycle, JSON-RPC stdio framing, public tool
    decoding, and response projection.
-3. `volicord-core` owns method planning, policy, replay decisions, authority
+4. `volicord-core` owns method planning, policy, replay decisions, authority
    results, and atomic commit orchestration.
-4. `volicord-store` owns Runtime Home discovery, SQLite access, strict stored
+5. `volicord-store` owns Runtime Home discovery, SQLite access, strict stored
    record validation, and transaction application.
-5. `volicord-types` owns shared closed values, identifiers, and canonical
+6. `volicord-types` owns shared closed values, identifiers, and canonical
    encodings.
-6. `volicord-platform-fs` owns platform-specific filesystem inspection behind
+7. `volicord-platform-fs` owns platform-specific filesystem inspection behind
    a narrow internal facade.
 
 Core-facing code does not depend on CLI or MCP adapter details. Adapters derive
@@ -48,6 +50,8 @@ boundaries.
 
 For managed connection work, follow:
 
+- [`crates/volicord-command-model/src/lib.rs`](../../../crates/volicord-command-model/src/lib.rs)
+  for command declaration and parsed command DTOs;
 - [`crates/volicord-cli/src/connection_command/`](../../../crates/volicord-cli/src/connection_command/)
   for command orchestration;
 - [`crates/volicord-cli/src/host_integration/codex/`](../../../crates/volicord-cli/src/host_integration/codex/)

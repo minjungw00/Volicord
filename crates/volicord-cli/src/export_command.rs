@@ -10,6 +10,7 @@ use std::{
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use volicord_command_model::{AuthorityBundleArgs, ExportArgs, ExportCommand};
 use volicord_store::{
     export::{
         read_authority_bundle_snapshot, AuthorityBundleArtifact, AuthorityBundleRecord,
@@ -18,8 +19,6 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError,
 };
-
-use crate::cli::{AuthorityBundleArgs, ExportArgs, ExportCommand};
 
 const AUTHORITY_BUNDLE_CREATED_BY: &str = "volicord export authority-bundle";
 const AUTHORITY_BUNDLE_MANIFEST: &str = "manifest.json";

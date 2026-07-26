@@ -18,17 +18,17 @@ use sha2::{Digest, Sha256};
 use support::binary_fixture::create_git_repo;
 use toml_edit::DocumentMut;
 use volicord_cli::{
-    cli::{
-        CodexHost, ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionMode,
-        ConnectionModeArgs, ConnectionReportOutputArgs, InitArgs, PolicyArgs, PolicyCommand,
-        PolicyValidateArgs, RecordProfile, RuntimeHomeArgs,
-    },
     connection_command::{
         run_connection_command, run_init_command, ConnectionCommandError, ConnectionProcess,
         ConnectionProcessOutput, McpExchangeOutcome, McpExchangeProgress, McpProcessFailure,
         McpStage,
     },
     policy_command::run_policy_command,
+};
+use volicord_command_model::{
+    CodexHost, ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionMode,
+    ConnectionModeArgs, ConnectionReportOutputArgs, InitArgs, PolicyArgs, PolicyCommand,
+    PolicyValidateArgs, RecordProfile, RuntimeHomeArgs,
 };
 use volicord_host_contract::{CodexMcpCorrelation, HostSessionId, HostThreadId, HostTurnId};
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};

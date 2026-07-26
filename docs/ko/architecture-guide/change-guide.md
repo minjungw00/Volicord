@@ -21,7 +21,8 @@
 | DDL, 엄격한 저장 레코드, transaction 효과 | `volicord-store` | Storage DDL, Records, Effects, Versioning |
 | MCP 생명주기, 디코딩, 도구 목록, projection | `volicord-mcp` | MCP Transport와 API 소유자 |
 | 관리 MCP 시작 또는 runtime source | 숨겨진 CLI launcher, MCP bootstrap, 그다음 Store session | Agent Connection, MCP Transport, Storage Records와 DDL |
-| 관리 명령 또는 CLI 받은 편지함 | `volicord-cli` | Administrative CLI와 User Action 소유자 |
+| 관리 명령 문법, 인수, 가시성, introspection | `volicord-command-model` | Administrative CLI 소유자 |
+| 관리 명령 실행 또는 CLI 받은 편지함 | `volicord-cli` | Administrative CLI와 User Action 소유자 |
 | Codex 설정 또는 검증 | Codex 어댑터와 connection 명령 | Agent Connection, Security, System Requirements |
 | 릴리스 빌드 또는 패키지 무결성 | `tests/release-integrity`, 릴리스 workflow | 검증 |
 | 문서 경로 또는 용어 | `docs/doc-index.yaml`, 문서 쌍 | 문서와 번역 정책 |
@@ -32,6 +33,8 @@ resolution channel을 추가하지 않습니다.
 
 ## 경계 보존
 
+- `volicord-command-model`은 Clap에만 의존하며 명령 실행, Core, Store, MCP,
+  렌더링, Runtime Home, application service 동작을 소유하지 않습니다.
 - CLI와 MCP 어댑터는 Core-facing interface를 호출할 수 있지만 Core는 어댑터 내부에
   의존하지 않습니다.
 - Store는 저장된 엄격한 owner record를 사용 전에 검증하고 owner-defined effect를

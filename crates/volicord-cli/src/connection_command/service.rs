@@ -2169,12 +2169,12 @@ mod init_planning_tests {
 
         let transition = command_connection_mode(
             ConnectionModeArgs {
-                host: Some(crate::cli::CodexHost::Codex),
-                mode: crate::cli::ConnectionMode::ReadOnly,
+                host: Some(volicord_command_model::CodexHost::Codex),
+                mode: volicord_command_model::ConnectionMode::ReadOnly,
                 repo: Some(repo_root.clone()),
-                runtime_home: crate::cli::RuntimeHomeArgs::default(),
+                runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                 shared: true,
-                output: crate::cli::ConnectionReportOutputArgs {
+                output: volicord_command_model::ConnectionReportOutputArgs {
                     json: true,
                     verbose: false,
                 },

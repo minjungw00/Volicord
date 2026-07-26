@@ -43,6 +43,9 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 에이전트 호스트 설정과 운영자 동작을 읽을 때는 실행 흐름 경계를
 [CLI 작업 흐름](cli-workflows.md)에서 먼저 확인합니다. 그런 다음
+명령 문법, 가시성, introspection을 담당하는
+[`crates/volicord-command-model/src/lib.rs`](../../../crates/volicord-command-model/src/lib.rs)를
+읽고,
 [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs)에서
 시작해
 [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs),
@@ -57,6 +60,8 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 
 ## 경계 기억하기
 
+- `volicord-command-model`은 명령 문법을 담당하고 Clap에만 의존합니다.
+  명령 실행은 `volicord-cli`에 남습니다.
 - Core 쪽 코드는 CLI와 MCP 어댑터 크레이트에 의존하지 않습니다.
 - `volicord-mcp`는 시작과 세션 검증을 위해 Store를 직접 사용할 수 있습니다.
   이 직접 Store 사용은 공개 메서드 의미를 구현하는 다른 경로가 아닙니다.

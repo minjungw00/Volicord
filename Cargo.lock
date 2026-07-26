@@ -876,7 +876,6 @@ dependencies = [
  "cap-fs-ext",
  "cap-std",
  "chrono",
- "clap",
  "getrandom",
  "rusqlite",
  "rustix",
@@ -885,6 +884,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml_edit",
+ "volicord-command-model",
  "volicord-core",
  "volicord-host-contract",
  "volicord-mcp",
@@ -894,6 +894,13 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+]
+
+[[package]]
+name = "volicord-command-model"
+version = "0.9.1"
+dependencies = [
+ "clap",
 ]
 
 [[package]]
@@ -1339,6 +1346,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml_edit",
+ "volicord-command-model",
  "volicord-mcp-protocol",
 ]
 

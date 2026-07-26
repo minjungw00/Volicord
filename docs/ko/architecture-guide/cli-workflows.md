@@ -7,7 +7,8 @@
 
 | 단계 | 구현 책임 |
 |---|---|
-| parse와 normalize | CLI command DTO가 알 수 없거나 충돌하는 입력을 거부합니다. |
+| 선언과 introspection | `volicord-command-model`이 완전한 Clap tree, 명령 DTO, value enum, 문법 validator, 공개/숨김 분류, 정규 synopsis, 명령 경로 순회를 담당합니다. |
+| parse와 normalize | command model이 알 수 없거나 누락되거나 충돌하는 입력을 거부하고 `volicord-cli`에 명령 DTO를 제공합니다. |
 | context 해결 | Runtime Home, 정규 Product Repository, project, Agent Connection을 선택합니다. |
 | plan | 읽기 전용 검사가 정확한 파일과 Store 변경안을 만듭니다. |
 | validate | 관리 구성, Connection, session, 저장소, policy를 검사합니다. |
@@ -80,7 +81,10 @@ diagnostic metadata를 권한 상태로 다시 parse하지 않습니다.
 
 ## 경계
 
-- CLI는 Core와 Store에 의존하며 Core는 CLI에 의존하지 않습니다.
+- `volicord-command-model`은 Clap에만 의존합니다. Core, Store, MCP, CLI
+  렌더링, Runtime Home 구현, application service에 의존하지 않습니다.
+- `volicord-cli`는 command model, Core, Store에 의존하며 이 크레이트들은
+  `volicord-cli`에 의존하지 않습니다.
 - Codex별 구성은 adapter에 남습니다.
 - 어떤 명령도 네트워크 전송을 시작하지 않습니다.
 - 비대화형 명령은 사용자 판단을 제출하지 않습니다.

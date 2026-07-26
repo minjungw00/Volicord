@@ -5,6 +5,7 @@ members = [
     "crates/volicord-types",
     "crates/volicord-store",
     "crates/volicord-core",
+    "crates/volicord-command-model",
     "crates/volicord-cli",
     "crates/volicord-mcp",
     "crates/volicord-platform-fs",

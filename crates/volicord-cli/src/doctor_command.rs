@@ -10,6 +10,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
+use volicord_command_model::DoctorArgs;
 use volicord_store::{
     agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW},
     core_pipeline::CoreProjectStore,
@@ -32,7 +33,6 @@ use volicord_types::{
 };
 
 use crate::{
-    cli::DoctorArgs,
     guard_integration::audit::{
         all_recorded_values_true, guard_file_findings_for_inspection,
         guard_manifest_binding_valid_for_inspection, missing_required_hooks_from_manifest_json,

@@ -16,7 +16,6 @@ use volicord_types::{
     TaskId, ToolEnvelope, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
-use crate::cli::{ChangesArgs, ChangesCommand, ChangesReconcileArgs};
 use crate::disclosure::does_not_prove_line;
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
@@ -25,6 +24,7 @@ use crate::project_context::{
 use crate::summary_card::{
     render_close_and_next_action_totals_text, render_summary_card_text, summary_card_from_response,
 };
+use volicord_command_model::{ChangesArgs, ChangesCommand, ChangesReconcileArgs};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChangesCommandError {

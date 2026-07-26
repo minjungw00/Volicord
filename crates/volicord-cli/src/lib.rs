@@ -6,7 +6,6 @@
 //! administrative command behavior can be tested without invoking the binary.
 
 pub mod changes_command;
-pub mod cli;
 pub mod connection_command;
 pub mod diagnostics_command;
 mod disclosure;

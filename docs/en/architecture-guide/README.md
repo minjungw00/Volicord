@@ -47,6 +47,8 @@ For public method work, the shortest useful source path is:
 For agent host setup and operator behavior, read
 [CLI Workflows](cli-workflows.md) for the execution-flow boundaries, then start
 with
+[`crates/volicord-command-model/src/lib.rs`](../../../crates/volicord-command-model/src/lib.rs)
+for command syntax, visibility, and introspection, then
 [`crates/volicord-cli/src/main.rs`](../../../crates/volicord-cli/src/main.rs),
 then
 [`crates/volicord-cli/src/connection_command.rs`](../../../crates/volicord-cli/src/connection_command.rs),
@@ -62,6 +64,8 @@ and
 
 ## Boundary reminders
 
+- `volicord-command-model` owns command syntax and depends only on Clap;
+  command execution remains in `volicord-cli`.
 - Core-facing code is independent of CLI and MCP adapter crates.
 - `volicord-mcp` may use Store directly for startup and session validation. That
   direct Store use is not alternate public-method semantics.

@@ -113,7 +113,7 @@ pub struct StdioSetupTerminal {
 
 /// Typed input for the reusable setup workflow.
 ///
-/// The executable's supported `init` syntax is declared in [`crate::cli`].
+/// The executable's supported `init` syntax is declared by `volicord-command-model`.
 /// This type keeps the lower-level setup workflow free of command-line parsing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SetupWorkflowOptions {

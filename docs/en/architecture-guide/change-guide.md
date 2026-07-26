@@ -23,7 +23,8 @@ focused Reference owner, not by current code or this guide.
 | DDL, strict stored record, or transaction effect | `volicord-store` | Storage DDL, Records, Effects, Versioning |
 | MCP lifecycle, decoding, tool list, or projection | `volicord-mcp` | MCP Transport and API owners |
 | Managed MCP launch or runtime source | hidden CLI launcher, MCP bootstrap, then Store sessions | Agent Connection, MCP Transport, Storage Records and DDL |
-| Administrative command or CLI inbox | `volicord-cli` | Administrative CLI and User Action owners |
+| Administrative command syntax, arguments, visibility, or introspection | `volicord-command-model` | Administrative CLI owner |
+| Administrative command execution or CLI inbox | `volicord-cli` | Administrative CLI and User Action owners |
 | Codex setup or verification | Codex adapter and connection command | Agent Connection, Security, System Requirements |
 | Release build or package integrity | `tests/release-integrity`, release workflow | Validation |
 | Documentation route or terminology | `docs/doc-index.yaml`, paired docs | documentation and translation policies |
@@ -34,6 +35,8 @@ transport, or user-action resolution channel without an explicit owner change.
 
 ## Keep Boundaries Intact
 
+- `volicord-command-model` depends only on Clap and owns no command execution,
+  Core, Store, MCP, rendering, Runtime Home, or application-service behavior.
 - CLI and MCP adapters may call Core-facing interfaces; Core must not depend on
   adapter internals.
 - Store validates strict persisted owner records before use and applies

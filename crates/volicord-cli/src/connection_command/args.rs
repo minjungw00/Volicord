@@ -1,14 +1,12 @@
 use std::path::{Path, PathBuf};
 
+use volicord_command_model::{
+    CodexHost, ConnectionAddArgs, ConnectionListArgs, ConnectionModeArgs, ConnectionRemoveArgs,
+    ConnectionReportOutputArgs, ConnectionSelectArgs, InitArgs, RuntimeHomeArgs,
+};
 use volicord_types::IntegrationProfile;
 
-use crate::{
-    cli::{
-        CodexHost, ConnectionAddArgs, ConnectionListArgs, ConnectionModeArgs, ConnectionRemoveArgs,
-        ConnectionReportOutputArgs, ConnectionSelectArgs, InitArgs, RuntimeHomeArgs,
-    },
-    host_integration::HostKind,
-};
+use crate::host_integration::HostKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum OutputFormat {

@@ -18,16 +18,15 @@ use volicord_store::{
     StoreError,
 };
 
+use volicord_command_model::{
+    DiagnosticsArgs, DiagnosticsCommand, DiagnosticsSessionArgs, DiagnosticsShowArgs,
+    DiagnosticsWorkflowMetricsArgs,
+};
 use volicord_types::{
     AgentRuntimeSessionId, DiagnosticConnectionContext, DiagnosticFinding, DiagnosticFindingId,
     DiagnosticLookupReport, DiagnosticLookupStatus, DiagnosticOperation, IntegrationProfile,
     IntegrationRevision, McpRuntimeSessionSource, StoredDiagnosticFinding, StoredDiagnosticGraph,
     MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
-};
-
-use crate::cli::{
-    DiagnosticsArgs, DiagnosticsCommand, DiagnosticsSessionArgs, DiagnosticsShowArgs,
-    DiagnosticsWorkflowMetricsArgs,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -737,7 +736,7 @@ mod tests {
         UtcTimestamp,
     };
 
-    use crate::cli::DiagnosticsWorkflowMetricsArgs;
+    use volicord_command_model::DiagnosticsWorkflowMetricsArgs;
 
     use super::*;
 

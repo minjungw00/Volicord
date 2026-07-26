@@ -93,11 +93,17 @@
 | `crates/volicord-core/src/agent_session.rs` | 현재 Connection, project membership, mode, 관리 runtime/project session 검증. |
 | `crates/volicord-core/src/authority_status.rs` | typed status와 authority receipt 대응. |
 
+## 명령 모델
+
+| 경로 | 책임 |
+|---|---|
+| `crates/volicord-command-model/src/lib.rs` | `volicord` 바이너리의 완전한 Clap 명령 선언, root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 문법 validator, root `clap::Command` 구성, 실제 모델 기반 가시성 분류, 명령 경로 순회, 정규 synopsis 렌더링, 공개 invocation 검증, parsing 가능한 정규 공개 invocation 생성을 담당합니다. |
+
 ## CLI와 Codex 어댑터
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-cli/src/main.rs` | 프로세스 진입과 관리 명령 디스패치. |
+| `crates/volicord-cli/src/main.rs` | 프로세스 진입, `volicord-command-model`을 통한 parsing, 관리 명령 디스패치. |
 | `crates/volicord-cli/src/mutation_admission.rs` | 정확한 Runtime Home 해석, 연산별 `SharedWriter` 획득, Store mutation context 구성, 안정적인 typed busy mapping, 변경 CLI 및 Guard 연산 전체의 lease 유지. |
 | `crates/volicord-cli/src/host_launch.rs` | 숨은 동일 프로세스 host launcher, 현재 Codex entry의 정확한 재검증, launch-lease 발급·정리, managed stdio로의 메모리 내 전환. |
 | `crates/volicord-cli/src/connection_command/` | connection add, list, status, verify, mode, remove 조율. |
@@ -157,6 +163,7 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
+| `crates/volicord-command-model/src/lib.rs` module test | Clap 구조 assertion, 완전한 공개 순회, 숨은 하위 tree 배제, 정규 invocation 자체 parsing, 현재 필수 인수·충돌·값 집합 동작. |
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization 순서, 거절, 종료, EOF 계약. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch 순서, notification, 응답 계약. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection과 schema 호환성 계약. |
@@ -183,7 +190,8 @@
 
 | 경로 | 책임 |
 |---|---|
-| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받으며 `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트를 끌어오지 않습니다. |
+| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-command-model`에서 문서 예시용 공개 명령 grammar를 받고 `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받으며 `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트를 끌어오지 않습니다. |
+| `xtask/src/lib.rs` | 셸 token 추출과 `volicord-command-model`을 통한 문서의 공개 `volicord` invocation 검증을 포함한 저장소 검사. |
 | `xtask/src/mcp_spec/mod.rs` | MCP 명세 유지보수 facade와 명령 진입점. |
 | `xtask/src/mcp_spec/manifest.rs` | 엄격한 고정 manifest 모델, parsing, 결정론적 rendering. |
 | `xtask/src/mcp_spec/validation.rs` | 오프라인 metadata, 변경 불가능한 pin, checksum, artifact, schema, ordering, registry 일치 검증. |

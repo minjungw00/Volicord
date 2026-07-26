@@ -7,6 +7,10 @@ use std::{
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use volicord_command_model::{
+    ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionListArgs, ConnectionModeArgs,
+    ConnectionRemoveArgs, ConnectionSelectArgs, InitArgs,
+};
 use volicord_mcp::ManagedMcpLaunchSpec;
 #[cfg(test)]
 use volicord_mcp::{ManagedMcpInvocationPurpose, MaterializedManagedMcpLaunch};
@@ -48,10 +52,6 @@ use volicord_types::{
     IntegrationRevision, ProjectId, ToolVerificationRole,
 };
 
-use crate::cli::{
-    ConnectionAddArgs, ConnectionArgs, ConnectionCommand, ConnectionListArgs, ConnectionModeArgs,
-    ConnectionRemoveArgs, ConnectionSelectArgs, InitArgs,
-};
 use crate::guard_integration::audit::guard_manifest_binding_valid_for_installation;
 use crate::guard_integration::{
     apply_guard_integration, guard_installation_upsert, plan_guard_integration,
@@ -1896,7 +1896,7 @@ mod persisted_metadata_tests {
         let list = run_connections_command(
             ConnectionListArgs {
                 repo: Some(repo_root.clone()),
-                runtime_home: crate::cli::RuntimeHomeArgs::default(),
+                runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                 json: true,
             },
             &repo_root,
@@ -1911,11 +1911,11 @@ mod persisted_metadata_tests {
         );
 
         let select_args = || ConnectionSelectArgs {
-            host: Some(crate::cli::CodexHost::Codex),
+            host: Some(volicord_command_model::CodexHost::Codex),
             repo: Some(repo_root.clone()),
-            runtime_home: crate::cli::RuntimeHomeArgs::default(),
+            runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
             shared: false,
-            output: crate::cli::ConnectionReportOutputArgs {
+            output: volicord_command_model::ConnectionReportOutputArgs {
                 json: true,
                 verbose: false,
             },
@@ -1985,11 +1985,11 @@ mod persisted_metadata_tests {
         let output = run_connection_command(
             ConnectionArgs {
                 command: ConnectionCommand::Status(ConnectionSelectArgs {
-                    host: Some(crate::cli::CodexHost::Codex),
+                    host: Some(volicord_command_model::CodexHost::Codex),
                     repo: Some(repo_root.clone()),
-                    runtime_home: crate::cli::RuntimeHomeArgs::default(),
+                    runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
                     shared: false,
-                    output: crate::cli::ConnectionReportOutputArgs {
+                    output: volicord_command_model::ConnectionReportOutputArgs {
                         json: true,
                         verbose: false,
                     },
@@ -2043,11 +2043,11 @@ mod persisted_metadata_tests {
         let revision_r1 = connection_integration_revision(&before)?;
         let generation_r1 = before.integration_generation;
         let select_args = || ConnectionSelectArgs {
-            host: Some(crate::cli::CodexHost::Codex),
+            host: Some(volicord_command_model::CodexHost::Codex),
             repo: Some(repo_root.clone()),
-            runtime_home: crate::cli::RuntimeHomeArgs::default(),
+            runtime_home: volicord_command_model::RuntimeHomeArgs::default(),
             shared: false,
-            output: crate::cli::ConnectionReportOutputArgs {
+            output: volicord_command_model::ConnectionReportOutputArgs {
                 json: true,
                 verbose: false,
             },

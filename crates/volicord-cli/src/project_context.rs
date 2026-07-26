@@ -5,6 +5,9 @@ use std::{
 };
 
 use serde_json::{json, Value};
+use volicord_command_model::{
+    JsonArgs, ProjectArgs, ProjectCommand, ProjectForgetArgs, ProjectRenameArgs, ProjectUseArgs,
+};
 use volicord_store::{
     bootstrap::{
         ensure_project_for_repo, forget_project, list_projects, project_record_by_repo_root,
@@ -15,9 +18,6 @@ use volicord_store::{
     RuntimeHomeMutationContext, StoreError,
 };
 
-use crate::cli::{
-    JsonArgs, ProjectArgs, ProjectCommand, ProjectForgetArgs, ProjectRenameArgs, ProjectUseArgs,
-};
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 
 const PROJECT_METADATA_CREATED_BY: &str = "volicord_cli_project_command";

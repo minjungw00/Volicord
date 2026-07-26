@@ -1646,12 +1646,12 @@ volicord init --host codex --repo /path/to/repo --profile=record
 }
 
 #[test]
-fn rejects_removed_host_profile_and_init_options() {
+fn rejects_values_and_options_outside_the_current_init_surface() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host claude-code --repo /path/to/repo --profile record\nvolicord init --host codex --repo /path/to/repo --profile detective\nvolicord init --host codex --repo /path/to/repo --allow-degraded\nvolicord init --host codex --repo /path/to/repo --connection CONNECTION_ID\n```\n",
+        "# Overview\n\n```sh\nvolicord init --host other-host --repo /path/to/repo --profile record\nvolicord init --host codex --repo /path/to/repo --profile other-profile\nvolicord init --host codex --repo /path/to/repo --unknown-flag\nvolicord init --host codex --repo /path/to/repo --unknown-option VALUE\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1659,33 +1659,32 @@ fn rejects_removed_host_profile_and_init_options() {
 
     assert_eq!(errors.len(), 4, "{:#?}", report.errors());
     assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("claude-code")
-                && error.message().contains("codex")),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
         errors.iter().any(
-            |error| error.message().contains("detective") && error.message().contains("record")
+            |error| error.message().contains("other-host") && error.message().contains("codex")
         ),
         "{:#?}",
         report.errors()
     );
     assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--allow-degraded")
-                && error.message().contains("not supported")),
+        errors.iter().any(|error| {
+            error.message().contains("other-profile") && error.message().contains("record")
+        }),
         "{:#?}",
         report.errors()
     );
     assert!(
         errors
             .iter()
-            .any(|error| error.message().contains("--connection")
-                && error.message().contains("not supported")),
+            .any(|error| error.message().contains("--unknown-flag")
+                && error.message().contains("unexpected argument")),
+        "{:#?}",
+        report.errors()
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message().contains("--unknown-option")
+                && error.message().contains("unexpected argument")),
         "{:#?}",
         report.errors()
     );
@@ -1697,7 +1696,7 @@ fn rejects_inline_init_examples_outside_public_option_surface() {
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile=managed\nvolicord init --host codex --repo /path/to/repo --allow-degraded=true\nvolicord init --host codex --repo /path/to/repo --connection=CONNECTION_ID\n```\n",
+        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile=other-profile\nvolicord init --host codex --repo /path/to/repo --unknown-flag=true\nvolicord init --host codex --repo /path/to/repo --unknown-option=VALUE\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1708,7 +1707,7 @@ fn rejects_inline_init_examples_outside_public_option_surface() {
         errors
             .iter()
             .any(|error| error.message().contains("--profile")
-                && error.message().contains("managed")
+                && error.message().contains("other-profile")
                 && error.message().contains("record")),
         "{:#?}",
         report.errors()
@@ -1716,28 +1715,28 @@ fn rejects_inline_init_examples_outside_public_option_surface() {
     assert!(
         errors
             .iter()
-            .any(|error| error.message().contains("--allow-degraded")
-                && error.message().contains("not supported")),
+            .any(|error| error.message().contains("--unknown-flag")
+                && error.message().contains("unexpected argument")),
         "{:#?}",
         report.errors()
     );
     assert!(
         errors
             .iter()
-            .any(|error| error.message().contains("--connection")
-                && error.message().contains("not supported")),
+            .any(|error| error.message().contains("--unknown-option")
+                && error.message().contains("unexpected argument")),
         "{:#?}",
         report.errors()
     );
 }
 
 #[test]
-fn rejects_removed_serve_command() {
+fn rejects_commands_outside_the_current_root_surface() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord serve --transport local-http\n```\n",
+        "# Overview\n\n```sh\nvolicord unknown-command --unknown-option\n```\n",
     );
 
     let report = report(fixture.path());
@@ -1747,7 +1746,7 @@ fn rejects_removed_serve_command() {
     assert!(
         errors[0]
             .message()
-            .contains("unknown `volicord` command `serve`"),
+            .contains("unrecognized subcommand 'unknown-command'"),
         "{:#?}",
         report.errors()
     );

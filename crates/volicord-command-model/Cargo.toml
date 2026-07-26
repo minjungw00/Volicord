@@ -1,0 +1,12 @@
+[package]
+name = "volicord-command-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+clap = { version = "4.5.57", features = ["derive"] }
+
+[lib]
+path = "src/lib.rs"

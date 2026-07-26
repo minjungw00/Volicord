@@ -11,6 +11,9 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use serde_json::{Number, Value};
+use volicord_command_model::{
+    PolicyApplyArgs, PolicyArgs, PolicyCommand, PolicyShowArgs, PolicyValidateArgs,
+};
 use volicord_store::{
     agent_connections::{
         agent_connection_project_access_read_only, agent_connection_record_read_only,
@@ -30,7 +33,6 @@ use volicord_types::{
 };
 
 use crate::{
-    cli::{PolicyApplyArgs, PolicyArgs, PolicyCommand, PolicyShowArgs, PolicyValidateArgs},
     guard_integration::{
         files::{
             plan_policy_file, write_managed_file_if_fresh, FilePlanStatus, VOLICORD_POLICY_SCHEMA,
