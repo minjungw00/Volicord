@@ -1,5 +1,62 @@
-use super::*;
-use volicord_types::OperationCategory;
+use super::{
+    active_acceptance_criteria_for_task, agent_safe_pending_user_action_summaries,
+    build_state_summary, changes_summary_text, close_context_from_projection,
+    close_context_with_pending_authorities, close_state_text, close_task, core_error_response,
+    decode_required_json, evidence_gate_summary_text, evidence_summary_for_display,
+    guarantee_display_for_invocation, no_active_task_response, normalize_next_action_collection,
+    object_from_value, parse_owner_storage_value, parse_storage_value,
+    pending_user_action_authorities_for_plan, prepare_or_response, primary_next_action,
+    profile_summary_text, project_state_projection, projected_close_basis, projected_close_check,
+    projected_evidence_summary, projected_write_ticket_summary,
+    record_core_workflow_metric_best_effort, resolved_user_action_authorities_for_all_kinds,
+    response_committed_fresh_effect, state_ref, state_ref_from_stored, storage_value,
+    store_error_response, summary_card_for_core, user_action, user_action_authority_from_state,
+    utc_timestamp, validation_rejected, write_ticket_summary_text, CloseTaskPlan, PlanError,
+    StoredScope, SummaryBuild, SummaryCardBuild,
+};
+use crate::pipeline::{
+    CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
+    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
+    TaskRequirement, VerifiedInvocationContext,
+};
+use crate::policy::close_readiness::{
+    user_action_has_current_basis, verified_user_channel_provenance, UserActionAuthority,
+};
+use crate::policy::path::{path_is_within, paths_are_authorized};
+use crate::policy::write_ticket::write_ticket_is_idle_expired;
+use chrono::{DateTime, Utc};
+use serde_json::json;
+use std::collections::{BTreeMap, BTreeSet};
+use volicord_store::core_pipeline::{
+    ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, ProjectStateHeader,
+    RunObservedChangesRecord, TaskRecord, UnrecordedChangeResolutionUpdate, WriteTicketRecord,
+};
+use volicord_store::diagnostics::WorkflowMetricKind;
+use volicord_store::error::StoreError;
+use volicord_store::guards::UnrecordedChangeRecord;
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::{
+    BaselineRef, ChangeUnitId, TaskId, UnrecordedChangeId, UserActionOptionId,
+    UserActionResolutionId,
+};
+use volicord_types::methods::{
+    ReconcileChangesRequest, ReconcileChangesResultFields, RequestUserActionRequest,
+    UnrecordedChangeResolutionRequest,
+};
+use volicord_types::schema::{
+    CloseReadinessBlocker, DryRunSummary, EvidenceSummary, JsonObject, NextActionSummary,
+    PlannedBlocker, PlannedEffect, RequiredNullable, StateRecordRef, UnrecordedChangeFinding,
+    UnrecordedChangeResolutionSummary, UserActionBasisCoordinates, UserActionChoiceDraft,
+    UserActionContext, UserActionDraft, UserActionOptionInput, UserActionRequest,
+    UserActionResolutionBody, WriteTicketAttemptScope,
+};
+use volicord_types::values::OperationCategory;
+use volicord_types::values::{
+    ActorSource, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
+    NextActionKind, NextActionPresentationRole, PlannedBlockerSourceKind, StateRecordKind,
+    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+};
 
 #[derive(Debug, Clone)]
 struct ReconciliationPlan {
@@ -328,7 +385,7 @@ fn plan_reconcile_changes(
 
     for request_item in &request.resolution_requests {
         if !seen_change_ids.contains(request_item.unrecorded_change_id.as_str()) {
-            rejected_resolution_requests.push(volicord_types::UnrecordedChangeRejection {
+            rejected_resolution_requests.push(volicord_types::methods::UnrecordedChangeRejection {
                 unrecorded_change_id: request_item.unrecorded_change_id.clone(),
                 basis: request_item.basis,
                 code: "not_unresolved_for_task".to_owned(),
@@ -570,9 +627,9 @@ fn validate_requested_resolution(
     unrecorded_ref: &StateRecordRef,
     resolved_authorities: &[UserActionAuthority],
     request: &ReconcileChangesRequest,
-) -> Result<Option<volicord_types::UnrecordedChangeRejection>, PlanError> {
+) -> Result<Option<volicord_types::methods::UnrecordedChangeRejection>, PlanError> {
     if request_item.basis != UnrecordedChangeResolutionBasis::AcceptedByUser {
-        return Ok(Some(volicord_types::UnrecordedChangeRejection {
+        return Ok(Some(volicord_types::methods::UnrecordedChangeRejection {
             unrecorded_change_id: request_item.unrecorded_change_id.clone(),
             basis: request_item.basis,
             code: "system_resolution_basis_not_caller_owned".to_owned(),
@@ -582,7 +639,7 @@ fn validate_requested_resolution(
         }));
     }
     let Some(user_action_resolution_id) = request_item.user_action_resolution_id.as_ref() else {
-        return Ok(Some(volicord_types::UnrecordedChangeRejection {
+        return Ok(Some(volicord_types::methods::UnrecordedChangeRejection {
             unrecorded_change_id: request_item.unrecorded_change_id.clone(),
             basis: request_item.basis,
             code: "missing_user_action_resolution".to_owned(),
@@ -599,7 +656,7 @@ fn validate_requested_resolution(
     )
     .is_none()
     {
-        return Ok(Some(volicord_types::UnrecordedChangeRejection {
+        return Ok(Some(volicord_types::methods::UnrecordedChangeRejection {
             unrecorded_change_id: UnrecordedChangeId::new(record.unrecorded_change_id.clone()),
             basis: request_item.basis,
             code: "user_action_resolution_not_accepted".to_owned(),

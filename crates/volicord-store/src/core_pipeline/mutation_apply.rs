@@ -6,7 +6,7 @@ use crate::workflow_records::{
     apply_project_workflow_policy_mutation, clear_satisfied_task_policy_reevaluation,
     project_write_authority_fingerprint, ProjectWorkflowPolicyMutationEffect,
 };
-use volicord_types::WriteTicketValidityBasis;
+use volicord_types::schema::WriteTicketValidityBasis;
 
 fn task_control_level_rank(value: &str) -> StoreResult<u8> {
     match value {

@@ -1,4 +1,23 @@
-use super::*;
+use super::{
+    allocate_staged_artifact_handle_id, core_error_response, dry_run_summary, prepare_or_response,
+    redaction_state_value, rejected_pipeline_response, validation_rejected,
+    ValidatedStageArtifactInput, MAX_STAGED_BODY_BYTES,
+};
+use crate::pipeline::{
+    dry_run_response, method_result_base, store_failure_error, tool_error, CoreResult, CoreService,
+    FreshnessPolicy, InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse,
+    ReplayPolicy, TaskRequirement,
+};
+use chrono::Duration;
+use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
+use volicord_store::artifacts::{ArtifactStagingInsert, StagedPayloadKind};
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::methods::{MethodOperationCategory, StageArtifactRequest, StageArtifactResult};
+use volicord_types::schema::{StagedArtifactHandle, ToolEnvelope};
+use volicord_types::values::{
+    EffectKind, ErrorCode, EvidenceDisplayState, MethodName, RedactionState,
+};
 
 pub(super) const MAX_STAGE_ARTIFACT_RESULT_BYTES: usize = 24 * 1024;
 
@@ -177,7 +196,7 @@ impl CoreService {
 
 fn validate_stage_artifact_input(
     request: &StageArtifactRequest,
-) -> Result<ValidatedStageArtifactInput, Vec<volicord_types::ToolError>> {
+) -> Result<ValidatedStageArtifactInput, Vec<volicord_types::schema::ToolError>> {
     let mut errors = Vec::new();
     validate_stage_envelope(&request.envelope, &mut errors);
     validate_stage_text_field("task_id", request.task_id.as_str(), &mut errors);
@@ -271,7 +290,10 @@ fn validate_stage_artifact_input(
     }
 }
 
-fn validate_stage_envelope(envelope: &ToolEnvelope, errors: &mut Vec<volicord_types::ToolError>) {
+fn validate_stage_envelope(
+    envelope: &ToolEnvelope,
+    errors: &mut Vec<volicord_types::schema::ToolError>,
+) {
     validate_stage_text_field("project_id", envelope.project_id.as_str(), errors);
     if let Some(task_id) = envelope.task_id.as_ref() {
         validate_stage_text_field("envelope.task_id", task_id.as_str(), errors);
@@ -285,7 +307,7 @@ fn validate_stage_envelope(envelope: &ToolEnvelope, errors: &mut Vec<volicord_ty
 fn validate_stage_text_field(
     field: &'static str,
     value: &str,
-    errors: &mut Vec<volicord_types::ToolError>,
+    errors: &mut Vec<volicord_types::schema::ToolError>,
 ) {
     if value.trim().is_empty() {
         errors.push(stage_validation_error(field, "field must not be empty"));
@@ -376,7 +398,10 @@ fn is_lowercase_sha256_hex(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn stage_validation_error(field: &'static str, message: &'static str) -> volicord_types::ToolError {
+fn stage_validation_error(
+    field: &'static str,
+    message: &'static str,
+) -> volicord_types::schema::ToolError {
     let mut details = Map::new();
     details.insert("field".to_owned(), Value::String(field.to_owned()));
     tool_error(ErrorCode::ValidationFailed, message, false, Some(details))

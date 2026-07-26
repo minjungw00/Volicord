@@ -1,7 +1,7 @@
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 use volicord_mcp::MaterializedManagedMcpLaunch;
-use volicord_types::McpActiveVerificationEvidence;
+use volicord_types::mcp_verification_evidence::McpActiveVerificationEvidence;
 
 use super::verification::VerificationStep;
 
@@ -197,7 +197,8 @@ fn status_text(status_code: Option<i32>) -> String {
 mod tests {
     use super::*;
     use crate::connection_command::mcp_process::failure::{bounded_io_text, BoundedText};
-    use volicord_types::{IntegrationRevision, UtcTimestamp};
+    use volicord_types::integration_revision::IntegrationRevision;
+    use volicord_types::values::UtcTimestamp;
 
     #[test]
     fn typed_failures_map_directly_to_current_check_codes() {
@@ -327,7 +328,7 @@ mod tests {
             ),
             (
                 McpProtocolFailureKind::Unexpected,
-                volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+                volicord_types::diagnostics::INTERNAL_UNEXPECTED_FAILURE_CODE,
             ),
         ];
         for (kind, code) in protocol_cases {

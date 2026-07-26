@@ -9,7 +9,9 @@ use rusqlite::{
     functions::{Context, FunctionFlags},
     Connection, OpenFlags, Transaction, TransactionBehavior,
 };
-use volicord_types::{canonical_json_string, StorageDatabaseKind, StorageManifest, UtcTimestamp};
+use volicord_types::canonical::canonical_json_string;
+use volicord_types::storage_contract::{StorageDatabaseKind, StorageManifest};
+use volicord_types::values::UtcTimestamp;
 
 use crate::{
     bootstrap::{validate_current_project_registration, ProjectRecord},
@@ -776,7 +778,7 @@ mod tests {
         let parsed: Value = serde_json::from_str(manifest).expect("manifest JSON");
         assert_eq!(
             parsed["contract_id"],
-            Value::String(volicord_types::STORAGE_CONTRACT_ID.to_owned())
+            Value::String(volicord_types::storage_contract::STORAGE_CONTRACT_ID.to_owned())
         );
         assert_eq!(
             canonical_json_string(&parsed).expect("canonical JSON"),
@@ -805,7 +807,7 @@ mod tests {
 
         let malformed_current = format!(
             r#"{{"contract_id":"{}"}}"#,
-            volicord_types::STORAGE_CONTRACT_ID
+            volicord_types::storage_contract::STORAGE_CONTRACT_ID
         );
         for corrupt in ["not-json", malformed_current.as_str()] {
             let error = validate_persisted_manifest(REGISTRY_DATABASE_KIND, corrupt)

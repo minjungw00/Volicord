@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    AgentConnectionId, GuardHookPhase, GuardInstallationId, HostKind, IntegrationProfile,
-    IntegrationRevision, ProjectId,
+    ids::{AgentConnectionId, GuardInstallationId, ProjectId},
+    integration_revision::IntegrationRevision,
+    values::{GuardHookPhase, HostKind, IntegrationProfile},
 };
 
 /// Exact stored schema for a Volicord Guard installation manifest.

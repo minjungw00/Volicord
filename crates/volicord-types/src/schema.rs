@@ -483,7 +483,7 @@ pub struct GuardInstallation {
     pub runtime_home_id: String,
     pub connection_id: AgentConnectionId,
     pub project_id: ProjectId,
-    pub manifest: crate::GuardManifest,
+    pub manifest: crate::guard_manifest::GuardManifest,
     pub created_at: UtcTimestamp,
     pub updated_at: UtcTimestamp,
 }
@@ -511,8 +511,8 @@ pub struct GuardEvent {
     pub session_id: RequiredNullable<AgentSessionId>,
     pub connection_id: AgentConnectionId,
     pub guard_installation_id: GuardInstallationId,
-    pub policy_hash: crate::PolicyHash,
-    pub integration_revision: crate::IntegrationRevision,
+    pub policy_hash: crate::guard_manifest::PolicyHash,
+    pub integration_revision: crate::integration_revision::IntegrationRevision,
     pub event_kind: GuardHookPhase,
     pub contract_status: GuardHookContractStatus,
     pub decision: GuardDecision,
@@ -2623,7 +2623,7 @@ fn validate_user_action_serialized_size<T: Serialize>(
     field: &'static str,
     value: &T,
 ) -> Result<(), UserActionShapeError> {
-    let size = crate::canonical_json_size_bytes(value)
+    let size = crate::canonical::canonical_json_size_bytes(value)
         .map_err(|_| UserActionShapeError::new(field, "user-action JSON cannot be serialized"))?;
     if size > USER_ACTION_FORM_MAX_BYTES {
         return Err(UserActionShapeError::new(

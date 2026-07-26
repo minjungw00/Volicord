@@ -1,6 +1,7 @@
 use rusqlite::{params, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
-use volicord_types::{IdempotencyKey, MethodName, ProjectId, RequestHash, UtcTimestamp};
+use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
+use volicord_types::values::{MethodName, UtcTimestamp};
 
 use super::{
     project_current_utc_timestamp_for_conn, read_project_state_tx, replay::tool_invocation_tx,

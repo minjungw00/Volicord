@@ -10,10 +10,11 @@ use volicord_store::{
     },
     RuntimeHomeMutationContext,
 };
-use volicord_types::{
-    guard_manifest_from_json, ActorSource, AgentSafeUserActionRequestSummary, GuardPolicyDecision,
-    PromptCaptureStatus, TaskId, UserActionRequestId, UserActionStatus, UtcTimestamp,
-};
+use volicord_types::guard_manifest::guard_manifest_from_json;
+use volicord_types::guard_outcome::GuardPolicyDecision;
+use volicord_types::ids::{TaskId, UserActionRequestId};
+use volicord_types::schema::AgentSafeUserActionRequestSummary;
+use volicord_types::values::{ActorSource, PromptCaptureStatus, UserActionStatus, UtcTimestamp};
 
 use super::{
     args::GuardInput,

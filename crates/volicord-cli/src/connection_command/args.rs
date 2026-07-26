@@ -4,7 +4,7 @@ use volicord_command_model::{
     CodexHost, ConnectionAddArgs, ConnectionListArgs, ConnectionModeArgs, ConnectionRemoveArgs,
     ConnectionReportOutputArgs, ConnectionSelectArgs, InitArgs, RuntimeHomeArgs,
 };
-use volicord_types::IntegrationProfile;
+use volicord_types::values::IntegrationProfile;
 
 use crate::host_integration::HostKind;
 

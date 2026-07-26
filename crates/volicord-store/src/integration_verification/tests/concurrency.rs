@@ -4,7 +4,8 @@ use std::{
     thread,
 };
 
-use volicord_types::{IntegrationVerificationWorkflowState, SequenceDurableIdGenerator};
+use volicord_types::ids::SequenceDurableIdGenerator;
+use volicord_types::integration_verification::IntegrationVerificationWorkflowState;
 
 use super::support::*;
 use crate::integration_verification::{

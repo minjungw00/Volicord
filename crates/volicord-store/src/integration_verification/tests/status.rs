@@ -1,8 +1,9 @@
 use std::error::Error;
 
-use volicord_types::{
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::integration_verification::{
     GuardIntegrationVerificationPhaseStatus, GuardIntegrationVerificationPhases,
-    GuardVerificationRepairReason, GuardVerificationRetryPolicy, IntegrationRevision,
+    GuardVerificationRepairReason, GuardVerificationRetryPolicy,
     IntegrationVerificationWorkflowState,
 };
 

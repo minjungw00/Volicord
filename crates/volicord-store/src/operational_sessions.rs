@@ -4,12 +4,17 @@ use std::{path::Path, str::FromStr};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation, HostSessionId};
-use volicord_types::{
-    project_agent_session_id, AgentRuntimeSessionId, ConnectionIntegrationRevisionBasis,
-    DiagnosticFindingId, DurableIdGenerator, DurableIdKind, IntegrationRevision,
-    ManagedMcpClientInfo, McpRuntimeSessionSource, OccurrenceDiagnosticFinding,
-    RandomDurableIdGenerator, ToolVerificationRole, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
+use volicord_types::diagnostics::{DiagnosticFindingId, OccurrenceDiagnosticFinding};
+use volicord_types::ids::{
+    AgentRuntimeSessionId, DurableIdGenerator, DurableIdKind, RandomDurableIdGenerator,
+    DURABLE_ID_RETRY_LIMIT,
 };
+use volicord_types::integration_revision::{
+    ConnectionIntegrationRevisionBasis, IntegrationRevision, McpRuntimeSessionSource,
+};
+use volicord_types::managed_mcp_client_info::{project_agent_session_id, ManagedMcpClientInfo};
+use volicord_types::tool_names::ToolVerificationRole;
+use volicord_types::values::UtcTimestamp;
 
 use crate::{
     agent_connections::{raw_agent_connection_record_from_conn, AgentConnectionRecord},
@@ -456,7 +461,7 @@ pub(crate) fn start_mcp_runtime_session_for_test(
         context,
         crate::managed_launch_leases::ManagedMcpLaunchLeaseIssue {
             connection_internal_id: connection.connection_internal_id,
-            host_kind: volicord_types::HostKind::Codex,
+            host_kind: volicord_types::values::HostKind::Codex,
             expected_integration_revision: revision.as_str().to_owned(),
             expected_launch_fingerprint: connection.managed_fingerprint,
         },

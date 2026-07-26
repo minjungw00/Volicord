@@ -1,6 +1,9 @@
 use volicord_store::diagnostic_findings::insert_occurrence_finding;
 use volicord_test_support::core_fixtures::CoreFixture;
-use volicord_types::{DiagnosticCause, DiagnosticFindingData, OccurrenceDiagnosticFinding};
+use volicord_types::diagnostics::{
+    DiagnosticCause, DiagnosticFindingData, OccurrenceDiagnosticFinding,
+};
+use volicord_types::tool_names::AgentToolId;
 
 use super::*;
 use crate::host_integration::verification::ProjectTrustDiagnostic;
@@ -114,7 +117,7 @@ fn managed_session(version: &str, required_tools_present: bool) -> McpRuntimeSes
     McpRuntimeSessionRecord {
         runtime_session_id: "mcp_runtime_fixture".to_owned(),
         connection_internal_id: "connection_fixture".to_owned(),
-        session_source: volicord_types::McpRuntimeSessionSource::ManagedHost,
+        session_source: volicord_types::integration_revision::McpRuntimeSessionSource::ManagedHost,
         connection_integration_revision: CURRENT_REVISION.to_owned(),
         observed_host_executable_version: Some(version.to_owned()),
         attempted_client_name: Some("codex".to_owned()),
@@ -231,7 +234,7 @@ fn changed_hook_definition_resets_activation_to_the_host_owned_workflow() {
     );
     assert_eq!(
         changed.activation_state(),
-        volicord_types::IntegrationActivationState::HostReloadRequired
+        volicord_types::connection_verification::IntegrationActivationState::HostReloadRequired
     );
     assert_eq!(
         changed
@@ -341,8 +344,11 @@ fn peer_path_version_mismatch_does_not_invalidate_managed_evidence() {
 fn mismatched_verification_tool_fails_with_expected_and_observed_names() {
     let host = host("future");
     let mut session = managed_session("future", true);
-    session.verification_tool_name =
-        Some(volicord_types::AgentToolId::STATUS.wire_name().to_owned());
+    session.verification_tool_name = Some(
+        volicord_types::tool_names::AgentToolId::STATUS
+            .wire_name()
+            .to_owned(),
+    );
     let cause = DiagnosticFindingId::parse(
         "finding.mcp_runtime_fixture.verification_tool_designation_mismatch",
     )
@@ -363,7 +369,7 @@ fn mismatched_verification_tool_fails_with_expected_and_observed_names() {
     let details = check.details().expect("round-trip details").as_object();
     assert_eq!(
         details["verification_tool"]["observed_tool_identity"],
-        volicord_types::AgentToolId::STATUS.wire_name()
+        volicord_types::tool_names::AgentToolId::STATUS.wire_name()
     );
     assert_eq!(
         details["verification_tool"]["expected_tool_identity"],
@@ -496,7 +502,8 @@ fn old_revision_and_cli_preflight_observations_remain_action_required() {
         Some("host_session_revision_stale")
     );
 
-    old.session_source = volicord_types::McpRuntimeSessionSource::CliPreflight;
+    old.session_source =
+        volicord_types::integration_revision::McpRuntimeSessionSource::CliPreflight;
     let cli = test_host_session_checks(
         &host,
         "revision_current",
@@ -1253,7 +1260,7 @@ fn current_projection_selects_explicit_same_code_subjects_and_excludes_history()
         &root,
     )
     .expect("persist root cause");
-    let second = volicord_types::CurrentDiagnosticFinding::try_new(
+    let second = volicord_types::diagnostics::CurrentDiagnosticFinding::try_new(
         second.key().clone(),
         second
             .snapshot()
@@ -1488,7 +1495,7 @@ fn mixed_inline_and_persisted_causes_form_one_bounded_graph() {
         observed_at,
     )
     .expect("inline finding");
-    let inline = volicord_types::CurrentDiagnosticFinding::try_new(
+    let inline = volicord_types::diagnostics::CurrentDiagnosticFinding::try_new(
         inline.key().clone(),
         inline
             .snapshot()
@@ -1523,7 +1530,7 @@ fn mixed_inline_and_persisted_causes_form_one_bounded_graph() {
 
     assert_eq!(findings.len(), 2);
     assert_eq!(
-        volicord_types::diagnostic_root_cause_ids(
+        volicord_types::diagnostics::diagnostic_root_cause_ids(
             &findings,
             std::slice::from_ref(inline.id()),
             MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,

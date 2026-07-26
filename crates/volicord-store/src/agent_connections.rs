@@ -6,11 +6,14 @@ use std::{
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_types::{
-    guard_manifest_from_json, ConnectionIntegrationInstanceId, ConnectionVerificationReport,
-    DurableIdGenerator, DurableIdKind, IntegrationRevision, RandomDurableIdGenerator, UtcTimestamp,
+use volicord_types::connection_verification::ConnectionVerificationReport;
+use volicord_types::guard_manifest::guard_manifest_from_json;
+use volicord_types::ids::{
+    ConnectionIntegrationInstanceId, DurableIdGenerator, DurableIdKind, RandomDurableIdGenerator,
     DURABLE_ID_RETRY_LIMIT,
 };
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::values::UtcTimestamp;
 
 use crate::{
     bootstrap::{
@@ -2627,7 +2630,7 @@ mod tests {
     use std::error::Error;
 
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::McpRuntimeSessionSource;
+    use volicord_types::integration_revision::McpRuntimeSessionSource;
 
     use super::*;
     use crate::bootstrap::{
@@ -2893,7 +2896,7 @@ mod tests {
         let projected = connection.effective_verification_report(test_timestamp())?;
         assert_eq!(
             projected.status(),
-            volicord_types::ConnectionStatus::ActionRequired
+            volicord_types::connection_verification::ConnectionStatus::ActionRequired
         );
         assert_eq!(projected.checks()[0].id().as_str(), "verification_not_run");
         assert_eq!(
@@ -5082,7 +5085,7 @@ mod tests {
             crate::guards::guard_installation(fixture.runtime_home.path(), "guard_invalid_mode")?
                 .expect("Guard Installation");
         let mut mismatched = guard_manifest_from_json(&installation.manifest_json)?;
-        mismatched.connection_id = volicord_types::AgentConnectionId::new("conn_other");
+        mismatched.connection_id = volicord_types::ids::AgentConnectionId::new("conn_other");
         let registry =
             open_registry_database_for_test(registry_db_path(fixture.runtime_home.path()))?;
         registry.execute(

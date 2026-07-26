@@ -8,7 +8,7 @@ use std::{
 
 use volicord_release_smoke::{codex_executable_name, run_release_smoke, CODEX_FIXTURE_VERSION};
 use volicord_test_process::{BoundedCommand, BoundedProcessFailureKind, ProcessDeadline};
-use volicord_types::AgentToolId;
+use volicord_types::tool_names::AgentToolId;
 
 const FIXTURE_PREFIX: &str = "release_smoke_fixture-";
 const FIXTURE_ARGUMENT: &str = "--release-smoke-test-fixture";

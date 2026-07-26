@@ -5,7 +5,10 @@ use std::{error::Error, fmt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{canonical_json_sha256, is_canonical_sha256_digest, ConnectionIntegrationInstanceId};
+use crate::{
+    canonical::{canonical_json_sha256, is_canonical_sha256_digest},
+    ids::ConnectionIntegrationInstanceId,
+};
 
 const CONNECTION_REVISION_DOMAIN: &str = "volicord.connection-integration-revision";
 const PROJECT_REVISION_DOMAIN: &str = "volicord.project-integration-revision";
@@ -322,12 +325,15 @@ mod tests {
         })
         .expect("other project basis");
         let native_session = "native.session.same";
-        let session =
-            crate::project_agent_session_id("connection.alpha", project.as_str(), native_session)
-                .expect("current project session");
+        let session = crate::managed_mcp_client_info::project_agent_session_id(
+            "connection.alpha",
+            project.as_str(),
+            native_session,
+        )
+        .expect("current project session");
         assert_ne!(
             session,
-            crate::project_agent_session_id(
+            crate::managed_mcp_client_info::project_agent_session_id(
                 "connection.alpha",
                 recreated_project.as_str(),
                 native_session,
@@ -336,7 +342,7 @@ mod tests {
         );
         assert_ne!(
             session,
-            crate::project_agent_session_id(
+            crate::managed_mcp_client_info::project_agent_session_id(
                 "connection.alpha",
                 other_project.as_str(),
                 native_session,

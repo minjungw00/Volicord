@@ -1,6 +1,6 @@
 use std::{cell::RefCell, path::Path};
 
-use volicord_types::ProjectId;
+use volicord_types::ids::ProjectId;
 
 use super::CoreProjectStore;
 use crate::{

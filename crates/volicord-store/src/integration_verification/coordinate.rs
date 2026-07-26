@@ -1,10 +1,13 @@
 use volicord_host_contract::{
     HookObservationPolicy, HostContractProfileId, HostSessionId, HostTurnId,
 };
-use volicord_types::{
-    is_canonical_sha256_digest, AgentConnectionId, AgentRuntimeSessionId, AgentToolId,
-    GuardInstallationId, IntegrationRevision, PolicyHash, ProjectId,
+use volicord_types::canonical::is_canonical_sha256_digest;
+use volicord_types::guard_manifest::PolicyHash;
+use volicord_types::ids::{
+    AgentConnectionId, AgentRuntimeSessionId, GuardInstallationId, ProjectId,
 };
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::tool_names::AgentToolId;
 
 use super::{
     GuardIntegrationVerificationCaller, GuardIntegrationVerificationRunRecord,

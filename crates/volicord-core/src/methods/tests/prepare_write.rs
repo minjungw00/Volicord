@@ -646,7 +646,8 @@ fn prepare_write_invalidates_expired_approval_basis_even_when_new_write_is_not_a
     );
     let expires_at = UtcTimestamp::parse("2026-06-18T00:05:00Z")?;
     approval_request.expires_at = Some(expires_at.clone()).into();
-    let volicord_types::UserActionDraft::Choice(choice) = &mut approval_request.action else {
+    let volicord_types::schema::UserActionDraft::Choice(choice) = &mut approval_request.action
+    else {
         unreachable!("sensitive approval fixture is choice-shaped")
     };
     choice
@@ -1057,7 +1058,7 @@ fn prepare_write_honors_and_clears_durable_policy_reevaluation_mark() -> Result<
         RequestedMode::Direct,
     )?;
     let marker_fingerprint = format!("sha256:{}", "a".repeat(64));
-    let metadata_json = volicord_types::canonical_json_string(&json!({
+    let metadata_json = volicord_types::canonical::canonical_json_string(&json!({
         "policy_control_reevaluation": {
             "policy_version": 2,
             "policy_fingerprint": marker_fingerprint,
@@ -1173,7 +1174,7 @@ fn policy_strengthening_requires_approval_instead_of_reusing_nonsensitive_ticket
     )?;
     let initial_ticket_id = response_record_id(&initial.response_value, "write_ticket_ref");
     let marker_fingerprint = format!("sha256:{}", "b".repeat(64));
-    let metadata_json = volicord_types::canonical_json_string(&json!({
+    let metadata_json = volicord_types::canonical::canonical_json_string(&json!({
         "policy_control_reevaluation": {
             "policy_version": 2,
             "policy_fingerprint": marker_fingerprint,
@@ -1409,7 +1410,8 @@ fn prepare_write_unresolved_user_action_requires_decision() -> Result<(), Box<dy
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    judgment_request.required_for = vec![volicord_types::UserActionRequiredFor::PrepareWrite];
+    judgment_request.required_for =
+        vec![volicord_types::values::UserActionRequiredFor::PrepareWrite];
     harness.service.request_user_action(
         judgment_request,
         invocation(OperationCategory::AgentWorkflow),
@@ -1518,7 +1520,8 @@ fn informational_judgment_does_not_block_prepare_write_or_close_check() -> Resul
         Some(&change_unit_id),
         JudgmentKind::TechnicalDecision,
     );
-    judgment_request.required_for = vec![volicord_types::UserActionRequiredFor::Informational];
+    judgment_request.required_for =
+        vec![volicord_types::values::UserActionRequiredFor::Informational];
     harness.service.request_user_action(
         judgment_request,
         invocation(OperationCategory::AgentWorkflow),
@@ -1581,7 +1584,8 @@ fn prepare_write_ignores_another_change_unit_pending_judgment() -> Result<(), Bo
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    judgment_request.required_for = vec![volicord_types::UserActionRequiredFor::PrepareWrite];
+    judgment_request.required_for =
+        vec![volicord_types::values::UserActionRequiredFor::PrepareWrite];
     let judgment = harness.service.request_user_action(
         judgment_request,
         invocation(OperationCategory::AgentWorkflow),

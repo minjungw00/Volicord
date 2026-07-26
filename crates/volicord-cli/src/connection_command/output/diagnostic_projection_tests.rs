@@ -6,16 +6,20 @@ use volicord_store::diagnostic_findings::{
     insert_occurrence_finding, stored_diagnostic_findings_by_ids,
 };
 use volicord_test_support::core_fixtures::CoreFixture;
-use volicord_types::{
-    derive_integration_activation_state, ActivationStep, ActivationStepId, AgentConnectionId,
-    AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
-    ConnectionCheckStatus, ConnectionVerificationReport, DiagnosticAction, DiagnosticCode,
-    DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
-    DiagnosticFindingData, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, HookActivationState, IntegrationActivationPlan,
-    IntegrationRevision, OccurrenceDiagnosticFinding, UtcTimestamp, MAX_DIAGNOSTIC_FACT_BYTES,
-    MAX_DIAGNOSTIC_FACT_STRING_BYTES,
+use volicord_types::connection_verification::{
+    derive_integration_activation_state, ActivationStep, ActivationStepId, ConnectionCheck,
+    ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
+    ConnectionVerificationReport, HookActivationState, IntegrationActivationPlan,
 };
+use volicord_types::diagnostics::{
+    DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
+    DiagnosticFinding, DiagnosticFindingData, DiagnosticFindingId, DiagnosticSeverity,
+    DiagnosticSource, DiagnosticStage, DiagnosticSubject, OccurrenceDiagnosticFinding,
+    MAX_DIAGNOSTIC_FACT_BYTES, MAX_DIAGNOSTIC_FACT_STRING_BYTES,
+};
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId};
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::values::UtcTimestamp;
 
 use super::{render_command_report, CommandConnection, CommandOperation, ConnectionCommandReport};
 use crate::connection_command::{args::HumanOutputDetail, OutputFormat};

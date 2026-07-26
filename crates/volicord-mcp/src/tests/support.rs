@@ -939,9 +939,9 @@ pub(super) fn stored_action_record(
         &ProjectId::new(fixture.project_id()),
     )?;
     let now = store.current_timestamp()?;
-    let now = volicord_types::UtcTimestamp::parse(&now)?;
+    let now = volicord_types::values::UtcTimestamp::parse(&now)?;
     let record = store
-        .user_action_records_for_task(&volicord_types::TaskId::new(task_id), &now)?
+        .user_action_records_for_task(&volicord_types::ids::TaskId::new(task_id), &now)?
         .into_iter()
         .find(|record| record.request.user_action_request_id == request_id)
         .ok_or("stored user-action record should exist")?;

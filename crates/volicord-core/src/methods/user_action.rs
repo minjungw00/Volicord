@@ -1,4 +1,76 @@
-use super::*;
+use super::{
+    active_acceptance_criteria_for_task, allocate_user_action_request_id,
+    allocate_user_action_resolution_id, artifact_ref_from_verified_record, build_state_summary,
+    checked_derived_expiration, close_context_from_projection,
+    close_context_with_pending_authorities, close_context_with_resolved_authorities,
+    decision_rejected_response, decode_required_json, dry_run_summary,
+    evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
+    next_actions_for_state, no_active_change_unit_response, no_active_task_response,
+    normalize_display_text, object_from_value, parse_owner_storage_value, parse_task_mode,
+    pending_user_action_authorities_for_plan, persistent_artifact_is_verified_current,
+    plan_error_response, plan_project_continuity_record, prepare_or_response,
+    project_state_projection, projected_blocker_refs, projected_close_basis, projected_close_check,
+    projected_evidence_summary, projected_user_action_lifecycle_phase,
+    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
+    rejected_pipeline_response, resolved_user_action_authorities_for_all_kinds,
+    response_committed_fresh_effect, state_ref, state_ref_from_stored, task_lifecycle_mutation,
+    user_action_authority_from_record, user_action_from_record,
+    user_action_inbox_item_from_request, user_channel_availability, validation_plan_error,
+    validation_rejected, MethodPlan, PlanError, PlannedProjectContinuityRecord,
+    ProjectContinuityDraft, ProjectContinuityPlanContext, StoredScope, SummaryBuild,
+};
+use crate::pipeline::{
+    operation_result_ref, tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
+    InvocationContext, MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse,
+    ReplayPolicy, TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
+};
+use crate::policy::close_readiness::{current_acceptance_required_risk_ids, UserActionAuthority};
+use crate::policy::continuity::{decision_title_prefix, judgment_continuity_kind};
+use crate::policy::evidence::state_record_ref_identity_key;
+use crate::policy::write_ticket::normalize_sensitive_action_scope;
+use crate::{
+    CurrentUserActionProjection, UserChannelInboxProjection, UserChannelInboxProjectionItem,
+    UserChannelInboxProjectionRequest, UserChannelInboxResolutionSnapshot,
+};
+use chrono::Duration;
+use serde_json::json;
+use std::collections::{BTreeMap, BTreeSet};
+use volicord_store::core_pipeline::{
+    ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
+    ProjectContinuityRecordRecord, ProjectStateHeader, TaskRecord, ToolInvocationRecord,
+    UserActionRequestInsert, UserActionRequestRecord, UserActionResolutionInsert,
+    UserActionResolutionRecord,
+};
+use volicord_store::diagnostics::WorkflowMetricKind;
+use volicord_store::error::{StoreError, StoreResult};
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::{
+    ArtifactId, BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RequestId, RiskId, TaskId,
+    UserActionOptionId, UserActionRequestId, UserActionResolutionId,
+};
+use volicord_types::methods::{
+    AgentSafeUserActionResolution, McpUserActionResolutionSummary, MethodOperationCategory,
+    RequestUserActionRequest, RequestUserActionResult, RequestUserActionResultFields,
+    ResolveUserActionRequest, ResolveUserActionResult, ResolveUserActionResultFields,
+};
+use volicord_types::schema::{
+    validate_channel_submission_id, AgentSafeUserActionRequestSummary, ArtifactRef, EvidenceTarget,
+    NextActionSummary, PersistedUserActionRequest, PersistedUserActionResolution, RequiredNullable,
+    StateRecordRef, StateSummary, ToolEnvelope, UserActionBasis, UserActionBasisCoordinates,
+    UserActionChoiceBasis, UserActionChoiceDraft, UserActionChoiceRequestBody, UserActionDraft,
+    UserActionEvidenceObservation, UserActionEvidenceObservationBasis,
+    UserActionEvidenceObservationDraft, UserActionEvidenceObservationRequestBody, UserActionOption,
+    UserActionOptionInput, UserActionRequest, UserActionRequestBody, UserActionResolution,
+    UserActionResolutionBody, UserActionResolutionInput,
+    USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES,
+};
+use volicord_types::values::{
+    ActorSource, EffectKind, ErrorCode, EvidenceRelevanceStatus, JudgmentKind,
+    JudgmentResolutionOutcome, MethodName, OperationCategory, ProjectContinuityKind, ResponseKind,
+    StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+};
 
 impl CoreService {
     /// Executes `volicord.request_user_action` through the shared Core mutation pipeline.

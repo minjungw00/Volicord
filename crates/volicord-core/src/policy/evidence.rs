@@ -1,9 +1,8 @@
 use std::collections::BTreeSet;
 
-use volicord_types::{
-    ArtifactRef, EvidenceCoverageItem, EvidenceCoverageState, EvidenceStatus, RecordId,
-    StateRecordKind, StateRecordRef,
-};
+use volicord_types::ids::RecordId;
+use volicord_types::schema::{ArtifactRef, EvidenceCoverageItem, StateRecordRef};
+use volicord_types::values::{EvidenceCoverageState, EvidenceStatus, StateRecordKind};
 
 pub(crate) fn evidence_status_for_items(items: &[EvidenceCoverageItem]) -> EvidenceStatus {
     if items

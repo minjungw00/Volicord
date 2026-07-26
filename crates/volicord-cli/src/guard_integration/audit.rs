@@ -14,13 +14,16 @@ use volicord_store::{
         AgentConnectionInspectionRecord, GuardInstallationInspectionRecord, ProjectInspectionRecord,
     },
 };
-use volicord_types::{
-    guard_manifest_from_json, guard_manifest_matches_owner_binding,
-    ConnectionIntegrationRevisionBasis, GuardCommand, GuardCommandInvocation,
-    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManagedArtifact,
-    GuardManagedArtifactKind, GuardManifestOwnerBinding, IntegrationProfile, IntegrationRevision,
-    ManagedFileExpectation, ProjectId,
+use volicord_types::guard_manifest::{
+    guard_manifest_from_json, guard_manifest_matches_owner_binding, GuardCommand,
+    GuardCommandInvocation, GuardCommandInvocationSet, GuardCommandSet, GuardManagedArtifact,
+    GuardManagedArtifactKind, GuardManifestOwnerBinding, ManagedFileExpectation,
 };
+use volicord_types::ids::ProjectId;
+use volicord_types::integration_revision::{
+    ConnectionIntegrationRevisionBasis, IntegrationRevision,
+};
+use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
 use crate::host_integration::{
     contracts::{
@@ -200,7 +203,7 @@ impl GuardAuditFacts {
     pub(crate) fn generated_config_verified(&self) -> bool {
         self.findings.is_empty()
             && self.manifest_issues.is_empty()
-            && volicord_types::GUARD_MANAGED_ARTIFACT_SPECS
+            && volicord_types::guard_manifest::GUARD_MANAGED_ARTIFACT_SPECS
                 .iter()
                 .filter(|spec| !spec.optional_under_git_owner)
                 .all(|spec| self.audited_artifacts.contains(&spec.artifact))
@@ -432,7 +435,7 @@ fn guard_manifest_matches_authority_context(
 
 fn inspection_connection_revision(
     connection: &AgentConnectionInspectionRecord,
-) -> Result<IntegrationRevision, volicord_types::IntegrationRevisionError> {
+) -> Result<IntegrationRevision, volicord_types::integration_revision::IntegrationRevisionError> {
     IntegrationRevision::for_connection(ConnectionIntegrationRevisionBasis {
         connection_internal_id: &connection.connection_internal_id,
         integration_instance_id: &connection.integration_instance_id,
@@ -496,10 +499,9 @@ fn guard_file_findings_with_context(
         .required_hook_phases
         .contains(&GuardHookPhase::PromptCapture);
     findings.prompt_capture_host_supported = true;
-    findings.rule_file_supported = manifest
-        .managed_files
-        .iter()
-        .any(|file| file.artifact() == volicord_types::GuardManagedArtifact::HostRuleInstruction);
+    findings.rule_file_supported = manifest.managed_files.iter().any(|file| {
+        file.artifact() == volicord_types::guard_manifest::GuardManagedArtifact::HostRuleInstruction
+    });
     findings.guard_profiles.push(manifest.integration_profile);
     findings
         .direct_file_write_matcher_coverage_values
@@ -513,7 +515,9 @@ fn guard_file_findings_with_context(
     findings
 }
 
-fn missing_required_hooks_from_manifest(manifest: &volicord_types::GuardManifest) -> Vec<String> {
+fn missing_required_hooks_from_manifest(
+    manifest: &volicord_types::guard_manifest::GuardManifest,
+) -> Vec<String> {
     missing_required_phases_from_manifest(manifest)
         .into_iter()
         .map(|phase| guard_phase_capability_name(phase).to_owned())
@@ -521,7 +525,7 @@ fn missing_required_hooks_from_manifest(manifest: &volicord_types::GuardManifest
 }
 
 fn missing_required_phases_from_manifest(
-    manifest: &volicord_types::GuardManifest,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
 ) -> Vec<GuardHookPhase> {
     GuardHookPhase::REQUIRED
         .into_iter()
@@ -531,7 +535,7 @@ fn missing_required_phases_from_manifest(
 
 fn verify_guard_file(
     file: &ManagedFileExpectation,
-    manifest: &volicord_types::GuardManifest,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
     context: Option<GuardAuthorityContext<'_>>,
     findings: &mut GuardAuditFacts,
 ) {
@@ -591,7 +595,7 @@ fn verify_managed_block_file(
 
 fn verify_managed_json_file(
     file: &ManagedFileExpectation,
-    manifest: &volicord_types::GuardManifest,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
     context: Option<GuardAuthorityContext<'_>>,
     text: &str,
     findings: &mut GuardAuditFacts,
@@ -677,7 +681,10 @@ fn verify_managed_json_file(
     }
 }
 
-fn policy_runtime_commands_match(policy: &Value, manifest: &volicord_types::GuardManifest) -> bool {
+fn policy_runtime_commands_match(
+    policy: &Value,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
+) -> bool {
     policy_command_invocations(policy)
         .zip(runtime_command_invocations(manifest))
         .is_some_and(|(policy, runtime)| policy.fields_match_except_policy_hash(&runtime))
@@ -692,7 +699,7 @@ fn policy_command_invocations(policy: &Value) -> Option<GuardCommandInvocationSe
 }
 
 fn runtime_command_invocations(
-    manifest: &volicord_types::GuardManifest,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
 ) -> Option<GuardCommandInvocationSet> {
     GuardCommandInvocationSet::from_runtime_commands(
         &manifest.runtime_commands,
@@ -703,7 +710,7 @@ fn runtime_command_invocations(
 
 fn verify_managed_script_file(
     file: &ManagedFileExpectation,
-    manifest: &volicord_types::GuardManifest,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
     text: &str,
     findings: &mut GuardAuditFacts,
 ) {
@@ -777,7 +784,7 @@ fn verify_managed_script_file(
         (
             "purpose",
             match purpose {
-                volicord_types::GuardManagedScriptPurpose::Guard => "guard",
+                volicord_types::guard_manifest::GuardManagedScriptPurpose::Guard => "guard",
             },
         ),
         ("connection_id", connection_id.as_str()),
@@ -818,11 +825,11 @@ fn verify_managed_dispatch_script_file(
         findings.record_finding(artifact, path, GuardArtifactIssue::Malformed);
         return;
     };
-    if *managed_script_role != volicord_types::GuardManagedScriptRole::CodexDispatch
+    if *managed_script_role != volicord_types::guard_manifest::GuardManagedScriptRole::CodexDispatch
         || hook_wrapper_comment_value(text, "host_kind") != Some(host_kind.as_str())
         || hook_wrapper_comment_value(text, "phase") != Some("dispatch")
         || hook_wrapper_comment_value(text, "script_role") != Some("codex_dispatch")
-        || *phase != volicord_types::GuardDispatchPhase::Dispatch
+        || *phase != volicord_types::guard_manifest::GuardDispatchPhase::Dispatch
     {
         findings.record_finding(artifact, path, GuardArtifactIssue::OwnershipMismatch);
         return;
@@ -1000,7 +1007,7 @@ fn generated_managed_command_shape_verified(file: &ManagedFileExpectation, comma
     else {
         return false;
     };
-    if *purpose != volicord_types::GuardManagedScriptPurpose::Guard {
+    if *purpose != volicord_types::guard_manifest::GuardManagedScriptPurpose::Guard {
         return false;
     }
     let Some(words) = generated_shell_words(command) else {
@@ -1076,7 +1083,7 @@ pub(crate) fn hook_wrapper_comment_value<'a>(content: &'a str, key: &str) -> Opt
 }
 
 pub(crate) fn policy_hash(policy: &Value) -> Result<String, serde_json::Error> {
-    volicord_types::canonical_json_sha256(policy).map(|hash| hash.into_inner())
+    volicord_types::canonical::canonical_json_sha256(policy).map(|hash| hash.into_inner())
 }
 
 pub(crate) fn sha256_text(text: &str) -> String {
@@ -1119,7 +1126,8 @@ mod tests {
         operational_sessions::connection_integration_revision,
     };
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{GuardHookPhase, GuardManagedArtifact, IntegrationProfile};
+    use volicord_types::guard_manifest::GuardManagedArtifact;
+    use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
     use super::{
         guard_file_findings_with_context, GuardArtifactIssue, GuardAuditFacts,

@@ -1,11 +1,15 @@
 //! Typed, bounded fact inputs for operational-diagnostic families.
 
 use serde::Serialize;
-use volicord_types::{
-    ActivationStepId, AgentToolId, DiagnosticFactSource, DiagnosticFacts, GuardHookPhase,
+use volicord_types::connection_verification::ActivationStepId;
+use volicord_types::diagnostics::{DiagnosticFactSource, DiagnosticFacts};
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::integration_verification::{
     GuardProbeObservationStage, GuardVerificationRecoverability, GuardVerificationRepairReason,
-    GuardVerificationRetryPolicy, IntegrationRevision,
+    GuardVerificationRetryPolicy,
 };
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::GuardHookPhase;
 
 use crate::{
     guard_integration::audit::HookWrapperResolutionStatus,
@@ -283,7 +287,7 @@ impl<T: Serialize> DiagnosticFactSource for ProjectedFacts<'_, T> {}
 pub(crate) fn project_facts<T: TypedOperationalFacts>(
     definition: &OperationalDiagnosticDefinition,
     facts: &T,
-) -> Result<DiagnosticFacts, volicord_types::DiagnosticError> {
+) -> Result<DiagnosticFacts, volicord_types::diagnostics::DiagnosticError> {
     assert!(
         facts.supports(definition.diagnostic()),
         "typed operational facts do not match their immutable diagnostic definition"

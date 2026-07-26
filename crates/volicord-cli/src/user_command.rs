@@ -18,12 +18,17 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::{
-    ActorSource, ArtifactId, EvidenceRelevanceStatus, EvidenceTarget, IdempotencyKey,
-    OperationCategory, PersistedUserActionRequest, ProjectId, RequestId, ResolveUserActionRequest,
-    StatusInclude, StatusRequest, SummaryCard, TaskId, ToolEnvelope, UserActionInboxForm,
-    UserActionInboxItem, UserActionPresentationForm, UserActionPresentationPlan,
-    UserActionRequestId, UserActionResolutionInput, UserActionStatus,
+use volicord_types::ids::{
+    ArtifactId, IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId,
+};
+use volicord_types::methods::{ResolveUserActionRequest, StatusInclude, StatusRequest};
+use volicord_types::presentation::{UserActionPresentationForm, UserActionPresentationPlan};
+use volicord_types::schema::{
+    EvidenceTarget, PersistedUserActionRequest, SummaryCard, ToolEnvelope, UserActionInboxForm,
+    UserActionInboxItem, UserActionResolutionInput,
+};
+use volicord_types::values::{
+    ActorSource, EvidenceRelevanceStatus, OperationCategory, UserActionStatus,
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
@@ -523,9 +528,9 @@ fn resolution_from_form(
 }
 
 pub(crate) fn select_inbox_choice(
-    choices: &[volicord_types::UserActionInboxChoice],
+    choices: &[volicord_types::schema::UserActionInboxChoice],
     selector: &str,
-) -> Result<volicord_types::UserActionInboxChoice, UserCommandError> {
+) -> Result<volicord_types::schema::UserActionInboxChoice, UserCommandError> {
     if let Some(index) = parse_positive_index(selector)? {
         let choice = choices.get(index - 1).cloned().ok_or_else(|| {
             UserCommandError::Usage(format!(
@@ -599,7 +604,7 @@ fn selected_target(
 
 fn validate_artifact_selection(
     artifact_ids: &[String],
-    candidates: &[volicord_types::ArtifactRef],
+    candidates: &[volicord_types::schema::ArtifactRef],
 ) -> Result<(), UserCommandError> {
     let mut seen = BTreeSet::new();
     for artifact_id in artifact_ids {
@@ -1040,9 +1045,9 @@ mod tests {
         },
         seed_test_agent_session, TestRuntimeHomeSetup,
     };
-    use volicord_types::{
-        AgentConnectionId, ChangeUnitOperation, EvidenceClaimId, JudgmentKind, StagedArtifactHandle,
-    };
+    use volicord_types::ids::{AgentConnectionId, EvidenceClaimId};
+    use volicord_types::schema::StagedArtifactHandle;
+    use volicord_types::values::{ChangeUnitOperation, JudgmentKind};
 
     use super::*;
 

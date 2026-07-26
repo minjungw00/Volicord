@@ -4,10 +4,10 @@ use std::{env, ffi::OsStr, fs, path::Path};
 
 use serde_json::{json, Map, Value};
 use volicord_mcp::{mcp_tools_for_mode, CanonicalToolDefinition};
-use volicord_types::{
-    canonical_json_sha256, canonical_json_string, public_request_schema, AgentConnectionMode,
-    AgentToolId, MethodName,
-};
+use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::methods::public_request_schema;
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::{AgentConnectionMode, MethodName};
 
 const UPDATE_ENV: &str = "VOLICORD_UPDATE_CONTRACT_SNAPSHOTS";
 const API_SCHEMA_SNAPSHOT: &str = "snapshots/api_request_schema_contract.json";

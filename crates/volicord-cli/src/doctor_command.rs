@@ -26,11 +26,15 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     StoreError, StoreFailureRoute,
 };
-use volicord_types::{
-    canonical_json_sha256, guard_manifest_from_json, ConnectionCheckKind, DiagnosticFinding,
-    GuardHookPhase, GuardManagedArtifact, GuardManagedArtifactKind, IntegrationProfile, ProjectId,
-    SummaryCard, UtcTimestamp,
+use volicord_types::canonical::canonical_json_sha256;
+use volicord_types::connection_verification::ConnectionCheckKind;
+use volicord_types::diagnostics::DiagnosticFinding;
+use volicord_types::guard_manifest::{
+    guard_manifest_from_json, GuardManagedArtifact, GuardManagedArtifactKind,
 };
+use volicord_types::ids::ProjectId;
+use volicord_types::schema::SummaryCard;
+use volicord_types::values::{GuardHookPhase, IntegrationProfile, UtcTimestamp};
 
 use crate::{
     guard_integration::audit::{
@@ -308,7 +312,7 @@ where
                 DiagnosticCheck::failed("registry", "Runtime Home registry is unreadable")
                     .with_details(json!({
                         "path": path_text(path),
-                        "diagnostic_code": volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+                        "diagnostic_code": volicord_types::diagnostics::INTERNAL_UNEXPECTED_FAILURE_CODE,
                     })),
             );
             findings.push(doctor_store_finding(
@@ -1281,7 +1285,7 @@ fn project_policy_authority_state(
         Ok(None) => return ProjectPolicyAuthorityState::AuthorityMissing,
         Err(error) => return project_policy_store_failure_state(&error),
     };
-    if authority.policy_schema != volicord_types::WORKFLOW_POLICY_CONTRACT_ID
+    if authority.policy_schema != volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID
         || authority.source != "project_database"
     {
         return ProjectPolicyAuthorityState::AuthorityCorrupt;

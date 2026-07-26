@@ -37,12 +37,15 @@ use volicord_store::{
 use volicord_test_support::{
     core_fixtures::CoreFixture, transition_test_connection_mode, TestRuntimeHomeMutation,
 };
-use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, AgentToolId, DiagnosticCode, DiagnosticDomain,
-    DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-    DiagnosticSubject, IntegrationRevision, ManagedMcpClientInfo, McpRuntimeSessionSource,
-    OccurrenceDiagnosticFinding, UtcTimestamp,
+use volicord_types::diagnostics::{
+    DiagnosticCode, DiagnosticDomain, DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity,
+    DiagnosticSource, DiagnosticStage, DiagnosticSubject, OccurrenceDiagnosticFinding,
 };
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId};
+use volicord_types::integration_revision::{IntegrationRevision, McpRuntimeSessionSource};
+use volicord_types::managed_mcp_client_info::ManagedMcpClientInfo;
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::UtcTimestamp;
 
 const START: &str = "2026-07-18T00:00:00Z";
 const INIT: &str = "2026-07-18T00:00:01Z";

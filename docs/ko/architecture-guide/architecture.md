@@ -67,7 +67,7 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 선언 하나에서 함께 만드는 공개 메서드 결과와 필드 전용 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. |
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 선언 하나에서 함께 만드는 공개 메서드 결과와 필드 전용 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. 공개 Rust 어휘는 각 항목을 담당하는 모듈 경로로 제공하며, 크레이트 루트는 타입 집계 파사드가 아니라 모듈 경로를 제공합니다. |
 | `crates/volicord-host-contract` | `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames`를 통한 의존성이 안전한 semantic Codex 계약, 명시적인 MCP server/raw-tool identity, 충돌 검사를 거친 callable 투영과 catalog 조회, 결정적인 contract identity, 한도 있는 host 값과 error, source별 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율. |
@@ -93,6 +93,8 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
   Lifecycle별 진단 입력, current key identity와 digest 파생, 공유 read-only finding과
   report projection, 안정적인 네임스페이스 코드 검증, 담당 크레이트의 typed fact에
   한도와 민감정보 제거를 적용하는 projection, 정규 tool identity catalog를 담당합니다.
+  사용하는 쪽에서는 크레이트 루트를 공유 타입 이름 공간으로 다루지 않고 `ids`,
+  `methods`, `schema`, `tool_names`, `values` 같은 적용되는 담당 모듈을 명시합니다.
   각 도메인 크레이트는 폐쇄형 세부 code 집합과 오류를 finding으로 빠짐없이 변환하는
   책임을 유지합니다.
 - `volicord-host-contract`는 저수준 공유 타입과 범용 serialization 및 hashing에만
@@ -157,7 +159,10 @@ Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 `prepare_evidence_capture`, `record_run`, `close_task`, `update_scope`, 공유 상태
 및 투영 경로는 적용되는 정책 담당 모듈을 직접 사용합니다. 메서드 모듈은 요청
 검증, 메서드 계획, 정책 결과를 메서드 결과나 닫기 차단 사유로 변환하는 책임을
-유지하며, 형제 메서드 모듈에 공유 증거 정책을 제공하지 않습니다. 정확한 증거와
+유지하며, 형제 메서드 모듈에 공유 증거 정책을 제공하지 않습니다.
+프로덕션 메서드 모듈은 Core pipeline 또는 정책 담당 모듈, 적용되는 Store 모듈,
+적용되는 `volicord-types` 담당 모듈에서 의존성을 명시합니다. 상위 methods 모듈은
+공유 helper를 담당하며 하위 모듈의 import prelude가 아닙니다. 정확한 증거와
 닫기 준비 상태의 의미는
 [Core 모델](../reference/core-model.md), 적용되는
 [API 메서드 담당 문서](../reference/api/methods.md),

@@ -3,10 +3,10 @@ use std::sync::OnceLock;
 use rusqlite::Connection;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use volicord_types::{
-    canonical_json_bytes, canonical_json_string, GeneratedColumn, GeneratedConstraint,
-    GeneratedIndex, GeneratedRelationKind, GeneratedSchemaMetadata, GeneratedTable,
-    StorageDatabaseKind, StorageManifest,
+use volicord_types::canonical::{canonical_json_bytes, canonical_json_string};
+use volicord_types::storage_contract::{
+    GeneratedColumn, GeneratedConstraint, GeneratedIndex, GeneratedRelationKind,
+    GeneratedSchemaMetadata, GeneratedTable, StorageDatabaseKind, StorageManifest,
 };
 
 use crate::{sqlite::begin_immediate_transaction, StoreError, StoreResult};

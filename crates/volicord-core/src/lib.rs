@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![deny(clippy::wildcard_imports)]
 
 //! Core-facing services for owner-defined Volicord behavior.
 //!
@@ -10,11 +11,13 @@ use volicord_store::{
     artifacts::ArtifactStoreBoundary, core_pipeline::EffectiveUserActionRecord,
     sqlite::SqliteStoreBoundary,
 };
-use volicord_types::{
-    AgentSafeUserActionResolution, ProjectId, StateRecordRef, TaskId, TypeBoundary,
-    UserActionInboxItem, UserActionRequest, UserActionRequestId, UserActionStatus,
-    UserChannelAvailability, UtcTimestamp,
+use volicord_types::ids::{ProjectId, TaskId, UserActionRequestId};
+use volicord_types::methods::AgentSafeUserActionResolution;
+use volicord_types::schema::{
+    StateRecordRef, UserActionInboxItem, UserActionRequest, UserChannelAvailability,
 };
+use volicord_types::values::{UserActionStatus, UtcTimestamp};
+use volicord_types::TypeBoundary;
 
 mod agent_session;
 mod authority_status;

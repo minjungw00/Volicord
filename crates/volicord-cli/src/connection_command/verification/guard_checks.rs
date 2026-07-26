@@ -124,7 +124,8 @@ pub(super) fn guard_checks_for_connection(
     let mut hook_definition_hashes = installations
         .iter()
         .filter_map(|installation| {
-            volicord_types::guard_manifest_from_json(&installation.manifest_json).ok()
+            volicord_types::guard_manifest::guard_manifest_from_json(&installation.manifest_json)
+                .ok()
         })
         .filter_map(|manifest| {
             manifest

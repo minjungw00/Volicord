@@ -19,7 +19,8 @@ use volicord_store::{
     },
     operational_sessions::connection_integration_revision,
 };
-use volicord_types::{ConnectionIntent, HostKind, HostScope};
+use volicord_types::host_configuration::{ConnectionIntent, HostScope};
+use volicord_types::values::HostKind;
 
 use crate::host_integration::{
     codex::{

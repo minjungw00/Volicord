@@ -1,10 +1,32 @@
+use crate::constants::TRANSPORT_DISCLOSURE_TEXT;
 use crate::errors::McpAdapterError;
-use crate::prelude::*;
-use crate::util::*;
+use crate::util::validate_identifier_text;
 use schemars::{schema_for, JsonSchema};
+use serde::Serialize;
+use serde_json::Value;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use volicord_host_contract::{HostContractProfileId, McpServerKey};
+use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_platform_fs::resolve_git_worktree_layout;
-use volicord_types::HostKind;
+use volicord_store::agent_connections::{
+    agent_connection_project_access_read_only, agent_connection_record_read_only,
+    list_agent_connections_read_only, list_connection_projects_read_only, AgentConnectionRecord,
+    ConnectionProjectRecord, CONNECTION_INTENT_SHARED, CONNECTION_MODE_READ_ONLY,
+    CONNECTION_MODE_WORKFLOW, HOST_SCOPE_PROJECT,
+};
+use volicord_store::bootstrap::{
+    project_record_by_repo_root_read_only, require_installation_profile_read_only,
+    runtime_home_record_read_only, ACTIVE_PROJECT_STATUS,
+};
+use volicord_store::error::StoreError;
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_store::sqlite::{
+    open_project_state_database_read_only, project_state_database_write_capability,
+};
+use volicord_types::ids::{AgentConnectionId, ProjectId};
+use volicord_types::values::AgentConnectionMode;
+use volicord_types::values::HostKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectionContext {
@@ -582,7 +604,7 @@ pub(crate) struct ListProjectItem {
 
 pub(crate) fn list_projects_output_schema() -> Value {
     let mut schema = serde_json::to_value(schema_for!(
-        volicord_types::McpToolStructuredContent<ListProjectsResult>
+        volicord_types::methods::McpToolStructuredContent<ListProjectsResult>
     ))
     .expect("list-projects output schema should serialize");
     schema
@@ -912,7 +934,7 @@ mod repository_discovery_tests {
     use volicord_test_support::{TempRuntimeHome, TestRuntimeHomeSetup};
 
     use crate::ManagedMcpLaunchSpec;
-    use volicord_types::HostKind;
+    use volicord_types::values::HostKind;
 
     use super::RepositoryDiscoveryResolution;
 

@@ -6,10 +6,12 @@ use volicord_host_contract::{
     parse_callable_name, HostCallableName, HostHookMatcherStrategy, HostNativeCorrelation,
     McpServerKey, McpToolCatalog,
 };
-use volicord_types::{
-    guard_manifest_from_json, AgentToolId, GuardHookPhase, GuardProbeEventRelevance,
-    GuardProbeObservationStage, IntegrationVerificationToolRole,
+use volicord_types::guard_manifest::guard_manifest_from_json;
+use volicord_types::integration_verification::{
+    GuardProbeEventRelevance, GuardProbeObservationStage,
 };
+use volicord_types::tool_names::{AgentToolId, IntegrationVerificationToolRole};
+use volicord_types::values::GuardHookPhase;
 
 use super::{
     correlation::refresh_guard_integration_verification_for_event,

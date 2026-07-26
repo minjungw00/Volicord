@@ -10,9 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
-use volicord_types::{
-    validate_managed_host_native_session_id, AgentToolId, IntegrationVerificationToolRole,
-};
+use volicord_types::managed_mcp_client_info::validate_managed_host_native_session_id;
+use volicord_types::tool_names::{AgentToolId, IntegrationVerificationToolRole};
 
 const MAX_TOOL_NAME_BYTES: usize = 256;
 const MAX_HOST_CALLABLE_NAME_BYTES: usize = 64;

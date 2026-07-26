@@ -3,8 +3,8 @@ use volicord_host_contract::{
     parse_callable_name, HostCallableIdentity, HostCallableName, HostNativeCorrelation,
     McpServerKey, McpToolCatalog,
 };
-use volicord_types::AgentToolId;
-use volicord_types::GuardProbeObservationStage;
+use volicord_types::integration_verification::GuardProbeObservationStage;
+use volicord_types::tool_names::AgentToolId;
 
 use super::{
     observation::{observations_for_run, GuardProbeObservationRecord},

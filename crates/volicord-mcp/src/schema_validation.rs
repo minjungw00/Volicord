@@ -1,7 +1,12 @@
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
-use crate::prelude::*;
 use crate::tool_registry::{mcp_tool_input_schema, mcp_tool_output_schema};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::{Map, Value};
+use std::collections::HashMap;
 use std::sync::OnceLock;
+use volicord_types::methods::{McpToolErrorIssue, McpToolIssueCode, MAX_VALIDATION_ISSUES};
+use volicord_types::tool_names::AgentToolId;
 
 const MAX_SCHEMA_DEPTH: usize = 64;
 

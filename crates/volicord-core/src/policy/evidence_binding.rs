@@ -1,7 +1,9 @@
-use volicord_types::{
-    ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, ArtifactRef, EvidenceObservation,
-    EvidenceProducerAnchor, EvidenceProducerKind, EvidenceRelevanceStatus, StateRecordKind,
-    StateRecordRef,
+use volicord_types::schema::{
+    ArtifactRef, EvidenceObservation, EvidenceProducerAnchor, StateRecordRef,
+};
+use volicord_types::values::{
+    ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, EvidenceProducerKind,
+    EvidenceRelevanceStatus, StateRecordKind,
 };
 
 use super::evidence_target::EvidenceObservationBasis;
@@ -128,9 +130,9 @@ pub(crate) fn projected_capture_binding_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_types::{
-        ArtifactId, ProjectId, RedactionState, RequiredNullable, StorageRef, TaskId,
-    };
+    use volicord_types::ids::{ArtifactId, ProjectId, StorageRef, TaskId};
+    use volicord_types::schema::RequiredNullable;
+    use volicord_types::values::RedactionState;
 
     fn artifact(id: &str) -> ArtifactRef {
         ArtifactRef {
@@ -193,7 +195,7 @@ mod tests {
     fn producer_authority_binding_rejects_identity_mismatch() {
         let expected = StateRecordRef {
             record_kind: StateRecordKind::EvidenceProducer,
-            record_id: volicord_types::RecordId::new("producer_binding"),
+            record_id: volicord_types::ids::RecordId::new("producer_binding"),
             project_id: ProjectId::new("project_binding"),
             task_id: Some(TaskId::new("task_binding")).into(),
             produced_at_state_version: Some(3).into(),
@@ -201,7 +203,7 @@ mod tests {
         assert!(authority_ref_matches(Some(&expected), &expected));
 
         let mut mismatched = expected.clone();
-        mismatched.record_id = volicord_types::RecordId::new("producer_other");
+        mismatched.record_id = volicord_types::ids::RecordId::new("producer_other");
         assert!(!authority_ref_matches(Some(&mismatched), &expected));
 
         mismatched = expected.clone();

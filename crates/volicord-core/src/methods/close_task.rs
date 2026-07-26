@@ -3,7 +3,48 @@ use super::evidence_facts::{
     projected_evidence_observation_provenance_facts, stored_evidence_observation_capture_relevance,
     stored_evidence_observation_provenance_facts,
 };
-use super::*;
+use super::{
+    acceptance_policy_storage, active_acceptance_criteria_for_task,
+    agent_safe_pending_user_action_summaries, build_state_summary, change_unit_effect_contract,
+    change_unit_ref, changes_summary_text, close_state_text, decode_required_json,
+    decode_required_json_object, dry_run_summary, effective_write_ticket_status, elapsed_micros,
+    evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_from_profile,
+    mutation_method_policy, no_active_task_response, normalize_close_blocker_action_projection,
+    object_from_value, parse_acceptance_policy, parse_owner_storage_value, parse_task_mode,
+    pending_user_action_authorities_for_plan, persistent_artifact_is_verified_current,
+    plan_error_response, plan_project_continuity_record, prepare_or_response, primary_next_action,
+    profile_summary_text, projected_write_ticket_summary, record_core_workflow_metric_best_effort,
+    resolved_user_action_authorities_for_plan, response_committed_fresh_effect, state_ref,
+    state_ref_from_stored, store_error_response, stored_refs_to_state_refs, summary_card_for_core,
+    validation_rejected, write_ticket_is_current_for_projection, write_ticket_ref,
+    write_ticket_summary_text, CloseTaskContext, CloseTaskPlan, PersistedLifecycleState, PlanError,
+    PlannedProjectContinuityRecord, ProjectContinuityDraft, ProjectContinuityPlanContext,
+    StoredScope, SummaryBuild, SummaryCardBuild,
+};
+use crate::pipeline::{
+    CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
+    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
+    TaskRequirement, VerifiedInvocationContext,
+};
+use crate::policy::close_readiness::{
+    close_blocker, close_next_action, current_cancellation_authority, current_final_acceptance,
+    current_residual_risk_acceptance_coverage, final_acceptance_requirement, is_terminal_lifecycle,
+    user_action_has_current_basis, verified_user_channel_provenance,
+    CancellationAuthorityRequirement, UserActionAuthority,
+};
+use crate::policy::evidence::{
+    evidence_item_related_refs, state_record_ref_identity_key, unique_state_record_refs,
+};
+use crate::policy::path::{path_is_within, paths_are_authorized};
+use crate::policy::user_action_relevance::{
+    user_action_blocks_operation, user_action_required_for, UserActionOperation,
+    UserActionOperationContext,
+};
+use crate::policy::workflow::{
+    acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
+    resolve_task_control_authority, ProjectWorkflowPolicy,
+};
+use crate::policy::write_ticket::{current_sensitive_approval, SensitiveApprovalRequirement};
 use crate::policy::{
     close_readiness_evidence::{
         evaluate_evidence_gate, interpret_close_evidence_item, project_close_evidence_summary,
@@ -17,6 +58,33 @@ use crate::policy::{
         EvidenceObservationBasis,
     },
     workflow::ResolvedTaskControlAuthority,
+};
+use serde_json::json;
+use serde_json::{Map, Value};
+use std::collections::{BTreeMap, BTreeSet};
+use volicord_store::core_pipeline::{
+    CoreProjectStore, CoreStorageMutation, ProjectStateHeader, TaskCloseUpdate,
+    TaskControlLevelUpdate, TaskRecord, WriteTicketInvalidation,
+};
+use volicord_store::diagnostics::WorkflowMetricKind;
+use volicord_store::guards::UnrecordedChangeRecord;
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
+use volicord_types::methods::{CheckCloseRequest, CloseTaskRequest, CloseTaskResultFields};
+use volicord_types::schema::{
+    AuthorityReceipt, CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary,
+    EvidenceCoverageItem, EvidenceGateSummary, EvidenceTarget, JsonObject, NextActionSummary,
+    ProjectEnforcementProfile, RequiredNullable, RiskAcceptanceCoverage, StateRecordRef,
+    ToolEnvelope, WriteTicketValidityBasis,
+};
+use volicord_types::values::{
+    AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactIntegrityStatus,
+    AuthorityNextActor, ChangeUnitEffectKind, CloseIntent, CloseReadinessBlockerCategory,
+    CloseReason, CloseState, EvidenceCoverageState, EvidenceRelevanceStatus, EvidenceRequirement,
+    JudgmentKind, JudgmentResolutionOutcome, MethodName, NextActionKind,
+    NextActionPresentationRole, OperationCategory, ProjectContinuityKind, RedactionState,
+    StateRecordKind, StatusCloseState, TaskControlLevel, TaskMode, UserActionKind,
+    UserActionRequiredFor, UtcTimestamp, WriteTicketInvalidationReason, WriteTicketStatus,
 };
 
 /// Public close-family input before request-local identity and intent validation.

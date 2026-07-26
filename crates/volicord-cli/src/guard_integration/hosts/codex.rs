@@ -2,9 +2,10 @@ use std::{collections::BTreeMap, path::Path};
 
 use serde_json::{json, Value};
 use volicord_host_contract::McpServerKey;
-use volicord_types::{
-    AgentToolId, GuardHookPhase, GuardManagedArtifact, IntegrationVerificationWorkflowState,
-};
+use volicord_types::guard_manifest::GuardManagedArtifact;
+use volicord_types::integration_verification::IntegrationVerificationWorkflowState;
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::GuardHookPhase;
 
 use crate::{
     guard_integration::{

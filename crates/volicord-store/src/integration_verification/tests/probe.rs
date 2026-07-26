@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use volicord_types::{
+use volicord_types::integration_verification::{
     GuardVerificationRepairReason, GuardVerificationRetryPolicy,
     IntegrationVerificationWorkflowState,
 };

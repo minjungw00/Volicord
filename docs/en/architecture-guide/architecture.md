@@ -72,7 +72,7 @@ the public method execution path.
 
 | Workspace member | Guide-level role |
 |---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; single-declaration public method-result and fields-only composition types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. |
+| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; single-declaration public method-result and fields-only composition types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. Its public Rust vocabulary is routed through the module that owns each item; the crate root provides module routing rather than an aggregate type facade. |
 | `crates/volicord-host-contract` | Dependency-safe semantic Codex contracts through `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames`; explicit MCP server/raw-tool identities; collision-checked callable projection and catalog lookup; deterministic contract identities; bounded host values and errors; and source-specific correlation types. It owns no Store, Core, CLI, or MCP policy. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, one-time managed MCP launch leases, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, and Store coordination. |
@@ -99,6 +99,9 @@ The durable dependency direction is:
   current-key identity and digest derivation, the shared read-only finding and
   report projections, stable namespaced-code validation, bounded redacting
   projection of typed owner facts, and the canonical tool-identity catalog.
+  Consumers name the applicable owner module, such as `ids`, `methods`,
+  `schema`, `tool_names`, or `values`, instead of treating the crate root as a
+  shared type namespace.
   Domain crates retain their closed detailed code sets and exhaustive
   error-to-finding conversions.
 - `volicord-host-contract` depends only on low-level shared types and
@@ -172,8 +175,12 @@ their inputs are already available.
 shared status and projection paths consume the applicable policy owner
 directly. Method modules retain request validation, method planning, and
 translation of policy results into method results or close-readiness blockers;
-they do not provide shared evidence policy to sibling method modules. Exact
-evidence and close-readiness meaning remains with
+they do not provide shared evidence policy to sibling method modules.
+Production method modules name their dependencies from the Core pipeline or
+policy owner, the applicable Store module, or the applicable `volicord-types`
+owner module. The methods parent module owns its shared helpers; it is not an
+import prelude for child modules. Exact evidence and close-readiness meaning
+remains with
 [Core Model](../reference/core-model.md), the applicable
 [API method owners](../reference/api/methods.md), the
 [state schema](../reference/api/schema-state.md), the

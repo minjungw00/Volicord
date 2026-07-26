@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
-use volicord_types::{GuardHookOutcome, GuardHookPhase, GuardPolicyDecision};
+use volicord_types::guard_outcome::{GuardHookOutcome, GuardPolicyDecision};
+use volicord_types::values::GuardHookPhase;
 
 use super::{
     args::OutputFormat,
@@ -247,7 +248,7 @@ pub(super) fn reasons_json(reasons: &[GuardReason]) -> Vec<Value> {
 #[cfg(test)]
 mod outcome_tests {
     use super::*;
-    use volicord_types::{
+    use volicord_types::guard_outcome::{
         GuardHookDiagnostic, GuardHookDiagnosticCode, GuardHookDiagnosticFacts,
         GuardObservationOutcome,
     };

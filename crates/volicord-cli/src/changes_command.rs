@@ -11,9 +11,11 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::{
-    ActorSource, IdempotencyKey, OperationCategory, ProjectId, ReconcileChangesRequest, RequestId,
-    TaskId, ToolEnvelope, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId, TaskId};
+use volicord_types::methods::ReconcileChangesRequest;
+use volicord_types::schema::ToolEnvelope;
+use volicord_types::values::{
+    ActorSource, OperationCategory, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
 use crate::disclosure::does_not_prove_line;
@@ -296,7 +298,7 @@ mod tests {
 
     use serde_json::json;
     use volicord_test_support::{core_fixtures::CoreFixture, seed_test_agent_session};
-    use volicord_types::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId};
+    use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId};
 
     use super::*;
 

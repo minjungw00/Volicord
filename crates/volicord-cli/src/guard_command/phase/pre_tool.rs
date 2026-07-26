@@ -5,7 +5,7 @@ use volicord_store::{
     guards::{insert_expected_write, ExpectedWriteInsert},
     RuntimeHomeMutationContext,
 };
-use volicord_types::GuardPolicyDecision;
+use volicord_types::guard_outcome::GuardPolicyDecision;
 
 use super::GuardPhaseResult;
 use crate::guard_command::{

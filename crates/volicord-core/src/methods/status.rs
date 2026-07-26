@@ -1,4 +1,41 @@
-use super::*;
+use super::{
+    acceptance_policy_storage, active_acceptance_criteria_for_task,
+    agent_safe_pending_user_action_summaries, build_state_summary, changes_summary_text,
+    close_state_summary_text, close_task, core_error_response, evidence_gate_summary_text,
+    evidence_summary_for_display, guarantee_display_from_profile, next_actions_for_state,
+    normalize_next_action_collection, parse_lifecycle_phase, parse_owner_storage_value,
+    parse_task_lineage_relation, parse_task_mode, parse_work_phase, plan_error_response,
+    prepare_or_response, primary_next_action, profile_summary_text,
+    project_continuity_summary_from_record, projected_blocker_refs, projected_evidence_summary,
+    projected_pending_user_action_refs, projected_write_ticket_summary, state_ref,
+    summary_card_for_core, utc_timestamp, validation_plan_error, write_ticket_summary_text,
+    PlanError, SummaryBuild, SummaryCardBuild,
+};
+use crate::pipeline::{
+    CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
+    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
+    TaskRequirement, VerifiedInvocationContext,
+};
+use crate::policy::close_readiness::{close_next_action, is_terminal_lifecycle};
+use crate::policy::evidence::{state_record_ref_identity_key, unique_state_record_refs};
+use crate::policy::workflow::{project_workflow_policy, resolve_task_control_authority};
+use chrono::{DateTime, Utc};
+use std::collections::BTreeSet;
+use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader, TaskRecord};
+use volicord_types::ids::{ProjectContinuityRecordId, ProjectId, TaskId};
+use volicord_types::methods::{
+    CheckCloseRequest, MethodOperationCategory, StatusInclude, StatusRequest, StatusResultFields,
+    StatusStateSummary,
+};
+use volicord_types::schema::{
+    AuthorityReceipt, CloseReadinessBlocker, ContinuityCursor, ContinuityPageInfo,
+    ContinuityPageRequest, NextActionSummary, ProjectContinuityPage, RequiredNullable,
+    TaskFlowItem, ToolEnvelope, DEFAULT_CONTINUITY_PAGE_SIZE, MAX_CONTINUITY_PAGE_SIZE,
+};
+use volicord_types::values::{
+    AuthorityNextActor, CloseState, MethodName, OperationCategory, StateRecordKind,
+    StatusCloseState, TaskLifecyclePhase, UtcTimestamp,
+};
 
 impl CoreService {
     /// Executes `volicord.status` as a read-only Core result.

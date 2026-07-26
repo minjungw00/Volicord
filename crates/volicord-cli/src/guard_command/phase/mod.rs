@@ -1,5 +1,5 @@
 use serde_json::Value;
-use volicord_types::GuardPolicyDecision;
+use volicord_types::guard_outcome::GuardPolicyDecision;
 
 use self::pre_tool::ExpectedWriteCandidate;
 

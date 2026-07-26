@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![deny(clippy::wildcard_imports)]
 
 //! Shared Rust type boundary for Volicord public API and domain-shaped values.
 //!
@@ -27,26 +28,6 @@ pub mod storage_contract;
 pub mod tool_names;
 pub mod values;
 
-pub use canonical::*;
-pub use connection_verification::*;
-pub use diagnostics::*;
-pub use guard_manifest::*;
-pub use guard_outcome::*;
-pub use host_configuration::*;
-pub use ids::*;
-pub use integration_revision::*;
-pub use integration_verification::*;
-pub use managed_mcp_client_info::*;
-pub use mcp_verification_evidence::*;
-pub use methods::*;
-pub use platform::*;
-pub use presentation::*;
-pub use release_target::*;
-pub use schema::*;
-pub use storage_contract::*;
-pub use tool_names::*;
-pub use values::*;
-
 /// High-level placement marker for shared type groups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeBoundary {
@@ -74,6 +55,7 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::*;
+    use crate::{canonical::*, ids::*, methods::*, schema::*, tool_names::*, values::*};
 
     fn timestamp(value: &str) -> UtcTimestamp {
         UtcTimestamp::parse(value).expect("test timestamp should be RFC 3339")

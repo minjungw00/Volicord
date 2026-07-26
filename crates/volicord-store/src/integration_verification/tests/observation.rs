@@ -4,10 +4,12 @@ use volicord_host_contract::{
     CanonicalToolName, CodexHookToolCorrelation, HostHookMatcherStrategy, HostNativeCorrelation,
     HostSessionId, HostToolUseId, HostTurnId, McpServerKey, McpToolCatalog,
 };
-use volicord_types::{
-    AgentToolId, GuardHookPhase, GuardProbeEventRelevance, GuardProbeObservationStage,
-    GuardVerificationRepairReason, IntegrationVerificationWorkflowState,
+use volicord_types::integration_verification::{
+    GuardProbeEventRelevance, GuardProbeObservationStage, GuardVerificationRepairReason,
+    IntegrationVerificationWorkflowState,
 };
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::GuardHookPhase;
 
 use super::support::*;
 use crate::integration_verification::{

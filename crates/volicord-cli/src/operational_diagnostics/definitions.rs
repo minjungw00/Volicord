@@ -1,6 +1,8 @@
 //! Immutable definitions for CLI-owned operational diagnostics.
 
-use volicord_types::{DiagnosticSeverity, GuardManagedArtifact, GuardVerificationRepairReason};
+use volicord_types::diagnostics::DiagnosticSeverity;
+use volicord_types::guard_manifest::GuardManagedArtifact;
+use volicord_types::integration_verification::GuardVerificationRepairReason;
 
 use crate::{
     guard_integration::audit::{

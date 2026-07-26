@@ -11,7 +11,8 @@ use std::{
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_types::{HostKind, HostScope};
+use volicord_types::host_configuration::HostScope;
+use volicord_types::values::HostKind;
 
 pub const VOLICORD_HOME_ENV: &str = "VOLICORD_HOME";
 pub const MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES: [&str; 1] = [VOLICORD_HOME_ENV];

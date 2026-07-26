@@ -83,8 +83,10 @@ pub fn project_agent_session_id(
     if connection_internal_id.is_empty() || connection_internal_id.as_bytes().contains(&0) {
         return Err(ProjectAgentSessionIdError::InvalidConnectionInternalId);
     }
-    crate::IntegrationRevision::parse(project_integration_revision.to_owned())
-        .map_err(|_| ProjectAgentSessionIdError::InvalidProjectIntegrationRevision)?;
+    crate::integration_revision::IntegrationRevision::parse(
+        project_integration_revision.to_owned(),
+    )
+    .map_err(|_| ProjectAgentSessionIdError::InvalidProjectIntegrationRevision)?;
     validate_managed_host_native_session_id(native_session_id)
         .map_err(|_| ProjectAgentSessionIdError::InvalidNativeSessionId)?;
     let mut digest = Sha256::new();

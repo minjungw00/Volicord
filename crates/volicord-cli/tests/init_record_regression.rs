@@ -49,11 +49,13 @@ use volicord_store::{
     },
 };
 use volicord_test_support::{TempRuntimeHome, TestRuntimeHomeMutation, TestRuntimeHomeSetup};
-use volicord_types::{
-    canonical_json_sha256, guard_manifest_has_exact_current_shape,
-    guard_manifest_managed_artifacts, guard_manifest_matches_owner_binding,
-    GuardManifestOwnerBinding, McpRuntimeSessionSource, ProjectId,
+use volicord_types::canonical::canonical_json_sha256;
+use volicord_types::guard_manifest::{
+    guard_manifest_has_exact_current_shape, guard_manifest_managed_artifacts,
+    guard_manifest_matches_owner_binding, GuardManifestOwnerBinding,
 };
+use volicord_types::ids::ProjectId;
+use volicord_types::integration_revision::McpRuntimeSessionSource;
 
 const GENERATED_SHAPE_ERROR: &str =
     "generated Guard manifest does not match the current exact shape";

@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    artifact_ref_from_verified_record, decode_required_json, object_from_value,
+    parse_owner_storage_value, persistent_artifact_is_verified_current, state_ref,
+};
+use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::{
     close_readiness_evidence::{CloseEvidenceRunFacts, CloseEvidenceSummaryFacts},
     evidence_binding::{
@@ -11,6 +15,36 @@ use crate::policy::{
         projected_observation_matches_basis, stored_observation_matches_basis,
         EvidenceObservationBasis,
     },
+};
+use chrono::Duration;
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
+use volicord_store::core_pipeline::{
+    CoreProjectStore, EffectiveUserActionRecord, EvidenceObservationRecord, EvidenceSummaryRecord,
+    TaskRecord, UserActionResolutionRecord,
+};
+use volicord_store::error::StoreError;
+use volicord_store::evidence_capture::{
+    EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
+};
+use volicord_types::canonical::canonical_json_string;
+use volicord_types::ids::{BaselineRef, ChangeUnitId, EvidenceCaptureIntentId, ProjectId, TaskId};
+use volicord_types::schema::{
+    evidence_capture_input_sha256, evidence_capture_observed_outcome_matches_expected,
+    validate_evidence_capture_expected_outcome, validate_evidence_capture_limitations,
+    validate_evidence_capture_observed_outcome, ArtifactRef, EvidenceCaptureIntent,
+    EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceObservation, EvidenceProducer,
+    EvidenceProducerAnchor, EvidenceRelevanceAssessment, EvidenceTarget, JsonObject,
+    PersistedEvidenceCaptureReceiptBody, PersistedEvidenceMetadata,
+    PersistedEvidenceObservationAuthority, PersistedUserActionRequest,
+    PersistedUserActionResolution, StateRecordRef, UserActionBasis, UserActionResolutionBody,
+    EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
+};
+use volicord_types::values::{
+    ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, EvidenceAssuranceLevel,
+    EvidenceProducerKind, EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind,
+    RedactionState, StateRecordKind, UserActionKind, UserActionStatus, UtcTimestamp,
 };
 
 pub(super) struct UserActionObservationResolutionAuthority {
@@ -133,9 +167,9 @@ pub(super) fn validate_capture_receipt_record(
     validate_evidence_capture_limitations(&intent.capture, &body.limitations)
         .map_err(|_| corrupt("limitations_json"))?;
     let observed_outcome_sha256 =
-        volicord_types::canonical_json_bare_sha256(&body.observed_outcome)?;
+        volicord_types::canonical::canonical_json_bare_sha256(&body.observed_outcome)?;
     let expected_metadata = serde_json::json!({"source": &body.source});
-    if body.contract_id != volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
+    if body.contract_id != volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
         || canonical_body != receipt.safe_receipt_json
         || !body.complete
         || body.redaction_state != RedactionState::Redacted
@@ -784,10 +818,10 @@ fn stored_capture_authority_is_current(
 pub(super) fn capture_verification_basis(kind: EvidenceProducerKind) -> Option<&'static str> {
     match kind {
         EvidenceProducerKind::VerifiedCommandExecution => {
-            Some(volicord_types::EVIDENCE_CAPTURE_COMMAND_VERIFICATION_BASIS)
+            Some(volicord_types::schema::EVIDENCE_CAPTURE_COMMAND_VERIFICATION_BASIS)
         }
         EvidenceProducerKind::VerifiedToolInvocation => {
-            Some(volicord_types::EVIDENCE_CAPTURE_TOOL_VERIFICATION_BASIS)
+            Some(volicord_types::schema::EVIDENCE_CAPTURE_TOOL_VERIFICATION_BASIS)
         }
         EvidenceProducerKind::UnverifiedCaller
         | EvidenceProducerKind::UserChannelObservation

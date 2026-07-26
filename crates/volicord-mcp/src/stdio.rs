@@ -1,4 +1,5 @@
-use crate::adapter::*;
+use crate::adapter::{ManagedAgentSessionBinding, McpAdapter, OwnedAgentSessionCoordinates};
+use crate::constants::{server_instructions, SERVER_NAME};
 use crate::diagnostics::{
     data_for_diagnostic, production_supported_revisions, JsonRpcDiagnostic, McpDiagnostic,
     McpDiagnosticContext, McpLifecycleDiagnostic, McpProtocolDiagnostic, McpToolCallDiagnostic,
@@ -6,15 +7,86 @@ use crate::diagnostics::{
 };
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError, McpHostError};
 use crate::mutation_admission::with_mcp_runtime_home_mutation;
-use crate::prelude::*;
-use crate::routing::*;
+use crate::routing::{
+    validate_mcp_project_allowlist, McpConnectionContext, McpConnectionStartupInspection,
+    McpPreflightReport, RepositoryDiscoveryResolution,
+};
 use crate::schema_validation::validate_mcp_tool_output;
 use crate::tool_registry::{CanonicalContent, CanonicalToolResult};
-use crate::util::*;
+use crate::util::{current_dir_environment_error, process_env_var};
 use crate::VOLICORD_HOME_ENV;
+// The inline stdio tests share the crate's test-only protocol fixture prelude.
+#[cfg(test)]
+use crate::prelude::*;
+use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
+use std::ffi::OsString;
+use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
+use std::time::{Instant, SystemTime};
+use volicord_core::pipeline::{CoreService, PipelineResponse};
+use volicord_core::{
+    validate_authority_status, AuthorityStatusExpectation, CurrentUserActionProjection,
+};
 use volicord_host_contract::{CodexMcpCorrelation, CodexMcpTurnMetadata, HostContractErrorCode};
-use volicord_types::{HostKind, ManagedMcpClientInfo};
+use volicord_mcp_protocol::{
+    InitializedNotification, JsonRpcBatching, McpNegotiationOutcome, McpProtocolProfile,
+    ProtocolRegistry, ServerCapabilityField,
+};
+use volicord_store::agent_connections::{
+    agent_connection_record_read_only, list_connection_projects_read_only,
+    CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
+};
+use volicord_store::diagnostic_findings::insert_occurrence_finding;
+use volicord_store::diagnostics::{
+    record_diagnostic_event, record_workflow_metric_event, start_diagnostic_session,
+    DiagnosticEvent, DiagnosticEventKind, DiagnosticFallbackKind, DiagnosticHostKind,
+    DiagnosticOutcome, DiagnosticSessionStart, DiagnosticTransport, WorkflowMetricEvent,
+    WorkflowMetricKind, WorkflowMetricOutcome,
+};
+use volicord_store::error::StoreError;
+use volicord_store::managed_launch_leases::{
+    consume_managed_mcp_launch_lease_and_start_runtime, ManagedMcpLaunchLeaseConsumption,
+};
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_store::operational_sessions::{
+    mcp_runtime_session, record_mcp_graceful_close, record_mcp_initialize_attempt,
+    record_mcp_initialize_completion, record_mcp_initialized_notification,
+    record_mcp_terminal_finding, record_mcp_tools_list, record_mcp_verification_tool_observation,
+    start_mcp_runtime_session, McpRuntimeSessionStart,
+};
+use volicord_store::runtime_home::resolve_runtime_home as resolve_shared_runtime_home;
+use volicord_store::runtime_home::RuntimeHomeResolutionError;
+use volicord_types::diagnostics::OccurrenceDiagnosticFinding;
+use volicord_types::ids::{
+    AgentRuntimeSessionId, ProjectId, RecordId, TaskId, UserActionRequestId,
+};
+use volicord_types::integration_revision::McpRuntimeSessionSource;
+use volicord_types::managed_mcp_client_info::ManagedMcpClientInfo;
+use volicord_types::methods::{
+    McpAuthoritativeRefreshFailure, McpMutationEffectSummary, McpMutationFullResponse,
+    McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
+    McpMutationResponseBudgetExceeded, McpMutationSummaryResponse, McpMutationWorkflowResponse,
+    McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
+    McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
+    McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
+    McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode,
+    OperationResultRef, PrepareEvidenceCaptureResult, PrepareWriteResult, ReconcileChangesResult,
+    RecordRunResult, RequestUserActionResponse, RequestUserActionResult, StageArtifactResult,
+    MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
+};
+use volicord_types::schema::{
+    AuthorityReceipt, NextActionSummary, RequiredNullable, StateRecordRef, ToolResultBase,
+};
+use volicord_types::tool_names::{
+    AgentToolCategory, AgentToolId, AgentToolOwner, ToolVerificationRole,
+};
+use volicord_types::values::HostKind;
+use volicord_types::values::{
+    AgentConnectionMode, EffectKind, ErrorCode, MethodName, MutationDetailLevel, StateRecordKind,
+    UserActionStatus, UtcTimestamp,
+};
 
 const CODEX_THREAD_BINDING_DOMAIN: &[u8] = b"volicord.codex-mcp-thread-binding\0";
 pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
@@ -2916,7 +2988,7 @@ fn compact_request_user_action_result(
     let compound: McpRequestUserActionResponse =
         serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
     let agent_result = match compound.agent_workflow_result {
-        volicord_types::ToolResponse::Result(result) => result,
+        volicord_types::schema::ToolResponse::Result(result) => result,
         _ => {
             return Err(McpAdapterError::Protocol(
                 "request-user-action compact projection requires a result branch".to_owned(),
@@ -3889,12 +3961,16 @@ mod mutation_output_tests {
     use volicord_test_support::core_fixtures::{
         CoreFixture, UpdateScopeFixture, UserActionFixture,
     };
-    use volicord_types::{
-        canonical_json_bare_sha256, AcceptanceCriterionId, BaselineRef, ChangeUnitId,
-        ChangeUnitOperation, EvidenceAssuranceLevel, EvidenceCaptureSpec, EvidenceObservationInput,
-        EvidenceProducer, EvidenceSourceKind, EvidenceTarget, JudgmentKind, RecordId,
-        StateRecordKind, UtcTimestamp, EVIDENCE_CAPTURE_COMMAND_LIMITATION,
-        MAX_OPERATION_RESULT_PAGE_BYTES,
+    use volicord_types::canonical::canonical_json_bare_sha256;
+    use volicord_types::ids::{AcceptanceCriterionId, BaselineRef, ChangeUnitId, RecordId};
+    use volicord_types::methods::MAX_OPERATION_RESULT_PAGE_BYTES;
+    use volicord_types::schema::{
+        EvidenceCaptureSpec, EvidenceObservationInput, EvidenceProducer, EvidenceTarget,
+        EVIDENCE_CAPTURE_COMMAND_LIMITATION,
+    };
+    use volicord_types::values::{
+        ChangeUnitOperation, EvidenceAssuranceLevel, EvidenceSourceKind, JudgmentKind,
+        StateRecordKind, UtcTimestamp,
     };
 
     fn test_agent_invocation(
@@ -4077,7 +4153,7 @@ mod mutation_output_tests {
         });
         let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
         let safe_receipt = json!({
-            "contract_id": volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
+            "contract_id": volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
             "capture_kind": "verified_command_execution",
             "capture_intent_id": capture_intent_ref.record_id,
             "input_sha256": intent.input_sha256,

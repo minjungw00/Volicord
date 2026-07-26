@@ -1,4 +1,4 @@
-use volicord_types::{EvidenceAssuranceLevel, EvidenceSourceKind};
+use volicord_types::values::{EvidenceAssuranceLevel, EvidenceSourceKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EvidenceProvenanceClass {

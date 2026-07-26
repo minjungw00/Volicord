@@ -2,12 +2,16 @@ use chrono::Duration;
 use volicord_host_contract::{
     project_mcp_tool, HostContractProfileId, HostSessionId, HostTurnId, McpServerKey,
 };
-use volicord_types::{
-    guard_manifest_from_json, AgentConnectionId, AgentRuntimeSessionId, AgentToolId,
-    BeginIntegrationVerificationResult, DurableIdGenerator, DurableIdKind, GuardInstallationId,
-    GuardVerificationRepairReason, GuardVerificationRetryPolicy, ProjectId,
-    RandomDurableIdGenerator, GUARD_INTEGRATION_VERIFICATION_CLEANUP_SECONDS,
+use volicord_types::guard_manifest::guard_manifest_from_json;
+use volicord_types::ids::{
+    AgentConnectionId, AgentRuntimeSessionId, DurableIdGenerator, DurableIdKind,
+    GuardInstallationId, ProjectId, RandomDurableIdGenerator,
 };
+use volicord_types::integration_verification::{
+    BeginIntegrationVerificationResult, GuardVerificationRepairReason,
+    GuardVerificationRetryPolicy, GUARD_INTEGRATION_VERIFICATION_CLEANUP_SECONDS,
+};
+use volicord_types::tool_names::AgentToolId;
 
 use super::{
     coordinate::{
@@ -224,8 +228,8 @@ pub fn begin_guard_integration_verification_with_generator(
         let previous_status = parse_status(&previous.status)?;
         if matches!(
             previous_status,
-            volicord_types::GuardIntegrationVerificationStatus::AwaitingProbe
-                | volicord_types::GuardIntegrationVerificationStatus::AwaitingObservation
+            volicord_types::integration_verification::GuardIntegrationVerificationStatus::AwaitingProbe
+                | volicord_types::integration_verification::GuardIntegrationVerificationStatus::AwaitingObservation
         ) {
             let (reason, retry_policy) = coordinate_change_repair(&previous, &current);
             mark_repair_required(
@@ -238,7 +242,7 @@ pub fn begin_guard_integration_verification_with_generator(
                 "The immutable verification coordinate changed before the attempt completed.",
             )?;
         } else if previous_status
-            == volicord_types::GuardIntegrationVerificationStatus::RepairRequired
+            == volicord_types::integration_verification::GuardIntegrationVerificationStatus::RepairRequired
         {
             require_retry_eligibility(&previous, &current)?;
         }

@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::BTreeSet};
 
 use serde::Serialize;
-use volicord_types::{AgentConnectionId, ProjectId};
+use volicord_types::ids::{AgentConnectionId, ProjectId};
 
 use super::*;
 

@@ -9,14 +9,19 @@ use volicord_store::{
     },
     operational_sessions::connection_integration_revision,
 };
-use volicord_types::{
-    AgentConnectionId, ConnectionCheckStatus, ConnectionVerificationReport,
+use volicord_types::connection_verification::{
+    ConnectionCheckStatus, ConnectionVerificationReport,
+};
+use volicord_types::diagnostics::{
     CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticSnapshot, DiagnosticAction,
     DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
     DiagnosticFindingData, DiagnosticFindingId, DiagnosticScopeKind, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, IntegrationRevision, OccurrenceDiagnosticFinding,
-    UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
+    DiagnosticStage, DiagnosticSubject, OccurrenceDiagnosticFinding,
+    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
 };
+use volicord_types::ids::AgentConnectionId;
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::values::UtcTimestamp;
 
 use crate::connection_command::ConnectionCommandError;
 
@@ -87,7 +92,7 @@ pub(crate) fn occurrence_finding<S, F>(
     facts: &F,
     check_state: OperationalCheckState,
     observed_at: UtcTimestamp,
-) -> Result<DiagnosticFinding, volicord_types::DiagnosticError>
+) -> Result<DiagnosticFinding, volicord_types::diagnostics::DiagnosticError>
 where
     S: OperationalSubject,
     F: TypedOperationalFacts,
@@ -191,7 +196,7 @@ impl DiagnosticFindingOverlay {
 pub(crate) fn current_report_findings_with_overlay(
     runtime_home: &std::path::Path,
     connection: &AgentConnectionRecord,
-    checks: &[volicord_types::ConnectionCheck],
+    checks: &[volicord_types::connection_verification::ConnectionCheck],
     overlay: &DiagnosticFindingOverlay,
 ) -> Result<(Vec<DiagnosticFinding>, IntegrationRevision), ConnectionCommandError> {
     let selected = checks
@@ -393,7 +398,7 @@ fn missing_diagnostic_record_finding(
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
         DiagnosticStage::parse("projection")
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
-        volicord_types::DiagnosticSeverity::Error,
+        volicord_types::diagnostics::DiagnosticSeverity::Error,
         DiagnosticSource::parse("connection_diagnostic_projection")
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
         DiagnosticSubject::try_new("finding", "persisted_record")

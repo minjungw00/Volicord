@@ -1,8 +1,9 @@
 use std::error::Error;
 
-use volicord_types::{
-    GuardVerificationRepairReason, GuardVerificationRetryPolicy, McpRuntimeSessionSource,
-    SequenceDurableIdGenerator,
+use volicord_types::ids::SequenceDurableIdGenerator;
+use volicord_types::integration_revision::McpRuntimeSessionSource;
+use volicord_types::integration_verification::{
+    GuardVerificationRepairReason, GuardVerificationRetryPolicy,
 };
 
 use super::support::*;

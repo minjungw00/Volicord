@@ -1,10 +1,11 @@
 use volicord_store::core_pipeline::{
     AcceptanceCriterionRecord, EvidenceClaimRecord, EvidenceObservationRecord, RunRecord,
 };
-use volicord_types::{
-    BaselineRef, ChangeUnitId, CurrentCloseBasis, EvidenceObservation, EvidenceTarget, ProjectId,
-    StateRecordKind, StateRecordRef, TaskId, UtcTimestamp,
+use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, TaskId};
+use volicord_types::schema::{
+    CurrentCloseBasis, EvidenceObservation, EvidenceTarget, StateRecordRef,
 };
+use volicord_types::values::{StateRecordKind, UtcTimestamp};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EvidenceObservationBasis<'a> {
@@ -162,10 +163,13 @@ pub(crate) fn run_record_matches_close_basis_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_types::{
-        AcceptanceCriterionId, ActorSource, EvidenceAssuranceLevel, EvidenceObservationId,
-        EvidenceProducerAnchor, EvidenceProducerKind, EvidenceRelevanceAssessment,
-        EvidenceRelevanceStatus, EvidenceSourceKind, RecordId, RequiredNullable,
+    use volicord_types::ids::{AcceptanceCriterionId, EvidenceObservationId, RecordId};
+    use volicord_types::schema::{
+        EvidenceProducerAnchor, EvidenceRelevanceAssessment, RequiredNullable,
+    };
+    use volicord_types::values::{
+        ActorSource, EvidenceAssuranceLevel, EvidenceProducerKind, EvidenceRelevanceStatus,
+        EvidenceSourceKind,
     };
 
     fn target(id: &str) -> EvidenceTarget {
@@ -203,7 +207,7 @@ mod tests {
                 assessed_by_actor_source: RequiredNullable::null(),
             },
             observed_by_actor_source: Some(ActorSource::AgentConnection(
-                volicord_types::AgentConnectionId::new("connection_target"),
+                volicord_types::ids::AgentConnectionId::new("connection_target"),
             ))
             .into(),
             tool_name: RequiredNullable::null(),

@@ -7,6 +7,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
+| `crates/volicord-types/src/lib.rs` | Public owner-module routing and the small `TypeBoundary` placement marker. Shared definitions remain public through their owning modules rather than an aggregate crate-root type facade. |
 | `crates/volicord-types/src/schema.rs` | Shared request, response, and stored-record shapes. |
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
@@ -87,7 +88,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, and commit orchestration. |
-| `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. |
+| `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. Production method modules import shared helpers, pipeline and policy functions, Store services, and shared types from their explicit owners; the parent module is not an import prelude. |
 | `crates/volicord-core/src/methods/evidence_facts.rs` | Shared Store reads and strict decoding that acquire typed facts for stored and projected evidence without owning evidence-policy classification. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | Evidence-capture request validation and planning; consumes target policy for acceptance-criterion and supplemental-claim matching. |
 | `crates/volicord-core/src/methods/record_run.rs` | Run and evidence-update validation and planning; consumes provenance, relevance, target, binding, and close-readiness evidence policy. |
@@ -160,6 +161,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
+| `crates/volicord-mcp/src/lib.rs` | Adapter-owned public entry points and boundary types. Shared type and tool identities remain at their `volicord-types` owner-module routes. |
 | `crates/volicord-mcp/src/managed_launch.rs` | Canonical typed personal/shared hidden-launcher command and arguments, Runtime Home environment binding, strict launch-shape validation, public manual probe materialization, projection, and fingerprint inputs. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Per-message and per-tool `SharedWriter` acquisition, Store context construction, typed setup-busy propagation, and bounded lease lifetime across complete MCP effects. |
 | `crates/volicord-mcp/src/stdio.rs` | Public manual stdio and in-memory lease-bound managed stdio entry paths, authoritative runtime-source selection, lifecycle and framing, typed initialization-profile selection, explicit `codex-mcp-turn-metadata` parsing, revision-aware message handling, admitted diagnostic routing, and process preflight. |

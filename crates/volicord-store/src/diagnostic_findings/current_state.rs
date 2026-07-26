@@ -1,9 +1,10 @@
 //! Current-state diagnostic activation, resolution, and reactivation.
 
 use rusqlite::params;
-use volicord_types::{
-    CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticStatus, UtcTimestamp,
+use volicord_types::diagnostics::{
+    CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticStatus,
 };
+use volicord_types::values::UtcTimestamp;
 
 use crate::{
     sqlite::{begin_immediate_transaction, open_registry_database_for_mutation},

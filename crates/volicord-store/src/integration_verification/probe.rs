@@ -2,8 +2,9 @@ use chrono::Duration;
 use volicord_host_contract::{
     HookObservationPolicy, HostContractProfileId, ObservationDeadlinePolicy,
 };
-use volicord_types::{
-    GuardIntegrationVerificationId, GuardIntegrationVerificationStatus, GuardProbeResult,
+use volicord_types::ids::GuardIntegrationVerificationId;
+use volicord_types::integration_verification::{
+    GuardIntegrationVerificationStatus, GuardProbeResult,
 };
 
 use super::{

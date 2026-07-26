@@ -8,11 +8,15 @@ use volicord_store::{
     },
     operational_sessions::{ManagedCapabilityProof, ManagedPeerObservation, McpSessionMilestones},
 };
-use volicord_types::{
-    ActivationStepId, AgentToolId, GuardIntegrationVerificationStatus, GuardProbeObservationStage,
+use volicord_types::connection_verification::ActivationStepId;
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::integration_verification::{
+    GuardIntegrationVerificationStatus, GuardProbeObservationStage,
     GuardVerificationRecoverability, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
-    IntegrationRevision, IntegrationVerificationWorkflowState, ToolVerificationRole, UtcTimestamp,
+    IntegrationVerificationWorkflowState,
 };
+use volicord_types::tool_names::{AgentToolId, ToolVerificationRole};
+use volicord_types::values::UtcTimestamp;
 
 use super::{HostExecutableStatus, Verification};
 use crate::host_integration::verification::HostExecutableProbe;
@@ -427,7 +431,7 @@ pub(super) struct ManagedSessionAttemptDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    source: Option<volicord_types::McpRuntimeSessionSource>,
+    source: Option<volicord_types::integration_revision::McpRuntimeSessionSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     observed_integration_revision: Option<IntegrationRevision>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -521,7 +525,7 @@ pub(super) struct ManagedCapabilityProofDetails {
     evidence_role: &'static str,
     current_integration_revision: IntegrationRevision,
     runtime_session_id: String,
-    source: volicord_types::McpRuntimeSessionSource,
+    source: volicord_types::integration_revision::McpRuntimeSessionSource,
     observed_integration_revision: IntegrationRevision,
     process_started_at: UtcTimestamp,
     initialize_completed_at: UtcTimestamp,

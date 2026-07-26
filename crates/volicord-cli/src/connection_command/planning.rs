@@ -167,7 +167,9 @@ pub(super) fn plan_init_changes(input: InitPlannedChanges<'_>) -> Vec<PlannedCon
     for file in &input.integration.generated_files {
         if let Some(operation) = generated_file_operation(file.status) {
             changes.push(PlannedConnectionChange::new(
-                if file.artifact == volicord_types::GuardManagedArtifact::HostHookConfig {
+                if file.artifact
+                    == volicord_types::guard_manifest::GuardManagedArtifact::HostHookConfig
+                {
                     PlannedConnectionChangeKind::HookDefinition
                 } else {
                     PlannedConnectionChangeKind::GuardManagedFile

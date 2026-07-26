@@ -1,4 +1,5 @@
-use volicord_types::{EvidenceProducerKind, EvidenceRelevanceAssessment, EvidenceRelevanceStatus};
+use volicord_types::schema::EvidenceRelevanceAssessment;
+use volicord_types::values::{EvidenceProducerKind, EvidenceRelevanceStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EvidenceSupportClass {
@@ -43,7 +44,7 @@ pub(crate) fn capture_relevance_is_unsupported(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_types::RequiredNullable;
+    use volicord_types::schema::RequiredNullable;
 
     fn assessment(status: EvidenceRelevanceStatus) -> EvidenceRelevanceAssessment {
         EvidenceRelevanceAssessment {

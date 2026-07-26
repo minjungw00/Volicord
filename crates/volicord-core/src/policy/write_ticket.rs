@@ -2,11 +2,14 @@ use std::{collections::BTreeSet, path::Path};
 
 use chrono::{DateTime, Utc};
 use volicord_store::{core_pipeline::WriteTicketRecord, StoreError};
-use volicord_types::{
-    BaselineRef, ChangeUnitId, DryRunSummary, GuaranteeDisplay, ObservedChanges, PlannedBlocker,
-    PlannedBlockerSourceKind, PlannedEffect, PrepareWriteDecision, SensitiveActionScope,
-    StateRecordRef, TaskId, UserActionKind, UserActionRequiredFor, UtcTimestamp,
-    WriteDecisionCategory, WriteDecisionReason, WriteTicketAttemptScope,
+use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
+use volicord_types::schema::{
+    DryRunSummary, GuaranteeDisplay, ObservedChanges, PlannedBlocker, PlannedEffect,
+    SensitiveActionScope, StateRecordRef, WriteDecisionReason, WriteTicketAttemptScope,
+};
+use volicord_types::values::{
+    PlannedBlockerSourceKind, PrepareWriteDecision, UserActionKind, UserActionRequiredFor,
+    UtcTimestamp, WriteDecisionCategory,
 };
 
 use crate::policy::{

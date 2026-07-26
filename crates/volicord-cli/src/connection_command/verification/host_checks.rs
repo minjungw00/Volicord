@@ -141,7 +141,8 @@ pub(super) fn host_session_checks(
     let complete_proof = selection.latest_complete_proof.as_ref();
     let stale_observed_at = latest
         .filter(|session| {
-            session.session_source == volicord_types::McpRuntimeSessionSource::ManagedHost
+            session.session_source
+                == volicord_types::integration_revision::McpRuntimeSessionSource::ManagedHost
                 && session.connection_integration_revision != current_revision.as_str()
         })
         .map(|session| session.last_observed_at.as_str());

@@ -20,11 +20,11 @@ use volicord_store::{
 use volicord_test_support::{
     core_fixtures::CoreFixture, seed_test_agent_session, transition_test_connection_mode,
 };
-use volicord_types::{
-    canonical_json_sha256, canonical_json_string, ActorSource, AgentConnectionId,
-    AgentRuntimeSessionId, AgentSessionId, FailureCategory, McpRuntimeSessionSource,
-    OperationCategory, ProjectId, WORKFLOW_POLICY_CONTRACT_ID,
-};
+use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, ProjectId};
+use volicord_types::integration_revision::McpRuntimeSessionSource;
+use volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID;
+use volicord_types::values::{ActorSource, FailureCategory, OperationCategory};
 
 fn mcp_correlation(session: &str, thread: &str, turn: &str) -> CodexMcpCorrelation {
     CodexMcpCorrelation {

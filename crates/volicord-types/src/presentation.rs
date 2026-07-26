@@ -1,6 +1,6 @@
 use serde_json::Error as JsonError;
 
-use crate::{ArtifactRef, EvidenceTarget, UserActionInboxChoice, UserActionInboxForm};
+use crate::schema::{ArtifactRef, EvidenceTarget, UserActionInboxChoice, UserActionInboxForm};
 
 /// Channel-neutral, non-authoritative presentation plan derived from one
 /// Core-owned closed user-action form.
@@ -261,9 +261,15 @@ fn artifact_plan(artifact: &ArtifactRef) -> Result<UserActionPresentationArtifac
 mod tests {
     use super::*;
     use crate::{
-        AcceptanceCriterionId, ActorSource, ArtifactAvailability, ArtifactId,
-        ArtifactIntegrityStatus, EvidenceClaimId, EvidenceRelevanceStatus, ProjectId, RecordId,
-        RedactionState, StateRecordKind, StateRecordRef, StorageRef, TaskId, UserActionOptionId,
+        ids::{
+            AcceptanceCriterionId, ArtifactId, EvidenceClaimId, ProjectId, RecordId, StorageRef,
+            TaskId, UserActionOptionId,
+        },
+        schema::StateRecordRef,
+        values::{
+            ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, EvidenceRelevanceStatus,
+            RedactionState, StateRecordKind,
+        },
     };
 
     #[test]

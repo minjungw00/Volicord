@@ -420,7 +420,7 @@ fn evidence_user_action_extended_stored_ttl_rejects_resolution_without_effects(
         "evidence_action_extended_stored_ttl",
     )?;
     let target = EvidenceTarget::AcceptanceCriterion {
-        acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(
+        acceptance_criterion_id: volicord_types::ids::AcceptanceCriterionId::new(
             active_acceptance_criterion_id(&harness, &task_id)?,
         ),
     };
@@ -481,7 +481,7 @@ fn evidence_user_action_extended_stored_ttl_rejects_resolution_without_effects(
         )?;
         let submission_id = format!("submission_evidence_extended_ttl_{branch}");
         let response = harness.service.resolve_user_action(
-            volicord_types::ResolveUserActionRequest {
+            volicord_types::methods::ResolveUserActionRequest {
                 envelope: envelope(
                     &format!("req_resolve_evidence_extended_ttl_{branch}"),
                     Some(&submission_id),
@@ -489,14 +489,17 @@ fn evidence_user_action_extended_stored_ttl_rejects_resolution_without_effects(
                     None,
                     Some(&task_id),
                 ),
-                user_action_request_id: volicord_types::UserActionRequestId::new(action_id.clone()),
+                user_action_request_id: volicord_types::ids::UserActionRequestId::new(
+                    action_id.clone(),
+                ),
                 channel_submission_id: submission_id,
-                resolution: volicord_types::UserActionResolutionInput::EvidenceObservation {
-                    target: target.clone(),
-                    artifact_ids: vec![artifact_id.clone()],
-                    relevance_status: EvidenceRelevanceStatus::Supported,
-                    summary: "The exact candidate artifact supports the target.".to_owned(),
-                },
+                resolution:
+                    volicord_types::schema::UserActionResolutionInput::EvidenceObservation {
+                        target: target.clone(),
+                        artifact_ids: vec![artifact_id.clone()],
+                        relevance_status: EvidenceRelevanceStatus::Supported,
+                        summary: "The exact candidate artifact supports the target.".to_owned(),
+                    },
             },
             invocation(OperationCategory::UserOnly),
         )?;
@@ -595,9 +598,9 @@ fn oversized_derived_capture_form_rejects_before_user_action_commit() -> Result<
     )?;
     let target = supplemental_evidence_target("Artifact registered for corruption coverage.");
     artifact_ref.display_name.clear();
-    let body_for = |artifact_ref: volicord_types::ArtifactRef| {
+    let body_for = |artifact_ref: volicord_types::schema::ArtifactRef| {
         UserActionRequestBody::EvidenceObservation(
-            volicord_types::UserActionEvidenceObservationRequestBody {
+            volicord_types::schema::UserActionEvidenceObservationRequestBody {
                 question: "q".to_owned(),
                 context_summary: "c".to_owned(),
                 target_candidates: vec![target.clone()],
@@ -644,7 +647,8 @@ fn oversized_derived_capture_form_rejects_before_user_action_commit() -> Result<
         target,
         vec![artifact_ref.artifact_id],
     );
-    let volicord_types::UserActionDraft::EvidenceObservation(observation) = &mut request.action
+    let volicord_types::schema::UserActionDraft::EvidenceObservation(observation) =
+        &mut request.action
     else {
         unreachable!("observation helper must create an evidence-observation draft")
     };
@@ -673,10 +677,10 @@ fn resolve_observation_request(
     task_id: &str,
     user_action_request_id: &str,
     target: EvidenceTarget,
-    artifact_ids: Vec<volicord_types::ArtifactId>,
+    artifact_ids: Vec<volicord_types::ids::ArtifactId>,
     relevance_status: EvidenceRelevanceStatus,
-) -> volicord_types::ResolveUserActionRequest {
-    volicord_types::ResolveUserActionRequest {
+) -> volicord_types::methods::ResolveUserActionRequest {
+    volicord_types::methods::ResolveUserActionRequest {
         envelope: envelope(
             request_id,
             Some(channel_submission_id),
@@ -684,9 +688,11 @@ fn resolve_observation_request(
             None,
             Some(task_id),
         ),
-        user_action_request_id: volicord_types::UserActionRequestId::new(user_action_request_id),
+        user_action_request_id: volicord_types::ids::UserActionRequestId::new(
+            user_action_request_id,
+        ),
         channel_submission_id: channel_submission_id.to_owned(),
-        resolution: volicord_types::UserActionResolutionInput::EvidenceObservation {
+        resolution: volicord_types::schema::UserActionResolutionInput::EvidenceObservation {
             target,
             artifact_ids,
             relevance_status,
@@ -745,13 +751,13 @@ fn required_for_compatibility_covers_all_action_kinds_and_operations() -> Result
     }
 
     let requirements = [
-        volicord_types::UserActionRequiredFor::ScopeUpdate,
-        volicord_types::UserActionRequiredFor::PrepareWrite,
-        volicord_types::UserActionRequiredFor::RecordRun,
-        volicord_types::UserActionRequiredFor::CloseComplete,
-        volicord_types::UserActionRequiredFor::CloseCancel,
-        volicord_types::UserActionRequiredFor::CloseSupersede,
-        volicord_types::UserActionRequiredFor::Informational,
+        volicord_types::values::UserActionRequiredFor::ScopeUpdate,
+        volicord_types::values::UserActionRequiredFor::PrepareWrite,
+        volicord_types::values::UserActionRequiredFor::RecordRun,
+        volicord_types::values::UserActionRequiredFor::CloseComplete,
+        volicord_types::values::UserActionRequiredFor::CloseCancel,
+        volicord_types::values::UserActionRequiredFor::CloseSupersede,
+        volicord_types::values::UserActionRequiredFor::Informational,
     ];
     let cases = [
         (
@@ -907,8 +913,8 @@ fn duplicate_required_for_rejects_before_dry_run_or_commit_effects() -> Result<(
             JudgmentKind::ProductDecision,
         );
         request.required_for = vec![
-            volicord_types::UserActionRequiredFor::RecordRun,
-            volicord_types::UserActionRequiredFor::RecordRun,
+            volicord_types::values::UserActionRequiredFor::RecordRun,
+            volicord_types::values::UserActionRequiredFor::RecordRun,
         ];
         let before = harness.counts()?;
 
@@ -994,7 +1000,8 @@ fn choice_affected_refs_reject_cross_boundary_refs_without_effect() -> Result<()
                     produced_at_state_version: Some(2).into(),
                 },
             };
-            let volicord_types::UserActionDraft::Choice(choice) = &mut request.action else {
+            let volicord_types::schema::UserActionDraft::Choice(choice) = &mut request.action
+            else {
                 unreachable!("product decision fixture is choice-shaped")
             };
             choice.affected_refs = vec![affected_ref];
@@ -1044,7 +1051,7 @@ fn valid_affected_refs_commit_while_context_refs_remain_display_only() -> Result
             task_id: Some(TaskId::new("task_display_only")).into(),
             produced_at_state_version: Some(99).into(),
         };
-        let volicord_types::UserActionDraft::Choice(choice) = &mut request.action else {
+        let volicord_types::schema::UserActionDraft::Choice(choice) = &mut request.action else {
             unreachable!("product decision fixture is choice-shaped")
         };
         choice.affected_refs = vec![StateRecordRef {
@@ -1080,7 +1087,8 @@ fn valid_affected_refs_commit_while_context_refs_remain_display_only() -> Result
                 .iter()
                 .find(|item| item.request.user_action_request_id.as_str() == request_id)
                 .expect("trusted User Channel projection should retain the request body");
-            let volicord_types::UserActionRequestBody::Choice(choice) = &projected.request.body
+            let volicord_types::schema::UserActionRequestBody::Choice(choice) =
+                &projected.request.body
             else {
                 panic!("product-decision request should retain its choice body")
             };
@@ -1156,7 +1164,7 @@ fn all_eight_action_kinds_create_one_canonical_pending_request() -> Result<(), B
         );
         assert_eq!(
             projected.request.status,
-            volicord_types::UserActionStatus::Pending
+            volicord_types::values::UserActionStatus::Pending
         );
         assert_eq!(after.user_action_requests, before.user_action_requests + 1);
         assert_eq!(
@@ -1201,7 +1209,7 @@ fn all_eight_action_kinds_create_one_canonical_pending_request() -> Result<(), B
         .expect("trusted User Channel projection should retain the observation request");
     assert_eq!(
         projected.request.action_kind,
-        volicord_types::UserActionKind::EvidenceObservation
+        volicord_types::values::UserActionKind::EvidenceObservation
     );
     assert_eq!(after.user_action_requests, before.user_action_requests + 1);
     assert_eq!(
@@ -1304,7 +1312,7 @@ fn resolution_omits_expected_state_and_survives_unrelated_commit() -> Result<(),
         Some(&change_unit_id),
         JudgmentKind::TechnicalDecision,
     );
-    unrelated.required_for = vec![volicord_types::UserActionRequiredFor::Informational];
+    unrelated.required_for = vec![volicord_types::values::UserActionRequiredFor::Informational];
     let second = harness
         .service
         .request_user_action(unrelated, invocation(OperationCategory::AgentWorkflow))?;
@@ -1360,8 +1368,10 @@ fn resolution_uses_core_clock_at_expiry_boundary() -> Result<(), Box<dyn Error>>
             Some(&change_unit_id),
             JudgmentKind::ProductDecision,
         );
-        request.expires_at =
-            Some(volicord_types::UtcTimestamp::parse("2026-07-13T00:00:10Z")?).into();
+        request.expires_at = Some(volicord_types::values::UtcTimestamp::parse(
+            "2026-07-13T00:00:10Z",
+        )?)
+        .into();
         let requested = harness
             .service
             .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -1580,8 +1590,8 @@ fn exact_replay_is_stable_and_payload_conflict_has_no_effect() -> Result<(), Box
     assert_eq!(harness.counts()?, after_first);
 
     let mut conflict = request;
-    conflict.resolution = volicord_types::UserActionResolutionInput::Choice {
-        selected_option_id: volicord_types::UserActionOptionId::new("decline"),
+    conflict.resolution = volicord_types::schema::UserActionResolutionInput::Choice {
+        selected_option_id: volicord_types::ids::UserActionOptionId::new("decline"),
         note: Some("A different payload must conflict.".to_owned()).into(),
     };
     let rejected = harness
@@ -1677,7 +1687,7 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
         .service
         .resume_user_action_request(
             ProjectId::new(PROJECT_ID),
-            volicord_types::UserActionRequestId::new(&user_action_request_id),
+            volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
             invocation(OperationCategory::AgentWorkflow),
         )?
         .expect("same connection should resume a direct request-user-action origin");
@@ -1713,7 +1723,7 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
             .service
             .resume_user_action_request(
                 ProjectId::new(PROJECT_ID),
-                volicord_types::UserActionRequestId::new(&user_action_request_id),
+                volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
                 changed_context,
             )?
             .expect("same Agent Connection retains read-only origin recovery access");
@@ -1744,22 +1754,25 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
         .service
         .current_user_action_projection(
             &ProjectId::new(PROJECT_ID),
-            &volicord_types::UserActionRequestId::new(&user_action_request_id),
+            &volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
         )?
         .expect("origin should retain a current projection");
     assert_eq!(current.observed_state_version, advanced_state_version);
     assert_eq!(
         current.observed_at,
-        volicord_types::UtcTimestamp::parse("2026-07-13T00:00:05Z")?
+        volicord_types::values::UtcTimestamp::parse("2026-07-13T00:00:05Z")?
     );
-    assert_eq!(current.status, volicord_types::UserActionStatus::Pending);
+    assert_eq!(
+        current.status,
+        volicord_types::values::UserActionStatus::Pending
+    );
     let after_advance = harness.counts()?;
 
     let resumed_after_advance = harness
         .service
         .resume_user_action_request(
             ProjectId::new(PROJECT_ID),
-            volicord_types::UserActionRequestId::new(&user_action_request_id),
+            volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
             invocation(OperationCategory::AgentWorkflow),
         )?
         .expect("same connection should resume after unrelated state advance");
@@ -1773,7 +1786,7 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
 
     let wrong_connection = harness.service.resume_user_action_request(
         ProjectId::new(PROJECT_ID),
-        volicord_types::UserActionRequestId::new(user_action_request_id),
+        volicord_types::ids::UserActionRequestId::new(user_action_request_id),
         invocation_with_actor(
             ActorSource::agent_connection("connection_other"),
             OperationCategory::AgentWorkflow,
@@ -1917,7 +1930,7 @@ fn read_snapshot_prevents_mixed_projection_rows_across_concurrent_resolution_com
     let writer_task_id = task_id.clone();
     let writer_action_id = user_action_request_id.clone();
     let writer_clock = clock.clone();
-    let snapshot_now = volicord_types::UtcTimestamp::parse("2026-07-13T00:00:01Z")?;
+    let snapshot_now = volicord_types::values::UtcTimestamp::parse("2026-07-13T00:00:01Z")?;
     let (snapshot_state_version, committed_state_version) =
         store.with_read_snapshot(|snapshot| {
             let snapshot_state_version = snapshot.project_state()?.state_version;
@@ -1965,7 +1978,10 @@ fn read_snapshot_prevents_mixed_projection_rows_across_concurrent_resolution_com
             let record = snapshot
                 .user_action_record(&user_action_request_id, &snapshot_now)?
                 .expect("origin request should remain visible in its read snapshot");
-            assert_eq!(record.status, volicord_types::UserActionStatus::Pending);
+            assert_eq!(
+                record.status,
+                volicord_types::values::UserActionStatus::Pending
+            );
             assert!(record.resolution.is_none());
             let origin_replay = snapshot
                 .tool_invocation(
@@ -1997,7 +2013,10 @@ fn read_snapshot_prevents_mixed_projection_rows_across_concurrent_resolution_com
     let resolved = fresh
         .user_action_record(&user_action_request_id, &snapshot_now)?
         .expect("fresh read should observe the resolved request");
-    assert_eq!(resolved.status, volicord_types::UserActionStatus::Resolved);
+    assert_eq!(
+        resolved.status,
+        volicord_types::values::UserActionStatus::Resolved
+    );
     assert!(resolved.resolution.is_some());
     let resolution_replay = fresh
         .tool_invocation(
@@ -2420,8 +2439,8 @@ fn accepted_decision_continuity_has_no_fabricated_rationale() -> Result<(), Box<
         &request_id(&requested),
         "accept",
     );
-    resolution.resolution = volicord_types::UserActionResolutionInput::Choice {
-        selected_option_id: volicord_types::UserActionOptionId::new("accept"),
+    resolution.resolution = volicord_types::schema::UserActionResolutionInput::Choice {
+        selected_option_id: volicord_types::ids::UserActionOptionId::new("accept"),
         note: None.into(),
     };
     let response = harness
@@ -2584,8 +2603,8 @@ fn residual_risk_private_note_stays_only_in_resolution_body() -> Result<(), Box<
         &user_action_request_id,
         "accept",
     );
-    resolution.resolution = volicord_types::UserActionResolutionInput::Choice {
-        selected_option_id: volicord_types::UserActionOptionId::new("accept"),
+    resolution.resolution = volicord_types::schema::UserActionResolutionInput::Choice {
+        selected_option_id: volicord_types::ids::UserActionOptionId::new("accept"),
         note: Some(PRIVATE_NOTE.to_owned()).into(),
     };
     let resolved = harness
@@ -2635,12 +2654,12 @@ fn residual_risk_private_note_stays_only_in_resolution_body() -> Result<(), Box<
         .service
         .current_user_action_projection(
             &ProjectId::new(PROJECT_ID),
-            &volicord_types::UserActionRequestId::new(&user_action_request_id),
+            &volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
         )?
         .expect("resolved user action should have a current safe projection");
     assert_eq!(
         agent_safe.status,
-        volicord_types::UserActionStatus::Resolved
+        volicord_types::values::UserActionStatus::Resolved
     );
     let agent_safe_json = serde_json::to_string(&agent_safe.user_action_resolution)?;
     assert!(!agent_safe_json.contains(PRIVATE_NOTE));
@@ -2712,13 +2731,13 @@ fn canonical_bounds_reject_n_plus_one_empty_and_over_32k_without_effect(
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    let volicord_types::UserActionDraft::Choice(choice) = &mut at_limit.action else {
+    let volicord_types::schema::UserActionDraft::Choice(choice) = &mut at_limit.action else {
         unreachable!("choice fixture")
     };
     choice.options = Some(
-        (0..volicord_types::USER_ACTION_TARGET_CANDIDATE_LIMIT)
-            .map(|index| volicord_types::UserActionOptionInput {
-                option_id: volicord_types::UserActionOptionId::new(format!("option_{index}")),
+        (0..volicord_types::schema::USER_ACTION_TARGET_CANDIDATE_LIMIT)
+            .map(|index| volicord_types::schema::UserActionOptionInput {
+                option_id: volicord_types::ids::UserActionOptionId::new(format!("option_{index}")),
                 label: format!("Option {index}"),
                 description: "A bounded option.".to_owned(),
                 consequence: "Only this option is selected.".to_owned(),
@@ -2741,13 +2760,13 @@ fn canonical_bounds_reject_n_plus_one_empty_and_over_32k_without_effect(
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    let volicord_types::UserActionDraft::Choice(choice) = &mut over_limit.action else {
+    let volicord_types::schema::UserActionDraft::Choice(choice) = &mut over_limit.action else {
         unreachable!("choice fixture")
     };
     choice.options = Some(
-        (0..=volicord_types::USER_ACTION_TARGET_CANDIDATE_LIMIT)
-            .map(|index| volicord_types::UserActionOptionInput {
-                option_id: volicord_types::UserActionOptionId::new(format!("over_{index}")),
+        (0..=volicord_types::schema::USER_ACTION_TARGET_CANDIDATE_LIMIT)
+            .map(|index| volicord_types::schema::UserActionOptionInput {
+                option_id: volicord_types::ids::UserActionOptionId::new(format!("over_{index}")),
                 label: format!("Option {index}"),
                 description: "An over-limit option.".to_owned(),
                 consequence: "This request must reject.".to_owned(),
@@ -2772,7 +2791,7 @@ fn canonical_bounds_reject_n_plus_one_empty_and_over_32k_without_effect(
         supplemental_evidence_target("No candidate may be empty."),
         Vec::new(),
     );
-    let volicord_types::UserActionDraft::EvidenceObservation(observation) =
+    let volicord_types::schema::UserActionDraft::EvidenceObservation(observation) =
         &mut empty_observation.action
     else {
         unreachable!("observation fixture")
@@ -2794,10 +2813,10 @@ fn canonical_bounds_reject_n_plus_one_empty_and_over_32k_without_effect(
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    let volicord_types::UserActionDraft::Choice(choice) = &mut oversized.action else {
+    let volicord_types::schema::UserActionDraft::Choice(choice) = &mut oversized.action else {
         unreachable!("choice fixture")
     };
-    choice.context.summary = "x".repeat(volicord_types::USER_ACTION_FORM_MAX_BYTES + 1);
+    choice.context.summary = "x".repeat(volicord_types::schema::USER_ACTION_FORM_MAX_BYTES + 1);
     let rejected = harness
         .service
         .request_user_action(oversized, invocation(OperationCategory::AgentWorkflow))?;

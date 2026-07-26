@@ -6,6 +6,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::pipeline::method_result_base;
+use crate::{UserChannelInboxProjection, UserChannelInboxProjectionRequest};
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::OptionalExtension;
 use serde::{de::DeserializeOwned, Serialize};
@@ -22,6 +24,7 @@ use volicord_store::{
     },
     core_pipeline::{CoreProjectStore, StorageEffectCounts, TaskRevisionRecord},
     diagnostics::read_core_rejection_diagnostics,
+    evidence_capture::MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
     guards::{
         insert_unrecorded_change, unrecorded_change, upsert_guard_installation,
         GuardInstallationUpsert, UnrecordedChangeInsert, UnrecordedChangeRecord,
@@ -34,13 +37,21 @@ use volicord_test_support::{
     TestRuntimeHomeMutation,
     TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
 };
-use volicord_types::CloseMutationIntent;
+use volicord_types::ids::{
+    prefixed_durable_id, DurableIdError, DurableIdGenerator, DurableIdKind, IdempotencyKey,
+    RequestId, SequenceDurableIdGenerator,
+};
+use volicord_types::methods::{ChangeUnitUpdate, InitialScope, ScopeUpdate};
+use volicord_types::schema::{
+    ChangeUnitEffectContract, EvidenceUpdateProvenance, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
+};
+use volicord_types::values::CloseMutationIntent;
+use volicord_types::values::{
+    ActorSource, ChangeUnitEffectKind, EvidenceAssuranceLevel, EvidenceSourceKind,
+    OperationCategory, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+};
 use volicord_types::{
-    prefixed_durable_id, ActorSource, ChangeUnitEffectContract, ChangeUnitEffectKind,
-    ChangeUnitUpdate, DurableIdError, DurableIdGenerator, DurableIdKind, EvidenceAssuranceLevel,
-    EvidenceSourceKind, EvidenceUpdateProvenance, IdempotencyKey, InitialScope, OperationCategory,
-    RequestId, ScopeUpdate, SequenceDurableIdGenerator, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    canonical::canonical_json_size_bytes, ids::*, methods::*, schema::*, values::*,
 };
 
 use super::*;
@@ -426,11 +437,11 @@ impl MethodHarness {
         workflow: Value,
     ) -> Result<(), Box<dyn Error>> {
         let policy_value = json!({
-            "schema": volicord_types::WORKFLOW_POLICY_CONTRACT_ID,
+            "schema": volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID,
             "workflow": workflow,
         });
-        let policy_json = volicord_types::canonical_json_string(&policy_value)?;
-        let policy_fingerprint = volicord_types::canonical_json_sha256(&policy_value)?
+        let policy_json = volicord_types::canonical::canonical_json_string(&policy_value)?;
+        let policy_fingerprint = volicord_types::canonical::canonical_json_sha256(&policy_value)?
             .as_str()
             .to_owned();
         let context = self.service.context();
@@ -859,8 +870,8 @@ fn intake_request(
     dry_run: bool,
     expected_state_version: Option<u64>,
     requested_mode: RequestedMode,
-) -> volicord_types::IntakeRequest {
-    volicord_types::IntakeRequest {
+) -> volicord_types::methods::IntakeRequest {
+    volicord_types::methods::IntakeRequest {
         envelope: envelope(
             request_id,
             Some(idempotency_key),
@@ -877,7 +888,7 @@ fn intake_request(
         initial_scope: InitialScope {
             boundary: "Initial test scope.".to_owned(),
             non_goals: vec!["Changing unrelated flows.".to_owned()],
-            acceptance_criteria: vec![volicord_types::AcceptanceCriterionInput {
+            acceptance_criteria: vec![volicord_types::schema::AcceptanceCriterionInput {
                 statement: "The test export flow is represented.".to_owned(),
                 evidence_requirement: EvidenceRequirement::NotRequired,
             }],
@@ -937,11 +948,13 @@ fn update_scope_request(
         .into(),
         scope_boundary: Some(scope_summary.to_owned()).into(),
         non_goals: Some(vec!["Unrelated behavior.".to_owned()]).into(),
-        acceptance_criteria: Some(vec![volicord_types::AcceptanceCriterionReplacement {
-            acceptance_criterion_id: None.into(),
-            statement: "The scoped behavior is represented.".to_owned(),
-            evidence_requirement: EvidenceRequirement::NotRequired,
-        }])
+        acceptance_criteria: Some(vec![
+            volicord_types::schema::AcceptanceCriterionReplacement {
+                acceptance_criterion_id: None.into(),
+                statement: "The scoped behavior is represented.".to_owned(),
+                evidence_requirement: EvidenceRequirement::NotRequired,
+            },
+        ])
         .into(),
         autonomy_boundary: Some("Stay inside the scoped test behavior.".to_owned()).into(),
         baseline_ref: Some(BaselineRef::new("baseline_test")).into(),
@@ -1023,7 +1036,7 @@ fn record_run_request(
         ),
         task_id: TaskId::new(task_id),
         change_unit_id: ChangeUnitId::new(change_unit_id),
-        kind: volicord_types::RunKind::Implementation,
+        kind: volicord_types::values::RunKind::Implementation,
         run_id: None.into(),
         baseline_ref: BaselineRef::new("baseline_test"),
         write_ticket_id: None.into(),
@@ -1315,7 +1328,7 @@ fn request_and_resolve_user_observation(
         relevance_status,
     } = input;
     let requested = harness.service.request_user_action(
-        volicord_types::RequestUserActionRequest {
+        volicord_types::methods::RequestUserActionRequest {
             envelope: envelope(
                 &format!("req_user_action_observation_{suffix}"),
                 Some(&format!("idem_user_action_observation_{suffix}")),
@@ -1325,15 +1338,15 @@ fn request_and_resolve_user_observation(
             ),
             task_id: TaskId::new(task_id),
             change_unit_id: Some(ChangeUnitId::new(change_unit_id)).into(),
-            action: volicord_types::UserActionDraft::EvidenceObservation(
-                volicord_types::UserActionEvidenceObservationDraft {
+            action: volicord_types::schema::UserActionDraft::EvidenceObservation(
+                volicord_types::schema::UserActionEvidenceObservationDraft {
                     question: "Does this exact artifact support the selected target?".to_owned(),
                     context_summary: "The user must inspect the exact candidate bytes.".to_owned(),
                     target_candidates: vec![target.clone()],
                     artifact_candidate_ids: vec![artifact_ref.artifact_id.clone()],
                 },
             ),
-            required_for: vec![volicord_types::UserActionRequiredFor::RecordRun],
+            required_for: vec![volicord_types::values::UserActionRequiredFor::RecordRun],
             expires_at: None.into(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -1341,7 +1354,7 @@ fn request_and_resolve_user_observation(
     let user_action_request_id =
         response_record_id(&requested.response_value, "user_action_request_ref");
     let resolved = harness.service.resolve_user_action(
-        volicord_types::ResolveUserActionRequest {
+        volicord_types::methods::ResolveUserActionRequest {
             envelope: envelope(
                 &format!("req_user_action_observation_resolve_{suffix}"),
                 Some(&format!("submission_user_action_observation_{suffix}")),
@@ -1349,11 +1362,11 @@ fn request_and_resolve_user_observation(
                 None,
                 Some(task_id),
             ),
-            user_action_request_id: volicord_types::UserActionRequestId::new(
+            user_action_request_id: volicord_types::ids::UserActionRequestId::new(
                 user_action_request_id,
             ),
             channel_submission_id: format!("submission_user_action_observation_{suffix}"),
-            resolution: volicord_types::UserActionResolutionInput::EvidenceObservation {
+            resolution: volicord_types::schema::UserActionResolutionInput::EvidenceObservation {
                 target,
                 artifact_ids: vec![artifact_ref.artifact_id.clone()],
                 relevance_status,
@@ -1375,7 +1388,7 @@ fn request_and_resolve_user_observation(
         rusqlite::params![PROJECT_ID, resolution_ref.record_id.as_str()],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let decoded_resolution: volicord_types::UserActionResolutionBody =
+    let decoded_resolution: volicord_types::schema::UserActionResolutionBody =
         serde_json::from_str(&raw_resolution.1).unwrap_or_else(|error| {
             panic!(
                 "fresh resolution JSON should decode: {error}: {}",
@@ -1427,7 +1440,7 @@ fn record_close_evidence_with_updates(
             EvidenceRequirement::Required,
         )?;
         evidence_updates[0].target = EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(
+            acceptance_criterion_id: volicord_types::ids::AcceptanceCriterionId::new(
                 acceptance_criterion_id,
             ),
         };
@@ -1520,7 +1533,7 @@ fn record_close_evidence_with_updates(
     );
     request.evidence_observations = evidence_observations;
     request.evidence_updates = evidence_updates;
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: result_summary.to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -1547,7 +1560,7 @@ fn record_close_basis_with_risks(
     change_unit_id: &str,
     expected_state_version: u64,
     suffix: &str,
-    residual_risks: Vec<volicord_types::ResidualRiskInput>,
+    residual_risks: Vec<volicord_types::schema::ResidualRiskInput>,
 ) -> Result<(u64, Vec<String>), Box<dyn Error>> {
     enable_record_run_capabilities(harness)?;
     let request_id = format!("req_close_risk_basis_{suffix}");
@@ -1738,8 +1751,8 @@ fn sensitive_scope(
     action_kind: &str,
     intended_paths: Vec<&str>,
     sensitive_categories: Vec<&str>,
-) -> volicord_types::SensitiveActionScope {
-    volicord_types::SensitiveActionScope {
+) -> volicord_types::schema::SensitiveActionScope {
+    volicord_types::schema::SensitiveActionScope {
         action_kind: action_kind.to_owned(),
         description: "Allow the named sensitive step only.".to_owned(),
         intended_paths: intended_paths.into_iter().map(str::to_owned).collect(),
@@ -1814,7 +1827,7 @@ fn artifact_input_for_handle(
     claim: Option<&str>,
 ) -> ArtifactInput {
     ArtifactInput {
-        artifact_input_id: volicord_types::ArtifactInputId::new(artifact_input_id),
+        artifact_input_id: volicord_types::ids::ArtifactInputId::new(artifact_input_id),
         source_kind: ArtifactInputSourceKind::StagedArtifact,
         staged_artifact_handle: Some(handle.clone()).into(),
         existing_artifact_ref: None.into(),
@@ -1830,7 +1843,7 @@ fn supplemental_evidence_target(statement: &str) -> EvidenceTarget {
     let mut hasher = Sha256::new();
     hasher.update(statement.as_bytes());
     EvidenceTarget::SupplementalClaim {
-        evidence_claim_id: volicord_types::EvidenceClaimId::new(format!(
+        evidence_claim_id: volicord_types::ids::EvidenceClaimId::new(format!(
             "claim_{}",
             hex_bytes(&hasher.finalize())
         )),
@@ -1867,7 +1880,7 @@ fn unsupported_evidence_update(claim: &str) -> EvidenceCoverageUpdate {
 
 fn evidence_update_for_acceptance_criterion(
     mut update: EvidenceCoverageUpdate,
-    acceptance_criterion_id: &volicord_types::AcceptanceCriterionId,
+    acceptance_criterion_id: &volicord_types::ids::AcceptanceCriterionId,
 ) -> EvidenceCoverageUpdate {
     update.target = EvidenceTarget::AcceptanceCriterion {
         acceptance_criterion_id: acceptance_criterion_id.clone(),
@@ -1903,9 +1916,9 @@ fn supported_evidence_update_with_provenance(
 
 fn close_assessment_with_risks(
     summary: &str,
-    residual_risks: Vec<volicord_types::ResidualRiskInput>,
-) -> volicord_types::CloseAssessmentInput {
-    volicord_types::CloseAssessmentInput {
+    residual_risks: Vec<volicord_types::schema::ResidualRiskInput>,
+) -> volicord_types::schema::CloseAssessmentInput {
+    volicord_types::schema::CloseAssessmentInput {
         result_summary: summary.to_owned(),
         result_refs: Vec::new(),
         residual_risks,
@@ -1914,8 +1927,8 @@ fn close_assessment_with_risks(
     }
 }
 
-fn residual_risk_input(summary: &str) -> volicord_types::ResidualRiskInput {
-    volicord_types::ResidualRiskInput {
+fn residual_risk_input(summary: &str) -> volicord_types::schema::ResidualRiskInput {
+    volicord_types::schema::ResidualRiskInput {
         summary: summary.to_owned(),
         consequence: "The user must decide whether this remaining risk is acceptable.".to_owned(),
         acceptance_required: true,
@@ -2155,9 +2168,9 @@ fn replace_acceptance_criteria_for_test(
         .iter()
         .enumerate()
         .map(|(index, (statement, evidence_requirement))| {
-            volicord_types::AcceptanceCriterionReplacement {
+            volicord_types::schema::AcceptanceCriterionReplacement {
                 acceptance_criterion_id: if index == 0 {
-                    Some(volicord_types::AcceptanceCriterionId::new(&current_id)).into()
+                    Some(volicord_types::ids::AcceptanceCriterionId::new(&current_id)).into()
                 } else {
                     None.into()
                 },
@@ -2459,21 +2472,21 @@ fn user_action_request(
     task_id: &str,
     change_unit_id: Option<&str>,
     judgment_kind: JudgmentKind,
-) -> volicord_types::RequestUserActionRequest {
+) -> volicord_types::methods::RequestUserActionRequest {
     let options = if matches!(
         judgment_kind,
         JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision
     ) {
         vec![
-            volicord_types::UserActionOptionInput {
-                option_id: volicord_types::UserActionOptionId::new("accept"),
+            volicord_types::schema::UserActionOptionInput {
+                option_id: volicord_types::ids::UserActionOptionId::new("accept"),
                 label: "Accept".to_owned(),
                 description: "Record the focused user-owned judgment.".to_owned(),
                 consequence: "Only this judgment record is resolved.".to_owned(),
                 is_default: true,
             },
-            volicord_types::UserActionOptionInput {
-                option_id: volicord_types::UserActionOptionId::new("decline"),
+            volicord_types::schema::UserActionOptionInput {
+                option_id: volicord_types::ids::UserActionOptionId::new("decline"),
                 label: "Decline".to_owned(),
                 description: "Record that the focused judgment was not accepted.".to_owned(),
                 consequence: "The Task remains unresolved for this question.".to_owned(),
@@ -2484,7 +2497,7 @@ fn user_action_request(
         Vec::new()
     };
 
-    volicord_types::RequestUserActionRequest {
+    volicord_types::methods::RequestUserActionRequest {
         envelope: envelope(
             request_id,
             Some(idempotency_key),
@@ -2494,13 +2507,13 @@ fn user_action_request(
         ),
         task_id: TaskId::new(task_id),
         change_unit_id: change_unit_id.map(ChangeUnitId::new).into(),
-        action: volicord_types::UserActionDraft::Choice(Box::new(
-            volicord_types::UserActionChoiceDraft {
+        action: volicord_types::schema::UserActionDraft::Choice(Box::new(
+            volicord_types::schema::UserActionChoiceDraft {
                 judgment_kind,
-                presentation: volicord_types::JudgmentPresentation::Short,
+                presentation: volicord_types::values::JudgmentPresentation::Short,
                 question: "Choose the focused test user-action outcome.".to_owned(),
                 options: (!options.is_empty()).then_some(options).into(),
-                context: volicord_types::UserActionContext {
+                context: volicord_types::schema::UserActionContext {
                     summary: "A focused test user action needs a user-owned answer.".to_owned(),
                     related_refs: Vec::new(),
                     artifact_refs: Vec::new(),
@@ -2531,9 +2544,9 @@ fn observation_action_request(
     task_id: &str,
     change_unit_id: &str,
     target: EvidenceTarget,
-    artifact_ids: Vec<volicord_types::ArtifactId>,
-) -> volicord_types::RequestUserActionRequest {
-    volicord_types::RequestUserActionRequest {
+    artifact_ids: Vec<volicord_types::ids::ArtifactId>,
+) -> volicord_types::methods::RequestUserActionRequest {
+    volicord_types::methods::RequestUserActionRequest {
         envelope: envelope(
             request_id,
             Some(idempotency_key),
@@ -2543,43 +2556,47 @@ fn observation_action_request(
         ),
         task_id: TaskId::new(task_id),
         change_unit_id: Some(ChangeUnitId::new(change_unit_id)).into(),
-        action: volicord_types::UserActionDraft::EvidenceObservation(
-            volicord_types::UserActionEvidenceObservationDraft {
+        action: volicord_types::schema::UserActionDraft::EvidenceObservation(
+            volicord_types::schema::UserActionEvidenceObservationDraft {
                 question: "Does the selected artifact support this exact target?".to_owned(),
                 context_summary: "The user must inspect the candidate artifact bytes.".to_owned(),
                 target_candidates: vec![target],
                 artifact_candidate_ids: artifact_ids,
             },
         ),
-        required_for: vec![volicord_types::UserActionRequiredFor::RecordRun],
+        required_for: vec![volicord_types::values::UserActionRequiredFor::RecordRun],
         expires_at: None.into(),
     }
 }
 
 fn required_for_for_kind(
     judgment_kind: JudgmentKind,
-) -> Vec<volicord_types::UserActionRequiredFor> {
+) -> Vec<volicord_types::values::UserActionRequiredFor> {
     match judgment_kind {
-        JudgmentKind::ScopeDecision => vec![volicord_types::UserActionRequiredFor::ScopeUpdate],
+        JudgmentKind::ScopeDecision => {
+            vec![volicord_types::values::UserActionRequiredFor::ScopeUpdate]
+        }
         JudgmentKind::SensitiveApproval => vec![
-            volicord_types::UserActionRequiredFor::PrepareWrite,
-            volicord_types::UserActionRequiredFor::CloseComplete,
+            volicord_types::values::UserActionRequiredFor::PrepareWrite,
+            volicord_types::values::UserActionRequiredFor::CloseComplete,
         ],
         JudgmentKind::FinalAcceptance | JudgmentKind::ResidualRiskAcceptance => {
-            vec![volicord_types::UserActionRequiredFor::CloseComplete]
+            vec![volicord_types::values::UserActionRequiredFor::CloseComplete]
         }
-        JudgmentKind::Cancellation => vec![volicord_types::UserActionRequiredFor::CloseCancel],
+        JudgmentKind::Cancellation => {
+            vec![volicord_types::values::UserActionRequiredFor::CloseCancel]
+        }
         JudgmentKind::ProductDecision | JudgmentKind::TechnicalDecision => {
-            vec![volicord_types::UserActionRequiredFor::CloseComplete]
+            vec![volicord_types::values::UserActionRequiredFor::CloseComplete]
         }
     }
 }
 
 fn sensitive_action_scope_for_kind(
     judgment_kind: JudgmentKind,
-) -> Option<volicord_types::SensitiveActionScope> {
+) -> Option<volicord_types::schema::SensitiveActionScope> {
     match judgment_kind {
-        JudgmentKind::SensitiveApproval => Some(volicord_types::SensitiveActionScope {
+        JudgmentKind::SensitiveApproval => Some(volicord_types::schema::SensitiveActionScope {
             action_kind: "local_sensitive_step".to_owned(),
             description: "Allow the named sensitive step only.".to_owned(),
             intended_paths: vec!["src/export.rs".to_owned()],
@@ -2601,8 +2618,8 @@ fn resolve_user_action_request(
     task_id: &str,
     user_action_request_id: &str,
     selected_option_id: &str,
-) -> volicord_types::ResolveUserActionRequest {
-    volicord_types::ResolveUserActionRequest {
+) -> volicord_types::methods::ResolveUserActionRequest {
+    volicord_types::methods::ResolveUserActionRequest {
         envelope: envelope(
             request_id,
             Some(channel_submission_id),
@@ -2610,10 +2627,12 @@ fn resolve_user_action_request(
             expected_state_version,
             Some(task_id),
         ),
-        user_action_request_id: volicord_types::UserActionRequestId::new(user_action_request_id),
+        user_action_request_id: volicord_types::ids::UserActionRequestId::new(
+            user_action_request_id,
+        ),
         channel_submission_id: channel_submission_id.to_owned(),
-        resolution: volicord_types::UserActionResolutionInput::Choice {
-            selected_option_id: volicord_types::UserActionOptionId::new(selected_option_id),
+        resolution: volicord_types::schema::UserActionResolutionInput::Choice {
+            selected_option_id: volicord_types::ids::UserActionOptionId::new(selected_option_id),
             note: Some("Recorded by the focused user-action test.".to_owned()).into(),
         },
     }
@@ -3336,7 +3355,7 @@ fn set_user_action_resolved_by_actor_source(
 fn set_user_action_required_for(
     harness: &MethodHarness,
     user_action_request_id: &str,
-    required_for: &[volicord_types::UserActionRequiredFor],
+    required_for: &[volicord_types::values::UserActionRequiredFor],
 ) -> Result<(), Box<dyn Error>> {
     let conn = harness.conn()?;
     let text: String = conn.query_row(
@@ -3672,7 +3691,7 @@ fn promote_artifact_for_record_run(
 
 fn existing_artifact_input(artifact_input_id: &str, artifact_ref: ArtifactRef) -> ArtifactInput {
     ArtifactInput {
-        artifact_input_id: volicord_types::ArtifactInputId::new(artifact_input_id),
+        artifact_input_id: volicord_types::ids::ArtifactInputId::new(artifact_input_id),
         source_kind: ArtifactInputSourceKind::ExistingArtifact,
         staged_artifact_handle: None.into(),
         existing_artifact_ref: Some(artifact_ref.clone()).into(),
@@ -3705,7 +3724,7 @@ fn current_artifact_evidence_and_close_fixture(
 ) -> Result<ArtifactAuthorityFixture, Box<dyn Error>> {
     enable_record_run_capabilities(harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(harness, suffix)?;
-    let acceptance_criterion_id = volicord_types::AcceptanceCriterionId::new(
+    let acceptance_criterion_id = volicord_types::ids::AcceptanceCriterionId::new(
         active_acceptance_criterion_id(harness, &task_id)?,
     );
     set_active_acceptance_criterion_requirement(harness, &task_id, EvidenceRequirement::Required)?;

@@ -1,5 +1,55 @@
-use super::*;
+use super::{
+    acceptance_policy_storage, active_acceptance_criteria_for_task,
+    allocate_acceptance_criterion_id, allocate_change_unit_id, build_state_summary,
+    change_unit_insert, change_unit_ref, close_context_from_projection,
+    close_context_with_pending_authorities, close_context_with_projected_acceptance_criteria,
+    decision_rejected_response, dry_run_summary, evidence_summary_for_display,
+    guarantee_display_for_invocation, mutation_method_policy, next_actions_for_state,
+    no_active_task_response, normalize_display_text, object_from_value, parse_acceptance_policy,
+    parse_task_mode, pending_user_action_refs_for_operation, plan_error_response,
+    prepare_or_response, project_state_projection, projected_close_basis, projected_close_check,
+    projected_evidence_summary_for_criteria, projected_user_action_lifecycle_phase,
+    projected_write_ticket_summary, rejected_pipeline_response, state_ref, state_ref_from_stored,
+    storage_value, store_error_response, synthetic_change_unit_record, task_lifecycle_mutation,
+    user_action_authority_from_record, validation_rejected, work_phase_storage, write_ticket_ref,
+    MethodPlan, PlanError, StoredScope, SummaryBuild,
+};
+use crate::pipeline::{
+    tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
+    PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+};
+use crate::policy::close_readiness::{
+    accepted_current_scope_decision_authority, ScopeDecisionAuthorityRequirement,
+};
 use crate::policy::close_readiness_evidence::evidence_summary_with_required_criteria;
+use crate::policy::effect_contract::{
+    validate_effect_contract, validate_effect_contract_paths, EffectContractValidationError,
+};
+use crate::policy::path::ProductPathError;
+use crate::policy::user_action_relevance::{UserActionOperation, UserActionOperationContext};
+use crate::policy::workflow::{
+    acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
+    resolve_task_control_authority, ProjectWorkflowPolicy,
+};
+use serde_json::json;
+use std::collections::BTreeSet;
+use volicord_store::core_pipeline::{
+    AcceptanceCriteriaReplace, AcceptanceCriterionUpsert, ChangeUnitRecord, CoreProjectStore,
+    CoreStorageMutation, ProjectStateHeader, TaskCloseBasisUpdate, TaskControlLevelUpdate,
+    TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate, UserActionInvalidation,
+    WriteTicketInvalidation,
+};
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::{ChangeUnitId, TaskId};
+use volicord_types::methods::{
+    MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
+};
+use volicord_types::schema::{AcceptanceCriterion, JsonObject, NextActionSummary, StateRecordRef};
+use volicord_types::values::{
+    AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
+    StateRecordKind, TaskControlLevel, TaskMode, UtcTimestamp, WorkPhase,
+    WriteTicketInvalidationReason,
+};
 
 impl CoreService {
     /// Executes `volicord.update_scope` through the shared Core mutation pipeline.

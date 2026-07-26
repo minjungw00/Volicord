@@ -8,7 +8,9 @@ use volicord_platform_fs::{
     RuntimeHomeMutationWaitPolicy,
 };
 use volicord_store::setup_transaction::PreparedStoreMutationBoundary;
-use volicord_types::{IntegrationActivationPlan, IntegrationActivationState};
+use volicord_types::connection_verification::{
+    IntegrationActivationPlan, IntegrationActivationState,
+};
 
 use super::setup_transaction::{
     AtomicFileMutation, AtomicFileMutationRole, PreparedSetup, RuntimeHomePlan, SetupPlan,
@@ -36,7 +38,8 @@ pub(super) struct InitProvisioningOutcome {
     pub(super) mode: String,
     pub(super) host_plan: HostPlan,
     pub(super) verification: Option<VerificationReport>,
-    pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
+    pub(super) current_report:
+        Option<volicord_types::connection_verification::ConnectionVerificationReport>,
     pub(super) planned_changes: Vec<PlannedConnectionChange>,
     pub(super) runtime_home_publication: RuntimeHomePublicationStatus,
 }
@@ -60,7 +63,8 @@ pub(super) struct ConnectionProvisioningPlan {
     pub(super) effective_mode: String,
     pub(super) repo_root: PathBuf,
     pub(super) host_plan: HostPlan,
-    pub(super) current_report: Option<volicord_types::ConnectionVerificationReport>,
+    pub(super) current_report:
+        Option<volicord_types::connection_verification::ConnectionVerificationReport>,
     pub(super) planned_changes: Vec<PlannedConnectionChange>,
     installation_profile: InstallationProfileRecord,
     expected_connection: Option<SetupConnectionExpectation>,
@@ -86,7 +90,7 @@ struct InitProvisioningPlan {
     connection_id: String,
     effective_mode: String,
     expected_connection: Option<SetupConnectionExpectation>,
-    current_report: Option<volicord_types::ConnectionVerificationReport>,
+    current_report: Option<volicord_types::connection_verification::ConnectionVerificationReport>,
     project_id: Option<String>,
     store_inputs: Vec<volicord_store::setup_transaction::StoreMutationInput>,
     runtime_home_absent: bool,
@@ -1741,7 +1745,7 @@ mod init_planning_tests {
             },
             &process,
         )?;
-        for phase in volicord_types::GuardHookPhase::REQUIRED {
+        for phase in volicord_types::values::GuardHookPhase::REQUIRED {
             let policy = plan.integration.policy_commands.get(phase);
             let runtime = plan.integration.runtime_commands.get(phase);
             assert_eq!(policy.args.len(), 14);

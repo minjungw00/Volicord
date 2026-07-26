@@ -61,10 +61,9 @@ use volicord_test_support::core_fixtures::{
     artifact_input_for_handle, CoreFixture, ResolveUserActionFixture, UpdateScopeFixture,
     UserActionFixture,
 };
-use volicord_types::{
-    AgentConnectionMode, ChangeUnitOperation, CloseAssessmentInput, OperationCategory,
-    ResidualRiskInput, StagedArtifactHandle, CODEX_MANAGED_MCP_CLIENT_NAME,
-};
+use volicord_types::managed_mcp_client_info::CODEX_MANAGED_MCP_CLIENT_NAME;
+use volicord_types::schema::{CloseAssessmentInput, ResidualRiskInput, StagedArtifactHandle};
+use volicord_types::values::{AgentConnectionMode, ChangeUnitOperation, OperationCategory};
 
 fn production_profiles(
 ) -> impl ExactSizeIterator<Item = &'static volicord_mcp_protocol::McpProtocolProfile> {

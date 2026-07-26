@@ -5,7 +5,7 @@ use std::{
 
 use toml_edit::{Item, Table};
 use volicord_mcp::ManagedMcpLaunchSpec;
-use volicord_types::AgentToolId;
+use volicord_types::tool_names::AgentToolId;
 
 use crate::host_integration::verification::{ManagedConfigDiagnostic, ManagedConfigStatus};
 use crate::host_integration::{

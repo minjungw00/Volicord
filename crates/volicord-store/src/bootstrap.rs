@@ -13,10 +13,13 @@ use volicord_platform_fs::{
     DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalError,
     DirectoryTreeTargetState,
 };
-use volicord_types::{
-    canonical_json_string, GeneratedRelationKind, RuntimeHomePublicationId, StorageDatabaseKind,
-    StorageManifest, UtcTimestamp, BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON,
+use volicord_types::canonical::canonical_json_string;
+use volicord_types::ids::RuntimeHomePublicationId;
+use volicord_types::schema::BASELINE_PROJECT_ENFORCEMENT_PROFILE_JSON;
+use volicord_types::storage_contract::{
+    GeneratedRelationKind, StorageDatabaseKind, StorageManifest,
 };
+use volicord_types::values::UtcTimestamp;
 
 use crate::{
     runtime_home::{
@@ -2086,7 +2089,7 @@ fn write_project_registration_from_validated_paths(
             let valid_floor = UtcTimestamp::parse(updated_at).and_then(|timestamp| {
                 timestamp
                     .ensure_canonical_rfc3339_representable()
-                    .map_err(|_| volicord_types::UtcTimestampParseError)
+                    .map_err(|_| volicord_types::values::UtcTimestampParseError)
             });
             if valid_floor.is_err() {
                 return Err(StoreError::corrupt_owner_state_value(
@@ -2980,7 +2983,8 @@ mod tests {
         },
     };
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::{McpRuntimeSessionSource, ProjectId};
+    use volicord_types::ids::ProjectId;
+    use volicord_types::integration_revision::McpRuntimeSessionSource;
 
     use super::*;
 
@@ -3127,7 +3131,7 @@ mod tests {
         initialize_runtime_home(&context, "runtime_home_noncurrent_manifest", "{}")?;
         let current = current_storage_manifest()?;
         let noncurrent = StorageManifest::new(
-            volicord_types::STORAGE_CONTRACT_ID,
+            volicord_types::storage_contract::STORAGE_CONTRACT_ID,
             format!("sha256:{}", "a".repeat(64)),
             format!("sha256:{}", "b".repeat(64)),
             current.enabled_capabilities.clone(),
@@ -3692,7 +3696,7 @@ mod tests {
                 "storage_profile" => {
                     let current = current_storage_manifest()?;
                     let replacement = StorageManifest::new(
-                        volicord_types::STORAGE_CONTRACT_ID,
+                        volicord_types::storage_contract::STORAGE_CONTRACT_ID,
                         format!("sha256:{}", "c".repeat(64)),
                         format!("sha256:{}", "d".repeat(64)),
                         current.enabled_capabilities.clone(),

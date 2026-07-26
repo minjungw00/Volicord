@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
-use volicord_types::{
-    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, DiagnosticFindingId,
+use volicord_types::connection_verification::{
+    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus,
 };
+use volicord_types::diagnostics::DiagnosticFindingId;
 
 use crate::connection_command::managed_host_round_trip_tool;
 
@@ -1225,9 +1226,9 @@ fn render_findings(report: &ConnectionCommandReport, roots: &[DiagnosticFindingI
             "related"
         };
         let severity = match finding.severity() {
-            volicord_types::DiagnosticSeverity::Info => "info",
-            volicord_types::DiagnosticSeverity::Warning => "warning",
-            volicord_types::DiagnosticSeverity::Error => "error",
+            volicord_types::diagnostics::DiagnosticSeverity::Info => "info",
+            volicord_types::diagnostics::DiagnosticSeverity::Warning => "warning",
+            volicord_types::diagnostics::DiagnosticSeverity::Error => "error",
         };
         let mut lines = vec![
             format!("  [{role}] {}", finding.id()),
@@ -1731,11 +1732,12 @@ mod tests {
     use std::path::Path;
 
     use serde_json::json;
-    use volicord_types::{
+    use volicord_types::connection_verification::{
         ActivationStep, ActivationStepId, ConnectionCheckDetails, ConnectionStatus,
-        IntegrationActivationPlan, IntegrationActivationState, McpEvidenceCheckStatus,
-        UtcTimestamp,
+        IntegrationActivationPlan, IntegrationActivationState,
     };
+    use volicord_types::mcp_verification_evidence::McpEvidenceCheckStatus;
+    use volicord_types::values::UtcTimestamp;
 
     use super::*;
     use crate::connection_command::output::report::SetupLeaseStatus;
@@ -1816,7 +1818,8 @@ mod tests {
             dry_run,
             status,
             activation_state,
-            hook_activation_state: volicord_types::HookActivationState::Unknown,
+            hook_activation_state:
+                volicord_types::connection_verification::HookActivationState::Unknown,
             runtime_home: "/runtime".to_owned(),
             connection: connection(mode),
             checks,
@@ -1850,8 +1853,9 @@ mod tests {
 
     #[test]
     fn blocked_protocol_details_are_never_rendered_as_pending() {
-        let cause = volicord_types::DiagnosticFindingId::parse("finding.initialize_failed")
-            .expect("cause id");
+        let cause =
+            volicord_types::diagnostics::DiagnosticFindingId::parse("finding.initialize_failed")
+                .expect("cause id");
         let host = check(
             ConnectionCheckKind::HostSession,
             ConnectionCheckStatus::Pending,

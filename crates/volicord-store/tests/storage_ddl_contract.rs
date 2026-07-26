@@ -21,11 +21,14 @@ use volicord_test_support::{
     core_fixtures::CoreFixture, open_project_fixture_database, TempRuntimeHome,
     TestRuntimeHomeMutation,
 };
-use volicord_types::{
-    canonical_json_string, AgentToolId, GeneratedRelationKind, ManagedMcpClientInfo,
-    McpRuntimeSessionSource, StorageDatabaseKind, StorageManifest, STORAGE_CONTRACT_ID,
+use volicord_types::canonical::canonical_json_string;
+use volicord_types::integration_revision::McpRuntimeSessionSource;
+use volicord_types::managed_mcp_client_info::ManagedMcpClientInfo;
+use volicord_types::storage_contract::{
+    GeneratedRelationKind, StorageDatabaseKind, StorageManifest, STORAGE_CONTRACT_ID,
     STORAGE_ENABLED_CAPABILITIES,
 };
+use volicord_types::tool_names::AgentToolId;
 
 #[test]
 fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(

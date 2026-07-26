@@ -3,7 +3,51 @@ use super::evidence_facts::{
     stored_evidence_observation_provenance_facts, stored_evidence_observation_relevance,
     user_action_observation_resolution_authority, validate_capture_receipt_record,
 };
-use super::*;
+use super::{
+    acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_artifact_id,
+    allocate_evidence_observation_id, allocate_evidence_producer_id, allocate_evidence_summary_id,
+    allocate_risk_id, allocate_run_id, artifact_input_validation_plan_error,
+    artifact_input_validation_response, artifact_missing_response,
+    artifact_ref_from_verified_record, baseline_matches, baseline_stale_response,
+    build_state_summary, change_unit_ref, close_context_from_projection,
+    close_context_with_pending_authorities, close_context_with_projected_acceptance_criteria,
+    close_context_with_record_run_projection, decision_rejected_response, decode_required_json,
+    decode_required_json_object, dry_run_summary, evidence_summary_for_display,
+    first_product_write_duration_micros, guarantee_display_for_invocation, mutation_method_policy,
+    no_active_change_unit_response, no_active_task_response, normalize_source_refs,
+    object_from_value, parse_acceptance_policy, parse_owner_storage_value, parse_storage_value,
+    parse_task_mode, parse_work_phase, pending_user_action_authorities_for_plan,
+    pending_user_action_refs_for_operation, persistent_artifact_is_verified_current,
+    plan_error_response, prepare_or_response, project_state_projection, projected_close_check,
+    projected_evidence_summary_for_criteria, projected_user_action_lifecycle_phase,
+    projected_write_ticket_summary, record_core_workflow_metric_best_effort, redaction_state_value,
+    rejected_pipeline_response, response_committed_fresh_effect, sorted_unique, state_ref,
+    state_ref_from_stored, storage_value, store_error_response, string_member,
+    task_lifecycle_mutation, user_action_authority_from_record, validation_plan_error,
+    validation_rejected, workspace_context_matches, workspace_stale_response,
+    write_ticket_invalid_response, write_ticket_ref, write_ticket_required_response,
+    write_ticket_summary_for_record, MethodPlan, PersistedWriteBasis,
+    PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
+};
+use crate::pipeline::{
+    tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
+    PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+};
+use crate::policy::close_readiness::UserActionAuthority;
+use crate::policy::evidence::{
+    evidence_status_for_items, state_record_ref_identity_key, unique_artifact_refs,
+    unique_state_record_refs,
+};
+use crate::policy::path::{normalize_product_paths, path_is_within, ProductPathError};
+use crate::policy::user_action_relevance::{UserActionOperation, UserActionOperationContext};
+use crate::policy::workflow::{
+    parse_task_control_level, project_workflow_policy, resolve_task_control_authority,
+    ProjectWorkflowPolicy,
+};
+use crate::policy::write_ticket::{
+    current_sensitive_approval, normalized_string_set, run_write_ticket_mismatch,
+    write_ticket_is_idle_expired, RunWriteTicketAttempt, SensitiveApprovalRequirement,
+};
 use crate::policy::{
     close_readiness_evidence::evidence_summary_with_required_criteria,
     evidence_provenance::{
@@ -15,6 +59,45 @@ use crate::policy::{
         stored_observation_target_matches, supplemental_claim_target_matches,
         EvidenceObservationBasis,
     },
+};
+use chrono::{DateTime, Utc};
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, BTreeSet};
+use volicord_store::core_pipeline::{
+    ArtifactLinkInsert, ArtifactPromotion, ChangeUnitRecord, CoreProjectStore, CoreStorageMutation,
+    EvidenceClaimInsert, EvidenceObservationInsert, EvidenceSummaryUpsert, ProjectStateHeader,
+    RunInsert, RunRecord, StoredArtifactStagingRecord, TaskCloseBasisUpdate,
+    TaskControlLevelUpdate, TaskRecord, UserActionInvalidation, WriteTicketConsumption,
+    WriteTicketRecord,
+};
+use volicord_store::diagnostics::WorkflowMetricKind;
+use volicord_store::error::StoreError;
+use volicord_store::evidence_capture::{
+    EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord, EvidenceProducerInsert,
+};
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::canonical::canonical_json_string;
+use volicord_types::ids::{
+    AgentConnectionId, ArtifactInputId, ChangeUnitId, EvidenceCaptureReceiptId, EvidenceProducerId,
+    RunId, StagedArtifactHandleId, StorageRef, TaskId,
+};
+use volicord_types::methods::{MethodOperationCategory, RecordRunRequest, RecordRunResultFields};
+use volicord_types::schema::{
+    AcceptanceCriterion, ArtifactInput, ArtifactRef, CurrentCloseBasis, EvidenceCaptureIntent,
+    EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceCoverageUpdate, EvidenceObservation,
+    EvidenceObservationInput, EvidenceProducer, EvidenceProducerAnchor,
+    EvidenceRelevanceAssessment, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance,
+    JsonObject, ObservedChanges, PersistedEvidenceObservationAuthority, ResidualRisk, RunSummary,
+    SensitiveActionRequirement, StagedArtifactHandle, StateRecordRef, WriteTicketAttemptScope,
+    WriteTicketValidityBasis,
+};
+use volicord_types::values::{
+    AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactInputSourceKind,
+    ArtifactIntegrityStatus, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageState,
+    EvidenceCoverageUpdateState, EvidenceDisplayState, EvidenceProducerKind,
+    EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, MethodName, RedactionState,
+    RunKind, StateRecordKind, TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor,
+    UtcTimestamp, WorkPhase, WriteTicketStatus,
 };
 
 impl CoreService {
@@ -3266,7 +3349,7 @@ fn sensitive_category_summary(requirements: &[SensitiveActionRequirement]) -> Ve
 
 fn validate_residual_risk_input(
     context: CloseBasisRefResolutionContext<'_>,
-    risk: &volicord_types::ResidualRiskInput,
+    risk: &volicord_types::schema::ResidualRiskInput,
 ) -> Result<Vec<StateRecordRef>, PlanError> {
     let request = context.request;
     let project_state = context.project_state;
@@ -4299,7 +4382,7 @@ fn validate_write_ticket_for_run(
     let current_workspace_sha256 = verified_invocation
         .git_workspace_context
         .as_ref()
-        .map(volicord_types::canonical_json_bare_sha256)
+        .map(volicord_types::canonical::canonical_json_bare_sha256)
         .transpose()?;
     if validity_basis.task_id != request.task_id {
         return write_ticket_mismatch(
@@ -4499,7 +4582,7 @@ fn build_record_run_evidence_summary(
     registered_artifacts: &[ArtifactRef],
     artifact_plans: &[RecordRunArtifactPlan],
     observation_refs_by_target: &BTreeMap<EvidenceTarget, Vec<StateRecordRef>>,
-) -> Result<Option<volicord_types::EvidenceSummary>, PlanError> {
+) -> Result<Option<volicord_types::schema::EvidenceSummary>, PlanError> {
     if request.evidence_updates.is_empty() {
         return Ok(None);
     }
@@ -4571,7 +4654,7 @@ fn build_record_run_evidence_summary(
             .collect(),
     );
     let status = evidence_status_for_items(&coverage_items);
-    Ok(Some(volicord_types::EvidenceSummary {
+    Ok(Some(volicord_types::schema::EvidenceSummary {
         evidence_state: Some(EvidenceDisplayState::Attached),
         status,
         coverage_items,

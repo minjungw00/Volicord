@@ -5,14 +5,17 @@ use std::{
 };
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use volicord_types::{
+use volicord_types::ids::{RunId, StagedArtifactHandleId, TaskId};
+use volicord_types::schema::{
     effective_user_action_status as derive_user_action_status, validate_channel_submission_id,
-    ArtifactRef, ContinuityCursor, CurrentCloseBasis, MethodName, ObservedChanges,
-    PersistedArtifactProducer, PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata,
-    PersistedCloseSummary, PersistedUserActionRequest, ProjectEnforcementProfile, RunId,
-    StagedArtifactHandleId, TaskId, UserActionBasis, UserActionBasisStatus, UserActionChannelKind,
-    UserActionKind, UserActionOptionAction, UserActionRequestBody, UserActionResolutionBody,
-    UserActionStatus, UtcTimestamp, MAX_CONTINUITY_PAGE_SIZE,
+    ArtifactRef, ContinuityCursor, CurrentCloseBasis, ObservedChanges, PersistedArtifactProducer,
+    PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata, PersistedUserActionRequest,
+    ProjectEnforcementProfile, UserActionBasis, UserActionRequestBody, UserActionResolutionBody,
+    MAX_CONTINUITY_PAGE_SIZE,
+};
+use volicord_types::values::{
+    MethodName, PersistedCloseSummary, UserActionBasisStatus, UserActionChannelKind,
+    UserActionKind, UserActionOptionAction, UserActionStatus, UtcTimestamp,
 };
 
 use crate::{
@@ -3671,8 +3674,8 @@ fn validate_user_action_request_resolution_pair(
                 && unique_artifact_ids
                 && matches!(
                     observation.relevance_status,
-                    volicord_types::EvidenceRelevanceStatus::Supported
-                        | volicord_types::EvidenceRelevanceStatus::Contradicted
+                    volicord_types::values::EvidenceRelevanceStatus::Supported
+                        | volicord_types::values::EvidenceRelevanceStatus::Contradicted
                 )
                 && !observation.summary.trim().is_empty()
         }
@@ -3895,7 +3898,7 @@ fn validate_project_state_updated_at(state: &ProjectStateHeader) -> StoreResult<
         .and_then(|timestamp| {
             timestamp
                 .ensure_canonical_rfc3339_representable()
-                .map_err(|_| volicord_types::UtcTimestampParseError)
+                .map_err(|_| volicord_types::values::UtcTimestampParseError)
         })
         .map_err(|_| {
             StoreError::corrupt_owner_state_value("project_state", &state.project_id, "updated_at")
@@ -4063,10 +4066,12 @@ mod tests {
     use serde_json::{json, Value};
     use sha2::{Digest, Sha256};
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::{
-        IdempotencyKey, JudgmentResolutionOutcome, MethodName, ProjectContinuityRecordId,
-        ProjectId, RecordId, RequestHash, RequiredNullable, StateRecordKind, StateRecordRef,
-        TaskId, UserActionBasis, UserActionOptionAction,
+    use volicord_types::ids::{
+        IdempotencyKey, ProjectContinuityRecordId, ProjectId, RecordId, RequestHash, TaskId,
+    };
+    use volicord_types::schema::{RequiredNullable, StateRecordRef, UserActionBasis};
+    use volicord_types::values::{
+        JudgmentResolutionOutcome, MethodName, StateRecordKind, UserActionOptionAction,
     };
 
     use super::*;
@@ -4862,7 +4867,7 @@ mod tests {
         let mut store = harness.store()?;
         let mut first_context = replay_context(CONNECTION_ID, "agent_workflow");
         first_context.git_workspace_context_json =
-            Some(volicord_types::canonical_json_string(&json!({
+            Some(volicord_types::canonical::canonical_json_string(&json!({
                 "git_common_dir": "/tmp/repo/.git",
                 "worktree_id": format!("sha256:{}", "1".repeat(64)),
                 "branch_ref": "refs/heads/original",
@@ -4910,7 +4915,7 @@ mod tests {
 
         let mut changed_context = first_context;
         changed_context.git_workspace_context_json =
-            Some(volicord_types::canonical_json_string(&json!({
+            Some(volicord_types::canonical::canonical_json_string(&json!({
                 "git_common_dir": "/tmp/repo/.git",
                 "worktree_id": format!("sha256:{}", "3".repeat(64)),
                 "branch_ref": "refs/heads/other",
@@ -4941,13 +4946,14 @@ mod tests {
         let harness = StoreHarness::new()?;
         let mut store = harness.store()?;
         let mut context = replay_context(CONNECTION_ID, "agent_workflow");
-        context.git_workspace_context_json = Some(volicord_types::canonical_json_string(&json!({
-            "git_common_dir": "/tmp/repo/.git",
-            "worktree_id": format!("sha256:{}", "1".repeat(64)),
-            "branch_ref": "refs/heads/original",
-            "head_sha": "1111111111111111111111111111111111111111",
-            "workspace_fingerprint": format!("sha256:{}", "2".repeat(64))
-        }))?);
+        context.git_workspace_context_json =
+            Some(volicord_types::canonical::canonical_json_string(&json!({
+                "git_common_dir": "/tmp/repo/.git",
+                "worktree_id": format!("sha256:{}", "1".repeat(64)),
+                "branch_ref": "refs/heads/original",
+                "head_sha": "1111111111111111111111111111111111111111",
+                "workspace_fingerprint": format!("sha256:{}", "2".repeat(64))
+            }))?);
         let idempotency_key = IdempotencyKey::new("idem_store_workspace_corrupt");
         let first = store.commit_mutation(
             commit_input(
@@ -5427,7 +5433,7 @@ mod tests {
 
         let issued_fingerprint =
             crate::workflow_records::project_write_authority_fingerprint(None)?;
-        let validity_basis_json = volicord_types::canonical_json_string(&json!({
+        let validity_basis_json = volicord_types::canonical::canonical_json_string(&json!({
             "task_id": task_id,
             "change_unit_id": change_unit_id,
             "scope_revision": 0,
@@ -5456,7 +5462,7 @@ mod tests {
             ],
         )?;
         let tightened_policy = json!({
-            "schema": volicord_types::WORKFLOW_POLICY_CONTRACT_ID,
+            "schema": volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID,
             "workflow": {
                 "default_direct_control": "tracked",
                 "default_work_control": "tracked",
@@ -5472,9 +5478,9 @@ mod tests {
                 }
             }
         });
-        let policy_json = volicord_types::canonical_json_string(&tightened_policy)?;
+        let policy_json = volicord_types::canonical::canonical_json_string(&tightened_policy)?;
         let policy_fingerprint =
-            volicord_types::canonical_json_sha256(&tightened_policy)?.into_inner();
+            volicord_types::canonical::canonical_json_sha256(&tightened_policy)?.into_inner();
         let current_fingerprint =
             crate::workflow_records::project_write_authority_fingerprint(Some(&policy_json))?;
         assert_ne!(issued_fingerprint, current_fingerprint);
@@ -5486,7 +5492,7 @@ mod tests {
                        '2026-07-17T00:00:00Z', '2026-07-17T00:00:00Z')",
             params![
                 PROJECT_ID,
-                volicord_types::WORKFLOW_POLICY_CONTRACT_ID,
+                volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID,
                 policy_json,
                 policy_fingerprint
             ],

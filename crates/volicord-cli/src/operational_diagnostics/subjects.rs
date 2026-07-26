@@ -6,10 +6,11 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use volicord_types::{
+use volicord_types::diagnostics::{
     DiagnosticScope, DiagnosticScopeKind, DiagnosticSubject, DiagnosticSubjectIdentity,
-    GuardHookPhase, GuardManagedArtifact,
 };
+use volicord_types::guard_manifest::GuardManagedArtifact;
+use volicord_types::values::GuardHookPhase;
 
 const SUBJECT_IDENTITY_DOMAIN: &[u8] = b"volicord.operational-diagnostic-subject";
 const SUBJECT_IDENTITY_VERSION: u16 = 1;
@@ -396,10 +397,11 @@ fn lexical_normalize(path: &Path) -> Result<PathBuf, String> {
 
 #[cfg(test)]
 mod tests {
-    use volicord_types::{
+    use volicord_types::diagnostics::{
         CurrentDiagnosticKey, DiagnosticCode, DiagnosticDomain, DiagnosticFindingId,
-        DiagnosticSource, DiagnosticStage, GuardHookPhase,
+        DiagnosticSource, DiagnosticStage,
     };
+    use volicord_types::values::GuardHookPhase;
 
     use super::*;
 

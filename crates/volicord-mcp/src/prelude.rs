@@ -1,3 +1,7 @@
+// This module is compiled only for the MCP unit-test target and supplies the
+// shared protocol, Store, Core, and fixture vocabulary used across that suite.
+#![allow(unused_imports)]
+
 pub(crate) use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     error::Error,
@@ -77,32 +81,49 @@ pub(crate) use volicord_store::{
 
 #[cfg(test)]
 pub(crate) use volicord_store::guards::guard_health_record;
-pub(crate) use volicord_types::{
-    mcp_request_schema, mcp_response_schema, ActorSource, AgentConnectionId, AgentConnectionMode,
-    AgentRuntimeSessionId, AgentSessionId, AuthorityReceipt, BeginIntegrationVerificationArguments,
-    CheckCloseRequest, CloseTaskRequest, EffectKind, ErrorCode, GetOperationResultRequest,
-    IdempotencyKey, IntakeRequest, IntegrationProfile, IntegrationVerificationIdArguments,
-    McpAuthoritativeRefreshFailure, McpCheckCloseArguments, McpCloseTaskArguments,
-    McpGetOperationResultArguments, McpIntakeArguments, McpMutationEffectSummary,
-    McpMutationFullResponse, McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
+pub(crate) use volicord_types::diagnostics::OccurrenceDiagnosticFinding;
+pub(crate) use volicord_types::ids::{
+    AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, IdempotencyKey, ProjectId, RecordId,
+    RequestId, TaskId, UserActionRequestId,
+};
+pub(crate) use volicord_types::integration_revision::McpRuntimeSessionSource;
+pub(crate) use volicord_types::integration_verification::{
+    BeginIntegrationVerificationArguments, IntegrationVerificationIdArguments,
+};
+pub(crate) use volicord_types::methods::{
+    mcp_request_schema, mcp_response_schema, CheckCloseRequest, CloseTaskRequest,
+    GetOperationResultRequest, IntakeRequest, McpAuthoritativeRefreshFailure,
+    McpCheckCloseArguments, McpCloseTaskArguments, McpGetOperationResultArguments,
+    McpIntakeArguments, McpMutationEffectSummary, McpMutationFullResponse,
+    McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
     McpMutationResponseBudgetExceeded, McpMutationSummaryResponse, McpMutationWorkflowResponse,
     McpPostEffectFailureCode, McpPrepareEvidenceCaptureArguments,
     McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteArguments, McpPrepareWriteCompactResult,
     McpReconcileChangesArguments, McpReconcileChangesCompactResult, McpRecordRunArguments,
     McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult, McpRequestUserActionArguments,
     McpRequestUserActionCompactResult, McpRequestUserActionOperation, McpRequestUserActionResponse,
-    McpRuntimeSessionSource, McpStageArtifactArguments, McpStageArtifactCompactResult,
-    McpStatusArguments, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
-    McpToolIssueCode, McpUpdateScopeArguments, MethodName, MethodOperationCategory,
-    MutationDetailLevel, NextActionSummary, OccurrenceDiagnosticFinding, OperationCategory,
-    OperationResultRef, PrepareEvidenceCaptureRequest, PrepareEvidenceCaptureResult,
-    PrepareWriteRequest, PrepareWriteResult, ProjectId, ReconcileChangesRequest,
-    ReconcileChangesResult, RecordId, RecordRunRequest, RecordRunResult, RequestId,
-    RequestUserActionRequest, RequestUserActionResponse, RequestUserActionResult, RequiredNullable,
-    StageArtifactRequest, StageArtifactResult, StateRecordKind, StateRecordRef, StatusDetailLevel,
-    StatusRequest, TaskId, ToolEnvelope, ToolResultBase, UpdateScopeRequest, UserActionRequestId,
-    UserActionStatus, UtcTimestamp, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    McpStageArtifactArguments, McpStageArtifactCompactResult, McpStatusArguments, McpToolErrorCode,
+    McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode, McpUpdateScopeArguments,
+    MethodOperationCategory, OperationResultRef, PrepareEvidenceCaptureRequest,
+    PrepareEvidenceCaptureResult, PrepareWriteRequest, PrepareWriteResult, ReconcileChangesRequest,
+    ReconcileChangesResult, RecordRunRequest, RecordRunResult, RequestUserActionRequest,
+    RequestUserActionResponse, RequestUserActionResult, StageArtifactRequest, StageArtifactResult,
+    StatusRequest, UpdateScopeRequest, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
     MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
 };
+pub(crate) use volicord_types::schema::{
+    AuthorityReceipt, NextActionSummary, RequiredNullable, StateRecordRef, ToolEnvelope,
+    ToolResultBase,
+};
+pub(crate) use volicord_types::tool_names::{
+    AgentToolCategory, AgentToolId, AgentToolOwner, ToolVerificationRole,
+};
+pub(crate) use volicord_types::values::{
+    ActorSource, AgentConnectionMode, EffectKind, ErrorCode, IntegrationProfile, MethodName,
+    MutationDetailLevel, OperationCategory, StateRecordKind, StatusDetailLevel, UserActionStatus,
+    UtcTimestamp,
+};
 
-pub(crate) use crate::constants::*;
+pub(crate) use crate::constants::{
+    server_instructions, DEFAULT_LOCALE, REQUEST_SEQUENCE, SERVER_NAME, TRANSPORT_DISCLOSURE_TEXT,
+};

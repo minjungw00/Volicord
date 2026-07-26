@@ -27,10 +27,10 @@ use volicord_store::{
     },
     RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::{
-    canonical_json_sha256, canonical_json_string, guard_manifest_from_json, AcceptancePolicy,
-    GuardManagedArtifact, ProjectId, RequestedControlLevel, TaskControlLevel, TaskMode,
-};
+use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::guard_manifest::{guard_manifest_from_json, GuardManagedArtifact};
+use volicord_types::ids::ProjectId;
+use volicord_types::values::{AcceptancePolicy, RequestedControlLevel, TaskControlLevel, TaskMode};
 
 use crate::{
     guard_integration::{

@@ -412,7 +412,9 @@ fn failed_initialize_retains_attempted_client_and_requested_revision() -> Result
     let terminal_id = runtime.terminal_finding_id.ok_or("terminal finding")?;
     let terminal = stored_diagnostic_findings_by_ids(
         fixture.runtime_home_path(),
-        &[volicord_types::DiagnosticFindingId::parse(terminal_id)?],
+        &[volicord_types::diagnostics::DiagnosticFindingId::parse(
+            terminal_id,
+        )?],
     )?
     .into_iter()
     .next()

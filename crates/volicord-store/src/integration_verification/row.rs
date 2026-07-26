@@ -1,8 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension, Row};
-use volicord_types::{
-    GuardIntegrationVerificationStatus, GuardVerificationRepairReason,
-    GuardVerificationRetryPolicy, UtcTimestamp,
+use volicord_types::integration_verification::{
+    GuardIntegrationVerificationStatus, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
 };
+use volicord_types::values::UtcTimestamp;
 
 use super::{coordinate::VerificationCurrentCoordinate, GuardIntegrationVerificationRunRecord};
 use crate::{StoreError, StoreResult};
@@ -409,7 +409,7 @@ pub(super) fn parse_status(value: &str) -> StoreResult<GuardIntegrationVerificat
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
-    use volicord_types::GuardIntegrationVerificationStatus;
+    use volicord_types::integration_verification::GuardIntegrationVerificationStatus;
 
     use super::*;
 

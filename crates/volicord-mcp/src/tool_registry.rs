@@ -1,14 +1,21 @@
-use crate::prelude::*;
 use crate::routing::{
     effective_tool_mode_for_mode_and_storage, list_projects_output_schema, McpEffectiveToolMode,
     McpStorageCapability,
 };
 use schemars::schema_for;
+use serde::Serialize;
+use serde_json::json;
+use serde_json::{Map, Value};
+use std::collections::{BTreeMap, BTreeSet};
 use volicord_host_contract::{HostContractError, McpServerKey, McpToolCatalog};
-use volicord_types::{
+use volicord_mcp_protocol::{McpProtocolProfile, ToolDefinitionField, ToolResultField};
+use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, BeginIntegrationVerificationResult,
     GetIntegrationVerificationResult, GuardProbeResult, IntegrationVerificationIdArguments,
 };
+use volicord_types::methods::{mcp_request_schema, mcp_response_schema};
+use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
+use volicord_types::values::{AgentConnectionMode, MethodName};
 
 #[cfg(test)]
 pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
@@ -1254,22 +1261,22 @@ fn integration_verification_input_schema(tool: AgentToolId) -> Value {
 
 fn integration_verification_output_schema(tool: AgentToolId) -> Value {
     let mut schema = match tool {
-        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => {
-            serde_json::to_value(schema_for!(volicord_types::McpToolStructuredContent<
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => serde_json::to_value(
+            schema_for!(volicord_types::methods::McpToolStructuredContent<
                 BeginIntegrationVerificationResult,
-            >))
-            .expect("begin integration-verification result schema serializes")
-        }
+            >),
+        )
+        .expect("begin integration-verification result schema serializes"),
         AgentToolId::GUARD_PROBE => serde_json::to_value(schema_for!(
-            volicord_types::McpToolStructuredContent<GuardProbeResult>
+            volicord_types::methods::McpToolStructuredContent<GuardProbeResult>
         ))
         .expect("Guard probe result schema serializes"),
-        AgentToolId::GET_INTEGRATION_VERIFICATION => {
-            serde_json::to_value(schema_for!(volicord_types::McpToolStructuredContent<
+        AgentToolId::GET_INTEGRATION_VERIFICATION => serde_json::to_value(
+            schema_for!(volicord_types::methods::McpToolStructuredContent<
                 GetIntegrationVerificationResult,
-            >))
-            .expect("get integration-verification result schema serializes")
-        }
+            >),
+        )
+        .expect("get integration-verification result schema serializes"),
         _ => unreachable!("connection-integration owner has an exact output schema"),
     };
     schema

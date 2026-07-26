@@ -6,9 +6,10 @@ use volicord_store::diagnostic_findings::{
     active_current_findings_for_scope, resolve_current_finding, upsert_current_snapshot,
 };
 use volicord_store::RuntimeHomeMutationContext;
-use volicord_types::{
-    CurrentDiagnosticFinding, CurrentDiagnosticKey, DiagnosticFindingId, UtcTimestamp,
+use volicord_types::diagnostics::{
+    CurrentDiagnosticFinding, CurrentDiagnosticKey, DiagnosticFindingId,
 };
+use volicord_types::values::UtcTimestamp;
 
 use crate::connection_command::ConnectionCommandError;
 
@@ -50,7 +51,7 @@ impl CurrentOperationalOwner {
 /// Reconciles an owner set even when its successful observation set is empty.
 pub(crate) fn reconcile_current_findings_for_scope(
     context: &RuntimeHomeMutationContext<'_>,
-    scope: &volicord_types::DiagnosticScope,
+    scope: &volicord_types::diagnostics::DiagnosticScope,
     owners: &[CurrentOperationalOwner],
     findings: &[CurrentDiagnosticFinding],
     resolved_at: UtcTimestamp,
@@ -107,7 +108,8 @@ mod tests {
         },
     };
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{CurrentDiagnosticStatus, GuardHookPhase, UtcTimestamp};
+    use volicord_types::diagnostics::CurrentDiagnosticStatus;
+    use volicord_types::values::{GuardHookPhase, UtcTimestamp};
 
     use super::*;
     use crate::operational_diagnostics::{
@@ -176,7 +178,7 @@ mod tests {
                 .expect("current lifecycle")
                 .snapshot()
                 .status(),
-            volicord_types::CurrentDiagnosticStatus::Resolved
+            volicord_types::diagnostics::CurrentDiagnosticStatus::Resolved
         );
         assert!(resolved[0].to_diagnostic_finding().actions().is_empty());
 

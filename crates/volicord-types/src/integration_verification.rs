@@ -7,7 +7,11 @@ use schemars::{
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{AgentToolId, GuardEventId, GuardIntegrationVerificationId, UtcTimestamp};
+use crate::{
+    ids::{GuardEventId, GuardIntegrationVerificationId},
+    tool_names::AgentToolId,
+    values::UtcTimestamp,
+};
 
 /// Bounded retention interval used for stale-attempt cleanup.
 pub const GUARD_INTEGRATION_VERIFICATION_CLEANUP_SECONDS: i64 = 300;

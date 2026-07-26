@@ -81,12 +81,12 @@ fn intake_persists_normalized_non_authoritative_source_context() -> Result<(), B
         Some(0),
         RequestedMode::Advisor,
     );
-    request.initial_source_refs = vec![volicord_types::SourceRef::RepositoryFile(
-        volicord_types::RepositoryFileSource {
+    request.initial_source_refs = vec![volicord_types::schema::SourceRef::RepositoryFile(
+        volicord_types::schema::RepositoryFileSource {
             repository_path: "notes/./source.md".to_owned(),
             baseline_commit_sha: "A".repeat(40),
             content_sha256: "b".repeat(64),
-            line_range: Some(volicord_types::SourceLineRange {
+            line_range: Some(volicord_types::schema::SourceLineRange {
                 start_line: 2,
                 end_line: 4,
             })
@@ -129,10 +129,10 @@ fn intake_rejects_structurally_invalid_source_without_effect() -> Result<(), Box
         Some(0),
         RequestedMode::Advisor,
     );
-    request.initial_source_refs = vec![volicord_types::SourceRef::ExternalUri(
-        volicord_types::ExternalUriSource {
+    request.initial_source_refs = vec![volicord_types::schema::SourceRef::ExternalUri(
+        volicord_types::schema::ExternalUriSource {
             uri: "https://user@example.invalid/spec".to_owned(),
-            retrieved_at: volicord_types::UtcTimestamp::parse("2026-07-12T00:00:00Z")?,
+            retrieved_at: volicord_types::values::UtcTimestamp::parse("2026-07-12T00:00:00Z")?,
             content_sha256: "c".repeat(64),
         },
     )];
@@ -200,7 +200,7 @@ fn intake_resolves_light_control_from_authoritative_project_policy() -> Result<(
     );
     assert_eq!(
         response.response_value["state"]["project_policy"]["policy_schema"],
-        volicord_types::WORKFLOW_POLICY_CONTRACT_ID
+        volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID
     );
     assert_eq!(
         response.response_value["state"]["project_policy"]["policy_version"],
@@ -546,7 +546,7 @@ fn intake_rejects_selected_missing_predecessor_baseline_without_effect(
         Some(before.state_version),
         RequestedMode::Work,
     );
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id),
         relation: TaskLineageRelation::Continues,
         creation_reason: "Continue only with a compatible baseline.".to_owned(),
@@ -578,7 +578,7 @@ fn intake_rejects_baseline_carry_when_task_and_change_unit_baselines_diverge(
         Some(before.state_version),
         RequestedMode::Work,
     );
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id),
         relation: TaskLineageRelation::Continues,
         creation_reason: "Carry only an exact compatible baseline.".to_owned(),
@@ -628,7 +628,7 @@ fn intake_lineage_selectively_carries_scope_and_status_shows_connected_flow(
     request.initial_scope.boundary.clear();
     request.initial_scope.non_goals.clear();
     request.initial_scope.acceptance_criteria.clear();
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id.clone()),
         relation: TaskLineageRelation::Continues,
         creation_reason: "Continue the same bounded outcome.".to_owned(),
@@ -699,7 +699,7 @@ fn intake_rejects_reference_only_carry_without_compatible_predecessor_record(
         Some(before.state_version),
         RequestedMode::Work,
     );
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id),
         relation: TaskLineageRelation::Continues,
         creation_reason: "Reference an existing durable decision only.".to_owned(),
@@ -754,7 +754,7 @@ fn intake_reference_only_carry_points_to_active_continuity_record() -> Result<()
         Some(recorded_state_version),
         RequestedMode::Work,
     );
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id),
         relation: TaskLineageRelation::Continues,
         creation_reason: "Reference the durable predecessor decision.".to_owned(),
@@ -787,7 +787,7 @@ fn intake_carries_artifact_source_refs_as_predecessor_scoped_context() -> Result
         2,
         "lineage_artifact_source",
     )?;
-    let carried_source = SourceRef::Command(volicord_types::CommandSource {
+    let carried_source = SourceRef::Command(volicord_types::schema::CommandSource {
         invocation_id: "invocation_lineage_artifact_source".to_owned(),
         command_summary: "cargo test lineage source".to_owned(),
         exit_code: 0,
@@ -805,7 +805,7 @@ fn intake_carries_artifact_source_refs_as_predecessor_scoped_context() -> Result
         Some(state_version),
         RequestedMode::Work,
     );
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id.clone()),
         relation: TaskLineageRelation::Continues,
         creation_reason: "Carry non-authoritative predecessor source context.".to_owned(),
@@ -858,7 +858,7 @@ fn intake_rejects_implements_advice_from_before_advisor_completion() -> Result<(
         Some(before.state_version),
         RequestedMode::Work,
     );
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id),
         relation: TaskLineageRelation::ImplementsAdviceFrom,
         creation_reason: "Implement only completed advice.".to_owned(),
@@ -931,7 +931,7 @@ fn intake_accepts_implements_advice_from_completed_advice_only_task() -> Result<
         Some(closed_state_version),
         RequestedMode::Work,
     );
-    request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+    request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
         predecessor_task_id: TaskId::new(predecessor_task_id.clone()),
         relation: TaskLineageRelation::ImplementsAdviceFrom,
         creation_reason: "Implement the completed advice result.".to_owned(),
@@ -1005,7 +1005,7 @@ fn intake_rejects_applied_carry_categories_with_no_predecessor_material(
             Some(before.state_version),
             RequestedMode::Work,
         );
-        request.lineage = RequiredNullable::some(volicord_types::TaskLineageInput {
+        request.lineage = RequiredNullable::some(volicord_types::schema::TaskLineageInput {
             predecessor_task_id: TaskId::new(predecessor_task_id.clone()),
             relation: TaskLineageRelation::Continues,
             creation_reason: "Carry only material that actually exists.".to_owned(),

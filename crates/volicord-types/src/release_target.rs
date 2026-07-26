@@ -5,7 +5,7 @@ use std::{error::Error, fmt, str::FromStr};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::PlatformEnvironment;
+use crate::platform::PlatformEnvironment;
 
 /// One exact Volicord binary target triple.
 #[derive(

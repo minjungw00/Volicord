@@ -8,7 +8,7 @@ use volicord_platform_fs::{
     observe_local_platform_boundary, observe_path_filesystem, LocalPlatformBoundary,
     PathFilesystemKind,
 };
-use volicord_types::{validate_canonical_platform_path, PlatformEnvironment};
+use volicord_types::platform::{validate_canonical_platform_path, PlatformEnvironment};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandInvocation {

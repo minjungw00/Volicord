@@ -15,7 +15,8 @@ use volicord_test_process::{
     BoundedCapture, BoundedCommand, BoundedProcessFailureKind, BoundedProcessOutput,
     ProcessDeadline,
 };
-use volicord_types::{AgentToolId, MethodName};
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::MethodName;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(90);
 const MCP_TIMEOUT: Duration = Duration::from_secs(15);

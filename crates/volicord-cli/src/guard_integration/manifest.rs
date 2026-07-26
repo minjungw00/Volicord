@@ -5,13 +5,12 @@ use volicord_store::guards::{
 };
 use volicord_store::operational_sessions::connection_integration_revision;
 use volicord_store::RuntimeHomeMutationContext;
-use volicord_types::{
-    AgentConnectionId, GuardArtifactContentHash, GuardInstallationId, GuardManagedArtifact,
-    GuardManifest, HostKind as ManifestHostKind, IntegrationProfile, ManagedFileExpectation,
-    ProjectId, GUARD_MANIFEST_SCHEMA,
+use volicord_types::guard_manifest::{
+    guard_manifest_has_exact_current_shape, GuardArtifactContentHash, GuardManagedArtifact,
+    GuardManifest, ManagedFileExpectation, GUARD_MANIFEST_SCHEMA,
 };
-
-pub(crate) use volicord_types::guard_manifest_has_exact_current_shape;
+use volicord_types::ids::{AgentConnectionId, GuardInstallationId, ProjectId};
+use volicord_types::values::{HostKind as ManifestHostKind, IntegrationProfile};
 
 use crate::guard_integration::{
     audit::{hook_wrapper_comment_value, hook_wrapper_exec_command, sha256_text},
@@ -176,10 +175,9 @@ fn managed_file_expectation(
                 &file.content,
                 "guard_installation_id",
             )?);
-            let policy_hash = volicord_types::PolicyHash::parse(required_wrapper_comment(
-                &file.content,
-                "policy_hash",
-            )?)
+            let policy_hash = volicord_types::guard_manifest::PolicyHash::parse(
+                required_wrapper_comment(&file.content, "policy_hash")?,
+            )
             .map_err(|error| GuardIntegrationError::runtime(error.to_string()))?;
             let host_output = required_wrapper_comment(&file.content, "host_output")?
                 .parse::<ManifestHostKind>()
@@ -243,10 +241,11 @@ mod tests {
     use volicord_host_contract::HostContractProfileId;
     use volicord_store::agent_connections::agent_connection_record_read_only;
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{
-        guard_manifest_from_json, GuardCommandInvocation, GuardHookPhase, GuardManagedArtifact,
-        GuardManagedOwnership, IntegrationProfile,
+    use volicord_types::guard_manifest::{
+        guard_manifest_from_json, GuardCommandInvocation, GuardManagedArtifact,
+        GuardManagedOwnership,
     };
+    use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
     use super::{
         guard_manifest_has_exact_current_shape, guard_manifest_json, record_guard_installation,

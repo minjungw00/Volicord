@@ -1,6 +1,6 @@
 //! Typed action selection for operational conditions.
 
-use volicord_types::{DiagnosticAction, DiagnosticCode};
+use volicord_types::diagnostics::{DiagnosticAction, DiagnosticCode};
 
 use super::{
     definitions::{

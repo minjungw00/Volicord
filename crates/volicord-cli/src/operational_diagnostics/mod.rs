@@ -10,7 +10,7 @@ mod subjects;
 use std::{str::FromStr, time::SystemTime};
 
 use chrono::{DateTime, Utc};
-use volicord_types::UtcTimestamp;
+use volicord_types::values::UtcTimestamp;
 
 pub use actions::OperationalCheckState;
 pub use definitions::{

@@ -14,7 +14,10 @@ use serde::{
 };
 use serde_json::{Map, Number, Value};
 
-use crate::{AgentToolId, DiagnosticFindingId, JsonObject, UtcTimestamp};
+use crate::{
+    diagnostics::DiagnosticFindingId, schema::JsonObject, tool_names::AgentToolId,
+    values::UtcTimestamp,
+};
 
 /// Maximum number of required checks in one connection report.
 pub const MAX_CONNECTION_CHECKS: usize = 64;

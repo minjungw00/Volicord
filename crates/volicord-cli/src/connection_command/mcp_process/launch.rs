@@ -23,8 +23,10 @@ pub(in crate::connection_command) fn materialize_connection_invocation(
         );
     }
     let working_directory = match launch.host_scope() {
-        volicord_types::HostScope::User => ManagedMcpWorkingDirectory::Inherited,
-        volicord_types::HostScope::Project => {
+        volicord_types::host_configuration::HostScope::User => {
+            ManagedMcpWorkingDirectory::Inherited
+        }
+        volicord_types::host_configuration::HostScope::Project => {
             ManagedMcpWorkingDirectory::ProductRepository(repo_root.to_path_buf())
         }
     };
@@ -43,8 +45,9 @@ mod tests {
 
     #[test]
     fn shared_verification_materializes_selected_runtime_home_and_repository() {
-        let launch = ManagedMcpLaunchSpec::shared_repository(volicord_types::HostKind::Codex)
-            .expect("shared launch");
+        let launch =
+            ManagedMcpLaunchSpec::shared_repository(volicord_types::values::HostKind::Codex)
+                .expect("shared launch");
         let materialized = materialize_connection_invocation(
             &launch,
             Path::new("/selected/runtime-home"),

@@ -15,15 +15,21 @@ use volicord_test_support::core_fixtures::{
     UpdateScopeFixture, UserActionFixture, DEFAULT_PRODUCT_PATH,
 };
 use volicord_test_support::TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING;
-use volicord_types::{
-    AcceptanceCriterionId, ActorSource, AgentConnectionId, ArtifactInput, ArtifactInputId,
-    ArtifactInputSourceKind, ArtifactRef, ChangeUnitOperation, CloseAssessmentInput, CloseIntent,
-    CloseReason, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceClaimId,
-    EvidenceObservationInput, EvidenceRelevanceStatus, EvidenceSourceKind, EvidenceTarget,
-    JsonObject, JudgmentKind, JudgmentResolutionOutcome, OperationCategory, ProjectId,
-    ResidualRiskInput, ResponseKind, RunId, StagedArtifactHandle, StateRecordKind, StateRecordRef,
-    StatusRequest, TaskId, UserActionBasis, UserActionOptionAction, UserActionRequestBody,
-    UserActionRequiredFor, UserActionResolutionBody, UtcTimestamp, WriteTicketId,
+use volicord_types::ids::{
+    AcceptanceCriterionId, AgentConnectionId, ArtifactInputId, EvidenceClaimId, ProjectId, RunId,
+    TaskId, WriteTicketId,
+};
+use volicord_types::methods::StatusRequest;
+use volicord_types::schema::{
+    ArtifactInput, ArtifactRef, CloseAssessmentInput, EvidenceObservationInput, EvidenceTarget,
+    JsonObject, ResidualRiskInput, StagedArtifactHandle, StateRecordRef, UserActionBasis,
+    UserActionRequestBody, UserActionResolutionBody,
+};
+use volicord_types::values::{
+    ActorSource, ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason,
+    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind,
+    JudgmentKind, JudgmentResolutionOutcome, OperationCategory, ResponseKind, StateRecordKind,
+    UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
     VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
@@ -2477,8 +2483,10 @@ fn public_negative_authority_option_selection_remains_non_authoritative(
         .expect("resolve user action resolution should be an object")
         .remove("selected_option_id");
     assert!(
-        serde_json::from_value::<volicord_types::ResolveUserActionRequest>(missing_selected)
-            .is_err()
+        serde_json::from_value::<volicord_types::methods::ResolveUserActionRequest>(
+            missing_selected
+        )
+        .is_err()
     );
 
     let committed_request =
@@ -3824,7 +3832,7 @@ impl AdmittedCore<'_> {
 
     fn intake(
         &self,
-        request: volicord_types::IntakeRequest,
+        request: volicord_types::methods::IntakeRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -3833,7 +3841,7 @@ impl AdmittedCore<'_> {
 
     fn check_close(
         &self,
-        request: volicord_types::CheckCloseRequest,
+        request: volicord_types::methods::CheckCloseRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service.check_close(request, invocation)
@@ -3841,7 +3849,7 @@ impl AdmittedCore<'_> {
 
     fn close_task(
         &self,
-        request: volicord_types::CloseTaskRequest,
+        request: volicord_types::methods::CloseTaskRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -3850,7 +3858,7 @@ impl AdmittedCore<'_> {
 
     fn prepare_write(
         &self,
-        request: volicord_types::PrepareWriteRequest,
+        request: volicord_types::methods::PrepareWriteRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -3859,7 +3867,7 @@ impl AdmittedCore<'_> {
 
     fn record_run(
         &self,
-        request: volicord_types::RecordRunRequest,
+        request: volicord_types::methods::RecordRunRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -3868,7 +3876,7 @@ impl AdmittedCore<'_> {
 
     fn request_user_action(
         &self,
-        request: volicord_types::RequestUserActionRequest,
+        request: volicord_types::methods::RequestUserActionRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -3877,7 +3885,7 @@ impl AdmittedCore<'_> {
 
     fn resolve_user_action(
         &self,
-        request: volicord_types::ResolveUserActionRequest,
+        request: volicord_types::methods::ResolveUserActionRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -3886,7 +3894,7 @@ impl AdmittedCore<'_> {
 
     fn stage_artifact(
         &self,
-        request: volicord_types::StageArtifactRequest,
+        request: volicord_types::methods::StageArtifactRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -3895,7 +3903,7 @@ impl AdmittedCore<'_> {
 
     fn status(
         &self,
-        request: volicord_types::StatusRequest,
+        request: volicord_types::methods::StatusRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service.status(request, invocation)
@@ -3903,7 +3911,7 @@ impl AdmittedCore<'_> {
 
     fn update_scope(
         &self,
-        request: volicord_types::UpdateScopeRequest,
+        request: volicord_types::methods::UpdateScopeRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         self.service
@@ -4184,7 +4192,7 @@ fn product_write_run(
     task_id: &str,
     change_unit_id: &str,
     write_ticket_id: &str,
-) -> volicord_types::RecordRunRequest {
+) -> volicord_types::methods::RecordRunRequest {
     let mut request = fixture.record_run_request(
         request_id,
         idempotency_key,
@@ -4693,7 +4701,7 @@ fn residual_risk_input(summary: &str) -> ResidualRiskInput {
 
 fn assert_sensitive_approval_mismatch<F>(suffix: &str, mutate: F) -> Result<(), Box<dyn Error>>
 where
-    F: FnOnce(&mut volicord_types::PrepareWriteRequest),
+    F: FnOnce(&mut volicord_types::methods::PrepareWriteRequest),
 {
     let fixture = CoreFixture::new(&format!("compat_sensitive_{suffix}"))?;
     let service = core(&fixture);
@@ -4876,12 +4884,12 @@ fn artifact_state_ref(
     task_id: &str,
     artifact_id: &str,
     state_version: u64,
-) -> volicord_types::StateRecordRef {
-    volicord_types::StateRecordRef {
-        record_kind: volicord_types::StateRecordKind::Artifact,
-        record_id: volicord_types::RecordId::new(artifact_id),
-        project_id: volicord_types::ProjectId::new(fixture.project_id()),
-        task_id: Some(volicord_types::TaskId::new(task_id)).into(),
+) -> volicord_types::schema::StateRecordRef {
+    volicord_types::schema::StateRecordRef {
+        record_kind: volicord_types::values::StateRecordKind::Artifact,
+        record_id: volicord_types::ids::RecordId::new(artifact_id),
+        project_id: volicord_types::ids::ProjectId::new(fixture.project_id()),
+        task_id: Some(volicord_types::ids::TaskId::new(task_id)).into(),
         produced_at_state_version: Some(state_version).into(),
     }
 }
@@ -4913,9 +4921,9 @@ fn state_record_ref_with_project(
 ) -> StateRecordRef {
     StateRecordRef {
         record_kind,
-        record_id: volicord_types::RecordId::new(record_id),
-        project_id: volicord_types::ProjectId::new(project_id),
-        task_id: Some(volicord_types::TaskId::new(task_id)).into(),
+        record_id: volicord_types::ids::RecordId::new(record_id),
+        project_id: volicord_types::ids::ProjectId::new(project_id),
+        task_id: Some(volicord_types::ids::TaskId::new(task_id)).into(),
         produced_at_state_version: state_version.into(),
     }
 }

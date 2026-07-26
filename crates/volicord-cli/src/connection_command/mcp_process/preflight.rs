@@ -2,7 +2,9 @@ use std::{process::Command, time::Duration};
 
 use serde_json::Value;
 use volicord_store::agent_connections::{CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW};
-use volicord_types::{McpEvidenceCheckStatus, McpPreflightEvidence, McpProjectReadEvidence};
+use volicord_types::mcp_verification_evidence::{
+    McpEvidenceCheckStatus, McpPreflightEvidence, McpProjectReadEvidence,
+};
 
 use super::{
     failure::{McpProcessFailure, McpStage},

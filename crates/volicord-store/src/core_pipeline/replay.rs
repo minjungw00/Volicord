@@ -1,6 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
-use volicord_types::{IdempotencyKey, MethodName};
+use volicord_types::ids::IdempotencyKey;
+use volicord_types::values::MethodName;
 
 use super::{
     validation::{

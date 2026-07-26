@@ -2,14 +2,18 @@ use std::path::Path;
 
 use rusqlite::OptionalExtension;
 use volicord_host_contract::HostContractProfileId;
-use volicord_types::{
-    guard_manifest_from_json, BeginIntegrationVerificationResult, GetIntegrationVerificationResult,
-    GuardIntegrationVerificationFinding, GuardIntegrationVerificationId,
-    GuardIntegrationVerificationPhaseStatus, GuardIntegrationVerificationPhases,
-    GuardIntegrationVerificationStatus, GuardProbeObservationStage, GuardProbeToolReference,
-    GuardVerificationRepairReason, GuardVerificationRetryPolicy, IntegrationRevision,
-    IntegrationVerificationStatusToolReference, IntegrationVerificationWorkflowState, UtcTimestamp,
+use volicord_types::guard_manifest::guard_manifest_from_json;
+use volicord_types::ids::GuardIntegrationVerificationId;
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::integration_verification::{
+    BeginIntegrationVerificationResult, GetIntegrationVerificationResult,
+    GuardIntegrationVerificationFinding, GuardIntegrationVerificationPhaseStatus,
+    GuardIntegrationVerificationPhases, GuardIntegrationVerificationStatus,
+    GuardProbeObservationStage, GuardProbeToolReference, GuardVerificationRepairReason,
+    GuardVerificationRetryPolicy, IntegrationVerificationStatusToolReference,
+    IntegrationVerificationWorkflowState,
 };
+use volicord_types::values::UtcTimestamp;
 
 use super::{
     coordinate::{VerificationCallerCoordinate, VerificationStoredCoordinate},
@@ -141,7 +145,7 @@ pub(super) fn begin_result_from_record(
     let matched_prompt_event_id = run
         .matched_prompt_event_id
         .as_deref()
-        .map(volicord_types::GuardEventId::new)
+        .map(volicord_types::ids::GuardEventId::new)
         .ok_or_else(|| StoreError::CorruptStoredValue {
             database_kind: "registry",
             field: "guard_integration_verification_runs.matched_prompt_event_id",
@@ -492,14 +496,14 @@ pub(super) fn result_from_record(
         matched_prompt_event_id: run
             .matched_prompt_event_id
             .as_deref()
-            .map(volicord_types::GuardEventId::new),
+            .map(volicord_types::ids::GuardEventId::new),
         matched_pre_tool_event_id: run
             .matched_pre_tool_event_id
             .as_deref()
-            .map(volicord_types::GuardEventId::new),
+            .map(volicord_types::ids::GuardEventId::new),
         matched_post_tool_event_id: run
             .matched_post_tool_event_id
             .as_deref()
-            .map(volicord_types::GuardEventId::new),
+            .map(volicord_types::ids::GuardEventId::new),
     }
 }

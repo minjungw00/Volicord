@@ -1,10 +1,13 @@
 use std::collections::BTreeSet;
 
-use volicord_types::{
-    AcceptanceCriterion, AcceptanceCriterionId, ArtifactAvailability, ArtifactIntegrityStatus,
-    CloseReadinessBlocker, CloseReadinessBlockerCategory, EvidenceCoverageItem,
-    EvidenceCoverageState, EvidenceGateState, EvidenceGateSummary, EvidenceRequirement,
-    EvidenceStatus, EvidenceSummary, EvidenceTarget, StateRecordKind, StateRecordRef,
+use volicord_types::ids::AcceptanceCriterionId;
+use volicord_types::schema::{
+    AcceptanceCriterion, CloseReadinessBlocker, EvidenceCoverageItem, EvidenceGateSummary,
+    EvidenceSummary, EvidenceTarget, StateRecordRef,
+};
+use volicord_types::values::{
+    ArtifactAvailability, ArtifactIntegrityStatus, CloseReadinessBlockerCategory,
+    EvidenceCoverageState, EvidenceGateState, EvidenceRequirement, EvidenceStatus, StateRecordKind,
 };
 
 use super::evidence::{
@@ -345,10 +348,10 @@ pub(crate) fn evaluate_evidence_gate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_types::{
-        ArtifactAvailability, ArtifactId, ArtifactIntegrityStatus, ArtifactRef,
-        EvidenceCoverageState, ProjectId, RecordId, RedactionState, RequiredNullable,
-        StateRecordRef, TaskId,
+    use volicord_types::ids::{ArtifactId, ProjectId, RecordId, TaskId};
+    use volicord_types::schema::{ArtifactRef, RequiredNullable, StateRecordRef};
+    use volicord_types::values::{
+        ArtifactAvailability, ArtifactIntegrityStatus, EvidenceCoverageState, RedactionState,
     };
 
     fn criterion(id: &str, requirement: EvidenceRequirement) -> AcceptanceCriterion {
@@ -369,7 +372,7 @@ mod tests {
                 .then(|| StateRecordRef {
                     record_kind: StateRecordKind::Run,
                     record_id: RecordId::new(format!("run_{id}")),
-                    project_id: volicord_types::ProjectId::new("project_gate"),
+                    project_id: volicord_types::ids::ProjectId::new("project_gate"),
                     task_id: Some(TaskId::new("task_gate")).into(),
                     produced_at_state_version: RequiredNullable::null(),
                 })

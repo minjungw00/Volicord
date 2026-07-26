@@ -24,7 +24,9 @@ use volicord_store::{
 use volicord_test_support::{
     core_fixtures::CoreFixture, transition_test_connection_mode, TestRuntimeHomeSetup,
 };
-use volicord_types::{ActorSource, AgentConnectionId, AgentToolId, OperationCategory, ProjectId};
+use volicord_types::ids::{AgentConnectionId, ProjectId};
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::{ActorSource, OperationCategory};
 
 use support::{
     assertions::{
@@ -585,8 +587,9 @@ impl McpFixture {
             fixture.connection_id(),
         )?
         .expect("fixture connection");
-        let launch =
-            volicord_mcp::ManagedMcpLaunchSpec::shared_repository(volicord_types::HostKind::Codex)?;
+        let launch = volicord_mcp::ManagedMcpLaunchSpec::shared_repository(
+            volicord_types::values::HostKind::Codex,
+        )?;
         let fingerprint = launch.managed_fingerprint(&connection.server_name);
         ensure_agent_connection(
             &fixture.mutation_context()?,
@@ -873,7 +876,7 @@ fn expected_read_only_tools() -> Vec<&'static str> {
     AgentToolId::ALL
         .iter()
         .copied()
-        .filter(|tool| tool.available_in(volicord_types::AgentConnectionMode::ReadOnly))
+        .filter(|tool| tool.available_in(volicord_types::values::AgentConnectionMode::ReadOnly))
         .map(AgentToolId::wire_name)
         .collect()
 }
@@ -897,11 +900,11 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
         let identity = AgentToolId::from_wire_name(name).expect("advertised canonical tool");
         let read_only = matches!(
             identity.category(),
-            volicord_types::AgentToolCategory::ReadOnly
+            volicord_types::tool_names::AgentToolCategory::ReadOnly
         );
         let destructive = matches!(
             identity.category(),
-            volicord_types::AgentToolCategory::DestructiveMutation
+            volicord_types::tool_names::AgentToolCategory::DestructiveMutation
         );
         assert_eq!(tool["annotations"]["readOnlyHint"], read_only);
         assert_eq!(tool["annotations"]["destructiveHint"], destructive);

@@ -1,5 +1,6 @@
 use volicord_store::core_pipeline::VerifiedReplayContext;
-use volicord_types::{canonical_json_string, ToolRejectedResponse};
+use volicord_types::canonical::canonical_json_string;
+use volicord_types::schema::ToolRejectedResponse;
 
 use crate::{
     pipeline::{rejected_response, VerifiedInvocationContext},

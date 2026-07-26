@@ -1,11 +1,55 @@
-use super::*;
+use super::{
+    acceptance_policy_storage, active_acceptance_criteria_for_task,
+    allocate_acceptance_criterion_id, allocate_task_id, build_state_summary,
+    close_context_from_projection, close_context_with_projected_acceptance_criteria,
+    decision_rejected_response, decode_required_json, dry_run_summary,
+    guarantee_display_for_invocation, initial_work_phase, mutation_method_policy,
+    next_actions_for_state, normalize_display_text, normalize_source_refs,
+    normalize_source_refs_with_carried_artifact_task, object_from_value, parse_owner_storage_value,
+    parse_task_mode, plan_error_response, prepare_or_response, project_continuity_ref,
+    project_state_projection, projected_blocker_refs, projected_close_basis, projected_close_check,
+    projected_evidence_summary_for_criteria, projected_pending_user_action_refs,
+    projected_write_ticket_summary, resolve_requested_mode, state_ref, storage_value,
+    task_lineage_relation_storage, task_mode_storage, task_shaping_json, validation_rejected,
+    work_phase_storage, MethodPlan, PersistedTaskShaping, PersistedWriteBasis, PlanError,
+    StoredScope, SummaryBuild,
+};
+use crate::pipeline::{
+    CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
+    PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+};
+use crate::policy::evidence::unique_state_record_refs;
+use crate::policy::workflow::{
+    acceptance_policy_for_control, effective_control_level, parse_requested_control_level,
+    project_workflow_policy, resolve_task_control_authority, ProjectWorkflowPolicy,
+};
+use crate::policy::write_ticket::normalized_string_set;
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, BTreeSet};
+use volicord_store::core_pipeline::{
+    AcceptanceCriteriaReplace, AcceptanceCriterionUpsert, ChangeUnitRecord, CoreProjectStore,
+    CoreStorageMutation, ProjectStateHeader, TaskControlLevelUpdate, TaskInsert, TaskRecord,
+    WriteTicketInvalidation,
+};
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::{BaselineRef, TaskId};
+use volicord_types::methods::{IntakeResultFields, MethodOperationCategory};
+use volicord_types::schema::{
+    AcceptanceCriterion, AcceptanceCriterionInput, CarryForwardDisposition, JsonObject,
+    NextActionSummary, SourceRef, StateRecordRef,
+};
+use volicord_types::values::{
+    AcceptancePolicy, CarryForwardDispositionStatus, CarryForwardKind, MethodName,
+    RequestedControlLevel, ResumePolicy, StateRecordKind, TaskControlLevel, TaskLineageRelation,
+    TaskMode, UtcTimestamp, WriteTicketInvalidationReason,
+};
 
 impl CoreService {
     /// Executes `volicord.intake` through the shared Core mutation pipeline.
     pub fn intake(
         &self,
         context: &RuntimeHomeMutationContext<'_>,
-        request: volicord_types::IntakeRequest,
+        request: volicord_types::methods::IntakeRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
         let request_json = serde_json::to_value(&request)?;
@@ -80,17 +124,19 @@ impl CoreService {
 }
 
 struct NormalizedIntakeRequest {
-    request: volicord_types::IntakeRequest,
+    request: volicord_types::methods::IntakeRequest,
     mode: TaskMode,
 }
 
-fn normalize_intake_request(request: volicord_types::IntakeRequest) -> NormalizedIntakeRequest {
+fn normalize_intake_request(
+    request: volicord_types::methods::IntakeRequest,
+) -> NormalizedIntakeRequest {
     let mode = resolve_requested_mode(request.requested_mode);
     NormalizedIntakeRequest { request, mode }
 }
 
 struct ResolvedIntakeContext {
-    request: volicord_types::IntakeRequest,
+    request: volicord_types::methods::IntakeRequest,
     mode: TaskMode,
     planned_state_version: u64,
     active_task: Option<TaskRecord>,
@@ -162,7 +208,7 @@ fn resolve_intake_context(
 }
 
 struct IntakePolicyDecision {
-    request: volicord_types::IntakeRequest,
+    request: volicord_types::methods::IntakeRequest,
     mode: TaskMode,
     planned_state_version: u64,
     active_task: Option<TaskRecord>,
@@ -248,7 +294,7 @@ fn decide_intake_policy(
 }
 
 struct PlannedIntakeMutations {
-    request: volicord_types::IntakeRequest,
+    request: volicord_types::methods::IntakeRequest,
     mode: TaskMode,
     planned_state_version: u64,
     create_new: bool,
@@ -565,7 +611,7 @@ fn plan_intake(
     service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: volicord_types::IntakeRequest,
+    request: volicord_types::methods::IntakeRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
 ) -> Result<MethodPlan<IntakeResultFields>, PlanError> {
@@ -760,7 +806,7 @@ fn plan_task_lineage(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
     verified_invocation: &VerifiedInvocationContext,
-    request: &mut volicord_types::IntakeRequest,
+    request: &mut volicord_types::methods::IntakeRequest,
     planned_state_version: u64,
 ) -> Result<Option<PlannedTaskLineage>, PlanError> {
     let Some(mut lineage) = request.lineage.as_ref().cloned() else {
@@ -1025,7 +1071,7 @@ fn plan_task_lineage(
 fn reference_only_carry_sources(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: &volicord_types::IntakeRequest,
+    request: &volicord_types::methods::IntakeRequest,
     predecessor: &TaskRecord,
     predecessor_scope: &StoredScope,
     selected: &BTreeSet<CarryForwardKind>,
@@ -1128,7 +1174,7 @@ fn resolve_acceptance_policy(
     control: TaskControlLevel,
     requested: Option<AcceptancePolicy>,
     workflow_policy: &ProjectWorkflowPolicy,
-    request: &volicord_types::IntakeRequest,
+    request: &volicord_types::methods::IntakeRequest,
 ) -> Result<(AcceptancePolicy, String), PlanError> {
     let authoritative = acceptance_policy_for_control(control, workflow_policy);
     let selected = if control == TaskControlLevel::Light {

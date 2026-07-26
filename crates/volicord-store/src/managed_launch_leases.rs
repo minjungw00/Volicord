@@ -7,10 +7,11 @@ use std::{
 };
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
-use volicord_types::{
-    DurableIdGenerator, DurableIdKind, HostKind, IntegrationRevision, McpRuntimeSessionSource,
-    RandomDurableIdGenerator, UtcTimestamp, DURABLE_ID_RETRY_LIMIT,
+use volicord_types::ids::{
+    DurableIdGenerator, DurableIdKind, RandomDurableIdGenerator, DURABLE_ID_RETRY_LIMIT,
 };
+use volicord_types::integration_revision::{IntegrationRevision, McpRuntimeSessionSource};
+use volicord_types::values::{HostKind, UtcTimestamp};
 
 use crate::{
     agent_connections::raw_agent_connection_record_from_conn,
@@ -520,7 +521,7 @@ mod tests {
         operational_sessions::connection_integration_revision,
         sqlite::open_registry_database_for_test,
     };
-    use volicord_types::McpRuntimeSessionSource;
+    use volicord_types::integration_revision::McpRuntimeSessionSource;
 
     fn fixture(
         name: &str,

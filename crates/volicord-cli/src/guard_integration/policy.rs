@@ -6,10 +6,10 @@ use std::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use volicord_mcp::{is_managed_mcp_launch_environment_name, ManagedMcpLaunchSpec};
-use volicord_types::{
-    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManagedArtifact,
-    IntegrationProfile,
+use volicord_types::guard_manifest::{
+    GuardCommandInvocationSet, GuardCommandSet, GuardManagedArtifact,
 };
+use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
 use crate::{
     guard_integration::{

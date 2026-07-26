@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use volicord_types::{ConnectionIntent, HostKind, HostScope, IntegrationProfile};
+use volicord_types::host_configuration::{ConnectionIntent, HostScope};
+use volicord_types::values::{HostKind, IntegrationProfile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DiagnosticOperation {

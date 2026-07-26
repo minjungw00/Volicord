@@ -1,4 +1,65 @@
-use super::*;
+use super::{
+    acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_write_ticket_id,
+    baseline_matches, build_state_summary, change_unit_effect_contract, change_unit_ref,
+    close_context_from_projection, close_task, decode_required_json,
+    guarantee_display_for_invocation, infallible_rejected_pipeline_response,
+    matching_sensitive_approval, normalize_close_blocker_action_projection, object_from_value,
+    parse_acceptance_policy, parse_owner_storage_value, parse_task_mode, parse_work_phase,
+    paths_match_current_change_unit, pending_user_action_authorities_for_plan, plan_error_response,
+    prepare_or_response, project_state_projection, projected_close_basis, projected_close_check,
+    projected_evidence_summary, record_core_workflow_metric_best_effort,
+    rejected_pipeline_response, resolve_prepare_write_task, response_committed_fresh_effect,
+    state_ref, state_ref_from_stored, store_error_response, user_action_authority_from_record,
+    validate_prepare_write_change_unit, validation_rejected, workspace_context_matches,
+    write_ticket_summary_for_record, PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan,
+    SensitiveApprovalSearch, SummaryBuild,
+};
+use crate::pipeline::{
+    tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
+    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
+    TaskRequirement, VerifiedInvocationContext,
+};
+use crate::policy::effect_contract::{product_write_violations, EffectContractViolation};
+use crate::policy::path::{normalize_product_paths, path_is_within, ProductPathError};
+use crate::policy::user_action_relevance::{
+    user_action_blocks_operation, UserActionOperation, UserActionOperationContext,
+};
+use crate::policy::workflow::{
+    acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
+    resolve_task_control_authority, ProjectWorkflowPolicy,
+};
+use crate::policy::write_ticket::{
+    current_sensitive_approval, normalized_string_set, prepare_write_decision,
+    prepare_write_dry_run_summary, write_decision_reason, write_ticket_is_idle_expired,
+    SensitiveApprovalRequirement,
+};
+use chrono::Duration;
+use serde_json::{json, Map, Value};
+use std::collections::BTreeSet;
+use volicord_store::core_pipeline::{
+    ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, ProjectStateHeader,
+    TaskControlLevelUpdate, TaskRecord, WriteTicketByIdInvalidation, WriteTicketInsert,
+    WriteTicketRecord,
+};
+use volicord_store::diagnostics::{
+    record_core_rejection_diagnostic, CoreRejectionDiagnostic, CoreRejectionReason,
+    WorkflowMetricKind,
+};
+use volicord_store::error::StoreError;
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::{ChangeUnitId, TaskId, WriteTicketId};
+use volicord_types::methods::{
+    MethodOperationCategory, PrepareWriteRequest, PrepareWriteResultFields,
+};
+use volicord_types::schema::{
+    DryRunSummary, GuaranteeDisplay, JsonObject, StateRecordRef, WriteDecisionReason, WriteTicket,
+    WriteTicketAttemptScope, WriteTicketPathPatterns, WriteTicketScope, WriteTicketValidityBasis,
+};
+use volicord_types::values::{
+    AcceptancePolicy, CloseState, ErrorCode, MethodName, PrepareWriteDecision, StateRecordKind,
+    TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor, UtcTimestamp, WorkPhase,
+    WriteDecisionCategory, WriteTicketEffect, WriteTicketInvalidationReason, WriteTicketState,
+};
 
 impl CoreService {
     /// Executes `volicord.prepare_write` through the shared Core mutation pipeline.
@@ -753,7 +814,7 @@ fn plan_prepare_write_mutations(
         workspace_context_sha256: verified_invocation
             .git_workspace_context
             .as_ref()
-            .map(volicord_types::canonical_json_bare_sha256)
+            .map(volicord_types::canonical::canonical_json_bare_sha256)
             .transpose()?,
         write_authority_fingerprint: workflow_policy.write_authority_fingerprint.clone(),
         approval_basis_refs: active_user_action_refs.clone(),

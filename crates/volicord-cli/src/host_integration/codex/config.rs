@@ -96,7 +96,7 @@ fn server_table(entry: &ManagedMcpLaunchSpec) -> Table {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_types::HostKind;
+    use volicord_types::values::HostKind;
 
     fn personal_launch() -> ManagedMcpLaunchSpec {
         ManagedMcpLaunchSpec::personal(

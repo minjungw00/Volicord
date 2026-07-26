@@ -5,10 +5,11 @@ use std::{
 
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
-use volicord_types::{
-    guard_manifest_from_json, project_agent_session_id, ConnectionIntegrationInstanceId,
-    ConnectionVerificationReport, IntegrationRevision, RuntimeHomePublicationId,
-};
+use volicord_types::connection_verification::ConnectionVerificationReport;
+use volicord_types::guard_manifest::guard_manifest_from_json;
+use volicord_types::ids::{ConnectionIntegrationInstanceId, RuntimeHomePublicationId};
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::managed_mcp_client_info::project_agent_session_id;
 
 use crate::{
     agent_connections::{
@@ -1176,7 +1177,8 @@ mod tests {
     use rusqlite::{params, Connection};
     use sha2::{Digest, Sha256};
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::{canonical_json_string, StorageManifest};
+    use volicord_types::canonical::canonical_json_string;
+    use volicord_types::storage_contract::StorageManifest;
 
     use super::*;
     use crate::{
@@ -1444,7 +1446,7 @@ mod tests {
         let fixture = current_fixture("inspect-malformed-current-profile-state")?;
         let malformed = format!(
             r#"{{"contract_id":"{}"}}"#,
-            volicord_types::STORAGE_CONTRACT_ID
+            volicord_types::storage_contract::STORAGE_CONTRACT_ID
         );
         mark_project_state_profile(&fixture.project.state_db_path, &malformed)?;
         let before_hash = file_hash(&fixture.project.state_db_path)?;

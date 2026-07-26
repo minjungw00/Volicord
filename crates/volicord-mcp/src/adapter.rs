@@ -1,13 +1,67 @@
+use crate::constants::DEFAULT_LOCALE;
 use crate::errors::McpAdapterError;
 use crate::mutation_admission::with_mcp_runtime_home_mutation;
-use crate::prelude::*;
-use crate::routing::*;
+use crate::routing::{
+    current_enabled_connection, inspect_allowed_project, parse_connection_mode, routing_error,
+    selected_project_from_availability, storage_capability_for_projects, ListProjectItem,
+    ListProjectsResult, McpConnectionContext, McpProjectAvailability, McpStorageCapability,
+};
 use crate::schema_validation::validate_mcp_tool_arguments;
-use crate::tool_registry::*;
-use crate::util::*;
+use crate::tool_registry::{
+    mcp_tools_for_mode_and_storage_with_detail, CanonicalToolDefinition, ToolSchemaDetail,
+};
+use crate::util::{
+    generated_metadata_id, optional_string_field, reject_internal_mcp_argument_fields,
+};
 use chrono::{DateTime, Utc};
+use serde_json::{Map, Value};
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+use volicord_core::pipeline::{
+    rejected_response, tool_error, CorePipelineError, CoreService, GitWorkspaceContext,
+    InvocationContext, PipelineResponse,
+};
+use volicord_core::CoreBoundary;
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_platform_fs::capture_git_workspace_snapshot;
+use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
+use volicord_store::agent_connections::{
+    agent_connection_project_access_read_only, list_connection_projects_read_only,
+    ConnectionProjectRecord,
+};
+use volicord_store::core_pipeline::CoreProjectStore;
+use volicord_store::guards::{
+    bind_agent_session_runtime, current_project_agent_session_coordinates,
+    list_guard_installations, AgentSessionRuntimeBinding,
+};
+use volicord_store::integration_verification::{
+    acknowledge_guard_integration_probe, begin_guard_integration_verification,
+    get_guard_integration_verification, BeginGuardIntegrationVerificationInput,
+    GuardIntegrationVerificationCaller,
+};
+use volicord_store::mutation::RuntimeHomeMutationContext;
+use volicord_types::ids::{
+    AgentRuntimeSessionId, AgentSessionId, IdempotencyKey, ProjectId, RequestId, TaskId,
+};
+use volicord_types::integration_verification::{
+    BeginIntegrationVerificationArguments, IntegrationVerificationIdArguments,
+};
+use volicord_types::methods::{
+    CheckCloseRequest, CloseTaskRequest, GetOperationResultRequest, IntakeRequest,
+    McpCheckCloseArguments, McpCloseTaskArguments, McpGetOperationResultArguments,
+    McpIntakeArguments, McpPrepareEvidenceCaptureArguments, McpPrepareWriteArguments,
+    McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserActionArguments,
+    McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments,
+    McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments, MethodOperationCategory,
+    PrepareEvidenceCaptureRequest, PrepareWriteRequest, ReconcileChangesRequest, RecordRunRequest,
+    RequestUserActionRequest, StageArtifactRequest, StatusRequest, UpdateScopeRequest,
+};
+use volicord_types::schema::{RequiredNullable, ToolEnvelope};
+use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
+use volicord_types::values::{
+    ActorSource, ErrorCode, IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel,
+    UtcTimestamp,
+};
 
 /// Minimal MCP adapter marker for validating dependency direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1244,7 +1298,7 @@ impl McpAdapter {
             }
         };
         if let Some(installation) = guard_installation {
-            let manifest = volicord_types::guard_manifest_from_json(&installation.manifest_json)
+            let manifest = volicord_types::guard_manifest::guard_manifest_from_json(&installation.manifest_json)
                 .map_err(|_| {
                     McpAdapterError::Environment(
                         "managed_stdio_session_manifest_invalid: current Guard installation manifest is malformed"
@@ -1330,7 +1384,7 @@ impl McpAdapter {
         context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
         project_id: &ProjectId,
-        task_id: Option<&volicord_types::TaskId>,
+        task_id: Option<&volicord_types::ids::TaskId>,
         operation_category: OperationCategory,
     ) -> Result<ToolEnvelope, McpAdapterError> {
         let state_version = if operation_category == OperationCategory::Read {

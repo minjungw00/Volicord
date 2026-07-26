@@ -7,18 +7,22 @@ use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_types::{
-    canonical_git_object_id, canonical_json_string, is_canonical_sha256_digest, ActorSource,
-    ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis, EvidenceAssuranceLevel,
-    EvidenceCoverageItem, EvidenceSourceKind, OperationCategory, PersistedArtifactProducer,
-    PersistedArtifactProvenanceMetadata, PersistedCloseSummary, PersistedEvidenceMetadata,
+use volicord_types::canonical::{
+    canonical_git_object_id, canonical_json_string, is_canonical_sha256_digest,
+};
+use volicord_types::schema::{
+    ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis, EvidenceCoverageItem,
+    PersistedArtifactProducer, PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
     PersistedEvidenceObservationAuthority, PersistedUserActionRequest,
-    PersistedUserActionResolution, ProjectContinuityKind, ProjectContinuityStatus,
-    ProjectEnforcementProfile, ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus,
-    SourceRef, StateRecordRef, UserActionBasis, UserActionBasisStatus, UserActionChannelKind,
-    UserActionKind, UserActionRequestBody, UserActionRequiredFor, UserActionResolutionBody,
-    UtcTimestamp, BASELINE_COOPERATIVE_ENFORCEMENT_PROFILE_ID,
-    USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES,
+    PersistedUserActionResolution, ProjectEnforcementProfile, SourceRef, StateRecordRef,
+    UserActionBasis, UserActionRequestBody, UserActionResolutionBody,
+    BASELINE_COOPERATIVE_ENFORCEMENT_PROFILE_ID, USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES,
+};
+use volicord_types::values::{
+    ActorSource, EvidenceAssuranceLevel, EvidenceSourceKind, OperationCategory,
+    PersistedCloseSummary, ProjectContinuityKind, ProjectContinuityStatus,
+    ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, UserActionBasisStatus,
+    UserActionChannelKind, UserActionKind, UserActionRequiredFor, UtcTimestamp,
 };
 
 use super::{PendingTaskEvent, VerifiedReplayContext};
@@ -41,7 +45,7 @@ pub(super) fn validate_project_enforcement_profile(
     if profile.profile_id != BASELINE_COOPERATIVE_ENFORCEMENT_PROFILE_ID {
         return Err(unsupported());
     }
-    if profile.guarantee_level != volicord_types::GuaranteeLevel::Cooperative {
+    if profile.guarantee_level != volicord_types::values::GuaranteeLevel::Cooperative {
         return Err(unsupported());
     }
     if !profile.enabled_mechanisms.is_empty() {
@@ -251,7 +255,7 @@ pub(super) fn validate_timestamp(field: &'static str, value: &str) -> StoreResul
         .and_then(|timestamp| {
             timestamp
                 .ensure_canonical_rfc3339_representable()
-                .map_err(|_| volicord_types::UtcTimestampParseError)
+                .map_err(|_| volicord_types::values::UtcTimestampParseError)
         })
         .map_err(|_| StoreError::InvalidInput {
             detail: format!("{field} must be a valid RFC 3339 timestamp"),
@@ -958,7 +962,7 @@ pub(super) fn validate_stored_timestamp(field: &'static str, value: &str) -> Sto
         .and_then(|timestamp| {
             timestamp
                 .ensure_canonical_rfc3339_representable()
-                .map_err(|_| volicord_types::UtcTimestampParseError)
+                .map_err(|_| volicord_types::values::UtcTimestampParseError)
         })
         .map_err(|_| StoreError::CorruptStoredValue {
             database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,

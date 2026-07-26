@@ -12,11 +12,15 @@ use volicord_host_contract::{
     HostContractProfileId, HostNativeCorrelation, HostSessionId, HostToolUseId, HostTurnId,
 };
 use volicord_platform_fs::resolve_git_worktree_layout;
-use volicord_types::{
-    canonical_json_sha256, guard_manifest_from_json, guard_manifest_matches_owner_binding,
-    project_agent_session_id, GuardDecision, GuardHookContractStatus, GuardHookPhase,
-    GuardManifestOwnerBinding, IntegrationRevision, ProjectIntegrationRevisionBasis,
-    PromptCaptureStatus, UnrecordedChangeStatus, UtcTimestamp,
+use volicord_types::canonical::canonical_json_sha256;
+use volicord_types::guard_manifest::{
+    guard_manifest_from_json, guard_manifest_matches_owner_binding, GuardManifestOwnerBinding,
+};
+use volicord_types::integration_revision::{IntegrationRevision, ProjectIntegrationRevisionBasis};
+use volicord_types::managed_mcp_client_info::project_agent_session_id;
+use volicord_types::values::{
+    GuardDecision, GuardHookContractStatus, GuardHookPhase, PromptCaptureStatus,
+    UnrecordedChangeStatus, UtcTimestamp,
 };
 
 use crate::{
@@ -2929,7 +2933,7 @@ fn validate_guard_event_insert(input: &GuardEventInsert) -> StoreResult<()> {
     validate_identifier("guard_event_id", &input.guard_event_id)?;
     validate_identifier("connection_internal_id", &input.connection_internal_id)?;
     validate_identifier("guard_installation_id", &input.guard_installation_id)?;
-    volicord_types::PolicyHash::parse(input.policy_hash.clone()).map_err(|_| {
+    volicord_types::guard_manifest::PolicyHash::parse(input.policy_hash.clone()).map_err(|_| {
         StoreError::InvalidInput {
             detail: "guard_events.policy_hash must be canonical".to_owned(),
         }
@@ -3109,7 +3113,7 @@ fn validate_timestamp_text(field: &'static str, value: &str) -> StoreResult<()> 
         .and_then(|timestamp| {
             timestamp
                 .ensure_canonical_rfc3339_representable()
-                .map_err(|_| volicord_types::UtcTimestampParseError)
+                .map_err(|_| volicord_types::values::UtcTimestampParseError)
         })
         .map_err(|_| StoreError::InvalidInput {
             detail: format!(
@@ -3239,7 +3243,7 @@ fn decode_canonical_string_array(text: &str) -> Result<Vec<String>, ()> {
 
 fn current_guard_manifest(
     installation: &GuardInstallationRecord,
-) -> StoreResult<volicord_types::GuardManifest> {
+) -> StoreResult<volicord_types::guard_manifest::GuardManifest> {
     let manifest = guard_manifest_from_json(&installation.manifest_json).map_err(|_| {
         StoreError::InvalidInput {
             detail:
@@ -3252,7 +3256,7 @@ fn current_guard_manifest(
 }
 
 fn validate_current_guard_host_contract(
-    manifest: &volicord_types::GuardManifest,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
 ) -> StoreResult<()> {
     let profile = HostContractProfileId::CodexCommandHooks;
     if manifest.host_contract_profile == profile.as_str()
@@ -3972,12 +3976,13 @@ pub(crate) fn test_guard_manifest_json(
     guard_installation_id: &str,
     policy_hash: &str,
 ) -> String {
-    use volicord_types::{
-        AgentConnectionId, GuardArtifactContentHash, GuardCommandAbsolutePath,
-        GuardCommandInvocationSet, GuardCommandProjection, GuardHookPhase, GuardInstallationId,
-        GuardManagedArtifact, GuardManifest, HostKind, IntegrationProfile, ManagedFileExpectation,
-        PolicyHash, ProjectId, GUARD_MANIFEST_SCHEMA,
+    use volicord_types::guard_manifest::{
+        GuardArtifactContentHash, GuardCommandAbsolutePath, GuardCommandInvocationSet,
+        GuardCommandProjection, GuardManagedArtifact, GuardManifest, ManagedFileExpectation,
+        PolicyHash, GUARD_MANIFEST_SCHEMA,
     };
+    use volicord_types::ids::{AgentConnectionId, GuardInstallationId, ProjectId};
+    use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile};
 
     let integration_revision = connection_integration_revision(connection).expect("test revision");
     let typed_policy_hash = PolicyHash::parse(policy_hash).expect("test policy hash");
@@ -4092,7 +4097,7 @@ mod tests {
         operational_sessions::{start_mcp_runtime_session_for_test, McpRuntimeSessionStart},
         sqlite::{open_project_state_database_for_test, open_registry_database_for_test},
     };
-    use volicord_types::McpRuntimeSessionSource;
+    use volicord_types::integration_revision::McpRuntimeSessionSource;
 
     const TEST_POLICY_HASH: &str =
         "sha256:0000000000000000000000000000000000000000000000000000000000000000";

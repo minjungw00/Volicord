@@ -1,5 +1,5 @@
 use serde_json::Value;
-use volicord_types::GuaranteeDisclosure;
+use volicord_types::schema::GuaranteeDisclosure;
 
 pub(crate) const DOES_NOT_PROVE_LABEL: &str = "Does not prove";
 

@@ -1817,7 +1817,7 @@ mod tests {
             "details": null,
         });
 
-        assert!(serde_json::from_value::<crate::ToolError>(mismatch).is_err());
+        assert!(serde_json::from_value::<crate::schema::ToolError>(mismatch).is_err());
     }
 
     #[test]

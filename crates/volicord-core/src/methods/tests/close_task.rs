@@ -584,7 +584,10 @@ fn request_user_action_rejects_expiration_at_clock_boundary() -> Result<(), Box<
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    request.expires_at = Some(volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")?).into();
+    request.expires_at = Some(volicord_types::values::UtcTimestamp::parse(
+        "2026-06-18T00:00:00Z",
+    )?)
+    .into();
 
     let response = harness
         .service
@@ -619,7 +622,7 @@ fn resolve_user_action_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Err
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    request.expires_at = Some(volicord_types::UtcTimestamp::parse(
+    request.expires_at = Some(volicord_types::values::UtcTimestamp::parse(
         "2026-06-18T09:00:01+09:00",
     )?)
     .into();
@@ -656,7 +659,10 @@ fn resolve_user_action_uses_semantic_expiry_boundary() -> Result<(), Box<dyn Err
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    request.expires_at = Some(volicord_types::UtcTimestamp::parse("2026-06-18T00:00:01Z")?).into();
+    request.expires_at = Some(volicord_types::values::UtcTimestamp::parse(
+        "2026-06-18T00:00:01Z",
+    )?)
+    .into();
     let judgment = harness
         .service
         .request_user_action(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -1085,7 +1091,7 @@ fn artifact_provenance_missing_source_ref_rejects_close_without_effect(
         "artifact_input_bad_provenance_basis",
         artifact_ref,
     )];
-    basis_request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    basis_request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Close basis references the registered artifact.".to_owned(),
         result_refs: vec![artifact_state_ref],
         residual_risks: Vec::new(),
@@ -1359,7 +1365,8 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         Some(&change_unit_id),
         JudgmentKind::ProductDecision,
     );
-    product_request.required_for = vec![volicord_types::UserActionRequiredFor::CloseComplete];
+    product_request.required_for =
+        vec![volicord_types::values::UserActionRequiredFor::CloseComplete];
     let requested = harness.service.request_user_action(
         product_request,
         invocation(OperationCategory::AgentWorkflow),
@@ -1403,7 +1410,8 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         Some(&change_unit_id),
         JudgmentKind::TechnicalDecision,
     );
-    prepare_write_request.required_for = vec![volicord_types::UserActionRequiredFor::PrepareWrite];
+    prepare_write_request.required_for =
+        vec![volicord_types::values::UserActionRequiredFor::PrepareWrite];
     let prepare_write_requested = harness.service.request_user_action(
         prepare_write_request,
         invocation(OperationCategory::AgentWorkflow),
@@ -1573,8 +1581,8 @@ fn unverified_claim_alone_cannot_satisfy_close_readiness() -> Result<(), Box<dyn
         .provenance
         .as_mut()
         .expect("test update has provenance");
-    provenance.source_refs = vec![volicord_types::SourceRef::UserContext(
-        volicord_types::UserContextSource {
+    provenance.source_refs = vec![volicord_types::schema::SourceRef::UserContext(
+        volicord_types::schema::UserContextSource {
             context_id: "message_unverified_claim".to_owned(),
         },
     )];
@@ -1792,9 +1800,9 @@ fn unanchored_external_tool_claim_is_downgraded_and_does_not_support_close(
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "close_external_tool_unanchored")?;
-    let criterion_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
-        &harness, &task_id,
-    )?);
+    let criterion_id = volicord_types::ids::AcceptanceCriterionId::new(
+        active_acceptance_criterion_id(&harness, &task_id)?,
+    );
     set_active_acceptance_criterion_requirement(&harness, &task_id, EvidenceRequirement::Required)?;
     let mut run = record_run_request(
         "req_close_external_tool_unanchored_run",

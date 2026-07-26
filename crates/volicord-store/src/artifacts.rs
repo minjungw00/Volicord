@@ -7,7 +7,7 @@ use std::{
 use rusqlite::{params, Transaction};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use volicord_types::UtcTimestamp;
+use volicord_types::values::UtcTimestamp;
 
 use crate::{
     core_pipeline::{advance_project_utc_floor_tx, CoreProjectStore},
@@ -575,7 +575,7 @@ fn validate_timestamp(field: &'static str, value: &str) -> StoreResult<UtcTimest
             timestamp
                 .ensure_canonical_rfc3339_representable()
                 .map(|()| timestamp)
-                .map_err(|_| volicord_types::UtcTimestampParseError)
+                .map_err(|_| volicord_types::values::UtcTimestampParseError)
         })
         .map_err(|_| StoreError::InvalidInput {
             detail: format!("{field} must be a valid RFC 3339 timestamp"),
@@ -630,7 +630,7 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use volicord_test_support::{core_fixtures::CoreFixture, TempRuntimeHome};
-    use volicord_types::ProjectId;
+    use volicord_types::ids::ProjectId;
 
     use super::*;
     use crate::mutation::TestRuntimeHomeAdmission;

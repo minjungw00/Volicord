@@ -24,11 +24,12 @@ use volicord_store::{
 use volicord_test_support::{
     with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
 };
-use volicord_types::{
-    ConnectionVerificationReport, DiagnosticCode, DiagnosticDomain, DiagnosticFacts,
-    DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-    DiagnosticSubject, OccurrenceDiagnosticFinding, UtcTimestamp,
+use volicord_types::connection_verification::ConnectionVerificationReport;
+use volicord_types::diagnostics::{
+    DiagnosticCode, DiagnosticDomain, DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity,
+    DiagnosticSource, DiagnosticStage, DiagnosticSubject, OccurrenceDiagnosticFinding,
 };
+use volicord_types::values::UtcTimestamp;
 
 const GENERATED_SHAPE_ERROR: &str =
     "generated host-hook capability does not match the current exact shape";

@@ -1,11 +1,14 @@
 use std::time::Duration;
 
 use serde::Serialize;
-use volicord_types::{
-    AgentConnectionId, DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource,
-    DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-    DiagnosticSubject, IntegrationRevision, UtcTimestamp,
+use volicord_types::diagnostics::{
+    DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
+    DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject,
 };
+use volicord_types::ids::AgentConnectionId;
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::values::UtcTimestamp;
 
 pub(super) const MAX_CAPTURED_STDERR_BYTES: usize = 2 * 1024;
 pub(super) const MAX_PROTOCOL_DETAIL_BYTES: usize = 2 * 1024;
@@ -89,7 +92,7 @@ impl McpProtocolFailureKind {
             Self::SafeReadOnlyToolFailure => "mcp.tool_call.safe_read_only_failed",
             Self::SessionCorrelationInvalid => "mcp.tool_call.session_correlation_invalid",
             Self::PreflightReportInvalid => "process.preflight.report_invalid",
-            Self::Unexpected => volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+            Self::Unexpected => volicord_types::diagnostics::INTERNAL_UNEXPECTED_FAILURE_CODE,
         }
     }
 
@@ -459,7 +462,7 @@ impl McpProcessFailure {
     pub fn to_diagnostic_data(
         &self,
         context: McpProcessDiagnosticContext,
-    ) -> Result<DiagnosticFindingData, volicord_types::DiagnosticError> {
+    ) -> Result<DiagnosticFindingData, volicord_types::diagnostics::DiagnosticError> {
         let (io_detail, protocol_detail, json_rpc_error_code, missing_tools, stderr) = match self {
             Self::Spawn { io_detail, .. } => (Some(io_detail), None, None, &[][..], None),
             Self::PipeAcquisition {
@@ -569,7 +572,9 @@ impl McpProcessFailure {
         Ok(data)
     }
 
-    fn recommended_action(&self) -> Result<DiagnosticAction, volicord_types::DiagnosticError> {
+    fn recommended_action(
+        &self,
+    ) -> Result<DiagnosticAction, volicord_types::diagnostics::DiagnosticError> {
         let (code, summary) = match self {
             Self::Spawn { .. } => (
                 "action.process.repair_launch",

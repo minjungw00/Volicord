@@ -1,9 +1,7 @@
 use std::sync::atomic::AtomicU64;
 
-pub use volicord_types::{
-    AgentToolCategory, AgentToolId, AgentToolOwner, IntegrationVerificationWorkflowState,
-    ToolVerificationRole,
-};
+use volicord_types::integration_verification::IntegrationVerificationWorkflowState;
+use volicord_types::tool_names::AgentToolId;
 
 pub(crate) const SERVER_NAME: &str = "volicord-mcp";
 pub(crate) const DEFAULT_LOCALE: &str = "en-US";

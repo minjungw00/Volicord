@@ -17,7 +17,7 @@ use volicord_store::bootstrap::{
 };
 use volicord_store::setup_transaction::{PreparedStoreMutationBoundary, StoreMutationInput};
 use volicord_store::RuntimeHomeMutationContext;
-use volicord_types::IntegrationActivationPlan;
+use volicord_types::connection_verification::IntegrationActivationPlan;
 
 use super::{
     output::{RuntimeHomePublicationStatus, RuntimeHomeRollbackResult},

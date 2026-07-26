@@ -442,7 +442,7 @@ fn reconcile_changes_commits_multiple_user_actions_with_shared_source_idempotenc
     for request_id in pending_request_ids {
         let resumed = harness.service.resume_user_action_request(
             ProjectId::new(PROJECT_ID),
-            volicord_types::UserActionRequestId::new(request_id),
+            volicord_types::ids::UserActionRequestId::new(request_id),
             invocation(OperationCategory::AgentWorkflow),
         )?;
         assert!(
@@ -551,7 +551,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
             vec![UnrecordedChangeResolutionRequest {
                 unrecorded_change_id: UnrecordedChangeId::new(unrecorded_change_id.clone()),
                 basis: UnrecordedChangeResolutionBasis::AcceptedByUser,
-                user_action_resolution_id: Some(volicord_types::UserActionResolutionId::new(
+                user_action_resolution_id: Some(volicord_types::ids::UserActionResolutionId::new(
                     user_action_resolution_id.clone(),
                 ))
                 .into(),
@@ -672,7 +672,7 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
             vec![UnrecordedChangeResolutionRequest {
                 unrecorded_change_id: UnrecordedChangeId::new(unrecorded_change_id.clone()),
                 basis: UnrecordedChangeResolutionBasis::AcceptedByUser,
-                user_action_resolution_id: Some(volicord_types::UserActionResolutionId::new(
+                user_action_resolution_id: Some(volicord_types::ids::UserActionResolutionId::new(
                     user_action_resolution_id,
                 ))
                 .into(),
@@ -785,7 +785,7 @@ fn reconcile_changes_rejects_agent_direct_accepted_by_user_without_judgment(
             vec![UnrecordedChangeResolutionRequest {
                 unrecorded_change_id: UnrecordedChangeId::new(unrecorded_change_id.clone()),
                 basis: UnrecordedChangeResolutionBasis::AcceptedByUser,
-                user_action_resolution_id: Some(volicord_types::UserActionResolutionId::new(
+                user_action_resolution_id: Some(volicord_types::ids::UserActionResolutionId::new(
                     "uar_missing_accept",
                 ))
                 .into(),

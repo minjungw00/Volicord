@@ -1,7 +1,8 @@
 use std::error::Error;
 
 use volicord_host_contract::HostContractProfileId;
-use volicord_types::{AgentToolId, IntegrationVerificationWorkflowState};
+use volicord_types::integration_verification::IntegrationVerificationWorkflowState;
+use volicord_types::tool_names::AgentToolId;
 
 use super::support::*;
 use crate::integration_verification::{

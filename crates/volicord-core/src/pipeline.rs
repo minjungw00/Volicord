@@ -22,15 +22,22 @@ use volicord_store::{
     CanonicalRuntimeHomePath, RuntimeHomeMutationContext, StoreError, StoreFailureRoute,
     StoreResult,
 };
-use volicord_types::{
-    canonical_request_hash, ActorSource, ChangeUnitId, CloseTaskResult, DryRunSummary,
-    DurableIdError, DurableIdGenerator, DurableIdKind, EffectKind, ErrorCode, EventId, EventRef,
-    GuaranteeDisclosure, IdempotencyKey, IntakeResult, JsonObject, MethodName, MethodResultFields,
-    OperationCategory, OperationResultRef, PrepareEvidenceCaptureResult, PrepareWriteResult,
-    ProjectId, RandomDurableIdGenerator, ReconcileChangesResult, RecordRunResult, RequestHash,
-    RequestUserActionResult, ResolveUserActionResult, ResponseKind, TaskId, ToolDryRunResponse,
-    ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase, UpdateScopeResult, UtcTimestamp,
-    DURABLE_ID_RETRY_LIMIT,
+use volicord_types::canonical::canonical_request_hash;
+use volicord_types::ids::{
+    ChangeUnitId, DurableIdError, DurableIdGenerator, DurableIdKind, EventId, IdempotencyKey,
+    ProjectId, RandomDurableIdGenerator, RequestHash, TaskId, DURABLE_ID_RETRY_LIMIT,
+};
+use volicord_types::methods::{
+    CloseTaskResult, IntakeResult, MethodResultFields, OperationResultRef,
+    PrepareEvidenceCaptureResult, PrepareWriteResult, ReconcileChangesResult, RecordRunResult,
+    RequestUserActionResult, ResolveUserActionResult, UpdateScopeResult,
+};
+use volicord_types::schema::{
+    DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, ToolDryRunResponse, ToolEnvelope,
+    ToolError, ToolRejectedResponse, ToolResultBase,
+};
+use volicord_types::values::{
+    ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, ResponseKind, UtcTimestamp,
 };
 
 use crate::policy::{
@@ -2045,9 +2052,9 @@ mod tests {
         with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
         TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
-    use volicord_types::{
-        ActorSource, IdempotencyKey, OperationCategory, PlannedEffect, ProjectId, RequestId,
-    };
+    use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId};
+    use volicord_types::schema::PlannedEffect;
+    use volicord_types::values::{ActorSource, OperationCategory};
 
     use super::*;
 

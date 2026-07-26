@@ -17,15 +17,17 @@ use volicord_store::{
     StoreError,
 };
 use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeMutation};
-use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, CurrentDiagnosticFinding, CurrentDiagnosticKey,
-    CurrentDiagnosticSnapshot, CurrentDiagnosticStatus, DiagnosticAction, DiagnosticCause,
-    DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFindingData,
-    DiagnosticFindingId, DiagnosticScope, DiagnosticScopeKind, DiagnosticSeverity,
-    DiagnosticSource, DiagnosticStage, DiagnosticSubject, DiagnosticSubjectIdentity,
-    IntegrationRevision, McpRuntimeSessionSource, OccurrenceDiagnosticFinding, ProjectId,
-    StoredDiagnosticFinding, UtcTimestamp,
+use volicord_types::diagnostics::{
+    CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticSnapshot,
+    CurrentDiagnosticStatus, DiagnosticAction, DiagnosticCause, DiagnosticCode, DiagnosticDomain,
+    DiagnosticFactSource, DiagnosticFacts, DiagnosticFindingData, DiagnosticFindingId,
+    DiagnosticScope, DiagnosticScopeKind, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
+    DiagnosticSubject, DiagnosticSubjectIdentity, OccurrenceDiagnosticFinding,
+    StoredDiagnosticFinding,
 };
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, ProjectId};
+use volicord_types::integration_revision::{IntegrationRevision, McpRuntimeSessionSource};
+use volicord_types::values::UtcTimestamp;
 
 const OBSERVED: &str = "2026-07-21T01:02:03Z";
 

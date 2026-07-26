@@ -10,7 +10,7 @@ use volicord_platform_fs::{
     PathFilesystemKind, PlatformBoundaryDiagnostic, PlatformBoundaryError,
     PlatformBoundaryErrorKind,
 };
-use volicord_types::PlatformEnvironment;
+use volicord_types::platform::PlatformEnvironment;
 
 use crate::CanonicalRuntimeHomePath;
 
@@ -892,7 +892,8 @@ mod tests {
     use std::{error::Error, ffi::OsString, fs, path::PathBuf};
 
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::{PlatformEnvironment, ReleaseTargetTriple};
+    use volicord_types::platform::PlatformEnvironment;
+    use volicord_types::release_target::ReleaseTargetTriple;
 
     use super::{
         resolve_runtime_home, validate_runtime_home_product_repository,

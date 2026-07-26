@@ -522,7 +522,7 @@ fn stdio_budget_omission_reconstructs_exact_result_after_state_advance(
         let chunk = page["chunk_utf8"]
             .as_str()
             .ok_or("operation-result page should contain UTF-8 text")?;
-        assert!(chunk.len() <= volicord_types::MAX_OPERATION_RESULT_PAGE_BYTES);
+        assert!(chunk.len() <= volicord_types::methods::MAX_OPERATION_RESULT_PAGE_BYTES);
         reconstructed.push_str(chunk);
         assert_eq!(page["end_offset_bytes"], reconstructed.len() as u64);
         assert_eq!(page["historical"], true);
@@ -1620,8 +1620,8 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
             task_id: &task_id,
             user_action_request_id: &user_action_request_id,
             channel_submission_id: "submission_cli_inbox_resolution",
-            resolution: volicord_types::UserActionResolutionInput::Choice {
-                selected_option_id: volicord_types::UserActionOptionId::new("keep"),
+            resolution: volicord_types::schema::UserActionResolutionInput::Choice {
+                selected_option_id: volicord_types::ids::UserActionOptionId::new("keep"),
                 note: Some("This private user note must not enter the MCP projection.".to_owned())
                     .into(),
             },
@@ -1630,7 +1630,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
             ProjectId::new(fixture.project_id()),
             ActorSource::LocalUser,
             OperationCategory::UserOnly,
-            volicord_types::VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            volicord_types::values::VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
         ),
     )?;
     assert_eq!(resolved.response_value["base"]["response_kind"], "result");
@@ -1661,7 +1661,7 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
             expected_state_version: Some(resolution_state_version),
             task_id: &task_id,
             change_unit_id: None,
-            judgment_kind: volicord_types::JudgmentKind::TechnicalDecision,
+            judgment_kind: volicord_types::values::JudgmentKind::TechnicalDecision,
         }),
         test_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;

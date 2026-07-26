@@ -4,7 +4,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
 use volicord_host_contract::{CodexCommandHooks, HostContractError, HostNativeCorrelation};
 use volicord_store::bootstrap::ProjectRecord;
-use volicord_types::{GuardHookPhase, HostKind, IntegrationProfile};
+use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile};
 
 use super::{
     args::{GuardInput, GuardOptions},

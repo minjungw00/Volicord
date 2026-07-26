@@ -9,7 +9,7 @@ use volicord_host_contract::{
     HostContractProfileId, HostHookMatcherStrategy, HostNativeCorrelation, McpServerKey,
     McpToolCatalog,
 };
-use volicord_types::{AgentToolId, IntegrationVerificationToolRole};
+use volicord_types::tool_names::{AgentToolId, IntegrationVerificationToolRole};
 
 const REVIEWED_GUARD_PROBE_CALLABLE: &str = "mcp__volicord__volicord_guard_probe";
 

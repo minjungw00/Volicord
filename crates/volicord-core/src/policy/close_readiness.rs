@@ -1,12 +1,15 @@
 use std::collections::BTreeSet;
 
-use volicord_types::{
-    ActorSource, BaselineRef, ChangeUnitId, CloseReadinessBlocker, CloseReadinessBlockerCategory,
-    CurrentCloseBasis, JudgmentResolutionOutcome, MethodName, NextActionKind,
-    NextActionPresentationRole, NextActionSummary, OperationCategory, ProjectId, RequiredNullable,
-    RiskAcceptanceCoverage, RiskId, StateRecordKind, StateRecordRef, TaskId, UserActionBasis,
+use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, RiskId, TaskId};
+use volicord_types::schema::{
+    CloseReadinessBlocker, CurrentCloseBasis, NextActionSummary, RequiredNullable,
+    RiskAcceptanceCoverage, StateRecordRef, UserActionBasis, UserActionResolutionBody,
+};
+use volicord_types::values::{
+    ActorSource, CloseReadinessBlockerCategory, JudgmentResolutionOutcome, MethodName,
+    NextActionKind, NextActionPresentationRole, OperationCategory, StateRecordKind,
     UserActionBasisStatus, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-    UserActionResolutionBody, UserActionStatus, UtcTimestamp,
+    UserActionStatus, UtcTimestamp,
 };
 
 use super::evidence::state_record_ref_identity_key;
@@ -186,7 +189,9 @@ pub(crate) fn current_residual_risk_acceptance_coverage(
                             .as_ref()
                             .map(|resolution_id| StateRecordRef {
                                 record_kind: StateRecordKind::UserActionResolution,
-                                record_id: volicord_types::RecordId::new(resolution_id.clone()),
+                                record_id: volicord_types::ids::RecordId::new(
+                                    resolution_id.clone(),
+                                ),
                                 project_id: project_id.clone(),
                                 task_id: Some(task_id.clone()).into(),
                                 produced_at_state_version: Some(state_version).into(),

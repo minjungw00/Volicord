@@ -13,7 +13,7 @@ use cap_std::fs::{
     OpenOptions as CapabilityOpenOptions,
 };
 use serde_json::Value;
-use volicord_types::{
+use volicord_types::guard_manifest::{
     GuardManagedArtifact, GuardManagedMarkerSemantics, GuardManagedOwnership,
     ManagedFileExpectation,
 };
@@ -28,7 +28,7 @@ use crate::{
 
 use super::GuardIntegrationError;
 
-pub(crate) const VOLICORD_POLICY_SCHEMA: &str = volicord_types::WORKFLOW_POLICY_CONTRACT_ID;
+pub(crate) const VOLICORD_POLICY_SCHEMA: &str = volicord_types::schema::WORKFLOW_POLICY_CONTRACT_ID;
 pub(crate) const GUIDANCE_START_MARKER: &str = "<!-- BEGIN VOLICORD MANAGED GUIDANCE -->";
 pub(crate) const GUIDANCE_END_MARKER: &str = "<!-- END VOLICORD MANAGED GUIDANCE -->";
 
@@ -2938,11 +2938,12 @@ fn managed_script_retirement_metadata_matches_content(
             phase,
             ..
         } => {
-            *managed_script_role == volicord_types::GuardManagedScriptRole::CodexDispatch
+            *managed_script_role
+                == volicord_types::guard_manifest::GuardManagedScriptRole::CodexDispatch
                 && hook_wrapper_comment_value(content, "host_kind") == Some(host_kind.as_str())
                 && hook_wrapper_comment_value(content, "phase")
                     == Some(match phase {
-                        volicord_types::GuardDispatchPhase::Dispatch => "dispatch",
+                        volicord_types::guard_manifest::GuardDispatchPhase::Dispatch => "dispatch",
                     })
                 && hook_wrapper_comment_value(content, "script_role") == Some("codex_dispatch")
         }
@@ -2962,7 +2963,7 @@ fn managed_script_retirement_metadata_matches_content(
                 && hook_wrapper_comment_value(content, "phase") == Some(phase.as_str())
                 && hook_wrapper_comment_value(content, "purpose")
                     == Some(match purpose {
-                        volicord_types::GuardManagedScriptPurpose::Guard => "guard",
+                        volicord_types::guard_manifest::GuardManagedScriptPurpose::Guard => "guard",
                     })
                 && hook_wrapper_comment_value(content, "connection_id")
                     == Some(connection_id.as_str())
@@ -3113,7 +3114,9 @@ mod tests {
     use std::fs;
 
     use volicord_test_support::TempRuntimeHome;
-    use volicord_types::{GuardArtifactContentHash, GuardManagedArtifact, ManagedFileExpectation};
+    use volicord_types::guard_manifest::{
+        GuardArtifactContentHash, GuardManagedArtifact, ManagedFileExpectation,
+    };
 
     use super::{plan_managed_file_retirement, sha256_text, RetirementPlanStatus};
 

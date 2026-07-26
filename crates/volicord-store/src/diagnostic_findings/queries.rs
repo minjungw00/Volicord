@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use volicord_types::{
+use volicord_types::diagnostics::{
     CurrentDiagnosticFinding, CurrentDiagnosticStatus, DiagnosticFinding, DiagnosticFindingId,
     DiagnosticScope, OccurrenceDiagnosticFinding, StoredDiagnosticFinding, MAX_DIAGNOSTIC_FINDINGS,
 };

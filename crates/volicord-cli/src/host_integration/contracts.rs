@@ -3,7 +3,8 @@ use std::{fmt, path::Path};
 use serde_json::Value;
 use toml_edit::DocumentMut;
 use volicord_host_contract::{HostContractError, HostHookMatcherStrategy, McpServerKey};
-use volicord_types::{GuardHookPhase, GuardManagedArtifact};
+use volicord_types::guard_manifest::GuardManagedArtifact;
+use volicord_types::values::GuardHookPhase;
 
 use super::HostKind;
 

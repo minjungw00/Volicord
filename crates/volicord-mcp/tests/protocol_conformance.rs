@@ -8,12 +8,13 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     path::PathBuf,
 };
-use volicord_mcp::{run_stdio, AgentToolId, McpAdapter, McpConnectionContext};
+use volicord_mcp::{run_stdio, McpAdapter, McpConnectionContext};
 use volicord_mcp_protocol::{
     JsonRpcBatching, McpProtocolProfile, McpRevisionStatus, ProtocolRegistry,
 };
 use volicord_test_support::core_fixtures::CoreFixture;
-use volicord_types::ToolVerificationRole;
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::tool_names::ToolVerificationRole;
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 

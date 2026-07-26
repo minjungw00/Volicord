@@ -5,10 +5,8 @@ use volicord_store::{
     workflow_records::{project_write_authority_fingerprint, task_policy_control_reevaluation},
     StoreError,
 };
-use volicord_types::{
-    AcceptancePolicy, ProjectWorkflowPolicySummary, RequestedControlLevel, TaskControlLevel,
-    TaskMode, WORKFLOW_POLICY_CONTRACT_ID,
-};
+use volicord_types::schema::{ProjectWorkflowPolicySummary, WORKFLOW_POLICY_CONTRACT_ID};
+use volicord_types::values::{AcceptancePolicy, RequestedControlLevel, TaskControlLevel, TaskMode};
 
 use crate::policy::path::path_is_within;
 

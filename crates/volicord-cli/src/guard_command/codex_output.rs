@@ -1,7 +1,8 @@
 use serde_json::{json, Value};
-use volicord_types::{
-    GuardHookOutcome, GuardHookPhase, GuardObservationOutcome, GuardPolicyDecision, HostKind,
+use volicord_types::guard_outcome::{
+    GuardHookOutcome, GuardObservationOutcome, GuardPolicyDecision,
 };
+use volicord_types::values::{GuardHookPhase, HostKind};
 
 use crate::{
     disclosure::COOPERATIVE_DECISION_DISCLOSURE_TEXT,
@@ -25,33 +26,34 @@ pub(super) fn render_codex_output(
             )
         })?;
 
-    let value =
-        if phase == GuardHookPhase::PreTool && outcome.policy == Some(GuardPolicyDecision::Deny) {
-            Some(json!({
-                "hookSpecificOutput": {
-                    "hookEventName": event_name,
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": native_message(
-                        &format!(
-                            "[{}] {}",
-                            volicord_types::GuardHookDiagnosticCode::PolicyDenied.as_str(),
-                            first_reason_message(result).unwrap_or_else(||
-                                "Volicord policy denied this write attempt".to_owned()
-                            )
+    let value = if phase == GuardHookPhase::PreTool
+        && outcome.policy == Some(GuardPolicyDecision::Deny)
+    {
+        Some(json!({
+            "hookSpecificOutput": {
+                "hookEventName": event_name,
+                "permissionDecision": "deny",
+                "permissionDecisionReason": native_message(
+                    &format!(
+                        "[{}] {}",
+                        volicord_types::guard_outcome::GuardHookDiagnosticCode::PolicyDenied.as_str(),
+                        first_reason_message(result).unwrap_or_else(||
+                            "Volicord policy denied this write attempt".to_owned()
                         )
                     )
+                )
+            }
+        }))
+    } else {
+        codex_context(phase, outcome, result).map(|message| {
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": event_name,
+                    "additionalContext": native_message(&message)
                 }
-            }))
-        } else {
-            codex_context(phase, outcome, result).map(|message| {
-                json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": event_name,
-                        "additionalContext": native_message(&message)
-                    }
-                })
             })
-        };
+        })
+    };
 
     Ok(RenderedGuardOutput {
         stdout: value
@@ -106,7 +108,8 @@ fn codex_context(
     result: &Value,
 ) -> Option<String> {
     if outcome.diagnostics.first().is_some_and(|diagnostic| {
-        diagnostic.code == volicord_types::GuardHookDiagnosticCode::UnexpectedInternalFailure
+        diagnostic.code
+            == volicord_types::guard_outcome::GuardHookDiagnosticCode::UnexpectedInternalFailure
     }) {
         return Some("[guard.internal.unexpected_failure] Volicord encountered an unexpected Guard failure. The action continues; inspect the typed finding before relying on this observation".to_owned());
     }
@@ -158,7 +161,7 @@ fn native_message(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_types::{
+    use volicord_types::guard_outcome::{
         GuardHookDiagnostic, GuardHookDiagnosticCode, GuardHookDiagnosticFacts, GuardHostFeedback,
     };
 

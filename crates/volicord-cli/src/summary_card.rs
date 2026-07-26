@@ -1,5 +1,5 @@
 use serde_json::Value;
-use volicord_types::SummaryCard;
+use volicord_types::schema::SummaryCard;
 
 use crate::disclosure::{
     does_not_prove_line, AUTHORITY_RECORD_NON_GUARANTEE_TEXT,

@@ -24,10 +24,11 @@ pub use status::{
     latest_guard_integration_verification_for_connection,
 };
 use volicord_host_contract::{HostContractProfileId, HostSessionId, HostTurnId};
-use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, GuardInstallationId, IntegrationRevision, PolicyHash,
-    ProjectId,
+use volicord_types::guard_manifest::PolicyHash;
+use volicord_types::ids::{
+    AgentConnectionId, AgentRuntimeSessionId, GuardInstallationId, ProjectId,
 };
+use volicord_types::integration_revision::IntegrationRevision;
 
 /// Exact managed caller coordinate supplied by the MCP session boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]

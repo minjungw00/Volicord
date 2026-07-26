@@ -19,10 +19,17 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    AgentConnectionId, AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckStatus,
-    ConnectionStatus, DurableIdGenerator, DurableIdKind, GuardIntegrationVerificationId,
-    HookActivationState, IntegrationActivationPlan, IntegrationActivationState,
-    IntegrationRevision, JsonObject, ProjectId, RandomDurableIdGenerator, UtcTimestamp,
+    connection_verification::{
+        ConnectionCheck, ConnectionCheckStatus, ConnectionStatus, HookActivationState,
+        IntegrationActivationPlan, IntegrationActivationState,
+    },
+    ids::{
+        AgentConnectionId, AgentRuntimeSessionId, DurableIdGenerator, DurableIdKind,
+        GuardIntegrationVerificationId, ProjectId, RandomDurableIdGenerator,
+    },
+    integration_revision::IntegrationRevision,
+    schema::JsonObject,
+    values::UtcTimestamp,
 };
 
 /// The only current JSON representation version for [`DiagnosticReport`].
@@ -3366,7 +3373,7 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::*;
-    use crate::ConnectionCheckKind;
+    use crate::connection_verification::ConnectionCheckKind;
 
     fn timestamp() -> UtcTimestamp {
         UtcTimestamp::parse("2026-07-21T01:02:03Z").unwrap()
@@ -3769,7 +3776,7 @@ mod tests {
 
     #[test]
     fn repeated_occurrences_receive_distinct_generated_ids() {
-        let generator = crate::SequenceDurableIdGenerator::new([
+        let generator = crate::ids::SequenceDurableIdGenerator::new([
             "00000000-0000-4000-8000-000000000001",
             "00000000-0000-4000-8000-000000000002",
         ]);
@@ -4403,8 +4410,8 @@ mod tests {
         )
         .is_err());
 
-        let step = crate::ActivationStep::try_new(
-            crate::ActivationStepId::ReadConnectionStatus,
+        let step = crate::connection_verification::ActivationStep::try_new(
+            crate::connection_verification::ActivationStepId::ReadConnectionStatus,
             Vec::new(),
             "Read status for both independent roots",
         )

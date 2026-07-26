@@ -1,77 +1,78 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     path::{Component, Path},
+};
+use volicord_types::canonical::canonical_git_object_id;
+use volicord_types::ids::{
+    AcceptanceCriterionId, ArtifactId, BaselineRef, ChangeUnitId, DurableIdKind,
+    EvidenceCaptureIntentId, EvidenceObservationId, EvidenceProducerId, ProjectContinuityRecordId,
+    ProjectId, RecordId, RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId,
+    UserActionRequestId, UserActionResolutionId, WriteTicketId,
+};
+use volicord_types::methods::{
+    CheckCloseRequest, CloseTaskResultFields, PrepareWriteRequest, PrepareWriteResultFields,
+    RecordRunRequest, UpdateScopeRequest,
+};
+use volicord_types::schema::{
+    AcceptanceCriterion, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
+    CarryForwardDisposition, ChangeUnitEffectContract, CloseReadinessBlocker, CurrentCloseBasis,
+    DryRunSummary, EvidenceGateSummary, EvidenceObservation, EvidenceSummary, GuaranteeDisplay,
+    JsonObject, NextActionSummary, PersistedUserActionRequest, PersistedUserActionResolution,
+    PlannedEffect, ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile,
+    RequiredNullable, RiskAcceptanceCoverage, SourceRef, StateRecordRef, SummaryCard,
+    TaskLifecycleState, TaskLineageSummary, ToolEnvelope, UserActionBasis, UserActionCapturePath,
+    UserActionInboxItem, UserActionRequest, UserActionResolutionBody, UserChannelAvailability,
+    UserChannelPathAvailability, WorkspaceContext, WriteDecisionReason, WriteTicketAttemptScope,
+    WriteTicketStateSummary, WriteTicketValidityBasis,
+};
+use volicord_types::values::{
+    AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, CloseReason,
+    CloseState, ErrorCode, EvidenceDisplayState, EvidenceGateState, GuaranteeLevel, JudgmentKind,
+    MethodName, NextActionKind, NextActionPresentationRole, OperationCategory,
+    PersistedCloseSummary, ProjectContinuityKind, ProjectContinuityStatus, RedactionState,
+    RequestedMode, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
+    TaskLineageRelation, TaskMode, TaskResult, UserActionKind, UserActionRequiredFor,
+    UserActionStatus, UtcTimestamp, WorkPhase, WorkspaceVcs, WriteDecisionCategory,
+    WriteTicketInvalidationReason, WriteTicketStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
 use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
 use volicord_store::{
-    artifacts::{ArtifactStagingInsert, PersistentArtifactVerificationStatus, StagedPayloadKind},
-    core_pipeline::*,
-    diagnostics::{
-        record_core_rejection_diagnostic, record_workflow_metric_event, CoreRejectionDiagnostic,
-        CoreRejectionReason, WorkflowMetricEvent, WorkflowMetricKind,
+    artifacts::{PersistentArtifactVerificationStatus, StagedPayloadKind},
+    core_pipeline::{
+        AcceptanceCriterionRecord, ChangeUnitInsert, ChangeUnitRecord, CoreProjectStore,
+        CoreStorageMutation, EffectiveUserActionRecord, ProjectContinuityRecordInsert,
+        ProjectContinuityRecordRecord, ProjectStateHeader, StoredArtifactRecord, StoredRecordRef,
+        TaskRecord, TaskScopeUpdate, WriteTicketRecord,
     },
-    evidence_capture::{
-        EvidenceCaptureIntentInsert, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord,
-        EvidenceProducerInsert, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
-    },
-    guards::UnrecordedChangeRecord,
-    RuntimeHomeMutationContext, StoreError, StoreResult,
+    diagnostics::{record_workflow_metric_event, WorkflowMetricEvent, WorkflowMetricKind},
+    RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::*;
-
-#[cfg(test)]
-use volicord_types::EVIDENCE_CAPTURE_COMMAND_LIMITATION;
 
 use crate::pipeline::{
-    dry_run_response, method_result_base, operation_result_ref, rejected_response,
-    store_failure_error, tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
-    InvocationContext, MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch,
-    PipelinePreflightOutcome, PipelinePreflightRequest, PipelineResponse, PreparedRequest,
-    ReplayPolicy, TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
+    rejected_response, store_failure_error, tool_error, CorePipelineError, CoreResult, CoreService,
+    FreshnessPolicy, InvocationContext, MethodEffectPolicy, MethodPolicy, PipelinePreflightOutcome,
+    PipelinePreflightRequest, PipelineResponse, PreparedRequest, ReplayPolicy, TaskRequirement,
+    VerifiedInvocationContext,
 };
 use crate::policy::{
-    close_readiness::{
-        accepted_current_scope_decision_authority, close_blocker, close_next_action,
-        current_acceptance_required_risk_ids, current_cancellation_authority,
-        current_final_acceptance, current_residual_risk_acceptance_coverage,
-        final_acceptance_requirement, is_terminal_lifecycle, user_action_has_current_basis,
-        verified_user_channel_provenance, CancellationAuthorityRequirement,
-        ScopeDecisionAuthorityRequirement, UserActionAuthority,
-    },
+    close_readiness::{is_terminal_lifecycle, UserActionAuthority},
     close_readiness_evidence::{project_close_evidence_summary, required_acceptance_criterion_ids},
-    continuity::{decision_title_prefix, judgment_continuity_kind},
-    effect_contract::{
-        product_write_violations, validate_effect_contract, validate_effect_contract_paths,
-        EffectContractValidationError, EffectContractViolation,
-    },
-    evidence::{
-        evidence_item_related_refs, evidence_status_for_items, state_record_ref_identity_key,
-        unique_artifact_refs, unique_state_record_refs,
-    },
-    path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
+    evidence::{state_record_ref_identity_key, unique_artifact_refs},
+    path::{normalize_product_paths, path_is_within},
     user_action_relevance::{
-        user_action_blocks_operation, user_action_keeps_task_waiting, user_action_required_for,
-        UserActionOperation, UserActionOperationContext,
+        user_action_blocks_operation, user_action_keeps_task_waiting, UserActionOperationContext,
     },
     workflow::{
-        acceptance_policy_for_control, effective_control_level, parse_requested_control_level,
-        parse_task_control_level, project_workflow_policy, resolve_task_control_authority,
-        ProjectWorkflowPolicy,
+        parse_requested_control_level, parse_task_control_level, project_workflow_policy,
+        resolve_task_control_authority,
     },
     write_ticket::{
-        current_sensitive_approval, normalize_sensitive_action_scope, normalized_string_set,
-        prepare_write_decision, prepare_write_dry_run_summary, run_write_ticket_mismatch,
-        write_decision_reason, write_ticket_is_idle_expired, RunWriteTicketAttempt,
+        current_sensitive_approval, write_decision_reason, write_ticket_is_idle_expired,
         SensitiveApprovalRequirement,
     },
-};
-use crate::{
-    CurrentUserActionProjection, UserChannelInboxProjection, UserChannelInboxProjectionItem,
-    UserChannelInboxProjectionRequest, UserChannelInboxResolutionSnapshot,
 };
 
 mod close_task;
@@ -1604,7 +1605,7 @@ fn checked_derived_expiration(
 }
 
 fn mutation_method_policy(
-    operation_category: volicord_types::OperationCategory,
+    operation_category: volicord_types::values::OperationCategory,
     task: TaskRequirement,
     dry_run: bool,
 ) -> MethodPolicy {
@@ -2289,7 +2290,9 @@ struct SummaryBuild<'a> {
     guarantee_display: Option<GuaranteeDisplay>,
 }
 
-fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::StateSummary> {
+fn build_state_summary(
+    input: SummaryBuild<'_>,
+) -> CoreResult<volicord_types::schema::StateSummary> {
     let SummaryBuild {
         store,
         project_id,
@@ -2392,7 +2395,7 @@ fn build_state_summary(input: SummaryBuild<'_>) -> CoreResult<volicord_types::St
         })
         .transpose()?
         .flatten();
-    Ok(volicord_types::StateSummary {
+    Ok(volicord_types::schema::StateSummary {
         project_id: project_id.clone(),
         state_version,
         task_ref: Some(task_ref),
@@ -3636,7 +3639,7 @@ fn validation_rejected(
 fn rejected_pipeline_response(
     dry_run: bool,
     state_version: Option<u64>,
-    errors: Vec<volicord_types::ToolError>,
+    errors: Vec<volicord_types::schema::ToolError>,
 ) -> CoreResult<PipelineResponse> {
     let response = rejected_response(dry_run, state_version, errors);
     let response_value = serde_json::to_value(response)?;
@@ -3654,7 +3657,7 @@ fn rejected_pipeline_response(
 fn infallible_rejected_pipeline_response(
     dry_run: bool,
     state_version: Option<u64>,
-    errors: Vec<volicord_types::ToolError>,
+    errors: Vec<volicord_types::schema::ToolError>,
 ) -> PipelineResponse {
     rejected_pipeline_response(dry_run, state_version, errors)
         .expect("rejected response serialization should succeed")

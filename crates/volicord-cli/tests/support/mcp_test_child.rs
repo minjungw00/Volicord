@@ -10,7 +10,8 @@ use std::{
 };
 
 use serde_json::{json, Value};
-use volicord_types::{AgentConnectionMode, AgentToolId};
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::AgentConnectionMode;
 
 const LARGE_STDERR_BYTES: usize = 8 * 1024;
 const SUSTAINED_STDERR_BYTES: usize = 256 * 1024;

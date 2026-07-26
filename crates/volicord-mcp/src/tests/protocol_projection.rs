@@ -628,7 +628,7 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
         let decoded: McpPrepareEvidenceCaptureArguments =
             serde_json::from_value(arguments.clone())?;
         assert_eq!(decoded.detail, MutationDetailLevel::Summary);
-        let core_capture: volicord_types::EvidenceCaptureSpec = decoded.capture.into();
+        let core_capture: volicord_types::schema::EvidenceCaptureSpec = decoded.capture.into();
         assert_eq!(serde_json::to_value(core_capture)?, expected_capture);
 
         let mut invalid = arguments;
@@ -690,7 +690,7 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
     ];
 
     for (method_name, fields) in cases {
-        let schema = volicord_types::public_request_schema(method_name)
+        let schema = volicord_types::methods::public_request_schema(method_name)
             .expect("public Core request schema should exist");
         let required = root_required_fields(&schema);
         for field in fields {
@@ -701,9 +701,10 @@ fn mcp_omission_defaults_do_not_change_core_request_required_members() {
         }
     }
 
-    let schema =
-        volicord_types::public_request_schema(AgentToolId::REQUEST_USER_ACTION.wire_name())
-            .expect("request-user-action public Core schema should exist");
+    let schema = volicord_types::methods::public_request_schema(
+        AgentToolId::REQUEST_USER_ACTION.wire_name(),
+    )
+    .expect("request-user-action public Core schema should exist");
     for field in ["affected_refs", "sensitive_action_scope"] {
         assert!(
             schema_requires_property(&schema, field),

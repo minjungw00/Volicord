@@ -50,13 +50,17 @@ use volicord_store::{
     },
     RuntimeHomeMutationContext, StoreError, StoreResult,
 };
-use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, GuardArtifactContentHash,
-    GuardCommandAbsolutePath, GuardCommandInvocationSet, GuardCommandProjection, GuardHookPhase,
-    GuardInstallationId, GuardManagedArtifact, GuardManifest, HostKind, IntegrationProfile,
-    ManagedFileExpectation, McpRuntimeSessionSource, PolicyHash, ProjectId, TypeBoundary,
-    GUARD_MANIFEST_SCHEMA,
+use volicord_types::guard_manifest::{
+    GuardArtifactContentHash, GuardCommandAbsolutePath, GuardCommandInvocationSet,
+    GuardCommandProjection, GuardManagedArtifact, GuardManifest, ManagedFileExpectation,
+    PolicyHash, GUARD_MANIFEST_SCHEMA,
 };
+use volicord_types::ids::{
+    AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, GuardInstallationId, ProjectId,
+};
+use volicord_types::integration_revision::McpRuntimeSessionSource;
+use volicord_types::values::{GuardHookPhase, HostKind, IntegrationProfile};
+use volicord_types::TypeBoundary;
 
 pub mod fixtures {
     /// Placement marker for future shared fixtures.
@@ -513,9 +517,10 @@ fn transition_test_connection_mode_with_context(
     let guard_manifests = installations
         .into_iter()
         .map(|installation| {
-            let mut manifest =
-                volicord_types::guard_manifest_from_json(&installation.manifest_json)
-                    .expect("fixture Guard manifest");
+            let mut manifest = volicord_types::guard_manifest::guard_manifest_from_json(
+                &installation.manifest_json,
+            )
+            .expect("fixture Guard manifest");
             manifest.integration_revision = candidate_revision.clone();
             ConnectionModeGuardManifestRebind {
                 guard_installation_id: installation.guard_installation_id,
@@ -765,23 +770,29 @@ pub mod core_fixtures {
     use std::{error::Error, fs, path::Path};
 
     use volicord_store::StoreError;
-    use volicord_types::{
-        AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactId,
-        ArtifactInput, ArtifactInputId, ArtifactInputSourceKind, BaselineRef, ChangeUnitId,
-        ChangeUnitOperation, ChangeUnitUpdate, CheckCloseRequest, CloseIntent, CloseMutationIntent,
-        CloseReason, CloseTaskRequest, EvidenceAssuranceLevel, EvidenceClaimId,
-        EvidenceCoverageUpdate, EvidenceCoverageUpdateState, EvidenceRelevanceStatus,
-        EvidenceRequirement, EvidenceSourceKind, EvidenceTarget, EvidenceUpdateProvenance,
-        IdempotencyKey, InitialScope, IntakeRequest, JsonObject, JudgmentKind,
-        JudgmentPresentation, ObservedChanges, PrepareWriteRequest, ProjectId, RecordId,
-        RecordRunRequest, RedactionState, RequestId, RequestUserActionRequest,
-        RequestedControlLevel, RequestedMode, RequiredNullable, ResolveUserActionRequest,
-        ResumePolicy, RunKind, ScopeUpdate, SensitiveActionScope, StageArtifactRequest,
-        StagedArtifactHandle, StateRecordKind, StateRecordRef, StatusInclude, StatusRequest,
-        TaskId, ToolEnvelope, UpdateScopeRequest, UserActionChoiceDraft, UserActionContext,
-        UserActionDraft, UserActionEvidenceObservationDraft, UserActionOptionId,
-        UserActionOptionInput, UserActionRequestId, UserActionRequiredFor,
-        UserActionResolutionInput, WriteTicketId,
+    use volicord_types::ids::{
+        ArtifactId, ArtifactInputId, BaselineRef, ChangeUnitId, EvidenceClaimId, IdempotencyKey,
+        ProjectId, RecordId, RequestId, TaskId, UserActionOptionId, UserActionRequestId,
+        WriteTicketId,
+    };
+    use volicord_types::methods::{
+        ChangeUnitUpdate, CheckCloseRequest, CloseTaskRequest, InitialScope, IntakeRequest,
+        PrepareWriteRequest, RecordRunRequest, RequestUserActionRequest, ResolveUserActionRequest,
+        ScopeUpdate, StageArtifactRequest, StatusInclude, StatusRequest, UpdateScopeRequest,
+    };
+    use volicord_types::schema::{
+        AcceptanceCriterionInput, AcceptanceCriterionReplacement, AcceptedRiskInput, ArtifactInput,
+        EvidenceCoverageUpdate, EvidenceTarget, EvidenceUpdateProvenance, JsonObject,
+        ObservedChanges, RequiredNullable, SensitiveActionScope, StagedArtifactHandle,
+        StateRecordRef, ToolEnvelope, UserActionChoiceDraft, UserActionContext, UserActionDraft,
+        UserActionEvidenceObservationDraft, UserActionOptionInput, UserActionResolutionInput,
+    };
+    use volicord_types::values::{
+        ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseMutationIntent,
+        CloseReason, EvidenceAssuranceLevel, EvidenceCoverageUpdateState, EvidenceRelevanceStatus,
+        EvidenceRequirement, EvidenceSourceKind, JudgmentKind, JudgmentPresentation,
+        RedactionState, RequestedControlLevel, RequestedMode, ResumePolicy, RunKind,
+        StateRecordKind, UserActionRequiredFor,
     };
 
     use super::*;
@@ -2387,7 +2398,7 @@ pub mod core_fixtures {
     /// Builds an accepted-risk input for close-readiness fixtures.
     pub fn accepted_risk(summary: &str) -> AcceptedRiskInput {
         AcceptedRiskInput {
-            risk_id: volicord_types::RiskId::new("risk_visible_001"),
+            risk_id: volicord_types::ids::RiskId::new("risk_visible_001"),
             summary: summary.to_owned(),
             consequence: "The named residual risk remains after close.".to_owned(),
             related_refs: Vec::new(),
@@ -2432,10 +2443,10 @@ mod tests {
         core_fixtures::{choice_user_action_resolution, observation_user_action_resolution},
         disposable_runtime_home, shared_type_boundary, TempRuntimeHome,
     };
-    use volicord_types::{
-        ArtifactId, EvidenceClaimId, EvidenceRelevanceStatus, EvidenceTarget, TypeBoundary,
-        UserActionResolutionInput,
-    };
+    use volicord_types::ids::{ArtifactId, EvidenceClaimId};
+    use volicord_types::schema::{EvidenceTarget, UserActionResolutionInput};
+    use volicord_types::values::EvidenceRelevanceStatus;
+    use volicord_types::TypeBoundary;
 
     #[test]
     fn disposable_runtime_home_stays_under_system_temp() {

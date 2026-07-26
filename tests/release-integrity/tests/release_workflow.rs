@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, fs, path::Path};
 
 use serde_yaml::Value;
-use volicord_types::ReleaseTargetTriple;
+use volicord_types::release_target::ReleaseTargetTriple;
 
 const RELEASE_SMOKE_ACTION: &str = "./.github/actions/volicord-release-smoke";
 const RELEASE_SMOKE_INPUT: &str = "binary-path";

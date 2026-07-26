@@ -5,10 +5,10 @@ use std::{cell::RefCell, collections::BTreeSet};
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use volicord_types::{
-    canonical_json_sha256, canonical_json_string, AcceptancePolicy, RequestedControlLevel,
-    TaskControlLevel, TaskMode, UtcTimestamp, WORKFLOW_POLICY_CONTRACT_ID,
-    WRITE_AUTHORITY_CONTRACT_ID,
+use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::schema::{WORKFLOW_POLICY_CONTRACT_ID, WRITE_AUTHORITY_CONTRACT_ID};
+use volicord_types::values::{
+    AcceptancePolicy, RequestedControlLevel, TaskControlLevel, TaskMode, UtcTimestamp,
 };
 
 use crate::{
@@ -1229,7 +1229,8 @@ mod tests {
 
     use serde_json::json;
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{canonical_json_sha256, canonical_json_string, ProjectId};
+    use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+    use volicord_types::ids::ProjectId;
 
     use super::*;
     use crate::{core_pipeline::CoreStorageMutation, mutation::TestRuntimeHomeAdmission};

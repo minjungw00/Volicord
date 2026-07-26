@@ -6,11 +6,12 @@ use std::{
 };
 
 use rusqlite::{Connection, Transaction};
-use volicord_types::{
-    CurrentDiagnosticFinding, DiagnosticFinding, DiagnosticFindingId, IntegrationRevision,
-    OccurrenceDiagnosticFinding, StoredDiagnosticGraph, StoredDiagnosticGraphEntry,
-    MAX_DIAGNOSTIC_FINDINGS, MAX_DIAGNOSTIC_ROOT_CAUSES,
+use volicord_types::diagnostics::{
+    CurrentDiagnosticFinding, DiagnosticFinding, DiagnosticFindingId, OccurrenceDiagnosticFinding,
+    StoredDiagnosticGraph, StoredDiagnosticGraphEntry, MAX_DIAGNOSTIC_FINDINGS,
+    MAX_DIAGNOSTIC_ROOT_CAUSES,
 };
+use volicord_types::integration_revision::IntegrationRevision;
 
 use crate::{
     agent_connections::raw_agent_connection_record_from_conn,

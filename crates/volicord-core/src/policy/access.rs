@@ -1,8 +1,9 @@
 use serde_json::{Map, Value};
 use volicord_store::core_pipeline::ProjectStateHeader;
-use volicord_types::{
-    canonical_git_object_id, is_canonical_sha256_digest, ActorSource, ErrorCode, OperationCategory,
-    ToolEnvelope, ToolError, ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE,
+use volicord_types::canonical::{canonical_git_object_id, is_canonical_sha256_digest};
+use volicord_types::schema::{ToolEnvelope, ToolError};
+use volicord_types::values::{
+    ActorSource, ErrorCode, OperationCategory, ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE,
 };
 
 use crate::pipeline::{tool_error, InvocationContext, MethodPolicy, VerifiedInvocationContext};
@@ -223,7 +224,7 @@ fn actor_source_mismatch_error(
 mod tests {
     use super::{validate_git_workspace_context, verified_binding_basis};
     use crate::pipeline::{GitWorkspaceContext, InvocationContext};
-    use volicord_types::ProjectId;
+    use volicord_types::ids::ProjectId;
 
     fn workspace_context(head_sha: &str) -> GitWorkspaceContext {
         GitWorkspaceContext {
@@ -266,15 +267,15 @@ mod tests {
     fn caller_label_cannot_authorize_without_a_validated_session() {
         let invocation = InvocationContext::new(
             ProjectId::new("project-a"),
-            volicord_types::ActorSource::agent_connection("connection-a"),
-            volicord_types::OperationCategory::Read,
+            volicord_types::values::ActorSource::agent_connection("connection-a"),
+            volicord_types::values::OperationCategory::Read,
             "mcp_stdio_connection_binding",
         );
 
         let error = verified_binding_basis(&invocation).unwrap_err();
         assert_eq!(
             error.code,
-            volicord_types::ErrorCode::InvocationContextMismatch
+            volicord_types::values::ErrorCode::InvocationContextMismatch
         );
         assert_eq!(
             error
@@ -290,15 +291,15 @@ mod tests {
     fn alternate_agent_connection_label_cannot_bypass_a_validated_session() {
         let invocation = InvocationContext::new(
             ProjectId::new("project-a"),
-            volicord_types::ActorSource::agent_connection("connection-a"),
-            volicord_types::OperationCategory::Read,
+            volicord_types::values::ActorSource::agent_connection("connection-a"),
+            volicord_types::values::OperationCategory::Read,
             "nonstatic-caller-controlled-label",
         );
 
         let error = verified_binding_basis(&invocation).unwrap_err();
         assert_eq!(
             error.code,
-            volicord_types::ErrorCode::InvocationContextMismatch
+            volicord_types::values::ErrorCode::InvocationContextMismatch
         );
         assert_eq!(
             error
@@ -316,8 +317,8 @@ mod tests {
             crate::agent_session::validated_agent_session_for_test("connection-a", "project-a");
         let invocation = InvocationContext::new(
             ProjectId::new("project-a"),
-            volicord_types::ActorSource::agent_connection("connection-a"),
-            volicord_types::OperationCategory::Read,
+            volicord_types::values::ActorSource::agent_connection("connection-a"),
+            volicord_types::values::OperationCategory::Read,
             "",
         )
         .with_validated_agent_session(validated);

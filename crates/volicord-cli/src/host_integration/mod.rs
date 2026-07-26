@@ -5,8 +5,9 @@ use std::{
 
 use serde::Serialize;
 use volicord_mcp::ManagedMcpLaunchSpec;
-use volicord_types::GuardHookPhase;
-pub use volicord_types::{ConnectionIntent, HostKind, HostScope};
+pub use volicord_types::host_configuration::{ConnectionIntent, HostScope};
+use volicord_types::values::GuardHookPhase;
+pub use volicord_types::values::HostKind;
 
 pub mod codex;
 pub mod config_edit;

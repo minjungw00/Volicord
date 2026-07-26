@@ -12,7 +12,8 @@ use volicord_store::{
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
 };
 use volicord_test_support::{core_fixtures::CoreFixture, transition_test_connection_mode};
-use volicord_types::{AgentConnectionMode, AgentToolId, MethodName};
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::{AgentConnectionMode, MethodName};
 
 #[test]
 fn workflow_tools_include_agent_workflow_and_read_tools_but_exclude_user_only() {

@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, path::Path};
 
-use volicord_types::{ChangeUnitEffectContract, ChangeUnitEffectKind};
+use volicord_types::schema::ChangeUnitEffectContract;
+use volicord_types::values::ChangeUnitEffectKind;
 
 use crate::policy::path::{normalize_product_paths, path_is_within, ProductPathError};
 

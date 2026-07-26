@@ -39,7 +39,7 @@ pub(super) fn finalize_check_graph(
             for finding_id in check.cause_finding_ids() {
                 if findings.iter().any(|finding| finding.id() == finding_id) {
                     roots.extend(
-                        volicord_types::diagnostic_root_cause_ids(
+                        volicord_types::diagnostics::diagnostic_root_cause_ids(
                             findings,
                             std::slice::from_ref(finding_id),
                             MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,

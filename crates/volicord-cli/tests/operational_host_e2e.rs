@@ -46,12 +46,16 @@ use volicord_store::operational_sessions::{
     McpRuntimeSessionStart,
 };
 use volicord_test_support::TempRuntimeHome;
-use volicord_types::{
-    guard_manifest_from_json, AgentConnectionMode, AgentToolId, DiagnosticFindingId,
-    GuardHookPhase, GuardManagedOwnership, GuardManifest, GuardProbeObservationStage,
-    GuardVerificationRepairReason, IntegrationVerificationWorkflowState, McpRuntimeSessionSource,
-    ToolVerificationRole,
+use volicord_types::diagnostics::DiagnosticFindingId;
+use volicord_types::guard_manifest::{
+    guard_manifest_from_json, GuardManagedOwnership, GuardManifest,
 };
+use volicord_types::integration_revision::McpRuntimeSessionSource;
+use volicord_types::integration_verification::{
+    GuardProbeObservationStage, GuardVerificationRepairReason, IntegrationVerificationWorkflowState,
+};
+use volicord_types::tool_names::{AgentToolId, ToolVerificationRole};
+use volicord_types::values::{AgentConnectionMode, GuardHookPhase};
 
 const FUTURE_VERSION: &str = "999.0.0";
 const NEXT_FUTURE_VERSION: &str = "1000.0.0";
@@ -1633,7 +1637,7 @@ fn complete_managed_activation_journey_and_read_only_status() -> Result<(), Box<
     );
     assert_eq!(
         mismatch.severity(),
-        volicord_types::DiagnosticSeverity::Warning
+        volicord_types::diagnostics::DiagnosticSeverity::Warning
     );
     assert_eq!(
         mismatch.facts().data()["actual_mcp_peer_client_info"]["version"],
@@ -1859,9 +1863,9 @@ fn local_process_and_configuration_failures_are_structured() -> Result<(), Box<d
         facts.get("bounded_stderr_omitted_bytes"),
         Some(&json!(1024))
     );
-    assert!(facts["bounded_stderr_excerpt"]
-        .as_str()
-        .is_some_and(|text| text.len() <= volicord_types::MAX_DIAGNOSTIC_FACT_STRING_BYTES));
+    assert!(facts["bounded_stderr_excerpt"].as_str().is_some_and(
+        |text| text.len() <= volicord_types::diagnostics::MAX_DIAGNOSTIC_FACT_STRING_BYTES
+    ));
     Ok(())
 }
 
@@ -2986,7 +2990,7 @@ impl OperationalFixture {
 
     fn run_guard_command(
         &self,
-        command_spec: &volicord_types::GuardCommand,
+        command_spec: &volicord_types::guard_manifest::GuardCommand,
         event: &Value,
     ) -> Result<support::binary_fixture::CapturedChildOutput, Box<dyn Error>> {
         self.run_guard_command_raw(command_spec, format!("{}\n", serde_json::to_string(event)?))
@@ -2994,7 +2998,7 @@ impl OperationalFixture {
 
     fn run_guard_command_raw(
         &self,
-        command_spec: &volicord_types::GuardCommand,
+        command_spec: &volicord_types::guard_manifest::GuardCommand,
         input: String,
     ) -> Result<support::binary_fixture::CapturedChildOutput, Box<dyn Error>> {
         let mut command = self.base_command(&command_spec.command, FUTURE_VERSION);

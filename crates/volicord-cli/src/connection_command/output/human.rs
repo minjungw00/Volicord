@@ -2,10 +2,11 @@ use std::path::Path;
 
 use serde_json::Value;
 use volicord_platform_fs::DirectoryEntryDurability;
-use volicord_types::{
-    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus, HostKind,
-    HostScope,
+use volicord_types::connection_verification::{
+    ConnectionCheck, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus,
 };
+use volicord_types::host_configuration::HostScope;
+use volicord_types::values::HostKind;
 
 use super::report::{
     projected_activation_plan, projected_check_root_cause_ids, projected_root_cause_ids,
@@ -801,12 +802,13 @@ mod tests {
         DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalPhase,
         DirectoryTreeTargetState,
     };
-    use volicord_types::{
+    use volicord_types::connection_verification::{
         derive_integration_activation_state, ActivationStep, ActivationStepId, ConnectionCheck,
         ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus,
         ConnectionVerificationReport, HookActivationState, IntegrationActivationPlan,
-        IntegrationActivationState, UtcTimestamp,
+        IntegrationActivationState,
     };
+    use volicord_types::values::UtcTimestamp;
 
     use crate::connection_command::{
         args::{HumanOutputDetail, OutputFormat},
@@ -1838,7 +1840,8 @@ mod tests {
         );
 
         let cause =
-            volicord_types::DiagnosticFindingId::parse("finding.initialize_failed").unwrap();
+            volicord_types::diagnostics::DiagnosticFindingId::parse("finding.initialize_failed")
+                .unwrap();
         let failed = check(
             ConnectionCheckKind::HostSession,
             ConnectionCheckStatus::Failed,

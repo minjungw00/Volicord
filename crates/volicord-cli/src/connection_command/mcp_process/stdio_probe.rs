@@ -20,7 +20,8 @@ use volicord_store::{
     },
     RuntimeHomeMutationContext,
 };
-use volicord_types::{AgentConnectionMode, AgentToolId};
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::AgentConnectionMode;
 
 use crate::connection_command::managed_host_round_trip_tool;
 

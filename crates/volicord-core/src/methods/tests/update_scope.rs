@@ -315,14 +315,16 @@ fn semantic_noop_scope_update_does_not_increment_revisions() -> Result<(), Box<d
         ChangeUnitOperation::KeepCurrent,
         "  Initial current scope.  ",
     );
-    request.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
-        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
-            active_acceptance_criterion_id(&harness, &task_id)?,
-        ))
-        .into(),
-        statement: "The scoped behavior is represented.".to_owned(),
-        evidence_requirement: EvidenceRequirement::NotRequired,
-    }])
+    request.acceptance_criteria = Some(vec![
+        volicord_types::schema::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(volicord_types::ids::AcceptanceCriterionId::new(
+                active_acceptance_criterion_id(&harness, &task_id)?,
+            ))
+            .into(),
+            statement: "The scoped behavior is represented.".to_owned(),
+            evidence_requirement: EvidenceRequirement::NotRequired,
+        },
+    ])
     .into();
     let response = harness
         .service
@@ -377,9 +379,9 @@ fn criterion_replacement_preserves_identity_order_and_retires_omissions(
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "criterion_replacement")?;
-    let retained_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
-        &harness, &task_id,
-    )?);
+    let retained_id = volicord_types::ids::AcceptanceCriterionId::new(
+        active_acceptance_criterion_id(&harness, &task_id)?,
+    );
 
     let mut seed_request = update_scope_request(
         "req_criterion_replacement_seed",
@@ -391,12 +393,12 @@ fn criterion_replacement_preserves_identity_order_and_retires_omissions(
         "Initial current scope.",
     );
     seed_request.acceptance_criteria = Some(vec![
-        volicord_types::AcceptanceCriterionReplacement {
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: Some(retained_id.clone()).into(),
             statement: "Retained criterion before revision.".to_owned(),
             evidence_requirement: EvidenceRequirement::Optional,
         },
-        volicord_types::AcceptanceCriterionReplacement {
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: None.into(),
             statement: "Criterion omitted by the next replacement.".to_owned(),
             evidence_requirement: EvidenceRequirement::Required,
@@ -440,17 +442,17 @@ fn criterion_replacement_preserves_identity_order_and_retires_omissions(
         "Initial current scope.",
     );
     replacement_request.acceptance_criteria = Some(vec![
-        volicord_types::AcceptanceCriterionReplacement {
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: None.into(),
             statement: "New first criterion.".to_owned(),
             evidence_requirement: EvidenceRequirement::Optional,
         },
-        volicord_types::AcceptanceCriterionReplacement {
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: Some(retained_id.clone()).into(),
             statement: "Retained criterion after revision.".to_owned(),
             evidence_requirement: EvidenceRequirement::Required,
         },
-        volicord_types::AcceptanceCriterionReplacement {
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: None.into(),
             statement: "New final criterion.".to_owned(),
             evidence_requirement: EvidenceRequirement::NotRequired,
@@ -579,13 +581,14 @@ fn criterion_replacement_preserves_identity_order_and_retires_omissions(
         ChangeUnitOperation::KeepCurrent,
         "Initial current scope.",
     );
-    retired_reuse.acceptance_criteria =
-        Some(vec![volicord_types::AcceptanceCriterionReplacement {
+    retired_reuse.acceptance_criteria = Some(vec![
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: Some(omitted_id).into(),
             statement: "Retired identity must stay retired.".to_owned(),
             evidence_requirement: EvidenceRequirement::Required,
-        }])
-        .into();
+        },
+    ])
+    .into();
     let rejected = harness
         .service
         .update_scope(retired_reuse, invocation(OperationCategory::AgentWorkflow))?;
@@ -603,7 +606,7 @@ fn criterion_replacement_rejects_unknown_duplicate_and_cross_task_ids() -> Resul
 {
     let harness = MethodHarness::new()?;
     let (first_task_id, _) = create_task_with_change_unit(&harness, "criterion_id_rejections")?;
-    let first_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
+    let first_id = volicord_types::ids::AcceptanceCriterionId::new(active_acceptance_criterion_id(
         &harness,
         &first_task_id,
     )?);
@@ -618,14 +621,16 @@ fn criterion_replacement_rejects_unknown_duplicate_and_cross_task_ids() -> Resul
         ChangeUnitOperation::KeepCurrent,
         "Initial current scope.",
     );
-    unknown.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
-        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
-            "criterion_unknown",
-        ))
-        .into(),
-        statement: "Unknown criterion identity.".to_owned(),
-        evidence_requirement: EvidenceRequirement::Required,
-    }])
+    unknown.acceptance_criteria = Some(vec![
+        volicord_types::schema::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(volicord_types::ids::AcceptanceCriterionId::new(
+                "criterion_unknown",
+            ))
+            .into(),
+            statement: "Unknown criterion identity.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Required,
+        },
+    ])
     .into();
     let unknown_response = harness
         .service
@@ -647,12 +652,12 @@ fn criterion_replacement_rejects_unknown_duplicate_and_cross_task_ids() -> Resul
         "Initial current scope.",
     );
     duplicate.acceptance_criteria = Some(vec![
-        volicord_types::AcceptanceCriterionReplacement {
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: Some(first_id.clone()).into(),
             statement: "First duplicate occurrence.".to_owned(),
             evidence_requirement: EvidenceRequirement::Optional,
         },
-        volicord_types::AcceptanceCriterionReplacement {
+        volicord_types::schema::AcceptanceCriterionReplacement {
             acceptance_criterion_id: Some(first_id.clone()).into(),
             statement: "Second duplicate occurrence.".to_owned(),
             evidence_requirement: EvidenceRequirement::Required,
@@ -703,11 +708,13 @@ fn criterion_replacement_rejects_unknown_duplicate_and_cross_task_ids() -> Resul
         ChangeUnitOperation::KeepCurrent,
         "Second Task current scope.",
     );
-    cross_task.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
-        acceptance_criterion_id: Some(first_id).into(),
-        statement: "Cross-Task identity reuse.".to_owned(),
-        evidence_requirement: EvidenceRequirement::Required,
-    }])
+    cross_task.acceptance_criteria = Some(vec![
+        volicord_types::schema::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(first_id).into(),
+            statement: "Cross-Task identity reuse.".to_owned(),
+            evidence_requirement: EvidenceRequirement::Required,
+        },
+    ])
     .into();
     let cross_task_response = harness
         .service
@@ -976,7 +983,7 @@ fn scope_decision_for_other_operation_cannot_authorize_scope_update() -> Result<
     set_user_action_required_for(
         &harness,
         &decision_id,
-        &[volicord_types::UserActionRequiredFor::PrepareWrite],
+        &[volicord_types::values::UserActionRequiredFor::PrepareWrite],
     )?;
     let before = harness.counts()?;
     let mut request = update_scope_request(
@@ -1219,25 +1226,25 @@ fn update_scope_blocks_only_matching_pending_user_actions_without_effect(
     let cases = [
         (
             JudgmentKind::ProductDecision,
-            volicord_types::UserActionRequiredFor::ScopeUpdate,
+            volicord_types::values::UserActionRequiredFor::ScopeUpdate,
             true,
             "matching_product",
         ),
         (
             JudgmentKind::ScopeDecision,
-            volicord_types::UserActionRequiredFor::ScopeUpdate,
+            volicord_types::values::UserActionRequiredFor::ScopeUpdate,
             true,
             "matching_scope",
         ),
         (
             JudgmentKind::ProductDecision,
-            volicord_types::UserActionRequiredFor::Informational,
+            volicord_types::values::UserActionRequiredFor::Informational,
             false,
             "informational",
         ),
         (
             JudgmentKind::ProductDecision,
-            volicord_types::UserActionRequiredFor::CloseComplete,
+            volicord_types::values::UserActionRequiredFor::CloseComplete,
             false,
             "nonmatching_close",
         ),
@@ -1332,7 +1339,8 @@ fn material_scope_update_invalidates_scope_decisions_atomically() -> Result<(), 
         Some(&change_unit_id),
         JudgmentKind::ScopeDecision,
     );
-    pending_request.required_for = vec![volicord_types::UserActionRequiredFor::Informational];
+    pending_request.required_for =
+        vec![volicord_types::values::UserActionRequiredFor::Informational];
     let pending = harness.service.request_user_action(
         pending_request,
         invocation(OperationCategory::AgentWorkflow),

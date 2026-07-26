@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, path::Path};
 use volicord_host_contract::McpServerKey;
-use volicord_types::{GuardCommandSet, GuardHookPhase};
+use volicord_types::guard_manifest::GuardCommandSet;
+use volicord_types::values::GuardHookPhase;
 
 use crate::{
     guard_integration::{

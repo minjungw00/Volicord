@@ -255,7 +255,7 @@ fn record_run_rejects_old_ticket_while_policy_control_reevaluation_is_pending(
     )?;
     let ticket_id = response_record_id(&prepared.response_value, "write_ticket_ref");
     let marker_fingerprint = format!("sha256:{}", "c".repeat(64));
-    let metadata_json = volicord_types::canonical_json_string(&json!({
+    let metadata_json = volicord_types::canonical::canonical_json_string(&json!({
         "policy_control_reevaluation": {
             "policy_version": 2,
             "policy_fingerprint": marker_fingerprint,
@@ -316,7 +316,7 @@ fn non_product_category_signal_requires_final_without_manufacturing_sensitive_co
     request.kind = RunKind::Direct;
     request.observed_changes.sensitive_categories =
         vec!["network".to_owned(), "secret_access".to_owned()];
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "The non-product sensitive effects were recorded.".to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -471,7 +471,8 @@ fn explicit_sensitive_non_product_run_requires_and_preserves_exact_approval_basi
         JudgmentKind::SensitiveApproval,
     );
     approval_request.expires_at = Some(expires_at.clone()).into();
-    let volicord_types::UserActionDraft::Choice(choice) = &mut approval_request.action else {
+    let volicord_types::schema::UserActionDraft::Choice(choice) = &mut approval_request.action
+    else {
         unreachable!("sensitive approval fixture is choice-shaped")
     };
     choice.sensitive_action_scope = Some(sensitive_scope(
@@ -560,7 +561,7 @@ fn explicit_sensitive_non_product_run_requires_and_preserves_exact_approval_basi
     run.kind = RunKind::Direct;
     run.write_ticket_id = Some(WriteTicketId::new(&write_ticket_id)).into();
     run.performed_operation = Some("  local_sensitive_step  ".to_owned()).into();
-    run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    run.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "The exact non-product sensitive action was recorded.".to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -622,17 +623,17 @@ fn record_run_blocks_only_matching_pending_observation_actions_without_effect(
 ) -> Result<(), Box<dyn Error>> {
     for (required_for, should_block, suffix) in [
         (
-            volicord_types::UserActionRequiredFor::RecordRun,
+            volicord_types::values::UserActionRequiredFor::RecordRun,
             true,
             "matching",
         ),
         (
-            volicord_types::UserActionRequiredFor::Informational,
+            volicord_types::values::UserActionRequiredFor::Informational,
             false,
             "informational",
         ),
         (
-            volicord_types::UserActionRequiredFor::CloseComplete,
+            volicord_types::values::UserActionRequiredFor::CloseComplete,
             false,
             "nonmatching_close",
         ),
@@ -806,7 +807,8 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
                 Some(&change_unit_id),
                 JudgmentKind::SensitiveApproval,
             );
-            let volicord_types::UserActionDraft::Choice(choice) = &mut ticket_approval.action
+            let volicord_types::schema::UserActionDraft::Choice(choice) =
+                &mut ticket_approval.action
             else {
                 unreachable!("sensitive approval fixture is choice-shaped")
             };
@@ -862,8 +864,8 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
             Some(&change_unit_id),
             JudgmentKind::SensitiveApproval,
         );
-        pending.required_for = vec![volicord_types::UserActionRequiredFor::RecordRun];
-        let volicord_types::UserActionDraft::Choice(choice) = &mut pending.action else {
+        pending.required_for = vec![volicord_types::values::UserActionRequiredFor::RecordRun];
+        let volicord_types::schema::UserActionDraft::Choice(choice) = &mut pending.action else {
             unreachable!("sensitive approval fixture is choice-shaped")
         };
         choice.sensitive_action_scope = Some(sensitive_scope(
@@ -1034,7 +1036,7 @@ fn current_compatible_run_ref_can_enter_close_basis() -> Result<(), Box<dyn Erro
         &change_unit_id,
     );
     second.run_id = Some(RunId::new("run_current_ref_second")).into();
-    second.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    second.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Current prior Run can support this close basis.".to_owned(),
         result_refs: vec![test_state_record_ref(
             StateRecordKind::Run,
@@ -1113,7 +1115,7 @@ fn record_run_rejects_superseded_change_unit_run_ref_without_effect() -> Result<
         &task_id,
         &replacement_change_unit_id,
     );
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Old unit Run must not become current.".to_owned(),
         result_refs: vec![test_state_record_ref(
             StateRecordKind::Run,
@@ -1205,7 +1207,7 @@ fn record_run_rejects_baseline_incompatible_run_ref_without_effect() -> Result<(
         &task_id,
         &change_unit_id,
     );
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Baseline-mismatched Run must not become current.".to_owned(),
         result_refs: vec![test_state_record_ref(
             StateRecordKind::Run,
@@ -1264,7 +1266,7 @@ fn historical_verified_artifact_reuse_requires_new_current_run() -> Result<(), B
         &task_id,
         &replacement_change_unit_id,
     );
-    direct_old_run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    direct_old_run.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Old Run must not be reused directly.".to_owned(),
         result_refs: vec![test_state_record_ref(
             StateRecordKind::Run,
@@ -1301,7 +1303,7 @@ fn historical_verified_artifact_reuse_requires_new_current_run() -> Result<(), B
     current_reuse.evidence_updates = vec![supported_evidence_update(
         "Historical verified artifact reused by a current Run.",
     )];
-    current_reuse.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    current_reuse.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Artifact reuse is recorded by a current Run.".to_owned(),
         result_refs: vec![test_state_record_ref(
             StateRecordKind::Artifact,
@@ -1354,7 +1356,7 @@ fn record_run_post_commit_close_projection_matches_immediate_status() -> Result<
         &change_unit_id,
     );
     request.evidence_updates = vec![supported_evidence_update("Close claim supported.")];
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Close claim supported.".to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -1432,7 +1434,7 @@ fn record_run_without_evidence_updates_separates_result_state_and_close_evidence
         supported_evidence_update("Required retained evidence."),
         &criterion_id,
     )];
-    evidence_run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    evidence_run.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "First Run records current required evidence.".to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -1459,7 +1461,7 @@ fn record_run_without_evidence_updates_separates_result_state_and_close_evidence
         &task_id,
         &change_unit_id,
     );
-    no_update_run.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    no_update_run.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Second Run records a basis without an evidence update.".to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -1557,7 +1559,7 @@ fn record_run_promoted_artifact_close_projection_matches_immediate_status(
         Some(claim),
     )];
     request.evidence_updates = vec![supported_evidence_update(claim)];
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: claim.to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -1720,7 +1722,7 @@ fn record_run_rejects_unsupported_close_basis_ref_kinds_without_effect(
             &task_id,
             &change_unit_id,
         );
-        request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
             result_summary: "Unsupported refs must not enter close authority.".to_owned(),
             result_refs: vec![test_state_record_ref(
                 record_kind,
@@ -1774,7 +1776,7 @@ fn record_run_rejects_nonexistent_allowed_close_basis_refs_without_effect(
             &task_id,
             &change_unit_id,
         );
-        request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
             result_summary: "Missing allowed refs still need stored records.".to_owned(),
             result_refs: vec![test_state_record_ref(
                 record_kind,
@@ -1839,7 +1841,7 @@ fn record_run_rejects_cross_project_artifact_and_cross_task_run_refs_without_eff
             &change_unit_id,
         );
         request.run_id = Some(RunId::new(format!("run_cross_ref_{index}"))).into();
-        request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+        request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
             result_summary: "Cross-owner refs must not enter close authority.".to_owned(),
             result_refs: vec![record_ref],
             residual_risks: Vec::new(),
@@ -1894,7 +1896,7 @@ fn record_run_rejects_corrupt_artifact_close_basis_ref_without_effect() -> Resul
         &task_id,
         &change_unit_id,
     );
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Unverified artifact must not enter close authority.".to_owned(),
         result_refs: vec![test_state_record_ref(
             StateRecordKind::Artifact,
@@ -1970,7 +1972,7 @@ fn record_run_rejects_noncurrent_evidence_summary_close_basis_ref_without_effect
         &task_id,
         &change_unit_id,
     );
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Old evidence summary must not enter current close authority.".to_owned(),
         result_refs: vec![test_state_record_ref(
             StateRecordKind::EvidenceSummary,
@@ -2030,7 +2032,7 @@ fn record_run_canonicalizes_deduplicates_and_adds_current_close_basis_refs(
     let mut risk = residual_risk_input("Caller-versioned risk source.");
     risk.acceptance_required = false;
     risk.source_refs = vec![future_run_ref.clone(), past_run_ref.clone()];
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Canonical refs are stored.".to_owned(),
         result_refs: vec![future_run_ref, past_run_ref],
         residual_risks: vec![risk],
@@ -2667,14 +2669,16 @@ fn record_run_ignores_unrelated_state_version_increment() -> Result<(), Box<dyn 
         ChangeUnitOperation::KeepCurrent,
         "Initial current scope.",
     );
-    touch.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
-        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
-            active_acceptance_criterion_id(&harness, &task_id)?,
-        ))
-        .into(),
-        statement: "The scoped behavior is represented.".to_owned(),
-        evidence_requirement: EvidenceRequirement::NotRequired,
-    }])
+    touch.acceptance_criteria = Some(vec![
+        volicord_types::schema::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(volicord_types::ids::AcceptanceCriterionId::new(
+                active_acceptance_criterion_id(&harness, &task_id)?,
+            ))
+            .into(),
+            statement: "The scoped behavior is represented.".to_owned(),
+            evidence_requirement: EvidenceRequirement::NotRequired,
+        },
+    ])
     .into();
     harness
         .service
@@ -2749,14 +2753,16 @@ fn record_run_ticket_survives_unrelated_committed_scope_noop() -> Result<(), Box
         ChangeUnitOperation::KeepCurrent,
         "Initial current scope.",
     );
-    touch.acceptance_criteria = Some(vec![volicord_types::AcceptanceCriterionReplacement {
-        acceptance_criterion_id: Some(volicord_types::AcceptanceCriterionId::new(
-            active_acceptance_criterion_id(&harness, &task_id)?,
-        ))
-        .into(),
-        statement: "The scoped behavior is represented.".to_owned(),
-        evidence_requirement: EvidenceRequirement::NotRequired,
-    }])
+    touch.acceptance_criteria = Some(vec![
+        volicord_types::schema::AcceptanceCriterionReplacement {
+            acceptance_criterion_id: Some(volicord_types::ids::AcceptanceCriterionId::new(
+                active_acceptance_criterion_id(&harness, &task_id)?,
+            ))
+            .into(),
+            statement: "The scoped behavior is represented.".to_owned(),
+            evidence_requirement: EvidenceRequirement::NotRequired,
+        },
+    ])
     .into();
     harness
         .service
@@ -3170,7 +3176,8 @@ fn record_run_rejects_expired_sensitive_approval_basis_without_consumption(
     );
     let expires_at = UtcTimestamp::parse("2026-06-18T00:05:00Z")?;
     approval_request.expires_at = Some(expires_at.clone()).into();
-    let volicord_types::UserActionDraft::Choice(choice) = &mut approval_request.action else {
+    let volicord_types::schema::UserActionDraft::Choice(choice) = &mut approval_request.action
+    else {
         unreachable!("sensitive approval fixture is choice-shaped")
     };
     choice
@@ -3293,18 +3300,24 @@ fn record_run_promotes_staged_artifact_and_updates_evidence() -> Result<(), Box<
         tool_metadata: Map::from_iter([("validator".to_owned(), json!("search-count"))]),
         input_refs: Vec::new(),
         source_refs: vec![
-            volicord_types::SourceRef::ExternalUri(volicord_types::ExternalUriSource {
-                uri: "https://example.invalid/search-spec".to_owned(),
-                retrieved_at: volicord_types::UtcTimestamp::parse("2026-06-17T23:59:00Z")?,
-                content_sha256: "d".repeat(64),
-            }),
-            volicord_types::SourceRef::UserContext(volicord_types::UserContextSource {
-                context_id: "message_search_requirement".to_owned(),
-            }),
+            volicord_types::schema::SourceRef::ExternalUri(
+                volicord_types::schema::ExternalUriSource {
+                    uri: "https://example.invalid/search-spec".to_owned(),
+                    retrieved_at: volicord_types::values::UtcTimestamp::parse(
+                        "2026-06-17T23:59:00Z",
+                    )?,
+                    content_sha256: "d".repeat(64),
+                },
+            ),
+            volicord_types::schema::SourceRef::UserContext(
+                volicord_types::schema::UserContextSource {
+                    context_id: "message_search_requirement".to_owned(),
+                },
+            ),
         ],
         output_artifact_refs: Vec::new(),
         limitations: vec!["External tool output is not product correctness proof.".to_owned()],
-        observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
+        observed_at: volicord_types::values::UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
     }];
     let response = harness
         .service
@@ -3508,7 +3521,7 @@ fn record_run_observations_derive_provenance_and_actor_fail_closed() -> Result<(
                 source_refs: Vec::new(),
                 output_artifact_refs: Vec::new(),
                 limitations: Vec::new(),
-                observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")
+                observed_at: volicord_types::values::UtcTimestamp::parse("2026-06-18T00:00:00Z")
                     .expect("fixture timestamp should parse"),
             },
         )
@@ -3544,9 +3557,9 @@ fn user_channel_observation_is_strong_and_reuse_revalidates_its_authority_chain(
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "user_evidence_authority")?;
-    let criterion_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
-        &harness, &task_id,
-    )?);
+    let criterion_id = volicord_types::ids::AcceptanceCriterionId::new(
+        active_acceptance_criterion_id(&harness, &task_id)?,
+    );
     set_active_acceptance_criterion_requirement(&harness, &task_id, EvidenceRequirement::Required)?;
     let (after_artifact, artifact_ref) = promote_artifact_for_record_run(
         &harness,
@@ -3600,7 +3613,7 @@ fn user_channel_observation_is_strong_and_reuse_revalidates_its_authority_chain(
         source_refs: Vec::new(),
         output_artifact_refs: vec![artifact_ref.clone()],
         limitations: Vec::new(),
-        observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
+        observed_at: volicord_types::values::UtcTimestamp::parse("2026-06-18T00:00:00Z")?,
     }];
     record.close_assessment = Some(close_assessment_with_risks(
         "User-observed evidence is current.",
@@ -3729,7 +3742,7 @@ fn user_channel_observation_preserves_relevance_resolution_time_and_supported_on
         enable_record_run_capabilities(&harness)?;
         let (task_id, change_unit_id) =
             create_task_with_change_unit(&harness, &format!("user_relevance_{suffix}"))?;
-        let criterion_id = volicord_types::AcceptanceCriterionId::new(
+        let criterion_id = volicord_types::ids::AcceptanceCriterionId::new(
             active_acceptance_criterion_id(&harness, &task_id)?,
         );
         set_active_acceptance_criterion_requirement(
@@ -3798,7 +3811,7 @@ fn user_channel_observation_preserves_relevance_resolution_time_and_supported_on
             source_refs: Vec::new(),
             output_artifact_refs: vec![artifact_ref.clone()],
             limitations: Vec::new(),
-            observed_at: volicord_types::UtcTimestamp::parse(caller_observed_at)?,
+            observed_at: volicord_types::values::UtcTimestamp::parse(caller_observed_at)?,
         }];
         record.close_assessment = Some(close_assessment_with_risks(
             &format!("User-observed {suffix} evidence is preserved."),
@@ -3965,9 +3978,9 @@ fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effe
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "user_evidence_exact_artifacts")?;
-    let criterion_id = volicord_types::AcceptanceCriterionId::new(active_acceptance_criterion_id(
-        &harness, &task_id,
-    )?);
+    let criterion_id = volicord_types::ids::AcceptanceCriterionId::new(
+        active_acceptance_criterion_id(&harness, &task_id)?,
+    );
     set_active_acceptance_criterion_requirement(&harness, &task_id, EvidenceRequirement::Required)?;
     let (after_first_artifact, first_artifact_ref) = promote_artifact_for_record_run(
         &harness,
@@ -3988,7 +4001,7 @@ fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effe
     };
     let artifact_refs = vec![first_artifact_ref, second_artifact_ref];
     let requested = harness.service.request_user_action(
-        volicord_types::RequestUserActionRequest {
+        volicord_types::methods::RequestUserActionRequest {
             envelope: envelope(
                 "req_user_action_observation_exact_artifacts",
                 Some("idem_user_action_observation_exact_artifacts"),
@@ -3998,8 +4011,8 @@ fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effe
             ),
             task_id: TaskId::new(&task_id),
             change_unit_id: Some(ChangeUnitId::new(&change_unit_id)).into(),
-            action: volicord_types::UserActionDraft::EvidenceObservation(
-                volicord_types::UserActionEvidenceObservationDraft {
+            action: volicord_types::schema::UserActionDraft::EvidenceObservation(
+                volicord_types::schema::UserActionEvidenceObservationDraft {
                     question: "Do these exact artifacts support the selected target?".to_owned(),
                     context_summary: "The user must inspect both exact candidate artifacts."
                         .to_owned(),
@@ -4010,7 +4023,7 @@ fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effe
                         .collect(),
                 },
             ),
-            required_for: vec![volicord_types::UserActionRequiredFor::RecordRun],
+            required_for: vec![volicord_types::values::UserActionRequiredFor::RecordRun],
             expires_at: None.into(),
         },
         invocation(OperationCategory::AgentWorkflow),
@@ -4018,7 +4031,7 @@ fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effe
     let user_action_request_id =
         response_record_id(&requested.response_value, "user_action_request_ref");
     let resolved = harness.service.resolve_user_action(
-        volicord_types::ResolveUserActionRequest {
+        volicord_types::methods::ResolveUserActionRequest {
             envelope: envelope(
                 "req_user_action_observation_exact_artifacts_resolve",
                 Some("submission_user_action_observation_exact_artifacts"),
@@ -4026,11 +4039,11 @@ fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effe
                 None,
                 Some(&task_id),
             ),
-            user_action_request_id: volicord_types::UserActionRequestId::new(
+            user_action_request_id: volicord_types::ids::UserActionRequestId::new(
                 user_action_request_id,
             ),
             channel_submission_id: "submission_user_action_observation_exact_artifacts".to_owned(),
-            resolution: volicord_types::UserActionResolutionInput::EvidenceObservation {
+            resolution: volicord_types::schema::UserActionResolutionInput::EvidenceObservation {
                 target: target.clone(),
                 artifact_ids: artifact_refs
                     .iter()
@@ -4080,7 +4093,7 @@ fn user_channel_observation_rejects_tampered_exact_artifact_binding_without_effe
             source_refs: Vec::new(),
             output_artifact_refs: artifact_refs.clone(),
             limitations: Vec::new(),
-            observed_at: volicord_types::UtcTimestamp::parse("2026-06-18T00:00:00Z")
+            observed_at: volicord_types::values::UtcTimestamp::parse("2026-06-18T00:00:00Z")
                 .expect("fixture timestamp"),
         }];
         record
@@ -4325,7 +4338,7 @@ fn supplemental_evidence_claim_identity_is_task_scoped_and_statement_is_immutabl
     enable_record_run_capabilities(&harness)?;
     let (first_task_id, first_change_unit_id) =
         create_task_with_change_unit(&harness, "task_scoped_evidence_claim")?;
-    let shared_claim_id = volicord_types::EvidenceClaimId::new("claim_shared_between_tasks");
+    let shared_claim_id = volicord_types::ids::EvidenceClaimId::new("claim_shared_between_tasks");
 
     let mut first_run = record_run_request(
         "req_task_scoped_claim_first",
@@ -4474,7 +4487,7 @@ fn cooperative_observation_cannot_be_promoted_by_reuse_or_stale_artifact_ref(
         "reused_observation",
     )?;
     let target = EvidenceTarget::SupplementalClaim {
-        evidence_claim_id: volicord_types::EvidenceClaimId::new("claim_reused_observation"),
+        evidence_claim_id: volicord_types::ids::EvidenceClaimId::new("claim_reused_observation"),
         statement: "Strong observation can be reused in the current scope.".to_owned(),
     };
 
@@ -4687,7 +4700,7 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
         Some("Corrupt integrity evidence."),
     );
     artifact_input.evidence_target = Some(EvidenceTarget::AcceptanceCriterion {
-        acceptance_criterion_id: volicord_types::AcceptanceCriterionId::new(
+        acceptance_criterion_id: volicord_types::ids::AcceptanceCriterionId::new(
             &acceptance_criterion_id,
         ),
     })
@@ -4695,7 +4708,7 @@ fn corrupt_artifact_blocks_evidence_and_close() -> Result<(), Box<dyn Error>> {
     request.artifact_inputs = vec![artifact_input];
     request.evidence_updates = vec![evidence_update_for_acceptance_criterion(
         supported_evidence_update("Corrupt integrity evidence."),
-        &volicord_types::AcceptanceCriterionId::new(acceptance_criterion_id),
+        &volicord_types::ids::AcceptanceCriterionId::new(acceptance_criterion_id),
     )];
     request.close_assessment = Some(close_assessment_with_risks(
         "Corrupt integrity evidence.",
@@ -5257,7 +5270,7 @@ fn record_run_staged_artifact_accepts_equivalent_offset_expiration() -> Result<(
     enable_record_run_capabilities(&harness)?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "run_stage_offset")?;
     let mut handle = stage_artifact_for_record_run(&harness, &task_id, "run_stage_offset", 2)?;
-    handle.expires_at = volicord_types::UtcTimestamp::parse("2026-06-19T09:00:00+09:00")?;
+    handle.expires_at = volicord_types::values::UtcTimestamp::parse("2026-06-19T09:00:00+09:00")?;
 
     let mut request = record_run_request(
         "req_run_stage_offset",

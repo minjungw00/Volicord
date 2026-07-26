@@ -1,15 +1,17 @@
 //! Diagnostic row encoding, decoding, and lifecycle identity validation.
 
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
-use volicord_types::{
-    AgentConnectionId, AgentRuntimeSessionId, CurrentDiagnosticFinding, CurrentDiagnosticKey,
-    CurrentDiagnosticSnapshot, CurrentDiagnosticStatus, DiagnosticAction, DiagnosticCause,
-    DiagnosticCode, DiagnosticDomain, DiagnosticFacts, DiagnosticFinding, DiagnosticFindingData,
-    DiagnosticFindingId, DiagnosticFindingLifecycle, DiagnosticOccurrenceId, DiagnosticScope,
-    DiagnosticScopeKind, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
-    DiagnosticSubjectIdentity, IntegrationRevision, OccurrenceDiagnosticFinding, ProjectId,
-    StoredDiagnosticFinding, UtcTimestamp,
+use volicord_types::diagnostics::{
+    CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticSnapshot,
+    CurrentDiagnosticStatus, DiagnosticAction, DiagnosticCause, DiagnosticCode, DiagnosticDomain,
+    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingData, DiagnosticFindingId,
+    DiagnosticFindingLifecycle, DiagnosticOccurrenceId, DiagnosticScope, DiagnosticScopeKind,
+    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    DiagnosticSubjectIdentity, OccurrenceDiagnosticFinding, StoredDiagnosticFinding,
 };
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, ProjectId};
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::values::UtcTimestamp;
 
 use crate::{StoreError, StoreResult};
 

@@ -6,7 +6,7 @@ use std::{
 
 use rusqlite::{types::ValueRef, Connection, Row};
 use serde_json::{Map, Number, Value};
-use volicord_types::{GeneratedRelationKind, StorageDatabaseKind};
+use volicord_types::storage_contract::{GeneratedRelationKind, StorageDatabaseKind};
 
 use crate::{
     bootstrap::{validate_current_project_registration, ProjectRecord},

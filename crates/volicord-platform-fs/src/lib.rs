@@ -9,12 +9,16 @@ use std::{
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use volicord_types::{
+use volicord_types::diagnostics::{
     DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticError, DiagnosticFactSource,
     DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, PlatformEnvironment, ReleaseTargetTriple, UtcTimestamp,
-    PINNED_WSL2_DISTRIBUTION_ID, PINNED_WSL2_DISTRIBUTION_VERSION,
+    DiagnosticStage, DiagnosticSubject,
 };
+use volicord_types::platform::{
+    PlatformEnvironment, PINNED_WSL2_DISTRIBUTION_ID, PINNED_WSL2_DISTRIBUTION_VERSION,
+};
+use volicord_types::release_target::ReleaseTargetTriple;
+use volicord_types::values::UtcTimestamp;
 
 mod mutation_lease;
 
@@ -1034,7 +1038,7 @@ fn validate_git_reference(reference: &str) -> io::Result<()> {
 }
 
 fn normalize_git_oid(value: &str) -> io::Result<String> {
-    volicord_types::canonical_git_object_id(value)
+    volicord_types::canonical::canonical_git_object_id(value)
         .map_err(|_| invalid_git_data("HEAD does not contain a full Git object id"))
 }
 

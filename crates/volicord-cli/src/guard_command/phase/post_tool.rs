@@ -22,10 +22,12 @@ use volicord_store::{
     },
     RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::{
-    canonical_git_object_id, canonical_json_bare_sha256, GuardPolicyDecision, MethodName,
-    ProjectId, TaskId, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis,
-    WriteTicketValidityBasis,
+use volicord_types::canonical::{canonical_git_object_id, canonical_json_bare_sha256};
+use volicord_types::guard_outcome::GuardPolicyDecision;
+use volicord_types::ids::{ProjectId, TaskId};
+use volicord_types::schema::WriteTicketValidityBasis;
+use volicord_types::values::{
+    MethodName, UnrecordedChangeConfidence, UnrecordedChangeResolutionBasis,
 };
 
 use super::GuardPhaseResult;
@@ -220,7 +222,8 @@ enum ExpectedWriteMatchOutcome {
     Ambiguous(Vec<String>),
 }
 
-const CORRELATED_PATH_IDENTITY_SCHEMA: &str = volicord_types::CORRELATED_PATH_IDENTITY_CONTRACT_ID;
+const CORRELATED_PATH_IDENTITY_SCHEMA: &str =
+    volicord_types::schema::CORRELATED_PATH_IDENTITY_CONTRACT_ID;
 const CORRELATED_PATH_IDENTITY_ALGORITHM: &str = "sha256";
 const MAX_CORRELATED_FILE_BYTES: u64 = 16 * 1024 * 1024;
 

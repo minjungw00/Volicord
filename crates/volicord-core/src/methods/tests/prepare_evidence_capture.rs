@@ -96,14 +96,16 @@ fn fulfill_command_receipt(
         "stderr_sha256": lowercase_sha256(b""),
         "stderr_size_bytes": 0
     });
-    let result_sha256 = lowercase_sha256(&volicord_types::canonical_json_bytes(&observed_outcome)?);
+    let result_sha256 = lowercase_sha256(&volicord_types::canonical::canonical_json_bytes(
+        &observed_outcome,
+    )?);
     let source = json!({
         "connection_id": CONNECTION_ID,
         "host_invocation_id": format!("host_invocation_command_{suffix}")
     });
     let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
     let safe_receipt = json!({
-        "contract_id": volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
+        "contract_id": volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
         "capture_kind": "verified_command_execution",
         "capture_intent_id": intent_id,
         "input_sha256": intent.input_sha256,
@@ -157,11 +159,13 @@ fn fulfill_registered_source_receipt(
         *UtcTimestamp::parse(&intent.created_at)?.as_datetime() + Duration::minutes(1),
     )
     .to_canonical_string();
-    let result_sha256 = lowercase_sha256(&volicord_types::canonical_json_bytes(&observed_outcome)?);
+    let result_sha256 = lowercase_sha256(&volicord_types::canonical::canonical_json_bytes(
+        &observed_outcome,
+    )?);
     let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
     let limitation = EVIDENCE_CAPTURE_COMMAND_LIMITATION;
     let safe_receipt = json!({
-        "contract_id": volicord_types::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
+        "contract_id": volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
         "capture_kind": intent.capture_kind,
         "capture_intent_id": intent_id,
         "input_sha256": intent.input_sha256,
@@ -240,7 +244,7 @@ fn record_run_with_capture(
         supporting_artifact_refs: Vec::new(),
         gap_refs: Vec::new(),
     }];
-    request.close_assessment = Some(volicord_types::CloseAssessmentInput {
+    request.close_assessment = Some(volicord_types::schema::CloseAssessmentInput {
         result_summary: "Evidence capture result is current.".to_owned(),
         result_refs: Vec::new(),
         residual_risks: Vec::new(),
@@ -770,13 +774,16 @@ fn contradicted_and_corrupt_capture_paths_fail_closed_without_false_support(
     let mut corrupted_safe_receipt = serde_json::from_str::<Value>(&stored_safe_receipt)?;
     corrupted_safe_receipt["observed_outcome"]["stdout"] =
         Value::String("raw output must not persist".to_owned());
-    let corrupted_result_sha256 = lowercase_sha256(&volicord_types::canonical_json_bytes(
-        &corrupted_safe_receipt["observed_outcome"],
-    )?);
+    let corrupted_result_sha256 =
+        lowercase_sha256(&volicord_types::canonical::canonical_json_bytes(
+            &corrupted_safe_receipt["observed_outcome"],
+        )?);
     corrupted_safe_receipt["result_sha256"] = Value::String(corrupted_result_sha256.clone());
-    let corrupted_observed_outcome_json =
-        volicord_types::canonical_json_string(&corrupted_safe_receipt["observed_outcome"])?;
-    let corrupted_safe_receipt = volicord_types::canonical_json_string(&corrupted_safe_receipt)?;
+    let corrupted_observed_outcome_json = volicord_types::canonical::canonical_json_string(
+        &corrupted_safe_receipt["observed_outcome"],
+    )?;
+    let corrupted_safe_receipt =
+        volicord_types::canonical::canonical_json_string(&corrupted_safe_receipt)?;
     let corrupted_safe_receipt_sha256 = lowercase_sha256(corrupted_safe_receipt.as_bytes());
     let corrupted_safe_receipt_size = i64::try_from(corrupted_safe_receipt.len())?;
     conn.execute(
@@ -820,16 +827,18 @@ fn contradicted_and_corrupt_capture_paths_fail_closed_without_false_support(
     let mut oversized_safe_receipt = serde_json::from_str::<Value>(&stored_safe_receipt)?;
     oversized_safe_receipt["source"]["host_invocation_id"] =
         Value::String("x".repeat(MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES + 1));
-    let oversized_metadata = volicord_types::canonical_json_string(&json!({
+    let oversized_metadata = volicord_types::canonical::canonical_json_string(&json!({
         "source": oversized_safe_receipt["source"].clone()
     }))?;
-    let original_observed_outcome_json =
-        volicord_types::canonical_json_string(&oversized_safe_receipt["observed_outcome"])?;
+    let original_observed_outcome_json = volicord_types::canonical::canonical_json_string(
+        &oversized_safe_receipt["observed_outcome"],
+    )?;
     let original_result_sha256 = oversized_safe_receipt["result_sha256"]
         .as_str()
         .expect("fixture result digest")
         .to_owned();
-    let oversized_safe_receipt = volicord_types::canonical_json_string(&oversized_safe_receipt)?;
+    let oversized_safe_receipt =
+        volicord_types::canonical::canonical_json_string(&oversized_safe_receipt)?;
     let oversized_safe_receipt_sha256 = lowercase_sha256(oversized_safe_receipt.as_bytes());
     let oversized_safe_receipt_size = i64::try_from(oversized_safe_receipt.len())?;
     conn.execute(
@@ -1094,7 +1103,7 @@ fn record_run_rejects_corrupt_capture_authority_times_without_effects() -> Resul
                 )?;
                 let mut body: Value = serde_json::from_str(&receipt_json)?;
                 body["observed_at"] = json!(out_of_range);
-                let receipt_json = volicord_types::canonical_json_string(&body)?;
+                let receipt_json = volicord_types::canonical::canonical_json_string(&body)?;
                 let sha256 = format!("{:x}", Sha256::digest(receipt_json.as_bytes()));
                 let receipt_size = i64::try_from(receipt_json.len())?;
                 harness.conn()?.execute(

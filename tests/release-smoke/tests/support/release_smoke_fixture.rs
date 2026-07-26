@@ -5,7 +5,7 @@ use std::{
     process::{Command, ExitCode},
 };
 use volicord_release_smoke::CODEX_FIXTURE_VERSION;
-use volicord_types::AgentToolId;
+use volicord_types::tool_names::AgentToolId;
 
 const FIXTURE_ARGUMENT: &str = "--release-smoke-test-fixture";
 const FIXTURE_VERSION: &str = "volicord-release-smoke-test-fixture-current";

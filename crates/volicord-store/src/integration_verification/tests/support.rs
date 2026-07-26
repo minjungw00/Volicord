@@ -6,11 +6,14 @@ use volicord_host_contract::{
     HostSessionId, HostThreadId, HostToolUseId, HostTurnId, McpServerKey,
 };
 use volicord_test_support::TempRuntimeHome;
-use volicord_types::{
-    guard_manifest_from_json, AgentToolId, GuardDecision, GuardHookContractStatus,
+use volicord_types::guard_manifest::{guard_manifest_from_json, PolicyHash};
+use volicord_types::ids::SequenceDurableIdGenerator;
+use volicord_types::integration_revision::{IntegrationRevision, McpRuntimeSessionSource};
+use volicord_types::integration_verification::{
     GuardProbeResult, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
-    IntegrationRevision, McpRuntimeSessionSource, PolicyHash, SequenceDurableIdGenerator,
 };
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::{GuardDecision, GuardHookContractStatus};
 
 use crate::{
     agent_connections::{

@@ -1,10 +1,12 @@
 use std::{error::Error, fmt};
 
 use serde_json::Value;
-use volicord_types::{
-    AuthorityNextActor, AuthorityReceipt, ChangeUnitId, CloseState, EffectKind, NextActionSummary,
-    OperationCategory, ProjectId, ResponseKind, StateRecordKind, StateRecordRef, StatusCloseState,
-    StatusResult, TaskId,
+use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId};
+use volicord_types::methods::StatusResult;
+use volicord_types::schema::{AuthorityReceipt, NextActionSummary, StateRecordRef};
+use volicord_types::values::{
+    AuthorityNextActor, CloseState, EffectKind, OperationCategory, ResponseKind, StateRecordKind,
+    StatusCloseState,
 };
 
 /// Adapter-supplied coordinates that a fresh authority status must confirm.
@@ -307,7 +309,7 @@ fn authority_next_actor(action: Option<&NextActionSummary>) -> AuthorityNextActo
 mod tests {
     use super::*;
     use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeMutation};
-    use volicord_types::{ActorSource, OperationCategory};
+    use volicord_types::values::{ActorSource, OperationCategory};
 
     use crate::{CoreService, InvocationContext};
 

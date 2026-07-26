@@ -4,11 +4,12 @@ use std::io;
 
 use rusqlite::{ffi, ErrorCode as SqliteErrorCode};
 use serde::Serialize;
-use volicord_types::{
+use volicord_types::diagnostics::{
     DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticError, DiagnosticFactSource,
     DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, UtcTimestamp,
+    DiagnosticStage, DiagnosticSubject,
 };
+use volicord_types::values::UtcTimestamp;
 
 use crate::{
     runtime_home::{
@@ -277,7 +278,7 @@ impl StoreDiagnostic {
             Self::TransactionFailure => "store.transaction.failed",
             Self::SerializationFailure => "store.serialization.failed",
             Self::ConstraintViolation => "store.constraint.violation",
-            Self::Unexpected => volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+            Self::Unexpected => volicord_types::diagnostics::INTERNAL_UNEXPECTED_FAILURE_CODE,
         }
     }
 
@@ -710,7 +711,7 @@ mod tests {
         assert_eq!(diagnostic, StoreDiagnostic::Unexpected);
         assert_eq!(
             diagnostic.code(),
-            volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE
+            volicord_types::diagnostics::INTERNAL_UNEXPECTED_FAILURE_CODE
         );
         assert_eq!(diagnostic.action(), None);
     }

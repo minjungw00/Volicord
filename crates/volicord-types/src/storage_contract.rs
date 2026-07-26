@@ -5,7 +5,7 @@ use std::{error::Error, fmt};
 use schemars::JsonSchema;
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 
-use crate::is_canonical_sha256_digest;
+use crate::canonical::is_canonical_sha256_digest;
 
 /// Semantic identity of the only first-release SQLite storage contract.
 pub const STORAGE_CONTRACT_ID: &str = "volicord.sqlite.canonical";

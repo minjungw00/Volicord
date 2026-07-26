@@ -10,10 +10,9 @@ use volicord_store::{
     },
     StoreError, StoreFailureRoute,
 };
-use volicord_types::{
-    AgentConnectionId, AgentConnectionMode, AgentRuntimeSessionId, AgentSessionId, FailureCategory,
-    IntegrationRevision, OperationCategory, ProjectId,
-};
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId, ProjectId};
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::values::{AgentConnectionMode, FailureCategory, OperationCategory};
 
 use crate::CoreService;
 
@@ -286,8 +285,8 @@ pub(crate) fn validated_agent_session_for_test_with_project_session(
     project_id: &str,
     project_session_id: &str,
 ) -> ValidatedAgentSession {
-    let integration_revision =
-        IntegrationRevision::for_project(volicord_types::ProjectIntegrationRevisionBasis {
+    let integration_revision = IntegrationRevision::for_project(
+        volicord_types::integration_revision::ProjectIntegrationRevisionBasis {
             connection_integration_revision:
                 "sha256:1111111111111111111111111111111111111111111111111111111111111111",
             project_id,
@@ -295,8 +294,9 @@ pub(crate) fn validated_agent_session_for_test_with_project_session(
                 "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             guard_installation_id: None,
             guard_policy_hash: None,
-        })
-        .expect("test project revision must be valid");
+        },
+    )
+    .expect("test project revision must be valid");
     ValidatedAgentSession {
         connection_id: AgentConnectionId::new(connection_id),
         project_id: ProjectId::new(project_id),

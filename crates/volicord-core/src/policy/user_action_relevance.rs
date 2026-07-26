@@ -1,6 +1,7 @@
-use volicord_types::{
-    ChangeUnitId, CurrentCloseBasis, StateRecordKind, StateRecordRef, TaskId, UserActionBasis,
-    UserActionKind, UserActionRequiredFor, UserActionStatus,
+use volicord_types::ids::{ChangeUnitId, TaskId};
+use volicord_types::schema::{CurrentCloseBasis, StateRecordRef, UserActionBasis};
+use volicord_types::values::{
+    StateRecordKind, UserActionKind, UserActionRequiredFor, UserActionStatus,
 };
 
 use crate::policy::{

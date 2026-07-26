@@ -7,6 +7,7 @@
 
 | 경로 | 책임 |
 |---|---|
+| `crates/volicord-types/src/lib.rs` | 공개 담당 모듈 경로와 작은 `TypeBoundary` 배치 표지. 공유 정의는 크레이트 루트의 타입 집계 파사드가 아니라 각 담당 모듈을 통해 공개됩니다. |
 | `crates/volicord-types/src/schema.rs` | 공유 요청, 응답, 저장 레코드 형태. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
@@ -87,7 +88,7 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율. |
-| `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. |
+| `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. 프로덕션 메서드 모듈은 공유 helper, pipeline과 정책 함수, Store 서비스, 공유 타입을 각 담당 모듈에서 명시적으로 가져오며 상위 모듈을 import prelude로 사용하지 않습니다. |
 | `crates/volicord-core/src/methods/evidence_facts.rs` | 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 typed 사실을 취득하는 공유 Store 조회와 엄격한 디코딩. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | 증거 캡처 요청 검증과 계획. 수락 기준 및 보충 주장 일치에는 대상 정책을 사용합니다. |
 | `crates/volicord-core/src/methods/record_run.rs` | 실행 및 증거 갱신 검증과 계획. 출처, 관련성, 대상, 결속, 닫기 준비 상태 증거 정책을 사용합니다. |
@@ -160,6 +161,7 @@
 
 | 경로 | 책임 |
 |---|---|
+| `crates/volicord-mcp/src/lib.rs` | 어댑터 소유 공개 진입점과 경계 타입. 공유 타입과 도구 identity는 각 `volicord-types` 담당 모듈 경로에 남습니다. |
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Message 및 tool별 `SharedWriter` 획득, Store context 구성, typed setup-busy 전파, 전체 MCP 효과 동안의 한정된 lease 수명. |
 | `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio 진입 경로, 권위 있는 runtime source 선택, 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-turn-metadata` parsing, revision-aware message 처리, 승인된 diagnostic routing, 프로세스 사전 점검. |

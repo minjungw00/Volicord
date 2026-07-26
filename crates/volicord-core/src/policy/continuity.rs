@@ -1,4 +1,4 @@
-use volicord_types::{JudgmentKind, JudgmentResolutionOutcome, ProjectContinuityKind};
+use volicord_types::values::{JudgmentKind, JudgmentResolutionOutcome, ProjectContinuityKind};
 
 pub(crate) fn judgment_continuity_kind(
     judgment_kind: JudgmentKind,

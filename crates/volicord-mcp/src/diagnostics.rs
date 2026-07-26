@@ -1,12 +1,15 @@
-use crate::{
-    errors::{McpAdapterError, McpHostError},
-    prelude::*,
-};
-use volicord_types::{
+use crate::errors::{McpAdapterError, McpHostError};
+use serde::Serialize;
+use std::time::SystemTime;
+use volicord_mcp_protocol::ProtocolRegistry;
+use volicord_types::diagnostics::{
     DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
     DiagnosticFinding, DiagnosticFindingData, DiagnosticFindingId, DiagnosticSeverity,
-    DiagnosticSource, DiagnosticStage, DiagnosticSubject, IntegrationRevision,
+    DiagnosticSource, DiagnosticStage, DiagnosticSubject,
 };
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId};
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::values::UtcTimestamp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum JsonRpcDiagnostic {
@@ -208,7 +211,7 @@ impl McpDiagnostic {
                 "host.codex.registered_session_correlation_mismatch"
             }
             Self::Transport(McpTransportDiagnostic::IoFailure) => "mcp.transport.io_failed",
-            Self::Unexpected => volicord_types::INTERNAL_UNEXPECTED_FAILURE_CODE,
+            Self::Unexpected => volicord_types::diagnostics::INTERNAL_UNEXPECTED_FAILURE_CODE,
         }
     }
 
@@ -426,7 +429,7 @@ pub(crate) fn finding_for_diagnostic(
     diagnostic: McpDiagnostic,
     finding_id: impl Into<String>,
     context: McpDiagnosticContext,
-) -> Result<DiagnosticFinding, volicord_types::DiagnosticError> {
+) -> Result<DiagnosticFinding, volicord_types::diagnostics::DiagnosticError> {
     let data = data_for_diagnostic(diagnostic, &context)?;
     Ok(data.to_read_projection(
         DiagnosticFindingId::parse(finding_id)?,
@@ -437,7 +440,7 @@ pub(crate) fn finding_for_diagnostic(
 pub(crate) fn data_for_diagnostic(
     diagnostic: McpDiagnostic,
     context: &McpDiagnosticContext,
-) -> Result<DiagnosticFindingData, volicord_types::DiagnosticError> {
+) -> Result<DiagnosticFindingData, volicord_types::diagnostics::DiagnosticError> {
     let facts = DiagnosticFacts::project(&McpDiagnosticFacts {
         summary: diagnostic.safe_summary(),
         requested_revision: &context.requested_revision,
@@ -495,7 +498,7 @@ pub(crate) fn data_for_diagnostic(
     Ok(data)
 }
 
-fn diagnostic_model_error(message: &str) -> volicord_types::DiagnosticError {
+fn diagnostic_model_error(message: &str) -> volicord_types::diagnostics::DiagnosticError {
     DiagnosticCode::parse(message).expect_err("plain text is not a namespaced diagnostic code")
 }
 
@@ -524,7 +527,7 @@ pub fn bootstrap_diagnostic_envelope(error: &McpAdapterError) -> String {
 fn bootstrap_envelope_for_diagnostic(
     diagnostic: McpDiagnostic,
     observed_at: UtcTimestamp,
-) -> Result<String, volicord_types::DiagnosticError> {
+) -> Result<String, volicord_types::diagnostics::DiagnosticError> {
     let finding = finding_for_diagnostic(
         diagnostic,
         "finding.mcp.bootstrap",
@@ -545,7 +548,7 @@ fn bootstrap_envelope_for_diagnostic(
             missing_tools: Vec::new(),
         },
     )?;
-    volicord_types::format_bootstrap_diagnostic_envelope(&finding)
+    volicord_types::diagnostics::format_bootstrap_diagnostic_envelope(&finding)
 }
 
 #[cfg(test)]
@@ -642,8 +645,11 @@ mod tests {
             McpHostError::MalformedNativeMetadata,
         ));
         assert!(envelope.starts_with("VOLICORD_DIAGNOSTIC_V1 {"));
-        assert!(envelope.len() <= volicord_types::MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES);
-        let finding = volicord_types::parse_bootstrap_diagnostic_envelope(&envelope).unwrap();
+        assert!(
+            envelope.len() <= volicord_types::diagnostics::MAX_BOOTSTRAP_DIAGNOSTIC_ENVELOPE_BYTES
+        );
+        let finding =
+            volicord_types::diagnostics::parse_bootstrap_diagnostic_envelope(&envelope).unwrap();
         assert_eq!(finding.code().as_str(), "host.codex.metadata_malformed");
     }
 }

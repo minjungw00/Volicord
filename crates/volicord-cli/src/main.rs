@@ -132,7 +132,7 @@ where
         }
         CliCommand::HostLaunch(options) => Err(CliError::HostLaunch {
             host: match options.host {
-                CodexHost::Codex => volicord_types::HostKind::Codex,
+                CodexHost::Codex => volicord_types::values::HostKind::Codex,
             },
             binding: options.connection.map_or(
                 HostLaunchBinding::DiscoverRepository,
@@ -268,7 +268,7 @@ where
                 let resolution = volicord_mcp::RepositoryDiscoveryResolution::resolve(
                     runtime_home,
                     current_dir,
-                    volicord_types::HostKind::Codex,
+                    volicord_types::values::HostKind::Codex,
                 )
                 .map_err(|error| CliError::runtime(error.to_string()))?;
                 (
@@ -314,7 +314,7 @@ where
 fn mcp_serve(binding: McpBindingArgs) -> Result<String, CliError> {
     if binding.discover_repository {
         return Err(CliError::McpRepositoryStdio {
-            host: volicord_types::HostKind::Codex,
+            host: volicord_types::values::HostKind::Codex,
         });
     }
     Err(CliError::McpStdio {
@@ -346,10 +346,10 @@ enum CliError {
         project_id: Option<String>,
     },
     McpRepositoryStdio {
-        host: volicord_types::HostKind,
+        host: volicord_types::values::HostKind,
     },
     HostLaunch {
-        host: volicord_types::HostKind,
+        host: volicord_types::values::HostKind,
         binding: HostLaunchBinding,
     },
 }
@@ -562,7 +562,7 @@ mod tests {
         assert_eq!(
             personal,
             CliError::HostLaunch {
-                host: volicord_types::HostKind::Codex,
+                host: volicord_types::values::HostKind::Codex,
                 binding: HostLaunchBinding::Connection("connection_alpha".to_owned()),
             }
         );
@@ -576,7 +576,7 @@ mod tests {
         assert_eq!(
             shared,
             CliError::HostLaunch {
-                host: volicord_types::HostKind::Codex,
+                host: volicord_types::values::HostKind::Codex,
                 binding: HostLaunchBinding::DiscoverRepository,
             }
         );

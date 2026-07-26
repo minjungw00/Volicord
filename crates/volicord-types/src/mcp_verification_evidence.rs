@@ -3,7 +3,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::UtcTimestamp;
+use crate::values::UtcTimestamp;
 
 /// Result of one bounded MCP verification observation.
 #[derive(

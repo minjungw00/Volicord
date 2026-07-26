@@ -22,12 +22,14 @@ use volicord_command_model::{
     DiagnosticsArgs, DiagnosticsCommand, DiagnosticsSessionArgs, DiagnosticsShowArgs,
     DiagnosticsWorkflowMetricsArgs,
 };
-use volicord_types::{
-    AgentRuntimeSessionId, DiagnosticConnectionContext, DiagnosticFinding, DiagnosticFindingId,
-    DiagnosticLookupReport, DiagnosticLookupStatus, DiagnosticOperation, IntegrationProfile,
-    IntegrationRevision, McpRuntimeSessionSource, StoredDiagnosticFinding, StoredDiagnosticGraph,
+use volicord_types::diagnostics::{
+    DiagnosticConnectionContext, DiagnosticFinding, DiagnosticFindingId, DiagnosticLookupReport,
+    DiagnosticLookupStatus, DiagnosticOperation, StoredDiagnosticFinding, StoredDiagnosticGraph,
     MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH, MAX_DIAGNOSTIC_FINDINGS,
 };
+use volicord_types::ids::AgentRuntimeSessionId;
+use volicord_types::integration_revision::{IntegrationRevision, McpRuntimeSessionSource};
+use volicord_types::values::IntegrationProfile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticsCommandError {
@@ -726,14 +728,17 @@ mod tests {
         },
     };
     use volicord_test_support::core_fixtures::{CoreFixture, UserActionFixture};
-    use volicord_types::{
-        ActorSource, AgentConnectionId, CurrentDiagnosticFinding, CurrentDiagnosticKey,
-        CurrentDiagnosticSnapshot, DiagnosticCause, DiagnosticCode, DiagnosticDomain,
-        DiagnosticFactSource, DiagnosticFacts, DiagnosticFindingData, DiagnosticScope,
-        DiagnosticScopeKind, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-        DiagnosticSubject, DiagnosticSubjectIdentity, IntegrationProfile, JudgmentKind, MethodName,
-        ObservationConfidence, OccurrenceDiagnosticFinding, OperationCategory, ProjectId,
-        UtcTimestamp,
+    use volicord_types::diagnostics::{
+        CurrentDiagnosticFinding, CurrentDiagnosticKey, CurrentDiagnosticSnapshot, DiagnosticCause,
+        DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
+        DiagnosticFindingData, DiagnosticScope, DiagnosticScopeKind, DiagnosticSeverity,
+        DiagnosticSource, DiagnosticStage, DiagnosticSubject, DiagnosticSubjectIdentity,
+        OccurrenceDiagnosticFinding,
+    };
+    use volicord_types::ids::{AgentConnectionId, ProjectId};
+    use volicord_types::values::{
+        ActorSource, IntegrationProfile, JudgmentKind, MethodName, ObservationConfidence,
+        OperationCategory, UtcTimestamp,
     };
 
     use volicord_command_model::DiagnosticsWorkflowMetricsArgs;

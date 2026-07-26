@@ -13,12 +13,16 @@ use volicord_store::{
     },
     RuntimeHomeMutationContext,
 };
-use volicord_types::{
-    canonical_json_bare_sha256, AcceptancePolicy, BaselineRef, JudgmentResolutionOutcome,
-    PersistedUserActionRequest, ProjectId, PromptCaptureStatus, StateRecordKind, TaskControlLevel,
-    TaskId, UserActionBasis, UserActionBasisStatus, UserActionKind, UserActionOptionAction,
-    UserActionRequiredFor, UserActionResolutionBody, UtcTimestamp, WriteTicketAttemptScope,
+use volicord_types::canonical::canonical_json_bare_sha256;
+use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
+use volicord_types::schema::{
+    PersistedUserActionRequest, UserActionBasis, UserActionResolutionBody, WriteTicketAttemptScope,
     WriteTicketValidityBasis,
+};
+use volicord_types::values::{
+    AcceptancePolicy, JudgmentResolutionOutcome, PromptCaptureStatus, StateRecordKind,
+    TaskControlLevel, UserActionBasisStatus, UserActionKind, UserActionOptionAction,
+    UserActionRequiredFor, UtcTimestamp,
 };
 
 use super::{

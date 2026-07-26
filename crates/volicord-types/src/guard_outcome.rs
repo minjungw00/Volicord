@@ -3,7 +3,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::DiagnosticFactSource;
+use crate::diagnostics::DiagnosticFactSource;
 
 /// Maximum number of bounded diagnostics carried by one hook outcome.
 pub const MAX_GUARD_HOOK_DIAGNOSTICS: usize = 8;

@@ -32,22 +32,33 @@ use volicord_store::{
     sqlite::{project_state_database_write_capability, registry_database_write_capability},
     RuntimeHomeMutationContext,
 };
-use volicord_types::{
-    derive_integration_activation_state, ActivationStep, ActivationStepId, AgentConnectionId,
-    AgentRuntimeSessionId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
-    ConnectionCheckStatus, ConnectionVerificationReport, CurrentDiagnosticFinding, DiagnosticCode,
-    DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
-    DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
-    GuardIntegrationVerificationStatus, GuardManagedArtifact, GuardProbeObservationStage,
+#[cfg(test)]
+use volicord_types::connection_verification::ConnectionStatus;
+use volicord_types::connection_verification::{
+    derive_integration_activation_state, ActivationStep, ActivationStepId, ConnectionCheck,
+    ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus,
+    ConnectionVerificationReport, HookActivationEvidence, HookActivationState,
+    IntegrationActivationPlan, IntegrationActivationState,
+};
+use volicord_types::diagnostics::{
+    CurrentDiagnosticFinding, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource,
+    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticSeverity, DiagnosticSource,
+    DiagnosticStage, DiagnosticSubject, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+};
+use volicord_types::guard_manifest::GuardManagedArtifact;
+use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId};
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::integration_verification::{
+    GuardIntegrationVerificationStatus, GuardProbeObservationStage,
     GuardVerificationRecoverability, GuardVerificationRepairReason, GuardVerificationRetryPolicy,
-    HookActivationEvidence, HookActivationState, IntegrationActivationPlan,
-    IntegrationActivationState, IntegrationRevision, IntegrationVerificationWorkflowState,
+    IntegrationVerificationWorkflowState,
+};
+use volicord_types::mcp_verification_evidence::{
     McpActiveVerificationEvidence, McpEvidenceCheckStatus, McpHostCompatibilityEvidence,
     McpPreflightEvidence, McpProbeEvidence, McpProjectWriteEvidence, McpRevisionConformance,
-    McpSideEffectKind, UtcTimestamp, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+    McpSideEffectKind,
 };
-#[cfg(test)]
-use volicord_types::{AgentToolId, ConnectionStatus};
+use volicord_types::values::UtcTimestamp;
 
 use crate::guard_integration::audit::{
     guard_file_findings_for_installation, guard_manifest_binding_valid_for_installation,
@@ -272,8 +283,8 @@ pub(in crate::connection_command) fn verify_connection(
     }
     let evaluation =
         canonical_verification_evaluation(context, connection, &host, &preflight, &handshake)?;
-    let scope = volicord_types::DiagnosticScope::try_new(
-        volicord_types::DiagnosticScopeKind::Connection,
+    let scope = volicord_types::diagnostics::DiagnosticScope::try_new(
+        volicord_types::diagnostics::DiagnosticScopeKind::Connection,
         &connection.connection_internal_id,
     )
     .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;

@@ -46,11 +46,15 @@ use volicord_store::{
     workflow_records::ProjectWorkflowPolicyAuthorityApply,
     RuntimeHomeMutationContext, StoreError,
 };
-use volicord_types::{
-    canonical_json_sha256, canonical_json_string, guard_manifest_from_json, AgentToolId,
-    ConnectionVerificationError, ConnectionVerificationReport, IntegrationProfile,
-    IntegrationRevision, ProjectId, ToolVerificationRole,
+use volicord_types::canonical::{canonical_json_sha256, canonical_json_string};
+use volicord_types::connection_verification::{
+    ConnectionVerificationError, ConnectionVerificationReport,
 };
+use volicord_types::guard_manifest::guard_manifest_from_json;
+use volicord_types::ids::ProjectId;
+use volicord_types::integration_revision::IntegrationRevision;
+use volicord_types::tool_names::{AgentToolId, ToolVerificationRole};
+use volicord_types::values::IntegrationProfile;
 
 use crate::guard_integration::audit::guard_manifest_binding_valid_for_installation;
 use crate::guard_integration::{
@@ -280,10 +284,10 @@ pub fn run_init_command(
 }
 
 fn command_output_result(
-    status: volicord_types::ConnectionStatus,
+    status: volicord_types::connection_verification::ConnectionStatus,
     rendered_output: String,
 ) -> Result<String, ConnectionCommandError> {
-    if status == volicord_types::ConnectionStatus::Failed {
+    if status == volicord_types::connection_verification::ConnectionStatus::Failed {
         Err(ConnectionCommandError::FailureOutput(rendered_output))
     } else {
         Ok(rendered_output)
@@ -1596,7 +1600,10 @@ mod init_status_tests {
         let output = "rendered failed init".to_owned();
 
         assert_eq!(
-            command_output_result(volicord_types::ConnectionStatus::Failed, output.clone()),
+            command_output_result(
+                volicord_types::connection_verification::ConnectionStatus::Failed,
+                output.clone()
+            ),
             Err(ConnectionCommandError::FailureOutput(output))
         );
     }
@@ -1604,8 +1611,8 @@ mod init_status_tests {
     #[test]
     fn non_failure_init_statuses_use_success_channel() {
         for status in [
-            volicord_types::ConnectionStatus::Complete,
-            volicord_types::ConnectionStatus::ActionRequired,
+            volicord_types::connection_verification::ConnectionStatus::Complete,
+            volicord_types::connection_verification::ConnectionStatus::ActionRequired,
         ] {
             let output = format!("rendered {} init", status.as_str());
             assert_eq!(command_output_result(status, output.clone()), Ok(output));

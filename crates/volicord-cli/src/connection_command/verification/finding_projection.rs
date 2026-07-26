@@ -6,7 +6,8 @@ pub(super) fn diagnostic_occurrence_for_runtime_code(
     runtime_home: &Path,
     runtime_session_id: &str,
     code: &str,
-) -> Result<Option<volicord_types::OccurrenceDiagnosticFinding>, ConnectionCommandError> {
+) -> Result<Option<volicord_types::diagnostics::OccurrenceDiagnosticFinding>, ConnectionCommandError>
+{
     Ok(
         diagnostic_occurrences_for_runtime_session(runtime_home, runtime_session_id)?
             .into_iter()
@@ -120,7 +121,7 @@ pub(super) fn persist_process_finding(
                 .and_then(|runtime| runtime.attempted_client_version.clone()),
         })
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-    let finding = volicord_types::OccurrenceDiagnosticFinding::try_new(
+    let finding = volicord_types::diagnostics::OccurrenceDiagnosticFinding::try_new(
         finding,
         runtime
             .as_ref()
@@ -139,7 +140,7 @@ pub(super) struct HostBoundaryFindings {
     pub(super) managed_config: Vec<DiagnosticFindingId>,
     pub(super) project_trust: Vec<DiagnosticFindingId>,
     pub(super) tool_round_trip: Vec<DiagnosticFindingId>,
-    pub(super) current: Vec<volicord_types::CurrentDiagnosticFinding>,
+    pub(super) current: Vec<volicord_types::diagnostics::CurrentDiagnosticFinding>,
 }
 
 pub(super) fn host_boundary_findings(
@@ -291,7 +292,8 @@ pub(super) fn persist_peer_path_mismatch_findings(
         return Ok(());
     };
     for session in sessions.iter().filter(|session| {
-        session.session_source == volicord_types::McpRuntimeSessionSource::ManagedHost
+        session.session_source
+            == volicord_types::integration_revision::McpRuntimeSessionSource::ManagedHost
     }) {
         let Some(peer_version) = session.attempted_client_version.as_deref() else {
             continue;
@@ -321,7 +323,7 @@ pub(super) fn persist_peer_path_mismatch_findings(
             },
         })
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        let data = volicord_types::DiagnosticFindingData::try_new(
+        let data = volicord_types::diagnostics::DiagnosticFindingData::try_new(
             DiagnosticCode::parse("host.codex.peer_version_differs_from_path_probe")
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?,
             DiagnosticDomain::parse("host")
@@ -348,7 +350,7 @@ pub(super) fn persist_peer_path_mismatch_findings(
             )
         })
         .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
-        let finding = volicord_types::OccurrenceDiagnosticFinding::try_new(
+        let finding = volicord_types::diagnostics::OccurrenceDiagnosticFinding::try_new(
             data,
             Some(AgentRuntimeSessionId::new(
                 session.runtime_session_id.clone(),
@@ -364,7 +366,7 @@ pub(super) fn persist_peer_path_mismatch_findings(
 pub(super) struct GuardBoundaryFindings {
     pub(super) files: Vec<DiagnosticFindingId>,
     pub(super) observation: Vec<DiagnosticFindingId>,
-    pub(super) current: Vec<volicord_types::CurrentDiagnosticFinding>,
+    pub(super) current: Vec<volicord_types::diagnostics::CurrentDiagnosticFinding>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -497,7 +499,7 @@ pub(super) fn guard_boundary_findings(
         .chain(missing_required_phases.iter().map(String::as_str))
         .collect::<BTreeSet<_>>();
     for phase in missing_phases {
-        let phase = volicord_types::GuardHookPhase::from_str(phase)
+        let phase = volicord_types::values::GuardHookPhase::from_str(phase)
             .map_err(|error| ConnectionCommandError::runtime(error.to_string()))?;
         let subject = GuardPhaseSubject::for_connection(&connection.connection_internal_id, phase)
             .map_err(ConnectionCommandError::runtime)?;
@@ -526,7 +528,7 @@ pub(super) fn guard_boundary_findings(
         current.push(projected);
     }
     if audit.prompt_capture_configured && !audit.prompt_capture_host_supported {
-        let phase = volicord_types::GuardHookPhase::PromptCapture;
+        let phase = volicord_types::values::GuardHookPhase::PromptCapture;
         let subject = GuardPhaseSubject::for_connection(&connection.connection_internal_id, phase)
             .map_err(ConnectionCommandError::runtime)?;
         current.push(current_connection_finding(
@@ -538,7 +540,7 @@ pub(super) fn guard_boundary_findings(
             observed_at.clone(),
         )?);
     } else if audit.prompt_capture_configured && !prompt_capture_observed {
-        let phase = volicord_types::GuardHookPhase::PromptCapture;
+        let phase = volicord_types::values::GuardHookPhase::PromptCapture;
         let subject = GuardPhaseSubject::for_connection(&connection.connection_internal_id, phase)
             .map_err(ConnectionCommandError::runtime)?;
         current.push(current_connection_finding(

@@ -3,7 +3,7 @@
 use std::{fs, path::Path, process::Command};
 
 use sha2::{Digest, Sha256};
-use volicord_types::ReleaseTargetTriple;
+use volicord_types::release_target::ReleaseTargetTriple;
 
 #[test]
 fn package_script_rehashes_every_archived_volicord_binary() {

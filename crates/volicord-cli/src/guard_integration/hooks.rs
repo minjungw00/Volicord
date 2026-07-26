@@ -4,11 +4,12 @@ use std::{
 };
 
 use serde_json::Value;
-use volicord_types::{
-    AgentConnectionId, GuardCommand, GuardCommandAbsolutePath, GuardCommandInvocation,
-    GuardCommandInvocationSet, GuardCommandProjection, GuardCommandSet, GuardHookPhase,
-    GuardInstallationId, GuardManagedArtifact, IntegrationProfile, PolicyHash,
+use volicord_types::guard_manifest::{
+    GuardCommand, GuardCommandAbsolutePath, GuardCommandInvocation, GuardCommandInvocationSet,
+    GuardCommandProjection, GuardCommandSet, GuardManagedArtifact, PolicyHash,
 };
+use volicord_types::ids::{AgentConnectionId, GuardInstallationId};
+use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
 use crate::{
     guard_integration::{

@@ -9,7 +9,8 @@ use crate::{
     },
     host_integration::ConnectionIntent,
 };
-use volicord_types::{GuardHookPhase, GuardManagedArtifact, IntegrationProfile};
+use volicord_types::guard_manifest::GuardManagedArtifact;
+use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
 pub(crate) const GIT_EXCLUDE_START_MARKER: &str = "# BEGIN VOLICORD MANAGED LOCAL EXCLUDES";
 pub(crate) const GIT_EXCLUDE_END_MARKER: &str = "# END VOLICORD MANAGED LOCAL EXCLUDES";

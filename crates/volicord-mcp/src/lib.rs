@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![deny(clippy::wildcard_imports)]
 
 //! Local MCP adapter for public Volicord method calls.
 //!
@@ -14,6 +15,7 @@ mod diagnostics;
 mod errors;
 mod managed_launch;
 mod mutation_admission;
+#[cfg(test)]
 mod prelude;
 #[cfg(test)]
 mod protocol_projection_tests;
@@ -27,7 +29,6 @@ mod util;
 
 pub use adapter::{McpAdapter, McpAdapterBoundary};
 pub use build_info::{build_id, build_info, BuildInfo};
-pub use constants::{AgentToolCategory, AgentToolId, AgentToolOwner, ToolVerificationRole};
 pub use diagnostics::bootstrap_diagnostic_envelope;
 pub use errors::McpAdapterError;
 pub use managed_launch::{

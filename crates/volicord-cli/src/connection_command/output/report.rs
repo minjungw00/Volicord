@@ -12,19 +12,27 @@ use volicord_platform_fs::{
     DirectoryEntryDurability, DirectoryTreeRemovalEffect, DirectoryTreeRemovalPhase,
     DirectoryTreeTargetState, RuntimeHomeMutationBusy, RuntimeHomeMutationLeaseMode,
 };
-use volicord_types::{
-    derive_integration_activation_state, diagnostic_root_cause_ids, ActivationStep,
-    ActivationStepId, ConnectionCheck, ConnectionCheckDetails, ConnectionCheckKind,
-    ConnectionCheckStatus, ConnectionStatus, ConnectionVerificationReport, DiagnosticAction,
-    DiagnosticCode, DiagnosticConnectionContext, DiagnosticDomain, DiagnosticFactSource,
-    DiagnosticFacts, DiagnosticFinding, DiagnosticFindingId, DiagnosticOperation, DiagnosticReport,
-    DiagnosticRuntimeSessionContext, DiagnosticSeverity, DiagnosticSource, DiagnosticStage,
-    DiagnosticSubject, HookActivationState, IntegrationActivationPlan, IntegrationActivationState,
-    IntegrationProfile, IntegrationRevision, RuntimeSessionEvidenceRole, UtcTimestamp,
-    MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+use volicord_types::connection_verification::{
+    derive_integration_activation_state, ActivationStep, ActivationStepId, ConnectionCheck,
+    ConnectionCheckDetails, ConnectionCheckKind, ConnectionCheckStatus, ConnectionStatus,
+    ConnectionVerificationReport, HookActivationState, IntegrationActivationPlan,
+    IntegrationActivationState,
 };
 #[cfg(test)]
-use volicord_types::{ActivationActor, ActivationExecutionChannel, AgentSequenceStep, AgentToolId};
+use volicord_types::connection_verification::{
+    ActivationActor, ActivationExecutionChannel, AgentSequenceStep,
+};
+use volicord_types::diagnostics::{
+    diagnostic_root_cause_ids, DiagnosticAction, DiagnosticCode, DiagnosticConnectionContext,
+    DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts, DiagnosticFinding,
+    DiagnosticFindingId, DiagnosticOperation, DiagnosticReport, DiagnosticRuntimeSessionContext,
+    DiagnosticSeverity, DiagnosticSource, DiagnosticStage, DiagnosticSubject,
+    RuntimeSessionEvidenceRole, MAX_DIAGNOSTIC_CAUSE_TRAVERSAL_DEPTH,
+};
+use volicord_types::integration_revision::IntegrationRevision;
+#[cfg(test)]
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::{IntegrationProfile, UtcTimestamp};
 
 use super::{
     cooperative_assurance_limits, human::render_command_report_concise, path_text,
@@ -762,7 +770,7 @@ impl ConnectionCommandReport {
             .into_iter()
             .map(|(id, roles)| {
                 DiagnosticRuntimeSessionContext::try_new(
-                    volicord_types::AgentRuntimeSessionId::new(id),
+                    volicord_types::ids::AgentRuntimeSessionId::new(id),
                     roles.into_iter().collect(),
                 )
                 .map_err(|error| ConnectionCommandError::runtime(error.to_string()))
@@ -772,7 +780,7 @@ impl ConnectionCommandReport {
 
     pub(super) fn relevant_verification_ids(
         &self,
-    ) -> Vec<volicord_types::GuardIntegrationVerificationId> {
+    ) -> Vec<volicord_types::ids::GuardIntegrationVerificationId> {
         let mut ids = BTreeSet::new();
         for check in &self.checks {
             let Some(details) = check.details().map(ConnectionCheckDetails::as_object) else {
@@ -790,7 +798,7 @@ impl ConnectionCommandReport {
             }
         }
         ids.into_iter()
-            .map(volicord_types::GuardIntegrationVerificationId::new)
+            .map(volicord_types::ids::GuardIntegrationVerificationId::new)
             .collect()
     }
 
@@ -963,7 +971,7 @@ fn diagnostic_activation_step_id(code: &str) -> Option<ActivationStepId> {
 
 pub(super) fn projected_root_cause_ids(
     report: &ConnectionCommandReport,
-) -> Result<Vec<volicord_types::DiagnosticFindingId>, ConnectionCommandError> {
+) -> Result<Vec<volicord_types::diagnostics::DiagnosticFindingId>, ConnectionCommandError> {
     let selected = report
         .checks
         .iter()
@@ -989,7 +997,7 @@ pub(super) fn projected_root_cause_ids(
 pub(super) fn projected_check_root_cause_ids(
     report: &ConnectionCommandReport,
     check: &ConnectionCheck,
-) -> Result<Vec<volicord_types::DiagnosticFindingId>, ConnectionCommandError> {
+) -> Result<Vec<volicord_types::diagnostics::DiagnosticFindingId>, ConnectionCommandError> {
     if check.cause_finding_ids().is_empty() {
         return Ok(Vec::new());
     }

@@ -10,12 +10,14 @@ use volicord_store::{
     bootstrap::{project_record_by_repo_root_read_only, project_record_read_only},
     core_pipeline::CoreProjectStore,
 };
-use volicord_types::{
-    guard_manifest_from_json, guard_manifest_matches_owner_binding, AgentToolId,
-    GuardCommandInvocationSet, GuardCommandSet, GuardHookPhase, GuardManagedArtifact,
-    GuardManifestOwnerBinding, IntegrationProfile, IntegrationVerificationWorkflowState,
-    PolicyHash, ProjectId,
+use volicord_types::guard_manifest::{
+    guard_manifest_from_json, guard_manifest_matches_owner_binding, GuardCommandInvocationSet,
+    GuardCommandSet, GuardManagedArtifact, GuardManifestOwnerBinding, PolicyHash,
 };
+use volicord_types::ids::ProjectId;
+use volicord_types::integration_verification::IntegrationVerificationWorkflowState;
+use volicord_types::tool_names::AgentToolId;
+use volicord_types::values::{GuardHookPhase, IntegrationProfile};
 
 use crate::{
     guard_integration::{
@@ -387,7 +389,7 @@ fn plan_retired_files(
 
 fn plan_retired_files_from_manifest(
     repo_root: &Path,
-    manifest: &volicord_types::GuardManifest,
+    manifest: &volicord_types::guard_manifest::GuardManifest,
     generated_files: &[GeneratedFilePlan],
 ) -> Result<Vec<ManagedFileRetirementPlan>, GuardIntegrationError> {
     let current_paths = generated_files
@@ -452,7 +454,9 @@ mod tests {
         CanonicalToolName, HostHookMatcherStrategy, McpServerKey, McpToolCatalog,
     };
     use volicord_test_support::core_fixtures::CoreFixture;
-    use volicord_types::{AgentToolId, GuardManagedArtifact, IntegrationProfile};
+    use volicord_types::guard_manifest::GuardManagedArtifact;
+    use volicord_types::tool_names::AgentToolId;
+    use volicord_types::values::IntegrationProfile;
 
     use super::{
         plan_guard_integration, validate_generated_guard_plan, GuardIntegrationPlanRequest,

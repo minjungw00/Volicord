@@ -4,13 +4,14 @@ use chrono::Duration;
 use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_string, evidence_capture_input_sha256,
-    validate_evidence_capture_expected_outcome, validate_evidence_capture_limitations,
-    validate_evidence_capture_observed_outcome, EvidenceCaptureSpec, EvidenceProducerKind,
-    JsonObject, PersistedEvidenceCaptureReceiptBody, RedactionState, UtcTimestamp,
+use volicord_types::canonical::{canonical_json_bare_sha256, canonical_json_string};
+use volicord_types::schema::{
+    evidence_capture_input_sha256, validate_evidence_capture_expected_outcome,
+    validate_evidence_capture_limitations, validate_evidence_capture_observed_outcome,
+    EvidenceCaptureSpec, JsonObject, PersistedEvidenceCaptureReceiptBody,
     EVIDENCE_CAPTURE_INTENT_TTL_MINUTES, EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
 };
+use volicord_types::values::{EvidenceProducerKind, RedactionState, UtcTimestamp};
 
 use crate::{
     artifacts::{
@@ -790,7 +791,7 @@ fn validate_receipt_input(input: &EvidenceCaptureReceiptInsert) -> StoreResult<(
             .and_then(|timestamp| {
                 timestamp
                     .ensure_canonical_rfc3339_representable()
-                    .map_err(|_| volicord_types::UtcTimestampParseError)
+                    .map_err(|_| volicord_types::values::UtcTimestampParseError)
             })
             .map_err(|_| StoreError::InvalidInput {
                 detail: format!("{field} must be a canonical four-digit RFC 3339 timestamp"),

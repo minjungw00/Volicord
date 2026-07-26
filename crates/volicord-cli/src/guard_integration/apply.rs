@@ -10,7 +10,8 @@ use crate::{
     },
     host_integration::ConnectionIntent,
 };
-use volicord_types::{GuardManagedArtifact, IntegrationProfile};
+use volicord_types::guard_manifest::GuardManagedArtifact;
+use volicord_types::values::IntegrationProfile;
 
 pub(crate) fn apply_guard_migration_protection(
     plan: &mut GuardIntegrationPlan,

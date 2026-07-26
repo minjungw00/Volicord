@@ -1,7 +1,8 @@
 //! Insert-only diagnostic occurrence persistence.
 
 use rusqlite::{params, Transaction};
-use volicord_types::{DiagnosticSeverity, IntegrationRevision, OccurrenceDiagnosticFinding};
+use volicord_types::diagnostics::{DiagnosticSeverity, OccurrenceDiagnosticFinding};
+use volicord_types::integration_revision::IntegrationRevision;
 
 use crate::{
     operational_sessions::runtime_session_from_conn,

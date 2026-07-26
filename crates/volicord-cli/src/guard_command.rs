@@ -35,14 +35,19 @@ use volicord_store::{
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     RuntimeHomeMutationContext, StoreError, StoreResult,
 };
-use volicord_types::{
-    canonical_json_bare_sha256, canonical_json_bytes, guard_manifest_from_json, DiagnosticCode,
-    DiagnosticDomain, DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity, DiagnosticSource,
-    DiagnosticStage, DiagnosticSubject, GuardDecision, GuardHookContractStatus,
+use volicord_types::canonical::{canonical_json_bare_sha256, canonical_json_bytes};
+use volicord_types::diagnostics::{
+    DiagnosticCode, DiagnosticDomain, DiagnosticFacts, DiagnosticFindingData, DiagnosticSeverity,
+    DiagnosticSource, DiagnosticStage, DiagnosticSubject, OccurrenceDiagnosticFinding,
+};
+use volicord_types::guard_manifest::{guard_manifest_from_json, GuardManagedArtifact};
+use volicord_types::guard_outcome::{
     GuardHookDiagnostic, GuardHookDiagnosticCode, GuardHookDiagnosticFacts, GuardHookOutcome,
-    GuardHookPhase, GuardHostFeedback, GuardManagedArtifact, GuardObservationOutcome,
-    GuardPolicyDecision, IntegrationProfile, ObservationConfidence, OccurrenceDiagnosticFinding,
-    UtcTimestamp,
+    GuardHostFeedback, GuardObservationOutcome, GuardPolicyDecision,
+};
+use volicord_types::values::{
+    GuardDecision, GuardHookContractStatus, GuardHookPhase, IntegrationProfile,
+    ObservationConfidence, UtcTimestamp,
 };
 
 use crate::disclosure::cooperative_host_decision_disclosure_json;

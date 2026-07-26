@@ -19,10 +19,9 @@ use sha2::{Digest, Sha256};
 use volicord_platform_fs::{
     publish_file_no_replace, NoReplaceFilePublicationEffect, NoReplaceFilePublicationOutcome,
 };
-use volicord_types::{
-    canonical_json_bytes, validate_project_agent_session_id, IntegrationProfile, MethodName,
-    ObservationConfidence, UtcTimestamp,
-};
+use volicord_types::canonical::canonical_json_bytes;
+use volicord_types::managed_mcp_client_info::validate_project_agent_session_id;
+use volicord_types::values::{IntegrationProfile, MethodName, ObservationConfidence, UtcTimestamp};
 
 use crate::{
     mutation::RuntimeHomeMutationContext, sqlite::enable_foreign_keys, StoreError, StoreResult,
