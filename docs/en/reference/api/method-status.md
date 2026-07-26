@@ -182,7 +182,9 @@ Truthful projection rules:
 
 ## Method result fields
 
-Exact identifiers used in this section: `Task`.
+| Exact identifiers used in this section |
+|---|
+| `Task`, `close`, `close_task`, `evidence` |
 
 `StatusResult` is the method-specific result branch for a successful status read. It carries `base: ToolResultBase` and these method-owned top-level fields:
 

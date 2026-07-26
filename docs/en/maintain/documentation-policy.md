@@ -16,7 +16,9 @@ paths, document `kind`, summary, normative level, translation policy, primary
 audience, reader journeys, focused `canonical_for` ownership where needed,
 maintenance `owner_area`, `created_on`, `last_updated_on`, `last_verified_on`,
 root `default_applicability`, optional entry-specific `applies_to`, and
-`depends_on` relationships.
+`depends_on` relationships. The top-level `contract_sources` catalog connects
+semantic document-family selectors to the current machine-readable public API,
+administrative CLI, diagnostic, and protocol owners.
 
 `canonical_for` names the information or contract area owned by a document.
 `owner_area` names the durable maintenance responsibility domain for keeping
@@ -51,8 +53,14 @@ a defined subject, especially focused Reference contracts and maintenance
 policies.
 
 Use [`docs/terminology-map.yaml`](../../terminology-map.yaml) as the structured
-terminology and identifier-preservation source of truth. The terminology map
-does not define API, storage, schema, security, projection, or runtime behavior.
+translation, presentation, and identifier-preservation policy. Exact public API
+fields and values come from the generated public JSON Schemas, CLI identifiers
+come from `volicord-command-model`, diagnostic codes come from the generated
+typed diagnostic registry, and protocol fields and capabilities come from the
+current protocol registry. `contract_sources` selects those owners for document
+families without copying identifier arrays into metadata. The terminology map
+does not define or catalog API, storage, schema, security, projection, protocol,
+diagnostic, or runtime contracts.
 
 Use [Brand Guidelines](brand-guidelines.md) as the maintenance owner for
 Volicord brand spelling, official bilingual brand copy, component presentation,

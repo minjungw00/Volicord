@@ -184,6 +184,10 @@ PrepareWriteRequest:
 
 ## 메서드 결과 필드
 
+| 현재 결과에서 정확히 사용하는 식별자 |
+|---|
+| `accepted`, `record_kind` |
+
 `PrepareWriteResult`는 커밋된 쓰기 준비 결정에 대한 메서드별 결과 분기입니다. 이 결과는 `base: ToolResultBase`와 아래 메서드 소유 최상위 필드를 담습니다.
 
 | 필드 | 결과 필드 의미 |

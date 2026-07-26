@@ -6,7 +6,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::{fmt, str::FromStr};
+use std::{collections::BTreeSet, fmt, str::FromStr};
 
 const TRACKED_REVISIONS: [McpProtocolRevision; 6] = [
     McpProtocolRevision::V20241007,
@@ -960,4 +960,40 @@ impl ProtocolRegistry {
     pub fn preferred_server_profile(&self) -> &'static McpProtocolProfile {
         &PRODUCTION_PROFILES[PREFERRED_SERVER_PROFILE_INDEX]
     }
+}
+
+/// Returns the exact public protocol identifiers in the production registry.
+///
+/// The union is derived directly from every current production profile.
+pub fn public_protocol_identifiers() -> BTreeSet<String> {
+    let mut identifiers = BTreeSet::new();
+    for profile in PRODUCTION_PROFILES {
+        identifiers.insert(profile.revision().as_str().to_owned());
+        let schema = profile.schema();
+        identifiers.extend(
+            schema
+                .client_capability_fields()
+                .iter()
+                .map(|field| field.as_str().to_owned()),
+        );
+        identifiers.extend(
+            schema
+                .server_capability_fields()
+                .iter()
+                .map(|field| field.as_str().to_owned()),
+        );
+        identifiers.extend(
+            schema
+                .tool_definition_fields()
+                .iter()
+                .map(|field| field.as_str().to_owned()),
+        );
+        identifiers.extend(
+            schema
+                .tool_result_fields()
+                .iter()
+                .map(|field| field.as_str().to_owned()),
+        );
+    }
+    identifiers
 }

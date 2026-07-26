@@ -17,18 +17,11 @@ fn operation_categories() -> Vec<String> {
         .collect()
 }
 
-fn operation_category_identifiers() -> Vec<String> {
-    let mut identifiers = vec!["operation_category".to_owned()];
-    identifiers.extend(operation_categories());
-    identifiers
-}
-
 #[test]
 fn operation_category_documents_match_the_runtime_owner() {
     let fixture = valid_fixture();
     let categories = operation_categories();
-    let identifiers = operation_category_identifiers();
-    install_operation_category_fixture(fixture.path(), &categories, &categories, &identifiers);
+    install_operation_category_fixture(fixture.path(), &categories, &categories);
 
     let report = report(fixture.path());
 
@@ -39,7 +32,6 @@ fn operation_category_documents_match_the_runtime_owner() {
 fn reports_operation_category_document_drift_from_the_runtime_owner() {
     let fixture = valid_fixture();
     let categories = operation_categories();
-    let identifiers = operation_category_identifiers();
     let missing_category = categories
         .last()
         .expect("runtime schema should expose an operation category")
@@ -49,7 +41,7 @@ fn reports_operation_category_document_drift_from_the_runtime_owner() {
         .filter(|category| category.as_str() != missing_category.as_str())
         .cloned()
         .collect::<Vec<_>>();
-    install_operation_category_fixture(fixture.path(), &categories, &incomplete, &identifiers);
+    install_operation_category_fixture(fixture.path(), &categories, &incomplete);
 
     let report = report(fixture.path());
     let errors = category_errors(&report, "contract_identifiers.operation_category_drift");
@@ -62,37 +54,4 @@ fn reports_operation_category_document_drift_from_the_runtime_owner() {
         "{:#?}",
         report.issues()
     );
-}
-
-#[test]
-fn reports_runtime_owned_identifiers_missing_from_terminology() {
-    let runtime_identifier = operation_categories()
-        .into_iter()
-        .next()
-        .expect("runtime schema should expose an operation category");
-    for missing_identifier in ["operation_category".to_owned(), runtime_identifier] {
-        let fixture = valid_fixture();
-        let categories = operation_categories();
-        let preserved = operation_category_identifiers()
-            .iter()
-            .filter(|identifier| identifier.as_str() != missing_identifier.as_str())
-            .cloned()
-            .collect::<Vec<_>>();
-        install_operation_category_fixture(fixture.path(), &categories, &categories, &preserved);
-
-        let report = report(fixture.path());
-        let errors = category_errors(
-            &report,
-            "contract_identifiers.operation_category_terminology",
-        );
-
-        assert_eq!(errors.len(), 1, "{:#?}", report.issues());
-        assert!(
-            errors[0]
-                .message()
-                .contains(&format!("`{missing_identifier}`")),
-            "{:#?}",
-            report.issues()
-        );
-    }
 }

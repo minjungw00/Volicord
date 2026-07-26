@@ -50,17 +50,9 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         links::validate_markdown_links(&root, index, &mut issues);
         links::validate_bilingual_link_parity(&root, index, &mut issues);
         terminology::validate_terminology_paths(&root, index, &mut issues);
-        let exact_identifiers = terminology::exact_identifier_catalog(
-            &root.join("docs/terminology-map.yaml"),
-            &mut issues,
-        );
-        parity::validate_bilingual_structure(&root, index, &exact_identifiers, &mut issues);
-        contract_identifiers::validate_operation_category_values(
-            &root,
-            index,
-            &exact_identifiers,
-            &mut issues,
-        );
+        parity::validate_bilingual_structure(&root, index, &mut issues);
+        contract_identifiers::validate_contract_identifiers(&root, index, &mut issues);
+        contract_identifiers::validate_operation_category_values(&root, index, &mut issues);
         cli_docs::validate_generated_cli_synopsis_regions(&root, index, &mut issues);
         cli_docs::validate_volicord_command_examples(&root, index, &mut issues);
         document_structure::validate_architecture_design_documents(&root, index, &mut issues);

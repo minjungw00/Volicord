@@ -65,6 +65,55 @@ applicability:
   terminology_map_schema:
     description: Current terminology map metadata schema declared by `docs/terminology-map.yaml`.
     version_source: terminology_map_schema
+contract_sources:
+  public_api:
+    description: Generated current public request and response JSON Schemas, including their closed value sets.
+    kind: public_json_schemas
+    owner: crates/volicord-types/src/methods.rs
+    document_selectors:
+    - reference.api.*
+    - architecture-guide.request-lifecycle
+    - architecture-guide.design.operation-result-retrieval
+    - architecture-guide.design.unified-user-action-request-resolution
+    - architecture-guide.design.evidence-capture-producer-finalization
+    - user-guide.user-workflow
+    - user-guide.agent-workflow
+    - user-guide.judgment-examples
+  administrative_cli:
+    description: Current public administrative command, option, and closed command-value declarations.
+    kind: command_model
+    owner: crates/volicord-command-model/src/lib.rs
+    document_selectors:
+    - reference.admin-cli
+    - architecture-guide.cli-workflows
+    - user-guide.installation
+    - user-guide.quickstart
+    - user-guide.agent-host-setup
+    - user-guide.agent-host-troubleshooting
+    - user-guide.multi-repository-agent-setup
+  diagnostics:
+    description: Generated current machine-readable diagnostic codes from the typed diagnostic registries.
+    kind: diagnostic_registry
+    owner: crates/volicord-cli/tests/fixtures/diagnostic-registry.json
+    document_selectors:
+    - reference.failure-model
+    - reference.guard-suppression
+    - reference.runtime-boundaries
+    - reference.mcp-transport
+    - reference.agent-connection
+    - user-guide.agent-host-troubleshooting
+    - architecture-guide.testing-strategy
+  mcp_protocol:
+    description: Current production protocol capability and public wire-field declarations.
+    kind: protocol_registry
+    owner: crates/volicord-mcp-protocol/src/lib.rs
+    document_selectors:
+    - reference.external-contracts
+    - reference.mcp-transport
+    - reference.agent-connection
+    - architecture-guide.request-lifecycle
+    - architecture-guide.design.static-compact-mcp-tool-list
+    - user-guide.agent-host-setup
 default_applicability:
 - volicord_workspace
 entry_schema:
@@ -219,12 +268,12 @@ shared_documents:
   path: docs/doc-index.yaml
   kind: maintenance
   summary: Version 3 machine-readable metadata for document paths, maintenance responsibility, dates,
-    applicability, owners, dependencies, and translation policy.
+    applicability, contract sources, owners, dependencies, and translation policy.
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -241,12 +290,12 @@ shared_documents:
   path: docs/terminology-map.yaml
   kind: maintenance
   summary: Structured terminology metadata, normalized write-authority terminology, and
-    identifier-preservation controls.
+    identifier presentation and preservation policy.
   normative_level: maintenance
   owner_area: documentation_maintenance
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - terminology_map_schema
   primary_audience:
@@ -660,8 +709,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1803,8 +1852,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1901,8 +1950,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1931,8 +1980,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2056,8 +2105,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2726,8 +2775,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -2952,8 +3001,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - doc_index_schema
   primary_audience:

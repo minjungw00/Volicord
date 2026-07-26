@@ -218,6 +218,12 @@ pub(in crate::connection_command) enum SetupFailureDiagnostic {
 }
 
 impl SetupFailureDiagnostic {
+    pub(in crate::connection_command) const ALL: [Self; 3] = [
+        Self::TransactionFailed,
+        Self::ConcurrentModification,
+        Self::PartialRollback,
+    ];
+
     const fn finding_id(self) -> &'static str {
         match self {
             Self::TransactionFailed => "finding.setup.transaction_failed",
@@ -226,7 +232,7 @@ impl SetupFailureDiagnostic {
         }
     }
 
-    const fn code(self) -> &'static str {
+    pub(in crate::connection_command) const fn code(self) -> &'static str {
         match self {
             Self::TransactionFailed => "setup.transaction_failed",
             Self::ConcurrentModification => "setup.concurrent_modification",

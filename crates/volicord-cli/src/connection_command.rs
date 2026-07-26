@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     fmt, fs,
     path::{Path, PathBuf},
@@ -88,6 +88,16 @@ mod selection;
 mod service;
 mod setup_transaction;
 mod verification;
+
+pub(crate) fn current_connection_diagnostic_codes() -> BTreeSet<String> {
+    let mut codes = mcp_process::diagnostic_codes();
+    codes.extend(
+        output::SetupFailureDiagnostic::ALL
+            .into_iter()
+            .map(|diagnostic| diagnostic.code().to_owned()),
+    );
+    codes
+}
 
 const fn managed_host_round_trip_tool() -> AgentToolId {
     ToolVerificationRole::ManagedHostRoundTrip.tool()

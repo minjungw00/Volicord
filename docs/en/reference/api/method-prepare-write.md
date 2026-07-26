@@ -199,6 +199,10 @@ not allocate a durable ID.
 
 ## Method result fields
 
+| Exact current result identifiers |
+|---|
+| `accepted`, `record_kind` |
+
 `PrepareWriteResult` is the method-specific result branch for committed write-preparation decisions. It carries `base: ToolResultBase` and these method-owned top-level fields:
 
 | Field | Result-field meaning |

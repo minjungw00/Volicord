@@ -64,6 +64,14 @@ pub enum GuardHookDiagnosticCode {
 }
 
 impl GuardHookDiagnosticCode {
+    pub const ALL: [Self; 5] = [
+        Self::HostContractIncompatible,
+        Self::EventPersistenceUnavailable,
+        Self::PolicyDenied,
+        Self::HostOutputProjectionFailure,
+        Self::UnexpectedInternalFailure,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::HostContractIncompatible => "guard.observation.incompatible",

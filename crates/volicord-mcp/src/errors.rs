@@ -14,6 +14,14 @@ pub enum McpHostError {
     RegisteredSessionCorrelationMismatch,
 }
 
+impl McpHostError {
+    pub(crate) const ALL: [Self; 3] = [
+        Self::MalformedNativeMetadata,
+        Self::SessionThreadTurnInconsistent,
+        Self::RegisteredSessionCorrelationMismatch,
+    ];
+}
+
 impl fmt::Display for McpHostError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {

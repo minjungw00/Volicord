@@ -2,7 +2,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::{error::Error, ffi::OsString, fmt, path::PathBuf};
+use std::{collections::BTreeSet, error::Error, ffi::OsString, fmt, path::PathBuf};
 
 use clap::{
     error::ErrorKind, Arg, ArgAction, ArgGroup, Args, Command as ClapCommand, CommandFactory,
@@ -765,6 +765,49 @@ pub fn public_command_syntax() -> Vec<CommandSyntax> {
     syntax
 }
 
+/// Returns the exact public CLI identifiers declared by the current Clap model.
+///
+/// The catalog contains full public command paths, visible option spellings,
+/// positional argument identifiers, and closed command value names. Hidden
+/// command subtrees and display-only arguments are excluded by the same
+/// visibility rules used for public help.
+pub fn public_contract_identifiers() -> BTreeSet<String> {
+    let mut root = root_command();
+    root.build();
+    let mut identifiers = BTreeSet::from(["volicord".to_owned()]);
+
+    for syntax in public_command_syntax() {
+        if !syntax.components.is_empty() {
+            identifiers.insert(format!("volicord {}", syntax.components.join(" ")));
+        }
+        let command = find_command(&root, &syntax.components)
+            .expect("public command syntax originates from this command declaration");
+        for argument in command
+            .get_arguments()
+            .filter(|argument| !argument.is_hide_set() && !is_display_action(argument.get_action()))
+        {
+            if argument.is_positional() {
+                identifiers.insert(argument.get_id().as_str().to_owned());
+            }
+            if let Some(long) = argument.get_long() {
+                identifiers.insert(format!("--{long}"));
+            }
+            if let Some(short) = argument.get_short() {
+                identifiers.insert(format!("-{short}"));
+            }
+            identifiers.extend(
+                argument
+                    .get_possible_values()
+                    .into_iter()
+                    .filter(|value| !value.is_hide_set())
+                    .map(|value| value.get_name().to_owned()),
+            );
+        }
+    }
+
+    identifiers
+}
+
 fn command_syntax(command: &ClapCommand, components: &[String]) -> CommandSyntax {
     CommandSyntax {
         components: components.to_vec(),
@@ -1229,6 +1272,16 @@ mod tests {
             .map(|path| path.components)
             .collect::<BTreeSet<_>>();
         assert!(hidden.is_disjoint(&paths));
+    }
+
+    #[test]
+    fn public_contract_identifiers_are_derived_from_visible_commands() {
+        let identifiers = public_contract_identifiers();
+
+        assert!(identifiers.contains("volicord policy show"));
+        assert!(identifiers.contains("--repo"));
+        assert!(identifiers.contains("workflow"));
+        assert!(!identifiers.contains("_host-launch"));
     }
 
     #[test]

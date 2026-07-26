@@ -245,14 +245,14 @@
 | `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-command-model`에서 문서 예시용 공개 명령 grammar를 받고, `volicord-types`에서 런타임 담당 계약 식별자를 받으며, `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받습니다. `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트는 끌어오지 않습니다. |
 | `xtask/src/lib.rs` | 간결한 저장소 점검 조합과 공개 보고 타입 재노출. |
 | `xtask/src/diagnostics.rs` | 경로, 범주, 선택적 줄 번호, 메시지를 담는 공통 검증 이슈 표현. |
-| `xtask/src/doc_index.rs` | 현재 문서 색인 스키마, 적용 가능성 원본 해석, 담당 경로, 색인 경로, 유지 문서 coverage. |
-| `xtask/src/markdown.rs` | 공유 Markdown event parsing과 카탈로그 기반 정확한 식별자 의미 단위. |
+| `xtask/src/doc_index.rs` | 현재 문서 색인 스키마, 적용 가능성과 계약 원본 해석, 담당 경로, 색인 경로, 유지 문서 coverage. |
+| `xtask/src/markdown.rs` | 공유 Markdown event parsing, 제목 의미 단위, 지원되는 계약 리터럴 구성. |
 | `xtask/src/links.rs` | 로컬 Markdown 대상 해석, 링크, fragment, anchor. |
-| `xtask/src/parity.rs` | 한영 제목 구조와 용어 기반 정확한 식별자 일치. |
-| `xtask/src/terminology.rs` | 용어 지도 경로, 역할, 정확한 식별자 카탈로그 구성. |
+| `xtask/src/parity.rs` | 한영 제목 구조 일치. |
+| `xtask/src/terminology.rs` | 용어 지도 경로와 신원 민감 역할 검증. |
 | `xtask/src/cli_docs.rs` | 생성 관리 CLI 영역과 `volicord-command-model`을 통한 문서 invocation 검증. 셸 tokenization은 두 번째 명령 grammar가 아닙니다. |
 | `xtask/src/document_structure.rs` | 현재 아키텍처 설계 절과 표면 안정성 구조. |
-| `xtask/src/contract_identifiers.rs` | 런타임 enum에서 생성한 JSON Schema를 기준으로 한영 API 값 집합 담당 문서와 용어 식별자 카탈로그의 작업 범주를 맞추는 검증. |
+| `xtask/src/contract_identifiers.rs` | 현재 공개 스키마, 명령 모델, typed 진단, 프로토콜 레지스트리 식별자 도출, 대응 의미 단위 검증, 작업 범주 표 일치. |
 | `xtask/src/workspace_manifests.rs` | 공유 workspace manifest parsing과 현재 package 및 Rust 적용 가능성 값. |
 | `xtask/src/architecture.rs` | Cargo metadata에서 가져온 package manifest, target source root, 의존 edge, workspace 아키텍처 검증, 정보 제공용 유지보수성 보고. |
 | `xtask/src/release_metadata.rs` | workspace release version 상속과 release tag 검증. |

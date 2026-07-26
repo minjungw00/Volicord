@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::PathBuf, time::Duration};
+use std::{collections::BTreeSet, ffi::OsString, path::PathBuf, time::Duration};
 
 use volicord_mcp::MaterializedManagedMcpLaunch;
 use volicord_types::mcp_verification_evidence::McpActiveVerificationEvidence;
@@ -27,6 +27,19 @@ use preflight::{run_preflight_command, validate_connection_preflight_report};
 use stdio_probe::verify_mcp_stdio_process;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+
+pub(super) fn diagnostic_codes() -> BTreeSet<String> {
+    let mut codes = failure::McpProtocolFailureKind::ALL
+        .into_iter()
+        .map(|diagnostic| diagnostic.code().to_owned())
+        .collect::<BTreeSet<_>>();
+    codes.extend(
+        failure::McpProcessDiagnosticCode::ALL
+            .into_iter()
+            .map(|diagnostic| diagnostic.code().to_owned()),
+    );
+    codes
+}
 
 pub trait ConnectionProcess {
     fn env_var(&self, name: &str) -> Option<OsString>;

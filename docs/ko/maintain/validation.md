@@ -32,6 +32,9 @@ cargo run -p xtask -- architecture-check
 
 - `docs/doc-index.yaml`이 YAML로 파싱되고 `version: 3`을 갖습니다.
 - 필요한 최상위 섹션이 있으며 지원되지 않는 최상위 필드는 거부됩니다.
+- 각 `contract_sources` 항목은 지원되는 현재 담당 원본 종류 하나, 담당 위치,
+  비어 있지 않은 의미 기반 문서 선택자를 선언합니다. 각 선택자는 유지되는 대응
+  문서로 해석되며 담당 원본 종류마다 카탈로그는 하나뿐입니다.
 - `owner_areas` 카탈로그는 안정적인 식별자와 문자열 설명을 사용합니다. 적용
   가능성 키는 밑줄로 구분한 소문자 의미 단어만 사용하고 버전 번호를 포함하지
   않습니다.
@@ -83,9 +86,13 @@ cargo run -p xtask -- architecture-check
   `docs/ko/architecture-guide/design/` 아래의 현재 개별 아키텍처 설계 문서는 문서
   정책이 언어별로 정의한 정확한 H2 순서를 사용하며 그 긍정적인 스키마 밖의 중첩
   제목 절을 두지 않습니다.
-- `docs/terminology-map.yaml`에서 식별한 코드 리터럴은 대응 제목이나 절 의미
-  단위에 남아 있어야 합니다. 이 검사는 용어 카탈로그가 지정한 정확한 식별자만
-  인라인 코드나 코드 펜스에서 찾아 비교합니다.
+- `contract_sources`가 선택한 각 대응 문서에 대해 `docs-check`는 현재 생성 공개
+  JSON Schema, `volicord-command-model`, typed 진단 레지스트리에서 생성한
+  산출물, 현재 프로토콜 레지스트리에서 정확한 식별자를 도출합니다. 대응 제목
+  절은 구조화 JSON/YAML 토큰, 셸 명령 블록, 표의 코드 셀, 구별되는 인라인
+  식별자에서 찾은 식별자를 보존해야 합니다. 집중 진단은 문서 쌍, 절, 계약 담당
+  원본, 누락되거나 유효하지 않은 식별자를 표시합니다. 임의의 산문, Mermaid/text
+  펜스, 관련 없는 단순 코드 span은 계약 식별자로 취급하지 않습니다.
 - 상대 링크가 존재하는 파일로 해석됩니다.
 - 조각 링크와 숨김 앵커가 사용되는 곳에서 해석됩니다.
 - 유지되는 영어/한국어 대응 쌍의 로컬 Markdown 독자 경로 링크가, 색인된 대상은
@@ -104,8 +111,7 @@ cargo run -p xtask -- architecture-check
 - `docs/terminology-map.yaml`의 `primary_owner`와 `related_references` 경로가
   존재하고 `doc-index.yaml`에 표현되어 있습니다.
 - 한영 API 값 집합 담당 문서의 작업 범주 표는
-  `volicord_types::values::OperationCategory`에서 생성한 JSON Schema와 일치하며,
-  정확한 값은 용어 기반 식별자 카탈로그에도 남아 있습니다.
+  `volicord_types::values::OperationCategory`에서 생성한 JSON Schema와 일치합니다.
 - 문서 정책이 표면 라벨을 요구하는 집중 참조 담당 문서는 표면 안정성 섹션을
   포함하고, 기준 어휘로 연결하며, `stable`, `beta`, `internal`,
   `diagnostic` 라벨만 사용합니다. 이 경로들은 집중 `doc_id` 항목에서
@@ -153,8 +159,9 @@ Core 쪽 그룹에서 어댑터 그룹으로 향하는 의존성을 거부합니
 참조 담당 문서에 남아 있는지 확인합니다. 담당 문서가 아닌 곳은 요약하고
 링크해야 하며 두 번째 계약 본문이 되면 안 됩니다.
 
-용어 변경에서는 정확한 식별자, 선호 표현과 문맥별 형태, 자연스러운 한국어 지침,
-담당 경로 무결성을 용어 지도에서 확인합니다.
+용어 변경에서는 식별자 표현 정책, 선호 표현과 문맥별 형태, 자연스러운 한국어
+지침, 담당 경로 무결성을 용어 지도에서 확인합니다. 정확한 계약 식별자는
+`contract_sources`가 선택한 현재 담당 원본을 기준으로 확인합니다.
 
 브랜드 표현이나 넓은 주장 문구를 바꿀 때는 [브랜드 지침](brand-guidelines.md)에서
 Volicord 표기, 공식 한영 브랜드 문구, 구성 요소 표현, 테스트 하네스 용어 경계,
@@ -181,7 +188,8 @@ API와 참조 예시는 필요할 때 메서드 안의 정합성, 요청과 응�
 집중 참조 담당 문서 링크가 정확한지 확인합니다.
 
 자동 `docs-check` 명령에는 유지되는 영어/한국어 대응 쌍의 로컬 문서 링크 일치,
-제목 수준 구조 일치, 용어 기반 정확한 식별자 일치 점검이 포함됩니다. 하지만
+제목 수준 구조 일치, 현재 담당 원본에서 도출한 정확한 식별자 일치 점검이
+포함됩니다. 하지만
 전체 한영 의미 검토, 계약 담당 문서 검토, 기술 정확성 검토, 번역 판단, API
 예시 정합성 검토, 제품 의미 검토를 수행하지 않습니다. 나머지 점검은 계속
 사람이 하고 담당 문서로 경로를 잡습니다.
@@ -339,12 +347,19 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
 - `cargo test -p volicord-integration-tests --test public_contract_snapshots`는 API 요청
   스키마 투영과 MCP `workflow`/`read_only` 도구 투영의 생성 공개 계약 스냅샷이
   Rust 원본과 일치하는지 점검합니다.
+- `cargo test -p volicord-cli --test diagnostic_registry_contract`는 생성된 기계 판독
+  진단 코드 산출물이 현재 typed 레지스트리와 일치하는지 점검합니다. 레지스트리를
+  의도적으로 바꾼 뒤에는
+  `VOLICORD_UPDATE_DIAGNOSTIC_REGISTRY=1 cargo test -p volicord-cli --test diagnostic_registry_contract`
+  로 다시 생성하고
+  `crates/volicord-cli/tests/fixtures/diagnostic-registry.json`을 검토합니다.
 - 의도적인 원본 변경 뒤 공개 계약 스냅샷을 다시 생성하려면
   `VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots`
   를 실행하고 `tests/integration/snapshots/` 아래의 생성 파일을 검토합니다.
 
-공개 계약 스냅샷 파일은 `_generated`로 표시된 생성 테스트 산출물입니다. 손으로
-편집하지 말고 먼저 스키마 또는 MCP 원본을 바꾼 뒤 다시 생성합니다. CLI 공개 명령
+공개 계약 스냅샷과 진단 레지스트리 파일은 `_generated`로 표시된 생성 테스트
+산출물입니다. 손으로 편집하지 말고 먼저 typed 담당 원본을 바꾼 뒤 다시
+생성합니다. CLI 공개 명령
 드리프트는 별도의 CLI JSON 스키마를 새로 만들지 않고 실행 가능한 문서 예시와
 `volicord-cli`의 `binary_admin`, `mcp_transport` 같은 CLI 도움말/출력 테스트
 대상으로 계속 다룹니다.

@@ -84,6 +84,13 @@ applicability:
   terminology_map_schema:
     description: Current terminology map schema.
     version_source: terminology_map_schema
+contract_sources:
+  public_api:
+    description: Current generated public JSON Schemas.
+    kind: public_json_schemas
+    owner: crates/volicord-types/src/methods.rs
+    document_selectors:
+    - docs.index
 default_applicability:
 - sample_workspace
 entry_schema:
@@ -454,12 +461,7 @@ fn index_architecture_design_pair(root: &Path) {
     write(root, "docs/doc-index.yaml", &index);
 }
 
-fn install_operation_category_fixture(
-    root: &Path,
-    en_values: &[String],
-    ko_values: &[String],
-    preserved_identifiers: &[String],
-) {
+fn install_operation_category_fixture(root: &Path, en_values: &[String], ko_values: &[String]) {
     write(
         root,
         "docs/en/reference/api/schema-value-sets.md",
@@ -487,26 +489,6 @@ fn install_operation_category_fixture(
 "#,
     );
     write(root, "docs/doc-index.yaml", &index);
-
-    let preserved = preserved_identifiers
-        .iter()
-        .map(|identifier| format!("      - {identifier}\n"))
-        .collect::<String>();
-    let mut terminology = valid_terminology_map();
-    terminology.push_str(&format!(
-        r#"  operation_category:
-    category: identifier
-    en: operation_category
-    ko_reference: "`operation_category`"
-    ko_user: "`operation_category`"
-    preserve_as_identifier:
-{preserved}    primary_owner:
-      en: "docs/en/reference/api/schema-value-sets.md#operation-category-values"
-      ko: "docs/ko/reference/api/schema-value-sets.md#operation-category-values"
-    related_references: []
-"#
-    ));
-    write(root, "docs/terminology-map.yaml", &terminology);
 }
 
 fn operation_category_owner(title: &str, value_heading: &str, values: &[String]) -> String {

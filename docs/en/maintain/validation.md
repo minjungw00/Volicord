@@ -34,6 +34,9 @@ read-only and verifies the machine-checkable shape:
 - `docs/doc-index.yaml` parses as YAML and has `version: 3`.
 - Required top-level sections are present and unsupported top-level fields are
   rejected.
+- Every `contract_sources` entry declares one supported current owner kind,
+  owner location, and non-empty semantic document selectors. Each selector
+  resolves to maintained paired documents, and each owner kind has one catalog.
 - The `owner_areas` catalog uses stable identifiers with string descriptions.
   Applicability keys use lowercase semantic words separated by underscores and
   contain no embedded version numbers.
@@ -86,9 +89,15 @@ read-only and verifies the machine-checkable shape:
   `docs/ko/architecture-guide/design/` uses the language-specific exact H2
   sequence defined by the Documentation Policy and has no nested heading
   sections outside that positive schema.
-- Code literals identified by `docs/terminology-map.yaml` remain present in
-  corresponding headings or section meaning units. The check compares only
-  catalog-driven exact identifiers found in inline or fenced code.
+- For each paired document selected by `contract_sources`, `docs-check` derives
+  exact identifiers from the current generated public JSON Schemas,
+  `volicord-command-model`, generated typed diagnostic registry, and current
+  protocol registry. Corresponding heading sections preserve identifiers found
+  in structured JSON/YAML tokens, shell command blocks, code cells in tables,
+  and distinctive inline identifiers. Focused diagnostics name the pair,
+  section, contract owner, and missing or invalid identifier. Arbitrary prose,
+  Mermaid/text fences, and unrelated simple code spans are not treated as
+  contract identifiers.
 - Existing-file and duplicate-path rules apply to the root README pair in the
   same way they apply to other indexed paths.
 - Relative links resolve to existing files.
@@ -113,8 +122,7 @@ read-only and verifies the machine-checkable shape:
   and are represented in `doc-index.yaml`.
 - The operation-category table in the paired API value-set owners matches
   the generated JSON Schema for
-  `volicord_types::values::OperationCategory`, and its exact values remain in
-  the terminology-driven identifier catalog.
+  `volicord_types::values::OperationCategory`.
 - Focused Reference owner pages that the documentation policy marks as needing
   surface labels include a `Surface Stability` section, link to the canonical
   vocabulary, and use only `stable`, `beta`, `internal`, or `diagnostic` labels.
@@ -169,9 +177,10 @@ meaning, value-set meaning, and Core authority semantics remain in the focused
 Reference owner. Non-owner pages should summarize and link, not become second
 contract bodies.
 
-For terminology changes, check the terminology map for exact identifiers,
-preferred and contextual forms, natural Korean guidance, and owner path
-integrity.
+For terminology changes, check the terminology map for identifier-presentation
+policy, preferred and contextual forms, natural Korean guidance, and owner path
+integrity. Check exact contract identifiers against the current owners selected
+by `contract_sources`.
 
 For brand-presentation or broad-claim changes, check the [Brand Guidelines](brand-guidelines.md)
 for Volicord spelling, official bilingual brand copy, component presentation,
@@ -203,8 +212,8 @@ only the present implementation, and verify every implementation route and
 focused Reference-owner link.
 
 The automated `docs-check` command includes local documentation-link parity,
-heading-level structure parity, and terminology-driven exact-identifier parity
-for maintained English/Korean pairs. It does not perform full semantic
+heading-level structure parity, and current-owner-derived exact-identifier
+parity for maintained English/Korean pairs. It does not perform full semantic
 bilingual review, contract-owner review, technical-accuracy review, translation
 judgment, API example consistency review, or product meaning review. The
 remaining checks stay manual and owner-routed.
@@ -381,14 +390,19 @@ Generated or source-derived reference surfaces use stable check commands:
 - `cargo test -p volicord-integration-tests --test public_contract_snapshots`
   checks generated public contract snapshots for API request schema projections
   and MCP `workflow`/read-only tool projections against their Rust sources.
+- `cargo test -p volicord-cli --test diagnostic_registry_contract` checks the
+  generated machine-readable diagnostic-code artifact against the current typed
+  registries. After an intentional registry change, regenerate it with
+  `VOLICORD_UPDATE_DIAGNOSTIC_REGISTRY=1 cargo test -p volicord-cli --test diagnostic_registry_contract`
+  and review `crates/volicord-cli/tests/fixtures/diagnostic-registry.json`.
 - To regenerate those public contract snapshots after an intentional source
   change, run
   `VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots`
   and review the generated files under `tests/integration/snapshots/`.
 
-The public contract snapshot files are generated test artifacts marked with
-`_generated`. Do not edit them by hand; update the schema or MCP source first,
-then regenerate. CLI public command drift remains covered by executable
+The public contract snapshot and diagnostic registry files are generated test
+artifacts marked with `_generated`. Do not edit them by hand; update the typed
+owner first, then regenerate. CLI public command drift remains covered by executable
 documentation examples and CLI help/output tests such as the `volicord-cli`
 `binary_admin` and `mcp_transport` test targets rather than by a separate CLI
 JSON schema.

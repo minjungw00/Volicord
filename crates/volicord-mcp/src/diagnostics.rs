@@ -1,5 +1,6 @@
 use crate::errors::{McpAdapterError, McpHostError};
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::time::SystemTime;
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_platform_fs::{PlatformDiagnosticClass, PlatformDiagnosticKind};
@@ -23,6 +24,18 @@ pub(crate) enum JsonRpcDiagnostic {
     MessageSizeExceeded,
 }
 
+impl JsonRpcDiagnostic {
+    const ALL: [Self; 7] = [
+        Self::ParseError,
+        Self::InvalidRequest,
+        Self::InvalidId,
+        Self::UnknownMethod,
+        Self::MalformedResponse,
+        Self::FramingFailure,
+        Self::MessageSizeExceeded,
+    ];
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum McpLifecycleDiagnostic {
     InitializeRequired,
@@ -34,12 +47,33 @@ pub(crate) enum McpLifecycleDiagnostic {
     InvalidShutdownSequence,
 }
 
+impl McpLifecycleDiagnostic {
+    const ALL: [Self; 7] = [
+        Self::InitializeRequired,
+        Self::DuplicateInitialize,
+        Self::InitializationBatchForbidden,
+        Self::InitializedNotificationMissing,
+        Self::InitializedNotificationInvalid,
+        Self::OperationBeforeReady,
+        Self::InvalidShutdownSequence,
+    ];
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum McpProtocolDiagnostic {
     MalformedVersion,
     UnsupportedVersion,
     CapabilityShapeFailure,
     SchemaProjectionFailure,
+}
+
+impl McpProtocolDiagnostic {
+    const ALL: [Self; 4] = [
+        Self::MalformedVersion,
+        Self::UnsupportedVersion,
+        Self::CapabilityShapeFailure,
+        Self::SchemaProjectionFailure,
+    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +83,15 @@ pub(crate) enum McpToolDiscoveryDiagnostic {
     SchemaFailure,
     RequiredToolMissing,
     InvalidToolDefinitionProjection,
+}
+
+impl McpToolDiscoveryDiagnostic {
+    const ALL: [Self; 4] = [
+        Self::ProtocolError,
+        Self::SchemaFailure,
+        Self::RequiredToolMissing,
+        Self::InvalidToolDefinitionProjection,
+    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,9 +107,26 @@ pub(crate) enum McpToolCallDiagnostic {
     SessionCorrelationInvalid,
 }
 
+impl McpToolCallDiagnostic {
+    const ALL: [Self; 8] = [
+        Self::UnknownTool,
+        Self::InvalidArguments,
+        Self::OutputSchemaFailure,
+        Self::ResponseBudgetFailure,
+        Self::CoreExecutionError,
+        Self::AdapterExecutionError,
+        Self::SafeReadOnlyToolFailure,
+        Self::SessionCorrelationInvalid,
+    ];
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum McpTransportDiagnostic {
     IoFailure,
+}
+
+impl McpTransportDiagnostic {
+    const ALL: [Self; 1] = [Self::IoFailure];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,6 +437,53 @@ impl McpDiagnostic {
             ),
         }
     }
+}
+
+/// Returns the current machine-readable diagnostic codes owned by the MCP
+/// adapter registry.
+pub fn diagnostic_codes() -> BTreeSet<String> {
+    let mut diagnostics = Vec::new();
+    diagnostics.extend(
+        PlatformDiagnosticKind::ALL
+            .into_iter()
+            .map(McpDiagnostic::Platform),
+    );
+    diagnostics.extend(
+        JsonRpcDiagnostic::ALL
+            .into_iter()
+            .map(McpDiagnostic::JsonRpc),
+    );
+    diagnostics.extend(
+        McpLifecycleDiagnostic::ALL
+            .into_iter()
+            .map(McpDiagnostic::Lifecycle),
+    );
+    diagnostics.extend(
+        McpProtocolDiagnostic::ALL
+            .into_iter()
+            .map(McpDiagnostic::Protocol),
+    );
+    diagnostics.extend(
+        McpToolDiscoveryDiagnostic::ALL
+            .into_iter()
+            .map(McpDiagnostic::ToolDiscovery),
+    );
+    diagnostics.extend(
+        McpToolCallDiagnostic::ALL
+            .into_iter()
+            .map(McpDiagnostic::ToolCall),
+    );
+    diagnostics.extend(McpHostError::ALL.into_iter().map(McpDiagnostic::Host));
+    diagnostics.extend(
+        McpTransportDiagnostic::ALL
+            .into_iter()
+            .map(McpDiagnostic::Transport),
+    );
+    diagnostics.push(McpDiagnostic::Unexpected);
+    diagnostics
+        .into_iter()
+        .map(|diagnostic| diagnostic.code().to_owned())
+        .collect()
 }
 
 #[derive(Debug, Clone)]

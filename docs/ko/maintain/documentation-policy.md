@@ -14,7 +14,9 @@
 규범 수준, 번역 정책, 주요 독자, 독자 여정, 필요한 경우의 집중
 `canonical_for` 담당 범위, 유지보수 `owner_area`, `created_on`,
 `last_updated_on`, `last_verified_on`, 루트 `default_applicability`, 항목별
-선택 `applies_to`, `depends_on` 관계를 기록합니다.
+선택 `applies_to`, `depends_on` 관계를 기록합니다. 최상위
+`contract_sources` 카탈로그는 의미 기반 문서군 선택자를 현재의 기계 판독 가능
+공개 API, 관리 CLI, 진단, 프로토콜 담당 원본에 연결합니다.
 
 `canonical_for`는 문서가 담당하는 정보 또는 계약 영역을 이름 붙입니다.
 `owner_area`는 그 항목을 정확하게 유지하는 오래 유지될 책임 영역을 이름
@@ -47,9 +49,14 @@
 `canonical_for`를 사용합니다. 특히 집중 참조 계약과 유지보수 정책이 여기에
 해당합니다.
 
-구조화 용어와 식별자 보존 기준은 [`docs/terminology-map.yaml`](../../terminology-map.yaml)을
-사용합니다. 용어 지도는 API, 저장소, 스키마, 보안, 상태 보기, 런타임 동작을
-정의하지 않습니다.
+구조화 번역, 표현, 식별자 보존 정책은
+[`docs/terminology-map.yaml`](../../terminology-map.yaml)을 사용합니다. 정확한
+공개 API 필드와 값은 생성 공개 JSON Schema에서, CLI 식별자는
+`volicord-command-model`에서, 진단 코드는 typed 진단 레지스트리에서 생성한
+산출물에서, 프로토콜 필드와 기능 이름은 현재 프로토콜 레지스트리에서 가져옵니다.
+`contract_sources`는 식별자 배열을 메타데이터에 복사하지 않고 문서군에 이 담당
+원본을 선택합니다. 용어 지도는 API, 저장소, 스키마, 보안, 상태 보기, 프로토콜,
+진단, 런타임 계약을 정의하거나 목록화하지 않습니다.
 
 Volicord 브랜드 표기, 공식 한영 브랜드 문구, 구성 요소 표현, 프로젝트 안에서
 사용하는 시각 원칙, 브랜드 주장 경계는 [브랜드 지침](brand-guidelines.md)을

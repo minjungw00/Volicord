@@ -67,6 +67,27 @@ pub enum McpProtocolFailureKind {
 }
 
 impl McpProtocolFailureKind {
+    pub const ALL: [Self; 18] = [
+        Self::MalformedResponse,
+        Self::FramingFailure,
+        Self::MessageSizeExceeded,
+        Self::JsonRpcError,
+        Self::MalformedProtocolVersion,
+        Self::UnsupportedProtocolRevision,
+        Self::CapabilityShapeFailure,
+        Self::RevisionSchemaProjectionFailure,
+        Self::ToolListProtocolError,
+        Self::ToolListSchemaFailure,
+        Self::RequiredToolMissing,
+        Self::InvalidToolDefinitionProjection,
+        Self::SafeToolProtocolError,
+        Self::OutputSchemaFailure,
+        Self::SafeReadOnlyToolFailure,
+        Self::SessionCorrelationInvalid,
+        Self::PreflightReportInvalid,
+        Self::Unexpected,
+    ];
+
     pub const fn code(self) -> &'static str {
         match self {
             Self::MalformedResponse => "mcp.json_rpc.malformed_response",
@@ -120,6 +141,59 @@ impl McpProtocolFailureKind {
             }
             Self::PreflightReportInvalid => "the MCP preflight report was invalid",
             Self::Unexpected => "an unexpected internal child-protocol failure occurred",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum McpProcessDiagnosticCode {
+    SpawnFailed,
+    PipeAcquisitionFailed,
+    ChildExited,
+    ChildSignaled,
+    StartupTimeout,
+    InitializeTimeout,
+    ToolsListTimeout,
+    SafeToolCallTimeout,
+    ShutdownTimeout,
+    PipeReadFailed,
+    PipeWriteFailed,
+    ChildWaitFailed,
+    CleanupFailed,
+}
+
+impl McpProcessDiagnosticCode {
+    pub(super) const ALL: [Self; 13] = [
+        Self::SpawnFailed,
+        Self::PipeAcquisitionFailed,
+        Self::ChildExited,
+        Self::ChildSignaled,
+        Self::StartupTimeout,
+        Self::InitializeTimeout,
+        Self::ToolsListTimeout,
+        Self::SafeToolCallTimeout,
+        Self::ShutdownTimeout,
+        Self::PipeReadFailed,
+        Self::PipeWriteFailed,
+        Self::ChildWaitFailed,
+        Self::CleanupFailed,
+    ];
+
+    pub(super) const fn code(self) -> &'static str {
+        match self {
+            Self::SpawnFailed => "process.spawn.failed",
+            Self::PipeAcquisitionFailed => "process.pipe_acquisition.failed",
+            Self::ChildExited => "process.child.exited",
+            Self::ChildSignaled => "process.child.signaled",
+            Self::StartupTimeout => "process.startup.timeout",
+            Self::InitializeTimeout => "process.initialize.timeout",
+            Self::ToolsListTimeout => "process.tools_list.timeout",
+            Self::SafeToolCallTimeout => "process.safe_tool_call.timeout",
+            Self::ShutdownTimeout => "process.shutdown.timeout",
+            Self::PipeReadFailed => "process.pipe.read_failed",
+            Self::PipeWriteFailed => "process.pipe.write_failed",
+            Self::ChildWaitFailed => "process.child.wait_failed",
+            Self::CleanupFailed => "process.cleanup.failed",
         }
     }
 }
@@ -304,32 +378,32 @@ impl McpProcessFailure {
 
     pub const fn diagnostic_code(&self) -> &'static str {
         match self {
-            Self::Spawn { .. } => "process.spawn.failed",
-            Self::PipeAcquisition { .. } => "process.pipe_acquisition.failed",
+            Self::Spawn { .. } => McpProcessDiagnosticCode::SpawnFailed.code(),
+            Self::PipeAcquisition { .. } => McpProcessDiagnosticCode::PipeAcquisitionFailed.code(),
             Self::ExitedBeforeResponse {
                 exit_code: Some(_), ..
-            } => "process.child.exited",
+            } => McpProcessDiagnosticCode::ChildExited.code(),
             Self::ExitedBeforeResponse {
                 exit_code: None, ..
-            } => "process.child.signaled",
+            } => McpProcessDiagnosticCode::ChildSignaled.code(),
             Self::Timeout { stage, .. } => match stage {
-                McpStage::Startup => "process.startup.timeout",
-                McpStage::Initialize => "process.initialize.timeout",
-                McpStage::ToolsList => "process.tools_list.timeout",
-                McpStage::SafeToolCall => "process.safe_tool_call.timeout",
-                McpStage::Shutdown => "process.shutdown.timeout",
+                McpStage::Startup => McpProcessDiagnosticCode::StartupTimeout.code(),
+                McpStage::Initialize => McpProcessDiagnosticCode::InitializeTimeout.code(),
+                McpStage::ToolsList => McpProcessDiagnosticCode::ToolsListTimeout.code(),
+                McpStage::SafeToolCall => McpProcessDiagnosticCode::SafeToolCallTimeout.code(),
+                McpStage::Shutdown => McpProcessDiagnosticCode::ShutdownTimeout.code(),
             },
-            Self::Read { .. } => "process.pipe.read_failed",
-            Self::Write { .. } => "process.pipe.write_failed",
+            Self::Read { .. } => McpProcessDiagnosticCode::PipeReadFailed.code(),
+            Self::Write { .. } => McpProcessDiagnosticCode::PipeWriteFailed.code(),
             Self::Protocol { kind, .. } => kind.code(),
-            Self::Wait { .. } => "process.child.wait_failed",
-            Self::Cleanup { .. } => "process.cleanup.failed",
+            Self::Wait { .. } => McpProcessDiagnosticCode::ChildWaitFailed.code(),
+            Self::Cleanup { .. } => McpProcessDiagnosticCode::CleanupFailed.code(),
             Self::Shutdown {
                 exit_code: Some(_), ..
-            } => "process.child.exited",
+            } => McpProcessDiagnosticCode::ChildExited.code(),
             Self::Shutdown {
                 exit_code: None, ..
-            } => "process.child.signaled",
+            } => McpProcessDiagnosticCode::ChildSignaled.code(),
         }
     }
 

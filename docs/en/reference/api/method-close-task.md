@@ -124,7 +124,7 @@ The terminal close summary produced by a successful terminal close is not the cu
 | `intent` | `close_reason` | `superseding_task_id` | Method rule |
 |---|---|---|---|
 | `complete` | `completed_self_checked` or `completed_with_risk_accepted` | `null` | Completion path; runs close readiness evaluation. |
-| `cancel` | `cancelled` | `null` | Cancellation path; requires compatible accepted cancellation authority and evaluates cancellation-specific terminal constraints. |
+| `cancel` | `cancelled` | `null` | Cancellation path; requires compatible `accepted` cancellation authority and evaluates cancellation-specific terminal constraints. |
 | `supersede` | `superseded` | Non-null same-project replacement `Task` reference | Supersession path; evaluates supersession-specific terminal constraints. |
 
 ## Required inputs
@@ -180,7 +180,7 @@ Nested owner links:
 | Request kind | Method access rule |
 |---|---|
 | `volicord.check_close` | Requires verified invocation context with `operation_category=read` for protected close readiness detail. |
-| Mutating intents | Require verified invocation context with `operation_category=agent_workflow`, compatible `Task` state, and close-relevant owner records. |
+| Mutating `intent` values | Require verified invocation context with `operation_category=agent_workflow`, compatible `Task` state, and close-relevant owner records. |
 
 Access to call this method is separate from user-owned judgment, final acceptance, residual-risk acceptance, sensitive-action approval, and write ticket.
 
@@ -208,7 +208,7 @@ Implementations evaluate `volicord.close_task` in this order:
 |---|---|
 | `volicord.check_close` | Never increments `project_state.state_version`, including when `dry_run=true`. |
 | Successful terminal mutation | Increments `project_state.state_version` exactly once. |
-| Blocked result for a mutating intent | Never increments `project_state.state_version`; it returns `base.effect_kind=no_effect` without a terminal mutation, event, or replay row. |
+| Blocked result for a mutating `intent` | Never increments `project_state.state_version`; it returns `base.effect_kind=no_effect` without a terminal mutation, event, or replay row. |
 | Preflight rejection or valid `dry_run` preview | Increments nothing. |
 
 Preflight rejection includes stale `expected_state_version` and idempotency request-hash conflict. These conflicts route to the error owners; they are not close blockers. Write-ticket invalidation is state-bound and remains visible in ticket authority state; it does not create a close blocker by itself.
@@ -375,7 +375,7 @@ Branch shapes are owned by [API Schema Core](schema-core.md). Response-branch ro
 
 `volicord.check_close` has no Core authority-state storage effect, including
 when it returns blockers or uses `dry_run=true`. It does not create replay
-rows, append events, persist close blocker rows, mutate close state, touch
+rows, append events, persist close blocker rows, mutate `close_state`, touch
 artifacts or evidence, or increment `project_state.state_version`.
 
 Committed `dry_run=false` mutating intents persist only successful terminal outcomes. A blocked mutating intent returns a response-only `base.effect_kind=no_effect` result and leaves terminal state unchanged. A successful terminal close may persist a terminal close summary, distinct from the current close basis used for pre-close readiness. Successful `intent=complete` may also persist project continuity records with `kind=known_limit` for current close-basis residual risks that are visible but do not require residual-risk acceptance. Exact storage effects, replay rows, events, state-version increments, and project continuity persistence are owned by [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).

@@ -143,11 +143,6 @@ struct RequiredTerminologyRoles {
     roles: &'static [&'static str],
 }
 
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ExactIdentifierCatalog {
-    pub(crate) identifiers: BTreeSet<String>,
-}
-
 pub(crate) fn validate_terminology_paths(
     root: &Path,
     index: &DocIndex,
@@ -192,113 +187,6 @@ pub(crate) fn validate_terminology_paths(
             ));
         }
     }
-}
-
-pub(crate) fn exact_identifier_catalog(
-    terminology_path: &Path,
-    issues: &mut Vec<ValidationIssue>,
-) -> ExactIdentifierCatalog {
-    let contents = match fs::read_to_string(terminology_path) {
-        Ok(contents) => contents,
-        Err(error) => {
-            issues.push(ValidationIssue::new(
-                TERMINOLOGY_MAP_PATH,
-                "identifier_parity.terminology_read",
-                format!("failed to read exact-identifier catalog: {error}"),
-            ));
-            return ExactIdentifierCatalog::default();
-        }
-    };
-    let value: Value = match serde_yaml::from_str(&contents) {
-        Ok(value) => value,
-        Err(error) => {
-            issues.push(ValidationIssue::new(
-                TERMINOLOGY_MAP_PATH,
-                "identifier_parity.terminology_yaml",
-                format!("failed to parse exact-identifier catalog: {error}"),
-            ));
-            return ExactIdentifierCatalog::default();
-        }
-    };
-    let Some(top) = value.as_mapping() else {
-        return ExactIdentifierCatalog::default();
-    };
-
-    let mut catalog = ExactIdentifierCatalog::default();
-    if let Some(global) = mapping_get(top, "identifier_preservation")
-        .and_then(Value::as_mapping)
-        .and_then(|preservation| mapping_get(preservation, "identifiers"))
-    {
-        extend_identifier_sequence(
-            global,
-            "identifier_preservation.identifiers",
-            &mut catalog.identifiers,
-            issues,
-        );
-    }
-
-    if let Some(terms) = mapping_get(top, "terms").and_then(Value::as_mapping) {
-        for (term_key, entry) in terms {
-            let term_key = term_key.as_str().unwrap_or("<non-string>");
-            let Some(entry) = entry.as_mapping() else {
-                continue;
-            };
-            if let Some(values) = mapping_get(entry, "preserve_as_identifier") {
-                extend_identifier_sequence(
-                    values,
-                    &format!("terms.{term_key}.preserve_as_identifier"),
-                    &mut catalog.identifiers,
-                    issues,
-                );
-            }
-            if mapping_get(entry, "preserve_identifier").and_then(Value::as_bool) == Some(true) {
-                if let Some(identifier) = mapping_get(entry, "en")
-                    .and_then(Value::as_str)
-                    .and_then(normalize_identifier_literal)
-                {
-                    catalog.identifiers.insert(identifier.to_owned());
-                }
-            }
-        }
-    }
-
-    catalog
-}
-
-fn extend_identifier_sequence(
-    value: &Value,
-    field: &str,
-    identifiers: &mut BTreeSet<String>,
-    issues: &mut Vec<ValidationIssue>,
-) {
-    let Some(values) = value.as_sequence() else {
-        issues.push(ValidationIssue::new(
-            TERMINOLOGY_MAP_PATH,
-            "identifier_parity.terminology_shape",
-            format!("{field} must be a list of exact identifier strings"),
-        ));
-        return;
-    };
-    for value in values {
-        let Some(identifier) = value.as_str().and_then(normalize_identifier_literal) else {
-            issues.push(ValidationIssue::new(
-                TERMINOLOGY_MAP_PATH,
-                "identifier_parity.terminology_shape",
-                format!("{field} must contain only non-empty exact identifier strings"),
-            ));
-            continue;
-        };
-        identifiers.insert(identifier.to_owned());
-    }
-}
-
-fn normalize_identifier_literal(value: &str) -> Option<&str> {
-    let value = value.trim();
-    let value = value
-        .strip_prefix('`')
-        .and_then(|value| value.strip_suffix('`'))
-        .unwrap_or(value);
-    (!value.is_empty()).then_some(value)
 }
 
 fn validate_terminology_roles(value: &Value, errors: &mut Vec<ValidationIssue>) {

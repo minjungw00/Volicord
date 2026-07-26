@@ -7,6 +7,7 @@
 
 pub mod changes_command;
 pub mod connection_command;
+pub mod diagnostic_registry;
 pub mod diagnostics_command;
 mod disclosure;
 pub mod doctor_command;

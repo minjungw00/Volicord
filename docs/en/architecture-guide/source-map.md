@@ -245,14 +245,14 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-command-model` supplies the public command grammar for documentation examples, `volicord-types` supplies runtime-owned contract identifiers, and `volicord-mcp-protocol` supplies production profiles for pinned specification parity, without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
 | `xtask/src/lib.rs` | Thin repository-check orchestration and public report re-exports. |
 | `xtask/src/diagnostics.rs` | Shared path, category, optional line, and message representation for validation issues. |
-| `xtask/src/doc_index.rs` | Current documentation-index schema, applicability-source resolution, owner routing, indexed paths, and maintained-document coverage. |
-| `xtask/src/markdown.rs` | Shared Markdown event parsing and catalog-driven exact-identifier meaning units. |
+| `xtask/src/doc_index.rs` | Current documentation-index schema, applicability and contract-source resolution, owner routing, indexed paths, and maintained-document coverage. |
+| `xtask/src/markdown.rs` | Shared Markdown event parsing, heading meaning units, and supported contract-literal constructs. |
 | `xtask/src/links.rs` | Local Markdown target resolution, links, fragments, and anchors. |
-| `xtask/src/parity.rs` | English/Korean heading structure and terminology-driven exact-identifier parity. |
-| `xtask/src/terminology.rs` | Terminology-map paths, roles, and exact-identifier catalog construction. |
+| `xtask/src/parity.rs` | English/Korean heading-structure parity. |
+| `xtask/src/terminology.rs` | Terminology-map paths and identity-sensitive role validation. |
 | `xtask/src/cli_docs.rs` | Generated Administrative CLI regions and documented invocation validation through `volicord-command-model`; shell tokenization is not a second command grammar. |
 | `xtask/src/document_structure.rs` | Current architecture-design section and surface-stability structure. |
-| `xtask/src/contract_identifiers.rs` | Operation-category parity from the runtime enum's generated JSON Schema to the paired API value-set owners and terminology identifier catalog. |
+| `xtask/src/contract_identifiers.rs` | Current public-schema, command-model, typed-diagnostic, and protocol-registry identifier derivation; paired meaning-unit validation; and operation-category table parity. |
 | `xtask/src/workspace_manifests.rs` | Shared workspace-manifest parsing and current package and Rust applicability values. |
 | `xtask/src/architecture.rs` | Cargo-metadata-derived package manifests, target source roots, dependency edges, workspace architecture validation, and informational maintainability reporting. |
 | `xtask/src/release_metadata.rs` | Workspace release-version inheritance and release-tag validation. |

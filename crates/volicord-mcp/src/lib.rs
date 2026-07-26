@@ -44,7 +44,7 @@ pub use binding::{
     resolve_runtime_home_from_env, run_preflight_check_from_env,
 };
 pub use build_info::{build_id, build_info, BuildInfo};
-pub use diagnostics::bootstrap_diagnostic_envelope;
+pub use diagnostics::{bootstrap_diagnostic_envelope, diagnostic_codes};
 pub use errors::McpAdapterError;
 pub use managed_launch::{
     is_managed_mcp_launch_environment_name, LaunchEnvironment, ManagedMcpBinding,
