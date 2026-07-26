@@ -274,11 +274,11 @@ stable codes:
 
 | Code | Condition |
 |---|---|
-| `platform.operating_system.unsupported` | The operating system has no supported release cell. |
+| `platform.operating_system.unsupported` | The operating system is not a supported Volicord platform target. |
 | `platform.target.unsupported` | The executable target, including an incompatible WSL2 target, is unsupported. |
 | `platform.wsl1.unsupported` | The process is running under WSL1. |
 | `platform.wsl2.distribution_identity_unavailable` | The WSL2 distribution identity could not be observed. |
-| `platform.wsl2.distribution_unsupported` | The observed WSL2 distribution is outside the pinned cell. |
+| `platform.wsl2.distribution_unsupported` | The observed WSL2 distribution does not match the supported distribution identity. |
 | `platform.filesystem.unsupported` | A selected path is outside the supported filesystem boundary. |
 | `platform.filesystem.observation_failed` | Filesystem identity could not be observed. |
 | `platform.observation.failed` | Another required platform observation failed. |

@@ -549,14 +549,17 @@ mod tests {
         let error = volicord_store::StoreError::UnsupportedPlatformEnvironment {
             diagnostic: volicord_platform_fs::PlatformDiagnostic::new(
                 volicord_platform_fs::PlatformDiagnosticKind::UnsupportedTarget,
-                "the running binary target is outside the supported release cell",
+                "the running binary target is unsupported; use a supported Volicord platform target",
             ),
         };
 
-        assert_eq!(
-            CliError::from(error).to_string(),
-            "platform.target.unsupported: the running binary target is outside the supported release cell"
-        );
+        let rendered = CliError::from(error).to_string();
+        let (code, detail) = rendered
+            .split_once(": ")
+            .expect("CLI platform error must include code and bounded detail");
+        assert_eq!(code, "platform.target.unsupported");
+        assert!(detail.contains("running binary target is unsupported"));
+        assert!(detail.contains("supported Volicord platform target"));
     }
 
     #[test]

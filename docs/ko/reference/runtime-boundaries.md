@@ -237,11 +237,11 @@ raw request body 또는 projection하지 않은 다른 입력을 담으면 안 �
 
 | Code | 조건 |
 |---|---|
-| `platform.operating_system.unsupported` | 운영체제에 지원되는 릴리스 cell이 없습니다. |
+| `platform.operating_system.unsupported` | 운영체제가 지원되는 Volicord 플랫폼 대상이 아닙니다. |
 | `platform.target.unsupported` | WSL2와 호환되지 않는 target을 포함해 실행 파일 target을 지원하지 않습니다. |
 | `platform.wsl1.unsupported` | 프로세스가 WSL1에서 실행 중입니다. |
 | `platform.wsl2.distribution_identity_unavailable` | WSL2 배포판 identity를 관찰할 수 없습니다. |
-| `platform.wsl2.distribution_unsupported` | 관찰한 WSL2 배포판이 고정된 cell 밖에 있습니다. |
+| `platform.wsl2.distribution_unsupported` | 관찰한 WSL2 배포판이 지원되는 배포판 식별 정보와 일치하지 않습니다. |
 | `platform.filesystem.unsupported` | 선택한 경로가 지원되는 파일시스템 경계 밖에 있습니다. |
 | `platform.filesystem.observation_failed` | 파일시스템 identity를 관찰할 수 없습니다. |
 | `platform.observation.failed` | 그 밖의 필수 플랫폼 관찰이 실패했습니다. |

@@ -19,7 +19,7 @@ pub enum StoreError {
     Sqlite(rusqlite::Error),
     /// Local administrative setup input is not valid for the storage record.
     InvalidInput { detail: String },
-    /// The observed platform topology is outside the first-release contract.
+    /// The observed platform topology is outside the supported platform boundary.
     UnsupportedPlatformEnvironment { diagnostic: PlatformDiagnostic },
     /// A required platform-topology observation could not be completed.
     PlatformEnvironmentUnavailable { diagnostic: PlatformDiagnostic },
@@ -657,7 +657,7 @@ mod tests {
         let error = StoreError::UnsupportedPlatformEnvironment {
             diagnostic: PlatformDiagnostic::new(
                 PlatformDiagnosticKind::UnsupportedWsl2Distribution,
-                "the observed distribution is outside the supported release cell",
+                "the observed WSL2 distribution is unsupported; use the supported WSL2 distribution identity",
             ),
         };
 
@@ -671,9 +671,12 @@ mod tests {
             error.platform_diagnostic().map(PlatformDiagnostic::code),
             Some("platform.wsl2.distribution_unsupported")
         );
-        assert_eq!(
-            error.to_string(),
-            "platform.wsl2.distribution_unsupported: the observed distribution is outside the supported release cell"
-        );
+        let rendered = error.to_string();
+        let (code, detail) = rendered
+            .split_once(": ")
+            .expect("platform display must include code and bounded detail");
+        assert_eq!(code, "platform.wsl2.distribution_unsupported");
+        assert!(detail.contains("observed WSL2 distribution is unsupported"));
+        assert!(detail.contains("supported WSL2 distribution identity"));
     }
 }

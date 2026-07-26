@@ -7,10 +7,10 @@ use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 
 use crate::canonical::is_canonical_sha256_digest;
 
-/// Semantic identity of the only first-release SQLite storage contract.
+/// Semantic identity of the canonical SQLite storage contract.
 pub const STORAGE_CONTRACT_ID: &str = "volicord.sqlite.canonical";
 
-/// Complete capability set enabled by the first-release storage contract.
+/// Complete capability set enabled by the canonical SQLite storage contract.
 pub const STORAGE_ENABLED_CAPABILITIES: &[&str] = &[
     "artifact_storage",
     "authority_event_chain",

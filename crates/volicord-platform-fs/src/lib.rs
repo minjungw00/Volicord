@@ -69,22 +69,22 @@ pub enum PathFilesystemKind {
 pub enum PlatformDiagnosticClass {
     /// Required local observation could not be completed.
     Unavailable,
-    /// The observed platform or topology is outside the first-release contract.
+    /// The observed platform or topology is outside the supported platform boundary.
     Unsupported,
 }
 
 /// Closed semantic kinds for Volicord-owned platform diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PlatformDiagnosticKind {
-    /// The operating system has no supported Volicord release cell.
+    /// The operating system is not a supported Volicord platform target.
     UnsupportedOperatingSystem,
-    /// The running binary target is not a supported release target.
+    /// The running binary target is not a supported platform target.
     UnsupportedTarget,
     /// The process is running under WSL1 rather than WSL2.
     Wsl1,
     /// The WSL2 distribution identity could not be observed.
     Wsl2DistributionIdentityUnavailable,
-    /// The observed WSL2 distribution is outside the pinned release cell.
+    /// The observed WSL2 distribution does not match the supported distribution identity.
     UnsupportedWsl2Distribution,
     /// A required filesystem observation could not be completed.
     FilesystemObservationFailure,
@@ -127,7 +127,7 @@ impl PlatformDiagnosticKind {
     pub const fn summary(self) -> &'static str {
         match self {
             Self::UnsupportedOperatingSystem => {
-                "The operating system has no supported Volicord release cell"
+                "The operating system is not a supported Volicord platform target"
             }
             Self::UnsupportedTarget => "The running binary target is not supported",
             Self::Wsl1 => "The process is running under WSL1",
@@ -222,7 +222,7 @@ pub fn platform_diagnostic_finding(
     let action = match diagnostic.class() {
         PlatformDiagnosticClass::Unsupported => DiagnosticAction::try_new(
             DiagnosticCode::parse("action.platform.use_supported_environment")?,
-            "Use a supported Volicord platform and release target",
+            "Use a supported Volicord platform target and environment",
         )?,
         PlatformDiagnosticClass::Unavailable => DiagnosticAction::try_new(
             DiagnosticCode::parse("action.platform.repair_observation_access")?,
@@ -316,7 +316,7 @@ pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, Platfo
 pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
     Err(unsupported_platform(
         PlatformDiagnosticKind::UnsupportedOperatingSystem,
-        "this operating-system target has no first-release platform cell",
+        "this operating-system target is unsupported; use a supported Volicord platform target",
     ))
 }
 
