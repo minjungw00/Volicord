@@ -1,13 +1,15 @@
+use super::close_readiness::{
+    facts_from_projection, facts_with_pending_authorities,
+    facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
+};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task,
     allocate_acceptance_criterion_id, allocate_change_unit_id, build_state_summary,
-    change_unit_insert, change_unit_ref, close_context_from_projection,
-    close_context_with_pending_authorities, close_context_with_projected_acceptance_criteria,
-    decision_rejected_response, dry_run_summary, evidence_summary_for_display,
-    guarantee_display_for_invocation, mutation_method_policy, next_actions_for_state,
-    no_active_task_response, normalize_display_text, object_from_value, parse_acceptance_policy,
-    parse_task_mode, pending_user_action_refs_for_operation, plan_error_response,
-    prepare_or_response, project_state_projection, projected_close_basis, projected_close_check,
+    change_unit_insert, change_unit_ref, decision_rejected_response, dry_run_summary,
+    evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
+    next_actions_for_state, no_active_task_response, normalize_display_text, object_from_value,
+    parse_acceptance_policy, parse_task_mode, pending_user_action_refs_for_operation,
+    plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
     projected_evidence_summary_for_criteria, projected_user_action_lifecycle_phase,
     projected_write_ticket_summary, rejected_pipeline_response, state_ref, state_ref_from_stored,
     storage_value, store_error_response, synthetic_change_unit_record, task_lifecycle_mutation,
@@ -821,8 +823,8 @@ fn project_update_scope_response(
             .clone()
             .or_else(|| Some(request.task_id.as_str().to_owned())),
     );
-    let close_context = close_context_with_projected_acceptance_criteria(
-        close_context_from_projection(
+    let close_context = facts_with_projected_acceptance_criteria(
+        facts_from_projection(
             synthetic_task.clone(),
             synthetic_change_unit.clone(),
             projected_current_close_basis,
@@ -834,18 +836,16 @@ fn project_update_scope_response(
         &acceptance_criteria,
     );
     let close_context = if scope_changed {
-        close_context_with_pending_authorities(close_context, Vec::new())
+        facts_with_pending_authorities(close_context, Vec::new())
     } else {
         close_context
     };
-    let close_plan = projected_close_check(
+    let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        verified_invocation,
         &request.envelope,
         &request.task_id,
         close_context,
-        *plan_now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {
         store,

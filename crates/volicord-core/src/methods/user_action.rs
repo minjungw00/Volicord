@@ -1,15 +1,17 @@
+use super::close_readiness::{
+    facts_from_projection, facts_with_pending_authorities, facts_with_resolved_authorities,
+    plan_projected_close_readiness,
+};
 use super::{
     active_acceptance_criteria_for_task, allocate_user_action_request_id,
     allocate_user_action_resolution_id, artifact_ref_from_verified_record, build_state_summary,
-    checked_derived_expiration, close_context_from_projection,
-    close_context_with_pending_authorities, close_context_with_resolved_authorities,
-    decision_rejected_response, decode_required_json, dry_run_summary,
+    checked_derived_expiration, decision_rejected_response, decode_required_json, dry_run_summary,
     evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
     next_actions_for_state, no_active_change_unit_response, no_active_task_response,
     normalize_display_text, object_from_value, parse_owner_storage_value, parse_task_mode,
     pending_user_action_authorities_for_plan, persistent_artifact_is_verified_current,
     plan_error_response, plan_project_continuity_record, prepare_or_response,
-    project_state_projection, projected_blocker_refs, projected_close_basis, projected_close_check,
+    project_state_projection, projected_blocker_refs, projected_close_basis,
     projected_evidence_summary, projected_user_action_lifecycle_phase,
     projected_write_ticket_summary, record_core_workflow_metric_best_effort,
     rejected_pipeline_response, resolved_user_action_authorities_for_all_kinds,
@@ -1748,9 +1750,9 @@ fn projected_user_action_state(
             .clone()
             .or_else(|| Some(task_id.as_str().to_owned())),
     );
-    let close_context = close_context_with_resolved_authorities(
-        close_context_with_pending_authorities(
-            close_context_from_projection(
+    let close_context = facts_with_resolved_authorities(
+        facts_with_pending_authorities(
+            facts_from_projection(
                 task.clone(),
                 current_change_unit.cloned(),
                 current_close_basis,
@@ -1763,14 +1765,12 @@ fn projected_user_action_state(
         ),
         resolved_authorities,
     );
-    let close_plan = projected_close_check(
+    let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        verified_invocation,
         envelope,
         &task_id,
         close_context,
-        *now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {
         store,

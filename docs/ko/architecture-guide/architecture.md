@@ -175,7 +175,7 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 호출 및 분리된 변경 context 구성을 막습니다. Compile-fail coverage는 접근할 수
 없는 Store 진입점과 permit에 결속된 context 수명을 함께 보호합니다.
 
-## Core 증거 정책 경계
+## Core 증거 및 닫기 준비 상태 경계
 
 Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 `crates/volicord-core/src/methods/evidence_facts.rs`는 공유 Store 조회, 담당
@@ -185,14 +185,29 @@ Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 닫기 준비 상태의 증거 해석을 평가합니다. 필요한 입력이 이미 있으면 이 평가는
 순수 함수로 수행됩니다.
 
-`prepare_evidence_capture`, `record_run`, `close_task`, `update_scope`, 공유 상태
-및 투영 경로는 적용되는 정책 담당 모듈을 직접 사용합니다. 메서드 모듈은 요청
-검증, 메서드 계획, 정책 결과를 메서드 결과나 닫기 차단 사유로 변환하는 책임을
-유지하며, 형제 메서드 모듈에 공유 증거 정책을 제공하지 않습니다.
-프로덕션 메서드 모듈은 Core pipeline 또는 정책 담당 모듈, 적용되는 Store 모듈,
-적용되는 `volicord-types` 담당 모듈에서 의존성을 명시합니다. 상위 methods 모듈은
-공유 helper를 담당하며 하위 모듈의 import prelude가 아닙니다. 정확한 증거와
-닫기 준비 상태의 의미는
+닫기 준비 상태 조율은
+`crates/volicord-core/src/methods/close_readiness.rs`가 담당합니다. 의미 기반
+입력은 Task, 닫기 의도, 저장되었거나 투영된 typed 사실, 현재 증거, 현재 사용자
+행위 권한을 식별합니다. 서비스는 남은 typed Store 사실을 취득하고 책임별 정책
+함수를 호출한 뒤 닫기 연산을 위한 전체 평가 또는 메서드 중립적인 닫기 준비 상태
+요약을 반환합니다. `crates/volicord-core/src/policy/close_readiness.rs`는 typed
+권한 및 수락 판단을 순수 함수로 담당합니다.
+`crates/volicord-core/src/methods/close_blockers.rs`는 정규 닫기 차단 사유 구성과
+정규화를 담당하고, `crates/volicord-core/src/methods/close_guidance.rs`는 다음
+행위와 User Channel 안내 투영을 담당합니다.
+
+`close_task.rs`는 요청별 닫기 연산 조율을 계속 담당합니다. 공개 요청을 검증하고
+닫기 준비 상태 서비스를 호출하며, 종료 변경을 계획하고 typed 닫기 결과를
+구성합니다. `status`는 닫기 준비 상태 요약을 사용하고, `prepare_write`는 차단
+사유 담당 모듈을 사용하며, `reconcile_changes`는 닫기 준비 상태와 안내 담당
+모듈을 사용합니다. `intake`, `update_scope`, `record_run`, `user_action`은 각자
+투영한 typed 사실을 닫기 준비 상태 서비스에 전달합니다. 어떤 메서드 모듈도
+형제 메서드에 재사용 가능한 닫기 준비 상태 정책이나 표현을 제공하지 않습니다.
+
+프로덕션 메서드 모듈은 적용되는 Core pipeline, 서비스, 정책, Store,
+`volicord-types` 담당 모듈에서 의존성을 명시합니다. 상위 methods 모듈은 실제로
+공유되는 조율 helper만 담당하며 하위 모듈의 import prelude가 아닙니다. 정확한
+증거와 닫기 준비 상태의 의미는
 [Core 모델](../reference/core-model.md), 적용되는
 [API 메서드 담당 문서](../reference/api/methods.md),
 [상태 스키마](../reference/api/schema-state.md),

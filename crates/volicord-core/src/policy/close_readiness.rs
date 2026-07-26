@@ -2,12 +2,11 @@ use std::collections::BTreeSet;
 
 use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, RiskId, TaskId};
 use volicord_types::schema::{
-    CloseReadinessBlocker, CurrentCloseBasis, NextActionSummary, RequiredNullable,
-    RiskAcceptanceCoverage, StateRecordRef, UserActionBasis, UserActionResolutionBody,
+    CurrentCloseBasis, RequiredNullable, RiskAcceptanceCoverage, StateRecordRef, UserActionBasis,
+    UserActionResolutionBody,
 };
 use volicord_types::values::{
-    ActorSource, CloseReadinessBlockerCategory, JudgmentResolutionOutcome, MethodName,
-    NextActionKind, NextActionPresentationRole, OperationCategory, StateRecordKind,
+    AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, StateRecordKind,
     UserActionBasisStatus, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
     UserActionStatus, UtcTimestamp,
 };
@@ -18,35 +17,11 @@ pub(crate) fn is_terminal_lifecycle(value: &str) -> bool {
     matches!(value, "completed" | "cancelled" | "superseded")
 }
 
-pub(crate) fn close_blocker(
-    category: CloseReadinessBlockerCategory,
-    code: &'static str,
-    message: impl Into<String>,
-    related_refs: Vec<StateRecordRef>,
-    next_actions: Vec<NextActionSummary>,
-) -> CloseReadinessBlocker {
-    CloseReadinessBlocker {
-        category,
-        code: code.to_owned(),
-        message: message.into(),
-        related_refs,
-        next_actions,
-    }
-}
-
-pub(crate) fn close_next_action(
-    label: &str,
-    required_refs: Vec<StateRecordRef>,
-) -> NextActionSummary {
-    NextActionSummary {
-        presentation_role: NextActionPresentationRole::Primary,
-        action_kind: NextActionKind::CloseTask,
-        owner_method: Some(MethodName::CloseTask),
-        allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-        label: label.to_owned(),
-        blocking_question: None,
-        expected_state_version: RequiredNullable::null(),
-        required_refs,
+pub(crate) fn close_acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
+    match policy {
+        AcceptancePolicy::NotRequired => 0,
+        AcceptancePolicy::PolicyDependent => 1,
+        AcceptancePolicy::Required => 2,
     }
 }
 

@@ -1,3 +1,8 @@
+use super::close_readiness::{
+    facts_from_projection, facts_with_pending_authorities,
+    facts_with_projected_acceptance_criteria, facts_with_record_run_projection,
+    plan_projected_close_readiness,
+};
 use super::evidence_facts::{
     capture_outcome_matches_expected, capture_verification_basis, decode_capture_intent_record,
     stored_evidence_observation_provenance_facts, stored_evidence_observation_relevance,
@@ -9,16 +14,14 @@ use super::{
     allocate_risk_id, allocate_run_id, artifact_input_validation_plan_error,
     artifact_input_validation_response, artifact_missing_response,
     artifact_ref_from_verified_record, baseline_matches, baseline_stale_response,
-    build_state_summary, change_unit_ref, close_context_from_projection,
-    close_context_with_pending_authorities, close_context_with_projected_acceptance_criteria,
-    close_context_with_record_run_projection, decision_rejected_response, decode_required_json,
+    build_state_summary, change_unit_ref, decision_rejected_response, decode_required_json,
     decode_required_json_object, dry_run_summary, evidence_summary_for_display,
     first_product_write_duration_micros, guarantee_display_for_invocation, mutation_method_policy,
     no_active_change_unit_response, no_active_task_response, normalize_source_refs,
     object_from_value, parse_acceptance_policy, parse_owner_storage_value, parse_storage_value,
     parse_task_mode, parse_work_phase, pending_user_action_authorities_for_plan,
     pending_user_action_refs_for_operation, persistent_artifact_is_verified_current,
-    plan_error_response, prepare_or_response, project_state_projection, projected_close_check,
+    plan_error_response, prepare_or_response, project_state_projection,
     projected_evidence_summary_for_criteria, projected_user_action_lifecycle_phase,
     projected_write_ticket_summary, record_core_workflow_metric_best_effort, redaction_state_value,
     rejected_pipeline_response, response_committed_fresh_effect, sorted_unique, state_ref,
@@ -1513,16 +1516,15 @@ fn project_record_run_response(
             .clone()
             .or_else(|| Some(request.task_id.as_str().to_owned())),
     );
-    let close_plan = projected_close_check(
+    let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        verified_invocation,
         &request.envelope,
         &request.task_id,
-        close_context_with_pending_authorities(
-            close_context_with_projected_acceptance_criteria(
-                close_context_with_record_run_projection(
-                    close_context_from_projection(
+        facts_with_pending_authorities(
+            facts_with_projected_acceptance_criteria(
+                facts_with_record_run_projection(
+                    facts_from_projection(
                         projected_task.clone(),
                         Some(change_unit.clone()),
                         current_close_basis.clone(),
@@ -1539,7 +1541,6 @@ fn project_record_run_response(
             ),
             pending_authorities,
         ),
-        *plan_now.as_datetime(),
     )?;
     let state = build_state_summary(SummaryBuild {
         store,

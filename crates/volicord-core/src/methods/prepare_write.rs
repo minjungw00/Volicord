@@ -1,18 +1,19 @@
+use super::close_blockers::{normalize_close_blockers, open_write_ticket_close_blocker};
+use super::close_readiness::{facts_from_projection, plan_projected_close_readiness};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_write_ticket_id,
     baseline_matches, build_state_summary, change_unit_effect_contract, change_unit_ref,
-    close_context_from_projection, close_task, decode_required_json,
-    guarantee_display_for_invocation, infallible_rejected_pipeline_response,
-    matching_sensitive_approval, normalize_close_blocker_action_projection, object_from_value,
-    parse_acceptance_policy, parse_owner_storage_value, parse_task_mode, parse_work_phase,
-    paths_match_current_change_unit, pending_user_action_authorities_for_plan, plan_error_response,
-    prepare_or_response, project_state_projection, projected_close_basis, projected_close_check,
-    projected_evidence_summary, record_core_workflow_metric_best_effort,
-    rejected_pipeline_response, resolve_prepare_write_task, response_committed_fresh_effect,
-    state_ref, state_ref_from_stored, store_error_response, user_action_authority_from_record,
-    validate_prepare_write_change_unit, validation_rejected, workspace_context_matches,
-    write_ticket_summary_for_record, PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan,
-    SensitiveApprovalSearch, SummaryBuild,
+    decode_required_json, guarantee_display_for_invocation, infallible_rejected_pipeline_response,
+    matching_sensitive_approval, object_from_value, parse_acceptance_policy,
+    parse_owner_storage_value, parse_task_mode, parse_work_phase, paths_match_current_change_unit,
+    pending_user_action_authorities_for_plan, plan_error_response, prepare_or_response,
+    project_state_projection, projected_close_basis, projected_evidence_summary,
+    record_core_workflow_metric_best_effort, rejected_pipeline_response,
+    resolve_prepare_write_task, response_committed_fresh_effect, state_ref, state_ref_from_stored,
+    store_error_response, user_action_authority_from_record, validate_prepare_write_change_unit,
+    validation_rejected, workspace_context_matches, write_ticket_summary_for_record,
+    PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan, SensitiveApprovalSearch,
+    SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -389,10 +390,7 @@ fn plan_prepare_write(
     let policy = decide_prepare_write_policy(store, project_state, resolved)?;
     let mutations =
         plan_prepare_write_mutations(service, store, project_state, verified_invocation, policy)?;
-    Ok(
-        project_prepare_write_response(store, project_state, verified_invocation, mutations)?
-            .into_plan(),
-    )
+    Ok(project_prepare_write_response(store, project_state, mutations)?.into_plan())
 }
 
 fn normalize_prepare_write_request(
@@ -1023,7 +1021,6 @@ fn plan_prepare_write_mutations(
 fn project_prepare_write_response(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    verified_invocation: &VerifiedInvocationContext,
     planned: PrepareWritePlannedMutations,
 ) -> Result<PrepareWriteResponseProjection, PlanError> {
     let PrepareWritePlannedMutations {
@@ -1075,13 +1072,12 @@ fn project_prepare_write_response(
             .clone()
             .or_else(|| Some(task_id.as_str().to_owned())),
     );
-    let close_plan = projected_close_check(
+    let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        verified_invocation,
         &request.envelope,
         &task_id,
-        close_context_from_projection(
+        facts_from_projection(
             task.clone(),
             Some(change_unit.clone()),
             projected_close_basis(store, &task_id)?,
@@ -1090,7 +1086,6 @@ fn project_prepare_write_response(
             evidence_summary.clone(),
             plan_now.clone(),
         ),
-        *plan_now.as_datetime(),
     )?;
     let mut close_state = close_plan.close_state;
     let mut close_blockers = close_plan.blockers;
@@ -1105,15 +1100,12 @@ fn project_prepare_write_response(
             );
             close_blockers.insert(
                 0,
-                close_task::open_write_ticket_close_blocker(
-                    planned_task_ref,
-                    write_ticket_ref.clone(),
-                ),
+                open_write_ticket_close_blocker(planned_task_ref, write_ticket_ref.clone()),
             );
             close_state = CloseState::Blocked;
         }
     }
-    normalize_close_blocker_action_projection(&mut close_blockers, planned_state_version);
+    normalize_close_blockers(&mut close_blockers, planned_state_version);
     let write_ticket = match (
         write_ticket_id.as_ref(),
         write_ticket_ref.as_ref(),

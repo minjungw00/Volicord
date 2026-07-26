@@ -1,22 +1,24 @@
+use super::close_guidance::close_next_action;
+use super::close_readiness::{plan_close_readiness, CloseReadinessRequest};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task,
     agent_safe_pending_user_action_summaries, build_state_summary, changes_summary_text,
-    close_state_summary_text, close_task, core_error_response, evidence_gate_summary_text,
+    close_state_summary_text, core_error_response, evidence_gate_summary_text,
     evidence_summary_for_display, guarantee_display_from_profile, next_actions_for_state,
     normalize_next_action_collection, parse_lifecycle_phase, parse_owner_storage_value,
     parse_task_lineage_relation, parse_task_mode, parse_work_phase, plan_error_response,
     prepare_or_response, primary_next_action, profile_summary_text,
     project_continuity_summary_from_record, projected_blocker_refs, projected_evidence_summary,
     projected_pending_user_action_refs, projected_write_ticket_summary, state_ref,
-    summary_card_for_core, utc_timestamp, validation_plan_error, write_ticket_summary_text,
-    PlanError, SummaryBuild, SummaryCardBuild,
+    summary_card_for_core, validation_plan_error, write_ticket_summary_text, PlanError,
+    SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
     MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::policy::close_readiness::{close_next_action, is_terminal_lifecycle};
+use crate::policy::close_readiness::is_terminal_lifecycle;
 use crate::policy::evidence::{state_record_ref_identity_key, unique_state_record_refs};
 use crate::policy::workflow::{project_workflow_policy, resolve_task_control_authority};
 use chrono::{DateTime, Utc};
@@ -24,8 +26,7 @@ use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader, TaskRecord};
 use volicord_types::ids::{ProjectContinuityRecordId, ProjectId, TaskId};
 use volicord_types::methods::{
-    CheckCloseRequest, MethodOperationCategory, StatusInclude, StatusRequest, StatusResultFields,
-    StatusStateSummary,
+    MethodOperationCategory, StatusInclude, StatusRequest, StatusResultFields, StatusStateSummary,
 };
 use volicord_types::schema::{
     AuthorityReceipt, CloseReadinessBlocker, ContinuityCursor, ContinuityPageInfo,
@@ -301,19 +302,11 @@ fn status_result_fields(
             None
         };
         write_ticket_summary = projected_write_ticket.clone();
-        let close_plan = close_task::plan_close_task(
+        let close_plan = plan_close_readiness(
             store,
             project_state,
-            Some(verified_invocation),
-            guarantee_profile.as_ref(),
-            close_task::CloseTaskPlanRequest::check(CheckCloseRequest {
-                envelope: ToolEnvelope {
-                    task_id: Some(task_id.clone()).into(),
-                    ..envelope.clone()
-                },
-                task_id: task_id.clone(),
-            }),
-            &utc_timestamp(now),
+            CloseReadinessRequest::check(envelope.clone(), task_id.clone()),
+            &user_action_now,
         )?;
         let lifecycle_phase = parse_lifecycle_phase(&task.lifecycle_phase)?;
         let terminal_close_state = match lifecycle_phase {

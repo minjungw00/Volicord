@@ -10,20 +10,20 @@ use volicord_types::ids::{
     UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
-    CheckCloseRequest, CloseTaskResultFields, PrepareWriteRequest, PrepareWriteResultFields,
-    RecordRunRequest, UpdateScopeRequest,
+    CloseTaskResultFields, PrepareWriteRequest, PrepareWriteResultFields, RecordRunRequest,
+    UpdateScopeRequest,
 };
 use volicord_types::schema::{
     AcceptanceCriterion, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
     CarryForwardDisposition, ChangeUnitEffectContract, CloseReadinessBlocker, CurrentCloseBasis,
-    DryRunSummary, EvidenceGateSummary, EvidenceObservation, EvidenceSummary, GuaranteeDisplay,
-    JsonObject, NextActionSummary, PersistedUserActionRequest, PersistedUserActionResolution,
-    PlannedEffect, ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile,
-    RequiredNullable, RiskAcceptanceCoverage, SourceRef, StateRecordRef, SummaryCard,
-    TaskLifecycleState, TaskLineageSummary, ToolEnvelope, UserActionBasis, UserActionCapturePath,
-    UserActionInboxItem, UserActionRequest, UserActionResolutionBody, UserChannelAvailability,
-    UserChannelPathAvailability, WorkspaceContext, WriteDecisionReason, WriteTicketAttemptScope,
-    WriteTicketStateSummary, WriteTicketValidityBasis,
+    DryRunSummary, EvidenceGateSummary, EvidenceSummary, GuaranteeDisplay, JsonObject,
+    NextActionSummary, PersistedUserActionRequest, PersistedUserActionResolution, PlannedEffect,
+    ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile, RequiredNullable,
+    SourceRef, StateRecordRef, SummaryCard, TaskLifecycleState, TaskLineageSummary, ToolEnvelope,
+    UserActionBasis, UserActionCapturePath, UserActionInboxItem, UserActionRequest,
+    UserActionResolutionBody, UserChannelAvailability, UserChannelPathAvailability,
+    WorkspaceContext, WriteDecisionReason, WriteTicketAttemptScope, WriteTicketStateSummary,
+    WriteTicketValidityBasis,
 };
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, CloseReason,
@@ -76,6 +76,9 @@ use crate::policy::{
     },
 };
 
+mod close_blockers;
+mod close_guidance;
+mod close_readiness;
 mod close_task;
 mod evidence_facts;
 mod intake;
@@ -117,29 +120,8 @@ struct CloseTaskPlan {
     event_kind: String,
     event_payload: JsonObject,
     result_fields: CloseTaskResultFields,
-    close_state: CloseState,
     current_close_basis: Option<CurrentCloseBasis>,
-    risk_acceptance_coverage: Vec<RiskAcceptanceCoverage>,
     blockers: Vec<CloseReadinessBlocker>,
-    evidence_gate: EvidenceGateSummary,
-}
-
-struct CloseTaskContext {
-    now: UtcTimestamp,
-    task: TaskRecord,
-    current_change_unit: Option<ChangeUnitRecord>,
-    current_close_basis: Option<CurrentCloseBasis>,
-    pending_user_action_refs: Vec<StateRecordRef>,
-    blocker_refs: Vec<StateRecordRef>,
-    evidence_summary: Option<EvidenceSummary>,
-    artifact_refs: Vec<ArtifactRef>,
-    projected_run_refs: Vec<StateRecordRef>,
-    projected_evidence_observations: Vec<EvidenceObservation>,
-    projected_artifacts: Vec<ArtifactRef>,
-    projected_required_criterion_ids: Option<BTreeSet<String>>,
-    projected_resolved_unrecorded_change_ids: BTreeSet<String>,
-    pending_user_action_authorities: Option<Vec<UserActionAuthority>>,
-    resolved_judgment_authorities: Option<Vec<UserActionAuthority>>,
 }
 
 struct ProjectContinuityDraft {
@@ -2864,101 +2846,6 @@ fn project_state_projection(
     }
 }
 
-fn close_context_from_projection(
-    task: TaskRecord,
-    current_change_unit: Option<ChangeUnitRecord>,
-    current_close_basis: Option<CurrentCloseBasis>,
-    pending_user_action_refs: Vec<StateRecordRef>,
-    blocker_refs: Vec<StateRecordRef>,
-    evidence_summary: Option<EvidenceSummary>,
-    now: UtcTimestamp,
-) -> CloseTaskContext {
-    let artifact_refs = evidence_summary
-        .as_ref()
-        .map(|summary| summary.artifact_refs.clone())
-        .unwrap_or_default();
-    CloseTaskContext {
-        now,
-        task,
-        current_change_unit,
-        current_close_basis,
-        pending_user_action_refs,
-        blocker_refs,
-        evidence_summary,
-        artifact_refs,
-        projected_run_refs: Vec::new(),
-        projected_evidence_observations: Vec::new(),
-        projected_artifacts: Vec::new(),
-        projected_required_criterion_ids: None,
-        projected_resolved_unrecorded_change_ids: BTreeSet::new(),
-        pending_user_action_authorities: None,
-        resolved_judgment_authorities: None,
-    }
-}
-
-fn close_context_with_projected_acceptance_criteria(
-    mut context: CloseTaskContext,
-    acceptance_criteria: &[AcceptanceCriterion],
-) -> CloseTaskContext {
-    context.projected_required_criterion_ids =
-        Some(required_acceptance_criterion_ids(acceptance_criteria));
-    context
-}
-
-fn close_context_with_record_run_projection(
-    mut context: CloseTaskContext,
-    run_ref: StateRecordRef,
-    evidence_observations: Vec<EvidenceObservation>,
-    registered_artifacts: Vec<ArtifactRef>,
-) -> CloseTaskContext {
-    context.projected_run_refs.push(run_ref);
-    context.projected_evidence_observations = evidence_observations;
-    context.projected_artifacts = registered_artifacts;
-    context
-}
-
-fn close_context_with_pending_authorities(
-    mut context: CloseTaskContext,
-    authorities: Vec<UserActionAuthority>,
-) -> CloseTaskContext {
-    context.pending_user_action_authorities = Some(authorities);
-    context
-}
-
-fn close_context_with_resolved_authorities(
-    mut context: CloseTaskContext,
-    authorities: Vec<UserActionAuthority>,
-) -> CloseTaskContext {
-    context.resolved_judgment_authorities = Some(authorities);
-    context
-}
-
-fn projected_close_check(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    verified_invocation: &VerifiedInvocationContext,
-    envelope: &ToolEnvelope,
-    task_id: &TaskId,
-    context: CloseTaskContext,
-    now: DateTime<Utc>,
-) -> Result<CloseTaskPlan, PlanError> {
-    close_task::plan_close_task_with_context(
-        store,
-        project_state,
-        Some(verified_invocation),
-        None,
-        close_task::CloseTaskPlanRequest::check(CheckCloseRequest {
-            envelope: ToolEnvelope {
-                task_id: Some(task_id.clone()).into(),
-                ..envelope.clone()
-            },
-            task_id: task_id.clone(),
-        }),
-        &utc_timestamp(now),
-        context,
-    )
-}
-
 fn change_unit_insert(
     request: &UpdateScopeRequest,
     change_unit_id: &ChangeUnitId,
@@ -3311,28 +3198,6 @@ fn normalize_next_action_collection(
 ) {
     for (index, action) in actions.iter_mut().enumerate() {
         action.presentation_role = if index == 0 {
-            NextActionPresentationRole::Primary
-        } else {
-            NextActionPresentationRole::Additional
-        };
-        action.allowed_operation_categories = allowed_operation_categories(action.owner_method);
-        action.expected_state_version = next_action_expected_state_version(
-            &action.allowed_operation_categories,
-            expected_state_version,
-        );
-    }
-}
-
-fn normalize_close_blocker_action_projection(
-    blockers: &mut [CloseReadinessBlocker],
-    expected_state_version: u64,
-) {
-    for (action_index, action) in blockers
-        .iter_mut()
-        .flat_map(|blocker| blocker.next_actions.iter_mut())
-        .enumerate()
-    {
-        action.presentation_role = if action_index == 0 {
             NextActionPresentationRole::Primary
         } else {
             NextActionPresentationRole::Additional

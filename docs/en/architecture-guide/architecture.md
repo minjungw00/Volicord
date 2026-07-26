@@ -193,7 +193,7 @@ external crate from calling the internal opens or constructing a detached
 mutation context. Compile-fail coverage protects both inaccessible Store entry
 points and the permit-bound context lifetime.
 
-## Core evidence policy boundary
+## Core evidence and close-readiness boundaries
 
 Core separates evidence fact acquisition from evidence policy evaluation.
 `crates/volicord-core/src/methods/evidence_facts.rs` performs shared Store
@@ -204,16 +204,32 @@ target and `CurrentCloseBasis` matching, producer and artifact binding, and
 close-readiness evidence interpretation. These evaluations are pure where
 their inputs are already available.
 
-`prepare_evidence_capture`, `record_run`, `close_task`, `update_scope`, and the
-shared status and projection paths consume the applicable policy owner
-directly. Method modules retain request validation, method planning, and
-translation of policy results into method results or close-readiness blockers;
-they do not provide shared evidence policy to sibling method modules.
-Production method modules name their dependencies from the Core pipeline or
-policy owner, the applicable Store module, or the applicable `volicord-types`
-owner module. The methods parent module owns its shared helpers; it is not an
-import prelude for child modules. Exact evidence and close-readiness meaning
-remains with
+Close-readiness coordination is owned by
+`crates/volicord-core/src/methods/close_readiness.rs`. Its semantic inputs
+identify the Task, close intent, typed stored or projected facts, current
+evidence, and current user-action authority. Its service acquires any remaining
+typed Store facts, invokes the responsibility-owned policy functions, and
+returns either a full close assessment for the close operation or a
+method-neutral readiness summary. `crates/volicord-core/src/policy/close_readiness.rs`
+owns pure typed authority and acceptance decisions.
+`crates/volicord-core/src/methods/close_blockers.rs` owns canonical blocker
+construction and normalization, while
+`crates/volicord-core/src/methods/close_guidance.rs` owns next-action and
+User Channel guidance projection.
+
+`close_task.rs` remains the request-specific close-operation orchestrator. It
+validates the public request, invokes the close-readiness service, plans the
+terminal mutation, and assembles the typed close result. `status` consumes the
+readiness summary, `prepare_write` consumes the blocker owner, and
+`reconcile_changes` consumes the readiness and guidance owners.
+`intake`, `update_scope`, `record_run`, and `user_action` pass their projected
+typed facts to the readiness service. No method module provides reusable
+close-readiness policy or presentation to sibling methods.
+
+Production method modules name dependencies from the applicable Core pipeline,
+service, policy, Store, or `volicord-types` owner. The methods parent module
+owns only genuinely shared coordination helpers; it is not an import prelude
+for child modules. Exact evidence and close-readiness meaning remains with
 [Core Model](../reference/core-model.md), the applicable
 [API method owners](../reference/api/methods.md), the
 [state schema](../reference/api/schema-state.md), the

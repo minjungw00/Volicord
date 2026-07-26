@@ -1,13 +1,15 @@
+use super::close_readiness::{
+    facts_from_projection, facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
+};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task,
     allocate_acceptance_criterion_id, allocate_task_id, build_state_summary,
-    close_context_from_projection, close_context_with_projected_acceptance_criteria,
     decision_rejected_response, decode_required_json, dry_run_summary,
     guarantee_display_for_invocation, initial_work_phase, mutation_method_policy,
     next_actions_for_state, normalize_display_text, normalize_source_refs,
     normalize_source_refs_with_carried_artifact_task, object_from_value, parse_owner_storage_value,
     parse_task_mode, plan_error_response, prepare_or_response, project_continuity_ref,
-    project_state_projection, projected_blocker_refs, projected_close_basis, projected_close_check,
+    project_state_projection, projected_blocker_refs, projected_close_basis,
     projected_evidence_summary_for_criteria, projected_pending_user_action_refs,
     projected_write_ticket_summary, resolve_requested_mode, state_ref, storage_value,
     task_lineage_relation_storage, task_mode_storage, task_shaping_json, validation_rejected,
@@ -703,14 +705,13 @@ fn project_intake_response(
         planned_state_version,
         Some(task_record.task_id.clone()),
     );
-    let close_plan = projected_close_check(
+    let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        verified_invocation,
         &request.envelope,
         &task_id,
-        close_context_with_projected_acceptance_criteria(
-            close_context_from_projection(
+        facts_with_projected_acceptance_criteria(
+            facts_from_projection(
                 task_record.clone(),
                 current_change_unit.clone(),
                 if create_new {
@@ -725,7 +726,6 @@ fn project_intake_response(
             ),
             &acceptance_criteria,
         ),
-        plan_now,
     )?;
     let guarantee_display =
         guarantee_display_for_invocation(store, verified_invocation, planned_state_version)?;

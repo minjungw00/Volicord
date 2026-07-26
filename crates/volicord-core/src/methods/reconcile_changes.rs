@@ -1,18 +1,22 @@
+use super::close_guidance::user_channel_pending_action_instruction;
+use super::close_readiness::{
+    facts_from_projection, facts_with_pending_authorities, facts_with_resolved_unrecorded_changes,
+    plan_projected_close_readiness, CloseReadinessSummary,
+};
 use super::{
     active_acceptance_criteria_for_task, agent_safe_pending_user_action_summaries,
-    build_state_summary, changes_summary_text, close_context_from_projection,
-    close_context_with_pending_authorities, close_state_text, close_task, core_error_response,
+    build_state_summary, changes_summary_text, close_state_text, core_error_response,
     decode_required_json, evidence_gate_summary_text, evidence_summary_for_display,
     guarantee_display_for_invocation, no_active_task_response, normalize_next_action_collection,
     object_from_value, parse_owner_storage_value, parse_storage_value,
     pending_user_action_authorities_for_plan, prepare_or_response, primary_next_action,
-    profile_summary_text, project_state_projection, projected_close_basis, projected_close_check,
+    profile_summary_text, project_state_projection, projected_close_basis,
     projected_evidence_summary, projected_write_ticket_summary,
     record_core_workflow_metric_best_effort, resolved_user_action_authorities_for_all_kinds,
     response_committed_fresh_effect, state_ref, state_ref_from_stored, storage_value,
     store_error_response, summary_card_for_core, user_action, user_action_authority_from_state,
-    utc_timestamp, validation_rejected, write_ticket_summary_text, CloseTaskPlan, PlanError,
-    StoredScope, SummaryBuild, SummaryCardBuild,
+    utc_timestamp, validation_rejected, write_ticket_summary_text, PlanError, StoredScope,
+    SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -462,10 +466,9 @@ fn plan_reconcile_changes(
             .filter_map(|user_action| user_action.user_action.as_ref())
             .map(user_action_authority_from_state),
     );
-    let close_plan = projected_close_check_with_resolutions(
+    let close_plan = plan_projected_close_readiness_with_resolutions(
         store,
         project_state,
-        verified_invocation,
         &request,
         &task,
         current_change_unit.clone(),
@@ -1045,10 +1048,9 @@ fn projected_pending_refs(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn projected_close_check_with_resolutions(
+fn plan_projected_close_readiness_with_resolutions(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    verified_invocation: &VerifiedInvocationContext,
     request: &ReconcileChangesRequest,
     task: &TaskRecord,
     current_change_unit: Option<ChangeUnitRecord>,
@@ -1059,7 +1061,7 @@ fn projected_close_check_with_resolutions(
     planned_resolutions: &[PlannedResolution],
     now: DateTime<Utc>,
     planned_state_version: u64,
-) -> Result<CloseTaskPlan, PlanError> {
+) -> Result<CloseReadinessSummary, PlanError> {
     let projected_project_state = project_state_projection(
         project_state,
         planned_state_version,
@@ -1068,30 +1070,29 @@ fn projected_close_check_with_resolutions(
             .clone()
             .or_else(|| Some(request.task_id.as_str().to_owned())),
     );
-    let mut context = close_context_with_pending_authorities(
-        close_context_from_projection(
-            task.clone(),
-            current_change_unit,
-            projected_close_basis(store, &request.task_id)?,
-            pending_refs,
-            blocker_refs,
-            evidence_summary,
-            utc_timestamp(now),
+    let context = facts_with_resolved_unrecorded_changes(
+        facts_with_pending_authorities(
+            facts_from_projection(
+                task.clone(),
+                current_change_unit,
+                projected_close_basis(store, &request.task_id)?,
+                pending_refs,
+                blocker_refs,
+                evidence_summary,
+                utc_timestamp(now),
+            ),
+            pending_authorities,
         ),
-        pending_authorities,
+        planned_resolutions
+            .iter()
+            .map(|resolution| resolution.record.unrecorded_change_id.clone()),
     );
-    context.projected_resolved_unrecorded_change_ids = planned_resolutions
-        .iter()
-        .map(|resolution| resolution.record.unrecorded_change_id.clone())
-        .collect();
-    projected_close_check(
+    plan_projected_close_readiness(
         store,
         &projected_project_state,
-        verified_invocation,
         &request.envelope,
         &request.task_id,
         context,
-        now,
     )
 }
 
@@ -1221,7 +1222,7 @@ fn reconcile_next_actions(
             action_kind: NextActionKind::ResolveUserAction,
             owner_method: Some(MethodName::ResolveUserAction),
             allowed_operation_categories: vec![OperationCategory::UserOnly],
-            label: close_task::user_channel_pending_action_instruction(),
+            label: user_channel_pending_action_instruction(),
             blocking_question: None,
             expected_state_version: RequiredNullable::null(),
             required_refs: planned_user_actions
