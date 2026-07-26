@@ -1,7 +1,6 @@
 use super::close_readiness::{
     facts_from_projection, facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
-use super::user_actions::projected_pending_user_action_refs;
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task,
     allocate_acceptance_criterion_id, allocate_task_id, build_state_summary,
@@ -26,6 +25,7 @@ use crate::policy::workflow::{
     project_workflow_policy, resolve_task_control_authority, ProjectWorkflowPolicy,
 };
 use crate::policy::write_ticket::normalized_string_set;
+use crate::user_action::service::projected_pending_user_action_refs;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{

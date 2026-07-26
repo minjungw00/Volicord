@@ -2,13 +2,6 @@ use super::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_unrecorded_changes,
     plan_projected_close_readiness, CloseReadinessSummary,
 };
-use super::user_actions::{
-    agent_safe_pending_user_action_summaries, construct_user_action,
-    materialize_user_action_request, pending_user_action_authorities_for_plan,
-    pending_user_action_instruction, resolved_user_action_authorities_for_all_kinds,
-    user_action_authority_from_state, UserActionConstructionInput, UserActionIntent,
-    UserActionMaterializationInput, UserActionOrigin,
-};
 use super::{
     active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
     close_state_text, core_error_response, decode_required_json, evidence_gate_summary_text,
@@ -31,6 +24,19 @@ use crate::policy::close_readiness::{
 };
 use crate::policy::path::{path_is_within, paths_are_authorized};
 use crate::policy::write_ticket::write_ticket_is_idle_expired;
+use crate::user_action::authority::user_action_authority_from_state;
+use crate::user_action::identity::UserActionOrigin;
+use crate::user_action::materialization::{
+    materialize_user_action_request, UserActionMaterializationInput,
+};
+use crate::user_action::model::{UserActionConstructionInput, UserActionIntent};
+use crate::user_action::service::{
+    construct_user_action, pending_user_action_authorities_for_plan,
+    resolved_user_action_authorities_for_all_kinds,
+};
+use crate::user_action::summary::{
+    agent_safe_pending_user_action_summaries, pending_user_action_instruction,
+};
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};

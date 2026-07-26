@@ -76,10 +76,11 @@ User Channel로 만들지 않습니다.
 
 ## 구현 경로
 
-- [`crates/volicord-core/src/methods/user_actions.rs`](../../../../crates/volicord-core/src/methods/user_actions.rs):
-  typed request 구성과 구체화, 현재 권한 해석, lifecycle 정책, semantic fact.
+- [`crates/volicord-core/src/user_action/`](../../../../crates/volicord-core/src/user_action/):
+  typed request 구성과 구체화, 현재 권한 해석, lifecycle 정책, neutral read,
+  semantic fact.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
-  직접 request/resume 및 resolution 조율과 neutral fact read.
+  직접 request 및 resolution 메서드 조율.
 - [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../../crates/volicord-core/src/policy/user_action_relevance.rs)와
   [`policy/close_readiness.rs`](../../../../crates/volicord-core/src/policy/close_readiness.rs):
   현재 relevance와 authority 평가.

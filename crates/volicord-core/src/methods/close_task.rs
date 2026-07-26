@@ -2,7 +2,6 @@ use super::close_guidance::close_next_action;
 use super::close_readiness::{
     assess_close_readiness, CloseReadinessAssessment, CloseReadinessFacts, CloseReadinessRequest,
 };
-use super::user_actions::agent_safe_pending_user_action_summaries;
 use super::{
     active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
     close_state_text, decode_required_json_object, dry_run_summary, elapsed_micros,
@@ -19,6 +18,7 @@ use crate::pipeline::{
     MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
+use crate::user_action::summary::agent_safe_pending_user_action_summaries;
 use serde_json::json;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;

@@ -2,10 +2,6 @@ use super::close_readiness::{
     facts_from_projection, facts_with_pending_authorities,
     facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
-use super::user_actions::{
-    pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
-    user_action_authority_from_record,
-};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task,
     allocate_acceptance_criterion_id, allocate_change_unit_id, build_state_summary,
@@ -36,6 +32,9 @@ use crate::policy::workflow::{
     acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
     resolve_task_control_authority, ProjectWorkflowPolicy,
 };
+use crate::user_action::authority::user_action_authority_from_record;
+use crate::user_action::lifecycle::projected_user_action_lifecycle_phase;
+use crate::user_action::service::pending_user_action_refs_for_operation;
 use serde_json::json;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{

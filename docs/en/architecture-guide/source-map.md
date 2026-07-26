@@ -120,8 +120,22 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/methods/close_task.rs` | Close method planning and translation of close-readiness evidence interpretation into method blockers and results. |
 | `crates/volicord-core/src/methods/update_scope.rs` | Scope-update planning and projected evidence-summary completion through the close-readiness evidence policy owner. |
 | `crates/volicord-core/src/methods/status.rs` | Read-only status projection, including consumption of shared close-readiness evidence policy through Core projection paths. |
-| `crates/volicord-core/src/methods/user_actions.rs` | Responsibility-owned UserAction service for semantic validation, canonical typed request construction, identity allocation and Store-mutation materialization, strict authority interpretation, operation-blocking policy, and lifecycle semantics. It does not construct adapter commands, labels, rendered guidance, or protocol envelopes. |
-| `crates/volicord-core/src/methods/user_action.rs` | Direct UserAction request/resume and resolution orchestration plus adapter-neutral pending/current fact reads and Store-reusing coherent resolution snapshots for admitted local consumers. |
+| `crates/volicord-core/src/user_action/model.rs` | Semantic UserAction intent, validated construction values, and adapter-neutral pending/current/resolution fact types. |
+| `crates/volicord-core/src/user_action/validation.rs` | Pure validation and normalization of action kinds, coordinates, authority-bearing combinations, operation targets, and expiration semantics. |
+| `crates/volicord-core/src/user_action/body.rs` | Pure construction of canonical typed `UserActionRequestBody` and `UserActionBasis` values from validated intent and acquired domain facts. |
+| `crates/volicord-core/src/user_action/identity.rs` | Stable source identity and deduplication metadata plus request-ID allocation through a focused existence query. |
+| `crates/volicord-core/src/user_action/service.rs` | Store-aware acquisition of current construction, artifact, target, pending, and resolved authority facts; coordinates pure construction without persistence execution. |
+| `crates/volicord-core/src/user_action/materialization.rs` | Operation-owned request identity application, canonical public request formation, and serialization at the Store mutation boundary. |
+| `crates/volicord-core/src/user_action/persistence.rs` | Exact mapping from canonical request or resolution values to effective Store records and typed UserAction mutation inputs. |
+| `crates/volicord-core/src/user_action/authority.rs` | Strict persisted request and resolution decoding plus normalized authority and public request projection. |
+| `crates/volicord-core/src/user_action/lifecycle.rs` | Pure projected Task lifecycle interpretation from current pending authority facts. |
+| `crates/volicord-core/src/user_action/resolution.rs` | Current-basis validation, canonical typed resolution construction, strict resolution decoding, and replay-input comparison. |
+| `crates/volicord-core/src/user_action/continuity.rs` | Continuity-record planning for accepted authority-bearing resolutions. |
+| `crates/volicord-core/src/user_action/projection.rs` | Adapter-neutral pending and resolution fact projection, User Channel read authorization, and resolution replay projection. |
+| `crates/volicord-core/src/user_action/reader.rs` | Store-backed adapter-neutral reads, coherent pending resolution snapshots, and originating request-result replay. |
+| `crates/volicord-core/src/user_action/summary.rs` | Neutral pending instructions and agent-safe pending request summaries. |
+| `crates/volicord-core/src/user_action/tests/` | Responsibility-local validation, body, identity, authority, lifecycle, materialization, and persistence-mapping tests. |
+| `crates/volicord-core/src/methods/user_action.rs` | Direct request and resolution method orchestration; consumes shared typed UserAction services and maps their results into method plans and responses. |
 | `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation-specific planning, including direct consumption of the UserAction service when unresolved changes require typed pending actions. |
 | `crates/volicord-core/src/policy/` | Responsibility-owned reusable policy. Method implementations consume these owners directly rather than obtaining shared policy from sibling method modules. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Pure evidence provenance and assurance classification over typed facts. |

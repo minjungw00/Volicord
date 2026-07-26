@@ -97,6 +97,15 @@ the Record-profile stdio boundary.
 ## Start With User-Owned Action
 
 `volicord.request_user_action` creates or resumes the pending Core request.
+Follow
+[`crates/volicord-core/src/user_action/`](../../../crates/volicord-core/src/user_action/)
+from semantic `model` and pure `validation` through canonical `body` and
+`identity`, then through Store-aware `service`, `materialization`, and
+`persistence`. Direct request and resolution method planning remains in
+[`methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs);
+reconciliation supplies semantic intent from
+[`methods/reconcile_changes.rs`](../../../crates/volicord-core/src/methods/reconcile_changes.rs).
+
 The local CLI inbox reads adapter-neutral Core facts, uses shared presentation
 and a canonical command-model invocation to render the strict stored form, and
 invokes the separate user-only resolution path. MCP constructs its own safe

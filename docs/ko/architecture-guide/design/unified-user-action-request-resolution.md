@@ -9,12 +9,16 @@ architecture를 설명합니다.
 ## 설계
 
 Core는 지원되는 모든 action family에 strict shared `UserActionRequest`와
-`UserActionResolution` type을 사용합니다. `methods/user_actions.rs`는 재사용되는
-의미 검증, 정규 typed request 구성, identity 할당, Store mutation 구체화, 엄격한
-권한 해석, 의미 lifecycle 정책을 담당합니다. `methods/user_action.rs`는 공개
-request/resume 및 resolution 조율과 adapter-neutral current/pending fact read를
-담당합니다. `reconcile_changes.rs`를 포함한 다른 Core 메서드는 공유 서비스를 직접
-호출하고 그 typed 결과를 각자 연산에 반영하는 방식을 결정합니다.
+`UserActionResolution` type을 사용합니다. `user_action/model.rs`,
+`validation.rs`, `body.rs`, `identity.rs`는 의미 의도, 순수 검증, 정규 typed request
+구성, 안정적인 source identity를 담당합니다. `service.rs`는 현재 Store fact를
+취득하고 `materialization.rs`와 `persistence.rs`는 공개 request 및 정확한 Store
+mutation 입력을 만듭니다. `authority.rs`, `lifecycle.rs`, `resolution.rs`는 엄격한
+권한 decoding, 의미 lifecycle 해석, typed resolution 동작을 담당합니다.
+`reader.rs`와 `projection.rs`는 adapter-neutral current/pending fact read를
+담당합니다. `methods/user_action.rs`는 공개 request와 resolution 조율을 담당합니다.
+`reconcile_changes.rs`를 포함한 다른 Core 메서드는 이 공유 책임 담당 모듈을 직접
+호출하고 typed 결과를 각자 연산에 반영하는 방식을 결정합니다.
 
 Store의 `core_pipeline/user_actions.rs`는 effective-status read, coherent inbox
 resolution snapshot, immutable resolution insertion, grouped mutation 적용을 담당합니다.
@@ -46,10 +50,11 @@ MCP adapter는 request/resume 경로를 호출하고 `CurrentUserActionFacts`를
 ## 책임 경계
 
 `volicord-types`는 dependency-safe request, resolution, form, basis, summary shape를
-담당합니다. Core UserAction 서비스는 재사용되는 구성, 구체화, 권한 해석,
-lifecycle 정책, adapter-neutral semantic fact를 담당합니다. 개별 메서드 모듈은
-요청별 연산과 응답 구성을 담당합니다. Store는 strict record와 snapshot
-consistency를 담당합니다. Command model은 정규 CLI invocation 구성을 담당하고
+담당합니다. Core `user_action` 모듈은 재사용되는 의미 검증, 구성, identity,
+구체화, 권한 해석, lifecycle 정책, 읽기, adapter-neutral semantic fact를
+담당합니다. 개별 메서드 모듈은 요청별 연산과 응답 구성을 담당합니다. Store는
+strict record와 snapshot consistency를 담당합니다. Command model은 정규 CLI
+invocation 구성을 담당하고
 `volicord-user-action-presentation`은 공유 CLI 지향 projection을 담당합니다. CLI는
 terminal rendering을 담당하며 MCP는 bounded protocol projection과 adapter별 failure
 mapping을 담당합니다.
@@ -58,22 +63,23 @@ mapping을 담당합니다.
 
 1. Core 메서드가 typed 의미 행동 의도와 현재 도메인 사실을 UserAction 서비스에
    전달합니다.
-2. 서비스가 의미 조합과 현재 좌표를 검증합니다.
-3. 서비스가 정규 typed request body와 basis를 구성합니다.
-4. 서비스가 request identity를 할당하고 typed 공개 request, 유효 Store record,
-   mutation plan을 반환합니다.
-5. 호출 메서드가 그 결과를 자신의 연산과 응답에 반영하거나 explicit resume
+2. 순수 검증이 의미 조합과 현재 좌표에 대한 typed validated intent를 반환합니다.
+3. Store-aware 서비스 코드가 나머지 현재 도메인 fact를 취득합니다.
+4. 순수 body 구성이 정규 typed request body와 basis를 만듭니다.
+5. Identity 및 구체화 단계가 request ID를 할당하고 typed 공개 request, 유효 Store
+   record, mutation plan을 반환합니다.
+6. 호출 메서드가 그 결과를 자신의 연산과 응답에 반영하거나 explicit resume
    projection을 반환합니다.
-6. Store가 일반 Core commit으로 request를 지속 저장합니다.
-7. MCP가 agent-safe summary와 continuation만 반환합니다.
-8. CLI가 Task 하나의 neutral pending fact를 요청합니다.
-9. Store가 project snapshot 하나에서 effective record를 읽고 Core가 typed
+7. Store가 일반 Core commit으로 request를 지속 저장합니다.
+8. MCP가 agent-safe summary와 continuation만 반환합니다.
+9. CLI가 Task 하나의 neutral pending fact를 요청합니다.
+10. Store가 project snapshot 하나에서 effective record를 읽고 Core가 typed
    lifecycle 및 resolution-availability fact를 반환합니다.
-10. 공유 presentation이 local inbox item을 만들고 command model에서 정규 typed
+11. 공유 presentation이 local inbox item을 만들고 command model에서 정규 typed
     resolution invocation을 얻습니다.
-11. Core가 선택한 local-user answer를 검증하고 immutable resolution 하나를
+12. Core가 선택한 local-user answer를 검증하고 immutable resolution 하나를
     planning합니다.
-12. Store가 resolution, derived record, event, replay response를 atomic하게
+13. Store가 resolution, derived record, event, replay response를 atomic하게
     commit합니다.
 
 ## 실패 동작
@@ -96,9 +102,11 @@ resolution channel로 만들지 않습니다.
   shared shape와 public result composition.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs)와
   [`lib.rs`](../../../../crates/volicord-core/src/lib.rs):
-  직접 공개 메서드 조율과 adapter-neutral current-fact boundary.
-- [`crates/volicord-core/src/methods/user_actions.rs`](../../../../crates/volicord-core/src/methods/user_actions.rs):
-  공유 typed 구성, 구체화, 권한 해석, lifecycle 정책.
+  직접 공개 메서드 조율과 공개 adapter-neutral fact surface.
+- [`crates/volicord-core/src/user_action/`](../../../../crates/volicord-core/src/user_action/):
+  책임별 의미 model, 검증, typed body 및 identity 구성, Store-aware service,
+  materialization과 persistence mapping, 권한과 lifecycle 해석, resolution, neutral
+  read, projection, summary.
 - [`crates/volicord-core/src/methods/reconcile_changes.rs`](../../../../crates/volicord-core/src/methods/reconcile_changes.rs):
   UserAction 서비스를 사용하는 reconciliation별 조율.
 - [`crates/volicord-store/src/core_pipeline/user_actions.rs`](../../../../crates/volicord-store/src/core_pipeline/user_actions.rs):

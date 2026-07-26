@@ -78,11 +78,11 @@ require one UI for every host and does not make ordinary chat a User Channel.
 
 ## Implementation routes
 
-- [`crates/volicord-core/src/methods/user_actions.rs`](../../../../crates/volicord-core/src/methods/user_actions.rs):
+- [`crates/volicord-core/src/user_action/`](../../../../crates/volicord-core/src/user_action/):
   typed request construction and materialization, current authority
-  interpretation, lifecycle policy, and semantic facts.
+  interpretation, lifecycle policy, neutral reads, and semantic facts.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
-  direct request/resume and resolution orchestration plus neutral fact reads.
+  direct request and resolution method orchestration.
 - [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../../crates/volicord-core/src/policy/user_action_relevance.rs)
   and [`policy/close_readiness.rs`](../../../../crates/volicord-core/src/policy/close_readiness.rs):
   current relevance and authority evaluation.

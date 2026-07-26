@@ -1,8 +1,5 @@
 use super::close_guidance::close_next_action;
 use super::close_readiness::{plan_close_readiness, CloseReadinessRequest};
-use super::user_actions::{
-    agent_safe_pending_user_action_summaries, projected_pending_user_action_refs,
-};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, build_state_summary,
     changes_summary_text, close_state_summary_text, core_error_response,
@@ -22,6 +19,8 @@ use crate::pipeline::{
 use crate::policy::close_readiness::is_terminal_lifecycle;
 use crate::policy::evidence::{state_record_ref_identity_key, unique_state_record_refs};
 use crate::policy::workflow::{project_workflow_policy, resolve_task_control_authority};
+use crate::user_action::service::projected_pending_user_action_refs;
+use crate::user_action::summary::agent_safe_pending_user_action_summaries;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader, TaskRecord};

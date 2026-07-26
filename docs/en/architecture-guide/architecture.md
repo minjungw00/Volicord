@@ -205,31 +205,43 @@ points and the permit-bound context lifetime.
 
 ## Core UserAction ownership
 
-`crates/volicord-core/src/methods/user_actions.rs` is the responsibility-owned
-service for current UserAction construction and materialization. A calling
-method supplies typed semantic action intent and current domain facts. The
-service validates that input, constructs the canonical typed
-`UserActionRequestBody` and `UserActionBasis`, allocates the request identity,
-and returns the public request, effective Store record, and typed
-`CoreStorageMutation`. Serialization occurs while materializing the Store
-boundary rather than in method callers.
+`crates/volicord-core/src/user_action/` owns shared UserAction domain and
+application behavior outside method-specific orchestration. `model.rs` carries
+semantic intent, validated construction values, and adapter-neutral fact
+types. `validation.rs`, `body.rs`, and `identity.rs` respectively own pure
+semantic validation, canonical typed `UserActionRequestBody` and
+`UserActionBasis` construction, and stable source identity plus request-ID
+allocation. `service.rs` acquires current Store facts and coordinates those
+pure stages without writing. `materialization.rs` adds operation identity and
+forms the public request or immutable resolution, while `persistence.rs`
+performs the exact mapping to the effective Store record and typed
+`CoreStorageMutation`. Serialization is confined to this materialization and
+persistence boundary.
 
-The same owner provides strict stored-authority interpretation,
-operation-blocking policy, and lifecycle semantics. `user_action.rs` retains
-direct request/resume and resolution orchestration and returns
-adapter-neutral `PendingUserActionFacts` and `CurrentUserActionFacts` for
-internal consumers. Those facts contain semantic coordinates, status,
-availability, and safe resolution facts rather than command strings, labels,
-CLI capture metadata, rendered instructions, or MCP envelopes.
+`authority.rs` strictly decodes and normalizes stored authority,
+`lifecycle.rs` interprets projected Task lifecycle, `resolution.rs` owns typed
+resolution validation and construction, and `continuity.rs` plans continuity
+records derived from accepted resolutions. `projection.rs`, `reader.rs`, and
+`summary.rs` own neutral pending/current fact projection, Store-backed reads
+and originating-result replay, and adapter-safe summaries. These facts contain
+semantic coordinates, status, availability, and safe resolution facts rather
+than command strings, labels, CLI capture metadata, rendered instructions, or
+MCP envelopes.
+
+`crates/volicord-core/src/methods/user_action.rs` retains only direct request
+and resolution method orchestration and decides how the shared typed results
+participate in each operation result. Callers supply semantic intent to
+`user_action::service`; they do not construct canonical stored action JSON.
 
 `volicord-user-action-presentation` builds the shared current CLI inbox and
 recovery presentation from those facts. Its command text comes from typed
 `volicord-command-model` invocations derived from the actual Clap declaration.
 CLI owns terminal rendering. MCP owns the compound protocol projection and
-maps neutral fact-read failures into MCP errors. `reconcile_changes.rs` and
-other Core consumers call the semantic service directly and decide how its
-typed result participates in their own plan and response. Production method
-modules do not use sibling method implementations as reusable libraries.
+maps neutral fact-read failures into MCP errors.
+`methods/reconcile_changes.rs` and other Core consumers call the shared
+responsibility owners directly and decide how typed UserAction results
+participate in their own plans and responses. Production method modules do
+not use sibling method implementations as reusable libraries.
 
 Exact public behavior and schema meaning remain with
 [Request User Action](../reference/api/method-request-user-action.md),

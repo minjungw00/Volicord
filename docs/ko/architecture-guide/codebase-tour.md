@@ -87,6 +87,16 @@ MCP 호출은 다음 순서로 추적합니다.
 ## 사용자 소유 행동에서 시작하기
 
 `volicord.request_user_action`은 pending Core 요청을 생성하거나 재개합니다. 로컬
+구현 흐름은
+[`crates/volicord-core/src/user_action/`](../../../crates/volicord-core/src/user_action/)의
+의미 `model`과 순수 `validation`에서 시작해 정규 `body`와 `identity`를 거친 뒤
+Store-aware `service`, `materialization`, `persistence`로 이어집니다. 직접 request와
+resolution 메서드 계획은
+[`methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs)에
+있고, reconciliation은
+[`methods/reconcile_changes.rs`](../../../crates/volicord-core/src/methods/reconcile_changes.rs)에서
+의미 의도를 제공합니다.
+
 CLI 받은 편지함은 adapter-neutral Core fact를 읽고 공유 presentation과 정규
 command-model invocation으로 엄격한 저장 form을 표시한 뒤 별도 user-only
 resolution 경로를 호출합니다. MCP는 자체 safe projection을 구성하며 그 form을

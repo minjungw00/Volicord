@@ -559,7 +559,6 @@ mod stage_artifact;
 mod status;
 mod update_scope;
 mod user_action;
-mod user_actions;
 mod workflow_metrics;
 
 fn envelope(

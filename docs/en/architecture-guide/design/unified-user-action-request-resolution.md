@@ -9,14 +9,18 @@ separate agent-safe and User Channel projections.
 ## Design
 
 Core uses strict shared `UserActionRequest` and `UserActionResolution` types
-for all supported action families. `methods/user_actions.rs` owns reusable
-semantic validation, canonical typed request construction, identity allocation,
-Store-mutation materialization, strict authority decoding, and semantic
-lifecycle policy. `methods/user_action.rs` owns public request/resume and
-resolution orchestration plus adapter-neutral current and pending fact reads.
-Other Core methods,
-including `reconcile_changes.rs`, invoke the shared service directly and decide
-how its typed result participates in their own operation.
+for all supported action families. `user_action/model.rs`,
+`validation.rs`, `body.rs`, and `identity.rs` own semantic intent, pure
+validation, canonical typed request construction, and stable source identity.
+`service.rs` acquires current Store facts, while `materialization.rs` and
+`persistence.rs` form the public request and exact Store mutation input.
+`authority.rs`, `lifecycle.rs`, and `resolution.rs` own strict authority
+decoding, semantic lifecycle interpretation, and typed resolution behavior.
+`reader.rs` and `projection.rs` own adapter-neutral current and pending fact
+reads. `methods/user_action.rs` owns public request and resolution
+orchestration. Other Core methods, including `reconcile_changes.rs`, invoke
+these shared responsibility owners directly and decide how typed results
+participate in their own operations.
 
 Store's `core_pipeline/user_actions.rs` owns effective-status reads, coherent
 inbox resolution snapshots, immutable resolution insertion, and grouped
@@ -52,11 +56,12 @@ instruction from those neutral facts. Its commands come from a typed
 ## Responsibility boundaries
 
 `volicord-types` owns dependency-safe request, resolution, form, basis, and
-summary shapes. The Core UserAction service owns reusable construction,
-materialization, authority interpretation, lifecycle policy, and
-adapter-neutral semantic facts. Individual method modules own request-specific
-operation and response composition. Store owns strict records and snapshot
-consistency. The command model owns canonical CLI invocation construction.
+summary shapes. The Core `user_action` modules own reusable semantic
+validation, construction, identity, materialization, authority interpretation,
+lifecycle policy, reads, and adapter-neutral semantic facts. Individual method
+modules own request-specific operation and response composition. Store owns
+strict records and snapshot consistency. The command model owns canonical CLI
+invocation construction.
 `volicord-user-action-presentation` owns the shared CLI-oriented projection.
 CLI owns terminal rendering; MCP owns the bounded protocol projection and
 adapter-specific failure mapping.
@@ -65,22 +70,24 @@ adapter-specific failure mapping.
 
 1. A Core method supplies typed semantic action intent and current domain facts
    to the UserAction service.
-2. The service validates the semantic combination and current coordinates.
-3. The service constructs the canonical typed request body and basis.
-4. The service allocates the request identity and returns a typed public
-   request, effective Store record, and mutation plan.
-5. The calling method decides how that result participates in its operation and
+2. Pure validation returns typed validated intent for the semantic combination
+   and current coordinates.
+3. Store-aware service code acquires the remaining current domain facts.
+4. Pure body construction produces the canonical typed request body and basis.
+5. Identity and materialization allocate the request ID and return a typed
+   public request, effective Store record, and mutation plan.
+6. The calling method decides how that result participates in its operation and
    response, or returns the explicit resume projection.
-6. Store persists the request with the normal Core commit.
-7. MCP returns only the agent-safe summary and continuation.
-8. CLI requests neutral pending facts for one Task.
-9. Store reads the effective records from one project snapshot and Core
+7. Store persists the request with the normal Core commit.
+8. MCP returns only the agent-safe summary and continuation.
+9. CLI requests neutral pending facts for one Task.
+10. Store reads the effective records from one project snapshot and Core
    returns typed lifecycle and resolution-availability facts.
-10. Shared presentation creates the local inbox item and obtains a canonical
+11. Shared presentation creates the local inbox item and obtains a canonical
     typed resolution invocation from the command model.
-11. Core validates the selected local-user answer and plans one immutable
+12. Core validates the selected local-user answer and plans one immutable
     resolution.
-12. Store commits the resolution, derived records, event, and replay response
+13. Store commits the resolution, derived records, event, and replay response
     atomically.
 
 ## Failure behavior
@@ -103,11 +110,13 @@ It does not make prompt capture or MCP transport a resolution channel.
   shared shapes and public result composition.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs)
   and [`lib.rs`](../../../../crates/volicord-core/src/lib.rs):
-  direct public-method orchestration and adapter-neutral current-fact
-  boundaries.
-- [`crates/volicord-core/src/methods/user_actions.rs`](../../../../crates/volicord-core/src/methods/user_actions.rs):
-  shared typed construction, materialization, authority interpretation, and
-  lifecycle policy.
+  direct public-method orchestration and the public adapter-neutral fact
+  surface.
+- [`crates/volicord-core/src/user_action/`](../../../../crates/volicord-core/src/user_action/):
+  responsibility-owned semantic model, validation, typed body and identity
+  construction, Store-aware service, materialization and persistence mapping,
+  authority and lifecycle interpretation, resolution, neutral reads,
+  projection, and summaries.
 - [`crates/volicord-core/src/methods/reconcile_changes.rs`](../../../../crates/volicord-core/src/methods/reconcile_changes.rs):
   reconciliation-specific orchestration that consumes the UserAction service.
 - [`crates/volicord-store/src/core_pipeline/user_actions.rs`](../../../../crates/volicord-store/src/core_pipeline/user_actions.rs):

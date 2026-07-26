@@ -120,8 +120,22 @@
 | `crates/volicord-core/src/methods/close_task.rs` | 닫기 메서드 계획과 닫기 준비 상태 증거 해석을 메서드 차단 사유 및 결과로 변환하는 책임. |
 | `crates/volicord-core/src/methods/update_scope.rs` | 닫기 준비 상태 증거 정책 담당 모듈을 통한 범위 갱신 계획과 투영 증거 요약 완성. |
 | `crates/volicord-core/src/methods/status.rs` | 공유 Core 투영 경로를 통해 닫기 준비 상태 증거 정책을 사용하는 읽기 전용 상태 투영. |
-| `crates/volicord-core/src/methods/user_actions.rs` | 의미 검증, 정규 typed request 구성, identity 할당과 Store mutation 구체화, 엄격한 권한 해석, 연산 차단 정책, lifecycle semantic을 담당하는 UserAction 서비스. Adapter command, label, rendered guidance, protocol envelope는 구성하지 않습니다. |
-| `crates/volicord-core/src/methods/user_action.rs` | 직접 UserAction request/resume 및 resolution 조율과 adapter-neutral pending/current fact read. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 resolution snapshot을 얻는 경계를 포함합니다. |
+| `crates/volicord-core/src/user_action/model.rs` | 의미 UserAction 의도, 검증된 구성 값, adapter-neutral pending/current/resolution fact type. |
+| `crates/volicord-core/src/user_action/validation.rs` | Action kind, 좌표, 권한을 갖는 조합, 연산 대상, 만료 의미를 순수하게 검증하고 정규화합니다. |
+| `crates/volicord-core/src/user_action/body.rs` | 검증된 의도와 취득한 도메인 fact로 정규 typed `UserActionRequestBody`와 `UserActionBasis`를 순수하게 구성합니다. |
+| `crates/volicord-core/src/user_action/identity.rs` | 안정적인 source identity와 중복 제거 metadata, 집중된 존재 여부 조회를 통한 request ID 할당. |
+| `crates/volicord-core/src/user_action/service.rs` | 현재 구성, artifact, target, pending 및 resolved authority fact를 Store에서 취득하고, 영속화 실행 없이 순수 구성 단계를 조율합니다. |
+| `crates/volicord-core/src/user_action/materialization.rs` | 연산 소유 request identity 적용, 정규 공개 request 구성, Store mutation 경계의 직렬화. |
+| `crates/volicord-core/src/user_action/persistence.rs` | 정규 request 또는 resolution 값을 유효 Store record와 typed UserAction mutation 입력으로 정확히 매핑합니다. |
+| `crates/volicord-core/src/user_action/authority.rs` | 저장된 request와 resolution의 엄격한 decoding, 정규화된 authority 및 공개 request projection. |
+| `crates/volicord-core/src/user_action/lifecycle.rs` | 현재 pending authority fact에서 투영된 Task lifecycle을 순수하게 해석합니다. |
+| `crates/volicord-core/src/user_action/resolution.rs` | 현재 근거 검증, 정규 typed resolution 구성, 엄격한 resolution decoding, replay 입력 비교. |
+| `crates/volicord-core/src/user_action/continuity.rs` | 권한을 갖는 수락 resolution에 대한 continuity record 계획. |
+| `crates/volicord-core/src/user_action/projection.rs` | Adapter-neutral pending 및 resolution fact projection, User Channel 읽기 권한 검사, resolution replay projection. |
+| `crates/volicord-core/src/user_action/reader.rs` | Store 기반 adapter-neutral 읽기, 일관된 pending resolution snapshot, 원래 request result replay. |
+| `crates/volicord-core/src/user_action/summary.rs` | Neutral pending instruction과 agent-safe pending request summary. |
+| `crates/volicord-core/src/user_action/tests/` | 책임별 validation, body, identity, authority, lifecycle, materialization, persistence mapping 테스트. |
+| `crates/volicord-core/src/methods/user_action.rs` | 직접 request와 resolution 메서드 조율. 공유 typed UserAction 서비스를 사용하고 결과를 메서드 plan과 response로 매핑합니다. |
 | `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation별 계획. 해결되지 않은 변경에 typed pending action이 필요할 때 UserAction 서비스를 직접 사용합니다. |
 | `crates/volicord-core/src/policy/` | 책임별 재사용 정책. 메서드 구현은 형제 메서드 모듈에서 공유 정책을 얻지 않고 이 담당 모듈을 직접 사용합니다. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Typed 사실에 대한 순수 증거 출처 및 보증 수준 분류. |

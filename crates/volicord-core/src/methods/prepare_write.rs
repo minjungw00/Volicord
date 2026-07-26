@@ -1,8 +1,5 @@
 use super::close_blockers::{normalize_close_blockers, open_write_ticket_close_blocker};
 use super::close_readiness::{facts_from_projection, plan_projected_close_readiness};
-use super::user_actions::{
-    pending_user_action_authorities_for_plan, user_action_authority_from_record,
-};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_write_ticket_id,
     baseline_matches, build_state_summary, change_unit_effect_contract, change_unit_ref,
@@ -36,6 +33,8 @@ use crate::policy::write_ticket::{
     prepare_write_dry_run_summary, write_decision_reason, write_ticket_is_idle_expired,
     SensitiveApprovalRequirement,
 };
+use crate::user_action::authority::user_action_authority_from_record;
+use crate::user_action::service::pending_user_action_authorities_for_plan;
 use chrono::Duration;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;

@@ -187,28 +187,38 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 
 ## Core UserAction 담당 경계
 
-`crates/volicord-core/src/methods/user_actions.rs`는 현재 UserAction 구성과 구체화를
-담당하는 책임별 서비스입니다. 호출 메서드는 typed 의미 행동 의도와 현재 도메인
-사실을 제공합니다. 서비스는 입력을 검증하고 정규 typed
-`UserActionRequestBody`와 `UserActionBasis`를 구성하며 request identity를 할당한
-뒤 공개 request, 유효 Store record, typed `CoreStorageMutation`을 반환합니다.
-직렬화는 메서드 caller가 아니라 Store 경계를 구체화할 때 수행합니다.
+`crates/volicord-core/src/user_action/`은 메서드별 조율을 제외한 공유 UserAction
+도메인 및 애플리케이션 동작을 담당합니다. `model.rs`는 의미 의도, 검증된 구성 값,
+adapter-neutral fact type을 담습니다. `validation.rs`, `body.rs`, `identity.rs`는
+각각 순수 의미 검증, 정규 typed `UserActionRequestBody` 및 `UserActionBasis` 구성,
+안정적인 source identity와 request ID 할당을 담당합니다. `service.rs`는 현재 Store
+fact를 취득하고 쓰기 없이 이 순수 단계를 조율합니다. `materialization.rs`는 연산
+identity를 더해 공개 request 또는 불변 resolution을 만들고, `persistence.rs`는
+유효 Store record와 typed `CoreStorageMutation`으로 정확히 매핑합니다. 직렬화는
+이 구체화 및 영속화 경계에서만 수행합니다.
 
-같은 담당 모듈은 저장된 권한의 엄격한 해석, 연산 차단 정책, lifecycle semantic을
-제공합니다. `user_action.rs`는 직접 request/resume과 resolution 조율을 유지하고
-내부 consumer에 adapter-neutral `PendingUserActionFacts`와
-`CurrentUserActionFacts`를 반환합니다. 이 fact에는 의미 좌표, status,
-availability, safe resolution fact가 있으며 command string, label, CLI capture
-metadata, rendered instruction, MCP envelope는 없습니다.
+`authority.rs`는 저장된 권한을 엄격하게 디코딩하고 정규화하며, `lifecycle.rs`는
+투영된 Task lifecycle을 해석합니다. `resolution.rs`는 typed resolution 검증과
+구성을 담당하고, `continuity.rs`는 수락된 resolution에서 파생되는 continuity
+record를 계획합니다. `projection.rs`, `reader.rs`, `summary.rs`는 각각 neutral
+pending/current fact 투영, Store 기반 읽기와 원래 result replay, adapter-safe
+요약을 담당합니다. 이 fact에는 의미 좌표, status, availability, safe resolution
+fact가 있으며 command string, label, CLI capture metadata, rendered instruction,
+MCP envelope는 없습니다.
+
+`crates/volicord-core/src/methods/user_action.rs`는 직접 request 및 resolution
+메서드 조율만 유지하며 공유 typed 결과를 각 연산 결과에 반영하는 방식을
+결정합니다. Caller는 의미 의도를 `user_action::service`에 제공하며 정규 저장
+action JSON을 직접 구성하지 않습니다.
 
 `volicord-user-action-presentation`은 이 fact에서 공유하는 현재 CLI inbox 및
 recovery presentation을 만듭니다. Command text는 실제 Clap 선언에서 도출한 typed
 `volicord-command-model` invocation에서 얻습니다. CLI는 terminal rendering을
 담당합니다. MCP는 compound protocol projection과 neutral fact-read failure를 MCP
-error로 바꾸는 작업을 담당합니다. `reconcile_changes.rs`와 다른 Core consumer는
-semantic 서비스를 직접 호출하고 typed 결과를 각자 plan과 응답에 반영하는 방식을
-결정합니다. 프로덕션 메서드 모듈은 형제 메서드 구현을 재사용 라이브러리로
-사용하지 않습니다.
+error로 바꾸는 작업을 담당합니다. `methods/reconcile_changes.rs`와 다른 Core
+consumer는 공유 책임 담당 모듈을 직접 호출하고 typed UserAction 결과를 각자
+plan과 응답에 반영하는 방식을 결정합니다. 프로덕션 메서드 모듈은 형제 메서드
+구현을 재사용 라이브러리로 사용하지 않습니다.
 
 정확한 공개 동작과 스키마 의미는
 [사용자 행동 요청](../reference/api/method-request-user-action.md),

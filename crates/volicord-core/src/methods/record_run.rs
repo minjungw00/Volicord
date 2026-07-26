@@ -8,10 +8,6 @@ use super::evidence_facts::{
     stored_evidence_observation_provenance_facts, stored_evidence_observation_relevance,
     user_action_observation_resolution_authority, validate_capture_receipt_record,
 };
-use super::user_actions::{
-    pending_user_action_authorities_for_plan, pending_user_action_refs_for_operation,
-    projected_user_action_lifecycle_phase, user_action_authority_from_record,
-};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_artifact_id,
     allocate_evidence_observation_id, allocate_evidence_producer_id, allocate_evidence_summary_id,
@@ -64,6 +60,11 @@ use crate::policy::{
         stored_observation_target_matches, supplemental_claim_target_matches,
         EvidenceObservationBasis,
     },
+};
+use crate::user_action::authority::user_action_authority_from_record;
+use crate::user_action::lifecycle::projected_user_action_lifecycle_phase;
+use crate::user_action::service::{
+    pending_user_action_authorities_for_plan, pending_user_action_refs_for_operation,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};

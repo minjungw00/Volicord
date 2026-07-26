@@ -85,7 +85,6 @@ mod status;
 mod tests;
 mod update_scope;
 mod user_action;
-mod user_actions;
 
 struct MethodPlan<F> {
     task_id: TaskId,
@@ -117,35 +116,35 @@ struct CloseTaskPlan {
     blockers: Vec<CloseReadinessBlocker>,
 }
 
-struct ProjectContinuityDraft {
-    kind: ProjectContinuityKind,
-    title: String,
-    summary: String,
-    rationale: Option<String>,
-    applies_to_paths: Vec<String>,
-    applies_to_refs: Vec<StateRecordRef>,
-    source_refs: Vec<StateRecordRef>,
-    artifact_refs: Vec<ArtifactRef>,
-    supersedes_refs: Vec<StateRecordRef>,
-    review_triggers: Vec<String>,
-    metadata: Value,
+pub(crate) struct ProjectContinuityDraft {
+    pub(crate) kind: ProjectContinuityKind,
+    pub(crate) title: String,
+    pub(crate) summary: String,
+    pub(crate) rationale: Option<String>,
+    pub(crate) applies_to_paths: Vec<String>,
+    pub(crate) applies_to_refs: Vec<StateRecordRef>,
+    pub(crate) source_refs: Vec<StateRecordRef>,
+    pub(crate) artifact_refs: Vec<ArtifactRef>,
+    pub(crate) supersedes_refs: Vec<StateRecordRef>,
+    pub(crate) review_triggers: Vec<String>,
+    pub(crate) metadata: Value,
 }
 
 #[derive(Clone, Copy)]
-struct ProjectContinuityPlanContext<'a> {
-    service: &'a CoreService,
-    store: &'a CoreProjectStore<'a>,
-    project_id: &'a ProjectId,
-    source_task_id: &'a TaskId,
-    source_change_unit_id: Option<&'a ChangeUnitId>,
-    planned_state_version: u64,
-    now: &'a UtcTimestamp,
+pub(crate) struct ProjectContinuityPlanContext<'a> {
+    pub(crate) service: &'a CoreService,
+    pub(crate) store: &'a CoreProjectStore<'a>,
+    pub(crate) project_id: &'a ProjectId,
+    pub(crate) source_task_id: &'a TaskId,
+    pub(crate) source_change_unit_id: Option<&'a ChangeUnitId>,
+    pub(crate) planned_state_version: u64,
+    pub(crate) now: &'a UtcTimestamp,
 }
 
-struct PlannedProjectContinuityRecord {
-    record_ref: StateRecordRef,
-    summary: ProjectContinuitySummary,
-    mutation: CoreStorageMutation,
+pub(crate) struct PlannedProjectContinuityRecord {
+    pub(crate) record_ref: StateRecordRef,
+    pub(crate) summary: ProjectContinuitySummary,
+    pub(crate) mutation: CoreStorageMutation,
 }
 
 struct ValidatedStageArtifactInput {
@@ -225,7 +224,7 @@ fn response_committed_fresh_effect(response: &PipelineResponse) -> bool {
             == Some("core_committed")
 }
 
-enum PlanError {
+pub(crate) enum PlanError {
     Core(CorePipelineError),
     Response(Box<PipelineResponse>),
 }
@@ -421,7 +420,7 @@ fn allocate_project_continuity_record_id(
         .map(ProjectContinuityRecordId::new)
 }
 
-fn plan_project_continuity_record(
+pub(crate) fn plan_project_continuity_record(
     context: ProjectContinuityPlanContext<'_>,
     draft: ProjectContinuityDraft,
 ) -> CoreResult<PlannedProjectContinuityRecord> {
@@ -535,7 +534,7 @@ fn utc_timestamp(timestamp: DateTime<Utc>) -> UtcTimestamp {
     UtcTimestamp::from_datetime(timestamp)
 }
 
-fn parse_owner_storage_value<T>(
+pub(crate) fn parse_owner_storage_value<T>(
     table: &'static str,
     record_ref: impl Into<String>,
     logical_column: &'static str,
@@ -554,7 +553,7 @@ where
     })
 }
 
-fn artifact_ref_from_verified_record(
+pub(crate) fn artifact_ref_from_verified_record(
     store: &CoreProjectStore,
     record: &StoredArtifactRecord,
     display_name: Option<String>,
@@ -594,7 +593,7 @@ fn artifact_ref_from_verified_record(
     })
 }
 
-fn persistent_artifact_is_verified_current(
+pub(crate) fn persistent_artifact_is_verified_current(
     store: &CoreProjectStore,
     record: &StoredArtifactRecord,
 ) -> CoreResult<bool> {
@@ -1092,7 +1091,7 @@ fn canonical_source_artifact_ref(
     })
 }
 
-fn decode_required_json<T>(
+pub(crate) fn decode_required_json<T>(
     table: &'static str,
     record_ref: impl Into<String>,
     logical_column: &'static str,
@@ -1142,7 +1141,7 @@ where
     }
 }
 
-fn validation_plan_error<T>(
+pub(crate) fn validation_plan_error<T>(
     dry_run: bool,
     state_version: Option<u64>,
     field: &'static str,
@@ -1410,7 +1409,7 @@ fn matching_sensitive_approval(
     };
 
     for record in records {
-        let authority = user_actions::user_action_authority_from_record(&record)?;
+        let authority = crate::user_action::authority::user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
             return Ok(Some(record));
         }
@@ -1587,7 +1586,7 @@ fn workspace_stale_response(
     )
 }
 
-fn no_active_change_unit_response(
+pub(crate) fn no_active_change_unit_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
     message: &'static str,
@@ -1604,7 +1603,7 @@ fn no_active_change_unit_response(
     )
 }
 
-fn decision_rejected_response(
+pub(crate) fn decision_rejected_response(
     envelope: &ToolEnvelope,
     state_version: Option<u64>,
     message: &'static str,
@@ -1622,12 +1621,12 @@ fn decision_rejected_response(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct StoredScope {
+pub(crate) struct StoredScope {
     goal_summary: Option<String>,
     scope_summary: Option<String>,
     non_goals: Vec<String>,
     autonomy_boundary: Option<String>,
-    baseline_ref: Option<String>,
+    pub(crate) baseline_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1712,7 +1711,7 @@ impl From<PersistedWriteTicketAttemptScope> for WriteTicketAttemptScope {
 }
 
 impl StoredScope {
-    fn from_task(task: &TaskRecord) -> CoreResult<Self> {
+    pub(crate) fn from_task(task: &TaskRecord) -> CoreResult<Self> {
         let shaping: PersistedTaskShaping = decode_required_json(
             "tasks",
             task.task_id.clone(),
@@ -1788,7 +1787,7 @@ fn normalize_scope_text_option(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn normalize_display_text(value: &str) -> String {
+pub(crate) fn normalize_display_text(value: &str) -> String {
     value.trim().to_owned()
 }
 
@@ -1992,9 +1991,10 @@ fn build_state_summary(
         baseline_ref: scope.baseline_ref.map(BaselineRef::new),
         workspace_context,
         shaping_readiness: None,
-        pending_user_action_summaries: user_actions::agent_safe_pending_user_action_summaries(
-            pending_user_action_refs,
-        ),
+        pending_user_action_summaries:
+            crate::user_action::summary::agent_safe_pending_user_action_summaries(
+                pending_user_action_refs,
+            ),
         blocker_refs,
         write_ticket_summary,
         evidence_summary,
@@ -2187,7 +2187,7 @@ fn write_ticket_projection_invalidation_reason(
         .map_err(CorePipelineError::from)?;
     let mut current_resolution_ids = BTreeSet::new();
     for record in records {
-        let authority = user_actions::user_action_authority_from_record(&record)?;
+        let authority = crate::user_action::authority::user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
             if let Some(resolution_id) = authority.user_action_resolution_id {
                 current_resolution_ids.insert(resolution_id);
@@ -2812,7 +2812,7 @@ fn dry_run_summary(
     }
 }
 
-fn state_ref(
+pub(crate) fn state_ref(
     record_kind: StateRecordKind,
     record_id: &str,
     project_id: &ProjectId,
@@ -2990,7 +2990,7 @@ fn state_ref_from_stored(record: StoredRecordRef) -> StateRecordRef {
     }
 }
 
-fn stored_refs_to_state_refs(records: Vec<StoredRecordRef>) -> Vec<StateRecordRef> {
+pub(crate) fn stored_refs_to_state_refs(records: Vec<StoredRecordRef>) -> Vec<StateRecordRef> {
     records.into_iter().map(state_ref_from_stored).collect()
 }
 
@@ -3003,7 +3003,7 @@ fn object_from_value(value: Value) -> CoreResult<JsonObject> {
     }
 }
 
-fn validation_rejected(
+pub(crate) fn validation_rejected(
     dry_run: bool,
     state_version: Option<u64>,
     field: &'static str,
@@ -3050,7 +3050,7 @@ fn infallible_rejected_pipeline_response(
         .expect("rejected response serialization should succeed")
 }
 
-fn store_error_response(
+pub(crate) fn store_error_response(
     envelope: &ToolEnvelope,
     project_state: &ProjectStateHeader,
     error: StoreError,

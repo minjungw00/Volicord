@@ -7,10 +7,6 @@ use super::evidence_facts::{
     projected_evidence_observation_provenance_facts, stored_evidence_observation_capture_relevance,
     stored_evidence_observation_provenance_facts,
 };
-use super::user_actions::{
-    pending_user_action_authorities_for_plan, pending_user_action_instruction,
-    resolved_user_action_authorities_for_plan,
-};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, change_unit_effect_contract,
     change_unit_ref, decode_required_json, effective_write_ticket_status,
@@ -55,6 +51,10 @@ use crate::policy::{
     },
     workflow::ResolvedTaskControlAuthority,
 };
+use crate::user_action::service::{
+    pending_user_action_authorities_for_plan, resolved_user_action_authorities_for_plan,
+};
+use crate::user_action::summary::pending_user_action_instruction;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, TaskControlLevelUpdate, TaskRecord,
