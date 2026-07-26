@@ -1,9 +1,9 @@
 # MCP transport reference
 
-This document owns the first-release local MCP process boundary: managed stdio
-startup, strict binding, JSON-RPC lifecycle, tool discovery, public argument
-projection, response wrapping, and shutdown. Core methods, Codex configuration,
-connection verification, and storage effects remain with their focused owners.
+This document owns the local MCP process boundary: managed stdio startup,
+strict binding, JSON-RPC lifecycle, tool discovery, public argument projection,
+response wrapping, and shutdown. Core methods, Codex configuration, connection
+verification, and storage effects remain with their focused owners.
 
 <a id="surface-stability"></a>
 ## Surface Stability
@@ -25,14 +25,9 @@ The hidden `volicord _host-launch codex` entry is started by managed Codex
 configuration and transitions in the same process to the stdio adapter after
 lease consumption. The public `volicord mcp serve` entry is the manual stdio
 surface. Both exchange line-delimited JSON-RPC through stdin and stdout and
-open no TCP, HTTP, Unix-domain socket, or other network listener.
-
-```text
-volicord mcp serve --connection <connection_id> [--project <project_id>]
-volicord mcp serve --discover-repository --host codex
-volicord mcp preflight --connection <connection_id> [--project <project_id>] [--verbose | --json]
-volicord mcp preflight --discover-repository --host codex [--verbose | --json]
-```
+open no TCP, HTTP, Unix-domain socket, or other network listener. Canonical
+command syntax is generated in the
+[Administrative CLI Reference](admin-cli.md).
 
 The `--connection` process form accepts an explicit `--project` for current
 manual or preflight selection. The canonical personal Codex entry uses this

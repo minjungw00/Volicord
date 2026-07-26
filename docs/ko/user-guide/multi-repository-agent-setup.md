@@ -14,21 +14,21 @@
 
 첫 저장소를 등록합니다.
 
-```sh
+```sh cli-example
 volicord connection add codex --repo /path/to/acme-api
 volicord connection status codex --repo /path/to/acme-api
 ```
 
 같은 개인 의도로 다른 명시적 membership을 추가합니다.
 
-```sh
+```sh cli-example
 volicord connection add codex --repo /path/to/billing-api
 volicord connection status codex --repo /path/to/billing-api
 ```
 
 결과 연결과 membership을 확인합니다.
 
-```sh
+```sh cli-example
 volicord connection list
 volicord connection verify codex
 ```
@@ -48,7 +48,7 @@ UserAction 요청, 닫기 상태를 유지합니다. Membership이 프로젝트 
 
 이름 붙인 저장소 membership을 미리 보고 제거합니다.
 
-```sh
+```sh cli-example
 volicord connection remove codex --repo /path/to/billing-api --dry-run
 volicord connection remove codex --repo /path/to/billing-api
 ```

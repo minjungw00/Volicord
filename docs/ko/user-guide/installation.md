@@ -23,7 +23,7 @@
 
 이 체크아웃에서 직접 재현할 수 있는 네이티브 경로는 소스 빌드입니다.
 
-```sh
+```sh cli-example
 cargo build --locked --release -p volicord-cli --bin volicord
 ./target/release/volicord --version
 ```
@@ -31,7 +31,7 @@ cargo build --locked --release -p volicord-cli --bin volicord
 빌드한 실행 파일을 사용자 명령 디렉터리에 설치합니다. 필요하면
 `$HOME/.local/bin`을 이미 `PATH`에 있는 다른 디렉터리로 바꿉니다.
 
-```sh
+```sh cli-example
 mkdir -p "$HOME/.local/bin"
 install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
 volicord --version
@@ -175,7 +175,7 @@ Checksum 파일이 있는데 검증할 수 없으면 실패합니다. Checksum �
 
 설치 뒤 설치된 명령을 확인합니다.
 
-```sh
+```sh cli-example
 volicord --version
 volicord --help
 volicord mcp --help
@@ -236,7 +236,7 @@ Repository가 서로 다른 파일시스템에 있을 수 있으므로 commit �
 프롬프트나 `action_required`가 이름 붙인 명령 가용성 단계를 완료한 뒤 설정 준비
 상태를 확인합니다.
 
-```sh
+```sh cli-example
 volicord doctor
 ```
 
@@ -250,7 +250,7 @@ volicord doctor
 `volicord`가 이미 `PATH`에 있으면 바로 [빠른 시작](quickstart.md)으로 갈 수 있습니다.
 설치 프로필을 점검해야 할 때는 아래처럼 실행합니다.
 
-```sh
+```sh cli-example
 volicord doctor
 ```
 
@@ -303,7 +303,7 @@ Volicord가 저장하며 첫 설정 입력이 아닙니다.
 
 Product Repository에 호스트를 연결합니다.
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 

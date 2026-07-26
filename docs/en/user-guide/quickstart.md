@@ -8,7 +8,7 @@ first so `volicord` is available on `PATH`.
 
 For a repository-shared connection:
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
@@ -31,7 +31,7 @@ already-running session loaded it.
 
 Use the same intent selector that initialized the connection:
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
@@ -50,7 +50,7 @@ readiness before completion.
 If an agent creates a pending `UserActionRequest`, resolution belongs only to
 the local CLI User Channel:
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```

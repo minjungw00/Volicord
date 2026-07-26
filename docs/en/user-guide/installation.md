@@ -25,7 +25,7 @@ repository separation belong to [Runtime Boundaries](../reference/runtime-bounda
 
 The source build is the directly reproducible native path from this checkout:
 
-```sh
+```sh cli-example
 cargo build --locked --release -p volicord-cli --bin volicord
 ./target/release/volicord --version
 ```
@@ -33,7 +33,7 @@ cargo build --locked --release -p volicord-cli --bin volicord
 To install the built executable in a user command directory, replace
 `$HOME/.local/bin` with another directory already on `PATH` if needed:
 
-```sh
+```sh cli-example
 mkdir -p "$HOME/.local/bin"
 install -m 0755 target/release/volicord "$HOME/.local/bin/volicord"
 volicord --version
@@ -181,7 +181,7 @@ claimed by this repository unless a matching repository artifact is added.
 
 After installation, verify the installed command:
 
-```sh
+```sh cli-example
 volicord --version
 volicord --help
 volicord mcp --help
@@ -250,7 +250,7 @@ For automation or deterministic local layouts, use explicit init options:
 After completing any prompt or action-required command-availability step, check
 installation-profile health:
 
-```sh
+```sh cli-example
 volicord doctor
 ```
 
@@ -266,7 +266,7 @@ If `volicord` already exists on `PATH`, you can go straight to the
 [Quickstart](quickstart.md). Run doctor when you want to inspect the
 installation profile:
 
-```sh
+```sh cli-example
 volicord doctor
 ```
 
@@ -320,7 +320,7 @@ Internal identities are stored by Volicord and are not first-time setup inputs.
 
 Connect a host to the Product Repository:
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 

@@ -8,7 +8,7 @@ Home explicit throughout recovery.
 
 Collect read-only diagnostics first:
 
-```sh
+```sh cli-example
 volicord doctor
 volicord project current
 volicord connection list
@@ -73,7 +73,7 @@ does not authorize guessing from prose.
 
 Use the exact identifier from concise, verbose, or JSON output:
 
-```sh
+```sh cli-example
 volicord diagnostics show "<finding-id>"
 volicord diagnostics show "<finding-id>" --json
 volicord diagnostics session "<runtime-session-id>"
@@ -117,7 +117,7 @@ Confirm that the exact `volicord` binary is on the environment used to start
 Codex. An already-running Codex process may retain an older `PATH`; restart it
 after correcting the launch environment. Then rerun:
 
-```sh
+```sh cli-example
 volicord doctor
 volicord connection verify codex --repo "<repo>"
 ```
@@ -168,7 +168,7 @@ fatal failure. Complete only the reported required steps, obey terminal
 workflow states, and then read connection status. Do not use shell sleep or
 poll loops or restart the workflow automatically in the same turn.
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
@@ -203,7 +203,7 @@ response, or raw stderr into a diagnostic.
 
 Use the exact stored connection and project identifiers:
 
-```sh
+```sh cli-example
 volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
@@ -217,7 +217,7 @@ transport or bypass connection binding.
 
 Rerun active verification with JSON output and start with the root IDs:
 
-```sh
+```sh cli-example
 volicord connection verify codex --repo "<repo>" --json
 ```
 
@@ -358,7 +358,7 @@ session on the same managed connection.
 The agent may create or resume a pending request but cannot answer it. Resolve
 it only through the local CLI User Channel:
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
@@ -378,7 +378,7 @@ visible and must not be treated as an empty successful suppression.
 
 Rerun the same supported setup intent:
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
 volicord connection verify codex --shared --repo "<repo>"
 ```
@@ -390,7 +390,7 @@ repository content.
 
 Preview the exact intent and inspect the result:
 
-```sh
+```sh cli-example
 volicord connection remove codex --shared --repo "<repo>" --dry-run
 volicord connection remove codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"

@@ -115,7 +115,7 @@ When a decision must become Volicord state, use the CLI inbox.
 
 The stable manual path is:
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
@@ -170,7 +170,7 @@ Volicord may ask you to record a focused Evidence observation for one stored
 acceptance criterion or supplemental claim. Select only the stored target and
 artifact candidates shown in the CLI inbox:
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID \
   --criterion CRITERION_ID \

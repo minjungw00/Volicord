@@ -8,7 +8,7 @@
 
 먼저 읽기 전용 진단을 수집합니다.
 
-```sh
+```sh cli-example
 volicord doctor
 volicord project current
 volicord connection list
@@ -68,7 +68,7 @@ Code 계열에 따라 집중 복구 경계를 선택합니다.
 
 Concise, verbose, JSON 출력에 나온 정확한 식별자를 사용합니다.
 
-```sh
+```sh cli-example
 volicord diagnostics show "<finding-id>"
 volicord diagnostics show "<finding-id>" --json
 volicord diagnostics session "<runtime-session-id>"
@@ -106,7 +106,7 @@ Codex를 시작한 환경의 `PATH`에 정확한 `volicord` 실행 파일이 있
 이미 실행 중인 Codex 프로세스는 이전 `PATH`를 유지할 수 있으므로 시작 환경을 고친 뒤
 재시작합니다. 그다음 다시 실행합니다.
 
-```sh
+```sh cli-example
 volicord doctor
 volicord connection verify codex --repo "<repo>"
 ```
@@ -155,7 +155,7 @@ verify`는 선택적인 active diagnostics이며 activation workflow가 아닙�
 읽습니다. Shell sleep이나 poll loop를 사용하거나 같은 turn에 workflow를 자동으로 다시
 시작하지 않습니다.
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
@@ -185,7 +185,7 @@ tool response, raw stderr를 diagnostic에 복사하지 않습니다.
 
 정확한 저장 연결과 프로젝트 식별자를 사용합니다.
 
-```sh
+```sh cli-example
 volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
@@ -198,7 +198,7 @@ volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 
 JSON 출력으로 활성 검증을 다시 실행하고 root ID부터 확인합니다.
 
-```sh
+```sh cli-example
 volicord connection verify codex --repo "<repo>" --json
 ```
 
@@ -327,7 +327,7 @@ Guard evidence를 만들지 않습니다.
 에이전트는 대기 요청을 만들거나 재개할 수 있지만 답할 수 없습니다. 로컬 CLI User
 Channel로만 해결합니다.
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
@@ -347,7 +347,7 @@ Unrecorded Change는 제한된 관찰이며 actor 귀속이 아닙니다. 반환
 
 같은 지원 설정 의도를 다시 실행합니다.
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
 volicord connection verify codex --shared --repo "<repo>"
 ```
@@ -359,7 +359,7 @@ volicord connection verify codex --shared --repo "<repo>"
 
 정확한 의도를 미리 보고 결과를 확인합니다.
 
-```sh
+```sh cli-example
 volicord connection remove codex --shared --repo "<repo>" --dry-run
 volicord connection remove codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"

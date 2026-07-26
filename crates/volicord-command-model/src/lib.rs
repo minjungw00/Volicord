@@ -725,6 +725,78 @@ pub fn public_command_paths() -> Vec<CommandPath> {
         .collect()
 }
 
+/// Syntax-only introspection data for the root command or one public command path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandSyntax {
+    components: Vec<String>,
+    synopsis: String,
+    arguments: Vec<String>,
+}
+
+impl CommandSyntax {
+    /// Returns the command names below the `volicord` root.
+    ///
+    /// The root command has no components.
+    pub fn components(&self) -> &[String] {
+        &self.components
+    }
+
+    /// Returns the canonical synopsis rendered by Clap.
+    pub fn synopsis(&self) -> &str {
+        &self.synopsis
+    }
+
+    /// Returns the visible positional, option, and flag forms declared by Clap.
+    pub fn arguments(&self) -> &[String] {
+        &self.arguments
+    }
+}
+
+/// Returns syntax-only data for the root and every public command path.
+pub fn public_command_syntax() -> Vec<CommandSyntax> {
+    let mut root = root_command();
+    root.build();
+    let mut syntax = vec![command_syntax(&root, &[])];
+    syntax.extend(public_command_paths().into_iter().map(|path| {
+        let command = find_command(&root, path.components())
+            .expect("public command paths originate from this command declaration");
+        command_syntax(command, path.components())
+    }));
+    syntax
+}
+
+fn command_syntax(command: &ClapCommand, components: &[String]) -> CommandSyntax {
+    CommandSyntax {
+        components: components.to_vec(),
+        synopsis: canonical_synopsis(command, components),
+        arguments: command
+            .get_arguments()
+            .filter(|argument| !argument.is_hide_set() && !is_display_action(argument.get_action()))
+            .map(argument_syntax)
+            .collect(),
+    }
+}
+
+fn argument_syntax(argument: &Arg) -> String {
+    let mut syntax = argument.to_string();
+    if let (Some(short), Some(_)) = (argument.get_short(), argument.get_long()) {
+        syntax = format!("-{short}, {syntax}");
+    }
+
+    let possible_values = argument
+        .get_possible_values()
+        .into_iter()
+        .filter(|value| !value.is_hide_set())
+        .map(|value| value.get_name().to_owned())
+        .collect::<Vec<_>>();
+    if !possible_values.is_empty() {
+        syntax.push_str(" {");
+        syntax.push_str(&possible_values.join("|"));
+        syntax.push('}');
+    }
+    syntax
+}
+
 fn collect_command_paths(
     command: &ClapCommand,
     parent_components: &mut Vec<String>,
@@ -893,7 +965,7 @@ fn canonical_invocation(
 fn append_required_arguments(command: &ClapCommand, arguments: &mut Vec<String>) {
     let required = command
         .get_arguments()
-        .filter(|argument| argument.is_required_set() && argument.get_default_values().is_empty())
+        .filter(|argument| argument.is_required_set())
         .collect::<Vec<_>>();
     for argument in required
         .iter()
@@ -1116,6 +1188,50 @@ mod tests {
     }
 
     #[test]
+    fn public_syntax_is_derived_from_visible_clap_declarations() {
+        let syntax = public_command_syntax();
+        let paths = syntax
+            .iter()
+            .map(|command| command.components().to_vec())
+            .collect::<BTreeSet<_>>();
+
+        assert!(paths.contains(&Vec::new()));
+        assert!(paths.contains(&vec!["evidence".to_owned()]));
+        assert!(paths.contains(&vec!["evidence".to_owned(), "capture-command".to_owned()]));
+
+        let doctor = syntax
+            .iter()
+            .find(|command| command.components() == ["doctor"])
+            .expect("doctor syntax");
+        assert!(doctor
+            .arguments()
+            .iter()
+            .any(|argument| argument == "--privacy-footprint"));
+
+        for path in [
+            ["policy", "show"].as_slice(),
+            ["policy", "apply"].as_slice(),
+        ] {
+            let command = syntax
+                .iter()
+                .find(|command| command.components() == path)
+                .expect("policy syntax");
+            assert!(command.synopsis().contains("--json"));
+            assert!(command
+                .arguments()
+                .iter()
+                .any(|argument| argument == "--json"));
+        }
+
+        let hidden = command_paths()
+            .into_iter()
+            .filter(|path| path.visibility() == CommandVisibility::Hidden)
+            .map(|path| path.components)
+            .collect::<BTreeSet<_>>();
+        assert!(hidden.is_disjoint(&paths));
+    }
+
+    #[test]
     fn canonical_public_invocations_parse_with_the_same_model() {
         let invocations =
             canonical_public_invocations().expect("every public endpoint must materialize");
@@ -1250,6 +1366,42 @@ mod tests {
             &[ConnectionMode::Workflow, ConnectionMode::ReadOnly],
             "connection modes come from the command model"
         );
+    }
+
+    #[test]
+    fn required_arguments_and_conflicts_are_enforced_by_clap() {
+        let required =
+            Cli::try_parse_from(["volicord", "policy", "show", "--repo", "/workspace/product"])
+                .expect_err("policy show requires JSON output");
+        assert_eq!(
+            required.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+
+        let conflict = Cli::try_parse_from([
+            "volicord",
+            "connection",
+            "status",
+            "codex",
+            "--verbose",
+            "--json",
+        ])
+        .expect_err("selected Connection output modes conflict");
+        assert_eq!(conflict.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn clap_rejects_unknown_commands_and_options_generically() {
+        let command_error = Cli::try_parse_from(["volicord", "not-a-command"])
+            .expect_err("an undeclared command must be rejected");
+        assert_eq!(
+            command_error.kind(),
+            clap::error::ErrorKind::InvalidSubcommand
+        );
+
+        let option_error = Cli::try_parse_from(["volicord", "doctor", "--not-an-option"])
+            .expect_err("an undeclared option must be rejected");
+        assert_eq!(option_error.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 
     #[test]

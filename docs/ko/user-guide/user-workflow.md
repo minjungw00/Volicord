@@ -112,7 +112,7 @@ API 이름이나 내부 모드를 알 필요는 없습니다. 원하는 결과, 
 
 안정적인 수동 경로는 다음과 같습니다.
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
@@ -158,7 +158,7 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 Volicord는 저장된 수락 기준 또는 보충 주장 하나에 대해 집중된 Evidence 관찰 기록을
 요청할 수 있습니다. CLI inbox에 표시된 저장 대상 후보와 아티팩트 후보만 선택합니다.
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID \
   --criterion CRITERION_ID \

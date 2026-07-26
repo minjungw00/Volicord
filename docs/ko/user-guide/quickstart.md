@@ -8,7 +8,7 @@
 
 저장소 공유 연결은 다음과 같이 만듭니다.
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
@@ -30,7 +30,7 @@ volicord init --shared --host codex --repo "<repo>" --profile record
 
 연결을 초기화할 때 사용한 것과 같은 의도 선택자를 사용합니다.
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 ```
@@ -47,7 +47,7 @@ volicord connection status codex --shared --repo "<repo>"
 에이전트가 대기 중인 `UserActionRequest`를 만들었다면 로컬 CLI User Channel만
 이를 해결할 수 있습니다.
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```

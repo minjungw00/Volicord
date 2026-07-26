@@ -17,7 +17,7 @@
 
 공유 설정을 만들거나 복구합니다.
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
@@ -54,7 +54,7 @@ Optional active diagnostics
 개수와 구역은 현재 보고서에 따라 달라집니다. 모든 check, 지원용 식별자, 정확한 계획
 `target`, 보장 한계가 필요하면 `--verbose`를 사용합니다.
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>" --verbose
 ```
 
@@ -72,7 +72,7 @@ Verbose 보기는 원시 JSON detail 줄 대신 구조화된 라벨을 사용합
 
 하위 수준 연결 변경은 dry run으로 먼저 확인합니다.
 
-```sh
+```sh cli-example
 volicord connection add codex --repo "<repo>" --dry-run
 volicord connection add codex --repo "<repo>" --read-only --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
@@ -90,7 +90,7 @@ volicord connection remove codex --repo "<repo>" --dry-run
 
 Codex가 구성을 읽고 필요한 신뢰 동작을 마친 뒤 실행합니다.
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
@@ -102,7 +102,7 @@ volicord connection list --repo "<repo>"
 
 직접 프로세스 사전 점검에는 정확한 저장 식별자를 사용합니다.
 
-```sh
+```sh cli-example
 volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
@@ -115,7 +115,7 @@ volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 MCP 에이전트는 `volicord.request_user_action`으로 대기 요청을 만들거나 읽기 전용
 재개 동작을 사용할 수 있습니다. 사람은 CLI inbox로만 이를 해결합니다.
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
@@ -135,7 +135,7 @@ diff를 다시 검토하고 안내된 경우 Codex를 재시작하거나 다시 
 
 먼저 미리 보고 같은 의도를 제거합니다.
 
-```sh
+```sh cli-example
 volicord connection remove codex --shared --repo "<repo>" --dry-run
 volicord connection remove codex --shared --repo "<repo>"
 ```

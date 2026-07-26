@@ -197,6 +197,33 @@ fn valid_doc_index_with_root_readme_pair() -> String {
     index
 }
 
+fn install_admin_cli_fixture(root: &Path, indexed: bool) {
+    let owner = "# Administrative CLI\n\n## Command Model\n\n<!-- BEGIN GENERATED: volicord-cli-synopses -->\n<!-- END GENERATED: volicord-cli-synopses -->\n";
+    write(root, "docs/en/reference/admin-cli.md", owner);
+    write(root, "docs/ko/reference/admin-cli.md", owner);
+
+    if indexed {
+        let mut index = valid_doc_index();
+        index.push_str(
+            r#"- doc_id: reference.admin-cli
+  path_en: docs/en/reference/admin-cli.md
+  path_ko: docs/ko/reference/admin-cli.md
+  kind: reference
+  summary: Administrative CLI.
+  normative_level: contract
+  translation_policy: semantic_parity
+  owner_area: developer_documentation
+  created_on: '2026-06-20'
+  last_updated_on: '2026-06-20'
+  last_verified_on: '2026-06-23'
+  applies_to:
+  - volicord_workspace_0_1
+"#,
+        );
+        write(root, "docs/doc-index.yaml", &index);
+    }
+}
+
 fn root_readme_shared_entry() -> &'static str {
     r#"- doc_id: readme.root
   path: README.md
@@ -547,7 +574,7 @@ fn reports_malformed_workspace_package_version_description() {
 }
 
 #[test]
-fn repository_documentation_has_consistent_workspace_package_version() {
+fn repository_documentation_and_cli_examples_match_their_sources() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask manifest has a repository parent");
@@ -555,6 +582,80 @@ fn repository_documentation_has_consistent_workspace_package_version() {
     let report = report(root);
 
     assert!(report.is_ok(), "{:#?}", report.errors());
+}
+
+#[test]
+fn cli_synopsis_generator_is_idempotent() {
+    let fixture = valid_fixture();
+    install_admin_cli_fixture(fixture.path(), false);
+
+    let first = xtask::run_docs_sync(fixture.path()).expect("first docs sync");
+    let first_en =
+        fs::read_to_string(fixture.path().join("docs/en/reference/admin-cli.md")).expect("English");
+    let first_ko =
+        fs::read_to_string(fixture.path().join("docs/ko/reference/admin-cli.md")).expect("Korean");
+    let second = xtask::run_docs_sync(fixture.path()).expect("second docs sync");
+
+    assert_eq!(
+        first.updated_paths(),
+        [
+            "docs/en/reference/admin-cli.md",
+            "docs/ko/reference/admin-cli.md"
+        ]
+    );
+    assert!(second.updated_paths().is_empty());
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("docs/en/reference/admin-cli.md"))
+            .expect("English after second sync"),
+        first_en
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("docs/ko/reference/admin-cli.md"))
+            .expect("Korean after second sync"),
+        first_ko
+    );
+}
+
+#[test]
+fn docs_check_reports_generated_cli_region_drift() {
+    let fixture = valid_fixture();
+    install_admin_cli_fixture(fixture.path(), true);
+    xtask::run_docs_sync(fixture.path()).expect("docs sync");
+
+    let path = "docs/en/reference/admin-cli.md";
+    let drifted = fs::read_to_string(fixture.path().join(path))
+        .expect("generated owner")
+        .replacen("do not edit this region", "drifted region", 1);
+    write(fixture.path(), path, &drifted);
+
+    let report = report(fixture.path());
+    let errors = category_errors(&report, "generated_cli.drift");
+
+    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
+    assert_eq!(errors[0].file(), path);
+}
+
+#[test]
+fn generated_cli_regions_exclude_every_hidden_command_path() {
+    let fixture = valid_fixture();
+    install_admin_cli_fixture(fixture.path(), false);
+    xtask::run_docs_sync(fixture.path()).expect("docs sync");
+
+    let generated =
+        fs::read_to_string(fixture.path().join("docs/en/reference/admin-cli.md")).expect("owner");
+    let hidden = volicord_command_model::command_paths()
+        .into_iter()
+        .filter(|path| path.visibility() == volicord_command_model::CommandVisibility::Hidden)
+        .collect::<Vec<_>>();
+
+    assert!(!hidden.is_empty());
+    for path in hidden {
+        let command = format!("volicord {}", path.components().join(" "));
+        assert!(
+            !generated.contains(&command),
+            "hidden command was generated: {command}"
+        );
+    }
 }
 
 #[test]
@@ -1577,44 +1678,25 @@ fn accepts_sensitive_identifiers_in_document_prose_when_map_roles_are_valid() {
 }
 
 #[test]
-fn accepts_supported_volicord_shell_command_examples() {
+fn parses_a_canonical_example_for_every_public_cli_endpoint() {
     let fixture = valid_fixture();
-    let commands = r#"```sh
-./target/debug/volicord mcp --help
-volicord mcp serve --connection CONNECTION_ID
-volicord mcp serve --connection CONNECTION_ID --project PROJECT_ID
-volicord mcp preflight --connection CONNECTION_ID
-volicord mcp preflight --connection CONNECTION_ID --project PROJECT_ID --json
-volicord mcp serve --discover-repository --host codex
-volicord mcp preflight --discover-repository --host codex --verbose
-volicord init --host codex --repo /path/to/repo --profile record
-./target/debug/volicord init --host codex --repo /path/to/repo --dry-run
-volicord init --host codex --repo /path/to/repo --verbose
-volicord status --repo /path/to/repo
-volicord status --task active
-volicord connection add codex --read-only --home /path/to/runtime-home
-volicord connection add codex --verbose --home /path/to/runtime-home
-volicord connection list --repo /path/to/repo --home /path/to/runtime-home
-volicord connection status codex --repo /path/to/repo --verbose --home /path/to/runtime-home
-volicord connection verify codex --repo /path/to/repo --verbose --home /path/to/runtime-home
-volicord connection mode codex workflow --verbose --home /path/to/runtime-home
-volicord connection remove codex --repo /path/to/repo --verbose --home /path/to/runtime-home
-volicord diagnostics show finding.example --json
-volicord diagnostics session runtime_session_example --json
-volicord diagnostics workflow-metrics --repo /path/to/repo --json
-volicord inbox --task active
-volicord inbox resolve USER_ACTION_REQUEST_ID --choice accept
-```
-"#;
+    let invocations =
+        volicord_command_model::canonical_public_invocations().expect("canonical invocations");
+    let commands = invocations
+        .iter()
+        .map(|invocation| invocation.arguments().join(" "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let examples = format!("```sh cli-example\n{commands}\n```\n");
     write(
         fixture.path(),
         "docs/en/example.md",
-        &format!("# Overview\n\n{commands}"),
+        &format!("# Overview\n\n{examples}"),
     );
     write(
         fixture.path(),
         "docs/ko/example.md",
-        &format!("<a id=\"overview\"></a>\n# 개요\n\n{commands}"),
+        &format!("<a id=\"overview\"></a>\n# 개요\n\n{examples}"),
     );
 
     let report = report(fixture.path());
@@ -1625,7 +1707,7 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice accept
 #[test]
 fn accepts_inline_supported_init_profile_examples() {
     let fixture = valid_fixture();
-    let commands = r#"```sh
+    let commands = r#"```sh cli-example
 volicord init --host codex --repo /path/to/repo --profile=record
 ```
 "#;
@@ -1646,129 +1728,38 @@ volicord init --host codex --repo /path/to/repo --profile=record
 }
 
 #[test]
-fn rejects_values_and_options_outside_the_current_init_surface() {
+fn rejects_generic_unknown_commands_and_options_in_cli_examples() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host other-host --repo /path/to/repo --profile record\nvolicord init --host codex --repo /path/to/repo --profile other-profile\nvolicord init --host codex --repo /path/to/repo --unknown-flag\nvolicord init --host codex --repo /path/to/repo --unknown-option VALUE\n```\n",
+        "# Overview\n\n```sh cli-example\nvolicord not-a-command\nvolicord doctor --not-an-option\n```\n",
     );
 
     let report = report(fixture.path());
     let errors = category_errors(&report, "command.invalid_example");
 
-    assert_eq!(errors.len(), 4, "{:#?}", report.errors());
-    assert!(
-        errors.iter().any(
-            |error| error.message().contains("other-host") && error.message().contains("codex")
-        ),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors.iter().any(|error| {
-            error.message().contains("other-profile") && error.message().contains("record")
-        }),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--unknown-flag")
-                && error.message().contains("unexpected argument")),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--unknown-option")
-                && error.message().contains("unexpected argument")),
-        "{:#?}",
-        report.errors()
-    );
+    assert_eq!(errors.len(), 2, "{:#?}", report.errors());
+    assert!(errors.iter().any(|error| error
+        .message()
+        .contains("unrecognized subcommand 'not-a-command'")));
+    assert!(errors
+        .iter()
+        .any(|error| error.message().contains("--not-an-option")));
 }
 
 #[test]
-fn rejects_inline_init_examples_outside_public_option_surface() {
+fn ignores_unmarked_shell_fences_text_fences_and_displayed_output() {
     let fixture = valid_fixture();
     write(
         fixture.path(),
         "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile=other-profile\nvolicord init --host codex --repo /path/to/repo --unknown-flag=true\nvolicord init --host codex --repo /path/to/repo --unknown-option=VALUE\n```\n",
+        "# Overview\n\n```sh\nvolicord not-a-command\n```\n\n```text\nvolicord doctor --not-an-option\n```\n\nOutput: `volicord not-a-command`\n",
     );
 
     let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 3, "{:#?}", report.errors());
     assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--profile")
-                && error.message().contains("other-profile")
-                && error.message().contains("record")),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--unknown-flag")
-                && error.message().contains("unexpected argument")),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message().contains("--unknown-option")
-                && error.message().contains("unexpected argument")),
-        "{:#?}",
-        report.errors()
-    );
-}
-
-#[test]
-fn rejects_commands_outside_the_current_root_surface() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord unknown-command --unknown-option\n```\n",
-    );
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
-    assert!(
-        errors[0]
-            .message()
-            .contains("unrecognized subcommand 'unknown-command'"),
-        "{:#?}",
-        report.errors()
-    );
-}
-
-#[test]
-fn rejects_invalid_public_integration_profile_examples() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord init --host codex --repo /path/to/repo --profile managed\n```\n",
-    );
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
-    assert!(
-        errors.iter().any(
-            |error| error.message().contains("--profile") && error.message().contains("record")
-        ),
+        category_errors(&report, "command.invalid_example").is_empty(),
         "{:#?}",
         report.errors()
     );
@@ -1837,74 +1828,6 @@ fn ignores_ambiguous_host_support_claims_inside_document_code_fences() {
 
     assert!(
         category_errors(&report, "public_language.ambiguous_host_support_claim").is_empty(),
-        "{:#?}",
-        report.errors()
-    );
-}
-
-#[test]
-fn rejects_mcp_command_on_connection_add_command_examples() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord connection add codex --mcp-command ./target/debug/volicord\n```\n",
-    );
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
-    assert!(
-        errors[0].message().contains("--mcp-command"),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors[0].message().contains("volicord connection add"),
-        "{:#?}",
-        report.errors()
-    );
-}
-
-#[test]
-fn rejects_link_bin_on_connection_add_command_examples() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\n```sh\nvolicord connection add codex --link-bin /path/to/bin\n```\n",
-    );
-
-    let report = report(fixture.path());
-    let errors = category_errors(&report, "command.invalid_example");
-
-    assert_eq!(errors.len(), 1, "{:#?}", report.errors());
-    assert!(
-        errors[0].message().contains("--link-bin"),
-        "{:#?}",
-        report.errors()
-    );
-    assert!(
-        errors[0].message().contains("volicord connection add"),
-        "{:#?}",
-        report.errors()
-    );
-}
-
-#[test]
-fn ignores_unsupported_volicord_commands_in_prose() {
-    let fixture = valid_fixture();
-    write(
-        fixture.path(),
-        "docs/en/example.md",
-        "# Overview\n\nA diagnostic can mention `connection_id`, and prose can name `volicord connection add codex --mcp-command ./target/debug/volicord` or `volicord connection add codex --link-bin /path/to/bin` without becoming an executable example.\n",
-    );
-
-    let report = report(fixture.path());
-
-    assert!(
-        !has_category(&report, "command.invalid_example"),
         "{:#?}",
         report.errors()
     );

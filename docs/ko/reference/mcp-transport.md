@@ -1,8 +1,8 @@
 # MCP 전송 참조
 
-이 문서는 최초 릴리스의 로컬 MCP 프로세스 경계인 관리 stdio 시작, 엄격한 binding,
-JSON-RPC lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 담당합니다.
-Core 메서드, Codex 구성, 연결 검증, 저장 효과는 각각의 집중 담당 문서에 남습니다.
+이 문서는 로컬 MCP 프로세스 경계인 관리 stdio 시작, 엄격한 binding, JSON-RPC
+lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 담당합니다. Core
+메서드, Codex 구성, 연결 검증, 저장 효과는 각각의 집중 담당 문서에 남습니다.
 
 <a id="surface-stability"></a>
 ## 표면 안정성
@@ -24,14 +24,8 @@ Core 메서드, Codex 구성, 연결 검증, 저장 효과는 각각의 집중 �
 lease를 소비한 뒤 같은 프로세스에서 stdio adapter로 전환합니다. 공개
 `volicord mcp serve` entry는 수동 stdio 표면입니다. 두 경로 모두 stdin과 stdout으로
 줄 단위 JSON-RPC를 교환하며 TCP, HTTP, Unix domain socket 또는 그 밖의 네트워크
-listener를 열지 않습니다.
-
-```text
-volicord mcp serve --connection <connection_id> [--project <project_id>]
-volicord mcp serve --discover-repository --host codex
-volicord mcp preflight --connection <connection_id> [--project <project_id>] [--verbose | --json]
-volicord mcp preflight --discover-repository --host codex [--verbose | --json]
-```
+listener를 열지 않습니다. 정규 명령 문법은
+[관리 CLI 참조](admin-cli.md)에서 생성합니다.
 
 `--connection` 프로세스 형태는 현재 수동 실행이나 사전 점검에서 명시적인
 `--project` 선택을 받을 수 있습니다. 정규 개인 Codex entry는 `--project` 없이 이

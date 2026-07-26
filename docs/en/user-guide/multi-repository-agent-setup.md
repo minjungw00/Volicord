@@ -15,21 +15,21 @@ guessing do not add membership.
 
 Register the first repository:
 
-```sh
+```sh cli-example
 volicord connection add codex --repo /path/to/acme-api
 volicord connection status codex --repo /path/to/acme-api
 ```
 
 Add another explicit membership with the same personal intent:
 
-```sh
+```sh cli-example
 volicord connection add codex --repo /path/to/billing-api
 volicord connection status codex --repo /path/to/billing-api
 ```
 
 Inspect the resulting connection and memberships:
 
-```sh
+```sh cli-example
 volicord connection list
 volicord connection verify codex
 ```
@@ -49,7 +49,7 @@ merge project authority.
 
 Preview and remove the named repository membership:
 
-```sh
+```sh cli-example
 volicord connection remove codex --repo /path/to/billing-api --dry-run
 volicord connection remove codex --repo /path/to/billing-api
 ```

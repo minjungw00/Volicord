@@ -12,6 +12,13 @@ acceptance. The repository-local automated documentation validator is:
 cargo run -p xtask -- docs-check
 ```
 
+Regenerate the syntax-only Administrative CLI regions from the Clap command
+model with:
+
+```sh
+cargo run -p xtask -- docs-sync
+```
+
 ## Structural Checks
 
 For documentation metadata, route, link, and terminology-path changes, run
@@ -71,8 +78,12 @@ read-only and verifies the machine-checkable shape:
   are preserved. The exact root README pair uses this same local semantic-link
   and fragment parity mechanism. External links, images, and fenced-code text
   are ignored for this parity check.
-- Executable `volicord` command examples in shell fences use supported public
-  CLI command shapes and options.
+- Executable `volicord` examples use an explicit `sh cli-example` fence and
+  parse through the actual public Clap command model. Generic shell fences,
+  `text` fences, and displayed output are not inferred to be executable CLI
+  examples.
+- Generated Administrative CLI synopsis regions match the current public Clap
+  command tree and exclude hidden internal commands.
 - Terminology role metadata for identity-sensitive terms uses the allowed role
   set and includes the required roles for public selectors, storage internals,
   MCP process bindings, and diagnostics.
@@ -149,14 +160,12 @@ API example consistency review, or product meaning review. A passing local-link
 parity check only confirms the machine-comparable local reader routes. The
 remaining checks stay manual and owner-routed.
 
-## Durable Tests And One-Time Audits
+## Durable Tests
 
 When a documentation or implementation change suggests a new automated check,
-decide whether it is a durable contract test or a one-time audit. A durable test
-belongs in the repository when it asserts current durable behavior, a contract,
+keep it in the repository when it asserts current durable behavior, a contract,
 a state transition, user value, a stable abstraction boundary, or a maintained
-validation rule. A one-time audit belongs in the change process when it only
-proves that cleanup-specific text, flags, fields, or examples were removed.
+validation rule.
 
 File length, document length, and LOC counts are not durable quality checks.
 Use [Product and Maintenance Charter](product-maintenance-charter.md) for the
@@ -167,10 +176,7 @@ For implementation-layer placement and test-authoring examples, use
 [Testing Strategy](../architecture-guide/testing-strategy.md). This validation policy
 owns the maintenance-check, review, and reporting boundaries for those checks.
 
-Do not add permanent tests whose only assertion is a cleanup-specific string
-search such as "the old option name no longer appears." Run those searches as
-audits when useful, then report them outside repository files. If the absence
-matters as a durable contract, test the positive current shape instead:
+Tests for a closed surface assert its positive current shape:
 
 - CLI help exposes only the current public option allowlist for the command.
 - Maintained shell examples use supported `volicord` commands and options.
@@ -190,9 +196,7 @@ Name durable tests after the current contract, for example
 `export_help_lists_authority_bundle`,
 `mcp_public_schema_hides_internal_envelope_fields`,
 `terminology_map_defines_identity_sensitive_roles`, or
-`storage_registry_contains_current_contract_columns`. Avoid names and structures
-such as `removed_options_are_gone`, `legacy_flags_are_removed`,
-`old_strings_do_not_remain`, and `cleanup_removed_project_id`.
+`storage_registry_contains_current_contract_columns`.
 
 ## Maintainability Report
 
@@ -309,6 +313,9 @@ clearly calls for them, and report the reason.
 
 Generated or source-derived reference surfaces use stable check commands:
 
+- `cargo run -p xtask -- docs-sync` deterministically replaces only the marked
+  syntax regions in the English and Korean Administrative CLI owners. Run it
+  after changing the command model and review the generated diff.
 - `cargo run -p xtask -- docs-check` checks maintained documentation structure,
   generated/source-derived documentation surfaces, executable `volicord`
   command examples, terminology metadata owner paths and roles, and canonical

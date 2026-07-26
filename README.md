@@ -41,7 +41,7 @@ published release-asset set, use [Installation](docs/en/user-guide/installation.
 
 ### 1. Build And Install `volicord`
 
-```sh
+```sh cli-example
 git clone https://github.com/minjungw00/Volicord.git
 cd Volicord
 cargo build --locked --release -p volicord-cli --bin volicord
@@ -56,7 +56,7 @@ the executable-discovery guidance in [Installation](docs/en/user-guide/installat
 
 ### 2. Connect A Product Repository
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
@@ -74,7 +74,7 @@ to the MCP child process.
 
 Then verify the connection:
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
@@ -111,7 +111,7 @@ complete.
 When Volicord needs a recorded user action, use the resolution path it shows. The
 stable manual path is the CLI inbox:
 
-```sh
+```sh cli-example
 volicord inbox --repo /path/to/your-product-repo
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo /path/to/your-product-repo
 ```
@@ -120,7 +120,7 @@ When the agent reports its result, ask it to distinguish Evidence, pending user
 decisions, visible residual risk, and any Close Status blockers. You can also
 inspect the local summary when you need an authoritative refresh:
 
-```sh
+```sh cli-example
 volicord status --repo /path/to/your-product-repo
 ```
 

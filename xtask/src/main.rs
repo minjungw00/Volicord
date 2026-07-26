@@ -29,6 +29,26 @@ fn main() -> ExitCode {
                 }
             }
         }
+        [command] if command == "docs-sync" => {
+            let result = match env::current_dir() {
+                Ok(root) => xtask::run_docs_sync(&root),
+                Err(error) => Err(error.into()),
+            };
+
+            match result {
+                Ok(report) => {
+                    println!(
+                        "docs-sync passed: {} file(s) updated",
+                        report.updated_paths().len()
+                    );
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("docs-sync failed: {error:#}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         [command] if command == "maintainability-report" => {
             let result = match env::current_dir() {
                 Ok(root) => xtask::run_maintainability_report(&root),
@@ -54,7 +74,7 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: cargo run -p xtask -- <docs-check|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]>"
+                "usage: cargo run -p xtask -- <docs-check|docs-sync|maintainability-report|mcp-spec-check|mcp-spec-sync|release-version-check [--tag TAG]>"
             );
             ExitCode::from(2)
         }

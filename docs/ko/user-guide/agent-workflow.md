@@ -155,7 +155,7 @@ DDL, 템플릿, 로그, 증거 첨부 본문, 관련 없는 계약, 두 언어 �
 판단이 Volicord 상태가 되어야 하면 지원되는 사용자 채널 경로를 보여 줍니다. 안정적인
 CLI 대체 경로는 다음과 같습니다.
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```

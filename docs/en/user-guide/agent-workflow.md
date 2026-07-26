@@ -168,7 +168,7 @@ approval, final acceptance, and residual-risk acceptance separate.
 When a decision must become Volicord state, show the user the supported User
 Channel path. The stable CLI fallback is:
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```

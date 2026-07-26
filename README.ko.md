@@ -38,7 +38,7 @@ Codex를 Product Repository 하나에 연결합니다. Windows, Docker, 게시�
 
 ### 1. `volicord` 빌드와 설치
 
-```sh
+```sh cli-example
 git clone https://github.com/minjungw00/Volicord.git
 cd Volicord
 cargo build --locked --release -p volicord-cli --bin volicord
@@ -53,7 +53,7 @@ volicord --version
 
 ### 2. Product Repository 연결
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo /path/to/your-product-repo --profile record
 ```
 
@@ -69,7 +69,7 @@ MCP 승인이 더 필요할 수 있습니다.
 
 이후 연결을 검증합니다.
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo /path/to/your-product-repo
 ```
 
@@ -104,7 +104,7 @@ Volicord는 현재 안전한 전달 지점을 식별하는 `next_action`을 반�
 사용자 행동을 기록해야 하면 Volicord가 보여 주는 해결 경로를 사용합니다. 안정적인
 수동 경로는 CLI inbox입니다.
 
-```sh
+```sh cli-example
 volicord inbox --repo /path/to/your-product-repo
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo /path/to/your-product-repo
 ```
@@ -113,7 +113,7 @@ volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo /path/to
 상태의 차단 사유를 구분해 달라고 합니다. 권한 상태를 새로고침해야 할 때는 로컬
 요약도 확인할 수 있습니다.
 
-```sh
+```sh cli-example
 volicord status --repo /path/to/your-product-repo
 ```
 

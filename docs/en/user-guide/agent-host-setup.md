@@ -19,7 +19,7 @@ The first release has one managed host and one profile:
 
 Create or repair a shared setup:
 
-```sh
+```sh cli-example
 volicord init --shared --host codex --repo "<repo>" --profile record
 ```
 
@@ -56,7 +56,7 @@ Optional active diagnostics
 Counts and sections reflect the current report. Use `--verbose` when you need
 every check, support identifier, exact planned target, or assurance limit:
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>" --verbose
 ```
 
@@ -76,7 +76,7 @@ not overwrite unrelated user content.
 
 Use dry run for lower-level connection changes:
 
-```sh
+```sh cli-example
 volicord connection add codex --repo "<repo>" --dry-run
 volicord connection add codex --repo "<repo>" --read-only --dry-run
 volicord connection remove codex --repo "<repo>" --dry-run
@@ -94,7 +94,7 @@ every established-mode change.
 
 After Codex has loaded the configuration and completed any trust action:
 
-```sh
+```sh cli-example
 volicord connection verify codex --shared --repo "<repo>"
 volicord connection status codex --shared --repo "<repo>"
 volicord connection list --repo "<repo>"
@@ -107,7 +107,7 @@ and authoritative managed runtime/project sessions.
 
 For a direct process preflight, use the exact stored identifiers:
 
-```sh
+```sh cli-example
 volicord mcp preflight --connection "<connection_id>" --project "<project_id>"
 ```
 
@@ -122,7 +122,7 @@ An MCP agent may call `volicord.request_user_action` to create a pending request
 or use its read-only resume operation. The human resolves it only through the
 CLI inbox:
 
-```sh
+```sh cli-example
 volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
@@ -142,7 +142,7 @@ intended. Repair must preserve unrelated configuration and product data.
 
 Preview first, then remove the same intent:
 
-```sh
+```sh cli-example
 volicord connection remove codex --shared --repo "<repo>" --dry-run
 volicord connection remove codex --shared --repo "<repo>"
 ```
