@@ -197,7 +197,7 @@ fn every_production_profile_tools_list_is_a_projection_of_one_canonical_registry
         let schema = pinned_schema(profile);
         let tools = canonical
             .iter()
-            .map(|tool| tool.project(profile).into_value())
+            .map(|tool| tool.project(profile.capabilities()).into_value())
             .collect::<Vec<_>>();
         let result = json!({ "tools": tools });
         validate_definition(&schema, "ListToolsResult", &result)
@@ -253,6 +253,90 @@ fn every_production_profile_tools_list_is_a_projection_of_one_canonical_registry
 }
 
 #[test]
+fn projection_uses_semantic_capabilities_without_revision_ordering() {
+    let registry = ProtocolRegistry::production();
+    let canonical = canonical_runtime_tools()
+        .into_iter()
+        .next()
+        .expect("canonical tool registry");
+    let mut titled = canonical.clone();
+    titled.title = Some("Semantic capability fixture");
+    titled.metadata = Some(Map::from_iter([(
+        "io.volicord/capability-fixture".to_owned(),
+        Value::Bool(true),
+    )]));
+
+    for profile in registry.oldest_to_newest() {
+        let capabilities = profile.capabilities();
+        let projected = titled.project(capabilities).into_value();
+        assert_eq!(
+            projected.get("title").is_some(),
+            capabilities.tools().title()
+        );
+        assert_eq!(
+            projected.get("_meta").is_some(),
+            capabilities.tools().definition_metadata()
+        );
+
+        let result = CanonicalToolResult {
+            metadata: titled.metadata.clone(),
+            content: vec![CanonicalContent::Text("capability fixture".to_owned())],
+            structured_content: json!({"value": "semantic"}),
+            is_error: true,
+        }
+        .project(capabilities)
+        .expect("semantic result projection")
+        .into_value();
+        assert_eq!(
+            result.get("_meta").is_some(),
+            capabilities.tools().result_metadata()
+        );
+        assert_eq!(
+            result.get("isError").is_some(),
+            capabilities.tools().is_error()
+        );
+    }
+
+    let structured_profiles = registry
+        .oldest_to_newest()
+        .filter(|profile| profile.capabilities().tools().structured_content())
+        .map(|profile| profile.capabilities())
+        .collect::<Vec<_>>();
+    let [structured_definition_a, structured_definition_b] = structured_profiles.as_slice() else {
+        panic!("two structured-content profiles should be available");
+    };
+    assert_eq!(
+        titled.project(*structured_definition_a),
+        titled.project(*structured_definition_b)
+    );
+
+    let text_profiles = registry
+        .oldest_to_newest()
+        .filter(|profile| {
+            profile.capabilities().tools().result_carrier() == ToolResultCarrier::JsonTextContent
+        })
+        .map(|profile| profile.capabilities())
+        .collect::<Vec<_>>();
+    let [text_result_a, text_result_b] = text_profiles.as_slice() else {
+        panic!("two JSON-text result profiles should be available");
+    };
+    let canonical_result = CanonicalToolResult {
+        metadata: None,
+        content: vec![CanonicalContent::Text("capability fixture".to_owned())],
+        structured_content: json!({"value": "semantic"}),
+        is_error: false,
+    };
+    assert_eq!(
+        canonical_result
+            .project(*text_result_a)
+            .expect("text result projection"),
+        canonical_result
+            .project(*text_result_b)
+            .expect("text result projection")
+    );
+}
+
+#[test]
 fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
     let success_body = json!({
         "base": {
@@ -292,7 +376,7 @@ fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
                     .expect("structured output should match the advertised runtime schema");
             }
             let projected = canonical
-                .project(profile)
+                .project(profile.capabilities())
                 .expect("canonical result should project")
                 .into_value();
             let schema = pinned_schema(profile);
@@ -473,7 +557,7 @@ fn integration_verification_results_validate_for_every_production_profile() {
                     structured_content: body.clone(),
                     is_error: false,
                 }
-                .project(profile)
+                .project(profile.capabilities())
                 .expect("integration-verification result should project")
                 .into_value();
                 validate_definition(&pinned_schema(profile), "CallToolResult", &projected)
@@ -495,7 +579,7 @@ fn bounded_budget_recovery_shape_remains_bounded_for_every_production_profile() 
     let recovery = CanonicalToolResult {
         metadata: None,
         content: vec![CanonicalContent::Text("r".repeat(
-            crate::tool_dispatch::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+            crate::committed_result_recovery::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
         ))],
         structured_content: json!({
             "code": "MCP_RESPONSE_BUDGET_EXCEEDED",
@@ -514,14 +598,14 @@ fn bounded_budget_recovery_shape_remains_bounded_for_every_production_profile() 
 
     for profile in production_profiles() {
         let projected = recovery
-            .project(profile)
+            .project(profile.capabilities())
             .expect("recovery result should project")
             .into_value();
         assert!(
             serde_json::to_vec(&projected)
                 .expect("recovery result should serialize")
                 .len()
-                <= crate::tool_dispatch::MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+                <= crate::mutation_projection::MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
             "{} recovery projection exceeded the compact budget",
             profile.revision()
         );

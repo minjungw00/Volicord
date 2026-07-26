@@ -19,17 +19,18 @@ use crate::json_rpc::{
     validate_optional_object_params, ClientMessage, JsonRpcNotification, JsonRpcRequest,
 };
 use crate::mutation_admission::with_mcp_runtime_home_mutation;
+use crate::session_metrics::start_transport_diagnostic_session;
 use crate::telemetry::{
     authoritative_observation_timestamp, record_current_session_finding,
-    record_current_session_finding_with_admission, start_transport_diagnostic_session,
+    record_current_session_finding_with_admission,
 };
 use crate::tool_dispatch::{
     call_tool_result, list_tools_result, projected_tool_error_code, safe_tool_call_response_failed,
 };
 use serde_json::{json, Map, Value};
 use volicord_mcp_protocol::{
-    InitializedNotification, JsonRpcBatching, McpNegotiationOutcome, McpProtocolProfile,
-    ProtocolRegistry, ServerCapabilityField,
+    ClientCapabilitiesShape, InitializedNotification, JsonRpcBatching, McpProtocolProfile,
+    McpProtocolRevisionError, ProtocolRegistry,
 };
 use volicord_store::managed_launch_leases::{
     consume_managed_mcp_launch_lease_and_start_runtime, ManagedMcpLaunchLeaseConsumption,
@@ -55,9 +56,7 @@ pub(crate) enum SessionPhase {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InitializationSelection {
     pub(crate) requested_protocol_version: String,
-    pub(crate) requested_protocol_version_well_formed: bool,
     pub(crate) selected_profile: &'static McpProtocolProfile,
-    pub(crate) outcome: McpNegotiationOutcome,
     pub(crate) client_capabilities: Map<String, Value>,
     pub(crate) attempted_client_name: String,
     pub(crate) attempted_client_version: String,
@@ -176,16 +175,6 @@ impl SessionState {
             Self::AwaitingInitializedNotification { selection, .. } => Some(selection),
             Self::InitializedAndReady { session, .. } => Some(&session.selection),
             Self::AwaitingInitialization(_) | Self::Closed(_) => None,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn initialized_session(&self) -> Option<&InitializedSession> {
-        match self {
-            Self::InitializedAndReady { session, .. } => Some(session),
-            Self::AwaitingInitialization(_)
-            | Self::AwaitingInitializedNotification { .. }
-            | Self::Closed(_) => None,
         }
     }
 }
@@ -660,7 +649,7 @@ fn handle_json_rpc_request_inner(
             &response_id,
             request.params,
             state.runtime_mut(),
-            selected_profile,
+            selected_profile.capabilities(),
         )? {
             Ok(result) => result,
             Err(error) => return Ok(error),
@@ -671,7 +660,7 @@ fn handle_json_rpc_request_inner(
             &response_id,
             request.params,
             state.runtime_mut(),
-            selected_profile,
+            selected_profile.capabilities(),
         )? {
             Ok(result) => result,
             Err(error) => return Ok(error),
@@ -728,7 +717,7 @@ fn lifecycle_error_with_diagnostic(
 
 fn handle_initialize(
     context: &RuntimeHomeMutationContext<'_>,
-    adapter: &McpAdapter,
+    _adapter: &McpAdapter,
     state: &mut SessionState,
     id: &Value,
     params: Option<Value>,
@@ -764,8 +753,6 @@ fn handle_initialize(
         .map_err(McpAdapterError::Store)?;
     }
     let result = initialize_result(&selection);
-    let counter_offer = selection.outcome == McpNegotiationOutcome::ServerCounterOffer;
-    let requested_revision_well_formed = selection.requested_protocol_version_well_formed;
     let runtime = state.runtime().clone();
     *state = match selection
         .selected_profile
@@ -780,68 +767,51 @@ fn handle_initialize(
             session: InitializedSession { selection },
         },
     };
-    if counter_offer {
-        record_current_session_finding(
-            context,
-            adapter,
-            state.runtime_mut(),
-            McpDiagnostic::Protocol(if requested_revision_well_formed {
-                McpProtocolDiagnostic::UnsupportedVersion
-            } else {
-                McpProtocolDiagnostic::MalformedVersion
-            }),
-            None,
-            Some("requested revision is outside the production-supported set".to_owned()),
-            None,
-            Vec::new(),
-            false,
-        )?;
-        record_current_session_finding(
-            context,
-            adapter,
-            state.runtime_mut(),
-            McpDiagnostic::Protocol(McpProtocolDiagnostic::CounterOffer),
-            None,
-            Some("server selected its preferred production revision".to_owned()),
-            None,
-            Vec::new(),
-            false,
-        )?;
-    }
     Ok(Ok(result))
 }
 
 pub(crate) fn initialize_result(selection: &InitializationSelection) -> Value {
     let build = crate::build_info();
-    let capabilities = if selection
-        .selected_profile
-        .schema()
-        .server_capability_fields()
-        .contains(&ServerCapabilityField::Tools)
-    {
+    let initialize = selection.selected_profile.capabilities().initialize();
+    let capabilities = if initialize.tools_capability() {
         json!({ "tools": {} })
     } else {
         json!({})
     };
-    let mut result = json!({
-        "_meta": {
-            "io.volicord/build": build
-        },
-        "protocolVersion": selection.selected_profile.revision().as_str(),
-        "capabilities": capabilities,
-        "serverInfo": {
-            "name": SERVER_NAME,
-            "version": build.package_version
-        }
-    });
-    if selection
-        .selected_profile
-        .messages()
-        .initialize_result_instructions()
-    {
-        result["instructions"] = Value::String(server_instructions());
+    let mut result = Map::new();
+    if initialize.metadata() {
+        result.insert(
+            "_meta".to_owned(),
+            json!({
+                "io.volicord/build": build
+            }),
+        );
     }
-    result
+    if initialize.protocol_version() {
+        result.insert(
+            "protocolVersion".to_owned(),
+            Value::String(selection.selected_profile.revision().as_str().to_owned()),
+        );
+    }
+    if initialize.capabilities() {
+        result.insert("capabilities".to_owned(), capabilities);
+    }
+    if initialize.server_info() {
+        result.insert(
+            "serverInfo".to_owned(),
+            json!({
+                "name": SERVER_NAME,
+                "version": build.package_version
+            }),
+        );
+    }
+    if initialize.instructions() {
+        result.insert(
+            "instructions".to_owned(),
+            Value::String(server_instructions()),
+        );
+    }
+    Value::Object(result)
 }
 
 fn validate_initialize_params(
@@ -893,45 +863,33 @@ fn validate_initialize_params(
             )
         })?;
     let (attempted_client_name, attempted_client_version) = client_info.into_parts();
-    let selection = ProtocolRegistry::production()
-        .negotiate_initialize(requested_protocol_version)
-        .map_err(|mismatch| {
+    let selected_profile = ProtocolRegistry::production()
+        .select_initialize(requested_protocol_version)
+        .map_err(|error| {
+            let safe_detail = match error {
+                McpProtocolRevisionError::Unknown => {
+                    "protocolVersion is not a supported MCP revision".to_owned()
+                }
+                McpProtocolRevisionError::NotProductionSupported(revision) => {
+                    format!("protocolVersion {revision} is not production-supported")
+                }
+            };
             (
-                json_rpc_error(
-                    id.clone(),
-                    -32601,
-                    "Method not found",
-                    Some(format!(
-                        "protocolVersion {} does not use the initialize handshake",
-                        mismatch.revision()
-                    )),
-                ),
-                McpDiagnostic::Protocol(McpProtocolDiagnostic::GenerationMismatch),
+                invalid_params_response(id, safe_detail),
+                McpDiagnostic::Protocol(McpProtocolDiagnostic::UnsupportedVersion),
             )
         })?;
+    let client_capabilities = match selected_profile.capabilities().client().shape() {
+        ClientCapabilitiesShape::OpenObject => client_capabilities,
+    };
 
     Ok(InitializationSelection {
         requested_protocol_version: requested_protocol_version.clone(),
-        requested_protocol_version_well_formed: protocol_revision_is_well_formed(
-            requested_protocol_version,
-        ),
-        selected_profile: selection.profile(),
-        outcome: selection.outcome(),
+        selected_profile,
         client_capabilities: client_capabilities.clone(),
         attempted_client_name,
         attempted_client_version,
     })
-}
-
-fn protocol_revision_is_well_formed(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() == 10
-        && bytes[4] == b'-'
-        && bytes[7] == b'-'
-        && bytes
-            .iter()
-            .enumerate()
-            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
 }
 
 fn parsed_initialize_attempt(params: Option<&Value>) -> Option<(ManagedMcpClientInfo, String)> {
@@ -959,13 +917,6 @@ pub(crate) fn close_session(
             SessionState::AwaitingInitialization(_) => Some(McpDiagnostic::Lifecycle(
                 McpLifecycleDiagnostic::InvalidShutdownSequence,
             )),
-            SessionState::AwaitingInitializedNotification { selection, .. }
-                if selection.outcome == McpNegotiationOutcome::ServerCounterOffer =>
-            {
-                Some(McpDiagnostic::Protocol(
-                    McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected,
-                ))
-            }
             SessionState::AwaitingInitializedNotification { .. } => Some(McpDiagnostic::Lifecycle(
                 McpLifecycleDiagnostic::InitializedNotificationMissing,
             )),

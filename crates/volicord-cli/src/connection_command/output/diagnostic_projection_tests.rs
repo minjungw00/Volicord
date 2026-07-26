@@ -563,7 +563,7 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
     facts.attempted_client_version = Some("0.42.0");
     let root = finding(
         id,
-        "mcp.protocol.unsupported_revision",
+        "mcp.protocol.unsupported_version",
         "mcp",
         facts,
         "action.mcp.use_supported_protocol_revision",
@@ -621,7 +621,7 @@ fn protocol_mismatch_projection_is_exact_and_actionable() {
     assert_eq!(json["status"], "failed");
     assert_eq!(
         json["findings"][0]["code"],
-        "mcp.protocol.unsupported_revision"
+        "mcp.protocol.unsupported_version"
     );
     assert_eq!(
         json["activation_plan"]["required_steps"],
@@ -994,16 +994,6 @@ fn diagnostic_failure_matrix_persists_bounded_roots_and_agrees_across_projection
         DiagnosticMatrixScenario::failure(
             "protocol_mismatch",
             "mcp.protocol.unsupported_version",
-            "mcp",
-            Some("action.mcp.use_supported_protocol_revision"),
-            ConnectionCheckKind::HostSession,
-            HOST_SESSION_BLOCKED,
-            None,
-            "action.mcp.use_supported_protocol_revision",
-        ),
-        DiagnosticMatrixScenario::failure(
-            "counter_offer_rejected",
-            "mcp.protocol.counter_offer_rejected",
             "mcp",
             Some("action.mcp.use_supported_protocol_revision"),
             ConnectionCheckKind::HostSession,

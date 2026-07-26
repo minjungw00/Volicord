@@ -1554,7 +1554,7 @@ fn stdio_rejects_tampered_summaries_and_noncanonical_full_form_before_delivery(
         ("invalid_summary", invalid_summary),
         ("noncanonical_full_form", noncanonical_full_form),
     ] {
-        let error = crate::tool_dispatch::user_action_tool_output(
+        let error = crate::user_action_projection::user_action_tool_output(
             &fixture.mutation_context()?,
             &adapter(&fixture)?,
             response,

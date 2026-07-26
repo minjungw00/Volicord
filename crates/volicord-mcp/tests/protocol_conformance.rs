@@ -10,7 +10,7 @@ use std::{
 };
 use volicord_mcp::{run_stdio, McpAdapter, McpConnectionContext};
 use volicord_mcp_protocol::{
-    JsonRpcBatching, McpProtocolProfile, McpRevisionStatus, ProtocolRegistry,
+    JsonRpcBatching, McpProtocolProfile, McpRevisionStatus, ProtocolRegistry, ToolResultCarrier,
 };
 use volicord_test_support::core_fixtures::CoreFixture;
 use volicord_types::tool_names::AgentToolId;
@@ -36,7 +36,9 @@ fn every_production_profile_executes_the_wire_conformance_case() {
 fn profile_failure_reports_the_exact_revision() {
     let target = ProtocolRegistry::production()
         .oldest_to_newest()
-        .find(|profile| profile.messages().json_rpc_batching() == JsonRpcBatching::Allowed)
+        .find(|profile| {
+            profile.capabilities().messages().json_rpc_batching() == JsonRpcBatching::Allowed
+        })
         .expect("one production profile should exercise operation batching")
         .revision();
 
@@ -58,6 +60,22 @@ fn pre_release_profiles_are_outside_production_iteration() {
     assert!(ProtocolRegistry::production()
         .oldest_to_newest()
         .all(|profile| profile.status() == McpRevisionStatus::Released));
+}
+
+#[test]
+fn unsupported_initialize_identifiers_are_rejected_without_substitution() -> TestResult {
+    for (index, identifier) in ["unsupported-revision", "2026-07-28"]
+        .into_iter()
+        .enumerate()
+    {
+        let fixture = CoreFixture::new(&format!("protocol-unsupported-{index}"))?;
+        let responses = run_exchange(&fixture, &[initialize_request(1, identifier)])?;
+
+        assert_eq!(responses.len(), 1);
+        assert_eq!(responses[0]["error"]["code"], -32602);
+        assert!(responses[0].get("result").is_none());
+    }
+    Ok(())
 }
 
 fn run_production_profile_matrix(
@@ -120,8 +138,14 @@ fn exercise_standalone_initialize_and_eof(
     );
     assert_eq!(
         responses[0]["result"].get("instructions").is_some(),
-        profile.messages().initialize_result_instructions(),
+        profile.capabilities().initialize().instructions(),
         "{} initialize instructions",
+        profile.revision()
+    );
+    assert_eq!(
+        responses[0]["result"].get("_meta").is_some(),
+        profile.capabilities().initialize().metadata(),
+        "{} initialize metadata",
         profile.revision()
     );
     validate_definition(schema, "InitializeResult", &responses[0]["result"])
@@ -187,13 +211,13 @@ fn exercise_lifecycle_tools_and_round_trip(
         let object = tool.as_object().expect("tool definition object");
         assert_eq!(
             object.contains_key("annotations"),
-            profile.tools().annotations(),
+            profile.capabilities().tools().annotations(),
             "{} annotations projection",
             profile.revision()
         );
         assert_eq!(
             object.contains_key("outputSchema"),
-            profile.tools().output_schema(),
+            profile.capabilities().tools().output_schema(),
             "{} output schema projection",
             profile.revision()
         );
@@ -209,20 +233,28 @@ fn exercise_lifecycle_tools_and_round_trip(
     let call_result = &responses[4]["result"];
     validate_definition(schema, "CallToolResult", call_result)
         .map_err(|error| format!("{} tools/call: {error}", profile.revision()))?;
+    let tool_capabilities = profile.capabilities().tools();
+    match tool_capabilities.result_carrier() {
+        ToolResultCarrier::DirectToolResult => {
+            assert!(call_result.get("toolResult").is_some());
+            assert!(call_result.get("content").is_none());
+            assert!(call_result.get("structuredContent").is_none());
+        }
+        ToolResultCarrier::JsonTextContent => {
+            assert!(call_result.get("toolResult").is_none());
+            assert!(call_result.get("content").is_some());
+            assert!(call_result.get("structuredContent").is_none());
+        }
+        ToolResultCarrier::StructuredContentWithText => {
+            assert!(call_result.get("toolResult").is_none());
+            assert!(call_result.get("content").is_some());
+            assert!(call_result.get("structuredContent").is_some());
+        }
+    }
     assert_eq!(
-        call_result.get("structuredContent").is_some(),
-        profile.tools().structured_content(),
-        "{} structured result projection",
-        profile.revision()
-    );
-    assert_eq!(
-        call_result.get("toolResult").is_some(),
-        profile
-            .schema()
-            .tool_result_fields()
-            .iter()
-            .any(|field| field.as_str() == "toolResult"),
-        "{} legacy result projection",
+        call_result.get("isError").is_some(),
+        tool_capabilities.is_error(),
+        "{} isError projection",
         profile.revision()
     );
     let authoritative = authoritative_tool_result(call_result)?;
@@ -264,7 +296,7 @@ fn exercise_operation_batch_behavior(profile: &'static McpProtocolProfile) -> Te
     )?;
 
     assert_eq!(responses.len(), 2, "{}", profile.revision());
-    match profile.messages().json_rpc_batching() {
+    match profile.capabilities().messages().json_rpc_batching() {
         JsonRpcBatching::Allowed => {
             let batch = responses[1]
                 .as_array()
@@ -307,7 +339,11 @@ fn initialize_request(id: u64, revision: &str) -> Value {
         "initialize",
         json!({
             "protocolVersion": revision,
-            "capabilities": {},
+            "capabilities": {
+                "experimental": {
+                    "io.volicord/conformance-extension": true
+                }
+            },
             "clientInfo": {
                 "name": "volicord-protocol-conformance",
                 "version": env!("CARGO_PKG_VERSION")

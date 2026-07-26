@@ -824,7 +824,7 @@ Mode: workflow
 Checks: 0 ready, 1 blocked, 0 waiting, 2 failed
 
 Problems
-  mcp.protocol.counter_offer_rejected: the protocol counter-offer was rejected or disconnected
+  mcp.protocol.unsupported_version: the child did not select the requested protocol revision
     Actual MCP client: codex 0.42.0
     Requested protocol: 2025-01-15
     Supported protocols: 2024-10-07, 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25
@@ -861,7 +861,7 @@ Summary
 
 Checks
   [fail] Codex managed session
-    MCP client rejected or disconnected before accepting the selected counter-offer
+    MCP child did not select the requested protocol revision
     Code: host_session_protocol_mismatch
     Depends on: process_startup
     Root findings: finding.runtime_session_01.protocol
@@ -886,7 +886,7 @@ Checks
 
 Findings
   [root] finding.runtime_session_01.protocol
-    Code: mcp.protocol.counter_offer_rejected
+    Code: mcp.protocol.unsupported_version
     Runtime session: runtime_session_01
     Bounded typed facts
       Attempted client name: codex

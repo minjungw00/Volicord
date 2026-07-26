@@ -3,9 +3,10 @@ use serde_json::{Map, Value};
 use std::collections::{BTreeSet, HashSet};
 use std::str::FromStr;
 use volicord_mcp_protocol::{
-    ClientCapabilityField, InitializedNotification, JsonRpcBatching, McpNegotiationOutcome,
-    McpProtocolGeneration, McpProtocolRevision, McpProtocolRevisionError, McpRevisionStatus,
-    ProtocolRegistry, ServerCapabilityField, ToolDefinitionField, ToolResultField,
+    ClientCapabilitiesShape, ClientCapabilityField, CommittedResultRecovery,
+    InitializedNotification, JsonRpcBatching, McpProtocolGeneration, McpProtocolRevision,
+    McpProtocolRevisionError, McpRevisionStatus, ProtocolRegistry, ServerCapabilityField,
+    ToolDefinitionField, ToolResultCarrier, ToolResultField,
 };
 
 const MANIFEST: &str = include_str!(concat!(
@@ -122,41 +123,34 @@ fn every_production_initialize_revision_is_selected_exactly() {
     let registry = ProtocolRegistry::production();
 
     for profile in registry.oldest_to_newest() {
-        let selection = registry
-            .negotiate_initialize(profile.revision().as_str())
-            .expect("production initialize revision should negotiate");
-
-        assert_eq!(selection.profile(), profile);
-        assert_eq!(selection.outcome(), McpNegotiationOutcome::ExactMatch);
-    }
-}
-
-#[test]
-fn unknown_initialize_revision_receives_the_preferred_server_counter_offer() {
-    let registry = ProtocolRegistry::production();
-
-    for requested in ["", "2025-01-01", "future-initialize-revision"] {
-        let selection = registry
-            .negotiate_initialize(requested)
-            .expect("a string protocol version is negotiated by server selection");
-
-        assert_eq!(selection.profile(), registry.preferred_server_profile());
         assert_eq!(
-            selection.outcome(),
-            McpNegotiationOutcome::ServerCounterOffer
+            registry.select_initialize(profile.revision().as_str()),
+            Ok(profile)
         );
     }
 }
 
 #[test]
-fn discover_generation_is_not_counter_offered_as_initialize() {
+fn unknown_initialize_identifiers_are_rejected_without_profile_substitution() {
     let registry = ProtocolRegistry::production();
-    let mismatch = registry
-        .negotiate_initialize(McpProtocolRevision::V20260728.as_str())
-        .expect_err("discover-based traffic must not enter initialize negotiation");
 
-    assert_eq!(mismatch.revision(), McpProtocolRevision::V20260728);
-    assert_eq!(mismatch.actual(), McpProtocolGeneration::Discover);
+    for requested in ["", "unsupported-revision", "2025-11-25-preview"] {
+        assert_eq!(
+            registry.select_initialize(requested),
+            Err(McpProtocolRevisionError::Unknown)
+        );
+    }
+}
+
+#[test]
+fn tracked_nonproduction_identifier_is_rejected_without_profile_substitution() {
+    let registry = ProtocolRegistry::production();
+    let revision = McpProtocolRevision::V20260728;
+
+    assert_eq!(
+        registry.select_initialize(revision.as_str()),
+        Err(McpProtocolRevisionError::NotProductionSupported(revision))
+    );
 }
 
 #[test]
@@ -290,6 +284,8 @@ fn profile_feature_differences_match_the_pinned_schemas() {
         let definitions = definitions(&schema);
         let messages = profile.messages();
         let tools = profile.tools();
+        let initialize = profile.initialize();
+        let client = profile.client();
         let schema_features = profile.schema();
 
         let batch_definitions_present = definitions.contains_key("JSONRPCBatchRequest")
@@ -323,22 +319,67 @@ fn profile_feature_differences_match_the_pinned_schemas() {
             messages.initialize_result_instructions(),
             property_names(definitions, "InitializeResult").contains("instructions")
         );
+        let initialize_fields = property_names(definitions, "InitializeResult");
+        assert_eq!(initialize.metadata(), initialize_fields.contains("_meta"));
+        assert_eq!(
+            initialize.protocol_version(),
+            initialize_fields.contains("protocolVersion")
+        );
+        assert_eq!(
+            initialize.capabilities(),
+            initialize_fields.contains("capabilities")
+        );
+        assert_eq!(
+            initialize.server_info(),
+            initialize_fields.contains("serverInfo")
+        );
+        assert_eq!(
+            initialize.instructions(),
+            initialize_fields.contains("instructions")
+        );
+        assert!(initialize.tools_capability());
 
         let tool_fields = property_names(definitions, "Tool");
         let tool_result_fields = property_names(definitions, "CallToolResult");
         assert_eq!(tools.annotations(), tool_fields.contains("annotations"));
         assert_eq!(tools.output_schema(), tool_fields.contains("outputSchema"));
+        assert_eq!(tools.title(), tool_fields.contains("title"));
+        assert_eq!(tools.definition_metadata(), tool_fields.contains("_meta"));
+        assert_eq!(
+            tools.result_metadata(),
+            tool_result_fields.contains("_meta")
+        );
+        assert_eq!(tools.is_error(), tool_result_fields.contains("isError"));
         assert_eq!(
             tools.structured_content(),
             tool_result_fields.contains("structuredContent")
         );
+        match tools.result_carrier() {
+            ToolResultCarrier::DirectToolResult => {
+                assert!(tool_result_fields.contains("toolResult"));
+                assert!(!tool_result_fields.contains("content"));
+                assert!(!tool_result_fields.contains("structuredContent"));
+            }
+            ToolResultCarrier::JsonTextContent => {
+                assert!(!tool_result_fields.contains("toolResult"));
+                assert!(tool_result_fields.contains("content"));
+                assert!(!tool_result_fields.contains("structuredContent"));
+            }
+            ToolResultCarrier::StructuredContentWithText => {
+                assert!(!tool_result_fields.contains("toolResult"));
+                assert!(tool_result_fields.contains("content"));
+                assert!(tool_result_fields.contains("structuredContent"));
+            }
+        }
 
+        assert_eq!(client.shape(), ClientCapabilitiesShape::OpenObject);
         assert_eq!(
-            names(
-                schema_features.client_capability_fields(),
-                ClientCapabilityField::as_str
-            ),
+            names(client.known_fields(), ClientCapabilityField::as_str),
             property_names(definitions, "ClientCapabilities")
+        );
+        assert_eq!(
+            client.known_fields(),
+            schema_features.client_capability_fields()
         );
         assert_eq!(
             names(
@@ -361,6 +402,10 @@ fn profile_feature_differences_match_the_pinned_schemas() {
             ),
             tool_result_fields
         );
+        assert_eq!(
+            profile.result_recovery().committed_result_recovery(),
+            CommittedResultRecovery::PreserveAuthorityThenCompactResult
+        );
     }
 }
 
@@ -380,23 +425,27 @@ fn preferred_server_revision_is_in_the_supported_set() {
 }
 
 #[test]
-fn property_production_parsing_never_accepts_revision_date_ranges() {
+fn production_parsing_accepts_only_exact_registry_keys() {
     let registry = ProtocolRegistry::production();
     let supported = registry
         .oldest_to_newest()
         .map(|profile| profile.revision().as_str())
         .collect::<BTreeSet<_>>();
 
-    for year in 2023..=2027 {
-        for month in 1..=12 {
-            for day in 1..=31 {
-                let value = format!("{year:04}-{month:02}-{day:02}");
-                assert_eq!(
-                    registry.parse(&value).is_ok(),
-                    supported.contains(value.as_str()),
-                    "production support must use exact registry membership for {value}"
-                );
-            }
-        }
+    for value in [
+        "2024-10-07",
+        "2024-11-05",
+        "2025-03-26",
+        "2025-06-18",
+        "2025-11-25",
+        "2026-07-28",
+        "unsupported-revision",
+        "2025-11-25-preview",
+    ] {
+        assert_eq!(
+            registry.parse(value).is_ok(),
+            supported.contains(value),
+            "production support must use exact registry membership for {value}"
+        );
     }
 }

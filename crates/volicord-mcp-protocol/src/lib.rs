@@ -139,67 +139,6 @@ impl fmt::Display for McpProtocolRevisionError {
 
 impl std::error::Error for McpProtocolRevisionError {}
 
-/// The server-selection result for an initialization-based handshake.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum McpNegotiationOutcome {
-    /// The client requested a production-supported revision and the server
-    /// selected that same revision.
-    ExactMatch,
-    /// The requested string did not identify a production-supported
-    /// initialization revision, so the server selected its preferred profile.
-    ServerCounterOffer,
-}
-
-/// One specification-driven server selection for an `initialize` request.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct McpInitializeSelection {
-    profile: &'static McpProtocolProfile,
-    outcome: McpNegotiationOutcome,
-}
-
-impl McpInitializeSelection {
-    /// Returns the selected production profile.
-    pub const fn profile(self) -> &'static McpProtocolProfile {
-        self.profile
-    }
-
-    /// Returns whether selection was exact or a server counter-offer.
-    pub const fn outcome(self) -> McpNegotiationOutcome {
-        self.outcome
-    }
-}
-
-/// A typed handshake-family mismatch during `initialize` negotiation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct McpProtocolGenerationMismatch {
-    revision: McpProtocolRevision,
-    actual: McpProtocolGeneration,
-}
-
-impl McpProtocolGenerationMismatch {
-    /// Returns the pinned revision that belongs to another handshake family.
-    pub const fn revision(self) -> McpProtocolRevision {
-        self.revision
-    }
-
-    /// Returns the revision's actual handshake family.
-    pub const fn actual(self) -> McpProtocolGeneration {
-        self.actual
-    }
-}
-
-impl fmt::Display for McpProtocolGenerationMismatch {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "MCP protocol revision {} does not use the initialize handshake",
-            self.revision
-        )
-    }
-}
-
-impl std::error::Error for McpProtocolGenerationMismatch {}
-
 /// Behavior of operation-phase JSON-RPC batching in a protocol revision.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum JsonRpcBatching {
@@ -216,6 +155,37 @@ pub enum InitializedNotification {
     AfterInitialize,
     /// The generation has no initialized notification.
     Absent,
+}
+
+/// Wire carrier used for one successful or failed tool result.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ToolResultCarrier {
+    /// The authoritative JSON object is carried by the top-level `toolResult`
+    /// field.
+    DirectToolResult,
+    /// The authoritative JSON object is serialized into the first text item in
+    /// `content`.
+    JsonTextContent,
+    /// The authoritative JSON object is carried by `structuredContent` while
+    /// compatibility text remains in `content`.
+    StructuredContentWithText,
+}
+
+/// Accepted top-level shape for `InitializeRequest.capabilities`.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ClientCapabilitiesShape {
+    /// Any JSON object is accepted. Known fields remain recorded for schema
+    /// parity, but unknown extension fields are not rejected.
+    OpenObject,
+}
+
+/// Recovery behavior for a committed mutation whose ordinary result cannot be
+/// projected within the adapter result budget.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum CommittedResultRecovery {
+    /// Preserve fresh authority first, then the compact method result, then
+    /// stable effect facts. The mutation is never retried.
+    PreserveAuthorityThenCompactResult,
 }
 
 /// Message-level protocol features declared by a reviewed profile.
@@ -260,15 +230,31 @@ impl MessageFeatures {
 pub struct ToolFeatures {
     annotations: bool,
     output_schema: bool,
-    structured_content: bool,
+    title: bool,
+    definition_metadata: bool,
+    result_metadata: bool,
+    result_carrier: ToolResultCarrier,
+    is_error: bool,
 }
 
 impl ToolFeatures {
-    const fn new(annotations: bool, output_schema: bool, structured_content: bool) -> Self {
+    const fn new(
+        annotations: bool,
+        output_schema: bool,
+        title: bool,
+        definition_metadata: bool,
+        result_metadata: bool,
+        result_carrier: ToolResultCarrier,
+        is_error: bool,
+    ) -> Self {
         Self {
             annotations,
             output_schema,
-            structured_content,
+            title,
+            definition_metadata,
+            result_metadata,
+            result_carrier,
+            is_error,
         }
     }
 
@@ -282,9 +268,136 @@ impl ToolFeatures {
         self.output_schema
     }
 
+    /// Returns whether tool definitions may contain `title`.
+    pub const fn title(self) -> bool {
+        self.title
+    }
+
+    /// Returns whether tool definitions may contain `_meta`.
+    pub const fn definition_metadata(self) -> bool {
+        self.definition_metadata
+    }
+
+    /// Returns whether tool results may contain `_meta`.
+    pub const fn result_metadata(self) -> bool {
+        self.result_metadata
+    }
+
+    /// Returns the selected result carrier form.
+    pub const fn result_carrier(self) -> ToolResultCarrier {
+        self.result_carrier
+    }
+
     /// Returns whether tool results may contain `structuredContent`.
     pub const fn structured_content(self) -> bool {
-        self.structured_content
+        matches!(
+            self.result_carrier,
+            ToolResultCarrier::StructuredContentWithText
+        )
+    }
+
+    /// Returns whether tool results may contain `isError`.
+    pub const fn is_error(self) -> bool {
+        self.is_error
+    }
+}
+
+/// Initialize-result fields declared by a reviewed profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InitializeFeatures {
+    metadata: bool,
+    protocol_version: bool,
+    capabilities: bool,
+    server_info: bool,
+    instructions: bool,
+    tools_capability: bool,
+}
+
+impl InitializeFeatures {
+    const fn new(instructions: bool) -> Self {
+        Self {
+            metadata: true,
+            protocol_version: true,
+            capabilities: true,
+            server_info: true,
+            instructions,
+            tools_capability: true,
+        }
+    }
+
+    /// Returns whether `InitializeResult` may contain `_meta`.
+    pub const fn metadata(self) -> bool {
+        self.metadata
+    }
+
+    /// Returns whether `InitializeResult` contains `protocolVersion`.
+    pub const fn protocol_version(self) -> bool {
+        self.protocol_version
+    }
+
+    /// Returns whether `InitializeResult` contains `capabilities`.
+    pub const fn capabilities(self) -> bool {
+        self.capabilities
+    }
+
+    /// Returns whether `InitializeResult` contains `serverInfo`.
+    pub const fn server_info(self) -> bool {
+        self.server_info
+    }
+
+    /// Returns whether `InitializeResult` may contain `instructions`.
+    pub const fn instructions(self) -> bool {
+        self.instructions
+    }
+
+    /// Returns whether the server advertises the `tools` capability.
+    pub const fn tools_capability(self) -> bool {
+        self.tools_capability
+    }
+}
+
+/// Client-capability admission declared by a reviewed profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClientFeatures {
+    shape: ClientCapabilitiesShape,
+    known_fields: &'static [ClientCapabilityField],
+}
+
+impl ClientFeatures {
+    const fn new(known_fields: &'static [ClientCapabilityField]) -> Self {
+        Self {
+            shape: ClientCapabilitiesShape::OpenObject,
+            known_fields,
+        }
+    }
+
+    /// Returns the accepted top-level client capability shape.
+    pub const fn shape(self) -> ClientCapabilitiesShape {
+        self.shape
+    }
+
+    /// Returns the known fields from the pinned schema.
+    pub const fn known_fields(self) -> &'static [ClientCapabilityField] {
+        self.known_fields
+    }
+}
+
+/// Result-budget and committed-mutation recovery behavior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ResultRecoveryFeatures {
+    committed_result_recovery: CommittedResultRecovery,
+}
+
+impl ResultRecoveryFeatures {
+    const fn authority_preserving() -> Self {
+        Self {
+            committed_result_recovery: CommittedResultRecovery::PreserveAuthorityThenCompactResult,
+        }
+    }
+
+    /// Returns the recovery behavior after a committed mutation.
+    pub const fn committed_result_recovery(self) -> CommittedResultRecovery {
+        self.committed_result_recovery
     }
 }
 
@@ -401,6 +514,68 @@ pub struct SchemaFeatures {
     tool_result_fields: &'static [ToolResultField],
 }
 
+/// Complete semantic capability bundle consumed by protocol adapters.
+///
+/// Revision identifiers do not appear in this type, so adapter projection can
+/// select behavior only through reviewed semantic declarations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct McpProtocolCapabilities {
+    messages: MessageFeatures,
+    tools: ToolFeatures,
+    initialize: InitializeFeatures,
+    client: ClientFeatures,
+    result_recovery: ResultRecoveryFeatures,
+    schema: SchemaFeatures,
+}
+
+impl McpProtocolCapabilities {
+    const fn new(
+        messages: MessageFeatures,
+        tools: ToolFeatures,
+        client_capability_fields: &'static [ClientCapabilityField],
+        schema: SchemaFeatures,
+    ) -> Self {
+        Self {
+            messages,
+            tools,
+            initialize: InitializeFeatures::new(messages.initialize_result_instructions()),
+            client: ClientFeatures::new(client_capability_fields),
+            result_recovery: ResultRecoveryFeatures::authority_preserving(),
+            schema,
+        }
+    }
+
+    /// Returns message-admission capabilities.
+    pub const fn messages(self) -> MessageFeatures {
+        self.messages
+    }
+
+    /// Returns tool-definition and tool-result capabilities.
+    pub const fn tools(self) -> ToolFeatures {
+        self.tools
+    }
+
+    /// Returns initialize-result capabilities.
+    pub const fn initialize(self) -> InitializeFeatures {
+        self.initialize
+    }
+
+    /// Returns client-capability admission.
+    pub const fn client(self) -> ClientFeatures {
+        self.client
+    }
+
+    /// Returns result-budget and committed-mutation recovery behavior.
+    pub const fn result_recovery(self) -> ResultRecoveryFeatures {
+        self.result_recovery
+    }
+
+    /// Returns exact pinned schema fields used by schema parity checks.
+    pub const fn schema(self) -> SchemaFeatures {
+        self.schema
+    }
+}
+
 impl SchemaFeatures {
     const fn new(
         client_capability_fields: &'static [ClientCapabilityField],
@@ -446,9 +621,7 @@ pub struct McpProtocolProfile {
     revision: McpProtocolRevision,
     generation: McpProtocolGeneration,
     status: McpRevisionStatus,
-    messages: MessageFeatures,
-    tools: ToolFeatures,
-    schema: SchemaFeatures,
+    capabilities: McpProtocolCapabilities,
 }
 
 impl McpProtocolProfile {
@@ -462,9 +635,12 @@ impl McpProtocolProfile {
             revision,
             generation: revision.generation(),
             status: revision.status(),
-            messages,
-            tools,
-            schema,
+            capabilities: McpProtocolCapabilities::new(
+                messages,
+                tools,
+                schema.client_capability_fields(),
+                schema,
+            ),
         }
     }
 
@@ -485,17 +661,37 @@ impl McpProtocolProfile {
 
     /// Returns this profile's message features.
     pub const fn messages(self) -> MessageFeatures {
-        self.messages
+        self.capabilities.messages()
     }
 
     /// Returns this profile's tool features.
     pub const fn tools(self) -> ToolFeatures {
-        self.tools
+        self.capabilities.tools()
+    }
+
+    /// Returns this profile's initialize-result features.
+    pub const fn initialize(self) -> InitializeFeatures {
+        self.capabilities.initialize()
+    }
+
+    /// Returns this profile's accepted client-capability shape and known fields.
+    pub const fn client(self) -> ClientFeatures {
+        self.capabilities.client()
+    }
+
+    /// Returns this profile's result recovery behavior.
+    pub const fn result_recovery(self) -> ResultRecoveryFeatures {
+        self.capabilities.result_recovery()
     }
 
     /// Returns this profile's revision-specific schema fields.
     pub const fn schema(self) -> SchemaFeatures {
-        self.schema
+        self.capabilities.schema()
+    }
+
+    /// Returns the semantic capability bundle consumed by adapters.
+    pub const fn capabilities(self) -> McpProtocolCapabilities {
+        self.capabilities
     }
 }
 
@@ -602,15 +798,48 @@ const INITIALIZE_MESSAGES_WITH_OPERATION_BATCHING: MessageFeatures = MessageFeat
     InitializedNotification::AfterInitialize,
     true,
 );
-const TOOLS_BASE: ToolFeatures = ToolFeatures::new(false, false, false);
-const TOOLS_WITH_ANNOTATIONS: ToolFeatures = ToolFeatures::new(true, false, false);
-const TOOLS_WITH_STRUCTURED_OUTPUT: ToolFeatures = ToolFeatures::new(true, true, true);
+const TOOLS_DIRECT_RESULT: ToolFeatures = ToolFeatures::new(
+    false,
+    false,
+    false,
+    false,
+    true,
+    ToolResultCarrier::DirectToolResult,
+    false,
+);
+const TOOLS_TEXT_RESULT: ToolFeatures = ToolFeatures::new(
+    false,
+    false,
+    false,
+    false,
+    true,
+    ToolResultCarrier::JsonTextContent,
+    true,
+);
+const TOOLS_ANNOTATED_TEXT_RESULT: ToolFeatures = ToolFeatures::new(
+    true,
+    false,
+    false,
+    false,
+    true,
+    ToolResultCarrier::JsonTextContent,
+    true,
+);
+const TOOLS_STRUCTURED_RESULT: ToolFeatures = ToolFeatures::new(
+    true,
+    true,
+    true,
+    true,
+    true,
+    ToolResultCarrier::StructuredContentWithText,
+    true,
+);
 
 const PRODUCTION_PROFILES: [McpProtocolProfile; 5] = [
     McpProtocolProfile::new(
         McpProtocolRevision::V20241007,
         INITIALIZE_MESSAGES_2024_10,
-        TOOLS_BASE,
+        TOOLS_DIRECT_RESULT,
         SchemaFeatures::new(
             CLIENT_CAPABILITIES_2024,
             SERVER_CAPABILITIES_2024,
@@ -621,7 +850,7 @@ const PRODUCTION_PROFILES: [McpProtocolProfile; 5] = [
     McpProtocolProfile::new(
         McpProtocolRevision::V20241105,
         INITIALIZE_MESSAGES_WITHOUT_BATCHING,
-        TOOLS_BASE,
+        TOOLS_TEXT_RESULT,
         SchemaFeatures::new(
             CLIENT_CAPABILITIES_2024,
             SERVER_CAPABILITIES_2024,
@@ -632,7 +861,7 @@ const PRODUCTION_PROFILES: [McpProtocolProfile; 5] = [
     McpProtocolProfile::new(
         McpProtocolRevision::V20250326,
         INITIALIZE_MESSAGES_WITH_OPERATION_BATCHING,
-        TOOLS_WITH_ANNOTATIONS,
+        TOOLS_ANNOTATED_TEXT_RESULT,
         SchemaFeatures::new(
             CLIENT_CAPABILITIES_2024,
             SERVER_CAPABILITIES_2025_03,
@@ -643,7 +872,7 @@ const PRODUCTION_PROFILES: [McpProtocolProfile; 5] = [
     McpProtocolProfile::new(
         McpProtocolRevision::V20250618,
         INITIALIZE_MESSAGES_WITHOUT_BATCHING,
-        TOOLS_WITH_STRUCTURED_OUTPUT,
+        TOOLS_STRUCTURED_RESULT,
         SchemaFeatures::new(
             CLIENT_CAPABILITIES_2025_06,
             SERVER_CAPABILITIES_2025_03,
@@ -654,7 +883,7 @@ const PRODUCTION_PROFILES: [McpProtocolProfile; 5] = [
     McpProtocolProfile::new(
         McpProtocolRevision::V20251125,
         INITIALIZE_MESSAGES_WITHOUT_BATCHING,
-        TOOLS_WITH_STRUCTURED_OUTPUT,
+        TOOLS_STRUCTURED_RESULT,
         SchemaFeatures::new(
             CLIENT_CAPABILITIES_2025_11,
             SERVER_CAPABILITIES_2025_11,
@@ -695,44 +924,15 @@ impl ProtocolRegistry {
             .ok_or(McpProtocolRevisionError::NotProductionSupported(revision))
     }
 
-    /// Selects a production profile using the pinned initialization rules.
+    /// Selects an exact production-supported initialization profile.
     ///
-    /// An exact supported request keeps its profile. An otherwise unknown or
-    /// unsupported initialization revision receives the separately chosen
-    /// preferred server profile. A pinned revision from another handshake
-    /// generation remains a typed mismatch and is never counter-offered as an
-    /// initialization revision.
-    pub fn negotiate_initialize(
+    /// Unknown and tracked-but-unsupported identifiers are rejected. The
+    /// registry never substitutes another profile.
+    pub fn select_initialize(
         &self,
         requested: &str,
-    ) -> Result<McpInitializeSelection, McpProtocolGenerationMismatch> {
-        match self.parse(requested) {
-            Ok(profile) if profile.generation() == McpProtocolGeneration::InitializeHandshake => {
-                Ok(McpInitializeSelection {
-                    profile,
-                    outcome: McpNegotiationOutcome::ExactMatch,
-                })
-            }
-            Ok(profile) => Err(McpProtocolGenerationMismatch {
-                revision: profile.revision(),
-                actual: profile.generation(),
-            }),
-            Err(McpProtocolRevisionError::NotProductionSupported(revision))
-                if revision.generation() != McpProtocolGeneration::InitializeHandshake =>
-            {
-                Err(McpProtocolGenerationMismatch {
-                    revision,
-                    actual: revision.generation(),
-                })
-            }
-            Err(McpProtocolRevisionError::Unknown)
-            | Err(McpProtocolRevisionError::NotProductionSupported(_)) => {
-                Ok(McpInitializeSelection {
-                    profile: self.preferred_server_profile(),
-                    outcome: McpNegotiationOutcome::ServerCounterOffer,
-                })
-            }
-        }
+    ) -> Result<&'static McpProtocolProfile, McpProtocolRevisionError> {
+        self.parse(requested)
     }
 
     /// Looks up a production profile by its typed revision.

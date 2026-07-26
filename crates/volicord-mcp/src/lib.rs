@@ -9,8 +9,10 @@
 //! `volicord-core`.
 
 mod adapter;
+mod authority_refresh;
 mod binding;
 mod build_info;
+mod committed_result_recovery;
 mod constants;
 mod diagnostics;
 mod errors;
@@ -18,12 +20,14 @@ mod json_rpc;
 mod lifecycle;
 mod managed_launch;
 mod mutation_admission;
+mod mutation_projection;
 #[cfg(test)]
 mod prelude;
 #[cfg(test)]
 mod protocol_projection_tests;
 mod routing;
 mod schema_validation;
+mod session_metrics;
 mod stdio;
 mod telemetry;
 #[cfg(test)]
@@ -31,6 +35,7 @@ mod tests;
 mod tool_dispatch;
 mod tool_registry;
 mod transport;
+mod user_action_projection;
 mod util;
 
 pub use adapter::McpAdapter;

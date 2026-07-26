@@ -37,9 +37,6 @@ pub(crate) enum McpLifecycleDiagnostic {
 pub(crate) enum McpProtocolDiagnostic {
     MalformedVersion,
     UnsupportedVersion,
-    CounterOffer,
-    CounterOfferRejectedOrDisconnected,
-    GenerationMismatch,
     CapabilityShapeFailure,
     SchemaProjectionFailure,
 }
@@ -156,13 +153,6 @@ impl McpDiagnostic {
             Self::Protocol(McpProtocolDiagnostic::UnsupportedVersion) => {
                 "mcp.protocol.unsupported_version"
             }
-            Self::Protocol(McpProtocolDiagnostic::CounterOffer) => "mcp.protocol.counter_offer",
-            Self::Protocol(McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected) => {
-                "mcp.protocol.counter_offer_rejected"
-            }
-            Self::Protocol(McpProtocolDiagnostic::GenerationMismatch) => {
-                "mcp.protocol.generation_mismatch"
-            }
             Self::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure) => {
                 "mcp.protocol.capability_shape_invalid"
             }
@@ -233,13 +223,7 @@ impl McpDiagnostic {
     }
 
     pub(crate) const fn severity(self) -> DiagnosticSeverity {
-        match self {
-            Self::Protocol(McpProtocolDiagnostic::CounterOffer)
-            | Self::Protocol(McpProtocolDiagnostic::UnsupportedVersion) => {
-                DiagnosticSeverity::Warning
-            }
-            _ => DiagnosticSeverity::Error,
-        }
+        DiagnosticSeverity::Error
     }
 
     pub(crate) const fn safe_summary(self) -> &'static str {
@@ -285,15 +269,6 @@ impl McpDiagnostic {
             }
             Self::Protocol(McpProtocolDiagnostic::UnsupportedVersion) => {
                 "the requested MCP protocol revision was not production-supported"
-            }
-            Self::Protocol(McpProtocolDiagnostic::CounterOffer) => {
-                "the server selected its preferred supported revision as a counter-offer"
-            }
-            Self::Protocol(McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected) => {
-                "the client disconnected before accepting the protocol counter-offer"
-            }
-            Self::Protocol(McpProtocolDiagnostic::GenerationMismatch) => {
-                "the requested protocol revision belongs to another handshake generation"
             }
             Self::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure) => {
                 "initialize capabilities did not have the required shape"
@@ -356,11 +331,7 @@ impl McpDiagnostic {
     const fn recommended_action(self) -> (&'static str, &'static str) {
         match self {
             Self::Protocol(
-                McpProtocolDiagnostic::MalformedVersion
-                | McpProtocolDiagnostic::UnsupportedVersion
-                | McpProtocolDiagnostic::CounterOffer
-                | McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected
-                | McpProtocolDiagnostic::GenerationMismatch,
+                McpProtocolDiagnostic::MalformedVersion | McpProtocolDiagnostic::UnsupportedVersion,
             ) => (
                 "action.mcp.use_supported_protocol_revision",
                 "Configure the MCP peer to request one supported protocol revision",
@@ -574,9 +545,6 @@ mod tests {
             McpDiagnostic::Lifecycle(McpLifecycleDiagnostic::InvalidShutdownSequence),
             McpDiagnostic::Protocol(McpProtocolDiagnostic::MalformedVersion),
             McpDiagnostic::Protocol(McpProtocolDiagnostic::UnsupportedVersion),
-            McpDiagnostic::Protocol(McpProtocolDiagnostic::CounterOffer),
-            McpDiagnostic::Protocol(McpProtocolDiagnostic::CounterOfferRejectedOrDisconnected),
-            McpDiagnostic::Protocol(McpProtocolDiagnostic::GenerationMismatch),
             McpDiagnostic::Protocol(McpProtocolDiagnostic::CapabilityShapeFailure),
             McpDiagnostic::Protocol(McpProtocolDiagnostic::SchemaProjectionFailure),
             McpDiagnostic::ToolDiscovery(McpToolDiscoveryDiagnostic::ProtocolError),

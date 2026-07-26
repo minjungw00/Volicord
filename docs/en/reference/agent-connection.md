@@ -105,12 +105,13 @@ request an owner-defined action, but it cannot act as the local user channel or
 resolve the action on the user's behalf.
 
 For the production revision set, an exact requested `protocolVersion` selects
-the same session profile. Another string in the initialization-based request
-shape receives the server's preferred `2025-11-25` counter-offer; support is
-never inferred from date ordering or configured by the user. The pinned
-pre-release `2026-07-28` revision belongs to the discover-based generation and
-does not enter initialize negotiation. Exact parameter and response behavior
-is owned by [MCP Transport](mcp-transport.md#protocol-revision-negotiation).
+the same session profile. Every other identifier, including the pinned
+pre-release `2026-07-28`, is rejected as unsupported without substituting
+another profile. Support is never inferred from lexical or date ordering,
+numeric or date parsing, ranges, prefixes, or package versions, and the user
+cannot configure the supported set. Exact parameter, capability, and response
+behavior is owned by
+[MCP Transport](mcp-transport.md#protocol-revision-negotiation).
 
 <a id="managed-mcp-launch-contract"></a>
 

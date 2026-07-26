@@ -111,7 +111,7 @@ human-readable error text. The current MCP code families are:
 |---|---|
 | JSON-RPC and framing | `mcp.json_rpc.parse_error`, `mcp.json_rpc.invalid_request`, `mcp.json_rpc.invalid_id`, `mcp.json_rpc.unknown_method`, `mcp.json_rpc.malformed_response`, `mcp.json_rpc.framing_failure`, `mcp.json_rpc.message_size_exceeded`, `mcp.json_rpc.error_response` |
 | Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialization_batch_forbidden`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
-| Revision and capabilities | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.counter_offer`, `mcp.protocol.counter_offer_rejected`, `mcp.protocol.generation_mismatch`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
+| Revision and capabilities | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
 | Tool discovery | `mcp.tools.protocol_error`, `mcp.tools.schema_failure`, `mcp.tools.required_missing`, `mcp.tools.definition_projection_invalid` |
 | Tool call | `mcp.tool_call.unknown_tool`, `mcp.tool_call.invalid_arguments`, `mcp.tool_call.protocol_error`, `mcp.tool_call.output_schema_failed`, `mcp.tool_call.response_budget_failed`, `mcp.tool_call.core_execution_failed`, `mcp.tool_call.adapter_execution_failed`, `mcp.tool_call.safe_read_only_failed`, `mcp.tool_call.session_correlation_invalid` |
 
@@ -151,27 +151,58 @@ depend on the `volicord-mcp` runtime adapter, Core, Store, or platform crates.
 
 The request's string `protocolVersion` is the requested revision. An exact
 member of this closed set selects the same profile and the initialize result
-returns the same revision. Any other string that belongs to the
-initialization-based protocol shape receives the preferred server counter-offer
-`2025-11-25`; as required by the pinned specification, a client that cannot
-support the returned revision disconnects. Selection uses exact registry
-membership, not lexical or date-range comparison, and the supported set is not
+returns the same revision. Every other identifier is rejected with `-32602`
+and `mcp.protocol.unsupported_version`; the server does not substitute its
+preferred, oldest, newest, or default profile. Selection uses exact registry
+membership, not lexical comparison, date or numeric parsing, range or prefix
+tests, or package-version conditions. The supported set is not
 user-configurable.
 
 Missing or non-string `protocolVersion`, non-object `capabilities`, and
 malformed `clientInfo` remain `-32602` invalid parameters with bounded error
-data. The pinned pre-release `2026-07-28` revision belongs to the discover-based
-generation, so an initialize request carrying it fails as a typed method or
-generation mismatch instead of receiving an initialization counter-offer.
+data. The pinned pre-release `2026-07-28` revision is not a production profile,
+so an initialize request carrying it is rejected as unsupported.
 
 After valid parameter decoding, the active MCP connection owns one typed,
 session-scoped selection. It retains the exact requested string, selected
-profile, exact-match or counter-offer outcome, client capabilities, bounded
-attempted client name/version, and initialized-notification completion fact.
+profile, client capabilities, bounded attempted client name/version, and
+initialized-notification completion fact.
 The selected profile generates the initialize response `protocolVersion` and
 capabilities and governs later lifecycle validation. The profile is selected
 after a successful initialize request, but its revision is negotiated only
 after the valid initialized notification completes the handshake.
+
+### Registry-owned semantic capabilities
+
+`ProtocolRegistry` is the single owner of the mapping from each exact
+production revision to adapter behavior. Each profile carries one complete
+semantic capability bundle. Tool and initialize projection receive that
+bundle, not a revision string, and cannot select behavior by revision order.
+Pinned schema field sets remain parity evidence; adapters do not use raw field
+sets as a second behavior map.
+
+| Profile | Result carrier | `structuredContent` | `isError` | Result `_meta` |
+|---|---|---|---|---|
+| `2024-10-07` | direct `toolResult` | no | no | supported |
+| `2024-11-05` | authoritative JSON text in the first `content` item | no | supported | supported |
+| `2025-03-26` | authoritative JSON text in the first `content` item | no | supported | supported |
+| `2025-06-18` | `structuredContent` plus compatibility `content` | supported | supported | supported |
+| `2025-11-25` | `structuredContent` plus compatibility `content` | supported | supported | supported |
+
+| Profile | Tool-definition capabilities | Initialize result | Accepted client capabilities |
+|---|---|---|---|
+| `2024-10-07` | base `name`, `description`, `inputSchema` | `_meta`, `protocolVersion`, `capabilities`, `serverInfo`; no `instructions` | open object; known `experimental`, `roots`, `sampling` |
+| `2024-11-05` | base fields | base initialize fields plus `instructions` | open object; known `experimental`, `roots`, `sampling` |
+| `2025-03-26` | base fields plus `annotations` | base initialize fields plus `instructions` | open object; known `experimental`, `roots`, `sampling` |
+| `2025-06-18` | base fields plus `annotations`, `outputSchema`; optional populated `title` and definition `_meta` are supported | base initialize fields plus `instructions` | open object; known `elicitation`, `experimental`, `roots`, `sampling` |
+| `2025-11-25` | base fields plus `annotations`, `outputSchema`; optional populated `title` and definition `_meta` are supported | base initialize fields plus `instructions` | open object; known `elicitation`, `experimental`, `roots`, `sampling`, `tasks` |
+
+Unknown additive client capability fields remain accepted because every
+current profile declares an open object. Every profile also declares the same
+committed-result recovery capability: preserve fresh authority first, then a
+compact method result, then stable effect facts; never retry the committed
+mutation. The adapter's fixed compact, full, and compatibility-text byte
+budgets are applied after projection through the selected result carrier.
 
 Volicord advertises only the `tools` server capability, and only when that
 field is permitted by the selected profile; all five supported profiles permit
@@ -503,10 +534,10 @@ observation, and diagnostic comparison use that identity and project
 | `2025-03-26` | `name`, `description`, `inputSchema`, `annotations` |
 | `2025-06-18`, `2025-11-25` | `name`, `description`, `inputSchema`, `outputSchema`, `annotations` |
 
-The later profiles also permit `title` and `_meta`, and `2025-11-25` permits
-`execution` and `icons`. Those fields are emitted only when the canonical
-registry owns populated values; the current Volicord registry owns none, so
-they are absent rather than fabricated.
+The two structured-content profiles support optional `title` and definition
+`_meta`. Those fields are emitted only when the canonical registry owns
+populated values; the current Volicord registry owns none, so they are absent
+rather than fabricated.
 
 ## Public Argument Projection
 
@@ -684,8 +715,14 @@ error code and retry/side-effect flags even where `isError` is not available.
 Mutations retain the selected `summary`, `workflow`, or `full` public
 projection with one fresh `AuthorityReceipt`, exact effect identity, replay
 facts, and bounded recovery information. Response-size accounting and compact
-recovery use the actual selected-profile carrier. They do not change retry
-rules, Core effects, or the authoritative public result body.
+recovery use the selected profile's semantic carrier capability. When an
+ordinary committed result is oversized or cannot be projected after the
+effect, recovery preserves the fresh authority receipt first, then the compact
+method result, then stable effect facts. The recovery remains success-class,
+sets `retryable=false`, withholds a completion claim, requires a current
+`volicord.status` read, and retains an immutable operation-result reference
+when one exists. It does not change Core effects or reinterpret the
+authoritative public method result.
 
 A delivery failure after a committed Core effect preserves operation-result
 coordinates. The adapter does not retry a mutation merely because response

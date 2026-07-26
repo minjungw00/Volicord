@@ -52,9 +52,6 @@ pub enum McpProtocolFailureKind {
     JsonRpcError,
     MalformedProtocolVersion,
     UnsupportedProtocolRevision,
-    CounterOffer,
-    CounterOfferRejectedOrDisconnected,
-    GenerationMismatch,
     CapabilityShapeFailure,
     RevisionSchemaProjectionFailure,
     ToolListProtocolError,
@@ -78,9 +75,6 @@ impl McpProtocolFailureKind {
             Self::JsonRpcError => "mcp.json_rpc.error_response",
             Self::MalformedProtocolVersion => "mcp.protocol.malformed_version",
             Self::UnsupportedProtocolRevision => "mcp.protocol.unsupported_version",
-            Self::CounterOffer => "mcp.protocol.counter_offer",
-            Self::CounterOfferRejectedOrDisconnected => "mcp.protocol.counter_offer_rejected",
-            Self::GenerationMismatch => "mcp.protocol.generation_mismatch",
             Self::CapabilityShapeFailure => "mcp.protocol.capability_shape_invalid",
             Self::RevisionSchemaProjectionFailure => "mcp.protocol.schema_projection_failed",
             Self::ToolListProtocolError => "mcp.tools.protocol_error",
@@ -106,11 +100,6 @@ impl McpProtocolFailureKind {
             Self::UnsupportedProtocolRevision => {
                 "the child did not select the requested protocol revision"
             }
-            Self::CounterOffer => "the child returned a protocol counter-offer",
-            Self::CounterOfferRejectedOrDisconnected => {
-                "the protocol counter-offer was rejected or disconnected"
-            }
-            Self::GenerationMismatch => "the child protocol generation did not match",
             Self::CapabilityShapeFailure => "the initialize capability shape was invalid",
             Self::RevisionSchemaProjectionFailure => {
                 "the initialize result failed its revision schema"
@@ -594,10 +583,7 @@ impl McpProcessFailure {
             ),
             Self::Protocol { kind, .. } => match kind {
                 McpProtocolFailureKind::MalformedProtocolVersion
-                | McpProtocolFailureKind::UnsupportedProtocolRevision
-                | McpProtocolFailureKind::CounterOffer
-                | McpProtocolFailureKind::CounterOfferRejectedOrDisconnected
-                | McpProtocolFailureKind::GenerationMismatch => (
+                | McpProtocolFailureKind::UnsupportedProtocolRevision => (
                     "action.mcp.use_supported_protocol_revision",
                     "Configure the MCP peer to request one supported protocol revision",
                 ),

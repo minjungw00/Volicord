@@ -22,8 +22,9 @@ pub(crate) use volicord_core::{
     InvocationContext, PipelineResponse,
 };
 pub(crate) use volicord_mcp_protocol::{
-    InitializedNotification, JsonRpcBatching, McpNegotiationOutcome, McpProtocolProfile,
-    ProtocolRegistry, ServerCapabilityField, ToolDefinitionField, ToolResultField,
+    ClientCapabilitiesShape, CommittedResultRecovery, InitializedNotification, JsonRpcBatching,
+    McpProtocolCapabilities, McpProtocolProfile, ProtocolRegistry, ServerCapabilityField,
+    ToolDefinitionField, ToolResultCarrier, ToolResultField,
 };
 pub(crate) use volicord_platform_fs::{
     canonical_runtime_home_path, CanonicalRuntimeHomePath, RuntimeHomeMutationLeaseError,

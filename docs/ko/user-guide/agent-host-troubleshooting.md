@@ -218,11 +218,10 @@ pending 또는 failed로 유지하고 여러 session entry의 milestone을 조�
 
 `mcp.protocol.unsupported_version`이면 `requested_revision`과
 `production_supported_revisions`를 비교합니다.
-`mcp.protocol.counter_offer_rejected`이면 `selected_revision`도 비교합니다.
+서로 다른 `selected_revision`이 관찰되거나 추적 중인 비프로덕션 revision인 경우에도
+정확한 선택이 지원되지 않은 것으로 처리하며, 서버는 다른 profile로 대체하지 않습니다.
 `negotiated_revision`이 없다는 것은 handshake가 완료되지 않았다는 뜻입니다.
-`mcp.protocol.generation_mismatch`이면 요청 revision이 추적 중인 비프로덕션 handshake
-generation에 속하는지 확인합니다. 세 경우 모두 `attempted_client_name`과
-`attempted_client_version`을 보존하고
+`attempted_client_name`과 `attempted_client_version`을 보존하고
 `action.mcp.use_supported_protocol_revision`을 사용합니다. 더 오래된 complete proof가
 없다면 일반 concise 출력에는 적용되는 제한된 사실, failed
 `managed_session_health`, blocked `managed_capability_proof` check가 나옵니다. Verbose

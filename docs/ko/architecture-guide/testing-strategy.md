@@ -71,12 +71,18 @@ metadata를 보존한 다음, 후보 전체를 검증한 뒤에만 fixture를 �
 일반 build와 test는 네트워크를 사용하는 sync 경로를 실행하지 않습니다.
 
 실행 가능한 wire 적합성은 독립 gate인
-`cargo test -p volicord-mcp --test protocol_conformance`가 확인합니다. 일반 runner는
-`ProtocolRegistry::production().oldest_to_newest()`를 직접 순회하므로 프로덕션 profile을
-추가하면 같은 집중 case가 자동으로 matrix에 들어갑니다. Manifest는 검토된 upstream 및
-지원 사실만 기록하며 실행 가능한 테스트가 수행되었는지는 기록하지 않습니다. Runner는
-별도의 conformance revision 배열이나 revision별 coverage boolean을 소유하지 않으며
-registry 직접 순회가 matrix를 정합니다.
+`cargo test -p volicord-mcp --test protocol_conformance`가 확인합니다. 이 테스트가 유일한
+전체 profile harness입니다. 일반 runner는
+`ProtocolRegistry::production().oldest_to_newest()`를 직접 순회하고 지원되는 모든
+profile에 동일하게 적용되는 scenario를 실행합니다. Assertion은 result carrier 형식,
+structured content, `isError`, output schema, annotation, title, `_meta`, initialize field,
+client-capability 형태, committed-result 복구를 profile의 의미 기반 capability에서
+도출합니다. 별도 registry 및 projection 테스트는 capability data가 고유하고 완전한지
+확인하고, 지원되지 않는 식별자를 대체 없이 거부하며, projection이 revision 순서로
+동작을 선택하지 않음을 입증합니다. Manifest는 검토된 upstream 및 지원 사실만 기록하며
+실행 가능한 테스트가 수행되었는지는 기록하지 않습니다. Runner는 별도의 conformance
+revision 배열이나 revision별 coverage boolean을 소유하지 않으며 registry 직접 순회가
+matrix를 정합니다.
 
 ## 필수 경계 coverage
 
@@ -122,8 +128,8 @@ registry 직접 순회가 matrix를 정합니다.
   initialized notification, `tools/list`, 고정 schema 검증, 필수 도구, 지정 왕복 identity,
   revision별 정의와 결과 projection, profile에 따른 작업 단계 batch 허용 또는 거절,
   잘못된 lifecycle 동작, 초기화 batch 거절, EOF/종료
-- exact-match와 counter-offer 협상, profile별 initialize capability, batching,
-  `tools/list`, `tools/call` wire projection
+- 지원 revision의 정확한 선택, 지원되지 않는 식별자의 명시적 거부, capability 기반
+  initialize, batching, `tools/list`, `tools/call` wire projection
 - 프로덕션 protocol registry에서 파생하지 않고 독립적으로 고정하며 revision 적합성을
   대신하지 않는 Codex host fixture, 정확한 `CodexMcpTurnMetadata`,
   `CodexCommandHooks`, `CodexMcpCallableNames` profile coverage, source별 상관관계,

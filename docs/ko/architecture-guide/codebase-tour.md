@@ -35,10 +35,22 @@ MCP 호출은 다음 순서로 추적합니다.
 - [`crates/volicord-mcp/src/transport.rs`](../../../crates/volicord-mcp/src/transport.rs)와
   [`json_rpc.rs`](../../../crates/volicord-mcp/src/json_rpc.rs):
   한도가 있는 framing과 JSON-RPC envelope
+- [`crates/volicord-mcp-protocol/src/lib.rs`](../../../crates/volicord-mcp-protocol/src/lib.rs):
+  지원 revision의 정확한 선택과 어댑터가 소비하는 완전한 의미 기반 capability profile
 - [`crates/volicord-mcp/src/lifecycle.rs`](../../../crates/volicord-mcp/src/lifecycle.rs):
   initialize 순서, message 승인, 폐쇄형 session 상태, 종료
 - [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../crates/volicord-mcp/src/tool_dispatch.rs):
-  tool call 디코딩, dispatch, 결과 projection
+  tool call 디코딩, adapter dispatch, 공유 result carrier
+- [`crates/volicord-mcp/src/mutation_projection.rs`](../../../crates/volicord-mcp/src/mutation_projection.rs),
+  [`authority_refresh.rs`](../../../crates/volicord-mcp/src/authority_refresh.rs),
+  [`committed_result_recovery.rs`](../../../crates/volicord-mcp/src/committed_result_recovery.rs):
+  일반 mutation projection, 현재 authority 재조회, 선택된 profile의 projection 예산을
+  초과하는 committed result의 authority 우선 복구
+- [`crates/volicord-mcp/src/user_action_projection.rs`](../../../crates/volicord-mcp/src/user_action_projection.rs):
+  공개 UserAction result와 CLI fallback projection
+- [`crates/volicord-mcp/src/telemetry.rs`](../../../crates/volicord-mcp/src/telemetry.rs)와
+  [`session_metrics.rs`](../../../crates/volicord-mcp/src/session_metrics.rs):
+  진단 fact와 runtime-session metric
 - [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
   context에 결합된 adapter와 Core 호출
 - [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs):

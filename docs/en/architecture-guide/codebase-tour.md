@@ -37,11 +37,27 @@ For an MCP call, follow:
 - [`crates/volicord-mcp/src/transport.rs`](../../../crates/volicord-mcp/src/transport.rs)
   and [`json_rpc.rs`](../../../crates/volicord-mcp/src/json_rpc.rs) for bounded
   framing and JSON-RPC envelopes;
+- [`crates/volicord-mcp-protocol/src/lib.rs`](../../../crates/volicord-mcp-protocol/src/lib.rs)
+  for exact supported-revision selection and the complete semantic capability
+  profile consumed by the adapter;
 - [`crates/volicord-mcp/src/lifecycle.rs`](../../../crates/volicord-mcp/src/lifecycle.rs)
   for initialize ordering, message admission, the closed session state, and
   termination;
 - [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../crates/volicord-mcp/src/tool_dispatch.rs)
-  for tool-call decoding, dispatch, and result projection;
+  for tool-call decoding, adapter dispatch, and the shared result carrier;
+- [`crates/volicord-mcp/src/mutation_projection.rs`](../../../crates/volicord-mcp/src/mutation_projection.rs),
+  [`authority_refresh.rs`](../../../crates/volicord-mcp/src/authority_refresh.rs),
+  and
+  [`committed_result_recovery.rs`](../../../crates/volicord-mcp/src/committed_result_recovery.rs)
+  for normal mutation projection, current-authority reread, and authority-first
+  recovery of committed results that exceed the selected profile's projection
+  budget;
+- [`crates/volicord-mcp/src/user_action_projection.rs`](../../../crates/volicord-mcp/src/user_action_projection.rs)
+  for the public UserAction result and CLI fallback projection;
+- [`crates/volicord-mcp/src/telemetry.rs`](../../../crates/volicord-mcp/src/telemetry.rs)
+  and
+  [`session_metrics.rs`](../../../crates/volicord-mcp/src/session_metrics.rs)
+  for diagnostic facts and runtime-session metrics;
 - [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
   for context-bound adapter and Core invocation;
 - [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)

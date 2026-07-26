@@ -20,33 +20,30 @@ fn codex_compatible_2025_06_18_initialize_succeeds() -> Result<(), Box<dyn Error
 }
 
 #[test]
-fn unsupported_initialize_revision_receives_preferred_server_counter_offer(
+fn unsupported_initialize_revision_is_rejected_without_selecting_a_profile(
 ) -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-negotiate-counter-offer")?;
+    let fixture = CoreFixture::new("mcp-reject-unsupported-revision")?;
     let adapter = adapter(&fixture)?;
     let mut state = session_state();
     let response = apply_json_rpc_message(
         &adapter,
         &mut state,
-        initialize_request_for_protocol(1, json!({}), "counter-offer-client", "1.0", "2025-01-01"),
+        initialize_request_for_protocol(
+            1,
+            json!({}),
+            "unsupported-revision-client",
+            "1.0",
+            "unsupported-revision",
+        ),
     )?
-    .expect("well-formed unsupported revision should receive initialize result");
-    let preferred = ProtocolRegistry::production().preferred_server_profile();
+    .expect("unsupported revision should receive an explicit error");
 
-    assert_eq!(
-        response["result"]["protocolVersion"],
-        preferred.revision().as_str()
-    );
-    let selected = state
-        .initialization_selection()
-        .expect("counter-offer session");
-    assert_eq!(selected.requested_protocol_version, "2025-01-01");
-    assert_eq!(selected.selected_profile, preferred);
-    assert_eq!(selected.outcome, McpNegotiationOutcome::ServerCounterOffer);
-    assert_eq!(state.phase(), SessionPhase::AwaitingInitializedNotification);
-    assert!(apply_json_rpc_message(&adapter, &mut state, initialized_notification())?.is_none());
-    assert_eq!(state.phase(), SessionPhase::InitializedAndReady);
-    assert!(state.initialized_session().is_some());
+    assert_eq!(response["error"]["code"], -32602);
+    assert!(response["error"]["data"]
+        .as_str()
+        .is_some_and(|data| data.contains("not a supported MCP revision")));
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
+    assert!(state.initialization_selection().is_none());
     Ok(())
 }
 
@@ -139,8 +136,8 @@ fn invalid_notifications_and_closed_requests_cannot_advance_session_state(
 }
 
 #[test]
-fn discover_generation_protocol_is_not_accepted_as_initialize() -> Result<(), Box<dyn Error>> {
-    let fixture = CoreFixture::new("mcp-negotiate-discover-generation")?;
+fn tracked_nonproduction_protocol_is_rejected_as_unsupported() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-reject-nonproduction-revision")?;
     let adapter = adapter(&fixture)?;
     let mut state = session_state();
     let response = apply_json_rpc_message(
@@ -148,12 +145,12 @@ fn discover_generation_protocol_is_not_accepted_as_initialize() -> Result<(), Bo
         &mut state,
         initialize_request_for_protocol(1, json!({}), "future-client", "1.0", "2026-07-28"),
     )?
-    .expect("generation mismatch should return an error");
+    .expect("tracked nonproduction revision should return an error");
 
-    assert_eq!(response["error"]["code"], -32601);
+    assert_eq!(response["error"]["code"], -32602);
     assert!(response["error"]["data"]
         .as_str()
-        .is_some_and(|data| data.contains("does not use the initialize handshake")));
+        .is_some_and(|data| data.contains("not production-supported")));
     assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
     assert!(state.initialization_selection().is_none());
     Ok(())

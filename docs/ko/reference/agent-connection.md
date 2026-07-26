@@ -93,10 +93,10 @@ Agent Connection은 `Volicord Runtime Home`에 저장하는 로컬 통합 기록
 요청할 수 있지만 로컬 사용자 채널로 동작하거나 사용자를 대신해 해결할 수 없습니다.
 
 프로덕션 revision 집합에서는 정확한 `protocolVersion` 요청이 같은 session profile을
-선택합니다. 초기화 기반 요청 형태의 다른 문자열에는 서버가 선호하는 `2025-11-25`
-counter-offer를 반환합니다. 날짜 순서로 지원 여부를 추론하거나 사용자가 지원 집합을
-구성하지 않습니다. 고정된 pre-release `2026-07-28` revision은 discover 기반
-generation에 속하므로 initialize 협상에 들어가지 않습니다. 정확한 인자와 응답 동작은
+선택합니다. 고정된 pre-release `2026-07-28`을 포함한 다른 모든 식별자는 다른 profile로
+대체하지 않고 지원하지 않는 값으로 거절합니다. 문자열이나 날짜 순서, 숫자 또는 날짜
+parsing, 범위, prefix, package version으로 지원 여부를 추론하지 않으며 사용자가 지원
+집합을 구성할 수 없습니다. 정확한 인자, capability, 응답 동작은
 [MCP 전송](mcp-transport.md#protocol-revision-negotiation)이 담당합니다.
 
 <a id="managed-mcp-launch-contract"></a>

@@ -98,7 +98,7 @@ profile은 독립된 `notifications/initialized` 단계가 끝나기 전까지 �
 |---|---|
 | JSON-RPC와 framing | `mcp.json_rpc.parse_error`, `mcp.json_rpc.invalid_request`, `mcp.json_rpc.invalid_id`, `mcp.json_rpc.unknown_method`, `mcp.json_rpc.malformed_response`, `mcp.json_rpc.framing_failure`, `mcp.json_rpc.message_size_exceeded`, `mcp.json_rpc.error_response` |
 | Lifecycle | `mcp.lifecycle.initialize_required`, `mcp.lifecycle.duplicate_initialize`, `mcp.lifecycle.initialization_batch_forbidden`, `mcp.lifecycle.initialized_notification_missing`, `mcp.lifecycle.initialized_notification_invalid`, `mcp.lifecycle.operation_before_ready`, `mcp.lifecycle.invalid_shutdown_sequence` |
-| Revision과 capability | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.counter_offer`, `mcp.protocol.counter_offer_rejected`, `mcp.protocol.generation_mismatch`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
+| Revision과 capability | `mcp.protocol.malformed_version`, `mcp.protocol.unsupported_version`, `mcp.protocol.capability_shape_invalid`, `mcp.protocol.schema_projection_failed` |
 | 도구 검색 | `mcp.tools.protocol_error`, `mcp.tools.schema_failure`, `mcp.tools.required_missing`, `mcp.tools.definition_projection_invalid` |
 | 도구 호출 | `mcp.tool_call.unknown_tool`, `mcp.tool_call.invalid_arguments`, `mcp.tool_call.protocol_error`, `mcp.tool_call.output_schema_failed`, `mcp.tool_call.response_budget_failed`, `mcp.tool_call.core_execution_failed`, `mcp.tool_call.adapter_execution_failed`, `mcp.tool_call.safe_read_only_failed`, `mcp.tool_call.session_correlation_invalid` |
 
@@ -135,24 +135,53 @@ registry를 읽으며 `volicord-mcp` runtime adapter, Core, Store, platform crat
 않습니다.
 
 요청의 문자열 `protocolVersion`은 요청 revision입니다. 이 닫힌 집합의 정확한 구성원을
-요청하면 같은 profile을 선택하고 initialize 결과도 같은 revision을 반환합니다. 초기화 기반
-protocol 형태에 속하지만 이 집합에 없는 다른 문자열에는 서버의 선호 counter-offer인
-`2025-11-25`를 반환합니다. 고정된 명세에 따라 client가 반환된 revision을 지원할 수 없으면
-연결을 끊어야 합니다. 선택은 문자열이나 날짜 범위 비교가 아니라 정확한 registry membership을
-사용하며 지원 집합은 사용자가 구성할 수 없습니다.
+요청하면 같은 profile을 선택하고 initialize 결과도 같은 revision을 반환합니다. 다른 모든
+식별자는 `-32602`와 `mcp.protocol.unsupported_version`으로 거절하며 서버의 선호,
+가장 오래된, 가장 새로운, 기본 profile로 대체하지 않습니다. 선택은 정확한 registry
+membership만 사용합니다. 문자열 순서, 날짜 또는 숫자 parsing, 범위, prefix, package
+version 조건으로 지원 여부를 판단하지 않으며 지원 집합은 사용자가 구성할 수 없습니다.
 
 `protocolVersion`이 없거나 문자열이 아닌 경우, `capabilities`가 객체가 아닌 경우,
 `clientInfo`가 잘못된 경우에는 제한된 error data와 함께 계속 `-32602` invalid params를
-반환합니다. 고정된 pre-release `2026-07-28` revision은 discover 기반 generation에
-속합니다. 따라서 이를 담은 initialize 요청은 초기화 counter-offer를 받지 않고 typed
-method 또는 generation mismatch로 실패합니다.
+반환합니다. 고정된 pre-release `2026-07-28` revision은 프로덕션 profile이 아니므로
+이를 담은 initialize 요청도 지원하지 않는 revision으로 거절합니다.
 
 유효한 인자를 해석한 뒤 활성 MCP 연결은 session 범위의 typed selection 하나를 소유합니다.
-이 값은 정확한 요청 문자열, 선택한 profile, exact match 또는 counter-offer 결과, client
-capability, 제한 안의 시도된 client name/version, initialized notification 완료 사실을
-보관합니다. 선택한 profile에서 initialize 응답의 `protocolVersion`과 capability를 만들고
+이 값은 정확한 요청 문자열, 선택한 profile, client capability, 제한 안의 시도된 client
+name/version, initialized notification 완료 사실을 보관합니다. 선택한 profile에서
+initialize 응답의 `protocolVersion`과 capability를 만들고
 이후 lifecycle을 검증합니다. 유효한 initialize 요청 뒤 profile이 선택되지만 유효한
 initialized notification이 handshake를 완료한 뒤에만 그 revision의 협상이 끝납니다.
+
+### Registry가 소유하는 semantic capability
+
+`ProtocolRegistry`는 정확한 프로덕션 revision에서 adapter 동작으로 이어지는 mapping의
+유일한 담당자입니다. 각 profile은 완전한 semantic capability bundle 하나를 담습니다.
+도구와 initialize projection은 revision 문자열이 아니라 이 bundle을 받으므로 revision
+순서로 동작을 선택할 수 없습니다. 고정 schema field 집합은 parity 증거로만 남으며
+adapter가 두 번째 동작 map으로 사용하지 않습니다.
+
+| Profile | 결과 carrier | `structuredContent` | `isError` | 결과 `_meta` |
+|---|---|---|---|---|
+| `2024-10-07` | 직접 `toolResult` | 없음 | 없음 | 지원 |
+| `2024-11-05` | 첫 `content` 항목의 권위 있는 JSON text | 없음 | 지원 | 지원 |
+| `2025-03-26` | 첫 `content` 항목의 권위 있는 JSON text | 없음 | 지원 | 지원 |
+| `2025-06-18` | `structuredContent`와 호환용 `content` | 지원 | 지원 | 지원 |
+| `2025-11-25` | `structuredContent`와 호환용 `content` | 지원 | 지원 | 지원 |
+
+| Profile | 도구 정의 capability | Initialize 결과 | 허용하는 client capability |
+|---|---|---|---|
+| `2024-10-07` | 기본 `name`, `description`, `inputSchema` | `_meta`, `protocolVersion`, `capabilities`, `serverInfo`; `instructions` 없음 | 열린 객체, 알려진 `experimental`, `roots`, `sampling` |
+| `2024-11-05` | 기본 field | 기본 initialize field와 `instructions` | 열린 객체, 알려진 `experimental`, `roots`, `sampling` |
+| `2025-03-26` | 기본 field와 `annotations` | 기본 initialize field와 `instructions` | 열린 객체, 알려진 `experimental`, `roots`, `sampling` |
+| `2025-06-18` | 기본 field와 `annotations`, `outputSchema`; 값이 있는 선택적 `title`과 정의 `_meta` 지원 | 기본 initialize field와 `instructions` | 열린 객체, 알려진 `elicitation`, `experimental`, `roots`, `sampling` |
+| `2025-11-25` | 기본 field와 `annotations`, `outputSchema`; 값이 있는 선택적 `title`과 정의 `_meta` 지원 | 기본 initialize field와 `instructions` | 열린 객체, 알려진 `elicitation`, `experimental`, `roots`, `sampling`, `tasks` |
+
+현재 profile은 모두 열린 객체를 선언하므로 알려지지 않은 추가 client capability field도
+허용합니다. 또한 모든 profile은 같은 committed-result 복구 capability를 선언합니다.
+새 authority를 먼저 보존하고, 다음으로 간결한 method result, 마지막으로 안정적인 효과
+사실을 보존하며 커밋된 mutation을 다시 시도하지 않습니다. Adapter의 고정 compact, full,
+호환 text byte 예산은 선택한 결과 carrier로 projection한 뒤 적용합니다.
 
 Volicord는 선택한 profile이 허용할 때만 `tools` server capability를 광고하며, 지원하는
 다섯 profile은 모두 이 필드를 허용합니다. 초기화가 끝난 뒤에는 session 상태에 저장된
@@ -435,9 +464,9 @@ capability는 위 표에 따라 도구를 숨길 수 있지만 protocol revision
 | `2025-03-26` | `name`, `description`, `inputSchema`, `annotations` |
 | `2025-06-18`, `2025-11-25` | `name`, `description`, `inputSchema`, `outputSchema`, `annotations` |
 
-후기 profile은 `title`과 `_meta`도 허용하고 `2025-11-25`는 `execution`과 `icons`도
-허용합니다. 정식 registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니다. 현재
-Volicord registry는 해당 값을 소유하지 않으므로 값을 꾸며내지 않고 필드를 생략합니다.
+두 structured-content profile은 선택적 `title`과 정의 `_meta`를 지원합니다. 정식
+registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니다. 현재 Volicord registry는
+해당 값을 소유하지 않으므로 값을 꾸며내지 않고 필드를 생략합니다.
 
 ## 공개 인자 projection
 
@@ -602,8 +631,13 @@ Text 전용 profile에서는 첫 text 항목이 권위 있는 JSON 객체입니�
 
 Mutation은 선택한 `summary`, `workflow`, `full` 공개 projection에 새
 `AuthorityReceipt`, 정확한 효과 identity, replay 사실, 제한된 복구 정보를 그대로
-담습니다. 응답 크기 계산과 간결한 복구는 실제 선택 profile의 carrier를 사용합니다.
-이 계산은 재시도 규칙, Core 효과, 권위 있는 공개 결과 본문을 바꾸지 않습니다.
+담습니다. 응답 크기 계산과 간결한 복구는 선택한 profile의 semantic carrier capability를
+사용합니다. 정상적인 committed 결과가 너무 크거나 효과 뒤에 projection할 수 없으면 새
+authority receipt를 먼저 보존하고, 다음으로 간결한 method result, 마지막으로 안정적인
+효과 사실을 보존합니다. 이 복구는 success-class를 유지하고 `retryable=false`를
+설정하며 completion 주장을 보류하고 현재 `volicord.status` 읽기를 요구합니다. 값이 있으면
+불변 operation-result reference도 보존합니다. Core 효과를 바꾸거나 권위 있는 공개 method
+result를 다시 해석하지 않습니다.
 
 Core 효과를 커밋한 뒤 전달이 실패하면 operation-result 좌표를 보존합니다. 응답 직렬화나
 전송이 실패했다는 이유로 mutation을 다시 시도하지 않습니다.

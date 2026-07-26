@@ -177,8 +177,8 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-mcp-protocol/src/lib.rs` | 폐쇄형 MCP 리비전 타입 파싱, 프로덕션 프로필 조회, 메시지·도구·스키마 기능 선언, 결정론적인 지원 리비전 순서, 추적 중인 사전 릴리스 분류, 별도로 선택하는 서버 선호 리비전. |
-| `crates/volicord-mcp-protocol/tests/protocol_registry.rs` | 고정 매니페스트 일치, 정확한 스키마 기능 일치, 순서, 중복 배제, 정확한 파싱, 선호 리비전 포함, 사전 릴리스 배제 검증. |
+| `crates/volicord-mcp-protocol/src/lib.rs` | 폐쇄형 MCP 리비전 타입 파싱, 정확한 프로덕션 프로필 조회, 유일한 revision-to-semantic-capability map, 결정론적인 지원 리비전 순회, 추적 중인 사전 릴리스 분류, 알 수 없거나 지원하지 않는 값의 명시적 거절. |
+| `crates/volicord-mcp-protocol/tests/protocol_registry.rs` | 고정 매니페스트 일치, 완전한 semantic/schema capability 일치, registry 유일성, 결정론적 순회, 정확한 파싱과 선택, 선호 리비전 포함, 사전 릴리스 배제 검증. |
 
 ## MCP 어댑터
 
@@ -190,13 +190,18 @@
 | `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio facade. 진입 경로 binding을 선택하고 연결된 stream을 위임하며 protocol, lifecycle, tool dispatch 구현을 보유하지 않습니다. |
 | `crates/volicord-mcp/src/transport.rs` | 한도가 있는 줄바꿈 구분 stdio 읽기·쓰기, UTF-8 및 frame 한도 집행, transport loop 종료, 디코딩한 JSON 값을 lifecycle 처리로 위임하는 경계. |
 | `crates/volicord-mcp/src/json_rpc.rs` | JSON 구문 디코딩, JSON-RPC envelope 분류, 문자열·정수 request ID 검증, object parameter 검증, Core 접근 없는 성공·오류 응답 구성. |
-| `crates/volicord-mcp/src/lifecycle.rs` | Initialize 협상, initialized notification 승인, batch와 method별 lifecycle 유효성, runtime session 시작·종료, 폐쇄형 `SessionState` variant인 `AwaitingInitialization`, `AwaitingInitializedNotification`, `InitializedAndReady`, `Closed`. Initialization 선택 정보는 initialized variant에만 있고 종료 정보는 `Closed`에만 있습니다. |
+| `crates/volicord-mcp/src/lifecycle.rs` | 정확한 initialize profile 선택, initialized notification 승인, capability 기반 batch와 method별 lifecycle 유효성, runtime session 시작·종료, 폐쇄형 `SessionState` variant인 `AwaitingInitialization`, `AwaitingInitializedNotification`, `InitializedAndReady`, `Closed`. Initialization 선택 정보는 initialized variant에만 있고 종료 정보는 `Closed`에만 있습니다. |
 | `crates/volicord-mcp/src/binding.rs` | Runtime Home 해석, repository 탐색, Connection/project 사전 점검과 binding, managed Codex session/thread/turn 상관관계. |
-| `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list`와 `tools/call` parameter 디코딩, 정규 도구 선택, adapter/Core 호출, 현재 단일 원천인 mutation 및 User Action 결과 projection. Transport message framing은 담당하지 않습니다. |
-| `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding, diagnostic session, workflow metric 영속화와 계약이 허용하는 diagnostics carrier failure의 한정된 best-effort 처리. |
+| `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list`와 `tools/call` parameter 디코딩, 정규 도구 선택, adapter/Core 호출, 공유 정규 tool-result carrier 조립. Transport message framing이나 mutation, recovery, UserAction, metric projection은 담당하지 않습니다. |
+| `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail 선택, effect anchor 구성, 간결한 method-result projection, 새 authority 구성, capability 기반 정상 결과 예산 집행. |
+| `crates/volicord-mcp/src/authority_refresh.rs` | Mutation 뒤 Agent Session binding, 현재 authority 다시 읽기, 좌표 검증, 새 authority receipt와 next action 추출. |
+| `crates/volicord-mcp/src/committed_result_recovery.rs` | Mutation을 다시 시도하지 않으면서 committed mutation projection, refresh, post-effect failure 뒤 capability가 선택하는 authority 우선 bounded recovery. |
+| `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction 좌표 추출, 현재 상태 다시 읽기, 복합 안전 결과 projection, CLI inbox fallback 부착. |
+| `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding과 diagnostic event 영속화, 계약이 허용하는 diagnostic carrier failure의 한정된 best-effort 처리. |
+| `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic session 생성과 session 범위 tools-list, method-call, status-reread workflow metric. |
 | `crates/volicord-mcp/src/adapter.rs` | 유지되는 연산 전 routing identity, 활성 mutation-context 상관관계, context에 결합된 Core 호출 API, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
 | `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청, nested workflow-directed sequence, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
-| `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata, method lookup을 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 raw revision별 wire 이름을 투영하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |
+| `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata, method lookup을 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 semantic capability만으로 wire projection을 수행하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색, 현재 Connection/project routing, 정규 catalog에서 server/raw/callable identity를 가져오는 preflight diagnostic 투영. |
 
@@ -210,6 +215,7 @@
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization 순서, 거절, 종료, EOF 계약. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch 순서, notification, 응답 계약. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection과 schema 호환성 계약. |
+| `crates/volicord-mcp/tests/protocol_conformance.rs` | 공통 initialize, lifecycle, schema, discovery, result carrier, rejection, batching, shutdown 시나리오를 위한 단일 실행 가능 프로덕션 profile harness. |
 | `crates/volicord-mcp/src/tests/tool_calls.rs` | Tool dispatch, 결과, 오류, 저장소 capability 계약. |
 | `crates/volicord-mcp/src/tests/managed_host_observation.rs` | Lease 결속 managed launch, process 환경의 비권위성, runtime source routing, session binding, host 관찰 계약. |
 | `crates/volicord-mcp/src/tests/diagnostics.rs` | 진단 영속화와 workflow metric 계약. |

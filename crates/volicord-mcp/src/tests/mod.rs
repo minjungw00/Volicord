@@ -12,16 +12,17 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+use crate::committed_result_recovery::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES;
 use crate::lifecycle::{
     handle_json_rpc_message as transition_json_rpc_message, ClosedSession, SessionPhase,
     SessionState, SessionTermination,
 };
+use crate::mutation_projection::{
+    MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+};
 use crate::prelude::*;
 use crate::stdio::{run_managed_stdio_with_test_lease, run_manual_stdio_with_ignored_env_marker};
-use crate::tool_dispatch::{
-    tool_execution_error_result, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
-    MAX_MCP_FULL_MUTATION_RESULT_BYTES, MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
-};
+use crate::tool_dispatch::tool_execution_error_result;
 use crate::{
     adapter::{AgentSessionCoordinates, ManagedAgentSessionBinding},
     routing::McpStorageCapability,
@@ -42,7 +43,6 @@ use volicord_host_contract::{
     CodexMcpCorrelation, HostContractProfileId, HostNativeCorrelation, HostSessionId, HostThreadId,
     HostTurnId,
 };
-use volicord_mcp_protocol::ToolResultField;
 use volicord_store::agent_connections::{
     add_connection_project, agent_connection_record, ensure_agent_connection,
     set_connection_enabled, AgentConnectionRegistration, ConnectionProjectRegistration,
@@ -101,8 +101,8 @@ fn apply_json_rpc_message(
 }
 
 mod batching;
-mod conformance;
 mod diagnostics;
+mod json_rpc_robustness;
 mod lifecycle;
 mod managed_host_observation;
 mod protocol_projection;

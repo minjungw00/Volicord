@@ -238,12 +238,11 @@ If no complete proof exists, keep readiness pending or failed from the latest
 attempt; do not combine milestones from several session entries.
 
 For `mcp.protocol.unsupported_version`, compare `requested_revision` with
-`production_supported_revisions`. For `mcp.protocol.counter_offer_rejected`,
-also compare `selected_revision`; the absence of `negotiated_revision` means
-the handshake did not complete. For `mcp.protocol.generation_mismatch`, confirm
-that the requested revision belongs to the tracked non-production handshake
-generation. In all three cases, retain `attempted_client_name` and
-`attempted_client_version` and use
+`production_supported_revisions`. A different observed `selected_revision`, or
+a tracked non-production revision, is still an unsupported exact selection;
+the server does not substitute another profile. The absence of
+`negotiated_revision` means the handshake did not complete. Retain
+`attempted_client_name` and `attempted_client_version` and use
 `action.mcp.use_supported_protocol_revision`. With no older complete proof,
 ordinary concise output shows the applicable bounded facts, failed
 `managed_session_health`, and blocked `managed_capability_proof` check. In

@@ -1646,12 +1646,14 @@ documents:
   - authoritative operational milestone ordering, persistence, and managed-host evidence boundaries
   - attempted-client, requested, selected, negotiated, discovery, safe-tool, and terminal-finding
     runtime-session semantics
+  - exact supported-profile selection, unsupported-revision rejection, and registry-owned semantic
+    capability mapping
   - selected-profile server capability and JSON-RPC batch behavior
-  - canonical tool registry and revision-aware `tools/list` field projection
+  - canonical tool registry and capability-driven `tools/list` field projection
   - static runtime-compact tool schemas and public tool list
   - MCP public input and output projections without hidden Core context
   - known-tool argument, lifecycle, and adapter-precondition failure shapes
-  - revision-aware `tools/call` result carriers and compatibility wrapping
+  - capability-driven `tools/call` result carriers and authority-preserving committed-result recovery
   - MCP creation or resume of UserAction requests without resolution authority
   - Runtime Home forwarding, connection binding, project selection, and repository discovery
   - native host session retention before project-selected Agent Session derivation
@@ -2575,8 +2577,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-05-23'
-  last_updated_on: '2026-07-25'
-  last_verified_on: '2026-07-25'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -2670,8 +2672,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: quality_conformance
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-15'
-  last_verified_on: '2026-07-15'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - implementers
   - reviewers
@@ -2683,7 +2685,7 @@ documents:
   - conformance terminology
   - documentation-level conformance criteria
   - assertion authority boundaries
-  - representative current public method, failure, replay, effect, and projection criteria
+  - representative current public method, failure, replay, effect, projection, and MCP profile criteria
 - doc_id: reference.design-quality
   path_en: docs/en/reference/design-quality.md
   path_ko: docs/ko/reference/design-quality.md

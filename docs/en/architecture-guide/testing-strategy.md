@@ -76,13 +76,19 @@ metadata, validates the complete candidate, and only then replaces the fixture.
 Ordinary builds and tests never invoke the networked sync path.
 
 Executable wire conformance is an independent gate:
-`cargo test -p volicord-mcp --test protocol_conformance`. Its generic runner
-iterates `ProtocolRegistry::production().oldest_to_newest()` directly, so adding
-a production profile automatically adds the same focused case to the matrix.
-The manifest records reviewed upstream and support facts; it does not record
-whether executable tests ran. The runner owns no separate conformance revision
-array or per-revision coverage boolean; direct registry iteration defines the
-matrix.
+`cargo test -p volicord-mcp --test protocol_conformance`. This is the single
+all-profile harness. Its generic runner iterates
+`ProtocolRegistry::production().oldest_to_newest()` directly and applies the
+same applicable scenarios to every supported profile. Assertions derive result
+carrier form, structured content, `isError`, output schema, annotation, title,
+`_meta`, initialize fields, client-capability shape, and committed-result
+recovery from the profile's semantic capabilities. Separate registry and
+projection tests require unique complete capability data, reject unsupported
+identifiers without substitution, and prove that projection does not select
+behavior by revision ordering. The manifest records reviewed upstream and
+support facts; it does not record whether executable tests ran. The runner owns
+no separate conformance revision array or per-revision coverage boolean; direct
+registry iteration defines the matrix.
 
 ## Required Boundary Coverage
 
@@ -141,8 +147,9 @@ Durable tests should cover, as applicable:
   revision-specific definition and result projection, profile-selected
   operation batching or rejection, invalid lifecycle behavior,
   initialization-batch rejection, and EOF/shutdown;
-- exact-match and counter-offer negotiation plus profile-specific initialize
-  capabilities, batching, `tools/list`, and `tools/call` wire projection;
+- exact supported-revision selection, explicit unsupported-identifier
+  rejection, and capability-driven initialize, batching, `tools/list`, and
+  `tools/call` wire projection;
 - independently pinned Codex host fixtures that are not derived from the
   production protocol registry and do not substitute for revision conformance,
   with exact `CodexMcpTurnMetadata`, `CodexCommandHooks`, and

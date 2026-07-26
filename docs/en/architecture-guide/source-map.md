@@ -177,8 +177,8 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-mcp-protocol/src/lib.rs` | Closed typed MCP revision parsing, production profile lookup, message/tool/schema feature declarations, deterministic supported-revision ordering, tracked pre-release classification, and the separately selected preferred server revision. |
-| `crates/volicord-mcp-protocol/tests/protocol_registry.rs` | Pinned manifest parity, exact schema-feature parity, ordering, duplicate exclusion, exact parsing, preferred-revision membership, and pre-release exclusion. |
+| `crates/volicord-mcp-protocol/src/lib.rs` | Closed typed MCP revision parsing, exact production profile lookup, the single revision-to-semantic-capability map, deterministic supported-revision iteration, tracked pre-release classification, and explicit unknown or unsupported rejection. |
+| `crates/volicord-mcp-protocol/tests/protocol_registry.rs` | Pinned manifest parity, complete semantic/schema capability parity, registry uniqueness, deterministic iteration, exact parsing and selection, preferred-revision membership, and pre-release exclusion. |
 
 ## MCP Adapter
 
@@ -190,13 +190,18 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/stdio.rs` | Public manual and in-memory lease-bound managed stdio facade. It selects the entry-path binding and delegates the connected stream without retaining protocol, lifecycle, or tool-dispatch implementations. |
 | `crates/volicord-mcp/src/transport.rs` | Bounded newline-delimited stdio reads and writes, UTF-8 and frame-limit enforcement, transport-loop termination, and delegation of decoded JSON values to lifecycle handling. |
 | `crates/volicord-mcp/src/json_rpc.rs` | JSON syntax decoding, JSON-RPC envelope classification, string/integer request-ID validation, object-parameter validation, and success/error response construction without Core access. |
-| `crates/volicord-mcp/src/lifecycle.rs` | Initialize negotiation, initialized-notification admission, batch and per-method lifecycle validity, runtime-session start and close, and the closed `SessionState` variants `AwaitingInitialization`, `AwaitingInitializedNotification`, `InitializedAndReady`, and `Closed`. Initialization selection exists only in initialized variants, and termination data exists only in `Closed`. |
+| `crates/volicord-mcp/src/lifecycle.rs` | Exact initialize profile selection, initialized-notification admission, capability-driven batch and per-method lifecycle validity, runtime-session start and close, and the closed `SessionState` variants `AwaitingInitialization`, `AwaitingInitializedNotification`, `InitializedAndReady`, and `Closed`. Initialization selection exists only in initialized variants, and termination data exists only in `Closed`. |
 | `crates/volicord-mcp/src/binding.rs` | Runtime Home resolution, repository discovery, Connection/project preflight and binding, and managed Codex session/thread/turn correlation. |
-| `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list` and `tools/call` parameter decoding, canonical tool selection, adapter/Core invocation, and the current single-sourced mutation and User Action result projection. It does not frame transport messages. |
-| `crates/volicord-mcp/src/telemetry.rs` | Runtime-session finding persistence, diagnostic-session and workflow-metric persistence, and bounded best-effort handling for diagnostics-carrier failures where the contract permits it. |
+| `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list` and `tools/call` parameter decoding, canonical tool selection, adapter/Core invocation, and shared canonical tool-result carrier assembly. It does not frame transport messages or own mutation, recovery, UserAction, or metric projection. |
+| `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail selection, effect anchoring, compact method-result projection, fresh-authority composition, and capability-driven normal result-budget enforcement. |
+| `crates/volicord-mcp/src/authority_refresh.rs` | Post-mutation Agent Session binding, current authority reread, coordinate validation, and extraction of the fresh authority receipt and next actions. |
+| `crates/volicord-mcp/src/committed_result_recovery.rs` | Capability-selected, authority-first bounded recovery after committed mutation projection, refresh, or post-effect failures without mutation retry. |
+| `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction coordinate extraction, current-state reread, compound safe result projection, and CLI inbox fallback attachment. |
+| `crates/volicord-mcp/src/telemetry.rs` | Runtime-session finding and diagnostic-event persistence plus bounded best-effort handling for diagnostic-carrier failures where the contract permits it. |
+| `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic-session establishment and session-scoped tools-list, method-call, and status-reread workflow metrics. |
 | `crates/volicord-mcp/src/adapter.rs` | Retained pre-operation routing identity, live mutation-context correlation, context-bound Core invocation APIs, plus managed in-chat begin/probe/get integration-verification orchestration outside Core that serializes the Store-owned workflow projection without adapter-local state derivation. |
 | `crates/volicord-mcp/src/constants.rs` | MCP initialize instructions for the user-level verification request, nested workflow-directed sequence, stop rules, unavailable boundary, and optional active diagnostics. |
-| `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed schemas, annotations, effects descriptions, metadata, and method lookup into canonical tool definitions/results, including the three Connection-integration tools; raw revision-specific wire-name projection through the selected protocol profile; and construction of the explicit-server, collision-checked Codex callable catalog. |
+| `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed schemas, annotations, effects descriptions, metadata, and method lookup into canonical tool definitions/results, including the three Connection-integration tools; semantic-capability-only wire projection; and construction of the explicit-server, collision-checked Codex callable catalog. |
 | `crates/volicord-mcp/src/schema_validation.rs` | Public schema validation. |
 | `crates/volicord-mcp/src/routing.rs` | Bound Product Repository discovery, current Connection/project routing, and preflight diagnostic projection of server/raw/callable identities from the canonical catalog. |
 
@@ -210,6 +215,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization ordering, rejection, shutdown, and EOF contracts. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch ordering, notification, and response contracts. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection and schema compatibility contracts. |
+| `crates/volicord-mcp/tests/protocol_conformance.rs` | The single executable production-profile harness for common initialize, lifecycle, schema, discovery, result-carrier, rejection, batching, and shutdown scenarios. |
 | `crates/volicord-mcp/src/tests/tool_calls.rs` | Tool dispatch, result, error, and storage-capability contracts. |
 | `crates/volicord-mcp/src/tests/managed_host_observation.rs` | Lease-bound managed launch, process-environment non-authority, runtime-source routing, session binding, and host-observation contracts. |
 | `crates/volicord-mcp/src/tests/diagnostics.rs` | Diagnostic persistence and workflow-metric contracts. |

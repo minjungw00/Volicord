@@ -1,10 +1,17 @@
-//! Public tool-call decoding, adapter dispatch, and the current single-sourced
-//! result projection implementation.
+//! Public tool-call decoding, adapter dispatch, and shared tool-result carrier.
 
 use crate::adapter::{McpAdapter, OwnedAgentSessionCoordinates};
+use crate::authority_refresh::MutationRefreshContext;
 use crate::binding::{
     bind_codex_managed_tool_call, managed_agent_session_binding,
     validate_managed_stdio_session_ownership_admitted,
+};
+use crate::committed_result_recovery::bounded_mutation_compatibility_text;
+#[cfg(test)]
+use crate::committed_result_recovery::{
+    authoritative_refresh_failure_output, mutation_post_effect_failure_output,
+    mutation_response_budget_exceeded_output, CanonicalMcpMutationOutcome,
+    MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::diagnostics::{McpDiagnostic, McpToolCallDiagnostic};
 use crate::errors::{bound_mcp_tool_error_issue, McpAdapterError};
@@ -13,61 +20,49 @@ use crate::json_rpc::{
 };
 use crate::lifecycle::SessionRuntime;
 #[cfg(test)]
+use crate::mutation_projection::{
+    compact_mutation_method_result, finalize_mutation_output_with_refresh,
+    MAX_MCP_FULL_MUTATION_RESULT_BYTES,
+};
+use crate::mutation_projection::{
+    finalize_mutation_output, mutation_detail_for_tool, mutation_effect_anchor,
+    response_kind_from_structured_content, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+};
+#[cfg(test)]
 use crate::prelude::*;
 #[cfg(test)]
 use crate::routing::McpConnectionContext;
 use crate::schema_validation::validate_mcp_tool_output;
-use crate::telemetry::{
-    authoritative_observation_timestamp, record_tool_diagnostic_best_effort,
-    record_tools_list_metric_best_effort, start_transport_diagnostic_session, ToolDiagnosticFacts,
+use crate::session_metrics::{
+    record_tools_list_metric_best_effort, start_transport_diagnostic_session,
 };
-use crate::tool_registry::{method_name_for_tool, CanonicalContent, CanonicalToolResult};
+use crate::telemetry::{
+    authoritative_observation_timestamp, record_tool_diagnostic_best_effort, ToolDiagnosticFacts,
+};
+use crate::tool_registry::{CanonicalContent, CanonicalToolResult};
+use crate::user_action_projection::{user_action_tool_output, UserActionFallback};
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Instant};
-use volicord_core::pipeline::{CoreService, PipelineResponse};
-use volicord_core::{
-    validate_authority_status, AuthorityStatusExpectation, CurrentUserActionProjection,
-};
-use volicord_mcp_protocol::McpProtocolProfile;
+use volicord_core::pipeline::PipelineResponse;
+use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
 use volicord_store::agent_connections::{
     agent_connection_record_read_only, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
 };
-use volicord_store::diagnostics::{DiagnosticFallbackKind, DiagnosticOutcome};
+use volicord_store::diagnostics::DiagnosticOutcome;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_store::operational_sessions::{
     record_mcp_tools_list, record_mcp_verification_tool_observation,
 };
-use volicord_types::ids::{ProjectId, RecordId, TaskId, UserActionRequestId};
 use volicord_types::methods::{
-    McpAuthoritativeRefreshFailure, McpMutationEffectSummary, McpMutationFullResponse,
-    McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
-    McpMutationResponseBudgetExceeded, McpMutationSummaryResponse, McpMutationWorkflowResponse,
-    McpPostEffectFailureCode, McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteCompactResult,
-    McpReconcileChangesCompactResult, McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult,
-    McpRequestUserActionCompactResult, McpRequestUserActionResponse, McpStageArtifactCompactResult,
-    McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode,
-    OperationResultRef, PrepareEvidenceCaptureResult, PrepareWriteResult, ReconcileChangesResult,
-    RecordRunResult, RequestUserActionResponse, RequestUserActionResult, StageArtifactResult,
-    MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
+    McpPostEffectFailureCode, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
+    McpToolIssueCode, OperationResultRef, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
 };
-use volicord_types::schema::{
-    AuthorityReceipt, NextActionSummary, RequiredNullable, StateRecordRef, ToolResultBase,
-};
-use volicord_types::tool_names::{
-    AgentToolCategory, AgentToolId, AgentToolOwner, ToolVerificationRole,
-};
+use volicord_types::tool_names::{AgentToolId, AgentToolOwner, ToolVerificationRole};
 #[cfg(test)]
 use volicord_types::values::MethodName;
-use volicord_types::values::{
-    AgentConnectionMode, EffectKind, ErrorCode, MutationDetailLevel, StateRecordKind,
-    UserActionStatus,
-};
-
-pub(crate) const MAX_MCP_COMPACT_MUTATION_RESULT_BYTES: usize = 65_536;
-pub(crate) const MAX_MCP_FULL_MUTATION_RESULT_BYTES: usize = 256 * 1024;
-pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
+use volicord_types::values::{AgentConnectionMode, EffectKind};
 
 pub(crate) fn list_tools_result(
     context: &RuntimeHomeMutationContext<'_>,
@@ -75,7 +70,7 @@ pub(crate) fn list_tools_result(
     id: &Value,
     params: Option<Value>,
     runtime: &mut SessionRuntime,
-    selected_profile: &'static McpProtocolProfile,
+    capabilities: McpProtocolCapabilities,
 ) -> Result<Result<Value, Value>, McpAdapterError> {
     if let Err(error) = crate::json_rpc::validate_optional_object_params(id, params, "tools/list") {
         runtime.pending_finding = Some(McpDiagnostic::ToolDiscovery(
@@ -102,7 +97,7 @@ pub(crate) fn list_tools_result(
     }
     let tools = canonical_tools
         .iter()
-        .map(|tool| tool.project(selected_profile))
+        .map(|tool| tool.project(capabilities))
         .collect::<Vec<_>>();
     let result = json!({ "tools": tools });
     if !runtime.runtime_session_id.is_empty() {
@@ -197,7 +192,7 @@ pub(crate) fn call_tool_result(
     id: &Value,
     params: Option<Value>,
     state: &mut SessionRuntime,
-    selected_profile: &'static McpProtocolProfile,
+    capabilities: McpProtocolCapabilities,
 ) -> Result<Result<Value, Value>, McpAdapterError> {
     let diagnostic_started = Instant::now();
     let diagnostic_request_bytes = params
@@ -374,16 +369,13 @@ pub(crate) fn call_tool_result(
                 }
             }
             Ok(response) if tool == AgentToolId::GET_OPERATION_RESULT => {
-                ToolCallOutput::from_operation_result_response_for_profile(
-                    &response,
-                    selected_profile,
-                )?
+                ToolCallOutput::from_operation_result_response(&response, capabilities)?
             }
             Ok(response) => ToolCallOutput::from_pipeline_response(&response)?,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
-                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
+                    tool_execution_error_result_for_capabilities(tool_name, &error, capabilities);
                 record_tool_diagnostic_best_effort(
                     context,
                     adapter,
@@ -401,7 +393,7 @@ pub(crate) fn call_tool_result(
             Err(error @ McpAdapterError::ToolExecution { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
-                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
+                    tool_execution_error_result_for_capabilities(tool_name, &error, capabilities);
                 record_tool_diagnostic_best_effort(
                     context,
                     adapter,
@@ -446,7 +438,7 @@ pub(crate) fn call_tool_result(
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
-                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
+                    tool_execution_error_result_for_capabilities(tool_name, &error, capabilities);
                 record_tool_diagnostic_best_effort(
                     context,
                     adapter,
@@ -464,7 +456,7 @@ pub(crate) fn call_tool_result(
             Err(error @ McpAdapterError::ToolExecution { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
-                    tool_execution_error_result_for_profile(tool_name, &error, selected_profile);
+                    tool_execution_error_result_for_capabilities(tool_name, &error, capabilities);
                 record_tool_diagnostic_best_effort(
                     context,
                     adapter,
@@ -523,7 +515,7 @@ pub(crate) fn call_tool_result(
         context,
         adapter,
         state,
-        selected_profile,
+        capabilities,
         tool_name,
         mutation_detail,
         output,
@@ -552,7 +544,7 @@ pub(crate) fn call_tool_result(
         )
         .map_err(McpAdapterError::Store)?;
     }
-    let response = tool_call_result_from_output_for_profile(tool_name, output, selected_profile)?;
+    let response = tool_call_result_from_output_for_capabilities(tool_name, output, capabilities)?;
     record_tool_diagnostic_best_effort(
         context,
         adapter,
@@ -568,153 +560,20 @@ pub(crate) fn call_tool_result(
     Ok(Ok(response))
 }
 
-fn mutation_detail_for_tool(tool: AgentToolId, arguments: &Value) -> Option<MutationDetailLevel> {
-    (matches!(tool.owner(), AgentToolOwner::CoreMethod(_))
-        && matches!(
-            tool.category(),
-            AgentToolCategory::NonDestructiveMutation | AgentToolCategory::DestructiveMutation
-        ))
-    .then(|| {
-        arguments
-            .get("detail")
-            .cloned()
-            .and_then(|value| serde_json::from_value(value).ok())
-            .unwrap_or_default()
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MutationRefreshContext {
-    project_id: ProjectId,
-    task_id: TaskId,
-}
-
-impl MutationRefreshContext {
-    fn from_pipeline_response(response: &PipelineResponse) -> Option<Self> {
-        Some(Self {
-            project_id: response.verified_invocation.as_ref()?.project_id.clone(),
-            task_id: response.resolved_task_id.clone()?,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct CanonicalMcpMutationOutcome {
-    tool_name: String,
-    profile: &'static McpProtocolProfile,
-    requested_detail: MutationDetailLevel,
-    facts: ToolDiagnosticFacts,
-    exact_method_result: Option<Value>,
-    compact_method_result: Option<Value>,
-    operation_result_ref: Option<OperationResultRef>,
-    authority_receipt: Option<AuthorityReceipt>,
-    next_actions: Vec<NextActionSummary>,
-}
-
-impl CanonicalMcpMutationOutcome {
-    fn new(
-        tool_name: &str,
-        profile: &'static McpProtocolProfile,
-        requested_detail: MutationDetailLevel,
-        facts: ToolDiagnosticFacts,
-        exact_method_result: Option<Value>,
-        operation_result_ref: Option<OperationResultRef>,
-    ) -> Self {
-        let compact_method_result = exact_method_result
-            .as_ref()
-            .and_then(|result| compact_mutation_method_result(tool_name, result).ok());
-        Self {
-            tool_name: tool_name.to_owned(),
-            profile,
-            requested_detail,
-            facts,
-            exact_method_result,
-            compact_method_result,
-            operation_result_ref,
-            authority_receipt: None,
-            next_actions: Vec::new(),
-        }
-    }
-
-    fn set_authority_refresh(
-        &mut self,
-        authority_receipt: AuthorityReceipt,
-        next_actions: Vec<NextActionSummary>,
-    ) {
-        self.authority_receipt = Some(authority_receipt);
-        self.next_actions = next_actions;
-    }
-
-    fn recovery_candidates(
-        &self,
-        include_exact: bool,
-    ) -> [Option<MutationRecoveryCandidate<'_>>; 5] {
-        let receipt_and_exact = if include_exact {
-            self.authority_receipt
-                .as_ref()
-                .zip(self.exact_method_result.as_ref())
-                .map(|(receipt, method_result)| MutationRecoveryCandidate {
-                    authority_receipt: Some(receipt),
-                    method_result: Some(method_result),
-                })
-        } else {
-            None
-        };
-        let receipt_and_compact = self
-            .authority_receipt
-            .as_ref()
-            .zip(self.compact_method_result.as_ref())
-            .map(|(receipt, method_result)| MutationRecoveryCandidate {
-                authority_receipt: Some(receipt),
-                method_result: Some(method_result),
-            });
-        let receipt_only =
-            self.authority_receipt
-                .as_ref()
-                .map(|receipt| MutationRecoveryCandidate {
-                    authority_receipt: Some(receipt),
-                    method_result: None,
-                });
-        let compact_only =
-            self.compact_method_result
-                .as_ref()
-                .map(|method_result| MutationRecoveryCandidate {
-                    authority_receipt: None,
-                    method_result: Some(method_result),
-                });
-        [
-            receipt_and_exact,
-            receipt_and_compact,
-            receipt_only,
-            compact_only,
-            Some(MutationRecoveryCandidate {
-                authority_receipt: None,
-                method_result: None,
-            }),
-        ]
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct MutationRecoveryCandidate<'a> {
-    authority_receipt: Option<&'a AuthorityReceipt>,
-    method_result: Option<&'a Value>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ToolCallOutput {
-    primary_text: String,
-    structured_content: Value,
-    extra_texts: Vec<String>,
-    is_error: bool,
-    diagnostic_facts: ToolDiagnosticFacts,
-    operation_result_ref: Option<OperationResultRef>,
-    mutation_refresh_context: Option<MutationRefreshContext>,
-    post_effect_failure: Option<McpPostEffectFailureCode>,
+    pub(crate) primary_text: String,
+    pub(crate) structured_content: Value,
+    pub(crate) extra_texts: Vec<String>,
+    pub(crate) is_error: bool,
+    pub(crate) diagnostic_facts: ToolDiagnosticFacts,
+    pub(crate) operation_result_ref: Option<OperationResultRef>,
+    pub(crate) mutation_refresh_context: Option<MutationRefreshContext>,
+    pub(crate) post_effect_failure: Option<McpPostEffectFailureCode>,
 }
 
 impl ToolCallOutput {
-    fn success(primary_text: String) -> Result<Self, McpAdapterError> {
+    pub(crate) fn success(primary_text: String) -> Result<Self, McpAdapterError> {
         let structured_content: Value =
             serde_json::from_str(&primary_text).map_err(McpAdapterError::Json)?;
         if !structured_content.is_object() {
@@ -734,7 +593,9 @@ impl ToolCallOutput {
         })
     }
 
-    fn from_pipeline_response(response: &PipelineResponse) -> Result<Self, McpAdapterError> {
+    pub(crate) fn from_pipeline_response(
+        response: &PipelineResponse,
+    ) -> Result<Self, McpAdapterError> {
         let mut output = Self::success(response.response_json.clone())?;
         output.operation_result_ref = response.operation_result_ref.clone();
         output.apply_pipeline_diagnostics(response);
@@ -742,18 +603,20 @@ impl ToolCallOutput {
     }
 
     #[cfg(test)]
-    fn from_operation_result_response(
+    fn from_operation_result_response_for_test(
         response: &PipelineResponse,
     ) -> Result<Self, McpAdapterError> {
-        Self::from_operation_result_response_for_profile(
+        Self::from_operation_result_response(
             response,
-            ProtocolRegistry::production().preferred_server_profile(),
+            ProtocolRegistry::production()
+                .preferred_server_profile()
+                .capabilities(),
         )
     }
 
-    fn from_operation_result_response_for_profile(
+    fn from_operation_result_response(
         response: &PipelineResponse,
-        profile: &McpProtocolProfile,
+        capabilities: McpProtocolCapabilities,
     ) -> Result<Self, McpAdapterError> {
         let mut output = Self::from_pipeline_response(response)?;
         if output.structured_content["base"]["response_kind"].as_str() == Some("result") {
@@ -781,7 +644,7 @@ impl ToolCallOutput {
             output.primary_text = bounded_mutation_compatibility_text(format!(
                 "Volicord returned historical operation-result bytes [{start}, {end}); complete={complete}. Inspect chunk_utf8 in the authoritative result and do not treat historical bytes as current authority."
             ));
-            if rendered_tool_call_output_size_for_profile(&output, profile)?
+            if rendered_tool_call_output_size_for_capabilities(&output, capabilities)?
                 > MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
             {
                 return Err(McpAdapterError::Protocol(
@@ -792,7 +655,7 @@ impl ToolCallOutput {
         Ok(output)
     }
 
-    fn with_operation_result_ref(
+    pub(crate) fn with_operation_result_ref(
         mut self,
         operation_result_ref: Option<OperationResultRef>,
     ) -> Self {
@@ -800,7 +663,7 @@ impl ToolCallOutput {
         self
     }
 
-    fn with_pipeline_diagnostics(mut self, response: &PipelineResponse) -> Self {
+    pub(crate) fn with_pipeline_diagnostics(mut self, response: &PipelineResponse) -> Self {
         self.operation_result_ref = response.operation_result_ref.clone();
         self.apply_pipeline_diagnostics(response);
         self
@@ -835,7 +698,7 @@ impl ToolCallOutput {
         self
     }
 
-    fn with_user_action_fallback(mut self, fallback: UserActionFallback) -> Self {
+    pub(crate) fn with_user_action_fallback(mut self, fallback: UserActionFallback) -> Self {
         self.diagnostic_facts.fallback_kind = Some(fallback.kind);
         self.extra_texts.extend(fallback.texts);
         self
@@ -846,690 +709,37 @@ impl ToolCallOutput {
     }
 }
 
-fn mutation_effect_anchor(response: &PipelineResponse) -> Option<String> {
-    if let Some(event_id) = response
-        .response_value
-        .pointer("/base/events/0/event_id")
-        .and_then(Value::as_str)
-    {
-        return Some(format!("authority_event:{event_id}"));
-    }
-    if let Some(handle_id) = response
-        .response_value
-        .pointer("/staged_artifact_handle/handle_id")
-        .and_then(Value::as_str)
-    {
-        return Some(format!("staged_artifact:{handle_id}"));
-    }
-    let effect_kind = response
-        .response_value
-        .pointer("/base/effect_kind")
-        .and_then(Value::as_str)?;
-    if !matches!(effect_kind, "core_committed" | "staging_created") {
-        return None;
-    }
-    let project_id = response.verified_invocation.as_ref()?.project_id.as_str();
-    let state_version = response
-        .response_value
-        .pointer("/base/state_version")
-        .and_then(Value::as_u64)?;
-    Some(format!("state_effect:{project_id}:{state_version}"))
-}
-
-fn finalize_mutation_output(
-    mutation_context: &RuntimeHomeMutationContext<'_>,
-    adapter: &McpAdapter,
-    state: &SessionRuntime,
-    profile: &'static McpProtocolProfile,
-    tool_name: &str,
-    detail: Option<MutationDetailLevel>,
-    output: ToolCallOutput,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let binding = managed_agent_session_binding(&state.codex_binding, &state.runtime_session_id);
-    finalize_mutation_output_with_refresh_for_profile(
-        tool_name,
-        profile,
-        detail,
-        output,
-        |context| {
-            let coordinates = binding
-                .as_ref()
-                .map(|binding| {
-                    adapter.ensure_agent_session_binding(
-                        mutation_context,
-                        &context.project_id,
-                        binding,
-                    )
-                })
-                .transpose()?;
-            adapter.refresh_authority_status(
-                mutation_context,
-                &context.project_id,
-                &context.task_id,
-                coordinates.as_ref().map(|value| value.borrowed()),
-            )
-        },
-    )
-}
-
-#[cfg(test)]
-fn finalize_mutation_output_with_refresh<F>(
-    tool_name: &str,
-    detail: Option<MutationDetailLevel>,
-    output: ToolCallOutput,
-    refresh: F,
-) -> Result<ToolCallOutput, McpAdapterError>
-where
-    F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
-{
-    finalize_mutation_output_with_refresh_for_profile(
-        tool_name,
-        ProtocolRegistry::production().preferred_server_profile(),
-        detail,
-        output,
-        refresh,
-    )
-}
-
-fn finalize_mutation_output_with_refresh_for_profile<F>(
-    tool_name: &str,
-    profile: &'static McpProtocolProfile,
-    detail: Option<MutationDetailLevel>,
-    mut output: ToolCallOutput,
-    refresh: F,
-) -> Result<ToolCallOutput, McpAdapterError>
-where
-    F: FnOnce(&MutationRefreshContext) -> Result<PipelineResponse, McpAdapterError>,
-{
-    let Some(detail) = detail else {
-        return Ok(output);
-    };
-    if output.is_error {
-        return Ok(output);
-    }
-    if response_kind_from_structured_content(&output.structured_content) != Some("result") {
-        output.primary_text = bounded_mutation_compatibility_text(format!(
-            "Volicord {tool_name} returned response_kind={}; inspect the authoritative result carrier.",
-            response_kind_from_structured_content(&output.structured_content)
-                .unwrap_or("unknown")
-        ));
-        return Ok(output);
-    }
-
-    let original_method_result = std::mem::take(&mut output.structured_content);
-    let operation_result_ref = output.operation_result_ref.clone();
-    let mut outcome = CanonicalMcpMutationOutcome::new(
-        tool_name,
-        profile,
-        detail,
-        output.diagnostic_facts.clone(),
-        Some(original_method_result),
-        operation_result_ref,
-    );
-    let Some(context) = output.mutation_refresh_context.clone() else {
-        return authoritative_refresh_failure_output(&outcome);
-    };
-    let (receipt, next_actions) = match refresh(&context) {
-        Ok(response) => match validated_authority_refresh(&context, &response) {
-            Ok(refreshed) => refreshed,
-            Err(()) => return authoritative_refresh_failure_output(&outcome),
-        },
-        Err(_) => return authoritative_refresh_failure_output(&outcome),
-    };
-    outcome.set_authority_refresh(receipt, next_actions);
-    let authority_receipt = outcome
-        .authority_receipt
-        .as_ref()
-        .expect("validated canonical mutation outcome requires an authority receipt");
-
-    if let Some(code) = output.post_effect_failure {
-        return mutation_post_effect_failure_output(&outcome, code);
-    }
-    output.primary_text = match authority_receipt_compatibility_text(tool_name, authority_receipt) {
-        Ok(text) => text,
-        Err(_) => {
-            return mutation_post_effect_failure_output(
-                &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
-            )
-        }
-    };
-    output.mutation_refresh_context = None;
-    let Some(compact_method_result) = outcome.compact_method_result.clone() else {
-        return mutation_post_effect_failure_output(
-            &outcome,
-            McpPostEffectFailureCode::McpResponseProjectionFailed,
-        );
-    };
-    let method_result = match detail {
-        MutationDetailLevel::Full => outcome
-            .exact_method_result
-            .clone()
-            .expect("canonical mutation outcome requires an exact result"),
-        MutationDetailLevel::Summary | MutationDetailLevel::Workflow => compact_method_result,
-    };
-    let projected = match detail {
-        MutationDetailLevel::Summary => serde_json::to_value(McpMutationSummaryResponse {
-            operation_result_ref: outcome.operation_result_ref.clone().into(),
-            authority_receipt: authority_receipt.clone(),
-            method_result,
-        }),
-        MutationDetailLevel::Workflow => serde_json::to_value(McpMutationWorkflowResponse {
-            operation_result_ref: outcome.operation_result_ref.clone().into(),
-            authority_receipt: authority_receipt.clone(),
-            method_result,
-            next_actions: outcome.next_actions.clone(),
-        }),
-        MutationDetailLevel::Full => serde_json::to_value(McpMutationFullResponse {
-            operation_result_ref: outcome.operation_result_ref.clone().into(),
-            authority_receipt: authority_receipt.clone(),
-            method_result,
-        }),
-    };
-    output.structured_content = match projected {
-        Ok(projected) => projected,
-        Err(_) => {
-            return mutation_post_effect_failure_output(
-                &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
-            )
-        }
-    };
-
-    let result = tool_call_result_from_output_for_profile(tool_name, output.clone(), profile)?;
-    let response_budget = match detail {
-        MutationDetailLevel::Summary | MutationDetailLevel::Workflow => {
-            MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
-        }
-        MutationDetailLevel::Full => MAX_MCP_FULL_MUTATION_RESULT_BYTES,
-    };
-    let rendered_size = match serde_json::to_vec(&result) {
-        Ok(rendered) => rendered.len(),
-        Err(_) => {
-            return mutation_post_effect_failure_output(
-                &outcome,
-                McpPostEffectFailureCode::McpResponseProjectionFailed,
-            )
-        }
-    };
-    if rendered_size > response_budget {
-        return mutation_response_budget_exceeded_output(&outcome);
-    }
-    Ok(output)
-}
-
-fn response_kind_from_structured_content(value: &Value) -> Option<&str> {
-    value
-        .pointer("/agent_workflow_result/base/response_kind")
-        .or_else(|| value.pointer("/base/response_kind"))
-        .and_then(Value::as_str)
-}
-
-fn compact_mutation_method_result(
-    tool_name: &str,
-    method_result: &Value,
-) -> Result<Value, McpAdapterError> {
-    let effect = compact_mutation_effect(method_result)?;
-    let tool = AgentToolId::from_wire_name(tool_name)
-        .map_err(|_| McpAdapterError::UnknownTool(tool_name.to_owned()))?;
-    match tool {
-        AgentToolId::PREPARE_EVIDENCE_CAPTURE => {
-            let result: PrepareEvidenceCaptureResult =
-                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            serde_json::to_value(McpPrepareEvidenceCaptureCompactResult {
-                effect,
-                capture_intent_ref: result.capture_intent_ref,
-                capture_intent: result.capture_intent,
-                expires_at: result.expires_at,
-            })
-            .map_err(McpAdapterError::Json)
-        }
-        AgentToolId::PREPARE_WRITE => {
-            let result: PrepareWriteResult =
-                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            serde_json::to_value(McpPrepareWriteCompactResult {
-                effect,
-                decision: result.decision,
-                write_ticket_id: result.write_ticket_id,
-                write_ticket_ref: result.write_ticket_ref,
-                write_ticket: result.write_ticket,
-                write_ticket_effect: result.write_ticket_effect,
-                allowed_path_patterns: result.allowed_path_patterns,
-                denied_path_patterns: result.denied_path_patterns,
-                write_decision_reasons: result.write_decision_reasons,
-                user_action_draft: result.user_action_draft,
-            })
-            .map_err(McpAdapterError::Json)
-        }
-        AgentToolId::STAGE_ARTIFACT => {
-            let result: StageArtifactResult =
-                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            serde_json::to_value(McpStageArtifactCompactResult {
-                effect,
-                evidence_state: result.evidence_state,
-                staged_artifact_handle: result.staged_artifact_handle,
-                expires_at: result.expires_at,
-            })
-            .map_err(McpAdapterError::Json)
-        }
-        AgentToolId::RECORD_RUN => {
-            let result: RecordRunResult =
-                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            let evidence_observation_refs = result
-                .evidence_observations
-                .iter()
-                .map(|observation| StateRecordRef {
-                    record_kind: StateRecordKind::EvidenceObservation,
-                    record_id: RecordId::new(observation.observation_id.as_str()),
-                    project_id: observation.project_id.clone(),
-                    task_id: Some(observation.task_id.clone()).into(),
-                    produced_at_state_version: effect.state_version.into(),
-                })
-                .collect();
-            let evidence_producer_refs = result
-                .evidence_producers
-                .iter()
-                .map(|producer| StateRecordRef {
-                    record_kind: StateRecordKind::EvidenceProducer,
-                    record_id: RecordId::new(producer.evidence_producer_id.as_str()),
-                    project_id: producer.project_id.clone(),
-                    task_id: Some(producer.task_id.clone()).into(),
-                    produced_at_state_version: effect.state_version.into(),
-                })
-                .collect();
-            let close_basis_anchor =
-                result
-                    .current_close_basis
-                    .map(|basis| McpRecordRunCloseBasisAnchor {
-                        close_basis_revision: basis.close_basis_revision,
-                        scope_revision: basis.scope_revision,
-                        source_run_ref: basis.source_run_ref,
-                        evidence_summary_ref: basis.evidence_summary_ref,
-                    });
-            serde_json::to_value(McpRecordRunCompactResult {
-                effect,
-                run_ref: result.run_summary.run_ref,
-                registered_artifact_refs: result.registered_artifacts,
-                evidence_observation_refs,
-                evidence_producer_refs,
-                close_basis_anchor: close_basis_anchor.into(),
-            })
-            .map_err(McpAdapterError::Json)
-        }
-        AgentToolId::REQUEST_USER_ACTION => {
-            compact_request_user_action_result(effect, method_result)
-        }
-        AgentToolId::RECONCILE_CHANGES => {
-            let result: ReconcileChangesResult =
-                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-            serde_json::to_value(McpReconcileChangesCompactResult {
-                effect,
-                unresolved_changes: result.unresolved_changes,
-                resolved_changes: result.resolved_changes,
-                pending_user_action_summaries: result.pending_user_action_summaries,
-                rejected_resolution_requests: result.rejected_resolution_requests,
-            })
-            .map_err(McpAdapterError::Json)
-        }
-        AgentToolId::INTAKE | AgentToolId::UPDATE_SCOPE | AgentToolId::CLOSE_TASK => {
-            serde_json::to_value(effect).map_err(McpAdapterError::Json)
-        }
-        _ => Err(McpAdapterError::Protocol(format!(
-            "missing compact mutation result projection for {tool_name}"
-        ))),
-    }
-}
-
-fn compact_mutation_effect(
-    method_result: &Value,
-) -> Result<McpMutationEffectSummary, McpAdapterError> {
-    let method_result = method_result
-        .get("agent_workflow_result")
-        .unwrap_or(method_result);
-    let base: ToolResultBase =
-        serde_json::from_value(method_result["base"].clone()).map_err(McpAdapterError::Json)?;
-    Ok(McpMutationEffectSummary {
-        effect_kind: base.effect_kind,
-        state_version: base.state_version,
-        events: base.events,
-    })
-}
-
-fn compact_request_user_action_result(
-    effect: McpMutationEffectSummary,
-    method_result: &Value,
-) -> Result<Value, McpAdapterError> {
-    let compound: McpRequestUserActionResponse =
-        serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
-    let agent_result = match compound.agent_workflow_result {
-        volicord_types::schema::ToolResponse::Result(result) => result,
-        _ => {
-            return Err(McpAdapterError::Protocol(
-                "request-user-action compact projection requires a result branch".to_owned(),
-            ))
-        }
-    };
-    let resolution_summary = compound
-        .user_channel_resolution
-        .as_ref()
-        .map(|resolution| resolution.resolution_summary.clone());
-    serde_json::to_value(McpRequestUserActionCompactResult {
-        effect,
-        agent_workflow_result_replayed: compound.agent_workflow_result_replayed,
-        user_action_request_summary: agent_result.user_action_request_summary,
-        current_projection_state_version: compound.current_projection_state_version,
-        current_projection_observed_at: compound.current_projection_observed_at,
-        user_action_resolution_ref: compound.user_channel_resolution_ref,
-        status: compound.current_status,
-        resolution_summary: resolution_summary.into(),
-        derived_refs: compound.derived_refs,
-    })
-    .map_err(McpAdapterError::Json)
-}
-
-fn validated_authority_refresh(
-    context: &MutationRefreshContext,
-    response: &PipelineResponse,
-) -> Result<(AuthorityReceipt, Vec<NextActionSummary>), ()> {
-    validate_authority_status(
-        &response.response_value,
-        &AuthorityStatusExpectation::new(context.project_id.clone(), context.task_id.clone()),
-    )
-    .map_err(|_| ())
-    .map(|validated| validated.into_authority_projection())
-}
-
-fn authority_receipt_compatibility_text(
-    tool_name: &str,
-    receipt: &AuthorityReceipt,
-) -> Result<String, McpAdapterError> {
-    let close_state = serde_json::to_value(receipt.close_state)
-        .map_err(McpAdapterError::Json)?
-        .as_str()
-        .unwrap_or("unknown")
-        .to_owned();
-    let next_actor = serde_json::to_value(receipt.next_actor)
-        .map_err(McpAdapterError::Json)?
-        .as_str()
-        .unwrap_or("unknown")
-        .to_owned();
-    Ok(bounded_mutation_compatibility_text(format!(
-        "Volicord {tool_name} refreshed Task {} at state_version {}; close_state={close_state}; next_actor={next_actor}. Inspect the authoritative result for the authority receipt.",
-        receipt.task_ref.record_id.as_str(),
-        receipt.state_version,
-    )))
-}
-
-fn select_bounded_mutation_recovery<F>(
-    outcome: &CanonicalMcpMutationOutcome,
-    include_exact: bool,
-    exhausted_message: &'static str,
-    build_output: F,
-) -> Result<ToolCallOutput, McpAdapterError>
-where
-    F: Fn(&MutationRecoveryCandidate<'_>) -> Result<ToolCallOutput, McpAdapterError>,
-{
-    for candidate in outcome
-        .recovery_candidates(include_exact)
-        .into_iter()
-        .flatten()
-    {
-        let output = build_output(&candidate)?;
-        if rendered_tool_call_output_size_for_profile(&output, outcome.profile)?
-            <= MAX_MCP_COMPACT_MUTATION_RESULT_BYTES
-        {
-            return Ok(output);
-        }
-    }
-    Err(McpAdapterError::Protocol(exhausted_message.to_owned()))
-}
-
-fn mutation_response_budget_exceeded_output(
-    outcome: &CanonicalMcpMutationOutcome,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let tool_name = outcome.tool_name.as_str();
-    let requested_detail = outcome.requested_detail;
-    let method_name = method_name_for_tool(tool_name).ok_or_else(|| {
-        McpAdapterError::Protocol(format!(
-            "missing MethodName mapping for mutation tool {tool_name}"
-        ))
-    })?;
-    let requested_detail_label = match requested_detail {
-        MutationDetailLevel::Summary => "summary",
-        MutationDetailLevel::Workflow => "workflow",
-        MutationDetailLevel::Full => "full",
-    };
-    let mut facts = outcome.facts.clone();
-    facts.authoritative_refresh_failure = false;
-    let build_output =
-        |candidate: &MutationRecoveryCandidate<'_>| -> Result<ToolCallOutput, McpAdapterError> {
-            let receipt_preserved = candidate.authority_receipt.is_some();
-            let method_result_preserved = candidate.method_result.is_some();
-            let structured_content =
-                serde_json::to_value(McpMutationResponseBudgetExceeded::<Value> {
-                    code: McpMutationProjectionErrorCode::McpResponseBudgetExceeded,
-                    tool_name: method_name,
-                    requested_detail,
-                    retryable: false,
-                    reached_core: facts.core_reached,
-                    committed: facts.core_committed,
-                    effect_kind: facts.effect_kind.into(),
-                    effect_applied: facts.effect_applied,
-                    effect_anchor: facts.effect_anchor.clone().into(),
-                    operation_result_ref: outcome.operation_result_ref.clone().into(),
-                    authority_receipt: candidate.authority_receipt.cloned().into(),
-                    method_result: RequiredNullable::new(candidate.method_result.cloned()),
-                    authoritative_refresh_succeeded: true,
-                    response_projection_omitted: true,
-                    status_read_required: true,
-                    completion_claim_withheld: true,
-                })
-                .map_err(McpAdapterError::Json)?;
-            let preserved_guidance = match (receipt_preserved, method_result_preserved) {
-                (true, true) => {
-                    "The fresh authority receipt and compact method_result are preserved"
-                }
-                (true, false) => {
-                    "The fresh authority receipt is preserved; the compact method_result exceeded the recovery budget"
-                }
-                (false, true) => {
-                    "The compact method_result is preserved; the fresh authority receipt exceeded the recovery budget"
-                }
-                (false, false) => {
-                    "The fresh authority receipt and compact method_result exceeded the recovery budget"
-                }
-            };
-            let exact_result_guidance = if outcome.operation_result_ref.is_some() {
-                " Retrieve the exact historical result with volicord.get_operation_result."
-            } else {
-                ""
-            };
-            Ok(ToolCallOutput {
-                primary_text: bounded_mutation_compatibility_text(format!(
-                    "Volicord {tool_name} reached Core (effect_applied={}, committed={}) and refreshed current authority, but the requested {requested_detail_label} projection exceeded the MCP response budget. {preserved_guidance}.{exact_result_guidance} Read volicord.status before making an authority claim. Do not retry this mutation.",
-                    facts.effect_applied, facts.core_committed
-                )),
-                structured_content,
-                extra_texts: Vec::new(),
-                is_error: false,
-                diagnostic_facts: facts.clone(),
-                operation_result_ref: outcome.operation_result_ref.clone(),
-                mutation_refresh_context: None,
-                post_effect_failure: None,
-            })
-        };
-    select_bounded_mutation_recovery(
-        outcome,
-        false,
-        "bounded mutation budget recovery exceeded its fixed output budget",
-        build_output,
-    )
-}
-
-fn mutation_post_effect_failure_output(
-    outcome: &CanonicalMcpMutationOutcome,
-    code: McpPostEffectFailureCode,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let tool_name = outcome.tool_name.as_str();
-    let requested_detail = outcome.requested_detail;
-    let method_name = method_name_for_tool(tool_name).ok_or_else(|| {
-        McpAdapterError::Protocol(format!(
-            "missing MethodName mapping for mutation tool {tool_name}"
-        ))
-    })?;
-    let mut facts = outcome.facts.clone();
-    facts.authoritative_refresh_failure = false;
-    let exact_result_guidance = if outcome.operation_result_ref.is_some() {
-        " Retrieve the exact historical result with volicord.get_operation_result."
-    } else {
-        ""
-    };
-    let build_output =
-        |candidate: &MutationRecoveryCandidate<'_>| -> Result<ToolCallOutput, McpAdapterError> {
-            let method_result = candidate
-                .method_result
-                .map(|method_result| {
-                    method_result.as_object().cloned().ok_or_else(|| {
-                        McpAdapterError::Protocol(
-                            "post-effect method_result must remain a JSON object".to_owned(),
-                        )
-                    })
-                })
-                .transpose()?;
-            let structured_content = serde_json::to_value(McpMutationPostEffectFailure {
-                code,
-                tool_name: method_name,
-                requested_detail,
-                retryable: false,
-                reached_core: facts.core_reached,
-                committed: facts.core_committed,
-                effect_kind: facts.effect_kind.into(),
-                effect_applied: facts.effect_applied,
-                effect_anchor: facts.effect_anchor.clone().into(),
-                operation_result_ref: outcome.operation_result_ref.clone().into(),
-                authority_receipt: candidate.authority_receipt.cloned().into(),
-                method_result: method_result.into(),
-                authoritative_refresh_succeeded: true,
-                response_projection_omitted: true,
-                status_read_required: true,
-                completion_claim_withheld: true,
-            })
-            .map_err(McpAdapterError::Json)?;
-            Ok(ToolCallOutput {
-                primary_text: bounded_mutation_compatibility_text(format!(
-                    "Volicord {tool_name} observed an applied mutation effect and refreshed current authority, but post-effect adapter work could not produce the normal response projection. Do not retry this mutation; inspect {exact_result_guidance} in the authoritative result. Read volicord.status before acting."
-                )),
-                structured_content,
-                extra_texts: Vec::new(),
-                is_error: false,
-                diagnostic_facts: facts.clone(),
-                operation_result_ref: outcome.operation_result_ref.clone(),
-                mutation_refresh_context: None,
-                post_effect_failure: None,
-            })
-        };
-    select_bounded_mutation_recovery(
-        outcome,
-        true,
-        "bounded post-effect recovery exceeded its fixed output budget",
-        build_output,
-    )
-}
-
 #[cfg(test)]
 fn rendered_tool_call_output_size(output: &ToolCallOutput) -> Result<usize, McpAdapterError> {
-    rendered_tool_call_output_size_for_profile(
+    rendered_tool_call_output_size_for_capabilities(
         output,
-        ProtocolRegistry::production().preferred_server_profile(),
+        ProtocolRegistry::production()
+            .preferred_server_profile()
+            .capabilities(),
     )
 }
 
-fn rendered_tool_call_output_size_for_profile(
+pub(crate) fn rendered_tool_call_output_size_for_capabilities(
     output: &ToolCallOutput,
-    profile: &McpProtocolProfile,
+    capabilities: McpProtocolCapabilities,
 ) -> Result<usize, McpAdapterError> {
     let canonical = canonical_tool_result_from_output(output);
-    let projected = canonical.project(profile).map_err(McpAdapterError::Json)?;
+    let projected = canonical
+        .project(capabilities)
+        .map_err(McpAdapterError::Json)?;
     serde_json::to_vec(projected.as_value())
         .map(|rendered| rendered.len())
         .map_err(McpAdapterError::Json)
 }
 
-fn authoritative_refresh_failure_output(
-    outcome: &CanonicalMcpMutationOutcome,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let tool_name = outcome.tool_name.as_str();
-    let method_name = method_name_for_tool(tool_name).ok_or_else(|| {
-        McpAdapterError::Protocol(format!(
-            "missing MethodName mapping for mutation tool {tool_name}"
-        ))
-    })?;
-    let mut facts = outcome.facts.clone();
-    facts.authoritative_refresh_failure = true;
-    let exact_result_guidance = if outcome.operation_result_ref.is_some() {
-        " Retrieve the exact historical result with volicord.get_operation_result, then"
-    } else {
-        ""
-    };
-    let build_output =
-        |candidate: &MutationRecoveryCandidate<'_>| -> Result<ToolCallOutput, McpAdapterError> {
-            let method_result_preserved = candidate.method_result.is_some();
-            let structured_content =
-                serde_json::to_value(McpAuthoritativeRefreshFailure::<Value> {
-                    code: ErrorCode::McpUnavailable,
-                    tool_name: method_name,
-                    retryable: false,
-                    reached_core: facts.core_reached,
-                    committed: facts.core_committed,
-                    effect_kind: facts.effect_kind.into(),
-                    effect_applied: facts.effect_applied,
-                    effect_anchor: facts.effect_anchor.clone().into(),
-                    operation_result_ref: outcome.operation_result_ref.clone().into(),
-                    method_result: RequiredNullable::new(candidate.method_result.cloned()),
-                    status_read_required: true,
-                    completion_claim_withheld: true,
-                })
-                .map_err(McpAdapterError::Json)?;
-            let method_result_guidance = if method_result_preserved {
-                "The compact method_result is preserved"
-            } else {
-                "The compact method_result could not be included"
-            };
-            Ok(ToolCallOutput {
-                primary_text: bounded_mutation_compatibility_text(format!(
-                    "Volicord withheld the {tool_name} success or completion claim because authoritative status refresh was unavailable. {method_result_guidance}.{exact_result_guidance} Read volicord.status before acting. Do not retry this mutation."
-                )),
-                structured_content,
-                extra_texts: Vec::new(),
-                is_error: false,
-                diagnostic_facts: facts.clone(),
-                operation_result_ref: outcome.operation_result_ref.clone(),
-                mutation_refresh_context: None,
-                post_effect_failure: None,
-            })
-        };
-    select_bounded_mutation_recovery(
-        outcome,
-        false,
-        "bounded authoritative refresh recovery exceeded its fixed output budget",
-        build_output,
-    )
-}
-
-fn bounded_mutation_compatibility_text(text: String) -> String {
-    if text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES {
-        return text;
-    }
-    "Volicord omitted an oversized compatibility summary without truncating it. Inspect the authoritative result carrier for the complete result."
-        .to_owned()
-}
-
 #[cfg(test)]
 pub(crate) fn tool_call_result_from_output(output: ToolCallOutput) -> Value {
-    tool_call_result_from_output_for_profile(
+    tool_call_result_from_output_for_capabilities(
         "volicord.test",
         output,
-        ProtocolRegistry::production().preferred_server_profile(),
+        ProtocolRegistry::production()
+            .preferred_server_profile()
+            .capabilities(),
     )
     .expect("canonical test tool result should project")
 }
@@ -1552,123 +762,18 @@ fn canonical_tool_result_from_output(output: &ToolCallOutput) -> CanonicalToolRe
     }
 }
 
-fn tool_call_result_from_output_for_profile(
+pub(crate) fn tool_call_result_from_output_for_capabilities(
     tool_name: &str,
     output: ToolCallOutput,
-    profile: &McpProtocolProfile,
+    capabilities: McpProtocolCapabilities,
 ) -> Result<Value, McpAdapterError> {
-    if profile.tools().structured_content() && is_known_mcp_tool(tool_name) {
+    if capabilities.tools().structured_content() && is_known_mcp_tool(tool_name) {
         validate_mcp_tool_output(tool_name, &output.structured_content)?;
     }
     canonical_tool_result_from_output(&output)
-        .project(profile)
+        .project(capabilities)
         .map(|projected| projected.into_value())
         .map_err(McpAdapterError::Json)
-}
-
-pub(crate) fn user_action_tool_output(
-    context: &RuntimeHomeMutationContext<'_>,
-    adapter: &McpAdapter,
-    pending_response: PipelineResponse,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let Some(coordinate) = pending_user_action_coordinate_from_response(&pending_response)? else {
-        return ToolCallOutput::from_pipeline_response(&pending_response);
-    };
-    adapter.admitted_runtime_home(context)?;
-    let current = current_user_action_projection_for_coordinate(context, &coordinate)?;
-    let mut output = compound_user_action_output(&pending_response, &current)?;
-    if current.status == UserActionStatus::Pending {
-        output = output.with_user_action_fallback(cli_recovery_fallback());
-    }
-    Ok(output)
-}
-
-fn compound_user_action_output(
-    pending_response: &PipelineResponse,
-    current: &CurrentUserActionProjection,
-) -> Result<ToolCallOutput, McpAdapterError> {
-    let compound = McpRequestUserActionResponse {
-        agent_workflow_result: serde_json::from_value::<RequestUserActionResponse>(
-            pending_response.response_value.clone(),
-        )
-        .map_err(McpAdapterError::Json)?,
-        agent_workflow_result_replayed: pending_response.replayed,
-        current_projection_state_version: current.observed_state_version,
-        current_projection_observed_at: current.observed_at.clone(),
-        current_status: current.status,
-        user_channel_resolution_ref: current.user_action_resolution_ref.clone().into(),
-        user_channel_resolution: current.user_action_resolution.clone().into(),
-        derived_refs: current.derived_refs.clone(),
-    };
-    let response_value = serde_json::to_value(compound).map_err(McpAdapterError::Json)?;
-    let response_json = serde_json::to_string(&response_value).map_err(McpAdapterError::Json)?;
-    Ok(ToolCallOutput::success(response_json)?
-        .with_operation_result_ref(pending_response.operation_result_ref.clone())
-        .with_pipeline_diagnostics(pending_response))
-}
-
-fn current_user_action_projection_for_coordinate(
-    context: &RuntimeHomeMutationContext<'_>,
-    coordinate: &PendingUserActionCoordinate,
-) -> Result<CurrentUserActionProjection, McpAdapterError> {
-    let current = CoreService::for_mutation(context)
-        .current_user_action_projection(&coordinate.project_id, &coordinate.user_action_request_id)
-        .map_err(McpAdapterError::Core)?
-        .ok_or_else(|| {
-            McpAdapterError::Protocol(
-                "committed user-action request disappeared during current-state reread".to_owned(),
-            )
-        })?;
-    if current.project_id != coordinate.project_id
-        || current.user_action_request_id != coordinate.user_action_request_id
-    {
-        return Err(McpAdapterError::Protocol(
-            "current user-action projection does not match the original request".to_owned(),
-        ));
-    }
-    Ok(current)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PendingUserActionCoordinate {
-    project_id: ProjectId,
-    user_action_request_id: UserActionRequestId,
-}
-
-fn pending_user_action_coordinate_from_response(
-    response: &PipelineResponse,
-) -> Result<Option<PendingUserActionCoordinate>, McpAdapterError> {
-    if response.response_value["base"]["response_kind"].as_str() != Some("result") {
-        return Ok(None);
-    }
-    let result = serde_json::from_value::<RequestUserActionResult>(response.response_value.clone())
-        .map_err(McpAdapterError::Json)?;
-    let invocation = response.verified_invocation.as_ref().ok_or_else(|| {
-        McpAdapterError::Protocol(
-            "successful request_user_action response omitted verified invocation facts".to_owned(),
-        )
-    })?;
-    Ok(Some(PendingUserActionCoordinate {
-        project_id: invocation.project_id.clone(),
-        user_action_request_id: result.user_action_request_summary.user_action_request_id,
-    }))
-}
-
-pub(crate) struct UserActionFallback {
-    texts: Vec<String>,
-    kind: DiagnosticFallbackKind,
-}
-
-pub(crate) fn cli_recovery_fallback() -> UserActionFallback {
-    UserActionFallback {
-        texts: vec![cli_inbox_fallback_text()],
-        kind: DiagnosticFallbackKind::CliInbox,
-    }
-}
-
-fn cli_inbox_fallback_text() -> String {
-    "A pending UserAction requires the user. Open `volicord inbox` and resume the existing request after the user completes it."
-        .to_owned()
 }
 
 pub(crate) fn is_known_mcp_tool(tool_name: &str) -> bool {
@@ -1680,17 +785,19 @@ pub(crate) fn tool_execution_error_result(
     requested_tool_name: &str,
     error: &McpAdapterError,
 ) -> Value {
-    tool_execution_error_result_for_profile(
+    tool_execution_error_result_for_capabilities(
         requested_tool_name,
         error,
-        ProtocolRegistry::production().preferred_server_profile(),
+        ProtocolRegistry::production()
+            .preferred_server_profile()
+            .capabilities(),
     )
 }
 
-fn tool_execution_error_result_for_profile(
+fn tool_execution_error_result_for_capabilities(
     requested_tool_name: &str,
     error: &McpAdapterError,
-    profile: &McpProtocolProfile,
+    capabilities: McpProtocolCapabilities,
 ) -> Value {
     let structured = match error {
         McpAdapterError::InvalidParams {
@@ -1764,12 +871,12 @@ fn tool_execution_error_result_for_profile(
             }],
         },
     };
-    bounded_tool_error_result(structured, profile)
+    bounded_tool_error_result(structured, capabilities)
 }
 
 fn bounded_tool_error_result(
     mut structured: McpToolErrorResponse,
-    profile: &McpProtocolProfile,
+    capabilities: McpProtocolCapabilities,
 ) -> Value {
     let mut truncated = structured.truncated;
     if structured.issues.len() > MAX_VALIDATION_ISSUES {
@@ -1797,7 +904,7 @@ fn bounded_tool_error_result(
     loop {
         structured.reported_issue_count = structured.issues.len();
         structured.truncated = truncated;
-        let result = serialize_tool_error_result(&structured, profile);
+        let result = serialize_tool_error_result(&structured, capabilities);
         let result_bytes = serde_json::to_vec(&result)
             .expect("MCP tool error result should serialize")
             .len();
@@ -1816,7 +923,7 @@ fn bounded_tool_error_result(
         structured.issues[0].path.clear();
         structured.issues[0].message = "Validation failed before reaching Core.".to_owned();
         structured.truncated = true;
-        let fallback = serialize_tool_error_result(&structured, profile);
+        let fallback = serialize_tool_error_result(&structured, capabilities);
         assert!(
             serde_json::to_vec(&fallback)
                 .expect("fallback MCP tool error result should serialize")
@@ -1830,13 +937,13 @@ fn bounded_tool_error_result(
 
 fn serialize_tool_error_result(
     structured: &McpToolErrorResponse,
-    profile: &McpProtocolProfile,
+    capabilities: McpProtocolCapabilities,
 ) -> Value {
     let structured_content =
         serde_json::to_value(structured).expect("MCP tool error should serialize");
     let text = serde_json::to_string(&structured_content)
         .expect("MCP tool error compatibility text should serialize");
-    if profile.tools().structured_content() {
+    if capabilities.tools().structured_content() {
         validate_mcp_tool_output(&structured.tool_name, &structured_content)
             .expect("bounded MCP tool error should match advertised output schema");
     }
@@ -1846,13 +953,13 @@ fn serialize_tool_error_result(
         structured_content,
         is_error: true,
     }
-    .project(profile)
+    .project(capabilities)
     .expect("bounded MCP tool error should project")
     .into_value()
 }
 
 #[cfg(test)]
-mod mutation_output_tests {
+mod mutation_projection_and_recovery_tests {
     use super::*;
     use volicord_store::evidence_capture::EvidenceCaptureReceiptInsert;
     use volicord_test_support::core_fixtures::{
@@ -2182,7 +1289,9 @@ mod mutation_output_tests {
     ) -> CanonicalMcpMutationOutcome {
         CanonicalMcpMutationOutcome {
             tool_name: tool_name.to_owned(),
-            profile: ProtocolRegistry::production().preferred_server_profile(),
+            capabilities: ProtocolRegistry::production()
+                .preferred_server_profile()
+                .capabilities(),
             requested_detail,
             facts: recovery_facts(),
             exact_method_result,
@@ -2237,7 +1346,7 @@ mod mutation_output_tests {
             replayed: false,
         };
 
-        let output = ToolCallOutput::from_operation_result_response(&response)?;
+        let output = ToolCallOutput::from_operation_result_response_for_test(&response)?;
 
         assert!(output.primary_text.len() <= MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES);
         assert!(!output.primary_text.contains(&chunk_utf8));

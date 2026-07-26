@@ -8,7 +8,7 @@ use serde_json::json;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_host_contract::{HostContractError, McpServerKey, McpToolCatalog};
-use volicord_mcp_protocol::{McpProtocolProfile, ToolDefinitionField, ToolResultField};
+use volicord_mcp_protocol::{McpProtocolCapabilities, ToolResultCarrier};
 use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, BeginIntegrationVerificationResult,
     GetIntegrationVerificationResult, GuardProbeResult, IntegrationVerificationIdArguments,
@@ -137,46 +137,37 @@ impl VersionedToolResult {
 }
 
 impl CanonicalToolDefinition {
-    pub fn project(&self, profile: &McpProtocolProfile) -> VersionedToolDefinition {
-        let mut projected = Map::new();
-        for field in profile.schema().tool_definition_fields() {
-            match field {
-                ToolDefinitionField::Meta => {
-                    if let Some(metadata) = &self.metadata {
-                        projected.insert("_meta".to_owned(), Value::Object(metadata.clone()));
-                    }
-                }
-                ToolDefinitionField::Annotations => {
-                    projected.insert(
-                        "annotations".to_owned(),
-                        serde_json::to_value(self.annotations)
-                            .expect("canonical tool annotations should serialize"),
-                    );
-                }
-                ToolDefinitionField::Description => {
-                    projected.insert(
-                        "description".to_owned(),
-                        Value::String(self.description.to_owned()),
-                    );
-                }
-                ToolDefinitionField::InputSchema => {
-                    projected.insert("inputSchema".to_owned(), self.input_schema.clone());
-                }
-                ToolDefinitionField::Name => {
-                    projected.insert(
-                        "name".to_owned(),
-                        Value::String(self.id.wire_name().to_owned()),
-                    );
-                }
-                ToolDefinitionField::OutputSchema => {
-                    projected.insert("outputSchema".to_owned(), self.output_schema.clone());
-                }
-                ToolDefinitionField::Title => {
-                    if let Some(title) = self.title {
-                        projected.insert("title".to_owned(), Value::String(title.to_owned()));
-                    }
-                }
-                ToolDefinitionField::Execution | ToolDefinitionField::Icons => {}
+    pub fn project(&self, capabilities: McpProtocolCapabilities) -> VersionedToolDefinition {
+        let tool_capabilities = capabilities.tools();
+        let mut projected = Map::from_iter([
+            (
+                "description".to_owned(),
+                Value::String(self.description.to_owned()),
+            ),
+            ("inputSchema".to_owned(), self.input_schema.clone()),
+            (
+                "name".to_owned(),
+                Value::String(self.id.wire_name().to_owned()),
+            ),
+        ]);
+        if tool_capabilities.definition_metadata() {
+            if let Some(metadata) = &self.metadata {
+                projected.insert("_meta".to_owned(), Value::Object(metadata.clone()));
+            }
+        }
+        if tool_capabilities.annotations() {
+            projected.insert(
+                "annotations".to_owned(),
+                serde_json::to_value(self.annotations)
+                    .expect("canonical tool annotations should serialize"),
+            );
+        }
+        if tool_capabilities.output_schema() {
+            projected.insert("outputSchema".to_owned(), self.output_schema.clone());
+        }
+        if tool_capabilities.title() {
+            if let Some(title) = self.title {
+                projected.insert("title".to_owned(), Value::String(title.to_owned()));
             }
         }
         VersionedToolDefinition(Value::Object(projected))
@@ -201,54 +192,53 @@ pub fn effective_mcp_tool_catalog(
 impl CanonicalToolResult {
     pub fn project(
         &self,
-        profile: &McpProtocolProfile,
+        capabilities: McpProtocolCapabilities,
     ) -> Result<VersionedToolResult, serde_json::Error> {
-        let structured_supported = profile.tools().structured_content();
-        let authoritative_text = (!structured_supported)
-            .then(|| serde_json::to_string(&self.structured_content))
-            .transpose()?;
+        let tool_capabilities = capabilities.tools();
         let mut projected = Map::new();
 
-        for field in profile.schema().tool_result_fields() {
-            match field {
-                ToolResultField::Meta => {
-                    if let Some(metadata) = &self.metadata {
-                        projected.insert("_meta".to_owned(), Value::Object(metadata.clone()));
-                    }
-                }
-                ToolResultField::ToolResult => {
-                    projected.insert("toolResult".to_owned(), self.structured_content.clone());
-                }
-                ToolResultField::Content => {
-                    let mut content = Vec::new();
-                    if let Some(authoritative_text) = authoritative_text.as_deref() {
-                        content.push(json!({
-                            "type": "text",
-                            "text": authoritative_text,
-                        }));
-                    }
-                    content.extend(
+        if tool_capabilities.result_metadata() {
+            if let Some(metadata) = &self.metadata {
+                projected.insert("_meta".to_owned(), Value::Object(metadata.clone()));
+            }
+        }
+
+        match tool_capabilities.result_carrier() {
+            ToolResultCarrier::DirectToolResult => {
+                projected.insert("toolResult".to_owned(), self.structured_content.clone());
+            }
+            ToolResultCarrier::JsonTextContent => {
+                let authoritative_text = serde_json::to_string(&self.structured_content)?;
+                let mut content = vec![json!({
+                    "type": "text",
+                    "text": authoritative_text,
+                })];
+                content.extend(
+                    self.content
+                        .iter()
+                        .filter(|item| item.text() != authoritative_text)
+                        .map(CanonicalContent::to_wire_value),
+                );
+                projected.insert("content".to_owned(), Value::Array(content));
+            }
+            ToolResultCarrier::StructuredContentWithText => {
+                projected.insert(
+                    "content".to_owned(),
+                    Value::Array(
                         self.content
                             .iter()
-                            .filter(|item| {
-                                authoritative_text
-                                    .as_deref()
-                                    .is_none_or(|text| item.text() != text)
-                            })
-                            .map(CanonicalContent::to_wire_value),
-                    );
-                    projected.insert("content".to_owned(), Value::Array(content));
-                }
-                ToolResultField::IsError => {
-                    projected.insert("isError".to_owned(), Value::Bool(self.is_error));
-                }
-                ToolResultField::StructuredContent => {
-                    projected.insert(
-                        "structuredContent".to_owned(),
-                        self.structured_content.clone(),
-                    );
-                }
+                            .map(CanonicalContent::to_wire_value)
+                            .collect(),
+                    ),
+                );
+                projected.insert(
+                    "structuredContent".to_owned(),
+                    self.structured_content.clone(),
+                );
             }
+        }
+        if tool_capabilities.is_error() {
+            projected.insert("isError".to_owned(), Value::Bool(self.is_error));
         }
 
         Ok(VersionedToolResult(Value::Object(projected)))

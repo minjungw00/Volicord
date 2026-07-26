@@ -271,18 +271,6 @@ mod tests {
                 "mcp.protocol.unsupported_version",
             ),
             (
-                McpProtocolFailureKind::CounterOffer,
-                "mcp.protocol.counter_offer",
-            ),
-            (
-                McpProtocolFailureKind::CounterOfferRejectedOrDisconnected,
-                "mcp.protocol.counter_offer_rejected",
-            ),
-            (
-                McpProtocolFailureKind::GenerationMismatch,
-                "mcp.protocol.generation_mismatch",
-            ),
-            (
                 McpProtocolFailureKind::CapabilityShapeFailure,
                 "mcp.protocol.capability_shape_invalid",
             ),

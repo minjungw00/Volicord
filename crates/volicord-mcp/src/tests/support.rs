@@ -866,20 +866,6 @@ pub(super) fn generated_json_rpc_value(seed: u64, depth: usize) -> Value {
     }
 }
 
-pub(super) fn projected_authoritative_tool_result(result: &Value) -> Result<Value, Box<dyn Error>> {
-    if let Some(structured) = result.get("structuredContent") {
-        return Ok(structured.clone());
-    }
-    if let Some(tool_result) = result.get("toolResult") {
-        return Ok(tool_result.clone());
-    }
-    let text = result
-        .pointer("/content/0/text")
-        .and_then(Value::as_str)
-        .ok_or("content-only tools/call result should carry authoritative JSON text")?;
-    Ok(serde_json::from_str(text)?)
-}
-
 pub(super) fn volicord_response_from_tool(response: &Value) -> Result<Value, Box<dyn Error>> {
     assert_eq!(
         response["result"]["isError"],

@@ -551,12 +551,7 @@ mod tests {
                 .content
                 .contains(&format!("`{}`", control.wire_name())));
         }
-        for forbidden in [
-            "awaiting_hook_completion",
-            "restart_required",
-            "codex-1.",
-            "legacy profile",
-        ] {
+        for forbidden in ["awaiting_hook_completion", "restart_required", "codex-1."] {
             assert!(!agents.content.contains(forbidden));
         }
 
@@ -615,12 +610,7 @@ mod tests {
         ] {
             assert!(codex_rule.content.contains(control.wire_name()));
         }
-        for forbidden in [
-            "awaiting_hook_completion",
-            "restart_required",
-            "codex-1.",
-            "legacy profile",
-        ] {
+        for forbidden in ["awaiting_hook_completion", "restart_required", "codex-1."] {
             assert!(!codex_rule.content.contains(forbidden));
         }
         Ok(())
