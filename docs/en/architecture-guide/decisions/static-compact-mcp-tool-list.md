@@ -69,7 +69,7 @@ and Agent Connection.
 
 - [`crates/volicord-mcp/src/tool_registry.rs`](../../../../crates/volicord-mcp/src/tool_registry.rs):
   tool definitions, descriptions, runtime and documentation schema projection.
-- [`crates/volicord-mcp/src/stdio.rs`](../../../../crates/volicord-mcp/src/stdio.rs):
+- [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs):
   `tools/list`, workflow response wrapping, and bounded recovery projections.
 - [`crates/volicord-types/src/schema.rs`](../../../../crates/volicord-types/src/schema.rs):
   shared next-action response shape.

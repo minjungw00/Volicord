@@ -187,10 +187,16 @@
 | `crates/volicord-mcp/src/lib.rs` | 어댑터 소유 공개 진입점과 경계 타입. 공유 타입과 도구 identity는 각 `volicord-types` 담당 모듈 경로에 남습니다. |
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Message 및 tool별 `SharedWriter` 획득, Store context 구성, typed setup-busy 전파, 전체 MCP 효과 동안의 한정된 lease 수명. |
-| `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio 진입 경로, 권위 있는 runtime source 선택, 생명주기와 프레이밍, typed initialization profile 선택, 명시적인 `codex-mcp-turn-metadata` parsing, revision-aware message 처리, 승인된 diagnostic routing, 프로세스 사전 점검. |
-| `crates/volicord-mcp/src/adapter.rs` | 공개 인수 디코딩, 유지되는 연산 전 routing identity, 활성 mutation-context 상관관계, context에 결합된 Core 디스패치와 wrapping, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
+| `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio facade. 진입 경로 binding을 선택하고 연결된 stream을 위임하며 protocol, lifecycle, tool dispatch 구현을 보유하지 않습니다. |
+| `crates/volicord-mcp/src/transport.rs` | 한도가 있는 줄바꿈 구분 stdio 읽기·쓰기, UTF-8 및 frame 한도 집행, transport loop 종료, 디코딩한 JSON 값을 lifecycle 처리로 위임하는 경계. |
+| `crates/volicord-mcp/src/json_rpc.rs` | JSON 구문 디코딩, JSON-RPC envelope 분류, 문자열·정수 request ID 검증, object parameter 검증, Core 접근 없는 성공·오류 응답 구성. |
+| `crates/volicord-mcp/src/lifecycle.rs` | Initialize 협상, initialized notification 승인, batch와 method별 lifecycle 유효성, runtime session 시작·종료, 폐쇄형 `SessionState` variant인 `AwaitingInitialization`, `AwaitingInitializedNotification`, `InitializedAndReady`, `Closed`. Initialization 선택 정보는 initialized variant에만 있고 종료 정보는 `Closed`에만 있습니다. |
+| `crates/volicord-mcp/src/binding.rs` | Runtime Home 해석, repository 탐색, Connection/project 사전 점검과 binding, managed Codex session/thread/turn 상관관계. |
+| `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list`와 `tools/call` parameter 디코딩, 정규 도구 선택, adapter/Core 호출, 현재 단일 원천인 mutation 및 User Action 결과 projection. Transport message framing은 담당하지 않습니다. |
+| `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding, diagnostic session, workflow metric 영속화와 계약이 허용하는 diagnostics carrier failure의 한정된 best-effort 처리. |
+| `crates/volicord-mcp/src/adapter.rs` | 유지되는 연산 전 routing identity, 활성 mutation-context 상관관계, context에 결합된 Core 호출 API, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
 | `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청, nested workflow-directed sequence, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
-| `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata를 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 raw revision별 wire 이름을 투영하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |
+| `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata, method lookup을 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 선택한 protocol profile을 통해 raw revision별 wire 이름을 투영하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |
 | `crates/volicord-mcp/src/schema_validation.rs` | 공개 schema 검증. |
 | `crates/volicord-mcp/src/routing.rs` | 결속된 Product Repository 탐색, 현재 Connection/project routing, 정규 catalog에서 server/raw/callable identity를 가져오는 preflight diagnostic 투영. |
 
@@ -200,6 +206,7 @@
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
 | `crates/volicord-command-model/src/lib.rs` module test | Clap 구조 assertion, 완전한 공개 순회, 숨은 하위 tree 배제, 정규 invocation 자체 parsing, 현재 필수 인수·충돌·값 집합 동작. |
+| `crates/volicord-mcp/src/transport.rs`, `json_rpc.rs`, `binding.rs` module test | 각 구현 담당 모듈에서 frame 한도와 drain, delimiter와 UTF-8 동작, request ID와 notification 분류, 정확한 managed call metadata, Runtime Home binding failure를 검증합니다. |
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization 순서, 거절, 종료, EOF 계약. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch 순서, notification, 응답 계약. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection과 schema 호환성 계약. |

@@ -31,9 +31,19 @@ server-owned context and submit typed requests to Core.
 For an MCP call, follow:
 
 - [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs)
-  for process lifecycle and framing;
+  for the public stream facade;
+- [`crates/volicord-mcp/src/binding.rs`](../../../crates/volicord-mcp/src/binding.rs)
+  for Runtime Home, repository, Connection, and managed-session binding;
+- [`crates/volicord-mcp/src/transport.rs`](../../../crates/volicord-mcp/src/transport.rs)
+  and [`json_rpc.rs`](../../../crates/volicord-mcp/src/json_rpc.rs) for bounded
+  framing and JSON-RPC envelopes;
+- [`crates/volicord-mcp/src/lifecycle.rs`](../../../crates/volicord-mcp/src/lifecycle.rs)
+  for initialize ordering, message admission, the closed session state, and
+  termination;
+- [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../crates/volicord-mcp/src/tool_dispatch.rs)
+  for tool-call decoding, dispatch, and result projection;
 - [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
-  for public argument decoding and Core dispatch;
+  for context-bound adapter and Core invocation;
 - [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
   for common preflight, replay, planning, and commit selection;
 - the matching file under
@@ -59,8 +69,8 @@ For managed connection work, follow:
   for Codex discovery, configuration, identity, and verification;
 - [`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs)
   for stored connection records; and
-- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs)
-  for the bound process startup check.
+- [`crates/volicord-mcp/src/binding.rs`](../../../crates/volicord-mcp/src/binding.rs)
+  for the bound process startup check and managed call correlation.
 
 The supported connection intents are `personal` and `shared`; both launch
 the Record-profile stdio boundary.

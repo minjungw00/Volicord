@@ -24,8 +24,8 @@ fn unsupported_initialize_revision_receives_preferred_server_counter_offer(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-negotiate-counter-offer")?;
     let adapter = adapter(&fixture)?;
-    let mut state = ConnectionState::default();
-    let response = handle_json_rpc_message(
+    let mut state = session_state();
+    let response = apply_json_rpc_message(
         &adapter,
         &mut state,
         initialize_request_for_protocol(1, json!({}), "counter-offer-client", "1.0", "2025-01-01"),
@@ -37,19 +37,16 @@ fn unsupported_initialize_revision_receives_preferred_server_counter_offer(
         response["result"]["protocolVersion"],
         preferred.revision().as_str()
     );
-    let selected = state.mcp_session.as_ref().expect("counter-offer session");
+    let selected = state
+        .initialization_selection()
+        .expect("counter-offer session");
     assert_eq!(selected.requested_protocol_version, "2025-01-01");
     assert_eq!(selected.selected_profile, preferred);
     assert_eq!(selected.outcome, McpNegotiationOutcome::ServerCounterOffer);
-    assert!(!selected.initialized_notification_completed);
-    assert!(handle_json_rpc_message(&adapter, &mut state, initialized_notification())?.is_none());
-    assert!(
-        state
-            .mcp_session
-            .as_ref()
-            .expect("counter-offer session remains active")
-            .initialized_notification_completed
-    );
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitializedNotification);
+    assert!(apply_json_rpc_message(&adapter, &mut state, initialized_notification())?.is_none());
+    assert_eq!(state.phase(), SessionPhase::InitializedAndReady);
+    assert!(state.initialized_session().is_some());
     Ok(())
 }
 
@@ -73,17 +70,17 @@ fn malformed_initialize_fields_are_invalid_params_without_session_mutation(
     for (index, params) in cases.into_iter().enumerate() {
         let fixture = CoreFixture::new(&format!("mcp-malformed-initialize-{index}"))?;
         let adapter = adapter(&fixture)?;
-        let mut state = ConnectionState::default();
+        let mut state = session_state();
         let response =
-            handle_json_rpc_message(&adapter, &mut state, request(1, "initialize", params))?
+            apply_json_rpc_message(&adapter, &mut state, request(1, "initialize", params))?
                 .expect("malformed initialize should return an error");
 
         assert_eq!(response["error"]["code"], -32602, "case {index}");
         assert!(response["error"]["data"]
             .as_str()
             .is_some_and(|data| data.len() <= 512));
-        assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
-        assert!(state.mcp_session.is_none());
+        assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
+        assert!(state.initialization_selection().is_none());
     }
     Ok(())
 }
@@ -93,23 +90,51 @@ fn lifecycle_rejects_tools_before_initialize_and_a_second_initialize() -> Result
 {
     let fixture = CoreFixture::new("mcp-negotiate-lifecycle-order")?;
     let adapter = adapter(&fixture)?;
-    let mut state = ConnectionState::default();
+    let mut state = session_state();
 
     for message in [
         request(1, "tools/list", json!({})),
         tools_call(2, AgentToolId::STATUS.wire_name(), json!({})),
     ] {
-        let response = handle_json_rpc_message(&adapter, &mut state, message)?
+        let response = apply_json_rpc_message(&adapter, &mut state, message)?
             .expect("pre-initialize request should return an error");
         assert_eq!(response["error"]["code"], -32600);
     }
     let initialized =
-        handle_json_rpc_message(&adapter, &mut state, initialize_request(3, json!({})))?
+        apply_json_rpc_message(&adapter, &mut state, initialize_request(3, json!({})))?
             .expect("first initialize should return a result");
     assert!(initialized["result"].is_object());
-    let repeated = handle_json_rpc_message(&adapter, &mut state, initialize_request(4, json!({})))?
+    let repeated = apply_json_rpc_message(&adapter, &mut state, initialize_request(4, json!({})))?
         .expect("second initialize should return an error");
     assert_eq!(repeated["error"]["code"], -32600);
+    Ok(())
+}
+
+#[test]
+fn invalid_notifications_and_closed_requests_cannot_advance_session_state(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-closed-state-transition")?;
+    let adapter = adapter(&fixture)?;
+    let mut state = session_state();
+
+    assert!(apply_json_rpc_message(&adapter, &mut state, initialized_notification())?.is_none());
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
+    assert!(state.initialization_selection().is_none());
+
+    let runtime = state.runtime().clone();
+    state = SessionState::Closed(ClosedSession {
+        runtime,
+        termination: SessionTermination::GracefulEof,
+    });
+    let response = apply_json_rpc_message(&adapter, &mut state, request(9, "ping", json!({})))?
+        .expect("closed sessions reject requests");
+
+    assert_eq!(response["error"]["code"], -32600);
+    assert_eq!(state.phase(), SessionPhase::Closed);
+    let SessionState::Closed(closed) = state else {
+        panic!("closed request must preserve the closed state");
+    };
+    assert_eq!(closed.termination, SessionTermination::GracefulEof);
     Ok(())
 }
 
@@ -117,8 +142,8 @@ fn lifecycle_rejects_tools_before_initialize_and_a_second_initialize() -> Result
 fn discover_generation_protocol_is_not_accepted_as_initialize() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-negotiate-discover-generation")?;
     let adapter = adapter(&fixture)?;
-    let mut state = ConnectionState::default();
-    let response = handle_json_rpc_message(
+    let mut state = session_state();
+    let response = apply_json_rpc_message(
         &adapter,
         &mut state,
         initialize_request_for_protocol(1, json!({}), "future-client", "1.0", "2026-07-28"),
@@ -129,8 +154,8 @@ fn discover_generation_protocol_is_not_accepted_as_initialize() -> Result<(), Bo
     assert!(response["error"]["data"]
         .as_str()
         .is_some_and(|data| data.contains("does not use the initialize handshake")));
-    assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
-    assert!(state.mcp_session.is_none());
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
+    assert!(state.initialization_selection().is_none());
     Ok(())
 }
 

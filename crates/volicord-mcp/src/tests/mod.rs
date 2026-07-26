@@ -12,12 +12,15 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+use crate::lifecycle::{
+    handle_json_rpc_message as transition_json_rpc_message, ClosedSession, SessionPhase,
+    SessionState, SessionTermination,
+};
 use crate::prelude::*;
-use crate::stdio::{
-    handle_json_rpc_message, run_managed_stdio_with_test_lease,
-    run_manual_stdio_with_ignored_env_marker, tool_execution_error_result, ConnectionPhase,
-    ConnectionState, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
-    MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+use crate::stdio::{run_managed_stdio_with_test_lease, run_manual_stdio_with_ignored_env_marker};
+use crate::tool_dispatch::{
+    tool_execution_error_result, MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+    MAX_MCP_FULL_MUTATION_RESULT_BYTES, MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
 };
 use crate::{
     adapter::{AgentSessionCoordinates, ManagedAgentSessionBinding},
@@ -75,6 +78,27 @@ const CODEX_TEST_SESSION_ID: &str = "fixture_codex_session";
 const CODEX_TEST_THREAD_ID: &str = "fixture_codex_thread";
 const CODEX_TEST_TURN_ID: &str = "fixture_codex_turn";
 const CODEX_TEST_CLIENT_VERSION: &str = "test-codex-client";
+
+fn session_state() -> SessionState {
+    SessionState::new(McpRuntimeSessionSource::ManualCli)
+}
+
+fn apply_json_rpc_message(
+    adapter: &McpAdapter,
+    state: &mut SessionState,
+    message: Value,
+) -> Result<Option<Value>, McpAdapterError> {
+    match transition_json_rpc_message(adapter, state.clone(), message) {
+        Ok(transition) => {
+            *state = transition.state;
+            Ok(transition.output)
+        }
+        Err(failure) => {
+            *state = *failure.state;
+            Err(failure.error)
+        }
+    }
+}
 
 mod batching;
 mod conformance;

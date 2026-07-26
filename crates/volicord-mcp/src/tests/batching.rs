@@ -6,7 +6,7 @@ fn initialization_batches_are_rejected_without_selecting_any_production_profile(
     for (index, profile) in production_profiles().enumerate() {
         let fixture = CoreFixture::new(&format!("mcp-initialization-batch-{index}"))?;
         let connection_adapter = adapter(&fixture)?;
-        let mut state = ConnectionState::default();
+        let mut state = session_state();
         let batch = json!([
             initialize_request_for_protocol(
                 1,
@@ -19,11 +19,11 @@ fn initialization_batches_are_rejected_without_selecting_any_production_profile(
             request(2, "tools/list", json!({})),
         ]);
 
-        let response = handle_json_rpc_message(&connection_adapter, &mut state, batch.clone())?
+        let response = apply_json_rpc_message(&connection_adapter, &mut state, batch.clone())?
             .expect("initialization batch should return one rejection");
         assert_eq!(response["error"]["code"], -32600);
-        assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
-        assert!(state.mcp_session.is_none());
+        assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
+        assert!(state.initialization_selection().is_none());
 
         let mut output = Vec::new();
         run_stdio(
@@ -194,9 +194,9 @@ fn non_batching_profiles_reject_ready_operation_batches_without_tool_observation
 fn operation_batches_before_ready_do_not_advance_lifecycle() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-operation-batch-before-ready")?;
     let connection_adapter = adapter(&fixture)?;
-    let mut state = ConnectionState::default();
+    let mut state = session_state();
 
-    let rejected_before_initialize = handle_json_rpc_message(
+    let rejected_before_initialize = apply_json_rpc_message(
         &connection_adapter,
         &mut state,
         json!([
@@ -206,10 +206,10 @@ fn operation_batches_before_ready_do_not_advance_lifecycle() -> Result<(), Box<d
     )?
     .expect("pre-initialize operation batch rejection");
     assert_eq!(rejected_before_initialize["error"]["code"], -32600);
-    assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
-    assert!(state.mcp_session.is_none());
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
+    assert!(state.initialization_selection().is_none());
 
-    let initialize = handle_json_rpc_message(
+    let initialize = apply_json_rpc_message(
         &connection_adapter,
         &mut state,
         initialize_request_for_protocol(
@@ -222,9 +222,12 @@ fn operation_batches_before_ready_do_not_advance_lifecycle() -> Result<(), Box<d
     )?
     .expect("standalone initialize response");
     assert_eq!(initialize["result"]["protocolVersion"], "2025-03-26");
-    let selected_before = state.mcp_session.clone();
+    let selected_before = state
+        .initialization_selection()
+        .expect("standalone initialize selection")
+        .clone();
 
-    let rejected = handle_json_rpc_message(
+    let rejected = apply_json_rpc_message(
         &connection_adapter,
         &mut state,
         json!([
@@ -234,24 +237,24 @@ fn operation_batches_before_ready_do_not_advance_lifecycle() -> Result<(), Box<d
     )?
     .expect("pre-ready operation batch rejection");
     assert_eq!(rejected["error"]["code"], -32600);
-    assert_eq!(state.phase, ConnectionPhase::AwaitingInitialized);
-    assert_eq!(state.mcp_session, selected_before);
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitializedNotification);
+    assert_eq!(state.initialization_selection(), Some(&selected_before));
 
-    let rejected_initialized_batch = handle_json_rpc_message(
+    let rejected_initialized_batch = apply_json_rpc_message(
         &connection_adapter,
         &mut state,
         json!([initialized_notification()]),
     )?
     .expect("initialized notification batch rejection");
     assert_eq!(rejected_initialized_batch["error"]["code"], -32600);
-    assert_eq!(state.phase, ConnectionPhase::AwaitingInitialized);
-    assert_eq!(state.mcp_session, selected_before);
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitializedNotification);
+    assert_eq!(state.initialization_selection(), Some(&selected_before));
 
     assert!(
-        handle_json_rpc_message(&connection_adapter, &mut state, initialized_notification(),)?
+        apply_json_rpc_message(&connection_adapter, &mut state, initialized_notification(),)?
             .is_none()
     );
-    assert_eq!(state.phase, ConnectionPhase::Ready);
+    assert_eq!(state.phase(), SessionPhase::InitializedAndReady);
     Ok(())
 }
 
@@ -322,16 +325,16 @@ fn ready_batch_with_initialize_is_rejected_before_a_sibling_operation() -> Resul
 fn empty_batch_remains_a_json_rpc_invalid_request() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-empty-batch")?;
     let connection_adapter = adapter(&fixture)?;
-    let mut state = ConnectionState::default();
+    let mut state = session_state();
 
-    let response = handle_json_rpc_message(&connection_adapter, &mut state, json!([]))?
+    let response = apply_json_rpc_message(&connection_adapter, &mut state, json!([]))?
         .expect("empty batch rejection");
     assert_eq!(response["error"]["code"], -32600);
     assert_eq!(
         response["error"]["data"],
         "JSON-RPC batch must not be empty"
     );
-    assert_eq!(state.phase, ConnectionPhase::AwaitingInitialize);
-    assert!(state.mcp_session.is_none());
+    assert_eq!(state.phase(), SessionPhase::AwaitingInitialization);
+    assert!(state.initialization_selection().is_none());
     Ok(())
 }

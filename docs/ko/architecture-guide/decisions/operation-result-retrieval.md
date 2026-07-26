@@ -92,7 +92,7 @@ Volicord는 추가되는 안정적 읽기 전용 메서드
   공통 호출 검증과 공개 메서드 디스패치 경계.
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   재실행 행 지속 저장과 정확한 응답 조회 경계.
-- [`crates/volicord-mcp/src/stdio.rs`](../../../../crates/volicord-mcp/src/stdio.rs):
+- [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs):
   기준 변경 결과 상태 보기, 크기가 제한된 복구, MCP 응답 래핑.
 - [`crates/volicord-mcp/src/tool_registry.rs`](../../../../crates/volicord-mcp/src/tool_registry.rs):
   공개 MCP 도구 메타데이터와 탐색.

@@ -29,9 +29,18 @@ Core-facing 코드는 CLI나 MCP 어댑터 세부사항에 의존하지 않습�
 MCP 호출은 다음 순서로 추적합니다.
 
 - [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
-  프로세스 생명주기와 프레이밍
+  공개 stream facade
+- [`crates/volicord-mcp/src/binding.rs`](../../../crates/volicord-mcp/src/binding.rs):
+  Runtime Home, repository, Connection, managed session binding
+- [`crates/volicord-mcp/src/transport.rs`](../../../crates/volicord-mcp/src/transport.rs)와
+  [`json_rpc.rs`](../../../crates/volicord-mcp/src/json_rpc.rs):
+  한도가 있는 framing과 JSON-RPC envelope
+- [`crates/volicord-mcp/src/lifecycle.rs`](../../../crates/volicord-mcp/src/lifecycle.rs):
+  initialize 순서, message 승인, 폐쇄형 session 상태, 종료
+- [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../crates/volicord-mcp/src/tool_dispatch.rs):
+  tool call 디코딩, dispatch, 결과 projection
 - [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs):
-  공개 인수 디코딩과 Core 디스패치
+  context에 결합된 adapter와 Core 호출
 - [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs):
   공통 사전 점검, replay, 계획, commit 선택
 - [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/):
@@ -55,8 +64,8 @@ MCP 호출은 다음 순서로 추적합니다.
   Codex 탐색, 구성, 식별, 검증
 - [`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs):
   저장 연결 레코드
-- [`crates/volicord-mcp/src/stdio.rs`](../../../crates/volicord-mcp/src/stdio.rs):
-  결속된 프로세스 시작 점검
+- [`crates/volicord-mcp/src/binding.rs`](../../../crates/volicord-mcp/src/binding.rs):
+  결속된 프로세스 시작 점검과 managed call 상관관계
 
 지원되는 연결 의도는 `personal`과 `shared`이며, 둘 다 Record profile stdio 경계를
 시작합니다.

@@ -62,7 +62,7 @@ mode 동작, snapshot 계약은 [MCP 전송](../../reference/mcp-transport.md), 
 
 - [`crates/volicord-mcp/src/tool_registry.rs`](../../../../crates/volicord-mcp/src/tool_registry.rs):
   도구 정의, 설명, 런타임과 문서용 스키마 상태 보기.
-- [`crates/volicord-mcp/src/stdio.rs`](../../../../crates/volicord-mcp/src/stdio.rs):
+- [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs):
   `tools/list`, 작업 흐름 응답 래핑, 크기가 제한된 복구 상태 보기.
 - [`crates/volicord-types/src/schema.rs`](../../../../crates/volicord-types/src/schema.rs):
   공유 다음 행동 응답 형태.

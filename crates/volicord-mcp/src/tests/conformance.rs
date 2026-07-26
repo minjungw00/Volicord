@@ -7,9 +7,9 @@ fn every_production_profile_executes_the_transport_and_eof_matrix() -> Result<()
         let fixture = CoreFixture::new(&format!("mcp-negotiate-production-{index}"))?;
         let connection_adapter = adapter(&fixture)?;
         let capabilities = json!({"experimental": {"fixture": true}});
-        let mut state = ConnectionState::default();
+        let mut state = session_state();
 
-        let initialize = handle_json_rpc_message(
+        let initialize = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             initialize_request_for_protocol(
@@ -29,8 +29,7 @@ fn every_production_profile_executes_the_transport_and_eof_matrix() -> Result<()
         );
 
         let selected = state
-            .mcp_session
-            .as_ref()
+            .initialization_selection()
             .expect("valid initialize should select a session profile");
         assert_eq!(selected.requested_protocol_version, revision);
         assert_eq!(selected.selected_profile, profile);
@@ -41,10 +40,9 @@ fn every_production_profile_executes_the_transport_and_eof_matrix() -> Result<()
         );
         assert_eq!(selected.attempted_client_name, "profile-test-client");
         assert_eq!(selected.attempted_client_version, "1.2.3");
-        assert!(!selected.initialized_notification_completed);
-        assert_eq!(state.phase, ConnectionPhase::AwaitingInitialized);
+        assert_eq!(state.phase(), SessionPhase::AwaitingInitializedNotification);
 
-        let premature_tools = handle_json_rpc_message(
+        let premature_tools = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             tools_call(2, AgentToolId::STATUS.wire_name(), json!({})),
@@ -52,20 +50,14 @@ fn every_production_profile_executes_the_transport_and_eof_matrix() -> Result<()
         .expect("premature tools/call should return an error");
         assert_eq!(premature_tools["error"]["code"], -32600);
 
-        assert!(handle_json_rpc_message(
+        assert!(apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             initialized_notification()
         )?
         .is_none());
-        assert_eq!(state.phase, ConnectionPhase::Ready);
-        assert!(
-            state
-                .mcp_session
-                .as_ref()
-                .expect("selected session remains active")
-                .initialized_notification_completed
-        );
+        assert_eq!(state.phase(), SessionPhase::InitializedAndReady);
+        assert!(state.initialized_session().is_some());
 
         let input = Cursor::new(json_lines(&[
             initialize_request_for_protocol(
@@ -125,9 +117,9 @@ fn every_production_profile_projects_tools_results_and_request_failures(
     for (index, profile) in production_profiles().enumerate() {
         let fixture = CoreFixture::new(&format!("mcp-revision-call-shape-{index}"))?;
         let connection_adapter = adapter(&fixture)?;
-        let mut state = ConnectionState::default();
+        let mut state = session_state();
 
-        let initialize = handle_json_rpc_message(
+        let initialize = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             initialize_request_for_protocol(
@@ -143,14 +135,14 @@ fn every_production_profile_projects_tools_results_and_request_failures(
             initialize["result"]["protocolVersion"],
             profile.revision().as_str()
         );
-        assert!(handle_json_rpc_message(
+        assert!(apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             initialized_notification()
         )?
         .is_none());
 
-        let ping = handle_json_rpc_message(
+        let ping = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             request(2, "ping", json!({})),
@@ -158,7 +150,7 @@ fn every_production_profile_projects_tools_results_and_request_failures(
         .expect("ping response");
         assert_eq!(ping["result"], json!({}));
 
-        let tools_list = handle_json_rpc_message(
+        let tools_list = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             request(3, "tools/list", json!({})),
@@ -200,7 +192,7 @@ fn every_production_profile_projects_tools_results_and_request_failures(
             }
         }
 
-        let success = handle_json_rpc_message(
+        let success = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             tools_call(4, AgentToolId::LIST_PROJECTS.wire_name(), json!({})),
@@ -224,7 +216,7 @@ fn every_production_profile_projects_tools_results_and_request_failures(
             profile.revision()
         );
 
-        let invalid_arguments = handle_json_rpc_message(
+        let invalid_arguments = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             tools_call(
@@ -241,7 +233,7 @@ fn every_production_profile_projects_tools_results_and_request_failures(
             AgentToolId::RECORD_RUN.wire_name()
         );
 
-        let invalid_params = handle_json_rpc_message(
+        let invalid_params = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             request(6, "tools/list", json!([])),
@@ -249,12 +241,11 @@ fn every_production_profile_projects_tools_results_and_request_failures(
         .expect("invalid tools/list params response");
         assert_eq!(invalid_params["error"]["code"], -32602);
 
-        let invalid_request =
-            handle_json_rpc_message(&connection_adapter, &mut state, json!(true))?
-                .expect("invalid JSON-RPC request response");
+        let invalid_request = apply_json_rpc_message(&connection_adapter, &mut state, json!(true))?
+            .expect("invalid JSON-RPC request response");
         assert_eq!(invalid_request["error"]["code"], -32600);
 
-        let unknown_method = handle_json_rpc_message(
+        let unknown_method = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             request(7, "volicord/not-a-method", json!({})),
@@ -262,7 +253,7 @@ fn every_production_profile_projects_tools_results_and_request_failures(
         .expect("unknown-method response");
         assert_eq!(unknown_method["error"]["code"], -32601);
 
-        let execution_error = handle_json_rpc_message(
+        let execution_error = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             tools_call(
@@ -276,7 +267,7 @@ fn every_production_profile_projects_tools_results_and_request_failures(
         assert_eq!(execution_body["code"], "MCP_ADAPTER_PRECONDITION_FAILED");
         assert_eq!(execution_body["tool_name"], AgentToolId::STATUS.wire_name());
 
-        let unknown_tool = handle_json_rpc_message(
+        let unknown_tool = apply_json_rpc_message(
             &connection_adapter,
             &mut state,
             tools_call(9, "volicord.unknown", json!({})),
@@ -295,8 +286,8 @@ fn property_arbitrary_json_rpc_values_never_panic() -> Result<(), Box<dyn Error>
     for seed in 0_u64..2_048 {
         let message = generated_json_rpc_value(seed, 0);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            let mut state = ConnectionState::default();
-            let _ = handle_json_rpc_message(&connection_adapter, &mut state, message);
+            let mut state = session_state();
+            let _ = apply_json_rpc_message(&connection_adapter, &mut state, message);
         }));
         assert!(result.is_ok(), "JSON-RPC input seed {seed} panicked");
     }

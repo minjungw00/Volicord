@@ -98,7 +98,7 @@ decision records only the durable implementation direction.
   common invocation validation and public method dispatch boundaries.
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   replay-row persistence and exact response retrieval boundary.
-- [`crates/volicord-mcp/src/stdio.rs`](../../../../crates/volicord-mcp/src/stdio.rs):
+- [`crates/volicord-mcp/src/tool_dispatch.rs`](../../../../crates/volicord-mcp/src/tool_dispatch.rs):
   canonical mutation projection, bounded recovery, and MCP response wrapping.
 - [`crates/volicord-mcp/src/tool_registry.rs`](../../../../crates/volicord-mcp/src/tool_registry.rs):
   public MCP tool metadata and discovery.

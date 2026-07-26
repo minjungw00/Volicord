@@ -494,9 +494,9 @@ fn integration_verification_results_validate_for_every_production_profile() {
 fn bounded_budget_recovery_shape_remains_bounded_for_every_production_profile() {
     let recovery = CanonicalToolResult {
         metadata: None,
-        content: vec![CanonicalContent::Text(
-            "r".repeat(crate::stdio::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES),
-        )],
+        content: vec![CanonicalContent::Text("r".repeat(
+            crate::tool_dispatch::MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES,
+        ))],
         structured_content: json!({
             "code": "MCP_RESPONSE_BUDGET_EXCEEDED",
             "tool_name": "intake",
@@ -521,7 +521,7 @@ fn bounded_budget_recovery_shape_remains_bounded_for_every_production_profile() 
             serde_json::to_vec(&projected)
                 .expect("recovery result should serialize")
                 .len()
-                <= crate::stdio::MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+                <= crate::tool_dispatch::MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
             "{} recovery projection exceeded the compact budget",
             profile.revision()
         );

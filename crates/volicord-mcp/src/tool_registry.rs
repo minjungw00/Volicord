@@ -17,6 +17,10 @@ use volicord_types::methods::{mcp_request_schema, mcp_response_schema};
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{AgentConnectionMode, MethodName};
 
+pub(crate) fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
+    AgentToolId::from_wire_name(tool_name).ok()?.method()
+}
+
 #[cfg(test)]
 pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
 
