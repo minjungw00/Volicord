@@ -94,11 +94,10 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
     let cli_projection = read_only_service
         .user_channel_inbox_projection(
             projection_request.clone(),
-            InvocationContext::new(
+            InvocationContext::local_user(
                 ProjectId::new(PROJECT_ID),
-                ActorSource::LocalUser,
                 OperationCategory::Read,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                UserActionChannelKind::Cli,
             ),
         )?
         .expect("the local CLI User Channel should receive the inbox projection");
@@ -119,11 +118,9 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
     assert!(read_only_service
         .user_channel_inbox_projection(
             projection_request.clone(),
-            InvocationContext::new(
-                ProjectId::new(PROJECT_ID),
-                ActorSource::agent_connection(CONNECTION_ID),
+            InvocationContext::agent_connection(
                 OperationCategory::Read,
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+                crate::agent_session::validated_agent_session_for_test(CONNECTION_ID, PROJECT_ID,),
             ),
         )?
         .is_none());
@@ -158,11 +155,10 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
         .user_channel_inbox_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
-            InvocationContext::new(
+            InvocationContext::local_user(
                 ProjectId::new(PROJECT_ID),
-                ActorSource::LocalUser,
                 OperationCategory::Read,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                UserActionChannelKind::Cli,
             ),
         )?
         .expect("the admitted local User Channel should receive the resolution snapshot");
@@ -193,11 +189,10 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
         .user_channel_inbox_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
-            InvocationContext::new(
+            InvocationContext::local_user(
                 ProjectId::new(PROJECT_ID),
-                ActorSource::LocalUser,
                 OperationCategory::Read,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                UserActionChannelKind::Cli,
             ),
         )?
         .is_none());
@@ -206,24 +201,10 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
         .user_channel_inbox_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
-            InvocationContext::new(
+            InvocationContext::local_user(
                 ProjectId::new("project_other"),
-                ActorSource::LocalUser,
                 OperationCategory::Read,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-            ),
-        )?
-        .is_none());
-    assert!(harness
-        .service
-        .user_channel_inbox_resolution_snapshot_from_store(
-            &store,
-            &UserActionRequestId::new(&request_id),
-            InvocationContext::new(
-                ProjectId::new(PROJECT_ID),
-                ActorSource::LocalUser,
-                OperationCategory::Read,
-                "test:wrong_user_channel_basis",
+                UserActionChannelKind::Cli,
             ),
         )?
         .is_none());
@@ -235,11 +216,10 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
         .user_channel_inbox_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
-            InvocationContext::new(
+            InvocationContext::local_user(
                 ProjectId::new(PROJECT_ID),
-                ActorSource::LocalUser,
                 OperationCategory::Read,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                UserActionChannelKind::Cli,
             ),
         )?
         .is_none());
@@ -1697,13 +1677,8 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
     assert_eq!(resumed.operation_result_ref, original.operation_result_ref);
     assert_eq!(harness.counts()?, after_origin);
 
-    let rotated_basis = InvocationContext::new(
-        ProjectId::new(PROJECT_ID),
-        ActorSource::agent_connection(CONNECTION_ID),
+    let rotated_basis = InvocationContext::agent_connection(
         OperationCategory::AgentWorkflow,
-        "",
-    )
-    .with_validated_agent_session(
         crate::agent_session::validated_agent_session_for_test_with_project_session(
             CONNECTION_ID,
             PROJECT_ID,

@@ -1,23 +1,23 @@
 use super::*;
 use volicord_store::diagnostics::{
-    read_workflow_metric_aggregates, start_diagnostic_session, DiagnosticHostKind,
-    DiagnosticSessionStart, DiagnosticTransport, WorkflowMetricAggregateRow,
+    read_workflow_metric_aggregates, start_diagnostic_session, DiagnosticSessionStart,
+    DiagnosticTransport, WorkflowMetricAggregateRow,
 };
 
 fn start_metrics_session(
     harness: &MethodHarness,
     native_session_id: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let session_id = format!("mcp_runtime_{native_session_id}");
+    let session_id = format!("core_workflow_{native_session_id}");
     let context = harness.service.context();
     start_diagnostic_session(
         &context,
         DiagnosticSessionStart {
             session_id: &session_id,
-            connection_id: Some(CONNECTION_ID),
+            connection_id: None,
             project_id: Some(PROJECT_ID),
-            transport: DiagnosticTransport::McpStdio,
-            host_kind: Some(DiagnosticHostKind::Codex),
+            transport: DiagnosticTransport::CliInbox,
+            host_kind: None,
             package_version: "test",
             build_id: "core-workflow-metrics-test",
         },

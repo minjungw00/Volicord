@@ -26,7 +26,7 @@ use volicord_test_support::{
 };
 use volicord_types::ids::{AgentConnectionId, ProjectId};
 use volicord_types::tool_names::AgentToolId;
-use volicord_types::values::{ActorSource, OperationCategory};
+use volicord_types::values::OperationCategory;
 
 use support::{
     assertions::{
@@ -701,13 +701,7 @@ impl McpFixture {
                 false,
                 Some(0),
             ),
-            InvocationContext::new(
-                ProjectId::new(self.project_id()),
-                ActorSource::agent_connection(self.connection_id()),
-                OperationCategory::AgentWorkflow,
-                "",
-            )
-            .with_validated_agent_session(validated),
+            InvocationContext::agent_connection(OperationCategory::AgentWorkflow, validated),
         )?;
         let task_id = response.response_value["task_ref"]["record_id"]
             .as_str()
@@ -937,7 +931,6 @@ fn assert_public_tool_schemas_hide_internal_fields(tools: &[Value]) {
             "operation_category",
             "mode",
             "verification_basis",
-            "invocation_binding_basis",
         ] {
             assert!(
                 !properties.contains_key(forbidden),

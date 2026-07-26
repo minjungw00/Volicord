@@ -58,15 +58,12 @@ use volicord_types::methods::{
 use volicord_types::schema::{RequiredNullable, ToolEnvelope};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
-    ActorSource, ErrorCode, IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel,
-    UtcTimestamp,
+    ErrorCode, IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
 };
 
 /// Invocation context derived for one tool call before entering Core.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct McpDerivedInvocationContext {
-    pub project_id: ProjectId,
-    pub actor_source: ActorSource,
     pub operation_category: OperationCategory,
     pub validated_agent_session: volicord_core::ValidatedAgentSession,
     pub git_workspace_context: Option<GitWorkspaceContext>,
@@ -102,16 +99,13 @@ pub(crate) struct ManagedAgentSessionBinding {
 
 impl McpDerivedInvocationContext {
     fn core_invocation(&self) -> InvocationContext {
-        let mut invocation = InvocationContext::new(
-            self.project_id.clone(),
-            self.actor_source.clone(),
+        let mut invocation = InvocationContext::agent_connection(
             self.operation_category,
-            "",
+            self.validated_agent_session.clone(),
         );
         if let Some(workspace) = self.git_workspace_context.as_ref() {
             invocation = invocation.with_git_workspace_context(workspace.clone());
         }
-        invocation = invocation.with_validated_agent_session(self.validated_agent_session.clone());
         invocation
     }
 }
@@ -277,10 +271,6 @@ impl McpAdapter {
             session,
         )?;
         Ok(McpDerivedInvocationContext {
-            project_id: envelope.project_id.clone(),
-            actor_source: ActorSource::agent_connection(
-                self.context.connection_internal_id.clone(),
-            ),
             operation_category,
             validated_agent_session,
             git_workspace_context,
@@ -320,10 +310,6 @@ impl McpAdapter {
             session,
         )?;
         Ok(McpDerivedInvocationContext {
-            project_id: envelope.project_id.clone(),
-            actor_source: ActorSource::agent_connection(
-                self.context.connection_internal_id.clone(),
-            ),
             operation_category,
             validated_agent_session,
             git_workspace_context,

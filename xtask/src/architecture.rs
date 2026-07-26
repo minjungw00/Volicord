@@ -52,6 +52,7 @@ struct ArchitectureGroupDeclaration {
     description: String,
     kind: ArchitectureGroupKind,
     boundary: ArchitectureBoundaryKind,
+    core_dependency: CoreDependencyLayer,
     normal: Vec<String>,
     development: Vec<String>,
     build: Vec<String>,
@@ -69,9 +70,18 @@ enum ArchitectureGroupKind {
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 enum ArchitectureBoundaryKind {
+    Core,
     CoreFacing,
     Adapter,
     Neutral,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum CoreDependencyLayer {
+    Runtime,
+    Development,
+    Forbidden,
 }
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
@@ -433,8 +443,36 @@ fn validate_architecture_graph(
                 ));
             }
 
-            if source_group.boundary == ArchitectureBoundaryKind::CoreFacing
-                && target_group.boundary == ArchitectureBoundaryKind::Adapter
+            if source_group.boundary == ArchitectureBoundaryKind::Core {
+                let permitted = match dependency.kind {
+                    ArchitectureDependencyKind::Normal | ArchitectureDependencyKind::Build => {
+                        target_group.core_dependency == CoreDependencyLayer::Runtime
+                    }
+                    ArchitectureDependencyKind::Development => matches!(
+                        target_group.core_dependency,
+                        CoreDependencyLayer::Runtime | CoreDependencyLayer::Development
+                    ),
+                };
+                if !permitted {
+                    issues.push(ValidationIssue::new(
+                        &source.manifest_path,
+                        "architecture.dependency.core_layer",
+                        format!(
+                            "{} dependency {source_name} ({}) -> {} ({}) targets a group classified {:?} for Core",
+                            dependency.kind.label(),
+                            source_declaration.group,
+                            dependency.package,
+                            target_declaration.group,
+                            target_group.core_dependency
+                        ),
+                    ));
+                }
+            }
+
+            if matches!(
+                source_group.boundary,
+                ArchitectureBoundaryKind::Core | ArchitectureBoundaryKind::CoreFacing
+            ) && target_group.boundary == ArchitectureBoundaryKind::Adapter
             {
                 issues.push(ValidationIssue::new(
                     &source.manifest_path,
@@ -473,6 +511,47 @@ fn validate_architecture_owner(owner: &ArchitectureOwner, issues: &mut Vec<Valid
                 "architecture.owner.group_description",
                 format!("architecture group {group_name} has an empty description"),
             ));
+        }
+        if group.boundary == ArchitectureBoundaryKind::Core
+            && group.kind != ArchitectureGroupKind::Production
+        {
+            issues.push(ValidationIssue::new(
+                ARCHITECTURE_OWNER_PATH,
+                "architecture.owner.core_boundary",
+                format!("architecture group {group_name} marks a non-production group as Core"),
+            ));
+        }
+        match group.core_dependency {
+            CoreDependencyLayer::Runtime if group.kind != ArchitectureGroupKind::Production => {
+                issues.push(ValidationIssue::new(
+                    ARCHITECTURE_OWNER_PATH,
+                    "architecture.owner.core_dependency",
+                    format!(
+                        "architecture group {group_name} is not production and cannot be a Core runtime dependency"
+                    ),
+                ));
+            }
+            CoreDependencyLayer::Development
+                if group.kind != ArchitectureGroupKind::TestSupport =>
+            {
+                issues.push(ValidationIssue::new(
+                    ARCHITECTURE_OWNER_PATH,
+                    "architecture.owner.core_dependency",
+                    format!(
+                        "architecture group {group_name} is not test-support and cannot be a Core development dependency"
+                    ),
+                ));
+            }
+            CoreDependencyLayer::Runtime if group.boundary == ArchitectureBoundaryKind::Adapter => {
+                issues.push(ValidationIssue::new(
+                    ARCHITECTURE_OWNER_PATH,
+                    "architecture.owner.core_dependency",
+                    format!(
+                        "adapter group {group_name} cannot be classified as a Core runtime dependency"
+                    ),
+                ));
+            }
+            _ => {}
         }
         for (kind, targets) in [
             (ArchitectureDependencyKind::Normal, &group.normal),
@@ -1116,6 +1195,7 @@ mod tests {
             description: "Synthetic responsibility group.".to_owned(),
             kind,
             boundary,
+            core_dependency: CoreDependencyLayer::Forbidden,
             normal: normal.iter().map(|value| (*value).to_owned()).collect(),
             development: development
                 .iter()
@@ -1318,6 +1398,79 @@ mod tests {
             .any(|issue| issue.category() == "architecture.dependency.core_adapter"));
         assert!(issues.iter().any(|issue| {
             issue.category() == "architecture.dependency.production_test_support"
+        }));
+    }
+
+    #[test]
+    fn synthetic_graph_rejects_core_dependency_outside_the_core_layer() {
+        let mut core = group(
+            ArchitectureGroupKind::Production,
+            ArchitectureBoundaryKind::Core,
+            &["domain-types", "host-launcher"],
+            &["fixture-kit", "host-launcher"],
+            &[],
+        );
+        core.core_dependency = CoreDependencyLayer::Forbidden;
+        let mut domain_types = group(
+            ArchitectureGroupKind::Production,
+            ArchitectureBoundaryKind::CoreFacing,
+            &[],
+            &[],
+            &[],
+        );
+        domain_types.core_dependency = CoreDependencyLayer::Runtime;
+        let mut fixture_kit = group(
+            ArchitectureGroupKind::TestSupport,
+            ArchitectureBoundaryKind::Neutral,
+            &[],
+            &[],
+            &[],
+        );
+        fixture_kit.core_dependency = CoreDependencyLayer::Development;
+        let host_launcher = group(
+            ArchitectureGroupKind::Production,
+            ArchitectureBoundaryKind::Adapter,
+            &[],
+            &[],
+            &[],
+        );
+        let owner = ArchitectureOwner {
+            packages: BTreeMap::from([
+                ("engine".to_owned(), declaration("core-services")),
+                ("domain".to_owned(), declaration("domain-types")),
+                ("fixture".to_owned(), declaration("fixture-kit")),
+                ("launcher".to_owned(), declaration("host-launcher")),
+            ]),
+            groups: BTreeMap::from([
+                ("core-services".to_owned(), core),
+                ("domain-types".to_owned(), domain_types),
+                ("fixture-kit".to_owned(), fixture_kit),
+                ("host-launcher".to_owned(), host_launcher),
+            ]),
+        };
+        let graph = BTreeMap::from([
+            (
+                "engine".to_owned(),
+                package(&[
+                    ("domain", ArchitectureDependencyKind::Normal),
+                    ("fixture", ArchitectureDependencyKind::Development),
+                    ("launcher", ArchitectureDependencyKind::Development),
+                ]),
+            ),
+            ("domain".to_owned(), package(&[])),
+            ("fixture".to_owned(), package(&[])),
+            ("launcher".to_owned(), package(&[])),
+        ]);
+
+        let issues = validate_architecture_graph(&owner, &graph);
+
+        assert!(issues.iter().any(|issue| {
+            issue.category() == "architecture.dependency.core_layer"
+                && issue.message().contains("launcher")
+        }));
+        assert!(!issues.iter().any(|issue| {
+            issue.category() == "architecture.dependency.core_layer"
+                && (issue.message().contains("domain") || issue.message().contains("fixture"))
         }));
     }
 }

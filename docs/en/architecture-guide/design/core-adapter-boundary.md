@@ -15,7 +15,10 @@ concerns and call `volicord-core` through typed interfaces.
 
 Core owns common preflight, verified invocation context, method planning,
 focused modules under `policy/`, replay handling, branch selection, and final
-public result composition. Public result declarations in
+public result composition. `InvocationContext` carries an
+`InvocationAuthority` consisting of either a typed local
+`UserActionChannelKind` or an opaque `ValidatedAgentSession`; actor identity and
+verification basis are derived from that authority. Public result declarations in
 `volicord-types::methods` produce fields-only planning types and complete
 result types from one declaration, so planners do not construct an incomplete
 common envelope.
@@ -28,7 +31,13 @@ protocol registry for repository checks but remains outside runtime.
 
 ## Invariants
 
-- Core-facing crates do not depend on CLI or MCP adapter crates.
+- Core normal and build dependencies target only groups classified as Core
+  runtime dependencies. Core development dependencies may additionally target
+  groups classified as Core development dependencies.
+- Core owns no administrative command syntax, host launch arguments,
+  host-specific configuration paths, or adapter rendering.
+- Core entry points receive typed semantic authority rather than free-form
+  actor or host labels.
 - The command-model crate depends only on Clap and owns no execution.
 - Method planners return typed fields and planned effects; the shared pipeline
   adds common branch facts only after the branch is known.
@@ -40,17 +49,18 @@ protocol registry for repository checks but remains outside runtime.
 
 ## Responsibility boundaries
 
-Adapters derive trusted local context and translate transport data. Core owns
+Adapters select the host integration, validate host-specific values, derive
+trusted local semantic context, and translate transport data. Core owns
 authority-aware planning and policy evaluation. Store owns persistence and
 atomicity. `volicord-types` owns dependency-safe shared shapes.
-`volicord-host-contract` and `volicord-mcp-protocol` own neutral external-wire
-profiles. `xtask` owns current repository validation and generation workflows.
+`volicord-host-contract` and `volicord-mcp-protocol` own external-wire profiles.
+`xtask` owns current repository validation and generation workflows.
 
 ## Execution flow
 
 1. Command or transport syntax is parsed at its owning boundary.
-2. The adapter resolves local Runtime Home, Connection, project, actor, and
-   operation context.
+2. The adapter resolves local Runtime Home, Connection, project, and operation
+   context and constructs typed local-user or Agent Connection authority.
 3. Core performs common preflight and method-specific planning with focused
    policy owners.
 4. The selected branch remains typed as read-only, no-effect, dry-run,
@@ -77,6 +87,9 @@ adapter internals through Core or use version-selected alternate module paths.
 
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs):
   command syntax, visibility, traversal, synopses, and canonical invocations.
+- [`Cargo.toml`](../../../../Cargo.toml) and
+  [`xtask/src/architecture.rs`](../../../../xtask/src/architecture.rs):
+  Core dependency eligibility and structural package-graph enforcement.
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs),
   [`methods/`](../../../../crates/volicord-core/src/methods/), and
   [`policy/`](../../../../crates/volicord-core/src/policy/): typed Core

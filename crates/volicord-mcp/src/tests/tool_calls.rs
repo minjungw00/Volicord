@@ -271,6 +271,32 @@ fn mcp_readwrite_storage_exposes_workflow_tools() -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
+#[test]
+fn mcp_and_direct_core_status_produce_the_same_domain_outcome() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-core-status-equivalence")?;
+    let direct = CoreService::for_read_only(fixture.runtime_home_path()).status(
+        fixture.status_request("req_direct_status_equivalence", None),
+        test_agent_invocation(&fixture, OperationCategory::Read),
+    )?;
+    let adapter = adapter(&fixture)?;
+    let through_mcp =
+        adapter.call_tool(AgentToolId::STATUS.wire_name(), json!({ "detail": "full" }))?;
+
+    let mut direct_domain = direct.response_value;
+    direct_domain
+        .as_object_mut()
+        .expect("Core status result must be an object")
+        .remove("base");
+    let mut adapter_domain = through_mcp.response_value;
+    adapter_domain
+        .as_object_mut()
+        .expect("MCP status result must be an object")
+        .remove("base");
+
+    assert_eq!(adapter_domain, direct_domain);
+    Ok(())
+}
+
 #[cfg(unix)]
 #[test]
 fn mcp_status_succeeds_with_readonly_storage() -> Result<(), Box<dyn Error>> {
@@ -1626,11 +1652,10 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
                     .into(),
             },
         }),
-        InvocationContext::new(
+        InvocationContext::local_user(
             ProjectId::new(fixture.project_id()),
-            ActorSource::LocalUser,
             OperationCategory::UserOnly,
-            volicord_types::values::VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            volicord_types::values::UserActionChannelKind::Cli,
         ),
     )?;
     assert_eq!(resolved.response_value["base"]["response_kind"], "result");

@@ -14,7 +14,6 @@ serde_json = "1"
 sha2 = "0.10"
 
 [dev-dependencies]
-volicord-host-contract = { path = "../volicord-host-contract" }
 volicord-test-support = { path = "../volicord-test-support" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 

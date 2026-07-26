@@ -69,7 +69,6 @@ use volicord_types::values::{
     JudgmentResolutionOutcome, MethodName, OperationCategory, ProjectContinuityKind, ResponseKind,
     StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
     UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
 impl CoreService {
@@ -454,8 +453,8 @@ fn user_channel_projection_invocation_is_authorized(
 ) -> bool {
     project_id == &invocation.project_id
         && invocation.operation_category == OperationCategory::Read
-        && invocation.actor_source == ActorSource::LocalUser
-        && invocation.invocation_binding_basis == VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+        && invocation.actor_source() == ActorSource::LocalUser
+        && invocation.user_channel() == Some(UserActionChannelKind::Cli)
 }
 
 fn user_channel_inbox_projection_records(

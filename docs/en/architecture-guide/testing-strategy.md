@@ -11,7 +11,7 @@ contracts, preserve removed surfaces, or justify broader support claims.
 | Crate integration test | Adapter boundaries, Store reads/writes, process behavior, and strict persisted-record rejection. |
 | Conformance test | Public cross-method outcomes, error categories, replay, effects, and projections. |
 | Release-integrity test | Volicord target, version, package, checksum, workflow, and actual-binary smoke invariants. |
-| Architecture check | Workspace package declarations, dependency kinds and directions, production/test-support separation, and Core/adapter independence. |
+| Architecture check | Workspace package declarations, dependency kinds and directions, production/test-support separation, and Core dependency-layer eligibility. |
 | Documentation check | Owner routing, links, terminology, parity, examples, and generated-source drift. |
 
 Within `volicord-store`, aggregate-local unit tests stay beside the mutation
@@ -40,8 +40,9 @@ single declaration under `workspace.metadata.architecture` in the root
 `Cargo.toml`. The check rejects any workspace package missing from that owner,
 any owner entry missing from Cargo, and every edge outside the source group's
 allowed target groups. It also independently rejects normal or build
-production dependencies on test-support groups and any Core-facing dependency
-on an adapter group.
+production dependencies on test-support groups, any Core-facing dependency on
+an adapter group, and Core dependencies outside the target group's declared
+Core runtime or development eligibility.
 
 Focused validator tests use neutral synthetic package and group names to cover
 kind-specific allowed edges, undeclared packages, disallowed directions,
@@ -50,6 +51,14 @@ test runs the same validator against the current Cargo workspace and its owner.
 Tests do not carry a second copy of the workspace package graph. Architecture
 rules apply directly to the current graph and are not selected through package,
 schema, or protocol versions.
+
+Core tests construct host-neutral requests with typed local-user or validated
+Agent Connection authority. CLI, MCP, application, and host-contract owners
+test their command syntax, installation and launch configuration, host-specific
+value validation, paths, and rendering. Adapter tests compare equivalent
+adapter and direct-Core operations at the typed domain-result boundary.
+Architecture enforcement inspects the Cargo package graph; behavioral tests
+exercise public typed boundaries and owner output.
 
 ## Pinned MCP Specification Inputs
 

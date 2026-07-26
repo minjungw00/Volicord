@@ -737,8 +737,8 @@ mod tests {
     };
     use volicord_types::ids::{AgentConnectionId, ProjectId};
     use volicord_types::values::{
-        ActorSource, IntegrationProfile, JudgmentKind, MethodName, ObservationConfidence,
-        OperationCategory, UtcTimestamp,
+        IntegrationProfile, JudgmentKind, MethodName, ObservationConfidence, OperationCategory,
+        UtcTimestamp,
     };
 
     use volicord_command_model::DiagnosticsWorkflowMetricsArgs;
@@ -1454,13 +1454,8 @@ mod tests {
                 OperationCategory::AgentWorkflow,
             )
             .expect("managed Agent Session fixture should validate");
-        let invocation = InvocationContext::new(
-            ProjectId::new(fixture.project_id()),
-            ActorSource::agent_connection(fixture.connection_id()),
-            OperationCategory::AgentWorkflow,
-            "",
-        )
-        .with_validated_agent_session(validated);
+        let invocation =
+            InvocationContext::agent_connection(OperationCategory::AgentWorkflow, validated);
         let intake = core
             .intake(
                 &context,

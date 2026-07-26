@@ -37,7 +37,8 @@ use volicord_types::schema::{
     ToolError, ToolRejectedResponse, ToolResultBase,
 };
 use volicord_types::values::{
-    ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, ResponseKind, UtcTimestamp,
+    ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, ResponseKind,
+    UserActionChannelKind, UtcTimestamp,
 };
 
 use crate::policy::{
@@ -125,41 +126,87 @@ pub struct GitWorkspaceContext {
     pub workspace_fingerprint: String,
 }
 
-/// Local invocation facts supplied by an adapter outside `ToolEnvelope`.
+/// Host-neutral authority capability supplied to Core outside `ToolEnvelope`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvocationAuthority {
+    /// A local user acting through a supported User Channel.
+    LocalUser { channel: UserActionChannelKind },
+    /// A current Agent Connection session validated for this invocation.
+    AgentConnection(crate::ValidatedAgentSession),
+}
+
+impl InvocationAuthority {
+    /// Returns the semantic actor represented by this authority capability.
+    pub fn actor_source(&self) -> ActorSource {
+        match self {
+            Self::LocalUser { .. } => ActorSource::LocalUser,
+            Self::AgentConnection(session) => {
+                ActorSource::AgentConnection(session.connection_id().clone())
+            }
+        }
+    }
+
+    /// Returns the local User Channel when this is local-user authority.
+    pub const fn user_channel(&self) -> Option<UserActionChannelKind> {
+        match self {
+            Self::LocalUser { channel } => Some(*channel),
+            Self::AgentConnection(_) => None,
+        }
+    }
+}
+
+/// Local host-neutral invocation facts supplied by an adapter outside `ToolEnvelope`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvocationContext {
     pub project_id: ProjectId,
-    pub actor_source: ActorSource,
     pub operation_category: OperationCategory,
-    pub invocation_binding_basis: String,
-    pub validated_agent_session: Option<crate::ValidatedAgentSession>,
+    authority: InvocationAuthority,
     pub session_id: Option<String>,
     pub git_workspace_context: Option<GitWorkspaceContext>,
 }
 
 impl InvocationContext {
-    /// Creates typed adapter-derived invocation facts for Core preflight.
-    pub fn new(
+    /// Creates local-user invocation facts from a typed User Channel.
+    pub fn local_user(
         project_id: ProjectId,
-        actor_source: ActorSource,
         operation_category: OperationCategory,
-        invocation_binding_basis: impl Into<String>,
+        channel: UserActionChannelKind,
     ) -> Self {
         Self {
             project_id,
-            actor_source,
             operation_category,
-            invocation_binding_basis: invocation_binding_basis.into(),
-            validated_agent_session: None,
+            authority: InvocationAuthority::LocalUser { channel },
             session_id: None,
             git_workspace_context: None,
         }
     }
 
-    /// Adds the current Agent Session that Core validated for this operation.
-    pub fn with_validated_agent_session(mut self, session: crate::ValidatedAgentSession) -> Self {
-        self.validated_agent_session = Some(session);
-        self
+    /// Creates Agent Connection invocation facts from a validated authority capability.
+    pub fn agent_connection(
+        operation_category: OperationCategory,
+        session: crate::ValidatedAgentSession,
+    ) -> Self {
+        Self {
+            project_id: session.project_id().clone(),
+            operation_category,
+            authority: InvocationAuthority::AgentConnection(session),
+            session_id: None,
+            git_workspace_context: None,
+        }
+    }
+
+    /// Returns the semantic actor represented by the typed authority capability.
+    pub fn actor_source(&self) -> ActorSource {
+        self.authority.actor_source()
+    }
+
+    /// Returns the local User Channel when this invocation carries local-user authority.
+    pub const fn user_channel(&self) -> Option<UserActionChannelKind> {
+        self.authority.user_channel()
+    }
+
+    pub(crate) const fn authority(&self) -> &InvocationAuthority {
+        &self.authority
     }
 
     /// Adds the adapter-owned session correlation coordinate when the transport has one.
@@ -2048,11 +2095,10 @@ mod tests {
     use volicord_test_support::{
         open_project_fixture_database, open_registry_fixture_database,
         with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
-        TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
     };
     use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId};
     use volicord_types::schema::PlannedEffect;
-    use volicord_types::values::{ActorSource, OperationCategory};
+    use volicord_types::values::{ActorSource, OperationCategory, UserActionChannelKind};
 
     use super::*;
 
@@ -3047,33 +3093,6 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_actor_source_is_rejected_without_effect() -> Result<(), Box<dyn Error>> {
-        let harness = PipelineHarness::new()?;
-        let before = harness.counts()?;
-        let envelope = envelope("req_actor_source", None, false, None, Some(TASK_ID));
-
-        let response = harness.execute(PipelineRequest {
-            method_name: MethodName::Status,
-            request_json: request_json(MethodName::Status, &envelope, "actor-source-mismatch"),
-            envelope,
-            invocation: invocation_with_actor(ActorSource::System, OperationCategory::Read),
-            operation_category: OperationCategory::Read,
-            task_requirement: TaskRequirement::Optional,
-            branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("actor_source_mismatch"),
-            },
-        })?;
-
-        assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-        assert_eq!(
-            response.response_value["errors"][0]["code"],
-            "INVOCATION_CONTEXT_MISMATCH"
-        );
-        assert_eq!(harness.counts()?, before);
-        Ok(())
-    }
-
-    #[test]
     fn operation_category_mismatch_is_rejected_without_effect() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         let before = harness.counts()?;
@@ -3136,24 +3155,20 @@ mod tests {
         actor_source: ActorSource,
         operation_category: OperationCategory,
     ) -> InvocationContext {
-        let invocation = InvocationContext::new(
-            ProjectId::new(PROJECT_ID),
-            actor_source.clone(),
-            operation_category,
-            if matches!(actor_source, ActorSource::AgentConnection(_)) {
-                ""
-            } else {
-                VERIFICATION_BASIS_TEST_FIXTURE_BINDING
-            },
-        );
         match actor_source {
-            ActorSource::AgentConnection(connection_id) => invocation.with_validated_agent_session(
+            ActorSource::AgentConnection(connection_id) => InvocationContext::agent_connection(
+                operation_category,
                 crate::agent_session::validated_agent_session_for_test(
                     connection_id.as_str(),
                     PROJECT_ID,
                 ),
             ),
-            _ => invocation,
+            ActorSource::LocalUser => InvocationContext::local_user(
+                ProjectId::new(PROJECT_ID),
+                operation_category,
+                UserActionChannelKind::Cli,
+            ),
+            ActorSource::System => panic!("system authority is not a public Core invocation input"),
         }
     }
 

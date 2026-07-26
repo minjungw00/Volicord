@@ -309,7 +309,7 @@ fn authority_next_actor(action: Option<&NextActionSummary>) -> AuthorityNextActo
 mod tests {
     use super::*;
     use volicord_test_support::{core_fixtures::CoreFixture, TestRuntimeHomeMutation};
-    use volicord_types::values::{ActorSource, OperationCategory};
+    use volicord_types::values::OperationCategory;
 
     use crate::{CoreService, InvocationContext};
 
@@ -358,13 +358,8 @@ mod tests {
         fixture: &CoreFixture,
         operation_category: OperationCategory,
     ) -> InvocationContext {
-        InvocationContext::new(
-            ProjectId::new(fixture.project_id()),
-            ActorSource::agent_connection(fixture.connection_id()),
+        InvocationContext::agent_connection(
             operation_category,
-            "",
-        )
-        .with_validated_agent_session(
             crate::agent_session::validated_agent_session_for_test(
                 fixture.connection_id(),
                 fixture.project_id(),

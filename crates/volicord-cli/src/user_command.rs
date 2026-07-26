@@ -28,8 +28,7 @@ use volicord_types::schema::{
     UserActionInboxItem, UserActionResolutionInput,
 };
 use volicord_types::values::{
-    ActorSource, EvidenceRelevanceStatus, OperationCategory, UserActionStatus,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    EvidenceRelevanceStatus, OperationCategory, UserActionChannelKind, UserActionStatus,
 };
 
 use crate::mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError};
@@ -156,7 +155,6 @@ pub(crate) struct UserActionResolutionRecordingInput<'a> {
     pub project_id: &'a str,
     pub record: &'a EffectiveUserActionRecord,
     pub resolution: UserActionResolutionInput,
-    pub verification_basis: &'a str,
     pub request_id: Option<String>,
     pub channel_submission_id: Option<String>,
     pub session_id: Option<&'a str>,
@@ -247,8 +245,6 @@ where
                 &resolved.runtime_home,
                 &resolved.project_id,
                 task_id,
-                ActorSource::LocalUser,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
                 None,
             )
         })
@@ -290,15 +286,12 @@ fn user_channel_inbox_projection(
     runtime_home: &Path,
     project_id: &str,
     task_id: &str,
-    actor_source: ActorSource,
-    verification_basis: &str,
     session_id: Option<&str>,
 ) -> Result<Option<UserChannelInboxProjection>, UserCommandError> {
-    let invocation = InvocationContext::new(
+    let invocation = InvocationContext::local_user(
         ProjectId::new(project_id),
-        actor_source,
         OperationCategory::Read,
-        verification_basis,
+        UserActionChannelKind::Cli,
     );
     let invocation = match session_id {
         Some(session_id) => invocation.with_session_id(session_id),
@@ -440,7 +433,6 @@ fn command_inbox_resolve_admitted(
             project_id: &project.project_internal_id,
             record: &snapshot.record,
             resolution,
-            verification_basis: VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
             request_id: Some(stable_request_id),
             channel_submission_id: Some(channel_submission_id),
             session_id: Some(&diagnostic_session_id),
@@ -712,11 +704,7 @@ pub(crate) fn resolve_user_action_from_record(
     let channel_submission_id = input
         .channel_submission_id
         .unwrap_or_else(|| generated_id("submission_user_action"));
-    let invocation = invocation_with_basis(
-        input.project_id,
-        OperationCategory::UserOnly,
-        input.verification_basis,
-    );
+    let invocation = invocation(input.project_id, OperationCategory::UserOnly);
     let invocation = match input.session_id {
         Some(session_id) => invocation.with_session_id(session_id),
         None => invocation,
@@ -760,23 +748,10 @@ fn envelope(
 }
 
 fn invocation(project_id: &str, operation_category: OperationCategory) -> InvocationContext {
-    invocation_with_basis(
-        project_id,
-        operation_category,
-        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-    )
-}
-
-fn invocation_with_basis(
-    project_id: &str,
-    operation_category: OperationCategory,
-    verification_basis: &str,
-) -> InvocationContext {
-    InvocationContext::new(
+    InvocationContext::local_user(
         ProjectId::new(project_id),
-        ActorSource::LocalUser,
         operation_category,
-        verification_basis,
+        UserActionChannelKind::Cli,
     )
 }
 
@@ -1080,13 +1055,8 @@ mod tests {
             session.project_session_id,
             OperationCategory::AgentWorkflow,
         )?;
-        let invocation = InvocationContext::new(
-            ProjectId::new(fixture.project_id()),
-            ActorSource::agent_connection(fixture.connection_id()),
-            OperationCategory::AgentWorkflow,
-            "",
-        )
-        .with_validated_agent_session(validated);
+        let invocation =
+            InvocationContext::agent_connection(OperationCategory::AgentWorkflow, validated);
         let intake = core.intake(
             &fixture.mutation_context()?,
             fixture.intake_request(
@@ -1152,13 +1122,8 @@ mod tests {
             session.project_session_id,
             OperationCategory::AgentWorkflow,
         )?;
-        let invocation = InvocationContext::new(
-            ProjectId::new(fixture.project_id()),
-            ActorSource::agent_connection(fixture.connection_id()),
-            OperationCategory::AgentWorkflow,
-            "",
-        )
-        .with_validated_agent_session(validated);
+        let invocation =
+            InvocationContext::agent_connection(OperationCategory::AgentWorkflow, validated);
         let intake = core.intake(
             &fixture.mutation_context()?,
             fixture.intake_request(

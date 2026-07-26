@@ -516,11 +516,10 @@ fn cli_user_channel_projection(
                 project_id: ProjectId::new(PROJECT_ID),
                 task_id: TaskId::new(task_id),
             },
-            InvocationContext::new(
+            InvocationContext::local_user(
                 ProjectId::new(PROJECT_ID),
-                ActorSource::LocalUser,
                 OperationCategory::Read,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                UserActionChannelKind::Cli,
             ),
         )?
         .expect("authenticated local CLI should receive the User Channel projection"))
@@ -578,11 +577,10 @@ fn envelope(
 
 fn invocation(operation_category: OperationCategory) -> InvocationContext {
     if operation_category == OperationCategory::UserOnly {
-        return InvocationContext::new(
+        return InvocationContext::local_user(
             ProjectId::new(PROJECT_ID),
-            ActorSource::LocalUser,
             operation_category,
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            UserActionChannelKind::Cli,
         );
     }
     invocation_with_actor(
@@ -598,13 +596,8 @@ fn invocation_with_session(
     if operation_category == OperationCategory::UserOnly {
         return invocation(operation_category).with_session_id(session_id.to_owned());
     }
-    InvocationContext::new(
-        ProjectId::new(PROJECT_ID),
-        actor_source_for_operation_category(operation_category),
+    InvocationContext::agent_connection(
         operation_category,
-        "",
-    )
-    .with_validated_agent_session(
         crate::agent_session::validated_agent_session_for_test_with_project_session(
             CONNECTION_ID,
             PROJECT_ID,
@@ -628,24 +621,20 @@ fn invocation_with_actor(
     actor_source: ActorSource,
     operation_category: OperationCategory,
 ) -> InvocationContext {
-    let invocation = InvocationContext::new(
-        ProjectId::new(PROJECT_ID),
-        actor_source.clone(),
-        operation_category,
-        if matches!(actor_source, ActorSource::AgentConnection(_)) {
-            ""
-        } else {
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING
-        },
-    );
     match actor_source {
-        ActorSource::AgentConnection(connection_id) => invocation.with_validated_agent_session(
+        ActorSource::AgentConnection(connection_id) => InvocationContext::agent_connection(
+            operation_category,
             crate::agent_session::validated_agent_session_for_test(
                 connection_id.as_str(),
                 PROJECT_ID,
             ),
         ),
-        _ => invocation,
+        ActorSource::LocalUser => InvocationContext::local_user(
+            ProjectId::new(PROJECT_ID),
+            operation_category,
+            UserActionChannelKind::Cli,
+        ),
+        ActorSource::System => panic!("system authority is not a public Core invocation input"),
     }
 }
 

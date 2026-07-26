@@ -14,9 +14,7 @@ use volicord_store::{
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId, TaskId};
 use volicord_types::methods::ReconcileChangesRequest;
 use volicord_types::schema::ToolEnvelope;
-use volicord_types::values::{
-    ActorSource, OperationCategory, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
-};
+use volicord_types::values::{OperationCategory, UserActionChannelKind};
 
 use crate::disclosure::does_not_prove_line;
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
@@ -159,11 +157,10 @@ fn command_reconcile_admitted(
             task_id: TaskId::new(task_id),
             resolution_requests: Vec::new(),
         },
-        InvocationContext::new(
+        InvocationContext::local_user(
             project_id,
-            ActorSource::LocalUser,
             OperationCategory::LocalRecovery,
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            UserActionChannelKind::Cli,
         ),
     )?;
     render_reconcile_response(
@@ -366,13 +363,7 @@ mod tests {
                 false,
                 Some(0),
             ),
-            InvocationContext::new(
-                ProjectId::new(fixture.project_id()),
-                ActorSource::agent_connection(fixture.connection_id()),
-                OperationCategory::AgentWorkflow,
-                "",
-            )
-            .with_validated_agent_session(validated),
+            InvocationContext::agent_connection(OperationCategory::AgentWorkflow, validated),
         )?;
         assert_eq!(intake.response_value["base"]["response_kind"], "result");
 

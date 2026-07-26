@@ -13,6 +13,9 @@ routing, rendering 관심사를 담당하며 typed interface로 `volicord-core`�
 
 Core는 공통 preflight, 검증된 invocation context, 메서드 planning, `policy/` 아래의
 집중 모듈, replay 처리, branch 선택, 최종 공개 결과 구성을 담당합니다.
+`InvocationContext`는 typed local `UserActionChannelKind` 또는 불투명한
+`ValidatedAgentSession` 중 하나로 구성된 `InvocationAuthority`를 전달하며, actor
+identity와 verification basis는 이 authority에서 파생됩니다.
 `volicord-types::methods`의 공개 결과 선언은 한 선언에서 fields-only planning type과
 완전한 result type을 만들므로 planner가 불완전한 공통 envelope를 구성하지 않습니다.
 
@@ -24,7 +27,13 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
 
 ## 불변 조건
 
-- Core 쪽 crate는 CLI나 MCP adapter crate에 의존하지 않습니다.
+- Core의 일반 및 빌드 의존성은 Core 런타임 의존성으로 분류된 그룹만 대상으로
+  합니다. Core 개발 의존성은 Core 개발 의존성으로 분류된 그룹도 대상으로 할 수
+  있습니다.
+- Core는 관리 명령 문법, 호스트 시작 인자, 호스트별 구성 경로, 어댑터 렌더링을
+  담당하지 않습니다.
+- Core 진입점은 자유 형식 actor 또는 host label이 아니라 typed semantic authority를
+  받습니다.
 - Command-model crate는 Clap에만 의존하며 실행을 담당하지 않습니다.
 - 메서드 planner는 typed field와 계획된 effect를 반환합니다. 공유 pipeline은 branch
   fact가 정해진 뒤에만 공통 fact를 추가합니다.
@@ -35,17 +44,18 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
 
 ## 책임 경계
 
-Adapter는 신뢰할 수 있는 local context를 파생하고 transport data를 변환합니다.
-Core는 권한을 고려한 planning과 policy 평가를 담당합니다. Store는 persistence와
-atomicity를 담당합니다. `volicord-types`는 dependency-safe shared shape를 담당합니다.
-`volicord-host-contract`와 `volicord-mcp-protocol`은 중립적인 external-wire profile을
+Adapter는 host integration을 선택하고 host별 값을 검증하며 신뢰할 수 있는 local
+semantic context를 파생하고 transport data를 변환합니다. Core는 권한을 고려한
+planning과 policy 평가를 담당합니다. Store는 persistence와 atomicity를 담당합니다.
+`volicord-types`는 dependency-safe shared shape를 담당합니다.
+`volicord-host-contract`와 `volicord-mcp-protocol`은 external-wire profile을
 담당합니다. `xtask`는 현재 저장소 검증과 생성 작업 흐름을 담당합니다.
 
 ## 실행 흐름
 
 1. Command 또는 transport 문법을 담당 경계에서 parsing합니다.
-2. Adapter가 local Runtime Home, Connection, project, actor, operation context를
-   해석합니다.
+2. Adapter가 local Runtime Home, Connection, project, operation context를 해석하고
+   typed local-user 또는 Agent Connection authority를 구성합니다.
 3. Core가 공통 preflight와 집중 policy 담당자를 사용하는 메서드별 planning을
    수행합니다.
 4. 선택한 branch는 read-only, no-effect, dry-run, staging, committed mutation 중
@@ -71,6 +81,9 @@ fallback 동작을 시작하지 않습니다.
 
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs):
   명령 문법, 가시성, traversal, synopsis, 정규 invocation.
+- [`Cargo.toml`](../../../../Cargo.toml),
+  [`xtask/src/architecture.rs`](../../../../xtask/src/architecture.rs):
+  Core 의존 적격성과 구조적 패키지 graph 집행.
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs),
   [`methods/`](../../../../crates/volicord-core/src/methods/),
   [`policy/`](../../../../crates/volicord-core/src/policy/): typed Core 조율,

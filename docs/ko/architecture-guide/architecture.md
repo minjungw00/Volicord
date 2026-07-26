@@ -70,7 +70,7 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 | `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 선언 하나에서 함께 만드는 공개 메서드 결과와 필드 전용 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. 공개 Rust 어휘는 각 항목을 담당하는 모듈 경로로 제공하며, 크레이트 루트는 타입 집계 파사드가 아니라 모듈 경로를 제공합니다. |
 | `crates/volicord-host-contract` | `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames`를 통한 의존성이 안전한 semantic Codex 계약, 명시적인 MCP server/raw-tool identity, 충돌 검사를 거친 callable 투영과 catalog 조회, 결정적인 contract identity, 한도 있는 host 값과 error, source별 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
-| `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율. |
+| `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 호스트 중립 typed invocation authority, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율. |
 | `crates/volicord-command-model` | `volicord` 바이너리의 완전한 Clap 선언을 담당합니다. Root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 validator, 실제 모델 기반 가시성 분류, 새로운 root `clap::Command`, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation을 제공합니다. 명령 실행이나 application service는 담당하지 않습니다. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 렌더링, 숨은 동일 프로세스 managed-host launcher, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 프로세스 시작, 관리 명령 디스패치, 재사용 실행 모듈. |
 | `crates/volicord-platform-fs` | 프로세스 target 및 플랫폼 관찰, 네이티브 Linux/WSL2 분류, WSL2 배포판 검증 및 파일시스템 관찰, typed 원자적 기존 대상 비대체 일반 파일 공개, 플랫폼 고유 파일시스템 이름 공간 연산, 정규 Runtime Home별 공유·배타 OS 기반 변경 승인과 빌린 변경 permit, 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 시작이나 Codex 구성 정책은 담당하지 않습니다. |
@@ -88,14 +88,18 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 ## 의존 경계
 
 루트 `Cargo.toml`의 `workspace.metadata.architecture`가 워크스페이스 패키지
-배정, 의미 기반 책임 그룹, 허용되는 내부 의존 방향을 위한 기계 판독 담당
-원본입니다. 각 그룹은 일반, 개발, 빌드 의존 대상 그룹을 별도로 선언합니다.
+배정, 의미 기반 책임 그룹, 허용되는 내부 의존 방향, Core 의존 적격성을 위한
+기계 판독 담당 원본입니다. 각 그룹은 일반, 개발, 빌드 의존 대상 그룹을 별도로
+선언하고 자신을 Core 런타임 의존성, Core 개발 의존성, 또는 Core 의존 계층 밖으로
+분류합니다.
 `cargo run -p xtask -- architecture-check`는 Cargo 메타데이터에서 실제
 워크스페이스 멤버와 의존 간선을 읽고, 선언되지 않은 패키지나 대상 그룹 및
 허용되지 않은 간선을 거부합니다. 프로덕션 그룹은 명시적으로 허용된 개발
-의존성으로만 테스트 지원 그룹을 사용할 수 있고, Core 쪽 그룹은 어댑터
-그룹에서 독립적으로 유지됩니다. 이 규칙은 현재 워크스페이스에 직접 적용하며
-패키지, 스키마, 프로토콜 버전으로 다른 의존 규칙을 선택하지 않습니다.
+의존성으로만 테스트 지원 그룹을 사용할 수 있습니다. Core의 일반 및 빌드
+의존성은 Core 런타임 그룹만 대상으로 하고, 개발 의존성은 Core 개발 그룹도
+대상으로 할 수 있습니다. Core 쪽 그룹은 어댑터 그룹에서 독립적으로
+유지됩니다. 이 규칙은 현재 워크스페이스에 직접 적용하며 패키지, 스키마,
+프로토콜 버전으로 다른 의존 규칙을 선택하지 않습니다.
 
 오래 유지될 의존 방향은 아래와 같습니다.
 
@@ -114,8 +118,11 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 - `volicord-store`는 공유 타입과 저장된 소유자 경로 검증에 쓰는 읽기 전용 정규 Git
   layout primitive에 의존하고 지속 저장 메커니즘을 담당합니다. Core, CLI, MCP 어댑터
   크레이트에는 의존하지 않습니다.
-- `volicord-core`는 Store와 공유 타입에 의존합니다. Core 쪽 코드는 CLI와 MCP
-  어댑터 크레이트에서 독립적입니다.
+- `volicord-core`는 Store와 공유 타입에 의존하고 테스트 지원은 개발 의존성으로만
+  사용합니다. 공개 invocation 경계는 typed local `UserActionChannelKind` 또는
+  불투명한 `ValidatedAgentSession`으로 구성된 `InvocationAuthority`를 받습니다.
+  Core는 어댑터가 선택한 actor label, 호스트 명령 문법, 시작 인자, 구성 경로,
+  렌더링 지시를 받지 않습니다.
 - `volicord-command-model`은 Clap에만 의존합니다. CLI와 문서 validator가 이
   크레이트를 직접 사용하며, Core, Store, MCP, CLI 렌더링, Runtime Home 구현,
   application service에는 의존하지 않습니다.

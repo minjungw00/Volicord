@@ -1006,13 +1006,7 @@ mod mutation_projection_and_recovery_tests {
                 operation_category,
             )
             .expect("managed Agent Session fixture must validate");
-        InvocationContext::new(
-            ProjectId::new(fixture.project_id()),
-            ActorSource::agent_connection(fixture.connection_id()),
-            operation_category,
-            "",
-        )
-        .with_validated_agent_session(validated)
+        InvocationContext::agent_connection(operation_category, validated)
     }
 
     fn committed_intake_with_receipt(

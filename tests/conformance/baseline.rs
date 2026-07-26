@@ -3,8 +3,8 @@ use std::{error::Error, fs, path::Path};
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use volicord_core::{
-    rejected_response, tool_error, Clock, CoreResult, CoreService, InvocationContext,
-    PipelineResponse, UserChannelInboxProjectionRequest,
+    rejected_response, tool_error, Clock, CoreResult, CoreService, GitWorkspaceContext,
+    InvocationContext, PipelineResponse, UserChannelInboxProjectionRequest,
 };
 use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
@@ -14,7 +14,6 @@ use volicord_test_support::core_fixtures::{
     ObservationUserActionFixture, ResolveUserActionFixture, TaskOwnerJsonColumn,
     UpdateScopeFixture, UserActionFixture, DEFAULT_PRODUCT_PATH,
 };
-use volicord_test_support::TEST_FIXTURE_INVOCATION_BINDING_BASIS as VERIFICATION_BASIS_TEST_FIXTURE_BINDING;
 use volicord_types::ids::{
     AcceptanceCriterionId, AgentConnectionId, ArtifactInputId, EvidenceClaimId, ProjectId, RunId,
     TaskId, WriteTicketId,
@@ -26,11 +25,10 @@ use volicord_types::schema::{
     UserActionRequestBody, UserActionResolutionBody,
 };
 use volicord_types::values::{
-    ActorSource, ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason,
-    EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind,
-    JudgmentKind, JudgmentResolutionOutcome, OperationCategory, ResponseKind, StateRecordKind,
-    UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    ArtifactInputSourceKind, ChangeUnitOperation, CloseIntent, CloseReason, EffectKind, ErrorCode,
+    EvidenceAssuranceLevel, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentKind,
+    JudgmentResolutionOutcome, OperationCategory, ResponseKind, StateRecordKind,
+    UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
 };
 
 #[test]
@@ -144,7 +142,7 @@ fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), B
 }
 
 #[test]
-fn idempotency_replay_rejects_actor_source_mismatch() -> Result<(), Box<dyn Error>> {
+fn idempotency_replay_rejects_invocation_context_mismatch() -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("replay_context")?;
     let service = core(&fixture);
     let (task_id, change_unit_id) =
@@ -169,11 +167,7 @@ fn idempotency_replay_rejects_actor_source_mismatch() -> Result<(), Box<dyn Erro
 
     let mismatch = service.prepare_write(
         request,
-        invocation_with_actor(
-            &fixture,
-            ActorSource::agent_connection("connection_other"),
-            OperationCategory::AgentWorkflow,
-        ),
+        mismatched_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
 
     assert!(!mismatch.replayed);
@@ -337,11 +331,7 @@ fn committed_non_allow_prepare_write_audit_and_replay_are_exact() -> Result<(), 
 
     let mismatch = service.prepare_write(
         request,
-        invocation_with_actor(
-            &fixture,
-            ActorSource::agent_connection("connection_other"),
-            OperationCategory::AgentWorkflow,
-        ),
+        mismatched_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
     )?;
     assert!(!mismatch.replayed);
     assert_rejected_code(&mismatch.response_value, "INVOCATION_CONTEXT_MISMATCH");
@@ -3931,76 +3921,67 @@ fn core(fixture: &CoreFixture) -> AdmittedCore<'_> {
 }
 
 fn invocation(fixture: &CoreFixture, operation_category: OperationCategory) -> InvocationContext {
-    invocation_with_actor(
-        fixture,
-        actor_source_for_operation_category(fixture, operation_category),
-        operation_category,
-    )
-}
-
-fn actor_source_for_operation_category(
-    fixture: &CoreFixture,
-    operation_category: OperationCategory,
-) -> ActorSource {
     match operation_category {
         OperationCategory::Read | OperationCategory::AgentWorkflow => {
-            ActorSource::agent_connection(fixture.connection_id())
+            agent_invocation(fixture, operation_category)
         }
         OperationCategory::UserOnly
         | OperationCategory::AdminLocal
-        | OperationCategory::LocalRecovery => ActorSource::LocalUser,
+        | OperationCategory::LocalRecovery => InvocationContext::local_user(
+            ProjectId::new(fixture.project_id()),
+            operation_category,
+            UserActionChannelKind::Cli,
+        ),
     }
 }
 
-fn invocation_with_actor(
+fn agent_invocation(
     fixture: &CoreFixture,
-    actor_source: ActorSource,
     operation_category: OperationCategory,
 ) -> InvocationContext {
-    let verification_basis = if matches!(actor_source, ActorSource::AgentConnection(_)) {
-        ""
-    } else if operation_category == OperationCategory::UserOnly {
-        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
-    } else {
-        VERIFICATION_BASIS_TEST_FIXTURE_BINDING
-    };
-    let invocation = InvocationContext::new(
-        ProjectId::new(fixture.project_id()),
-        actor_source.clone(),
-        operation_category,
-        verification_basis,
-    );
-    match actor_source {
-        ActorSource::AgentConnection(_) => {
-            let guard = volicord_store::guards::guard_health_record(
-                fixture.runtime_home_path(),
-                fixture.project_id(),
-                fixture.connection_id(),
-            )
-            .expect("conformance guard authority fixture must load");
-            let session = volicord_test_support::seed_test_agent_session(
-                fixture.runtime_home_path(),
-                fixture.project_id(),
-                fixture.connection_id(),
-                guard
-                    .guard_installation
-                    .as_ref()
-                    .map(|installation| installation.guard_installation_id.as_str()),
-            )
-            .expect("conformance managed Agent Session fixture must seed");
-            let validated = CoreService::for_read_only(fixture.runtime_home_path())
-                .validate_agent_session(
-                    AgentConnectionId::new(fixture.connection_id()),
-                    ProjectId::new(fixture.project_id()),
-                    session.runtime_session_id,
-                    session.project_session_id,
-                    operation_category,
-                )
-                .expect("conformance managed Agent Session fixture must validate");
-            invocation.with_validated_agent_session(validated)
-        }
-        _ => invocation,
-    }
+    let guard = volicord_store::guards::guard_health_record(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+    )
+    .expect("conformance guard authority fixture must load");
+    let session = volicord_test_support::seed_test_agent_session(
+        fixture.runtime_home_path(),
+        fixture.project_id(),
+        fixture.connection_id(),
+        guard
+            .guard_installation
+            .as_ref()
+            .map(|installation| installation.guard_installation_id.as_str()),
+    )
+    .expect("conformance managed Agent Session fixture must seed");
+    let validated = CoreService::for_read_only(fixture.runtime_home_path())
+        .validate_agent_session(
+            AgentConnectionId::new(fixture.connection_id()),
+            ProjectId::new(fixture.project_id()),
+            session.runtime_session_id,
+            session.project_session_id,
+            operation_category,
+        )
+        .expect("conformance managed Agent Session fixture must validate");
+    InvocationContext::agent_connection(operation_category, validated)
+}
+
+fn mismatched_agent_invocation(
+    fixture: &CoreFixture,
+    operation_category: OperationCategory,
+) -> InvocationContext {
+    agent_invocation(fixture, operation_category).with_git_workspace_context(GitWorkspaceContext {
+        git_common_dir: fixture
+            .runtime_home_path()
+            .join("conformance-context.git")
+            .to_string_lossy()
+            .into_owned(),
+        worktree_id: format!("sha256:{}", "1".repeat(64)),
+        branch_ref: Some("refs/heads/context-mismatch".to_owned()),
+        head_sha: Some("2".repeat(40)),
+        workspace_fingerprint: format!("sha256:{}", "3".repeat(64)),
+    })
 }
 
 fn insert_unrecorded_change_fixture(
@@ -4951,11 +4932,10 @@ fn trusted_user_channel_projection(
                 project_id: ProjectId::new(fixture.project_id()),
                 task_id: TaskId::new(task_id),
             },
-            InvocationContext::new(
+            InvocationContext::local_user(
                 ProjectId::new(fixture.project_id()),
-                ActorSource::LocalUser,
                 OperationCategory::Read,
-                VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+                UserActionChannelKind::Cli,
             ),
         )?
         .ok_or_else(|| "authenticated local CLI should receive the User Channel projection".into())

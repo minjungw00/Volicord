@@ -235,7 +235,7 @@ fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
     assert_eq!(replay.operation_category, "local_recovery");
     assert_eq!(
         replay.verification_basis.as_deref(),
-        Some(VERIFICATION_BASIS_TEST_FIXTURE_BINDING)
+        Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL)
     );
     Ok(())
 }
@@ -824,11 +824,10 @@ fn reconcile_changes_rejects_mismatched_invocation_project() -> Result<(), Box<d
             &task_id,
             Vec::new(),
         ),
-        InvocationContext::new(
+        InvocationContext::local_user(
             ProjectId::new(other_project_id),
-            ActorSource::LocalUser,
             OperationCategory::LocalRecovery,
-            VERIFICATION_BASIS_TEST_FIXTURE_BINDING,
+            UserActionChannelKind::Cli,
         ),
     )?;
 

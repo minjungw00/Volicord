@@ -6,7 +6,9 @@ use volicord_types::values::{
     ActorSource, ErrorCode, OperationCategory, ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE,
 };
 
-use crate::pipeline::{tool_error, InvocationContext, MethodPolicy, VerifiedInvocationContext};
+use crate::pipeline::{
+    tool_error, InvocationAuthority, InvocationContext, MethodPolicy, VerifiedInvocationContext,
+};
 
 const ACTOR_ASSURANCE_LOCAL_USER_CHANNEL: &str = "local_user_channel";
 const ACTOR_ASSURANCE_SYSTEM: &str = "system";
@@ -31,14 +33,8 @@ pub(crate) fn derive_verified_invocation(
             invocation.operation_category,
         ));
     }
-    validate_actor_source(&invocation.actor_source, policy.operation_category)?;
-    if !matches!(invocation.actor_source, ActorSource::AgentConnection(_))
-        && invocation.invocation_binding_basis.trim().is_empty()
-    {
-        return Err(invocation_context_mismatch_error(
-            "invocation.invocation_binding_basis",
-        ));
-    }
+    let actor_source = invocation.actor_source();
+    validate_actor_source(&actor_source, policy.operation_category)?;
     let (verification_basis, session_id) = verified_binding_basis(invocation)?;
     let mut git_workspace_context = invocation.git_workspace_context.clone();
     if let Some(workspace) = git_workspace_context.as_mut() {
@@ -47,10 +43,10 @@ pub(crate) fn derive_verified_invocation(
 
     Ok(VerifiedInvocationContext {
         project_id: invocation.project_id.clone(),
-        actor_source: invocation.actor_source.clone(),
+        actor_source: actor_source.clone(),
         operation_category: invocation.operation_category,
         verification_basis,
-        assurance_level: actor_assurance_level(&invocation.actor_source).to_owned(),
+        assurance_level: actor_assurance_level(&actor_source).to_owned(),
         session_id,
         git_workspace_context,
     })
@@ -59,14 +55,9 @@ pub(crate) fn derive_verified_invocation(
 fn verified_binding_basis(
     invocation: &InvocationContext,
 ) -> Result<(String, Option<String>), ToolError> {
-    match (
-        &invocation.actor_source,
-        &invocation.validated_agent_session,
-    ) {
-        (ActorSource::AgentConnection(connection_id), Some(validated)) => {
-            if validated.project_id() != &invocation.project_id
-                || validated.connection_id() != connection_id
-            {
+    match invocation.authority() {
+        InvocationAuthority::AgentConnection(validated) => {
+            if validated.project_id() != &invocation.project_id {
                 return Err(invocation_context_mismatch_error(
                     "invocation.validated_agent_session",
                 ));
@@ -76,14 +67,8 @@ fn verified_binding_basis(
                 Some(validated.project_session_id().as_str().to_owned()),
             ))
         }
-        (ActorSource::AgentConnection(_), None) => Err(invocation_context_mismatch_error(
-            "invocation.validated_agent_session",
-        )),
-        (_, Some(_)) => Err(invocation_context_mismatch_error(
-            "invocation.validated_agent_session",
-        )),
-        (_, None) => Ok((
-            invocation.invocation_binding_basis.trim().to_owned(),
+        InvocationAuthority::LocalUser { channel } => Ok((
+            channel.verification_basis().to_owned(),
             invocation.session_id.clone(),
         )),
     }
@@ -225,6 +210,7 @@ mod tests {
     use super::{validate_git_workspace_context, verified_binding_basis};
     use crate::pipeline::{GitWorkspaceContext, InvocationContext};
     use volicord_types::ids::ProjectId;
+    use volicord_types::values::{OperationCategory, UserActionChannelKind};
 
     fn workspace_context(head_sha: &str) -> GitWorkspaceContext {
         GitWorkspaceContext {
@@ -264,64 +250,24 @@ mod tests {
     }
 
     #[test]
-    fn caller_label_cannot_authorize_without_a_validated_session() {
-        let invocation = InvocationContext::new(
+    fn local_user_authority_derives_a_controlled_semantic_basis() {
+        let invocation = InvocationContext::local_user(
             ProjectId::new("project-a"),
-            volicord_types::values::ActorSource::agent_connection("connection-a"),
-            volicord_types::values::OperationCategory::Read,
-            "mcp_stdio_connection_binding",
+            OperationCategory::Read,
+            UserActionChannelKind::Cli,
         );
 
-        let error = verified_binding_basis(&invocation).unwrap_err();
-        assert_eq!(
-            error.code,
-            volicord_types::values::ErrorCode::InvocationContextMismatch
-        );
-        assert_eq!(
-            error
-                .details
-                .and_then(|details| details.get("field").cloned()),
-            Some(serde_json::Value::String(
-                "invocation.validated_agent_session".to_owned()
-            ))
-        );
-    }
-
-    #[test]
-    fn alternate_agent_connection_label_cannot_bypass_a_validated_session() {
-        let invocation = InvocationContext::new(
-            ProjectId::new("project-a"),
-            volicord_types::values::ActorSource::agent_connection("connection-a"),
-            volicord_types::values::OperationCategory::Read,
-            "nonstatic-caller-controlled-label",
-        );
-
-        let error = verified_binding_basis(&invocation).unwrap_err();
-        assert_eq!(
-            error.code,
-            volicord_types::values::ErrorCode::InvocationContextMismatch
-        );
-        assert_eq!(
-            error
-                .details
-                .and_then(|details| details.get("field").cloned()),
-            Some(serde_json::Value::String(
-                "invocation.validated_agent_session".to_owned()
-            ))
-        );
+        let (basis, session_id) =
+            verified_binding_basis(&invocation).expect("typed local authority is valid");
+        assert_eq!(basis, UserActionChannelKind::Cli.verification_basis());
+        assert_eq!(session_id, None);
     }
 
     #[test]
     fn validated_session_supplies_the_current_operational_identity() {
         let validated =
             crate::agent_session::validated_agent_session_for_test("connection-a", "project-a");
-        let invocation = InvocationContext::new(
-            ProjectId::new("project-a"),
-            volicord_types::values::ActorSource::agent_connection("connection-a"),
-            volicord_types::values::OperationCategory::Read,
-            "",
-        )
-        .with_validated_agent_session(validated);
+        let invocation = InvocationContext::agent_connection(OperationCategory::Read, validated);
 
         let (basis, session_id) = verified_binding_basis(&invocation)
             .expect("validated fixture session must authorize the invocation");

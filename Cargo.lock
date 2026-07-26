@@ -924,7 +924,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "volicord-host-contract",
  "volicord-store",
  "volicord-test-support",
  "volicord-types",

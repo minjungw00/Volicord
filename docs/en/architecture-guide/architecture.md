@@ -75,7 +75,7 @@ the public method execution path.
 | `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; single-declaration public method-result and fields-only composition types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. Its public Rust vocabulary is routed through the module that owns each item; the crate root provides module routing rather than an aggregate type facade. |
 | `crates/volicord-host-contract` | Dependency-safe semantic Codex contracts through `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames`; explicit MCP server/raw-tool identities; collision-checked callable projection and catalog lookup; deterministic contract identities; bounded host values and errors; and source-specific correlation types. It owns no Store, Core, CLI, or MCP policy. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, one-time managed MCP launch leases, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
-| `crates/volicord-core` | Adapter-independent Core service, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, and Store coordination. |
+| `crates/volicord-core` | Adapter-independent Core service, host-neutral typed invocation authority, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, and Store coordination. |
 | `crates/volicord-command-model` | Complete Clap declaration for the `volicord` binary: root parser, public and hidden subcommand tree, command and argument DTOs, command-surface value enums and validators, actual-model visibility classification, a fresh root `clap::Command`, command-path traversal, canonical synopses, and canonical parseable public invocations. It owns no command execution or application service. |
 | `crates/volicord-cli` | Local `volicord` process startup, administrative command dispatch and reusable execution modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, host/MCP/Guard verification checks, dependency-graph policy, rendering, the hidden same-process managed-host launcher, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
 | `crates/volicord-platform-fs` | Internal safe facade for process-target and platform observation, native Linux/WSL2 classification, WSL2 distribution validation and filesystem observation, typed atomic no-replace regular-file publication, platform-native filesystem namespace operations, per-canonical-Runtime-Home shared/exclusive OS-backed mutation admission and borrowed mutation permits, and read-only canonical Git common-directory/worktree snapshots. It does not own managed launch or Codex configuration policy. |
@@ -94,15 +94,19 @@ the public method execution path.
 
 `workspace.metadata.architecture` in the root `Cargo.toml` is the
 machine-readable owner for workspace package assignments, semantic
-responsibility groups, and permitted internal dependency directions. Each
-group declares separate normal, development, and build dependency targets.
+responsibility groups, permitted internal dependency directions, and Core
+dependency eligibility. Each group declares separate normal, development, and
+build dependency targets and classifies itself as a Core runtime dependency,
+Core development dependency, or outside the Core dependency layer.
 `cargo run -p xtask -- architecture-check` reads the actual workspace members
 and dependency edges from Cargo metadata and rejects undeclared packages,
 undeclared target groups, and disallowed edges. Production groups may use
-test-support groups only through explicitly allowed development dependencies,
-and Core-facing groups remain independent of adapter groups. These rules apply
-to the current workspace directly; package, schema, and protocol versions do
-not select alternate dependency rules.
+test-support groups only through explicitly allowed development dependencies.
+Core normal and build dependencies must target Core runtime groups, and Core
+development dependencies may additionally target Core development groups.
+Core-facing groups remain independent of adapter groups. These rules apply to
+the current workspace directly; package, schema, and protocol versions do not
+select alternate dependency rules.
 
 The durable dependency direction is:
 
@@ -124,8 +128,12 @@ The durable dependency direction is:
 - `volicord-store` depends on shared types and the read-only canonical Git
   layout primitive used to validate stored owner paths. It owns persistence
   mechanics and does not depend on Core, CLI, or MCP adapter crates.
-- `volicord-core` depends on Store and shared types; Core-facing code stays
-  independent of CLI and MCP adapter crates.
+- `volicord-core` depends on Store and shared types and uses test support only
+  as a development dependency. Its public invocation boundary accepts
+  `InvocationAuthority`: a typed local `UserActionChannelKind` or an opaque
+  `ValidatedAgentSession`. Core does not accept adapter-selected actor labels,
+  host command syntax, launch arguments, configuration paths, or rendering
+  instructions.
 - `volicord-command-model` depends only on Clap. The CLI and documentation
   validator consume it directly; it does not depend on Core, Store, MCP, CLI
   rendering, Runtime Home implementation, or application services.
