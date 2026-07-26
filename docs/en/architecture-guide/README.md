@@ -40,7 +40,7 @@ For public method work, the shortest useful source path is:
 2. [`crates/volicord-mcp/src/adapter.rs`](../../../crates/volicord-mcp/src/adapter.rs)
 3. [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs)
 4. [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)
-5. [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
+5. [`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/)
 6. [`tests/integration/mcp_connection.rs`](../../../tests/integration/mcp_connection.rs)
 7. [`tests/conformance/baseline.rs`](../../../tests/conformance/baseline.rs)
 

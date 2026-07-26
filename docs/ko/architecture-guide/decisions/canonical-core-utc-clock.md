@@ -81,7 +81,7 @@ Bootstrap은 새 프로젝트의 하한을 초기화합니다. 재등록은 기�
 
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs):
   준비된 동작 시각 샘플과 커밋 하한 전달.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs)와
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)와
   [`core_pipeline/commit.rs`](../../../../crates/volicord-store/src/core_pipeline/commit.rs): 프로젝트 시각
   샘플과 정규 transaction 시각 선택.
 - [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):

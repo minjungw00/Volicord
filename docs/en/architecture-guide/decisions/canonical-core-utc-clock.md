@@ -94,7 +94,7 @@ does not reset future-valued valid time.
 
 - [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs):
   prepared operation sampling and commit-floor propagation.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs)
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)
   and [`core_pipeline/commit.rs`](../../../../crates/volicord-store/src/core_pipeline/commit.rs):
   project-time sampling and canonical transaction-time selection.
 - [`crates/volicord-store/src/core_pipeline/mutation_apply.rs`](../../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs):

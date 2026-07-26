@@ -4,12 +4,57 @@ use volicord_types::ids::IdempotencyKey;
 use volicord_types::values::MethodName;
 
 use super::{
+    facade::CoreProjectStore,
     validation::{
         nonnegative_i64_to_u64, validate_canonical_replay_identity, ReplayContextFieldKind,
     },
-    CoreProjectStore, StoredOperationResult, ToolInvocationRecord, VerifiedReplayContext,
 };
 use crate::{StoreError, StoreResult};
+
+const TOOL_INVOCATION_COLUMNS: &str = "
+    project_id, tool_name, idempotency_key, request_hash,
+    basis_state_version, committed_state_version, actor_source,
+    operation_category, verification_basis, git_workspace_context_json,
+    response_json";
+
+/// Stored idempotency replay row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolInvocationRecord {
+    pub project_id: String,
+    pub tool_name: String,
+    pub idempotency_key: String,
+    pub request_hash: String,
+    pub basis_state_version: u64,
+    pub committed_state_version: u64,
+    pub actor_source: String,
+    pub operation_category: String,
+    pub verification_basis: Option<String>,
+    pub git_workspace_context_json: Option<String>,
+    pub response_json: String,
+}
+
+/// Immutable replay response facts used by exact historical result retrieval.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredOperationResult {
+    pub project_id: String,
+    pub source_method: String,
+    pub source_idempotency_key: String,
+    pub committed_state_version: u64,
+    pub actor_source: String,
+    pub operation_category: String,
+    pub response_sha256: String,
+    pub response_size_bytes: u64,
+    pub response_json: String,
+}
+
+/// Verified replay identity derived from current invocation context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedReplayContext {
+    pub actor_source: String,
+    pub operation_category: String,
+    pub verification_basis: Option<String>,
+    pub git_workspace_context_json: Option<String>,
+}
 
 impl ToolInvocationRecord {
     /// Returns whether this replay row is eligible for the supplied verified context.
@@ -86,24 +131,16 @@ pub(super) fn tool_invocation_tx(
     tool_name: &str,
     idempotency_key: &str,
 ) -> StoreResult<Option<ToolInvocationRecord>> {
+    let sql = format!(
+        "SELECT {TOOL_INVOCATION_COLUMNS}
+           FROM tool_invocations
+          WHERE project_id = ?1
+            AND tool_name = ?2
+            AND idempotency_key = ?3"
+    );
     let record = tx
         .query_row(
-            "SELECT
-            project_id,
-            tool_name,
-            idempotency_key,
-            request_hash,
-            basis_state_version,
-            committed_state_version,
-            actor_source,
-            operation_category,
-            verification_basis,
-            git_workspace_context_json,
-            response_json
-         FROM tool_invocations
-         WHERE project_id = ?1
-           AND tool_name = ?2
-           AND idempotency_key = ?3",
+            &sql,
             params![project_id, tool_name, idempotency_key],
             tool_invocation_from_row,
         )
@@ -118,24 +155,16 @@ fn tool_invocation(
     tool_name: &str,
     idempotency_key: &str,
 ) -> StoreResult<Option<ToolInvocationRecord>> {
+    let sql = format!(
+        "SELECT {TOOL_INVOCATION_COLUMNS}
+           FROM tool_invocations
+          WHERE project_id = ?1
+            AND tool_name = ?2
+            AND idempotency_key = ?3"
+    );
     let record = conn
         .query_row(
-            "SELECT
-            project_id,
-            tool_name,
-            idempotency_key,
-            request_hash,
-            basis_state_version,
-            committed_state_version,
-            actor_source,
-            operation_category,
-            verification_basis,
-            git_workspace_context_json,
-            response_json
-         FROM tool_invocations
-         WHERE project_id = ?1
-           AND tool_name = ?2
-           AND idempotency_key = ?3",
+            &sql,
             params![project_id, tool_name, idempotency_key],
             tool_invocation_from_row,
         )
@@ -194,4 +223,35 @@ fn tool_invocation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolInv
         git_workspace_context_json: row.get(9)?,
         response_json: row.get(10)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operation_result_preserves_exact_response_bytes_and_derives_integrity_facts() {
+        let response_json = "{\"result\":\"ok\"}".to_owned();
+        let result = stored_operation_result(ToolInvocationRecord {
+            project_id: "project".to_owned(),
+            tool_name: "volicord.status".to_owned(),
+            idempotency_key: "idempotency".to_owned(),
+            request_hash: "sha256:request".to_owned(),
+            basis_state_version: 4,
+            committed_state_version: 5,
+            actor_source: "local_user".to_owned(),
+            operation_category: "read_only".to_owned(),
+            verification_basis: None,
+            git_workspace_context_json: None,
+            response_json: response_json.clone(),
+        })
+        .expect("object response must project");
+
+        assert_eq!(result.response_json, response_json);
+        assert_eq!(result.response_size_bytes, 15);
+        assert_eq!(
+            result.response_sha256,
+            format!("sha256:{:x}", Sha256::digest(response_json.as_bytes()))
+        );
+    }
 }

@@ -37,7 +37,8 @@ MCP 호출은 다음 순서로 추적합니다.
 - [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/):
   메서드별 계획
 - [`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/):
-  Store 검증과 원자적 효과
+  `CoreProjectStore` facade, aggregate별 읽기 담당 모듈, Store 검증, replay,
+  원자적 효과
 
 전체 순서는 [요청 생명주기](request-lifecycle.md), transaction 경계는
 [저장소와 transaction](storage-and-transactions.md)을 봅니다.

@@ -52,7 +52,7 @@ not use the normal Core mutation commit.
   commit orchestration.
 - [`crates/volicord-core/src/methods/`](../../../../crates/volicord-core/src/methods/):
   method-specific planners such as `plan_intake` and `plan_prepare_write`.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs):
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   `CoreStorageMutation`, `CommitMutationInput`,
   `CoreProjectStore::commit_mutation`, `MutationCommitOutcome`, and
   `ProjectMutation`.
@@ -67,7 +67,7 @@ not use the normal Core mutation commit.
   [`crates/volicord-core/src/pipeline.rs`](../../../../crates/volicord-core/src/pipeline.rs).
 - `transaction_replay_returns_stored_response_before_stale_expected_state` and
   `transaction_replay_hash_conflict_rejects_without_effect` in
-  [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs).
+  [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/).
 - `stage_artifact_creates_transient_handle_without_core_commit` in
   [`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../../crates/volicord-core/src/methods/tests/stage_artifact.rs).
 - [Storage Effects](../../reference/storage-effects.md),

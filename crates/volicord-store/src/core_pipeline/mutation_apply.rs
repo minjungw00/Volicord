@@ -1,3 +1,7 @@
+use super::artifacts::artifact_staging_record_tx;
+use super::user_actions::{
+    user_action_request_record, validate_user_action_request_resolution_pair,
+};
 use super::*;
 use crate::evidence_capture::{
     validate_evidence_capture_intent_window, EvidenceCaptureIntentWindowError,

@@ -40,7 +40,8 @@ For an MCP call, follow:
   [`crates/volicord-core/src/methods/`](../../../crates/volicord-core/src/methods/)
   for method-specific planning; and
 - [`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/)
-  for Store validation and atomic effects.
+  for the `CoreProjectStore` facade, aggregate-owned read modules, Store
+  validation, replay, and atomic effects.
 
 Use [Request Lifecycle](request-lifecycle.md) for the sequence and
 [Storage and Transactions](storage-and-transactions.md) for transaction

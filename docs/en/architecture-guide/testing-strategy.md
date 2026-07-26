@@ -14,6 +14,13 @@ contracts, preserve removed surfaces, or justify broader support claims.
 | Architecture check | Workspace package declarations, dependency kinds and directions, production/test-support separation, and Core/adapter independence. |
 | Documentation check | Owner routing, links, terminology, parity, examples, and generated-source drift. |
 
+Within `volicord-store`, aggregate-local unit tests stay beside the read
+projection and strict decoder they protect. Transaction, replay ordering,
+rollback, and cross-aggregate storage-effect tests stay at the
+`CoreProjectStore` commit boundary. Assertions prefer typed results and
+observable storage effects; complete SQL text is asserted only where a
+canonical SQL owner makes those bytes part of the current contract.
+
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
 prove behavior of a real Codex installation or platform support.

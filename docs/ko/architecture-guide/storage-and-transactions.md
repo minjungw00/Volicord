@@ -31,18 +31,14 @@
   [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)와
   [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/)에 있습니다.
 - 프로젝트 로컬 Core Store 접근은
-  [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)의
-  `CoreProjectStore`에서 시작합니다. 열기 처리는
-  [`core_pipeline/open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs),
-  재실행 조회는
-  [`core_pipeline/replay.rs`](../../../crates/volicord-store/src/core_pipeline/replay.rs),
-  원자적 커밋 트랜잭션은
-  [`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs),
-  변이 작성기는
-  [`core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs),
-  공유 저장 값 검증은
-  [`core_pipeline/validation.rs`](../../../crates/volicord-store/src/core_pipeline/validation.rs)에
-  있습니다.
+  [`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/)에서
+  시작합니다. `CoreProjectStore`는 프로젝트 데이터베이스 facade로 유지됩니다.
+  Connection과 프로젝트 identity는
+  [`facade.rs`](../../../crates/volicord-store/src/core_pipeline/facade.rs)가 담당하고,
+  읽기 전용 및 변경 가능 진입점은
+  [`open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs)가 담당합니다.
+  각 aggregate 모듈은 자신의 읽기 projection, SQL, row decoding, JSON decoding,
+  facade 메서드, 집중 테스트를 소유합니다.
 - 아티팩트 스테이징과 영속 아티팩트 본문 검증은
   [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)에
   있습니다.
@@ -51,6 +47,30 @@
 데이터베이스는 프로젝트 로컬 상태를 담습니다. 이 페이지는 테이블 배치나
 컬럼 정의를 다시 쓰지 않습니다. 그런 세부사항은 저장소 참조 담당 문서를
 사용합니다.
+
+### 프로젝트 Store 모듈 소유권
+
+Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjectStore`
+메서드를 각 모듈에 분산합니다.
+
+| 모듈 | 현재 구현 소유권 |
+|---|---|
+| `facade.rs`, `open.rs` | 프로젝트 데이터베이스 handle, 유지되는 Runtime Home 및 프로젝트 identity, 읽기 snapshot, 읽기 전용 또는 변경 가능 열기. |
+| `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | 프로젝트 header와 enforcement profile 읽기, 엄격한 저장 값 decoding, 프로젝트 UTC floor. |
+| `tasks.rs` | Task row, 수락 기준, 증거 주장, Task revision. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change Unit, Write Ticket, Run, Run observed-change 읽기. |
+| `evidence.rs`, `artifacts.rs` | 증거 요약과 관찰 읽기, artifact staging record, 영속 artifact record, artifact link, 읽기 시 artifact 본문 검증. |
+| `user_actions.rs`, `continuity.rs` | User Action 요청·해결 및 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
+| `replay.rs` | Tool invocation 조회, 검증된 replay context, 변경 불가능한 operation-result projection. |
+| `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | 제품 쓰기 관찰 후보, 활성 blocker reference, event identity 조회, 프로젝트 로컬 Agent Session 진입점. |
+| `record_refs.rs`, `inspection.rs` | 공유 저장 record reference와 검증 경로에서 사용하는 무효과 저장소 counter. |
+| `commit.rs`, `mutation_apply.rs`, `validation.rs` | 원자적 commit 조율, mutation SQL, 현재 Store 담당 모듈이 공유하는 검증. |
+
+프로젝트 workflow policy record 읽기와 쓰기는
+[`workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs)에
+남아 있습니다. 일시적 artifact staging과 영속 artifact 본문 경로 연산은
+[`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs)가 계속 담당하고,
+프로젝트 facade의 artifact 읽기 쪽은 `core_pipeline/artifacts.rs`가 담당합니다.
 
 ## Store, 이벤트, 상태 보기
 
@@ -243,7 +263,7 @@ Mutation application이 생성하는 적용 가능한 Store transaction metadata
 다시 쓰지 않습니다.
 
 이 경계를 보호하는 구현 테스트에는
-[`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)의
+[`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/)의
 `transaction_replay_returns_stored_response_before_stale_expected_state`,
 `transaction_replay_hash_conflict_rejects_without_effect`,
 `transaction_replay_context_mismatch_precedes_request_hash_conflict`와

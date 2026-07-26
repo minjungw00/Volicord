@@ -18,7 +18,7 @@ use crate::{
         insert_artifact_staging_tx, validate_insert as validate_staging_insert,
         ArtifactStagingInsert, StagedPayloadKind,
     },
-    core_pipeline::{advance_project_utc_floor_tx, CoreProjectStore},
+    core_pipeline::{clock::advance_project_utc_floor_tx, CoreProjectStore},
     sqlite::{begin_immediate_transaction, ARTIFACTS_DIR, ARTIFACTS_TMP_DIR},
     StoreError, StoreResult,
 };

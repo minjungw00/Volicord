@@ -51,7 +51,7 @@
   `OwnerPipelineBranch`, `CoreService::execute_prepared_request`, Core 커밋 조율.
 - [`crates/volicord-core/src/methods/`](../../../../crates/volicord-core/src/methods/):
   `plan_intake`, `plan_prepare_write` 같은 메서드별 계획 함수.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs):
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   `CoreStorageMutation`, `CommitMutationInput`,
   `CoreProjectStore::commit_mutation`, `MutationCommitOutcome`,
   `ProjectMutation`.
@@ -64,7 +64,7 @@
   `committed_mutation_increments_state_version_once`,
   `idempotency_replay_returns_stored_response`,
   `stale_expected_state_version_is_rejected_without_effect`.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs)의
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/)의
   `transaction_replay_returns_stored_response_before_stale_expected_state`,
   `transaction_replay_hash_conflict_rejects_without_effect`.
 - [`crates/volicord-core/src/methods/tests/stage_artifact.rs`](../../../../crates/volicord-core/src/methods/tests/stage_artifact.rs)의

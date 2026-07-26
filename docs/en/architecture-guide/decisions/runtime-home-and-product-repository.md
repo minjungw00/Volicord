@@ -58,7 +58,7 @@ separate location concepts:
   Runtime Home initialization and project registration.
 - [`crates/volicord-store/src/agent_connections.rs`](../../../../crates/volicord-store/src/agent_connections.rs):
   Agent Connection records and Connection Project memberships.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs):
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   `CoreProjectStore` project-local store access.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
   Runtime Home artifact staging and persistent body verification.

@@ -29,23 +29,44 @@ workspace. The implementation keeps these locations separate:
   [`crates/volicord-store/src/schema.rs`](../../../crates/volicord-store/src/schema.rs)
   and [`crates/volicord-store/src/schema/`](../../../crates/volicord-store/src/schema/).
 - Project-local Core Store access is rooted at
-  [`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs)
-  as `CoreProjectStore`. Opening lives in
-  [`core_pipeline/open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs),
-  replay lookup in
-  [`core_pipeline/replay.rs`](../../../crates/volicord-store/src/core_pipeline/replay.rs),
-  the atomic commit transaction in
-  [`core_pipeline/commit.rs`](../../../crates/volicord-store/src/core_pipeline/commit.rs),
-  mutation writers in
-  [`core_pipeline/mutation_apply.rs`](../../../crates/volicord-store/src/core_pipeline/mutation_apply.rs),
-  and shared persisted-value validation in
-  [`core_pipeline/validation.rs`](../../../crates/volicord-store/src/core_pipeline/validation.rs).
+  [`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/).
+  `CoreProjectStore` remains the project-database facade. Connection and
+  project identity live in
+  [`facade.rs`](../../../crates/volicord-store/src/core_pipeline/facade.rs);
+  read-only and mutation-capable entry points live in
+  [`open.rs`](../../../crates/volicord-store/src/core_pipeline/open.rs).
+  Aggregate modules own their read projections, SQL, row decoding, JSON
+  decoding, facade methods, and focused tests.
 - Artifact staging and persistent artifact body verification live in
   [`crates/volicord-store/src/artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs).
 
 The registry database tracks Runtime Home-level registration. Project
 databases hold project-local state. This page avoids reproducing table layouts
 or column definitions; use the storage Reference owners for those details.
+
+### Project Store module ownership
+
+The facade distributes inherent `CoreProjectStore` methods across modules
+without adding a second Store abstraction:
+
+| Modules | Current implementation ownership |
+|---|---|
+| `facade.rs`, `open.rs` | Project-database handle, retained Runtime Home and project identity, read snapshots, and read-only or mutation-capable opening. |
+| `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | Project header and enforcement-profile reads, strict stored-value decoding, and the project UTC floor. |
+| `tasks.rs` | Task rows, acceptance criteria, evidence claims, and Task revisions. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change-unit, write-ticket, Run, and Run observed-change reads. |
+| `evidence.rs`, `artifacts.rs` | Evidence summary and observation reads, artifact staging records, durable artifact records, artifact links, and artifact-body verification on reads. |
+| `user_actions.rs`, `continuity.rs` | User-action request/resolution and effective-status reads, plus project-continuity rows and bounded pages. |
+| `replay.rs` | Tool-invocation lookup, verified replay context, and immutable operation-result projection. |
+| `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | Product-write observation candidates, active blocker references, event identity lookup, and the project-local Agent Session entry point. |
+| `record_refs.rs`, `inspection.rs` | Shared stored-record references and no-effect storage counters used by verification paths. |
+| `commit.rs`, `mutation_apply.rs`, `validation.rs` | Atomic commit coordination, mutation SQL, and validation shared by current Store owners. |
+
+Project workflow-policy record reads and writes remain in
+[`workflow_records.rs`](../../../crates/volicord-store/src/workflow_records.rs).
+Transient artifact staging and durable artifact-body path operations remain in
+[`artifacts.rs`](../../../crates/volicord-store/src/artifacts.rs), while the
+project-facade artifact read side is owned by `core_pipeline/artifacts.rs`.
 
 ## Store, events, and projections
 
@@ -253,7 +274,7 @@ The implementation tests that protect this boundary include
 `transaction_replay_returns_stored_response_before_stale_expected_state`,
 `transaction_replay_hash_conflict_rejects_without_effect`, and
 `transaction_replay_context_mismatch_precedes_request_hash_conflict` in
-[`crates/volicord-store/src/core_pipeline.rs`](../../../crates/volicord-store/src/core_pipeline.rs),
+[`crates/volicord-store/src/core_pipeline/`](../../../crates/volicord-store/src/core_pipeline/),
 plus Core pipeline tests in
 [`crates/volicord-core/src/pipeline.rs`](../../../crates/volicord-core/src/pipeline.rs).
 

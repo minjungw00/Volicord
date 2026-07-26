@@ -14,6 +14,12 @@
 | 아키텍처 검사 | 워크스페이스 패키지 선언, 의존성 종류와 방향, 프로덕션과 테스트 지원 분리, Core와 어댑터 독립성. |
 | 문서 검사 | 소유자 경로, 링크, 용어, 언어 동등성, 예시, 생성 소스 drift. |
 
+`volicord-store`에서는 aggregate별 unit test를 자신이 보호하는 읽기 projection과
+엄격한 decoder 옆에 둡니다. Transaction, replay 순서, rollback, aggregate 간
+저장 효과 테스트는 `CoreProjectStore` commit 경계에 둡니다. Assertion은 typed
+결과와 관찰 가능한 저장 효과를 우선하며, 정규 SQL 담당 문서가 해당 byte를 현재
+계약으로 정한 경우에만 완전한 SQL text를 직접 비교합니다.
+
 일회용 Runtime Home과 Product Repository를 사용합니다. fixture는 최소이며 typed여야
 합니다. fixture는 parser 또는 구현 동작만 증명하며 실제 Codex 설치의 행동이나 플랫폼
 지원을 증명하지 않습니다.

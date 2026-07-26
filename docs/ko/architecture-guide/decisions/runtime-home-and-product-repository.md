@@ -56,7 +56,7 @@ Volicord 소스와 설치 파일은 별도의 구현 아티팩트 역할입니�
   Runtime Home 초기화와 프로젝트 등록.
 - [`crates/volicord-store/src/agent_connections.rs`](../../../../crates/volicord-store/src/agent_connections.rs):
   Agent Connection 기록과 Connection Project 멤버십.
-- [`crates/volicord-store/src/core_pipeline.rs`](../../../../crates/volicord-store/src/core_pipeline.rs):
+- [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   `CoreProjectStore` 프로젝트 로컬 Store 접근.
 - [`crates/volicord-store/src/artifacts.rs`](../../../../crates/volicord-store/src/artifacts.rs):
   Runtime Home 아티팩트 스테이징과 영속 본문 검증.

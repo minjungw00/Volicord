@@ -4,10 +4,7 @@ use volicord_types::ids::ProjectId;
 
 use super::CoreProjectStore;
 use crate::{
-    bootstrap::{
-        project_record_for_execution_admitted, project_record_for_execution_read_only,
-        ProjectRecord,
-    },
+    bootstrap::{project_record_for_execution_admitted, project_record_for_execution_read_only},
     sqlite::{open_project_state_database_for_mutation, open_project_state_database_read_only},
     RuntimeHomeMutationContext, StoreError, StoreResult,
 };
@@ -73,25 +70,5 @@ impl<'mutation> CoreProjectStore<'mutation> {
             mutation_context: None,
             last_clock_sample: RefCell::new(None),
         })
-    }
-
-    /// Returns the Runtime Home path that selected this project-local store.
-    pub fn runtime_home(&self) -> &Path {
-        &self.runtime_home
-    }
-
-    /// Returns the typed canonical Runtime Home retained by a mutation-capable Store.
-    pub fn canonical_runtime_home(&self) -> Option<&crate::CanonicalRuntimeHomePath> {
-        self.canonical_runtime_home.as_ref()
-    }
-
-    /// Returns the registry project row that selected this project-local store.
-    pub const fn project_record(&self) -> &ProjectRecord {
-        &self.project
-    }
-
-    /// Returns whether this store handle was opened for write-capable Core work.
-    pub const fn is_writable(&self) -> bool {
-        self.writable
     }
 }
