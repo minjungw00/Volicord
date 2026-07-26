@@ -545,6 +545,21 @@ mod tests {
     }
 
     #[test]
+    fn platform_store_error_renders_canonical_code_and_bounded_detail() {
+        let error = volicord_store::StoreError::UnsupportedPlatformEnvironment {
+            diagnostic: volicord_platform_fs::PlatformDiagnostic::new(
+                volicord_platform_fs::PlatformDiagnosticKind::UnsupportedTarget,
+                "the running binary target is outside the supported release cell",
+            ),
+        };
+
+        assert_eq!(
+            CliError::from(error).to_string(),
+            "platform.target.unsupported: the running binary target is outside the supported release cell"
+        );
+    }
+
+    #[test]
     fn hidden_host_launcher_requires_exactly_one_binding() {
         let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
         let personal = run_cli(

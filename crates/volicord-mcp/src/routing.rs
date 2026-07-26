@@ -798,7 +798,7 @@ fn inspect_allowed_project_with_write_probe(
                 repo_root_display,
                 format!(
                     "project is not executable: {}",
-                    concise_store_reason(&error)
+                    concise_store_diagnostic(&error)
                 ),
             )
         }
@@ -813,7 +813,7 @@ fn inspect_allowed_project_with_write_probe(
             repo_root_display,
             format!(
                 "project state is unavailable: {}",
-                concise_store_reason(&StoreError::from(error))
+                concise_store_diagnostic(&StoreError::from(error))
             ),
         );
     }
@@ -871,7 +871,7 @@ pub(crate) fn routing_error(message: impl Into<String>) -> McpAdapterError {
     }
 }
 
-pub(crate) fn concise_store_reason(error: &StoreError) -> String {
+pub(crate) fn concise_store_diagnostic(error: &StoreError) -> String {
     match error {
         StoreError::NotFound { entity, .. } => format!("{entity} not found"),
         StoreError::InvalidProjectRegistration {
@@ -896,8 +896,8 @@ pub(crate) fn concise_store_reason(error: &StoreError) -> String {
         } => {
             format!("unsupported storage profile {actual_storage_profile}")
         }
-        StoreError::UnsupportedPlatformEnvironment { reason, .. }
-        | StoreError::PlatformEnvironmentUnavailable { reason, .. } => (*reason).to_owned(),
+        StoreError::UnsupportedPlatformEnvironment { diagnostic }
+        | StoreError::PlatformEnvironmentUnavailable { diagnostic } => diagnostic.to_string(),
         StoreError::RuntimeHomeSchemaMismatch(_)
         | StoreError::RuntimeHomeCorruption(_)
         | StoreError::RuntimeHomePublicationConfirmation(_) => error.to_string(),

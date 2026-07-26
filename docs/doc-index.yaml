@@ -1350,8 +1350,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-21'
-  last_verified_on: '2026-07-21'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1374,6 +1374,7 @@ documents:
   - exact first-release WSL2 Ubuntu distribution identity
   - kernel-based native Linux and WSL2 classification, WSL2-only `/etc/os-release` observation,
     and independence from WSL environment variables
+  - canonical typed platform diagnostic kinds and namespaced codes
   - process target, configuration target path, and filesystem prerequisite validation
   - Codex executable availability with version and path observations limited to diagnostics
   - managed Codex configuration, operational-session, executable, process, and platform-environment prerequisites
@@ -1454,8 +1455,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-25'
-  last_verified_on: '2026-07-25'
+  last_updated_on: '2026-07-26'
+  last_verified_on: '2026-07-26'
   primary_audience:
   - implementers
   - agent integrators
@@ -1472,6 +1473,7 @@ documents:
   - fail-closed persisted authority, policy, and typed-data corruption handling
   - shared bounded `DiagnosticFinding` fields, safe-fact projection, cause-graph integrity, and
     pre-Registry `VOLICORD_DIAGNOSTIC_V1` stderr envelope
+  - namespaced diagnostic code as the stable machine-readable finding identity
   - immutable occurrence findings versus subject-aware replaceable current-state operational findings
   - single current schema-2 `DiagnosticReport`, structural observation states, derived roots, and
     report-action correlation
@@ -1564,6 +1566,7 @@ documents:
   - Volicord Runtime Home boundary
   - Registry placement for durable structured diagnostic findings and the bounded pre-Registry
     stderr fallback boundary
+  - canonical platform diagnostic propagation through runtime-path and Store boundaries
   - Volicord implementation, source repository, installation, and executable process boundaries
   - Agent Connection and Connection Projects boundary
   - User Channel boundary for authority-bearing user judgments
@@ -2386,6 +2389,7 @@ documents:
   - operate
   canonical_for:
   - '`ToolError.details` fields and semantics'
+  - typed platform-boundary `diagnostic_code` detail projection
   - error detail helper values
   - domain-specific `ToolError.details.reason` values
   - state conflict detail fields

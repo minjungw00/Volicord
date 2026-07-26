@@ -45,6 +45,22 @@ Not allowed:
 
 Detail data must stay limited to stable diagnostic facts. It must not expose sensitive request bodies, duplicate method payloads, raw stored JSON, secrets, SQL text, sensitive absolute paths, or define storage effects.
 
+<a id="platform-diagnostic-detail-field"></a>
+
+## Platform diagnostic detail field
+
+A typed platform-boundary Store failure has this exact detail shape:
+
+```yaml
+diagnostic_code: string
+```
+
+`diagnostic_code` is the canonical namespaced `platform.*` code selected by the
+typed platform diagnostic kind. Unsupported platform kinds route through
+`VALIDATION_FAILED`; unavailable-observation kinds route through
+`MCP_UNAVAILABLE`. Other Store failures use `store_failure_category` for their
+Store-owned classification.
+
 <a id="state-conflict-detail-fields"></a>
 
 ## State conflict detail fields

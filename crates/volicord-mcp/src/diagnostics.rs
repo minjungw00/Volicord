@@ -2,6 +2,7 @@ use crate::errors::{McpAdapterError, McpHostError};
 use serde::Serialize;
 use std::time::SystemTime;
 use volicord_mcp_protocol::ProtocolRegistry;
+use volicord_platform_fs::{PlatformDiagnosticClass, PlatformDiagnosticKind};
 use volicord_types::diagnostics::{
     DiagnosticAction, DiagnosticCode, DiagnosticDomain, DiagnosticFactSource, DiagnosticFacts,
     DiagnosticFinding, DiagnosticFindingData, DiagnosticFindingId, DiagnosticSeverity,
@@ -71,6 +72,7 @@ pub(crate) enum McpTransportDiagnostic {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub(crate) enum McpDiagnostic {
+    Platform(PlatformDiagnosticKind),
     JsonRpc(JsonRpcDiagnostic),
     Lifecycle(McpLifecycleDiagnostic),
     Protocol(McpProtocolDiagnostic),
@@ -99,7 +101,11 @@ impl From<&McpAdapterError> for McpDiagnostic {
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
             }
             McpAdapterError::Core(_) => Self::ToolCall(McpToolCallDiagnostic::CoreExecutionError),
-            McpAdapterError::Store(_) | McpAdapterError::Environment(_) => {
+            McpAdapterError::Store(error) => error.platform_diagnostic().map_or(
+                Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError),
+                |diagnostic| Self::Platform(diagnostic.kind()),
+            ),
+            McpAdapterError::Environment(_) => {
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
             }
             McpAdapterError::Io(_) => Self::Transport(McpTransportDiagnostic::IoFailure),
@@ -115,6 +121,7 @@ impl From<&McpAdapterError> for McpDiagnostic {
 impl McpDiagnostic {
     pub(crate) const fn code(self) -> &'static str {
         match self {
+            Self::Platform(kind) => kind.code(),
             Self::JsonRpc(JsonRpcDiagnostic::ParseError) => "mcp.json_rpc.parse_error",
             Self::JsonRpc(JsonRpcDiagnostic::InvalidRequest) => "mcp.json_rpc.invalid_request",
             Self::JsonRpc(JsonRpcDiagnostic::InvalidId) => "mcp.json_rpc.invalid_id",
@@ -207,6 +214,7 @@ impl McpDiagnostic {
 
     pub(crate) const fn stage(self) -> &'static str {
         match self {
+            Self::Platform(_) => "platform_observation",
             Self::JsonRpc(_) | Self::Transport(_) => "transport",
             Self::Lifecycle(McpLifecycleDiagnostic::InitializeRequired)
             | Self::Lifecycle(McpLifecycleDiagnostic::DuplicateInitialize)
@@ -228,6 +236,7 @@ impl McpDiagnostic {
 
     pub(crate) const fn safe_summary(self) -> &'static str {
         match self {
+            Self::Platform(kind) => kind.summary(),
             Self::JsonRpc(JsonRpcDiagnostic::ParseError) => "JSON-RPC input was not valid JSON",
             Self::JsonRpc(JsonRpcDiagnostic::InvalidRequest) => {
                 "JSON-RPC request shape was invalid"
@@ -330,6 +339,16 @@ impl McpDiagnostic {
 
     const fn recommended_action(self) -> (&'static str, &'static str) {
         match self {
+            Self::Platform(kind) => match kind.class() {
+                PlatformDiagnosticClass::Unsupported => (
+                    "action.platform.use_supported_environment",
+                    "Use a supported Volicord platform and release target",
+                ),
+                PlatformDiagnosticClass::Unavailable => (
+                    "action.platform.repair_observation_access",
+                    "Restore access to the required local platform observations",
+                ),
+            },
             Self::Protocol(
                 McpProtocolDiagnostic::MalformedVersion | McpProtocolDiagnostic::UnsupportedVersion,
             ) => (
@@ -442,6 +461,7 @@ pub(crate) fn data_for_diagnostic(
     let mut data = DiagnosticFindingData::try_new(
         DiagnosticCode::parse(diagnostic.code())?,
         DiagnosticDomain::parse(match diagnostic {
+            McpDiagnostic::Platform(_) => "platform",
             McpDiagnostic::Host(_) => "host",
             McpDiagnostic::Unexpected => "internal",
             _ => "mcp",
@@ -529,6 +549,7 @@ mod tests {
     #[test]
     fn every_mcp_mapping_family_has_stable_namespaced_codes() {
         let cases = [
+            McpDiagnostic::Platform(PlatformDiagnosticKind::UnsupportedOperatingSystem),
             McpDiagnostic::JsonRpc(JsonRpcDiagnostic::ParseError),
             McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidRequest),
             McpDiagnostic::JsonRpc(JsonRpcDiagnostic::InvalidId),
@@ -619,5 +640,62 @@ mod tests {
         let finding =
             volicord_types::diagnostics::parse_bootstrap_diagnostic_envelope(&envelope).unwrap();
         assert_eq!(finding.code().as_str(), "host.codex.metadata_malformed");
+    }
+
+    #[test]
+    fn platform_store_failure_renders_the_same_code_and_typed_action_in_mcp() {
+        let error =
+            McpAdapterError::Store(volicord_store::StoreError::PlatformEnvironmentUnavailable {
+                diagnostic: volicord_platform_fs::PlatformDiagnostic::new(
+                    PlatformDiagnosticKind::FilesystemObservationFailure,
+                    "filesystem observation failed",
+                ),
+            });
+
+        let envelope = bootstrap_diagnostic_envelope(&error);
+        let finding =
+            volicord_types::diagnostics::parse_bootstrap_diagnostic_envelope(&envelope).unwrap();
+
+        assert_eq!(
+            finding.code().as_str(),
+            "platform.filesystem.observation_failed"
+        );
+        assert_eq!(
+            finding.actions()[0].code().as_str(),
+            "action.platform.repair_observation_access"
+        );
+        assert_eq!(finding.domain().as_str(), "platform");
+        assert_eq!(finding.stage().as_str(), "platform_observation");
+
+        let mut value = serde_json::to_value(&finding).expect("finding JSON");
+        assert_eq!(
+            value
+                .as_object()
+                .expect("finding object")
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [
+                "actions",
+                "causes",
+                "code",
+                "domain",
+                "facts",
+                "id",
+                "observed_at",
+                "severity",
+                "source",
+                "stage",
+                "subject",
+            ]
+        );
+        value.as_object_mut().expect("finding object").insert(
+            "unexpected_identity".to_owned(),
+            serde_json::json!("platform"),
+        );
+        assert!(
+            serde_json::from_value::<DiagnosticFinding>(value).is_err(),
+            "the current diagnostic schema must reject unknown fields"
+        );
     }
 }

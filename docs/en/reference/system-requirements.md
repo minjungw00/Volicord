@@ -116,17 +116,20 @@ A WSL shutdown or restart ends the live managed runtime session. Its project
 sessions cannot authorize later calls; a new managed MCP lifecycle records a
 new runtime session and project sessions.
 
-Platform observation and unsupported-topology outcomes are machine-readable.
-`platform_environment_unavailable` is an `Unavailable` outcome when the kernel
-release needed to classify the host cannot be read. Native Linux requires no
-distribution-identity observation after that kernel classification. For a
-supported WSL2 kernel, an unreadable `/etc/os-release` or a missing or malformed
-required `ID` or `VERSION_ID` produces the `Unavailable` reason
-`wsl2_distribution_unavailable`. A valid identity with an unsupported `ID` or
-`VERSION_ID` produces the `Rejected` reason
-`unsupported_wsl2_distribution`. `unsupported_wsl1` identifies WSL1, and
-`unsupported_wsl2_filesystem` identifies a non-ext4 component. An unavailable
-observation is not converted into a rejected or native environment.
+Platform observation and unsupported-topology outcomes use one typed semantic
+kind and its canonical namespaced code. Human-readable detail is bounded and
+separate from that identity. A kernel-release observation failure uses
+`platform.observation.failed`. Native Linux requires no distribution-identity
+observation after kernel classification. For a supported WSL2 kernel, an
+unreadable `/etc/os-release` or a missing or malformed required `ID` or
+`VERSION_ID` uses `platform.wsl2.distribution_identity_unavailable`. A valid
+identity with an unsupported `ID` or `VERSION_ID` uses
+`platform.wsl2.distribution_unsupported`. WSL1 uses
+`platform.wsl1.unsupported`; an incompatible executable target uses
+`platform.target.unsupported`; a non-ext4 component uses
+`platform.filesystem.unsupported`; and a filesystem observation failure uses
+`platform.filesystem.observation_failed`. An unavailable observation is not
+converted into a rejected or native environment.
 
 <a id="toolchain-requirements"></a>
 ## Toolchain Requirements

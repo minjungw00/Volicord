@@ -1908,10 +1908,17 @@ fn state_conflict_details(
 pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
     let classification = error.classification();
     let mut details = Map::new();
-    details.insert(
-        "store_failure_category".to_owned(),
-        Value::String(classification.category.to_owned()),
-    );
+    if let Some(diagnostic) = error.platform_diagnostic() {
+        details.insert(
+            "diagnostic_code".to_owned(),
+            Value::String(diagnostic.code().to_owned()),
+        );
+    } else {
+        details.insert(
+            "store_failure_category".to_owned(),
+            Value::String(classification.category.to_owned()),
+        );
+    }
     if let Some(database_kind) = classification.database_kind {
         details.insert(
             "database_kind".to_owned(),

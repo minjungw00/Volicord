@@ -2206,11 +2206,11 @@ fn write_project_registration_from_validated_paths(
 
 fn path_boundary_input(error: crate::runtime_home::RuntimePathBoundaryError) -> StoreError {
     match error {
-        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail, .. } => {
-            StoreError::UnsupportedPlatformEnvironment { reason, detail }
+        RuntimePathBoundaryError::UnsupportedEnvironment { diagnostic } => {
+            StoreError::UnsupportedPlatformEnvironment { diagnostic }
         }
-        RuntimePathBoundaryError::PlatformUnavailable { reason, detail, .. } => {
-            StoreError::PlatformEnvironmentUnavailable { reason, detail }
+        RuntimePathBoundaryError::PlatformUnavailable { diagnostic } => {
+            StoreError::PlatformEnvironmentUnavailable { diagnostic }
         }
         error => StoreError::InvalidInput {
             detail: error.to_string(),
@@ -2605,17 +2605,17 @@ fn registered_project_path_error(
     error: RuntimePathBoundaryError,
 ) -> StoreError {
     match error {
-        RuntimePathBoundaryError::UnsupportedEnvironment { reason, detail, .. } => {
-            StoreError::UnsupportedPlatformEnvironment { reason, detail }
+        RuntimePathBoundaryError::UnsupportedEnvironment { diagnostic } => {
+            StoreError::UnsupportedPlatformEnvironment { diagnostic }
         }
-        RuntimePathBoundaryError::PlatformUnavailable { reason, detail, .. } => {
-            StoreError::PlatformEnvironmentUnavailable { reason, detail }
+        RuntimePathBoundaryError::PlatformUnavailable { diagnostic } => {
+            StoreError::PlatformEnvironmentUnavailable { diagnostic }
         }
         error => {
             let relationship = error
                 .violation()
                 .map(|violation| violation.as_str())
-                .unwrap_or_else(|| error.reason());
+                .unwrap_or("invalid_path");
             StoreError::InvalidProjectRegistration {
                 project_id: project.project_id.clone(),
                 field,
@@ -2989,6 +2989,28 @@ mod tests {
     use super::*;
 
     type SqliteMasterRow = (String, String, Option<String>);
+
+    #[test]
+    fn runtime_path_platform_identity_is_preserved_by_store_routing() {
+        let runtime_error = RuntimePathBoundaryError::PlatformUnavailable {
+            diagnostic: volicord_platform_fs::PlatformDiagnostic::new(
+                volicord_platform_fs::PlatformDiagnosticKind::PlatformObservationFailure,
+                "a required platform observation failed",
+            ),
+        };
+
+        let store_error = path_boundary_input(runtime_error);
+        assert_eq!(
+            store_error
+                .platform_diagnostic()
+                .map(volicord_platform_fs::PlatformDiagnostic::code),
+            Some("platform.observation.failed")
+        );
+        assert_eq!(
+            store_error.to_string(),
+            "platform.observation.failed: a required platform observation failed"
+        );
+    }
 
     #[test]
     fn fresh_runtime_home_is_staged_and_atomically_published() -> Result<(), Box<dyn Error>> {

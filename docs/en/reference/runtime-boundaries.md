@@ -283,6 +283,14 @@ stable codes:
 | `platform.filesystem.observation_failed` | Filesystem identity could not be observed. |
 | `platform.observation.failed` | Another required platform observation failed. |
 
+Each platform diagnostic kind maps to exactly one code in this registry. The
+typed diagnostic and its bounded human-readable detail cross the runtime-path
+and Store boundaries together. Store classification, CLI display, MCP
+bootstrap or terminal findings, and persisted diagnostic facts use that same
+code. Action selection uses the typed kind's `Unsupported` or `Unavailable`
+class. Human display is `<code>: <bounded-detail>`; detail does not participate
+in identity.
+
 Runtime Home findings use `runtime_home.path.missing`,
 `runtime_home.path.empty_or_relative`, `runtime_home.path.invalid`,
 `runtime_home.registry.missing`, `runtime_home.permission.denied`,

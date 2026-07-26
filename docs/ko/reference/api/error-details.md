@@ -44,6 +44,21 @@
 
 세부 데이터는 안정적인 진단 사실로 제한해야 합니다. 민감한 요청 본문을 노출하거나, 메서드 요청 본문을 중복하거나, 원본 저장 JSON, 비밀값, SQL 텍스트, 민감한 절대 경로를 노출하거나, 저장 효과를 정의하면 안 됩니다.
 
+<a id="platform-diagnostic-detail-field"></a>
+
+## 플랫폼 diagnostic 세부 필드
+
+타입이 지정된 플랫폼 경계 Store failure의 정확한 세부 형태는 다음과 같습니다.
+
+```yaml
+diagnostic_code: string
+```
+
+`diagnostic_code`는 typed 플랫폼 diagnostic kind가 선택한 정규 namespaced
+`platform.*` code입니다. 지원하지 않는 플랫폼 kind는 `VALIDATION_FAILED`, 관찰할 수
+없는 kind는 `MCP_UNAVAILABLE`로 routing합니다. 그 밖의 Store failure는 Store 소유
+분류에 `store_failure_category`를 사용합니다.
+
 <a id="state-conflict-detail-fields"></a>
 
 ## 상태 충돌 세부 필드

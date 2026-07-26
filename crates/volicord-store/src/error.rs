@@ -1,6 +1,7 @@
 use std::{error::Error, fmt, io};
 
 use rusqlite::{ffi, ErrorCode as SqliteErrorCode};
+use volicord_platform_fs::PlatformDiagnostic;
 
 use crate::bootstrap::{
     RuntimeHomeCorruption, RuntimeHomePublicationConfirmationFailure, RuntimeHomeSchemaMismatch,
@@ -19,15 +20,9 @@ pub enum StoreError {
     /// Local administrative setup input is not valid for the storage record.
     InvalidInput { detail: String },
     /// The observed platform topology is outside the first-release contract.
-    UnsupportedPlatformEnvironment {
-        reason: &'static str,
-        detail: String,
-    },
+    UnsupportedPlatformEnvironment { diagnostic: PlatformDiagnostic },
     /// A required platform-topology observation could not be completed.
-    PlatformEnvironmentUnavailable {
-        reason: &'static str,
-        detail: String,
-    },
+    PlatformEnvironmentUnavailable { diagnostic: PlatformDiagnostic },
     /// A stored project registration is not valid for execution.
     InvalidProjectRegistration {
         project_id: String,
@@ -169,18 +164,18 @@ impl StoreError {
                 field: None,
                 owner_state_error: None,
             },
-            Self::UnsupportedPlatformEnvironment { reason, .. } => StoreFailureClassification {
+            Self::UnsupportedPlatformEnvironment { diagnostic } => StoreFailureClassification {
                 route: StoreFailureRoute::InvalidEnvironment,
-                category: reason,
+                category: diagnostic.code(),
                 retryable: false,
                 database_kind: None,
                 entity: None,
                 field: None,
                 owner_state_error: None,
             },
-            Self::PlatformEnvironmentUnavailable { reason, .. } => StoreFailureClassification {
+            Self::PlatformEnvironmentUnavailable { diagnostic } => StoreFailureClassification {
                 route: StoreFailureRoute::OperationalUnavailable,
-                category: reason,
+                category: diagnostic.code(),
                 retryable: true,
                 database_kind: None,
                 entity: None,
@@ -357,6 +352,15 @@ impl StoreError {
             },
         }
     }
+
+    /// Returns the canonical platform diagnostic carried by this store error.
+    pub fn platform_diagnostic(&self) -> Option<&PlatformDiagnostic> {
+        match self {
+            Self::UnsupportedPlatformEnvironment { diagnostic }
+            | Self::PlatformEnvironmentUnavailable { diagnostic } => Some(diagnostic),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -495,9 +499,9 @@ impl fmt::Display for StoreError {
             Self::Io(error) => write!(formatter, "filesystem error: {error}"),
             Self::Sqlite(error) => write!(formatter, "sqlite error: {error}"),
             Self::InvalidInput { detail } => write!(formatter, "invalid setup input: {detail}"),
-            Self::UnsupportedPlatformEnvironment { reason, detail }
-            | Self::PlatformEnvironmentUnavailable { reason, detail } => {
-                write!(formatter, "{reason}: {detail}")
+            Self::UnsupportedPlatformEnvironment { diagnostic }
+            | Self::PlatformEnvironmentUnavailable { diagnostic } => {
+                diagnostic.fmt(formatter)
             }
             Self::InvalidProjectRegistration {
                 project_id,
@@ -615,6 +619,7 @@ impl From<rusqlite::Error> for StoreError {
 #[cfg(test)]
 mod tests {
     use super::{StoreError, StoreFailureRoute};
+    use volicord_platform_fs::{PlatformDiagnostic, PlatformDiagnosticKind};
 
     #[test]
     fn persisted_contract_violations_have_a_corrupt_route() {
@@ -644,6 +649,31 @@ mod tests {
         assert_eq!(
             error.classification().route,
             StoreFailureRoute::PersistedDataCorrupt
+        );
+    }
+
+    #[test]
+    fn platform_classification_and_display_use_the_canonical_code() {
+        let error = StoreError::UnsupportedPlatformEnvironment {
+            diagnostic: PlatformDiagnostic::new(
+                PlatformDiagnosticKind::UnsupportedWsl2Distribution,
+                "the observed distribution is outside the supported release cell",
+            ),
+        };
+
+        let classification = error.classification();
+        assert_eq!(classification.route, StoreFailureRoute::InvalidEnvironment);
+        assert_eq!(
+            classification.category,
+            "platform.wsl2.distribution_unsupported"
+        );
+        assert_eq!(
+            error.platform_diagnostic().map(PlatformDiagnostic::code),
+            Some("platform.wsl2.distribution_unsupported")
+        );
+        assert_eq!(
+            error.to_string(),
+            "platform.wsl2.distribution_unsupported: the observed distribution is outside the supported release cell"
         );
     }
 }

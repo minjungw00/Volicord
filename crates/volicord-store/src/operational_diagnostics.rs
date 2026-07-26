@@ -12,9 +12,7 @@ use volicord_types::diagnostics::{
 use volicord_types::values::UtcTimestamp;
 
 use crate::{
-    runtime_home::{
-        RuntimeHomeResolutionError, RuntimePathBoundaryError, RuntimePlatformDiagnostic,
-    },
+    runtime_home::{RuntimeHomeResolutionError, RuntimePathBoundaryError},
     StoreError,
 };
 
@@ -105,17 +103,7 @@ impl RuntimeHomeDiagnostic {
             RuntimePathBoundaryError::BoundaryViolation { .. } => {
                 Some(Self::OwnerOrBoundaryMismatch)
             }
-            RuntimePathBoundaryError::UnsupportedEnvironment {
-                diagnostic:
-                    RuntimePlatformDiagnostic::Platform(
-                        volicord_platform_fs::PlatformBoundaryDiagnostic::UnsupportedFilesystemBoundary,
-                    ),
-                ..
-            } => Some(Self::UnsupportedFilesystem),
-            RuntimePathBoundaryError::UnsupportedEnvironment {
-                diagnostic: RuntimePlatformDiagnostic::Platform(_),
-                ..
-            }
+            RuntimePathBoundaryError::UnsupportedEnvironment { .. }
             | RuntimePathBoundaryError::PlatformUnavailable { .. } => None,
         }
     }
@@ -469,6 +457,15 @@ pub fn store_diagnostic_finding(
     database_kind: Option<&'static str>,
     observed_at: UtcTimestamp,
 ) -> Result<DiagnosticFinding, DiagnosticError> {
+    if let Some(diagnostic) = error.platform_diagnostic() {
+        return volicord_platform_fs::platform_diagnostic_finding(
+            diagnostic,
+            finding_id,
+            &volicord_platform_fs::PlatformDiagnosticFacts::default(),
+            observed_at,
+        );
+    }
+
     let diagnostic = StoreDiagnostic::from_error(error);
     store_diagnostic_finding_from_kind(
         diagnostic,
@@ -556,7 +553,7 @@ mod tests {
     use volicord_test_support::TempRuntimeHome;
 
     use super::*;
-    use crate::runtime_home::{RuntimePathBoundaryViolation, RuntimePlatformDiagnostic};
+    use crate::runtime_home::RuntimePathBoundaryViolation;
     use crate::sqlite::{
         begin_immediate_transaction, open_project_state_database_for_test,
         open_project_state_database_read_only, open_read_only_database,
@@ -690,15 +687,41 @@ mod tests {
         );
 
         let unsupported = RuntimePathBoundaryError::UnsupportedEnvironment {
-            diagnostic: RuntimePlatformDiagnostic::Platform(
-                volicord_platform_fs::PlatformBoundaryDiagnostic::UnsupportedFilesystemBoundary,
+            diagnostic: volicord_platform_fs::PlatformDiagnostic::new(
+                volicord_platform_fs::PlatformDiagnosticKind::UnsupportedFilesystemBoundary,
+                "the selected path is outside the supported filesystem boundary",
             ),
-            reason: "prose-independent-reason",
-            detail: "prose-independent-detail".to_owned(),
         };
         assert_eq!(
             RuntimeHomeDiagnostic::from_path_boundary(&unsupported),
-            Some(RuntimeHomeDiagnostic::UnsupportedFilesystem)
+            None
+        );
+    }
+
+    #[test]
+    fn platform_store_error_preserves_platform_identity_and_typed_action() {
+        let error = StoreError::PlatformEnvironmentUnavailable {
+            diagnostic: volicord_platform_fs::PlatformDiagnostic::new(
+                volicord_platform_fs::PlatformDiagnosticKind::FilesystemObservationFailure,
+                "filesystem observation failed",
+            ),
+        };
+
+        let finding = store_diagnostic_finding(
+            &error,
+            "finding.platform.store_fixture",
+            Some("registry"),
+            UtcTimestamp::parse("2026-07-22T00:00:00Z").expect("timestamp"),
+        )
+        .expect("platform Store finding");
+
+        assert_eq!(
+            finding.code().as_str(),
+            "platform.filesystem.observation_failed"
+        );
+        assert_eq!(
+            finding.actions()[0].code().as_str(),
+            "action.platform.repair_observation_access"
         );
     }
 

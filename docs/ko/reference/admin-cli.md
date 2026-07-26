@@ -1357,6 +1357,11 @@ self-test, 이력 Guard 활동은 이 check를 완료할 수 없습니다. 이 �
 생성 Codex entry는 숨겨진 `_host-launch` 명령을 사용합니다. `_host-launch`는 host
 소유이고 일반 help에 표시하지 않으며 별도의 관리 또는 공개 API 표면이 아닙니다.
 
+플랫폼 경계 runtime failure는 Runtime Home과 Store routing을 거치는 동안 플랫폼
+diagnostic kind와 정규 namespaced code를 유지합니다. 사람용 CLI 출력은 정확히
+`<code>: <bounded-detail>` 형식으로 렌더링합니다. 구조화된 diagnostic 출력은 같은
+code를 finding identity로 사용하고 action은 typed diagnostic class에서 선택합니다.
+
 <a id="diagnostics"></a>
 ## Diagnostics
 

@@ -351,6 +351,11 @@ Registry를 열기 전에 발생한 실패는 stderr에 한도가 있는
 finding을 영속합니다. Terminal 실패는 두 번째 자유 형식 실패 객체로 저장하지 않고
 finding ID로 연결합니다.
 
+타입이 지정된 플랫폼 Store failure는 MCP bootstrap과 영속 terminal finding에서 정규
+`platform.*` code, `platform` domain, `platform_observation` stage로 표현합니다. 권장
+action은 typed 플랫폼 class에서 선택합니다. 한도가 있는 사람이 읽는 세부사항은 기계
+판독용 finding identity와 분리됩니다.
+
 연결 검증은 선택한 Runtime Home에 읽기 전용 preflight를 수행한 뒤 일회용 명령별
 fixture 안에서만 수동 stdio probe process를 시작합니다. 같은 정규 role 담당 도구,
 현재 `volicord.list_projects`를 안전한 읽기 전용 self-test 왕복으로 호출합니다. Fixture

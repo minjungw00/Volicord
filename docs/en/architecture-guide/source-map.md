@@ -33,10 +33,10 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, effect-aware exact directory-tree removal, typed atomic no-replace regular-file publication and parent-entry durability, platform-native namespace operations, safe Runtime Home mutation-lease and permit exports, and canonical read-only Git layout discovery. |
+| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, closed typed platform diagnostic kinds with unique canonical codes and bounded detail, shared platform-finding projection, effect-aware exact directory-tree removal, typed atomic no-replace regular-file publication and parent-entry durability, platform-native namespace operations, safe Runtime Home mutation-lease and permit exports, and canonical read-only Git layout discovery. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | Canonical Runtime Home identity, domain-separated full-digest external coordination-file derivation, shared-writer and exclusive-setup modes on one OS lock region, immediate and bounded typed acquisition, borrowed mutation permits, and Unix/macOS or native Windows handle-lifetime release. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | Cross-process shared/exclusive mutation-lease contention and process-termination release regression. |
-| `crates/volicord-cli/src/host_integration/process.rs` | Process-target validation and target-path filesystem enforcement from platform-boundary observations. |
+| `crates/volicord-cli/src/host_integration/process.rs` | Process-target validation, target-path filesystem enforcement from platform-boundary observations, and canonical platform diagnostic display projection. |
 
 ## Platform Process Boundary
 
@@ -104,13 +104,15 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/guards.rs` | Typed host-correlation normalization, MCP-only project anchors, phase-specific Guard observations, prompt captures, expected writes, and suppression inputs. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent and producer records. |
 | `crates/volicord-store/src/artifacts.rs` | Artifact staging and durable body validation. |
-| `crates/volicord-store/src/error.rs` | Store failure classification. |
+| `crates/volicord-store/src/runtime_home.rs` | Runtime Home selection and path-boundary validation, including propagation of typed platform diagnostics across runtime-path failures. |
+| `crates/volicord-store/src/operational_diagnostics.rs` | Typed Runtime Home and Store finding projection, with direct preservation of platform-owned finding identity and action policy. |
+| `crates/volicord-store/src/error.rs` | Store failure classification and typed platform diagnostic retention. |
 
 ## Core
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, and commit orchestration. |
+| `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, commit orchestration, and Store-error detail projection including canonical platform diagnostic codes. |
 | `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. Production method modules import shared helpers, pipeline and policy functions, Store services, and shared types from their explicit owners; the parent module is not an import prelude. |
 | `crates/volicord-core/src/methods/evidence_facts.rs` | Shared Store reads and strict decoding that acquire typed facts for stored and projected evidence without owning evidence-policy classification. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | Evidence-capture request validation and planning; consumes target policy for acceptance-criterion and supplemental-claim matching. |
@@ -199,6 +201,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction coordinate extraction, current-state reread, compound safe result projection, and CLI inbox fallback attachment. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime-session finding and diagnostic-event persistence plus bounded best-effort handling for diagnostic-carrier failures where the contract permits it. |
 | `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic-session establishment and session-scoped tools-list, method-call, and status-reread workflow metrics. |
+| `crates/volicord-mcp/src/diagnostics.rs` | Closed MCP diagnostic mapping, shared finding construction, and preservation of platform-owned diagnostic codes and action classes in bootstrap and persisted terminal projections. |
 | `crates/volicord-mcp/src/adapter.rs` | Retained pre-operation routing identity, live mutation-context correlation, context-bound Core invocation APIs, plus managed in-chat begin/probe/get integration-verification orchestration outside Core that serializes the Store-owned workflow projection without adapter-local state derivation. |
 | `crates/volicord-mcp/src/constants.rs` | MCP initialize instructions for the user-level verification request, nested workflow-directed sequence, stop rules, unavailable boundary, and optional active diagnostics. |
 | `crates/volicord-mcp/src/tool_registry.rs` | Assembly of `AgentToolId`-keyed schemas, annotations, effects descriptions, metadata, and method lookup into canonical tool definitions/results, including the three Connection-integration tools; semantic-capability-only wire projection; and construction of the explicit-server, collision-checked Codex callable catalog. |

@@ -246,6 +246,13 @@ raw request body 또는 projection하지 않은 다른 입력을 담으면 안 �
 | `platform.filesystem.observation_failed` | 파일시스템 identity를 관찰할 수 없습니다. |
 | `platform.observation.failed` | 그 밖의 필수 플랫폼 관찰이 실패했습니다. |
 
+각 플랫폼 diagnostic kind는 이 registry의 code 하나에만 대응합니다. 타입이 지정된
+diagnostic과 한도가 있는 사람이 읽는 세부사항은 runtime-path와 Store 경계를 함께
+통과합니다. Store 분류, CLI 표시, MCP bootstrap 또는 terminal finding, 영속 diagnostic
+fact는 모두 같은 code를 사용합니다. Action은 typed kind의 `Unsupported` 또는
+`Unavailable` class에서 선택합니다. 사람용 표시는 `<code>: <bounded-detail>` 형식이며
+세부사항은 identity에 참여하지 않습니다.
+
 Runtime Home finding은 `runtime_home.path.missing`,
 `runtime_home.path.empty_or_relative`, `runtime_home.path.invalid`,
 `runtime_home.registry.missing`, `runtime_home.permission.denied`,

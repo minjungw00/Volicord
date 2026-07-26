@@ -1,6 +1,46 @@
 use super::*;
 
 #[test]
+fn platform_diagnostic_code_is_preserved_in_persisted_mcp_facts() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-platform-diagnostic-persistence")?;
+    let admission =
+        volicord_test_support::TestRuntimeHomeMutation::acquire(fixture.runtime_home_path())?;
+    let context = admission.context()?;
+    let data = crate::diagnostics::data_for_diagnostic(
+        crate::diagnostics::McpDiagnostic::Platform(
+            volicord_platform_fs::PlatformDiagnosticKind::UnsupportedTarget,
+        ),
+        &crate::diagnostics::McpDiagnosticContext {
+            observed_at: volicord_types::values::UtcTimestamp::parse("2026-07-22T01:02:03Z")?,
+            connection_id: Some(fixture.connection_id().to_owned()),
+            integration_revision: None,
+            runtime_session_id: None,
+            requested_revision: None,
+            selected_revision: None,
+            negotiated_revision: None,
+            supported_revisions: crate::diagnostics::production_supported_revisions(),
+            attempted_client_name: None,
+            attempted_client_version: None,
+            json_rpc_error_code: None,
+            safe_error_data: None,
+            tool_name: None,
+            missing_tools: Vec::new(),
+        },
+    )?;
+    let occurrence = volicord_types::diagnostics::OccurrenceDiagnosticFinding::try_new(data, None)?;
+    volicord_store::diagnostic_findings::insert_occurrence_finding(&context, &occurrence)?;
+
+    let stored =
+        stored_diagnostic_findings_by_ids(fixture.runtime_home_path(), &[occurrence.id()])?;
+    assert_eq!(stored.len(), 1);
+    assert_eq!(
+        stored[0].to_diagnostic_finding().code().as_str(),
+        "platform.target.unsupported"
+    );
+    Ok(())
+}
+
+#[test]
 fn stdio_workflow_metrics_record_exact_tools_list_method_outcomes_and_status_rereads(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("mcp-workflow-metrics")?;

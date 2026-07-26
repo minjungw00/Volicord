@@ -6,7 +6,7 @@ use std::{
 
 use volicord_platform_fs::{
     observe_local_platform_boundary, observe_path_filesystem, LocalPlatformBoundary,
-    PathFilesystemKind,
+    PathFilesystemKind, PlatformDiagnostic, PlatformDiagnosticKind,
 };
 use volicord_types::platform::{validate_canonical_platform_path, PlatformEnvironment};
 
@@ -95,20 +95,24 @@ fn require_supported_path_filesystem(
         return Ok(());
     }
     let filesystem = observe_path_filesystem(path).map_err(|error| error.to_string())?;
-    validate_path_filesystem_fact(platform, filesystem).map_err(|reason| {
-        format!(
-            "{reason}: {} must be on the WSL2 distribution ext4 filesystem",
-            path.display()
+    validate_path_filesystem_fact(platform, filesystem).map_err(|kind| {
+        PlatformDiagnostic::new(
+            kind,
+            format!(
+                "{} must be on the WSL2 distribution ext4 filesystem",
+                path.display()
+            ),
         )
+        .to_string()
     })
 }
 
 fn validate_path_filesystem_fact(
     platform: PlatformEnvironment,
     filesystem: PathFilesystemKind,
-) -> Result<(), &'static str> {
+) -> Result<(), PlatformDiagnosticKind> {
     if platform == PlatformEnvironment::Wsl2 && filesystem != PathFilesystemKind::LinuxExt4 {
-        Err("unsupported_wsl2_filesystem")
+        Err(PlatformDiagnosticKind::UnsupportedFilesystemBoundary)
     } else {
         Ok(())
     }
@@ -142,7 +146,11 @@ mod tests {
     fn injected_filesystem_facts_reject_non_ext4_only_for_wsl2() {
         assert_eq!(
             validate_path_filesystem_fact(PlatformEnvironment::Wsl2, PathFilesystemKind::Other),
-            Err("unsupported_wsl2_filesystem")
+            Err(PlatformDiagnosticKind::UnsupportedFilesystemBoundary)
+        );
+        assert_eq!(
+            PlatformDiagnosticKind::UnsupportedFilesystemBoundary.code(),
+            "platform.filesystem.unsupported"
         );
         validate_path_filesystem_fact(PlatformEnvironment::Wsl2, PathFilesystemKind::LinuxExt4)
             .expect("WSL2 ext4 should be supported");

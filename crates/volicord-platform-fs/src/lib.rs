@@ -35,6 +35,9 @@ use std::fs::File;
 const MAX_GIT_CONTROL_FILE_BYTES: u64 = 4096;
 const MAX_PLATFORM_CONTROL_FILE_BYTES: u64 = 16 * 1024;
 const MAX_MOUNTINFO_BYTES: u64 = 4 * 1024 * 1024;
+/// Maximum UTF-8 byte length retained for one platform diagnostic detail.
+pub const MAX_PLATFORM_DIAGNOSTIC_DETAIL_BYTES: usize = 1_024;
+const PLATFORM_DIAGNOSTIC_DETAIL_TRUNCATED_SUFFIX: &str = "...[truncated]";
 
 #[cfg(target_os = "linux")]
 const KERNEL_RELEASE_PATH: &str = "/proc/sys/kernel/osrelease";
@@ -61,18 +64,18 @@ pub enum PathFilesystemKind {
     Other,
 }
 
-/// Stable class for a local platform-boundary observation failure.
+/// Stable routing class for a local platform-boundary diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlatformBoundaryErrorKind {
+pub enum PlatformDiagnosticClass {
     /// Required local observation could not be completed.
     Unavailable,
     /// The observed platform or topology is outside the first-release contract.
     Unsupported,
 }
 
-/// Closed diagnostic vocabulary for Volicord-owned platform observations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlatformBoundaryDiagnostic {
+/// Closed semantic kinds for Volicord-owned platform diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PlatformDiagnosticKind {
     /// The operating system has no supported Volicord release cell.
     UnsupportedOperatingSystem,
     /// The running binary target is not a supported release target.
@@ -83,8 +86,6 @@ pub enum PlatformBoundaryDiagnostic {
     Wsl2DistributionIdentityUnavailable,
     /// The observed WSL2 distribution is outside the pinned release cell.
     UnsupportedWsl2Distribution,
-    /// The running binary target cannot serve the supported WSL2 cell.
-    UnsupportedWsl2Target,
     /// A required filesystem observation could not be completed.
     FilesystemObservationFailure,
     /// A path is on a filesystem outside the supported platform boundary.
@@ -93,25 +94,24 @@ pub enum PlatformBoundaryDiagnostic {
     PlatformObservationFailure,
 }
 
-impl PlatformBoundaryDiagnostic {
-    /// Every owner-defined variant, used by exhaustive mapping tests.
-    pub const ALL: [Self; 9] = [
+impl PlatformDiagnosticKind {
+    /// Every owner-defined kind in canonical registry order.
+    pub const ALL: [Self; 8] = [
         Self::UnsupportedOperatingSystem,
         Self::UnsupportedTarget,
         Self::Wsl1,
         Self::Wsl2DistributionIdentityUnavailable,
         Self::UnsupportedWsl2Distribution,
-        Self::UnsupportedWsl2Target,
         Self::FilesystemObservationFailure,
         Self::UnsupportedFilesystemBoundary,
         Self::PlatformObservationFailure,
     ];
 
-    /// Stable structured diagnostic code.
+    /// Stable namespaced machine-readable identity for this kind.
     pub const fn code(self) -> &'static str {
         match self {
             Self::UnsupportedOperatingSystem => "platform.operating_system.unsupported",
-            Self::UnsupportedTarget | Self::UnsupportedWsl2Target => "platform.target.unsupported",
+            Self::UnsupportedTarget => "platform.target.unsupported",
             Self::Wsl1 => "platform.wsl1.unsupported",
             Self::Wsl2DistributionIdentityUnavailable => {
                 "platform.wsl2.distribution_identity_unavailable"
@@ -123,40 +123,89 @@ impl PlatformBoundaryDiagnostic {
         }
     }
 
-    /// Stable legacy reason retained by existing error routes.
-    pub const fn reason(self) -> &'static str {
+    /// Bounded static summary for structured diagnostic facts.
+    pub const fn summary(self) -> &'static str {
         match self {
-            Self::UnsupportedOperatingSystem => "unsupported_platform_environment",
-            Self::UnsupportedTarget => "unsupported_release_target",
-            Self::Wsl1 => "unsupported_wsl1",
-            Self::Wsl2DistributionIdentityUnavailable => "wsl2_distribution_unavailable",
-            Self::UnsupportedWsl2Distribution => "unsupported_wsl2_distribution",
-            Self::UnsupportedWsl2Target => "unsupported_wsl2_target",
-            Self::FilesystemObservationFailure => "platform_filesystem_unavailable",
-            Self::UnsupportedFilesystemBoundary => "unsupported_filesystem_boundary",
-            Self::PlatformObservationFailure => "platform_environment_unavailable",
+            Self::UnsupportedOperatingSystem => {
+                "The operating system has no supported Volicord release cell"
+            }
+            Self::UnsupportedTarget => "The running binary target is not supported",
+            Self::Wsl1 => "The process is running under WSL1",
+            Self::Wsl2DistributionIdentityUnavailable => {
+                "The WSL2 distribution identity could not be observed"
+            }
+            Self::UnsupportedWsl2Distribution => "The observed WSL2 distribution is not supported",
+            Self::FilesystemObservationFailure => {
+                "The selected path filesystem could not be observed"
+            }
+            Self::UnsupportedFilesystemBoundary => {
+                "The selected path is outside the supported filesystem boundary"
+            }
+            Self::PlatformObservationFailure => "A required local platform observation failed",
         }
     }
 
-    const fn kind(self) -> PlatformBoundaryErrorKind {
+    /// Stable broad routing class derived from the semantic kind.
+    pub const fn class(self) -> PlatformDiagnosticClass {
         match self {
             Self::UnsupportedOperatingSystem
             | Self::UnsupportedTarget
             | Self::Wsl1
             | Self::UnsupportedWsl2Distribution
-            | Self::UnsupportedWsl2Target
-            | Self::UnsupportedFilesystemBoundary => PlatformBoundaryErrorKind::Unsupported,
+            | Self::UnsupportedFilesystemBoundary => PlatformDiagnosticClass::Unsupported,
             Self::Wsl2DistributionIdentityUnavailable
             | Self::FilesystemObservationFailure
-            | Self::PlatformObservationFailure => PlatformBoundaryErrorKind::Unavailable,
+            | Self::PlatformObservationFailure => PlatformDiagnosticClass::Unavailable,
         }
+    }
+}
+
+/// One typed platform diagnostic with bounded human-readable detail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlatformDiagnostic {
+    kind: PlatformDiagnosticKind,
+    detail: String,
+}
+
+impl PlatformDiagnostic {
+    /// Constructs a diagnostic and bounds its display detail.
+    pub fn new(kind: PlatformDiagnosticKind, detail: impl Into<String>) -> Self {
+        Self {
+            kind,
+            detail: bounded_platform_diagnostic_detail(detail.into()),
+        }
+    }
+
+    /// Returns the typed semantic kind.
+    pub const fn kind(&self) -> PlatformDiagnosticKind {
+        self.kind
+    }
+
+    /// Returns the stable namespaced machine-readable identity.
+    pub const fn code(&self) -> &'static str {
+        self.kind.code()
+    }
+
+    /// Returns the broad routing class.
+    pub const fn class(&self) -> PlatformDiagnosticClass {
+        self.kind.class()
+    }
+
+    /// Returns the bounded human-readable detail.
+    pub fn detail(&self) -> &str {
+        &self.detail
+    }
+}
+
+impl fmt::Display for PlatformDiagnostic {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.code(), self.detail)
     }
 }
 
 /// Safe bounded facts for one platform observation finding.
 #[derive(Debug, Default, Serialize)]
 pub struct PlatformDiagnosticFacts {
-    pub legacy_reason: Option<&'static str>,
     pub target_triple: Option<String>,
     pub platform_environment: Option<String>,
 }
@@ -165,18 +214,17 @@ impl DiagnosticFactSource for PlatformDiagnosticFacts {}
 
 /// Builds one shared structured finding from a typed platform failure.
 pub fn platform_diagnostic_finding(
-    error: &PlatformBoundaryError,
+    diagnostic: &PlatformDiagnostic,
     finding_id: impl Into<String>,
     facts: &PlatformDiagnosticFacts,
     observed_at: UtcTimestamp,
 ) -> Result<DiagnosticFinding, DiagnosticError> {
-    let diagnostic = error.diagnostic();
-    let action = match diagnostic.kind() {
-        PlatformBoundaryErrorKind::Unsupported => DiagnosticAction::try_new(
+    let action = match diagnostic.class() {
+        PlatformDiagnosticClass::Unsupported => DiagnosticAction::try_new(
             DiagnosticCode::parse("action.platform.use_supported_environment")?,
             "Use a supported Volicord platform and release target",
         )?,
-        PlatformBoundaryErrorKind::Unavailable => DiagnosticAction::try_new(
+        PlatformDiagnosticClass::Unavailable => DiagnosticAction::try_new(
             DiagnosticCode::parse("action.platform.repair_observation_access")?,
             "Restore access to the required local platform observations",
         )?,
@@ -198,35 +246,39 @@ pub fn platform_diagnostic_finding(
 /// Machine-readable local platform-boundary observation failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlatformBoundaryError {
-    diagnostic: PlatformBoundaryDiagnostic,
-    detail: String,
+    diagnostic: PlatformDiagnostic,
 }
 
 impl PlatformBoundaryError {
-    /// Returns the stable failure class.
-    pub const fn kind(&self) -> PlatformBoundaryErrorKind {
+    /// Returns the typed semantic diagnostic kind.
+    pub const fn kind(&self) -> PlatformDiagnosticKind {
         self.diagnostic.kind()
     }
 
-    /// Returns the stable machine-readable reason.
-    pub const fn reason(&self) -> &'static str {
-        self.diagnostic.reason()
+    /// Returns the stable namespaced machine-readable identity.
+    pub const fn code(&self) -> &'static str {
+        self.diagnostic.code()
     }
 
-    /// Returns the owner-defined diagnostic variant without parsing detail.
-    pub const fn diagnostic(&self) -> PlatformBoundaryDiagnostic {
-        self.diagnostic
+    /// Returns the broad routing class.
+    pub const fn class(&self) -> PlatformDiagnosticClass {
+        self.diagnostic.class()
     }
 
     /// Returns bounded implementation-facing detail.
     pub fn detail(&self) -> &str {
-        &self.detail
+        self.diagnostic.detail()
+    }
+
+    /// Consumes the error and returns its typed diagnostic.
+    pub fn into_diagnostic(self) -> PlatformDiagnostic {
+        self.diagnostic
     }
 }
 
 impl fmt::Display for PlatformBoundaryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.reason(), self.detail)
+        self.diagnostic.fmt(formatter)
     }
 }
 
@@ -263,7 +315,7 @@ pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, Platfo
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 pub fn observe_local_platform_boundary() -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
     Err(unsupported_platform(
-        PlatformBoundaryDiagnostic::UnsupportedOperatingSystem,
+        PlatformDiagnosticKind::UnsupportedOperatingSystem,
         "this operating-system target has no first-release platform cell",
     ))
 }
@@ -274,13 +326,13 @@ pub fn observe_path_filesystem(path: &Path) -> Result<PathFilesystemKind, Platfo
     let existing = nearest_existing_path(path)?;
     let canonical_existing = fs::canonicalize(&existing).map_err(|error| {
         unavailable_platform(
-            PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+            PlatformDiagnosticKind::FilesystemObservationFailure,
             format!("cannot canonicalize {}: {error}", existing.display()),
         )
     })?;
     let stat = rustix::fs::statfs(&canonical_existing).map_err(|error| {
         unavailable_platform(
-            PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+            PlatformDiagnosticKind::FilesystemObservationFailure,
             format!("cannot inspect filesystem for {}: {error}", path.display()),
         )
     })?;
@@ -357,7 +409,7 @@ fn observe_linux_platform_boundary(
 ) -> Result<LocalPlatformBoundary, PlatformBoundaryError> {
     let kernel_release = observation.read_kernel_release().map_err(|error| {
         unavailable_platform(
-            PlatformBoundaryDiagnostic::PlatformObservationFailure,
+            PlatformDiagnosticKind::PlatformObservationFailure,
             format!(
                 "the Linux kernel release required to classify the host could not be read from {KERNEL_RELEASE_PATH}: {error}"
             ),
@@ -366,7 +418,7 @@ fn observe_linux_platform_boundary(
     let os_release = match classify_linux_kernel_release(&kernel_release) {
         LinuxKernelBoundary::Wsl2 => Some(observation.read_wsl2_os_release().map_err(|error| {
             unavailable_platform(
-                PlatformBoundaryDiagnostic::Wsl2DistributionIdentityUnavailable,
+                PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable,
                 format!(
                     "the WSL2 distribution identity could not be read from {OS_RELEASE_PATH}: {error}"
                 ),
@@ -397,7 +449,7 @@ fn classify_linux_platform_boundary(
         }
         LinuxKernelBoundary::Wsl1 => {
             return Err(unsupported_platform(
-                PlatformBoundaryDiagnostic::Wsl1,
+                PlatformDiagnosticKind::Wsl1,
                 "the observed Microsoft Linux kernel is not a WSL2 kernel",
             ));
         }
@@ -406,7 +458,7 @@ fn classify_linux_platform_boundary(
 
     let os_release = facts.os_release.ok_or_else(|| {
         unavailable_platform(
-            PlatformBoundaryDiagnostic::Wsl2DistributionIdentityUnavailable,
+            PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable,
             "/etc/os-release was not observed inside the WSL2 process",
         )
     })?;
@@ -415,7 +467,7 @@ fn classify_linux_platform_boundary(
         || distribution_version != PINNED_WSL2_DISTRIBUTION_VERSION
     {
         return Err(unsupported_platform(
-            PlatformBoundaryDiagnostic::UnsupportedWsl2Distribution,
+            PlatformDiagnosticKind::UnsupportedWsl2Distribution,
             format!(
                 "expected ID={PINNED_WSL2_DISTRIBUTION_ID} and VERSION_ID={PINNED_WSL2_DISTRIBUTION_VERSION}"
             ),
@@ -423,7 +475,7 @@ fn classify_linux_platform_boundary(
     }
     if !target_triple.supports_environment(PlatformEnvironment::Wsl2) {
         return Err(unsupported_platform(
-            PlatformBoundaryDiagnostic::UnsupportedWsl2Target,
+            PlatformDiagnosticKind::UnsupportedTarget,
             format!("target {target_triple} cannot run in the supported WSL2 environment"),
         ));
     }
@@ -457,7 +509,7 @@ fn current_release_target_triple() -> Result<ReleaseTargetTriple, PlatformBounda
     };
     target.ok_or_else(|| {
         unsupported_platform(
-            PlatformBoundaryDiagnostic::UnsupportedTarget,
+            PlatformDiagnosticKind::UnsupportedTarget,
             "this executable target is not a supported Volicord binary target",
         )
     })
@@ -474,7 +526,7 @@ fn parse_os_release(document: &str) -> Result<(String, String), PlatformBoundary
         }
         let Some((name, raw_value)) = line.split_once('=') else {
             return Err(unavailable_platform(
-                PlatformBoundaryDiagnostic::Wsl2DistributionIdentityUnavailable,
+                PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable,
                 "/etc/os-release contains a malformed entry",
             ));
         };
@@ -489,7 +541,7 @@ fn parse_os_release(document: &str) -> Result<(String, String), PlatformBoundary
         };
         if target.replace(value.to_owned()).is_some() {
             return Err(unavailable_platform(
-                PlatformBoundaryDiagnostic::Wsl2DistributionIdentityUnavailable,
+                PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable,
                 "/etc/os-release repeats a required coordinate",
             ));
         }
@@ -497,13 +549,13 @@ fn parse_os_release(document: &str) -> Result<(String, String), PlatformBoundary
     Ok((
         distribution_id.ok_or_else(|| {
             unavailable_platform(
-                PlatformBoundaryDiagnostic::Wsl2DistributionIdentityUnavailable,
+                PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable,
                 "/etc/os-release is missing ID",
             )
         })?,
         distribution_version.ok_or_else(|| {
             unavailable_platform(
-                PlatformBoundaryDiagnostic::Wsl2DistributionIdentityUnavailable,
+                PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable,
                 "/etc/os-release is missing VERSION_ID",
             )
         })?,
@@ -566,7 +618,7 @@ fn read_bounded_platform_text(path: impl AsRef<Path>, max_bytes: u64) -> io::Res
 fn read_linux_mountinfo() -> Result<String, PlatformBoundaryError> {
     read_bounded_platform_text(MOUNTINFO_PATH, MAX_MOUNTINFO_BYTES).map_err(|error| {
         unavailable_platform(
-            PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+            PlatformDiagnosticKind::FilesystemObservationFailure,
             error.to_string(),
         )
     })
@@ -582,26 +634,26 @@ fn filesystem_type_for_path(path: &Path, mountinfo: &str) -> Result<String, Plat
             .position(|field| *field == "-")
             .ok_or_else(|| {
                 unavailable_platform(
-                    PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+                    PlatformDiagnosticKind::FilesystemObservationFailure,
                     "/proc/self/mountinfo contains a malformed entry",
                 )
             })?;
         if fields.len() < 7 || separator < 6 || separator + 2 >= fields.len() {
             return Err(unavailable_platform(
-                PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+                PlatformDiagnosticKind::FilesystemObservationFailure,
                 "/proc/self/mountinfo contains an incomplete entry",
             ));
         }
         let mount_id = fields[0].parse::<u64>().map_err(|_| {
             unavailable_platform(
-                PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+                PlatformDiagnosticKind::FilesystemObservationFailure,
                 "/proc/self/mountinfo contains a non-decimal mount identifier",
             )
         })?;
         let mount_point = decode_mountinfo_path(fields[4])?;
         if !mount_point.is_absolute() {
             return Err(unavailable_platform(
-                PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+                PlatformDiagnosticKind::FilesystemObservationFailure,
                 "/proc/self/mountinfo contains a non-absolute mount point",
             ));
         }
@@ -622,7 +674,7 @@ fn filesystem_type_for_path(path: &Path, mountinfo: &str) -> Result<String, Plat
         .map(|(_, _, filesystem_type)| filesystem_type)
         .ok_or_else(|| {
             unavailable_platform(
-                PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+                PlatformDiagnosticKind::FilesystemObservationFailure,
                 format!("/proc/self/mountinfo has no mount for {}", path.display()),
             )
         })
@@ -658,7 +710,7 @@ fn decode_mountinfo_path(encoded: &str) -> Result<PathBuf, PlatformBoundaryError
 #[cfg(target_os = "linux")]
 fn malformed_mountinfo_escape() -> PlatformBoundaryError {
     unavailable_platform(
-        PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+        PlatformDiagnosticKind::FilesystemObservationFailure,
         "/proc/self/mountinfo contains an invalid mount-point escape",
     )
 }
@@ -672,14 +724,14 @@ fn nearest_existing_path(path: &Path) -> Result<PathBuf, PlatformBoundaryError> 
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 if !candidate.pop() {
                     return Err(unavailable_platform(
-                        PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+                        PlatformDiagnosticKind::FilesystemObservationFailure,
                         format!("{} has no observable existing ancestor", path.display()),
                     ));
                 }
             }
             Err(error) => {
                 return Err(unavailable_platform(
-                    PlatformBoundaryDiagnostic::FilesystemObservationFailure,
+                    PlatformDiagnosticKind::FilesystemObservationFailure,
                     format!("cannot inspect {}: {error}", candidate.display()),
                 ));
             }
@@ -688,25 +740,37 @@ fn nearest_existing_path(path: &Path) -> Result<PathBuf, PlatformBoundaryError> 
 }
 
 fn unavailable_platform(
-    diagnostic: PlatformBoundaryDiagnostic,
+    kind: PlatformDiagnosticKind,
     detail: impl Into<String>,
 ) -> PlatformBoundaryError {
-    debug_assert_eq!(diagnostic.kind(), PlatformBoundaryErrorKind::Unavailable);
+    debug_assert_eq!(kind.class(), PlatformDiagnosticClass::Unavailable);
     PlatformBoundaryError {
-        diagnostic,
-        detail: detail.into(),
+        diagnostic: PlatformDiagnostic::new(kind, detail),
     }
 }
 
 fn unsupported_platform(
-    diagnostic: PlatformBoundaryDiagnostic,
+    kind: PlatformDiagnosticKind,
     detail: impl Into<String>,
 ) -> PlatformBoundaryError {
-    debug_assert_eq!(diagnostic.kind(), PlatformBoundaryErrorKind::Unsupported);
+    debug_assert_eq!(kind.class(), PlatformDiagnosticClass::Unsupported);
     PlatformBoundaryError {
-        diagnostic,
-        detail: detail.into(),
+        diagnostic: PlatformDiagnostic::new(kind, detail),
     }
+}
+
+fn bounded_platform_diagnostic_detail(mut detail: String) -> String {
+    if detail.len() <= MAX_PLATFORM_DIAGNOSTIC_DETAIL_BYTES {
+        return detail;
+    }
+    let suffix_bytes = PLATFORM_DIAGNOSTIC_DETAIL_TRUNCATED_SUFFIX.len();
+    let mut end = MAX_PLATFORM_DIAGNOSTIC_DETAIL_BYTES.saturating_sub(suffix_bytes);
+    while !detail.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    detail.truncate(end);
+    detail.push_str(PLATFORM_DIAGNOSTIC_DETAIL_TRUNCATED_SUFFIX);
+    detail
 }
 
 /// Resolved Git metadata roots for one Product Repository worktree.
@@ -1976,6 +2040,7 @@ fn wide_path(path: &Path) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::BTreeSet,
         sync::{
             atomic::{AtomicU64, Ordering},
             Arc, Barrier,
@@ -2306,31 +2371,73 @@ mod tests {
     static TEST_DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     #[test]
-    fn every_platform_diagnostic_has_a_stable_namespaced_code_and_legacy_reason() {
-        let mapped = PlatformBoundaryDiagnostic::ALL
+    fn platform_diagnostic_registry_has_valid_unique_namespaced_codes() {
+        let codes = PlatformDiagnosticKind::ALL
             .into_iter()
-            .map(|diagnostic| (diagnostic.code(), diagnostic.reason()))
+            .map(PlatformDiagnosticKind::code)
             .collect::<Vec<_>>();
+        let unique = codes.iter().copied().collect::<BTreeSet<_>>();
 
-        assert_eq!(mapped.len(), PlatformBoundaryDiagnostic::ALL.len());
-        assert!(mapped
-            .iter()
-            .all(|(code, reason)| code.starts_with("platform.") && !reason.is_empty()));
-        assert_eq!(
-            PlatformBoundaryDiagnostic::UnsupportedOperatingSystem.code(),
-            "platform.operating_system.unsupported"
-        );
+        assert_eq!(codes.len(), PlatformDiagnosticKind::ALL.len());
+        assert_eq!(unique.len(), codes.len());
+        for code in codes {
+            assert!(code.starts_with("platform."));
+            DiagnosticCode::parse(code).expect("platform registry code");
+        }
+    }
 
-        let error = unsupported_platform(
-            PlatformBoundaryDiagnostic::UnsupportedOperatingSystem,
+    #[test]
+    fn platform_diagnostic_kinds_map_to_the_canonical_codes() {
+        let expected = [
+            (
+                PlatformDiagnosticKind::UnsupportedOperatingSystem,
+                "platform.operating_system.unsupported",
+            ),
+            (
+                PlatformDiagnosticKind::UnsupportedTarget,
+                "platform.target.unsupported",
+            ),
+            (PlatformDiagnosticKind::Wsl1, "platform.wsl1.unsupported"),
+            (
+                PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable,
+                "platform.wsl2.distribution_identity_unavailable",
+            ),
+            (
+                PlatformDiagnosticKind::UnsupportedWsl2Distribution,
+                "platform.wsl2.distribution_unsupported",
+            ),
+            (
+                PlatformDiagnosticKind::FilesystemObservationFailure,
+                "platform.filesystem.observation_failed",
+            ),
+            (
+                PlatformDiagnosticKind::UnsupportedFilesystemBoundary,
+                "platform.filesystem.unsupported",
+            ),
+            (
+                PlatformDiagnosticKind::PlatformObservationFailure,
+                "platform.observation.failed",
+            ),
+        ];
+
+        assert_eq!(PlatformDiagnosticKind::ALL, expected.map(|(kind, _)| kind));
+        for (kind, code) in expected {
+            assert_eq!(kind.code(), code);
+        }
+    }
+
+    #[test]
+    fn platform_finding_uses_the_kind_identity_and_current_fact_fields() {
+        let diagnostic = PlatformDiagnostic::new(
+            PlatformDiagnosticKind::UnsupportedOperatingSystem,
             "display prose does not classify this error",
         );
         let finding = platform_diagnostic_finding(
-            &error,
+            &diagnostic,
             "finding.platform.unsupported_fixture",
             &PlatformDiagnosticFacts {
-                legacy_reason: Some(error.reason()),
-                ..PlatformDiagnosticFacts::default()
+                target_triple: Some("x86_64-unknown-linux-gnu".to_owned()),
+                platform_environment: Some("linux".to_owned()),
             },
             UtcTimestamp::parse("2026-07-22T00:00:00Z").expect("timestamp"),
         )
@@ -2342,6 +2449,57 @@ mod tests {
         assert_eq!(
             finding.actions()[0].code().as_str(),
             "action.platform.use_supported_environment"
+        );
+        assert_eq!(
+            finding
+                .facts()
+                .data()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["platform_environment", "target_triple"]
+        );
+    }
+
+    #[test]
+    fn platform_action_selection_uses_the_typed_diagnostic_class() {
+        let unavailable = PlatformDiagnostic::new(
+            PlatformDiagnosticKind::FilesystemObservationFailure,
+            "filesystem observation failed",
+        );
+        let finding = platform_diagnostic_finding(
+            &unavailable,
+            "finding.platform.observation_fixture",
+            &PlatformDiagnosticFacts::default(),
+            UtcTimestamp::parse("2026-07-22T00:00:00Z").expect("timestamp"),
+        )
+        .expect("platform finding");
+
+        assert_eq!(
+            finding.actions()[0].code().as_str(),
+            "action.platform.repair_observation_access"
+        );
+    }
+
+    #[test]
+    fn platform_display_uses_canonical_code_and_bounded_detail() {
+        let error = unavailable_platform(
+            PlatformDiagnosticKind::PlatformObservationFailure,
+            "가".repeat(MAX_PLATFORM_DIAGNOSTIC_DETAIL_BYTES),
+        );
+
+        assert_eq!(
+            error.kind(),
+            PlatformDiagnosticKind::PlatformObservationFailure
+        );
+        assert_eq!(error.code(), "platform.observation.failed");
+        assert!(error.detail().len() <= MAX_PLATFORM_DIAGNOSTIC_DETAIL_BYTES);
+        assert!(error
+            .detail()
+            .ends_with(PLATFORM_DIAGNOSTIC_DETAIL_TRUNCATED_SUFFIX));
+        assert_eq!(
+            error.to_string(),
+            format!("{}: {}", error.code(), error.detail())
         );
     }
 
@@ -2438,7 +2596,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn kernel_read_failure_reports_platform_environment_unavailable() {
+    fn kernel_read_failure_reports_canonical_platform_observation_code() {
         let mut observation = TestLinuxPlatformObservation::new(
             TestPlatformRead::Failure("injected kernel read failure"),
             TestPlatformRead::Failure("os-release must not be read"),
@@ -2448,8 +2606,12 @@ mod tests {
             &mut observation,
         )
         .expect_err("an unavailable kernel observation must fail closed");
-        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
-        assert_eq!(error.reason(), "platform_environment_unavailable");
+        assert_eq!(error.class(), PlatformDiagnosticClass::Unavailable);
+        assert_eq!(
+            error.kind(),
+            PlatformDiagnosticKind::PlatformObservationFailure
+        );
+        assert_eq!(error.code(), "platform.observation.failed");
         assert_eq!(
             error.detail(),
             "the Linux kernel release required to classify the host could not be read from /proc/sys/kernel/osrelease: injected kernel read failure"
@@ -2491,8 +2653,15 @@ mod tests {
             &mut observation,
         )
         .expect_err("an unavailable WSL2 distribution observation must fail closed");
-        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
-        assert_eq!(error.reason(), "wsl2_distribution_unavailable");
+        assert_eq!(error.class(), PlatformDiagnosticClass::Unavailable);
+        assert_eq!(
+            error.kind(),
+            PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable
+        );
+        assert_eq!(
+            error.code(),
+            "platform.wsl2.distribution_identity_unavailable"
+        );
         assert_eq!(
             error.detail(),
             "the WSL2 distribution identity could not be read from /etc/os-release: injected os-release read failure"
@@ -2513,8 +2682,15 @@ mod tests {
             &mut observation,
         )
         .expect_err("a malformed WSL2 distribution observation must fail closed");
-        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
-        assert_eq!(error.reason(), "wsl2_distribution_unavailable");
+        assert_eq!(error.class(), PlatformDiagnosticClass::Unavailable);
+        assert_eq!(
+            error.kind(),
+            PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable
+        );
+        assert_eq!(
+            error.code(),
+            "platform.wsl2.distribution_identity_unavailable"
+        );
         assert_eq!(error.detail(), "/etc/os-release contains a malformed entry");
     }
 
@@ -2530,8 +2706,9 @@ mod tests {
             &mut observation,
         )
         .expect_err("WSL1 must be unsupported");
-        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
-        assert_eq!(error.reason(), "unsupported_wsl1");
+        assert_eq!(error.class(), PlatformDiagnosticClass::Unsupported);
+        assert_eq!(error.kind(), PlatformDiagnosticKind::Wsl1);
+        assert_eq!(error.code(), "platform.wsl1.unsupported");
         assert_eq!(
             error.detail(),
             "the observed Microsoft Linux kernel is not a WSL2 kernel"
@@ -2552,8 +2729,12 @@ mod tests {
             &mut observation,
         )
         .expect_err("an unsupported distribution ID must fail closed");
-        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
-        assert_eq!(error.reason(), "unsupported_wsl2_distribution");
+        assert_eq!(error.class(), PlatformDiagnosticClass::Unsupported);
+        assert_eq!(
+            error.kind(),
+            PlatformDiagnosticKind::UnsupportedWsl2Distribution
+        );
+        assert_eq!(error.code(), "platform.wsl2.distribution_unsupported");
         assert_eq!(error.detail(), "expected ID=ubuntu and VERSION_ID=24.04");
     }
 
@@ -2568,8 +2749,12 @@ mod tests {
             },
         )
         .expect_err("an unsupported distribution version must fail closed");
-        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
-        assert_eq!(error.reason(), "unsupported_wsl2_distribution");
+        assert_eq!(error.class(), PlatformDiagnosticClass::Unsupported);
+        assert_eq!(
+            error.kind(),
+            PlatformDiagnosticKind::UnsupportedWsl2Distribution
+        );
+        assert_eq!(error.code(), "platform.wsl2.distribution_unsupported");
         assert_eq!(error.detail(), "expected ID=ubuntu and VERSION_ID=24.04");
     }
 
@@ -2592,8 +2777,15 @@ mod tests {
                 },
             )
             .expect_err("missing os-release data must fail closed");
-            assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unavailable);
-            assert_eq!(error.reason(), "wsl2_distribution_unavailable");
+            assert_eq!(error.class(), PlatformDiagnosticClass::Unavailable);
+            assert_eq!(
+                error.kind(),
+                PlatformDiagnosticKind::Wsl2DistributionIdentityUnavailable
+            );
+            assert_eq!(
+                error.code(),
+                "platform.wsl2.distribution_identity_unavailable"
+            );
             assert_eq!(error.detail(), detail);
         }
     }
@@ -2621,7 +2813,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn wsl2_rejects_unsupported_release_target() {
+    fn wsl2_incompatible_target_uses_canonical_code() {
         let error = classify_linux_platform_boundary(
             ReleaseTargetTriple::Aarch64UnknownLinuxGnu,
             LinuxPlatformFacts {
@@ -2630,8 +2822,9 @@ mod tests {
             },
         )
         .expect_err("Linux AArch64 must not satisfy the x86-64 WSL2 environment");
-        assert_eq!(error.kind(), PlatformBoundaryErrorKind::Unsupported);
-        assert_eq!(error.reason(), "unsupported_wsl2_target");
+        assert_eq!(error.class(), PlatformDiagnosticClass::Unsupported);
+        assert_eq!(error.kind(), PlatformDiagnosticKind::UnsupportedTarget);
+        assert_eq!(error.code(), "platform.target.unsupported");
         assert_eq!(
             error.detail(),
             "target aarch64-unknown-linux-gnu cannot run in the supported WSL2 environment"

@@ -221,7 +221,10 @@ Codex 구성, Product Repository, Store 경계에 걸친 rollback에는 한도�
 namespaced code, domain, stage, severity, producer source, typed subject, 안전하게 projection한
 facts, 0개 이상의 cause reference와 권장 action, 관찰 timestamp, 적용 가능한 correlation
 좌표를 담습니다. Domain 담당자는 closed code vocabulary와 오류를 finding으로 변환하는
-규칙을 계속 담당합니다.
+규칙을 계속 담당합니다. Namespaced `code`가 안정적인 기계 판독용 diagnostic
+identity입니다. 각 domain의 typed diagnostic kind가 이 code와 action 정책을 선택하며,
+한도가 있는 사람이 읽는 세부사항은 identity와 분리되고 또 다른 identity field로 저장하거나
+projection하지 않습니다.
 
 `DiagnosticFinding` 자체는 쓰기 가능한 lifecycle 입력이 아닙니다. Store mutation은 삽입에
 `OccurrenceDiagnosticFinding`, snapshot 활성화 또는 갱신에

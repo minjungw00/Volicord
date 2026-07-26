@@ -404,6 +404,12 @@ exists, findings are persisted with its exact Connection, integration
 revision, and runtime-session coordinates; terminal failures are linked by
 finding ID rather than stored as a second free-form failure object.
 
+A typed platform Store failure is represented in MCP bootstrap and persisted
+terminal findings by its canonical `platform.*` code, `platform` domain, and
+`platform_observation` stage. Its recommended action is selected from the
+typed platform class. Bounded human-readable detail remains separate from the
+machine-readable finding identity.
+
 Connection verification performs read-only preflight against the selected
 Runtime Home, then starts manual stdio probe processes only in a disposable
 per-command fixture. It calls the same canonical role owner, currently

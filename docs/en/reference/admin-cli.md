@@ -1454,6 +1454,12 @@ The generated Codex entry uses the hidden `_host-launch` command.
 `_host-launch` is host-owned, omitted from normal help, and not an alternate
 administrative or public API surface.
 
+Platform-boundary runtime failures retain the platform diagnostic kind and
+canonical namespaced code through Runtime Home and Store routing. Human CLI
+output renders exactly `<code>: <bounded-detail>`. Structured diagnostic
+output uses the same code as the finding identity, while action selection uses
+the typed diagnostic class.
+
 <a id="diagnostics"></a>
 ## Diagnostics
 

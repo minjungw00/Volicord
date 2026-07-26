@@ -7,8 +7,8 @@ use std::{
 
 use volicord_platform_fs::{
     observe_local_platform_boundary, observe_path_filesystem, LocalPlatformBoundary,
-    PathFilesystemKind, PlatformBoundaryDiagnostic, PlatformBoundaryError,
-    PlatformBoundaryErrorKind,
+    PathFilesystemKind, PlatformBoundaryError, PlatformDiagnostic, PlatformDiagnosticClass,
+    PlatformDiagnosticKind,
 };
 use volicord_types::platform::PlatformEnvironment;
 
@@ -108,21 +108,11 @@ pub enum RuntimePathBoundaryError {
         project_home: Option<PathBuf>,
     },
     UnsupportedEnvironment {
-        diagnostic: RuntimePlatformDiagnostic,
-        reason: &'static str,
-        detail: String,
+        diagnostic: PlatformDiagnostic,
     },
     PlatformUnavailable {
-        diagnostic: RuntimePlatformDiagnostic,
-        reason: &'static str,
-        detail: String,
+        diagnostic: PlatformDiagnostic,
     },
-}
-
-/// Closed source classification for platform failures observed at a Runtime Home boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimePlatformDiagnostic {
-    Platform(PlatformBoundaryDiagnostic),
 }
 
 impl RuntimePathBoundaryError {
@@ -135,20 +125,11 @@ impl RuntimePathBoundaryError {
         }
     }
 
-    pub fn reason(&self) -> &'static str {
-        match self {
-            Self::InvalidPath { .. } => "invalid_path",
-            Self::BoundaryViolation { violation, .. } => violation.as_str(),
-            Self::UnsupportedEnvironment { reason, .. }
-            | Self::PlatformUnavailable { reason, .. } => reason,
-        }
-    }
-
-    /// Returns the typed platform classification without parsing the reason or detail.
-    pub const fn platform_diagnostic(&self) -> Option<RuntimePlatformDiagnostic> {
+    /// Returns the typed platform diagnostic without parsing display detail.
+    pub const fn platform_diagnostic(&self) -> Option<&PlatformDiagnostic> {
         match self {
             Self::UnsupportedEnvironment { diagnostic, .. }
-            | Self::PlatformUnavailable { diagnostic, .. } => Some(*diagnostic),
+            | Self::PlatformUnavailable { diagnostic, .. } => Some(diagnostic),
             Self::InvalidPath { .. } | Self::BoundaryViolation { .. } => None,
         }
     }
@@ -207,10 +188,8 @@ impl fmt::Display for RuntimePathBoundaryError {
                     )
                 }
             },
-            Self::UnsupportedEnvironment { reason, detail, .. }
-            | Self::PlatformUnavailable { reason, detail, .. } => {
-                write!(formatter, "{reason}: {detail}")
-            }
+            Self::UnsupportedEnvironment { diagnostic }
+            | Self::PlatformUnavailable { diagnostic } => diagnostic.fmt(formatter),
         }
     }
 }
@@ -238,11 +217,10 @@ pub fn validate_runtime_product_platform_facts(
     ] {
         if filesystem != PathFilesystemKind::LinuxExt4 {
             return Err(RuntimePathBoundaryError::UnsupportedEnvironment {
-                diagnostic: RuntimePlatformDiagnostic::Platform(
-                    PlatformBoundaryDiagnostic::UnsupportedFilesystemBoundary,
+                diagnostic: PlatformDiagnostic::new(
+                    PlatformDiagnosticKind::UnsupportedFilesystemBoundary,
+                    format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
                 ),
-                reason: "unsupported_wsl2_filesystem",
-                detail: format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
             });
         }
     }
@@ -478,29 +456,23 @@ fn validate_platform_path(path: &Path, role: &'static str) -> Result<(), Runtime
         Ok(())
     } else {
         Err(RuntimePathBoundaryError::UnsupportedEnvironment {
-            diagnostic: RuntimePlatformDiagnostic::Platform(
-                PlatformBoundaryDiagnostic::UnsupportedFilesystemBoundary,
+            diagnostic: PlatformDiagnostic::new(
+                PlatformDiagnosticKind::UnsupportedFilesystemBoundary,
+                format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
             ),
-            reason: "unsupported_wsl2_filesystem",
-            detail: format!("{role} must be on the pinned WSL2 distribution ext4 filesystem"),
         })
     }
 }
 
 fn runtime_platform_error(error: PlatformBoundaryError) -> RuntimePathBoundaryError {
-    match error.kind() {
-        PlatformBoundaryErrorKind::Unsupported => {
-            RuntimePathBoundaryError::UnsupportedEnvironment {
-                diagnostic: RuntimePlatformDiagnostic::Platform(error.diagnostic()),
-                reason: error.reason(),
-                detail: error.detail().to_owned(),
-            }
+    let diagnostic = error.into_diagnostic();
+    match diagnostic.class() {
+        PlatformDiagnosticClass::Unsupported => {
+            RuntimePathBoundaryError::UnsupportedEnvironment { diagnostic }
         }
-        PlatformBoundaryErrorKind::Unavailable => RuntimePathBoundaryError::PlatformUnavailable {
-            diagnostic: RuntimePlatformDiagnostic::Platform(error.diagnostic()),
-            reason: error.reason(),
-            detail: error.detail().to_owned(),
-        },
+        PlatformDiagnosticClass::Unavailable => {
+            RuntimePathBoundaryError::PlatformUnavailable { diagnostic }
+        }
     }
 }
 
@@ -898,8 +870,8 @@ mod tests {
     use super::{
         resolve_runtime_home, validate_runtime_home_product_repository,
         validate_runtime_product_platform_facts, LocalPlatformBoundary, PathFilesystemKind,
-        RuntimeHomeResolutionError, RuntimePathBoundaryViolation, RuntimeProductPathRelation,
-        RuntimeProductPlatformFacts,
+        PlatformDiagnosticKind, RuntimeHomeResolutionError, RuntimePathBoundaryViolation,
+        RuntimeProductPathRelation, RuntimeProductPlatformFacts,
     };
 
     fn cwd() -> PathBuf {
@@ -943,7 +915,18 @@ mod tests {
             mutate(&mut facts);
             let error = validate_runtime_product_platform_facts(&facts)
                 .expect_err("a WSL2 cross-filesystem topology must fail closed");
-            assert_eq!(error.reason(), "unsupported_wsl2_filesystem");
+            let diagnostic = error
+                .platform_diagnostic()
+                .expect("the topology failure must retain its typed platform diagnostic");
+            assert_eq!(
+                diagnostic.kind(),
+                PlatformDiagnosticKind::UnsupportedFilesystemBoundary
+            );
+            assert_eq!(diagnostic.code(), "platform.filesystem.unsupported");
+            assert_eq!(
+                error.to_string(),
+                format!("{}: {}", diagnostic.code(), diagnostic.detail())
+            );
         }
     }
 

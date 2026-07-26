@@ -33,10 +33,10 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 효과를 인식하는 정확한 directory-tree 제거, typed 원자적 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 연산, 안전한 Runtime Home 변경 lease와 permit export, 정규 읽기 전용 Git layout 탐색. |
+| `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 고유 정규 code와 한도가 있는 세부사항을 가진 폐쇄형 typed 플랫폼 diagnostic kind, 공유 플랫폼 finding projection, 효과를 인식하는 정확한 directory-tree 제거, typed 원자적 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 연산, 안전한 Runtime Home 변경 lease와 permit export, 정규 읽기 전용 Git layout 탐색. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | 정규 Runtime Home identity, domain-separated 전체 digest 기반 외부 coordination 파일 파생, OS lock 영역 하나를 공유하는 shared-writer 및 exclusive-setup mode, 즉시 및 한도 있는 typed 획득, 빌린 변경 permit, Unix/macOS 또는 네이티브 Windows의 handle 수명 기반 해제. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | 프로세스 간 공유·배타 변경 lease 경합과 프로세스 종료 시 해제 regression. |
-| `crates/volicord-cli/src/host_integration/process.rs` | 플랫폼 경계 관찰을 바탕으로 한 프로세스 target 검증과 target 경로 파일시스템 제한 집행. |
+| `crates/volicord-cli/src/host_integration/process.rs` | 플랫폼 경계 관찰을 바탕으로 한 프로세스 target 검증, target 경로 파일시스템 제한 집행, 정규 플랫폼 diagnostic 표시 projection. |
 
 ## 플랫폼 프로세스 경계
 
@@ -104,13 +104,15 @@
 | `crates/volicord-store/src/guards.rs` | Typed host 상관관계 정규화, MCP 전용 project anchor, phase별 Guard 관찰, prompt capture, 예상 쓰기, suppression 입력. |
 | `crates/volicord-store/src/evidence_capture.rs` | Evidence-capture intent와 producer 레코드. |
 | `crates/volicord-store/src/artifacts.rs` | 아티팩트 staging과 영속 본문 검증. |
-| `crates/volicord-store/src/error.rs` | Store 실패 분류. |
+| `crates/volicord-store/src/runtime_home.rs` | Runtime Home 선택과 경로 경계 검증, runtime-path failure를 거치는 typed 플랫폼 diagnostic 전파. |
+| `crates/volicord-store/src/operational_diagnostics.rs` | Typed Runtime Home 및 Store finding projection, 플랫폼 담당 finding identity와 action 정책의 직접 보존. |
+| `crates/volicord-store/src/error.rs` | Store 실패 분류와 typed 플랫폼 diagnostic 보존. |
 
 ## Core
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율. |
+| `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, 정규 플랫폼 diagnostic code를 포함한 Store 오류 세부사항 projection. |
 | `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. 프로덕션 메서드 모듈은 공유 helper, pipeline과 정책 함수, Store 서비스, 공유 타입을 각 담당 모듈에서 명시적으로 가져오며 상위 모듈을 import prelude로 사용하지 않습니다. |
 | `crates/volicord-core/src/methods/evidence_facts.rs` | 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 typed 사실을 취득하는 공유 Store 조회와 엄격한 디코딩. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | 증거 캡처 요청 검증과 계획. 수락 기준 및 보충 주장 일치에는 대상 정책을 사용합니다. |
@@ -199,6 +201,7 @@
 | `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction 좌표 추출, 현재 상태 다시 읽기, 복합 안전 결과 projection, CLI inbox fallback 부착. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding과 diagnostic event 영속화, 계약이 허용하는 diagnostic carrier failure의 한정된 best-effort 처리. |
 | `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic session 생성과 session 범위 tools-list, method-call, status-reread workflow metric. |
+| `crates/volicord-mcp/src/diagnostics.rs` | 폐쇄형 MCP diagnostic mapping, 공유 finding 구성, bootstrap 및 영속 terminal projection에서 플랫폼 담당 diagnostic code와 action class 보존. |
 | `crates/volicord-mcp/src/adapter.rs` | 유지되는 연산 전 routing identity, 활성 mutation-context 상관관계, context에 결합된 Core 호출 API, Store 소유 workflow projection을 adapter-local 상태 파생 없이 직렬화하는 Core 밖의 managed in-chat begin/probe/get integration-verification 조율. |
 | `crates/volicord-mcp/src/constants.rs` | 사용자 수준 verification 요청, nested workflow-directed sequence, stop 규칙, unavailable 경계, 선택적 active diagnostics를 설명하는 MCP initialize instruction. |
 | `crates/volicord-mcp/src/tool_registry.rs` | `AgentToolId`로 식별한 schema, annotation, 효과 설명, metadata, method lookup을 세 Connection-integration 도구를 포함한 정규 도구 정의/결과로 조립하고 semantic capability만으로 wire projection을 수행하며 명시적 server를 사용하는 충돌 검사 Codex callable catalog를 구성하는 구현. |

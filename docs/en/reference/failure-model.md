@@ -250,7 +250,10 @@ Both forms carry a namespaced code, domain, stage, severity, producer source,
 typed subject, safe projected facts, zero or more cause references and
 recommended actions, an observation timestamp, and applicable correlation
 coordinates. Domain owners retain their closed code vocabularies and
-error-to-finding conversion rules.
+error-to-finding conversion rules. The namespaced `code` is the stable
+machine-readable diagnostic identity. A domain's typed diagnostic kind selects
+that code and action policy; bounded human-readable detail remains separate
+from identity and is not stored or projected as another identity field.
 
 `DiagnosticFinding` itself is not a writable lifecycle input. Store mutation
 accepts `OccurrenceDiagnosticFinding` for insertion,
