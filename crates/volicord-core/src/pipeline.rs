@@ -2517,26 +2517,26 @@ mod tests {
     }
 
     #[test]
-    fn forbidden_schema_ledger_routes_to_persisted_data_corruption() -> Result<(), Box<dyn Error>> {
+    fn unexpected_schema_relation_routes_to_persisted_data_corruption() -> Result<(), Box<dyn Error>>
+    {
         let harness = PipelineHarness::new()?;
-        harness.conn()?.execute(
-            "CREATE TABLE schema_migrations (database_kind TEXT NOT NULL)",
-            [],
-        )?;
+        harness
+            .conn()?
+            .execute("CREATE TABLE unexpected_relation (value TEXT NOT NULL)", [])?;
 
         let response = harness.execute(PipelineRequest {
             method_name: MethodName::Status,
             request_json: request_json(
                 MethodName::Status,
-                &envelope("req_forbidden_schema_ledger", None, false, None, None),
-                "forbidden-schema-ledger",
+                &envelope("req_unexpected_schema_relation", None, false, None, None),
+                "unexpected-schema-relation",
             ),
-            envelope: envelope("req_forbidden_schema_ledger", None, false, None, None),
+            envelope: envelope("req_unexpected_schema_relation", None, false, None, None),
             invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
             operation_category: OperationCategory::Read,
             task_requirement: TaskRequirement::Optional,
             branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("forbidden_schema_ledger"),
+                result_fields: result_fields("unexpected_schema_relation"),
             },
         })?;
 

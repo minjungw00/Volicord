@@ -3145,8 +3145,7 @@ mod tests {
     }
 
     #[test]
-    fn noncurrent_manifest_is_incompatible_and_preserved_without_migration(
-    ) -> Result<(), Box<dyn Error>> {
+    fn noncurrent_manifest_is_incompatible_and_preserved_read_only() -> Result<(), Box<dyn Error>> {
         let fixture = TempRuntimeHome::new("bootstrap-noncurrent-manifest")?;
         let setup = TestRuntimeHomeAdmission::exclusive(fixture.path())?;
         let context = setup.context()?;

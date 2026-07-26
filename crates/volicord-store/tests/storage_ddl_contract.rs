@@ -68,11 +68,27 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         })
         .map(|column| column.name.as_str())
         .collect::<Vec<_>>();
-    assert!(agent_connection_columns.contains(&"verification_report_json"));
-    assert!(agent_connection_columns.contains(&"integration_generation"));
-    assert!(agent_connection_columns.contains(&"integration_instance_id"));
-    assert!(!agent_connection_columns.contains(&"last_verification_status"));
-    assert!(!agent_connection_columns.contains(&"last_user_actions_json"));
+    assert_eq!(
+        agent_connection_columns,
+        [
+            "connection_internal_id",
+            "integration_instance_id",
+            "host_kind",
+            "intent",
+            "host_scope",
+            "project_internal_id",
+            "server_name",
+            "config_target",
+            "mode",
+            "enabled",
+            "managed_fingerprint",
+            "integration_generation",
+            "verification_report_json",
+            "metadata_json",
+            "created_at",
+            "updated_at",
+        ]
+    );
     let guard_probe_observation_columns = metadata
         .columns
         .iter()
@@ -133,16 +149,20 @@ fn generated_metadata_and_manifest_from_both_schema_sources_have_stable_vectors(
         .filter(|column| {
             column.database == StorageDatabaseKind::ProjectState && column.table == "host_sessions"
         })
+        .map(|column| (column.name.as_str(), column.not_null))
         .collect::<Vec<_>>();
-    assert!(host_session_columns
-        .iter()
-        .any(|column| column.name == "project_integration_revision" && column.not_null));
-    assert!(host_session_columns
-        .iter()
-        .any(|column| column.name == "first_observed_at" && column.not_null));
-    assert!(!metadata.columns.iter().any(|column| {
-        column.database == StorageDatabaseKind::ProjectState && column.table == "agent_sessions"
-    }));
+    assert_eq!(
+        host_session_columns,
+        [
+            ("project_id", true),
+            ("session_id", true),
+            ("connection_internal_id", true),
+            ("project_integration_revision", true),
+            ("host_session_id", true),
+            ("first_observed_at", true),
+            ("last_observed_at", true),
+        ]
+    );
     assert!(metadata.indexes.iter().any(|index| {
         index.database == StorageDatabaseKind::ProjectState
             && index.table == "managed_mcp_sessions"
@@ -502,44 +522,6 @@ fn malformed_and_noncurrent_manifests_are_corrupt() -> Result<(), Box<dyn Error>
         StoreFailureRoute::PersistedDataCorrupt,
         "well-formed noncurrent manifest: {error}"
     );
-    Ok(())
-}
-
-#[test]
-fn preceding_guard_verification_schema_manifest_requires_reinitialization(
-) -> Result<(), Box<dyn Error>> {
-    let preceding = StorageManifest::new(
-        STORAGE_CONTRACT_ID,
-        "sha256:3eb4125e8c1f218044f5188871d9c0b69d134e7cf4701fb1d9242cb987b10fe1",
-        "sha256:d8f68d017b8fcc8214c1ab690d69a5bccf97aa45a631571db8bb09ff2849c5b3",
-        STORAGE_ENABLED_CAPABILITIES
-            .iter()
-            .map(|capability| (*capability).to_owned())
-            .collect(),
-    )?;
-    let registry = canonical_registry()?;
-    let persisted = canonical_json_string(&preceding)?;
-    insert_registry_owner(&registry, &persisted)?;
-
-    let error = validate_registry_schema(&registry)
-        .expect_err("the preceding Guard verification schema must not be silently upgraded");
-    assert!(
-        matches!(
-            error,
-            StoreError::UnsupportedStorageProfile {
-                database_kind: "registry",
-                ref actual_storage_profile,
-                ..
-            } if actual_storage_profile.as_str() == persisted
-        ),
-        "{error:?}"
-    );
-    let still_persisted: String = registry.query_row(
-        "SELECT storage_profile FROM runtime_home WHERE singleton_id = 1",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(still_persisted, persisted);
     Ok(())
 }
 

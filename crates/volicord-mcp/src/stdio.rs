@@ -138,19 +138,3 @@ where
         },
     )
 }
-
-#[cfg(test)]
-pub(crate) fn run_manual_stdio_with_ignored_env_marker<R, W, F>(
-    adapter: McpAdapter,
-    reader: R,
-    writer: W,
-    env_var: F,
-) -> Result<(), McpAdapterError>
-where
-    R: BufRead,
-    W: Write,
-    F: Fn(&str) -> Option<std::ffi::OsString>,
-{
-    let _ = env_var;
-    run_stdio(adapter, reader, writer)
-}

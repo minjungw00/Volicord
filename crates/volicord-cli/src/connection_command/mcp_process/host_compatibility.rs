@@ -82,7 +82,6 @@ mod tests {
             fixture.fixture_id,
             HostContractProfileId::CodexMcpTurnMetadata.as_str()
         );
-        assert!(!fixture.fixture_id.contains("0.108.0"));
         assert_eq!(fixture.initialize_params()["capabilities"], json!({}));
         assert_eq!(
             fixture.initialize_params()["clientInfo"],

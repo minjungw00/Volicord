@@ -443,6 +443,8 @@ pub struct GetIntegrationVerificationResult {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use schemars::schema_for;
     use serde_json::json;
 
@@ -513,17 +515,19 @@ mod tests {
     }
 
     #[test]
-    fn public_results_require_one_shared_tagged_workflow_state() {
+    fn public_result_schemas_match_the_current_shared_workflow_shapes() {
         let schemas = [
             (
                 "begin",
                 serde_json::to_value(schema_for!(BeginIntegrationVerificationResult))
                     .expect("begin schema"),
                 &["verification_id", "workflow", "matched_prompt_event_id"][..],
+                &["verification_id", "workflow", "matched_prompt_event_id"][..],
             ),
             (
                 "probe",
                 serde_json::to_value(schema_for!(GuardProbeResult)).expect("probe schema"),
+                &["verification_id", "workflow"][..],
                 &["verification_id", "workflow"][..],
             ),
             (
@@ -531,34 +535,43 @@ mod tests {
                 serde_json::to_value(schema_for!(GetIntegrationVerificationResult))
                     .expect("get schema"),
                 &["verification_id", "workflow", "guard_phases"][..],
+                &[
+                    "verification_id",
+                    "workflow",
+                    "guard_phases",
+                    "matched_prompt_event_id",
+                    "matched_pre_tool_event_id",
+                    "matched_post_tool_event_id",
+                ][..],
             ),
         ];
-        for (result_name, schema, required_fields) in schemas {
-            let required = schema["required"].as_array().expect("required fields");
-            for field in required_fields {
-                assert!(
-                    required.contains(&json!(field)),
-                    "{result_name} is missing required {field}"
-                );
-            }
+        for (result_name, schema, required_fields, property_fields) in schemas {
+            let required = schema["required"]
+                .as_array()
+                .expect("required fields")
+                .iter()
+                .map(|field| field.as_str().expect("required field name"))
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                required,
+                required_fields.iter().copied().collect::<BTreeSet<_>>(),
+                "{result_name} required fields"
+            );
+            let properties = schema["properties"]
+                .as_object()
+                .expect("schema properties")
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                properties,
+                property_fields.iter().copied().collect::<BTreeSet<_>>(),
+                "{result_name} properties"
+            );
             assert_eq!(
                 schema["properties"]["workflow"]["$ref"],
                 "#/definitions/IntegrationVerificationWorkflowState"
             );
-            for removed in [
-                "status",
-                "mcp_probe_acknowledged",
-                "next_probe_tool",
-                "next_action",
-                "acknowledged_at",
-                "completed_at",
-                "finding",
-            ] {
-                assert!(
-                    schema["properties"].get(removed).is_none(),
-                    "{result_name} retained independent field {removed}"
-                );
-            }
         }
     }
 

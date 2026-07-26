@@ -2203,11 +2203,6 @@ impl OperationalFixture {
                     .root_path()
                     .join("ambient-decoy-runtime-home"),
             )
-            .env("VOLICORD_MCP_LAUNCH", "ambient-decoy-launch")
-            .env("VOLICORD_MCP_HOST", "ambient-decoy-host")
-            .env("VOLICORD_MCP_CONNECTION_ID", "ambient-decoy-connection")
-            .env("VOLICORD_MCP_PROJECT_ID", "ambient-decoy-project")
-            .env("VOLICORD_MCP_VERIFICATION", "ambient-decoy-verification")
             .env_remove("WSL_DISTRO_NAME")
             .arg("init")
             .arg("--host")

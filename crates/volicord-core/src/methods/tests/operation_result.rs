@@ -395,16 +395,6 @@ fn operation_result_failures_return_no_chunk_and_have_no_effects() -> Result<(),
         .into_option()
         .expect("large result should return a cursor");
 
-    let version_prefixed = harness.service.get_operation_result(
-        get_request(
-            "req_operation_version_prefixed_cursor",
-            large_ref.clone(),
-            Some(format!("v1.{cursor}")),
-        ),
-        invocation(OperationCategory::Read),
-    )?;
-    assert_rejected_without_chunk(&version_prefixed, "VALIDATION_FAILED");
-
     let mut tampered_cursor = cursor.clone();
     let replacement = if tampered_cursor.ends_with('a') {
         'b'

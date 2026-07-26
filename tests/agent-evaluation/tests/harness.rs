@@ -5,8 +5,8 @@ use volicord_agent_evaluation::{
     load_embedded_catalog, load_live_config, materialize_repository, result_schema_text,
     run_live_with_driver, validate_catalog, validate_live_config, validate_schedule_matrix,
     write_result_create_new, CriterionResult, CriterionStatus, DriverFailure, DriverObservation,
-    DriverRequest, EvaluationCondition, LiveConfig, RunKind, RunStatus, TaskGroup, TrialDriver,
-    DRIVER_OBSERVATION_SCHEMA, LIVE_CONFIG_SCHEMA, RESULT_SCHEMA,
+    DriverRequest, EvaluationCondition, EvaluationResult, LiveConfig, RunKind, RunStatus,
+    TaskGroup, TrialDriver, DRIVER_OBSERVATION_SCHEMA, LIVE_CONFIG_SCHEMA, RESULT_SCHEMA,
 };
 
 const SEED: u64 = 20_260_716;
@@ -319,7 +319,7 @@ fn incomplete_live_matrix_never_claims_quantitative_acceptance() {
 }
 
 #[test]
-fn result_output_is_create_new_and_retains_no_fixture_content() {
+fn result_output_is_create_new_and_round_trips_exactly() {
     let result = fixture_evaluation(SEED, 1).expect("fixture evaluation should succeed");
     let directory = tempfile::tempdir().expect("temporary output directory should exist");
     let path = directory.path().join("result.json");
@@ -328,11 +328,9 @@ fn result_output_is_create_new_and_retains_no_fixture_content() {
     assert!(write_result_create_new(&path, &result).is_err());
 
     let text = fs::read_to_string(path).expect("result should be readable");
-    let parsed: serde_json::Value =
+    let parsed: EvaluationResult =
         serde_json::from_str(&text).expect("result should be valid JSON");
-    assert_eq!(parsed["schema"], RESULT_SCHEMA);
-    assert!(!text.contains("Inspect the retry configuration"));
-    assert!(!text.contains("DEFAULT_RETRIES"));
+    assert_eq!(parsed, result);
 }
 
 fn enabled_test_config() -> LiveConfig {

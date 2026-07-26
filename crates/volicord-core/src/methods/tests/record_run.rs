@@ -237,7 +237,7 @@ fn record_run_without_product_write_commits_run_only() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn record_run_rejects_old_ticket_while_policy_control_reevaluation_is_pending(
+fn record_run_rejects_noncurrent_ticket_while_policy_control_reevaluation_is_pending(
 ) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     enable_record_run_capabilities(&harness)?;

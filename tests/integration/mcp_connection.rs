@@ -7,7 +7,6 @@ use volicord_mcp::{mcp_tools_for_mode, McpAdapter, McpConnectionContext};
 use volicord_store::{
     agent_connections::{
         add_connection_project, ConnectionProjectRegistration, CONNECTION_MODE_READ_ONLY,
-        CONNECTION_MODE_WORKFLOW,
     },
     bootstrap::{register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS},
 };
@@ -301,9 +300,4 @@ fn tool_names(tools: &[volicord_mcp::CanonicalToolDefinition]) -> Vec<&'static s
         .iter()
         .map(|tool| tool.id.wire_name())
         .collect::<Vec<_>>()
-}
-
-#[test]
-fn workflow_mode_constant_stays_available_for_fixture_updates() {
-    assert_eq!(CONNECTION_MODE_WORKFLOW, "workflow");
 }

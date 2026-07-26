@@ -568,8 +568,9 @@ mod tests {
             Err(CodexManagedIdentityProblem::Unmanaged)
         );
 
-        let malformed =
-            entry("[mcp_servers.volicord]\ncommand = 5\nargs = [\"mcp\", \"--stdio\"]\n");
+        let malformed = entry(
+            "[mcp_servers.volicord]\ncommand = 5\nargs = [\"_host-launch\", \"codex\", \"--connection\", \"connection_alpha\"]\n",
+        );
         assert_eq!(
             parse_codex_managed_identity(&malformed),
             Err(CodexManagedIdentityProblem::Malformed)
@@ -586,7 +587,7 @@ mod tests {
     }
 
     #[test]
-    fn personal_project_argument_and_environment_marker_are_noncanonical() {
+    fn personal_project_argument_and_extra_environment_are_noncanonical() {
         let project_argument = entry(&personal_text("").replace(
             "\"connection_alpha\"]",
             "\"connection_alpha\", \"--project\", \"project_alpha\"]",
@@ -596,12 +597,12 @@ mod tests {
             Err(CodexManagedIdentityProblem::Unmanaged)
         );
 
-        let project_marker = entry(&personal_text("").replace(
+        let extra_environment = entry(&personal_text("").replace(
             "VOLICORD_HOME = \"/srv/volicord/runtime\"",
-            "VOLICORD_HOME = \"/srv/volicord/runtime\"\nVOLICORD_MCP_PROJECT_ID = \"project_alpha\"",
+            "VOLICORD_HOME = \"/srv/volicord/runtime\"\nVOLICORD_TEST_UNDECLARED = \"extra\"",
         ));
         assert_eq!(
-            parse_codex_managed_identity(&project_marker),
+            parse_codex_managed_identity(&extra_environment),
             Err(CodexManagedIdentityProblem::Unmanaged)
         );
     }

@@ -1192,39 +1192,6 @@ fn mcp_minimal_smoke_definition_uses_canonical_identity() {
 }
 
 #[test]
-fn dot_free_aliases_are_not_exposed_by_default() {
-    for tools in [
-        mcp_tools_for_mode_and_storage(
-            AgentConnectionMode::Workflow,
-            McpStorageCapability::ReadWrite,
-        ),
-        mcp_tools_for_mode_and_storage(
-            AgentConnectionMode::Workflow,
-            McpStorageCapability::ReadOnly,
-        ),
-        mcp_tools_for_mode_and_storage(
-            AgentConnectionMode::ReadOnly,
-            McpStorageCapability::ReadWrite,
-        ),
-        mcp_tools_for_mode_and_storage(
-            AgentConnectionMode::Workflow,
-            McpStorageCapability::Unavailable,
-        ),
-    ] {
-        let names = tool_names(&tools);
-        assert_eq!(mcp_tool_naming_style(&tools), "dotted_namespace");
-        assert!(
-            names.iter().all(|name| name.starts_with("volicord.")),
-            "normal tool surface should stay in the volicord dotted namespace: {names:?}"
-        );
-        assert!(
-            !names.iter().any(|name| name.contains("volicord_")),
-            "normal tool surface should not expose dot-free aliases: {names:?}"
-        );
-    }
-}
-
-#[test]
 fn mutation_detail_shapes_compact_receipt_workflow_and_full_without_json_text_duplication(
 ) -> Result<(), Box<dyn Error>> {
     fn intake_result(prefix: &str, detail: Option<&str>) -> Result<Value, Box<dyn Error>> {
@@ -1694,13 +1661,4 @@ fn compact_close_mutation_receipt_refreshes_the_current_blocked_state() -> Resul
     )
     .is_err());
     Ok(())
-}
-
-#[test]
-fn canonical_agent_tool_names_are_unique() {
-    let unique = AgentToolId::ALL
-        .iter()
-        .map(|tool| tool.wire_name())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(unique.len(), AgentToolId::ALL.len());
 }

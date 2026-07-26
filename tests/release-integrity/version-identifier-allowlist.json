@@ -139,12 +139,6 @@
       "reason": "The bootstrap diagnostic parser and formatter own this exact bounded envelope identifier."
     },
     {
-      "path": "crates/volicord-core/src/methods/tests/operation_result.rs",
-      "needle": "v1.{cursor}",
-      "classification": "negative_test",
-      "reason": "The cursor test verifies rejection of the removed version-prefixed form."
-    },
-    {
       "path": "docs/doc-index.yaml",
       "needle": "VOLICORD_DIAGNOSTIC_V1",
       "classification": "product_contract",

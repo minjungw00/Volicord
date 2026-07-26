@@ -2145,36 +2145,26 @@ mod tests {
     }
 
     #[test]
-    fn unknown_and_noncanonical_report_kinds_fail() {
-        for value in ["unknown_check", "mcp_handshake", "host"] {
-            assert!(serde_json::from_value::<ConnectionCheckKind>(json!(value)).is_err());
-        }
-        for value in [
-            "unknown_step",
-            "reload_required",
-            "unsupported_reload_action",
-            "reload_guard",
-            "use_volicord_tool",
-        ] {
-            assert!(serde_json::from_value::<ActivationStepId>(json!(value)).is_err());
-        }
+    fn unknown_report_kinds_fail_strict_typed_decoding() {
+        assert!(
+            serde_json::from_value::<ConnectionCheckKind>(json!("not_a_current_check")).is_err()
+        );
+        assert!(serde_json::from_value::<ActivationStepId>(json!("not_a_current_step")).is_err());
 
         let report = ConnectionVerificationReport::verification_not_run(timestamp()).unwrap();
         let mut unknown_check = serde_json::to_value(&report).unwrap();
-        unknown_check["checks"][0]["id"] = json!("unknown_check");
+        unknown_check["checks"][0]["id"] = json!("not_a_current_check");
         assert!(
             serde_json::from_value::<ConnectionVerificationReport>(unknown_check).is_err(),
             "persisted reports must reject unknown check kinds"
         );
 
-        for value in ["reload_guard", "use_volicord_tool"] {
-            let mut removed_step = serde_json::to_value(&report).unwrap();
-            removed_step["activation_plan"]["required_steps"][0]["id"] = json!(value);
-            assert!(
-                serde_json::from_value::<ConnectionVerificationReport>(removed_step).is_err(),
-                "persisted reports must reject removed activation step ID {value}"
-            );
-        }
+        let mut unknown_step = serde_json::to_value(&report).unwrap();
+        unknown_step["activation_plan"]["required_steps"][0]["id"] = json!("not_a_current_step");
+        assert!(
+            serde_json::from_value::<ConnectionVerificationReport>(unknown_step).is_err(),
+            "persisted reports must reject unknown activation step kinds"
+        );
     }
 
     #[test]

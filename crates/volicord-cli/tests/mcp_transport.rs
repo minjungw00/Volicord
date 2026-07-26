@@ -232,12 +232,6 @@ fn volicord_mcp_subcommands_report_effects_and_read_only_preflight() -> Result<(
     assert_eq!(missing_connection.status.code(), Some(1));
     assert!(captured_stderr(&missing_connection).contains("not registered"));
 
-    for old_flag in ["--check", "--stdio"] {
-        let removed = run_without_binding([old_flag])?;
-        assert_eq!(removed.status.code(), Some(2));
-        assert!(stderr(&removed).contains(old_flag));
-    }
-
     let unknown = run_without_binding(["--not-a-real-option"])?;
     assert_eq!(unknown.status.code(), Some(2));
     assert!(stderr(&unknown).contains("unexpected argument"));

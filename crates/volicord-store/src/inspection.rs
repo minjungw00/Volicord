@@ -1251,9 +1251,9 @@ mod tests {
     #[test]
     fn unsupported_profile_registry_requires_recreation_without_mutation(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = current_fixture("inspect-old-profile-registry")?;
+        let fixture = current_fixture("inspect-noncurrent-profile-registry")?;
         let registry_path = fixture.runtime_home.registry_db_path();
-        mark_registry_old_profile(&registry_path)?;
+        mark_registry_noncurrent_profile(&registry_path)?;
         let registry_hash_before = file_hash(&registry_path)?;
         let sidecars_before = existing_sidecars(std::slice::from_ref(&registry_path));
 
@@ -1266,7 +1266,7 @@ mod tests {
                 assert!(detail.contains("existing state preserved"));
                 assert!(detail.contains("choose a fresh explicit --home"));
             }
-            other => panic!("expected unsupported old-profile registry, got {other:?}"),
+            other => panic!("expected unsupported registry, got {other:?}"),
         }
         assert_eq!(file_hash(&registry_path)?, registry_hash_before);
         assert_eq!(existing_sidecars(&[registry_path]), sidecars_before);
@@ -1423,8 +1423,8 @@ mod tests {
     #[test]
     fn unsupported_profile_project_state_requires_recreation_without_mutation(
     ) -> Result<(), Box<dyn Error>> {
-        let fixture = current_fixture("inspect-old-profile-state")?;
-        mark_project_state_old_profile(&fixture.project.state_db_path)?;
+        let fixture = current_fixture("inspect-noncurrent-profile-state")?;
+        mark_project_state_noncurrent_profile(&fixture.project.state_db_path)?;
         let before_hash = file_hash(&fixture.project.state_db_path)?;
 
         let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
@@ -1434,7 +1434,7 @@ mod tests {
                 assert!(detail.contains(UNSUPPORTED_STORAGE_PROFILE));
                 assert!(detail.contains("explicitly recreate"));
             }
-            other => panic!("expected unsupported old-profile project state, got {other:?}"),
+            other => panic!("expected unsupported project state, got {other:?}"),
         }
         assert_eq!(file_hash(&fixture.project.state_db_path)?, before_hash);
         Ok(())
@@ -1459,21 +1459,19 @@ mod tests {
     }
 
     #[test]
-    fn forbidden_schema_migrations_table_requires_recreation() -> Result<(), Box<dyn Error>> {
-        let fixture = current_fixture("inspect-forbidden-schema-ledger")?;
-        Connection::open(&fixture.project.state_db_path)?.execute(
-            "CREATE TABLE schema_migrations (database_kind TEXT NOT NULL)",
-            [],
-        )?;
+    fn unexpected_project_state_table_requires_recreation() -> Result<(), Box<dyn Error>> {
+        let fixture = current_fixture("inspect-unexpected-project-state-table")?;
+        Connection::open(&fixture.project.state_db_path)?
+            .execute("CREATE TABLE unexpected_relation (value TEXT NOT NULL)", [])?;
 
         let state = inspect_project_state_database(&fixture.project.state_db_path, PROJECT_ID);
 
         match state {
             DatabaseInspection::Malformed { detail, .. } => {
-                assert!(detail.contains("schema_migrations"));
+                assert!(detail.contains("unexpected_relation"));
                 assert!(detail.contains("recreate"));
             }
-            other => panic!("expected forbidden schema ledger diagnostic, got {other:?}"),
+            other => panic!("expected unexpected-table diagnostic, got {other:?}"),
         }
         Ok(())
     }
@@ -1497,7 +1495,7 @@ mod tests {
             let conn = Connection::open(&fixture.project.state_db_path)?;
             conn.execute(
                 &format!(
-                    "ALTER TABLE user_action_requests RENAME COLUMN {column} TO removed_{column}"
+                    "ALTER TABLE user_action_requests RENAME COLUMN {column} TO unexpected_{column}"
                 ),
                 [],
             )?;
@@ -1549,8 +1547,8 @@ mod tests {
     #[test]
     fn inspection_does_not_mutate_database_bytes_or_sidecars() -> Result<(), Box<dyn Error>> {
         let fixture = current_fixture("inspect-no-mutation")?;
-        mark_registry_old_profile(&fixture.runtime_home.registry_db_path())?;
-        mark_project_state_old_profile(&fixture.project.state_db_path)?;
+        mark_registry_noncurrent_profile(&fixture.runtime_home.registry_db_path())?;
+        mark_project_state_noncurrent_profile(&fixture.project.state_db_path)?;
         let registry_hash_before = file_hash(&fixture.runtime_home.registry_db_path())?;
         let state_hash_before = file_hash(&fixture.project.state_db_path)?;
         let sidecars_before = existing_sidecars(&[
@@ -1656,7 +1654,7 @@ mod tests {
         Ok(canonical_json_string(&manifest)?)
     }
 
-    fn mark_registry_old_profile(path: &Path) -> Result<(), Box<dyn Error>> {
+    fn mark_registry_noncurrent_profile(path: &Path) -> Result<(), Box<dyn Error>> {
         mark_registry_profile(path, &unsupported_storage_profile()?)
     }
 
@@ -1666,7 +1664,7 @@ mod tests {
         Ok(())
     }
 
-    fn mark_project_state_old_profile(path: &Path) -> Result<(), Box<dyn Error>> {
+    fn mark_project_state_noncurrent_profile(path: &Path) -> Result<(), Box<dyn Error>> {
         mark_project_state_profile(path, &unsupported_storage_profile()?)
     }
 

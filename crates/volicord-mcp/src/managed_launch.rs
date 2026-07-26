@@ -17,13 +17,6 @@ use volicord_types::values::HostKind;
 pub const VOLICORD_HOME_ENV: &str = "VOLICORD_HOME";
 pub const MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES: [&str; 1] = [VOLICORD_HOME_ENV];
 
-const OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES: [&str; 4] = [
-    "VOLICORD_MCP_LAUNCH",
-    "VOLICORD_MCP_HOST",
-    "VOLICORD_MCP_CONNECTION_ID",
-    "VOLICORD_MCP_VERIFICATION",
-];
-
 const MCP_COMMAND: &str = "volicord";
 const FINGERPRINT_DOMAIN: &[u8] = b"volicord.codex-managed-configuration\0";
 
@@ -248,11 +241,9 @@ impl MaterializedManagedMcpLaunch {
     }
 
     fn apply_process_context(&self, command: &mut Command) {
-        command.env_remove(VOLICORD_HOME_ENV);
-        for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES {
+        for name in MANAGED_MCP_LAUNCH_ENVIRONMENT_NAMES {
             command.env_remove(name);
         }
-        command.env_remove("VOLICORD_MCP_PROJECT_ID");
         for (name, value) in &self.environment {
             command.env(name, value);
         }
@@ -769,7 +760,7 @@ mod tests {
     }
 
     #[test]
-    fn personal_projection_rejects_project_argument_and_environment_marker() {
+    fn personal_projection_rejects_project_argument_and_extra_environment() {
         let spec = personal();
         let mut project_args = spec.args().to_vec();
         project_args.extend(["--project".to_owned(), "project_alpha".to_owned()]);
@@ -782,10 +773,7 @@ mod tests {
         .is_err());
 
         let mut project_environment = spec.environment().static_values().clone();
-        project_environment.insert(
-            "VOLICORD_MCP_PROJECT_ID".to_owned(),
-            "project_alpha".to_owned(),
-        );
+        project_environment.insert("VOLICORD_TEST_UNDECLARED".to_owned(), "extra".to_owned());
         assert!(ManagedMcpLaunchSpec::try_from_host_projection(
             spec.command().to_owned(),
             spec.args().to_vec(),
@@ -800,10 +788,7 @@ mod tests {
         let shared = ManagedMcpLaunchSpec::shared_repository(HostKind::Codex)
             .expect("shared repository launch");
         let mut shared_env = shared.environment().static_values().clone();
-        shared_env.insert(
-            "VOLICORD_MCP_CONNECTION_ID".to_owned(),
-            "connection_local".to_owned(),
-        );
+        shared_env.insert("VOLICORD_TEST_UNDECLARED".to_owned(), "extra".to_owned());
         assert!(ManagedMcpLaunchSpec::try_from_host_projection(
             shared.command().to_owned(),
             shared.args().to_vec(),
@@ -834,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn personal_materialization_uses_static_runtime_home_and_cleans_ambient_managed_names() {
+    fn personal_materialization_applies_exact_static_runtime_home() {
         let spec = personal();
         let materialized = spec
             .materialize(ManagedMcpMaterializationInput::new(
@@ -849,12 +834,7 @@ mod tests {
         );
 
         let mut command = Command::new(materialized.command());
-        for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES
-            .into_iter()
-            .chain([VOLICORD_HOME_ENV, "VOLICORD_MCP_PROJECT_ID"])
-        {
-            command.env(name, "ambient-decoy");
-        }
+        command.env(VOLICORD_HOME_ENV, "ambient-decoy");
         materialized.apply_process_context(&mut command);
         for (name, expected) in spec.environment().static_values() {
             assert_eq!(
@@ -864,22 +844,6 @@ mod tests {
                     .and_then(|(_, value)| value),
                 Some(OsStr::new(expected)),
                 "static contract value must replace an ambient {name}"
-            );
-        }
-        for name in [
-            "VOLICORD_MCP_PROJECT_ID",
-            "VOLICORD_MCP_LAUNCH",
-            "VOLICORD_MCP_HOST",
-            "VOLICORD_MCP_CONNECTION_ID",
-            "VOLICORD_MCP_VERIFICATION",
-        ] {
-            assert_eq!(
-                command
-                    .get_envs()
-                    .find(|(candidate, _)| *candidate == OsStr::new(name))
-                    .map(|(_, value)| value),
-                Some(None),
-                "unbound managed name must be removed: {name}"
             );
         }
     }
@@ -911,12 +875,7 @@ mod tests {
             ["mcp", "serve", "--discover-repository", "--host", "codex"]
         );
         let mut command = Command::new(first.command());
-        for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES
-            .into_iter()
-            .chain([VOLICORD_HOME_ENV, "VOLICORD_MCP_PROJECT_ID"])
-        {
-            command.env(name, "ambient-decoy");
-        }
+        command.env(VOLICORD_HOME_ENV, "ambient-decoy");
         first.apply_process_context(&mut command);
         assert_eq!(
             command
@@ -925,22 +884,6 @@ mod tests {
                 .and_then(|(_, value)| value),
             Some(OsStr::new("/selected/runtime-home"))
         );
-        for name in [
-            "VOLICORD_MCP_LAUNCH",
-            "VOLICORD_MCP_HOST",
-            "VOLICORD_MCP_CONNECTION_ID",
-            "VOLICORD_MCP_VERIFICATION",
-            "VOLICORD_MCP_PROJECT_ID",
-        ] {
-            assert_eq!(
-                command
-                    .get_envs()
-                    .find(|(candidate, _)| *candidate == OsStr::new(name))
-                    .map(|(_, value)| value),
-                Some(None),
-                "decoy managed marker must be removed: {name}"
-            );
-        }
     }
 
     #[test]
@@ -975,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_invocations_use_public_manual_commands_without_provenance_environment() {
+    fn cli_invocations_use_current_commands_and_environment() {
         let spec = personal();
         let materialize = |purpose| {
             spec.materialize(ManagedMcpMaterializationInput::new(
@@ -1010,10 +953,12 @@ mod tests {
                 "--json"
             ]
         );
+        let expected_environment = BTreeMap::from([(
+            VOLICORD_HOME_ENV.to_owned(),
+            OsString::from("/srv/volicord/runtime"),
+        )]);
         for invocation in [managed, handshake, preflight] {
-            for name in OBSOLETE_MCP_PROVENANCE_ENVIRONMENT_NAMES {
-                assert!(!invocation.environment().contains_key(name));
-            }
+            assert_eq!(invocation.environment(), &expected_environment);
         }
     }
 

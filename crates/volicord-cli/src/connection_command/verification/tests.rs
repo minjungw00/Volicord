@@ -10,7 +10,7 @@ use crate::host_integration::verification::ProjectTrustDiagnostic;
 
 const CURRENT_REVISION: &str =
     "sha256:1111111111111111111111111111111111111111111111111111111111111111";
-const OLD_REVISION: &str =
+const NONCURRENT_REVISION: &str =
     "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
 #[cfg(unix)]
@@ -488,11 +488,11 @@ fn latest_attempt_health_is_not_hidden_by_an_older_complete_proof() {
 }
 
 #[test]
-fn old_revision_and_cli_preflight_observations_remain_action_required() {
+fn noncurrent_revision_and_cli_preflight_observations_remain_action_required() {
     let host = host("future");
-    let mut old = managed_session("future", true);
-    old.connection_integration_revision = OLD_REVISION.to_owned();
-    let stale = test_host_session_checks(&host, "revision_current", &[], Some(&old), &[])
+    let mut noncurrent = managed_session("future", true);
+    noncurrent.connection_integration_revision = NONCURRENT_REVISION.to_owned();
+    let stale = test_host_session_checks(&host, "revision_current", &[], Some(&noncurrent), &[])
         .expect("stale checks");
     assert!(stale
         .iter()
@@ -502,13 +502,13 @@ fn old_revision_and_cli_preflight_observations_remain_action_required() {
         Some("host_session_revision_stale")
     );
 
-    old.session_source =
+    noncurrent.session_source =
         volicord_types::integration_revision::McpRuntimeSessionSource::CliPreflight;
     let cli = test_host_session_checks(
         &host,
         "revision_current",
-        std::slice::from_ref(&old),
-        Some(&old),
+        std::slice::from_ref(&noncurrent),
+        Some(&noncurrent),
         &[],
     )
     .expect("CLI-preflight checks");

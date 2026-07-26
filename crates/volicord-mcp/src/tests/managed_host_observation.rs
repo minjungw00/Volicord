@@ -141,22 +141,14 @@ fn runtime_tool_mode_still_degrades_on_readonly_storage() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn public_stdio_ignores_former_managed_markers_and_records_manual_cli() -> Result<(), Box<dyn Error>>
-{
-    let fixture = CoreFixture::new("mcp-former-markers-are-manual")?;
+fn public_stdio_records_manual_cli_session_source() -> Result<(), Box<dyn Error>> {
+    let fixture = CoreFixture::new("mcp-public-stdio-manual-source")?;
     let input = Cursor::new(Vec::<u8>::new());
     let mut output = Vec::new();
-    run_manual_stdio_with_ignored_env_marker(
+    run_stdio(
         project_bound_adapter(&fixture)?,
         BufReader::new(input),
         &mut output,
-        |name| match name {
-            "VOLICORD_MCP_LAUNCH" => Some(OsString::from("managed_host")),
-            "VOLICORD_MCP_HOST" => Some(OsString::from("codex")),
-            "VOLICORD_MCP_CONNECTION_ID" => Some(OsString::from(fixture.connection_id())),
-            "VOLICORD_MCP_VERIFICATION" => Some(OsString::from("1")),
-            _ => None,
-        },
     )?;
     let registry = open_registry_database_read_only(registry_db_path(fixture.runtime_home_path()))?;
     let source = registry.query_row(

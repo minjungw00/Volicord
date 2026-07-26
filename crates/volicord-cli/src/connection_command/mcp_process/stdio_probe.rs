@@ -337,15 +337,6 @@ impl DisposableConformanceFixture {
             Self::PROJECT_ID,
         ]);
         command.env_remove(VOLICORD_HOME_ENV);
-        for name in [
-            "VOLICORD_MCP_LAUNCH",
-            "VOLICORD_MCP_HOST",
-            "VOLICORD_MCP_CONNECTION_ID",
-            "VOLICORD_MCP_VERIFICATION",
-            "VOLICORD_MCP_PROJECT_ID",
-        ] {
-            command.env_remove(name);
-        }
         command.env(VOLICORD_HOME_ENV, &self.runtime_home);
         command.current_dir(&self.repo_root);
         command

@@ -3,7 +3,6 @@
 use std::{
     collections::BTreeSet,
     error::Error,
-    ffi::OsString,
     fs,
     io::{BufReader, Cursor},
     panic::{catch_unwind, AssertUnwindSafe},
@@ -21,7 +20,7 @@ use crate::mutation_projection::{
     MAX_MCP_COMPACT_MUTATION_RESULT_BYTES, MAX_MCP_FULL_MUTATION_RESULT_BYTES,
 };
 use crate::prelude::*;
-use crate::stdio::{run_managed_stdio_with_test_lease, run_manual_stdio_with_ignored_env_marker};
+use crate::stdio::run_managed_stdio_with_test_lease;
 use crate::tool_dispatch::tool_execution_error_result;
 use crate::{
     adapter::{AgentSessionCoordinates, ManagedAgentSessionBinding},

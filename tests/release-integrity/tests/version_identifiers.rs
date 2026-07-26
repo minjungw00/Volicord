@@ -48,8 +48,6 @@ fn numeric_version_identifiers_are_explicitly_classified() {
                     | "product_contract"
                     | "release_tag_example"
                     | "maintenance_metadata"
-                    | "negative_test"
-                    | "negative_documentation_example"
             ),
             "unknown allowlist classification: {}",
             entry.classification
