@@ -29,18 +29,15 @@ use volicord_types::ids::{
 use volicord_types::schema::{
     AgentSafeUserActionRequestSummary, ArtifactRef, EvidenceTarget, PersistedUserActionRequest,
     PersistedUserActionResolution, RequiredNullable, StateRecordRef, ToolEnvelope, UserActionBasis,
-    UserActionBasisCoordinates, UserActionCapturePath, UserActionChoiceBasis,
-    UserActionChoiceDraft, UserActionChoiceRequestBody, UserActionDraft,
-    UserActionEvidenceObservationBasis, UserActionEvidenceObservationDraft,
-    UserActionEvidenceObservationRequestBody, UserActionInboxItem, UserActionOption,
+    UserActionBasisCoordinates, UserActionChoiceBasis, UserActionChoiceDraft,
+    UserActionChoiceRequestBody, UserActionDraft, UserActionEvidenceObservationBasis,
+    UserActionEvidenceObservationDraft, UserActionEvidenceObservationRequestBody, UserActionOption,
     UserActionOptionInput, UserActionRequest, UserActionRequestBody, UserActionResolutionBody,
-    UserChannelAvailability, UserChannelPathAvailability,
     USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES,
 };
 use volicord_types::values::{
     JudgmentKind, JudgmentResolutionOutcome, MethodName, StateRecordKind, UserActionBasisStatus,
     UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
-    VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
 };
 
 /// Typed semantic intent supplied by a Core method that needs one current UserAction.
@@ -1215,108 +1212,9 @@ pub(super) fn user_action_from_record(
     })
 }
 
-/// Builds the trusted local User Channel form from one strict typed request.
-pub(super) fn user_action_inbox_item_from_request(
-    record: &EffectiveUserActionRecord,
-    request: UserActionRequest,
-    state_version: u64,
-) -> CoreResult<UserActionInboxItem> {
-    let form = request.body.capture_form().map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-            "user_action_requests",
-            record.request.user_action_request_id.clone(),
-            "request_json",
-        ))
-    })?;
-    let answer_path_availability = user_channel_availability();
-    let (preferred_capture_path, fallbacks) =
-        user_action_capture_paths(&request.user_action_request_id, request.action_kind);
-    let required = request
-        .required_for
-        .iter()
-        .any(|target| *target != UserActionRequiredFor::Informational);
-    Ok(UserActionInboxItem {
-        user_action_request_id: request.user_action_request_id.clone(),
-        request_ref: state_ref(
-            StateRecordKind::UserActionRequest,
-            request.user_action_request_id.as_str(),
-            &request.project_id,
-            Some(&request.task_id),
-            Some(state_version),
-        ),
-        project_id: request.project_id,
-        task_id: request.task_id,
-        change_unit_id: request.change_unit_id,
-        action_kind: request.action_kind,
-        question: request.body.question().to_owned(),
-        context_summary: request.body.context_summary().to_owned(),
-        form,
-        required,
-        requirement_status: if required { "required" } else { "optional" }.to_owned(),
-        required_for: request.required_for,
-        status: request.status,
-        answer_path_availability,
-        preferred_capture_path: preferred_capture_path.into(),
-        fallbacks,
-        expires_at: request.expires_at,
-    })
-}
-
-fn user_action_capture_paths(
-    request_id: &UserActionRequestId,
-    action_kind: UserActionKind,
-) -> (Option<UserActionCapturePath>, Vec<UserActionCapturePath>) {
-    let cli_command = if action_kind == UserActionKind::EvidenceObservation {
-        format!(
-            "volicord inbox resolve {} (--criterion ID | --claim ID) --artifact ID --summary TEXT",
-            request_id.as_str()
-        )
-    } else {
-        format!(
-            "volicord inbox resolve {} --choice <choice>",
-            request_id.as_str()
-        )
-    };
-    (
-        Some(UserActionCapturePath {
-            kind: "cli".to_owned(),
-            label: "CLI inbox".to_owned(),
-            available: true,
-            command: Some(cli_command).into(),
-            url: RequiredNullable::null(),
-            capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
-            expires_at: RequiredNullable::null(),
-            detail: RequiredNullable::null(),
-        }),
-        Vec::new(),
-    )
-}
-
-/// Projects the current credential-free User Channel availability.
-pub(super) fn user_channel_availability() -> UserChannelAvailability {
-    let path = UserChannelPathAvailability {
-        kind: "cli".to_owned(),
-        label: "CLI inbox".to_owned(),
-        available: true,
-        status: "available".to_owned(),
-        capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
-        detail: RequiredNullable::null(),
-    };
-    UserChannelAvailability {
-        paths: vec![path.clone()],
-        recommended_path_kind: Some(path.kind).into(),
-        recommended_path_label: Some(path.label.clone()).into(),
-        recommendation: Some(format!(
-            "Use {} to resolve pending user actions.",
-            path.label
-        ))
-        .into(),
-    }
-}
-
-/// Returns the shared current User Channel guidance for pending actions.
-pub(super) fn user_channel_pending_action_instruction() -> String {
-    "Use `volicord inbox` through the User Channel to list and resolve pending actions.".to_owned()
+/// Returns adapter-neutral application guidance for pending actions.
+pub(super) fn pending_user_action_instruction() -> String {
+    "Resolve pending user actions through the User Channel.".to_owned()
 }
 
 /// Loads all current pending UserAction authority facts for a Task.

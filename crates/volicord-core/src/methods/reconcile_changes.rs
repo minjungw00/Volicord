@@ -5,8 +5,8 @@ use super::close_readiness::{
 use super::user_actions::{
     agent_safe_pending_user_action_summaries, construct_user_action,
     materialize_user_action_request, pending_user_action_authorities_for_plan,
-    resolved_user_action_authorities_for_all_kinds, user_action_authority_from_state,
-    user_channel_pending_action_instruction, UserActionConstructionInput, UserActionIntent,
+    pending_user_action_instruction, resolved_user_action_authorities_for_all_kinds,
+    user_action_authority_from_state, UserActionConstructionInput, UserActionIntent,
     UserActionMaterializationInput, UserActionOrigin,
 };
 use super::{
@@ -1165,7 +1165,7 @@ fn reconcile_next_actions(
             action_kind: NextActionKind::ResolveUserAction,
             owner_method: Some(MethodName::ResolveUserAction),
             allowed_operation_categories: vec![OperationCategory::UserOnly],
-            label: user_channel_pending_action_instruction(),
+            label: pending_user_action_instruction(),
             blocking_question: None,
             expected_state_version: RequiredNullable::null(),
             required_refs: planned_user_actions

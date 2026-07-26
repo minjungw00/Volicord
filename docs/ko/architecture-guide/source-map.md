@@ -120,8 +120,8 @@
 | `crates/volicord-core/src/methods/close_task.rs` | 닫기 메서드 계획과 닫기 준비 상태 증거 해석을 메서드 차단 사유 및 결과로 변환하는 책임. |
 | `crates/volicord-core/src/methods/update_scope.rs` | 닫기 준비 상태 증거 정책 담당 모듈을 통한 범위 갱신 계획과 투영 증거 요약 완성. |
 | `crates/volicord-core/src/methods/status.rs` | 공유 Core 투영 경로를 통해 닫기 준비 상태 증거 정책을 사용하는 읽기 전용 상태 투영. |
-| `crates/volicord-core/src/methods/user_actions.rs` | 의미 검증, 정규 typed request 구성, identity 할당과 Store mutation 구체화, 엄격한 권한 해석, 현재 pending·inbox·agent-safe·lifecycle·User Channel 안내 projection을 담당하는 UserAction 서비스. |
-| `crates/volicord-core/src/methods/user_action.rs` | 직접 UserAction request/resume, inbox, resolution 메서드 조율. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 inbox resolution snapshot을 얻는 경계를 포함합니다. |
+| `crates/volicord-core/src/methods/user_actions.rs` | 의미 검증, 정규 typed request 구성, identity 할당과 Store mutation 구체화, 엄격한 권한 해석, 연산 차단 정책, lifecycle semantic을 담당하는 UserAction 서비스. Adapter command, label, rendered guidance, protocol envelope는 구성하지 않습니다. |
+| `crates/volicord-core/src/methods/user_action.rs` | 직접 UserAction request/resume 및 resolution 조율과 adapter-neutral pending/current fact read. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 resolution snapshot을 얻는 경계를 포함합니다. |
 | `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation별 계획. 해결되지 않은 변경에 typed pending action이 필요할 때 UserAction 서비스를 직접 사용합니다. |
 | `crates/volicord-core/src/policy/` | 책임별 재사용 정책. 메서드 구현은 형제 메서드 모듈에서 공유 정책을 얻지 않고 이 담당 모듈을 직접 사용합니다. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Typed 사실에 대한 순수 증거 출처 및 보증 수준 분류. |
@@ -136,7 +136,13 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-command-model/src/lib.rs` | `volicord` 바이너리의 완전한 Clap 명령 선언, root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 문법 validator, root `clap::Command` 구성, 실제 모델 기반 가시성 분류, 명령 경로 순회, 정규 synopsis 렌더링, 공개 invocation 검증, parsing 가능한 정규 공개 invocation 생성을 담당합니다. |
+| `crates/volicord-command-model/src/lib.rs` | `volicord` 바이너리의 완전한 Clap 명령 선언, root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 문법 validator, root `clap::Command` 구성, 실제 모델 기반 가시성 분류, 명령 경로 순회, 정규 synopsis 렌더링, 공개 invocation 검증, parsing 가능한 정규 공개 invocation 생성, 같은 선언에서 경로와 option spelling을 도출하고 결과를 parse-check하는 typed inbox-resolution invocation builder를 담당합니다. |
+
+## UserAction Presentation
+
+| 경로 | 책임 |
+|---|---|
+| `crates/volicord-user-action-presentation/src/lib.rs` | Adapter-neutral UserAction fact에서 현재 inbox item, availability, capture path, recovery instruction을 만드는 공유 CLI 지향 projection. Command syntax는 typed `volicord-command-model` invocation에서만 얻으며 Core 정책, Store read, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
 
 ## CLI와 Codex 어댑터
 
@@ -174,7 +180,7 @@
 | `crates/volicord-cli/src/guard_integration/audit.rs` | 현재 Guard 소유자, artifact, command, marker, executable 동작 audit. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` 및 `hosts/codex.rs` | Nested integration-verification sequence, stop 규칙, diagnostic 경계를 포함한 managed AGENTS 및 Codex rule 안내 source template. |
 | `crates/volicord-cli/src/guard_command/` | 명시적인 `codex-command-hooks` event decoding, semantic Guard probe filtering, routing된 MCP payload를 보관하지 않는 한도 있는 source별 observation. |
-| `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. 승인 전에는 구문과 repository target만 처리하고, 같은 mutation context를 유지한 채 승인 뒤 Registry/project 선택, 단일 snapshot 후보 계획, 진단, Core 효과, 응답 표시를 수행합니다. |
+| `crates/volicord-cli/src/user_command.rs` | CLI 받은 편지함과 local-user resolution. 승인 전에는 구문과 repository target만 처리하고, 같은 mutation context를 유지한 채 승인 뒤 Registry/project 선택, neutral Core fact 사용, 공유 UserAction presentation, 단일 snapshot 후보 계획, 진단, Core 효과, terminal 응답 표시를 수행합니다. |
 | `crates/volicord-cli/src/doctor_command.rs` | 진단 사실 수집과 표시. |
 
 ## MCP 프로토콜 프로필
@@ -200,7 +206,7 @@
 | `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail 선택, effect anchor 구성, 간결한 method-result projection, 새 authority 구성, capability 기반 정상 결과 예산 집행. |
 | `crates/volicord-mcp/src/authority_refresh.rs` | Mutation 뒤 Agent Session binding, 현재 authority 다시 읽기, 좌표 검증, 새 authority receipt와 next action 추출. |
 | `crates/volicord-mcp/src/committed_result_recovery.rs` | Mutation을 다시 시도하지 않으면서 committed mutation projection, refresh, post-effect failure 뒤 capability가 선택하는 authority 우선 bounded recovery. |
-| `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction 좌표 추출, 현재 상태 다시 읽기, 복합 안전 결과 projection, CLI inbox fallback 부착. |
+| `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction 좌표 추출, neutral current fact 다시 읽기, adapter 소유 safe MCP 결과 구성, neutral failure mapping, 공유 CLI inbox fallback 부착. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime session finding과 diagnostic event 영속화, 계약이 허용하는 diagnostic carrier failure의 한정된 best-effort 처리. |
 | `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic session 생성과 session 범위 tools-list, method-call, status-reread workflow metric. |
 | `crates/volicord-mcp/src/diagnostics.rs` | 폐쇄형 MCP diagnostic mapping, 공유 finding 구성, bootstrap 및 영속 terminal projection에서 플랫폼 담당 diagnostic code와 action class 보존. |
@@ -215,7 +221,7 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
-| `crates/volicord-command-model/src/lib.rs` module test | Clap 구조 assertion, 완전한 공개 순회, 숨은 하위 tree 배제, 정규 invocation 자체 parsing, 현재 필수 인수·충돌·값 집합 동작. |
+| `crates/volicord-command-model/src/lib.rs` module test | Clap 구조 assertion, 완전한 공개 순회, 숨은 하위 tree 배제, 정규 invocation 자체 parsing, typed inbox-resolution invocation round trip, 현재 필수 인수·충돌·값 집합 동작. |
 | `crates/volicord-mcp/src/transport.rs`, `json_rpc.rs`, `binding.rs` module test | 각 구현 담당 모듈에서 frame 한도와 drain, delimiter와 UTF-8 동작, request ID와 notification 분류, 정확한 managed call metadata, Runtime Home binding failure를 검증합니다. |
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization 순서, 거절, 종료, EOF 계약. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch 순서, notification, 응답 계약. |

@@ -1213,8 +1213,13 @@ fn stdio_pending_user_action_returns_cli_inbox_recovery() -> Result<(), Box<dyn 
         .as_str()
         .expect("fallback text");
     assert!(fallback.contains("pending UserAction requires the user"));
-    assert!(fallback.contains("`volicord inbox`"));
-    assert!(!fallback.contains("volicord inbox resolve"));
+    let request_id = summary["user_action_request_id"]
+        .as_str()
+        .expect("pending summary request id");
+    let expected_command = volicord_user_action_presentation::cli_resolution_path_command(
+        &volicord_types::ids::UserActionRequestId::new(request_id),
+    )?;
+    assert!(fallback.contains(&format!("`{expected_command}`")));
     assert!(!fallback.contains("request.operation=resume"));
     assert!(values[1]["result"].get("_meta").is_none());
     let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
@@ -1273,10 +1278,10 @@ fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
         .any(|text| text.contains("pending UserAction requires the user")));
     assert!(fallback_texts
         .iter()
-        .any(|text| text.contains("`volicord inbox`")));
+        .any(|text| text.contains("`volicord inbox resolve ")));
     assert!(fallback_texts
         .iter()
-        .all(|text| !text.contains("prompt_capture") && !text.contains("volicord inbox resolve")));
+        .all(|text| !text.contains("prompt_capture")));
     assert!(values[1]["result"].get("_meta").is_none());
     let diagnostics = read_diagnostic_session(fixture.runtime_home_path(), None)?
         .expect("CLI fallback should create bounded diagnostics");
@@ -1531,7 +1536,7 @@ fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), B
                 .as_array()
                 .is_some_and(|content| content.iter().any(|item| item["text"]
                     .as_str()
-                    .is_some_and(|text| text.contains("`volicord inbox`")))),
+                    .is_some_and(|text| text.contains("`volicord inbox resolve ")))),
             "{}",
             case.name
         );

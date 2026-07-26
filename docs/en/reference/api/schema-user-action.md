@@ -338,12 +338,15 @@ form, note, submission identity, or credential. `UserActionCapturePath` is a
 local CLI projection and is never nested in an Agent Connection result.
 
 
-Core derives one complete `UserActionInboxItem` and form from the strict stored
-request only for the local CLI User Channel. Agent-facing method results, status
-and close projections, replay, and operation-result retrieval never contain
-that item. The CLI must not reconstruct candidates from arguments, prose, or
-adapter-local state. MCP may create or resume the request and observe its safe
-current projection, but it cannot render or submit the resolving form.
+Core returns strict adapter-neutral current facts, including the typed stored
+request needed by a local consumer. Shared adapter presentation derives one
+complete `UserActionInboxItem` and form from those facts only for the local CLI
+User Channel; it obtains capture-path syntax from the canonical command model.
+Agent-facing method results, status and close projections, replay, and
+operation-result retrieval never contain that item. The CLI must not
+reconstruct candidates from arguments, prose, or adapter-local state. MCP maps
+the neutral current facts into its own safe projection. It may create or resume
+the request, but it cannot render or submit the resolving form.
 
 
 ## MCP compound projection

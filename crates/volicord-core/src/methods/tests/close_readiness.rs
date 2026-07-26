@@ -1380,29 +1380,19 @@ fn close_complete_blocks_only_relevant_pending_judgments() -> Result<(), Box<dyn
         pending_user_action_summary(&requested_judgment_id)
     );
     assert!(requested.response_value.get("inbox_item").is_none());
-    let projection = cli_user_channel_projection(&harness, &task_id)?;
-    let projected = projection
-        .items
+    let facts = local_pending_user_action_facts(&harness, &task_id)?;
+    let pending = facts
+        .actions
         .iter()
-        .find(|item| item.request.user_action_request_id.as_str() == requested_judgment_id.as_str())
-        .expect("CLI User Channel projection should retain the full pending request");
-    assert_eq!(
-        serde_json::to_value(&projected.inbox_item.form)?["choices"][0]["choice_id"],
-        "accept"
-    );
-    assert_eq!(
-        serde_json::to_value(&projected.inbox_item.preferred_capture_path)?["kind"],
-        "cli"
-    );
-    let requested_availability =
-        serde_json::to_value(&projected.inbox_item.answer_path_availability)?;
-    let paths = requested_availability["paths"]
-        .as_array()
-        .expect("CLI availability paths");
-    assert_eq!(paths.len(), 1);
-    assert_eq!(paths[0]["kind"], "cli");
-    assert_eq!(paths[0]["available"], true);
-    assert!(projected.inbox_item.fallbacks.is_empty());
+        .find(|action| {
+            action.request.user_action_request_id.as_str() == requested_judgment_id.as_str()
+        })
+        .expect("Core pending facts should retain the full semantic request");
+    let UserActionRequestBody::Choice(choice) = &pending.request.body else {
+        panic!("product decision should retain typed choice semantics");
+    };
+    assert_eq!(choice.options[0].option_id.as_str(), "accept");
+    assert!(pending.resolution_availability.is_available());
     let mut prepare_write_request = user_action_request(
         "req_close_prepare_write_pending",
         "idem_close_prepare_write_pending",

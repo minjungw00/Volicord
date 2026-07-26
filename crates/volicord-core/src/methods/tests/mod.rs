@@ -7,7 +7,10 @@ use std::{
 };
 
 use crate::pipeline::method_result_base;
-use crate::{UserChannelInboxProjection, UserChannelInboxProjectionRequest};
+use crate::{
+    CurrentUserActionFacts, CurrentUserActionRead, PendingUserActionFacts,
+    PendingUserActionFactsRequest, UserActionResolutionFactsBody,
+};
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::OptionalExtension;
 use serde::{de::DeserializeOwned, Serialize};
@@ -502,17 +505,17 @@ fn pending_user_action_summary(user_action_request_id: &str) -> Value {
     })
 }
 
-fn cli_user_channel_projection(
+fn local_pending_user_action_facts(
     harness: &MethodHarness,
     task_id: &str,
-) -> Result<UserChannelInboxProjection, Box<dyn Error>> {
+) -> Result<PendingUserActionFacts, Box<dyn Error>> {
     let service = CoreService::for_read_only_with_clock(
         &harness.runtime_home_path,
         ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
     );
     Ok(service
-        .user_channel_inbox_projection(
-            UserChannelInboxProjectionRequest {
+        .pending_user_action_facts(
+            PendingUserActionFactsRequest {
                 project_id: ProjectId::new(PROJECT_ID),
                 task_id: TaskId::new(task_id),
             },
@@ -522,7 +525,7 @@ fn cli_user_channel_projection(
                 UserActionChannelKind::Cli,
             ),
         )?
-        .expect("authenticated local CLI should receive the User Channel projection"))
+        .expect("authenticated local user should receive pending semantic facts"))
 }
 
 fn test_state_record_ref(

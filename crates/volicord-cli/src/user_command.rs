@@ -9,8 +9,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_command_model::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
 use volicord_core::{
-    CorePipelineError, CoreService, InvocationContext, PipelineResponse,
-    UserChannelInboxProjection, UserChannelInboxProjectionRequest,
+    CorePipelineError, CoreService, InvocationContext, PendingUserActionFacts,
+    PendingUserActionFactsRequest, PipelineResponse, UserActionResolutionAvailability,
+    UserActionResolutionUnavailableReason,
 };
 use volicord_store::{
     core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
@@ -30,6 +31,7 @@ use volicord_types::schema::{
 use volicord_types::values::{
     EvidenceRelevanceStatus, OperationCategory, UserActionChannelKind, UserActionStatus,
 };
+use volicord_user_action_presentation::{cli_inbox_item, cli_user_channel_availability};
 
 use crate::mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError};
 use crate::project_context::{
@@ -238,19 +240,14 @@ where
         &ProjectId::new(&resolved.project_id),
     )?;
     let task_id = selected_or_active_task_id(&store, &parsed.task)?;
-    let projection = task_id
+    let facts = task_id
         .as_deref()
         .map(|task_id| {
-            user_channel_inbox_projection(
-                &resolved.runtime_home,
-                &resolved.project_id,
-                task_id,
-                None,
-            )
+            pending_user_action_facts(&resolved.runtime_home, &resolved.project_id, task_id, None)
         })
         .transpose()?
         .flatten();
-    render_inbox_response(projection.as_ref(), parsed.output, task_id.is_some())
+    render_inbox_response(facts.as_ref(), parsed.output, task_id.is_some())
 }
 
 fn status_response(
@@ -282,12 +279,12 @@ fn status_response(
         .map_err(Into::into)
 }
 
-fn user_channel_inbox_projection(
+fn pending_user_action_facts(
     runtime_home: &Path,
     project_id: &str,
     task_id: &str,
     session_id: Option<&str>,
-) -> Result<Option<UserChannelInboxProjection>, UserCommandError> {
+) -> Result<Option<PendingUserActionFacts>, UserCommandError> {
     let invocation = InvocationContext::local_user(
         ProjectId::new(project_id),
         OperationCategory::Read,
@@ -298,8 +295,8 @@ fn user_channel_inbox_projection(
         None => invocation,
     };
     CoreService::for_read_only(runtime_home)
-        .user_channel_inbox_projection(
-            UserChannelInboxProjectionRequest {
+        .pending_user_action_facts(
+            PendingUserActionFactsRequest {
                 project_id: ProjectId::new(project_id),
                 task_id: TaskId::new(task_id),
             },
@@ -370,7 +367,7 @@ fn command_inbox_resolve_admitted(
 
     let service = CoreService::for_mutation(context);
     let snapshot = service
-        .user_channel_inbox_resolution_snapshot_from_store(
+        .pending_user_action_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(request_id),
             invocation(&project.project_internal_id, OperationCategory::Read),
@@ -378,36 +375,38 @@ fn command_inbox_resolve_admitted(
         .ok_or_else(|| {
             UserCommandError::Runtime("selected user action was not found".to_owned())
         })?;
-    let resolution = match snapshot.record.status {
-        UserActionStatus::Pending => {
-            let projection = snapshot.pending_projection.as_ref().ok_or_else(|| {
+    let resolution = match snapshot.resolution_availability {
+        UserActionResolutionAvailability::Available => {
+            let pending_actions = snapshot.pending_actions.as_ref().ok_or_else(|| {
                 UserCommandError::Runtime(
                     "selected user action is no longer in the canonical pending inbox; refresh `volicord inbox`"
                         .to_owned(),
                 )
             })?;
-            let item = projection
-                .items
+            let action = pending_actions
+                .actions
                 .iter()
                 .find(|item| {
-                    item.inbox_item.user_action_request_id.as_str() == request_id
+                    item.request.user_action_request_id.as_str() == request_id
                 })
                 .ok_or_else(|| {
                     UserCommandError::Runtime(
                         "selected user action is no longer in the canonical pending inbox; refresh `volicord inbox`"
-                            .to_owned(),
+                        .to_owned(),
                     )
                 })?;
-            resolution_from_form(&item.inbox_item.form, parsed)?
+            let form = action.request.body.capture_form().map_err(|error| {
+                UserCommandError::Runtime(format!("invalid pending user-action facts: {error}"))
+            })?;
+            resolution_from_form(&form, parsed)?
         }
-        _ if snapshot.record.resolution.is_some() => {
+        UserActionResolutionAvailability::Unavailable(
+            UserActionResolutionUnavailableReason::AlreadyResolved,
+        ) if snapshot.record.resolution.is_some() => {
             resolution_from_immutable_request(&snapshot.record, parsed)?
         }
-        status => {
-            return Err(UserCommandError::Runtime(format!(
-                "selected user action is not pending (status: {}); refresh `volicord inbox`",
-                enum_text(status)
-            )));
+        UserActionResolutionAvailability::Unavailable(reason) => {
+            return Err(cli_resolution_unavailable_error(reason));
         }
     };
     let (stable_request_id, channel_submission_id) = stable_cli_resolution_ids(request_id);
@@ -439,6 +438,21 @@ fn command_inbox_resolve_admitted(
         },
     )?;
     render_resolve_response(&response, parsed.output)
+}
+
+fn cli_resolution_unavailable_error(
+    reason: UserActionResolutionUnavailableReason,
+) -> UserCommandError {
+    let status = match reason {
+        UserActionResolutionUnavailableReason::AlreadyResolved => UserActionStatus::Resolved,
+        UserActionResolutionUnavailableReason::Stale => UserActionStatus::Stale,
+        UserActionResolutionUnavailableReason::Superseded => UserActionStatus::Superseded,
+        UserActionResolutionUnavailableReason::Expired => UserActionStatus::Expired,
+    };
+    UserCommandError::Runtime(format!(
+        "selected user action is not pending (status: {}); refresh `volicord inbox`",
+        enum_text(status)
+    ))
 }
 
 fn resolution_from_immutable_request(
@@ -776,25 +790,30 @@ fn render_status_response(
 }
 
 fn render_inbox_response(
-    projection: Option<&UserChannelInboxProjection>,
+    facts: Option<&PendingUserActionFacts>,
     output: OutputFormat,
     has_selected_task: bool,
 ) -> Result<String, UserCommandError> {
-    let items = projection
-        .map(|projection| {
-            projection
-                .items
+    let rendered_items = facts
+        .map(|facts| {
+            facts
+                .actions
                 .iter()
-                .map(|item| &item.inbox_item)
-                .collect::<Vec<_>>()
+                .map(|action| {
+                    cli_inbox_item(action.request_ref.clone(), action.request.clone())
+                        .map_err(|error| UserCommandError::Runtime(error.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()
         })
+        .transpose()?
         .unwrap_or_default();
-    let availability = projection.map(|projection| &projection.user_channel_availability);
+    let items = rendered_items.iter().collect::<Vec<_>>();
+    let availability = facts.map(|_| cli_user_channel_availability());
     let summary_card = inbox_summary_card(&items, has_selected_task);
     if output == OutputFormat::Json {
         return serde_json::to_string_pretty(&json!({
             "summary_card": summary_card,
-            "user_channel_availability": availability,
+            "user_channel_availability": availability.as_ref(),
             "pending_user_action_inbox_items": items,
         }))
         .map(|text| format!("{text}\n"))
@@ -807,6 +826,7 @@ fn render_inbox_response(
         return Ok(text);
     }
     let availability_value = availability
+        .as_ref()
         .map(serde_json::to_value)
         .transpose()
         .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
@@ -842,10 +862,7 @@ fn render_inbox_response(
                 text.push_str(&format!(
                     "   note allowed: {note_allowed}; max characters: {note_max_chars}\n"
                 ));
-                text.push_str(&format!(
-                    "   resolve:\n     volicord inbox resolve {} --choice <choice>\n",
-                    item.user_action_request_id
-                ));
+                append_resolution_command(&mut text, item);
             }
             UserActionPresentationForm::EvidenceObservation {
                 targets,
@@ -872,10 +889,7 @@ fn render_inbox_response(
                     relevance_options.join(", "),
                     summary_max_chars
                 ));
-                text.push_str(&format!(
-                    "   resolve:\n     volicord inbox resolve {} (--criterion ID | --claim ID) --artifact ID --summary TEXT\n",
-                    item.user_action_request_id
-                ));
+                append_resolution_command(&mut text, item);
             }
         }
     }
@@ -909,6 +923,16 @@ fn inbox_summary_card(items: &[&UserActionInboxItem], has_selected_task: bool) -
             .unwrap_or_else(|| "none".to_owned()),
         next_action: None,
         guarantee: USER_CHANNEL_SUMMARY_GUARANTEE.to_owned(),
+    }
+}
+
+fn append_resolution_command(text: &mut String, item: &UserActionInboxItem) {
+    if let Some(command) = item
+        .preferred_capture_path
+        .as_ref()
+        .and_then(|path| path.command.as_ref())
+    {
+        text.push_str(&format!("   resolve:\n     {command}\n"));
     }
 }
 
@@ -1333,6 +1357,67 @@ mod tests {
         assert_ne!(first, other_request);
         assert_ne!(first.0, first.1);
         assert!(!first.0.contains("Approved locally"));
+    }
+
+    #[test]
+    fn neutral_resolution_unavailability_becomes_a_cli_refresh_error() {
+        let cases = [
+            (
+                UserActionResolutionUnavailableReason::AlreadyResolved,
+                "resolved",
+            ),
+            (UserActionResolutionUnavailableReason::Stale, "stale"),
+            (
+                UserActionResolutionUnavailableReason::Superseded,
+                "superseded",
+            ),
+            (UserActionResolutionUnavailableReason::Expired, "expired"),
+        ];
+
+        for (reason, expected_status) in cases {
+            let error = cli_resolution_unavailable_error(reason);
+            assert!(matches!(error, UserCommandError::Runtime(_)));
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "selected user action is not pending (status: {expected_status}); refresh `volicord inbox`"
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn inbox_rendering_uses_the_command_model_resolution_invocation() -> Result<(), Box<dyn Error>>
+    {
+        let pending = pending_choice_fixture("cli-inbox-command-model")?;
+        let store = CoreProjectStore::open_read_only(
+            pending.fixture.runtime_home_path(),
+            &ProjectId::new(pending.fixture.project_id()),
+        )?;
+        let task_id = store
+            .project_state()?
+            .active_task_id
+            .expect("fixture should have an active task");
+        let facts = pending_user_action_facts(
+            pending.fixture.runtime_home_path(),
+            pending.fixture.project_id(),
+            &task_id,
+            None,
+        )?
+        .expect("fixture should have pending user-action facts");
+        let rendered = render_inbox_response(Some(&facts), OutputFormat::Text, true)?;
+        let expected = volicord_command_model::InboxResolveInvocation::new(
+            &pending.request_id,
+            volicord_command_model::InboxResolutionArguments::Choice {
+                choice: "<choice>".to_owned(),
+                note: None,
+            },
+        )
+        .canonical_arguments()?
+        .join(" ");
+
+        assert!(rendered.contains(&expected));
+        Ok(())
     }
 
     #[test]

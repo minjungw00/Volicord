@@ -120,8 +120,8 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/methods/close_task.rs` | Close method planning and translation of close-readiness evidence interpretation into method blockers and results. |
 | `crates/volicord-core/src/methods/update_scope.rs` | Scope-update planning and projected evidence-summary completion through the close-readiness evidence policy owner. |
 | `crates/volicord-core/src/methods/status.rs` | Read-only status projection, including consumption of shared close-readiness evidence policy through Core projection paths. |
-| `crates/volicord-core/src/methods/user_actions.rs` | Responsibility-owned UserAction service for semantic validation, canonical typed request construction, identity allocation and Store-mutation materialization, strict authority interpretation, and current pending, inbox, agent-safe, lifecycle, and User Channel guidance projection. |
-| `crates/volicord-core/src/methods/user_action.rs` | Direct UserAction request/resume, inbox, and resolution method orchestration, including Store-reusing coherent inbox-resolution snapshots for admitted local consumers. |
+| `crates/volicord-core/src/methods/user_actions.rs` | Responsibility-owned UserAction service for semantic validation, canonical typed request construction, identity allocation and Store-mutation materialization, strict authority interpretation, operation-blocking policy, and lifecycle semantics. It does not construct adapter commands, labels, rendered guidance, or protocol envelopes. |
+| `crates/volicord-core/src/methods/user_action.rs` | Direct UserAction request/resume and resolution orchestration plus adapter-neutral pending/current fact reads and Store-reusing coherent resolution snapshots for admitted local consumers. |
 | `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation-specific planning, including direct consumption of the UserAction service when unresolved changes require typed pending actions. |
 | `crates/volicord-core/src/policy/` | Responsibility-owned reusable policy. Method implementations consume these owners directly rather than obtaining shared policy from sibling method modules. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Pure evidence provenance and assurance classification over typed facts. |
@@ -136,7 +136,13 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-command-model/src/lib.rs` | Complete Clap command declaration for the `volicord` binary; root parser; public and hidden subcommand tree; command and argument DTOs; command-surface value enums and syntax validators; root `clap::Command` construction; actual-model visibility classification; command-path traversal; canonical synopsis rendering; public-invocation validation; and generation of canonical parseable public invocations. |
+| `crates/volicord-command-model/src/lib.rs` | Complete Clap command declaration for the `volicord` binary; root parser; public and hidden subcommand tree; command and argument DTOs; command-surface value enums and syntax validators; root `clap::Command` construction; actual-model visibility classification; command-path traversal; canonical synopsis rendering; public-invocation validation; generation of canonical parseable public invocations; and typed inbox-resolution invocation builders that derive paths and option spellings from the same declaration and parse-check their output. |
+
+## UserAction Presentation
+
+| Path | Responsibility |
+|---|---|
+| `crates/volicord-user-action-presentation/src/lib.rs` | Shared CLI-oriented projection from adapter-neutral UserAction facts into current inbox items, availability, capture paths, and recovery instructions. It gets command syntax only from typed `volicord-command-model` invocations and owns no Core policy, Store read, command execution, terminal rendering, or MCP envelope. |
 
 ## CLI And Codex Adapter
 
@@ -174,7 +180,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-cli/src/guard_integration/audit.rs` | Current Guard owner, artifact, command, marker, and executable-behavior audit. |
 | `crates/volicord-cli/src/guard_integration/plan.rs` and `hosts/codex.rs` | Source templates for managed AGENTS and Codex rule guidance, including the nested integration-verification sequence and its stop and diagnostic boundaries. |
 | `crates/volicord-cli/src/guard_command/` | Explicit `codex-command-hooks` event decoding, semantic Guard-probe filtering, and bounded source-specific observations without routed MCP payload retention. |
-| `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution, with pre-admission syntax and repository targeting followed by admitted Registry/project selection, one-snapshot candidate planning, diagnostics, Core effect, and response rendering under the same mutation context. |
+| `crates/volicord-cli/src/user_command.rs` | CLI inbox and local-user resolution, with pre-admission syntax and repository targeting followed by admitted Registry/project selection, neutral Core fact consumption, shared UserAction presentation, one-snapshot candidate planning, diagnostics, Core effect, and terminal response rendering under the same mutation context. |
 | `crates/volicord-cli/src/doctor_command.rs` | Diagnostic fact collection and rendering. |
 
 ## MCP Protocol Profiles
@@ -200,7 +206,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-mcp/src/mutation_projection.rs` | Mutation detail selection, effect anchoring, compact method-result projection, fresh-authority composition, and capability-driven normal result-budget enforcement. |
 | `crates/volicord-mcp/src/authority_refresh.rs` | Post-mutation Agent Session binding, current authority reread, coordinate validation, and extraction of the fresh authority receipt and next actions. |
 | `crates/volicord-mcp/src/committed_result_recovery.rs` | Capability-selected, authority-first bounded recovery after committed mutation projection, refresh, or post-effect failures without mutation retry. |
-| `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction coordinate extraction, current-state reread, compound safe result projection, and CLI inbox fallback attachment. |
+| `crates/volicord-mcp/src/user_action_projection.rs` | Committed UserAction coordinate extraction, neutral current-fact reread, adapter-owned safe MCP result construction, neutral failure mapping, and shared CLI inbox fallback attachment. |
 | `crates/volicord-mcp/src/telemetry.rs` | Runtime-session finding and diagnostic-event persistence plus bounded best-effort handling for diagnostic-carrier failures where the contract permits it. |
 | `crates/volicord-mcp/src/session_metrics.rs` | Diagnostic-session establishment and session-scoped tools-list, method-call, and status-reread workflow metrics. |
 | `crates/volicord-mcp/src/diagnostics.rs` | Closed MCP diagnostic mapping, shared finding construction, and preservation of platform-owned diagnostic codes and action classes in bootstrap and persisted terminal projections. |
@@ -215,7 +221,7 @@ product contract; use the focused Reference document for exact behavior.
 | Path | Responsibility |
 |---|---|
 | `crates/*/tests/` and module-local `tests` | Crate boundary and unit tests. |
-| `crates/volicord-command-model/src/lib.rs` module tests | Clap structural assertions, complete public traversal, hidden-subtree exclusion, canonical-invocation self-parsing, and current required-argument, conflict, and value-set behavior. |
+| `crates/volicord-command-model/src/lib.rs` module tests | Clap structural assertions, complete public traversal, hidden-subtree exclusion, canonical-invocation self-parsing, typed inbox-resolution invocation round trips, and current required-argument, conflict, and value-set behavior. |
 | `crates/volicord-mcp/src/transport.rs`, `json_rpc.rs`, and `binding.rs` module tests | Frame limits and draining, delimiter and UTF-8 behavior, request identifiers and notification classification, exact managed-call metadata, and Runtime Home binding failures at their implementation owners. |
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization ordering, rejection, shutdown, and EOF contracts. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch ordering, notification, and response contracts. |

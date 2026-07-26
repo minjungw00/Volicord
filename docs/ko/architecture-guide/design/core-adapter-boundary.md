@@ -8,8 +8,11 @@ Store, 공유 진단, 저장소 도구 사이의 현재 의존 및 실행 경계
 ## 설계
 
 `volicord-command-model`은 명령 실행 없이 완전한 Clap 선언과 introspection model을
-담습니다. `volicord-cli`와 `volicord-mcp`는 각자의 process, setup, transport,
-routing, rendering 관심사를 담당하며 typed interface로 `volicord-core`를 호출합니다.
+담습니다. Typed invocation builder는 같은 선언에서 명령 경로와 option spelling을
+도출합니다. `volicord-user-action-presentation`은 adapter-neutral UserAction fact를
+현재 공유 CLI inbox item과 CLI recovery instruction으로 바꿉니다.
+`volicord-cli`와 `volicord-mcp`는 각자의 process, setup, transport, routing,
+최종 rendering 관심사를 담당하며 typed interface로 `volicord-core`를 호출합니다.
 
 Core는 공통 preflight, 검증된 invocation context, 메서드 planning, `policy/` 아래의
 집중 모듈, replay 처리, branch 선택, 최종 공개 결과 구성을 담당합니다.
@@ -30,11 +33,16 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
 - Core의 일반 및 빌드 의존성은 Core 런타임 의존성으로 분류된 그룹만 대상으로
   합니다. Core 개발 의존성은 Core 개발 의존성으로 분류된 그룹도 대상으로 할 수
   있습니다.
-- Core는 관리 명령 문법, 호스트 시작 인자, 호스트별 구성 경로, 어댑터 렌더링을
-  담당하지 않습니다.
+- Core는 관리 명령 문법, 호스트 시작 인자, 호스트별 구성 경로, presentation
+  label, rendered recovery instruction, adapter protocol envelope를 담당하지
+  않습니다.
 - Core 진입점은 자유 형식 actor 또는 host label이 아니라 typed semantic authority를
   받습니다.
 - Command-model crate는 Clap에만 의존하며 실행을 담당하지 않습니다.
+- 정규 CLI invocation builder는 바이너리가 사용하는 같은 Clap 선언을 inspect하고
+  그 선언으로 결과를 검증합니다. Adapter는 명령 grammar를 다시 만들지 않습니다.
+- 공유 UserAction presentation은 command model과 shared type에만 의존하며 Core,
+  Store, CLI, MCP에는 의존하지 않습니다.
 - 메서드 planner는 typed field와 계획된 effect를 반환합니다. 공유 pipeline은 branch
   fact가 정해진 뒤에만 공통 fact를 추가합니다.
 - Store는 adapter 입력에서 메서드 정책을 파생하지 않습니다.
@@ -49,6 +57,9 @@ semantic context를 파생하고 transport data를 변환합니다. Core는 권�
 planning과 policy 평가를 담당합니다. Store는 persistence와 atomicity를 담당합니다.
 `volicord-types`는 dependency-safe shared shape를 담당합니다.
 `volicord-host-contract`와 `volicord-mcp-protocol`은 external-wire profile을
+담당합니다. `volicord-user-action-presentation`은 공유 CLI 지향 UserAction
+presentation을 담당합니다. CLI는 terminal rendering을 담당하고 MCP는 자체
+protocol result projection과 neutral Core availability failure의 경계 변환을
 담당합니다. `xtask`는 현재 저장소 검증과 생성 작업 흐름을 담당합니다.
 
 ## 실행 흐름
@@ -61,8 +72,12 @@ planning과 policy 평가를 담당합니다. Store는 persistence와 atomicity�
 4. 선택한 branch는 read-only, no-effect, dry-run, staging, committed mutation 중
    하나의 typed 상태를 유지합니다.
 5. Store가 계획된 effect를 읽거나 적용합니다.
-6. Core가 완전한 typed 결과를 구성하고 adapter가 권한을 더하지 않은 채 CLI 또는
-   MCP 형태로 투영합니다.
+6. Core가 공개 메서드 결과를 구성하거나 내부 adapter read에 adapter-neutral
+   semantic fact를 반환합니다.
+7. 공유 presentation이 typed command-model invocation을 통해 이 fact에서 CLI inbox
+   item 또는 recovery instruction을 도출합니다.
+8. CLI가 local output을 rendering하고 MCP가 권한을 더하지 않은 채 자체 protocol
+   projection을 구성합니다.
 
 ## 실패 동작
 
@@ -80,7 +95,11 @@ fallback 동작을 시작하지 않습니다.
 ## 구현 경로
 
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs):
-  명령 문법, 가시성, traversal, synopsis, 정규 invocation.
+  명령 문법, 가시성, traversal, synopsis, 정규 invocation, typed inbox-resolution
+  invocation 구성.
+- [`crates/volicord-user-action-presentation/src/lib.rs`](../../../../crates/volicord-user-action-presentation/src/lib.rs):
+  adapter-neutral fact에서 공유 CLI inbox, availability, recovery instruction을
+  만드는 presentation.
 - [`Cargo.toml`](../../../../Cargo.toml),
   [`xtask/src/architecture.rs`](../../../../xtask/src/architecture.rs):
   Core 의존 적격성과 구조적 패키지 graph 집행.

@@ -2117,9 +2117,9 @@ fn final_acceptance_judgment_basis_uses_canonical_close_basis_refs() -> Result<(
         response.response_value["user_action_request_summary"],
         pending_user_action_summary(&request_id)
     );
-    let projection = cli_user_channel_projection(&harness, &task_id)?;
-    let projected = projection
-        .items
+    let facts = local_pending_user_action_facts(&harness, &task_id)?;
+    let projected = facts
+        .actions
         .iter()
         .find(|item| item.request.user_action_request_id.as_str() == request_id)
         .expect("trusted User Channel projection should retain the close-basis request");

@@ -6,9 +6,9 @@ use super::user_actions::{
     canonical_user_action_artifacts, construct_user_action, materialize_user_action_request,
     pending_user_action_authorities_for_plan, projected_user_action_lifecycle_phase,
     resolved_user_action_authorities_for_all_kinds, user_action_authority_from_record,
-    user_action_from_record, user_action_inbox_item_from_request, user_action_validation_error,
-    user_channel_availability, validate_user_action_target, UserActionConstructionInput,
-    UserActionIntent, UserActionMaterializationInput, UserActionOrigin,
+    user_action_from_record, user_action_validation_error, validate_user_action_target,
+    UserActionConstructionInput, UserActionIntent, UserActionMaterializationInput,
+    UserActionOrigin,
 };
 use super::{
     active_acceptance_criteria_for_task, allocate_user_action_resolution_id, build_state_summary,
@@ -33,8 +33,10 @@ use crate::policy::close_readiness::UserActionAuthority;
 use crate::policy::continuity::{decision_title_prefix, judgment_continuity_kind};
 use crate::policy::evidence::state_record_ref_identity_key;
 use crate::{
-    CurrentUserActionProjection, UserChannelInboxProjection, UserChannelInboxProjectionItem,
-    UserChannelInboxProjectionRequest, UserChannelInboxResolutionSnapshot,
+    CurrentUserActionFacts, CurrentUserActionRead, CurrentUserActionUnavailableReason,
+    PendingUserAction, PendingUserActionFacts, PendingUserActionFactsRequest,
+    PendingUserActionResolutionSnapshot, UserActionResolutionAvailability,
+    UserActionResolutionFacts, UserActionResolutionFactsBody,
 };
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -51,9 +53,9 @@ use volicord_types::ids::{
     UserActionResolutionId,
 };
 use volicord_types::methods::{
-    AgentSafeUserActionResolution, McpUserActionResolutionSummary, MethodOperationCategory,
-    RequestUserActionRequest, RequestUserActionResult, RequestUserActionResultFields,
-    ResolveUserActionRequest, ResolveUserActionResult, ResolveUserActionResultFields,
+    MethodOperationCategory, RequestUserActionRequest, RequestUserActionResult,
+    RequestUserActionResultFields, ResolveUserActionRequest, ResolveUserActionResult,
+    ResolveUserActionResultFields,
 };
 use volicord_types::schema::{
     validate_channel_submission_id, AgentSafeUserActionRequestSummary, ArtifactRef,
@@ -90,45 +92,45 @@ impl CoreService {
         execute_resolve_user_action(self, context, request, invocation)
     }
 
-    /// Projects pending user-action forms only for an authenticated User
+    /// Reads pending user-action semantic facts for an authenticated User
     /// Channel consumer.
     ///
-    /// This is an internal, nonserialized boundary. Public methods and MCP
-    /// structured output use the separate agent-safe summary projection.
-    pub fn user_channel_inbox_projection(
+    /// This is an internal, nonserialized boundary. Serialized public outputs
+    /// use their separate safe summary shape.
+    pub fn pending_user_action_facts(
         &self,
-        request: UserChannelInboxProjectionRequest,
+        request: PendingUserActionFactsRequest,
         invocation: InvocationContext,
-    ) -> CoreResult<Option<UserChannelInboxProjection>> {
+    ) -> CoreResult<Option<PendingUserActionFacts>> {
         if !user_channel_projection_invocation_is_authorized(&request.project_id, &invocation) {
             return Ok(None);
         }
         let store = CoreProjectStore::open_read_only(self.runtime_home(), &request.project_id)?;
-        self.user_channel_inbox_projection_from_store(&store, request, invocation)
+        self.pending_user_action_facts_from_store(&store, request, invocation)
     }
 
-    /// Projects pending user-action forms from an already-open project Store.
+    /// Reads pending user-action semantic facts from an already-open project Store.
     ///
     /// The Store owns the complete SQLite read snapshot. This lets an admitted
     /// local User Channel operation reuse its mutation-capable handle without
     /// opening an independent read-only connection.
-    pub fn user_channel_inbox_projection_from_store(
+    pub fn pending_user_action_facts_from_store(
         &self,
         store: &CoreProjectStore,
-        request: UserChannelInboxProjectionRequest,
+        request: PendingUserActionFactsRequest,
         invocation: InvocationContext,
-    ) -> CoreResult<Option<UserChannelInboxProjection>> {
+    ) -> CoreResult<Option<PendingUserActionFacts>> {
         if !user_channel_projection_is_authorized(self, store, &request.project_id, &invocation) {
             return Ok(None);
         }
 
         let Some((project_state, observed_at, records)) = store.with_read_snapshot(|snapshot| {
-            user_channel_inbox_projection_records(self, snapshot, &request.task_id)
+            pending_user_action_fact_records(self, snapshot, &request.task_id)
         })?
         else {
             return Ok(None);
         };
-        user_channel_inbox_projection_from_records(
+        pending_user_action_facts_from_records(
             request.project_id,
             request.task_id,
             project_state,
@@ -138,14 +140,14 @@ impl CoreService {
         .map(Some)
     }
 
-    /// Reads the exact effective request and its pending form from one Store
+    /// Reads the exact effective request and pending semantic facts from one Store
     /// snapshot for an admitted local User Channel resolution.
-    pub fn user_channel_inbox_resolution_snapshot_from_store(
+    pub fn pending_user_action_resolution_snapshot_from_store(
         &self,
         store: &CoreProjectStore,
         user_action_request_id: &UserActionRequestId,
         invocation: InvocationContext,
-    ) -> CoreResult<Option<UserChannelInboxResolutionSnapshot>> {
+    ) -> CoreResult<Option<PendingUserActionResolutionSnapshot>> {
         let project_id = invocation.project_id.clone();
         if !user_channel_projection_is_authorized(self, store, &project_id, &invocation) {
             return Ok(None);
@@ -175,9 +177,9 @@ impl CoreService {
         else {
             return Ok(None);
         };
-        let pending_projection = pending_records
+        let pending_actions = pending_records
             .map(|records| {
-                user_channel_inbox_projection_from_records(
+                pending_user_action_facts_from_records(
                     project_id.clone(),
                     TaskId::new(&record.request.task_id),
                     project_state.clone(),
@@ -186,22 +188,23 @@ impl CoreService {
                 )
             })
             .transpose()?;
-        Ok(Some(UserChannelInboxResolutionSnapshot {
+        Ok(Some(PendingUserActionResolutionSnapshot {
             project_id,
             observed_state_version: project_state.state_version,
             observed_at,
+            resolution_availability: UserActionResolutionAvailability::from_status(record.status),
             record,
-            pending_projection,
+            pending_actions,
         }))
     }
 
-    /// Reads the current effective status and agent-safe resolution projection
-    /// for one user-action request without replaying either mutation.
-    pub fn current_user_action_projection(
+    /// Reads current effective lifecycle and safe resolution facts for one
+    /// user-action request without replaying either mutation.
+    pub fn current_user_action_facts(
         &self,
         project_id: &ProjectId,
         user_action_request_id: &UserActionRequestId,
-    ) -> CoreResult<Option<CurrentUserActionProjection>> {
+    ) -> CoreResult<CurrentUserActionRead> {
         let store = CoreProjectStore::open_read_only(self.runtime_home(), project_id)?;
         let (project_state, observed_at, record, resolution_replay, continuity_records) = store
             .with_read_snapshot(|store| {
@@ -235,7 +238,9 @@ impl CoreService {
                 ))
             })?;
         let Some(record) = record else {
-            return Ok(None);
+            return Ok(CurrentUserActionRead::Unavailable(
+                CurrentUserActionUnavailableReason::NotFound,
+            ));
         };
         let request = user_action_from_record(&record, project_state.state_version)?;
         let (resolution_ref, resolution, derived_refs) = match record.resolution.as_ref() {
@@ -253,7 +258,7 @@ impl CoreService {
                             "user_action_resolution_ref",
                         ))
                     })?;
-                let safe = agent_safe_user_action_resolution(&request, &public_resolution)?;
+                let safe = user_action_resolution_facts(&request, &public_resolution)?;
                 let (resolution_ref, derived_refs) = user_action_resolution_replay_projection(
                     resolution_replay.as_ref(),
                     &continuity_records,
@@ -265,16 +270,22 @@ impl CoreService {
             }
             None => (None, None, Vec::new()),
         };
-        Ok(Some(CurrentUserActionProjection {
-            project_id: project_id.clone(),
-            user_action_request_id: user_action_request_id.clone(),
-            observed_state_version: project_state.state_version,
-            observed_at,
-            status: record.status,
-            user_action_resolution_ref: resolution_ref,
-            user_action_resolution: resolution,
-            derived_refs,
-        }))
+        Ok(CurrentUserActionRead::Available(Box::new(
+            CurrentUserActionFacts {
+                project_id: project_id.clone(),
+                user_action_request_id: user_action_request_id.clone(),
+                action_kind: record.request.action_kind,
+                observed_state_version: project_state.state_version,
+                observed_at,
+                status: record.status,
+                resolution_availability: UserActionResolutionAvailability::from_status(
+                    record.status,
+                ),
+                user_action_resolution_ref: resolution_ref,
+                user_action_resolution: resolution,
+                derived_refs,
+            },
+        )))
     }
 
     /// Replays the exact originating `request_user_action` result for an
@@ -455,7 +466,7 @@ fn user_channel_projection_invocation_is_authorized(
         && invocation.user_channel() == Some(UserActionChannelKind::Cli)
 }
 
-fn user_channel_inbox_projection_records(
+fn pending_user_action_fact_records(
     service: &CoreService,
     store: &CoreProjectStore,
     task_id: &TaskId,
@@ -475,42 +486,45 @@ fn user_channel_inbox_projection_records(
     Ok(Some((project_state, observed_at, records)))
 }
 
-fn user_channel_inbox_projection_from_records(
+fn pending_user_action_facts_from_records(
     project_id: ProjectId,
     task_id: TaskId,
     project_state: ProjectStateHeader,
     observed_at: UtcTimestamp,
     records: Vec<EffectiveUserActionRecord>,
-) -> CoreResult<UserChannelInboxProjection> {
-    let items = records
+) -> CoreResult<PendingUserActionFacts> {
+    let actions = records
         .iter()
         .map(|record| {
             let request = user_action_from_record(record, project_state.state_version)?;
-            let inbox_item = user_action_inbox_item_from_request(
-                record,
-                request.clone(),
-                project_state.state_version,
-            )?;
-            Ok(UserChannelInboxProjectionItem {
+            Ok(PendingUserAction {
+                request_ref: state_ref(
+                    StateRecordKind::UserActionRequest,
+                    request.user_action_request_id.as_str(),
+                    &request.project_id,
+                    Some(&request.task_id),
+                    Some(project_state.state_version),
+                ),
                 request,
-                inbox_item,
+                resolution_availability: UserActionResolutionAvailability::from_status(
+                    record.status,
+                ),
             })
         })
         .collect::<CoreResult<Vec<_>>>()?;
-    Ok(UserChannelInboxProjection {
+    Ok(PendingUserActionFacts {
         project_id,
         task_id,
         observed_state_version: project_state.state_version,
         observed_at,
-        user_channel_availability: user_channel_availability(),
-        items,
+        actions,
     })
 }
 
-fn agent_safe_user_action_resolution(
+fn user_action_resolution_facts(
     request: &UserActionRequest,
     resolution: &UserActionResolution,
-) -> CoreResult<AgentSafeUserActionResolution> {
+) -> CoreResult<UserActionResolutionFacts> {
     let resolution_summary = match &resolution.body {
         UserActionResolutionBody::Choice {
             selected_option_id,
@@ -539,7 +553,7 @@ fn agent_safe_user_action_resolution(
                         "resolution_json",
                     ))
                 })?;
-            McpUserActionResolutionSummary::Choice {
+            UserActionResolutionFactsBody::Choice {
                 selected_option_id: selected_option_id.clone(),
                 selected_option_label,
                 machine_action: *machine_action,
@@ -556,20 +570,20 @@ fn agent_safe_user_action_resolution(
                     ),
                 ));
             }
-            McpUserActionResolutionSummary::EvidenceObservation {
+            UserActionResolutionFactsBody::EvidenceObservation {
                 target: observation.target.clone(),
                 artifact_refs: observation.output_artifact_refs.clone(),
                 relevance_status: observation.relevance_status,
             }
         }
     };
-    Ok(AgentSafeUserActionResolution {
+    Ok(UserActionResolutionFacts {
         user_action_resolution_id: resolution.user_action_resolution_id.clone(),
         user_action_request_id: resolution.user_action_request_id.clone(),
         action_kind: resolution.action_kind,
         channel_kind: resolution.channel_kind,
         resolved_at: resolution.resolved_at.clone(),
-        resolution_summary,
+        resolution: resolution_summary,
     })
 }
 

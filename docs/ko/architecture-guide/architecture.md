@@ -33,6 +33,8 @@ flowchart LR
   mcp["volicord-mcp stdio 어댑터"]
   cli["volicord 관리 CLI"]
   inbox["volicord inbox"]
+  syntax["volicord-command-model"]
+  presentation["UserAction presentation"]
   core["volicord-core"]
   store["volicord-store<br/>(아티팩트 기능 포함)"]
   runtime["Volicord Runtime Home"]
@@ -41,8 +43,12 @@ flowchart LR
   host --> launcher --> mcp --> core
   launcher -. 엄격한 구성 재검증과 일회성 launch lease .-> store
   mcp -. 시작 및 세션 검증 .-> store
+  mcp --> presentation
   cli --> store
+  cli --> syntax
   inbox --> core
+  inbox --> presentation
+  presentation --> syntax
   core --> store
   store --> runtime
   product -. 관찰 입력 및 담당 문서가 정의한 경로 .-> core
@@ -71,7 +77,8 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 | `crates/volicord-host-contract` | `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames`를 통한 의존성이 안전한 semantic Codex 계약, 명시적인 MCP server/raw-tool identity, 충돌 검사를 거친 callable 투영과 catalog 조회, 결정적인 contract identity, 한도 있는 host 값과 error, source별 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 호스트 중립 typed invocation authority, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율. |
-| `crates/volicord-command-model` | `volicord` 바이너리의 완전한 Clap 선언을 담당합니다. Root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 validator, 실제 모델 기반 가시성 분류, 새로운 root `clap::Command`, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation을 제공합니다. 명령 실행이나 application service는 담당하지 않습니다. |
+| `crates/volicord-command-model` | `volicord` 바이너리의 완전한 Clap 선언을 담당합니다. Root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 validator, 실제 모델 기반 가시성 분류, 새로운 root `clap::Command`, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation, 그 선언에서 도출한 typed inbox-resolution invocation builder를 제공합니다. 명령 실행이나 application service는 담당하지 않습니다. |
+| `crates/volicord-user-action-presentation` | CLI 지향 UserAction inbox item, availability, capture path, recovery instruction을 위한 공유 adapter presentation입니다. Shared semantic type과 정규 command-model invocation을 사용하며 Core 정책, Store 접근, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 렌더링, 숨은 동일 프로세스 managed-host launcher, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 프로세스 시작, 관리 명령 디스패치, 재사용 실행 모듈. |
 | `crates/volicord-platform-fs` | 프로세스 target 및 플랫폼 관찰, 네이티브 Linux/WSL2 분류, WSL2 배포판 검증 및 파일시스템 관찰, typed 원자적 기존 대상 비대체 일반 파일 공개, 플랫폼 고유 파일시스템 이름 공간 연산, 정규 Runtime Home별 공유·배타 OS 기반 변경 승인과 빌린 변경 permit, 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 시작이나 Codex 구성 정책은 담당하지 않습니다. |
 | `crates/volicord-platform-process` | 한도가 있는 플랫폼별 자식 프로세스 격리와 비차단 자식 파이프 준비 상태를 위한 내부 안전 파사드. 저수준 Unix 프로세스 그룹, Windows Job Object, 파이프 폴링 primitive를 담당합니다. |
@@ -126,6 +133,9 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 - `volicord-command-model`은 Clap에만 의존합니다. CLI와 문서 validator가 이
   크레이트를 직접 사용하며, Core, Store, MCP, CLI 렌더링, Runtime Home 구현,
   application service에는 의존하지 않습니다.
+- `volicord-user-action-presentation`은 shared type과
+  `volicord-command-model`에 의존합니다. CLI와 MCP는 이 CLI 지향 presentation을
+  사용할 수 있지만 Core와 Store는 이 크레이트에서 독립적입니다.
 - `volicord-mcp-protocol`은 내부 제품 크레이트에 의존하지 않습니다. Core, Store,
   CLI, 호스트 통합, Volicord 도구 구현에 의존하지 않으면서 폐쇄형 리비전 프로필
   경계를 담당합니다.
@@ -184,13 +194,21 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 뒤 공개 request, 유효 Store record, typed `CoreStorageMutation`을 반환합니다.
 직렬화는 메서드 caller가 아니라 Store 경계를 구체화할 때 수행합니다.
 
-같은 담당 모듈은 저장된 권한의 엄격한 해석과 도메인 소유 pending, inbox,
-agent-safe, 연산 차단, lifecycle projection 및 공유하는 현재 User Channel 안내도
-제공합니다. `user_action.rs`는 직접 request/resume, inbox, resolution 조율만
-유지합니다. `reconcile_changes.rs`와
-다른 consumer는 서비스를 직접 호출하고 typed 결과를 각자 plan과 응답에
-반영하는 방식을 결정합니다. 프로덕션 메서드 모듈은 형제 메서드 구현을 재사용
-라이브러리로 사용하지 않습니다.
+같은 담당 모듈은 저장된 권한의 엄격한 해석, 연산 차단 정책, lifecycle semantic을
+제공합니다. `user_action.rs`는 직접 request/resume과 resolution 조율을 유지하고
+내부 consumer에 adapter-neutral `PendingUserActionFacts`와
+`CurrentUserActionFacts`를 반환합니다. 이 fact에는 의미 좌표, status,
+availability, safe resolution fact가 있으며 command string, label, CLI capture
+metadata, rendered instruction, MCP envelope는 없습니다.
+
+`volicord-user-action-presentation`은 이 fact에서 공유하는 현재 CLI inbox 및
+recovery presentation을 만듭니다. Command text는 실제 Clap 선언에서 도출한 typed
+`volicord-command-model` invocation에서 얻습니다. CLI는 terminal rendering을
+담당합니다. MCP는 compound protocol projection과 neutral fact-read failure를 MCP
+error로 바꾸는 작업을 담당합니다. `reconcile_changes.rs`와 다른 Core consumer는
+semantic 서비스를 직접 호출하고 typed 결과를 각자 plan과 응답에 반영하는 방식을
+결정합니다. 프로덕션 메서드 모듈은 형제 메서드 구현을 재사용 라이브러리로
+사용하지 않습니다.
 
 정확한 공개 동작과 스키마 의미는
 [사용자 행동 요청](../reference/api/method-request-user-action.md),
@@ -311,10 +329,10 @@ Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니
 | 경계 | 개요 책임 | 세부 사항과 계약 경로 |
 |---|---|---|
 | 공유 진단 구조 | `volicord-types`는 lifecycle별 finding 입력, current key identity와 digest 파생, 의존성 안전한 read-only finding, cause 및 action 표현, 선택한 Connection 보고서, 분리된 불변 MCP preflight 및 활성 검증 증거 type, 별도의 lifecycle-aware 정확한 lookup envelope를 담당합니다. 각 도메인 담당자는 폐쇄형 typed 오류와 사실을 이 구조로 변환하며, 지속 저장, 검증, 렌더링은 기존 담당 경계에 남습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md), [실패 모델](../reference/failure-model.md), [보안](../reference/security.md). |
-| 관리 명령 모델 | `volicord-command-model`은 완전한 Clap 선언, 문법 DTO와 validator, 실제 명령 tree 기반 공개/숨김 분류, root command 구성, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation을 담당합니다. 프로세스를 시작하거나 명령을 디스패치하거나 Core 또는 Store를 호출하거나 출력을 렌더링하거나 Runtime Home을 해석하거나 application service를 실행하지 않습니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md). |
+| 관리 명령 모델 | `volicord-command-model`은 완전한 Clap 선언, 문법 DTO와 validator, 실제 명령 tree 기반 공개/숨김 분류, root command 구성, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation, 같은 tree에서 경로와 option spelling을 도출하는 typed invocation builder를 담당합니다. 프로세스를 시작하거나 명령을 디스패치하거나 Core 또는 Store를 호출하거나 출력을 렌더링하거나 Runtime Home을 해석하거나 application service를 실행하지 않습니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md). |
 | CLI 운영 진단 | `volicord-cli`는 불변 운영 definition, 폐쇄형 typed subject와 facts, typed action 선택, 담당자 범위 current-condition 영속화를 `operational_diagnostics`에 둡니다. 별도의 Connection 검증 패키지는 host, MCP, Guard check, dependency graph 평가, 보고서 입력, 불변 preflight 생성, 활성 쓰기 및 conformance 증거를 조율하고 typed 관찰을 finding으로 투영합니다. Store는 lifecycle 및 조회 구현 담당을 유지합니다. | [소스 지도](source-map.md), [실패 모델](../reference/failure-model.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |
 | 진단 영속화와 조회 | `volicord-store`는 caller data보다 먼저 완전한 staged 초기화와 원자적 공개로 비권한 진단 carrier를 만들고, 추가 전용 occurrence, 교체 가능한 current snapshot, cause graph 검증 및 순회, lifecycle-aware 정확한 lookup 및 graph API, 현재 보고서 projection, 내부 row 인코딩을 분리합니다. 정확한 read는 occurrence/current lifecycle, active/resolved 상태, 해소 시각을 유지하고, 보고 가능한 read는 적격 occurrence와 active current finding만 projection합니다. | [소스 지도](source-map.md), [저장소](../reference/storage.md), [저장소 레코드](../reference/storage-records.md), [실패 모델](../reference/failure-model.md). |
-| Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리를 담당합니다. CLI와 MCP 어댑터는 Core 주변의 프로세스, 설정, 전송, 처리 경로, 렌더링 경계를 담당합니다. Core는 어느 어댑터 계층에도 의존하지 않습니다. 읽기 전용 caller는 경로에서 `CoreService`를 구성하고, 승인된 caller는 두 번째 Runtime Home 좌표 없이 `RuntimeHomeMutationContext`에서만 구성합니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](design/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |
+| Core와 어댑터 | Core는 어댑터와 독립적인 공개 메서드 처리와 adapter-neutral semantic fact를 담당합니다. 공유 UserAction presentation은 이 fact의 CLI 지향 projection을 담당하고 CLI는 terminal rendering, MCP는 protocol envelope와 adapter failure mapping을 담당합니다. Core는 adapter 또는 presentation 계층에 의존하지 않습니다. 읽기 전용 caller는 경로에서 `CoreService`를 구성하고, 승인된 caller는 두 번째 Runtime Home 좌표 없이 `RuntimeHomeMutationContext`에서만 구성합니다. | [요청 생명주기](request-lifecycle.md), [구현 설계 패턴](design-patterns.md), [Core와 어댑터 의존 경계](design/core-adapter-boundary.md), [API 메서드](../reference/api/methods.md), [MCP 전송](../reference/mcp-transport.md), [관리 CLI](../reference/admin-cli.md). |
 | Codex host-wire 계약 | `volicord-host-contract`는 `CodexMcpTurnMetadata`/`codex-mcp-turn-metadata`, `CodexCommandHooks`/`codex-command-hooks`, `CodexMcpCallableNames`/`codex-mcp-callable-names`, 결정적인 profile digest, 한도 있는 값과 failure, 서로 바꿔 쓸 수 없는 상관관계 타입, 명시적 `McpServerKey`와 완전한 `McpRawToolName`에서 `HostCallableIdentity`로 가는 투영을 담당합니다. 또한 검토된 native host tool과 server-qualified MCP routing을 통합하는 typed hook-routing strategy를 소유하며, 등록된 namespace를 표현할 수 있으면 이를 사용하고 아니면 catalog에서 파생한 exact callable을 사용합니다. 생성 구성은 이 strategy를 투영하고 엄격한 audit은 이를 다시 구성합니다. 정규 `AgentToolId` catalog는 모든 tool에 probe target, workflow control, unrelated known tool 중 정확히 하나의 integration-verification role을 부여하고, `McpToolCatalog`는 정규화 충돌뿐 아니라 모순되는 role metadata도 거부합니다. Routing이 event를 전달하면 Store는 probe 좌표보다 먼저 callable과 role을 해석합니다. Workflow control과 그 밖의 known tool은 한도 있는 nonterminal trace로만 남고, probe target만 session, turn, verification ID, tool-use 검사를 계속합니다. Codex package version에서 host 동작을 선택하지 않습니다. | [소스 맵](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [저장소 레코드](../reference/storage-records.md), [실패 모델](../reference/failure-model.md). |
 | Runtime Home과 Product Repository | `Volicord Runtime Home`은 저장소/런타임 담당 문서가 정의하는 Volicord 런타임 기록과 아티팩트 데이터를 담습니다. `Product Repository`는 사용자 제품 파일과 담당 문서가 허용하는 명시적 통합 파일을 담습니다. | [저장소와 트랜잭션](storage-and-transactions.md), [Runtime Home과 Product Repository 분리](design/runtime-home-and-product-repository.md), [런타임 경계](../reference/runtime-boundaries.md), [보안](../reference/security.md). |
 | Runtime Home bootstrap | `volicord-store`는 기존 Registry를 읽기 전용으로 열어 정확한 현재 manifest와 물리 schema를 검사합니다. 최종 경로가 없으면 같은 상위 directory의 staging에 불투명한 publication ID, singleton, 최초 installation profile을 함께 준비합니다. 기존 대상을 교체하지 않는 원자적 rename에 성공하면 상위 directory 동기화와 read-back 검증 전에 invocation별 publication guard를 만듭니다. `AlreadyExists`는 읽기 전용으로 정확히 검증한 현재 승자만 반환합니다. | [런타임 경계](../reference/runtime-boundaries.md), [저장소 버전 관리](../reference/storage-versioning.md), [저장소 레코드](../reference/storage-records.md), [저장소 DDL](../reference/storage-ddl.md). |

@@ -37,6 +37,8 @@ flowchart LR
   mcp["volicord-mcp stdio adapter"]
   cli["volicord administrative CLI"]
   inbox["volicord inbox"]
+  syntax["volicord-command-model"]
+  presentation["UserAction presentation"]
   core["volicord-core"]
   store["volicord-store<br/>(including artifact facilities)"]
   runtime["Volicord Runtime Home"]
@@ -45,8 +47,12 @@ flowchart LR
   host --> launcher --> mcp --> core
   launcher -. strict config revalidation and one-time launch lease .-> store
   mcp -. startup and session validation .-> store
+  mcp --> presentation
   cli --> store
+  cli --> syntax
   inbox --> core
+  inbox --> presentation
+  presentation --> syntax
   core --> store
   store --> runtime
   product -. observed inputs and owner-defined paths .-> core
@@ -76,7 +82,8 @@ the public method execution path.
 | `crates/volicord-host-contract` | Dependency-safe semantic Codex contracts through `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames`; explicit MCP server/raw-tool identities; collision-checked callable projection and catalog lookup; deterministic contract identities; bounded host values and errors; and source-specific correlation types. It owns no Store, Core, CLI, or MCP policy. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, one-time managed MCP launch leases, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, host-neutral typed invocation authority, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, and Store coordination. |
-| `crates/volicord-command-model` | Complete Clap declaration for the `volicord` binary: root parser, public and hidden subcommand tree, command and argument DTOs, command-surface value enums and validators, actual-model visibility classification, a fresh root `clap::Command`, command-path traversal, canonical synopses, and canonical parseable public invocations. It owns no command execution or application service. |
+| `crates/volicord-command-model` | Complete Clap declaration for the `volicord` binary: root parser, public and hidden subcommand tree, command and argument DTOs, command-surface value enums and validators, actual-model visibility classification, a fresh root `clap::Command`, command-path traversal, canonical synopses, canonical parseable public invocations, and typed inbox-resolution invocation builders derived from that declaration. It owns no command execution or application service. |
+| `crates/volicord-user-action-presentation` | Shared adapter presentation for CLI-oriented UserAction inbox items, availability, capture paths, and recovery instructions. It consumes shared semantic types and canonical command-model invocations and owns no Core policy, Store access, command execution, terminal rendering, or MCP envelope. |
 | `crates/volicord-cli` | Local `volicord` process startup, administrative command dispatch and reusable execution modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, host/MCP/Guard verification checks, dependency-graph policy, rendering, the hidden same-process managed-host launcher, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
 | `crates/volicord-platform-fs` | Internal safe facade for process-target and platform observation, native Linux/WSL2 classification, WSL2 distribution validation and filesystem observation, typed atomic no-replace regular-file publication, platform-native filesystem namespace operations, per-canonical-Runtime-Home shared/exclusive OS-backed mutation admission and borrowed mutation permits, and read-only canonical Git common-directory/worktree snapshots. It does not own managed launch or Codex configuration policy. |
 | `crates/volicord-platform-process` | Internal safe facade for bounded platform-specific child-process containment and nonblocking child-pipe readiness. It owns low-level Unix process-group, Windows Job Object, and pipe-polling primitives. |
@@ -137,6 +144,9 @@ The durable dependency direction is:
 - `volicord-command-model` depends only on Clap. The CLI and documentation
   validator consume it directly; it does not depend on Core, Store, MCP, CLI
   rendering, Runtime Home implementation, or application services.
+- `volicord-user-action-presentation` depends on shared types and
+  `volicord-command-model`. CLI and MCP may consume its CLI-oriented
+  presentation, while Core and Store remain independent of it.
 - `volicord-mcp-protocol` has no internal product-crate dependencies. It owns
   the closed revision-profile boundary without depending on Core, Store, CLI,
   host integration, or Volicord tool implementations.
@@ -204,14 +214,22 @@ and returns the public request, effective Store record, and typed
 `CoreStorageMutation`. Serialization occurs while materializing the Store
 boundary rather than in method callers.
 
-The same owner provides strict stored-authority interpretation and domain-owned
-pending, inbox, agent-safe, operation-blocking, and lifecycle projections.
-It also owns the shared current User Channel guidance. `user_action.rs` retains
-direct request/resume, inbox, and resolution
-orchestration. `reconcile_changes.rs` and other consumers call the service
-directly and decide how its typed result participates in their own plan and
-response. Production method modules do not use sibling method implementations
-as reusable libraries.
+The same owner provides strict stored-authority interpretation,
+operation-blocking policy, and lifecycle semantics. `user_action.rs` retains
+direct request/resume and resolution orchestration and returns
+adapter-neutral `PendingUserActionFacts` and `CurrentUserActionFacts` for
+internal consumers. Those facts contain semantic coordinates, status,
+availability, and safe resolution facts rather than command strings, labels,
+CLI capture metadata, rendered instructions, or MCP envelopes.
+
+`volicord-user-action-presentation` builds the shared current CLI inbox and
+recovery presentation from those facts. Its command text comes from typed
+`volicord-command-model` invocations derived from the actual Clap declaration.
+CLI owns terminal rendering. MCP owns the compound protocol projection and
+maps neutral fact-read failures into MCP errors. `reconcile_changes.rs` and
+other Core consumers call the semantic service directly and decide how its
+typed result participates in their own plan and response. Production method
+modules do not use sibling method implementations as reusable libraries.
 
 Exact public behavior and schema meaning remain with
 [Request User Action](../reference/api/method-request-user-action.md),
@@ -341,10 +359,10 @@ Core authorization remains separate and still validates every managed MCP call.
 | Boundary | Overview responsibility | Detail and contract routes |
 |---|---|---|
 | Shared diagnostic structures | `volicord-types` owns the lifecycle-specific finding inputs, current-key identity and digest derivation, dependency-safe read-only finding, cause and action representations, the selected-Connection report, the separate immutable MCP preflight and active-verification evidence types, and the separate lifecycle-aware exact-lookup envelope. Each domain owner maps its closed typed failures and facts into those structures; persistence, verification, and rendering stay with their existing owners. | [Source Map](source-map.md), [Testing Strategy](testing-strategy.md), [Failure Model](../reference/failure-model.md), and [Security](../reference/security.md). |
-| Administrative command model | `volicord-command-model` owns the complete Clap declaration, syntax DTOs and validators, public/hidden classification from the actual command tree, root-command construction, command-path traversal, canonical synopses, and canonical parseable public invocations. It does not start processes, dispatch commands, call Core or Store, render output, resolve Runtime Homes, or run application services. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), and [Administrative CLI](../reference/admin-cli.md). |
+| Administrative command model | `volicord-command-model` owns the complete Clap declaration, syntax DTOs and validators, public/hidden classification from the actual command tree, root-command construction, command-path traversal, canonical synopses, canonical parseable public invocations, and typed invocation builders that derive paths and option spellings from the same tree. It does not start processes, dispatch commands, call Core or Store, render output, resolve Runtime Homes, or run application services. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), and [Administrative CLI](../reference/admin-cli.md). |
 | CLI operational diagnostics | `volicord-cli` keeps immutable operational definitions, closed typed subjects and facts, typed action selection, and owner-scoped current-condition persistence in `operational_diagnostics`. The separate Connection verification package coordinates host, MCP, and Guard checks, dependency-graph evaluation, report inputs, immutable preflight construction, active write/conformance evidence, and projection of those typed observations into findings. Store remains the lifecycle and query implementation owner. | [Source Map](source-map.md), [Failure Model](../reference/failure-model.md), [Administrative CLI](../reference/admin-cli.md), and [Agent Connection](../reference/agent-connection.md). |
 | Diagnostic persistence and queries | `volicord-store` creates the non-authority diagnostics carrier through complete staged initialization and atomic publication before caller data, then separates insert-only occurrences, replaceable current snapshots, cause-graph validation and traversal, lifecycle-aware exact lookup and graph APIs, current-report projection, and internal row encoding. Exact reads retain occurrence/current lifecycle, active/resolved state, and resolution time; reportable reads project only eligible occurrences and active current findings. | [Source Map](source-map.md), [Storage](../reference/storage.md), [Storage Records](../reference/storage-records.md), and [Failure Model](../reference/failure-model.md). |
-| Core and adapters | Core owns adapter-independent public method handling. CLI and MCP adapters own process, setup, transport, routing, and rendering boundaries around Core. Core does not depend on either adapter layer. Read-only callers construct `CoreService` from a path; admitted callers construct it only from `RuntimeHomeMutationContext`, with no second Runtime Home coordinate. | [Request Lifecycle](request-lifecycle.md), [Implementation Design Patterns](design-patterns.md), [Core and adapter dependency boundary](design/core-adapter-boundary.md), [API Methods](../reference/api/methods.md), [MCP Transport](../reference/mcp-transport.md), and [Administrative CLI](../reference/admin-cli.md). |
+| Core and adapters | Core owns adapter-independent public method handling and adapter-neutral semantic facts. Shared UserAction presentation owns CLI-oriented projection from those facts; CLI owns terminal rendering and MCP owns protocol envelopes and adapter failure mapping. Core does not depend on any adapter or presentation layer. Read-only callers construct `CoreService` from a path; admitted callers construct it only from `RuntimeHomeMutationContext`, with no second Runtime Home coordinate. | [Request Lifecycle](request-lifecycle.md), [Implementation Design Patterns](design-patterns.md), [Core and adapter dependency boundary](design/core-adapter-boundary.md), [API Methods](../reference/api/methods.md), [MCP Transport](../reference/mcp-transport.md), and [Administrative CLI](../reference/admin-cli.md). |
 | Codex host-wire contracts | `volicord-host-contract` owns `CodexMcpTurnMetadata`/`codex-mcp-turn-metadata`, `CodexCommandHooks`/`codex-command-hooks`, and `CodexMcpCallableNames`/`codex-mcp-callable-names`; deterministic profile digests; bounded values and failures; non-interchangeable correlation types; and the explicit `McpServerKey` plus complete `McpRawToolName` projection to `HostCallableIdentity`. It also owns the typed hook-routing strategy that unifies reviewed native host tools with server-qualified MCP routing, using the registered namespace where representable and catalog-derived exact callables otherwise. Generated configuration projects that strategy and strict audit reconstructs it. The canonical `AgentToolId` catalog assigns every tool exactly one integration-verification role—probe target, workflow control, or unrelated known tool—and `McpToolCatalog` rejects contradictory role metadata as well as normalized collisions. Routing delivers events; Store resolves callable and role before probe coordinates. Workflow controls and other known tools are bounded nonterminal trace, while only the probe target proceeds to session, turn, verification-ID, and tool-use checks. No host behavior is selected from a Codex package version. | [Source Map](source-map.md), [MCP Transport](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md), [Storage Records](../reference/storage-records.md), and [Failure Model](../reference/failure-model.md). |
 | Runtime Home and Product Repository | `Volicord Runtime Home` holds Volicord runtime records and artifact data as storage/runtime owners define them. `Product Repository` holds user product files and explicit integration files where owner documents allow them. | [Storage and Transactions](storage-and-transactions.md), [Runtime Home and Product Repository separation](design/runtime-home-and-product-repository.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [Security](../reference/security.md). |
 | Runtime Home bootstrap | `volicord-store` inspects an existing Registry read-only against the exact current manifest and physical schema. An absent final path is prepared in same-parent staging with an opaque publication ID, its singleton, and initial installation profile. A successful atomic no-replace rename creates an invocation-specific publication guard before parent synchronization and read-back validation. `AlreadyExists` returns only the exact read-only current winner. | [Runtime Boundaries](../reference/runtime-boundaries.md), [Storage Versioning](../reference/storage-versioning.md), [Storage Records](../reference/storage-records.md), and [Storage DDL](../reference/storage-ddl.md). |

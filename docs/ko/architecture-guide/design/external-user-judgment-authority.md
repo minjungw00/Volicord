@@ -10,13 +10,17 @@
 
 Core는 사용자 소유 동작 하나를 엄격한 `UserActionRequest` 하나와 최대 하나의 immutable
 `UserActionResolution`으로 표현합니다. MCP adapter는 agent-facing 요청과 resume
-경로만 노출합니다. Local CLI inbox는 typed `UserChannelInboxProjection`을 얻고 저장된
-capture form을 표시한 뒤 Core를 통해 명시적인 local-user resolution을 제출합니다.
+경로만 노출합니다. Local CLI inbox는 typed adapter-neutral
+`PendingUserActionFacts`를 얻고 공유 presentation으로 저장된 capture form과
+command-model invocation을 표시한 뒤 Core를 통해 명시적인 local-user resolution을
+제출합니다.
 
 Core UserAction 서비스는 타입으로 표현한 행동 의도를 검증하고 정규 request를
 구성·구체화하며, 현재 권한을 해석하고 도메인 소유 pending 상태와 User Channel
-안내를 투영합니다. 직접 UserAction 메서드 모듈은 request/resume, inbox,
-resolution 조율을 담당합니다.
+안내 대신 semantic pending, current, availability, safe resolution fact를
+투영합니다. 직접 UserAction 메서드 모듈은 request/resume 및 resolution 조율과
+neutral fact read를 담당합니다. Core는 CLI command, channel label, rendered
+instruction, capture metadata, MCP envelope를 구성하지 않습니다.
 
 Core policy 모듈은 현재 basis, action relevance, actor provenance, close 또는 write
 compatibility를 평가합니다. Adapter는 chat text, summary text, model이 작성한
@@ -35,23 +39,27 @@ recommendation에서 judgment를 추론하지 않습니다.
 
 ## 책임 경계
 
-Core UserAction 서비스는 공유 request 구성과 구체화, 권한 해석, 도메인
-projection을 담당합니다. 직접 메서드 모듈은 typed 공개 request/resolution
-transition과 요청별 결과 구성을 담당합니다. Core policy 모듈은 순수 정책 평가를
-담당합니다. `volicord-cli`는 local User Channel presentation과 명시적인 choice
-collection을 담당합니다. `volicord-mcp`는 agent-safe adapter projection과 fallback
-guidance를 담당합니다. Store는 엄격한 request 및 resolution record와 coherent
-resolution snapshot을 담당합니다.
+Core UserAction 서비스는 공유 request 구성과 구체화, 권한 해석, lifecycle 정책,
+adapter-neutral fact를 담당합니다. 직접 메서드 모듈은 typed 공개
+request/resolution transition과 요청별 결과 구성을 담당합니다. Core policy
+모듈은 순수 정책 평가를 담당합니다. `volicord-command-model`은 정규 CLI syntax를
+담당합니다. `volicord-user-action-presentation`은 공유 CLI 지향 inbox와 recovery
+presentation을 담당합니다. `volicord-cli`는 terminal rendering과 명시적인 choice
+collection을 담당합니다. `volicord-mcp`는 agent-safe protocol projection, neutral
+failure mapping, 공유 CLI fallback 부착을 담당합니다. Store는 엄격한 request 및
+resolution record와 coherent resolution snapshot을 담당합니다.
 
 ## 실행 흐름
 
 1. Agent-facing Core 호출이 현재 request를 만들거나 resume합니다.
 2. MCP는 agent-safe summary와 continuation route만 투영합니다.
-3. CLI inbox가 Task 하나의 현재 typed User Channel projection을 Core에 요청합니다.
-4. Local user가 저장된 capture form에서 명시적인 action 하나를 선택합니다.
-5. Core가 actor provenance, basis, expiry, 현재 work coordinate를 다시 검증합니다.
-6. Store가 immutable resolution과 관련 authority event를 commit합니다.
-7. 이후 agent 호출은 safe current projection만 관찰합니다.
+3. CLI inbox가 Core에 현재 adapter-neutral pending fact를 요청합니다.
+4. 공유 presentation이 저장된 capture form과 정규 command-model invocation을
+   도출합니다.
+5. Local user가 저장된 capture form에서 명시적인 action 하나를 선택합니다.
+6. Core가 actor provenance, basis, expiry, 현재 work coordinate를 다시 검증합니다.
+7. Store가 immutable resolution과 관련 authority event를 commit합니다.
+8. 이후 agent 호출은 MCP의 safe current projection만 관찰합니다.
 
 ## 실패 동작
 
@@ -69,16 +77,19 @@ User Channel로 만들지 않습니다.
 ## 구현 경로
 
 - [`crates/volicord-core/src/methods/user_actions.rs`](../../../../crates/volicord-core/src/methods/user_actions.rs):
-  typed request 구성과 구체화, 현재 권한 해석, 도메인 projection, User Channel 안내.
+  typed request 구성과 구체화, 현재 권한 해석, lifecycle 정책, semantic fact.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
-  직접 request/resume, inbox, resolution 조율.
+  직접 request/resume 및 resolution 조율과 neutral fact read.
 - [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../../crates/volicord-core/src/policy/user_action_relevance.rs)와
   [`policy/close_readiness.rs`](../../../../crates/volicord-core/src/policy/close_readiness.rs):
   현재 relevance와 authority 평가.
 - [`crates/volicord-cli/src/user_command.rs`](../../../../crates/volicord-cli/src/user_command.rs):
-  local User Channel 조율.
+  local User Channel 조율과 terminal rendering.
+- [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs)와
+  [`crates/volicord-user-action-presentation/src/lib.rs`](../../../../crates/volicord-user-action-presentation/src/lib.rs):
+  정규 CLI syntax와 공유 CLI 지향 presentation.
 - [`crates/volicord-mcp/src/user_action_projection.rs`](../../../../crates/volicord-mcp/src/user_action_projection.rs):
-  agent-safe compound projection.
+  agent-safe compound protocol projection과 neutral failure mapping.
 - [`crates/volicord-store/src/core_pipeline/user_actions.rs`](../../../../crates/volicord-store/src/core_pipeline/user_actions.rs):
   엄격한 request, snapshot, resolution persistence.
 

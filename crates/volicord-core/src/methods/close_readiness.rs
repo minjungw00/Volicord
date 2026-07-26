@@ -8,8 +8,8 @@ use super::evidence_facts::{
     stored_evidence_observation_provenance_facts,
 };
 use super::user_actions::{
-    pending_user_action_authorities_for_plan, resolved_user_action_authorities_for_plan,
-    user_channel_pending_action_instruction,
+    pending_user_action_authorities_for_plan, pending_user_action_instruction,
+    resolved_user_action_authorities_for_plan,
 };
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, change_unit_effect_contract,
@@ -779,7 +779,7 @@ fn terminal_close_blockers(
                         owner_method: Some(MethodName::ResolveUserAction),
                         allowed_operation_categories: vec![OperationCategory::UserOnly],
                         label: "Resolve pending user actions through the User Channel.".to_owned(),
-                        blocking_question: Some(user_channel_pending_action_instruction()),
+                        blocking_question: Some(pending_user_action_instruction()),
                         expected_state_version: RequiredNullable::null(),
                         required_refs: pending_refs,
                     }],
@@ -1169,7 +1169,7 @@ fn completion_close_blockers(
                 owner_method: Some(MethodName::ResolveUserAction),
                 allowed_operation_categories: vec![OperationCategory::UserOnly],
                 label: "Resolve pending user actions through the User Channel.".to_owned(),
-                blocking_question: Some(user_channel_pending_action_instruction()),
+                blocking_question: Some(pending_user_action_instruction()),
                 expected_state_version: RequiredNullable::null(),
                 required_refs: close_complete_pending_refs,
             }],

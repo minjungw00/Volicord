@@ -9,9 +9,13 @@ result composition, Store, shared diagnostics, and repository tooling.
 ## Design
 
 `volicord-command-model` contains the complete Clap declaration and
-introspection model without command execution. `volicord-cli` and
-`volicord-mcp` own their process, setup, transport, routing, and rendering
-concerns and call `volicord-core` through typed interfaces.
+introspection model without command execution. Its typed invocation builders
+derive command paths and option spellings from that same declaration.
+`volicord-user-action-presentation` turns adapter-neutral UserAction facts into
+the shared current CLI inbox item and CLI recovery instruction.
+`volicord-cli` and `volicord-mcp` own their process, setup, transport, routing,
+and final rendering concerns and call `volicord-core` through typed
+interfaces.
 
 Core owns common preflight, verified invocation context, method planning,
 focused modules under `policy/`, replay handling, branch selection, and final
@@ -35,10 +39,15 @@ protocol registry for repository checks but remains outside runtime.
   runtime dependencies. Core development dependencies may additionally target
   groups classified as Core development dependencies.
 - Core owns no administrative command syntax, host launch arguments,
-  host-specific configuration paths, or adapter rendering.
+  host-specific configuration paths, presentation labels, rendered recovery
+  instructions, or adapter protocol envelopes.
 - Core entry points receive typed semantic authority rather than free-form
   actor or host labels.
 - The command-model crate depends only on Clap and owns no execution.
+- Canonical CLI invocation builders inspect and validate against the same Clap
+  declaration used by the binary; adapters do not reconstruct command grammar.
+- Shared UserAction presentation depends on the command model and shared types,
+  not on Core, Store, CLI, or MCP.
 - Method planners return typed fields and planned effects; the shared pipeline
   adds common branch facts only after the branch is known.
 - Store does not derive method policy from adapter input.
@@ -54,6 +63,9 @@ trusted local semantic context, and translate transport data. Core owns
 authority-aware planning and policy evaluation. Store owns persistence and
 atomicity. `volicord-types` owns dependency-safe shared shapes.
 `volicord-host-contract` and `volicord-mcp-protocol` own external-wire profiles.
+`volicord-user-action-presentation` owns shared CLI-oriented UserAction
+presentation. CLI owns terminal rendering, while MCP owns its protocol result
+projection and maps neutral Core availability failures at that boundary.
 `xtask` owns current repository validation and generation workflows.
 
 ## Execution flow
@@ -66,8 +78,12 @@ atomicity. `volicord-types` owns dependency-safe shared shapes.
 4. The selected branch remains typed as read-only, no-effect, dry-run,
    staging, or committed mutation.
 5. Store reads or applies the planned effect.
-6. Core composes the complete typed result; the adapter projects it for CLI or
-   MCP without adding authority.
+6. Core composes public method results or returns adapter-neutral semantic
+   facts for internal adapter reads.
+7. Shared presentation derives any CLI inbox item or recovery instruction from
+   those facts through a typed command-model invocation.
+8. CLI renders local output and MCP constructs its own protocol projection
+   without adding authority.
 
 ## Failure behavior
 
@@ -86,7 +102,11 @@ adapter internals through Core or use version-selected alternate module paths.
 ## Implementation routes
 
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs):
-  command syntax, visibility, traversal, synopses, and canonical invocations.
+  command syntax, visibility, traversal, synopses, canonical invocations, and
+  typed inbox-resolution invocation construction.
+- [`crates/volicord-user-action-presentation/src/lib.rs`](../../../../crates/volicord-user-action-presentation/src/lib.rs):
+  shared CLI inbox, availability, and recovery-instruction presentation from
+  adapter-neutral facts.
 - [`Cargo.toml`](../../../../Cargo.toml) and
   [`xtask/src/architecture.rs`](../../../../xtask/src/architecture.rs):
   Core dependency eligibility and structural package-graph enforcement.

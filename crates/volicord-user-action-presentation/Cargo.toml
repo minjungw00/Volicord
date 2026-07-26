@@ -1,0 +1,13 @@
+[package]
+name = "volicord-user-action-presentation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+volicord-command-model = { path = "../volicord-command-model" }
+volicord-types = { path = "../volicord-types" }
+
+[lib]
+path = "src/lib.rs"

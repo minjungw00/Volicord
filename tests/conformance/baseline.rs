@@ -4,7 +4,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use volicord_core::{
     rejected_response, tool_error, Clock, CoreResult, CoreService, GitWorkspaceContext,
-    InvocationContext, PipelineResponse, UserChannelInboxProjectionRequest,
+    InvocationContext, PendingUserActionFactsRequest, PipelineResponse,
 };
 use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
@@ -3161,10 +3161,10 @@ fn canonical_close_refs_and_artifact_integrity_remain_truthful() -> Result<(), B
     )?;
     let final_action_request_id =
         response_record_id(&final_action.response_value, "user_action_request_ref");
-    let final_action_projection =
-        trusted_user_channel_projection(&canonical_fixture, &canonical_service, &task_id)?;
-    let final_action_request = final_action_projection
-        .items
+    let final_action_facts =
+        trusted_pending_user_action_facts(&canonical_fixture, &canonical_service, &task_id)?;
+    let final_action_request = final_action_facts
+        .actions
         .iter()
         .find(|item| {
             item.request.user_action_request_id.as_str() == final_action_request_id.as_str()
@@ -4920,15 +4920,15 @@ fn response_record_id(response_value: &Value, field: &str) -> String {
         .to_owned()
 }
 
-fn trusted_user_channel_projection(
+fn trusted_pending_user_action_facts(
     fixture: &CoreFixture,
     _service: &AdmittedCore<'_>,
     task_id: &str,
-) -> Result<volicord_core::UserChannelInboxProjection, Box<dyn Error>> {
+) -> Result<volicord_core::PendingUserActionFacts, Box<dyn Error>> {
     let now = fixture.store()?.current_clock_floor()?.into_datetime();
     CoreService::for_read_only_with_clock(fixture.runtime_home_path(), FixedClock { now })
-        .user_channel_inbox_projection(
-            UserChannelInboxProjectionRequest {
+        .pending_user_action_facts(
+            PendingUserActionFactsRequest {
                 project_id: ProjectId::new(fixture.project_id()),
                 task_id: TaskId::new(task_id),
             },
@@ -4968,9 +4968,9 @@ fn assert_current_authority_options(
         );
     }
 
-    let projection = trusted_user_channel_projection(fixture, service, task_id)?;
-    let request = projection
-        .items
+    let facts = trusted_pending_user_action_facts(fixture, service, task_id)?;
+    let request = facts
+        .actions
         .iter()
         .find(|item| {
             item.request.user_action_request_id.as_str() == user_action_request_id.as_str()

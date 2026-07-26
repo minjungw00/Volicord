@@ -894,6 +894,7 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+ "volicord-user-action-presentation",
 ]
 
 [[package]]
@@ -971,6 +972,7 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+ "volicord-user-action-presentation",
 ]
 
 [[package]]
@@ -1078,6 +1080,14 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "volicord-user-action-presentation"
+version = "0.9.1"
+dependencies = [
+ "volicord-command-model",
+ "volicord-types",
 ]
 
 [[package]]

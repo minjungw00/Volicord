@@ -41,8 +41,19 @@ fn current_state_version(harness: &MethodHarness) -> Result<u64, Box<dyn Error>>
     Ok(harness.counts()?.state_version)
 }
 
+fn available_current_user_action(
+    read: CurrentUserActionRead,
+) -> Result<CurrentUserActionFacts, Box<dyn Error>> {
+    match read {
+        CurrentUserActionRead::Available(facts) => Ok(*facts),
+        CurrentUserActionRead::Unavailable(reason) => {
+            Err(format!("current user-action facts unavailable: {reason:?}").into())
+        }
+    }
+}
+
 #[test]
-fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), Box<dyn Error>> {
+fn pending_user_action_facts_are_authenticated_and_adapter_neutral() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =
         create_task_with_change_unit(&harness, "user_channel_projection")?;
@@ -83,7 +94,7 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
     )?;
     assert_eq!(other.response_value["base"]["response_kind"], "result");
 
-    let projection_request = UserChannelInboxProjectionRequest {
+    let facts_request = PendingUserActionFactsRequest {
         project_id: ProjectId::new(PROJECT_ID),
         task_id: TaskId::new(&task_id),
     };
@@ -91,33 +102,25 @@ fn user_channel_inbox_projection_is_authenticated_and_cli_only() -> Result<(), B
         &harness.runtime_home_path,
         ManualClock::at(DEFAULT_METHOD_TEST_CLOCK),
     );
-    let cli_projection = read_only_service
-        .user_channel_inbox_projection(
-            projection_request.clone(),
+    let pending = read_only_service
+        .pending_user_action_facts(
+            facts_request.clone(),
             InvocationContext::local_user(
                 ProjectId::new(PROJECT_ID),
                 OperationCategory::Read,
                 UserActionChannelKind::Cli,
             ),
         )?
-        .expect("the local CLI User Channel should receive the inbox projection");
-    assert_eq!(cli_projection.items.len(), 2);
-    assert!(cli_projection.items.iter().any(|item| {
-        item.request.user_action_request_id.as_str() == own_id
-            && item.inbox_item.user_action_request_id == item.request.user_action_request_id
-            && item.inbox_item.question == item.request.body.question()
+        .expect("the local User Channel should receive semantic facts");
+    assert_eq!(pending.actions.len(), 2);
+    assert!(pending.actions.iter().any(|action| {
+        action.request.user_action_request_id.as_str() == own_id
+            && action.resolution_availability.is_available()
     }));
 
-    assert_eq!(cli_projection.user_channel_availability.paths.len(), 1);
-    assert_eq!(
-        cli_projection.user_channel_availability.paths[0].kind,
-        "cli"
-    );
-    assert!(cli_projection.user_channel_availability.paths[0].available);
-
     assert!(read_only_service
-        .user_channel_inbox_projection(
-            projection_request.clone(),
+        .pending_user_action_facts(
+            facts_request.clone(),
             InvocationContext::agent_connection(
                 OperationCategory::Read,
                 crate::agent_session::validated_agent_session_for_test(CONNECTION_ID, PROJECT_ID,),
@@ -152,7 +155,7 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
 
     let snapshot = harness
         .service
-        .user_channel_inbox_resolution_snapshot_from_store(
+        .pending_user_action_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
             InvocationContext::local_user(
@@ -171,22 +174,22 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
             .as_u64()
             .expect("committed request should expose its state version")
     );
-    let projection = snapshot
-        .pending_projection
-        .expect("a pending request should include its canonical form");
+    let pending = snapshot
+        .pending_actions
+        .expect("a pending request should include its semantic facts");
     assert_eq!(
-        projection.observed_state_version,
+        pending.observed_state_version,
         snapshot.observed_state_version
     );
-    assert_eq!(projection.observed_at, snapshot.observed_at);
-    assert!(projection.items.iter().any(|item| {
-        item.request.user_action_request_id.as_str() == request_id
-            && item.inbox_item.user_action_request_id == item.request.user_action_request_id
+    assert_eq!(pending.observed_at, snapshot.observed_at);
+    assert!(pending.actions.iter().any(|action| {
+        action.request.user_action_request_id.as_str() == request_id
+            && action.resolution_availability.is_available()
     }));
 
     let read_only_service = CoreService::for_read_only(&harness.runtime_home_path);
     assert!(read_only_service
-        .user_channel_inbox_resolution_snapshot_from_store(
+        .pending_user_action_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
             InvocationContext::local_user(
@@ -198,7 +201,7 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
         .is_none());
     assert!(harness
         .service
-        .user_channel_inbox_resolution_snapshot_from_store(
+        .pending_user_action_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
             InvocationContext::local_user(
@@ -213,7 +216,7 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
     let other_mutation = TestRuntimeHomeMutation::acquire(other_home.path())?;
     let other_service = CoreService::for_mutation(&other_mutation.context()?);
     assert!(other_service
-        .user_channel_inbox_resolution_snapshot_from_store(
+        .pending_user_action_resolution_snapshot_from_store(
             &store,
             &UserActionRequestId::new(&request_id),
             InvocationContext::local_user(
@@ -1061,9 +1064,9 @@ fn valid_affected_refs_commit_while_context_refs_remain_display_only() -> Result
                 response.response_value["user_action_request_summary"],
                 pending_user_action_summary(&request_id)
             );
-            let projection = cli_user_channel_projection(&harness, &task_id)?;
-            let projected = projection
-                .items
+            let facts = local_pending_user_action_facts(&harness, &task_id)?;
+            let projected = facts
+                .actions
                 .iter()
                 .find(|item| item.request.user_action_request_id.as_str() == request_id)
                 .expect("trusted User Channel projection should retain the request body");
@@ -1132,9 +1135,9 @@ fn all_eight_action_kinds_create_one_canonical_pending_request() -> Result<(), B
         );
         let public_request_id = request_id(&response);
         assert_exact_agent_safe_request_result(&response, &public_request_id);
-        let projection = cli_user_channel_projection(&harness, &task_id)?;
-        let projected = projection
-            .items
+        let facts = local_pending_user_action_facts(&harness, &task_id)?;
+        let projected = facts
+            .actions
             .iter()
             .find(|item| item.request.user_action_request_id.as_str() == public_request_id)
             .expect("trusted User Channel projection should retain the canonical request");
@@ -1181,9 +1184,9 @@ fn all_eight_action_kinds_create_one_canonical_pending_request() -> Result<(), B
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     let public_request_id = request_id(&response);
     assert_exact_agent_safe_request_result(&response, &public_request_id);
-    let projection = cli_user_channel_projection(&harness, &task_id)?;
-    let projected = projection
-        .items
+    let facts = local_pending_user_action_facts(&harness, &task_id)?;
+    let projected = facts
+        .actions
         .iter()
         .find(|item| item.request.user_action_request_id.as_str() == public_request_id)
         .expect("trusted User Channel projection should retain the observation request");
@@ -1725,13 +1728,10 @@ fn same_connection_resume_replays_exact_origin_after_state_advance_and_denies_ot
         .expect("advanced state version");
     assert!(advanced_state_version > original_state_version);
 
-    let current = harness
-        .service
-        .current_user_action_projection(
-            &ProjectId::new(PROJECT_ID),
-            &volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
-        )?
-        .expect("origin should retain a current projection");
+    let current = available_current_user_action(harness.service.current_user_action_facts(
+        &ProjectId::new(PROJECT_ID),
+        &volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
+    )?)?;
     assert_eq!(current.observed_state_version, advanced_state_version);
     assert_eq!(
         current.observed_at,
@@ -2374,7 +2374,7 @@ fn current_projection_rejects_tampered_resolution_replay_context_and_output_with
             [PROJECT_ID],
             |row| row.get(0),
         )?;
-        let projection = harness.service.current_user_action_projection(
+        let projection = harness.service.current_user_action_facts(
             &ProjectId::new(PROJECT_ID),
             &UserActionRequestId::new(action_id),
         );
@@ -2528,13 +2528,10 @@ fn later_continuity_with_older_resolution_as_supplemental_source_does_not_pollut
     )?;
     let before = harness.counts()?;
 
-    let projection = harness
-        .service
-        .current_user_action_projection(
-            &ProjectId::new(PROJECT_ID),
-            &UserActionRequestId::new(first_action_id),
-        )?
-        .expect("first resolution projection remains readable");
+    let projection = available_current_user_action(harness.service.current_user_action_facts(
+        &ProjectId::new(PROJECT_ID),
+        &UserActionRequestId::new(first_action_id),
+    )?)?;
     assert_eq!(projection.derived_refs, expected_first_derived);
     assert_eq!(harness.counts()?, before);
     Ok(())
@@ -2625,19 +2622,27 @@ fn residual_risk_private_note_stays_only_in_resolution_body() -> Result<(), Box<
     )?;
     assert!(!status.response_json.contains(PRIVATE_NOTE));
 
-    let agent_safe = harness
-        .service
-        .current_user_action_projection(
-            &ProjectId::new(PROJECT_ID),
-            &volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
-        )?
-        .expect("resolved user action should have a current safe projection");
+    let agent_safe = available_current_user_action(harness.service.current_user_action_facts(
+        &ProjectId::new(PROJECT_ID),
+        &volicord_types::ids::UserActionRequestId::new(&user_action_request_id),
+    )?)?;
     assert_eq!(
         agent_safe.status,
         volicord_types::values::UserActionStatus::Resolved
     );
-    let agent_safe_json = serde_json::to_string(&agent_safe.user_action_resolution)?;
-    assert!(!agent_safe_json.contains(PRIVATE_NOTE));
+    let safe_resolution = agent_safe
+        .user_action_resolution
+        .expect("resolved facts should include the typed safe resolution");
+    let UserActionResolutionFactsBody::Choice {
+        selected_option_id,
+        resolution_outcome,
+        ..
+    } = safe_resolution.resolution
+    else {
+        panic!("residual-risk acceptance should retain typed choice facts");
+    };
+    assert_eq!(selected_option_id.as_str(), "accept");
+    assert_eq!(resolution_outcome, JudgmentResolutionOutcome::Accepted);
 
     let source_replay_response: String = harness.conn()?.query_row(
         "SELECT response_json

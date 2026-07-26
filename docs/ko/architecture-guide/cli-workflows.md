@@ -7,13 +7,13 @@
 
 | 단계 | 구현 책임 |
 |---|---|
-| 선언과 introspection | `volicord-command-model`이 완전한 Clap tree, 명령 DTO, value enum, 문법 validator, 공개/숨김 분류, 정규 synopsis, 명령 경로 순회를 담당합니다. |
+| 선언과 introspection | `volicord-command-model`이 완전한 Clap tree, 명령 DTO, value enum, 문법 validator, 공개/숨김 분류, 정규 synopsis, 명령 경로 순회, 그 tree에서 도출하는 typed 정규 invocation builder를 담당합니다. |
 | parse와 normalize | command model이 알 수 없거나 누락되거나 충돌하는 입력을 거부하고 `volicord-cli`에 명령 DTO를 제공합니다. |
 | context 해결 | Runtime Home, 정규 Product Repository, project, Agent Connection을 선택합니다. |
 | plan | 읽기 전용 검사가 정확한 파일과 Store 변경안을 만듭니다. |
 | validate | 관리 구성, Connection, session, 저장소, policy를 검사합니다. |
 | commit | 담당 문서가 정의한 원자적 filesystem/Store 경계를 사용합니다. |
-| render | 구조화된 결과에서 text 또는 JSON 문서 하나를 만듭니다. |
+| project와 render | `volicord-user-action-presentation`이 공유 CLI 지향 UserAction projection을 담당하고 `volicord-cli`가 구조화된 결과에서 terminal text 또는 JSON 문서 하나를 만듭니다. |
 
 Parsing과 rendering은 다른 Core 또는 Store 권한이 되면 안 됩니다.
 
@@ -58,10 +58,12 @@ Project 명령은 등록된 정규 Git 작업 트리를 해결합니다. Policy 
 
 ## UserAction 흐름
 
-`inbox`는 strict typed pending request를 읽고 로컬 사용자 소유 form을 표시합니다.
-`inbox resolve`는 저장 choice 또는 evidence observation 하나를
-`volicord.resolve_user_action`으로 제출합니다. MCP adapter는 요청을 만들거나 재개할
-수 있지만 이 해결 경로를 호출할 수 없습니다.
+`inbox`는 Core에 adapter-neutral pending fact를 요청합니다. 공유 UserAction
+presentation은 로컬 사용자 소유 form, channel availability, preferred capture path를
+만듭니다. Capture-path command는 이를 parsing하는 같은 Clap 선언에서 경로와 option
+spelling을 얻는 typed command-model invocation입니다. `inbox resolve`는 저장 choice
+또는 evidence observation 하나를 `volicord.resolve_user_action`으로 제출합니다.
+MCP adapter는 요청을 만들거나 재개할 수 있지만 이 해결 경로를 호출할 수 없습니다.
 
 Guard prompt 관찰은 CLI 답이 되지 않습니다. 손상된 저장 요청이나 resolution은 기본
 form 대신 영속 데이터 오류로 실패합니다.
@@ -83,8 +85,11 @@ diagnostic metadata를 권한 상태로 다시 parse하지 않습니다.
 
 - `volicord-command-model`은 Clap에만 의존합니다. Core, Store, MCP, CLI
   렌더링, Runtime Home 구현, application service에 의존하지 않습니다.
-- `volicord-cli`는 command model, Core, Store에 의존하며 이 크레이트들은
-  `volicord-cli`에 의존하지 않습니다.
+- `volicord-user-action-presentation`은 command model과 shared type에 의존합니다.
+  Core 정책, Store read, command 실행, terminal rendering, MCP envelope는 담당하지
+  않습니다.
+- `volicord-cli`는 command model, 공유 UserAction presentation, Core, Store에
+  의존하며 이 크레이트들은 `volicord-cli`에 의존하지 않습니다.
 - Codex별 구성은 adapter에 남습니다.
 - 어떤 명령도 네트워크 전송을 시작하지 않습니다.
 - 비대화형 명령은 사용자 판단을 제출하지 않습니다.

@@ -319,12 +319,14 @@ context, 후보, 비공개 form, note, submission identity, credential은 담을
 않습니다.
 
 
-Core는 엄격한 저장 요청에서 로컬 CLI User Channel 전용
-`UserActionInboxItem`과 form 하나를 도출합니다. Agent 대상 메서드 결과, status와
-close projection, replay, operation-result 조회에는 이 항목이 들어가지 않습니다. CLI는
-인자, 산문, adapter 로컬 상태에서 후보를 다시 만들면 안 됩니다. MCP는 요청을 만들거나
-재개하고 안전한 현재 projection을 관찰할 수 있지만 해결 form을 표시하거나 제출할 수
-없습니다.
+Core는 local consumer에 필요한 typed 저장 요청을 포함한 엄격한 adapter-neutral
+current fact를 반환합니다. 공유 adapter presentation은 이 fact에서 로컬 CLI User
+Channel 전용 `UserActionInboxItem`과 form 하나를 도출하며 capture-path syntax는
+정규 command model에서 얻습니다. Agent 대상 메서드 결과, status와 close
+projection, replay, operation-result 조회에는 이 항목이 들어가지 않습니다. CLI는
+인자, 산문, adapter 로컬 상태에서 후보를 다시 만들면 안 됩니다. MCP는 neutral
+current fact를 자체 safe projection으로 변환합니다. 요청을 만들거나 재개할 수
+있지만 해결 form을 표시하거나 제출할 수 없습니다.
 
 
 ## MCP 복합 projection

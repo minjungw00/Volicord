@@ -564,6 +564,152 @@ pub struct InboxResolveArgs {
     pub json: bool,
 }
 
+/// Typed answer arguments for one current inbox-resolution invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InboxResolutionArguments {
+    /// Identify the selected request without preselecting answer arguments.
+    Pending,
+    /// Submit one stored choice and an optional private note.
+    Choice {
+        choice: String,
+        note: Option<String>,
+    },
+    /// Submit one evidence observation over typed target and artifact coordinates.
+    EvidenceObservation {
+        target: InboxEvidenceTarget,
+        artifact_ids: Vec<String>,
+        summary: String,
+        contradicted: bool,
+    },
+}
+
+/// Typed target selector accepted by an evidence-observation resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InboxEvidenceTarget {
+    AcceptanceCriterion(String),
+    EvidenceClaim(String),
+}
+
+/// One typed invocation of the current `inbox resolve` command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxResolveInvocation {
+    user_action_request_id: String,
+    resolution: InboxResolutionArguments,
+}
+
+impl InboxResolveInvocation {
+    /// Constructs a typed current invocation.
+    pub fn new(
+        user_action_request_id: impl Into<String>,
+        resolution: InboxResolutionArguments,
+    ) -> Self {
+        Self {
+            user_action_request_id: user_action_request_id.into(),
+            resolution,
+        }
+    }
+
+    /// Returns the request coordinate carried by this invocation.
+    pub fn user_action_request_id(&self) -> &str {
+        &self.user_action_request_id
+    }
+
+    /// Returns the typed resolution arguments carried by this invocation.
+    pub const fn resolution(&self) -> &InboxResolutionArguments {
+        &self.resolution
+    }
+
+    /// Produces canonical argument tokens from the actual Clap declaration.
+    pub fn canonical_arguments(&self) -> Result<Vec<String>, CommandIntrospectionError> {
+        let root = root_command();
+        let command_path = find_unique_command_path_with_argument(&root, "user_action_request_id")
+            .ok_or_else(|| CommandIntrospectionError {
+                command_path: vec!["inbox-resolution".to_owned()],
+            })?;
+        let command =
+            find_command(&root, &command_path).ok_or_else(|| CommandIntrospectionError {
+                command_path: command_path.clone(),
+            })?;
+        let mut arguments = std::iter::once(root.get_name().to_owned())
+            .chain(command_path.iter().cloned())
+            .chain(std::iter::once(self.user_action_request_id.clone()))
+            .collect::<Vec<_>>();
+
+        match &self.resolution {
+            InboxResolutionArguments::Pending => {}
+            InboxResolutionArguments::Choice { choice, note } => {
+                append_declared_option_value(
+                    command,
+                    &command_path,
+                    "choice",
+                    choice,
+                    &mut arguments,
+                )?;
+                if let Some(note) = note {
+                    append_declared_option_value(
+                        command,
+                        &command_path,
+                        "note",
+                        note,
+                        &mut arguments,
+                    )?;
+                }
+            }
+            InboxResolutionArguments::EvidenceObservation {
+                target,
+                artifact_ids,
+                summary,
+                contradicted,
+            } => {
+                match target {
+                    InboxEvidenceTarget::AcceptanceCriterion(id) => {
+                        append_declared_option_value(
+                            command,
+                            &command_path,
+                            "criterion",
+                            id,
+                            &mut arguments,
+                        )?;
+                    }
+                    InboxEvidenceTarget::EvidenceClaim(id) => {
+                        append_declared_option_value(
+                            command,
+                            &command_path,
+                            "claim",
+                            id,
+                            &mut arguments,
+                        )?;
+                    }
+                }
+                for artifact_id in artifact_ids {
+                    append_declared_option_value(
+                        command,
+                        &command_path,
+                        "artifact",
+                        artifact_id,
+                        &mut arguments,
+                    )?;
+                }
+                append_declared_option_value(
+                    command,
+                    &command_path,
+                    "summary",
+                    summary,
+                    &mut arguments,
+                )?;
+                if *contradicted {
+                    append_declared_flag(command, &command_path, "contradicted", &mut arguments)?;
+                }
+            }
+        }
+
+        Cli::try_parse_from(&arguments).map_err(|_| CommandIntrospectionError {
+            command_path: command_path.clone(),
+        })?;
+        Ok(arguments)
+    }
+}
+
 #[derive(Debug, Args)]
 #[command(subcommand_required = true, arg_required_else_help = true)]
 pub struct EvidenceArgs {
@@ -947,6 +1093,72 @@ fn find_command<'a>(root: &'a ClapCommand, command_path: &[String]) -> Option<&'
     Some(command)
 }
 
+fn find_unique_command_path_with_argument(
+    root: &ClapCommand,
+    argument_id: &str,
+) -> Option<Vec<String>> {
+    fn collect(
+        command: &ClapCommand,
+        argument_id: &str,
+        path: &mut Vec<String>,
+        matches: &mut Vec<Vec<String>>,
+    ) {
+        if command
+            .get_arguments()
+            .any(|argument| argument.get_id().as_str() == argument_id)
+        {
+            matches.push(path.clone());
+        }
+        for subcommand in command.get_subcommands() {
+            path.push(subcommand.get_name().to_owned());
+            collect(subcommand, argument_id, path, matches);
+            path.pop();
+        }
+    }
+
+    let mut matches = Vec::new();
+    collect(root, argument_id, &mut Vec::new(), &mut matches);
+    (matches.len() == 1).then(|| matches.remove(0))
+}
+
+fn declared_long_option<'a>(
+    command: &'a ClapCommand,
+    argument_id: &str,
+    command_path: &[String],
+) -> Result<&'a str, CommandIntrospectionError> {
+    command
+        .get_arguments()
+        .find(|argument| argument.get_id().as_str() == argument_id)
+        .and_then(Arg::get_long)
+        .ok_or_else(|| CommandIntrospectionError {
+            command_path: command_path.to_vec(),
+        })
+}
+
+fn append_declared_option_value(
+    command: &ClapCommand,
+    command_path: &[String],
+    argument_id: &str,
+    value: &str,
+    arguments: &mut Vec<String>,
+) -> Result<(), CommandIntrospectionError> {
+    let long = declared_long_option(command, argument_id, command_path)?;
+    arguments.push(format!("--{long}"));
+    arguments.push(value.to_owned());
+    Ok(())
+}
+
+fn append_declared_flag(
+    command: &ClapCommand,
+    command_path: &[String],
+    argument_id: &str,
+    arguments: &mut Vec<String>,
+) -> Result<(), CommandIntrospectionError> {
+    let long = declared_long_option(command, argument_id, command_path)?;
+    arguments.push(format!("--{long}"));
+    Ok(())
+}
+
 fn canonical_invocation(
     root: &ClapCommand,
     command_path: &CommandPath,
@@ -1314,6 +1526,99 @@ mod tests {
                     invocation.command_path()
                 )
             });
+        }
+    }
+
+    #[test]
+    fn typed_inbox_resolution_invocations_round_trip_through_clap() {
+        let invocations = [
+            InboxResolveInvocation::new("user_action_pending", InboxResolutionArguments::Pending),
+            InboxResolveInvocation::new(
+                "user_action_choice",
+                InboxResolutionArguments::Choice {
+                    choice: "accept".to_owned(),
+                    note: Some("approved locally".to_owned()),
+                },
+            ),
+            InboxResolveInvocation::new(
+                "user_action_observation",
+                InboxResolutionArguments::EvidenceObservation {
+                    target: InboxEvidenceTarget::EvidenceClaim("claim_1".to_owned()),
+                    artifact_ids: vec!["artifact_1".to_owned(), "artifact_2".to_owned()],
+                    summary: "Observed the current artifacts.".to_owned(),
+                    contradicted: true,
+                },
+            ),
+            InboxResolveInvocation::new(
+                "user_action_criterion_observation",
+                InboxResolutionArguments::EvidenceObservation {
+                    target: InboxEvidenceTarget::AcceptanceCriterion("criterion_1".to_owned()),
+                    artifact_ids: vec!["artifact_3".to_owned()],
+                    summary: "Observed the current criterion.".to_owned(),
+                    contradicted: false,
+                },
+            ),
+        ];
+
+        for invocation in invocations {
+            let arguments = invocation
+                .canonical_arguments()
+                .expect("typed current invocation should materialize");
+            let parsed = Cli::try_parse_from(&arguments)
+                .expect("canonical tokens should parse through the actual command model");
+            let Some(Command::Inbox(InboxArgs {
+                command: Some(InboxCommand::Resolve(parsed)),
+                ..
+            })) = parsed.command
+            else {
+                panic!("canonical tokens selected the wrong command");
+            };
+            assert_eq!(
+                parsed.user_action_request_id,
+                invocation.user_action_request_id()
+            );
+            match invocation.resolution() {
+                InboxResolutionArguments::Choice { choice, note } => {
+                    assert_eq!(parsed.choice.as_deref(), Some(choice.as_str()));
+                    assert_eq!(parsed.note.as_deref(), note.as_deref());
+                    assert!(parsed.criterion.is_none());
+                    assert!(parsed.claim.is_none());
+                    assert!(parsed.artifact.is_empty());
+                    assert!(parsed.summary.is_none());
+                    assert!(!parsed.contradicted);
+                }
+                InboxResolutionArguments::EvidenceObservation {
+                    target,
+                    artifact_ids,
+                    summary,
+                    contradicted,
+                } => {
+                    match target {
+                        InboxEvidenceTarget::AcceptanceCriterion(id) => {
+                            assert_eq!(parsed.criterion.as_deref(), Some(id.as_str()));
+                            assert!(parsed.claim.is_none());
+                        }
+                        InboxEvidenceTarget::EvidenceClaim(id) => {
+                            assert_eq!(parsed.claim.as_deref(), Some(id.as_str()));
+                            assert!(parsed.criterion.is_none());
+                        }
+                    }
+                    assert_eq!(parsed.artifact.as_slice(), artifact_ids.as_slice());
+                    assert_eq!(parsed.summary.as_deref(), Some(summary.as_str()));
+                    assert_eq!(parsed.contradicted, *contradicted);
+                    assert!(parsed.choice.is_none());
+                    assert!(parsed.note.is_none());
+                }
+                InboxResolutionArguments::Pending => {
+                    assert!(parsed.choice.is_none());
+                    assert!(parsed.note.is_none());
+                    assert!(parsed.criterion.is_none());
+                    assert!(parsed.claim.is_none());
+                    assert!(parsed.artifact.is_empty());
+                    assert!(parsed.summary.is_none());
+                    assert!(!parsed.contradicted);
+                }
+            }
         }
     }
 

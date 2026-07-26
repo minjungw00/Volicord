@@ -8,13 +8,13 @@ CLI. Exact command behavior belongs to
 
 | Stage | Implementation responsibility |
 |---|---|
-| declare and inspect | `volicord-command-model` owns the complete Clap tree, command DTOs, value enums, syntax validators, public/hidden classification, canonical synopses, and command-path traversal |
+| declare and inspect | `volicord-command-model` owns the complete Clap tree, command DTOs, value enums, syntax validators, public/hidden classification, canonical synopses, command-path traversal, and typed canonical invocation builders derived from that tree |
 | parse and normalize | the command model rejects unknown, missing, or conflicting input and produces command DTOs for `volicord-cli` |
 | resolve context | Runtime Home, canonical Product Repository, project, and Agent Connection selection |
 | plan | read-only inspection builds exact proposed file and Store changes |
 | validate | managed configuration, Connection, session, storage, and policy checks |
 | commit | one owner-defined atomic filesystem/Store boundary |
-| render | text or one JSON document from the structured result |
+| project and render | `volicord-user-action-presentation` owns shared CLI-oriented UserAction projection; `volicord-cli` owns terminal text or one JSON document from structured results |
 
 Parsing and rendering must not become alternate Core or Store authorities.
 
@@ -66,10 +66,13 @@ authority from a display name or repairs unknown stored values.
 
 ## UserAction Workflow
 
-`inbox` reads strict typed pending requests and renders the local user-owned
-form. `inbox resolve` submits one stored choice or evidence observation through
-`volicord.resolve_user_action`. The MCP adapter can create or resume a request
-but cannot call this resolution path.
+`inbox` asks Core for adapter-neutral pending facts. Shared UserAction
+presentation builds the local user-owned form, channel availability, and
+preferred capture path. The capture-path command is a typed command-model
+invocation whose path and option spellings come from the same Clap declaration
+that parses it. `inbox resolve` submits one stored choice or evidence
+observation through `volicord.resolve_user_action`. The MCP adapter can create
+or resume a request but cannot call this resolution path.
 
 Guard prompt observations never become a CLI answer. Corrupt stored request or
 resolution data fails with a persisted-data error rather than a default form.
@@ -93,8 +96,11 @@ authority state.
 - `volicord-command-model` depends only on Clap. It does not depend on Core,
   Store, MCP, CLI rendering, Runtime Home implementation, or application
   services.
-- `volicord-cli` depends on the command model, Core, and Store; none of those
-  crates depends on `volicord-cli`.
+- `volicord-user-action-presentation` depends on the command model and shared
+  types. It owns no Core policy, Store read, command execution, terminal
+  rendering, or MCP envelope.
+- `volicord-cli` depends on the command model, shared UserAction presentation,
+  Core, and Store; none of those crates depends on `volicord-cli`.
 - Codex-specific configuration remains in the adapter.
 - No command starts a network transport.
 - No noninteractive command supplies user judgment.

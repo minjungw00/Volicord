@@ -9,18 +9,21 @@ must preserve those contracts.
 Read the workspace from the outside inward:
 
 1. `volicord-command-model` owns the complete Clap command declaration,
-   command DTOs, syntax validation, visibility, and command introspection.
-2. `volicord-cli` owns process startup, administrative command dispatch, Codex
+   command DTOs, syntax validation, visibility, command introspection, and
+   typed canonical invocation builders.
+2. `volicord-user-action-presentation` owns shared CLI-oriented projection from
+   adapter-neutral UserAction facts.
+3. `volicord-cli` owns process startup, administrative command dispatch, Codex
    connection setup, the CLI inbox, rendering, and stdio process launch.
-3. `volicord-mcp` owns MCP lifecycle, JSON-RPC stdio framing, public tool
+4. `volicord-mcp` owns MCP lifecycle, JSON-RPC stdio framing, public tool
    decoding, and response projection.
-4. `volicord-core` owns method planning, policy, replay decisions, authority
+5. `volicord-core` owns method planning, policy, replay decisions, authority
    results, and atomic commit orchestration.
-5. `volicord-store` owns Runtime Home discovery, SQLite access, strict stored
+6. `volicord-store` owns Runtime Home discovery, SQLite access, strict stored
    record validation, and transaction application.
-6. `volicord-types` owns shared closed values, identifiers, and canonical
+7. `volicord-types` owns shared closed values, identifiers, and canonical
    encodings.
-7. `volicord-platform-fs` owns platform-specific filesystem inspection behind
+8. `volicord-platform-fs` owns platform-specific filesystem inspection behind
    a narrow internal facade.
 
 Core-facing code does not depend on CLI or MCP adapter details. Adapters derive
@@ -94,9 +97,11 @@ the Record-profile stdio boundary.
 ## Start With User-Owned Action
 
 `volicord.request_user_action` creates or resumes the pending Core request.
-The local CLI inbox renders the strict stored form and invokes the separate
-user-only resolution path. MCP never renders or submits that form. Guard prompt
-capture is an observation source only.
+The local CLI inbox reads adapter-neutral Core facts, uses shared presentation
+and a canonical command-model invocation to render the strict stored form, and
+invokes the separate user-only resolution path. MCP constructs its own safe
+projection and never renders or submits that form. Guard prompt capture is an
+observation source only.
 
 Read the exact contracts in
 [User Action Schemas](../reference/api/schema-user-action.md),

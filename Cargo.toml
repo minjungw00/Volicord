@@ -6,6 +6,7 @@ members = [
     "crates/volicord-store",
     "crates/volicord-core",
     "crates/volicord-command-model",
+    "crates/volicord-user-action-presentation",
     "crates/volicord-cli",
     "crates/volicord-mcp",
     "crates/volicord-platform-fs",
@@ -33,6 +34,7 @@ volicord-mcp-protocol = { group = "mcp-protocol" }
 volicord-store = { group = "storage" }
 volicord-core = { group = "core" }
 volicord-command-model = { group = "command-model" }
+volicord-user-action-presentation = { group = "adapter-presentation" }
 volicord-cli = { group = "cli-adapter" }
 volicord-mcp = { group = "mcp-adapter" }
 volicord-platform-fs = { group = "platform-filesystem" }
@@ -118,6 +120,15 @@ normal = []
 development = []
 build = []
 
+[workspace.metadata.architecture.groups.adapter-presentation]
+description = "Shared UserAction presentation for CLI-capable adapters."
+kind = "production"
+boundary = "adapter"
+core_dependency = "forbidden"
+normal = ["shared-types", "command-model"]
+development = []
+build = []
+
 [workspace.metadata.architecture.groups.mcp-adapter]
 description = "MCP transport and Core invocation adapter."
 kind = "production"
@@ -127,6 +138,7 @@ normal = [
     "shared-types",
     "host-contract",
     "mcp-protocol",
+    "adapter-presentation",
     "platform-filesystem",
     "storage",
     "core",
@@ -144,6 +156,7 @@ normal = [
     "host-contract",
     "mcp-protocol",
     "command-model",
+    "adapter-presentation",
     "platform-filesystem",
     "platform-process",
     "storage",
