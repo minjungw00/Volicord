@@ -120,7 +120,9 @@
 | `crates/volicord-core/src/methods/close_task.rs` | 닫기 메서드 계획과 닫기 준비 상태 증거 해석을 메서드 차단 사유 및 결과로 변환하는 책임. |
 | `crates/volicord-core/src/methods/update_scope.rs` | 닫기 준비 상태 증거 정책 담당 모듈을 통한 범위 갱신 계획과 투영 증거 요약 완성. |
 | `crates/volicord-core/src/methods/status.rs` | 공유 Core 투영 경로를 통해 닫기 준비 상태 증거 정책을 사용하는 읽기 전용 상태 투영. |
-| `crates/volicord-core/src/methods/user_action.rs` | UserAction 메서드 경계와 Core 소유 User Channel projection. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 inbox resolution snapshot을 얻는 경계를 포함합니다. |
+| `crates/volicord-core/src/methods/user_actions.rs` | 의미 검증, 정규 typed request 구성, identity 할당과 Store mutation 구체화, 엄격한 권한 해석, 현재 pending·inbox·agent-safe·lifecycle·User Channel 안내 projection을 담당하는 UserAction 서비스. |
+| `crates/volicord-core/src/methods/user_action.rs` | 직접 UserAction request/resume, inbox, resolution 메서드 조율. 승인된 로컬 consumer가 이미 연 Store를 재사용해 일관된 inbox resolution snapshot을 얻는 경계를 포함합니다. |
+| `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation별 계획. 해결되지 않은 변경에 typed pending action이 필요할 때 UserAction 서비스를 직접 사용합니다. |
 | `crates/volicord-core/src/policy/` | 책임별 재사용 정책. 메서드 구현은 형제 메서드 모듈에서 공유 정책을 얻지 않고 이 담당 모듈을 직접 사용합니다. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Typed 사실에 대한 순수 증거 출처 및 보증 수준 분류. |
 | `crates/volicord-core/src/policy/evidence_relevance.rs` | 순수 증거 관련성 및 뒷받침 여부 분류. |

@@ -193,6 +193,33 @@ external crate from calling the internal opens or constructing a detached
 mutation context. Compile-fail coverage protects both inaccessible Store entry
 points and the permit-bound context lifetime.
 
+## Core UserAction ownership
+
+`crates/volicord-core/src/methods/user_actions.rs` is the responsibility-owned
+service for current UserAction construction and materialization. A calling
+method supplies typed semantic action intent and current domain facts. The
+service validates that input, constructs the canonical typed
+`UserActionRequestBody` and `UserActionBasis`, allocates the request identity,
+and returns the public request, effective Store record, and typed
+`CoreStorageMutation`. Serialization occurs while materializing the Store
+boundary rather than in method callers.
+
+The same owner provides strict stored-authority interpretation and domain-owned
+pending, inbox, agent-safe, operation-blocking, and lifecycle projections.
+It also owns the shared current User Channel guidance. `user_action.rs` retains
+direct request/resume, inbox, and resolution
+orchestration. `reconcile_changes.rs` and other consumers call the service
+directly and decide how its typed result participates in their own plan and
+response. Production method modules do not use sibling method implementations
+as reusable libraries.
+
+Exact public behavior and schema meaning remain with
+[Request User Action](../reference/api/method-request-user-action.md),
+[Resolve User Action](../reference/api/method-resolve-user-action.md),
+[Reconcile Changes](../reference/api/method-reconcile-changes.md), and
+[User Action Schemas](../reference/api/schema-user-action.md). Store records and
+effects remain with the focused [storage owners](../reference/storage.md).
+
 ## Core evidence and close-readiness boundaries
 
 Core separates evidence fact acquisition from evidence policy evaluation.

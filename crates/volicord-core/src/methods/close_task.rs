@@ -2,13 +2,14 @@ use super::close_guidance::close_next_action;
 use super::close_readiness::{
     assess_close_readiness, CloseReadinessAssessment, CloseReadinessFacts, CloseReadinessRequest,
 };
+use super::user_actions::agent_safe_pending_user_action_summaries;
 use super::{
-    active_acceptance_criteria_for_task, agent_safe_pending_user_action_summaries,
-    build_state_summary, changes_summary_text, close_state_text, decode_required_json_object,
-    dry_run_summary, elapsed_micros, evidence_gate_summary_text, evidence_summary_for_display,
-    guarantee_display_from_profile, mutation_method_policy, object_from_value, parse_task_mode,
-    plan_error_response, plan_project_continuity_record, prepare_or_response, primary_next_action,
-    profile_summary_text, projected_write_ticket_summary, record_core_workflow_metric_best_effort,
+    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
+    close_state_text, decode_required_json_object, dry_run_summary, elapsed_micros,
+    evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_from_profile,
+    mutation_method_policy, object_from_value, parse_task_mode, plan_error_response,
+    plan_project_continuity_record, prepare_or_response, primary_next_action, profile_summary_text,
+    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
     response_committed_fresh_effect, state_ref, summary_card_for_core, validation_rejected,
     write_ticket_summary_text, CloseTaskPlan, PlanError, PlannedProjectContinuityRecord,
     ProjectContinuityDraft, ProjectContinuityPlanContext, SummaryBuild, SummaryCardBuild,

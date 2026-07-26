@@ -14,6 +14,11 @@ agent-facing request and resume path. The local CLI inbox obtains a typed
 `UserChannelInboxProjection`, renders the stored capture form, and submits an
 explicit local-user resolution through Core.
 
+The Core UserAction service validates typed action intent, constructs and
+materializes the canonical request, interprets current authority, and projects
+domain-owned pending state and User Channel guidance. The direct UserAction
+method module owns request/resume, inbox, and resolution orchestration.
+
 Core policy modules evaluate current basis, action relevance, actor
 provenance, and close or write compatibility. Adapters do not infer judgment
 from chat text, summary text, or a model-authored recommendation.
@@ -31,9 +36,12 @@ from chat text, summary text, or a model-authored recommendation.
 
 ## Responsibility boundaries
 
-Core owns the typed request/resolution transition and policy evaluation.
+The Core UserAction service owns shared request construction,
+materialization, authority interpretation, and domain projection. The direct
+method module owns the typed public request/resolution transition and
+request-specific composition. Core policy modules own pure policy evaluation.
 `volicord-cli` owns the local User Channel presentation and explicit choice
-collection. `volicord-mcp` owns the agent-safe projection and fallback
+collection. `volicord-mcp` owns the agent-safe adapter projection and fallback
 guidance. Store owns strict request and resolution records and coherent
 resolution snapshots.
 
@@ -63,8 +71,11 @@ require one UI for every host and does not make ordinary chat a User Channel.
 
 ## Implementation routes
 
+- [`crates/volicord-core/src/methods/user_actions.rs`](../../../../crates/volicord-core/src/methods/user_actions.rs):
+  typed request construction and materialization, current authority
+  interpretation, domain projection, and User Channel guidance.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
-  request, inbox, and resolution planning.
+  direct request/resume, inbox, and resolution orchestration.
 - [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../../crates/volicord-core/src/policy/user_action_relevance.rs)
   and [`policy/close_readiness.rs`](../../../../crates/volicord-core/src/policy/close_readiness.rs):
   current relevance and authority evaluation.

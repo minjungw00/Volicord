@@ -175,6 +175,30 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 호출 및 분리된 변경 context 구성을 막습니다. Compile-fail coverage는 접근할 수
 없는 Store 진입점과 permit에 결속된 context 수명을 함께 보호합니다.
 
+## Core UserAction 담당 경계
+
+`crates/volicord-core/src/methods/user_actions.rs`는 현재 UserAction 구성과 구체화를
+담당하는 책임별 서비스입니다. 호출 메서드는 typed 의미 행동 의도와 현재 도메인
+사실을 제공합니다. 서비스는 입력을 검증하고 정규 typed
+`UserActionRequestBody`와 `UserActionBasis`를 구성하며 request identity를 할당한
+뒤 공개 request, 유효 Store record, typed `CoreStorageMutation`을 반환합니다.
+직렬화는 메서드 caller가 아니라 Store 경계를 구체화할 때 수행합니다.
+
+같은 담당 모듈은 저장된 권한의 엄격한 해석과 도메인 소유 pending, inbox,
+agent-safe, 연산 차단, lifecycle projection 및 공유하는 현재 User Channel 안내도
+제공합니다. `user_action.rs`는 직접 request/resume, inbox, resolution 조율만
+유지합니다. `reconcile_changes.rs`와
+다른 consumer는 서비스를 직접 호출하고 typed 결과를 각자 plan과 응답에
+반영하는 방식을 결정합니다. 프로덕션 메서드 모듈은 형제 메서드 구현을 재사용
+라이브러리로 사용하지 않습니다.
+
+정확한 공개 동작과 스키마 의미는
+[사용자 행동 요청](../reference/api/method-request-user-action.md),
+[사용자 행동 해결](../reference/api/method-resolve-user-action.md),
+[변경 조정](../reference/api/method-reconcile-changes.md),
+[사용자 행동 스키마](../reference/api/schema-user-action.md)에 남습니다. Store
+기록과 효과는 집중 [저장소 담당 문서](../reference/storage.md)에 남습니다.
+
 ## Core 증거 및 닫기 준비 상태 경계
 
 Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.

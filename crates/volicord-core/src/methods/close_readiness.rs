@@ -1,18 +1,21 @@
 use super::close_blockers::{
     close_blocker, normalize_close_blockers, open_write_ticket_close_blocker,
 };
-use super::close_guidance::{close_next_action, user_channel_pending_action_instruction};
+use super::close_guidance::close_next_action;
 use super::evidence_facts::{
     load_close_evidence_summary_facts, load_required_evidence_criterion_ids,
     projected_evidence_observation_provenance_facts, stored_evidence_observation_capture_relevance,
     stored_evidence_observation_provenance_facts,
 };
+use super::user_actions::{
+    pending_user_action_authorities_for_plan, resolved_user_action_authorities_for_plan,
+    user_channel_pending_action_instruction,
+};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, change_unit_effect_contract,
     change_unit_ref, decode_required_json, effective_write_ticket_status,
     evidence_summary_for_display, no_active_task_response, parse_acceptance_policy,
-    parse_owner_storage_value, pending_user_action_authorities_for_plan,
-    persistent_artifact_is_verified_current, resolved_user_action_authorities_for_plan, state_ref,
+    parse_owner_storage_value, persistent_artifact_is_verified_current, state_ref,
     state_ref_from_stored, store_error_response, stored_refs_to_state_refs,
     write_ticket_is_current_for_projection, write_ticket_ref, PersistedLifecycleState, PlanError,
     StoredScope,

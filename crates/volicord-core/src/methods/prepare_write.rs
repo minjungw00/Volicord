@@ -1,16 +1,18 @@
 use super::close_blockers::{normalize_close_blockers, open_write_ticket_close_blocker};
 use super::close_readiness::{facts_from_projection, plan_projected_close_readiness};
+use super::user_actions::{
+    pending_user_action_authorities_for_plan, user_action_authority_from_record,
+};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_write_ticket_id,
     baseline_matches, build_state_summary, change_unit_effect_contract, change_unit_ref,
     decode_required_json, guarantee_display_for_invocation, infallible_rejected_pipeline_response,
     matching_sensitive_approval, object_from_value, parse_acceptance_policy,
     parse_owner_storage_value, parse_task_mode, parse_work_phase, paths_match_current_change_unit,
-    pending_user_action_authorities_for_plan, plan_error_response, prepare_or_response,
-    project_state_projection, projected_close_basis, projected_evidence_summary,
-    record_core_workflow_metric_best_effort, rejected_pipeline_response,
-    resolve_prepare_write_task, response_committed_fresh_effect, state_ref, state_ref_from_stored,
-    store_error_response, user_action_authority_from_record, validate_prepare_write_change_unit,
+    plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
+    projected_evidence_summary, record_core_workflow_metric_best_effort,
+    rejected_pipeline_response, resolve_prepare_write_task, response_committed_fresh_effect,
+    state_ref, state_ref_from_stored, store_error_response, validate_prepare_write_change_unit,
     validation_rejected, workspace_context_matches, write_ticket_summary_for_record,
     PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan, SensitiveApprovalSearch,
     SummaryBuild,

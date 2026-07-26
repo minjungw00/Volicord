@@ -1,17 +1,18 @@
 use super::close_guidance::close_next_action;
 use super::close_readiness::{plan_close_readiness, CloseReadinessRequest};
+use super::user_actions::{
+    agent_safe_pending_user_action_summaries, projected_pending_user_action_refs,
+};
 use super::{
-    acceptance_policy_storage, active_acceptance_criteria_for_task,
-    agent_safe_pending_user_action_summaries, build_state_summary, changes_summary_text,
-    close_state_summary_text, core_error_response, evidence_gate_summary_text,
-    evidence_summary_for_display, guarantee_display_from_profile, next_actions_for_state,
-    normalize_next_action_collection, parse_lifecycle_phase, parse_owner_storage_value,
-    parse_task_lineage_relation, parse_task_mode, parse_work_phase, plan_error_response,
-    prepare_or_response, primary_next_action, profile_summary_text,
+    acceptance_policy_storage, active_acceptance_criteria_for_task, build_state_summary,
+    changes_summary_text, close_state_summary_text, core_error_response,
+    evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_from_profile,
+    next_actions_for_state, normalize_next_action_collection, parse_lifecycle_phase,
+    parse_owner_storage_value, parse_task_lineage_relation, parse_task_mode, parse_work_phase,
+    plan_error_response, prepare_or_response, primary_next_action, profile_summary_text,
     project_continuity_summary_from_record, projected_blocker_refs, projected_evidence_summary,
-    projected_pending_user_action_refs, projected_write_ticket_summary, state_ref,
-    summary_card_for_core, validation_plan_error, write_ticket_summary_text, PlanError,
-    SummaryBuild, SummaryCardBuild,
+    projected_write_ticket_summary, state_ref, summary_card_for_core, validation_plan_error,
+    write_ticket_summary_text, PlanError, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,

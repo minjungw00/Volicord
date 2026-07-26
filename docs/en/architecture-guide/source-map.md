@@ -120,7 +120,9 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-core/src/methods/close_task.rs` | Close method planning and translation of close-readiness evidence interpretation into method blockers and results. |
 | `crates/volicord-core/src/methods/update_scope.rs` | Scope-update planning and projected evidence-summary completion through the close-readiness evidence policy owner. |
 | `crates/volicord-core/src/methods/status.rs` | Read-only status projection, including consumption of shared close-readiness evidence policy through Core projection paths. |
-| `crates/volicord-core/src/methods/user_action.rs` | UserAction method boundaries and Core-owned User Channel projection, including Store-reusing coherent inbox-resolution snapshots for admitted local consumers. |
+| `crates/volicord-core/src/methods/user_actions.rs` | Responsibility-owned UserAction service for semantic validation, canonical typed request construction, identity allocation and Store-mutation materialization, strict authority interpretation, and current pending, inbox, agent-safe, lifecycle, and User Channel guidance projection. |
+| `crates/volicord-core/src/methods/user_action.rs` | Direct UserAction request/resume, inbox, and resolution method orchestration, including Store-reusing coherent inbox-resolution snapshots for admitted local consumers. |
+| `crates/volicord-core/src/methods/reconcile_changes.rs` | Reconciliation-specific planning, including direct consumption of the UserAction service when unresolved changes require typed pending actions. |
 | `crates/volicord-core/src/policy/` | Responsibility-owned reusable policy. Method implementations consume these owners directly rather than obtaining shared policy from sibling method modules. |
 | `crates/volicord-core/src/policy/evidence_provenance.rs` | Pure evidence provenance and assurance classification over typed facts. |
 | `crates/volicord-core/src/policy/evidence_relevance.rs` | Pure evidence relevance and support classification. |

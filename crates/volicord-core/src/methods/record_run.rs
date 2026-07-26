@@ -8,6 +8,10 @@ use super::evidence_facts::{
     stored_evidence_observation_provenance_facts, stored_evidence_observation_relevance,
     user_action_observation_resolution_authority, validate_capture_receipt_record,
 };
+use super::user_actions::{
+    pending_user_action_authorities_for_plan, pending_user_action_refs_for_operation,
+    projected_user_action_lifecycle_phase, user_action_authority_from_record,
+};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_artifact_id,
     allocate_evidence_observation_id, allocate_evidence_producer_id, allocate_evidence_summary_id,
@@ -19,18 +23,16 @@ use super::{
     first_product_write_duration_micros, guarantee_display_for_invocation, mutation_method_policy,
     no_active_change_unit_response, no_active_task_response, normalize_source_refs,
     object_from_value, parse_acceptance_policy, parse_owner_storage_value, parse_storage_value,
-    parse_task_mode, parse_work_phase, pending_user_action_authorities_for_plan,
-    pending_user_action_refs_for_operation, persistent_artifact_is_verified_current,
+    parse_task_mode, parse_work_phase, persistent_artifact_is_verified_current,
     plan_error_response, prepare_or_response, project_state_projection,
-    projected_evidence_summary_for_criteria, projected_user_action_lifecycle_phase,
-    projected_write_ticket_summary, record_core_workflow_metric_best_effort, redaction_state_value,
-    rejected_pipeline_response, response_committed_fresh_effect, sorted_unique, state_ref,
-    state_ref_from_stored, storage_value, store_error_response, string_member,
-    task_lifecycle_mutation, user_action_authority_from_record, validation_plan_error,
-    validation_rejected, workspace_context_matches, workspace_stale_response,
-    write_ticket_invalid_response, write_ticket_ref, write_ticket_required_response,
-    write_ticket_summary_for_record, MethodPlan, PersistedWriteBasis,
-    PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
+    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
+    record_core_workflow_metric_best_effort, redaction_state_value, rejected_pipeline_response,
+    response_committed_fresh_effect, sorted_unique, state_ref, state_ref_from_stored,
+    storage_value, store_error_response, string_member, task_lifecycle_mutation,
+    validation_plan_error, validation_rejected, workspace_context_matches,
+    workspace_stale_response, write_ticket_invalid_response, write_ticket_ref,
+    write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
+    PersistedWriteBasis, PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,

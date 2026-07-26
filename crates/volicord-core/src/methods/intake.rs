@@ -1,6 +1,7 @@
 use super::close_readiness::{
     facts_from_projection, facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
+use super::user_actions::projected_pending_user_action_refs;
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task,
     allocate_acceptance_criterion_id, allocate_task_id, build_state_summary,
@@ -10,11 +11,10 @@ use super::{
     normalize_source_refs_with_carried_artifact_task, object_from_value, parse_owner_storage_value,
     parse_task_mode, plan_error_response, prepare_or_response, project_continuity_ref,
     project_state_projection, projected_blocker_refs, projected_close_basis,
-    projected_evidence_summary_for_criteria, projected_pending_user_action_refs,
-    projected_write_ticket_summary, resolve_requested_mode, state_ref, storage_value,
-    task_lineage_relation_storage, task_mode_storage, task_shaping_json, validation_rejected,
-    work_phase_storage, MethodPlan, PersistedTaskShaping, PersistedWriteBasis, PlanError,
-    StoredScope, SummaryBuild,
+    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
+    resolve_requested_mode, state_ref, storage_value, task_lineage_relation_storage,
+    task_mode_storage, task_shaping_json, validation_rejected, work_phase_storage, MethodPlan,
+    PersistedTaskShaping, PersistedWriteBasis, PlanError, StoredScope, SummaryBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,

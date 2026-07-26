@@ -18,7 +18,3 @@ pub(super) fn close_next_action(
         required_refs,
     }
 }
-
-pub(super) fn user_channel_pending_action_instruction() -> String {
-    "Use `volicord inbox` through the User Channel to list and resolve pending actions.".to_owned()
-}

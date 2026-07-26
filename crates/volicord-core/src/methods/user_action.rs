@@ -2,22 +2,25 @@ use super::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_authorities,
     plan_projected_close_readiness,
 };
+use super::user_actions::{
+    canonical_user_action_artifacts, construct_user_action, materialize_user_action_request,
+    pending_user_action_authorities_for_plan, projected_user_action_lifecycle_phase,
+    resolved_user_action_authorities_for_all_kinds, user_action_authority_from_record,
+    user_action_from_record, user_action_inbox_item_from_request, user_action_validation_error,
+    user_channel_availability, validate_user_action_target, UserActionConstructionInput,
+    UserActionIntent, UserActionMaterializationInput, UserActionOrigin,
+};
 use super::{
-    active_acceptance_criteria_for_task, allocate_user_action_request_id,
-    allocate_user_action_resolution_id, artifact_ref_from_verified_record, build_state_summary,
-    checked_derived_expiration, decision_rejected_response, decode_required_json, dry_run_summary,
+    active_acceptance_criteria_for_task, allocate_user_action_resolution_id, build_state_summary,
+    decision_rejected_response, decode_required_json, dry_run_summary,
     evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
     next_actions_for_state, no_active_change_unit_response, no_active_task_response,
     normalize_display_text, object_from_value, parse_owner_storage_value, parse_task_mode,
-    pending_user_action_authorities_for_plan, persistent_artifact_is_verified_current,
     plan_error_response, plan_project_continuity_record, prepare_or_response,
     project_state_projection, projected_blocker_refs, projected_close_basis,
-    projected_evidence_summary, projected_user_action_lifecycle_phase,
-    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
-    rejected_pipeline_response, resolved_user_action_authorities_for_all_kinds,
+    projected_evidence_summary, projected_write_ticket_summary,
+    record_core_workflow_metric_best_effort, rejected_pipeline_response,
     response_committed_fresh_effect, state_ref, state_ref_from_stored, task_lifecycle_mutation,
-    user_action_authority_from_record, user_action_from_record,
-    user_action_inbox_item_from_request, user_channel_availability, validation_plan_error,
     validation_rejected, MethodPlan, PlanError, PlannedProjectContinuityRecord,
     ProjectContinuityDraft, ProjectContinuityPlanContext, StoredScope, SummaryBuild,
 };
@@ -26,29 +29,26 @@ use crate::pipeline::{
     InvocationContext, MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse,
     ReplayPolicy, TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
 };
-use crate::policy::close_readiness::{current_acceptance_required_risk_ids, UserActionAuthority};
+use crate::policy::close_readiness::UserActionAuthority;
 use crate::policy::continuity::{decision_title_prefix, judgment_continuity_kind};
 use crate::policy::evidence::state_record_ref_identity_key;
-use crate::policy::write_ticket::normalize_sensitive_action_scope;
 use crate::{
     CurrentUserActionProjection, UserChannelInboxProjection, UserChannelInboxProjectionItem,
     UserChannelInboxProjectionRequest, UserChannelInboxResolutionSnapshot,
 };
-use chrono::Duration;
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
     ProjectContinuityRecordRecord, ProjectStateHeader, TaskRecord, ToolInvocationRecord,
-    UserActionMutation, UserActionRequestInsert, UserActionRequestRecord,
-    UserActionResolutionInsert, UserActionResolutionRecord,
+    UserActionMutation, UserActionResolutionInsert, UserActionResolutionRecord,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::error::{StoreError, StoreResult};
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{
-    ArtifactId, BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RequestId, RiskId, TaskId,
-    UserActionOptionId, UserActionRequestId, UserActionResolutionId,
+    BaselineRef, ChangeUnitId, IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId,
+    UserActionResolutionId,
 };
 use volicord_types::methods::{
     AgentSafeUserActionResolution, McpUserActionResolutionSummary, MethodOperationCategory,
@@ -56,21 +56,17 @@ use volicord_types::methods::{
     ResolveUserActionRequest, ResolveUserActionResult, ResolveUserActionResultFields,
 };
 use volicord_types::schema::{
-    validate_channel_submission_id, AgentSafeUserActionRequestSummary, ArtifactRef, EvidenceTarget,
+    validate_channel_submission_id, AgentSafeUserActionRequestSummary, ArtifactRef,
     NextActionSummary, PersistedUserActionRequest, PersistedUserActionResolution, RequiredNullable,
-    StateRecordRef, StateSummary, ToolEnvelope, UserActionBasis, UserActionBasisCoordinates,
-    UserActionChoiceBasis, UserActionChoiceDraft, UserActionChoiceRequestBody, UserActionDraft,
-    UserActionEvidenceObservation, UserActionEvidenceObservationBasis,
-    UserActionEvidenceObservationDraft, UserActionEvidenceObservationRequestBody, UserActionOption,
-    UserActionOptionInput, UserActionRequest, UserActionRequestBody, UserActionResolution,
-    UserActionResolutionBody, UserActionResolutionInput,
-    USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES,
+    StateRecordRef, StateSummary, ToolEnvelope, UserActionBasis, UserActionEvidenceObservation,
+    UserActionRequest, UserActionRequestBody, UserActionResolution, UserActionResolutionBody,
+    UserActionResolutionInput,
 };
 use volicord_types::values::{
     ActorSource, EffectKind, ErrorCode, EvidenceRelevanceStatus, JudgmentKind,
     JudgmentResolutionOutcome, MethodName, OperationCategory, ProjectContinuityKind, ResponseKind,
-    StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionOptionAction,
+    UserActionStatus, UtcTimestamp,
 };
 
 impl CoreService {
@@ -764,76 +760,6 @@ fn plan_request_user_action(
     operation_now: &UtcTimestamp,
 ) -> Result<MethodPlan<RequestUserActionResultFields>, PlanError> {
     let now = operation_now.clone();
-    if request.required_for.is_empty() {
-        return user_action_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "required_for",
-            "required_for must contain at least one bounded operation",
-        );
-    }
-    if request
-        .required_for
-        .iter()
-        .enumerate()
-        .any(|(index, target)| request.required_for[..index].contains(target))
-    {
-        return user_action_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "required_for",
-            "required_for must not contain duplicate operation targets",
-        );
-    }
-    validate_choice_affected_refs(
-        &request.action,
-        &request.envelope.project_id,
-        &request.task_id,
-        request.envelope.dry_run,
-        project_state.state_version,
-    )?;
-    let effective_expires_at = if matches!(&request.action, UserActionDraft::EvidenceObservation(_))
-    {
-        if request.expires_at.is_some() {
-            return user_action_validation_error(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                "expires_at",
-                "evidence-observation actions require caller expires_at to be null",
-            );
-        }
-        RequiredNullable::some(checked_derived_expiration(
-            &now,
-            Duration::minutes(USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES),
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "expires_at",
-        )?)
-    } else {
-        request.expires_at.clone()
-    };
-    if effective_expires_at
-        .as_ref()
-        .is_some_and(|expires_at| expires_at.ensure_canonical_rfc3339_representable().is_err())
-    {
-        return user_action_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "expires_at",
-            "expires_at must be representable as a canonical four-digit RFC 3339 timestamp",
-        );
-    }
-    if effective_expires_at
-        .as_ref()
-        .is_some_and(|expires_at| expires_at <= &now)
-    {
-        return user_action_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "expires_at",
-            "expires_at must be later than the request timestamp",
-        );
-    }
     let task = store
         .task_record(&request.task_id)
         .map_err(CorePipelineError::from)?
@@ -846,108 +772,31 @@ fn plan_request_user_action(
     let current_change_unit = store
         .current_change_unit(&request.task_id)
         .map_err(CorePipelineError::from)?;
-    validate_required_for_compatibility(
-        request.action.action_kind(),
-        &request.required_for,
-        request.envelope.dry_run,
-        project_state.state_version,
-    )?;
-    if matches!(&request.action, UserActionDraft::EvidenceObservation(_))
-        && (current_change_unit.is_none() || scope_baseline_is_missing(&task)?)
-    {
-        return user_action_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "action",
-            "evidence-observation actions require a current Change Unit and baseline",
-        );
-    }
-    if let Some(change_unit_id) = request.change_unit_id.as_ref() {
-        if store
-            .change_unit_record(&request.task_id, change_unit_id.as_str())
-            .map_err(CorePipelineError::from)?
-            .is_none()
-        {
-            return user_action_validation_error(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                "change_unit_id",
-                "change_unit_id must identify a Change Unit owned by the Task",
-            );
-        }
-    }
-    let scope = StoredScope::from_task(&task)?;
-    let action_needs_current_change_unit = matches!(
-        request.action.action_kind(),
-        UserActionKind::SensitiveApproval
-            | UserActionKind::FinalAcceptance
-            | UserActionKind::ResidualRiskAcceptance
-            | UserActionKind::EvidenceObservation
-    );
-    if action_needs_current_change_unit {
-        let Some(current) = current_change_unit.as_ref() else {
-            return user_action_validation_error(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                "change_unit_id",
-                "this action kind requires the current active Change Unit",
-            );
-        };
-        if request
-            .change_unit_id
-            .as_ref()
-            .is_some_and(|requested| requested.as_str() != current.change_unit_id)
-        {
-            return user_action_validation_error(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                "change_unit_id",
-                "change_unit_id must match the current active Change Unit",
-            );
-        }
-    }
-    let coordinate_change_unit_id = request.change_unit_id.clone().or_else(|| {
-        current_change_unit
-            .as_ref()
-            .map(|record| ChangeUnitId::new(record.change_unit_id.clone()))
-    });
-    let coordinates = UserActionBasisCoordinates {
-        task_id: request.task_id.clone(),
-        change_unit_id: coordinate_change_unit_id.clone().into(),
-        scope_revision: task.scope_revision,
-        baseline_ref: scope.baseline_ref.map(BaselineRef::new).into(),
-        created_at_state_version: project_state.state_version,
-        compatibility_status: UserActionBasisStatus::Current,
-    };
-    let (body, basis) =
-        canonical_request_body_and_basis(store, project_state, &request, coordinates)?;
-    body.capture_form().map_err(|error| {
-        PlanError::Response(Box::new(
-            validation_rejected(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                error.field(),
-                error.message(),
-            )
-            .expect("user-action validation response should serialize"),
-        ))
+    let constructed = construct_user_action(UserActionConstructionInput {
+        store,
+        project_state,
+        envelope: &request.envelope,
+        task: &task,
+        current_change_unit: current_change_unit.as_ref(),
+        operation_now: &now,
+        intent: UserActionIntent {
+            task_id: request.task_id.clone(),
+            change_unit_id: request.change_unit_id.as_ref().cloned(),
+            action: request.action.clone(),
+            required_for: request.required_for.clone(),
+            expires_at: request.expires_at.clone(),
+        },
     })?;
+    let coordinate_change_unit_id = constructed.coordinate_change_unit_id.clone();
     let planned_state_version = project_state.state_version + 1;
-    let materialized = materialize_user_action_request(MaterializeUserActionRequestInput {
+    let materialized = materialize_user_action_request(UserActionMaterializationInput {
         service,
         store,
         project_state,
         verified_invocation,
         envelope: &request.envelope,
-        source_method: MethodName::RequestUserAction,
-        task_id: &request.task_id,
-        coordinate_change_unit_id: coordinate_change_unit_id.clone(),
-        body,
-        basis,
-        required_for: request.required_for.clone(),
-        expires_at: effective_expires_at,
-        created_at: now.clone(),
-        metadata_json: "{}".to_owned(),
+        origin: UserActionOrigin::DirectRequest,
+        constructed,
     })?;
     let action_kind = materialized.public_request.action_kind;
     let request_id = materialized.public_request.user_action_request_id.clone();
@@ -1005,646 +854,6 @@ fn plan_request_user_action(
         result_fields,
         next_actions,
     })
-}
-
-pub(super) fn canonical_request_body_and_basis(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &RequestUserActionRequest,
-    coordinates: UserActionBasisCoordinates,
-) -> Result<(UserActionRequestBody, UserActionBasis), PlanError> {
-    match &request.action {
-        UserActionDraft::Choice(choice) => {
-            let UserActionChoiceDraft {
-                judgment_kind,
-                presentation,
-                question,
-                options,
-                context,
-                affected_refs,
-                sensitive_action_scope,
-            } = choice.as_ref();
-            let options = canonical_choice_options(
-                *judgment_kind,
-                options.as_ref().map(Vec::as_slice).unwrap_or_default(),
-                request.envelope.locale.as_ref().map(String::as_str),
-                request.envelope.dry_run,
-                project_state.state_version,
-            )?;
-            if normalize_display_text(question).is_empty()
-                || normalize_display_text(&context.summary).is_empty()
-            {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "action.question",
-                    "choice question and context summary must be non-empty",
-                );
-            }
-            if *judgment_kind != JudgmentKind::SensitiveApproval && sensitive_action_scope.is_some()
-            {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "action.sensitive_action_scope",
-                    "sensitive_action_scope is only valid for sensitive approval",
-                );
-            }
-            let sensitive_action_scope = sensitive_action_scope
-                .as_ref()
-                .map(|scope| {
-                    normalize_sensitive_action_scope(&store.project_record().repo_root, scope)
-                        .map_err(|_| {
-                            PlanError::Response(Box::new(
-                                validation_rejected(
-                                    request.envelope.dry_run,
-                                    Some(project_state.state_version),
-                                    "action.sensitive_action_scope.intended_paths",
-                                    "sensitive action paths must stay within the Product Repository",
-                                )
-                                .expect("validation response should serialize"),
-                            ))
-                        })
-                })
-                .transpose()?;
-            if *judgment_kind == JudgmentKind::SensitiveApproval && sensitive_action_scope.is_none()
-            {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "action.sensitive_action_scope",
-                    "sensitive approval requires a bounded sensitive action scope",
-                );
-            }
-            let close_coordinates =
-                choice_close_coordinates(store, project_state, request, *judgment_kind)?;
-            Ok((
-                UserActionRequestBody::Choice(Box::new(UserActionChoiceRequestBody {
-                    judgment_kind: *judgment_kind,
-                    presentation: *presentation,
-                    question: normalize_display_text(question),
-                    options,
-                    context: context.clone(),
-                    affected_refs: affected_refs.clone(),
-                    sensitive_action_scope: sensitive_action_scope.clone().into(),
-                })),
-                UserActionBasis::Choice(Box::new(UserActionChoiceBasis {
-                    coordinates,
-                    close_basis_revision: close_coordinates.close_basis_revision.into(),
-                    result_refs: close_coordinates.result_refs,
-                    residual_risk_ids: close_coordinates.residual_risk_ids,
-                    sensitive_action_scope: sensitive_action_scope.into(),
-                })),
-            ))
-        }
-        UserActionDraft::EvidenceObservation(observation) => {
-            let UserActionEvidenceObservationDraft {
-                question,
-                context_summary,
-                target_candidates,
-                artifact_candidate_ids,
-            } = observation;
-            if normalize_display_text(question).is_empty()
-                || normalize_display_text(context_summary).is_empty()
-            {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "action.question",
-                    "observation question and context summary must be non-empty",
-                );
-            }
-            if target_candidates.iter().collect::<BTreeSet<_>>().len() != target_candidates.len() {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "action.target_candidates",
-                    "target candidates must not contain duplicates",
-                );
-            }
-            if artifact_candidate_ids.iter().collect::<BTreeSet<_>>().len()
-                != artifact_candidate_ids.len()
-            {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    "action.artifact_candidate_ids",
-                    "artifact candidates must not contain duplicates",
-                );
-            }
-            for target in target_candidates {
-                validate_user_action_target(
-                    store,
-                    project_state,
-                    &request.envelope,
-                    &request.task_id,
-                    target,
-                    "action.target_candidates",
-                )?;
-            }
-            let artifact_candidates = canonical_user_action_artifacts(
-                store,
-                project_state,
-                &request.envelope,
-                &request.task_id,
-                artifact_candidate_ids,
-                "action.artifact_candidate_ids",
-            )?;
-            Ok((
-                UserActionRequestBody::EvidenceObservation(
-                    UserActionEvidenceObservationRequestBody {
-                        question: normalize_display_text(question),
-                        context_summary: normalize_display_text(context_summary),
-                        target_candidates: target_candidates.clone(),
-                        artifact_candidates: artifact_candidates.clone(),
-                    },
-                ),
-                UserActionBasis::EvidenceObservation(UserActionEvidenceObservationBasis {
-                    coordinates,
-                    target_candidates: target_candidates.clone(),
-                    artifact_candidates,
-                }),
-            ))
-        }
-    }
-}
-
-pub(super) struct MaterializedUserActionRequest {
-    pub(super) request_ref: StateRecordRef,
-    pub(super) public_request: UserActionRequest,
-    pub(super) effective: EffectiveUserActionRecord,
-    pub(super) mutation: CoreStorageMutation,
-}
-
-pub(super) struct MaterializeUserActionRequestInput<'a> {
-    pub(super) service: &'a CoreService,
-    pub(super) store: &'a CoreProjectStore<'a>,
-    pub(super) project_state: &'a ProjectStateHeader,
-    pub(super) verified_invocation: &'a VerifiedInvocationContext,
-    pub(super) envelope: &'a ToolEnvelope,
-    pub(super) source_method: MethodName,
-    pub(super) task_id: &'a TaskId,
-    pub(super) coordinate_change_unit_id: Option<ChangeUnitId>,
-    pub(super) body: UserActionRequestBody,
-    pub(super) basis: UserActionBasis,
-    pub(super) required_for: Vec<UserActionRequiredFor>,
-    pub(super) expires_at: RequiredNullable<UtcTimestamp>,
-    pub(super) created_at: UtcTimestamp,
-    pub(super) metadata_json: String,
-}
-
-/// Materializes the single canonical public/store representation of one Core-planned action.
-pub(super) fn materialize_user_action_request(
-    input: MaterializeUserActionRequestInput<'_>,
-) -> Result<MaterializedUserActionRequest, PlanError> {
-    let MaterializeUserActionRequestInput {
-        service,
-        store,
-        project_state,
-        verified_invocation,
-        envelope,
-        source_method,
-        task_id,
-        coordinate_change_unit_id,
-        body,
-        basis,
-        required_for,
-        expires_at,
-        created_at,
-        metadata_json,
-    } = input;
-    let action_kind = body.action_kind();
-    let Some(source_idempotency_key) = envelope.idempotency_key.as_ref() else {
-        return user_action_validation_error(
-            envelope.dry_run,
-            Some(project_state.state_version),
-            "envelope.idempotency_key",
-            "a committed user-action request requires an idempotency key",
-        );
-    };
-    let request_id = allocate_user_action_request_id(service, store).map_err(PlanError::Core)?;
-    let request_ref = state_ref(
-        StateRecordKind::UserActionRequest,
-        request_id.as_str(),
-        &envelope.project_id,
-        Some(task_id),
-        Some(project_state.state_version + 1),
-    );
-    let persisted = PersistedUserActionRequest {
-        body: body.clone(),
-        required_for: required_for.clone(),
-        expires_at: expires_at.clone(),
-    };
-    let request_json = serde_json::to_string(&persisted)?;
-    let basis_json = serde_json::to_string(&basis)?;
-    let required_for_json = serde_json::to_string(&required_for)?;
-    let requested_by_actor_source = verified_invocation.actor_source.to_canonical_string();
-    let requested_at = created_at.to_string();
-    let stored_expires_at = expires_at.as_ref().map(ToString::to_string);
-    let public_request = UserActionRequest {
-        user_action_request_id: request_id.clone(),
-        project_id: envelope.project_id.clone(),
-        task_id: task_id.clone(),
-        change_unit_id: coordinate_change_unit_id.clone().into(),
-        action_kind,
-        status: UserActionStatus::Pending,
-        body,
-        basis,
-        required_for,
-        user_action_resolution_ref: RequiredNullable::null(),
-        expires_at,
-        created_at,
-    };
-    let effective = EffectiveUserActionRecord {
-        request: UserActionRequestRecord {
-            project_id: envelope.project_id.as_str().to_owned(),
-            user_action_request_id: request_id.as_str().to_owned(),
-            task_id: task_id.as_str().to_owned(),
-            change_unit_id: coordinate_change_unit_id
-                .as_ref()
-                .map(|id| id.as_str().to_owned()),
-            action_kind,
-            request_json: request_json.clone(),
-            basis_json: basis_json.clone(),
-            basis_status: UserActionBasisStatus::Current,
-            required_for_json: required_for_json.clone(),
-            requested_by_actor_source: requested_by_actor_source.clone(),
-            source_method: source_method.as_str().to_owned(),
-            source_idempotency_key: source_idempotency_key.as_str().to_owned(),
-            requested_at: requested_at.clone(),
-            expires_at: stored_expires_at.clone(),
-            metadata_json: metadata_json.clone(),
-        },
-        resolution: None,
-        status: UserActionStatus::Pending,
-    };
-    let mutation = CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
-        UserActionRequestInsert {
-            user_action_request_id: request_id.as_str().to_owned(),
-            task_id: task_id.as_str().to_owned(),
-            change_unit_id: coordinate_change_unit_id.map(|id| id.into_inner()),
-            action_kind,
-            request_json,
-            basis_json,
-            basis_status: UserActionBasisStatus::Current,
-            required_for_json,
-            requested_by_actor_source,
-            source_method: source_method.as_str().to_owned(),
-            source_idempotency_key: source_idempotency_key.as_str().to_owned(),
-            requested_at,
-            expires_at: stored_expires_at,
-            metadata_json,
-        },
-    ));
-    Ok(MaterializedUserActionRequest {
-        request_ref,
-        public_request,
-        effective,
-        mutation,
-    })
-}
-
-fn canonical_choice_options(
-    judgment_kind: JudgmentKind,
-    caller_options: &[UserActionOptionInput],
-    locale: Option<&str>,
-    dry_run: bool,
-    state_version: u64,
-) -> Result<Vec<UserActionOption>, PlanError> {
-    let authority_bearing = matches!(
-        judgment_kind,
-        JudgmentKind::ScopeDecision
-            | JudgmentKind::SensitiveApproval
-            | JudgmentKind::FinalAcceptance
-            | JudgmentKind::ResidualRiskAcceptance
-            | JudgmentKind::Cancellation
-    );
-    if authority_bearing {
-        if !caller_options.is_empty() {
-            return user_action_validation_error(
-                dry_run,
-                Some(state_version),
-                "action.options",
-                "authority-bearing actions use only Core-owned options",
-            );
-        }
-        return Ok([
-            UserActionOptionAction::Accept,
-            UserActionOptionAction::Reject,
-            UserActionOptionAction::Defer,
-        ]
-        .into_iter()
-        .map(|machine_action| {
-            let (label, description, consequence) =
-                authority_option_copy(judgment_kind, machine_action, locale);
-            UserActionOption {
-                option_id: UserActionOptionId::new(match machine_action {
-                    UserActionOptionAction::Accept => "accept",
-                    UserActionOptionAction::Reject => "reject",
-                    UserActionOptionAction::Defer => "defer",
-                }),
-                label,
-                description,
-                consequence,
-                machine_action,
-                resolution_outcome: machine_action.resolution_outcome(),
-                is_default: machine_action == UserActionOptionAction::Accept,
-            }
-        })
-        .collect());
-    }
-    if caller_options.is_empty() {
-        return user_action_validation_error(
-            dry_run,
-            Some(state_version),
-            "action.options",
-            "product and technical choices require at least one caller-authored option",
-        );
-    }
-    let mut ids = BTreeSet::new();
-    if caller_options
-        .iter()
-        .any(|option| !ids.insert(option.option_id.as_str().to_owned()))
-    {
-        return user_action_validation_error(
-            dry_run,
-            Some(state_version),
-            "action.options",
-            "choice option IDs must be unique",
-        );
-    }
-    if caller_options
-        .iter()
-        .filter(|option| option.is_default)
-        .count()
-        > 1
-    {
-        return user_action_validation_error(
-            dry_run,
-            Some(state_version),
-            "action.options",
-            "choice options may contain at most one default",
-        );
-    }
-    Ok(caller_options
-        .iter()
-        .map(|option| UserActionOption {
-            option_id: option.option_id.clone(),
-            label: option.label.clone(),
-            description: option.description.clone(),
-            consequence: option.consequence.clone(),
-            machine_action: UserActionOptionAction::Accept,
-            resolution_outcome: JudgmentResolutionOutcome::Accepted,
-            is_default: option.is_default,
-        })
-        .collect())
-}
-
-fn authority_option_copy(
-    judgment_kind: JudgmentKind,
-    action: UserActionOptionAction,
-    locale: Option<&str>,
-) -> (String, String, String) {
-    let korean = locale
-        .map(|locale| locale.to_ascii_lowercase().replace('_', "-"))
-        .is_some_and(|locale| locale == "ko" || locale.starts_with("ko-"));
-    let subject_en = match judgment_kind {
-        JudgmentKind::ScopeDecision => "scope decision",
-        JudgmentKind::SensitiveApproval => "sensitive action",
-        JudgmentKind::FinalAcceptance => "final acceptance",
-        JudgmentKind::ResidualRiskAcceptance => "residual risk",
-        JudgmentKind::Cancellation => "task cancellation",
-        JudgmentKind::ProductDecision => "product decision",
-        JudgmentKind::TechnicalDecision => "technical decision",
-    };
-    let subject_ko = match judgment_kind {
-        JudgmentKind::ScopeDecision => "범위 결정",
-        JudgmentKind::SensitiveApproval => "민감 작업",
-        JudgmentKind::FinalAcceptance => "최종 수락",
-        JudgmentKind::ResidualRiskAcceptance => "잔여 위험",
-        JudgmentKind::Cancellation => "작업 취소",
-        JudgmentKind::ProductDecision => "제품 결정",
-        JudgmentKind::TechnicalDecision => "기술 결정",
-    };
-    if korean {
-        let (label, verb, outcome) = match action {
-            UserActionOptionAction::Accept => ("수락", "수락합니다", "수락됨"),
-            UserActionOptionAction::Reject => ("거부", "거부합니다", "거부됨"),
-            UserActionOptionAction::Defer => ("보류", "나중으로 보류합니다", "보류됨"),
-        };
-        (
-            label.to_owned(),
-            format!("현재 근거에 따라 {subject_ko}을(를) {verb}."),
-            format!("이 사용자 작업은 {outcome} 상태로 해결됩니다."),
-        )
-    } else {
-        let (label, verb, outcome) = match action {
-            UserActionOptionAction::Accept => ("Accept", "Accept", "accepted"),
-            UserActionOptionAction::Reject => ("Reject", "Reject", "rejected"),
-            UserActionOptionAction::Defer => ("Defer", "Defer", "deferred"),
-        };
-        (
-            label.to_owned(),
-            format!("{verb} the {subject_en} on the current basis."),
-            format!("This user action resolves as {outcome}."),
-        )
-    }
-}
-
-struct ChoiceCloseCoordinates {
-    close_basis_revision: Option<u64>,
-    result_refs: Vec<StateRecordRef>,
-    residual_risk_ids: Vec<RiskId>,
-}
-
-fn choice_close_coordinates(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &RequestUserActionRequest,
-    judgment_kind: JudgmentKind,
-) -> Result<ChoiceCloseCoordinates, PlanError> {
-    if !matches!(
-        judgment_kind,
-        JudgmentKind::FinalAcceptance | JudgmentKind::ResidualRiskAcceptance
-    ) {
-        return Ok(ChoiceCloseCoordinates {
-            close_basis_revision: None,
-            result_refs: Vec::new(),
-            residual_risk_ids: Vec::new(),
-        });
-    }
-    let close_basis = store
-        .task_revision_record(&request.task_id)
-        .map_err(CorePipelineError::from)?
-        .and_then(|record| record.current_close_basis)
-        .ok_or_else(|| {
-            PlanError::Response(Box::new(decision_rejected_response(
-                &request.envelope,
-                Some(project_state.state_version),
-                "a current close basis is required for this user action",
-            )))
-        })?;
-    Ok(ChoiceCloseCoordinates {
-        close_basis_revision: Some(close_basis.close_basis_revision),
-        result_refs: close_basis.result_refs.clone(),
-        residual_risk_ids: current_acceptance_required_risk_ids(&close_basis)
-            .into_iter()
-            .collect(),
-    })
-}
-
-fn validate_user_action_target(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
-    task_id: &TaskId,
-    target: &EvidenceTarget,
-    field: &'static str,
-) -> Result<(), PlanError> {
-    let current = match target {
-        EvidenceTarget::AcceptanceCriterion {
-            acceptance_criterion_id,
-        } => store
-            .acceptance_criterion_record(acceptance_criterion_id.as_str())
-            .map_err(CorePipelineError::from)?
-            .is_some_and(|record| record.task_id == task_id.as_str() && record.status == "active"),
-        EvidenceTarget::SupplementalClaim {
-            evidence_claim_id,
-            statement,
-        } => store
-            .evidence_claim_record(task_id, evidence_claim_id.as_str())
-            .map_err(CorePipelineError::from)?
-            .is_some_and(|record| record.statement == normalize_display_text(statement)),
-    };
-    if current {
-        Ok(())
-    } else {
-        user_action_validation_error(
-            envelope.dry_run,
-            Some(project_state.state_version),
-            field,
-            "target must identify a current acceptance criterion or supplemental claim",
-        )
-    }
-}
-
-fn canonical_user_action_artifacts(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
-    task_id: &TaskId,
-    artifact_ids: &[ArtifactId],
-    field: &'static str,
-) -> Result<Vec<ArtifactRef>, PlanError> {
-    let mut canonical = BTreeMap::new();
-    for artifact_id in artifact_ids {
-        let record = store
-            .artifact_record(artifact_id.as_str())
-            .map_err(CorePipelineError::from)?;
-        let owner_link = store
-            .artifact_has_task_owner_link(artifact_id.as_str(), task_id.as_str())
-            .map_err(CorePipelineError::from)?;
-        let Some(record) = record else {
-            return user_action_validation_error(
-                envelope.dry_run,
-                Some(project_state.state_version),
-                field,
-                "artifact candidates must identify current persistent Task artifacts",
-            );
-        };
-        if record.project_id != envelope.project_id.as_str()
-            || record.task_id != task_id.as_str()
-            || !owner_link
-            || !persistent_artifact_is_verified_current(store, &record)?
-        {
-            return user_action_validation_error(
-                envelope.dry_run,
-                Some(project_state.state_version),
-                field,
-                "artifact candidates must be verified current artifacts owned by this Task",
-            );
-        }
-        let artifact_ref = artifact_ref_from_verified_record(
-            store,
-            &record,
-            None,
-            Some(project_state.state_version),
-        )?;
-        canonical.insert(artifact_id.as_str().to_owned(), artifact_ref);
-    }
-    Ok(canonical.into_values().collect())
-}
-
-fn user_action_validation_error<T>(
-    dry_run: bool,
-    state_version: Option<u64>,
-    field: &'static str,
-    message: &'static str,
-) -> Result<T, PlanError> {
-    validation_plan_error(dry_run, state_version, field, message)
-}
-
-fn scope_baseline_is_missing(task: &TaskRecord) -> Result<bool, PlanError> {
-    Ok(StoredScope::from_task(task)?.baseline_ref.is_none())
-}
-
-fn validate_choice_affected_refs(
-    action: &UserActionDraft,
-    project_id: &ProjectId,
-    task_id: &TaskId,
-    dry_run: bool,
-    state_version: u64,
-) -> Result<(), PlanError> {
-    let UserActionDraft::Choice(choice) = action else {
-        return Ok(());
-    };
-    for affected_ref in &choice.affected_refs {
-        if affected_ref.project_id != *project_id {
-            return user_action_validation_error(
-                dry_run,
-                Some(state_version),
-                "action.affected_refs.project_id",
-                "affected_refs must belong to the request project",
-            );
-        }
-        let task_record_mismatch = affected_ref.record_kind == StateRecordKind::Task
-            && affected_ref.record_id.as_str() != task_id.as_str();
-        let task_context_mismatch = affected_ref
-            .task_id
-            .as_ref()
-            .is_some_and(|affected_task_id| affected_task_id != task_id);
-        if task_record_mismatch || task_context_mismatch {
-            return user_action_validation_error(
-                dry_run,
-                Some(state_version),
-                "action.affected_refs.task_id",
-                "task-scoped affected_refs must belong to the request Task",
-            );
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn validate_required_for_compatibility(
-    action_kind: UserActionKind,
-    required_for: &[UserActionRequiredFor],
-    dry_run: bool,
-    state_version: u64,
-) -> Result<(), PlanError> {
-    if required_for
-        .iter()
-        .copied()
-        .all(|target| action_kind.is_compatible_with_required_for(target))
-    {
-        Ok(())
-    } else {
-        user_action_validation_error(
-            dry_run,
-            Some(state_version),
-            "required_for",
-            "required_for contains an operation incompatible with the action kind",
-        )
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

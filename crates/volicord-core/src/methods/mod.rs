@@ -7,33 +7,29 @@ use volicord_types::ids::{
     AcceptanceCriterionId, ArtifactId, BaselineRef, ChangeUnitId, DurableIdKind,
     EvidenceCaptureIntentId, EvidenceObservationId, EvidenceProducerId, ProjectContinuityRecordId,
     ProjectId, RecordId, RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId,
-    UserActionRequestId, UserActionResolutionId, WriteTicketId,
+    UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
     CloseTaskResultFields, PrepareWriteRequest, PrepareWriteResultFields, RecordRunRequest,
     UpdateScopeRequest,
 };
 use volicord_types::schema::{
-    AcceptanceCriterion, AgentSafeUserActionRequestSummary, ArtifactInput, ArtifactRef,
-    CarryForwardDisposition, ChangeUnitEffectContract, CloseReadinessBlocker, CurrentCloseBasis,
-    DryRunSummary, EvidenceGateSummary, EvidenceSummary, GuaranteeDisplay, JsonObject,
-    NextActionSummary, PersistedUserActionRequest, PersistedUserActionResolution, PlannedEffect,
-    ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile, RequiredNullable,
-    SourceRef, StateRecordRef, SummaryCard, TaskLifecycleState, TaskLineageSummary, ToolEnvelope,
-    UserActionBasis, UserActionCapturePath, UserActionInboxItem, UserActionRequest,
-    UserActionResolutionBody, UserChannelAvailability, UserChannelPathAvailability,
-    WorkspaceContext, WriteDecisionReason, WriteTicketAttemptScope, WriteTicketStateSummary,
-    WriteTicketValidityBasis,
+    AcceptanceCriterion, ArtifactInput, ArtifactRef, CarryForwardDisposition,
+    ChangeUnitEffectContract, CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary,
+    EvidenceGateSummary, EvidenceSummary, GuaranteeDisplay, JsonObject, NextActionSummary,
+    PlannedEffect, ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile,
+    RequiredNullable, SourceRef, StateRecordRef, SummaryCard, TaskLifecycleState,
+    TaskLineageSummary, ToolEnvelope, WorkspaceContext, WriteDecisionReason,
+    WriteTicketAttemptScope, WriteTicketStateSummary, WriteTicketValidityBasis,
 };
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, CloseReason,
-    CloseState, ErrorCode, EvidenceDisplayState, EvidenceGateState, GuaranteeLevel, JudgmentKind,
-    MethodName, NextActionKind, NextActionPresentationRole, OperationCategory,
-    PersistedCloseSummary, ProjectContinuityKind, ProjectContinuityStatus, RedactionState,
-    RequestedMode, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
-    TaskLineageRelation, TaskMode, TaskResult, UserActionKind, UserActionRequiredFor,
-    UserActionStatus, UtcTimestamp, WorkPhase, WorkspaceVcs, WriteDecisionCategory,
-    WriteTicketInvalidationReason, WriteTicketStatus, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    CloseState, ErrorCode, EvidenceDisplayState, EvidenceGateState, GuaranteeLevel, MethodName,
+    NextActionKind, NextActionPresentationRole, OperationCategory, PersistedCloseSummary,
+    ProjectContinuityKind, ProjectContinuityStatus, RedactionState, RequestedMode, StateRecordKind,
+    StatusCloseState, TaskControlLevel, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
+    TaskResult, UserActionKind, UserActionRequiredFor, UtcTimestamp, WorkPhase, WorkspaceVcs,
+    WriteDecisionCategory, WriteTicketInvalidationReason, WriteTicketStatus,
 };
 
 use chrono::{DateTime, Duration, Utc};
@@ -59,13 +55,9 @@ use crate::pipeline::{
     VerifiedInvocationContext,
 };
 use crate::policy::{
-    close_readiness::{is_terminal_lifecycle, UserActionAuthority},
     close_readiness_evidence::{project_close_evidence_summary, required_acceptance_criterion_ids},
     evidence::{state_record_ref_identity_key, unique_artifact_refs},
     path::{normalize_product_paths, path_is_within},
-    user_action_relevance::{
-        user_action_blocks_operation, user_action_keeps_task_waiting, UserActionOperationContext,
-    },
     workflow::{
         parse_requested_control_level, parse_task_control_level, project_workflow_policy,
         resolve_task_control_authority,
@@ -93,6 +85,7 @@ mod status;
 mod tests;
 mod update_scope;
 mod user_action;
+mod user_actions;
 
 struct MethodPlan<F> {
     task_id: TaskId,
@@ -270,19 +263,6 @@ fn allocate_change_unit_id(
                 .map_err(CorePipelineError::from)
         })
         .map(ChangeUnitId::new)
-}
-
-fn allocate_user_action_request_id(
-    service: &CoreService,
-    store: &CoreProjectStore,
-) -> CoreResult<UserActionRequestId> {
-    service
-        .allocate_generated_id(DurableIdKind::UserActionRequest, |candidate| {
-            store
-                .user_action_request_id_exists(candidate)
-                .map_err(CorePipelineError::from)
-        })
-        .map(UserActionRequestId::new)
 }
 
 fn allocate_user_action_resolution_id(
@@ -1150,402 +1130,6 @@ fn decode_required_json_object(
     decode_required_json(table, record_ref, logical_column, raw)
 }
 
-fn user_action_authority_from_record(
-    record: &EffectiveUserActionRecord,
-) -> CoreResult<UserActionAuthority> {
-    let request: PersistedUserActionRequest = decode_required_json(
-        "user_action_requests",
-        record.request.user_action_request_id.clone(),
-        "request_json",
-        Some(&record.request.request_json),
-    )?;
-    let basis: UserActionBasis = decode_required_json(
-        "user_action_requests",
-        record.request.user_action_request_id.clone(),
-        "basis_json",
-        Some(&record.request.basis_json),
-    )?;
-    if request.body.action_kind() != record.request.action_kind
-        || basis.compatibility_status() != record.request.basis_status
-    {
-        return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json(
-                "user_action_requests",
-                record.request.user_action_request_id.clone(),
-                "request_json",
-            ),
-        ));
-    }
-    let resolution = record
-        .resolution
-        .as_ref()
-        .map(|resolution| {
-            let body: PersistedUserActionResolution = decode_required_json(
-                "user_action_resolutions",
-                resolution.user_action_resolution_id.clone(),
-                "resolution_json",
-                Some(&resolution.resolution_json),
-            )?;
-            body.validate().map_err(|_| {
-                CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                    "user_action_resolutions",
-                    resolution.user_action_resolution_id.clone(),
-                    "resolution_json",
-                ))
-            })?;
-            if resolution.action_kind != record.request.action_kind {
-                return Err(CorePipelineError::Store(
-                    StoreError::corrupt_owner_state_value(
-                        "user_action_resolutions",
-                        resolution.user_action_resolution_id.clone(),
-                        "action_kind",
-                    ),
-                ));
-            }
-            Ok(body)
-        })
-        .transpose()?;
-    if record.status == UserActionStatus::Resolved && record.resolution.is_none() {
-        return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_value(
-                "user_action_requests",
-                record.request.user_action_request_id.clone(),
-                "resolution",
-            ),
-        ));
-    }
-    let (machine_action, resolution_outcome) = match resolution.as_ref() {
-        Some(UserActionResolutionBody::Choice {
-            machine_action,
-            resolution_outcome,
-            ..
-        }) => (Some(*machine_action), Some(*resolution_outcome)),
-        _ => (None, None),
-    };
-    let affected_refs = request.body.affected_refs().to_vec();
-    let expires_at = request.expires_at.into_option();
-    let resolution_id = record
-        .resolution
-        .as_ref()
-        .map(|resolution| resolution.user_action_resolution_id.clone());
-    let resolved_by_actor_source = record
-        .resolution
-        .as_ref()
-        .map(|resolution| {
-            parse_owner_storage_value(
-                "user_action_resolutions",
-                resolution.user_action_resolution_id.clone(),
-                "resolved_by_actor_source",
-                &resolution.resolved_by_actor_source,
-            )
-        })
-        .transpose()?;
-    Ok(UserActionAuthority {
-        user_action_request_id: record.request.user_action_request_id.clone(),
-        user_action_resolution_id: resolution_id,
-        task_id: TaskId::new(record.request.task_id.clone()),
-        action_kind: record.request.action_kind,
-        status: record.status,
-        required_for: request.required_for,
-        affected_refs,
-        machine_action,
-        resolution_outcome,
-        resolved_by_actor_source,
-        resolved_verification_basis: record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.resolved_verification_basis.clone()),
-        resolved_assurance_level: record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.resolved_assurance_level.clone()),
-        basis_status: record.request.basis_status,
-        basis: Some(basis),
-        resolution,
-        expires_at,
-    })
-}
-
-fn user_action_authority_from_state(request: &UserActionRequest) -> UserActionAuthority {
-    UserActionAuthority {
-        user_action_request_id: request.user_action_request_id.as_str().to_owned(),
-        user_action_resolution_id: None,
-        task_id: request.task_id.clone(),
-        action_kind: request.action_kind,
-        status: request.status,
-        required_for: request.required_for.clone(),
-        affected_refs: request.body.affected_refs().to_vec(),
-        machine_action: None,
-        resolution_outcome: None,
-        resolved_by_actor_source: None,
-        resolved_verification_basis: None,
-        resolved_assurance_level: None,
-        basis_status: request.basis.compatibility_status(),
-        basis: Some(request.basis.clone()),
-        resolution: None,
-        expires_at: request.expires_at.as_ref().cloned(),
-    }
-}
-
-fn resolved_user_action_authorities_for_plan(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
-    task_id: &TaskId,
-    judgment_kind: JudgmentKind,
-    now: &UtcTimestamp,
-) -> Result<Vec<UserActionAuthority>, PlanError> {
-    store
-        .resolved_user_action_records(task_id, judgment_kind.into(), now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
-        .iter()
-        .map(user_action_authority_from_record)
-        .collect::<CoreResult<Vec<_>>>()
-        .map_err(PlanError::Core)
-}
-
-fn user_action_from_record(
-    record: &EffectiveUserActionRecord,
-    state_version: u64,
-) -> CoreResult<UserActionRequest> {
-    let persisted: PersistedUserActionRequest = decode_required_json(
-        "user_action_requests",
-        record.request.user_action_request_id.clone(),
-        "request_json",
-        Some(&record.request.request_json),
-    )?;
-    let basis: UserActionBasis = decode_required_json(
-        "user_action_requests",
-        record.request.user_action_request_id.clone(),
-        "basis_json",
-        Some(&record.request.basis_json),
-    )?;
-    if persisted.body.action_kind() != record.request.action_kind
-        || basis.compatibility_status() != record.request.basis_status
-    {
-        return Err(CorePipelineError::Store(
-            StoreError::corrupt_owner_state_json(
-                "user_action_requests",
-                record.request.user_action_request_id.clone(),
-                "request_json",
-            ),
-        ));
-    }
-    let project_id = ProjectId::new(record.request.project_id.clone());
-    let task_id = TaskId::new(record.request.task_id.clone());
-    let resolution_ref = record.resolution.as_ref().map(|resolution| {
-        state_ref(
-            StateRecordKind::UserActionResolution,
-            &resolution.user_action_resolution_id,
-            &project_id,
-            Some(&task_id),
-            Some(state_version),
-        )
-    });
-    Ok(UserActionRequest {
-        user_action_request_id: UserActionRequestId::new(
-            record.request.user_action_request_id.clone(),
-        ),
-        project_id,
-        task_id,
-        change_unit_id: record
-            .request
-            .change_unit_id
-            .clone()
-            .map(ChangeUnitId::new)
-            .into(),
-        action_kind: record.request.action_kind,
-        status: record.status,
-        body: persisted.body,
-        basis,
-        required_for: persisted.required_for,
-        user_action_resolution_ref: resolution_ref.into(),
-        expires_at: persisted.expires_at,
-        created_at: parse_owner_storage_value(
-            "user_action_requests",
-            record.request.user_action_request_id.clone(),
-            "requested_at",
-            &record.request.requested_at,
-        )?,
-    })
-}
-
-fn user_action_inbox_item_from_request(
-    record: &EffectiveUserActionRecord,
-    request: UserActionRequest,
-    state_version: u64,
-) -> CoreResult<UserActionInboxItem> {
-    let form = request.body.capture_form().map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-            "user_action_requests",
-            record.request.user_action_request_id.clone(),
-            "request_json",
-        ))
-    })?;
-    let answer_path_availability = user_channel_availability();
-    let (preferred_capture_path, fallbacks) =
-        user_action_capture_paths(&request.user_action_request_id, request.action_kind);
-    let required = request
-        .required_for
-        .iter()
-        .any(|target| *target != UserActionRequiredFor::Informational);
-    Ok(UserActionInboxItem {
-        user_action_request_id: request.user_action_request_id.clone(),
-        request_ref: state_ref(
-            StateRecordKind::UserActionRequest,
-            request.user_action_request_id.as_str(),
-            &request.project_id,
-            Some(&request.task_id),
-            Some(state_version),
-        ),
-        project_id: request.project_id,
-        task_id: request.task_id,
-        change_unit_id: request.change_unit_id,
-        action_kind: request.action_kind,
-        question: request.body.question().to_owned(),
-        context_summary: request.body.context_summary().to_owned(),
-        form,
-        required,
-        requirement_status: if required { "required" } else { "optional" }.to_owned(),
-        required_for: request.required_for,
-        status: request.status,
-        answer_path_availability,
-        preferred_capture_path: preferred_capture_path.into(),
-        fallbacks,
-        expires_at: request.expires_at,
-    })
-}
-
-fn user_action_capture_paths(
-    request_id: &UserActionRequestId,
-    action_kind: UserActionKind,
-) -> (Option<UserActionCapturePath>, Vec<UserActionCapturePath>) {
-    let cli_command = if action_kind == UserActionKind::EvidenceObservation {
-        format!(
-            "volicord inbox resolve {} (--criterion ID | --claim ID) --artifact ID --summary TEXT",
-            request_id.as_str()
-        )
-    } else {
-        format!(
-            "volicord inbox resolve {} --choice <choice>",
-            request_id.as_str()
-        )
-    };
-    (
-        Some(UserActionCapturePath {
-            kind: "cli".to_owned(),
-            label: "CLI inbox".to_owned(),
-            available: true,
-            command: Some(cli_command).into(),
-            url: RequiredNullable::null(),
-            capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
-            expires_at: RequiredNullable::null(),
-            detail: RequiredNullable::null(),
-        }),
-        Vec::new(),
-    )
-}
-
-fn user_channel_availability() -> UserChannelAvailability {
-    let path = UserChannelPathAvailability {
-        kind: "cli".to_owned(),
-        label: "CLI inbox".to_owned(),
-        available: true,
-        status: "available".to_owned(),
-        capture_basis: Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()).into(),
-        detail: RequiredNullable::null(),
-    };
-    UserChannelAvailability {
-        paths: vec![path.clone()],
-        recommended_path_kind: Some(path.kind).into(),
-        recommended_path_label: Some(path.label.clone()).into(),
-        recommendation: Some(format!(
-            "Use {} to resolve pending user actions.",
-            path.label
-        ))
-        .into(),
-    }
-}
-
-fn pending_user_action_authorities_for_plan(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
-    task_id: &TaskId,
-    now: &UtcTimestamp,
-) -> Result<Vec<UserActionAuthority>, PlanError> {
-    store
-        .pending_user_action_records(task_id, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
-        .iter()
-        .map(user_action_authority_from_record)
-        .collect::<CoreResult<Vec<_>>>()
-        .map_err(PlanError::Core)
-}
-
-fn pending_user_action_refs_for_operation(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
-    now: &UtcTimestamp,
-    context: &UserActionOperationContext<'_>,
-) -> Result<Vec<StateRecordRef>, PlanError> {
-    Ok(pending_user_action_authorities_for_plan(
-        store,
-        project_state,
-        envelope,
-        context.task_id,
-        now,
-    )?
-    .iter()
-    .filter(|authority| user_action_blocks_operation(authority, context))
-    .map(|authority| {
-        state_ref(
-            StateRecordKind::UserActionRequest,
-            &authority.user_action_request_id,
-            &envelope.project_id,
-            Some(context.task_id),
-            Some(project_state.state_version),
-        )
-    })
-    .collect())
-}
-
-fn resolved_user_action_authorities_for_all_kinds(
-    store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
-    task_id: &TaskId,
-    now: &UtcTimestamp,
-) -> Result<Vec<UserActionAuthority>, PlanError> {
-    store
-        .user_action_records_for_task(task_id, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
-        .into_iter()
-        .filter(|record| record.status == UserActionStatus::Resolved)
-        .map(|record| user_action_authority_from_record(&record))
-        .collect::<CoreResult<Vec<_>>>()
-        .map_err(PlanError::Core)
-}
-
 fn storage_value<T>(value: T) -> CoreResult<String>
 where
     T: serde::Serialize,
@@ -1826,7 +1410,7 @@ fn matching_sensitive_approval(
     };
 
     for record in records {
-        let authority = user_action_authority_from_record(&record)?;
+        let authority = user_actions::user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
             return Ok(Some(record));
         }
@@ -2244,18 +1828,6 @@ fn active_acceptance_criteria_for_task(
         .collect()
 }
 
-fn agent_safe_pending_user_action_summaries(
-    refs: impl IntoIterator<Item = StateRecordRef>,
-) -> Vec<AgentSafeUserActionRequestSummary> {
-    refs.into_iter()
-        .map(|record_ref| {
-            AgentSafeUserActionRequestSummary::pending(UserActionRequestId::new(
-                record_ref.record_id.as_str(),
-            ))
-        })
-        .collect()
-}
-
 struct SummaryBuild<'a> {
     store: &'a CoreProjectStore<'a>,
     project_id: &'a ProjectId,
@@ -2420,7 +1992,7 @@ fn build_state_summary(
         baseline_ref: scope.baseline_ref.map(BaselineRef::new),
         workspace_context,
         shaping_readiness: None,
-        pending_user_action_summaries: agent_safe_pending_user_action_summaries(
+        pending_user_action_summaries: user_actions::agent_safe_pending_user_action_summaries(
             pending_user_action_refs,
         ),
         blocker_refs,
@@ -2615,7 +2187,7 @@ fn write_ticket_projection_invalidation_reason(
         .map_err(CorePipelineError::from)?;
     let mut current_resolution_ids = BTreeSet::new();
     for record in records {
-        let authority = user_action_authority_from_record(&record)?;
+        let authority = user_actions::user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
             if let Some(resolution_id) = authority.user_action_resolution_id {
                 current_resolution_ids.insert(resolution_id);
@@ -2798,19 +2370,6 @@ fn projected_evidence_summary_for_criteria(
     Ok(project_close_evidence_summary(facts, &required))
 }
 
-fn projected_pending_user_action_refs(
-    store: &CoreProjectStore,
-    task_id: &TaskId,
-    state_version: u64,
-    now: &UtcTimestamp,
-) -> Result<Vec<StateRecordRef>, PlanError> {
-    Ok(stored_refs_to_state_refs(
-        store
-            .pending_user_action_refs(task_id, state_version, now)
-            .map_err(CorePipelineError::from)?,
-    ))
-}
-
 fn projected_blocker_refs(
     store: &CoreProjectStore,
     task_id: &TaskId,
@@ -2967,44 +2526,6 @@ fn next_actions_for_state(
             required_refs: vec![task_ref.clone()],
         }],
     }
-}
-
-fn projected_user_action_lifecycle_phase(
-    project_state: &ProjectStateHeader,
-    task: &TaskRecord,
-    current_change_unit: Option<&ChangeUnitRecord>,
-    pending_authorities: &[UserActionAuthority],
-) -> Option<&'static str> {
-    if project_state.active_task_id.as_deref() != Some(task.task_id.as_str())
-        || is_terminal_lifecycle(&task.lifecycle_phase)
-    {
-        return None;
-    }
-
-    let task_id = TaskId::new(task.task_id.clone());
-    let current_change_unit_id =
-        current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
-    let waits_for_user = pending_authorities.iter().any(|authority| {
-        user_action_keeps_task_waiting(
-            authority,
-            &task_id,
-            current_change_unit_id.as_ref(),
-            task.scope_revision,
-        )
-    });
-    let next_phase = if waits_for_user {
-        "waiting_user"
-    } else if task.lifecycle_phase == "waiting_user" {
-        if current_change_unit.is_some() {
-            "ready"
-        } else {
-            "shaping"
-        }
-    } else {
-        return None;
-    };
-
-    (task.lifecycle_phase != next_phase).then_some(next_phase)
 }
 
 fn task_lifecycle_mutation(task_id: &TaskId, lifecycle_phase: &str) -> CoreStorageMutation {

@@ -2,19 +2,22 @@ use super::close_readiness::{
     facts_from_projection, facts_with_pending_authorities,
     facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
+use super::user_actions::{
+    pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
+    user_action_authority_from_record,
+};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task,
     allocate_acceptance_criterion_id, allocate_change_unit_id, build_state_summary,
     change_unit_insert, change_unit_ref, decision_rejected_response, dry_run_summary,
     evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
     next_actions_for_state, no_active_task_response, normalize_display_text, object_from_value,
-    parse_acceptance_policy, parse_task_mode, pending_user_action_refs_for_operation,
-    plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
-    projected_evidence_summary_for_criteria, projected_user_action_lifecycle_phase,
+    parse_acceptance_policy, parse_task_mode, plan_error_response, prepare_or_response,
+    project_state_projection, projected_close_basis, projected_evidence_summary_for_criteria,
     projected_write_ticket_summary, rejected_pipeline_response, state_ref, state_ref_from_stored,
     storage_value, store_error_response, synthetic_change_unit_record, task_lifecycle_mutation,
-    user_action_authority_from_record, validation_rejected, work_phase_storage, write_ticket_ref,
-    MethodPlan, PlanError, StoredScope, SummaryBuild,
+    validation_rejected, work_phase_storage, write_ticket_ref, MethodPlan, PlanError, StoredScope,
+    SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,

@@ -1,22 +1,25 @@
-use super::close_guidance::user_channel_pending_action_instruction;
 use super::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_unrecorded_changes,
     plan_projected_close_readiness, CloseReadinessSummary,
 };
+use super::user_actions::{
+    agent_safe_pending_user_action_summaries, construct_user_action,
+    materialize_user_action_request, pending_user_action_authorities_for_plan,
+    resolved_user_action_authorities_for_all_kinds, user_action_authority_from_state,
+    user_channel_pending_action_instruction, UserActionConstructionInput, UserActionIntent,
+    UserActionMaterializationInput, UserActionOrigin,
+};
 use super::{
-    active_acceptance_criteria_for_task, agent_safe_pending_user_action_summaries,
-    build_state_summary, changes_summary_text, close_state_text, core_error_response,
-    decode_required_json, evidence_gate_summary_text, evidence_summary_for_display,
-    guarantee_display_for_invocation, no_active_task_response, normalize_next_action_collection,
-    object_from_value, parse_owner_storage_value, parse_storage_value,
-    pending_user_action_authorities_for_plan, prepare_or_response, primary_next_action,
-    profile_summary_text, project_state_projection, projected_close_basis,
-    projected_evidence_summary, projected_write_ticket_summary,
-    record_core_workflow_metric_best_effort, resolved_user_action_authorities_for_all_kinds,
+    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
+    close_state_text, core_error_response, decode_required_json, evidence_gate_summary_text,
+    evidence_summary_for_display, guarantee_display_for_invocation, no_active_task_response,
+    normalize_next_action_collection, object_from_value, parse_owner_storage_value,
+    parse_storage_value, prepare_or_response, primary_next_action, profile_summary_text,
+    project_state_projection, projected_close_basis, projected_evidence_summary,
+    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
     response_committed_fresh_effect, state_ref, state_ref_from_stored, storage_value,
-    store_error_response, summary_card_for_core, user_action, user_action_authority_from_state,
-    utc_timestamp, validation_rejected, write_ticket_summary_text, PlanError, StoredScope,
-    SummaryBuild, SummaryCardBuild,
+    store_error_response, summary_card_for_core, utc_timestamp, validation_rejected,
+    write_ticket_summary_text, PlanError, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -41,25 +44,22 @@ use volicord_store::error::StoreError;
 use volicord_store::guards::UnrecordedChangeRecord;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{
-    BaselineRef, ChangeUnitId, TaskId, UnrecordedChangeId, UserActionOptionId,
-    UserActionResolutionId,
+    ChangeUnitId, TaskId, UnrecordedChangeId, UserActionOptionId, UserActionResolutionId,
 };
 use volicord_types::methods::{
-    ReconcileChangesRequest, ReconcileChangesResultFields, RequestUserActionRequest,
-    UnrecordedChangeResolutionRequest,
+    ReconcileChangesRequest, ReconcileChangesResultFields, UnrecordedChangeResolutionRequest,
 };
 use volicord_types::schema::{
     CloseReadinessBlocker, DryRunSummary, EvidenceSummary, JsonObject, NextActionSummary,
     PlannedBlocker, PlannedEffect, RequiredNullable, StateRecordRef, UnrecordedChangeFinding,
-    UnrecordedChangeResolutionSummary, UserActionBasisCoordinates, UserActionChoiceDraft,
-    UserActionContext, UserActionDraft, UserActionOptionInput, UserActionRequest,
-    UserActionResolutionBody, WriteTicketAttemptScope,
+    UnrecordedChangeResolutionSummary, UserActionChoiceDraft, UserActionContext, UserActionDraft,
+    UserActionOptionInput, UserActionRequest, UserActionResolutionBody, WriteTicketAttemptScope,
 };
 use volicord_types::values::OperationCategory;
 use volicord_types::values::{
     ActorSource, JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName,
     NextActionKind, NextActionPresentationRole, PlannedBlockerSourceKind, StateRecordKind,
-    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus, UserActionKind,
+    UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionKind,
     UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
 };
 
@@ -909,74 +909,35 @@ fn plan_reconciliation_user_action(
         affected_refs: vec![unrecorded_ref.clone()],
         sensitive_action_scope: RequiredNullable::null(),
     }));
-    let (user_action, mutation) = if materialize_mutation {
-        let coordinate_change_unit_id =
-            current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
-        let internal_request = RequestUserActionRequest {
-            envelope: request.envelope.clone(),
+    let coordinate_change_unit_id =
+        current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
+    let constructed = construct_user_action(UserActionConstructionInput {
+        store,
+        project_state,
+        envelope: &request.envelope,
+        task,
+        current_change_unit,
+        operation_now: now,
+        intent: UserActionIntent {
             task_id: request.task_id.clone(),
-            change_unit_id: coordinate_change_unit_id.clone().into(),
+            change_unit_id: coordinate_change_unit_id,
             action: candidate.clone(),
             required_for: vec![UserActionRequiredFor::Informational],
             expires_at: RequiredNullable::null(),
-        };
-        internal_request.action.validate_bounds().map_err(|error| {
-            PlanError::Response(Box::new(
-                validation_rejected(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    error.field(),
-                    error.message(),
-                )
-                .expect("internal user-action validation response should serialize"),
-            ))
-        })?;
-        user_action::validate_required_for_compatibility(
-            internal_request.action.action_kind(),
-            &internal_request.required_for,
-            request.envelope.dry_run,
-            project_state.state_version,
-        )?;
-        let coordinates =
-            reconciliation_user_action_coordinates(task, current_change_unit, project_state)?;
-        let (body, basis) = user_action::canonical_request_body_and_basis(
+        },
+    })?;
+    let (user_action, mutation) = if materialize_mutation {
+        let materialized = materialize_user_action_request(UserActionMaterializationInput {
+            service,
             store,
             project_state,
-            &internal_request,
-            coordinates,
-        )?;
-        body.validate_bounds().map_err(|error| {
-            PlanError::Response(Box::new(
-                validation_rejected(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
-                    error.field(),
-                    error.message(),
-                )
-                .expect("internal user-action validation response should serialize"),
-            ))
-        })?;
-        let materialized = user_action::materialize_user_action_request(
-            user_action::MaterializeUserActionRequestInput {
-                service,
-                store,
-                project_state,
-                verified_invocation,
-                envelope: &request.envelope,
-                source_method: MethodName::ReconcileChanges,
-                task_id: &request.task_id,
-                coordinate_change_unit_id,
-                body,
-                basis,
-                required_for: vec![UserActionRequiredFor::Informational],
-                expires_at: RequiredNullable::null(),
-                created_at: now.clone(),
-                metadata_json: serde_json::to_string(&json!({
-                "created_by": MethodName::ReconcileChanges.as_str(),
-                "unrecorded_change_id": record.unrecorded_change_id
-                }))?,
+            verified_invocation,
+            envelope: &request.envelope,
+            origin: UserActionOrigin::Reconciliation {
+                unrecorded_change_id: UnrecordedChangeId::new(record.unrecorded_change_id.clone()),
             },
-        )?;
+            constructed,
+        })?;
         (
             Some(materialized.public_request),
             Some(materialized.mutation),
@@ -989,24 +950,6 @@ fn plan_reconciliation_user_action(
         candidate,
         user_action,
         mutation,
-    })
-}
-
-fn reconciliation_user_action_coordinates(
-    task: &TaskRecord,
-    current_change_unit: Option<&ChangeUnitRecord>,
-    project_state: &ProjectStateHeader,
-) -> Result<UserActionBasisCoordinates, PlanError> {
-    let scope = StoredScope::from_task(task).map_err(PlanError::Core)?;
-    Ok(UserActionBasisCoordinates {
-        task_id: TaskId::new(task.task_id.clone()),
-        change_unit_id: current_change_unit
-            .map(|record| ChangeUnitId::new(record.change_unit_id.clone()))
-            .into(),
-        scope_revision: task.scope_revision,
-        baseline_ref: scope.baseline_ref.map(BaselineRef::new).into(),
-        created_at_state_version: project_state.state_version,
-        compatibility_status: UserActionBasisStatus::Current,
     })
 }
 

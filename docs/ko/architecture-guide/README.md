@@ -55,6 +55,9 @@ Core는 Volicord 상태를 위한 로컬 기준 기록입니다.
 [`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs)를
 읽습니다. 로컬 User Channel 동작은 이어서
 [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)와
+Core UserAction 서비스인
+[`crates/volicord-core/src/methods/user_actions.rs`](../../../crates/volicord-core/src/methods/user_actions.rs)를
+읽은 뒤, 직접 공개 메서드 조율을 담당하는
 [`crates/volicord-core/src/methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs)를
 읽습니다.
 
