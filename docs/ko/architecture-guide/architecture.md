@@ -237,24 +237,36 @@ Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
 닫기 준비 상태의 증거 해석을 평가합니다. 필요한 입력이 이미 있으면 이 평가는
 순수 함수로 수행됩니다.
 
-닫기 준비 상태 조율은
-`crates/volicord-core/src/methods/close_readiness.rs`가 담당합니다. 의미 기반
-입력은 Task, 닫기 의도, 저장되었거나 투영된 typed 사실, 현재 증거, 현재 사용자
-행위 권한을 식별합니다. 서비스는 남은 typed Store 사실을 취득하고 책임별 정책
-함수를 호출한 뒤 닫기 연산을 위한 전체 평가 또는 메서드 중립적인 닫기 준비 상태
-요약을 반환합니다. `crates/volicord-core/src/policy/close_readiness.rs`는 typed
-권한 및 수락 판단을 순수 함수로 담당합니다.
-`crates/volicord-core/src/methods/close_blockers.rs`는 정규 닫기 차단 사유 구성과
-정규화를 담당하고, `crates/volicord-core/src/methods/close_guidance.rs`는 다음
-행위와 User Channel 안내 투영을 담당합니다.
+닫기 준비 상태는
+`crates/volicord-core/src/methods/close_readiness/`의 책임별 패키지가
+담당합니다. `mod.rs`는 메서드 plan이 사용하는 좁은 typed 표면을 노출합니다.
+`facts.rs`는 수락 기준, workflow policy, 현재 `CoreProjectStore`를 통한
+미조정 변경 조회를 포함해 현재 사실 집합을 한 번 취득하고, 준비 상태를
+판단하지 않은 채 메서드 projection을 조립합니다. `change_control.rs`, `evidence.rs`,
+`acceptance.rs`는 각각 변경 및 쓰기, 증거 및 아티팩트, 사용자 권한 조건을
+평가합니다. 증거 평가는 `crates/volicord-core/src/policy/` 아래의 집중된 순수
+정책 모듈을 호출하며 출처, 관련성, 대상, 결속, 증거 게이트 정책을 다시
+구현하지 않습니다.
 
-`close_task.rs`는 요청별 닫기 연산 조율을 계속 담당합니다. 공개 요청을 검증하고
+`policy.rs`는 취득한 사실에서 control을 해석하고 이 typed 평가를 닫기 계약
+순서대로 순수하게 결합하여 닫기 상태를 선택합니다. Store handle은 받지
+않습니다. `blockers.rs`는 공개 typed 차단 사유 projection을 구성하고
+정규화합니다. `guidance.rs`는 typed 담당 메서드와 연산 범주를 포함한 의미 기반
+후속 행위 선택을 담당하며 CLI 명령, 캡처 경로, Markdown 지침, adapter rendering,
+credential을 구성하지 않습니다. `summary.rs`는 전체 닫기 평가와 더 작은
+메서드 중립 준비 상태 projection을 담당합니다. `service.rs`는 이 좁은 API를
+통해 사실 취득, 책임별 평가, 순수 정책 결합을 조율합니다. 다른 Core 도메인과
+공유하는 현재 근거 및
+사용자 권한 호환성 순수 함수는
+`crates/volicord-core/src/policy/close_readiness.rs`에 남습니다.
+
+`close_task.rs`는 요청별 닫기 연산 조율을 담당합니다. 공개 요청을 검증하고
 닫기 준비 상태 서비스를 호출하며, 종료 변경을 계획하고 typed 닫기 결과를
-구성합니다. `status`는 닫기 준비 상태 요약을 사용하고, `prepare_write`는 차단
-사유 담당 모듈을 사용하며, `reconcile_changes`는 닫기 준비 상태와 안내 담당
-모듈을 사용합니다. `intake`, `update_scope`, `record_run`, `user_action`은 각자
-투영한 typed 사실을 닫기 준비 상태 서비스에 전달합니다. 어떤 메서드 모듈도
-형제 메서드에 재사용 가능한 닫기 준비 상태 정책이나 표현을 제공하지 않습니다.
+구성합니다. `status`는 닫기 준비 상태 요약을 사용합니다. `prepare_write`는
+패키지의 차단 사유 projection 표면을 사용합니다. `reconcile_changes`,
+`intake`, `update_scope`, `record_run`, `user_action`은 각자 투영한 typed 사실을
+닫기 준비 상태 서비스에 전달합니다. 어떤 메서드 모듈도 형제 메서드에 재사용
+가능한 닫기 준비 상태 정책이나 adapter 표현을 제공하지 않습니다.
 
 프로덕션 메서드 모듈은 적용되는 Core pipeline, 서비스, 정책, Store,
 `volicord-types` 담당 모듈에서 의존성을 명시합니다. 상위 methods 모듈은 실제로

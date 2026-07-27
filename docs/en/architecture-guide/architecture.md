@@ -261,27 +261,39 @@ target and `CurrentCloseBasis` matching, producer and artifact binding, and
 close-readiness evidence interpretation. These evaluations are pure where
 their inputs are already available.
 
-Close-readiness coordination is owned by
-`crates/volicord-core/src/methods/close_readiness.rs`. Its semantic inputs
-identify the Task, close intent, typed stored or projected facts, current
-evidence, and current user-action authority. Its service acquires any remaining
-typed Store facts, invokes the responsibility-owned policy functions, and
-returns either a full close assessment for the close operation or a
-method-neutral readiness summary. `crates/volicord-core/src/policy/close_readiness.rs`
-owns pure typed authority and acceptance decisions.
-`crates/volicord-core/src/methods/close_blockers.rs` owns canonical blocker
-construction and normalization, while
-`crates/volicord-core/src/methods/close_guidance.rs` owns next-action and
-User Channel guidance projection.
+Close readiness is owned by the responsibility package at
+`crates/volicord-core/src/methods/close_readiness/`. `mod.rs` exposes the
+narrow typed surface used by method planners. `facts.rs` acquires one typed
+current fact set, including acceptance criteria, workflow policy, and
+unresolved-change reads through the current `CoreProjectStore`, and assembles
+method projections without deciding readiness. `change_control.rs`,
+`evidence.rs`, and `acceptance.rs`
+evaluate their respective change/write, evidence/artifact, and user-authority
+conditions. Evidence evaluation calls the focused pure policy modules under
+`crates/volicord-core/src/policy/`; it does not reimplement provenance,
+relevance, target, binding, or evidence-gate policy.
 
-`close_task.rs` remains the request-specific close-operation orchestrator. It
+`policy.rs` resolves control from acquired facts and purely combines those
+typed evaluations in close-contract order to select the close state. It accepts
+no Store handle. `blockers.rs` constructs and normalizes the public
+typed blocker projection. `guidance.rs` owns semantic continuation selection,
+including the typed owner method and operation category; it does not construct
+CLI commands, capture paths, Markdown instructions, adapter renderings, or
+credentials. `summary.rs` owns the full close assessment and the smaller
+method-neutral readiness projection. `service.rs` coordinates fact acquisition,
+responsibility-owned evaluation, and pure policy combination through that
+narrow API. The pure current-basis and
+user-authority compatibility functions shared with other Core domains remain in
+`crates/volicord-core/src/policy/close_readiness.rs`.
+
+`close_task.rs` is the request-specific close-operation orchestrator. It
 validates the public request, invokes the close-readiness service, plans the
 terminal mutation, and assembles the typed close result. `status` consumes the
-readiness summary, `prepare_write` consumes the blocker owner, and
-`reconcile_changes` consumes the readiness and guidance owners.
-`intake`, `update_scope`, `record_run`, and `user_action` pass their projected
-typed facts to the readiness service. No method module provides reusable
-close-readiness policy or presentation to sibling methods.
+readiness summary. `prepare_write` consumes the package's blocker projection
+surface. `reconcile_changes`, `intake`, `update_scope`, `record_run`, and
+`user_action` pass their projected typed facts to the readiness service. No
+method module provides reusable close-readiness policy or adapter presentation
+to sibling methods.
 
 Production method modules name dependencies from the applicable Core pipeline,
 service, policy, Store, or `volicord-types` owner. The methods parent module

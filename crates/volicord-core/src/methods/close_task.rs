@@ -1,6 +1,6 @@
-use super::close_guidance::close_next_action;
 use super::close_readiness::{
-    assess_close_readiness, CloseReadinessAssessment, CloseReadinessFacts, CloseReadinessRequest,
+    assess_close_readiness, close_next_action, CloseReadinessAssessment, CloseReadinessFacts,
+    CloseReadinessRequest,
 };
 use super::{
     active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,

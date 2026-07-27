@@ -1,13 +1,9 @@
-use super::{allowed_operation_categories, next_action_expected_state_version};
-use volicord_types::schema::{
-    CloseReadinessBlocker, NextActionSummary, RequiredNullable, StateRecordRef,
-};
-use volicord_types::values::{
-    CloseReadinessBlockerCategory, MethodName, NextActionKind, NextActionPresentationRole,
-    OperationCategory,
-};
+use super::guidance::{close_guidance, CloseGuidance};
+use crate::methods::{allowed_operation_categories, next_action_expected_state_version};
+use volicord_types::schema::{CloseReadinessBlocker, NextActionSummary, StateRecordRef};
+use volicord_types::values::{CloseReadinessBlockerCategory, NextActionPresentationRole};
 
-pub(super) fn close_blocker(
+pub(crate) fn close_blocker(
     category: CloseReadinessBlockerCategory,
     code: &'static str,
     message: impl Into<String>,
@@ -23,7 +19,7 @@ pub(super) fn close_blocker(
     }
 }
 
-pub(super) fn open_write_ticket_close_blocker(
+pub(crate) fn open_write_ticket_close_blocker(
     task_ref: StateRecordRef,
     write_ticket_ref: StateRecordRef,
 ) -> CloseReadinessBlocker {
@@ -32,21 +28,14 @@ pub(super) fn open_write_ticket_close_blocker(
         "open_write_ticket",
         "An open write ticket remains unresolved for this Task.",
         vec![write_ticket_ref],
-        vec![NextActionSummary {
-            presentation_role: NextActionPresentationRole::Primary,
-            action_kind: NextActionKind::RecordRun,
-            owner_method: Some(MethodName::RecordRun),
-            allowed_operation_categories: vec![OperationCategory::AgentWorkflow],
-            label: "Record the ticket-backed run or reconcile observed changes before close."
-                .to_owned(),
-            blocking_question: None,
-            expected_state_version: RequiredNullable::null(),
-            required_refs: vec![task_ref],
-        }],
+        vec![close_guidance(
+            CloseGuidance::RecordOpenTicket,
+            vec![task_ref],
+        )],
     )
 }
 
-pub(super) fn normalize_close_blockers(
+pub(crate) fn normalize_close_blockers(
     blockers: &mut [CloseReadinessBlocker],
     expected_state_version: u64,
 ) {
@@ -67,3 +56,7 @@ pub(super) fn normalize_close_blockers(
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tests/blockers.rs"]
+mod tests;

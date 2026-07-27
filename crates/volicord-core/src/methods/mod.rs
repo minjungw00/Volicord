@@ -68,8 +68,6 @@ use crate::policy::{
     },
 };
 
-mod close_blockers;
-mod close_guidance;
 mod close_readiness;
 mod close_task;
 mod evidence_facts;

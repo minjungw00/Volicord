@@ -1,5 +1,7 @@
-use super::close_blockers::{normalize_close_blockers, open_write_ticket_close_blocker};
-use super::close_readiness::{facts_from_projection, plan_projected_close_readiness};
+use super::close_readiness::{
+    facts_from_projection, normalize_close_blockers, open_write_ticket_close_blocker,
+    plan_projected_close_readiness,
+};
 use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_write_ticket_id,
     baseline_matches, build_state_summary, change_unit_effect_contract, change_unit_ref,

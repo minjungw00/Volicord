@@ -2,7 +2,10 @@ use rusqlite::params;
 use volicord_types::ids::TaskId;
 
 use super::{facade::CoreProjectStore, validation::validate_identifier};
-use crate::StoreResult;
+use crate::{
+    guards::{unresolved_unrecorded_changes_from_conn, UnrecordedChangeRecord},
+    StoreResult,
+};
 
 const EXPECTED_WRITE_OBSERVATION_COLUMNS: &str = "
     expected_write_id, matched_paths_json, matched_at";
@@ -20,6 +23,19 @@ pub struct ProductWriteObservationCandidate {
 }
 
 impl CoreProjectStore<'_> {
+    /// Lists unresolved Unrecorded Changes from this handle's current project
+    /// snapshot without reopening the project database.
+    pub fn unresolved_unrecorded_changes(
+        &self,
+        connection_internal_id: Option<&str>,
+    ) -> StoreResult<Vec<UnrecordedChangeRecord>> {
+        unresolved_unrecorded_changes_from_conn(
+            &self.conn,
+            &self.project.project_id,
+            connection_internal_id,
+        )
+    }
+
     /// Lists confirmed, Task-bound product-write observation candidates without assigning
     /// authority or interpreting their path payloads.
     pub fn product_write_observation_candidates_for_task(

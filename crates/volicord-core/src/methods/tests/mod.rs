@@ -544,6 +544,7 @@ fn test_state_record_ref(
     }
 }
 
+#[path = "../close_readiness/tests/integration.rs"]
 mod close_readiness;
 mod close_task;
 mod intake;

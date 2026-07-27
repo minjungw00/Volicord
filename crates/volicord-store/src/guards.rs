@@ -2147,7 +2147,23 @@ pub fn list_unresolved_unrecorded_changes(
     let Some(project) = open_project_for_read(runtime_home, project_id)? else {
         return Ok(Vec::new());
     };
-    let mut stmt = project.conn.prepare(
+    unresolved_unrecorded_changes_from_conn(
+        &project.conn,
+        &project.project.project_id,
+        connection_internal_id,
+    )
+}
+
+pub(crate) fn unresolved_unrecorded_changes_from_conn(
+    conn: &Connection,
+    project_id: &str,
+    connection_internal_id: Option<&str>,
+) -> StoreResult<Vec<UnrecordedChangeRecord>> {
+    validate_identifier("project_id", project_id)?;
+    if let Some(connection_internal_id) = connection_internal_id {
+        validate_identifier("connection_internal_id", connection_internal_id)?;
+    }
+    let mut stmt = conn.prepare(
         "SELECT
             u.project_id, u.unrecorded_change_id, u.session_id,
             u.connection_internal_id, h.host_session_id, u.correlation_kind,
@@ -2168,7 +2184,7 @@ pub fn list_unresolved_unrecorded_changes(
                  u.unrecorded_change_id",
     )?;
     let rows = stmt.query_map(
-        params![project.project.project_id, connection_internal_id],
+        params![project_id, connection_internal_id],
         unrecorded_change_from_row,
     )?;
     collect_rows(rows)
