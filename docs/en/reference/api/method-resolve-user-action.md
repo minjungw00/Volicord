@@ -80,7 +80,7 @@ persisted-floor rules belong to
 
 ## Result and effects
 
-```yaml
+```schema
 ResolveUserActionResult:
   base: ToolResultBase
   user_action_request_ref: StateRecordRef

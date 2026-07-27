@@ -342,7 +342,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn contract_table_drift_is_detected_deterministically() {
+    fn generated_request_table_drift_is_detected_deterministically() {
         let schema = json!({
             "title": "AlphaRequest",
             "type": "object",
@@ -368,6 +368,37 @@ mod tests {
         assert_eq!(
             expected,
             render_contract_tables(&[&descriptor], Language::English).expect("deterministic table")
+        );
+    }
+
+    #[test]
+    fn generated_response_table_drift_is_detected_deterministically() {
+        let schema = json!({
+            "title": "AlphaResult",
+            "type": "object",
+            "required": ["outcome", "items"],
+            "properties": {
+                "items": {"type": "array", "items": {"type": "integer"}},
+                "outcome": {"enum": ["complete", "blocked"]}
+            }
+        });
+        let descriptor = JsonContractDescriptor::from_owner_schema(
+            "api.method.alpha.response",
+            schema,
+            Default::default(),
+            Vec::new(),
+        );
+        let expected =
+            render_contract_tables(&[&descriptor], Language::Korean).expect("generated table");
+        let drifted = expected.replacen("`outcome`", "`outcame`", 1);
+        let range = contract_table_range(&drifted, &[&descriptor], Language::Korean)
+            .expect("generated region");
+
+        assert_ne!(&drifted[range], expected);
+        assert_eq!(
+            expected,
+            render_contract_tables(&[&descriptor], Language::Korean)
+                .expect("deterministic response table")
         );
     }
 }

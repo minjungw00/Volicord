@@ -903,6 +903,28 @@ pub fn public_response_schema(method_name: &str) -> Option<Value> {
     }
 }
 
+/// Returns the generated JSON Schema for one successful public method result body.
+pub fn public_result_schema(method_name: &str) -> Option<Value> {
+    match method_name {
+        "volicord.intake" => Some(response_schema::<IntakeResult>()),
+        "volicord.update_scope" => Some(response_schema::<UpdateScopeResult>()),
+        "volicord.status" => Some(response_schema::<StatusResult>()),
+        "volicord.get_operation_result" => Some(response_schema::<GetOperationResultResult>()),
+        "volicord.check_close" => Some(response_schema::<CloseTaskResult>()),
+        "volicord.prepare_evidence_capture" => {
+            Some(response_schema::<PrepareEvidenceCaptureResult>())
+        }
+        "volicord.prepare_write" => Some(response_schema::<PrepareWriteResult>()),
+        "volicord.stage_artifact" => Some(response_schema::<StageArtifactResult>()),
+        "volicord.record_run" => Some(response_schema::<RecordRunResult>()),
+        "volicord.request_user_action" => Some(response_schema::<RequestUserActionResult>()),
+        "volicord.resolve_user_action" => Some(response_schema::<ResolveUserActionResult>()),
+        "volicord.reconcile_changes" => Some(response_schema::<ReconcileChangesResult>()),
+        "volicord.close_task" => Some(response_schema::<CloseTaskResult>()),
+        _ => None,
+    }
+}
+
 fn request_schema<T: JsonSchema>() -> Value {
     serde_json::to_value(schema_for!(T)).expect("request schema should serialize")
 }

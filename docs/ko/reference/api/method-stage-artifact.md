@@ -166,7 +166,7 @@ Core는 staging 행, handle, 임시 디렉터리, staged byte 또는 알림을 �
 
 ## 최소 유효 요청
 
-```yaml
+```yaml contract=api.method.stage_artifact.request shape=complete_request
 method: volicord.stage_artifact
 params:
   envelope:
@@ -191,7 +191,7 @@ params:
 
 결과 분기(`StageArtifactResult`, 스테이징 생성):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: staging_created

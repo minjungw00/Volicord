@@ -459,7 +459,7 @@ volicord doctor --privacy-footprint
 `volicord doctor --privacy-footprint --json`은 다음과 같은 정확한 최상위
 projection을 반환합니다.
 
-```yaml
+```schema
 status: complete
 runtime_home: string
 privacy_footprint:
@@ -816,7 +816,7 @@ code, fact object를 사용합니다. `--verbose`와 `--json`은 함께 사용�
 
 Schema 2의 최상위 형태는 다음과 같습니다.
 
-```yaml
+```schema
 DiagnosticReport:
   schema_version: 2
   operation: init | add | status | verify | mode | remove
@@ -950,7 +950,7 @@ Report limits
 하나나 운영 결과 하나를 다루지 않으므로 선택한 Connection용 `DiagnosticReport`
 projection을 사용하지 않습니다. JSON 문서의 최상위 구성원은 정확히 다음과 같습니다.
 
-```yaml
+```schema
 ConnectionListReport:
   connections: ConnectionListEntry[]
   limits:
@@ -1067,7 +1067,7 @@ membership만 제거한 경우와 Agent Connection을 완전히 제거한 경우
 `add`, `status`, `verify`, `mode`, `remove` 명령이 포함됩니다. Operation별 fact는
 `operation_details` 아래에 둡니다.
 
-```yaml
+```schema
 operation_details:
   dry_run: bool
   result?: SetupResult | ModeTransitionResult | RemovalResult
@@ -1245,7 +1245,7 @@ diagnostic code, 실패 단계, 영속 finding 참조로 projection하며 verifi
 두 번째 terminal 실패 객체를 저장하지 않습니다. 현재 self-test 진단 형태는 다음과
 같습니다.
 
-```yaml
+```schema
 McpSelfTestProgress:
   status: passed | failed | pending
   code: string
@@ -1448,7 +1448,7 @@ code를 finding identity로 사용하고 action은 typed diagnostic class에서 
 scan하지 않습니다. JSON은 선택한 Connection 보고서가 아니라 별도의 schema 1
 `DiagnosticLookupReport`를 사용합니다.
 
-```yaml
+```schema
 DiagnosticLookupReport:
   schema_version: 1
   operation: diagnostics_show | diagnostics_session
@@ -1600,7 +1600,7 @@ evidence observation 하나를 `volicord.resolve_user_action`에 제출합니다
 `volicord-user-action-presentation`은 다음과 같은 정확한 닫힌 CLI inbox 문서와 그
 JSON Schema를 담당합니다.
 
-```yaml
+```schema
 CliUserActionInboxResponse:
   summary_card: SummaryCard
   user_channel_availability: CliUserChannelAvailability | null

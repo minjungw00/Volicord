@@ -220,7 +220,7 @@
 
 ## 최소 유효 요청
 
-```yaml
+```yaml contract=api.method.update_scope.request shape=complete_request
 method: volicord.update_scope
 params:
   envelope:
@@ -267,7 +267,7 @@ params:
 
 축약한 결과 분기(`UpdateScopeResult`, 커밋됨):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed

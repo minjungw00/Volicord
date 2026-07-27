@@ -133,11 +133,14 @@ warnings, and local reader routes must remain equivalent by meaning.
 English and Korean independently at parsed structural coordinates. An
 identifier owned by a different contract is out of scope; a likely contract
 identifier absent from the current owners is invalid even when both languages
-use the same spelling. Only units that pass both language validations proceed
-to parity comparison. Catalog membership, not capitalization or identifier
-shape, recognizes a token, so lowercase schema values are covered alongside
-`snake_case` fields, hyphenated CLI tokens, dotted diagnostic codes, and
-protocol identifiers. Human review remains responsible for natural
+use the same spelling. Each JSON or YAML example first resolves its one
+semantic contract and one example shape, then each language instance is parsed
+and validated against that exact schema. Only units that pass both language
+validations proceed to parity comparison, so the same invalid field or value in
+both languages still fails. Catalog membership, not capitalization or
+identifier shape, recognizes an inline token, so lowercase schema values are
+covered alongside `snake_case` fields, hyphenated CLI tokens, dotted diagnostic
+codes, and protocol identifiers. Human review remains responsible for natural
 translation, semantic equivalence, context, normative strength, omissions, and
 whether a shared identifier expresses the same contract meaning.
 

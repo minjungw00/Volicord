@@ -36,7 +36,7 @@
 
 `ArtifactRef`는 공개 아티팩트 참조와 메타데이터 형태입니다.
 
-```yaml
+```schema
 ArtifactRef:
   artifact_id: string
   project_id: string
@@ -65,7 +65,7 @@ ArtifactRef:
 
 `StagedArtifactHandle`은 `volicord.stage_artifact` 결과와 연결되는 임시 핸들 형태입니다. 영속 아티팩트의 `ArtifactRef` 형태가 아닙니다.
 
-```yaml
+```schema
 StagedArtifactHandle:
   handle_id: string
   project_id: string
@@ -87,7 +87,7 @@ StagedArtifactHandle:
 
 `ArtifactInput`은 실행 기록이나 증거 출력에 아티팩트 링크를 받는 메서드의 요청 측 형태입니다.
 
-```yaml
+```schema
 ArtifactInput:
   artifact_input_id: string
   source_kind: string

@@ -364,7 +364,7 @@ The examples are intentionally compact and method-local. Representative response
 
 This example uses `account_preference_update` as a sample `sensitive_categories` string. It does not define the sensitive-category value set.
 
-```yaml
+```yaml contract=api.method.prepare_write.request shape=complete_request
 method: volicord.prepare_write
 params:
   envelope:
@@ -404,7 +404,7 @@ The `write_authority_fingerprint` value below is an illustrative normalized
 write-authority digest, distinct from the illustrative whole-policy
 `policy_fingerprint`.
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed
@@ -578,7 +578,7 @@ This branch applies when the matching sensitive-action approval is missing.
 
 The `code: sensitive_approval_missing` value below is one of this method's local reason codes. It is not a public `ErrorCode` value.
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed

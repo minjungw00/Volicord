@@ -1,9 +1,10 @@
 //! Semantic contract descriptors derived from canonical MCP wire schemas.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use schemars::schema_for;
-use volicord_types::contracts::identifiers_from_json_schema;
+use serde_json::Value;
+use volicord_types::contracts::{identifiers_from_json_schema, JsonExampleShape};
 use volicord_types::tool_names::AgentToolId;
 
 use crate::methods::{mcp_request_schema, mcp_response_schema};
@@ -15,6 +16,7 @@ pub struct WireContractDescriptor {
     id: &'static str,
     identifiers: BTreeSet<String>,
     related_contracts: Vec<&'static str>,
+    example_schemas: BTreeMap<String, Value>,
 }
 
 impl WireContractDescriptor {
@@ -29,10 +31,16 @@ impl WireContractDescriptor {
     pub fn related_contracts(&self) -> &[&'static str] {
         &self.related_contracts
     }
+
+    /// Returns every exact MCP request or response shape exposed by this owner.
+    pub const fn example_schemas(&self) -> &BTreeMap<String, Value> {
+        &self.example_schemas
+    }
 }
 
 /// Returns the MCP wire contract derived from its generated schemas.
 pub fn wire_contract_descriptors() -> Vec<WireContractDescriptor> {
+    let mut example_schemas = BTreeMap::new();
     let mut identifiers = BTreeSet::from([
         "jsonrpc".to_owned(),
         "protocolVersion".to_owned(),
@@ -56,25 +64,19 @@ pub fn wire_contract_descriptors() -> Vec<WireContractDescriptor> {
     ]);
 
     for tool in AgentToolId::ALL {
-        for schema in [mcp_request_schema(tool), mcp_response_schema(tool)]
-            .into_iter()
-            .flatten()
-        {
-            let schema_identifiers = identifiers_from_json_schema(&schema);
-            identifiers.extend(
-                schema_identifiers
-                    .values()
-                    .iter()
-                    .filter(|value| value.starts_with("MCP_"))
-                    .cloned(),
+        if let Some(schema) = mcp_request_schema(tool) {
+            example_schemas.insert(
+                JsonExampleShape::McpWireRequest(tool.wire_name().to_owned()).id(),
+                schema.clone(),
             );
-            identifiers.extend(
-                schema_identifiers
-                    .schema_names()
-                    .iter()
-                    .filter(|name| name.starts_with("Mcp"))
-                    .cloned(),
+            extend_wire_identifiers(&mut identifiers, &schema);
+        }
+        if let Some(schema) = mcp_response_schema(tool) {
+            example_schemas.insert(
+                JsonExampleShape::McpWireResponse(tool.wire_name().to_owned()).id(),
+                schema.clone(),
             );
+            extend_wire_identifiers(&mut identifiers, &schema);
         }
     }
 
@@ -93,7 +95,26 @@ pub fn wire_contract_descriptors() -> Vec<WireContractDescriptor> {
         id: "mcp.wire",
         identifiers,
         related_contracts: vec!["mcp.protocol"],
+        example_schemas,
     }]
+}
+
+fn extend_wire_identifiers(identifiers: &mut BTreeSet<String>, schema: &Value) {
+    let schema_identifiers = identifiers_from_json_schema(schema);
+    identifiers.extend(
+        schema_identifiers
+            .values()
+            .iter()
+            .filter(|value| value.starts_with("MCP_"))
+            .cloned(),
+    );
+    identifiers.extend(
+        schema_identifiers
+            .schema_names()
+            .iter()
+            .filter(|name| name.starts_with("Mcp"))
+            .cloned(),
+    );
 }
 
 #[cfg(test)]
@@ -117,6 +138,15 @@ mod tests {
             assert!(
                 descriptor.identifiers().contains(identifier),
                 "MCP wire descriptor should own {identifier}"
+            );
+        }
+        for shape in [
+            "mcp_request.volicord.status",
+            "mcp_response.volicord.status",
+        ] {
+            assert!(
+                descriptor.example_schemas().contains_key(shape),
+                "MCP wire descriptor should expose {shape}"
             );
         }
     }

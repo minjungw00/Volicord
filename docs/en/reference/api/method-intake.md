@@ -274,7 +274,7 @@ The examples are intentionally compact and method-local. The representative resp
 
 ## Minimal valid request
 
-```yaml
+```yaml contract=api.method.intake.request shape=complete_request
 method: volicord.intake
 params:
   envelope:
@@ -305,7 +305,7 @@ params:
 
 Abbreviated result branch (`IntakeResult`, committed):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed

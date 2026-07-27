@@ -1959,8 +1959,8 @@ documents:
   - api.schema.state
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1984,8 +1984,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2010,8 +2010,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2122,8 +2122,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2155,8 +2155,8 @@ documents:
   - api.schema.state
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2183,8 +2183,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2304,8 +2304,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators
@@ -3077,8 +3077,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -3152,8 +3152,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -3273,8 +3273,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   applies_to:
   - doc_index_schema
   - terminology_map_schema
@@ -3303,8 +3303,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   applies_to:
   - doc_index_schema
   primary_audience:

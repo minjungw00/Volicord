@@ -50,7 +50,7 @@
 
 타입이 지정된 플랫폼 경계 Store failure의 정확한 세부 형태는 다음과 같습니다.
 
-```yaml
+```schema
 diagnostic_code: string
 ```
 

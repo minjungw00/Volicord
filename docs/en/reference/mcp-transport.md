@@ -574,7 +574,7 @@ relax the complete owner-defined request validation.
 <a id="user-action-wire-projection"></a>
 ### UserAction wire projection
 
-```yaml
+```schema
 McpRequestUserActionResponse:
   agent_workflow_result: RequestUserActionResponse
   agent_workflow_result_replayed: boolean
@@ -687,7 +687,7 @@ separate effects defined by
 [Storage Effects](storage-effects.md#connection-integration-verification-effects).
 None of the four tools modifies Codex project trust or hook-review state.
 
-```yaml
+```schema
 volicord.begin_integration_verification:
   arguments:
     project_selector?: string

@@ -17,7 +17,7 @@ module placement are internal.
 
 ## Canonical Types
 
-```yaml
+```schema
 SuppressionOutcome:
   Applied:
     outcome: applied

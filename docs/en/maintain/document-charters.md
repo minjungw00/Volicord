@@ -224,9 +224,12 @@ Reference owners.
   storage, runtime boundaries, security wording, Agent Connection behavior,
   projection and template behavior, conformance meaning, and design-quality
   meaning. Contract-bearing pages use exact semantic contract IDs routed to
-  machine-readable owner descriptors. Repeated request field, requiredness,
-  nullability, type, and CLI syntax inventories are generated from those
-  owners. The Reference Index owns human-readable Reference navigation.
+  machine-readable owner descriptors. Each JSON or YAML instance selects one
+  exact descriptor shape; method routes supply request and response contract
+  choices without combining their schemas. Reader-facing shape notation uses
+  `schema` fences. Repeated request field, requiredness, nullability, type, and
+  CLI syntax inventories are generated from those owners. The Reference Index
+  owns human-readable Reference navigation.
 - Should not own: Tutorial flow, marketing framing, implementation history,
   migration notes, broad onboarding prose, or duplicate copies of adjacent
   Reference owners.

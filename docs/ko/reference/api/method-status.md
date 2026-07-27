@@ -254,7 +254,7 @@ presentation을 `StatusResult`가 아닌 별도 내부 Core 경계에서 얻습�
 
 ## 최소 유효 요청
 
-```yaml
+```yaml contract=api.method.status.request shape=complete_request
 method: volicord.status
 params:
   envelope:
@@ -279,7 +279,7 @@ params:
 
 축약한 결과 분기(`StatusResult`, 읽기 전용):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: read_only

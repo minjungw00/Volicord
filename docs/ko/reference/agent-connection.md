@@ -171,7 +171,7 @@ fail closed하고, 정상적인 launcher 실패는 아직 쓰지 않은 lease를
 
 보고서 하나가 정규 직렬화 Connection 및 activation 상태입니다.
 
-```yaml
+```schema
 ConnectionVerificationReport:
   status: complete | action_required | failed
   activation_state: configured | host_reload_required |

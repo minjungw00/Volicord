@@ -74,7 +74,7 @@ projection은 안전한 선택 식별자와 파생 ref를 보고할 수 있지�
 
 ## 결과
 
-```yaml
+```schema
 GetOperationResultResult:
   base: ToolResultBase
   operation_result_ref: OperationResultRef

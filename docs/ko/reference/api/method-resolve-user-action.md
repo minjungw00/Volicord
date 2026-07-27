@@ -68,7 +68,7 @@ Core transaction은 더 늦은 정규 커밋 timestamp를 선택할 수 있지�
 
 ## 결과와 효과
 
-```yaml
+```schema
 ResolveUserActionResult:
   base: ToolResultBase
   user_action_request_ref: StateRecordRef

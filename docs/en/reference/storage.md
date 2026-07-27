@@ -9,7 +9,7 @@ locations, or Core authority semantics.
 
 ## Current Canonical Manifest Identity
 
-```yaml
+```schema
 contract_id: volicord.sqlite.canonical
 enabled_capabilities:
   - artifact_storage

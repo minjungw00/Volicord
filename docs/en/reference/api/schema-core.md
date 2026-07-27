@@ -102,7 +102,7 @@ Does not imply:
 Owner links:
 - Method-specific request rules: method owner documents routed from [API Methods](methods.md).
 
-```yaml
+```schema
 ToolEnvelope:
   project_id: string
   task_id: string | null
@@ -161,7 +161,7 @@ Meaning:
 Does not imply:
 - `MethodResult` is not a single concrete schema.
 
-```yaml
+```schema
 ToolResultBase:
   response_kind: string
   effect_kind: string
@@ -206,7 +206,7 @@ Meaning:
 Does not imply:
 - This page does not define record creation, ref reservation, handle consumption, replay rows, or `state_version` effects.
 
-```yaml
+```schema
 DryRunSummary:
   planned_effects: PlannedEffect[]
   would_blockers: PlannedBlocker[]
@@ -241,7 +241,7 @@ Owner links:
 
 ## Shared support shapes
 
-```yaml
+```schema
 ToolError:
   category: FailureCategory
   code: ErrorCode

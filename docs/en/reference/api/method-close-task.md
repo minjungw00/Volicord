@@ -400,7 +400,7 @@ The examples are intentionally compact. They illustrate the method branch and ke
 
 ### Minimal valid request
 
-```yaml
+```yaml contract=api.method.check_close.request shape=complete_request
 method: volicord.check_close
 params:
   envelope:
@@ -418,7 +418,7 @@ params:
 
 Read-only `CloseTaskResult` for `task_close_001` at `state_version: 72`, where the method-local response reports one final-acceptance blocker:
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: read_only

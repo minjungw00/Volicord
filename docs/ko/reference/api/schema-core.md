@@ -96,7 +96,7 @@ phase 관찰, 한도 있는 finding을 포함합니다. `ToolEnvelope`, Core met
 담당 문서 링크:
 - 메서드별 요청 규칙: [API 메서드](methods.md)가 안내하는 메서드 담당 문서.
 
-```yaml
+```schema
 ToolEnvelope:
   project_id: string
   task_id: string | null
@@ -153,7 +153,7 @@ ToolEnvelope:
 의미하지 않는 것:
 - `MethodResult`는 하나의 구체 스키마 이름이 아닙니다.
 
-```yaml
+```schema
 ToolResultBase:
   response_kind: string
   effect_kind: string
@@ -198,7 +198,7 @@ ToolDryRunResponse:
 의미하지 않는 것:
 - 이 문서는 기록 생성, 참조 예약, 핸들 소비, 재실행 행, `state_version` 효과를 정의하지 않습니다.
 
-```yaml
+```schema
 DryRunSummary:
   planned_effects: PlannedEffect[]
   would_blockers: PlannedBlocker[]
@@ -233,7 +233,7 @@ PlannedBlocker:
 
 ## 공통 보조 형태
 
-```yaml
+```schema
 ToolError:
   category: FailureCategory
   code: ErrorCode

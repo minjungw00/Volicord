@@ -204,12 +204,31 @@ storage-effect owners where relevant. Unsupported enum-like values, stale
 response shapes, mismatched required fields, and inconsistent response branches
 are documentation failures.
 
-Normal Reference JSON and YAML examples inherit the exact semantic contracts of
-their document. Use a fence-level `contract=` selector only when one document
-contains independent structured examples from multiple contracts. The selector
-names one semantic contract already assigned to that document; it never carries
-an identifier inventory. Request field, requiredness, nullability, and type
-tables in API method Reference pages are generated from request descriptors by
+Every Reference `json`, `yaml`, or `yml` fence is a complete structured
+instance. It declares exactly one `shape=` value. The document route supplies
+the available semantic contracts; when more than one of them exposes that
+shape, the fence also declares exactly one `contract=` value naming a contract
+already assigned to the document. Fence metadata never carries an identifier
+inventory.
+
+The selected descriptor supplies the exact schema for the selected shape.
+Current shapes are `complete_request`, `params`, `complete_response`,
+`result_body`, `rejection`, `schema_object.<name>`, `cli_output`,
+`mcp_request.<tool>`, `mcp_response.<tool>`, and descriptor-exposed
+`persisted_object.<name>` or `diagnostic_object.<name>`. A descriptor exposes
+only shapes that its current owner supports. A `schema` fence is type or shape
+notation for readers, not a JSON or YAML instance.
+
+Structured JSON is parsed as JSON. Structured YAML is converted
+deterministically to a JSON-compatible value and rejects tags and non-string
+mapping keys. The resulting value must satisfy its exact generated schema,
+including required and unknown properties, types, nested structures, arrays,
+enum and const values, constraints, discriminated unions, references, and
+nullability. English and Korean instances are each validated before their
+structural and exact-identifier parity is compared.
+
+Request field, requiredness, nullability, and type tables in API method
+Reference pages are generated from request descriptors by
 `cargo run -p xtask -- docs-sync`. The same command generates the English and
 Korean package-responsibility and dependency-direction tables in Architecture
 from `workspace.metadata.architecture.packages`; those tables are not maintained

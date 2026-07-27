@@ -36,7 +36,7 @@ Owner links:
 
 `ArtifactRef` is the public artifact reference and metadata shape.
 
-```yaml
+```schema
 ArtifactRef:
   artifact_id: string
   project_id: string
@@ -65,7 +65,7 @@ For `integrity_status=verified`, `content_type` is non-empty, `sha256` is a vali
 
 `StagedArtifactHandle` is the transient-handle shape associated with `volicord.stage_artifact` results. It is not the persistent `ArtifactRef` shape.
 
-```yaml
+```schema
 StagedArtifactHandle:
   handle_id: string
   project_id: string
@@ -87,7 +87,7 @@ The caller does not submit `created_by_actor_source` as an authority claim. Stag
 
 `ArtifactInput` is the request-side shape for methods that accept artifact links for run or evidence output.
 
-```yaml
+```schema
 ArtifactInput:
   artifact_input_id: string
   source_kind: string

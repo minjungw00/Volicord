@@ -6,6 +6,1726 @@
   },
   "contracts": [
     {
+      "example_schemas": {
+        "cli_output": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "definitions": {
+            "ActorSource": {
+              "type": "string"
+            },
+            "ArtifactAvailability": {
+              "description": "Artifact availability display values.",
+              "enum": [
+                "available",
+                "unavailable",
+                "missing",
+                "integrity_failed",
+                "blocked",
+                "unusable"
+              ],
+              "type": "string"
+            },
+            "ArtifactIntegrityStatus": {
+              "description": "Artifact integrity fact classification values.",
+              "enum": [
+                "verified",
+                "corrupt"
+              ],
+              "type": "string"
+            },
+            "ArtifactRef": {
+              "additionalProperties": false,
+              "description": "Public artifact reference and metadata shape.",
+              "properties": {
+                "artifact_id": {
+                  "type": "string"
+                },
+                "availability": {
+                  "$ref": "#/definitions/ArtifactAvailability"
+                },
+                "content_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_by_actor_source": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ActorSource"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "created_by_run_ref": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/StateRecordRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "integrity_status": {
+                  "$ref": "#/definitions/ArtifactIntegrityStatus"
+                },
+                "project_id": {
+                  "type": "string"
+                },
+                "redaction_state": {
+                  "$ref": "#/definitions/RedactionState"
+                },
+                "sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size_bytes": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "storage_ref": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "task_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifact_id",
+                "availability",
+                "content_type",
+                "created_by_actor_source",
+                "created_by_run_ref",
+                "display_name",
+                "integrity_status",
+                "project_id",
+                "redaction_state",
+                "sha256",
+                "size_bytes",
+                "storage_ref",
+                "task_id"
+              ],
+              "type": "object"
+            },
+            "CliUserActionCapturePath": {
+              "description": "Request-specific CLI path whose available branch carries a canonical command.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "capture_basis": {
+                      "$ref": "#/definitions/UserActionVerificationBasis"
+                    },
+                    "command": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "available"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "capture_basis",
+                    "command",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "unavailable"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "CliUserActionInboxItem": {
+              "additionalProperties": false,
+              "description": "CLI inbox presentation for one actionable semantic request.",
+              "properties": {
+                "action_kind": {
+                  "$ref": "#/definitions/UserActionKind"
+                },
+                "capture_path": {
+                  "$ref": "#/definitions/CliUserActionCapturePath"
+                },
+                "change_unit_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "context_summary": {
+                  "type": "string"
+                },
+                "expires_at": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/UtcTimestamp"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "project_id": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "request_ref": {
+                  "$ref": "#/definitions/StateRecordRef"
+                },
+                "required_for": {
+                  "items": {
+                    "$ref": "#/definitions/UserActionRequiredFor"
+                  },
+                  "type": "array"
+                },
+                "requirement": {
+                  "$ref": "#/definitions/CliUserActionRequirement"
+                },
+                "resolution_form": {
+                  "$ref": "#/definitions/UserActionResolutionForm"
+                },
+                "status": {
+                  "$ref": "#/definitions/UserActionStatus"
+                },
+                "task_id": {
+                  "type": "string"
+                },
+                "user_action_request_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action_kind",
+                "capture_path",
+                "change_unit_id",
+                "context_summary",
+                "expires_at",
+                "project_id",
+                "question",
+                "request_ref",
+                "required_for",
+                "requirement",
+                "resolution_form",
+                "status",
+                "task_id",
+                "user_action_request_id"
+              ],
+              "type": "object"
+            },
+            "CliUserActionRequirement": {
+              "description": "Whether one inbox action participates in a required workflow condition.",
+              "enum": [
+                "required",
+                "optional"
+              ],
+              "type": "string"
+            },
+            "CliUserChannelAvailability": {
+              "additionalProperties": false,
+              "description": "Current credential-free availability of the supported CLI User Channel.",
+              "properties": {
+                "paths": {
+                  "items": {
+                    "$ref": "#/definitions/CliUserChannelPath"
+                  },
+                  "type": "array"
+                },
+                "recommendation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "recommended_path_kind": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recommended_path_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "paths",
+                "recommendation",
+                "recommended_path_kind",
+                "recommended_path_label"
+              ],
+              "type": "object"
+            },
+            "CliUserChannelPath": {
+              "description": "One CLI User Channel path whose state and facts cannot contradict.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "capture_basis": {
+                      "$ref": "#/definitions/UserActionVerificationBasis"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "available"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "capture_basis",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "unavailable"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "EvidenceRelevanceStatus": {
+              "description": "Core-derived claim-relevance assessment states for evidence observations.",
+              "enum": [
+                "unassessed",
+                "supported",
+                "contradicted"
+              ],
+              "type": "string"
+            },
+            "EvidenceTarget": {
+              "description": "Stable evidence target selected by coverage, observations, and artifacts.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "acceptance_criterion_id": {
+                      "type": "string"
+                    },
+                    "target_kind": {
+                      "enum": [
+                        "acceptance_criterion"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "acceptance_criterion_id",
+                    "target_kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "evidence_claim_id": {
+                      "type": "string"
+                    },
+                    "statement": {
+                      "type": "string"
+                    },
+                    "target_kind": {
+                      "enum": [
+                        "supplemental_claim"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "evidence_claim_id",
+                    "statement",
+                    "target_kind"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "MethodName": {
+              "description": "Supported public Volicord method names.",
+              "enum": [
+                "volicord.intake",
+                "volicord.update_scope",
+                "volicord.status",
+                "volicord.get_operation_result",
+                "volicord.check_close",
+                "volicord.prepare_evidence_capture",
+                "volicord.prepare_write",
+                "volicord.stage_artifact",
+                "volicord.record_run",
+                "volicord.request_user_action",
+                "volicord.resolve_user_action",
+                "volicord.reconcile_changes",
+                "volicord.close_task"
+              ],
+              "type": "string"
+            },
+            "NextActionKind": {
+              "description": "Controlled next-action category.",
+              "enum": [
+                "update_scope",
+                "prepare_write",
+                "stage_artifact",
+                "record_run",
+                "request_user_action",
+                "resolve_user_action",
+                "reconcile_changes",
+                "close_task"
+              ],
+              "type": "string"
+            },
+            "NextActionPresentationRole": {
+              "description": "Controlled presentation role for an owner-composed next action.",
+              "enum": [
+                "primary",
+                "additional"
+              ],
+              "type": "string"
+            },
+            "NextActionSummary": {
+              "description": "Canonical next-action display shape.",
+              "properties": {
+                "action_kind": {
+                  "$ref": "#/definitions/NextActionKind"
+                },
+                "allowed_operation_categories": {
+                  "items": {
+                    "$ref": "#/definitions/OperationCategory"
+                  },
+                  "type": "array"
+                },
+                "blocking_question": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "expected_state_version": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "owner_method": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/MethodName"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "presentation_role": {
+                  "$ref": "#/definitions/NextActionPresentationRole"
+                },
+                "required_refs": {
+                  "items": {
+                    "$ref": "#/definitions/StateRecordRef"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "action_kind",
+                "allowed_operation_categories",
+                "expected_state_version",
+                "label",
+                "presentation_role",
+                "required_refs"
+              ],
+              "type": "object"
+            },
+            "OperationCategory": {
+              "description": "Internal API operation category.",
+              "enum": [
+                "read",
+                "agent_workflow",
+                "user_only",
+                "admin_local",
+                "local_recovery"
+              ],
+              "type": "string"
+            },
+            "RedactionState": {
+              "description": "Artifact redaction-state values.",
+              "enum": [
+                "none",
+                "redacted",
+                "secret_omitted",
+                "blocked"
+              ],
+              "type": "string"
+            },
+            "StateRecordKind": {
+              "description": "State reference discriminator values.",
+              "enum": [
+                "project_state",
+                "task",
+                "change_unit",
+                "write_ticket",
+                "user_action_request",
+                "user_action_resolution",
+                "run",
+                "evidence_summary",
+                "evidence_observation",
+                "evidence_capture_intent",
+                "evidence_producer",
+                "artifact",
+                "blocker",
+                "task_event",
+                "agent_connection",
+                "unrecorded_change",
+                "project_continuity_record"
+              ],
+              "type": "string"
+            },
+            "StateRecordRef": {
+              "additionalProperties": false,
+              "description": "Common public reference for Core-owned state records.",
+              "properties": {
+                "produced_at_state_version": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "project_id": {
+                  "type": "string"
+                },
+                "record_id": {
+                  "type": "string"
+                },
+                "record_kind": {
+                  "$ref": "#/definitions/StateRecordKind"
+                },
+                "task_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "produced_at_state_version",
+                "project_id",
+                "record_id",
+                "record_kind",
+                "task_id"
+              ],
+              "type": "object"
+            },
+            "SummaryCard": {
+              "description": "Stable compact status card shared by status-like outputs.",
+              "properties": {
+                "changes": {
+                  "type": "string"
+                },
+                "close_status": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "guarantee": {
+                  "type": "string"
+                },
+                "next": {
+                  "type": "string"
+                },
+                "next_action": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/NextActionSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "recording": {
+                  "type": "string"
+                },
+                "task": {
+                  "type": "string"
+                },
+                "transport": {
+                  "type": "string"
+                },
+                "user_action": {
+                  "type": "string"
+                },
+                "write_ticket": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "changes",
+                "close_status",
+                "evidence",
+                "guarantee",
+                "next",
+                "profile",
+                "recording",
+                "task",
+                "transport",
+                "user_action",
+                "write_ticket"
+              ],
+              "type": "object"
+            },
+            "UserActionChannelKind": {
+              "description": "Verified User Channel kinds that can resolve one pending user action.",
+              "enum": [
+                "cli"
+              ],
+              "type": "string"
+            },
+            "UserActionKind": {
+              "description": "Canonical user-action family values derived from the closed action draft.",
+              "enum": [
+                "product_decision",
+                "technical_decision",
+                "scope_decision",
+                "sensitive_approval",
+                "final_acceptance",
+                "residual_risk_acceptance",
+                "cancellation",
+                "evidence_observation"
+              ],
+              "type": "string"
+            },
+            "UserActionRequiredFor": {
+              "description": "Judgment required-for values.",
+              "enum": [
+                "scope_update",
+                "prepare_write",
+                "record_run",
+                "close_complete",
+                "close_cancel",
+                "close_supersede",
+                "informational"
+              ],
+              "type": "string"
+            },
+            "UserActionResolutionChoice": {
+              "additionalProperties": false,
+              "description": "Semantic answer choice for a choice-action resolution form.",
+              "properties": {
+                "choice_id": {
+                  "type": "string"
+                },
+                "consequence": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "is_default": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "choice_id",
+                "consequence",
+                "description",
+                "is_default",
+                "label"
+              ],
+              "type": "object"
+            },
+            "UserActionResolutionForm": {
+              "description": "Adapter-neutral resolution form derived from the stored request body.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "choices": {
+                      "items": {
+                        "$ref": "#/definitions/UserActionResolutionChoice"
+                      },
+                      "type": "array"
+                    },
+                    "form_type": {
+                      "enum": [
+                        "choice"
+                      ],
+                      "type": "string"
+                    },
+                    "note_allowed": {
+                      "type": "boolean"
+                    },
+                    "note_max_chars": {
+                      "format": "uint64",
+                      "minimum": 0.0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "choices",
+                    "form_type",
+                    "note_allowed",
+                    "note_max_chars"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "artifact_candidates": {
+                      "items": {
+                        "$ref": "#/definitions/ArtifactRef"
+                      },
+                      "type": "array"
+                    },
+                    "form_type": {
+                      "enum": [
+                        "evidence_observation"
+                      ],
+                      "type": "string"
+                    },
+                    "relevance_options": {
+                      "items": {
+                        "$ref": "#/definitions/EvidenceRelevanceStatus"
+                      },
+                      "type": "array"
+                    },
+                    "summary_max_chars": {
+                      "format": "uint64",
+                      "minimum": 0.0,
+                      "type": "integer"
+                    },
+                    "target_candidates": {
+                      "items": {
+                        "$ref": "#/definitions/EvidenceTarget"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "artifact_candidates",
+                    "form_type",
+                    "relevance_options",
+                    "summary_max_chars",
+                    "target_candidates"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "UserActionStatus": {
+              "description": "Effective user-action lifecycle values derived by the canonical evaluator.",
+              "enum": [
+                "pending",
+                "resolved",
+                "stale",
+                "superseded",
+                "expired"
+              ],
+              "type": "string"
+            },
+            "UserActionVerificationBasis": {
+              "description": "Verified bases accepted for one User Channel resolution.",
+              "enum": [
+                "cli_direct_user_channel"
+              ],
+              "type": "string"
+            },
+            "UtcTimestamp": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "description": "Complete typed JSON document produced by `volicord inbox --json`.",
+          "properties": {
+            "pending_user_action_inbox_items": {
+              "items": {
+                "$ref": "#/definitions/CliUserActionInboxItem"
+              },
+              "type": "array"
+            },
+            "summary_card": {
+              "$ref": "#/definitions/SummaryCard"
+            },
+            "user_channel_availability": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CliUserChannelAvailability"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "pending_user_action_inbox_items",
+            "summary_card",
+            "user_channel_availability"
+          ],
+          "title": "CliUserActionInboxResponse",
+          "type": "object"
+        },
+        "schema_object.CliUserActionInboxResponse": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "definitions": {
+            "ActorSource": {
+              "type": "string"
+            },
+            "ArtifactAvailability": {
+              "description": "Artifact availability display values.",
+              "enum": [
+                "available",
+                "unavailable",
+                "missing",
+                "integrity_failed",
+                "blocked",
+                "unusable"
+              ],
+              "type": "string"
+            },
+            "ArtifactIntegrityStatus": {
+              "description": "Artifact integrity fact classification values.",
+              "enum": [
+                "verified",
+                "corrupt"
+              ],
+              "type": "string"
+            },
+            "ArtifactRef": {
+              "additionalProperties": false,
+              "description": "Public artifact reference and metadata shape.",
+              "properties": {
+                "artifact_id": {
+                  "type": "string"
+                },
+                "availability": {
+                  "$ref": "#/definitions/ArtifactAvailability"
+                },
+                "content_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_by_actor_source": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/ActorSource"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "created_by_run_ref": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/StateRecordRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "integrity_status": {
+                  "$ref": "#/definitions/ArtifactIntegrityStatus"
+                },
+                "project_id": {
+                  "type": "string"
+                },
+                "redaction_state": {
+                  "$ref": "#/definitions/RedactionState"
+                },
+                "sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size_bytes": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "storage_ref": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "task_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifact_id",
+                "availability",
+                "content_type",
+                "created_by_actor_source",
+                "created_by_run_ref",
+                "display_name",
+                "integrity_status",
+                "project_id",
+                "redaction_state",
+                "sha256",
+                "size_bytes",
+                "storage_ref",
+                "task_id"
+              ],
+              "type": "object"
+            },
+            "CliUserActionCapturePath": {
+              "description": "Request-specific CLI path whose available branch carries a canonical command.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "capture_basis": {
+                      "$ref": "#/definitions/UserActionVerificationBasis"
+                    },
+                    "command": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "available"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "capture_basis",
+                    "command",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "unavailable"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "CliUserActionInboxItem": {
+              "additionalProperties": false,
+              "description": "CLI inbox presentation for one actionable semantic request.",
+              "properties": {
+                "action_kind": {
+                  "$ref": "#/definitions/UserActionKind"
+                },
+                "capture_path": {
+                  "$ref": "#/definitions/CliUserActionCapturePath"
+                },
+                "change_unit_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "context_summary": {
+                  "type": "string"
+                },
+                "expires_at": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/UtcTimestamp"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "project_id": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "request_ref": {
+                  "$ref": "#/definitions/StateRecordRef"
+                },
+                "required_for": {
+                  "items": {
+                    "$ref": "#/definitions/UserActionRequiredFor"
+                  },
+                  "type": "array"
+                },
+                "requirement": {
+                  "$ref": "#/definitions/CliUserActionRequirement"
+                },
+                "resolution_form": {
+                  "$ref": "#/definitions/UserActionResolutionForm"
+                },
+                "status": {
+                  "$ref": "#/definitions/UserActionStatus"
+                },
+                "task_id": {
+                  "type": "string"
+                },
+                "user_action_request_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action_kind",
+                "capture_path",
+                "change_unit_id",
+                "context_summary",
+                "expires_at",
+                "project_id",
+                "question",
+                "request_ref",
+                "required_for",
+                "requirement",
+                "resolution_form",
+                "status",
+                "task_id",
+                "user_action_request_id"
+              ],
+              "type": "object"
+            },
+            "CliUserActionRequirement": {
+              "description": "Whether one inbox action participates in a required workflow condition.",
+              "enum": [
+                "required",
+                "optional"
+              ],
+              "type": "string"
+            },
+            "CliUserChannelAvailability": {
+              "additionalProperties": false,
+              "description": "Current credential-free availability of the supported CLI User Channel.",
+              "properties": {
+                "paths": {
+                  "items": {
+                    "$ref": "#/definitions/CliUserChannelPath"
+                  },
+                  "type": "array"
+                },
+                "recommendation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "recommended_path_kind": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recommended_path_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "paths",
+                "recommendation",
+                "recommended_path_kind",
+                "recommended_path_label"
+              ],
+              "type": "object"
+            },
+            "CliUserChannelPath": {
+              "description": "One CLI User Channel path whose state and facts cannot contradict.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "capture_basis": {
+                      "$ref": "#/definitions/UserActionVerificationBasis"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "available"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "capture_basis",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/UserActionChannelKind"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "unavailable"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail",
+                    "kind",
+                    "label",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "EvidenceRelevanceStatus": {
+              "description": "Core-derived claim-relevance assessment states for evidence observations.",
+              "enum": [
+                "unassessed",
+                "supported",
+                "contradicted"
+              ],
+              "type": "string"
+            },
+            "EvidenceTarget": {
+              "description": "Stable evidence target selected by coverage, observations, and artifacts.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "acceptance_criterion_id": {
+                      "type": "string"
+                    },
+                    "target_kind": {
+                      "enum": [
+                        "acceptance_criterion"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "acceptance_criterion_id",
+                    "target_kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "evidence_claim_id": {
+                      "type": "string"
+                    },
+                    "statement": {
+                      "type": "string"
+                    },
+                    "target_kind": {
+                      "enum": [
+                        "supplemental_claim"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "evidence_claim_id",
+                    "statement",
+                    "target_kind"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "MethodName": {
+              "description": "Supported public Volicord method names.",
+              "enum": [
+                "volicord.intake",
+                "volicord.update_scope",
+                "volicord.status",
+                "volicord.get_operation_result",
+                "volicord.check_close",
+                "volicord.prepare_evidence_capture",
+                "volicord.prepare_write",
+                "volicord.stage_artifact",
+                "volicord.record_run",
+                "volicord.request_user_action",
+                "volicord.resolve_user_action",
+                "volicord.reconcile_changes",
+                "volicord.close_task"
+              ],
+              "type": "string"
+            },
+            "NextActionKind": {
+              "description": "Controlled next-action category.",
+              "enum": [
+                "update_scope",
+                "prepare_write",
+                "stage_artifact",
+                "record_run",
+                "request_user_action",
+                "resolve_user_action",
+                "reconcile_changes",
+                "close_task"
+              ],
+              "type": "string"
+            },
+            "NextActionPresentationRole": {
+              "description": "Controlled presentation role for an owner-composed next action.",
+              "enum": [
+                "primary",
+                "additional"
+              ],
+              "type": "string"
+            },
+            "NextActionSummary": {
+              "description": "Canonical next-action display shape.",
+              "properties": {
+                "action_kind": {
+                  "$ref": "#/definitions/NextActionKind"
+                },
+                "allowed_operation_categories": {
+                  "items": {
+                    "$ref": "#/definitions/OperationCategory"
+                  },
+                  "type": "array"
+                },
+                "blocking_question": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "expected_state_version": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "owner_method": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/MethodName"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "presentation_role": {
+                  "$ref": "#/definitions/NextActionPresentationRole"
+                },
+                "required_refs": {
+                  "items": {
+                    "$ref": "#/definitions/StateRecordRef"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "action_kind",
+                "allowed_operation_categories",
+                "expected_state_version",
+                "label",
+                "presentation_role",
+                "required_refs"
+              ],
+              "type": "object"
+            },
+            "OperationCategory": {
+              "description": "Internal API operation category.",
+              "enum": [
+                "read",
+                "agent_workflow",
+                "user_only",
+                "admin_local",
+                "local_recovery"
+              ],
+              "type": "string"
+            },
+            "RedactionState": {
+              "description": "Artifact redaction-state values.",
+              "enum": [
+                "none",
+                "redacted",
+                "secret_omitted",
+                "blocked"
+              ],
+              "type": "string"
+            },
+            "StateRecordKind": {
+              "description": "State reference discriminator values.",
+              "enum": [
+                "project_state",
+                "task",
+                "change_unit",
+                "write_ticket",
+                "user_action_request",
+                "user_action_resolution",
+                "run",
+                "evidence_summary",
+                "evidence_observation",
+                "evidence_capture_intent",
+                "evidence_producer",
+                "artifact",
+                "blocker",
+                "task_event",
+                "agent_connection",
+                "unrecorded_change",
+                "project_continuity_record"
+              ],
+              "type": "string"
+            },
+            "StateRecordRef": {
+              "additionalProperties": false,
+              "description": "Common public reference for Core-owned state records.",
+              "properties": {
+                "produced_at_state_version": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "project_id": {
+                  "type": "string"
+                },
+                "record_id": {
+                  "type": "string"
+                },
+                "record_kind": {
+                  "$ref": "#/definitions/StateRecordKind"
+                },
+                "task_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "produced_at_state_version",
+                "project_id",
+                "record_id",
+                "record_kind",
+                "task_id"
+              ],
+              "type": "object"
+            },
+            "SummaryCard": {
+              "description": "Stable compact status card shared by status-like outputs.",
+              "properties": {
+                "changes": {
+                  "type": "string"
+                },
+                "close_status": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "guarantee": {
+                  "type": "string"
+                },
+                "next": {
+                  "type": "string"
+                },
+                "next_action": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/NextActionSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "recording": {
+                  "type": "string"
+                },
+                "task": {
+                  "type": "string"
+                },
+                "transport": {
+                  "type": "string"
+                },
+                "user_action": {
+                  "type": "string"
+                },
+                "write_ticket": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "changes",
+                "close_status",
+                "evidence",
+                "guarantee",
+                "next",
+                "profile",
+                "recording",
+                "task",
+                "transport",
+                "user_action",
+                "write_ticket"
+              ],
+              "type": "object"
+            },
+            "UserActionChannelKind": {
+              "description": "Verified User Channel kinds that can resolve one pending user action.",
+              "enum": [
+                "cli"
+              ],
+              "type": "string"
+            },
+            "UserActionKind": {
+              "description": "Canonical user-action family values derived from the closed action draft.",
+              "enum": [
+                "product_decision",
+                "technical_decision",
+                "scope_decision",
+                "sensitive_approval",
+                "final_acceptance",
+                "residual_risk_acceptance",
+                "cancellation",
+                "evidence_observation"
+              ],
+              "type": "string"
+            },
+            "UserActionRequiredFor": {
+              "description": "Judgment required-for values.",
+              "enum": [
+                "scope_update",
+                "prepare_write",
+                "record_run",
+                "close_complete",
+                "close_cancel",
+                "close_supersede",
+                "informational"
+              ],
+              "type": "string"
+            },
+            "UserActionResolutionChoice": {
+              "additionalProperties": false,
+              "description": "Semantic answer choice for a choice-action resolution form.",
+              "properties": {
+                "choice_id": {
+                  "type": "string"
+                },
+                "consequence": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "is_default": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "choice_id",
+                "consequence",
+                "description",
+                "is_default",
+                "label"
+              ],
+              "type": "object"
+            },
+            "UserActionResolutionForm": {
+              "description": "Adapter-neutral resolution form derived from the stored request body.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "choices": {
+                      "items": {
+                        "$ref": "#/definitions/UserActionResolutionChoice"
+                      },
+                      "type": "array"
+                    },
+                    "form_type": {
+                      "enum": [
+                        "choice"
+                      ],
+                      "type": "string"
+                    },
+                    "note_allowed": {
+                      "type": "boolean"
+                    },
+                    "note_max_chars": {
+                      "format": "uint64",
+                      "minimum": 0.0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "choices",
+                    "form_type",
+                    "note_allowed",
+                    "note_max_chars"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "artifact_candidates": {
+                      "items": {
+                        "$ref": "#/definitions/ArtifactRef"
+                      },
+                      "type": "array"
+                    },
+                    "form_type": {
+                      "enum": [
+                        "evidence_observation"
+                      ],
+                      "type": "string"
+                    },
+                    "relevance_options": {
+                      "items": {
+                        "$ref": "#/definitions/EvidenceRelevanceStatus"
+                      },
+                      "type": "array"
+                    },
+                    "summary_max_chars": {
+                      "format": "uint64",
+                      "minimum": 0.0,
+                      "type": "integer"
+                    },
+                    "target_candidates": {
+                      "items": {
+                        "$ref": "#/definitions/EvidenceTarget"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "artifact_candidates",
+                    "form_type",
+                    "relevance_options",
+                    "summary_max_chars",
+                    "target_candidates"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "UserActionStatus": {
+              "description": "Effective user-action lifecycle values derived by the canonical evaluator.",
+              "enum": [
+                "pending",
+                "resolved",
+                "stale",
+                "superseded",
+                "expired"
+              ],
+              "type": "string"
+            },
+            "UserActionVerificationBasis": {
+              "description": "Verified bases accepted for one User Channel resolution.",
+              "enum": [
+                "cli_direct_user_channel"
+              ],
+              "type": "string"
+            },
+            "UtcTimestamp": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "description": "Complete typed JSON document produced by `volicord inbox --json`.",
+          "properties": {
+            "pending_user_action_inbox_items": {
+              "items": {
+                "$ref": "#/definitions/CliUserActionInboxItem"
+              },
+              "type": "array"
+            },
+            "summary_card": {
+              "$ref": "#/definitions/SummaryCard"
+            },
+            "user_channel_availability": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CliUserChannelAvailability"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "pending_user_action_inbox_items",
+            "summary_card",
+            "user_channel_availability"
+          ],
+          "title": "CliUserActionInboxResponse",
+          "type": "object"
+        }
+      },
       "id": "cli.output.inbox",
       "properties": [
         "acceptance_criterion_id",

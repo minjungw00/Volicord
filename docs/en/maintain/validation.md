@@ -113,13 +113,24 @@ read-only and verifies the machine-checkable shape:
   protocol identifiers. Owner categories remain distinct. Arbitrary prose,
   paths, filenames, environment variables, and source identifiers are not
   treated as API fields.
-- Normal Reference JSON/YAML examples inherit document scope and reject unknown
-  keys. A fence may declare `contract=<semantic_contract_id>` only when the
-  document contains multiple independent contracts, and only for a contract
-  already assigned to that document. Shell examples and generated
-  Administrative CLI regions use their routed command-model owner. Fuzzy
-  matching may suggest nearby current identifiers in diagnostics but never
-  accepts a spelling.
+- Every Reference JSON/YAML fence declares exactly one `shape=`. The document
+  route determines the available semantic contracts; when that shape is
+  exposed by more than one available contract, the fence also declares exactly
+  one `contract=<semantic_contract_id>` already assigned to the document.
+  Request and response descriptors remain separate.
+- The selected exact schema validates the parsed JSON instance or the
+  deterministically converted JSON-compatible YAML value. Schema compilation
+  errors are owner errors. Instance checks enforce required and unknown
+  properties, types, nested objects and arrays, enum and const values,
+  constraints, unions, references, and nullability. YAML tags and non-string
+  mapping keys are rejected. A `schema` fence is reader-facing shape notation
+  and is not treated as an instance.
+- English and Korean instances are independently resolved, parsed, and
+  schema-validated. Structural and exact-identifier parity runs only for a
+  meaning unit that is valid in both languages.
+- Shell examples and generated Administrative CLI regions use their routed
+  command-model owner. Fuzzy matching may suggest nearby current identifiers
+  in diagnostics but never accepts a spelling.
 - Identifier diagnostics are deterministic and name the document pair,
   structural meaning unit, semantic contract and owner, and the out-of-scope,
   missing, or invalid identifier.

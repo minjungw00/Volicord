@@ -259,7 +259,7 @@ Task 계보와 선택적 승계 규칙:
 
 ## 최소 유효 요청
 
-```yaml
+```yaml contract=api.method.intake.request shape=complete_request
 method: volicord.intake
 params:
   envelope:
@@ -290,7 +290,7 @@ params:
 
 축약한 결과 분기(`IntakeResult`, 커밋됨):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed

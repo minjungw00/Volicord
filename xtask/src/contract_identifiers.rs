@@ -3,6 +3,7 @@ use crate::doc_index::{DocIndex, PairedDocument};
 use crate::markdown::{
     self, MarkdownLiteral, MarkdownLiteralKind, MarkdownStructure, MarkdownUnit, MeaningUnitKey,
 };
+use jsonschema::{error::ValidationErrorKind, Draft, JSONSchema};
 use schemars::schema_for;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,6 +18,7 @@ const DIAGNOSTIC_DESCRIPTOR_PATH: &str =
     "crates/volicord-cli/tests/fixtures/diagnostic-registry.json";
 const CLI_OUTPUT_DESCRIPTOR_PATH: &str =
     "crates/volicord-user-action-presentation/tests/fixtures/cli-output-contracts.json";
+const CURRENT_JSON_SCHEMA_DIALECT: &str = "http://json-schema.org/draft-07/schema#";
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum IdentifierCategory {
@@ -88,19 +90,13 @@ enum ContractDomain {
     Protocol,
 }
 
-impl ContractDomain {
-    const fn supports_automatic_structured_examples(self) -> bool {
-        matches!(self, Self::PublicApi | Self::Protocol)
-    }
-}
-
 #[derive(Debug, Clone)]
 struct OwnerCatalog {
     owner: String,
     domain: ContractDomain,
     identifiers: BTreeMap<IdentifierCategory, BTreeSet<String>>,
     related_contracts: BTreeSet<String>,
-    schema: Option<Value>,
+    example_schemas: BTreeMap<String, Value>,
 }
 
 impl OwnerCatalog {
@@ -270,7 +266,7 @@ fn load_public_api_descriptors(catalog: &mut ContractCatalog, issues: &mut Vec<V
                     ),
                 ]),
                 related_contracts: descriptor.related_contracts().iter().cloned().collect(),
-                schema: descriptor.schema().cloned(),
+                example_schemas: descriptor.example_schemas().clone(),
             },
             issues,
         );
@@ -289,7 +285,7 @@ fn load_cli_descriptors(catalog: &mut ContractCatalog, issues: &mut Vec<Validati
                     (IdentifierCategory::CliValue, descriptor.values().clone()),
                 ]),
                 related_contracts: descriptor.related_contracts().iter().cloned().collect(),
-                schema: None,
+                example_schemas: BTreeMap::new(),
             },
             issues,
         );
@@ -312,7 +308,7 @@ fn load_protocol_descriptors(catalog: &mut ContractCatalog, issues: &mut Vec<Val
                     .iter()
                     .map(|related| (*related).to_owned())
                     .collect(),
-                schema: None,
+                example_schemas: BTreeMap::new(),
             },
             issues,
         );
@@ -335,7 +331,7 @@ fn load_wire_descriptors(catalog: &mut ContractCatalog, issues: &mut Vec<Validat
                     .iter()
                     .map(|related| (*related).to_owned())
                     .collect(),
-                schema: None,
+                example_schemas: descriptor.example_schemas().clone(),
             },
             issues,
         );
@@ -422,7 +418,7 @@ fn load_json_descriptor_file(
                 domain,
                 identifiers,
                 related_contracts,
-                schema: None,
+                example_schemas: json_example_schemas(object, relative_path, id, issues),
             },
             issues,
         );
@@ -463,6 +459,40 @@ fn json_string_set(
                 format!("semantic contract {contract} repeats {field} value {value}"),
             ));
         }
+    }
+    result
+}
+
+fn json_example_schemas(
+    object: &serde_json::Map<String, Value>,
+    path: &str,
+    contract: &str,
+    issues: &mut Vec<ValidationIssue>,
+) -> BTreeMap<String, Value> {
+    let Some(value) = object.get("example_schemas") else {
+        return BTreeMap::new();
+    };
+    let Some(schemas) = value.as_object() else {
+        issues.push(ValidationIssue::new(
+            path,
+            "contract_example.schema_owner",
+            format!("semantic contract {contract} field example_schemas must be an object"),
+        ));
+        return BTreeMap::new();
+    };
+    let mut result = BTreeMap::new();
+    for (shape, schema) in schemas {
+        if shape.is_empty() || !schema.is_object() {
+            issues.push(ValidationIssue::new(
+                path,
+                "contract_example.schema_owner",
+                format!(
+                    "semantic contract {contract} example_schemas entries require non-empty shape names and object schemas"
+                ),
+            ));
+            continue;
+        }
+        result.insert(shape.clone(), schema.clone());
     }
     result
 }
@@ -515,8 +545,8 @@ fn validate_pair(
         return;
     };
 
-    let en_validation = validate_language(paired, &en, catalog, &paired.path_en, issues);
-    let ko_validation = validate_language(paired, &ko, catalog, &paired.path_ko, issues);
+    let en_validation = validate_language(paired, &en, catalog, &paired.path_en, "English", issues);
+    let ko_validation = validate_language(paired, &ko, catalog, &paired.path_ko, "Korean", issues);
     compare_valid_units(
         paired,
         &en,
@@ -557,6 +587,7 @@ fn validate_language(
     structure: &MarkdownStructure,
     catalog: &ContractCatalog,
     path: &str,
+    language: &str,
     issues: &mut Vec<ValidationIssue>,
 ) -> LanguageValidation {
     let scoped_identifiers = catalog.scoped_identifiers(&paired.contracts);
@@ -564,7 +595,7 @@ fn validate_language(
     for unit in structure.units() {
         let issue_count = issues.len();
         validate_declared_contracts(paired, unit, catalog, path, issues);
-        validate_unit_candidates(paired, unit, catalog, path, issues);
+        validate_unit_candidates(paired, unit, catalog, path, language, issues);
         if issues.len() == issue_count {
             result.valid_units.insert(unit.key.clone());
             result.identifiers.insert(
@@ -594,16 +625,6 @@ fn validate_declared_contracts(
                     paired.doc_id, unit.key
                 ),
             ));
-        } else if paired.contracts.len() < 2 {
-            issues.push(ValidationIssue::at_line(
-                path,
-                "contract_identifier.scope",
-                Some(unit.line),
-                format!(
-                    "document {} structural unit `{}` declares contract {contract}, but fence-level contract selection is only valid in a document with multiple independent contracts",
-                    paired.doc_id, unit.key
-                ),
-            ));
         }
     }
 }
@@ -613,6 +634,7 @@ fn validate_unit_candidates(
     unit: &MarkdownUnit,
     catalog: &ContractCatalog,
     path: &str,
+    language: &str,
     issues: &mut Vec<ValidationIssue>,
 ) {
     for literal in &unit.literals {
@@ -621,7 +643,7 @@ fn validate_unit_candidates(
                 validate_inline_literal(paired, unit, literal, catalog, path, issues);
             }
             (MarkdownLiteralKind::Fenced, Some("json" | "yaml" | "yml")) => {
-                validate_structured_literal(paired, unit, literal, catalog, path, issues);
+                validate_structured_literal(paired, unit, literal, catalog, path, language, issues);
             }
             (MarkdownLiteralKind::Fenced, Some("bash" | "console" | "sh" | "shell" | "zsh")) => {
                 validate_exact_occurrences(paired, unit, literal, catalog, path, |_| true, issues);
@@ -768,150 +790,305 @@ fn validate_structured_literal(
     literal: &MarkdownLiteral,
     catalog: &ContractCatalog,
     path: &str,
+    language: &str,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    let selected = structured_scope(paired, literal, catalog);
-    if selected.is_empty() {
-        return;
-    }
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&literal.text) else {
-        return;
-    };
-    let mut keys = BTreeSet::new();
-    let mut values = BTreeSet::new();
-    collect_structured_tokens(&value, &mut Vec::new(), &mut keys, &mut values);
-
-    for key in keys {
-        validate_structured_candidate(
-            paired,
-            unit,
-            literal.line,
-            &key.value,
-            &key.path,
-            &selected,
-            catalog,
+    let shapes = declared_attributes(literal, "shape=");
+    if shapes.len() != 1 || shapes[0].is_empty() {
+        issues.push(ValidationIssue::at_line(
             path,
-            true,
-            issues,
-        );
-    }
-    for value in values {
-        let matches = catalog.exact_matches(&value, IdentifierCategory::is_structured_value);
-        if !matches.is_empty() {
-            validate_structured_candidate(
-                paired,
-                unit,
-                literal.line,
-                &value,
-                &[],
-                &selected,
-                catalog,
-                path,
-                false,
-                issues,
-            );
-        }
-    }
-}
-
-fn structured_scope(
-    paired: &PairedDocument,
-    literal: &MarkdownLiteral,
-    catalog: &ContractCatalog,
-) -> BTreeSet<String> {
-    if let Some(contract) = declared_contract(literal) {
-        return paired
-            .contracts
-            .contains(contract)
-            .then(|| contract.to_owned())
-            .into_iter()
-            .collect();
-    }
-    let owners = paired
-        .contracts
-        .iter()
-        .filter_map(|contract| {
-            catalog
-                .contracts
-                .get(contract)
-                .map(|owner| (contract, owner))
-        })
-        .collect::<Vec<_>>();
-    if owners
-        .iter()
-        .all(|(_, owner)| owner.domain.supports_automatic_structured_examples())
-    {
-        owners
-            .into_iter()
-            .map(|(contract, _)| contract.clone())
-            .collect()
-    } else {
-        BTreeSet::new()
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn validate_structured_candidate(
-    paired: &PairedDocument,
-    unit: &MarkdownUnit,
-    line: usize,
-    value: &str,
-    path_to_key: &[String],
-    selected: &BTreeSet<String>,
-    catalog: &ContractCatalog,
-    path: &str,
-    key: bool,
-    issues: &mut Vec<ValidationIssue>,
-) {
-    let selected_domains = selected
-        .iter()
-        .filter_map(|contract| catalog.contracts.get(contract))
-        .map(|owner| owner.domain)
-        .collect::<BTreeSet<_>>();
-    let predicate = |category: IdentifierCategory| {
-        selected_domains.contains(&category.domain())
-            && if key {
-                category.is_structured_key()
-            } else {
-                category.is_structured_value()
-            }
-    };
-    let selected_owners = selected
-        .iter()
-        .filter_map(|contract| catalog.contracts.get(contract))
-        .collect::<Vec<_>>();
-    if key && selected_owners.iter().any(|owner| owner.schema.is_some()) {
-        if selected_owners.iter().any(|owner| {
-            owner
-                .schema
-                .as_ref()
-                .is_some_and(|schema| schema_accepts_key(schema, path_to_key, value))
-                || owner.schema.is_none()
-                    && owner
-                        .identifiers
-                        .get(&IdentifierCategory::ApiProperty)
-                        .is_some_and(|identifiers| identifiers.contains(value))
-        }) {
-            return;
-        }
-    } else {
-        let exact = catalog.exact_matches(value, predicate);
-        if exact
-            .iter()
-            .any(|(contract, _)| selected.contains(contract))
-        {
-            return;
-        }
-    }
-    let exact = catalog.exact_matches(value, predicate);
-    if !exact.is_empty() {
-        report_out_of_scope(paired, unit, line, value, &exact, path, issues);
+            "contract_example.owner",
+            Some(literal.line),
+            format!(
+                "{language} document {} structural unit `{}` has a structured example that requires exactly one non-empty shape= selector",
+                paired.doc_id, unit.key,
+            ),
+        ));
         return;
     }
-    if key {
-        let suggestions = nearest_identifiers(value, &catalog.all_identifiers(predicate));
-        report_invalid(paired, unit, line, value, &suggestions, path, issues);
+    let shape = shapes[0];
+    let contract_selectors = declared_attributes(literal, "contract=");
+    if contract_selectors.len() > 1
+        || contract_selectors
+            .iter()
+            .any(|contract| contract.is_empty())
+    {
+        issues.push(ValidationIssue::at_line(
+            path,
+            "contract_example.owner",
+            Some(literal.line),
+            format!(
+                "{language} document {} structural unit `{}` has a structured example with invalid or repeated contract= selectors",
+                paired.doc_id, unit.key,
+            ),
+        ));
+        return;
     }
+    let candidates = if let Some(contract) = contract_selectors.first().copied() {
+        if !paired.contracts.contains(contract) {
+            return;
+        }
+        vec![contract]
+    } else {
+        paired
+            .contracts
+            .iter()
+            .filter(|contract| {
+                catalog
+                    .contracts
+                    .get(*contract)
+                    .is_some_and(|owner| owner.example_schemas.contains_key(shape))
+            })
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+    };
+    let contract = match candidates.as_slice() {
+        [contract] => *contract,
+        [] => {
+            issues.push(ValidationIssue::at_line(
+                path,
+                "contract_example.owner",
+                Some(literal.line),
+                format!(
+                    "{language} document {} structural unit `{}` shape `{shape}` resolves to no exact semantic contract",
+                    paired.doc_id, unit.key
+                ),
+            ));
+            return;
+        }
+        _ => {
+            issues.push(ValidationIssue::at_line(
+                path,
+                "contract_example.owner",
+                Some(literal.line),
+                format!(
+                    "{language} document {} structural unit `{}` shape `{shape}` is ambiguous across semantic contracts {}; add one exact contract= selector",
+                    paired.doc_id,
+                    unit.key,
+                    candidates.join(", ")
+                ),
+            ));
+            return;
+        }
+    };
+    let Some(owner) = catalog.contracts.get(contract) else {
+        return;
+    };
+    let Some(schema) = owner.example_schemas.get(shape) else {
+        issues.push(ValidationIssue::at_line(
+            path,
+            "contract_example.owner",
+            Some(literal.line),
+            format!(
+                "{language} document {} structural unit `{}` semantic contract `{contract}` does not expose example shape `{shape}`",
+                paired.doc_id, unit.key
+            ),
+        ));
+        return;
+    };
+    let instance = match parse_structured_instance(literal) {
+        Ok(instance) => instance,
+        Err(error) => {
+            issues.push(ValidationIssue::at_line(
+                path,
+                "contract_example.parse",
+                Some(literal.line),
+                format!(
+                    "{language} document {} structural unit `{}` semantic contract `{contract}` shape `{shape}` is not a JSON-compatible {} instance: {error}",
+                    paired.doc_id,
+                    unit.key,
+                    literal.language.as_deref().unwrap_or("structured")
+                ),
+            ));
+            return;
+        }
+    };
+    if let Some(dialect) = schema.get("$schema") {
+        if dialect.as_str() != Some(CURRENT_JSON_SCHEMA_DIALECT) {
+            issues.push(ValidationIssue::at_line(
+                path,
+                "contract_example.schema_owner",
+                Some(literal.line),
+                format!(
+                    "{language} document {} structural unit `{}` semantic contract `{contract}` shape `{shape}` owner {} declares unsupported JSON Schema dialect {}; expected `{CURRENT_JSON_SCHEMA_DIALECT}`",
+                    paired.doc_id,
+                    unit.key,
+                    owner.owner,
+                    bounded_json(dialect)
+                ),
+            ));
+            return;
+        }
+    }
+    let compiled = match JSONSchema::options()
+        .with_draft(Draft::Draft7)
+        .compile(schema)
+    {
+        Ok(compiled) => compiled,
+        Err(error) => {
+            issues.push(ValidationIssue::at_line(
+                path,
+                "contract_example.schema_owner",
+                Some(literal.line),
+                format!(
+                    "{language} document {} structural unit `{}` semantic contract `{contract}` shape `{shape}` owner {} has an invalid generated JSON Schema at {}: {}",
+                    paired.doc_id, unit.key, owner.owner, error.schema_path, error
+                ),
+            ));
+            return;
+        }
+    };
+    if let Err(validation_errors) = compiled.validate(&instance) {
+        let mut diagnostics = validation_errors
+            .map(|error| {
+                (
+                    error.instance_path.to_string(),
+                    error.schema_path.to_string(),
+                    schema_expectation(&error.kind),
+                    bounded_actual(error.instance.as_ref()),
+                )
+            })
+            .collect::<Vec<_>>();
+        diagnostics.sort();
+        diagnostics.dedup();
+        for (instance_path, schema_path, expected, actual) in diagnostics {
+            let instance_path = if instance_path.is_empty() {
+                "/"
+            } else {
+                &instance_path
+            };
+            let schema_path = if schema_path.is_empty() {
+                "/"
+            } else {
+                &schema_path
+            };
+            issues.push(ValidationIssue::at_line(
+                path,
+                "contract_example.schema",
+                Some(literal.line),
+                format!(
+                    "{language} document {} structural unit `{}` semantic contract `{contract}` shape `{shape}` instance path `{instance_path}` violates schema rule `{schema_path}`: expected {expected}; actual {actual}",
+                    paired.doc_id, unit.key
+                ),
+            ));
+        }
+    };
+}
+
+fn parse_structured_instance(literal: &MarkdownLiteral) -> Result<Value, String> {
+    match literal.language.as_deref() {
+        Some("json") => serde_json::from_str(&literal.text).map_err(|error| error.to_string()),
+        Some("yaml" | "yml") => {
+            let value = serde_yaml::from_str::<serde_yaml::Value>(&literal.text)
+                .map_err(|error| error.to_string())?;
+            yaml_to_json(value, "$")
+        }
+        _ => Err("unsupported structured fence language".to_owned()),
+    }
+}
+
+fn yaml_to_json(value: serde_yaml::Value, path: &str) -> Result<Value, String> {
+    match value {
+        serde_yaml::Value::Null => Ok(Value::Null),
+        serde_yaml::Value::Bool(value) => Ok(Value::Bool(value)),
+        serde_yaml::Value::Number(value) => {
+            serde_json::to_value(value).map_err(|error| format!("{path}: {error}"))
+        }
+        serde_yaml::Value::String(value) => Ok(Value::String(value)),
+        serde_yaml::Value::Sequence(values) => values
+            .into_iter()
+            .enumerate()
+            .map(|(index, value)| yaml_to_json(value, &format!("{path}/{index}")))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::Array),
+        serde_yaml::Value::Mapping(values) => {
+            let mut object = serde_json::Map::new();
+            for (key, value) in values {
+                let serde_yaml::Value::String(key) = key else {
+                    return Err(format!(
+                        "{path}: YAML mapping keys must be strings for JSON compatibility"
+                    ));
+                };
+                let child_path = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
+                object.insert(key, yaml_to_json(value, &child_path)?);
+            }
+            Ok(Value::Object(object))
+        }
+        serde_yaml::Value::Tagged(tagged) => Err(format!(
+            "{path}: YAML tag {} is not supported by JSON contracts",
+            tagged.tag
+        )),
+    }
+}
+
+fn schema_expectation(kind: &ValidationErrorKind) -> String {
+    let expected = match kind {
+        ValidationErrorKind::AdditionalItems { limit } => {
+            format!("at most {limit} array items")
+        }
+        ValidationErrorKind::AdditionalProperties { unexpected }
+        | ValidationErrorKind::UnevaluatedProperties { unexpected } => {
+            format!(
+                "no unknown properties; unexpected {}",
+                unexpected.join(", ")
+            )
+        }
+        ValidationErrorKind::Constant { expected_value } => {
+            format!("const {}", bounded_json(expected_value))
+        }
+        ValidationErrorKind::Enum { options } => {
+            format!("one of {}", bounded_json(options))
+        }
+        ValidationErrorKind::Required { property } => {
+            format!("required property {}", bounded_json(property))
+        }
+        ValidationErrorKind::Type { kind } => format!("type {kind:?}"),
+        ValidationErrorKind::MinItems { limit } => format!("at least {limit} array items"),
+        ValidationErrorKind::MaxItems { limit } => format!("at most {limit} array items"),
+        ValidationErrorKind::MinLength { limit } => format!("string length at least {limit}"),
+        ValidationErrorKind::MaxLength { limit } => format!("string length at most {limit}"),
+        ValidationErrorKind::Minimum { limit } => format!("number >= {}", bounded_json(limit)),
+        ValidationErrorKind::Maximum { limit } => format!("number <= {}", bounded_json(limit)),
+        ValidationErrorKind::ExclusiveMinimum { limit } => {
+            format!("number > {}", bounded_json(limit))
+        }
+        ValidationErrorKind::ExclusiveMaximum { limit } => {
+            format!("number < {}", bounded_json(limit))
+        }
+        ValidationErrorKind::Pattern { pattern } => format!("string matching `{pattern}`"),
+        ValidationErrorKind::AnyOf => "a value accepted by one `anyOf` branch".to_owned(),
+        ValidationErrorKind::OneOfNotValid => {
+            "a value accepted by exactly one `oneOf` branch".to_owned()
+        }
+        ValidationErrorKind::OneOfMultipleValid => {
+            "a value accepted by only one `oneOf` branch".to_owned()
+        }
+        other => bounded_text(&format!("{other:?}"), 160),
+    };
+    bounded_text(&expected, 160)
+}
+
+fn bounded_actual(value: &Value) -> String {
+    match value {
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => bounded_json(value),
+        Value::Array(values) => format!("array with {} item(s)", values.len()),
+        Value::Object(values) => format!("object with {} propertie(s)", values.len()),
+    }
+}
+
+fn bounded_json(value: &Value) -> String {
+    bounded_text(
+        &serde_json::to_string(value).unwrap_or_else(|_| "<unprintable>".to_owned()),
+        120,
+    )
+}
+
+fn bounded_text(value: &str, limit: usize) -> String {
+    let mut bounded = value.chars().take(limit).collect::<String>();
+    if value.chars().count() > limit {
+        bounded.push('…');
+    }
+    bounded
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1201,6 +1378,15 @@ fn declared_contract(literal: &MarkdownLiteral) -> Option<&str> {
         .attributes
         .iter()
         .find_map(|attribute| attribute.strip_prefix("contract="))
+        .filter(|contract| !contract.is_empty())
+}
+
+fn declared_attributes<'a>(literal: &'a MarkdownLiteral, prefix: &str) -> Vec<&'a str> {
+    literal
+        .attributes
+        .iter()
+        .filter_map(|attribute| attribute.strip_prefix(prefix))
+        .collect()
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -1242,104 +1428,6 @@ fn collect_structured_tokens(
         }
         _ => {}
     }
-}
-
-fn schema_accepts_key(schema: &Value, path: &[String], key: &str) -> bool {
-    let mut path = path;
-    if path.first().is_some_and(|segment| segment == "params") {
-        path = &path[1..];
-    }
-    if path.is_empty() && matches!(key, "method" | "params") {
-        return true;
-    }
-    schema_node_accepts_key(schema, schema, path, key, &mut BTreeSet::new())
-}
-
-fn schema_node_accepts_key(
-    root: &Value,
-    node: &Value,
-    path: &[String],
-    key: &str,
-    resolving: &mut BTreeSet<String>,
-) -> bool {
-    if let Some(reference) = node.get("$ref").and_then(Value::as_str) {
-        if !resolving.insert(reference.to_owned()) {
-            return false;
-        }
-        let result = resolve_schema_reference(root, reference)
-            .is_some_and(|resolved| schema_node_accepts_key(root, resolved, path, key, resolving));
-        resolving.remove(reference);
-        return result;
-    }
-    for combinator in ["allOf", "anyOf", "oneOf"] {
-        if node
-            .get(combinator)
-            .and_then(Value::as_array)
-            .is_some_and(|branches| {
-                branches.iter().any(|branch| {
-                    schema_node_accepts_key(root, branch, path, key, &mut resolving.clone())
-                })
-            })
-        {
-            return true;
-        }
-    }
-
-    if let Some((first, remaining)) = path.split_first() {
-        if node
-            .get("title")
-            .and_then(Value::as_str)
-            .is_some_and(|title| title == first)
-        {
-            return schema_node_accepts_key(root, node, remaining, key, resolving);
-        }
-        if let Some(definition) = root
-            .get("definitions")
-            .or_else(|| root.get("$defs"))
-            .and_then(Value::as_object)
-            .and_then(|definitions| definitions.get(first))
-        {
-            return schema_node_accepts_key(root, definition, remaining, key, resolving);
-        }
-        if let Some(property) = node
-            .get("properties")
-            .and_then(Value::as_object)
-            .and_then(|properties| properties.get(first))
-        {
-            return schema_node_accepts_key(root, property, remaining, key, resolving);
-        }
-        if let Some(items) = node.get("items") {
-            return schema_node_accepts_key(root, items, path, key, resolving);
-        }
-        return false;
-    }
-
-    if node
-        .get("properties")
-        .and_then(Value::as_object)
-        .is_some_and(|properties| properties.contains_key(key))
-    {
-        return true;
-    }
-    if node
-        .get("title")
-        .and_then(Value::as_str)
-        .is_some_and(|title| title == key)
-        || root
-            .get("definitions")
-            .or_else(|| root.get("$defs"))
-            .and_then(Value::as_object)
-            .is_some_and(|definitions| definitions.contains_key(key))
-    {
-        return true;
-    }
-    node.get("additionalProperties")
-        .is_none_or(|additional| additional != &Value::Bool(false))
-}
-
-fn resolve_schema_reference<'a>(root: &'a Value, reference: &str) -> Option<&'a Value> {
-    let pointer = reference.strip_prefix('#')?;
-    root.pointer(pointer)
 }
 
 fn normalize_structured_key(key: &str) -> &str {
@@ -1535,6 +1623,7 @@ fn format_identifiers(values: &BTreeSet<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::TempDir;
 
     fn owner(
@@ -1553,7 +1642,7 @@ mod tests {
                     .collect(),
             )]),
             related_contracts: BTreeSet::new(),
-            schema: None,
+            example_schemas: BTreeMap::new(),
         }
     }
 
@@ -1564,6 +1653,74 @@ mod tests {
                 .map(|(id, owner)| ((*id).to_owned(), owner.clone()))
                 .collect(),
         }
+    }
+
+    fn schema_owner(shape: &str, schema: Value) -> OwnerCatalog {
+        let identifiers = volicord_types::contracts::identifiers_from_json_schema(&schema);
+        OwnerCatalog {
+            owner: "synthetic schema owner".to_owned(),
+            domain: ContractDomain::PublicApi,
+            identifiers: BTreeMap::from([
+                (
+                    IdentifierCategory::ApiProperty,
+                    identifiers.properties().clone(),
+                ),
+                (IdentifierCategory::ApiValue, identifiers.values().clone()),
+                (
+                    IdentifierCategory::ApiSchema,
+                    identifiers.schema_names().clone(),
+                ),
+            ]),
+            related_contracts: BTreeSet::new(),
+            example_schemas: BTreeMap::from([(shape.to_owned(), schema)]),
+        }
+    }
+
+    fn request_schema() -> Value {
+        json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["request_only", "nested", "items", "state", "nonnull"],
+            "properties": {
+                "request_only": {"type": "string"},
+                "nested": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["known"],
+                    "properties": {"known": {"type": "boolean"}}
+                },
+                "items": {"type": "array", "items": {"type": "integer"}},
+                "state": {"enum": ["ready", "blocked"]},
+                "nonnull": {"type": "string"}
+            }
+        })
+    }
+
+    fn response_schema() -> Value {
+        json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["response_only", "outcome"],
+            "properties": {
+                "response_only": {"type": "integer"},
+                "outcome": {"const": "complete"}
+            }
+        })
+    }
+
+    fn structured_catalog() -> ContractCatalog {
+        catalog(&[
+            (
+                "api.method.alpha.request",
+                schema_owner("params", request_schema()),
+            ),
+            (
+                "api.method.alpha.response",
+                schema_owner("result_body", response_schema()),
+            ),
+        ])
     }
 
     fn validate(
@@ -1591,36 +1748,163 @@ mod tests {
     }
 
     #[test]
-    fn another_methods_valid_field_is_out_of_scope() {
-        let catalog = catalog(&[
-            (
-                "api.method.alpha.request",
-                owner(
-                    ContractDomain::PublicApi,
-                    IdentifierCategory::ApiProperty,
-                    &["alpha_field"],
-                ),
-            ),
-            (
-                "api.method.beta.request",
-                owner(
-                    ContractDomain::PublicApi,
-                    IdentifierCategory::ApiProperty,
-                    &["beta_field"],
-                ),
-            ),
-        ]);
+    fn response_only_property_fails_in_a_request_example() {
+        let catalog = structured_catalog();
         let issues = validate(
             &catalog,
-            &["api.method.alpha.request"],
-            "# A\n\n```yaml\nbeta_field: value\n```\n",
-            "# 가\n\n```yaml\nbeta_field: value\n```\n",
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            "# A\n\n```json shape=params\n{\"response_only\": 1}\n```\n",
+            "# 가\n\n```json shape=params\n{\"response_only\": 1}\n```\n",
+        );
+
+        assert!(!issues.is_empty(), "{issues:#?}");
+        assert!(issues
+            .iter()
+            .all(|issue| issue.category() == "contract_example.schema"));
+        assert!(issues
+            .iter()
+            .any(|issue| issue.message().contains("response_only")));
+    }
+
+    #[test]
+    fn request_only_property_fails_in_a_response_example() {
+        let catalog = structured_catalog();
+        let issues = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            "# A\n\n```json shape=result_body\n{\"request_only\":\"value\",\"outcome\":\"complete\"}\n```\n",
+            "# 가\n\n```json shape=result_body\n{\"request_only\":\"value\",\"outcome\":\"complete\"}\n```\n",
+        );
+
+        assert!(issues
+            .iter()
+            .any(|issue| issue.message().contains("request_only")));
+        assert!(issues
+            .iter()
+            .all(|issue| issue.category() == "contract_example.schema"));
+    }
+
+    #[test]
+    fn schema_validation_enforces_nested_required_type_array_enum_and_null_rules() {
+        let catalog = structured_catalog();
+        let cases = [
+            (
+                "unknown nested property",
+                "{\"request_only\":\"value\",\"nested\":{\"known\":true,\"extra\":1},\"items\":[1],\"state\":\"ready\",\"nonnull\":\"value\"}",
+                "extra",
+            ),
+            (
+                "missing required property",
+                "{\"request_only\":\"value\",\"nested\":{\"known\":true},\"items\":[1],\"state\":\"ready\"}",
+                "nonnull",
+            ),
+            (
+                "wrong scalar type",
+                "{\"request_only\":4,\"nested\":{\"known\":true},\"items\":[1],\"state\":\"ready\",\"nonnull\":\"value\"}",
+                "request_only",
+            ),
+            (
+                "wrong array element type",
+                "{\"request_only\":\"value\",\"nested\":{\"known\":true},\"items\":[\"bad\"],\"state\":\"ready\",\"nonnull\":\"value\"}",
+                "/items/0",
+            ),
+            (
+                "invalid enum value",
+                "{\"request_only\":\"value\",\"nested\":{\"known\":true},\"items\":[1],\"state\":\"reday\",\"nonnull\":\"value\"}",
+                "reday",
+            ),
+            (
+                "null in a non-null field",
+                "{\"request_only\":\"value\",\"nested\":{\"known\":true},\"items\":[1],\"state\":\"ready\",\"nonnull\":null}",
+                "nonnull",
+            ),
+        ];
+
+        for (label, instance, expected) in cases {
+            let document = format!("# A\n\n```json shape=params\n{instance}\n```\n");
+            let issues = validate(
+                &catalog,
+                &["api.method.alpha.request", "api.method.alpha.response"],
+                &document,
+                &document,
+            );
+            assert!(!issues.is_empty(), "{label}: {issues:#?}");
+            assert!(
+                issues
+                    .iter()
+                    .any(|issue| issue.message().contains(expected)),
+                "{label}: {issues:#?}"
+            );
+            assert!(issues
+                .iter()
+                .all(|issue| issue.category() == "contract_example.schema"));
+        }
+    }
+
+    #[test]
+    fn same_invalid_enum_in_both_languages_fails_before_parity() {
+        let catalog = structured_catalog();
+        let document = "# A\n\n```yaml shape=params\nrequest_only: value\nnested:\n  known: true\nitems: [1]\nstate: reday\nnonnull: value\n```\n";
+        let issues = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            document,
+            document,
         );
 
         assert_eq!(issues.len(), 2, "{issues:#?}");
         assert!(issues
             .iter()
-            .all(|issue| issue.category() == "contract_identifier.out_of_scope"));
+            .all(|issue| issue.category() == "contract_example.schema"));
+        assert!(issues.iter().all(|issue| issue.message().contains("reday")));
+    }
+
+    #[test]
+    fn valid_yaml_is_converted_to_json_and_validated() {
+        let catalog = structured_catalog();
+        let document = "# A\n\n```yaml shape=params\nrequest_only: value\nnested:\n  known: true\nitems: [1, 2]\nstate: ready\nnonnull: value\n```\n";
+        let issues = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            document,
+            document,
+        );
+
+        assert!(issues.is_empty(), "{issues:#?}");
+    }
+
+    #[test]
+    fn reader_facing_schema_notation_is_not_treated_as_an_instance() {
+        let catalog = structured_catalog();
+        let document = "# A\n\n```schema\nExampleShape:\n  illustrative_field: string\n```\n";
+        let issues = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            document,
+            document,
+        );
+
+        assert!(issues.is_empty(), "{issues:#?}");
+    }
+
+    #[test]
+    fn non_json_yaml_construct_is_rejected() {
+        let catalog = structured_catalog();
+        let document = "# A\n\n```yaml shape=params\nrequest_only: !private value\n```\n";
+        let issues = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            document,
+            document,
+        );
+
+        assert_eq!(issues.len(), 2, "{issues:#?}");
+        assert!(issues
+            .iter()
+            .all(|issue| issue.category() == "contract_example.parse"));
+        assert!(issues
+            .iter()
+            .all(|issue| issue.message().contains("YAML tag")));
     }
 
     #[test]
@@ -1726,6 +2010,12 @@ mod tests {
             .identifiers
             .get(&IdentifierCategory::ProtocolIdentifier)
             .is_some_and(|identifiers| identifiers.contains("MCP_UNAVAILABLE")));
+        assert!(owner
+            .example_schemas
+            .contains_key("mcp_request.volicord.status"));
+        assert!(owner
+            .example_schemas
+            .contains_key("mcp_response.volicord.status"));
         assert!(catalog
             .contracts
             .get("mcp.protocol")
@@ -1738,18 +2028,27 @@ mod tests {
     }
 
     #[test]
-    fn unknown_structured_keys_fail_without_a_marker() {
-        let catalog = catalog(&[(
-            "api.method.alpha.request",
-            owner(
-                ContractDomain::PublicApi,
-                IdentifierCategory::ApiProperty,
-                &["known_key"],
-            ),
-        )]);
+    fn cli_output_descriptor_artifact_exposes_its_exact_instance_shape() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("xtask has a workspace root");
+        let mut issues = Vec::new();
+        let catalog = load_contract_catalog(root, &mut issues);
+
+        assert!(issues.is_empty(), "{issues:#?}");
+        let owner = catalog
+            .contracts
+            .get("cli.output.inbox")
+            .expect("CLI inbox output contract");
+        assert!(owner.example_schemas.contains_key("cli_output"));
+    }
+
+    #[test]
+    fn structured_example_without_an_exact_shape_fails() {
+        let catalog = structured_catalog();
         let issues = validate(
             &catalog,
-            &["api.method.alpha.request"],
+            &["api.method.alpha.request", "api.method.alpha.response"],
             "# A\n\n```json\n{\"unknown_key\": true}\n```\n",
             "# 가\n\n```json\n{\"unknown_key\": true}\n```\n",
         );
@@ -1757,7 +2056,95 @@ mod tests {
         assert_eq!(issues.len(), 2, "{issues:#?}");
         assert!(issues
             .iter()
-            .all(|issue| issue.category() == "contract_identifier.invalid"));
+            .all(|issue| issue.category() == "contract_example.owner"));
+    }
+
+    #[test]
+    fn structured_example_with_repeated_shape_or_contract_selectors_fails() {
+        let catalog = structured_catalog();
+        for document in [
+            "# A\n\n```json shape=params shape=params\n{}\n```\n",
+            "# A\n\n```json contract=api.method.alpha.request contract=api.method.alpha.request shape=params\n{}\n```\n",
+        ] {
+            let issues = validate(
+                &catalog,
+                &["api.method.alpha.request", "api.method.alpha.response"],
+                document,
+                document,
+            );
+
+            assert_eq!(issues.len(), 2, "{issues:#?}");
+            assert!(issues
+                .iter()
+                .all(|issue| issue.category() == "contract_example.owner"));
+        }
+    }
+
+    #[test]
+    fn a_shape_shared_by_multiple_contracts_requires_an_exact_contract_selector() {
+        let schema = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": {"value": {"type": "string"}}
+        });
+        let catalog = catalog(&[
+            (
+                "api.method.alpha.request",
+                schema_owner("params", schema.clone()),
+            ),
+            ("api.method.beta.request", schema_owner("params", schema)),
+        ]);
+        let document = "# A\n\n```yaml shape=params\nvalue: alpha\n```\n";
+        let issues = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.beta.request"],
+            document,
+            document,
+        );
+
+        assert_eq!(issues.len(), 2, "{issues:#?}");
+        assert!(issues
+            .iter()
+            .all(|issue| issue.message().contains("is ambiguous")));
+    }
+
+    #[test]
+    fn schema_validation_enforces_const_values() {
+        let catalog = structured_catalog();
+        let document =
+            "# A\n\n```json shape=result_body\n{\"response_only\":1,\"outcome\":\"pending\"}\n```\n";
+        let issues = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            document,
+            document,
+        );
+
+        assert_eq!(issues.len(), 2, "{issues:#?}");
+        assert!(issues.iter().all(|issue| {
+            issue.category() == "contract_example.schema"
+                && issue.message().contains("const")
+                && issue.message().contains("pending")
+        }));
+    }
+
+    #[test]
+    fn invalid_generated_schema_is_reported_as_an_owner_error() {
+        let catalog = catalog(&[(
+            "api.method.alpha.request",
+            schema_owner("params", json!({"type": 42})),
+        )]);
+        let document = "# A\n\n```json shape=params\n{}\n```\n";
+        let issues = validate(&catalog, &["api.method.alpha.request"], document, document);
+
+        assert!(!issues.is_empty(), "{issues:#?}");
+        assert!(issues
+            .iter()
+            .all(|issue| issue.category() == "contract_example.schema_owner"));
+        assert!(issues
+            .iter()
+            .all(|issue| issue.message().contains("invalid generated JSON Schema")));
     }
 
     #[test]
@@ -1782,29 +2169,24 @@ mod tests {
 
     #[test]
     fn fence_contract_selects_one_of_multiple_legitimate_contracts() {
+        let schema = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": {"value": {"type": "string"}}
+        });
         let catalog = catalog(&[
             (
                 "api.method.alpha.request",
-                owner(
-                    ContractDomain::PublicApi,
-                    IdentifierCategory::ApiProperty,
-                    &["alpha_field"],
-                ),
+                schema_owner("params", schema.clone()),
             ),
-            (
-                "api.method.beta.request",
-                owner(
-                    ContractDomain::PublicApi,
-                    IdentifierCategory::ApiProperty,
-                    &["beta_field"],
-                ),
-            ),
+            ("api.method.beta.request", schema_owner("params", schema)),
         ]);
         let issues = validate(
             &catalog,
             &["api.method.alpha.request", "api.method.beta.request"],
-            "# A\n\n```yaml contract=api.method.alpha.request\nalpha_field: value\n```\n",
-            "# 가\n\n```yaml contract=api.method.alpha.request\nalpha_field: value\n```\n",
+            "# A\n\n```yaml contract=api.method.alpha.request shape=params\nvalue: alpha\n```\n",
+            "# 가\n\n```yaml contract=api.method.alpha.request shape=params\nvalue: alpha\n```\n",
         );
 
         assert!(issues.is_empty(), "{issues:#?}");
@@ -1836,5 +2218,35 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.len(), 1, "{first:#?}");
         assert_eq!(first[0].category(), "contract_identifier.missing");
+    }
+
+    #[test]
+    fn schema_diagnostics_are_deterministic_and_focused() {
+        let catalog = structured_catalog();
+        let document = "# A\n\n```json shape=params\n{\"request_only\":false,\"nested\":{\"known\":true},\"items\":[1],\"state\":\"ready\",\"nonnull\":\"value\"}\n```\n";
+        let first = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            document,
+            document,
+        );
+        let second = validate(
+            &catalog,
+            &["api.method.alpha.request", "api.method.alpha.response"],
+            document,
+            document,
+        );
+
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 2, "{first:#?}");
+        assert!(first.iter().all(|issue| {
+            issue
+                .message()
+                .contains("semantic contract `api.method.alpha.request`")
+                && issue.message().contains("shape `params`")
+                && issue.message().contains("instance path `/request_only`")
+                && issue.message().contains("expected type")
+                && issue.message().contains("actual false")
+        }));
     }
 }

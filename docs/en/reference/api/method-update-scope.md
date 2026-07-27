@@ -224,7 +224,7 @@ Method-local precondition: `task_filter_001` already exists in `proj_filter_001`
 
 ## Minimal valid request
 
-```yaml
+```yaml contract=api.method.update_scope.request shape=complete_request
 method: volicord.update_scope
 params:
   envelope:
@@ -271,7 +271,7 @@ params:
 
 Abbreviated result branch (`UpdateScopeResult`, committed):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed

@@ -1,11 +1,13 @@
 //! Semantic identities and exact identifier catalogs for public JSON contracts.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use schemars::{schema_for, JsonSchema};
-use serde_json::Value;
+use serde_json::{json, Value};
 
-use crate::methods::{public_request_schema, public_response_schema, OperationResultRef};
+use crate::methods::{
+    public_request_schema, public_response_schema, public_result_schema, OperationResultRef,
+};
 use crate::schema::{
     AcceptanceCriterion, AcceptanceCriterionInput, AcceptanceCriterionReplacement,
     AcceptedRiskInput, AgentSafeUserActionRequestSummary, AgentSession, ArtifactInput, ArtifactRef,
@@ -35,6 +37,52 @@ use crate::schema::{
     WriteTicketValidityBasis,
 };
 use crate::values::{MethodName, UserActionStatus};
+
+/// One exact JSON instance shape exposed by a semantic contract descriptor.
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub enum JsonExampleShape {
+    /// A method name and its complete `params` object.
+    CompleteMethodRequest,
+    /// A method's `params` object without the method-name wrapper.
+    MethodParams,
+    /// A complete successful public method response.
+    CompleteMethodResponse,
+    /// The successful result body for one public method.
+    MethodResultBody,
+    /// The rejected response body accepted for one public method.
+    MethodRejection,
+    /// One exact named public schema object.
+    PublicSchemaObject(String),
+    /// One complete structured CLI output document.
+    CliOutput,
+    /// One exact MCP wire request.
+    McpWireRequest(String),
+    /// One exact MCP wire response.
+    McpWireResponse(String),
+    /// One exact persisted object.
+    PersistedObject(String),
+    /// One exact diagnostic object.
+    DiagnosticObject(String),
+}
+
+impl JsonExampleShape {
+    /// Returns the stable Markdown fence value for this shape.
+    pub fn id(&self) -> String {
+        match self {
+            Self::CompleteMethodRequest => "complete_request".to_owned(),
+            Self::MethodParams => "params".to_owned(),
+            Self::CompleteMethodResponse => "complete_response".to_owned(),
+            Self::MethodResultBody => "result_body".to_owned(),
+            Self::MethodRejection => "rejection".to_owned(),
+            Self::PublicSchemaObject(name) => format!("schema_object.{name}"),
+            Self::CliOutput => "cli_output".to_owned(),
+            Self::McpWireRequest(name) => format!("mcp_request.{name}"),
+            Self::McpWireResponse(name) => format!("mcp_response.{name}"),
+            Self::PersistedObject(name) => format!("persisted_object.{name}"),
+            Self::DiagnosticObject(name) => format!("diagnostic_object.{name}"),
+        }
+    }
+}
 
 /// Exact identifier categories extracted from an owner schema.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -74,15 +122,24 @@ pub struct JsonContractDescriptor {
     identifiers: JsonContractIdentifiers,
     related_contracts: Vec<String>,
     schema: Option<Value>,
+    example_schemas: BTreeMap<String, Value>,
 }
 
 impl JsonContractDescriptor {
     fn from_schema(id: impl Into<String>, schema: Value, related_contracts: Vec<String>) -> Self {
+        let mut example_schemas = BTreeMap::new();
+        if let Some(title) = schema.get("title").and_then(Value::as_str) {
+            example_schemas.insert(
+                JsonExampleShape::PublicSchemaObject(title.to_owned()).id(),
+                schema.clone(),
+            );
+        }
         Self {
             id: id.into(),
             identifiers: identifiers_from_json_schema(&schema),
             related_contracts,
             schema: Some(schema),
+            example_schemas,
         }
     }
 
@@ -93,11 +150,19 @@ impl JsonContractDescriptor {
         identifiers: JsonContractIdentifiers,
         related_contracts: Vec<String>,
     ) -> Self {
+        let mut example_schemas = BTreeMap::new();
+        if let Some(title) = schema.get("title").and_then(Value::as_str) {
+            example_schemas.insert(
+                JsonExampleShape::PublicSchemaObject(title.to_owned()).id(),
+                schema.clone(),
+            );
+        }
         Self {
             id: id.into(),
             identifiers,
             related_contracts,
             schema: Some(schema),
+            example_schemas,
         }
     }
 
@@ -107,14 +172,26 @@ impl JsonContractDescriptor {
         related_contracts: Vec<String>,
     ) -> Self {
         let mut identifiers = JsonContractIdentifiers::default();
+        let mut example_schemas = BTreeMap::new();
         for schema in schemas {
             identifiers.extend(identifiers_from_json_schema(&schema));
+            if let Some(title) = schema.get("title").and_then(Value::as_str) {
+                let previous = example_schemas.insert(
+                    JsonExampleShape::PublicSchemaObject(title.to_owned()).id(),
+                    schema,
+                );
+                assert!(
+                    previous.is_none(),
+                    "a semantic contract must not expose duplicate named schema-object shapes"
+                );
+            }
         }
         Self {
             id: id.into(),
             identifiers,
             related_contracts,
             schema: None,
+            example_schemas,
         }
     }
 
@@ -128,6 +205,7 @@ impl JsonContractDescriptor {
             identifiers,
             related_contracts,
             schema: None,
+            example_schemas: BTreeMap::new(),
         }
     }
 
@@ -149,6 +227,26 @@ impl JsonContractDescriptor {
     /// Returns the exact generated schema when this descriptor has one root.
     pub const fn schema(&self) -> Option<&Value> {
         self.schema.as_ref()
+    }
+
+    /// Returns every exact instance shape exposed by this descriptor.
+    pub const fn example_schemas(&self) -> &BTreeMap<String, Value> {
+        &self.example_schemas
+    }
+
+    /// Returns the exact JSON Schema for one supported example shape.
+    pub fn example_schema(&self, shape: &str) -> Option<&Value> {
+        self.example_schemas.get(shape)
+    }
+
+    /// Exposes one exact instance shape owned by another crate.
+    pub fn with_example_schema(mut self, shape: JsonExampleShape, schema: Value) -> Self {
+        let previous = self.example_schemas.insert(shape.id(), schema);
+        assert!(
+            previous.is_none(),
+            "a semantic contract must expose each example shape exactly once"
+        );
+        self
     }
 }
 
@@ -187,15 +285,41 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
             .unwrap_or_else(|| panic!("public method {} has a request schema", method.as_str()));
         let response = public_response_schema(method.as_str())
             .unwrap_or_else(|| panic!("public method {} has a response schema", method.as_str()));
-        let mut request_descriptor =
-            JsonContractDescriptor::from_schema(request_id, request, vec![response_id.clone()]);
+        let result = public_result_schema(method.as_str())
+            .unwrap_or_else(|| panic!("public method {} has a result schema", method.as_str()));
+        let mut request_descriptor = JsonContractDescriptor::from_schema(
+            request_id,
+            request.clone(),
+            vec![response_id.clone()],
+        );
+        request_descriptor
+            .example_schemas
+            .insert(JsonExampleShape::MethodParams.id(), request.clone());
+        request_descriptor.example_schemas.insert(
+            JsonExampleShape::CompleteMethodRequest.id(),
+            complete_method_request_schema(method.as_str(), request),
+        );
         request_descriptor
             .identifiers
             .values
             .insert(method.as_str().to_owned());
         descriptors.push(request_descriptor);
-        let mut response_descriptor =
-            JsonContractDescriptor::from_schema(response_id, response, vec![request_id.clone()]);
+        let mut response_descriptor = JsonContractDescriptor::from_schema(
+            response_id,
+            response.clone(),
+            vec![request_id.clone()],
+        );
+        response_descriptor.example_schemas.insert(
+            JsonExampleShape::CompleteMethodResponse.id(),
+            result.clone(),
+        );
+        response_descriptor
+            .example_schemas
+            .insert(JsonExampleShape::MethodResultBody.id(), result);
+        response_descriptor.example_schemas.insert(
+            JsonExampleShape::MethodRejection.id(),
+            schema::<ToolRejectedResponse>(),
+        );
         response_descriptor
             .identifiers
             .values
@@ -206,6 +330,33 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
     descriptors.extend(schema_family_descriptors());
     descriptors.extend(value_contract_descriptors());
     descriptors
+}
+
+fn complete_method_request_schema(method: &str, mut params: Value) -> Value {
+    let definitions = params
+        .as_object_mut()
+        .and_then(|schema| schema.remove("definitions"));
+    if let Some(schema) = params.as_object_mut() {
+        schema.remove("$schema");
+    }
+    let mut complete = json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "CompleteMethodRequest",
+        "type": "object",
+        "required": ["method", "params"],
+        "additionalProperties": false,
+        "properties": {
+            "method": {"const": method, "type": "string"},
+            "params": params
+        }
+    });
+    if let Some(definitions) = definitions {
+        complete
+            .as_object_mut()
+            .expect("complete request schema is an object")
+            .insert("definitions".to_owned(), definitions);
+    }
+    complete
 }
 
 fn method_contract_id(method: MethodName, shape: &str) -> String {
@@ -451,6 +602,26 @@ mod tests {
         assert!(intake.identifiers().properties().contains("requested_mode"));
         assert!(intake.identifiers().values().contains("direct"));
         assert_eq!(intake.related_contracts(), ["api.method.intake.response"]);
+        assert!(intake.example_schema("params").is_some());
+        assert!(intake.example_schema("complete_request").is_some());
+        assert!(intake.example_schema("result_body").is_none());
+
+        let response = descriptors
+            .iter()
+            .find(|descriptor| descriptor.id() == "api.method.intake.response")
+            .expect("intake response descriptor");
+        assert!(response.example_schema("complete_response").is_some());
+        assert!(response.example_schema("result_body").is_some());
+        assert!(response.example_schema("rejection").is_some());
+        assert!(response.example_schema("params").is_none());
+        assert_eq!(
+            response.example_schema("complete_response"),
+            response.example_schema("result_body")
+        );
+        assert_ne!(
+            response.schema(),
+            response.example_schema("complete_response")
+        );
     }
 
     #[test]
@@ -473,5 +644,20 @@ mod tests {
             .identifiers()
             .properties()
             .contains("plain_language_request"));
+    }
+
+    #[test]
+    fn schema_family_descriptors_expose_each_named_object_as_an_exact_shape() {
+        let descriptors = public_json_contract_descriptors();
+        let core = descriptors
+            .iter()
+            .find(|descriptor| descriptor.id() == "api.schema.core")
+            .expect("core schema descriptor");
+
+        assert!(core.example_schema("schema_object.ToolEnvelope").is_some());
+        assert!(core
+            .example_schema("schema_object.ToolRejectedResponse")
+            .is_some());
+        assert!(core.example_schema("complete_request").is_none());
     }
 }

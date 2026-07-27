@@ -192,7 +192,7 @@ Baseline staging defaults:
 
 Example staged artifact data:
 
-```yaml
+```schema
 artifact:
   kind: test_log
   name: checkout_receipt_render_test.log

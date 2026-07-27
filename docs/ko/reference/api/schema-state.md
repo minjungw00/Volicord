@@ -55,7 +55,7 @@
 
 이는 공개 참조 형태이며 저장소 행을 그대로 넣은 것이 아닙니다.
 
-```yaml
+```schema
 StateRecordRef:
   record_kind: string
   record_id: string
@@ -79,7 +79,7 @@ StateRecordRef:
 기록합니다. `source_kind` 태그는 아래 `source` 본문 중 정확히 하나를
 선택합니다.
 
-```yaml
+```schema
 SourceRef:
   source_kind: repository_file | git_commit | git_diff | command | external_uri | user_context
   source: RepositoryFileSource | GitCommitSource | GitDiffSource | CommandSource | ExternalUriSource | UserContextSource
@@ -129,7 +129,7 @@ UserContextSource:
 
 `StateSummary`는 지원되는 메서드가 현재 `Task` 경로를 보여 줘야 할 때 반환하는 간결한 현재 위치 상태입니다.
 
-```yaml
+```schema
 StateSummary:
   project_id: string
   state_version: integer
@@ -206,7 +206,7 @@ StateSummary:
 <a id="task-lineage-workspace-and-authority-receipt"></a>
 ### Task lineage, workspace, authority receipt
 
-```yaml
+```schema
 TaskLineageSummary:
   predecessor_task_ref: StateRecordRef
   relation: string
@@ -287,7 +287,7 @@ Product Repository 변경에 대해 반환하는 공개 형태입니다.
 `UnrecordedChangeResolutionSummary`는 조정 호출 하나가 해결한 미기록 변경의 공개
 요약 형태입니다.
 
-```yaml
+```schema
 UnrecordedChangeFinding:
   unrecorded_change_ref: StateRecordRef
   status: string
@@ -331,7 +331,7 @@ UnrecordedChangeResolutionSummary:
 
 `ProjectContinuityRecord`는 오래 유지하는 프로젝트 수준 연속성 기록 하나의 전체 API 상태 형태입니다. `ProjectContinuitySummary`는 상태 조회 보기에 쓰는 간결한 형태입니다.
 
-```yaml
+```schema
 ProjectContinuityRecord:
   continuity_record_id: string
   project_id: string
@@ -408,7 +408,7 @@ ContinuityPageInfo:
 
 `ChangeUnitEffectContract`는 Change Unit에 기록되는 선택적 효과 경계 객체입니다.
 
-```yaml
+```schema
 ChangeUnitEffectContract:
   allowed_effects: string[]
   forbidden_effects: string[]
@@ -439,7 +439,7 @@ ChangeUnitEffectContract:
 
 `TaskLifecycleState`는 `StateSummary`나 닫기 결과 안에 나타날 수 있는 `Task` 생명주기 필드의 API 형태입니다.
 
-```yaml
+```schema
 TaskLifecycleState:
   lifecycle_phase: string
   close_reason: string
@@ -457,7 +457,7 @@ TaskLifecycleState:
 - `ShapingReadiness`는 `Task`, Change Unit, 대기 중인 사용자 행동, 증거 요약, 차단 사유, 다음 행동 필드를 포괄하는 API 보기 형태입니다.
 - boolean 필드와 `gaps` 배열은 현재 상태의 준비 상태 형태 데이터를 드러냅니다.
 
-```yaml
+```schema
 ShapingReadiness:
   goal_summary_known: boolean
   scope_boundary_known: boolean
@@ -489,7 +489,7 @@ ShapingGap:
 <a id="current-position-display-shapes"></a>
 ## 현재 위치 표시 형태
 
-```yaml
+```schema
 SummaryCard:
   task: string
   recording: string
@@ -702,7 +702,7 @@ WriteDecisionReason:
 <a id="evidence-and-run-snapshot-shapes"></a>
 ## 증거와 실행 기록 스냅샷 형태
 
-```yaml
+```schema
 AcceptanceCriterionInput:
   statement: string
   evidence_requirement: string
@@ -1006,7 +1006,7 @@ ObservedChanges:
 <a id="close-readiness-and-validation-shapes"></a>
 ## 닫기 준비 상태와 검증 형태
 
-```yaml
+```schema
 CurrentCloseBasis:
   close_basis_revision: integer
   scope_revision: integer

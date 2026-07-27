@@ -190,7 +190,7 @@ Core는 성공한 `volicord.stage_artifact` 요청의 확인된 호출 맥락에
 
 스테이징할 아티팩트 데이터 예시는 아래와 같습니다.
 
-```yaml
+```schema
 artifact:
   kind: test_log
   name: checkout_receipt_render_test.log

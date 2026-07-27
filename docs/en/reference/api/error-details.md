@@ -51,7 +51,7 @@ Detail data must stay limited to stable diagnostic facts. It must not expose sen
 
 A typed platform-boundary Store failure has this exact detail shape:
 
-```yaml
+```schema
 diagnostic_code: string
 ```
 

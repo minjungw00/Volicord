@@ -15,7 +15,7 @@
 
 ## Choice 요청 payload
 
-```yaml
+```schema
 UserActionDraft:
   action_type: choice
   judgment_kind: string
@@ -60,7 +60,7 @@ action이나 outcome을 담지 않습니다. 권한 효력이 있는 종류는 C
 
 ## Choice resolution payload
 
-```yaml
+```schema
 UserActionResolutionInput:
   resolution_type: choice
   selected_option_id: string
@@ -91,7 +91,7 @@ UserActionResolutionBody:
 
 ## `SensitiveActionScope`
 
-```yaml
+```schema
 SensitiveActionScope:
   action_kind: string
   description: string
@@ -110,7 +110,7 @@ Evidence가 아닙니다.
 <a id="acceptedriskinput"></a>
 ## `AcceptedRiskInput`
 
-```yaml
+```schema
 AcceptedRiskInput:
   risk_id: string
   summary: string

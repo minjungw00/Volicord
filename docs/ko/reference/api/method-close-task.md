@@ -404,7 +404,7 @@ API 경계 블록:
 
 ### 최소 유효 요청
 
-```yaml
+```yaml contract=api.method.check_close.request shape=complete_request
 method: volicord.check_close
 params:
   envelope:
@@ -422,7 +422,7 @@ params:
 
 `state_version: 72`의 `task_close_001`에 대해, 이 메서드 예시의 응답이 최종 수락 차단 사유 하나를 보고하는 읽기 전용 `CloseTaskResult`:
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: read_only

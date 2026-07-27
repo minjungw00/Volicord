@@ -80,7 +80,7 @@ capture kind, canonical input digest, 예상 결과, 생성 시각,
 
 ## 결과
 
-```yaml
+```schema
 PrepareEvidenceCaptureResult:
   base: ToolResultBase
   capture_intent_ref: StateRecordRef

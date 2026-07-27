@@ -55,7 +55,7 @@ Meaning:
 
 It is a public reference, not an embedded storage row.
 
-```yaml
+```schema
 StateRecordRef:
   record_kind: string
   record_id: string
@@ -77,7 +77,7 @@ Owner links:
 Core-owned state-record reference. Its `source_kind` tag selects exactly one
 `source` body:
 
-```yaml
+```schema
 SourceRef:
   source_kind: repository_file | git_commit | git_diff | command | external_uri | user_context
   source: RepositoryFileSource | GitCommitSource | GitDiffSource | CommandSource | ExternalUriSource | UserContextSource
@@ -127,7 +127,7 @@ Validation and authority boundary:
 
 `StateSummary` is the compact current-position state returned by supported methods that need to show the current `Task` path.
 
-```yaml
+```schema
 StateSummary:
   project_id: string
   state_version: integer
@@ -208,7 +208,7 @@ Owner links:
 <a id="task-lineage-workspace-and-authority-receipt"></a>
 ### Task lineage, workspace, and authority receipt
 
-```yaml
+```schema
 TaskLineageSummary:
   predecessor_task_ref: StateRecordRef
   relation: string
@@ -288,7 +288,7 @@ Meaning:
 
 `UnrecordedChangeResolutionSummary` is the public summary shape for findings resolved by one reconciliation call.
 
-```yaml
+```schema
 UnrecordedChangeFinding:
   unrecorded_change_ref: StateRecordRef
   status: string
@@ -332,7 +332,7 @@ Owner links:
 
 `ProjectContinuityRecord` is the full API state shape for one durable project-level continuity record. `ProjectContinuitySummary` is the compact status-view shape.
 
-```yaml
+```schema
 ProjectContinuityRecord:
   continuity_record_id: string
   project_id: string
@@ -411,7 +411,7 @@ Owner links:
 
 `ChangeUnitEffectContract` is the optional effect-boundary object recorded on a Change Unit.
 
-```yaml
+```schema
 ChangeUnitEffectContract:
   allowed_effects: string[]
   forbidden_effects: string[]
@@ -442,7 +442,7 @@ Owner links:
 
 `TaskLifecycleState` is the API shape for Task lifecycle fields that may appear inside `StateSummary` or close results.
 
-```yaml
+```schema
 TaskLifecycleState:
   lifecycle_phase: string
   close_reason: string
@@ -460,7 +460,7 @@ Meaning:
 - `ShapingReadiness` is an API view shape over `Task`, Change Unit, pending user action, evidence summary, blocker, and next-action fields.
 - Its boolean fields and `gaps` array expose readiness-shaped data for the current state.
 
-```yaml
+```schema
 ShapingReadiness:
   goal_summary_known: boolean
   scope_boundary_known: boolean
@@ -492,7 +492,7 @@ Owner links:
 <a id="current-position-display-shapes"></a>
 ## Current-position display shapes
 
-```yaml
+```schema
 SummaryCard:
   task: string
   recording: string
@@ -712,7 +712,7 @@ Owner links:
 
 ## Evidence and run snapshot shapes
 
-```yaml
+```schema
 AcceptanceCriterionInput:
   statement: string
   evidence_requirement: string
@@ -1022,7 +1022,7 @@ Owner links:
 <a id="close-readiness-and-validation-shapes"></a>
 ## Close readiness and validation shapes
 
-```yaml
+```schema
 CurrentCloseBasis:
   close_basis_revision: integer
   scope_revision: integer

@@ -27,7 +27,7 @@ seven-value `judgment_kind`. The caller cannot separately supply the durable
 eight-value `action_kind`. Choice payloads are owned by [API Judgment
 Schemas](schema-judgment.md). The evidence-observation variant carries:
 
-```yaml
+```schema
 UserActionEvidenceObservationDraft:
   action_type: evidence_observation
   question: string
@@ -81,7 +81,7 @@ request's semantic creation/request time. Commit-time storage metadata follows
 The MCP-visible adapter arguments wrap creation and continuation in one strict
 nested operation union; they do not change the create-only Core request above:
 
-```yaml
+```schema
 McpRequestUserActionArguments:
   project_selector: string | null
   detail: summary | workflow | full
@@ -132,7 +132,7 @@ read snapshot and is not persisted merely because the projection was read.
 
 ## Result and effects
 
-```yaml
+```schema
 RequestUserActionResult:
   base: ToolResultBase
   user_action_request_summary: AgentSafeUserActionRequestSummary

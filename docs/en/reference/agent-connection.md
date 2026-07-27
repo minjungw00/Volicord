@@ -191,7 +191,7 @@ terminalizes any still-unused lease.
 
 One report is the canonical serialized connection and activation state:
 
-```yaml
+```schema
 ConnectionVerificationReport:
   status: complete | action_required | failed
   activation_state: configured | host_reload_required |

@@ -57,7 +57,7 @@ inferred format, or partial schema, and its manifest is not an authority
 
 The supported storage contract is identified by this exact manifest:
 
-```yaml
+```schema
 StorageManifest:
   contract_id: string
   canonical_ddl_digest: string
@@ -67,7 +67,7 @@ StorageManifest:
 
 The current constants are exact:
 
-```yaml
+```schema
 contract_id: volicord.sqlite.canonical
 enabled_capabilities:
   - artifact_storage
@@ -176,7 +176,7 @@ physical relation facts. Store does not alter an incompatible or corrupt home.
 Canonical SQL is the single source of truth. A deterministic build-time or
 test-time extraction produces exactly this metadata:
 
-```yaml
+```schema
 GeneratedSchemaMetadata:
   tables: GeneratedTable[]
   columns: GeneratedColumn[]

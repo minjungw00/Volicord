@@ -262,7 +262,7 @@ Method-local precondition: `task_export_001`, `cu_export_001`, and `ua_export_co
 
 ## Minimal valid request
 
-```yaml
+```yaml contract=api.method.status.request shape=complete_request
 method: volicord.status
 params:
   envelope:
@@ -287,7 +287,7 @@ params:
 
 Abbreviated result branch (`StatusResult`, read-only):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: read_only

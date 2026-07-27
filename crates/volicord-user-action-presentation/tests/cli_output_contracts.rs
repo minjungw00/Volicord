@@ -17,6 +17,7 @@ fn generated_cli_output_contracts_match_the_typed_owner() -> Result<(), Box<dyn 
                 "values": descriptor.identifiers().values(),
                 "schema_names": descriptor.identifiers().schema_names(),
                 "related_contracts": descriptor.related_contracts(),
+                "example_schemas": descriptor.example_schemas(),
             })
         })
         .collect::<Vec<_>>();

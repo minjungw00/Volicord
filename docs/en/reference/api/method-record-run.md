@@ -484,7 +484,7 @@ project state version is `7`. The request uses the advisor-compatible
 use a write ticket. A successful call still commits the Run and advances
 Core-owned state; no product-file effect is implied.
 
-```yaml
+```yaml contract=api.method.record_run.request shape=complete_request
 method: volicord.record_run
 params:
   envelope:
@@ -517,7 +517,7 @@ params:
 
 This example records validation output from a method-local staged handle. Method-local precondition: `staged_runprobe_001` is unexpired, unconsumed, and belongs to `proj_runprobe_001` / `task_runprobe_001`; its recorded actor provenance, captured at staging time, is `agent_connection:conn_run_probe`. The target-linked staged artifact establishes byte integrity, but the request supplies no capture-intent producer anchor, so the requested external-tool classification is committed as a cooperative agent report. The request leaves `observed_by_actor_source=null`; the response shows the actor source derived from the verified invocation. The precondition is local to this document and does not reuse any other method example.
 
-```yaml
+```yaml contract=api.method.record_run.request shape=complete_request
 method: volicord.record_run
 params:
   envelope:
@@ -552,7 +552,7 @@ params:
         sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
         size_bytes: 96
         redaction_state: none
-        expires_at: "<future-expiration-timestamp>"
+        expires_at: "2030-01-01T00:00:00Z"
         consumed: false
       existing_artifact_ref: null
       relation_hint: "validation_report"
@@ -586,7 +586,7 @@ params:
       source_refs: []
       output_artifact_refs: []
       limitations: []
-      observed_at: "<example-observed-at>"
+      observed_at: "2026-07-28T11:59:00Z"
   close_assessment:
     result_summary: "Search-result count validation passed."
     result_refs: []
@@ -599,7 +599,7 @@ params:
 
 Result branch (`RecordRunResult`, committed):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed

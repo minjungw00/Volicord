@@ -10,7 +10,9 @@ use volicord_command_model::{
     CommandIntrospectionError, InboxEvidenceTarget, InboxResolutionArguments,
     InboxResolveInvocation,
 };
-use volicord_types::contracts::{identifiers_from_json_schema, JsonContractDescriptor};
+use volicord_types::contracts::{
+    identifiers_from_json_schema, JsonContractDescriptor, JsonExampleShape,
+};
 use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, UserActionRequestId};
 use volicord_types::schema::{
     RequiredNullable, StateRecordRef, SummaryCard, UserActionRequest, UserActionResolutionForm,
@@ -152,13 +154,14 @@ pub fn cli_output_contract_descriptors() -> Vec<JsonContractDescriptor> {
     let identifiers = identifiers_from_json_schema(&schema);
     vec![JsonContractDescriptor::from_owner_schema(
         "cli.output.inbox",
-        schema,
+        schema.clone(),
         identifiers,
         vec![
             "cli.command.inbox".to_owned(),
             "cli.command.inbox.resolve".to_owned(),
         ],
-    )]
+    )
+    .with_example_schema(JsonExampleShape::CliOutput, schema)]
 }
 
 /// Failure to build adapter presentation from typed current facts.

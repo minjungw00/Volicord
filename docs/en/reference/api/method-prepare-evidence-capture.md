@@ -85,7 +85,7 @@ changes to a bound basis do.
 
 ## Result
 
-```yaml
+```schema
 PrepareEvidenceCaptureResult:
   base: ToolResultBase
   capture_intent_ref: StateRecordRef

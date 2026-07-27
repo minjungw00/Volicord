@@ -77,7 +77,7 @@ expose private UserAction content.
 
 ## Result
 
-```yaml
+```schema
 GetOperationResultResult:
   base: ToolResultBase
   operation_result_ref: OperationResultRef

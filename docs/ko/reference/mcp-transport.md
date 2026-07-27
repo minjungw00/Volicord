@@ -501,7 +501,7 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 <a id="user-action-wire-projection"></a>
 ### UserAction wire projection
 
-```yaml
+```schema
 McpRequestUserActionResponse:
   agent_workflow_result: RequestUserActionResponse
   agent_workflow_result_replayed: boolean
@@ -608,7 +608,7 @@ correlation refresh에는
 효과가 그대로 적용됩니다. 네 도구 모두 Codex project trust나 hook review 상태를
 변경하지 않습니다.
 
-```yaml
+```schema
 volicord.begin_integration_verification:
   arguments:
     project_selector?: string

@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+jsonschema = { version = "0.18", default-features = false }
 pulldown-cmark = "0.12"
 schemars = "0.8"
 serde = { version = "1", features = ["derive"] }
@@ -15,6 +16,8 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 shlex = "2"
 tempfile = "3"
+# Keep jsonschema's date-time dependency compatible with the workspace MSRV.
+time = "=0.3.36"
 toml_edit = { version = "0.22", features = ["serde"] }
 volicord-command-model = { path = "../crates/volicord-command-model" }
 volicord-mcp-protocol = { path = "../crates/volicord-mcp-protocol" }

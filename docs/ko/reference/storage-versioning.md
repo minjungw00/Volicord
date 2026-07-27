@@ -53,7 +53,7 @@ manifest를 초기화하고 검증합니다. 모든 SQLite handle을 닫고 live
 
 지원되는 저장소 계약은 아래의 정확한 매니페스트로 식별합니다.
 
-```yaml
+```schema
 StorageManifest:
   contract_id: string
   canonical_ddl_digest: string
@@ -63,7 +63,7 @@ StorageManifest:
 
 현재 상수는 다음과 같이 정확합니다.
 
-```yaml
+```schema
 contract_id: volicord.sqlite.canonical
 enabled_capabilities:
   - artifact_storage
@@ -162,7 +162,7 @@ schema를 선택하지 않습니다.
 기준 SQL은 단일 진실 공급원입니다. 결정적인 빌드 시점 또는 테스트 시점 추출은
 아래 메타데이터를 정확히 생성합니다.
 
-```yaml
+```schema
 GeneratedSchemaMetadata:
   tables: GeneratedTable[]
   columns: GeneratedColumn[]

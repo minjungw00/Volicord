@@ -9,7 +9,7 @@
 
 요청 측 `UserActionDraft`는 `action_type`을 판별자로 쓰는 폐쇄형 tagged union입니다.
 
-```yaml
+```schema
 UserActionDraft:
   # choice variant
   action_type: choice
@@ -41,7 +41,7 @@ variant는 아티팩트 ID를 정확한 정규 `artifact_candidates: ArtifactRef
 
 ## 영속 요청과 근거
 
-```yaml
+```schema
 UserActionRequest:
   user_action_request_id: string
   project_id: string
@@ -148,7 +148,7 @@ Core 커밋 timestamp는 `operation_now`보다 늦을 수 있지만 담당 문�
 
 `UserActionResolutionInput`은 `resolution_type`을 판별자로 쓰는 별도 폐쇄형 union입니다.
 
-```yaml
+```schema
 UserActionResolutionInput:
   # choice variant
   resolution_type: choice
@@ -199,7 +199,7 @@ channel, actor provenance, assurance, verification basis, 캡처 시각은 바�
 `UserActionResolution`에만 있습니다. 중첩 관찰은 선택 대상, artifact ref, relevance,
 summary만 담으며 좌표를 중복하거나 고아 observation identity를 만들지 않습니다.
 
-```yaml
+```schema
 UserActionResolution:
   user_action_resolution_id: string
   user_action_request_id: string
@@ -240,7 +240,7 @@ visible-ASCII 형태를 표현하고, Core는 replay 조회나 커밋 전에 정
 <a id="resolution-form"></a>
 ## Adapter-neutral resolution form
 
-```yaml
+```schema
 AgentSafeUserActionRequestSummary:
   user_action_request_id: string
   status: pending

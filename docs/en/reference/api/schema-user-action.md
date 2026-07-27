@@ -11,7 +11,7 @@ retaining distinct authority meanings.
 The request-side `UserActionDraft` is a closed tagged union whose discriminator
 is `action_type`:
 
-```yaml
+```schema
 UserActionDraft:
   # choice variant
   action_type: choice
@@ -45,7 +45,7 @@ Schemas](schema-judgment.md).
 
 ## Durable request and basis
 
-```yaml
+```schema
 UserActionRequest:
   user_action_request_id: string
   project_id: string
@@ -158,7 +158,7 @@ rules belong to [Storage Versioning](../storage-versioning.md#canonical-core-utc
 `UserActionResolutionInput` is a separate closed union whose discriminator is
 `resolution_type`:
 
-```yaml
+```schema
 UserActionResolutionInput:
   # choice variant
   resolution_type: choice
@@ -213,7 +213,7 @@ enclosing `UserActionResolution`. The nested observation contains only the
 selected target, artifact refs, relevance, and summary; it does not duplicate
 coordinates or create an orphan observation identity.
 
-```yaml
+```schema
 UserActionResolution:
   user_action_resolution_id: string
   user_action_request_id: string
@@ -257,7 +257,7 @@ replay lookup or commit.
 <a id="resolution-form"></a>
 ## Adapter-neutral resolution form
 
-```yaml
+```schema
 AgentSafeUserActionRequestSummary:
   user_action_request_id: string
   status: pending

@@ -16,7 +16,7 @@
 
 ## 기준 타입
 
-```yaml
+```schema
 SuppressionOutcome:
   Applied:
     outcome: applied

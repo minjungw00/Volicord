@@ -347,7 +347,7 @@ advisor 모드 거절은 쓰기 결정, 쓰기 티켓, 이벤트, 재실행 행,
 
 이 예시는 `account_preference_update`를 `sensitive_categories`의 예시 문자열로 사용합니다. 민감 범주의 값 집합을 정의하지 않습니다.
 
-```yaml
+```yaml contract=api.method.prepare_write.request shape=complete_request
 method: volicord.prepare_write
 params:
   envelope:
@@ -385,7 +385,7 @@ params:
 아래 `write_authority_fingerprint` 값은 정규화된 쓰기 권한 다이제스트의 예시이며,
 예시 전체 정책 `policy_fingerprint`와 구별됩니다.
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed
@@ -559,7 +559,7 @@ guarantee_display:
 
 아래의 `code: sensitive_approval_missing` 값은 이 메서드의 로컬 이유 코드 중 하나입니다. 공개 `ErrorCode` 값이 아닙니다.
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: core_committed

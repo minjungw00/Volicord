@@ -464,7 +464,7 @@ volicord doctor --privacy-footprint
 `volicord doctor --privacy-footprint --json` returns this exact top-level
 projection:
 
-```yaml
+```schema
 status: complete
 runtime_home: string
 privacy_footprint:
@@ -859,7 +859,7 @@ and does not accept `--verbose`.
 
 The schema-2 top-level shape is:
 
-```yaml
+```schema
 DiagnosticReport:
   schema_version: 2
   operation: init | add | status | verify | mode | remove
@@ -997,7 +997,7 @@ single selected Connection or single operational result, so it does not use
 the selected-Connection `DiagnosticReport` projection. Its JSON document has
 exactly these top-level members:
 
-```yaml
+```schema
 ConnectionListReport:
   connections: ConnectionListEntry[]
   limits:
@@ -1124,7 +1124,7 @@ schema-2 `DiagnosticReport` defined above. This includes `volicord init` and the
 `add`, `status`, `verify`, `mode`, and `remove` Connection commands.
 Operation-specific facts are nested under `operation_details`:
 
-```yaml
+```schema
 operation_details:
   dry_run: bool
   result?: SetupResult | ModeTransitionResult | RemovalResult
@@ -1323,7 +1323,7 @@ failure stage, and persisted finding reference; no second terminal failure
 object is stored in the verification report. The self-test diagnostic has this
 current shape:
 
-```yaml
+```schema
 McpSelfTestProgress:
   status: passed | failed | pending
   code: string
@@ -1553,7 +1553,7 @@ the bounded findings correlated with it. These lookups use the Registry Store
 APIs and do not scan unbounded history. Their JSON uses a separate schema-1
 `DiagnosticLookupReport`, not a selected-Connection report:
 
-```yaml
+```schema
 DiagnosticLookupReport:
   schema_version: 1
   operation: diagnostics_show | diagnostics_session
@@ -1721,7 +1721,7 @@ path.
 `volicord-user-action-presentation` owns the exact closed CLI inbox document
 and its JSON Schema:
 
-```yaml
+```schema
 CliUserActionInboxResponse:
   summary_card: SummaryCard
   user_channel_availability: CliUserChannelAvailability | null

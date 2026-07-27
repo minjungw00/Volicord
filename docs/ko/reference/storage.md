@@ -8,7 +8,7 @@ runtime 위치, Core 권한 의미를 정의하지 않습니다.
 
 ## 현재 canonical manifest identity
 
-```yaml
+```schema
 contract_id: volicord.sqlite.canonical
 enabled_capabilities:
   - artifact_storage

@@ -27,7 +27,7 @@
 없습니다. Choice payload는 [API 판단 스키마](schema-judgment.md)가 담당합니다. Evidence
 관찰 variant는 다음을 담습니다.
 
-```yaml
+```schema
 UserActionEvidenceObservationDraft:
   action_type: evidence_observation
   question: string
@@ -74,7 +74,7 @@ state-version 변경, 영속 시계 하한 갱신 없이 커밋 전에 거부됩
 MCP에 보이는 어댑터 인자는 생성과 연속 작업을 하나의 엄격한 중첩 operation union으로
 감쌉니다. 위의 create-only Core 요청 형태는 바꾸지 않습니다.
 
-```yaml
+```schema
 McpRequestUserActionArguments:
   project_selector: string | null
   detail: summary | workflow | full
@@ -120,7 +120,7 @@ projection을 읽었다는 이유만으로 영속화하지 않습니다.
 
 ## 결과와 효과
 
-```yaml
+```schema
 RequestUserActionResult:
   base: ToolResultBase
   user_action_request_summary: AgentSafeUserActionRequestSummary

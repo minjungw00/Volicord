@@ -16,7 +16,7 @@ family and is not a judgment.
 
 ## Choice request payload
 
-```yaml
+```schema
 UserActionDraft:
   action_type: choice
   judgment_kind: string
@@ -63,7 +63,7 @@ are Core-derived and are not resolution input.
 
 ## Choice resolution payload
 
-```yaml
+```schema
 UserActionResolutionInput:
   resolution_type: choice
   selected_option_id: string
@@ -96,7 +96,7 @@ but do not approve, accept, authorize, waive, or close anything.
 
 ## `SensitiveActionScope`
 
-```yaml
+```schema
 SensitiveActionScope:
   action_kind: string
   description: string
@@ -115,7 +115,7 @@ security boundary, final acceptance, or evidence.
 <a id="acceptedriskinput"></a>
 ## `AcceptedRiskInput`
 
-```yaml
+```schema
 AcceptedRiskInput:
   risk_id: string
   summary: string

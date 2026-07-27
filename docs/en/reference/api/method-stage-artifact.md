@@ -168,7 +168,7 @@ The examples are intentionally compact and method-local. The representative resp
 
 ## Minimal valid request
 
-```yaml
+```yaml contract=api.method.stage_artifact.request shape=complete_request
 method: volicord.stage_artifact
 params:
   envelope:
@@ -193,7 +193,7 @@ params:
 
 Result branch (`StageArtifactResult`, staging created):
 
-```yaml
+```schema
 base:
   response_kind: result
   effect_kind: staging_created
