@@ -1272,14 +1272,13 @@ mod tests {
             .as_u64()
             .expect("staging should expose its committed state version");
         let claim_statement = "Classify the registered artifact.";
-        let claim_id = format!(
-            "claim_{}",
-            claim_statement
-                .as_bytes()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        );
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut claim_id = String::from("claim_");
+        claim_id.reserve(claim_statement.len() * 2);
+        for byte in claim_statement.as_bytes() {
+            claim_id.push(HEX[usize::from(byte >> 4)] as char);
+            claim_id.push(HEX[usize::from(byte & 0x0f)] as char);
+        }
         let mut record_run = fixture.record_run_request(
             "req_cli_observation_run",
             "idem_cli_observation_run",

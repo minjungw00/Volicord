@@ -178,16 +178,19 @@ Run `cargo run -p xtask -- architecture-check` after changing the root
 `Cargo.toml`, a workspace member manifest, package placement, or an internal
 dependency. The command reads actual workspace package identity and normal,
 development, and build dependency edges from Cargo metadata. It compares them
-with `workspace.metadata.architecture` in the root `Cargo.toml`, which is the
-single machine-readable owner for package-to-group assignments and allowed
-internal dependency directions.
+with `workspace.metadata.architecture.packages` in the root `Cargo.toml`, which
+is the single machine-readable owner for each package's semantic group,
+bilingual responsibility, classification, production status, boundary, and
+kind-specific internal dependency allowlists.
 
-The check rejects undeclared or missing workspace packages, unknown groups,
-disallowed kind-specific edges, production normal/build dependencies on
-test-support groups, and dependencies from Core-facing groups to adapter
-groups. CI runs this command as a focused workspace check. Its tests use neutral
-synthetic graphs for general validator behavior and read the current workspace
-directly for the repository graph case.
+The check rejects undeclared or missing workspace packages, invalid or
+duplicated responsibility groups, unresolved dependency owners, disallowed
+kind-specific edges, production normal/build dependencies on test-support
+packages, Core-facing dependencies on adapter or presentation packages, the
+required UserAction service, Core, shared-types, and Store boundary violations,
+and normal/build dependency cycles. CI runs this command as a focused workspace
+check. Its tests use neutral synthetic graphs for general validator behavior
+and read the current workspace directly for the repository graph case.
 
 ## Human Semantic Review
 
@@ -409,9 +412,11 @@ clearly calls for them, and report the reason.
 Generated or source-derived reference surfaces use stable check commands:
 
 - `cargo run -p xtask -- docs-sync` deterministically replaces the marked CLI
-  syntax regions and the marker-free request field tables in English and Korean
-  API method owners. Run it after changing command or request descriptors and
-  review the generated diff.
+  syntax regions, the marker-free request field tables in English and Korean
+  API method owners, and the bilingual package-responsibility and
+  dependency-direction regions in Architecture. Run it after changing command
+  or request descriptors or workspace architecture metadata and review the
+  generated diff.
 - `cargo run -p xtask -- docs-check` checks maintained documentation structure,
   generated/source-derived documentation surfaces, executable `volicord`
   command examples, bilingual link/heading/exact-identifier parity, terminology

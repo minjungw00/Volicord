@@ -3,31 +3,12 @@
 이 가이드는 Rust workspace를 읽기 위한 유지관리자 경로입니다. 정확한 제품 동작은 집중된
 Reference 소유자에 있으며, 구현 코드는 그 계약을 보존해야 합니다.
 
-## Workspace 계층
+## 워크스페이스 패키지 경로
 
-workspace를 바깥쪽에서 안쪽 순서로 읽습니다.
-
-1. `volicord-command-model`은 완전한 Clap 명령 선언, 명령 DTO, 문법 검증,
-   가시성, 명령 introspection, typed 정규 invocation builder를 소유합니다.
-2. `volicord-user-action-presentation`은 adapter-neutral UserAction fact의 공유 CLI
-   지향 projection을 소유합니다.
-3. `volicord-cli`는 프로세스 시작, 관리 명령 디스패치, Codex 연결 설정, CLI 받은
-   편지함, 렌더링, stdio 프로세스 시작을 소유합니다.
-4. `volicord-mcp`는 MCP 생명주기, JSON-RPC stdio 프레이밍, 공개 도구 디코딩, 응답
-   projection을 소유합니다.
-5. `volicord-core`는 요청 조율, 메서드 계획, replay 결정, 권한 결과, 원자적 commit
-   순서 조율을 소유합니다.
-6. `volicord-user-action-service`는 재사용 가능한 UserAction 의미 검증, 구성,
-   authority, lifecycle, 영속화 매핑, resolution, continuity, adapter-neutral fact를
-   소유합니다.
-7. `volicord-store`는 Runtime Home 탐색, SQLite 접근, 엄격한 저장 레코드 검증,
-   transaction 적용을 소유합니다.
-8. `volicord-types`는 공유 폐쇄 값, 식별자, 정규 인코딩을 소유합니다.
-9. `volicord-platform-fs`는 좁은 내부 facade 뒤의 플랫폼별 파일시스템 검사를
-   소유합니다.
-
-Core-facing 코드는 CLI나 MCP 어댑터 세부사항에 의존하지 않습니다. 어댑터는 서버 소유
-맥락을 파생하고 typed 요청을 Core에 제출합니다.
+먼저 [아키텍처](architecture.md#workspace-package-architecture)의 생성된 패키지
+책임 및 의존 표를 읽습니다. 이 표는 루트 Cargo 메타데이터에서 도출한 현재
+패키지 수준 경로입니다. 요청 중심으로 코드를 읽을 때는 이 문서를 사용하고,
+모듈 경로는 [소스 지도](source-map.md)를 사용합니다.
 
 ## 하나의 요청에서 시작하기
 

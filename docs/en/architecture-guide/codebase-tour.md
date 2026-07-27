@@ -4,33 +4,13 @@ This guide is a maintainer-oriented path through the Rust workspace. Exact
 product behavior belongs to the focused Reference owners; implementation code
 must preserve those contracts.
 
-## Workspace Layers
+## Workspace Package Route
 
-Read the workspace from the outside inward:
-
-1. `volicord-command-model` owns the complete Clap command declaration,
-   command DTOs, syntax validation, visibility, command introspection, and
-   typed canonical invocation builders.
-2. `volicord-user-action-presentation` owns shared CLI-oriented projection from
-   adapter-neutral UserAction facts.
-3. `volicord-cli` owns process startup, administrative command dispatch, Codex
-   connection setup, the CLI inbox, rendering, and stdio process launch.
-4. `volicord-mcp` owns MCP lifecycle, JSON-RPC stdio framing, public tool
-   decoding, and response projection.
-5. `volicord-core` owns request orchestration, method planning, replay
-   decisions, authority results, and atomic commit sequencing.
-6. `volicord-user-action-service` owns reusable UserAction semantic
-   validation, construction, authority, lifecycle, persistence mapping,
-   resolution, continuity, and adapter-neutral facts.
-7. `volicord-store` owns Runtime Home discovery, SQLite access, strict stored
-   record validation, and transaction application.
-8. `volicord-types` owns shared closed values, identifiers, and canonical
-   encodings.
-9. `volicord-platform-fs` owns platform-specific filesystem inspection behind
-   a narrow internal facade.
-
-Core-facing code does not depend on CLI or MCP adapter details. Adapters derive
-server-owned context and submit typed requests to Core.
+Start with the generated package responsibility and dependency tables in
+[Architecture](architecture.md#workspace-package-architecture). They are
+derived from the root Cargo metadata and are the current package-level route.
+Use this page for request-oriented reading order and the [Source
+Map](source-map.md) for module paths.
 
 ## Start With One Request
 

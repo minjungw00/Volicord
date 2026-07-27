@@ -508,6 +508,7 @@ fn criterion_replacement_preserves_identity_order_and_retires_omissions(
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
         rows
     };
     assert_eq!(

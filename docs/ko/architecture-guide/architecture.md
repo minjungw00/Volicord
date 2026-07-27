@@ -72,115 +72,78 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 파일 쓰기 자체는 공개 메서드 실행 경로 밖에서 Agent Connection, 로컬 도구, 또는
 명시적인 관리 통합 경로가 수행합니다.
 
-## 워크스페이스 형태
+<a id="workspace-package-architecture"></a>
 
-| 워크스페이스 멤버 | 가이드 수준 역할 |
-|---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 의미 UserAction 요청·불변 resolution·adapter-neutral `UserActionResolutionForm` 타입, 선언 하나에서 함께 만드는 공개 메서드 결과와 필드 전용 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. CLI presentation model이나 rendering helper는 담당하지 않습니다. 공개 Rust 어휘는 각 항목을 담당하는 모듈 경로로 제공하며, 크레이트 루트는 타입 집계 파사드가 아니라 모듈 경로를 제공합니다. |
-| `crates/volicord-host-contract` | `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames`를 통한 의존성이 안전한 semantic Codex 계약, 명시적인 MCP server/raw-tool identity, 충돌 검사를 거친 callable 투영과 catalog 조회, 결정적인 contract identity, 한도 있는 host 값과 error, source별 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
-| `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
-| `crates/volicord-user-action-service` | 재사용 가능한 UserAction 의미 검증, 정규 구성, identity, authority, lifecycle, 영속화 매핑, 구체화, resolution, continuity 파생, adapter-neutral fact projection. Core pipeline, 메서드 결과, CLI, MCP 인프라는 담당하지 않습니다. |
-| `crates/volicord-core` | 어댑터와 독립적인 요청 조율, 호스트 중립 typed invocation authority, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율, UserAction 서비스 결과의 메서드 결과 매핑. |
-| `crates/volicord-command-model` | `volicord` 바이너리의 완전한 Clap 선언을 담당합니다. Root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 validator, 실제 모델 기반 가시성 분류, 새로운 root `clap::Command`, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation, 그 선언에서 도출한 typed inbox-resolution invocation builder를 제공합니다. 명령 실행이나 application service는 담당하지 않습니다. |
-| `crates/volicord-user-action-presentation` | `CliUserActionInboxResponse`, `CliUserActionInboxItem`, tagged channel/capture-path 상태, CLI JSON Schema, command-model 기반 recovery instruction을 담당하는 typed CLI UserAction presentation입니다. Shared semantic type과 정규 command-model invocation을 사용하며 Core 정책, Store 접근, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
-| `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 렌더링, 숨은 동일 프로세스 managed-host launcher, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 프로세스 시작, 관리 명령 디스패치, 재사용 실행 모듈. |
-| `crates/volicord-platform-fs` | 프로세스 target 및 플랫폼 관찰, 네이티브 Linux/WSL2 분류, WSL2 배포판 검증 및 파일시스템 관찰, typed 원자적 기존 대상 비대체 일반 파일 공개, 플랫폼 고유 파일시스템 이름 공간 연산, 정규 Runtime Home별 공유·배타 OS 기반 변경 승인과 빌린 변경 permit, 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 시작이나 Codex 구성 정책은 담당하지 않습니다. |
-| `crates/volicord-platform-process` | 한도가 있는 플랫폼별 자식 프로세스 격리와 비차단 자식 파이프 준비 상태를 위한 내부 안전 파사드. 저수준 Unix 프로세스 그룹, Windows Job Object, 파이프 폴링 primitive를 담당합니다. |
-| `crates/volicord-test-process` | 저장소 테스트와 스모크 하네스에서 한도 있는 자식 프로세스 실행을 담당하는 게시 비활성 내부 경계. `volicord-platform-process` primitive를 하나의 기한, 동시 한도 stdio 수집, 프로세스 트리 종료, 직접 자식 회수, 한도 있는 정리로 조합하며 제품 프로세스 정책은 담당하지 않습니다. |
-| `crates/volicord-mcp-protocol` | 정확한 MCP 리비전 파싱, 검토된 폐쇄형 프로덕션 레지스트리, 완전한 revision-to-semantic-capability map, 결정론적인 지원 리비전 순회, 지원하지 않는 리비전의 명시적 거절을 담당하는 호스트 독립 내부 크레이트. 추적 중인 사전 릴리스 메타데이터는 프로덕션 레지스트리 밖에 둡니다. |
-| `crates/volicord-mcp` | 정규 관리 launch 구성 계약, 메모리 내 launch-lease 소비, 시작 검증, registry가 구동하는 단일 실행 가능 protocol 적합성 harness, Volicord 도구 담당자가 제공하는 정규 도구 모델 사용, capability 기반 `tools/list` 및 `tools/call` projection, 분리된 mutation/UserAction/recovery/authority/telemetry/metric 책임, stdio lifecycle과 프레이밍, Core 호출을 위한 MCP 어댑터 라이브러리. |
-| `crates/volicord-test-support` | 재사용 가능한 구현 테스트 fixture만 담당합니다. 폐기 가능한 Runtime Home과 Product Repository 설정, Store 검사, Core 요청 빌더, Agent Connection 설정을 제공하며 제품 동작 assertion이나 계약은 담당하지 않습니다. |
-| `tests/conformance` | Core 쪽 API, 공유 픽스처, 버전별 오프라인 MCP 명세 입력을 통한 기준 범위 교차 메서드 시나리오. 고정된 upstream 입력은 런타임 지원을 정의하지 않습니다. |
-| `tests/integration` | MCP, Core, Store, Agent Connection session, 작업 범주, 공개 스키마 스냅샷을 가로지르는 테스트. |
-| `tests/release-integrity` | 일반 target 다섯 개 범위, 버전 일치, 기준 텍스트 바이트, 패키지 형태, 패키징한 binary identity, checksum 출력, 릴리스 workflow 구조. 운영 런타임 동작을 담당하지 않습니다. |
-| `tests/release-smoke` | 게시하지 않는 플랫폼 공통 실제 바이너리 스모크 패키지. 전달받은 정확한 `volicord` 바이너리를 공개 `init` 및 `mcp serve`로 실행하고, 폐기 가능한 런타임 fixture와 안정적인 테스트 소유 Codex 실행 파일을 담당하며, 선호 initialize 리비전과 대표 정규 도구 identity를 검증합니다. 한도가 있는 자식 실행은 `volicord-test-process`에 위임하며 CLI, MCP 어댑터, Core, Store, `xtask`를 링크하지 않습니다. |
-| `xtask` | 워크스페이스 아키텍처 검증, 문서 검증, 고정 MCP 명세 manifest 처리, 릴리스 버전 검사를 위한 가벼운 저장소 유지보수 도구. 아키텍처 검증기는 Cargo에서 실제 패키지 manifest, target source root, 의존성 데이터를 읽어 graph를 워크스페이스 메타데이터 담당 원본과 비교합니다. 문서의 명령 예시는 `volicord-command-model`로 parsing하고 런타임 담당 작업 범주 식별자는 `volicord-types`에서 가져오며, 네트워크 작업은 MCP 명세 동기화만 수행합니다. `xtask`는 런타임 어댑터, Core, Store, CLI, platform 크레이트를 링크하지 않으며 Volicord 런타임 아키텍처 밖에 있습니다. |
+## 워크스페이스 패키지 아키텍처
 
-## 의존 경계
+루트 `Cargo.toml`의 `workspace.metadata.architecture.packages`는 현재 각
+워크스페이스 패키지의 의미 그룹, 책임, 분류, 프로덕션 여부, 경계, 일반·개발·빌드
+의존 허용 목록을 담당하는 하나의 기계 판독 원본입니다. `architecture-check`는
+이 선언을 실제 Cargo 메타데이터와 비교하고 Core, UserAction 서비스, 공유 타입,
+Store, 어댑터, 표현, 테스트 지원 경계를 강제하며 일반·빌드 의존 그래프의 순환을
+거부합니다. 개발 전용 역방향 간선은 배포 그래프에 참여하지 않습니다.
 
-루트 `Cargo.toml`의 `workspace.metadata.architecture`가 워크스페이스 패키지
-배정, 의미 기반 책임 그룹, 허용되는 내부 의존 방향, Core 의존 적격성을 위한
-기계 판독 담당 원본입니다. 각 그룹은 일반, 개발, 빌드 의존 대상 그룹을 별도로
-선언하고 자신을 Core 런타임 의존성, Core 개발 의존성, 또는 Core 의존 계층 밖으로
-분류합니다.
-`cargo run -p xtask -- architecture-check`는 Cargo 메타데이터에서 실제
-워크스페이스 멤버와 의존 간선을 읽고, 선언되지 않은 패키지나 대상 그룹 및
-허용되지 않은 간선을 거부합니다. 프로덕션 그룹은 명시적으로 허용된 개발
-의존성으로만 테스트 지원 그룹을 사용할 수 있습니다. Core의 일반 및 빌드
-의존성은 Core 런타임 그룹만 대상으로 하고, 개발 의존성은 Core 개발 그룹도
-대상으로 할 수 있습니다. Core 쪽 그룹은 어댑터 그룹에서 독립적으로
-유지됩니다. 이 규칙은 현재 워크스페이스에 직접 적용하며 패키지, 스키마,
-프로토콜 버전으로 다른 의존 규칙을 선택하지 않습니다.
+아래 표는 `docs-sync`가 생성합니다. 정확한 모듈 배치는
+[소스 지도](source-map.md)에 남습니다.
 
-오래 유지될 의존 방향은 아래와 같습니다.
+<!-- BEGIN GENERATED: workspace-package-architecture -->
+<!-- Generated by `cargo run -p xtask -- docs-sync`; do not edit this region. -->
 
-- `volicord-types`는 공유 타입 경계에 있으며 내부 제품 크레이트 의존성이 없습니다.
-  Lifecycle별 진단 입력, current key identity와 digest 파생, 공유 read-only finding과
-  report projection, 안정적인 네임스페이스 코드 검증, 담당 크레이트의 typed fact에
-  한도와 민감정보 제거를 적용하는 projection, 정규 tool identity catalog를 담당합니다.
-  사용하는 쪽에서는 크레이트 루트를 공유 타입 이름 공간으로 다루지 않고 `ids`,
-  `methods`, `schema`, `tool_names`, `values` 같은 적용되는 담당 모듈을 명시합니다.
-  각 도메인 크레이트는 폐쇄형 세부 code 집합과 오류를 finding으로 빠짐없이 변환하는
-  책임을 유지합니다.
-- `volicord-host-contract`는 저수준 공유 타입과 범용 serialization 및 hashing에만
-  의존합니다. Store, CLI, MCP는 명시적인 `codex-command-hooks`,
-  `codex-mcp-turn-metadata`, `codex-mcp-callable-names` 계약과 typed 상관관계를 사용합니다. 이 크레이트는 Store,
-  Core, CLI, MCP에 의존하지 않습니다.
-- `volicord-store`는 공유 타입과 저장된 소유자 경로 검증에 쓰는 읽기 전용 정규 Git
-  layout primitive에 의존하고 지속 저장 메커니즘을 담당합니다. Core, CLI, MCP 어댑터
-  크레이트에는 의존하지 않습니다.
-- `volicord-user-action-service`는 Store와 공유 타입에만 의존하고 테스트 지원은
-  개발 의존성으로 사용합니다. Core, CLI, MCP, presentation, 메서드 결과
-  인프라에는 의존할 수 없습니다.
-- `volicord-core`는 UserAction 서비스, Store, 공유 타입에 의존하고 테스트 지원은 개발 의존성으로만
-  사용합니다. 공개 invocation 경계는 typed local `UserActionChannelKind` 또는
-  불투명한 `ValidatedAgentSession`으로 구성된 `InvocationAuthority`를 받습니다.
-  Core는 어댑터가 선택한 actor label, 호스트 명령 문법, 시작 인자, 구성 경로,
-  렌더링 지시를 받지 않습니다.
-- `volicord-command-model`은 Clap에만 의존합니다. CLI와 문서 validator가 이
-  크레이트를 직접 사용하며, Core, Store, MCP, CLI 렌더링, Runtime Home 구현,
-  application service에는 의존하지 않습니다.
-- `volicord-user-action-presentation`은 shared type과
-  `volicord-command-model`에 의존합니다. CLI와 MCP는 이 CLI 지향 presentation을
-  사용할 수 있지만 Core와 Store는 이 크레이트에서 독립적입니다.
-- `volicord-mcp-protocol`은 내부 제품 크레이트에 의존하지 않습니다. Core, Store,
-  CLI, 호스트 통합, Volicord 도구 구현에 의존하지 않으면서 폐쇄형 리비전 프로필
-  경계를 담당합니다.
-- `volicord-cli`와 `volicord-mcp`는 어댑터 또는 로컬 오케스트레이션 계층입니다.
-  CLI는 `volicord-command-model`을 사용하고, 두 어댑터는 각자의 설정, 시작 검증,
-  처리 경로, 호출 책임을 위해 Core, Store, 공유 타입에 의존할 수 있습니다.
-  `volicord-mcp`는 리비전 프로필 담당 경계를 사용하기 위해
-  `volicord-mcp-protocol`에도 의존합니다.
-- `volicord-platform-process`는 내부 제품 크레이트에 의존하지 않습니다. MCP 감독
-  정책, 기한, 프레이밍, 진행 상태, 진단을 담당하지 않으며 로컬 오케스트레이션
-  계층에 안전한 자식 프로세스 격리와 파이프 폴링 primitive를 제공합니다.
-- `volicord-test-process`는 `volicord-platform-process`와 범용 테스트
-  인프라에만 의존합니다. 저장소 테스트와 스모크 하네스가 OS primitive를 한도
-  있는 테스트 자식 실행으로 재사용하게 합니다. 제품 MCP 감독 정책, lifecycle
-  기한, 프레이밍, 진행 상태, 진단은 계속 `volicord-cli`가 담당합니다.
-- `volicord-platform-fs`는 내부 제품 크레이트에 의존하지 않습니다. 현재 프로세스
-  target과 플랫폼, WSL2 배포판 identity와 경로 파일시스템, 플랫폼 고유 이름 공간
-  연산, 정규 Runtime Home별 공유·배타 OS 기반 변경 승인, 빌린 변경 permit,
-  읽기 전용 Git layout identity primitive의 안전한 관찰을 담당합니다. Store와 로컬
-  어댑터는 각자의 계획, 관리 파일 정책, 소유권 및 권한 비교, 복구, 진단 책임을
-  유지합니다.
-- `tests/release-smoke`는 `volicord-mcp-protocol`, `volicord-types`,
-  `volicord-test-process`에 의존합니다. 제품 구현 크레이트나 `xtask`에
-  의존하지 않으면서 릴리스 전용 프로세스 한도, 폐기 가능한 fixture 설정, MCP
-  transcript assertion, 안정적인 Codex fixture identity, 결과 보고를 담당합니다.
-- 그 밖의 테스트 지원 크레이트와 테스트 패키지는 폐기 가능한 fixture와 계층 간
-  검증을 위해서만 구현 크레이트를 조합합니다.
-- `xtask`는 제품 런타임 밖의 저장소 유지보수 도구로 남습니다. 문서의 공개 CLI
-  invocation은 `volicord-command-model`로 parsing하고, 런타임 담당 계약 식별자는
-  `volicord-types`에서 가져오며, `volicord-mcp-protocol`을 사용하여 컴파일된
-  프로덕션 profile의 일치를 확인합니다. MCP 어댑터, Core, Store, CLI, host
-  integration 크레이트를 링크하지 않습니다.
-  일반 검사는 오프라인으로 실행되고, 명시적으로 호출한 명세 sync 명령만 네트워크를
-  사용합니다.
+### 패키지 책임
 
-실제 의존 간선은 Cargo 매니페스트가 담당하고,
-`workspace.metadata.architecture`는 어떤 내부 간선을 허용하는지 담당합니다.
-정확한 소스 배치는 소스 지도가 담당합니다.
+현재 워크스페이스의 각 패키지는 루트 Cargo 메타데이터에 하나의 책임 항목을 가집니다.
+
+| 패키지 | 그룹 | 종류 | 런타임 | 경계 | 책임 |
+|---|---|---|---|---|---|
+| `volicord-agent-evaluation` | `agent-evaluation` | 검증 | 비프로덕션 | 중립 | 독립형 에이전트 평가 카탈로그, 실행기, 스키마, 결과 하네스를 담당합니다. |
+| `volicord-cli` | `cli-adapter` | 어댑터 | 프로덕션 | 어댑터 | 관리 CLI, 로컬 조율, Codex 설정, 렌더링, 관리 MCP 감독을 담당합니다. |
+| `volicord-command-model` | `command-model` | 스키마 | 프로덕션 | 중립 | 실행과 분리된 관리 명령 선언, 문법 모델, 정규 호출 빌더를 담당합니다. |
+| `volicord-conformance-tests` | `conformance-validation` | 검증 | 비프로덕션 | 중립 | Core 지향 API를 통한 교차 메서드 적합성 시나리오를 담당합니다. |
+| `volicord-core` | `core` | 애플리케이션 | 프로덕션 | Core | 어댑터 독립 요청 조율, 정책 평가, 메서드 계획, 원자적 커밋 조율을 담당합니다. |
+| `volicord-host-contract` | `host-contract` | 스키마 | 프로덕션 | Core 지향 | 의존 안전한 의미 기반 호스트 계약과 타입이 있는 호스트 상관관계 식별자를 담당합니다. |
+| `volicord-integration-tests` | `integration-validation` | 검증 | 비프로덕션 | 중립 | 계층 간 통합, Agent Connection, 공개 계약 스냅샷 테스트를 담당합니다. |
+| `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, 전송, 도구 투영, 세션 결속, Core 호출 어댑터를 담당합니다. |
+| `volicord-mcp-protocol` | `mcp-protocol` | 스키마 | 프로덕션 | 중립 | 호스트 독립 MCP 리비전 프로필과 의미 기반 역량 레지스트리를 담당합니다. |
+| `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
+| `volicord-platform-process` | `platform-process` | 인프라 | 프로덕션 | 중립 | 플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다. |
+| `volicord-release-integrity-tests` | `release-integrity` | 검증 | 비프로덕션 | 중립 | 릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다. |
+| `volicord-release-smoke` | `release-smoke` | 검증 | 비프로덕션 | 중립 | 크로스 플랫폼 실제 바이너리 릴리스 스모크 조율과 transcript 검증을 담당합니다. |
+| `volicord-store` | `storage` | 인프라 | 프로덕션 | Core 지향 | 정규 영속화, Runtime Home 메커니즘, 엄격한 디코딩, 트랜잭션 적용을 담당합니다. |
+| `volicord-test-process` | `test-process` | 테스트 지원 | 비프로덕션 | 중립 | 테스트와 스모크 하네스를 위한 재사용 가능한 한도 프로세스 실행과 정리를 담당합니다. |
+| `volicord-test-support` | `test-support` | 테스트 지원 | 비프로덕션 | 중립 | 재사용 가능한 폐기형 Runtime Home, Store, Core 요청, Agent Connection 픽스처를 담당합니다. |
+| `volicord-types` | `shared-types` | 스키마 | 프로덕션 | Core 지향 | 의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 어댑터 중립 도메인 사실을 담당합니다. |
+| `volicord-user-action-presentation` | `user-action-presentation` | 표현 | 프로덕션 | 어댑터 | 타입이 있는 CLI UserAction 표현, JSON Schema, 명령 모델 기반 복구 안내를 담당합니다. |
+| `volicord-user-action-service` | `user-action-service` | 애플리케이션 | 프로덕션 | Core 지향 | UserAction 검증, 권한, 생명주기, 영속화 매핑, 해결, 연속성, 의미 투영을 담당합니다. |
+| `xtask` | `repository-validation` | 검증 | 비프로덕션 | 중립 | 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터 검증과 동기화를 담당합니다. |
+
+### 허용되는 내부 의존 방향
+
+각 목록은 Cargo 의존 종류별 패키지 허용 목록입니다. 긴 대시는 해당 종류에 허용된 내부 패키지가 없음을 뜻합니다.
+
+| 패키지 | 일반 | 개발 | 빌드 |
+|---|---|---|---|
+| `volicord-agent-evaluation` | — | — | — |
+| `volicord-cli` | `volicord-command-model`, `volicord-core`, `volicord-host-contract`, `volicord-mcp`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-platform-process`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-store`, `volicord-test-support` | — |
+| `volicord-command-model` | — | — | — |
+| `volicord-conformance-tests` | — | `volicord-core`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
+| `volicord-core` | `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-host-contract` | `volicord-types` | — | — |
+| `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
+| `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-mcp-protocol` | — | — | — |
+| `volicord-platform-fs` | `volicord-types` | — | — |
+| `volicord-platform-process` | — | — | — |
+| `volicord-release-integrity-tests` | `volicord-store`, `volicord-types` | — | — |
+| `volicord-release-smoke` | `volicord-mcp-protocol`, `volicord-test-process`, `volicord-types` | — | — |
+| `volicord-store` | `volicord-host-contract`, `volicord-platform-fs`, `volicord-types` | `volicord-platform-fs`, `volicord-test-support` | — |
+| `volicord-test-process` | `volicord-platform-process` | — | — |
+| `volicord-test-support` | `volicord-host-contract`, `volicord-platform-fs`, `volicord-store`, `volicord-types` | — | — |
+| `volicord-types` | — | — | — |
+| `volicord-user-action-presentation` | `volicord-command-model`, `volicord-types` | — | — |
+| `volicord-user-action-service` | `volicord-store`, `volicord-types` | `volicord-test-support` | — |
+| `xtask` | `volicord-command-model`, `volicord-mcp-protocol`, `volicord-types` | — | — |
+
+<!-- END GENERATED: workspace-package-architecture -->
 
 ### Store 변경 가시성
 

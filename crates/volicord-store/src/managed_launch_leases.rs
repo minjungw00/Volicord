@@ -523,18 +523,15 @@ mod tests {
     };
     use volicord_types::integration_revision::McpRuntimeSessionSource;
 
-    fn fixture(
-        name: &str,
-    ) -> Result<
-        (
-            tempfile::TempDir,
-            std::path::PathBuf,
-            TestRuntimeHomeAdmission,
-            String,
-            String,
-        ),
-        Box<dyn std::error::Error>,
-    > {
+    type Fixture = (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        TestRuntimeHomeAdmission,
+        String,
+        String,
+    );
+
+    fn fixture(name: &str) -> Result<Fixture, Box<dyn std::error::Error>> {
         let temp = tempfile::Builder::new().prefix(name).tempdir()?;
         let runtime_home = temp.path().join("runtime");
         let repo = temp.path().join("repo");

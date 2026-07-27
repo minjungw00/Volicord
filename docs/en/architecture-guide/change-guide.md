@@ -58,6 +58,7 @@ narrower crate command:
 ```sh
 cargo fmt
 cargo run -p xtask -- architecture-check
+cargo run -p xtask -- docs-sync
 cargo clippy --all-targets --all-features
 cargo test --all-targets --all-features
 ```
@@ -69,6 +70,9 @@ For documentation changes, run the checks in
 cargo run -p xtask -- docs-check
 git diff --check
 ```
+
+Run `docs-sync` whenever package architecture metadata changes so the generated
+English and Korean responsibility and dependency tables remain current.
 
 Release changes also require the generic release-integrity package and the
 ordinary build, package, checksum, platform, and workflow checks applicable to

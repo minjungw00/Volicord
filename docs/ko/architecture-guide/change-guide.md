@@ -56,6 +56,7 @@ Rust 변경은 작업 범위가 더 좁은 crate 명령을 명확히 정당화�
 ```sh
 cargo fmt
 cargo run -p xtask -- architecture-check
+cargo run -p xtask -- docs-sync
 cargo clippy --all-targets --all-features
 cargo test --all-targets --all-features
 ```
@@ -66,6 +67,9 @@ cargo test --all-targets --all-features
 cargo run -p xtask -- docs-check
 git diff --check
 ```
+
+패키지 아키텍처 메타데이터를 변경했다면 `docs-sync`를 실행하여 생성되는 영어·한국어
+책임 및 의존 표를 현재 상태로 유지합니다.
 
 릴리스 변경은 일반 release-integrity 패키지와 변경에 해당하는 빌드, 패키지,
 checksum, 플랫폼, workflow 점검도 요구합니다. 실제 Codex smoke 실행은 현재 구성과 환경의

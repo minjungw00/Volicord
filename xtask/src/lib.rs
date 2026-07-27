@@ -56,6 +56,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         contract_identifiers::validate_operation_category_values(&root, index, &mut issues);
         contract_docs::validate_generated_contract_tables(&root, index, &mut issues);
         cli_docs::validate_generated_cli_synopsis_regions(&root, index, &mut issues);
+        architecture::validate_generated_architecture_regions(&root, index, &mut issues);
         cli_docs::validate_volicord_command_examples(&root, index, &mut issues);
         document_structure::validate_architecture_design_documents(&root, index, &mut issues);
         document_structure::validate_surface_stability_sections(&root, index, &mut issues);

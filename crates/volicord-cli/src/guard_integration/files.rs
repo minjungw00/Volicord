@@ -1493,7 +1493,13 @@ fn random_file_token() -> Result<String, GuardIntegrationError> {
             "failed to obtain randomness for a managed temporary file: {error}"
         ))
     })?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut token = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        token.push(HEX[usize::from(byte >> 4)] as char);
+        token.push(HEX[usize::from(byte & 0x0f)] as char);
+    }
+    Ok(token)
 }
 
 fn atomic_create_if_missing<F>(

@@ -77,127 +77,80 @@ and artifact links. Product-file writes themselves happen through an Agent
 Connection, local tooling, or explicit administrative integration paths outside
 the public method execution path.
 
-## Workspace shape
+<a id="workspace-package-architecture"></a>
 
-| Workspace member | Guide-level role |
-|---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; semantic UserAction request, immutable resolution, and adapter-neutral `UserActionResolutionForm` types; single-declaration public method-result and fields-only composition types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. It owns no CLI presentation model or rendering helper. Its public Rust vocabulary is routed through the module that owns each item; the crate root provides module routing rather than an aggregate type facade. |
-| `crates/volicord-host-contract` | Dependency-safe semantic Codex contracts through `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames`; explicit MCP server/raw-tool identities; collision-checked callable projection and catalog lookup; deterministic contract identities; bounded host values and errors; and source-specific correlation types. It owns no Store, Core, CLI, or MCP policy. |
-| `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, one-time managed MCP launch leases, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
-| `crates/volicord-user-action-service` | Reusable UserAction semantic validation, canonical construction, identity, authority, lifecycle, persistence mapping, materialization, resolution, continuity derivation, and adapter-neutral fact projection. It owns no Core pipeline, method-result, CLI, or MCP infrastructure. |
-| `crates/volicord-core` | Adapter-independent request orchestration, host-neutral typed invocation authority, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, Store coordination, and mapping of UserAction service outcomes into method results. |
-| `crates/volicord-command-model` | Complete Clap declaration for the `volicord` binary: root parser, public and hidden subcommand tree, command and argument DTOs, command-surface value enums and validators, actual-model visibility classification, a fresh root `clap::Command`, command-path traversal, canonical synopses, canonical parseable public invocations, and typed inbox-resolution invocation builders derived from that declaration. It owns no command execution or application service. |
-| `crates/volicord-user-action-presentation` | Typed CLI UserAction presentation through `CliUserActionInboxResponse`, `CliUserActionInboxItem`, tagged channel/capture-path states, CLI JSON Schemas, and command-model-backed recovery instructions. It consumes shared semantic types and canonical command-model invocations and owns no Core policy, Store access, command execution, terminal rendering, or MCP envelope. |
-| `crates/volicord-cli` | Local `volicord` process startup, administrative command dispatch and reusable execution modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, host/MCP/Guard verification checks, dependency-graph policy, rendering, the hidden same-process managed-host launcher, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
-| `crates/volicord-platform-fs` | Internal safe facade for process-target and platform observation, native Linux/WSL2 classification, WSL2 distribution validation and filesystem observation, typed atomic no-replace regular-file publication, platform-native filesystem namespace operations, per-canonical-Runtime-Home shared/exclusive OS-backed mutation admission and borrowed mutation permits, and read-only canonical Git common-directory/worktree snapshots. It does not own managed launch or Codex configuration policy. |
-| `crates/volicord-platform-process` | Internal safe facade for bounded platform-specific child-process containment and nonblocking child-pipe readiness. It owns low-level Unix process-group, Windows Job Object, and pipe-polling primitives. |
-| `crates/volicord-test-process` | Internal publish-disabled boundary for bounded child execution in repository tests and smoke harnesses. It composes `volicord-platform-process` primitives into one deadline, concurrent bounded stdio capture, process-tree termination, direct-child reaping, and bounded cleanup without owning product process policy. |
-| `crates/volicord-mcp-protocol` | Host-independent internal owner of exact MCP revision parsing, the closed reviewed production registry, the complete revision-to-semantic-capability map, deterministic supported-revision iteration, and explicit unsupported-revision rejection. Tracked pre-release metadata remains outside the production registry. |
-| `crates/volicord-mcp` | MCP adapter library for the canonical managed-launch configuration contract, in-memory launch-lease consumption, startup validation, one registry-driven executable protocol conformance harness, consumption of the canonical tool model supplied by Volicord tool owners, capability-driven `tools/list` and `tools/call` projection, separated mutation/UserAction/recovery/authority/telemetry/metric responsibilities, stdio lifecycle and framing, and Core invocation. |
-| `crates/volicord-test-support` | Reusable implementation-test fixtures only: disposable Runtime Home and Product Repository setup, Store inspection, Core request builders, and Agent Connection setup. It owns no product-behavior assertions or contracts. |
-| `tests/conformance` | Baseline cross-method scenarios through Core-facing APIs, shared fixtures, and versioned offline MCP specification inputs. Pinned upstream inputs do not define runtime support. |
-| `tests/integration` | Cross-layer MCP, Core, Store, Agent Connection session, operation-category, and public schema snapshot tests. |
-| `tests/release-integrity` | Generic five-target coverage, version consistency, canonical text bytes, package shape, packaged-binary identity, checksum output, and release-workflow structure. It owns no production runtime behavior. |
-| `tests/release-smoke` | Publish-disabled cross-platform actual-binary smoke package. It executes an exact supplied `volicord` binary through public `init` and `mcp serve`, owns disposable runtime fixtures and a stable test-owned Codex executable, validates the preferred initialize revision and representative canonical tool identities, and delegates bounded child execution to `volicord-test-process`. It does not link the CLI, MCP adapter, Core, Store, or `xtask`. |
-| `xtask` | Lightweight repository maintenance tooling for workspace architecture validation, documentation validation, pinned MCP specification manifest handling, and release-version checks. The architecture validator reads actual package manifests, target source roots, and dependency data from Cargo and compares the graph with the workspace metadata owner. Documentation command examples are parsed through `volicord-command-model`, and runtime-owned operation-category identifiers come from `volicord-types`; only MCP specification synchronization performs network operations. `xtask` does not link the runtime adapter, Core, Store, CLI, or platform crates and remains outside Volicord runtime architecture. |
+## Workspace package architecture
 
-## Dependency boundaries
+`workspace.metadata.architecture.packages` in the root `Cargo.toml` is the
+single machine-readable owner for every current workspace package's semantic
+group, responsibility, classification, production status, boundary, and
+normal, development, and build dependency allowlists. `architecture-check`
+compares those declarations with actual Cargo metadata, enforces the Core,
+UserAction service, shared-types, Store, adapter, presentation, and test-support
+boundaries, and rejects normal/build dependency cycles. Development-only
+backedges do not participate in the deployable graph.
 
-`workspace.metadata.architecture` in the root `Cargo.toml` is the
-machine-readable owner for workspace package assignments, semantic
-responsibility groups, permitted internal dependency directions, and Core
-dependency eligibility. Each group declares separate normal, development, and
-build dependency targets and classifies itself as a Core runtime dependency,
-Core development dependency, or outside the Core dependency layer.
-`cargo run -p xtask -- architecture-check` reads the actual workspace members
-and dependency edges from Cargo metadata and rejects undeclared packages,
-undeclared target groups, and disallowed edges. Production groups may use
-test-support groups only through explicitly allowed development dependencies.
-Core normal and build dependencies must target Core runtime groups, and Core
-development dependencies may additionally target Core development groups.
-Core-facing groups remain independent of adapter groups. These rules apply to
-the current workspace directly; package, schema, and protocol versions do not
-select alternate dependency rules.
+The generated tables below are replaced by `docs-sync`. Exact module placement
+remains in the [Source Map](source-map.md).
 
-The durable dependency direction is:
+<!-- BEGIN GENERATED: workspace-package-architecture -->
+<!-- Generated by `cargo run -p xtask -- docs-sync`; do not edit this region. -->
 
-- `volicord-types` sits at the shared type boundary and has no internal
-  product-crate dependencies. It owns lifecycle-specific diagnostic inputs,
-  current-key identity and digest derivation, the shared read-only finding and
-  report projections, stable namespaced-code validation, bounded redacting
-  projection of typed owner facts, and the canonical tool-identity catalog.
-  Consumers name the applicable owner module, such as `ids`, `methods`,
-  `schema`, `tool_names`, or `values`, instead of treating the crate root as a
-  shared type namespace.
-  Domain crates retain their closed detailed code sets and exhaustive
-  error-to-finding conversions.
-- `volicord-host-contract` depends only on low-level shared types and
-  general-purpose serialization and hashing. Store, CLI, and MCP consume its
-  explicit `codex-command-hooks`, `codex-mcp-turn-metadata`, or
-  `codex-mcp-callable-names` contract and typed
-  correlations. It never depends on Store, Core, CLI, or MCP.
-- `volicord-store` depends on shared types and the read-only canonical Git
-  layout primitive used to validate stored owner paths. It owns persistence
-  mechanics and does not depend on Core, CLI, or MCP adapter crates.
-- `volicord-user-action-service` depends only on Store and shared types, with
-  test support as a development dependency. It cannot depend on Core, CLI,
-  MCP, presentation, or method-result infrastructure.
-- `volicord-core` depends on the UserAction service, Store, and shared types
-  and uses test support only as a development dependency. Its public invocation boundary accepts
-  `InvocationAuthority`: a typed local `UserActionChannelKind` or an opaque
-  `ValidatedAgentSession`. Core does not accept adapter-selected actor labels,
-  host command syntax, launch arguments, configuration paths, or rendering
-  instructions.
-- `volicord-command-model` depends only on Clap. The CLI and documentation
-  validator consume it directly; it does not depend on Core, Store, MCP, CLI
-  rendering, Runtime Home implementation, or application services.
-- `volicord-user-action-presentation` depends on shared types and
-  `volicord-command-model`. CLI and MCP may consume its CLI-oriented
-  presentation, while Core and Store remain independent of it.
-- `volicord-mcp-protocol` has no internal product-crate dependencies. It owns
-  the closed revision-profile boundary without depending on Core, Store, CLI,
-  host integration, or Volicord tool implementations.
-- `volicord-cli` and `volicord-mcp` are adapter or local orchestration layers.
-  The CLI consumes `volicord-command-model`; both adapters may depend on Core,
-  Store, and shared types for their distinct setup, startup validation,
-  routing, and invocation responsibilities;
-  `volicord-mcp` also depends on `volicord-mcp-protocol` for revision-profile
-  ownership.
-- `volicord-platform-process` has no internal product-crate dependencies. It
-  supplies safe child-process containment and pipe-polling primitives to local
-  orchestration layers without owning MCP supervision policy, deadlines,
-  framing, progress, or diagnostics.
-- `volicord-test-process` depends on `volicord-platform-process` and
-  general-purpose test infrastructure only. It turns those OS primitives into
-  bounded test child execution for repository tests and smoke harnesses.
-  Product MCP supervision policy, lifecycle deadlines, framing, progress, and
-  diagnostics remain in `volicord-cli`.
-- `volicord-platform-fs` has no internal product-crate dependencies. It owns
-  safe observation of the current process target and platform, WSL2
-  distribution identity and path filesystem, platform-native namespace
-  operations, shared/exclusive OS-backed mutation admission for each canonical
-  Runtime Home, borrowed mutation permits, and the read-only Git layout identity
-  primitive. Store and local adapters retain their planning, managed-file
-  policy, ownership and authority comparisons, recovery, and diagnostic
-  responsibilities.
-- `tests/release-smoke` depends on `volicord-mcp-protocol`,
-  `volicord-types`, and `volicord-test-process`. It owns release-specific
-  process limits, disposable fixture setup, MCP transcript assertions, the
-  stable Codex fixture identity, and result reporting without depending on
-  product implementation crates or `xtask`.
-- Other test-support and test packages compose implementation crates only for
-  disposable fixtures and cross-layer verification.
-- `xtask` remains repository maintenance tooling outside product runtime. It
-  uses `volicord-command-model` to parse documented public CLI invocations,
-  `volicord-types` for runtime-owned contract identifiers, and
-  `volicord-mcp-protocol` for compiled production-profile parity without
-  linking the MCP adapter, Core, Store, CLI, or host integration crates.
-  Ordinary checks remain offline; only the explicitly invoked specification
-  sync command uses the network.
+### Package responsibilities
 
-Cargo manifests own the actual dependency edges, while
-`workspace.metadata.architecture` owns which internal edges are permitted.
-Exact source placement remains with the Source Map.
+Each current workspace package has one responsibility entry in the root Cargo metadata.
+
+| Package | Group | Kind | Runtime | Boundary | Responsibility |
+|---|---|---|---|---|---|
+| `volicord-agent-evaluation` | `agent-evaluation` | validation | non-production | neutral | Standalone agent evaluation catalog, runner, schemas, and result harness. |
+| `volicord-cli` | `cli-adapter` | adapter | production | adapter | Administrative CLI, local orchestration, Codex setup, rendering, and managed MCP supervision. |
+| `volicord-command-model` | `command-model` | schema | production | neutral | Execution-free administrative command declaration, syntax model, and canonical invocation builders. |
+| `volicord-conformance-tests` | `conformance-validation` | validation | non-production | neutral | Cross-method conformance scenarios over Core-facing APIs. |
+| `volicord-core` | `core` | application | production | Core | Adapter-independent request orchestration, policy evaluation, method planning, and atomic commit coordination. |
+| `volicord-host-contract` | `host-contract` | schema | production | Core-facing | Dependency-safe semantic host contracts and typed host correlation identities. |
+| `volicord-integration-tests` | `integration-validation` | validation | non-production | neutral | Cross-layer integration, Agent Connection, and public contract snapshot tests. |
+| `volicord-mcp` | `mcp-adapter` | adapter | production | adapter | MCP lifecycle, transport, tool projection, session binding, and Core invocation adapter. |
+| `volicord-mcp-protocol` | `mcp-protocol` | schema | production | neutral | Host-independent MCP revision profiles and semantic capability registry. |
+| `volicord-platform-fs` | `platform-filesystem` | infrastructure | production | Core-facing | Platform filesystem observation, publication, mutation admission, and Git layout primitives. |
+| `volicord-platform-process` | `platform-process` | infrastructure | production | neutral | Platform child-process containment, termination, and pipe-readiness primitives. |
+| `volicord-release-integrity-tests` | `release-integrity` | validation | non-production | neutral | Release packaging, version, canonical-byte, checksum, and workflow integrity validation. |
+| `volicord-release-smoke` | `release-smoke` | validation | non-production | neutral | Cross-platform actual-binary release smoke orchestration and transcript validation. |
+| `volicord-store` | `storage` | infrastructure | production | Core-facing | Canonical persistence, Runtime Home mechanics, strict decoding, and transaction application. |
+| `volicord-test-process` | `test-process` | test support | non-production | neutral | Reusable bounded process execution and cleanup for tests and smoke harnesses. |
+| `volicord-test-support` | `test-support` | test support | non-production | neutral | Reusable disposable Runtime Home, Store, Core request, and Agent Connection fixtures. |
+| `volicord-types` | `shared-types` | schema | production | Core-facing | Dependency-safe shared schemas, identifiers, closed values, canonical encodings, and adapter-neutral domain facts. |
+| `volicord-user-action-presentation` | `user-action-presentation` | presentation | production | adapter | Typed CLI UserAction presentation, JSON Schemas, and command-model-backed recovery instructions. |
+| `volicord-user-action-service` | `user-action-service` | application | production | Core-facing | UserAction validation, authority, lifecycle, persistence mapping, resolution, continuity, and semantic projection. |
+| `xtask` | `repository-validation` | validation | non-production | neutral | Repository architecture, documentation, protocol fixture, and release metadata validation and synchronization. |
+
+### Allowed internal dependency directions
+
+The lists are package-level allowlists by Cargo dependency kind. An em dash means that no internal package is allowed for that kind.
+
+| Package | Normal | Development | Build |
+|---|---|---|---|
+| `volicord-agent-evaluation` | — | — | — |
+| `volicord-cli` | `volicord-command-model`, `volicord-core`, `volicord-host-contract`, `volicord-mcp`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-platform-process`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-store`, `volicord-test-support` | — |
+| `volicord-command-model` | — | — | — |
+| `volicord-conformance-tests` | — | `volicord-core`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
+| `volicord-core` | `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-host-contract` | `volicord-types` | — | — |
+| `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
+| `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-mcp-protocol` | — | — | — |
+| `volicord-platform-fs` | `volicord-types` | — | — |
+| `volicord-platform-process` | — | — | — |
+| `volicord-release-integrity-tests` | `volicord-store`, `volicord-types` | — | — |
+| `volicord-release-smoke` | `volicord-mcp-protocol`, `volicord-test-process`, `volicord-types` | — | — |
+| `volicord-store` | `volicord-host-contract`, `volicord-platform-fs`, `volicord-types` | `volicord-platform-fs`, `volicord-test-support` | — |
+| `volicord-test-process` | `volicord-platform-process` | — | — |
+| `volicord-test-support` | `volicord-host-contract`, `volicord-platform-fs`, `volicord-store`, `volicord-types` | — | — |
+| `volicord-types` | — | — | — |
+| `volicord-user-action-presentation` | `volicord-command-model`, `volicord-types` | — | — |
+| `volicord-user-action-service` | `volicord-store`, `volicord-types` | `volicord-test-support` | — |
+| `xtask` | `volicord-command-model`, `volicord-mcp-protocol`, `volicord-types` | — | — |
+
+<!-- END GENERATED: workspace-package-architecture -->
 
 ### Store mutation visibility
 

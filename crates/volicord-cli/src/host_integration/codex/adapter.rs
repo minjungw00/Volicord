@@ -400,10 +400,10 @@ fn codex_scope_for_intent(intent: ConnectionIntent) -> Result<HostScope, HostCon
     }
 }
 
-fn entry_inputs_for_scope<'a>(
+fn entry_inputs_for_scope(
     scope: HostScope,
-    profile: InstallationProfile<'a>,
-) -> (&'a Path, Option<&'a Path>) {
+    profile: InstallationProfile<'_>,
+) -> (&Path, Option<&Path>) {
     if scope == HostScope::Project {
         (Path::new(ManagedMcpLaunchSpec::PATH_COMMAND), None)
     } else {

@@ -210,7 +210,10 @@ contains independent structured examples from multiple contracts. The selector
 names one semantic contract already assigned to that document; it never carries
 an identifier inventory. Request field, requiredness, nullability, and type
 tables in API method Reference pages are generated from request descriptors by
-`cargo run -p xtask -- docs-sync`.
+`cargo run -p xtask -- docs-sync`. The same command generates the English and
+Korean package-responsibility and dependency-direction tables in Architecture
+from `workspace.metadata.architecture.packages`; those tables are not maintained
+as a second package registry.
 
 Source-code links and Architecture Guide prose should describe durable crates,
 modules, entry points, execution stages, and responsibility boundaries. Avoid

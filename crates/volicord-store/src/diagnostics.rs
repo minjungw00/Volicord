@@ -2153,7 +2153,7 @@ mod tests {
         format!("mcp_runtime_{native_session_id}")
     }
 
-    fn start<'a>(session_id: &'a str) -> DiagnosticSessionStart<'a> {
+    fn start(session_id: &str) -> DiagnosticSessionStart<'_> {
         DiagnosticSessionStart {
             session_id,
             connection_id: Some("connection_test"),

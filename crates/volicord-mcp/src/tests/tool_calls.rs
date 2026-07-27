@@ -1800,10 +1800,9 @@ fn stdio_resume_replays_exact_origin_after_cli_inbox_resolution() -> Result<(), 
         resumed["user_channel_resolution"]["resolution_summary"]["selected_option_id"],
         "keep"
     );
-    assert!(resumed["user_channel_resolution"]
+    assert!(!resumed["user_channel_resolution"]
         .to_string()
-        .find("private user note")
-        .is_none());
+        .contains("private user note"));
     assert_eq!(
         resume_values[1]["result"]["structuredContent"]["operation_result_ref"],
         origin_operation_result_ref

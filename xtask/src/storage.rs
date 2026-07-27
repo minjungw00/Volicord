@@ -81,7 +81,7 @@ fn extract_canonical_storage_sql_block(contents: &str, label: &str) -> Option<St
     let fence_end = after_fence.find("```")?;
     let block = &after_fence[..fence_end];
     let after_block = &after_fence[fence_end + "```".len()..];
-    if after_block.find(&end_marker).is_some() {
+    if after_block.contains(&end_marker) {
         Some(block.to_owned())
     } else {
         None

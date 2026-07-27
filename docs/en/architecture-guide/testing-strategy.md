@@ -44,27 +44,28 @@ framing, lifecycle progress, and diagnostics remain owned by `volicord-cli`.
 
 `cargo run -p xtask -- architecture-check` compares Cargo's current workspace
 packages and internal normal, development, and build dependency edges with the
-single declaration under `workspace.metadata.architecture` in the root
+package entries under `workspace.metadata.architecture.packages` in the root
 `Cargo.toml`. The check rejects any workspace package missing from that owner,
-any owner entry missing from Cargo, and every edge outside the source group's
-allowed target groups. It also independently rejects normal or build
-production dependencies on test-support groups, any Core-facing dependency on
-an adapter group, and Core dependencies outside the target group's declared
-Core runtime or development eligibility.
+any owner entry missing from Cargo, unresolved allowlist targets, and every
+edge outside the source package's kind-specific allowlist. It independently
+rejects normal or build production dependencies on test-support packages,
+Core-facing dependencies on adapter or presentation packages, the required
+UserAction service, Core, shared-types, and Store boundary violations, and
+cycles in the normal/build dependency graph.
 
 Focused validator tests use neutral synthetic package and group names to cover
-kind-specific allowed edges, undeclared packages, disallowed directions,
-production/test-support separation, and Core/adapter independence. A separate
-test runs the same validator against the current Cargo workspace and its owner.
-Tests do not carry a second copy of the workspace package graph. Architecture
-rules apply directly to the current graph and are not selected through package,
-schema, or protocol versions.
+valid current metadata, kind-specific disallowed edges, unregistered packages,
+invalid dependency kinds, production/test-support separation, Core/adapter
+independence, and cycles. A separate test runs the same validator against the
+current Cargo workspace and its owner. Tests do not carry a second copy of the
+workspace package graph. Architecture rules apply directly to the current graph
+and are not selected through package, schema, or protocol versions.
 
 Current-workspace coverage also asserts that
-`volicord-user-action-service` is declared in its dedicated architecture group
-and that the group admits only shared types and Store as normal dependencies
-and test support as a development dependency. This makes any dependency on
-Core, CLI, MCP, or presentation fail the architecture gate.
+`volicord-user-action-service` has its dedicated responsibility entry and
+admits only `volicord-types` and `volicord-store` as normal dependencies and
+`volicord-test-support` as a development dependency. Any dependency on Core,
+CLI, MCP, or presentation fails the architecture gate.
 
 Core tests construct host-neutral requests with typed local-user or validated
 Agent Connection authority. CLI, MCP, application, and host-contract owners

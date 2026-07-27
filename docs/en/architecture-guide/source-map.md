@@ -290,11 +290,11 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/src/links.rs` | Local Markdown target resolution, links, fragments, and anchors. |
 | `xtask/src/parity.rs` | English/Korean heading-structure parity. |
 | `xtask/src/terminology.rs` | Terminology-map paths and identity-sensitive role validation. |
-| `xtask/src/cli_docs.rs` | Generated Administrative CLI regions and documented invocation validation through `volicord-command-model`; shell tokenization is not a second command grammar. |
+| `xtask/src/cli_docs.rs` | `docs-sync` composition, generated Administrative CLI regions, and documented invocation validation through `volicord-command-model`; shell tokenization is not a second command grammar. |
 | `xtask/src/document_structure.rs` | Current architecture-design section and surface-stability structure. |
 | `xtask/src/contract_identifiers.rs` | Current public-schema, command-model, typed-diagnostic, and protocol-registry identifier derivation; paired meaning-unit validation; and operation-category table parity. |
 | `xtask/src/workspace_manifests.rs` | Shared workspace-manifest parsing and current package and Rust applicability values. |
-| `xtask/src/architecture.rs` | Cargo-metadata-derived package manifests, target source roots, dependency edges, workspace architecture validation, and informational maintainability reporting. |
+| `xtask/src/architecture.rs` | Cargo-metadata-derived package manifests, target source roots, dependency edges, package-level architecture validation, bilingual generated responsibility and dependency regions, generated-region drift checks, and informational maintainability reporting. |
 | `xtask/src/release_metadata.rs` | Workspace release-version inheritance and release-tag validation. |
 | `xtask/src/storage.rs` | Canonical Storage DDL documentation validation. |
 | `xtask/src/artifact_hygiene.rs` | Git-index validation against repository artifact-exclusion rules owned by `.gitignore`. |

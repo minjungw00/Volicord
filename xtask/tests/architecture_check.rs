@@ -40,7 +40,7 @@ fn current_workspace_package_inputs_come_from_cargo_metadata() {
 }
 
 #[test]
-fn user_action_service_group_excludes_core_and_adapters() {
+fn user_action_service_package_excludes_core_and_adapters() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask should be a workspace-root child");
@@ -56,32 +56,41 @@ fn user_action_service_group_excludes_core_and_adapters() {
         Some("user-action-service")
     );
 
-    let service_group =
-        &manifest["workspace"]["metadata"]["architecture"]["groups"]["user-action-service"];
-    let dependency_groups = |kind: &str| {
-        service_group[kind]
+    let dependency_packages = |kind: &str| {
+        service_package[kind]
             .as_array()
-            .expect("service dependency kind should be an array")
+            .expect("service package dependency kind should be an array")
             .iter()
             .map(|value| {
                 value
                     .as_str()
-                    .expect("service dependency group should be a string")
+                    .expect("service dependency package should be a string")
             })
             .collect::<Vec<_>>()
     };
 
-    assert_eq!(dependency_groups("normal"), ["shared-types", "storage"]);
-    assert_eq!(dependency_groups("development"), ["test-support"]);
-    assert!(dependency_groups("build").is_empty());
+    assert_eq!(
+        dependency_packages("normal"),
+        ["volicord-store", "volicord-types"]
+    );
+    assert_eq!(
+        dependency_packages("development"),
+        ["volicord-test-support"]
+    );
+    assert!(dependency_packages("build").is_empty());
 
-    for forbidden in ["core", "cli-adapter", "mcp-adapter", "adapter-presentation"] {
+    for forbidden in [
+        "volicord-core",
+        "volicord-cli",
+        "volicord-mcp",
+        "volicord-user-action-presentation",
+    ] {
         assert!(
             !["normal", "development", "build"]
                 .into_iter()
-                .flat_map(dependency_groups)
-                .any(|group| group == forbidden),
-            "UserAction service architecture group must exclude {forbidden}"
+                .flat_map(dependency_packages)
+                .any(|package| package == forbidden),
+            "UserAction service architecture package must exclude {forbidden}"
         );
     }
 }

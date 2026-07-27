@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
@@ -486,10 +487,11 @@ fn install_operation_category_fixture(root: &Path, en_values: &[String], ko_valu
 }
 
 fn operation_category_owner(title: &str, value_heading: &str, values: &[String]) -> String {
-    let rows = values
-        .iter()
-        .map(|value| format!("| `{value}` | Description. |\n"))
-        .collect::<String>();
+    let mut rows = String::new();
+    for value in values {
+        writeln!(&mut rows, "| `{value}` | Description. |")
+            .expect("writing to a String cannot fail");
+    }
     format!(
         "{title}\n\n<a id=\"operation-category-values\"></a>\n## Operation category values\n\n| {value_heading} | Note |\n|---|---|\n{rows}"
     )

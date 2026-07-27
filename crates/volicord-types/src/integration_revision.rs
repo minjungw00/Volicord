@@ -295,12 +295,14 @@ mod tests {
             Err(IntegrationRevisionError::InvalidGeneration)
         );
 
+        let policy_fingerprint = format!("sha256:{}", "a".repeat(64));
+        let guard_policy_hash = format!("sha256:{}", "b".repeat(64));
         let project_basis = ProjectIntegrationRevisionBasis {
             connection_integration_revision: first.as_str(),
             project_id: "project.alpha",
-            policy_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+            policy_fingerprint: &policy_fingerprint,
             guard_installation_id: Some("guard.alpha"),
-            guard_policy_hash: Some(&format!("sha256:{}", "b".repeat(64))),
+            guard_policy_hash: Some(&guard_policy_hash),
         };
         let project =
             IntegrationRevision::for_project(project_basis.clone()).expect("valid project basis");

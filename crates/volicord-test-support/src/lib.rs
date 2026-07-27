@@ -6,6 +6,7 @@
 //! future runtime homes and fixture output.
 
 use std::{
+    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -2350,11 +2351,10 @@ pub mod core_fixtures {
     }
 
     fn supplemental_evidence_target(statement: &str) -> EvidenceTarget {
-        let statement_hex = statement
-            .as_bytes()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
+        let mut statement_hex = String::with_capacity(statement.len() * 2);
+        for byte in statement.as_bytes() {
+            write!(&mut statement_hex, "{byte:02x}").expect("writing to a String cannot fail");
+        }
         EvidenceTarget::SupplementalClaim {
             evidence_claim_id: EvidenceClaimId::new(format!("claim_{statement_hex}")),
             statement: statement.to_owned(),

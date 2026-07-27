@@ -41,7 +41,7 @@ fn percent_decode(value: &str) -> std::result::Result<String, String> {
                 hex_value(bytes[index + 1]).ok_or_else(|| "invalid percent escape".to_string())?;
             let low =
                 hex_value(bytes[index + 2]).ok_or_else(|| "invalid percent escape".to_string())?;
-            decoded.push(high << 4 | low);
+            decoded.push((high << 4) | low);
             index += 3;
         } else {
             decoded.push(bytes[index]);

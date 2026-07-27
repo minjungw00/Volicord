@@ -1956,6 +1956,7 @@ fn record_run_rejects_noncurrent_evidence_summary_close_basis_ref_without_effect
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
         summaries
     };
     assert_ne!(
@@ -4430,6 +4431,7 @@ fn supplemental_evidence_claim_identity_is_task_scoped_and_statement_is_immutabl
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )?
             .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
         rows
     };
     assert_eq!(claims.len(), 2);

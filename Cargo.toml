@@ -28,225 +28,276 @@ edition = "2021"
 rust-version = "1.85"
 version = "0.9.1"
 
-[workspace.metadata.architecture.packages]
-volicord-types = { group = "shared-types" }
-volicord-host-contract = { group = "host-contract" }
-volicord-mcp-protocol = { group = "mcp-protocol" }
-volicord-store = { group = "storage" }
-volicord-user-action-service = { group = "user-action-service" }
-volicord-core = { group = "core" }
-volicord-command-model = { group = "command-model" }
-volicord-user-action-presentation = { group = "adapter-presentation" }
-volicord-cli = { group = "cli-adapter" }
-volicord-mcp = { group = "mcp-adapter" }
-volicord-platform-fs = { group = "platform-filesystem" }
-volicord-platform-process = { group = "platform-process" }
-volicord-test-process = { group = "test-process" }
-volicord-test-support = { group = "test-support" }
-volicord-conformance-tests = { group = "conformance-tests" }
-volicord-agent-evaluation = { group = "agent-evaluation" }
-volicord-integration-tests = { group = "integration-tests" }
-volicord-release-integrity-tests = { group = "release-integrity" }
-volicord-release-smoke = { group = "release-smoke" }
-xtask = { group = "repository-tooling" }
-
-[workspace.metadata.architecture.groups.shared-types]
-description = "Dependency-safe shared public and domain-shaped types."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-types]
+group = "shared-types"
+description = "Dependency-safe shared schemas, identifiers, closed values, canonical encodings, and adapter-neutral domain facts."
+description_ko = "의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 어댑터 중립 도메인 사실을 담당합니다."
+kind = "schema"
+production = true
 boundary = "core-facing"
-core_dependency = "runtime"
 normal = []
 development = []
 build = []
 
-[workspace.metadata.architecture.groups.host-contract]
-description = "Dependency-safe semantic host contracts."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-host-contract]
+group = "host-contract"
+description = "Dependency-safe semantic host contracts and typed host correlation identities."
+description_ko = "의존 안전한 의미 기반 호스트 계약과 타입이 있는 호스트 상관관계 식별자를 담당합니다."
+kind = "schema"
+production = true
 boundary = "core-facing"
-core_dependency = "forbidden"
-normal = ["shared-types"]
+normal = ["volicord-types"]
 development = []
 build = []
 
-[workspace.metadata.architecture.groups.mcp-protocol]
-description = "Host-independent MCP protocol profiles."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-mcp-protocol]
+group = "mcp-protocol"
+description = "Host-independent MCP revision profiles and semantic capability registry."
+description_ko = "호스트 독립 MCP 리비전 프로필과 의미 기반 역량 레지스트리를 담당합니다."
+kind = "schema"
+production = true
 boundary = "neutral"
-core_dependency = "forbidden"
 normal = []
 development = []
 build = []
 
-[workspace.metadata.architecture.groups.platform-filesystem]
-description = "Platform filesystem primitives used below adapters."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-store]
+group = "storage"
+description = "Canonical persistence, Runtime Home mechanics, strict decoding, and transaction application."
+description_ko = "정규 영속화, Runtime Home 메커니즘, 엄격한 디코딩, 트랜잭션 적용을 담당합니다."
+kind = "infrastructure"
+production = true
 boundary = "core-facing"
-core_dependency = "forbidden"
-normal = ["shared-types"]
+normal = [
+    "volicord-host-contract",
+    "volicord-platform-fs",
+    "volicord-types",
+]
+development = ["volicord-platform-fs", "volicord-test-support"]
+build = []
+
+[workspace.metadata.architecture.packages.volicord-platform-fs]
+group = "platform-filesystem"
+description = "Platform filesystem observation, publication, mutation admission, and Git layout primitives."
+description_ko = "플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다."
+kind = "infrastructure"
+production = true
+boundary = "core-facing"
+normal = ["volicord-types"]
 development = []
 build = []
 
-[workspace.metadata.architecture.groups.platform-process]
-description = "Platform child-process primitives."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-test-support]
+group = "test-support"
+description = "Reusable disposable Runtime Home, Store, Core request, and Agent Connection fixtures."
+description_ko = "재사용 가능한 폐기형 Runtime Home, Store, Core 요청, Agent Connection 픽스처를 담당합니다."
+kind = "test-support"
+production = false
 boundary = "neutral"
-core_dependency = "forbidden"
-normal = []
+normal = [
+    "volicord-host-contract",
+    "volicord-platform-fs",
+    "volicord-store",
+    "volicord-types",
+]
 development = []
 build = []
 
-[workspace.metadata.architecture.groups.storage]
-description = "Store persistence and Runtime Home mechanics."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-user-action-service]
+group = "user-action-service"
+description = "UserAction validation, authority, lifecycle, persistence mapping, resolution, continuity, and semantic projection."
+description_ko = "UserAction 검증, 권한, 생명주기, 영속화 매핑, 해결, 연속성, 의미 투영을 담당합니다."
+kind = "application"
+production = true
 boundary = "core-facing"
-core_dependency = "runtime"
-normal = ["shared-types", "host-contract", "platform-filesystem"]
-development = ["platform-filesystem", "test-support"]
+normal = ["volicord-store", "volicord-types"]
+development = ["volicord-test-support"]
 build = []
 
-[workspace.metadata.architecture.groups.user-action-service]
-description = "UserAction validation, authority, lifecycle, persistence planning, resolution, and semantic projections."
-kind = "production"
-boundary = "core-facing"
-core_dependency = "runtime"
-normal = ["shared-types", "storage"]
-development = ["test-support"]
-build = []
-
-[workspace.metadata.architecture.groups.core]
-description = "Adapter-independent Core services."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-core]
+group = "core"
+description = "Adapter-independent request orchestration, policy evaluation, method planning, and atomic commit coordination."
+description_ko = "어댑터 독립 요청 조율, 정책 평가, 메서드 계획, 원자적 커밋 조율을 담당합니다."
+kind = "application"
+production = true
 boundary = "core"
-core_dependency = "forbidden"
-normal = ["shared-types", "storage", "user-action-service"]
-development = ["test-support"]
-build = []
-
-[workspace.metadata.architecture.groups.command-model]
-description = "Execution-free administrative command syntax."
-kind = "production"
-boundary = "neutral"
-core_dependency = "forbidden"
-normal = []
-development = []
-build = []
-
-[workspace.metadata.architecture.groups.adapter-presentation]
-description = "Typed CLI UserAction inbox presentation, JSON schemas, and canonical invocation layout."
-kind = "production"
-boundary = "adapter"
-core_dependency = "forbidden"
-normal = ["shared-types", "command-model"]
-development = []
-build = []
-
-[workspace.metadata.architecture.groups.mcp-adapter]
-description = "MCP transport and Core invocation adapter."
-kind = "production"
-boundary = "adapter"
-core_dependency = "forbidden"
 normal = [
-    "shared-types",
-    "host-contract",
-    "mcp-protocol",
-    "adapter-presentation",
-    "platform-filesystem",
-    "storage",
-    "user-action-service",
-    "core",
+    "volicord-store",
+    "volicord-types",
+    "volicord-user-action-service",
 ]
-development = ["test-support"]
+development = ["volicord-test-support"]
 build = []
 
-[workspace.metadata.architecture.groups.cli-adapter]
-description = "Administrative CLI and local orchestration adapter."
-kind = "production"
+[workspace.metadata.architecture.packages.volicord-command-model]
+group = "command-model"
+description = "Execution-free administrative command declaration, syntax model, and canonical invocation builders."
+description_ko = "실행과 분리된 관리 명령 선언, 문법 모델, 정규 호출 빌더를 담당합니다."
+kind = "schema"
+production = true
+boundary = "neutral"
+normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.packages.volicord-user-action-presentation]
+group = "user-action-presentation"
+description = "Typed CLI UserAction presentation, JSON Schemas, and command-model-backed recovery instructions."
+description_ko = "타입이 있는 CLI UserAction 표현, JSON Schema, 명령 모델 기반 복구 안내를 담당합니다."
+kind = "presentation"
+production = true
 boundary = "adapter"
-core_dependency = "forbidden"
+normal = ["volicord-command-model", "volicord-types"]
+development = []
+build = []
+
+[workspace.metadata.architecture.packages.volicord-mcp]
+group = "mcp-adapter"
+description = "MCP lifecycle, transport, tool projection, session binding, and Core invocation adapter."
+description_ko = "MCP 생명주기, 전송, 도구 투영, 세션 결속, Core 호출 어댑터를 담당합니다."
+kind = "adapter"
+production = true
+boundary = "adapter"
 normal = [
-    "shared-types",
-    "host-contract",
-    "mcp-protocol",
-    "command-model",
-    "adapter-presentation",
-    "platform-filesystem",
-    "platform-process",
-    "storage",
-    "user-action-service",
-    "core",
-    "mcp-adapter",
+    "volicord-core",
+    "volicord-host-contract",
+    "volicord-mcp-protocol",
+    "volicord-platform-fs",
+    "volicord-store",
+    "volicord-types",
+    "volicord-user-action-presentation",
+    "volicord-user-action-service",
 ]
-development = ["storage", "test-support"]
+development = ["volicord-test-support"]
 build = []
 
-[workspace.metadata.architecture.groups.test-process]
-description = "Reusable bounded process execution for tests."
+[workspace.metadata.architecture.packages.volicord-cli]
+group = "cli-adapter"
+description = "Administrative CLI, local orchestration, Codex setup, rendering, and managed MCP supervision."
+description_ko = "관리 CLI, 로컬 조율, Codex 설정, 렌더링, 관리 MCP 감독을 담당합니다."
+kind = "adapter"
+production = true
+boundary = "adapter"
+normal = [
+    "volicord-command-model",
+    "volicord-core",
+    "volicord-host-contract",
+    "volicord-mcp",
+    "volicord-mcp-protocol",
+    "volicord-platform-fs",
+    "volicord-platform-process",
+    "volicord-store",
+    "volicord-types",
+    "volicord-user-action-presentation",
+    "volicord-user-action-service",
+]
+development = ["volicord-store", "volicord-test-support"]
+build = []
+
+[workspace.metadata.architecture.packages.volicord-platform-process]
+group = "platform-process"
+description = "Platform child-process containment, termination, and pipe-readiness primitives."
+description_ko = "플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다."
+kind = "infrastructure"
+production = true
+boundary = "neutral"
+normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.packages.volicord-test-process]
+group = "test-process"
+description = "Reusable bounded process execution and cleanup for tests and smoke harnesses."
+description_ko = "테스트와 스모크 하네스를 위한 재사용 가능한 한도 프로세스 실행과 정리를 담당합니다."
 kind = "test-support"
+production = false
 boundary = "neutral"
-core_dependency = "forbidden"
-normal = ["platform-process"]
+normal = ["volicord-platform-process"]
 development = []
 build = []
 
-[workspace.metadata.architecture.groups.test-support]
-description = "Reusable implementation-test fixtures."
-kind = "test-support"
+[workspace.metadata.architecture.packages.volicord-conformance-tests]
+group = "conformance-validation"
+description = "Cross-method conformance scenarios over Core-facing APIs."
+description_ko = "Core 지향 API를 통한 교차 메서드 적합성 시나리오를 담당합니다."
+kind = "validation"
+production = false
 boundary = "neutral"
-core_dependency = "development"
-normal = ["shared-types", "host-contract", "platform-filesystem", "storage"]
-development = []
-build = []
-
-[workspace.metadata.architecture.groups.conformance-tests]
-description = "Cross-method conformance scenarios."
-kind = "test-suite"
-boundary = "neutral"
-core_dependency = "forbidden"
 normal = []
-development = ["shared-types", "storage", "user-action-service", "core", "test-support"]
+development = [
+    "volicord-core",
+    "volicord-store",
+    "volicord-test-support",
+    "volicord-types",
+    "volicord-user-action-service",
+]
 build = []
 
-[workspace.metadata.architecture.groups.integration-tests]
-description = "Cross-layer integration and public contract tests."
-kind = "test-suite"
+[workspace.metadata.architecture.packages.volicord-agent-evaluation]
+group = "agent-evaluation"
+description = "Standalone agent evaluation catalog, runner, schemas, and result harness."
+description_ko = "독립형 에이전트 평가 카탈로그, 실행기, 스키마, 결과 하네스를 담당합니다."
+kind = "validation"
+production = false
 boundary = "neutral"
-core_dependency = "forbidden"
-normal = []
-development = ["shared-types", "storage", "core", "mcp-adapter", "test-support"]
-build = []
-
-[workspace.metadata.architecture.groups.release-integrity]
-description = "Release packaging and workflow integrity tests."
-kind = "test-suite"
-boundary = "neutral"
-core_dependency = "forbidden"
-normal = ["shared-types", "storage"]
-development = []
-build = []
-
-[workspace.metadata.architecture.groups.release-smoke]
-description = "Actual-binary release smoke harness."
-kind = "test-suite"
-boundary = "neutral"
-core_dependency = "forbidden"
-normal = ["shared-types", "mcp-protocol", "test-process"]
-development = []
-build = []
-
-[workspace.metadata.architecture.groups.agent-evaluation]
-description = "Standalone agent evaluation harness."
-kind = "test-suite"
-boundary = "neutral"
-core_dependency = "forbidden"
 normal = []
 development = []
 build = []
 
-[workspace.metadata.architecture.groups.repository-tooling]
-description = "Repository maintenance tooling outside product runtime."
-kind = "repository-tool"
+[workspace.metadata.architecture.packages.volicord-integration-tests]
+group = "integration-validation"
+description = "Cross-layer integration, Agent Connection, and public contract snapshot tests."
+description_ko = "계층 간 통합, Agent Connection, 공개 계약 스냅샷 테스트를 담당합니다."
+kind = "validation"
+production = false
 boundary = "neutral"
-core_dependency = "forbidden"
-normal = ["shared-types", "command-model", "mcp-protocol"]
+normal = []
+development = [
+    "volicord-core",
+    "volicord-mcp",
+    "volicord-store",
+    "volicord-test-support",
+    "volicord-types",
+]
+build = []
+
+[workspace.metadata.architecture.packages.volicord-release-integrity-tests]
+group = "release-integrity"
+description = "Release packaging, version, canonical-byte, checksum, and workflow integrity validation."
+description_ko = "릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다."
+kind = "validation"
+production = false
+boundary = "neutral"
+normal = ["volicord-store", "volicord-types"]
+development = []
+build = []
+
+[workspace.metadata.architecture.packages.volicord-release-smoke]
+group = "release-smoke"
+description = "Cross-platform actual-binary release smoke orchestration and transcript validation."
+description_ko = "크로스 플랫폼 실제 바이너리 릴리스 스모크 조율과 transcript 검증을 담당합니다."
+kind = "validation"
+production = false
+boundary = "neutral"
+normal = [
+    "volicord-mcp-protocol",
+    "volicord-test-process",
+    "volicord-types",
+]
+development = []
+build = []
+
+[workspace.metadata.architecture.packages.xtask]
+group = "repository-validation"
+description = "Repository architecture, documentation, protocol fixture, and release metadata validation and synchronization."
+description_ko = "저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터 검증과 동기화를 담당합니다."
+kind = "validation"
+production = false
+boundary = "neutral"
+normal = [
+    "volicord-command-model",
+    "volicord-mcp-protocol",
+    "volicord-types",
+]
 development = []
 build = []
