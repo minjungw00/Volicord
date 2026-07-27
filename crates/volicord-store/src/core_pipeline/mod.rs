@@ -109,7 +109,10 @@ pub use artifacts::{
     ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, StoredArtifactRecord,
     StoredArtifactStagingRecord,
 };
-pub use change_units::{ChangeUnitInsert, ChangeUnitMutation, ChangeUnitRecord};
+pub use change_units::{
+    ChangeUnitInsert, ChangeUnitMutation, ChangeUnitRecord, StoredChangeUnitLifecycle,
+    StoredChangeUnitWriteBasis, StoredGitWorkspaceContext,
+};
 pub use continuity::{
     ActiveProjectContinuityPage, ContinuityMutation, ProjectContinuityRecordInsert,
     ProjectContinuityRecordRecord, UnrecordedChangeResolutionUpdate,

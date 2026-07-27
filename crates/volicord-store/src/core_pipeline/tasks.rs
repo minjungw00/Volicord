@@ -1168,6 +1168,64 @@ mod tests {
     }
 
     #[test]
+    fn task_decoders_own_close_summary_and_current_basis_corruption() {
+        let mut record = TaskRecord {
+            project_id: "project".to_owned(),
+            task_id: "task".to_owned(),
+            mode: "normal".to_owned(),
+            requested_control_level: "light".to_owned(),
+            effective_control_level: "light".to_owned(),
+            control_level_reason: "reason".to_owned(),
+            work_phase: "implementation".to_owned(),
+            acceptance_policy: "not_required".to_owned(),
+            acceptance_policy_reason: "reason".to_owned(),
+            predecessor_task_id: None,
+            lineage_relation: None,
+            lineage_reason: None,
+            carry_forward_json: "{}".to_owned(),
+            lifecycle_phase: "active".to_owned(),
+            result: None,
+            title: None,
+            summary: None,
+            shaping_summary_json: "{}".to_owned(),
+            bounded_context_json: "{}".to_owned(),
+            autonomy_boundary_json: "{}".to_owned(),
+            scope_revision: 1,
+            close_basis_revision: 0,
+            close_basis_json: None,
+            close_summary_json: r#"{"close_reason":"none"}"#.to_owned(),
+            current_change_unit_id: None,
+            closed_at: None,
+            metadata_json: "{}".to_owned(),
+        };
+
+        for malformed in [
+            "{",
+            r#"{"close_reason":"unknown"}"#,
+            r#"{"close_reason":"none","residual_risks":"wrong-type"}"#,
+        ] {
+            record.close_summary_json = malformed.to_owned();
+            assert!(matches!(
+                validate_decoded_task_record(record.clone()),
+                Err(StoreError::CorruptOwnerStateJson {
+                    table: "tasks",
+                    logical_column: "close_summary_json",
+                    ..
+                })
+            ));
+        }
+
+        assert!(matches!(
+            decode_current_close_basis_column("task", Some("{")),
+            Err(StoreError::CorruptOwnerStateJson {
+                table: "tasks",
+                logical_column: "close_basis_json",
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn task_mutation_validates_its_storage_identity_before_sql() {
         let error = with_empty_mutation_context(|context| {
             TaskMutation::SetActive {

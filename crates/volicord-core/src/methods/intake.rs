@@ -13,7 +13,7 @@ use super::{
     projected_evidence_summary_for_criteria, projected_write_ticket_summary,
     resolve_requested_mode, state_ref, storage_value, task_lineage_relation_storage,
     task_mode_storage, task_shaping_json, validation_rejected, work_phase_storage, MethodPlan,
-    PersistedTaskShaping, PersistedWriteBasis, PlanError, StoredScope, SummaryBuild,
+    PersistedTaskShaping, PlanError, StoredScope, SummaryBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -1009,13 +1009,12 @@ fn plan_task_lineage(
                     "selected baseline carry-forward has no current predecessor Change Unit",
                 )))
             })?;
-        let write_basis: PersistedWriteBasis = decode_required_json(
-            "change_units",
-            change_unit.change_unit_id,
-            "write_basis_json",
-            Some(&change_unit.write_basis_json),
-        )?;
-        if write_basis.baseline_ref.as_ref().map(BaselineRef::as_str) != Some(baseline_ref.as_str())
+        if change_unit
+            .write_basis
+            .baseline_ref
+            .as_ref()
+            .map(BaselineRef::as_str)
+            != Some(baseline_ref.as_str())
         {
             return intake_validation_rejection(
                 request.envelope.dry_run,
@@ -1024,7 +1023,7 @@ fn plan_task_lineage(
                 "baseline carry-forward requires matching predecessor Task and Change Unit baselines",
             );
         }
-        if write_basis.git_workspace_context != verified_invocation.git_workspace_context {
+        if !super::workspace_context_matches(&change_unit, verified_invocation)? {
             return intake_validation_rejection(
                 request.envelope.dry_run,
                 Some(project_state.state_version),

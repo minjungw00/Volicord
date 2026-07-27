@@ -1,5 +1,12 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use volicord_types::ids::TaskId;
+use volicord_types::schema::{
+    ArtifactRef, EvidenceCoverageItem, JsonObject, PersistedEvidenceMetadata,
+    PersistedEvidenceObservationAuthority, SourceRef, StateRecordRef,
+};
+use volicord_types::values::{
+    ActorSource, EvidenceAssuranceLevel, EvidenceSourceKind, UtcTimestamp,
+};
 
 use super::{
     facade::CoreProjectStore, mutations::MutationContext, record_refs::StoredRecordRef,
@@ -99,7 +106,7 @@ impl EvidenceMutation {
 }
 
 /// Stored evidence summary facts needed by close-readiness evaluation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceSummaryRecord {
     pub project_id: String,
     pub evidence_summary_id: String,
@@ -111,10 +118,14 @@ pub struct EvidenceSummaryRecord {
     pub supporting_refs_json: String,
     pub gap_refs_json: String,
     pub metadata_json: String,
+    pub coverage: Vec<EvidenceCoverageItem>,
+    pub supporting_refs: Vec<StateRecordRef>,
+    pub gap_refs: Vec<StateRecordRef>,
+    pub metadata: PersistedEvidenceMetadata,
 }
 
 /// Stored evidence observation facts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceObservationRecord {
     pub project_id: String,
     pub evidence_observation_id: String,
@@ -136,6 +147,55 @@ pub struct EvidenceObservationRecord {
     pub observed_at: String,
     pub recorded_at: String,
     pub metadata_json: String,
+    pub source: EvidenceSourceKind,
+    pub assurance: EvidenceAssuranceLevel,
+    pub observed_by: Option<ActorSource>,
+    pub tool_metadata: JsonObject,
+    pub input_refs: Vec<StateRecordRef>,
+    pub source_refs: Vec<SourceRef>,
+    pub output_artifact_refs: Vec<ArtifactRef>,
+    pub limitations: Vec<String>,
+    pub observed_time: UtcTimestamp,
+    pub recorded_time: UtcTimestamp,
+    pub metadata: PersistedEvidenceObservationAuthority,
+}
+
+#[derive(Debug)]
+struct EvidenceSummaryRecordRaw {
+    project_id: String,
+    evidence_summary_id: String,
+    task_id: String,
+    change_unit_id: Option<String>,
+    produced_at_state_version: u64,
+    status: String,
+    coverage_json: String,
+    supporting_refs_json: String,
+    gap_refs_json: String,
+    metadata_json: String,
+}
+
+#[derive(Debug)]
+struct EvidenceObservationRecordRaw {
+    project_id: String,
+    evidence_observation_id: String,
+    task_id: String,
+    change_unit_id: Option<String>,
+    run_id: Option<String>,
+    acceptance_criterion_id: Option<String>,
+    evidence_claim_id: Option<String>,
+    source_kind: String,
+    assurance_level: String,
+    observed_by_actor_source: Option<String>,
+    tool_name: Option<String>,
+    tool_invocation_id: Option<String>,
+    tool_metadata_json: String,
+    input_refs_json: String,
+    source_refs_json: String,
+    output_artifact_refs_json: String,
+    limitations_json: String,
+    observed_at: String,
+    recorded_at: String,
+    metadata_json: String,
 }
 
 impl CoreProjectStore<'_> {
@@ -260,9 +320,10 @@ fn latest_evidence_summary(
         .query_row(
             &sql,
             params![project_id, task_id],
-            evidence_summary_record_from_row,
+            evidence_summary_record_raw_from_row,
         )
         .optional()?;
+    let record = record.map(decode_evidence_summary_record).transpose()?;
     validate_evidence_summary_state_version(conn, project_id, record)
 }
 
@@ -281,9 +342,10 @@ fn evidence_summary_record(
         .query_row(
             &sql,
             params![project_id, evidence_summary_id],
-            evidence_summary_record_from_row,
+            evidence_summary_record_raw_from_row,
         )
         .optional()?;
+    let record = record.map(decode_evidence_summary_record).transpose()?;
     validate_evidence_summary_state_version(conn, project_id, record)
 }
 
@@ -316,10 +378,10 @@ fn validate_evidence_summary_state_version(
     Ok(Some(record))
 }
 
-fn evidence_summary_record_from_row(
+fn evidence_summary_record_raw_from_row(
     row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<EvidenceSummaryRecord> {
-    Ok(EvidenceSummaryRecord {
+) -> rusqlite::Result<EvidenceSummaryRecordRaw> {
+    Ok(EvidenceSummaryRecordRaw {
         project_id: row.get(0)?,
         evidence_summary_id: row.get(1)?,
         task_id: row.get(2)?,
@@ -333,6 +395,52 @@ fn evidence_summary_record_from_row(
         supporting_refs_json: row.get(7)?,
         gap_refs_json: row.get(8)?,
         metadata_json: row.get(9)?,
+    })
+}
+
+fn decode_evidence_summary_record(
+    raw: EvidenceSummaryRecordRaw,
+) -> StoreResult<EvidenceSummaryRecord> {
+    let record_ref = raw.evidence_summary_id.clone();
+    let coverage = decode_owner_json_text(
+        "evidence_summaries",
+        record_ref.clone(),
+        "coverage_json",
+        &raw.coverage_json,
+    )?;
+    let supporting_refs = decode_owner_json_text(
+        "evidence_summaries",
+        record_ref.clone(),
+        "supporting_refs_json",
+        &raw.supporting_refs_json,
+    )?;
+    let gap_refs = decode_owner_json_text(
+        "evidence_summaries",
+        record_ref.clone(),
+        "gap_refs_json",
+        &raw.gap_refs_json,
+    )?;
+    let metadata = decode_owner_json_text(
+        "evidence_summaries",
+        record_ref,
+        "metadata_json",
+        &raw.metadata_json,
+    )?;
+    Ok(EvidenceSummaryRecord {
+        project_id: raw.project_id,
+        evidence_summary_id: raw.evidence_summary_id,
+        task_id: raw.task_id,
+        change_unit_id: raw.change_unit_id,
+        produced_at_state_version: raw.produced_at_state_version,
+        status: raw.status,
+        coverage_json: raw.coverage_json,
+        supporting_refs_json: raw.supporting_refs_json,
+        gap_refs_json: raw.gap_refs_json,
+        metadata_json: raw.metadata_json,
+        coverage,
+        supporting_refs,
+        gap_refs,
+        metadata,
     })
 }
 
@@ -350,16 +458,18 @@ fn evidence_observation_record(
     conn.query_row(
         &sql,
         params![project_id, evidence_observation_id],
-        evidence_observation_record_from_row,
+        evidence_observation_record_raw_from_row,
     )
     .optional()
-    .map_err(StoreError::from)
+    .map_err(StoreError::from)?
+    .map(decode_evidence_observation_record)
+    .transpose()
 }
 
-fn evidence_observation_record_from_row(
+fn evidence_observation_record_raw_from_row(
     row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<EvidenceObservationRecord> {
-    Ok(EvidenceObservationRecord {
+) -> rusqlite::Result<EvidenceObservationRecordRaw> {
+    Ok(EvidenceObservationRecordRaw {
         project_id: row.get(0)?,
         evidence_observation_id: row.get(1)?,
         task_id: row.get(2)?,
@@ -380,6 +490,106 @@ fn evidence_observation_record_from_row(
         observed_at: row.get(17)?,
         recorded_at: row.get(18)?,
         metadata_json: row.get(19)?,
+    })
+}
+
+fn decode_evidence_observation_record(
+    raw: EvidenceObservationRecordRaw,
+) -> StoreResult<EvidenceObservationRecord> {
+    let corrupt_value = |column| {
+        StoreError::corrupt_owner_state_value(
+            "evidence_observations",
+            raw.evidence_observation_id.clone(),
+            column,
+        )
+    };
+    let source = serde_json::from_value::<EvidenceSourceKind>(serde_json::Value::String(
+        raw.source_kind.clone(),
+    ))
+    .map_err(|_| corrupt_value("source_kind"))?;
+    let assurance = serde_json::from_value::<EvidenceAssuranceLevel>(serde_json::Value::String(
+        raw.assurance_level.clone(),
+    ))
+    .map_err(|_| corrupt_value("assurance_level"))?;
+    let observed_by = raw
+        .observed_by_actor_source
+        .as_deref()
+        .map(str::parse)
+        .transpose()
+        .map_err(|_| corrupt_value("observed_by_actor_source"))?;
+    let record_id = raw.evidence_observation_id.clone();
+    let tool_metadata = decode_owner_json_text(
+        "evidence_observations",
+        record_id.clone(),
+        "tool_metadata_json",
+        &raw.tool_metadata_json,
+    )?;
+    let input_refs = decode_owner_json_text(
+        "evidence_observations",
+        record_id.clone(),
+        "input_refs_json",
+        &raw.input_refs_json,
+    )?;
+    let source_refs = decode_owner_json_text(
+        "evidence_observations",
+        record_id.clone(),
+        "source_refs_json",
+        &raw.source_refs_json,
+    )?;
+    let output_artifact_refs = decode_owner_json_text(
+        "evidence_observations",
+        record_id.clone(),
+        "output_artifact_refs_json",
+        &raw.output_artifact_refs_json,
+    )?;
+    let limitations = decode_owner_json_text(
+        "evidence_observations",
+        record_id.clone(),
+        "limitations_json",
+        &raw.limitations_json,
+    )?;
+    let metadata = decode_owner_json_text(
+        "evidence_observations",
+        record_id,
+        "metadata_json",
+        &raw.metadata_json,
+    )?;
+    let observed_time =
+        UtcTimestamp::parse(&raw.observed_at).map_err(|_| corrupt_value("observed_at"))?;
+    let recorded_time =
+        UtcTimestamp::parse(&raw.recorded_at).map_err(|_| corrupt_value("recorded_at"))?;
+    Ok(EvidenceObservationRecord {
+        project_id: raw.project_id,
+        evidence_observation_id: raw.evidence_observation_id,
+        task_id: raw.task_id,
+        change_unit_id: raw.change_unit_id,
+        run_id: raw.run_id,
+        acceptance_criterion_id: raw.acceptance_criterion_id,
+        evidence_claim_id: raw.evidence_claim_id,
+        source_kind: raw.source_kind,
+        assurance_level: raw.assurance_level,
+        observed_by_actor_source: raw.observed_by_actor_source,
+        tool_name: raw.tool_name,
+        tool_invocation_id: raw.tool_invocation_id,
+        tool_metadata_json: raw.tool_metadata_json,
+        input_refs_json: raw.input_refs_json,
+        source_refs_json: raw.source_refs_json,
+        output_artifact_refs_json: raw.output_artifact_refs_json,
+        limitations_json: raw.limitations_json,
+        observed_at: raw.observed_at,
+        recorded_at: raw.recorded_at,
+        metadata_json: raw.metadata_json,
+        source,
+        assurance,
+        observed_by,
+        tool_metadata,
+        input_refs,
+        source_refs,
+        output_artifact_refs,
+        limitations,
+        observed_time,
+        recorded_time,
+        metadata,
     })
 }
 
@@ -829,13 +1039,135 @@ mod tests {
                 "SELECT 'project', 'summary', 'task', NULL, -1, 'current',
                         '{}', '[]', '[]', '{}'",
                 [],
-                evidence_summary_record_from_row,
+                evidence_summary_record_raw_from_row,
             )
             .expect_err("negative authority order must fail closed");
 
         assert!(matches!(
             error,
             rusqlite::Error::FromSqlConversionFailure(..)
+        ));
+    }
+
+    #[test]
+    fn evidence_summary_decoder_owns_json_corruption_errors() {
+        let valid_metadata = r#"{"updated_by_run_id":"run-test"}"#;
+        let cases = [
+            (
+                "coverage_json",
+                r#"{"target":"not-an-array"}"#,
+                "[]",
+                "[]",
+                valid_metadata,
+            ),
+            (
+                "supporting_refs_json",
+                "[]",
+                r#"{"record_kind":"run"}"#,
+                "[]",
+                valid_metadata,
+            ),
+            (
+                "gap_refs_json",
+                "[]",
+                "[]",
+                r#"{"record_kind":"run"}"#,
+                valid_metadata,
+            ),
+            (
+                "metadata_json",
+                "[]",
+                "[]",
+                "[]",
+                r#"{"updated_by_run_id":123}"#,
+            ),
+        ];
+
+        for (column, coverage_json, supporting_refs_json, gap_refs_json, metadata_json) in cases {
+            let error = decode_evidence_summary_record(EvidenceSummaryRecordRaw {
+                project_id: "project".to_owned(),
+                evidence_summary_id: "summary".to_owned(),
+                task_id: "task".to_owned(),
+                change_unit_id: Some("change".to_owned()),
+                produced_at_state_version: 2,
+                status: "current".to_owned(),
+                coverage_json: coverage_json.to_owned(),
+                supporting_refs_json: supporting_refs_json.to_owned(),
+                gap_refs_json: gap_refs_json.to_owned(),
+                metadata_json: metadata_json.to_owned(),
+            })
+            .expect_err("malformed evidence owner JSON must fail in the Store decoder");
+
+            assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateJson {
+                    table: "evidence_summaries",
+                    logical_column,
+                    ..
+                } if logical_column == column
+            ));
+        }
+    }
+
+    #[test]
+    fn evidence_observation_decoder_owns_source_and_metadata_corruption() {
+        let raw = || EvidenceObservationRecordRaw {
+            project_id: "project".to_owned(),
+            evidence_observation_id: "observation".to_owned(),
+            task_id: "task".to_owned(),
+            change_unit_id: Some("change".to_owned()),
+            run_id: Some("run-test".to_owned()),
+            acceptance_criterion_id: Some("criterion".to_owned()),
+            evidence_claim_id: None,
+            source_kind: "user_observation".to_owned(),
+            assurance_level: "user_observed".to_owned(),
+            observed_by_actor_source: Some("local_user".to_owned()),
+            tool_name: None,
+            tool_invocation_id: None,
+            tool_metadata_json: "{}".to_owned(),
+            input_refs_json: "[]".to_owned(),
+            source_refs_json: "[]".to_owned(),
+            output_artifact_refs_json: "[]".to_owned(),
+            limitations_json: "[]".to_owned(),
+            observed_at: "2026-01-01T00:00:00Z".to_owned(),
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            metadata_json: r#"{
+                "recorded_by_run_id":"run-test",
+                "invocation_verification_basis":"verified",
+                "producer_anchor":{
+                    "producer_kind":"user_observation",
+                    "producer_identity":"local_user",
+                    "output_artifact_ids":[]
+                },
+                "relevance_assessment":{
+                    "status":"supported",
+                    "summary":"supported",
+                    "assessed_by_actor_source":"local_user"
+                }
+            }"#
+            .to_owned(),
+        };
+
+        let mut bad_source_refs = raw();
+        bad_source_refs.source_refs_json = r#"{"context_id":"message"}"#.to_owned();
+        assert!(matches!(
+            decode_evidence_observation_record(bad_source_refs),
+            Err(StoreError::CorruptOwnerStateJson {
+                table: "evidence_observations",
+                logical_column: "source_refs_json",
+                ..
+            })
+        ));
+
+        let mut bad_metadata = raw();
+        bad_metadata.metadata_json = r#"{"recorded_by_run_id":123}"#.to_owned();
+        assert!(matches!(
+            decode_evidence_observation_record(bad_metadata),
+            Err(StoreError::CorruptOwnerStateJson {
+                table: "evidence_observations",
+                logical_column: "metadata_json",
+                ..
+            })
         ));
     }
 

@@ -723,6 +723,59 @@ mod tests {
         assert_eq!(decoded, (created_at, expires_at));
     }
 
+    fn artifact_record_raw() -> StoredArtifactRecordRaw {
+        StoredArtifactRecordRaw {
+            project_id: "project".to_owned(),
+            artifact_id: "artifact".to_owned(),
+            task_id: "task".to_owned(),
+            producer_run_id: Some("run".to_owned()),
+            source_staging_handle_id: Some("handle".to_owned()),
+            uri: "artifact://artifact".to_owned(),
+            body_path: None,
+            sha256: Some("a".repeat(64)),
+            size_bytes: Some(1),
+            content_type: Some("text/plain".to_owned()),
+            integrity_status: "verified".to_owned(),
+            redaction_state: "redacted".to_owned(),
+            status: "available".to_owned(),
+            producer_json: serde_json::to_string(&PersistedArtifactProducer {
+                display_name: None,
+                content_type: None,
+                created_by_actor_source: volicord_types::values::ActorSource::System,
+                artifact_input_id: volicord_types::ids::ArtifactInputId::new("artifact-input"),
+                relation_hint: volicord_types::schema::RequiredNullable::null(),
+                evidence_target: volicord_types::schema::RequiredNullable::null(),
+            })
+            .expect("typed artifact producer must serialize"),
+            metadata_json: r#"{"source_kind":"staged_artifact"}"#.to_owned(),
+        }
+    }
+
+    #[test]
+    fn artifact_decoder_owns_producer_and_provenance_corruption() {
+        let mut malformed_producer = artifact_record_raw();
+        malformed_producer.producer_json = "{".to_owned();
+        assert!(matches!(
+            stored_artifact_record_from_raw(malformed_producer),
+            Err(StoreError::CorruptOwnerStateJson {
+                table: "artifacts",
+                logical_column: "producer_json",
+                ..
+            })
+        ));
+
+        let mut missing_source = artifact_record_raw();
+        missing_source.source_staging_handle_id = None;
+        assert!(matches!(
+            stored_artifact_record_from_raw(missing_source),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "artifacts",
+                logical_column: "source_staging_handle_id",
+                ..
+            })
+        ));
+    }
+
     #[test]
     fn artifact_mutation_validates_its_storage_identity_before_sql() {
         let error = with_empty_mutation_context(|context| {

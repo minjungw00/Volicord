@@ -163,9 +163,10 @@ pub(crate) fn run_record_matches_close_basis_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volicord_types::ids::{AcceptanceCriterionId, EvidenceObservationId, RecordId};
+    use volicord_types::ids::{AcceptanceCriterionId, EvidenceObservationId, RecordId, RunId};
     use volicord_types::schema::{
-        EvidenceProducerAnchor, EvidenceRelevanceAssessment, RequiredNullable,
+        EvidenceProducerAnchor, EvidenceRelevanceAssessment, PersistedEvidenceObservationAuthority,
+        RequiredNullable,
     };
     use volicord_types::values::{
         ActorSource, EvidenceAssuranceLevel, EvidenceProducerKind, EvidenceRelevanceStatus,
@@ -257,6 +258,31 @@ mod tests {
             observed_at: "2026-07-26T00:00:00Z".to_owned(),
             recorded_at: "2026-07-26T00:00:00Z".to_owned(),
             metadata_json: "{}".to_owned(),
+            source: EvidenceSourceKind::ExternalTool,
+            assurance: EvidenceAssuranceLevel::ExternalToolResult,
+            observed_by: None,
+            tool_metadata: Default::default(),
+            input_refs: Vec::new(),
+            source_refs: Vec::new(),
+            output_artifact_refs: Vec::new(),
+            limitations: Vec::new(),
+            observed_time: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
+            recorded_time: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
+            metadata: PersistedEvidenceObservationAuthority {
+                recorded_by_run_id: RunId::new("run_target"),
+                invocation_verification_basis: "verified".to_owned(),
+                producer_anchor: EvidenceProducerAnchor {
+                    producer_kind: EvidenceProducerKind::VerifiedToolInvocation,
+                    producer_ref: RequiredNullable::null(),
+                    output_artifact_refs: Vec::new(),
+                    verification_basis: RequiredNullable::null(),
+                },
+                relevance_assessment: EvidenceRelevanceAssessment {
+                    status: EvidenceRelevanceStatus::Supported,
+                    assessment_ref: RequiredNullable::null(),
+                    assessed_by_actor_source: RequiredNullable::null(),
+                },
+            },
         };
         let source_run = RunRecord {
             project_id: "project_target".to_owned(),

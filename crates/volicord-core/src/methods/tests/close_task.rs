@@ -3,6 +3,49 @@
 use super::*;
 
 #[test]
+fn advisor_check_close_uses_non_write_semantic_guidance() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_mode_and_change_unit(
+        &harness,
+        "advisor_check_close",
+        RequestedMode::Advisor,
+    )?;
+
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_advisor_check_close",
+            idempotency_key: None,
+            dry_run: false,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    for blocker in response.response_value["blockers"]
+        .as_array()
+        .expect("blockers should be an array")
+    {
+        assert!(blocker["next_actions"]
+            .as_array()
+            .expect("next_actions should be an array")
+            .iter()
+            .all(|action| {
+                action["action_kind"] != "prepare_write"
+                    && action["owner_method"] != "volicord.prepare_write"
+            }));
+    }
+    assert_ne!(
+        response.response_value["summary_card"]["next_action"]["action_kind"],
+        "prepare_write"
+    );
+    Ok(())
+}
+
+#[test]
 fn complete_orchestration_commits_the_terminal_task_transition() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) =

@@ -5,6 +5,7 @@ mod identity;
 mod lifecycle;
 mod materialization;
 mod persistence;
+mod relevance;
 mod validation;
 
 use crate::body::construct_canonical_body;

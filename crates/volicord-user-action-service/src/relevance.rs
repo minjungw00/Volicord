@@ -43,6 +43,13 @@ pub struct UserActionOperationContext<'a> {
     pub sensitive_approval: Option<&'a SensitiveApprovalRequirement<'a>>,
 }
 
+/// Current Task coordinates required by cancellation authority.
+pub struct CancellationAuthorityRequirement<'a> {
+    pub task_id: &'a TaskId,
+    pub change_unit_id: Option<&'a ChangeUnitId>,
+    pub scope_revision: u64,
+}
+
 pub fn user_action_blocks_operation(
     user_action: &UserActionAuthority,
     context: &UserActionOperationContext<'_>,
@@ -91,6 +98,26 @@ pub fn user_action_required_for(
     target: UserActionRequiredFor,
 ) -> bool {
     user_action.required_for.contains(&target)
+}
+
+/// Returns whether one resolved UserAction currently authorizes cancellation.
+pub fn current_cancellation_authority(
+    user_action: &UserActionAuthority,
+    requirement: &CancellationAuthorityRequirement<'_>,
+) -> bool {
+    if !accepted_current_user_authority(user_action, UserActionKind::Cancellation)
+        || !user_action
+            .required_for
+            .contains(&UserActionRequiredFor::CloseCancel)
+    {
+        return false;
+    }
+    user_action.basis.as_ref().is_some_and(|basis| {
+        let coordinates = basis.coordinates();
+        coordinates.task_id == *requirement.task_id
+            && coordinates.scope_revision == requirement.scope_revision
+            && coordinates.change_unit_id.as_ref() == requirement.change_unit_id
+    })
 }
 
 pub fn user_action_keeps_task_waiting(

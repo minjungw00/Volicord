@@ -28,7 +28,7 @@ use super::{
     user_action_service_plan_error, validation_plan_error, validation_rejected,
     workspace_context_matches, workspace_stale_response, write_ticket_invalid_response,
     write_ticket_ref, write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
-    PersistedWriteBasis, PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
+    PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -2802,22 +2802,10 @@ fn reused_observation_inputs_for_update(
             .evidence_observation_record(observation_ref.record_id.as_str())
             .map_err(CorePipelineError::from)?
             .expect("validated reused observation exists");
-        let assurance_level = parse_owner_storage_value(
-            "evidence_observations",
-            record.evidence_observation_id.clone(),
-            "assurance_level",
-            &record.assurance_level,
-        )?;
-        let output_artifact_refs: Vec<ArtifactRef> = decode_required_json(
-            "evidence_observations",
-            record.evidence_observation_id.clone(),
-            "output_artifact_refs_json",
-            Some(&record.output_artifact_refs_json),
-        )?;
         inputs.push(EvidenceObservationInput {
             target: update.target.clone(),
             source_kind: EvidenceSourceKind::ReusedEvidence,
-            assurance_level,
+            assurance_level: record.assurance,
             observed_by_actor_source: None.into(),
             tool_name: None.into(),
             tool_invocation_id: None.into(),
@@ -2830,7 +2818,7 @@ fn reused_observation_inputs_for_update(
                 Some(context.project_state.state_version),
             )],
             source_refs: Vec::new(),
-            output_artifact_refs,
+            output_artifact_refs: record.output_artifact_refs,
             limitations: vec![
                 "Reuses target-matching observation provenance from the current scope.".to_owned(),
             ],
@@ -4254,13 +4242,7 @@ fn validate_write_ticket_for_run(
             ),
         )));
     }
-    let write_basis: PersistedWriteBasis = decode_required_json(
-        "change_units",
-        change_unit.change_unit_id.clone(),
-        "write_basis_json",
-        Some(&change_unit.write_basis_json),
-    )?;
-    if write_basis.git_workspace_context != verified_invocation.git_workspace_context {
+    if !super::workspace_context_matches(change_unit, verified_invocation)? {
         return write_ticket_mismatch(
             request,
             project_state,

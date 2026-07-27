@@ -10,9 +10,8 @@ use crate::methods::{
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness::{
-    current_cancellation_authority, current_final_acceptance,
-    current_residual_risk_acceptance_coverage, final_acceptance_requirement,
-    CancellationAuthorityRequirement,
+    current_final_acceptance, current_residual_risk_acceptance_coverage,
+    final_acceptance_requirement,
 };
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::{BaselineRef, ChangeUnitId};
@@ -26,10 +25,11 @@ use volicord_types::values::{
     UserActionRequiredFor, UtcTimestamp,
 };
 use volicord_user_action_service::{
-    current_sensitive_approval, pending_user_action_authorities, resolved_user_action_authorities,
-    user_action_blocks_operation, user_action_has_current_basis, user_action_required_for,
-    verified_user_channel_provenance, SensitiveApprovalRequirement, UserActionAuthority,
-    UserActionOperation, UserActionOperationContext,
+    current_cancellation_authority, current_sensitive_approval, pending_user_action_authorities,
+    resolved_user_action_authorities, user_action_blocks_operation, user_action_has_current_basis,
+    user_action_required_for, verified_user_channel_provenance, CancellationAuthorityRequirement,
+    SensitiveApprovalRequirement, UserActionAuthority, UserActionOperation,
+    UserActionOperationContext,
 };
 
 pub(super) fn terminal_blockers(
@@ -596,26 +596,25 @@ fn light_completion_without_acceptance_allowed(
         return Ok(false);
     }
     let workflow_policy = workflow_policy_for_close_context(context)?.clone();
-    if !workflow_policy.light.enabled
-        || workflow_policy.light.final_acceptance == AcceptancePolicy::Required
-        || !context.pending_user_action_refs.is_empty()
-    {
-        return Ok(false);
-    }
     let Some(close_basis) = context.current_close_basis.clone() else {
         return Ok(false);
     };
-    if close_basis
+    let has_acceptance_required_risk = close_basis
         .residual_risks
         .iter()
-        .any(|risk| risk.acceptance_required)
-        || !close_basis.sensitive_categories.is_empty()
-        || !close_basis.sensitive_action_requirements.is_empty()
-        || !context.unresolved_unrecorded_changes.is_empty()
-    {
-        return Ok(false);
-    }
-    if has_evidence_blockers {
+        .any(|risk| risk.acceptance_required);
+    if !light_acceptance_can_be_omitted(LightAcceptancePolicyFacts {
+        light_enabled: workflow_policy.light.enabled,
+        final_acceptance_policy: workflow_policy.light.final_acceptance,
+        has_pending_user_action: !context.pending_user_action_refs.is_empty(),
+        has_current_close_basis: true,
+        has_acceptance_required_risk,
+        has_sensitive_result: !close_basis.sensitive_categories.is_empty()
+            || !close_basis.sensitive_action_requirements.is_empty(),
+        has_unresolved_change: !context.unresolved_unrecorded_changes.is_empty(),
+        has_evidence_blocker: has_evidence_blockers,
+        writes_are_current_and_authorized: true,
+    }) {
         return Ok(false);
     }
 
@@ -701,6 +700,31 @@ fn light_completion_without_acceptance_allowed(
         }
     }
     Ok(true)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LightAcceptancePolicyFacts {
+    light_enabled: bool,
+    final_acceptance_policy: AcceptancePolicy,
+    has_pending_user_action: bool,
+    has_current_close_basis: bool,
+    has_acceptance_required_risk: bool,
+    has_sensitive_result: bool,
+    has_unresolved_change: bool,
+    has_evidence_blocker: bool,
+    writes_are_current_and_authorized: bool,
+}
+
+fn light_acceptance_can_be_omitted(facts: LightAcceptancePolicyFacts) -> bool {
+    facts.light_enabled
+        && facts.final_acceptance_policy != AcceptancePolicy::Required
+        && !facts.has_pending_user_action
+        && facts.has_current_close_basis
+        && !facts.has_acceptance_required_risk
+        && !facts.has_sensitive_result
+        && !facts.has_unresolved_change
+        && !facts.has_evidence_blocker
+        && facts.writes_are_current_and_authorized
 }
 
 fn has_current_sensitive_approval_for_close(

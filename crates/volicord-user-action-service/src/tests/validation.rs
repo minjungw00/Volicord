@@ -1,6 +1,6 @@
 use super::validation_input;
 use crate::validation::validate_user_action;
-use volicord_types::values::UserActionRequiredFor;
+use volicord_types::values::{UserActionRequiredFor, UtcTimestamp};
 
 #[test]
 fn validation_accepts_a_current_compatible_semantic_intent() {
@@ -64,4 +64,24 @@ fn validation_rejects_non_current_coordinates_before_body_construction() {
         validate_user_action(input).expect_err("unknown Change Unit coordinate must reject");
 
     assert_eq!(error.field(), "change_unit_id");
+}
+
+#[test]
+fn validation_uses_a_half_open_expiration_boundary() {
+    let operation_time =
+        UtcTimestamp::parse("2026-07-27T00:00:00Z").expect("test timestamp must parse");
+
+    let mut at_boundary = validation_input();
+    at_boundary.intent.expires_at = Some(operation_time.clone()).into();
+    assert_eq!(
+        validate_user_action(at_boundary)
+            .expect_err("expiration at operation time must reject")
+            .field(),
+        "expires_at"
+    );
+
+    let mut after_boundary = validation_input();
+    after_boundary.intent.expires_at =
+        Some(UtcTimestamp::parse("2026-07-27T00:00:00.000000001Z").unwrap()).into();
+    assert!(validate_user_action(after_boundary).is_ok());
 }

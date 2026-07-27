@@ -553,7 +553,8 @@ fn plan_update_scope_mutations(
                     &request.task_id,
                     &insert,
                     planned_state_version,
-                );
+                )
+                .map_err(PlanError::Core)?;
                 storage_mutations.push(CoreStorageMutation::ChangeUnit(
                     ChangeUnitMutation::InsertCurrent(insert),
                 ));
@@ -591,7 +592,8 @@ fn plan_update_scope_mutations(
                     &request.task_id,
                     &insert,
                     planned_state_version,
-                );
+                )
+                .map_err(PlanError::Core)?;
                 storage_mutations.push(CoreStorageMutation::ChangeUnit(
                     ChangeUnitMutation::ReplaceCurrent(insert),
                 ));

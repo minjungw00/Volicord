@@ -761,14 +761,6 @@ fn assert_owner_state_rejection_with_category(
     assert_public_response_has_no_internal_leak(response, runtime_home_path);
 }
 
-fn assert_public_response_omits(response: &PipelineResponse, fragment: &str) {
-    assert!(
-        !response.response_json.contains(fragment),
-        "public response leaked forbidden fragment {fragment}: {}",
-        response.response_json
-    );
-}
-
 fn assert_constraint_error(error: rusqlite::Error) {
     match error {
         rusqlite::Error::SqliteFailure(err, _) => assert_eq!(
@@ -1943,11 +1935,6 @@ fn assert_close_blocker(response_value: &Value, code: &str) {
         codes.iter().any(|candidate| candidate == code),
         "expected close blocker code {code}, got {codes:?}"
     );
-}
-
-fn assert_close_blocker_category(response_value: &Value, code: &str, category: &str) {
-    let blocker = close_blocker_by_code(response_value, code);
-    assert_eq!(blocker["category"], category);
 }
 
 fn close_blocker_by_code<'a>(response_value: &'a Value, code: &str) -> &'a Value {
@@ -3211,107 +3198,6 @@ fn set_task_initial_source_refs_owner_state(
     )
 }
 
-fn set_change_unit_owner_json(
-    harness: &MethodHarness,
-    change_unit_id: &str,
-    logical_column: &str,
-    value: Option<&str>,
-) -> Result<(), Box<dyn Error>> {
-    let sql = match logical_column {
-        "scope_summary_json" => {
-            "UPDATE change_units
-                SET scope_summary_json = ?3
-              WHERE project_id = ?1
-                AND change_unit_id = ?2"
-        }
-        "bounded_paths_json" => {
-            "UPDATE change_units
-                SET bounded_paths_json = ?3
-              WHERE project_id = ?1
-                AND change_unit_id = ?2"
-        }
-        "write_basis_json" => {
-            "UPDATE change_units
-                SET write_basis_json = ?3
-              WHERE project_id = ?1
-                AND change_unit_id = ?2"
-        }
-        "lifecycle_json" => {
-            "UPDATE change_units
-                SET lifecycle_json = ?3
-              WHERE project_id = ?1
-                AND change_unit_id = ?2"
-        }
-        _ => panic!("unsupported change-unit owner JSON column {logical_column}"),
-    };
-    harness
-        .conn()?
-        .execute(sql, rusqlite::params![PROJECT_ID, change_unit_id, value])?;
-    Ok(())
-}
-
-fn set_user_action_resolution_json(
-    harness: &MethodHarness,
-    user_action_request_id: &str,
-    value: Option<&str>,
-) -> Result<String, Box<dyn Error>> {
-    let conn = harness.conn()?;
-    let existing_resolution_id = conn
-        .query_row(
-            "SELECT user_action_resolution_id
-               FROM user_action_resolutions
-              WHERE project_id = ?1
-                AND user_action_request_id = ?2",
-            rusqlite::params![PROJECT_ID, user_action_request_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
-    drop(conn);
-
-    if existing_resolution_id.is_none() {
-        let task_id: String = harness.conn()?.query_row(
-            "SELECT task_id
-               FROM user_action_requests
-              WHERE project_id = ?1
-                AND user_action_request_id = ?2",
-            rusqlite::params![PROJECT_ID, user_action_request_id],
-            |row| row.get(0),
-        )?;
-        let response = harness.service.resolve_user_action(
-            resolve_user_action_request(
-                &format!("req_corrupt_resolution_{user_action_request_id}"),
-                &format!("submission_corrupt_resolution_{user_action_request_id}"),
-                None,
-                &task_id,
-                user_action_request_id,
-                "accept",
-            ),
-            invocation(OperationCategory::UserOnly),
-        )?;
-        assert_eq!(response.response_value["base"]["response_kind"], "result");
-    }
-
-    let conn = harness.conn()?;
-    let user_action_resolution_id: String = conn.query_row(
-        "SELECT user_action_resolution_id
-           FROM user_action_resolutions
-          WHERE project_id = ?1
-            AND user_action_request_id = ?2",
-        rusqlite::params![PROJECT_ID, user_action_request_id],
-        |row| row.get(0),
-    )?;
-    conn.pragma_update(None, "ignore_check_constraints", true)?;
-    conn.execute(
-        "UPDATE user_action_resolutions
-            SET resolution_json = ?3
-          WHERE project_id = ?1
-            AND user_action_resolution_id = ?2",
-        rusqlite::params![PROJECT_ID, user_action_resolution_id, value],
-    )?;
-    conn.pragma_update(None, "ignore_check_constraints", false)?;
-    Ok(user_action_resolution_id)
-}
-
 fn set_user_action_resolution_actor(
     harness: &MethodHarness,
     user_action_request_id: &str,
@@ -3494,33 +3380,6 @@ fn mutate_user_action_basis_json(
     )
 }
 
-fn set_artifact_owner_json(
-    harness: &MethodHarness,
-    artifact_id: &str,
-    logical_column: &str,
-    value: &str,
-) -> Result<(), Box<dyn Error>> {
-    let sql = match logical_column {
-        "producer_json" => {
-            "UPDATE artifacts
-                SET producer_json = ?3
-              WHERE project_id = ?1
-                AND artifact_id = ?2"
-        }
-        "metadata_json" => {
-            "UPDATE artifacts
-                SET metadata_json = ?3
-              WHERE project_id = ?1
-                AND artifact_id = ?2"
-        }
-        _ => panic!("unsupported artifact owner JSON column {logical_column}"),
-    };
-    harness
-        .conn()?
-        .execute(sql, rusqlite::params![PROJECT_ID, artifact_id, value])?;
-    Ok(())
-}
-
 fn set_artifact_integrity(
     harness: &MethodHarness,
     artifact_id: &str,
@@ -3546,20 +3405,6 @@ fn set_artifact_integrity(
             sha256,
             size_bytes.map(|value| value as i64)
         ],
-    )?;
-    Ok(())
-}
-
-fn clear_artifact_source_staging_handle(
-    harness: &MethodHarness,
-    artifact_id: &str,
-) -> Result<(), Box<dyn Error>> {
-    harness.conn()?.execute(
-        "UPDATE artifacts
-            SET source_staging_handle_id = NULL
-          WHERE project_id = ?1
-            AND artifact_id = ?2",
-        rusqlite::params![PROJECT_ID, artifact_id],
     )?;
     Ok(())
 }
@@ -3609,46 +3454,6 @@ fn latest_evidence_summary_id(
         rusqlite::params![PROJECT_ID, task_id],
         |row| row.get(0),
     )?)
-}
-
-fn set_evidence_summary_owner_json(
-    harness: &MethodHarness,
-    evidence_summary_id: &str,
-    logical_column: &str,
-    value: &str,
-) -> Result<(), Box<dyn Error>> {
-    let sql = match logical_column {
-        "coverage_json" => {
-            "UPDATE evidence_summaries
-                SET coverage_json = ?3
-              WHERE project_id = ?1
-                AND evidence_summary_id = ?2"
-        }
-        "supporting_refs_json" => {
-            "UPDATE evidence_summaries
-                SET supporting_refs_json = ?3
-              WHERE project_id = ?1
-                AND evidence_summary_id = ?2"
-        }
-        "gap_refs_json" => {
-            "UPDATE evidence_summaries
-                SET gap_refs_json = ?3
-              WHERE project_id = ?1
-                AND evidence_summary_id = ?2"
-        }
-        "metadata_json" => {
-            "UPDATE evidence_summaries
-                SET metadata_json = ?3
-              WHERE project_id = ?1
-                AND evidence_summary_id = ?2"
-        }
-        _ => panic!("unsupported evidence summary owner JSON column {logical_column}"),
-    };
-    harness.conn()?.execute(
-        sql,
-        rusqlite::params![PROJECT_ID, evidence_summary_id, value],
-    )?;
-    Ok(())
 }
 
 fn promote_artifact_for_record_run(

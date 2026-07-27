@@ -48,11 +48,11 @@ pub use model::{
 };
 pub use projection::{pending_user_action_facts_from_records, user_action_resolution_facts};
 pub use relevance::{
-    accepted_current_user_authority, current_sensitive_approval,
+    accepted_current_user_authority, current_cancellation_authority, current_sensitive_approval,
     sensitive_action_scope_matches_requirement, user_action_blocks_operation,
     user_action_has_current_basis, user_action_keeps_task_waiting, user_action_required_for,
-    verified_user_channel_provenance, SensitiveApprovalRequirement, UserActionOperation,
-    UserActionOperationContext,
+    verified_user_channel_provenance, CancellationAuthorityRequirement,
+    SensitiveApprovalRequirement, UserActionOperation, UserActionOperationContext,
 };
 pub use resolution::{
     construct_user_action_resolution, resolution_input_matches_body,

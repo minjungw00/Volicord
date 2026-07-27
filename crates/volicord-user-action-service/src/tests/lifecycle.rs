@@ -1,7 +1,10 @@
 use super::canonical_choice;
 use crate::authority::user_action_authority_from_state;
 use crate::lifecycle::projected_user_action_lifecycle_phase;
-use volicord_store::core_pipeline::{ChangeUnitRecord, ProjectStateHeader, TaskRecord};
+use volicord_store::core_pipeline::{
+    ChangeUnitRecord, ProjectStateHeader, StoredChangeUnitLifecycle, StoredChangeUnitWriteBasis,
+    TaskRecord,
+};
 use volicord_types::ids::{ProjectId, UserActionRequestId};
 use volicord_types::schema::{RequiredNullable, UserActionRequest};
 use volicord_types::values::{UserActionKind, UserActionStatus};
@@ -51,6 +54,15 @@ fn change_unit() -> ChangeUnitRecord {
         write_basis_json: "{}".to_owned(),
         effect_contract_json: "{}".to_owned(),
         lifecycle_json: "{}".to_owned(),
+        bounded_paths: Vec::new(),
+        write_basis: StoredChangeUnitWriteBasis {
+            baseline_ref: None,
+            git_workspace_context: None,
+        },
+        effect_contract: None,
+        lifecycle: StoredChangeUnitLifecycle {
+            recovery_required: false,
+        },
     }
 }
 

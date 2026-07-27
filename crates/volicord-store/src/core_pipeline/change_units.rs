@@ -1,5 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
-use volicord_types::ids::TaskId;
+use serde::Deserialize;
+use volicord_types::ids::{BaselineRef, TaskId};
+use volicord_types::schema::ChangeUnitEffectContract;
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
 use crate::{StoreError, StoreResult};
@@ -59,6 +61,39 @@ pub struct ChangeUnitRecord {
     pub write_basis_json: String,
     pub effect_contract_json: String,
     pub lifecycle_json: String,
+    pub bounded_paths: Vec<String>,
+    pub write_basis: StoredChangeUnitWriteBasis,
+    pub effect_contract: Option<ChangeUnitEffectContract>,
+    pub lifecycle: StoredChangeUnitLifecycle,
+}
+
+/// Strictly decoded Change Unit write-basis fields owned by Store.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredChangeUnitWriteBasis {
+    #[serde(default)]
+    pub baseline_ref: Option<BaselineRef>,
+    #[serde(default)]
+    pub git_workspace_context: Option<StoredGitWorkspaceContext>,
+}
+
+/// Strictly decoded Git coordinate carried by a Change Unit write basis.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredGitWorkspaceContext {
+    pub git_common_dir: String,
+    pub worktree_id: String,
+    pub branch_ref: Option<String>,
+    pub head_sha: Option<String>,
+    pub workspace_fingerprint: String,
+}
+
+/// Strictly decoded Change Unit lifecycle fields owned by Store.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredChangeUnitLifecycle {
+    #[serde(default)]
+    pub recovery_required: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -202,6 +237,30 @@ fn validate_decoded_change_unit_record(
     ) {
         return Err(corrupt_value("status"));
     }
+    let bounded_paths = decode_owner_json_text(
+        "change_units",
+        record.change_unit_id.clone(),
+        "bounded_paths_json",
+        &record.bounded_paths_json,
+    )?;
+    let write_basis = decode_owner_json_text(
+        "change_units",
+        record.change_unit_id.clone(),
+        "write_basis_json",
+        &record.write_basis_json,
+    )?;
+    let effect_contract = decode_owner_json_text(
+        "change_units",
+        record.change_unit_id.clone(),
+        "effect_contract_json",
+        &record.effect_contract_json,
+    )?;
+    let lifecycle = decode_owner_json_text(
+        "change_units",
+        record.change_unit_id.clone(),
+        "lifecycle_json",
+        &record.lifecycle_json,
+    )?;
     Ok(ChangeUnitRecord {
         project_id: record.project_id,
         change_unit_id: record.change_unit_id,
@@ -214,6 +273,10 @@ fn validate_decoded_change_unit_record(
         write_basis_json: record.write_basis_json,
         effect_contract_json: record.effect_contract_json,
         lifecycle_json: record.lifecycle_json,
+        bounded_paths,
+        write_basis,
+        effect_contract,
+        lifecycle,
     })
 }
 
@@ -367,6 +430,50 @@ mod tests {
         .expect_err("missing basis state version must fail closed");
 
         assert!(matches!(error, StoreError::CorruptOwnerStateValue { .. }));
+    }
+
+    #[test]
+    fn change_unit_decoder_owns_structured_column_corruption() {
+        let valid = || RawChangeUnitRecord {
+            project_id: "project".to_owned(),
+            change_unit_id: "change".to_owned(),
+            task_id: "task".to_owned(),
+            status: "active".to_owned(),
+            is_current: 1,
+            basis_state_version: Some(1),
+            scope_summary_json: "{}".to_owned(),
+            bounded_paths_json: "[]".to_owned(),
+            write_basis_json: "{}".to_owned(),
+            effect_contract_json: "null".to_owned(),
+            lifecycle_json: "{}".to_owned(),
+        };
+        let cases = [
+            ("bounded_paths_json", "{"),
+            ("write_basis_json", "{"),
+            ("effect_contract_json", "{"),
+            ("lifecycle_json", "{"),
+        ];
+
+        for (column, malformed) in cases {
+            let mut record = valid();
+            match column {
+                "bounded_paths_json" => record.bounded_paths_json = malformed.to_owned(),
+                "write_basis_json" => record.write_basis_json = malformed.to_owned(),
+                "effect_contract_json" => record.effect_contract_json = malformed.to_owned(),
+                "lifecycle_json" => record.lifecycle_json = malformed.to_owned(),
+                _ => unreachable!(),
+            }
+            let error = validate_decoded_change_unit_record(record)
+                .expect_err("malformed Change Unit owner JSON must fail in the Store decoder");
+            assert!(matches!(
+                error,
+                StoreError::CorruptOwnerStateJson {
+                    table: "change_units",
+                    logical_column,
+                    ..
+                } if logical_column == column
+            ));
+        }
     }
 
     #[test]

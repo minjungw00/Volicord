@@ -1,6 +1,6 @@
 use super::{
-    artifact_ref_from_verified_record, decode_required_json, object_from_value,
-    parse_owner_storage_value, persistent_artifact_is_verified_current, state_ref,
+    artifact_ref_from_verified_record, object_from_value, parse_owner_storage_value,
+    persistent_artifact_is_verified_current, state_ref,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::{
@@ -34,11 +34,9 @@ use volicord_types::schema::{
     evidence_capture_input_sha256, evidence_capture_observed_outcome_matches_expected,
     validate_evidence_capture_expected_outcome, validate_evidence_capture_limitations,
     validate_evidence_capture_observed_outcome, ArtifactRef, EvidenceCaptureIntent,
-    EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceObservation, EvidenceProducer,
-    EvidenceProducerAnchor, EvidenceRelevanceAssessment, EvidenceTarget, JsonObject,
-    PersistedEvidenceCaptureReceiptBody, PersistedEvidenceMetadata,
-    PersistedEvidenceObservationAuthority, StateRecordRef, UserActionResolutionBody,
-    EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
+    EvidenceCaptureSpec, EvidenceObservation, EvidenceProducer, EvidenceProducerAnchor,
+    EvidenceRelevanceAssessment, EvidenceTarget, JsonObject, PersistedEvidenceCaptureReceiptBody,
+    StateRecordRef, UserActionResolutionBody, EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
 };
 use volicord_types::values::{
     ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, EvidenceAssuranceLevel,
@@ -278,18 +276,8 @@ pub(super) fn stored_evidence_observation_provenance_facts(
     basis: &EvidenceObservationBasis<'_>,
 ) -> CoreResult<EvidenceProvenanceFacts> {
     let basis_matches = stored_evidence_observation_matches_basis(store, record, basis)?;
-    let source_kind: EvidenceSourceKind = parse_owner_storage_value(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "source_kind",
-        &record.source_kind,
-    )?;
-    let assurance_level: EvidenceAssuranceLevel = parse_owner_storage_value(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "assurance_level",
-        &record.assurance_level,
-    )?;
+    let source_kind = record.source;
+    let assurance_level = record.assurance;
     let binding_matches = if basis_matches
         && evidence_assurance_matches_source(source_kind, assurance_level)
         && !(source_kind == EvidenceSourceKind::AgentReport
@@ -313,30 +301,18 @@ pub(super) fn stored_evidence_observation_provenance_facts(
 pub(super) fn stored_evidence_observation_relevance(
     record: &EvidenceObservationRecord,
 ) -> CoreResult<EvidenceRelevanceAssessment> {
-    let authority: PersistedEvidenceObservationAuthority = decode_required_json(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "metadata_json",
-        Some(&record.metadata_json),
-    )?;
-    Ok(authority.relevance_assessment)
+    Ok(record.metadata.relevance_assessment.clone())
 }
 
 pub(super) fn stored_evidence_observation_capture_relevance(
     record: &EvidenceObservationRecord,
 ) -> CoreResult<Option<EvidenceRelevanceStatus>> {
-    let authority: PersistedEvidenceObservationAuthority = decode_required_json(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "metadata_json",
-        Some(&record.metadata_json),
-    )?;
     Ok(matches!(
-        authority.producer_anchor.producer_kind,
+        record.metadata.producer_anchor.producer_kind,
         EvidenceProducerKind::VerifiedToolInvocation
             | EvidenceProducerKind::VerifiedCommandExecution
     )
-    .then_some(authority.relevance_assessment.status))
+    .then_some(record.metadata.relevance_assessment.status))
 }
 
 pub(super) fn projected_evidence_observation_provenance_facts(
@@ -423,66 +399,24 @@ fn stored_evidence_observation_anchored_assurance(
         return Ok(None);
     }
 
-    let source_kind: EvidenceSourceKind = parse_owner_storage_value(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "source_kind",
-        &record.source_kind,
-    )?;
-    let assurance_level: EvidenceAssuranceLevel = parse_owner_storage_value(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "assurance_level",
-        &record.assurance_level,
-    )?;
+    let source_kind = record.source;
+    let assurance_level = record.assurance;
     if !evidence_assurance_matches_source(source_kind, assurance_level) {
         return Ok(None);
     }
 
-    let authority: PersistedEvidenceObservationAuthority = decode_required_json(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "metadata_json",
-        Some(&record.metadata_json),
-    )?;
+    let authority = &record.metadata;
     if record.run_id.as_deref() != Some(authority.recorded_by_run_id.as_str())
         || authority.invocation_verification_basis.trim().is_empty()
     {
         return Ok(None);
     }
-    let input_refs: Vec<StateRecordRef> = decode_required_json(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "input_refs_json",
-        Some(&record.input_refs_json),
-    )?;
-    let output_artifact_refs: Vec<ArtifactRef> = decode_required_json(
-        "evidence_observations",
-        record.evidence_observation_id.clone(),
-        "output_artifact_refs_json",
-        Some(&record.output_artifact_refs_json),
-    )?;
-    let observed_by_actor_source = record
-        .observed_by_actor_source
-        .as_deref()
-        .map(|value| {
-            parse_owner_storage_value(
-                "evidence_observations",
-                record.evidence_observation_id.clone(),
-                "observed_by_actor_source",
-                value,
-            )
-        })
-        .transpose()?;
-    let observed_at = UtcTimestamp::parse(&record.observed_at).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "evidence_observations",
-            record.evidence_observation_id.clone(),
-            "observed_at",
-        ))
-    })?;
-    if !stored_observation_artifacts_are_current(store, record, basis, &output_artifact_refs)?
-        || !producer_output_binding_matches(&authority.producer_anchor, &output_artifact_refs)
+    let input_refs = &record.input_refs;
+    let output_artifact_refs = &record.output_artifact_refs;
+    let observed_by_actor_source = record.observed_by.as_ref();
+    let observed_at = &record.observed_time;
+    if !stored_observation_artifacts_are_current(store, record, basis, output_artifact_refs)?
+        || !producer_output_binding_matches(&authority.producer_anchor, output_artifact_refs)
     {
         return Ok(None);
     }
@@ -493,12 +427,12 @@ fn stored_evidence_observation_anchored_assurance(
                 store,
                 basis,
                 &UserChannelObservationAuthorityView {
-                    input_refs: &input_refs,
-                    output_artifact_refs: &output_artifact_refs,
-                    observed_by_actor_source: observed_by_actor_source.as_ref(),
+                    input_refs,
+                    output_artifact_refs,
+                    observed_by_actor_source,
                     producer_anchor: &authority.producer_anchor,
                     relevance_assessment: &authority.relevance_assessment,
-                    observed_at: &observed_at,
+                    observed_at,
                 },
             )?
             .then_some(assurance_level))
@@ -539,17 +473,12 @@ fn stored_evidence_observation_anchored_assurance(
             else {
                 return Ok(None);
             };
-            let source_outputs: Vec<ArtifactRef> = decode_required_json(
-                "evidence_observations",
-                source_record.evidence_observation_id.clone(),
-                "output_artifact_refs_json",
-                Some(&source_record.output_artifact_refs_json),
-            )?;
-            if !exact_artifact_ref_sets_match(&source_outputs, &output_artifact_refs)
-                || !relevance_supports_claim(&stored_evidence_observation_relevance(
-                    &source_record,
-                )?)
-            {
+            if !exact_artifact_ref_sets_match(
+                &source_record.output_artifact_refs,
+                output_artifact_refs,
+            ) || !relevance_supports_claim(&stored_evidence_observation_relevance(
+                &source_record,
+            )?) {
                 return Ok(None);
             }
             let inherited = stored_evidence_observation_anchored_assurance(
@@ -565,9 +494,9 @@ fn stored_evidence_observation_anchored_assurance(
                 store,
                 record,
                 basis,
-                &input_refs,
-                &output_artifact_refs,
-                observed_by_actor_source.as_ref(),
+                input_refs,
+                output_artifact_refs,
+                observed_by_actor_source,
                 &authority.producer_anchor,
                 &authority.relevance_assessment,
             )?
@@ -1012,14 +941,10 @@ fn projected_reuse_authority_is_current(
     else {
         return Ok(false);
     };
-    let source_outputs: Vec<ArtifactRef> = decode_required_json(
-        "evidence_observations",
-        source_record.evidence_observation_id.clone(),
-        "output_artifact_refs_json",
-        Some(&source_record.output_artifact_refs_json),
-    )?;
-    if !exact_artifact_ref_sets_match(&source_outputs, &observation.output_artifact_refs)
-        || !relevance_supports_claim(&stored_evidence_observation_relevance(&source_record)?)
+    if !exact_artifact_ref_sets_match(
+        &source_record.output_artifact_refs,
+        &observation.output_artifact_refs,
+    ) || !relevance_supports_claim(&stored_evidence_observation_relevance(&source_record)?)
     {
         return Ok(false);
     }
@@ -1062,17 +987,7 @@ pub(super) fn load_close_evidence_summary_facts(
     task_id: &TaskId,
     state_version: u64,
 ) -> CoreResult<CloseEvidenceSummaryFacts> {
-    let updated_by_run_id = record
-        .map(|record| {
-            decode_required_json::<PersistedEvidenceMetadata>(
-                "evidence_summaries",
-                record.evidence_summary_id.clone(),
-                "metadata_json",
-                Some(&record.metadata_json),
-            )
-            .map(|metadata| metadata.updated_by_run_id)
-        })
-        .transpose()?;
+    let updated_by_run_id = record.map(|record| record.metadata.updated_by_run_id.clone());
     let updated_by_run = updated_by_run_id
         .as_ref()
         .map(|run_id| store.run_record(run_id.as_str()))
@@ -1085,30 +1000,8 @@ pub(super) fn load_close_evidence_summary_facts(
             scope_revision: run.scope_revision,
         });
     let mut coverage_items = record
-        .map(|record| {
-            decode_required_json::<Vec<EvidenceCoverageItem>>(
-                "evidence_summaries",
-                record.evidence_summary_id.clone(),
-                "coverage_json",
-                Some(&record.coverage_json),
-            )
-        })
-        .transpose()?
+        .map(|record| record.coverage.clone())
         .unwrap_or_default();
-    if let Some(record) = record {
-        let _supporting_refs: Vec<StateRecordRef> = decode_required_json(
-            "evidence_summaries",
-            record.evidence_summary_id.clone(),
-            "supporting_refs_json",
-            Some(&record.supporting_refs_json),
-        )?;
-        let _gap_refs: Vec<StateRecordRef> = decode_required_json(
-            "evidence_summaries",
-            record.evidence_summary_id.clone(),
-            "gap_refs_json",
-            Some(&record.gap_refs_json),
-        )?;
-    }
     for item in &mut coverage_items {
         item.supporting_artifact_refs = item
             .supporting_artifact_refs

@@ -3,9 +3,8 @@ use super::facts::CloseReadinessFacts;
 use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
 use crate::methods::{
-    change_unit_ref, decode_required_json, effective_write_ticket_status, state_ref,
-    store_error_plan, write_ticket_is_current_for_projection, write_ticket_ref,
-    PersistedLifecycleState, PlanError, StoredScope,
+    change_unit_ref, effective_write_ticket_status, state_ref, store_error_plan,
+    write_ticket_is_current_for_projection, write_ticket_ref, PlanError, StoredScope,
 };
 use crate::pipeline::CoreResult;
 use crate::policy::close_readiness::is_terminal_lifecycle;
@@ -406,15 +405,7 @@ fn recovery_required(context: &CloseReadinessFacts) -> CoreResult<bool> {
     context
         .current_change_unit
         .as_ref()
-        .map(|record| {
-            let lifecycle: PersistedLifecycleState = decode_required_json(
-                "change_units",
-                record.change_unit_id.clone(),
-                "lifecycle_json",
-                Some(&record.lifecycle_json),
-            )?;
-            Ok(lifecycle.recovery_required)
-        })
+        .map(|record| Ok(record.lifecycle.recovery_required))
         .transpose()
         .map(|value| value.unwrap_or(false))
 }

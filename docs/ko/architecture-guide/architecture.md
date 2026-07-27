@@ -229,9 +229,10 @@ plan과 응답에 반영하는 방식을 결정합니다. 프로덕션 메서드
 ## Core 증거 및 닫기 준비 상태 경계
 
 Core는 증거 사실 취득과 증거 정책 평가를 분리합니다.
-`crates/volicord-core/src/methods/evidence_facts.rs`는 공유 Store 조회, 담당
-레코드의 엄격한 디코딩, 저장된 증거와 투영된 증거를 위한 typed 정책 입력 구성을
-담당합니다. `crates/volicord-core/src/policy/` 아래의 책임별 모듈은 출처,
+담당 레코드의 엄격한 디코딩은 Store가 수행합니다.
+`crates/volicord-core/src/methods/evidence_facts.rs`는 디코딩된 typed 레코드를
+공유 조회하고 저장된 증거와 투영된 증거의 정책 입력을 구성합니다.
+`crates/volicord-core/src/policy/` 아래의 책임별 모듈은 출처,
 관련성과 뒷받침 여부, 대상과 `CurrentCloseBasis` 일치, 생산자와 아티팩트 결속,
 닫기 준비 상태의 증거 해석을 평가합니다. 필요한 입력이 이미 있으면 이 평가는
 순수 함수로 수행됩니다.

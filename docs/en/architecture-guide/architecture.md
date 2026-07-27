@@ -250,9 +250,10 @@ effects remain with the focused [storage owners](../reference/storage.md).
 ## Core evidence and close-readiness boundaries
 
 Core separates evidence fact acquisition from evidence policy evaluation.
-`crates/volicord-core/src/methods/evidence_facts.rs` performs shared Store
-reads, strict owner-row decoding, and construction of typed policy inputs for
-stored and projected evidence. The responsibility-owned modules under
+Store performs strict owner-row decoding.
+`crates/volicord-core/src/methods/evidence_facts.rs` performs shared reads of
+those typed records and constructs policy inputs for stored and projected
+evidence. The responsibility-owned modules under
 `crates/volicord-core/src/policy/` evaluate provenance, relevance and support,
 target and `CurrentCloseBasis` matching, producer and artifact binding, and
 close-readiness evidence interpretation. These evaluations are pure where

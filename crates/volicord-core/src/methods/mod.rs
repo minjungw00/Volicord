@@ -42,8 +42,8 @@ use volicord_store::{
         AcceptanceCriterionRecord, ChangeUnitInsert, ChangeUnitRecord, ContinuityMutation,
         CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
         ProjectContinuityRecordInsert, ProjectContinuityRecordRecord, ProjectStateHeader,
-        StoredArtifactRecord, StoredRecordRef, TaskMutation, TaskRecord, TaskScopeUpdate,
-        WriteTicketRecord,
+        StoredArtifactRecord, StoredChangeUnitLifecycle, StoredChangeUnitWriteBasis,
+        StoredRecordRef, TaskMutation, TaskRecord, TaskScopeUpdate, WriteTicketRecord,
     },
     diagnostics::{record_workflow_metric_event, WorkflowMetricEvent, WorkflowMetricKind},
     RuntimeHomeMutationContext, StoreError,
@@ -1287,30 +1287,36 @@ fn baseline_matches(
     task: &TaskRecord,
     baseline_ref: &BaselineRef,
 ) -> CoreResult<bool> {
-    let write_basis: PersistedWriteBasis = decode_required_json(
-        "change_units",
-        change_unit.change_unit_id.clone(),
-        "write_basis_json",
-        Some(&change_unit.write_basis_json),
-    )?;
     let task_baseline = StoredScope::from_task(task)?.baseline_ref;
-    Ok(
-        write_basis.baseline_ref.as_ref().map(BaselineRef::as_str) == Some(baseline_ref.as_str())
-            && task_baseline.as_deref() == Some(baseline_ref.as_str()),
-    )
+    Ok(change_unit
+        .write_basis
+        .baseline_ref
+        .as_ref()
+        .map(BaselineRef::as_str)
+        == Some(baseline_ref.as_str())
+        && task_baseline.as_deref() == Some(baseline_ref.as_str()))
 }
 
 fn workspace_context_matches(
     change_unit: &ChangeUnitRecord,
     verified_invocation: &VerifiedInvocationContext,
 ) -> CoreResult<bool> {
-    let basis: PersistedWriteBasis = decode_required_json(
-        "change_units",
-        change_unit.change_unit_id.clone(),
-        "write_basis_json",
-        Some(&change_unit.write_basis_json),
-    )?;
-    Ok(basis.git_workspace_context == verified_invocation.git_workspace_context)
+    Ok(
+        match (
+            change_unit.write_basis.git_workspace_context.as_ref(),
+            verified_invocation.git_workspace_context.as_ref(),
+        ) {
+            (None, None) => true,
+            (Some(stored), Some(current)) => {
+                stored.git_common_dir == current.git_common_dir
+                    && stored.worktree_id == current.worktree_id
+                    && stored.branch_ref == current.branch_ref
+                    && stored.head_sha == current.head_sha
+                    && stored.workspace_fingerprint == current.workspace_fingerprint
+            }
+            (None, Some(_)) | (Some(_), None) => false,
+        },
+    )
 }
 
 fn paths_match_current_change_unit(
@@ -1321,22 +1327,17 @@ fn paths_match_current_change_unit(
     if intended_paths.is_empty() {
         return Ok(true);
     }
-    let raw_bounded_paths: Vec<String> = decode_required_json(
-        "change_units",
-        change_unit.change_unit_id.clone(),
-        "bounded_paths_json",
-        Some(&change_unit.bounded_paths_json),
-    )?;
-    if raw_bounded_paths.is_empty() {
+    if change_unit.bounded_paths.is_empty() {
         return Ok(false);
     }
-    let bounded_paths = normalize_product_paths(repo_root, &raw_bounded_paths).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-            "change_units",
-            change_unit.change_unit_id.clone(),
-            "bounded_paths_json",
-        ))
-    })?;
+    let bounded_paths =
+        normalize_product_paths(repo_root, &change_unit.bounded_paths).map_err(|_| {
+            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+                "change_units",
+                change_unit.change_unit_id.clone(),
+                "bounded_paths_json",
+            ))
+        })?;
     Ok(!bounded_paths.is_empty()
         && intended_paths.iter().all(|path| {
             bounded_paths
@@ -1348,12 +1349,7 @@ fn paths_match_current_change_unit(
 fn change_unit_effect_contract(
     change_unit: &ChangeUnitRecord,
 ) -> CoreResult<Option<ChangeUnitEffectContract>> {
-    decode_required_json(
-        "change_units",
-        change_unit.change_unit_id.clone(),
-        "effect_contract_json",
-        Some(&change_unit.effect_contract_json),
-    )
+    Ok(change_unit.effect_contract.clone())
 }
 
 struct SensitiveApprovalSearch<'a> {
@@ -1663,22 +1659,6 @@ struct PersistedScopeSummary {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PersistedWriteBasis {
-    #[serde(default)]
-    baseline_ref: Option<BaselineRef>,
-    #[serde(default)]
-    git_workspace_context: Option<crate::pipeline::GitWorkspaceContext>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PersistedLifecycleState {
-    #[serde(default)]
-    recovery_required: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct PersistedWriteTicketAttemptScope {
     task_id: TaskId,
     change_unit_id: ChangeUnitId,
@@ -1879,28 +1859,15 @@ fn build_state_summary(
         .transpose()?
         .flatten();
     let workspace_context = current_change_unit
-        .map(|record| {
-            decode_required_json::<PersistedWriteBasis>(
-                "change_units",
-                record.change_unit_id.clone(),
-                "write_basis_json",
-                Some(&record.write_basis_json),
-            )
-            .map(|basis| {
-                basis
-                    .git_workspace_context
-                    .map(|workspace| WorkspaceContext {
-                        vcs: WorkspaceVcs::Git,
-                        git_common_dir: workspace.git_common_dir,
-                        worktree_id: workspace.worktree_id,
-                        branch_ref: workspace.branch_ref,
-                        head_sha: workspace.head_sha,
-                        workspace_fingerprint: workspace.workspace_fingerprint,
-                    })
-            })
-        })
-        .transpose()?
-        .flatten();
+        .and_then(|record| record.write_basis.git_workspace_context.as_ref())
+        .map(|workspace| WorkspaceContext {
+            vcs: WorkspaceVcs::Git,
+            git_common_dir: workspace.git_common_dir.clone(),
+            worktree_id: workspace.worktree_id.clone(),
+            branch_ref: workspace.branch_ref.clone(),
+            head_sha: workspace.head_sha.clone(),
+            workspace_fingerprint: workspace.workspace_fingerprint.clone(),
+        });
     let lineage = match (
         task.predecessor_task_id.as_ref(),
         task.lineage_relation.as_deref(),
@@ -2433,8 +2400,8 @@ fn synthetic_change_unit_record(
     task_id: &TaskId,
     insert: &ChangeUnitInsert,
     planned_state_version: u64,
-) -> ChangeUnitRecord {
-    ChangeUnitRecord {
+) -> CoreResult<ChangeUnitRecord> {
+    Ok(ChangeUnitRecord {
         project_id: project_id.as_str().to_owned(),
         change_unit_id: insert.change_unit_id.clone(),
         task_id: task_id.as_str().to_owned(),
@@ -2446,7 +2413,11 @@ fn synthetic_change_unit_record(
         write_basis_json: insert.write_basis_json.clone(),
         effect_contract_json: insert.effect_contract_json.clone(),
         lifecycle_json: insert.lifecycle_json.clone(),
-    }
+        bounded_paths: serde_json::from_str(&insert.bounded_paths_json)?,
+        write_basis: serde_json::from_str::<StoredChangeUnitWriteBasis>(&insert.write_basis_json)?,
+        effect_contract: serde_json::from_str(&insert.effect_contract_json)?,
+        lifecycle: serde_json::from_str::<StoredChangeUnitLifecycle>(&insert.lifecycle_json)?,
+    })
 }
 
 fn task_shaping_json(

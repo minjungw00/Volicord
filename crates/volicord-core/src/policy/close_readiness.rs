@@ -35,13 +35,6 @@ pub(crate) struct FinalAcceptanceRequirement<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CancellationAuthorityRequirement<'a> {
-    pub(crate) task_id: &'a TaskId,
-    pub(crate) change_unit_id: Option<&'a ChangeUnitId>,
-    pub(crate) scope_revision: u64,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct ScopeDecisionAuthorityRequirement<'a> {
     pub(crate) task_id: &'a TaskId,
     pub(crate) scope_revision: u64,
@@ -80,27 +73,6 @@ pub(crate) fn current_final_acceptance(
         .basis
         .as_ref()
         .is_some_and(|basis| final_acceptance_basis_matches_current(basis, requirement))
-}
-
-pub(crate) fn current_cancellation_authority(
-    judgment: &UserActionAuthority,
-    requirement: &CancellationAuthorityRequirement<'_>,
-) -> bool {
-    if !accepted_current_user_authority(judgment, UserActionKind::Cancellation) {
-        return false;
-    }
-    if !judgment
-        .required_for
-        .contains(&UserActionRequiredFor::CloseCancel)
-    {
-        return false;
-    }
-    judgment.basis.as_ref().is_some_and(|basis| {
-        let coordinates = basis.coordinates();
-        coordinates.task_id == *requirement.task_id
-            && coordinates.scope_revision == requirement.scope_revision
-            && coordinates.change_unit_id.as_ref() == requirement.change_unit_id
-    })
 }
 
 pub(crate) fn final_acceptance_basis_matches_current(
