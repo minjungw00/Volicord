@@ -13,6 +13,7 @@ mod parity;
 mod release_metadata;
 mod repository;
 mod storage;
+mod structured_parser;
 mod terminology;
 mod workspace_manifests;
 

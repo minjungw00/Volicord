@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+bufjson = "=0.4.0"
 jsonschema = { version = "0.18", default-features = false }
 pulldown-cmark = "0.12"
 schemars = "0.8"
@@ -23,6 +24,7 @@ volicord-command-model = { path = "../crates/volicord-command-model" }
 volicord-mcp-protocol = { path = "../crates/volicord-mcp-protocol" }
 volicord-mcp-wire = { path = "../crates/volicord-mcp-wire" }
 volicord-types = { path = "../crates/volicord-types" }
+yaml-rust2 = "0.11"
 
 [lib]
 path = "src/lib.rs"

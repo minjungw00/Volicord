@@ -219,12 +219,14 @@ Current shapes are `complete_request`, `params`, `complete_response`,
 only shapes that its current owner supports. A `schema` fence is type or shape
 notation for readers, not a JSON or YAML instance.
 
-Structured JSON is parsed as JSON. Structured YAML is converted
-deterministically to a JSON-compatible value and rejects tags and non-string
-mapping keys. The resulting value must satisfy its exact generated schema,
-including required and unknown properties, types, nested structures, arrays,
-enum and const values, constraints, discriminated unions, references, and
-nullability. English and Korean instances are each validated before their
+Structured JSON objects and YAML mappings require exact unique keys within
+every object or mapping at every nesting depth. Parsing rejects the second
+occurrence before materializing a JSON-compatible value. Structured YAML also
+rejects tags, anchors, aliases, merge keys, and non-string mapping keys. The
+unique-key value must then satisfy its exact generated schema, including
+required and unknown properties, types, nested structures, arrays, enum and
+const values, constraints, discriminated unions, references, and nullability.
+English and Korean instances are each parsed and validated before their
 structural and exact-identifier parity is compared.
 
 Request field, requiredness, nullability, and type tables in API method

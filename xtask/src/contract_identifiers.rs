@@ -3,6 +3,7 @@ use crate::doc_index::{DocIndex, PairedDocument};
 use crate::markdown::{
     self, MarkdownLiteral, MarkdownLiteralKind, MarkdownStructure, MarkdownUnit, MeaningUnitKey,
 };
+use crate::structured_parser::{self, StructuredParseError};
 use jsonschema::{error::ValidationErrorKind, Draft, JSONSchema};
 use schemars::schema_for;
 use serde_json::Value;
@@ -595,12 +596,13 @@ fn validate_language(
     for unit in structure.units() {
         let issue_count = issues.len();
         validate_declared_contracts(paired, unit, catalog, path, issues);
-        validate_unit_candidates(paired, unit, catalog, path, language, issues);
+        let structured_instances =
+            validate_unit_candidates(paired, unit, catalog, path, language, issues);
         if issues.len() == issue_count {
             result.valid_units.insert(unit.key.clone());
             result.identifiers.insert(
                 unit.key.clone(),
-                unit_identifiers(unit, &scoped_identifiers),
+                unit_identifiers(unit, &scoped_identifiers, &structured_instances),
             );
         }
     }
@@ -636,14 +638,19 @@ fn validate_unit_candidates(
     path: &str,
     language: &str,
     issues: &mut Vec<ValidationIssue>,
-) {
-    for literal in &unit.literals {
+) -> BTreeMap<usize, Value> {
+    let mut structured_instances = BTreeMap::new();
+    for (literal_index, literal) in unit.literals.iter().enumerate() {
         match (literal.kind, literal.language.as_deref()) {
             (MarkdownLiteralKind::Inline, None) => {
                 validate_inline_literal(paired, unit, literal, catalog, path, issues);
             }
             (MarkdownLiteralKind::Fenced, Some("json" | "yaml" | "yml")) => {
-                validate_structured_literal(paired, unit, literal, catalog, path, language, issues);
+                if let Some(instance) = validate_structured_literal(
+                    paired, unit, literal, catalog, path, language, issues,
+                ) {
+                    structured_instances.insert(literal_index, instance);
+                }
             }
             (MarkdownLiteralKind::Fenced, Some("bash" | "console" | "sh" | "shell" | "zsh")) => {
                 validate_exact_occurrences(paired, unit, literal, catalog, path, |_| true, issues);
@@ -670,6 +677,7 @@ fn validate_unit_candidates(
             _ => {}
         }
     }
+    structured_instances
 }
 
 fn validate_inline_literal(
@@ -792,7 +800,7 @@ fn validate_structured_literal(
     path: &str,
     language: &str,
     issues: &mut Vec<ValidationIssue>,
-) {
+) -> Option<Value> {
     let shapes = declared_attributes(literal, "shape=");
     if shapes.len() != 1 || shapes[0].is_empty() {
         issues.push(ValidationIssue::at_line(
@@ -804,7 +812,7 @@ fn validate_structured_literal(
                 paired.doc_id, unit.key,
             ),
         ));
-        return;
+        return None;
     }
     let shape = shapes[0];
     let contract_selectors = declared_attributes(literal, "contract=");
@@ -822,11 +830,11 @@ fn validate_structured_literal(
                 paired.doc_id, unit.key,
             ),
         ));
-        return;
+        return None;
     }
     let candidates = if let Some(contract) = contract_selectors.first().copied() {
         if !paired.contracts.contains(contract) {
-            return;
+            return None;
         }
         vec![contract]
     } else {
@@ -854,7 +862,7 @@ fn validate_structured_literal(
                     paired.doc_id, unit.key
                 ),
             ));
-            return;
+            return None;
         }
         _ => {
             issues.push(ValidationIssue::at_line(
@@ -868,12 +876,10 @@ fn validate_structured_literal(
                     candidates.join(", ")
                 ),
             ));
-            return;
+            return None;
         }
     };
-    let Some(owner) = catalog.contracts.get(contract) else {
-        return;
-    };
+    let owner = catalog.contracts.get(contract)?;
     let Some(schema) = owner.example_schemas.get(shape) else {
         issues.push(ValidationIssue::at_line(
             path,
@@ -884,23 +890,67 @@ fn validate_structured_literal(
                 paired.doc_id, unit.key
             ),
         ));
-        return;
+        return None;
     };
     let instance = match parse_structured_instance(literal) {
         Ok(instance) => instance,
-        Err(error) => {
+        Err(StructuredParseError::DuplicateKey {
+            instance_path,
+            key,
+            first,
+            repeated,
+        }) => {
+            let first_document_line = literal.line + first.line - 1;
+            let repeated_document_line = literal.line + repeated.line - 1;
+            let key =
+                serde_json::to_string(&key).unwrap_or_else(|_| "\"<unprintable key>\"".to_owned());
             issues.push(ValidationIssue::at_line(
                 path,
                 "contract_example.parse",
-                Some(literal.line),
+                Some(repeated_document_line),
                 format!(
-                    "{language} document {} structural unit `{}` semantic contract `{contract}` shape `{shape}` is not a JSON-compatible {} instance: {error}",
+                    "{language} document {} structural unit `{}` semantic contract `{contract}` shape `{shape}` instance path `{instance_path}` has duplicate key {key}; first occurrence at structured source line {}, column {} (document line {first_document_line}), repeated occurrence at structured source line {}, column {} (document line {repeated_document_line})",
                     paired.doc_id,
                     unit.key,
-                    literal.language.as_deref().unwrap_or("structured")
+                    first.line,
+                    first.column,
+                    repeated.line,
+                    repeated.column,
                 ),
             ));
-            return;
+            return None;
+        }
+        Err(StructuredParseError::Invalid {
+            instance_path,
+            position,
+            message,
+        }) => {
+            let issue_line = position
+                .map(|position| literal.line + position.line - 1)
+                .unwrap_or(literal.line);
+            let position = position.map_or_else(
+                || "at an unavailable structured source position".to_owned(),
+                |position| {
+                    format!(
+                        "at structured source line {}, column {} (document line {})",
+                        position.line,
+                        position.column,
+                        literal.line + position.line - 1
+                    )
+                },
+            );
+            issues.push(ValidationIssue::at_line(
+                path,
+                "contract_example.parse",
+                Some(issue_line),
+                format!(
+                    "{language} document {} structural unit `{}` semantic contract `{contract}` shape `{shape}` instance path `{instance_path}` is not a JSON-compatible {} instance {position}: {message}",
+                    paired.doc_id,
+                    unit.key,
+                    literal.language.as_deref().unwrap_or("structured"),
+                ),
+            ));
+            return None;
         }
     };
     if let Some(dialect) = schema.get("$schema") {
@@ -917,7 +967,7 @@ fn validate_structured_literal(
                     bounded_json(dialect)
                 ),
             ));
-            return;
+            return None;
         }
     }
     let compiled = match JSONSchema::options()
@@ -935,7 +985,7 @@ fn validate_structured_literal(
                     paired.doc_id, unit.key, owner.owner, error.schema_path, error
                 ),
             ));
-            return;
+            return None;
         }
     };
     if let Err(validation_errors) = compiled.validate(&instance) {
@@ -972,53 +1022,15 @@ fn validate_structured_literal(
                 ),
             ));
         }
-    };
+    }
+    Some(instance)
 }
 
-fn parse_structured_instance(literal: &MarkdownLiteral) -> Result<Value, String> {
-    match literal.language.as_deref() {
-        Some("json") => serde_json::from_str(&literal.text).map_err(|error| error.to_string()),
-        Some("yaml" | "yml") => {
-            let value = serde_yaml::from_str::<serde_yaml::Value>(&literal.text)
-                .map_err(|error| error.to_string())?;
-            yaml_to_json(value, "$")
-        }
-        _ => Err("unsupported structured fence language".to_owned()),
-    }
-}
-
-fn yaml_to_json(value: serde_yaml::Value, path: &str) -> Result<Value, String> {
-    match value {
-        serde_yaml::Value::Null => Ok(Value::Null),
-        serde_yaml::Value::Bool(value) => Ok(Value::Bool(value)),
-        serde_yaml::Value::Number(value) => {
-            serde_json::to_value(value).map_err(|error| format!("{path}: {error}"))
-        }
-        serde_yaml::Value::String(value) => Ok(Value::String(value)),
-        serde_yaml::Value::Sequence(values) => values
-            .into_iter()
-            .enumerate()
-            .map(|(index, value)| yaml_to_json(value, &format!("{path}/{index}")))
-            .collect::<Result<Vec<_>, _>>()
-            .map(Value::Array),
-        serde_yaml::Value::Mapping(values) => {
-            let mut object = serde_json::Map::new();
-            for (key, value) in values {
-                let serde_yaml::Value::String(key) = key else {
-                    return Err(format!(
-                        "{path}: YAML mapping keys must be strings for JSON compatibility"
-                    ));
-                };
-                let child_path = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
-                object.insert(key, yaml_to_json(value, &child_path)?);
-            }
-            Ok(Value::Object(object))
-        }
-        serde_yaml::Value::Tagged(tagged) => Err(format!(
-            "{path}: YAML tag {} is not supported by JSON contracts",
-            tagged.tag
-        )),
-    }
+fn parse_structured_instance(literal: &MarkdownLiteral) -> Result<Value, StructuredParseError> {
+    structured_parser::parse(
+        literal.language.as_deref().unwrap_or("structured"),
+        &literal.text,
+    )
 }
 
 fn schema_expectation(kind: &ValidationErrorKind) -> String {
@@ -1252,9 +1264,10 @@ fn units_by_key(structure: &MarkdownStructure) -> BTreeMap<MeaningUnitKey, &Mark
 fn unit_identifiers(
     unit: &MarkdownUnit,
     scoped: &BTreeSet<(IdentifierCategory, String)>,
+    structured_instances: &BTreeMap<usize, Value>,
 ) -> BTreeSet<(IdentifierCategory, String)> {
     let mut identifiers = BTreeSet::new();
-    for literal in &unit.literals {
+    for (literal_index, literal) in unit.literals.iter().enumerate() {
         match (literal.kind, literal.language.as_deref()) {
             (MarkdownLiteralKind::Inline, None) => {
                 if unrelated_code_literal(&literal.text) {
@@ -1274,12 +1287,12 @@ fn unit_identifiers(
                 }
             }
             (MarkdownLiteralKind::Fenced, Some("json" | "yaml" | "yml")) => {
-                let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&literal.text) else {
+                let Some(value) = structured_instances.get(&literal_index) else {
                     continue;
                 };
                 let mut keys = BTreeSet::new();
                 let mut values = BTreeSet::new();
-                collect_structured_tokens(&value, &mut Vec::new(), &mut keys, &mut values);
+                collect_structured_tokens(value, &mut Vec::new(), &mut keys, &mut values);
                 for (category, identifier) in scoped {
                     if category.is_structured_key()
                         && keys.iter().any(|key| key.value == *identifier)
@@ -1396,34 +1409,30 @@ struct StructuredKey {
 }
 
 fn collect_structured_tokens(
-    value: &serde_yaml::Value,
+    value: &Value,
     path: &mut Vec<String>,
     keys: &mut BTreeSet<StructuredKey>,
     values: &mut BTreeSet<String>,
 ) {
     match value {
-        serde_yaml::Value::Mapping(mapping) => {
+        Value::Object(mapping) => {
             for (key, value) in mapping {
-                if let Some(key) = key.as_str() {
-                    let key = normalize_structured_key(key).to_owned();
-                    keys.insert(StructuredKey {
-                        path: path.clone(),
-                        value: key.clone(),
-                    });
-                    path.push(key);
-                    collect_structured_tokens(value, path, keys, values);
-                    path.pop();
-                } else {
-                    collect_structured_tokens(value, path, keys, values);
-                }
+                let key = normalize_structured_key(key).to_owned();
+                keys.insert(StructuredKey {
+                    path: path.clone(),
+                    value: key.clone(),
+                });
+                path.push(key);
+                collect_structured_tokens(value, path, keys, values);
+                path.pop();
             }
         }
-        serde_yaml::Value::Sequence(sequence) => {
+        Value::Array(sequence) => {
             for value in sequence {
                 collect_structured_tokens(value, path, keys, values);
             }
         }
-        serde_yaml::Value::String(value) => {
+        Value::String(value) => {
             values.insert(value.to_owned());
         }
         _ => {}
@@ -1871,6 +1880,77 @@ mod tests {
         );
 
         assert!(issues.is_empty(), "{issues:#?}");
+    }
+
+    #[test]
+    fn duplicate_key_diagnostic_identifies_owner_path_and_source_locations() {
+        let catalog = structured_catalog();
+        let english = "# A\n\n```json shape=params\n{\n  \"outer\": [\n    {\n      \"entry\": \"first\",\n      \"entry\": \"second\"\n    }\n  ]\n}\n```\n";
+        let korean = "# 가\n\n```json shape=params\n{\"request_only\":\"value\",\"nested\":{\"known\":true},\"items\":[1],\"state\":\"ready\",\"nonnull\":\"value\"}\n```\n";
+        let issues = validate(&catalog, &["api.method.alpha.request"], english, korean);
+
+        assert_eq!(issues.len(), 1, "{issues:#?}");
+        let issue = &issues[0];
+        assert_eq!(issue.path(), "en.md");
+        assert_eq!(issue.line(), Some(8));
+        assert_eq!(issue.category(), "contract_example.parse");
+        for expected in [
+            "English document reference.api.method-alpha",
+            "structural unit `",
+            "semantic contract `api.method.alpha.request`",
+            "shape `params`",
+            "instance path `/outer/0`",
+            "duplicate key \"entry\"",
+            "first occurrence at structured source line 4, column 7 (document line 7)",
+            "repeated occurrence at structured source line 5, column 7 (document line 8)",
+        ] {
+            assert!(issue.message().contains(expected), "{issue:#?}");
+        }
+    }
+
+    #[test]
+    fn duplicate_keys_are_rejected_independently_in_each_language() {
+        let catalog = structured_catalog();
+        let valid = "# A\n\n```yaml shape=params\nrequest_only: value\nnested:\n  known: true\nitems: [1]\nstate: ready\nnonnull: value\n```\n";
+        let duplicate = "# A\n\n```yaml shape=params\nentry: first\nentry: second\n```\n";
+
+        for (english, korean, expected_path, expected_language) in [
+            (duplicate, valid, "en.md", "English"),
+            (valid, duplicate, "ko.md", "Korean"),
+        ] {
+            let issues = validate(&catalog, &["api.method.alpha.request"], english, korean);
+            assert_eq!(issues.len(), 1, "{issues:#?}");
+            assert_eq!(issues[0].path(), expected_path);
+            assert_eq!(issues[0].category(), "contract_example.parse");
+            assert!(
+                issues[0].message().contains(expected_language),
+                "{issues:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn matching_duplicate_failures_in_both_languages_are_not_hidden_by_parity() {
+        let catalog = structured_catalog();
+        let english =
+            "# A\n\n```json shape=params\n{\"entry\":\"first\",\"entry\":\"second\"}\n```\n";
+        let korean = "# 가\n\n```yaml shape=params\nentry: first\nentry: second\n```\n";
+        let issues = validate(&catalog, &["api.method.alpha.request"], english, korean);
+
+        assert_eq!(issues.len(), 2, "{issues:#?}");
+        assert!(issues
+            .iter()
+            .all(|issue| issue.category() == "contract_example.parse"));
+        assert!(issues
+            .iter()
+            .all(|issue| issue.message().contains("duplicate key")));
+        assert_eq!(
+            issues
+                .iter()
+                .map(|issue| issue.path())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["en.md", "ko.md"])
+        );
     }
 
     #[test]
