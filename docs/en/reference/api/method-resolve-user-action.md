@@ -8,13 +8,16 @@ Connection MCP tool.
 
 ## Request
 
-```yaml
-ResolveUserActionRequest:
-  envelope: ToolEnvelope
-  user_action_request_id: string
-  resolution: UserActionResolutionInput
-  channel_submission_id: string
-```
+### `ResolveUserActionRequest` fields
+
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `channel_submission_id` | yes | no | `string` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `resolution` | yes | no | `UserActionResolutionInput` |
+| `user_action_request_id` | yes | no | `string` |
+
+
 
 `resolution` is a closed tagged union with
 `resolution_type=choice|evidence_observation` and must match the stored request

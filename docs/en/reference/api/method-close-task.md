@@ -153,23 +153,31 @@ Additional requirements:
 
 ## Request schema
 
-This document owns the top-level `params` request shapes below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This document owns the top-level `params` request fields in the generated
+tables below. `envelope` is the shared
+[`ToolEnvelope`](schema-core.md#tool-envelope); the tables do not redefine
+`ToolEnvelope` fields. Requiredness and nullability come directly from the
+semantic request descriptors.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+### `CheckCloseRequest` fields
 
-```yaml
-CheckCloseRequest:
-  envelope: ToolEnvelope
-  task_id: string
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `envelope` | yes | no | `ToolEnvelope` |
+| `task_id` | yes | no | `string` |
 
-CloseTaskRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  intent: string
-  close_reason: string | null
-  superseding_task_id: string | null
-  user_note: string | null
-```
+### `CloseTaskRequest` fields
+
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `close_reason` | yes | yes | `CloseReason` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `intent` | yes | no | `CloseMutationIntent` |
+| `superseding_task_id` | yes | yes | `string` |
+| `task_id` | yes | no | `string` |
+| `user_note` | yes | yes | `string` |
+
+
 
 Nested owner links:
 - `intent` values are owned by [API Value Sets method-local values](schema-value-sets.md#method-local-values).

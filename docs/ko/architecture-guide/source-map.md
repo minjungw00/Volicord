@@ -285,7 +285,7 @@
 | `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-command-model`에서 문서 예시용 공개 명령 grammar를 받고, `volicord-types`에서 런타임 담당 계약 식별자를 받으며, `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받습니다. `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트는 끌어오지 않습니다. |
 | `xtask/src/lib.rs` | 간결한 저장소 점검 조합과 공개 보고 타입 재노출. |
 | `xtask/src/diagnostics.rs` | 경로, 범주, 선택적 줄 번호, 메시지를 담는 공통 검증 이슈 표현. |
-| `xtask/src/doc_index.rs` | 현재 문서 색인 스키마, 적용 가능성과 계약 원본 해석, 담당 경로, 색인 경로, 유지 문서 coverage. |
+| `xtask/src/doc_index.rs` | 현재 문서 색인 스키마, 적용 가능성과 정확한 의미 기반 계약 경로, 담당 경로, 색인 경로, 유지 문서 coverage. |
 | `xtask/src/markdown.rs` | 공유 Markdown event parsing, 제목 의미 단위, 지원되는 계약 리터럴 구성. |
 | `xtask/src/links.rs` | 로컬 Markdown 대상 해석, 링크, fragment, anchor. |
 | `xtask/src/parity.rs` | 한영 제목 구조 일치. |

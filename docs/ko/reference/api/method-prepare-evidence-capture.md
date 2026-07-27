@@ -40,28 +40,18 @@ Fulfillment는 불변 영속 `EvidenceCaptureReceipt` source-fact record와 크�
 
 ## 요청
 
-```yaml
-PrepareEvidenceCaptureRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  change_unit_id: string
-  baseline_ref: string
-  target: EvidenceTarget
-  capture: EvidenceCaptureSpec
+### `PrepareEvidenceCaptureRequest` 필드
 
-EvidenceCaptureSpec:
-  # 정확히 하나의 tagged branch
-  capture_kind: verified_command_execution
-  command_sha256: 소문자 64자 SHA-256
-  command_label: 정규화된 비어 있지 않은 안전한 표시 텍스트, 최대 256 UTF-8 bytes
-  expected_exit_code: integer | null
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `baseline_ref` | 예 | 아니요 | `string` |
+| `capture` | 예 | 아니요 | `EvidenceCaptureSpec` |
+| `change_unit_id` | 예 | 아니요 | `string` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `target` | 예 | 아니요 | `EvidenceTarget` |
+| `task_id` | 예 | 아니요 | `string` |
 
-  capture_kind: verified_tool_invocation
-  tool_name: 앞뒤 공백을 제거한 비어 있지 않은 string, 최대 256 UTF-8 bytes
-  tool_input_sha256: 소문자 64자 SHA-256
-  expected_success: boolean | null
 
-```
 
 `command_sha256`는 실행 파일을 0번째 요소로 포함하는 전체 UTF-8 인자 벡터의
 canonical JSON에 대한 접두사 없는 소문자 SHA-256입니다. `tool_input_sha256`는

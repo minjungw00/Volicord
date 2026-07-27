@@ -645,30 +645,11 @@ pub(crate) fn structure(
             Event::Text(text) if active_heading_unit.is_some() => {
                 append_heading_text(&mut sections, &text);
             }
-            Event::Html(html) | Event::InlineHtml(html) if root_block.is_none() => {
-                if let Some(source_id) = contract_source_marker(&html) {
-                    pending_owner_source = Some(source_id);
-                }
-            }
             _ => {}
         }
     }
 
     MarkdownStructure { sections }
-}
-
-fn contract_source_marker(html: &str) -> Option<String> {
-    let body = html
-        .trim()
-        .strip_prefix("<!--")?
-        .strip_suffix("-->")?
-        .trim();
-    let source_id = body.strip_prefix("contract-source:")?.trim();
-    (!source_id.is_empty()
-        && source_id.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
-        }))
-    .then(|| source_id.to_owned())
 }
 
 fn mask_code_span_pipes(contents: &str) -> String {
@@ -879,27 +860,6 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(literals, ["StateRecordRef | null", "record_kind=state"]);
-    }
-
-    #[test]
-    fn contract_source_metadata_owns_the_next_structural_block() {
-        let parsed = structure(
-            "# Example\n\n<!-- contract-source: public_api -->\n| Field |\n|---|\n| `status` |\n\nOrdinary `note`.\n",
-            &[],
-        );
-        let table_units = parsed
-            .units()
-            .filter(|unit| unit.key.kind == MarkdownUnitKind::TableCell)
-            .collect::<Vec<_>>();
-        let paragraph = parsed
-            .units()
-            .find(|unit| unit.key.kind == MarkdownUnitKind::Paragraph)
-            .expect("ordinary paragraph");
-
-        assert!(table_units
-            .iter()
-            .all(|unit| unit.owner_source.as_deref() == Some("public_api")));
-        assert_eq!(paragraph.owner_source, None);
     }
 
     #[test]

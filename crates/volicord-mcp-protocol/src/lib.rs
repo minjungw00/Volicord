@@ -962,10 +962,33 @@ impl ProtocolRegistry {
     }
 }
 
-/// Returns the exact public protocol identifiers in the production registry.
-///
-/// The union is derived directly from every current production profile.
-pub fn public_protocol_identifiers() -> BTreeSet<String> {
+/// Exact identifiers for one stable semantic MCP contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolContractDescriptor {
+    id: &'static str,
+    identifiers: BTreeSet<String>,
+    related_contracts: Vec<&'static str>,
+}
+
+impl ProtocolContractDescriptor {
+    /// Returns the stable semantic contract identity.
+    pub const fn id(&self) -> &'static str {
+        self.id
+    }
+
+    /// Returns exact public revision, capability, and wire-field identifiers.
+    pub const fn identifiers(&self) -> &BTreeSet<String> {
+        &self.identifiers
+    }
+
+    /// Returns deliberate semantic relationships to adjacent contracts.
+    pub fn related_contracts(&self) -> &[&'static str] {
+        &self.related_contracts
+    }
+}
+
+/// Returns the semantic MCP contract derived from the production registry.
+pub fn protocol_contract_descriptors() -> Vec<ProtocolContractDescriptor> {
     let mut identifiers = BTreeSet::new();
     for profile in PRODUCTION_PROFILES {
         identifiers.insert(profile.revision().as_str().to_owned());
@@ -995,5 +1018,9 @@ pub fn public_protocol_identifiers() -> BTreeSet<String> {
                 .map(|field| field.as_str().to_owned()),
         );
     }
-    identifiers
+    vec![ProtocolContractDescriptor {
+        id: "mcp.protocol",
+        identifiers,
+        related_contracts: Vec::new(),
+    }]
 }

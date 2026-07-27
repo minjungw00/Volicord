@@ -86,40 +86,31 @@ Run 생성, 증거나 닫기 근거 상태 변경, 아티팩트 승격, 쓰기 �
 
 ## 요청 스키마
 
-이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 메서드는 아래 생성 표의 최상위 `params` 요청 필드를 담당합니다. `envelope`는
+[API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 표는
+`ToolEnvelope` 필드를 다시 정의하지 않습니다. 필수 여부와 Null 허용 여부는 의미
+기반 요청 설명자에서 직접 가져옵니다.
 
-이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
+### `RecordRunRequest` 필드
 
-```yaml
-RecordRunRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  change_unit_id: string
-  kind: string
-  run_id: string | null
-  baseline_ref: string
-  write_ticket_id: string | null
-  performed_operation?: string | null
-  summary: string
-  observed_changes: ObservedChanges
-  artifact_inputs: ArtifactInput[]
-  evidence_updates: EvidenceCoverageUpdate[]
-  evidence_observations: EvidenceObservationInput[]
-  close_assessment: CloseAssessmentInput | null
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `artifact_inputs` | 예 | 아니요 | `ArtifactInput[]` |
+| `baseline_ref` | 예 | 아니요 | `string` |
+| `change_unit_id` | 예 | 아니요 | `string` |
+| `close_assessment` | 예 | 예 | `CloseAssessmentInput` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `evidence_observations` | 예 | 아니요 | `EvidenceObservationInput[]` |
+| `evidence_updates` | 예 | 아니요 | `EvidenceCoverageUpdate[]` |
+| `kind` | 예 | 아니요 | `RunKind` |
+| `observed_changes` | 예 | 아니요 | `ObservedChanges` |
+| `performed_operation` | 아니요 | 예 | `string` |
+| `run_id` | 예 | 예 | `string` |
+| `summary` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `string` |
+| `write_ticket_id` | 예 | 예 | `string` |
 
-CloseAssessmentInput:
-  result_summary: string
-  result_refs: StateRecordRef[]
-  residual_risks: ResidualRiskInput[]
-  sensitive_categories: string[]
-  recovery_constraints: string[]
 
-ResidualRiskInput:
-  summary: string
-  consequence: string
-  acceptance_required: boolean
-  source_refs: StateRecordRef[]
-```
 
 중첩 형태 담당 문서:
 - `observed_changes`, `evidence_updates`, `evidence_observations`는

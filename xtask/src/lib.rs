@@ -1,6 +1,7 @@
 mod architecture;
 mod artifact_hygiene;
 mod cli_docs;
+mod contract_docs;
 mod contract_identifiers;
 mod diagnostics;
 mod doc_index;
@@ -53,6 +54,7 @@ pub fn run_docs_check(root: &Path) -> Result<CheckReport> {
         parity::validate_bilingual_structure(&root, index, &mut issues);
         contract_identifiers::validate_contract_identifiers(&root, index, &mut issues);
         contract_identifiers::validate_operation_category_values(&root, index, &mut issues);
+        contract_docs::validate_generated_contract_tables(&root, index, &mut issues);
         cli_docs::validate_generated_cli_synopsis_regions(&root, index, &mut issues);
         cli_docs::validate_volicord_command_examples(&root, index, &mut issues);
         document_structure::validate_architecture_design_documents(&root, index, &mut issues);

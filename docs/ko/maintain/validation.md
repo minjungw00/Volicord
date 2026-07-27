@@ -32,9 +32,9 @@ cargo run -p xtask -- architecture-check
 
 - `docs/doc-index.yaml`이 YAML로 파싱되고 `version: 3`을 갖습니다.
 - 필요한 최상위 섹션이 있으며 지원되지 않는 최상위 필드는 거부됩니다.
-- 각 `contract_sources` 항목은 지원되는 현재 담당 원본 종류 하나, 담당 위치,
-  비어 있지 않은 의미 기반 문서 선택자를 선언합니다. 각 선택자는 유지되는 대응
-  문서로 해석되며 담당 원본 종류마다 카탈로그는 하나뿐입니다.
+- 대응 문서는 중복 없는 의미 기반 `contracts`를 선언할 수 있습니다. 일반 API
+  메서드 경로는 자체 요청과 응답 계약을 도출합니다. 선언하거나 도출한 모든
+  계약은 기계 판독 가능한 담당 설명자 하나로 해석되어야 합니다.
 - `owner_areas` 카탈로그는 안정적인 식별자와 문자열 설명을 사용합니다. 적용
   가능성 키는 밑줄로 구분한 소문자 의미 단어만 사용하고 버전 번호를 포함하지
   않습니다.
@@ -53,9 +53,9 @@ cargo run -p xtask -- architecture-check
 - 모든 대응 항목은 `doc_id`, `path_en`, `path_ko`, `kind`, `summary`,
   `normative_level`, `translation_policy`, `owner_area`, `created_on`,
   `last_updated_on`, `last_verified_on`, `applies_to`, `primary_audience`,
-  `journeys`, `canonical_for`, `depends_on`만 사용합니다.
-- 공유 항목과 대응 항목에 필요한 필드가 있으며 `applies_to`는 선택
-  필드입니다.
+  `journeys`, `canonical_for`, `depends_on`, `contracts`만 사용합니다.
+- 공유 항목과 대응 항목에 필요한 필드가 있으며 `applies_to`와 대응 문서의
+  `contracts`는 선택 필드입니다.
 - `owner_area`는 최상위 담당 영역 카탈로그로 해석됩니다.
 - `applies_to`가 있으면 비어 있지 않고 중복이 없는 추가 카탈로그 값 목록이며
   루트 기본값을 반복하지 않습니다.
@@ -86,29 +86,34 @@ cargo run -p xtask -- architecture-check
   `docs/ko/architecture-guide/design/` 아래의 현재 개별 아키텍처 설계 문서는 문서
   정책이 언어별로 정의한 정확한 H2 순서를 사용하며 그 긍정적인 스키마 밖의 중첩
   제목 절을 두지 않습니다.
-- `contract_sources`가 선택한 각 대응 문서에 대해 `docs-check`는 생성된 현재
-  공개 JSON Schema, `volicord-command-model` 명령 트리, 생성된 typed 진단
-  레지스트리 산출물, 현재 프로토콜 레지스트리에서 담당 카탈로그를 직접 만듭니다.
-  공개 스키마 카탈로그에는 속성 이름, 이름 있는 스키마 정의와 제목, enum 문자열,
-  상수 문자열이 들어갑니다.
+- 의미 기반 계약이 있는 각 대응 문서에 대해 `docs-check`는 그 정확한 담당
+  카탈로그만 만듭니다. 공개 요청과 응답 설명자는 `volicord-types`에서, CLI
+  문법과 값은 `volicord-command-model`에서, CLI inbox 출력은
+  `volicord-user-action-presentation`에서, 진단 코드는 typed 진단
+  레지스트리에서, MCP 식별자는 프로토콜 레지스트리에서 가져옵니다. 의도적으로
+  인접한 계약 관계는 설명자에 명시하며 전체 공개 API 카탈로그로 확장하지
+  않습니다.
 - 점검기는 대응하는 파싱된 Markdown 의미 단위 안에서 카탈로그 항목을 비교합니다.
   의미 단위에는 제목 좌표, 문단, 중첩 목록 항목, 표 셀, 정의 항목, 콜아웃,
   각주, 펜스 예시가 포함됩니다. 구조 좌표는 번역된 제목 문구가 아니라 제목과
   블록 순번을 사용합니다. 따라서 식별자가 같은 제목 아래에 남아 있더라도 다른
   문단, 목록 항목, 표 셀로 이동하면 불일치입니다.
+- 영어와 한국어 단위는 문서 범위에 대해 각각 검증하며, 양쪽에서 유효한 단위만
+  일치 비교를 수행합니다. 다른 계약이 담당하는 정확한 식별자는 범위 밖입니다.
+  현재 담당 원본 어디에도 없는 계약 유사 식별자는 두 언어에 모두 있어도
+  유효하지 않습니다.
 - 인식 기준은 정확한 카탈로그 포함 여부입니다. 단순 소문자 값, `snake_case`
-  필드, 하이픈 CLI 토큰, 점으로 구분한 진단 코드, 프로토콜 식별자도 포함합니다.
-  인라인 코드는 담당 카탈로그에 정확한 토큰이 있을 때만 계약 대상으로 보며,
-  임의의 산문과 관련 없는 인라인 코드는 무시합니다. 구조화 JSON/YAML 예시는
-  파싱된 키와 리터럴 값을 제공합니다. 계약에 묶인 JSON/YAML 펜스는
-  `contract=<source_id>`를 선언해 현재 담당 원본에 없는 키를 거부할 수 있습니다.
-  표나 다른 블록 바로 앞의 `<!-- contract-source: <source_id> -->` 메타데이터는
-  그 블록의 인라인 식별자를 선택한 현재 담당 원본에 묶고 알 수 없는 토큰을
-  거부합니다. 셸 예시와 생성된 관리 CLI 영역에는 경로가 지정된 명령 모델 담당
-  원본을 사용합니다. 퍼지 일치는 진단에서 가까운 현재 식별자를 제안할 때만 쓰며
-  철자를 통과시키는 기준이 되지 않습니다.
-- 식별자 진단은 결정적이며 문서 쌍, 구조적 의미 단위, 현재 계약 원본과 담당 경로,
-  누락되거나 유효하지 않은 식별자를 표시합니다.
+  필드, 하이픈 CLI 토큰, 점으로 구분한 진단 코드, 프로토콜 식별자도 포함하며
+  담당 범주를 서로 구분합니다. 임의의 산문, 경로, 파일 이름, 환경 변수, 소스
+  식별자를 API 필드로 취급하지 않습니다.
+- 일반 참조 JSON/YAML 예시는 문서 범위를 자동으로 따르며 알 수 없는 키를
+  거부합니다. 문서가 여러 독립 계약을 담을 때만 그 문서에 이미 지정된 계약을
+  가리키는 `contract=<semantic_contract_id>`를 펜스에 선언할 수 있습니다. 셸
+  예시와 생성 관리 CLI 영역은 경로가 지정된 명령 모델 담당 원본을 사용합니다.
+  퍼지 일치는 진단에서 가까운 현재 식별자를 제안할 때만 쓰며 철자를 통과시키는
+  기준이 되지 않습니다.
+- 식별자 진단은 결정적이며 문서 쌍, 구조적 의미 단위, 의미 기반 계약과 담당 경로,
+  범위 밖이거나 누락되거나 유효하지 않은 식별자를 표시합니다.
 - 상대 링크가 존재하는 파일로 해석됩니다.
 - 조각 링크와 숨김 앵커가 사용되는 곳에서 해석됩니다.
 - 유지되는 영어/한국어 대응 쌍의 로컬 Markdown 독자 경로 링크가, 색인된 대상은
@@ -179,8 +184,8 @@ Core 쪽 그룹에서 어댑터 그룹으로 향하는 의존성을 거부합니
 링크해야 하며 두 번째 계약 본문이 되면 안 됩니다.
 
 용어 변경에서는 식별자 표현 정책, 선호 표현과 문맥별 형태, 자연스러운 한국어
-지침, 담당 경로 무결성을 용어 지도에서 확인합니다. 정확한 계약 식별자는
-`contract_sources`가 선택한 현재 담당 원본을 기준으로 확인합니다.
+지침, 담당 경로 무결성을 용어 지도에서 확인합니다. 정확한 계약 식별자는 문서의
+의미 기반 계약과 그 현재 담당 설명자를 기준으로 확인합니다.
 
 브랜드 표현이나 넓은 주장 문구를 바꿀 때는 [브랜드 지침](brand-guidelines.md)에서
 Volicord 표기, 공식 한영 브랜드 문구, 구성 요소 표현, 테스트 하네스 용어 경계,
@@ -355,9 +360,9 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
 
 생성되었거나 원본에서 파생되는 참조 표면은 안정적인 점검 명령을 사용합니다.
 
-- `cargo run -p xtask -- docs-sync`는 영어와 한국어 관리 CLI 담당 문서에서 표시된
-  문법 영역만 결정적으로 교체합니다. 명령 모델을 변경한 뒤 실행하고 생성 diff를
-  검토합니다.
+- `cargo run -p xtask -- docs-sync`는 표시된 CLI 문법 영역과 영어·한국어 API
+  메서드 담당 문서의 표식 없는 요청 필드 표를 결정적으로 교체합니다. 명령 또는
+  요청 설명자를 변경한 뒤 실행하고 생성 diff를 검토합니다.
 - `cargo run -p xtask -- docs-check`는 유지 문서 구조, 생성 또는 원본 파생 문서
   표면, 실행 가능한 `volicord` 명령 예시, 한영 링크·제목·정확한 식별자 일치,
   용어 메타데이터 담당 경로와 역할, 그리고
@@ -373,6 +378,11 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
   `VOLICORD_UPDATE_DIAGNOSTIC_REGISTRY=1 cargo test -p volicord-cli --test diagnostic_registry_contract`
   로 다시 생성하고
   `crates/volicord-cli/tests/fixtures/diagnostic-registry.json`을 검토합니다.
+- `cargo test -p volicord-user-action-presentation --test cli_output_contracts`는 간결한
+  CLI inbox 출력 설명자 산출물이 typed 표현 담당 원본과 일치하는지 점검합니다.
+  의도적인 변경은
+  `VOLICORD_UPDATE_CLI_OUTPUT_CONTRACTS=1 cargo test -p volicord-user-action-presentation --test cli_output_contracts`
+  로 다시 생성하고 생성 픽스처를 검토합니다.
 - 의도적인 원본 변경 뒤 공개 계약 스냅샷을 다시 생성하려면
   `VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots`
   를 실행하고 `tests/integration/snapshots/` 아래의 생성 파일을 검토합니다.

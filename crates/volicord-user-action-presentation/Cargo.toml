@@ -10,8 +10,6 @@ volicord-command-model = { path = "../volicord-command-model" }
 volicord-types = { path = "../volicord-types" }
 schemars = { version = "0.8", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
 serde_json = "1"
 
 [lib]

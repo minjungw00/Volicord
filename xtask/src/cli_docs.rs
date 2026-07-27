@@ -76,6 +76,11 @@ pub fn run_docs_sync(root: &Path) -> Result<DocsSyncReport> {
         })?;
         updated_paths.push(relative);
     }
+    updated_paths.extend(crate::contract_docs::sync_generated_contract_tables(
+        &root, &index,
+    )?);
+    updated_paths.sort();
+    updated_paths.dedup();
 
     Ok(DocsSyncReport { updated_paths })
 }

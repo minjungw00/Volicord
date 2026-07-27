@@ -53,19 +53,20 @@ Core also scans the current project and Task for unresolved Unrecorded Changes. 
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This method owns the top-level `params` request fields in the generated table
+below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope);
+the table does not redefine `ToolEnvelope` fields. Requiredness and nullability
+come directly from the semantic request descriptor.
 
-```yaml
-ReconcileChangesRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  resolution_requests?: UnrecordedChangeResolutionRequest[]
+### `ReconcileChangesRequest` fields
 
-UnrecordedChangeResolutionRequest:
-  unrecorded_change_id: string
-  basis: string
-  user_action_resolution_id?: string | null
-```
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `envelope` | yes | no | `ToolEnvelope` |
+| `resolution_requests` | no | no | `UnrecordedChangeResolutionRequest[]` |
+| `task_id` | yes | no | `string` |
+
+
 
 Request field notes:
 

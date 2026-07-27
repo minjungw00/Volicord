@@ -265,7 +265,7 @@ Meaning:
 - `ToolError.code` is a public `ErrorCode` value.
 - `ToolError.message` is a free-form display string.
 - `EventRef.event_id` is an opaque event identifier.
-- `EventRef.event_kind` is an opaque event classification string. It is stable enough to carry and route, but this document does not publish an exhaustive public event-kind value set.
+- `EventRef.event_kind` is an opaque event classification string. It is stable enough to carry and route, but this document does not publish an exhaustive public `event_kind` value set.
 
 <a id="operation-result-retrieval"></a>
 

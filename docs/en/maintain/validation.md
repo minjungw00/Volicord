@@ -34,9 +34,9 @@ read-only and verifies the machine-checkable shape:
 - `docs/doc-index.yaml` parses as YAML and has `version: 3`.
 - Required top-level sections are present and unsupported top-level fields are
   rejected.
-- Every `contract_sources` entry declares one supported current owner kind,
-  owner location, and non-empty semantic document selectors. Each selector
-  resolves to maintained paired documents, and each owner kind has one catalog.
+- Paired documents may declare duplicate-free semantic `contracts`. Regular API
+  method routes derive their own request and response contracts. Every declared
+  or derived contract resolves to one machine-readable owner descriptor.
 - The `owner_areas` catalog uses stable identifiers with string descriptions.
   Applicability keys use lowercase semantic words separated by underscores and
   contain no embedded version numbers.
@@ -56,9 +56,10 @@ read-only and verifies the machine-checkable shape:
 - Every paired entry uses only `doc_id`, `path_en`, `path_ko`, `kind`,
   `summary`, `normative_level`, `translation_policy`, `owner_area`,
   `created_on`, `last_updated_on`, `last_verified_on`, `applies_to`,
-  `primary_audience`, `journeys`, `canonical_for`, and `depends_on`.
-- Required fields are present for each shared or paired entry; `applies_to` is
-  optional.
+  `primary_audience`, `journeys`, `canonical_for`, `depends_on`, and
+  `contracts`.
+- Required fields are present for each shared or paired entry; `applies_to` and
+  paired-document `contracts` are optional.
 - `owner_area` resolves to the top-level owner-area catalog.
 - When present, `applies_to` is a non-empty duplicate-free list of additional
   catalog values and does not repeat a root default.
@@ -89,34 +90,39 @@ read-only and verifies the machine-checkable shape:
   `docs/ko/architecture-guide/design/` uses the language-specific exact H2
   sequence defined by the Documentation Policy and has no nested heading
   sections outside that positive schema.
-- For each paired document selected by `contract_sources`, `docs-check` builds
-  owner catalogs directly from the generated public JSON Schemas, the
-  `volicord-command-model` command tree, the generated typed diagnostic
-  registry artifact, and the current protocol registry. Public-schema catalogs
-  include property names, named schema definitions and titles, enum strings,
-  and constant strings.
+- For each paired document with semantic contracts, `docs-check` builds only
+  those exact owner catalogs. Public request and response descriptors come from
+  `volicord-types`; CLI syntax and values come from
+  `volicord-command-model`; CLI inbox output comes from
+  `volicord-user-action-presentation`; diagnostic codes come from the typed
+  diagnostic registry; MCP identifiers come from the protocol registry.
+  Deliberate adjacent-contract relationships are explicit in descriptors and
+  never expand to a global public API catalog.
 - The checker compares catalog members within corresponding parsed Markdown
   meaning units: heading coordinates, paragraphs, nested list items, table
   cells, definition entries, callouts, footnotes, and fenced examples. A unit's
   structural coordinate uses heading and block ordinals rather than translated
   heading text. Moving an identifier to another paragraph, list item, or table
   cell is therefore a mismatch even when it remains under the same heading.
+- English and Korean units are validated independently against their document
+  scope before valid units are compared for parity. An exact identifier owned
+  by another contract is out of scope. A likely contract identifier absent from
+  all current owners is invalid, including when both languages contain it.
 - Recognition is exact catalog membership, including simple lowercase values,
   `snake_case` fields, hyphenated CLI tokens, dotted diagnostic codes, and
-  protocol identifiers. Inline code is contract-bearing only when an exact
-  owner catalog contains the token; arbitrary prose and unrelated inline code
-  are ignored. Structured JSON/YAML examples contribute parsed keys and literal
-  values. A contract-bound JSON/YAML fence can declare
-  `contract=<source_id>` to reject unknown keys against that current owner.
-  The `<!-- contract-source: <source_id> -->` metadata immediately before a
-  table or other block binds that block's inline identifiers to the selected
-  current owner and rejects unknown tokens. Shell examples and generated
+  protocol identifiers. Owner categories remain distinct. Arbitrary prose,
+  paths, filenames, environment variables, and source identifiers are not
+  treated as API fields.
+- Normal Reference JSON/YAML examples inherit document scope and reject unknown
+  keys. A fence may declare `contract=<semantic_contract_id>` only when the
+  document contains multiple independent contracts, and only for a contract
+  already assigned to that document. Shell examples and generated
   Administrative CLI regions use their routed command-model owner. Fuzzy
   matching may suggest nearby current identifiers in diagnostics but never
   accepts a spelling.
 - Identifier diagnostics are deterministic and name the document pair,
-  structural meaning unit, current contract source and owner, and the missing
-  or invalid identifier.
+  structural meaning unit, semantic contract and owner, and the out-of-scope,
+  missing, or invalid identifier.
 - Existing-file and duplicate-path rules apply to the root README pair in the
   same way they apply to other indexed paths.
 - Relative links resolve to existing files.
@@ -202,8 +208,8 @@ contract bodies.
 
 For terminology changes, check the terminology map for identifier-presentation
 policy, preferred and contextual forms, natural Korean guidance, and owner path
-integrity. Check exact contract identifiers against the current owners selected
-by `contract_sources`.
+integrity. Check exact contract identifiers against the document's semantic
+contracts and their current owner descriptors.
 
 For brand-presentation or broad-claim changes, check the [Brand Guidelines](brand-guidelines.md)
 for Volicord spelling, official bilingual brand copy, component presentation,
@@ -402,9 +408,10 @@ clearly calls for them, and report the reason.
 
 Generated or source-derived reference surfaces use stable check commands:
 
-- `cargo run -p xtask -- docs-sync` deterministically replaces only the marked
-  syntax regions in the English and Korean Administrative CLI owners. Run it
-  after changing the command model and review the generated diff.
+- `cargo run -p xtask -- docs-sync` deterministically replaces the marked CLI
+  syntax regions and the marker-free request field tables in English and Korean
+  API method owners. Run it after changing command or request descriptors and
+  review the generated diff.
 - `cargo run -p xtask -- docs-check` checks maintained documentation structure,
   generated/source-derived documentation surfaces, executable `volicord`
   command examples, bilingual link/heading/exact-identifier parity, terminology
@@ -419,6 +426,11 @@ Generated or source-derived reference surfaces use stable check commands:
   registries. After an intentional registry change, regenerate it with
   `VOLICORD_UPDATE_DIAGNOSTIC_REGISTRY=1 cargo test -p volicord-cli --test diagnostic_registry_contract`
   and review `crates/volicord-cli/tests/fixtures/diagnostic-registry.json`.
+- `cargo test -p volicord-user-action-presentation --test cli_output_contracts`
+  checks the compact CLI inbox output descriptor artifact against its typed
+  presentation owner. Regenerate an intentional change with
+  `VOLICORD_UPDATE_CLI_OUTPUT_CONTRACTS=1 cargo test -p volicord-user-action-presentation --test cli_output_contracts`
+  and review the generated fixture.
 - To regenerate those public contract snapshots after an intentional source
   change, run
   `VOLICORD_UPDATE_CONTRACT_SNAPSHOTS=1 cargo test -p volicord-integration-tests --test public_contract_snapshots`

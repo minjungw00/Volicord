@@ -911,37 +911,69 @@ pub fn public_command_syntax() -> Vec<CommandSyntax> {
     syntax
 }
 
-/// Returns the exact public CLI identifiers declared by the current Clap model.
-///
-/// The catalog contains full public command paths, visible option spellings,
-/// positional argument identifiers, and closed command value names. Hidden
-/// command subtrees and display-only arguments are excluded by the same
-/// visibility rules used for public help.
-pub fn public_contract_identifiers() -> BTreeSet<String> {
+/// Exact syntax and closed values for one stable semantic CLI contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliContractDescriptor {
+    id: String,
+    syntax: BTreeSet<String>,
+    values: BTreeSet<String>,
+    related_contracts: Vec<String>,
+}
+
+impl CliContractDescriptor {
+    /// Returns the stable semantic contract identity.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Returns exact command paths, options, and positional argument identifiers.
+    pub const fn syntax(&self) -> &BTreeSet<String> {
+        &self.syntax
+    }
+
+    /// Returns exact closed command values.
+    pub const fn values(&self) -> &BTreeSet<String> {
+        &self.values
+    }
+
+    /// Returns deliberate semantic relationships to child command contracts.
+    pub fn related_contracts(&self) -> &[String] {
+        &self.related_contracts
+    }
+}
+
+/// Returns exact descriptors derived from the current public Clap declaration.
+pub fn public_cli_contract_descriptors() -> Vec<CliContractDescriptor> {
     let mut root = root_command();
     root.build();
-    let mut identifiers = BTreeSet::from(["volicord".to_owned()]);
+    let mut descriptors = Vec::new();
+    let public_paths = public_command_syntax();
 
-    for syntax in public_command_syntax() {
-        if !syntax.components.is_empty() {
-            identifiers.insert(format!("volicord {}", syntax.components.join(" ")));
-        }
+    for syntax in &public_paths {
         let command = find_command(&root, &syntax.components)
             .expect("public command syntax originates from this command declaration");
+        let mut syntax_identifiers = BTreeSet::new();
+        let mut values = BTreeSet::new();
+        let command_path = std::iter::once("volicord")
+            .chain(syntax.components.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ");
+        syntax_identifiers.insert(command_path);
+
         for argument in command
             .get_arguments()
             .filter(|argument| !argument.is_hide_set() && !is_display_action(argument.get_action()))
         {
             if argument.is_positional() {
-                identifiers.insert(argument.get_id().as_str().to_owned());
+                syntax_identifiers.insert(argument.get_id().as_str().to_owned());
             }
             if let Some(long) = argument.get_long() {
-                identifiers.insert(format!("--{long}"));
+                syntax_identifiers.insert(format!("--{long}"));
             }
             if let Some(short) = argument.get_short() {
-                identifiers.insert(format!("-{short}"));
+                syntax_identifiers.insert(format!("-{short}"));
             }
-            identifiers.extend(
+            values.extend(
                 argument
                     .get_possible_values()
                     .into_iter()
@@ -949,9 +981,47 @@ pub fn public_contract_identifiers() -> BTreeSet<String> {
                     .map(|value| value.get_name().to_owned()),
             );
         }
+
+        let related_contracts = public_paths
+            .iter()
+            .filter(|candidate| {
+                candidate.components.len() == syntax.components.len() + 1
+                    && candidate.components.starts_with(&syntax.components)
+            })
+            .map(|candidate| cli_contract_id(&candidate.components))
+            .collect();
+        descriptors.push(CliContractDescriptor {
+            id: cli_contract_id(&syntax.components),
+            syntax: syntax_identifiers,
+            values,
+            related_contracts,
+        });
     }
 
-    identifiers
+    let mut public_syntax = BTreeSet::new();
+    let mut public_values = BTreeSet::new();
+    for descriptor in &descriptors {
+        public_syntax.extend(descriptor.syntax.iter().cloned());
+        public_values.extend(descriptor.values.iter().cloned());
+    }
+    descriptors.push(CliContractDescriptor {
+        id: "cli.surface.public".to_owned(),
+        syntax: public_syntax,
+        values: public_values,
+        related_contracts: descriptors
+            .iter()
+            .map(|descriptor| descriptor.id.clone())
+            .collect(),
+    });
+    descriptors
+}
+
+fn cli_contract_id(components: &[String]) -> String {
+    if components.is_empty() {
+        "cli.command.root".to_owned()
+    } else {
+        format!("cli.command.{}", components.join(".").replace('-', "_"))
+    }
 }
 
 fn command_syntax(command: &ClapCommand, components: &[String]) -> CommandSyntax {
@@ -1487,13 +1557,21 @@ mod tests {
     }
 
     #[test]
-    fn public_contract_identifiers_are_derived_from_visible_commands() {
-        let identifiers = public_contract_identifiers();
+    fn public_contract_descriptors_are_derived_from_visible_commands() {
+        let descriptors = public_cli_contract_descriptors();
+        let identifiers = descriptors
+            .iter()
+            .flat_map(|descriptor| descriptor.syntax().iter().chain(descriptor.values().iter()))
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
 
         assert!(identifiers.contains("volicord policy show"));
         assert!(identifiers.contains("--repo"));
         assert!(identifiers.contains("workflow"));
         assert!(!identifiers.contains("_host-launch"));
+        assert!(descriptors
+            .iter()
+            .any(|descriptor| descriptor.id() == "cli.command.policy.show"));
     }
 
     #[test]

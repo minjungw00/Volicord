@@ -75,29 +75,27 @@ Task를 만들 때 선행 Task 관계 하나도 기록할 수 있습니다. 이 
 
 ## 요청 스키마
 
-이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 메서드는 아래 생성 표의 최상위 `params` 요청 필드를 담당합니다. `envelope`는
+[API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 표는
+`ToolEnvelope` 필드를 다시 정의하지 않습니다. 필수 여부와 Null 허용 여부는 의미
+기반 요청 설명자에서 직접 가져옵니다.
 
-이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
+### `IntakeRequest` 필드
 
-```yaml
-IntakeRequest:
-  envelope: ToolEnvelope
-  plain_language_request: string
-  requested_mode: string
-  requested_control_level?: string
-  resume_policy: string
-  acceptance_policy: string | null
-  lineage: TaskLineageInput | null
-  initial_scope: object
-  initial_context_refs: StateRecordRef[]
-  initial_source_refs: SourceRef[]
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `acceptance_policy` | 예 | 예 | `AcceptancePolicy` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `initial_context_refs` | 예 | 아니요 | `StateRecordRef[]` |
+| `initial_scope` | 예 | 아니요 | `InitialScope` |
+| `initial_source_refs` | 예 | 아니요 | `SourceRef[]` |
+| `lineage` | 예 | 예 | `TaskLineageInput` |
+| `plain_language_request` | 예 | 아니요 | `string` |
+| `requested_control_level` | 아니요 | 아니요 | `value` |
+| `requested_mode` | 예 | 아니요 | `RequestedMode` |
+| `resume_policy` | 예 | 아니요 | `ResumePolicy` |
 
-TaskLineageInput:
-  predecessor_task_id: string
-  relation: string
-  creation_reason: string
-  carry_forward: string[]
-```
+
 
 중첩 형태 담당 문서:
 - `initial_scope.acceptance_criteria`는 `AcceptanceCriterionInput[]`을

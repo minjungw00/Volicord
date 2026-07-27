@@ -29,12 +29,15 @@ the response, or claim that historical state is current.
 
 ## Request
 
-```yaml
-GetOperationResultRequest:
-  envelope: ToolEnvelope
-  operation_result_ref: OperationResultRef
-  cursor: string | null
-```
+### `GetOperationResultRequest` fields
+
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `cursor` | yes | yes | `string` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `operation_result_ref` | yes | no | `OperationResultRef` |
+
+
 
 Rules:
 

@@ -10,11 +10,11 @@ fn generated_diagnostic_registry_matches_typed_owners() -> Result<(), Box<dyn Er
     let snapshot_path = manifest_dir.join(SNAPSHOT);
     let generated = serde_json::to_string_pretty(&json!({
         "_generated": {
-            "source": "volicord_cli::diagnostic_registry::current_diagnostic_codes",
+            "source": "volicord_cli::diagnostic_registry::current_diagnostic_contract_descriptors",
             "check": "cargo test -p volicord-cli --test diagnostic_registry_contract",
             "update": "VOLICORD_UPDATE_DIAGNOSTIC_REGISTRY=1 cargo test -p volicord-cli --test diagnostic_registry_contract"
         },
-        "codes": volicord_cli::diagnostic_registry::current_diagnostic_codes()
+        "contracts": volicord_cli::diagnostic_registry::current_diagnostic_contract_descriptors()
     }))? + "\n";
 
     if std::env::var_os(UPDATE_ENV).is_some() {

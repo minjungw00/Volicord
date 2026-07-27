@@ -8,15 +8,18 @@
 
 ## 요청
 
-```yaml
-RequestUserActionRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  change_unit_id: string | null
-  action: UserActionDraft
-  required_for: string[]
-  expires_at: string | null
-```
+### `RequestUserActionRequest` 필드
+
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `action` | 예 | 아니요 | `UserActionDraft` |
+| `change_unit_id` | 예 | 예 | `string` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `expires_at` | 예 | 예 | `UtcTimestamp` |
+| `required_for` | 예 | 아니요 | `UserActionRequiredFor[]` |
+| `task_id` | 예 | 아니요 | `string` |
+
+
 
 `action`은 폐쇄형 `UserActionDraft` union입니다. 판별자는
 `action_type=choice|evidence_observation`이며 choice variant는 중첩된 7개 값의

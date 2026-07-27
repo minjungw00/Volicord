@@ -8,15 +8,18 @@ judgment kinds and `evidence_observation`.
 
 ## Request
 
-```yaml
-RequestUserActionRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  change_unit_id: string | null
-  action: UserActionDraft
-  required_for: string[]
-  expires_at: string | null
-```
+### `RequestUserActionRequest` fields
+
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `action` | yes | no | `UserActionDraft` |
+| `change_unit_id` | yes | yes | `string` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `expires_at` | yes | yes | `UtcTimestamp` |
+| `required_for` | yes | no | `UserActionRequiredFor[]` |
+| `task_id` | yes | no | `string` |
+
+
 
 `action` is the closed `UserActionDraft` union. Its discriminator is
 `action_type=choice|evidence_observation`; the choice variant carries a nested

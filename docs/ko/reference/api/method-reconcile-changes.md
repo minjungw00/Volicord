@@ -52,19 +52,20 @@ Core는 현재 프로젝트와 `Task`의 미해결 미기록 변경도 함께 �
 
 ## 요청 스키마
 
-이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`은 공유 [`ToolEnvelope`](schema-core.md#tool-envelope)입니다. 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 메서드는 아래 생성 표의 최상위 `params` 요청 필드를 담당합니다. `envelope`은
+공유 [`ToolEnvelope`](schema-core.md#tool-envelope)이며, 표는 `ToolEnvelope`
+필드를 다시 정의하지 않습니다. 필수 여부와 Null 허용 여부는 의미 기반 요청
+설명자에서 직접 가져옵니다.
 
-```yaml
-ReconcileChangesRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  resolution_requests?: UnrecordedChangeResolutionRequest[]
+### `ReconcileChangesRequest` 필드
 
-UnrecordedChangeResolutionRequest:
-  unrecorded_change_id: string
-  basis: string
-  user_action_resolution_id?: string | null
-```
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `resolution_requests` | 아니요 | 아니요 | `UnrecordedChangeResolutionRequest[]` |
+| `task_id` | 예 | 아니요 | `string` |
+
+
 
 요청 필드 참고:
 

@@ -7,13 +7,16 @@
 
 ## 요청
 
-```yaml
-ResolveUserActionRequest:
-  envelope: ToolEnvelope
-  user_action_request_id: string
-  resolution: UserActionResolutionInput
-  channel_submission_id: string
-```
+### `ResolveUserActionRequest` 필드
+
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `channel_submission_id` | 예 | 아니요 | `string` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `resolution` | 예 | 아니요 | `UserActionResolutionInput` |
+| `user_action_request_id` | 예 | 아니요 | `string` |
+
+
 
 `resolution`은 `resolution_type=choice|evidence_observation`을 쓰는 폐쇄형 tagged
 union이며 저장 요청 계열과 일치해야 합니다. 판단 해결 입력은 선택한 저장 선택지 ID와

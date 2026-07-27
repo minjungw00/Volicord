@@ -158,23 +158,30 @@ API 경계 블록:
 
 ## 요청 스키마
 
-이 문서는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 문서는 아래 생성 표의 최상위 `params` 요청 필드를 담당합니다. `envelope`는
+[API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 표는
+`ToolEnvelope` 필드를 다시 정의하지 않습니다. 필수 여부와 Null 허용 여부는 의미
+기반 요청 설명자에서 직접 가져옵니다.
 
-이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
+### `CheckCloseRequest` 필드
 
-```yaml
-CheckCloseRequest:
-  envelope: ToolEnvelope
-  task_id: string
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `task_id` | 예 | 아니요 | `string` |
 
-CloseTaskRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  intent: string
-  close_reason: string | null
-  superseding_task_id: string | null
-  user_note: string | null
-```
+### `CloseTaskRequest` 필드
+
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `close_reason` | 예 | 예 | `CloseReason` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `intent` | 예 | 아니요 | `CloseMutationIntent` |
+| `superseding_task_id` | 예 | 예 | `string` |
+| `task_id` | 예 | 아니요 | `string` |
+| `user_note` | 예 | 예 | `string` |
+
+
 
 중첩 형태 담당 문서:
 - `intent` 값은 [API 값 집합의 메서드 내부 값](schema-value-sets.md#method-local-values)이 담당합니다.

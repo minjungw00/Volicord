@@ -32,22 +32,26 @@
 
 ## 요청 스키마
 
-이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 메서드는 아래 생성 표의 최상위 `params` 요청 필드를 담당합니다. `envelope`는
+[API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 표는
+`ToolEnvelope` 필드를 다시 정의하지 않습니다. 필수 여부와 Null 허용 여부는 의미
+기반 요청 설명자에서 직접 가져옵니다.
 
-이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
+### `StageArtifactRequest` 필드
 
-```yaml
-StageArtifactRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  display_name: string
-  content_type: string
-  redaction_state: string
-  safe_bytes_or_notice: string
-  expected_sha256: string | null
-  expected_size_bytes: integer | null
-  relation_hint: string | null
-```
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `content_type` | 예 | 아니요 | `string` |
+| `display_name` | 예 | 아니요 | `string` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `expected_sha256` | 예 | 예 | `string` |
+| `expected_size_bytes` | 예 | 예 | `integer` |
+| `redaction_state` | 예 | 아니요 | `RedactionState` |
+| `relation_hint` | 예 | 예 | `string` |
+| `safe_bytes_or_notice` | 예 | 아니요 | `string` |
+| `task_id` | 예 | 아니요 | `string` |
+
+
 
 중첩 형태 담당 문서:
 - `redaction_state` 값은 [API 값 집합의 아티팩트 값](schema-value-sets.md#artifact-values)이 담당합니다.

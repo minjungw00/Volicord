@@ -71,21 +71,25 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 
 ## 요청 스키마
 
-이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 메서드는 아래 생성 표의 최상위 `params` 요청 필드를 담당합니다. `envelope`는
+[API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 표는
+`ToolEnvelope` 필드를 다시 정의하지 않습니다. 필수 여부와 Null 허용 여부는 의미
+기반 요청 설명자에서 직접 가져옵니다.
 
-이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
+### `PrepareWriteRequest` 필드
 
-```yaml
-PrepareWriteRequest:
-  envelope: ToolEnvelope
-  task_id: string | null
-  change_unit_id: string | null
-  intended_operation: string
-  intended_paths: string[]
-  product_file_write_intended: boolean
-  sensitive_categories: string[]
-  baseline_ref: string
-```
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `baseline_ref` | 예 | 아니요 | `string` |
+| `change_unit_id` | 예 | 예 | `string` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `intended_operation` | 예 | 아니요 | `string` |
+| `intended_paths` | 예 | 아니요 | `string[]` |
+| `product_file_write_intended` | 예 | 아니요 | `boolean` |
+| `sensitive_categories` | 예 | 아니요 | `string[]` |
+| `task_id` | 예 | 예 | `string` |
+
+
 
 필드 참고:
 - `intended_paths` 항목은 `Product Repository` API 제품 경로입니다. `Product Repository` 경로 정규화는 [런타임 경계](../runtime-boundaries.md#product-repository-api-path-normalization)가 담당합니다. 이 메서드는 경로 수준 `WriteTicketScope`와 호환성 저장 범위를 만들고 비교할 때 정규화된 저장소 상대 경로를 사용합니다.

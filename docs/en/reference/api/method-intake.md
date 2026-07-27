@@ -79,29 +79,27 @@ the stored predecessor edges to show the connected Task flow.
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This method owns the top-level `params` request fields in the generated table
+below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope);
+the table does not redefine `ToolEnvelope` fields. Requiredness and nullability
+come directly from the semantic request descriptor.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+### `IntakeRequest` fields
 
-```yaml
-IntakeRequest:
-  envelope: ToolEnvelope
-  plain_language_request: string
-  requested_mode: string
-  requested_control_level?: string
-  resume_policy: string
-  acceptance_policy: string | null
-  lineage: TaskLineageInput | null
-  initial_scope: object
-  initial_context_refs: StateRecordRef[]
-  initial_source_refs: SourceRef[]
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `acceptance_policy` | yes | yes | `AcceptancePolicy` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `initial_context_refs` | yes | no | `StateRecordRef[]` |
+| `initial_scope` | yes | no | `InitialScope` |
+| `initial_source_refs` | yes | no | `SourceRef[]` |
+| `lineage` | yes | yes | `TaskLineageInput` |
+| `plain_language_request` | yes | no | `string` |
+| `requested_control_level` | no | no | `value` |
+| `requested_mode` | yes | no | `RequestedMode` |
+| `resume_policy` | yes | no | `ResumePolicy` |
 
-TaskLineageInput:
-  predecessor_task_id: string
-  relation: string
-  creation_reason: string
-  carry_forward: string[]
-```
+
 
 Nested owner links:
 - `initial_scope.acceptance_criteria` uses `AcceptanceCriterionInput[]`; the

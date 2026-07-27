@@ -84,13 +84,6 @@ applicability:
   terminology_map_schema:
     description: Current terminology map schema.
     version_source: terminology_map_schema
-contract_sources:
-  public_api:
-    description: Current generated public JSON Schemas.
-    kind: public_json_schemas
-    owner: crates/volicord-types/src/methods.rs
-    document_selectors:
-    - docs.index
 default_applicability:
 - sample_workspace
 entry_schema:
@@ -125,6 +118,7 @@ entry_schema:
   - journeys
   - canonical_for
   - depends_on
+  - contracts
   maintenance_fields:
     owner_area: Current maintenance owner.
     created_on: Current creation date.

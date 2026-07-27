@@ -42,28 +42,18 @@ commit.
 
 ## Request
 
-```yaml
-PrepareEvidenceCaptureRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  change_unit_id: string
-  baseline_ref: string
-  target: EvidenceTarget
-  capture: EvidenceCaptureSpec
+### `PrepareEvidenceCaptureRequest` fields
 
-EvidenceCaptureSpec:
-  # exactly one tagged branch
-  capture_kind: verified_command_execution
-  command_sha256: lowercase 64-character SHA-256
-  command_label: normalized non-empty safe display text, at most 256 UTF-8 bytes
-  expected_exit_code: integer | null
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `baseline_ref` | yes | no | `string` |
+| `capture` | yes | no | `EvidenceCaptureSpec` |
+| `change_unit_id` | yes | no | `string` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `target` | yes | no | `EvidenceTarget` |
+| `task_id` | yes | no | `string` |
 
-  capture_kind: verified_tool_invocation
-  tool_name: trimmed non-empty string, at most 256 UTF-8 bytes
-  tool_input_sha256: lowercase 64-character SHA-256
-  expected_success: boolean | null
 
-```
 
 `command_sha256` is the bare lowercase SHA-256 of canonical JSON for the
 complete UTF-8 argument vector, including the executable as element zero.

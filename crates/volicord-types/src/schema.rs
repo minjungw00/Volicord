@@ -257,6 +257,13 @@ pub struct ToolError {
     pub details: Option<JsonObject>,
 }
 
+/// Closed detail shape for a typed platform-boundary failure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PlatformDiagnosticDetail {
+    pub diagnostic_code: String,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ToolErrorWire {

@@ -30,12 +30,15 @@ replay는 idempotent replay를 위해 이미 저장한 변경 불가능한 응�
 
 ## 요청
 
-```yaml
-GetOperationResultRequest:
-  envelope: ToolEnvelope
-  operation_result_ref: OperationResultRef
-  cursor: string | null
-```
+### `GetOperationResultRequest` 필드
+
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `cursor` | 예 | 예 | `string` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `operation_result_ref` | 예 | 아니요 | `OperationResultRef` |
+
+
 
 규칙:
 

@@ -22,7 +22,6 @@ const TOP_LEVEL_REQUIRED: &[&str] = &[
     "language_retrieval",
     "owner_areas",
     "applicability",
-    "contract_sources",
     "default_applicability",
     "entry_schema",
     "shared_documents",
@@ -31,14 +30,6 @@ const TOP_LEVEL_REQUIRED: &[&str] = &[
 const TOP_LEVEL_ALLOWED: &[&str] = TOP_LEVEL_REQUIRED;
 const CATALOG_ENTRY_ALLOWED: &[&str] = &["description"];
 const APPLICABILITY_ENTRY_ALLOWED: &[&str] = &["description", "version_source"];
-const CONTRACT_SOURCE_ENTRY_ALLOWED: &[&str] =
-    &["description", "kind", "owner", "document_selectors"];
-const CONTRACT_SOURCE_KINDS: &[&str] = &[
-    "public_json_schemas",
-    "command_model",
-    "diagnostic_registry",
-    "protocol_registry",
-];
 const APPLICABILITY_VERSION_SOURCES: &[&str] = &[
     "workspace_package",
     "workspace_rust",
@@ -95,6 +86,7 @@ const OPTIONAL_FIELDS: &[&str] = &[
     "journeys",
     "canonical_for",
     "depends_on",
+    "contracts",
 ];
 const SHARED_ALLOWED: &[&str] = &[
     "doc_id",
@@ -129,6 +121,7 @@ const PAIRED_ALLOWED: &[&str] = &[
     "journeys",
     "canonical_for",
     "depends_on",
+    "contracts",
 ];
 const KINDS: &[&str] = &[
     "landing",
@@ -165,7 +158,6 @@ pub(crate) struct DocIndex {
     pub(crate) paired_paths: BTreeMap<String, (String, String)>,
     pub(crate) path_doc_ids: BTreeMap<String, String>,
     pub(crate) paired_documents: BTreeMap<String, PairedDocument>,
-    pub(crate) contract_sources: BTreeMap<String, ContractSource>,
 }
 
 #[derive(Debug, Clone)]
@@ -173,21 +165,13 @@ pub(crate) struct PairedDocument {
     pub(crate) doc_id: String,
     pub(crate) path_en: String,
     pub(crate) path_ko: String,
-    pub(crate) contract_sources: BTreeSet<String>,
+    pub(crate) contracts: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone)]
 struct DocEntry {
     doc_id: String,
     depends_on: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ContractSource {
-    pub(crate) id: String,
-    pub(crate) kind: String,
-    pub(crate) owner: String,
-    selectors: Vec<String>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -290,7 +274,6 @@ pub(crate) fn validate_doc_index(
     validate_entry_schema(top, errors);
     let owner_areas = validate_catalog(top, "owner_areas", CATALOG_ENTRY_ALLOWED, errors);
     let applicability = validate_catalog(top, "applicability", APPLICABILITY_ENTRY_ALLOWED, errors);
-    let contract_sources = validate_contract_sources(top, errors);
     validate_applicability_sources(root, top, errors);
     let default_applicability = validate_default_applicability(top, &applicability, errors);
 
@@ -363,17 +346,11 @@ pub(crate) fn validate_doc_index(
         }
     }
 
-    resolve_contract_sources(&contract_sources, &mut paired_documents, errors);
-
     Some(DocIndex {
         indexed_paths,
         paired_paths,
         path_doc_ids,
         paired_documents,
-        contract_sources: contract_sources
-            .into_iter()
-            .map(|source| (source.id.clone(), source))
-            .collect(),
     })
 }
 
@@ -629,216 +606,6 @@ fn validate_catalog(
     }
 
     identifiers
-}
-
-fn validate_contract_sources(
-    top: &Mapping,
-    errors: &mut Vec<ValidationIssue>,
-) -> Vec<ContractSource> {
-    let Some(value) = mapping_get(top, "contract_sources") else {
-        return Vec::new();
-    };
-    let Some(catalog) = value.as_mapping() else {
-        errors.push(ValidationIssue::new(
-            DOC_INDEX_PATH,
-            "metadata.contract_sources",
-            "contract_sources must be a mapping",
-        ));
-        return Vec::new();
-    };
-    if catalog.is_empty() {
-        errors.push(ValidationIssue::new(
-            DOC_INDEX_PATH,
-            "metadata.contract_sources",
-            "contract_sources must not be empty",
-        ));
-    }
-
-    let mut sources = Vec::new();
-    let mut seen_kinds = BTreeSet::new();
-    for (id, value) in catalog {
-        let Some(id) = id.as_str() else {
-            errors.push(ValidationIssue::new(
-                DOC_INDEX_PATH,
-                "metadata.contract_sources",
-                "contract source identifiers must be strings",
-            ));
-            continue;
-        };
-        if !is_semantic_applicability_identifier(id) {
-            errors.push(ValidationIssue::new(
-                DOC_INDEX_PATH,
-                "metadata.contract_sources",
-                format!(
-                    "contract source identifier {id} must use stable lowercase semantic words separated by underscores"
-                ),
-            ));
-        }
-        let Some(entry) = value.as_mapping() else {
-            errors.push(ValidationIssue::new(
-                DOC_INDEX_PATH,
-                "metadata.contract_sources",
-                format!("contract_sources.{id} must be a mapping"),
-            ));
-            continue;
-        };
-        validate_exact_mapping_fields(
-            entry,
-            &format!("contract_sources.{id}"),
-            CONTRACT_SOURCE_ENTRY_ALLOWED,
-            "metadata.contract_sources",
-            errors,
-        );
-        validate_nonempty_contract_source_string(entry, id, "description", errors);
-        let kind = validate_nonempty_contract_source_string(entry, id, "kind", errors);
-        let owner = validate_nonempty_contract_source_string(entry, id, "owner", errors);
-        if let Some(kind) = kind.as_deref() {
-            if !CONTRACT_SOURCE_KINDS.contains(&kind) {
-                errors.push(ValidationIssue::new(
-                    DOC_INDEX_PATH,
-                    "metadata.contract_sources",
-                    format!("contract_sources.{id}.kind {kind} is unsupported"),
-                ));
-            } else if !seen_kinds.insert(kind.to_owned()) {
-                errors.push(ValidationIssue::new(
-                    DOC_INDEX_PATH,
-                    "metadata.contract_sources",
-                    format!(
-                        "contract source kind {kind} is assigned more than once; each current contract has one catalog"
-                    ),
-                ));
-            }
-        }
-
-        let selectors = mapping_get(entry, "document_selectors")
-            .and_then(sequence_strings)
-            .unwrap_or_else(|| {
-                errors.push(ValidationIssue::new(
-                    DOC_INDEX_PATH,
-                    "metadata.contract_sources",
-                    format!(
-                        "contract_sources.{id}.document_selectors must be a non-empty list of strings"
-                    ),
-                ));
-                Vec::new()
-            });
-        if selectors.is_empty() {
-            errors.push(ValidationIssue::new(
-                DOC_INDEX_PATH,
-                "metadata.contract_sources",
-                format!(
-                    "contract_sources.{id}.document_selectors must be a non-empty list of strings"
-                ),
-            ));
-        }
-        let mut seen_selectors = BTreeSet::new();
-        for selector in &selectors {
-            if !valid_document_selector(selector) {
-                errors.push(ValidationIssue::new(
-                    DOC_INDEX_PATH,
-                    "metadata.contract_sources",
-                    format!(
-                        "contract_sources.{id} uses invalid document selector {selector}; use an exact doc_id or a trailing .* family selector"
-                    ),
-                ));
-            }
-            if !seen_selectors.insert(selector) {
-                errors.push(ValidationIssue::new(
-                    DOC_INDEX_PATH,
-                    "metadata.contract_sources",
-                    format!("contract_sources.{id} repeats document selector {selector}"),
-                ));
-            }
-        }
-
-        if let (Some(kind), Some(owner)) = (kind, owner) {
-            sources.push(ContractSource {
-                id: id.to_owned(),
-                kind,
-                owner,
-                selectors,
-            });
-        }
-    }
-    sources
-}
-
-fn validate_nonempty_contract_source_string(
-    entry: &Mapping,
-    source_id: &str,
-    field: &str,
-    errors: &mut Vec<ValidationIssue>,
-) -> Option<String> {
-    match mapping_get(entry, field).and_then(Value::as_str) {
-        Some(value) if !value.trim().is_empty() => Some(value.to_owned()),
-        _ => {
-            errors.push(ValidationIssue::new(
-                DOC_INDEX_PATH,
-                "metadata.contract_sources",
-                format!("contract_sources.{source_id}.{field} must be a non-empty string"),
-            ));
-            None
-        }
-    }
-}
-
-fn valid_document_selector(selector: &str) -> bool {
-    let selector = selector.strip_suffix(".*").unwrap_or(selector);
-    !selector.is_empty()
-        && !selector.starts_with('.')
-        && !selector.ends_with('.')
-        && selector.split('.').all(|part| {
-            !part.is_empty()
-                && part.chars().all(|character| {
-                    character.is_ascii_lowercase()
-                        || character.is_ascii_digit()
-                        || matches!(character, '_' | '-')
-                })
-        })
-}
-
-fn resolve_contract_sources(
-    sources: &[ContractSource],
-    paired_documents: &mut BTreeMap<String, PairedDocument>,
-    errors: &mut Vec<ValidationIssue>,
-) {
-    for source in sources {
-        for selector in &source.selectors {
-            let matching_ids = paired_documents
-                .keys()
-                .filter(|doc_id| document_selector_matches(selector, doc_id))
-                .cloned()
-                .collect::<Vec<_>>();
-            if matching_ids.is_empty() {
-                errors.push(ValidationIssue::new(
-                    DOC_INDEX_PATH,
-                    "metadata.contract_sources",
-                    format!(
-                        "contract_sources.{} selector {selector} does not resolve to a paired document",
-                        source.id
-                    ),
-                ));
-                continue;
-            }
-            for doc_id in matching_ids {
-                paired_documents
-                    .get_mut(&doc_id)
-                    .expect("selected paired document exists")
-                    .contract_sources
-                    .insert(source.id.clone());
-            }
-        }
-    }
-}
-
-fn document_selector_matches(selector: &str, doc_id: &str) -> bool {
-    selector
-        .strip_suffix(".*")
-        .map_or(doc_id == selector, |prefix| {
-            doc_id
-                .strip_prefix(prefix)
-                .is_some_and(|suffix| suffix.starts_with('.'))
-        })
 }
 
 fn validate_applicability_sources(root: &Path, top: &Mapping, errors: &mut Vec<ValidationIssue>) {
@@ -1204,6 +971,7 @@ fn validate_entries(
         }
 
         validate_applies_to(entry, &doc_id, applicability, default_applicability, errors);
+        let contracts = validate_document_contracts(entry, &doc_id, mode, errors);
 
         let mut paired_document = None;
         let paths = match mode {
@@ -1221,7 +989,7 @@ fn validate_entries(
                         doc_id: doc_id.clone(),
                         path_en: path_en.clone(),
                         path_ko: path_ko.clone(),
-                        contract_sources: BTreeSet::new(),
+                        contracts: contracts.clone(),
                     });
                 }
                 path_en.into_iter().chain(path_ko).collect::<Vec<_>>()
@@ -1243,6 +1011,65 @@ fn validate_entries(
 
         entries.push(DocEntry { doc_id, depends_on });
     }
+}
+
+fn validate_document_contracts(
+    entry: &Mapping,
+    doc_id: &str,
+    mode: EntryMode,
+    errors: &mut Vec<ValidationIssue>,
+) -> BTreeSet<String> {
+    let mut contracts = BTreeSet::new();
+    if let Some(values) = mapping_get(entry, "contracts").and_then(sequence_strings) {
+        if matches!(mode, EntryMode::Shared) {
+            errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!("{doc_id} is shared metadata and cannot declare bilingual contract scope"),
+            ));
+        }
+        for contract in values {
+            if !is_semantic_contract_identifier(&contract) {
+                errors.push(ValidationIssue::new(
+                    DOC_INDEX_PATH,
+                    "metadata.contracts",
+                    format!(
+                        "{doc_id} contract {contract} must use lowercase semantic dot-separated words"
+                    ),
+                ));
+            }
+            if !contracts.insert(contract.clone()) {
+                errors.push(ValidationIssue::new(
+                    DOC_INDEX_PATH,
+                    "metadata.contracts",
+                    format!("{doc_id} repeats contract {contract}"),
+                ));
+            }
+        }
+    }
+
+    if let Some(method) = doc_id.strip_prefix("reference.api.method-") {
+        let methods = if method == "close-task" {
+            vec!["check_close".to_owned(), "close_task".to_owned()]
+        } else {
+            vec![method.replace('-', "_")]
+        };
+        for method in methods {
+            contracts.insert(format!("api.method.{method}.request"));
+            contracts.insert(format!("api.method.{method}.response"));
+        }
+    }
+    contracts
+}
+
+fn is_semantic_contract_identifier(identifier: &str) -> bool {
+    !identifier.is_empty()
+        && identifier.split('.').all(|part| {
+            !part.is_empty()
+                && part.chars().all(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+                })
+        })
 }
 
 fn date_field(

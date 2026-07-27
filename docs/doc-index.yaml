@@ -65,55 +65,6 @@ applicability:
   terminology_map_schema:
     description: Current terminology map metadata schema declared by `docs/terminology-map.yaml`.
     version_source: terminology_map_schema
-contract_sources:
-  public_api:
-    description: Generated current public request and response JSON Schemas, including their closed value sets.
-    kind: public_json_schemas
-    owner: crates/volicord-types/src/methods.rs
-    document_selectors:
-    - reference.api.*
-    - architecture-guide.request-lifecycle
-    - architecture-guide.design.operation-result-retrieval
-    - architecture-guide.design.unified-user-action-request-resolution
-    - architecture-guide.design.evidence-capture-producer-finalization
-    - user-guide.user-workflow
-    - user-guide.agent-workflow
-    - user-guide.judgment-examples
-  administrative_cli:
-    description: Current public administrative command, option, and closed command-value declarations.
-    kind: command_model
-    owner: crates/volicord-command-model/src/lib.rs
-    document_selectors:
-    - reference.admin-cli
-    - architecture-guide.cli-workflows
-    - user-guide.installation
-    - user-guide.quickstart
-    - user-guide.agent-host-setup
-    - user-guide.agent-host-troubleshooting
-    - user-guide.multi-repository-agent-setup
-  diagnostics:
-    description: Generated current machine-readable diagnostic codes from the typed diagnostic registries.
-    kind: diagnostic_registry
-    owner: crates/volicord-cli/tests/fixtures/diagnostic-registry.json
-    document_selectors:
-    - reference.failure-model
-    - reference.guard-suppression
-    - reference.runtime-boundaries
-    - reference.mcp-transport
-    - reference.agent-connection
-    - user-guide.agent-host-troubleshooting
-    - architecture-guide.testing-strategy
-  mcp_protocol:
-    description: Current production protocol capability and public wire-field declarations.
-    kind: protocol_registry
-    owner: crates/volicord-mcp-protocol/src/lib.rs
-    document_selectors:
-    - reference.external-contracts
-    - reference.mcp-transport
-    - reference.agent-connection
-    - architecture-guide.request-lifecycle
-    - architecture-guide.design.static-compact-mcp-tool-list
-    - user-guide.agent-host-setup
 default_applicability:
 - volicord_workspace
 entry_schema:
@@ -148,6 +99,7 @@ entry_schema:
   - journeys
   - canonical_for
   - depends_on
+  - contracts
   maintenance_fields:
     owner_area: Scalar identifier selected from the top-level owner_areas catalog.
     created_on: Earliest verifiable introduction date for the maintained file or bilingual pair.
@@ -443,6 +395,8 @@ documents:
     Docker responsibilities, executable discovery, and installation verification tutorial.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - cli.surface.public
   owner_area: onboarding
   created_on: '2026-06-20'
   last_updated_on: '2026-07-26'
@@ -467,6 +421,8 @@ documents:
     feature-specific support-state distinctions.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - cli.surface.public
   owner_area: onboarding
   created_on: '2026-06-20'
   last_updated_on: '2026-07-26'
@@ -493,6 +449,13 @@ documents:
   summary: How-to guidance for user workflow and authority-aware work with Volicord.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.methods
+  - api.schema.state
+  - api.schema.user_action
+  - cli.command.inbox
+  - cli.output.inbox
+  - cli.surface.public
   owner_area: user_workflow
   created_on: '2026-05-22'
   last_updated_on: '2026-07-26'
@@ -510,6 +473,10 @@ documents:
     axes, user-owned judgment, write boundaries, observation confidence, and honest session handoff.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.methods
+  - api.schema.state
+  - api.schema.user_action
   owner_area: user_workflow
   created_on: '2026-05-22'
   last_updated_on: '2026-07-26'
@@ -539,10 +506,14 @@ documents:
   summary: Example-oriented guidance for user judgments and related workflow decisions.
   normative_level: example
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
   owner_area: user_workflow
   created_on: '2026-06-07'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - users
   - agents
@@ -556,6 +527,12 @@ documents:
   summary: How-to guidance for installing, verifying, repairing, and removing personal or shared Codex Record connections.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - cli.surface.public
+  - diagnostic.host
+  - diagnostic.mcp
+  - diagnostic.process
+  - mcp.protocol
   owner_area: agent_connection
   created_on: '2026-06-22'
   last_updated_on: '2026-07-26'
@@ -584,6 +561,22 @@ documents:
   summary: Symptom-oriented recovery guidance for supported Codex Record connection and managed stdio failures.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - cli.surface.public
+  - diagnostic.guard
+  - diagnostic.host
+  - diagnostic.installation
+  - diagnostic.internal
+  - diagnostic.managed_config
+  - diagnostic.mcp
+  - diagnostic.platform
+  - diagnostic.process
+  - diagnostic.revision
+  - diagnostic.runtime_home
+  - diagnostic.setup
+  - diagnostic.store
+  - diagnostic.trust
+  - mcp.protocol
   owner_area: agent_connection
   created_on: '2026-06-23'
   last_updated_on: '2026-07-26'
@@ -614,6 +607,8 @@ documents:
     Repositories.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - cli.surface.public
   owner_area: agent_connection
   created_on: '2026-06-22'
   last_updated_on: '2026-07-26'
@@ -734,6 +729,9 @@ documents:
   summary: Administrative command-model and CLI workflow boundaries for Runtime Home setup, personal or shared Codex connections, diagnostics, Guard observations, the CLI inbox, and managed stdio launch.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - cli.output.inbox
+  - cli.surface.public
   owner_area: architecture_guide
   created_on: '2026-07-07'
   last_updated_on: '2026-07-27'
@@ -765,6 +763,12 @@ documents:
     reuse and invalidation, Store interaction, and response shaping.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.methods
+  - api.schema.core
+  - api.schema.state
+  - api.schema.user_action
+  - mcp.protocol
   owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-26'
@@ -858,6 +862,11 @@ documents:
     interoperability observation.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - diagnostic.guard
+  - diagnostic.host
+  - diagnostic.mcp
+  - diagnostic.process
   owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-27'
@@ -1025,6 +1034,14 @@ documents:
     schemas, and next-action routing.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.method.check_close.response
+  - api.method.close_task.response
+  - api.method.reconcile_changes.response
+  - api.method.status.response
+  - api.methods
+  - api.schema.state
+  - mcp.protocol
   owner_area: architecture_guide
   created_on: '2026-07-16'
   last_updated_on: '2026-07-26'
@@ -1079,6 +1096,9 @@ documents:
   summary: Current design reference for bounded exact operation-result retrieval from immutable replay rows.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.method.get_operation_result.request
+  - api.method.get_operation_result.response
   owner_area: architecture_guide
   created_on: '2026-07-13'
   last_updated_on: '2026-07-26'
@@ -1109,6 +1129,15 @@ documents:
   summary: Current design reference for the unified user-action request and immutable resolution model.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.method.request_user_action.request
+  - api.method.request_user_action.response
+  - api.method.resolve_user_action.request
+  - api.method.resolve_user_action.response
+  - api.schema.user_action
+  - cli.command.inbox
+  - cli.output.inbox
+  - cli.surface.public
   owner_area: architecture_guide
   created_on: '2026-07-13'
   last_updated_on: '2026-07-27'
@@ -1143,6 +1172,14 @@ documents:
   summary: Current design reference for intent-bound source receipts and atomic evidence-producer finalization.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.method.prepare_evidence_capture.request
+  - api.method.prepare_evidence_capture.response
+  - api.method.record_run.request
+  - api.method.record_run.response
+  - api.schema.state
+  - cli.command.evidence.capture_command
+  - cli.command.evidence.capture_tool
   owner_area: architecture_guide
   created_on: '2026-07-13'
   last_updated_on: '2026-07-26'
@@ -1479,6 +1516,10 @@ documents:
   summary: Reference contract for shared Git object-ID validation and canonicalization.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.methods
+  - cli.surface.public
+  - mcp.protocol
   owner_area: core_api
   created_on: '2026-07-17'
   last_updated_on: '2026-07-19'
@@ -1503,6 +1544,27 @@ documents:
     findings and bootstrap envelope, persisted-data failure rules, and the no-synthetic-default boundary.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.update_scope.request
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  - api.values.user_action_status
+  - diagnostic.guard
+  - diagnostic.host
+  - diagnostic.installation
+  - diagnostic.internal
+  - diagnostic.managed_config
+  - diagnostic.mcp
+  - diagnostic.platform
+  - diagnostic.process
+  - diagnostic.revision
+  - diagnostic.runtime_home
+  - diagnostic.setup
+  - diagnostic.store
+  - diagnostic.trust
   owner_area: core_api
   created_on: '2026-07-17'
   last_updated_on: '2026-07-27'
@@ -1542,6 +1604,8 @@ documents:
     conservative unavailable behavior, and machine-readable diagnostics.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - diagnostic.guard
   owner_area: runtime_security
   created_on: '2026-07-17'
   last_updated_on: '2026-07-25'
@@ -1602,6 +1666,14 @@ documents:
     installation, executable process, runtime-location, and repository boundaries.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - diagnostic.installation
+  - diagnostic.mcp
+  - diagnostic.platform
+  - diagnostic.process
+  - diagnostic.runtime_home
+  - diagnostic.store
+  - mcp.protocol
   owner_area: runtime_security
   created_on: '2026-06-07'
   last_updated_on: '2026-07-27'
@@ -1641,6 +1713,22 @@ documents:
   summary: Reference contract for administrative CLI behavior and local bootstrap commands.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.prepare_write.response
+  - api.method.update_scope.request
+  - api.schema.core
+  - api.schema.state
+  - api.schema.user_action
+  - cli.output.inbox
+  - cli.surface.public
+  - diagnostic.guard
+  - diagnostic.managed_config
+  - diagnostic.mcp
+  - diagnostic.process
+  - diagnostic.revision
+  - diagnostic.setup
+  - diagnostic.trust
+  - mcp.protocol
   owner_area: agent_connection
   created_on: '2026-06-19'
   last_updated_on: '2026-07-27'
@@ -1686,6 +1774,52 @@ documents:
   summary: Reference contract for managed stdio startup, revision-profiled JSON-RPC framing, canonical tool projection, response wrapping, UserAction request boundaries, and shutdown.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.check_close.request
+  - api.method.check_close.response
+  - api.method.close_task.request
+  - api.method.close_task.response
+  - api.method.get_operation_result.request
+  - api.method.get_operation_result.response
+  - api.method.intake.request
+  - api.method.intake.response
+  - api.method.prepare_evidence_capture.request
+  - api.method.prepare_evidence_capture.response
+  - api.method.prepare_write.request
+  - api.method.prepare_write.response
+  - api.method.reconcile_changes.request
+  - api.method.reconcile_changes.response
+  - api.method.record_run.request
+  - api.method.record_run.response
+  - api.method.request_user_action.request
+  - api.method.request_user_action.response
+  - api.method.resolve_user_action.request
+  - api.method.resolve_user_action.response
+  - api.method.stage_artifact.request
+  - api.method.stage_artifact.response
+  - api.method.status.request
+  - api.method.status.response
+  - api.method.update_scope.request
+  - api.method.update_scope.response
+  - api.methods
+  - api.schema.core
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  - cli.command.connection.add
+  - cli.command.connection.mode
+  - cli.command.connection.remove
+  - cli.command.connection.status
+  - cli.command.connection.verify
+  - cli.command.inbox.resolve
+  - cli.command.init
+  - cli.command.mcp.preflight
+  - cli.command.mcp.serve
+  - cli.command.root
+  - cli.output.inbox
+  - cli.surface.public
+  - diagnostic.mcp
+  - mcp.protocol
   owner_area: agent_connection
   created_on: '2026-06-19'
   last_updated_on: '2026-07-27'
@@ -1789,6 +1923,8 @@ documents:
   summary: Reference contract for the supported public Volicord API method list.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.methods
   owner_area: core_api
   created_on: '2026-06-04'
   last_updated_on: '2026-07-13'
@@ -1811,10 +1947,12 @@ documents:
   summary: Reference contract for `volicord.intake` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.state
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1833,10 +1971,13 @@ documents:
   summary: Reference contract for `volicord.update_scope` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1855,6 +1996,10 @@ documents:
   summary: Reference contract for `volicord.status` behavior and explicit continuity pagination.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - cli.output.inbox
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
   last_updated_on: '2026-07-27'
@@ -1879,6 +2024,11 @@ documents:
   summary: Reference contract for `volicord.get_operation_result` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.request_user_action.response
+  - api.schema.artifact
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-07-13'
   last_updated_on: '2026-07-27'
@@ -1915,10 +2065,16 @@ documents:
   summary: Reference contract for `volicord.prepare_evidence_capture` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.record_run.request
+  - api.method.record_run.response
+  - api.schema.state
+  - cli.command.evidence.capture_command
+  - cli.command.evidence.capture_tool
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-17'
-  last_verified_on: '2026-07-17'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -1953,6 +2109,9 @@ documents:
   summary: Reference contract for `volicord.prepare_write` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
   last_updated_on: '2026-07-27'
@@ -1983,6 +2142,9 @@ documents:
   summary: Reference contract for `volicord.stage_artifact` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.artifact
+  - api.schema.state
   owner_area: core_api
   created_on: '2026-06-11'
   last_updated_on: '2026-07-27'
@@ -2005,10 +2167,16 @@ documents:
   summary: Reference contract for `volicord.record_run` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.update_scope.request
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2029,6 +2197,12 @@ documents:
   summary: Reference contract for `volicord.request_user_action` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.get_operation_result.request
+  - api.schema.judgment
+  - api.schema.user_action
+  - cli.command.connection.mode
+  - cli.command.inbox
   owner_area: core_api
   created_on: '2026-07-13'
   last_updated_on: '2026-07-27'
@@ -2052,6 +2226,11 @@ documents:
   summary: Reference contract for `volicord.resolve_user_action` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.record_run.request
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-07-13'
   last_updated_on: '2026-07-27'
@@ -2076,10 +2255,14 @@ documents:
   summary: Reference contract for `volicord.reconcile_changes` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.state
+  - api.schema.user_action
+  - cli.command.inbox
   owner_area: core_api
   created_on: '2026-07-01'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2108,6 +2291,9 @@ documents:
   summary: Reference contract for `volicord.check_close` and `volicord.close_task` behavior.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-11'
   last_updated_on: '2026-07-27'
@@ -2137,10 +2323,19 @@ documents:
   summary: Reference contract for core API schema families.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.record_run.response
+  - api.schema.core
+  - api.schema.artifact
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  - cli.output.inbox
+  - mcp.protocol
   owner_area: core_api
   created_on: '2026-06-04'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2167,6 +2362,18 @@ documents:
   summary: Reference contract for state API schema families.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.check_close.response
+  - api.method.close_task.response
+  - api.method.prepare_write.response
+  - api.method.record_run.request
+  - api.method.status.request
+  - api.method.status.response
+  - api.method.update_scope.request
+  - api.schema.core
+  - api.schema.state
+  - api.schema.user_action
+  - cli.command.connection.mode
   owner_area: core_api
   created_on: '2026-06-10'
   last_updated_on: '2026-07-27'
@@ -2193,6 +2400,12 @@ documents:
   summary: Reference contract for artifact API schema families.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.methods
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.state
+  - cli.output.inbox
   owner_area: core_api
   created_on: '2026-06-10'
   last_updated_on: '2026-07-11'
@@ -2215,6 +2428,14 @@ documents:
   summary: Reference contract for judgment API schema families.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.methods
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  - cli.output.inbox
   owner_area: core_api
   created_on: '2026-06-10'
   last_updated_on: '2026-07-27'
@@ -2238,6 +2459,18 @@ documents:
   summary: Reference contract for unified user-action request, status, adapter-neutral resolution-form, and immutable resolution schemas.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.get_operation_result.request
+  - api.method.get_operation_result.response
+  - api.method.resolve_user_action.response
+  - api.methods
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  - api.values.user_action_status
+  - cli.output.inbox
   owner_area: core_api
   created_on: '2026-07-13'
   last_updated_on: '2026-07-27'
@@ -2264,6 +2497,20 @@ documents:
   summary: Reference contract for API value sets and value meanings.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.close_task.request
+  - api.method.intake.request
+  - api.method.prepare_write.response
+  - api.method.update_scope.request
+  - api.methods
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
+  - api.values.user_action_status
+  - cli.output.inbox
+  - cli.surface.public
   owner_area: core_api
   created_on: '2026-06-10'
   last_updated_on: '2026-07-26'
@@ -2291,6 +2538,8 @@ documents:
   summary: Reference route for API error families and focused error owners.
   normative_level: guide
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.core
   owner_area: core_api
   created_on: '2026-06-04'
   last_updated_on: '2026-07-17'
@@ -2324,6 +2573,9 @@ documents:
   summary: Reference contract for public API error-code meanings.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.core
+  - api.schema.state
   owner_area: core_api
   created_on: '2026-06-13'
   last_updated_on: '2026-07-27'
@@ -2349,6 +2601,15 @@ documents:
   summary: Reference contract for API error precedence.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.check_close.response
+  - api.method.close_task.response
+  - api.method.prepare_write.response
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-13'
   last_updated_on: '2026-07-27'
@@ -2380,6 +2641,15 @@ documents:
   summary: Reference contract for API error response routing.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.check_close.response
+  - api.method.close_task.response
+  - api.method.prepare_write.response
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.judgment
+  - api.schema.state
+  - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-13'
   last_updated_on: '2026-07-27'
@@ -2409,6 +2679,10 @@ documents:
   summary: Reference contract for blocker routing in API responses.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.method.close_task.request
+  - api.schema.core
+  - api.schema.state
   owner_area: core_api
   created_on: '2026-06-13'
   last_updated_on: '2026-07-11'
@@ -2433,6 +2707,10 @@ documents:
   summary: Reference contract for machine-readable API error details.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - api.schema.artifact
+  - api.schema.core
+  - api.schema.state
   owner_area: core_api
   created_on: '2026-06-13'
   last_updated_on: '2026-07-27'
@@ -2636,6 +2914,15 @@ documents:
     integration revisions, managed runtime/project sessions, `ValidatedAgentSession`, and adapter/Core boundary.
   normative_level: contract
   translation_policy: semantic_parity
+  contracts:
+  - cli.surface.public
+  - diagnostic.guard
+  - diagnostic.host
+  - diagnostic.managed_config
+  - diagnostic.mcp
+  - diagnostic.revision
+  - diagnostic.trust
+  - mcp.protocol
   owner_area: agent_connection
   created_on: '2026-05-23'
   last_updated_on: '2026-07-26'
@@ -2855,8 +3142,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-30'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -2976,8 +3263,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-20'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - doc_index_schema
   - terminology_map_schema

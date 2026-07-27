@@ -32,22 +32,26 @@ Staging is input preparation only. A staged handle is not recorded Evidence, doe
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This method owns the top-level `params` request fields in the generated table
+below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope);
+the table does not redefine `ToolEnvelope` fields. Requiredness and nullability
+come directly from the semantic request descriptor.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+### `StageArtifactRequest` fields
 
-```yaml
-StageArtifactRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  display_name: string
-  content_type: string
-  redaction_state: string
-  safe_bytes_or_notice: string
-  expected_sha256: string | null
-  expected_size_bytes: integer | null
-  relation_hint: string | null
-```
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `content_type` | yes | no | `string` |
+| `display_name` | yes | no | `string` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `expected_sha256` | yes | yes | `string` |
+| `expected_size_bytes` | yes | yes | `integer` |
+| `redaction_state` | yes | no | `RedactionState` |
+| `relation_hint` | yes | yes | `string` |
+| `safe_bytes_or_notice` | yes | no | `string` |
+| `task_id` | yes | no | `string` |
+
+
 
 Nested owner links:
 - `redaction_state` values are owned by [API Value Sets artifact values](schema-value-sets.md#artifact-values).

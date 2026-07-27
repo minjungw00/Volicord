@@ -4,12 +4,13 @@
 
 use std::{error::Error, fmt};
 
-use schemars::JsonSchema;
+use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use volicord_command_model::{
     CommandIntrospectionError, InboxEvidenceTarget, InboxResolutionArguments,
     InboxResolveInvocation,
 };
+use volicord_types::contracts::{identifiers_from_json_schema, JsonContractDescriptor};
 use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, UserActionRequestId};
 use volicord_types::schema::{
     RequiredNullable, StateRecordRef, SummaryCard, UserActionRequest, UserActionResolutionForm,
@@ -142,6 +143,22 @@ pub struct CliUserActionInboxResponse {
     pub summary_card: SummaryCard,
     pub user_channel_availability: RequiredNullable<CliUserChannelAvailability>,
     pub pending_user_action_inbox_items: Vec<CliUserActionInboxItem>,
+}
+
+/// Returns the exact semantic contract for `volicord inbox --json`.
+pub fn cli_output_contract_descriptors() -> Vec<JsonContractDescriptor> {
+    let schema = serde_json::to_value(schema_for!(CliUserActionInboxResponse))
+        .expect("CLI inbox response schema should serialize");
+    let identifiers = identifiers_from_json_schema(&schema);
+    vec![JsonContractDescriptor::from_owner_schema(
+        "cli.output.inbox",
+        schema,
+        identifiers,
+        vec![
+            "cli.command.inbox".to_owned(),
+            "cli.command.inbox.resolve".to_owned(),
+        ],
+    )]
 }
 
 /// Failure to build adapter presentation from typed current facts.

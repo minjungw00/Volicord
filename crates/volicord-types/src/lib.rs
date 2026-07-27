@@ -10,6 +10,7 @@
 
 pub mod canonical;
 pub mod connection_verification;
+pub mod contracts;
 pub mod diagnostics;
 pub mod guard_manifest;
 pub mod guard_outcome;

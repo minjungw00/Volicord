@@ -90,40 +90,31 @@ block Run recording.
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This method owns the top-level `params` request fields in the generated table
+below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope);
+the table does not redefine `ToolEnvelope` fields. Requiredness and nullability
+come directly from the semantic request descriptor.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+### `RecordRunRequest` fields
 
-```yaml
-RecordRunRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  change_unit_id: string
-  kind: string
-  run_id: string | null
-  baseline_ref: string
-  write_ticket_id: string | null
-  performed_operation?: string | null
-  summary: string
-  observed_changes: ObservedChanges
-  artifact_inputs: ArtifactInput[]
-  evidence_updates: EvidenceCoverageUpdate[]
-  evidence_observations: EvidenceObservationInput[]
-  close_assessment: CloseAssessmentInput | null
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `artifact_inputs` | yes | no | `ArtifactInput[]` |
+| `baseline_ref` | yes | no | `string` |
+| `change_unit_id` | yes | no | `string` |
+| `close_assessment` | yes | yes | `CloseAssessmentInput` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `evidence_observations` | yes | no | `EvidenceObservationInput[]` |
+| `evidence_updates` | yes | no | `EvidenceCoverageUpdate[]` |
+| `kind` | yes | no | `RunKind` |
+| `observed_changes` | yes | no | `ObservedChanges` |
+| `performed_operation` | no | yes | `string` |
+| `run_id` | yes | yes | `string` |
+| `summary` | yes | no | `string` |
+| `task_id` | yes | no | `string` |
+| `write_ticket_id` | yes | yes | `string` |
 
-CloseAssessmentInput:
-  result_summary: string
-  result_refs: StateRecordRef[]
-  residual_risks: ResidualRiskInput[]
-  sensitive_categories: string[]
-  recovery_constraints: string[]
 
-ResidualRiskInput:
-  summary: string
-  consequence: string
-  acceptance_required: boolean
-  source_refs: StateRecordRef[]
-```
 
 Nested owner links:
 - `observed_changes`, `evidence_updates`, and `evidence_observations` use
@@ -327,10 +318,11 @@ Ticket-backed recording consumes the write ticket only when:
 - it has not crossed a project-policy-selected optional `idle_expires_at`; the
   default idle timeout is `null`
 - the ticket and its `WriteTicketAttemptScope` identify the same `task_id` and `change_unit_id` as the Run being recorded
-- the checked attempt's `product_file_write_intended` exactly matches whether
+- the checked `WriteTicketAttemptScope`'s `product_file_write_intended` exactly matches whether
   the Run observed a product-file write; an effective `sensitive` non-product
   Run uses `false`
-- the checked attempt `baseline_ref` matches the Run `baseline_ref`
+- the checked `WriteTicketAttemptScope` `baseline_ref` matches the Run
+  `baseline_ref`
 - a supplied `performed_operation` exactly matches the checked attempt's
   normalized `intended_operation`; the field is mandatory for an effective
   `sensitive` non-product Run

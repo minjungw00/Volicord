@@ -68,24 +68,28 @@
 
 ## 요청 스키마
 
-이 메서드는 아래 최상위 `params` 요청 형태를 담당합니다. `envelope`는 [API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 이 블록은 `ToolEnvelope` 필드를 다시 정의하지 않습니다.
+이 메서드는 아래 생성 표의 최상위 `params` 요청 필드를 담당합니다. `envelope`는
+[API 코어 스키마](schema-core.md#tool-envelope)의 공통 `ToolEnvelope`이며, 표는
+`ToolEnvelope` 필드를 다시 정의하지 않습니다. 필수 여부와 Null 허용 여부는 의미
+기반 요청 설명자에서 직접 가져옵니다.
 
-이 메서드 소유 요청 블록에 표시된 모든 필드는 필드 참고가 명시적으로 선택 필드라고 표시하지 않는 한 `params`의 필수 멤버입니다. `T | null`은 멤버가 반드시 있어야 하며 JSON `null`을 담을 수 있다는 뜻입니다.
+### `UpdateScopeRequest` 필드
 
-```yaml
-UpdateScopeRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  goal_summary: string | null
-  scope_update: object | null
-  scope_boundary: string | null
-  non_goals: string[] | null
-  acceptance_criteria: AcceptanceCriterionReplacement[] | null
-  autonomy_boundary: string | null
-  baseline_ref: string | null
-  change_unit: object
-  related_scope_decision_refs: StateRecordRef[]
-```
+| 필드 | 필수 | Null 허용 | 형식 |
+|---|---|---|---|
+| `acceptance_criteria` | 예 | 예 | `AcceptanceCriterionReplacement[]` |
+| `autonomy_boundary` | 예 | 예 | `string` |
+| `baseline_ref` | 예 | 예 | `string` |
+| `change_unit` | 예 | 아니요 | `ChangeUnitUpdate` |
+| `envelope` | 예 | 아니요 | `ToolEnvelope` |
+| `goal_summary` | 예 | 예 | `string` |
+| `non_goals` | 예 | 예 | `string[]` |
+| `related_scope_decision_refs` | 예 | 아니요 | `StateRecordRef[]` |
+| `scope_boundary` | 예 | 예 | `string` |
+| `scope_update` | 예 | 예 | `ScopeUpdate` |
+| `task_id` | 예 | 아니요 | `string` |
+
+
 
 중첩 형태 담당 문서:
 - `acceptance_criteria`는 `AcceptanceCriterionReplacement[]`을 사용합니다.

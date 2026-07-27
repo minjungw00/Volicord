@@ -285,7 +285,7 @@ product contract; use the focused Reference document for exact behavior.
 | `xtask/Cargo.toml` | Lightweight maintenance dependency boundary. `volicord-command-model` supplies the public command grammar for documentation examples, `volicord-types` supplies runtime-owned contract identifiers, and `volicord-mcp-protocol` supplies production profiles for pinned specification parity, without pulling in `volicord-mcp`, Core, Store, CLI, platform, or test-process crates. |
 | `xtask/src/lib.rs` | Thin repository-check orchestration and public report re-exports. |
 | `xtask/src/diagnostics.rs` | Shared path, category, optional line, and message representation for validation issues. |
-| `xtask/src/doc_index.rs` | Current documentation-index schema, applicability and contract-source resolution, owner routing, indexed paths, and maintained-document coverage. |
+| `xtask/src/doc_index.rs` | Current documentation-index schema, applicability and exact semantic-contract routing, owner routing, indexed paths, and maintained-document coverage. |
 | `xtask/src/markdown.rs` | Shared Markdown event parsing, heading meaning units, and supported contract-literal constructs. |
 | `xtask/src/links.rs` | Local Markdown target resolution, links, fragments, and anchors. |
 | `xtask/src/parity.rs` | English/Korean heading-structure parity. |

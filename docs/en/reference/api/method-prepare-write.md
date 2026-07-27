@@ -76,21 +76,25 @@ Security non-claims belong to [Security](../security.md).
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This method owns the top-level `params` request fields in the generated table
+below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope);
+the table does not redefine `ToolEnvelope` fields. Requiredness and nullability
+come directly from the semantic request descriptor.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+### `PrepareWriteRequest` fields
 
-```yaml
-PrepareWriteRequest:
-  envelope: ToolEnvelope
-  task_id: string | null
-  change_unit_id: string | null
-  intended_operation: string
-  intended_paths: string[]
-  product_file_write_intended: boolean
-  sensitive_categories: string[]
-  baseline_ref: string
-```
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `baseline_ref` | yes | no | `string` |
+| `change_unit_id` | yes | yes | `string` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `intended_operation` | yes | no | `string` |
+| `intended_paths` | yes | no | `string[]` |
+| `product_file_write_intended` | yes | no | `boolean` |
+| `sensitive_categories` | yes | no | `string[]` |
+| `task_id` | yes | yes | `string` |
+
+
 
 Field notes:
 - `intended_paths` entries are `Product Repository` API product paths. Product Repository path normalization is owned by [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization); this method uses normalized repo-relative paths when forming and comparing the path-level `WriteTicketScope` and compatibility storage scope.

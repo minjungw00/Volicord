@@ -41,16 +41,20 @@ computed `authority_receipt`, independent of optional `include` fields.
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This method owns the top-level `params` request fields in the generated table
+below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope);
+the table does not redefine `ToolEnvelope` fields. Requiredness and nullability
+come directly from the semantic request descriptor.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+### `StatusRequest` fields
 
-```yaml
-StatusRequest:
-  envelope: ToolEnvelope
-  include: object
-  continuity_page?: ContinuityPageRequest | null
-```
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `continuity_page` | no | yes | `ContinuityPageRequest` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `include` | yes | no | `StatusInclude` |
+
+
 
 Field notes:
 - `include` is the method-local flag object selecting status summaries, as shown in the minimal valid request example.

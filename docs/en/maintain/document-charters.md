@@ -223,7 +223,10 @@ Reference owners.
 - Should own: Exact contracts for scope, API methods, schemas, error behavior,
   storage, runtime boundaries, security wording, Agent Connection behavior,
   projection and template behavior, conformance meaning, and design-quality
-  meaning. The Reference Index owns human-readable Reference navigation.
+  meaning. Contract-bearing pages use exact semantic contract IDs routed to
+  machine-readable owner descriptors. Repeated request field, requiredness,
+  nullability, type, and CLI syntax inventories are generated from those
+  owners. The Reference Index owns human-readable Reference navigation.
 - Should not own: Tutorial flow, marketing framing, implementation history,
   migration notes, broad onboarding prose, or duplicate copies of adjacent
   Reference owners.

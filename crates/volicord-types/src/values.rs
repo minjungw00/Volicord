@@ -183,6 +183,23 @@ pub enum MethodName {
 }
 
 impl MethodName {
+    /// Complete current public method catalog in declaration order.
+    pub const ALL: [Self; 13] = [
+        Self::Intake,
+        Self::UpdateScope,
+        Self::Status,
+        Self::GetOperationResult,
+        Self::CheckClose,
+        Self::PrepareEvidenceCapture,
+        Self::PrepareWrite,
+        Self::StageArtifact,
+        Self::RecordRun,
+        Self::RequestUserAction,
+        Self::ResolveUserAction,
+        Self::ReconcileChanges,
+        Self::CloseTask,
+    ];
+
     /// Returns the public method-name value.
     pub const fn as_str(self) -> &'static str {
         match self {

@@ -129,14 +129,17 @@ unless the English document has the same meaning unit.
 Commands, flags, identifiers, status meanings, negative clauses, limitations,
 warnings, and local reader routes must remain equivalent by meaning.
 
-`docs-check` compares exact current owner-catalog identifiers at parsed
-structural coordinates. Catalog membership, not capitalization or identifier
+`docs-check` resolves each document's exact semantic contracts and validates
+English and Korean independently at parsed structural coordinates. An
+identifier owned by a different contract is out of scope; a likely contract
+identifier absent from the current owners is invalid even when both languages
+use the same spelling. Only units that pass both language validations proceed
+to parity comparison. Catalog membership, not capitalization or identifier
 shape, recognizes a token, so lowercase schema values are covered alongside
-`snake_case` fields, hyphenated CLI tokens, dotted diagnostic codes, and protocol
-identifiers. This automation detects placement and spelling mismatches only.
-Human review remains responsible for natural translation, semantic
-equivalence, context, normative strength, omissions, and whether a shared
-identifier is used to express the same contract meaning.
+`snake_case` fields, hyphenated CLI tokens, dotted diagnostic codes, and
+protocol identifiers. Human review remains responsible for natural
+translation, semantic equivalence, context, normative strength, omissions, and
+whether a shared identifier expresses the same contract meaning.
 
 When examples appear in paired documents, preserve the same scenario meaning
 while writing Korean naturally. Keep refs, paths, method names, schema fields,
@@ -151,9 +154,9 @@ English anchor.
 
 Every maintained paired Markdown document under `docs/en/` and `docs/ko/` must
 use mirrored language-relative paths and have an indexed pair in
-`doc-index.yaml`. Its version 3 entry carries the paired paths plus required
-maintenance `owner_area`, date, and `applies_to` metadata for maintainers;
-ordinary readers still use the language entry pages and reader-facing routes.
+`doc-index.yaml`. The entry carries the paired paths plus required maintenance
+`owner_area`, date, and applicability metadata for maintainers; ordinary readers
+still use the language entry pages and reader-facing routes.
 
 The exact root pair `README.md` and `README.ko.md` is also a maintained
 semantic-parity pair when it is registered in `doc-index.yaml`. This exception

@@ -71,24 +71,28 @@ requests do not block the update.
 
 ## Request schema
 
-This method owns the top-level `params` request shape below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope); this block does not redefine `ToolEnvelope` fields.
+This method owns the top-level `params` request fields in the generated table
+below. `envelope` is the shared [`ToolEnvelope`](schema-core.md#tool-envelope);
+the table does not redefine `ToolEnvelope` fields. Requiredness and nullability
+come directly from the semantic request descriptor.
 
-All fields shown in this method-owned request block are required members of `params` unless a field note explicitly marks a member optional; `T | null` means the member must be present and may contain JSON `null`.
+### `UpdateScopeRequest` fields
 
-```yaml
-UpdateScopeRequest:
-  envelope: ToolEnvelope
-  task_id: string
-  goal_summary: string | null
-  scope_update: object | null
-  scope_boundary: string | null
-  non_goals: string[] | null
-  acceptance_criteria: AcceptanceCriterionReplacement[] | null
-  autonomy_boundary: string | null
-  baseline_ref: string | null
-  change_unit: object
-  related_scope_decision_refs: StateRecordRef[]
-```
+| Field | Required | Nullable | Type |
+|---|---|---|---|
+| `acceptance_criteria` | yes | yes | `AcceptanceCriterionReplacement[]` |
+| `autonomy_boundary` | yes | yes | `string` |
+| `baseline_ref` | yes | yes | `string` |
+| `change_unit` | yes | no | `ChangeUnitUpdate` |
+| `envelope` | yes | no | `ToolEnvelope` |
+| `goal_summary` | yes | yes | `string` |
+| `non_goals` | yes | yes | `string[]` |
+| `related_scope_decision_refs` | yes | no | `StateRecordRef[]` |
+| `scope_boundary` | yes | yes | `string` |
+| `scope_update` | yes | yes | `ScopeUpdate` |
+| `task_id` | yes | no | `string` |
+
+
 
 Nested owner links:
 - `acceptance_criteria` uses `AcceptanceCriterionReplacement[]`; the nested
