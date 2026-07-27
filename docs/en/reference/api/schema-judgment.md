@@ -2,7 +2,7 @@
 
 This document owns the choice-judgment payloads nested inside the common
 user-action schemas. It does not own a separate durable judgment lifecycle.
-Request identity, effective status, basis, capture form, expiry, channel paths,
+Request identity, effective status, basis, adapter-neutral resolution form, expiry, channel paths,
 and immutable resolution identity belong to [API User Action
 Schemas](schema-user-action.md).
 

@@ -121,7 +121,7 @@ development = []
 build = []
 
 [workspace.metadata.architecture.groups.adapter-presentation]
-description = "Shared UserAction presentation for CLI-capable adapters."
+description = "Typed CLI UserAction inbox presentation, JSON schemas, and canonical invocation layout."
 kind = "production"
 boundary = "adapter"
 core_dependency = "forbidden"

@@ -2178,7 +2178,7 @@ CREATE TABLE project_workflow_policies (
   TEXT/BLOB 길이가 non-ASCII와 내장 NUL 형태를 거부하며, `GLOB` 검사가 visible 범위 밖의
   모든 byte를 거부합니다. Core도 replay 조회나 mutation 계획 전에 같은 상한을
   적용합니다.
-- Store application validation은 요청, 근거, resolution JSON을 strict decode하고 저장 요청에서 캡처 폼을 도출하며 폐쇄형 tag와 파생 `action_kind` 일치를 요구합니다. 대상과 아티팩트 후보는 각각 32개, note 성격 텍스트는 Unicode scalar value 1,000개, 관찰 summary는 4,000개, canonical 직렬화 폼은 32 KiB로 제한하며 초과 값을 자르지 않고 거부합니다.
+- Store application validation은 요청, 근거, resolution JSON을 strict decode하고 저장 요청에서 adapter-neutral resolution form을 도출하며 폐쇄형 tag와 파생 `action_kind` 일치를 요구합니다. 대상과 아티팩트 후보는 각각 32개, note 성격 텍스트는 Unicode scalar value 1,000개, 관찰 summary는 4,000개, canonical 직렬화 폼은 32 KiB로 제한하며 초과 값을 자르지 않고 거부합니다.
 - `write_tickets`는 소비 전까지 재사용 가능하고 상태에 묶인 호환성을 기록합니다. `basis_state_version`은 감사 순서이며 고유하거나 유효성 좌표가 아닙니다. 유효성은 `validity_basis_json`, status, 안정된 무효화 사유, 선택적 `idle_expires_at`에서 나옵니다. 고유 소비 인덱스는 소비 하나가 여러 Run으로 갈라지는 것을 계속 막습니다. Prefix 배열은 엄격하게 정규화된 repository-relative exact-or-descendant prefix이며 glob 문법 없음, 절대/빈 값/`..`/모호한 항목 거절, denied 우선, allowed 빈 배열은 product-file 쓰기 없음 규칙을 적용합니다.
 - `project_workflow_policies`는 권위 있는 정규 데이터베이스 복사본과 `sha256:<64자리 소문자 16진수>` 지문만 저장하며 관리 파일/CLI/host 동작은 이 담당 문서 밖입니다. 변경된 fingerprint는 정확한 트랜잭션 `committed_at`, 한 번의 상태 버전 전진, 프로젝트 범위 정책 이벤트 하나와 함께 기록됩니다. 정규화된 쓰기 권한 fingerprint가 바뀌면 같은 트랜잭션에서 같은 수준의 권한 변경을 포함해 활성 Task 재평가 metadata 표시를 만들거나 갱신하고, 저장 결속이 없거나 다른 모든 활성 티켓과 표시된 Task의 모든 활성 티켓을 `explicit_revoke`로 무효화합니다. 개인정보를 제한한 workflow metric은 이 권한 데이터베이스가 아니라 별도의 비권한 `diagnostics.sqlite` 저장소에만 둡니다.
 - `artifact_staging.created_by_actor_source`는 스테이징 출처를 기록합니다. 스테이징된 바이트와 알림은 아티팩트 담당 상태이며 그 자체로 증거 권한이 아닙니다.

@@ -326,8 +326,8 @@ fn plan_reconcile_changes(
                     resolved_by_actor_source: ActorSource::LocalUser,
                     capture_basis: authority
                         .resolved_verification_basis
-                        .clone()
-                        .unwrap_or_else(|| "user_channel".to_owned()),
+                        .map(|basis| basis.as_str().to_owned())
+                        .expect("validated accepted authority has a User Channel basis"),
                     user_action_resolution_ref: authority.user_action_resolution_id.as_ref().map(
                         |resolution_id| {
                             state_ref(
@@ -781,8 +781,8 @@ fn accepted_resolution_candidate(
             actor_source: ActorSource::LocalUser,
             capture_basis: authority
                 .resolved_verification_basis
-                .clone()
-                .unwrap_or_else(|| "user_channel".to_owned()),
+                .map(|basis| basis.as_str().to_owned())
+                .expect("validated accepted authority has a User Channel basis"),
             user_action_resolution_ref: authority.user_action_resolution_id.as_ref().map(
                 |resolution_id| {
                     state_ref(

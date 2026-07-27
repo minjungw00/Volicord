@@ -8,7 +8,7 @@ use volicord_types::{
     },
     values::{
         MethodName, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
-        UserActionOptionAction, UserActionStatus, UtcTimestamp,
+        UserActionOptionAction, UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
     },
 };
 
@@ -69,7 +69,7 @@ pub struct UserActionResolutionInsert {
     pub channel_submission_id: String,
     pub resolution_json: String,
     pub resolved_by_actor_source: String,
-    pub resolved_verification_basis: String,
+    pub resolved_verification_basis: UserActionVerificationBasis,
     pub resolved_assurance_level: String,
     pub resolved_at: String,
 }
@@ -141,7 +141,7 @@ pub struct UserActionResolutionRecord {
     pub channel_submission_id: String,
     pub resolution_json: String,
     pub resolved_by_actor_source: String,
-    pub resolved_verification_basis: String,
+    pub resolved_verification_basis: UserActionVerificationBasis,
     pub resolved_assurance_level: String,
     pub resolved_at: String,
 }
@@ -546,6 +546,14 @@ fn decode_user_action_resolution_record(
         "user_action_resolutions.channel_kind",
         &raw.channel_kind,
     )?;
+    let resolved_verification_basis =
+        UserActionVerificationBasis::parse(&raw.resolved_verification_basis).ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "user_action_resolutions",
+                record_id,
+                "resolved_verification_basis",
+            )
+        })?;
     validate_user_action_resolution_column_agreement(
         &raw.resolution_json,
         action_kind,
@@ -562,7 +570,7 @@ fn decode_user_action_resolution_record(
         || validate_user_action_resolution_provenance(
             channel_kind,
             &raw.resolved_by_actor_source,
-            &raw.resolved_verification_basis,
+            resolved_verification_basis,
             &raw.resolved_assurance_level,
         )
         .is_err()
@@ -583,7 +591,7 @@ fn decode_user_action_resolution_record(
         channel_submission_id: raw.channel_submission_id,
         resolution_json: raw.resolution_json,
         resolved_by_actor_source: raw.resolved_by_actor_source,
-        resolved_verification_basis: raw.resolved_verification_basis,
+        resolved_verification_basis,
         resolved_assurance_level: raw.resolved_assurance_level,
         resolved_at: raw.resolved_at,
     })
@@ -1125,13 +1133,13 @@ impl MutationContext<'_> {
         }
         validate_identifier(
             "resolved_verification_basis",
-            &input.resolved_verification_basis,
+            input.resolved_verification_basis.as_str(),
         )?;
         validate_identifier("resolved_assurance_level", &input.resolved_assurance_level)?;
         validate_user_action_resolution_provenance(
             input.channel_kind,
             &input.resolved_by_actor_source,
-            &input.resolved_verification_basis,
+            input.resolved_verification_basis,
             &input.resolved_assurance_level,
         )?;
         validate_timestamp("resolved_at", &input.resolved_at)?;
@@ -1156,7 +1164,7 @@ impl MutationContext<'_> {
                 channel_submission_id: input.channel_submission_id.clone(),
                 resolution_json: input.resolution_json.clone(),
                 resolved_by_actor_source: input.resolved_by_actor_source.clone(),
-                resolved_verification_basis: input.resolved_verification_basis.clone(),
+                resolved_verification_basis: input.resolved_verification_basis,
                 resolved_assurance_level: input.resolved_assurance_level.clone(),
                 resolved_at: input.resolved_at.clone(),
             };
@@ -1192,7 +1200,7 @@ impl MutationContext<'_> {
                 input.channel_submission_id,
                 input.resolution_json,
                 input.resolved_by_actor_source,
-                input.resolved_verification_basis,
+                input.resolved_verification_basis.as_str(),
                 input.resolved_assurance_level,
                 input.resolved_at
             ],

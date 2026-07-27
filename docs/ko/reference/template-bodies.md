@@ -347,7 +347,7 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 - [API 값 집합](api/schema-value-sets.md)이 지원 값으로 정의하지 않았는데 초록색 또는 긍정 라벨이 기준 enum 값이라는 의미.
 - 아티팩트가 있다는 사실만으로 증거가 충분하다는 의미.
 - 빠진 원천 데이터를 낙관적인 문구로 대신할 수 있다는 의미.
-- 기존 대기 요청의 질문, 선택지, 맥락, canonical form, 캡처 경로, 명령, URL,
+- 기존 대기 요청의 질문, 선택지, 맥락, resolution form, 캡처 경로, 명령, URL,
   credential을 차단 사유, 다음 행동, template text에서 다시 만들 수 있다는 의미. 이
   요청은 요청 ID, `pending`, 다음 actor/User Channel만 표시합니다. 요청을 만들기 전의
   `missing_final_acceptance` 행동은 Agent가 요청을 만드는 데 필요한 차단 질문을 계속
@@ -373,8 +373,8 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 - [상태 보기와 템플릿 표시 경계](projection-and-templates.md): 읽기 전용 표시와 최신성 경계.
 - [Core 모델](core-model.md): Core 권한과 닫기 준비 상태 의미.
 - [API 상태 스키마](api/schema-state.md): 상태 형태 표시 입력.
-- [API 사용자 행동 스키마](api/schema-user-action.md): 공통 요청, inbox, 상태,
-  resolution 형태.
+- [API 사용자 행동 스키마](api/schema-user-action.md): 공통 요청, adapter-neutral
+  resolution form, 상태, resolution 형태.
 - [API 판단 스키마](api/schema-judgment.md): 선택형 판단 전용 세부 형태.
 - [API 아티팩트 스키마](api/schema-artifacts.md): `ArtifactRef` 표시 입력.
 
@@ -383,7 +383,7 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 
 ### 입력 상태
 
-- 검증된 User Channel renderer에 전달된 Core 파생 내부 `UserActionInboxItem` 하나. 이
+- 검증된 User Channel renderer에 전달된 typed `CliUserActionInboxItem` 하나. 이
   template은 안전한 요약만 담는 Agent 대상 `volicord.request_user_action` 결과에서 만들지
   않습니다.
 - 정확한 질문과 제한된 선택지.
@@ -424,7 +424,7 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 - [Core 모델](core-model.md): 사용자 소유 판단과 비대체 규칙.
 - [사용자 행동 요청 메서드](api/method-request-user-action.md): 요청 동작.
 - [사용자 행동 해결 메서드](api/method-resolve-user-action.md): 불변 User Channel 해결 동작.
-- [API 사용자 행동 스키마](api/schema-user-action.md): 공통 요청, 해결, 수신함, capture form.
+- [API 사용자 행동 스키마](api/schema-user-action.md): 공통 요청, 해결, 상태, adapter-neutral resolution form.
 - [API 판단 스키마](api/schema-judgment.md): 선택 payload, `SensitiveActionScope`, 수락된 위험 형태.
 - [보안](security.md): 민감 동작 승인 경계.
 
@@ -569,7 +569,7 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 - 에이전트가 사용자 판단, 쓰기 티켓, 아티팩트 규칙, 닫기 차단 사유를 우회할 수 있다는 의미.
 - 전체 스키마, DDL, 로그, 아티팩트 본문, 관련 없는 계약 자료를 기본으로 주입해야 한다는 의미.
 - 지원 범위 밖 기능 자료나 같은 `doc_id`의 한영 문서를 기본으로 주입해야 한다는 의미.
-- 대기 요청의 질문, 선택지, 맥락, canonical form, 캡처 경로, 명령, URL, credential을
+- 대기 요청의 질문, 선택지, 맥락, resolution form, 캡처 경로, 명령, URL, credential을
   포함하거나 다시 만들어야 한다는 의미.
 
 ### 사용자에게 보이는 문구

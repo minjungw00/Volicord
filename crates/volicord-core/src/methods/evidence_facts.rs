@@ -282,10 +282,6 @@ pub(super) fn user_action_observation_resolution_authority(
             EvidenceRelevanceStatus::Supported | EvidenceRelevanceStatus::Contradicted
         )
         || observed_by_actor_source != ActorSource::LocalUser
-        || resolution_record
-            .resolved_verification_basis
-            .trim()
-            .is_empty()
         || observation.target != *target
         || !exact_artifact_ref_sets_match(&observation.output_artifact_refs, output_artifact_refs)
     {

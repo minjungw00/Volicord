@@ -2557,7 +2557,13 @@ fn derive_user_observation_authority(
                 producer_kind: EvidenceProducerKind::UserChannelObservation,
                 producer_ref: Some(producer_ref.clone()).into(),
                 output_artifact_refs: output_artifact_refs.to_vec(),
-                verification_basis: Some(resolution_record.resolved_verification_basis).into(),
+                verification_basis: Some(
+                    resolution_record
+                        .resolved_verification_basis
+                        .as_str()
+                        .to_owned(),
+                )
+                .into(),
             },
             relevance_assessment: EvidenceRelevanceAssessment {
                 status: resolution_authority.relevance_status,

@@ -5,7 +5,9 @@ use crate::user_action::persistence::{
 use volicord_store::core_pipeline::{
     CoreStorageMutation, UserActionMutation, UserActionResolutionRecord,
 };
-use volicord_types::values::{UserActionChannelKind, UserActionKind, UserActionStatus};
+use volicord_types::values::{
+    UserActionChannelKind, UserActionKind, UserActionStatus, UserActionVerificationBasis,
+};
 
 #[test]
 fn request_mapping_produces_matching_effective_record_and_store_input() {
@@ -57,7 +59,7 @@ fn resolution_mapping_preserves_the_immutable_store_input() {
         channel_submission_id: "submission-test".to_owned(),
         resolution_json: "{\"resolution_type\":\"choice\"}".to_owned(),
         resolved_by_actor_source: "local_user".to_owned(),
-        resolved_verification_basis: "local_cli".to_owned(),
+        resolved_verification_basis: UserActionVerificationBasis::CliDirectUserChannel,
         resolved_assurance_level: "local_verified".to_owned(),
         resolved_at: "2026-07-27T00:01:00Z".to_owned(),
     });
@@ -69,5 +71,8 @@ fn resolution_mapping_preserves_the_immutable_store_input() {
     assert_eq!(insert.user_action_resolution_id, "resolution-test");
     assert_eq!(insert.user_action_request_id, "action-test");
     assert_eq!(insert.channel_submission_id, "submission-test");
-    assert_eq!(insert.resolved_verification_basis, "local_cli");
+    assert_eq!(
+        insert.resolved_verification_basis,
+        UserActionVerificationBasis::CliDirectUserChannel
+    );
 }

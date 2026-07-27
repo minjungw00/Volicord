@@ -235,7 +235,7 @@ fn reconcile_changes_accepts_local_recovery_and_persists_replay_category(
     assert_eq!(replay.operation_category, "local_recovery");
     assert_eq!(
         replay.verification_basis.as_deref(),
-        Some(VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL)
+        Some(UserActionVerificationBasis::CliDirectUserChannel.as_str())
     );
     Ok(())
 }
@@ -578,7 +578,7 @@ fn reconcile_changes_creates_and_consumes_user_acceptance_judgment() -> Result<(
     assert_eq!(resolution["resolution_basis"], "accepted_by_user");
     assert_eq!(
         resolution["capture_basis"],
-        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+        UserActionVerificationBasis::CliDirectUserChannel.as_str()
     );
     assert_eq!(
         resolution["user_action_resolution_ref"]["record_id"],
@@ -698,7 +698,7 @@ fn reconcile_changes_local_recovery_consumes_user_acceptance_and_removes_close_b
     let resolution = row_resolution(&row);
     assert_eq!(
         resolution["capture_basis"],
-        VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL
+        UserActionVerificationBasis::CliDirectUserChannel.as_str()
     );
 
     let after = harness.service.check_close(

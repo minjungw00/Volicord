@@ -587,7 +587,7 @@ fn plan_resolve_user_action(
         let exact = existing.user_action_request_id == request.user_action_request_id.as_str()
             && existing.resolved_by_actor_source
                 == verified_actor.actor_source.to_canonical_string()
-            && existing.resolved_verification_basis == verified_actor.verification_basis
+            && existing.resolved_verification_basis.as_str() == verified_actor.verification_basis
             && existing.resolved_assurance_level == verified_actor.assurance_level
             && domain_resolution_input_matches_body(&request.resolution, &body);
         if !exact {

@@ -1712,10 +1712,79 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-`inbox` is the UserAction resolution channel. It renders the stored typed form
-on a local user-owned surface and submits one explicit choice or evidence
-observation to `volicord.resolve_user_action`. An MCP agent may create or resume
-a pending request but cannot run this resolution path.
+`inbox` is the UserAction resolution channel. It projects the adapter-neutral
+`UserActionResolutionForm` onto a local user-owned surface and submits one
+explicit choice or evidence observation to `volicord.resolve_user_action`. An
+MCP agent may create or resume a pending request but cannot run this resolution
+path.
+
+`volicord-user-action-presentation` owns the exact closed CLI inbox document
+and its JSON Schema:
+
+```yaml
+CliUserActionInboxResponse:
+  summary_card: SummaryCard
+  user_channel_availability: CliUserChannelAvailability | null
+  pending_user_action_inbox_items: CliUserActionInboxItem[]
+
+CliUserChannelAvailability:
+  paths: CliUserChannelPath[]
+  recommended_path_kind: cli | null
+  recommended_path_label: string | null
+  recommendation: string | null
+
+CliUserChannelPath:
+  # available variant
+  status: available
+  kind: cli
+  label: string
+  capture_basis: cli_direct_user_channel
+
+  # unavailable variant
+  status: unavailable
+  kind: cli
+  label: string
+  detail: string
+
+CliUserActionInboxItem:
+  user_action_request_id: string
+  request_ref: StateRecordRef
+  project_id: string
+  task_id: string
+  change_unit_id: string | null
+  action_kind: string
+  question: string
+  context_summary: string
+  resolution_form: UserActionResolutionForm
+  requirement: required | optional
+  required_for: string[]
+  status: pending
+  capture_path: CliUserActionCapturePath
+  expires_at: string | null
+
+CliUserActionCapturePath:
+  # available variant
+  status: available
+  kind: cli
+  label: string
+  command: string
+  capture_basis: cli_direct_user_channel
+
+  # unavailable variant
+  status: unavailable
+  kind: cli
+  label: string
+  detail: string
+```
+
+The tagged path variants cannot carry contradictory availability booleans or
+empty available-command fallbacks. `requirement` is the single closed
+required/optional state. Command syntax comes only from the typed invocation
+builders in `volicord-command-model`. JSON output serializes
+`CliUserActionInboxResponse` once; text output renders the same typed model
+directly and does not parse an intermediate JSON tree. The semantic
+`UserActionResolutionForm` and its candidates remain owned by
+[API User Action Schemas](api/schema-user-action.md#resolution-form).
 
 Stored requests and resolutions are strict typed records. Corrupt, unknown,
 mixed, or invalid stored values fail with the persisted-data failure taxonomy;

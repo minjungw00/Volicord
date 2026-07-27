@@ -107,9 +107,9 @@ Non-claim: `StatusResult.close_blockers` are not stored `close_task` results, co
 - `include.task` returns the selected `Task` summary and current Change Unit through `active_task`.
 - `include.pending_user_actions` returns `pending_user_action_summaries`. The
   public result never returns User Channel availability, the Core-derived
-  request body, canonical form, or a complete `UserActionInboxItem`. A verified
-  User Channel renderer fetches the availability and complete item through its
-  separate internal Core boundary. Relevant stale or superseded records can
+  request body, resolution form, or a complete `CliUserActionInboxItem`. A
+  verified User Channel renderer fetches the availability and complete item
+  through its separate internal Core boundary. Relevant stale or superseded records can
   still appear as opaque authority refs in owner-defined state and next-action
   fields; those refs are not request-detail projections.
 - `include.write_ticket` returns active, invalidated, consumed, or otherwise relevant write-ticket state through `write_ticket_summary`. An invalidated summary exposes its stable invalidation reason and validity basis; an optional project idle timeout is represented by `idle_timeout`, not by a fixed lifetime.
@@ -204,7 +204,7 @@ Truthful projection rules:
 | `authority_receipt` | Fresh `AuthorityReceipt` whenever a Task is selected, otherwise `null`. It uses the same observed `state_version` and carries the complete close-blocker set, latest recorded Run, product-write observation, evidence gate, next actor/action, and derived `completion_claim_allowed`. Shape is owned by [API State Schemas](schema-state.md#task-lineage-workspace-and-authority-receipt). |
 
 The nested `AgentSafeUserActionRequestSummary` shape is owned by
-[API User Action Schemas](schema-user-action.md#inbox-and-capture-form). Nested
+[API User Action Schemas](schema-user-action.md#resolution-form). Nested
 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`,
 `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuityPage`,
 `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`,
@@ -249,7 +249,7 @@ This method does not persist Core state changes, events, replay rows, close muta
 
 The examples are intentionally compact and method-local. The representative
 response is the public agent-safe status projection. A verified User Channel
-renderer obtains the complete canonical inbox form through its separate
+renderer obtains the complete typed CLI inbox presentation through its separate
 internal Core boundary, never through `StatusResult`. The response is
 abbreviated to the fields needed to show the status branch, observed refs,
 state version, current scope, current Change Unit, close state, and next actions.

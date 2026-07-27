@@ -73,12 +73,12 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 
 | 워크스페이스 멤버 | 가이드 수준 역할 |
 |---|---|
-| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 선언 하나에서 함께 만드는 공개 메서드 결과와 필드 전용 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. 공개 Rust 어휘는 각 항목을 담당하는 모듈 경로로 제공하며, 크레이트 루트는 타입 집계 파사드가 아니라 모듈 경로를 제공합니다. |
+| `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 의미 UserAction 요청·불변 resolution·adapter-neutral `UserActionResolutionForm` 타입, 선언 하나에서 함께 만드는 공개 메서드 결과와 필드 전용 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. CLI presentation model이나 rendering helper는 담당하지 않습니다. 공개 Rust 어휘는 각 항목을 담당하는 모듈 경로로 제공하며, 크레이트 루트는 타입 집계 파사드가 아니라 모듈 경로를 제공합니다. |
 | `crates/volicord-host-contract` | `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames`를 통한 의존성이 안전한 semantic Codex 계약, 명시적인 MCP server/raw-tool identity, 충돌 검사를 거친 callable 투영과 catalog 조회, 결정적인 contract identity, 한도 있는 host 값과 error, source별 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
 | `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 호스트 중립 typed invocation authority, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율. |
 | `crates/volicord-command-model` | `volicord` 바이너리의 완전한 Clap 선언을 담당합니다. Root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 validator, 실제 모델 기반 가시성 분류, 새로운 root `clap::Command`, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation, 그 선언에서 도출한 typed inbox-resolution invocation builder를 제공합니다. 명령 실행이나 application service는 담당하지 않습니다. |
-| `crates/volicord-user-action-presentation` | CLI 지향 UserAction inbox item, availability, capture path, recovery instruction을 위한 공유 adapter presentation입니다. Shared semantic type과 정규 command-model invocation을 사용하며 Core 정책, Store 접근, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
+| `crates/volicord-user-action-presentation` | `CliUserActionInboxResponse`, `CliUserActionInboxItem`, tagged channel/capture-path 상태, CLI JSON Schema, command-model 기반 recovery instruction을 담당하는 typed CLI UserAction presentation입니다. Shared semantic type과 정규 command-model invocation을 사용하며 Core 정책, Store 접근, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 렌더링, 숨은 동일 프로세스 managed-host launcher, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 프로세스 시작, 관리 명령 디스패치, 재사용 실행 모듈. |
 | `crates/volicord-platform-fs` | 프로세스 target 및 플랫폼 관찰, 네이티브 Linux/WSL2 분류, WSL2 배포판 검증 및 파일시스템 관찰, typed 원자적 기존 대상 비대체 일반 파일 공개, 플랫폼 고유 파일시스템 이름 공간 연산, 정규 Runtime Home별 공유·배타 OS 기반 변경 승인과 빌린 변경 permit, 읽기 전용 정규 Git common-directory/worktree snapshot을 위한 내부 안전 파사드. 관리 시작이나 Codex 구성 정책은 담당하지 않습니다. |
 | `crates/volicord-platform-process` | 한도가 있는 플랫폼별 자식 프로세스 격리와 비차단 자식 파이프 준비 상태를 위한 내부 안전 파사드. 저수준 Unix 프로세스 그룹, Windows Job Object, 파이프 폴링 primitive를 담당합니다. |
@@ -211,11 +211,13 @@ MCP envelope는 없습니다.
 결정합니다. Caller는 의미 의도를 `user_action::service`에 제공하며 정규 저장
 action JSON을 직접 구성하지 않습니다.
 
-`volicord-user-action-presentation`은 이 fact에서 공유하는 현재 CLI inbox 및
-recovery presentation을 만듭니다. Command text는 실제 Clap 선언에서 도출한 typed
-`volicord-command-model` invocation에서 얻습니다. CLI는 terminal rendering을
-담당합니다. MCP는 compound protocol projection과 neutral fact-read failure를 MCP
-error로 바꾸는 작업을 담당합니다. `methods/reconcile_changes.rs`와 다른 Core
+`volicord-types`는 저장된 의미 request body에서 adapter-neutral
+`UserActionResolutionForm`을 도출합니다. `volicord-user-action-presentation`은 이
+fact를 typed `CliUserActionInboxResponse`, 폐쇄형 channel/capture-path 상태, JSON
+Schema로 투영합니다. Command text는 실제 Clap 선언에서 도출한 typed
+`volicord-command-model` invocation에서 얻습니다. CLI는 이 typed model을 직접
+렌더링합니다. MCP는 자체 safe compound protocol projection과 neutral fact-read
+failure를 MCP error로 바꾸는 작업만 담당합니다. `methods/reconcile_changes.rs`와 다른 Core
 consumer는 공유 책임 담당 모듈을 직접 호출하고 typed UserAction 결과를 각자
 plan과 응답에 반영하는 방식을 결정합니다. 프로덕션 메서드 모듈은 형제 메서드
 구현을 재사용 라이브러리로 사용하지 않습니다.

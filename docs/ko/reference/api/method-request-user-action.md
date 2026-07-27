@@ -97,7 +97,7 @@ resume variant는 두 번째 공개 mutation이 아니라 읽기 전용 연속 �
 `volicord.request_user_action`이 직접 만든 요청만 가리킬 수 있고, 같은 활성 workflow
 Agent Connection actor 범위와 허용 프로젝트를 요구하며, 같은 `operation_result_ref`와 함께
 byte 단위로 정확한 원래 agent-safe Agent Workflow 응답을 재생합니다. 재생 결과는 정규
-요청 요약만 담고 전체 요청, inbox 항목, 캡처 폼, 캡처 경로, User Channel credential을
+요청 요약만 담고 전체 요청, CLI inbox 항목, resolution form, 캡처 경로, User Channel credential을
 담지 않습니다. 요청, event, replay 행, prompt, token, resolution, state-version 증가를
 만들지 않습니다. 다른 connection 또는 `volicord.reconcile_changes`가 만든 요청은 이
 분기에서 사용할 수 없습니다. 이후 관계없는 Git 변경이나 authority 상태 변경도 과거
@@ -141,9 +141,10 @@ Dry run과 거부 어느 쪽도 영속 정규 UTC 하한을 갱신하지 않습�
 MCP는 쓸 수 있는 `workflow` Agent Connection에 create를 노출합니다. 프로젝트 저장소가
 읽기 가능 전용으로 저하된 workflow connection도 resume은 발견하고 사용할 수 있지만
 create는 Core mutation 전에 거부됩니다. `read_only` Agent Connection은 어느 분기도 쓸
-수 없습니다. 어댑터는 새로 생성되어 계속 pending인 요청에만 canonical 캡처 폼을 지원
-User Channel로 렌더링할 수 있으며 Agent Connection 호출 자체는 행동을 해결하지
-않고 그 폼도 받지 않습니다. Resume은 정확한 안전 replay와 현재 안전 projection만
+수 없습니다. CLI presentation은 새로 생성되어 계속 pending인 요청에만
+adapter-neutral resolution form을 지원 User Channel로 렌더링할 수 있으며 Agent
+Connection 호출 자체는 행동을 해결하지 않고 그 form도 받지 않습니다. Resume은
+정확한 안전 replay와 현재 안전 projection만
 반환하고 User Channel을 열지 않습니다.
 
 ## 관련 담당 문서

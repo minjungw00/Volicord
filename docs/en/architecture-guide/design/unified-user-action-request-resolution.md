@@ -29,8 +29,9 @@ mutation application.
 The MCP adapter calls the request/resume path, rereads
 `CurrentUserActionFacts`, and constructs its own safe protocol projection. The
 CLI consumes `PendingUserActionFacts`. `volicord-user-action-presentation`
-builds the current `UserActionInboxItem`, availability labels, and CLI recovery
-instruction from those neutral facts. Its commands come from a typed
+projects the semantic `UserActionResolutionForm` into the current
+`CliUserActionInboxItem`, closed availability and capture-path states, CLI JSON
+Schema, and recovery instruction. Its commands come from a typed
 `volicord-command-model` invocation derived from the actual Clap declaration.
 
 ## Invariants
@@ -55,16 +56,17 @@ instruction from those neutral facts. Its commands come from a typed
 
 ## Responsibility boundaries
 
-`volicord-types` owns dependency-safe request, resolution, form, basis, and
-summary shapes. The Core `user_action` modules own reusable semantic
+`volicord-types` owns dependency-safe request, immutable resolution,
+adapter-neutral resolution form, basis, and summary shapes, with no CLI
+presentation helpers. The Core `user_action` modules own reusable semantic
 validation, construction, identity, materialization, authority interpretation,
 lifecycle policy, reads, and adapter-neutral semantic facts. Individual method
 modules own request-specific operation and response composition. Store owns
 strict records and snapshot consistency. The command model owns canonical CLI
 invocation construction.
-`volicord-user-action-presentation` owns the shared CLI-oriented projection.
-CLI owns terminal rendering; MCP owns the bounded protocol projection and
-adapter-specific failure mapping.
+`volicord-user-action-presentation` owns the typed `Cli*` projection and CLI
+JSON Schemas. CLI owns direct typed terminal rendering; MCP owns the bounded
+protocol projection and adapter-specific failure mapping.
 
 ## Execution flow
 
@@ -83,8 +85,8 @@ adapter-specific failure mapping.
 9. CLI requests neutral pending facts for one Task.
 10. Store reads the effective records from one project snapshot and Core
    returns typed lifecycle and resolution-availability facts.
-11. Shared presentation creates the local inbox item and obtains a canonical
-    typed resolution invocation from the command model.
+11. Shared presentation creates the typed local CLI inbox item and obtains a
+    canonical typed resolution invocation from the command model.
 12. Core validates the selected local-user answer and plans one immutable
     resolution.
 13. Store commits the resolution, derived records, event, and replay response

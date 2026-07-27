@@ -525,7 +525,7 @@ suppression reads only bounded canonical correlation data and returns the exact
 or invalid correlation yields `Unavailable`; no observed path is hidden.
 
 Prompt observations may be stored only under their bounded observation schema.
-They do not carry a user choice, resolution body, private inbox form, or
+They do not carry a user choice, resolution body, private resolution form, or
 credential.
 
 ## Current Close Basis And Continuity

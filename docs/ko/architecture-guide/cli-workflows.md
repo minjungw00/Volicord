@@ -13,7 +13,7 @@
 | plan | 읽기 전용 검사가 정확한 파일과 Store 변경안을 만듭니다. |
 | validate | 관리 구성, Connection, session, 저장소, policy를 검사합니다. |
 | commit | 담당 문서가 정의한 원자적 filesystem/Store 경계를 사용합니다. |
-| project와 render | `volicord-user-action-presentation`이 공유 CLI 지향 UserAction projection을 담당하고 `volicord-cli`가 구조화된 결과에서 terminal text 또는 JSON 문서 하나를 만듭니다. |
+| project와 render | `volicord-user-action-presentation`이 typed `Cli*` UserAction inbox model, JSON Schema, command-model 기반 resolution path를 담당합니다. `volicord-cli`는 이 model에서 terminal text를 직접 렌더링하거나 typed JSON 문서 하나를 직렬화합니다. |
 
 Parsing과 rendering은 다른 Core 또는 Store 권한이 되면 안 됩니다.
 
@@ -58,12 +58,16 @@ Project 명령은 등록된 정규 Git 작업 트리를 해결합니다. Policy 
 
 ## UserAction 흐름
 
-`inbox`는 Core에 adapter-neutral pending fact를 요청합니다. 공유 UserAction
-presentation은 로컬 사용자 소유 form, channel availability, preferred capture path를
-만듭니다. Capture-path command는 이를 parsing하는 같은 Clap 선언에서 경로와 option
-spelling을 얻는 typed command-model invocation입니다. `inbox resolve`는 저장 choice
-또는 evidence observation 하나를 `volicord.resolve_user_action`으로 제출합니다.
-MCP adapter는 요청을 만들거나 재개할 수 있지만 이 해결 경로를 호출할 수 없습니다.
+`inbox`는 Core에 adapter-neutral pending fact를 요청합니다. `volicord-types`가 의미
+`UserActionResolutionForm`을 도출하고 공유 UserAction presentation이 이를
+`CliUserActionInboxResponse`, typed channel availability, tagged request-specific
+capture path로 투영합니다. Available path의 command는 이를 parsing하는 같은 Clap
+선언에서 경로와 option spelling을 얻는 typed command-model invocation입니다.
+`inbox resolve`는 저장 choice 또는 evidence observation 하나를
+`volicord.resolve_user_action`으로 제출합니다. Text rendering은 typed CLI model을
+직접 사용하고 `--json`은 그 model을 한 번 직렬화합니다. MCP adapter는 요청을
+만들거나 재개할 수 있지만 이 해결 경로를 호출하거나 CLI inbox presentation을
+사용할 수 없습니다.
 
 Guard prompt 관찰은 CLI 답이 되지 않습니다. 손상된 저장 요청이나 resolution은 기본
 form 대신 영속 데이터 오류로 실패합니다.

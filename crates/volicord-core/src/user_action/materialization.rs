@@ -171,7 +171,7 @@ pub(crate) fn materialize_user_action_resolution(
         channel_submission_id: input.channel_submission_id.to_owned(),
         resolution_json: serde_json::to_string(&input.resolution)?,
         resolved_by_actor_source: input.verified_actor.actor_source.to_canonical_string(),
-        resolved_verification_basis: input.verified_actor.verification_basis.clone(),
+        resolved_verification_basis: input.channel_kind.verification_basis(),
         resolved_assurance_level: input.verified_actor.assurance_level.clone(),
         resolved_at: input.resolved_at.to_string(),
     };

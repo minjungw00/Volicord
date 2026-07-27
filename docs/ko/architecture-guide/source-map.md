@@ -167,7 +167,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-user-action-presentation/src/lib.rs` | Adapter-neutral UserAction fact에서 현재 inbox item, availability, capture path, recovery instruction을 만드는 공유 CLI 지향 projection. Command syntax는 typed `volicord-command-model` invocation에서만 얻으며 Core 정책, Store read, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
+| `crates/volicord-user-action-presentation/src/lib.rs` | Adapter-neutral UserAction fact에서 `CliUserActionInboxResponse`, `CliUserActionInboxItem`, 폐쇄형 channel/capture-path 상태, CLI JSON Schema, recovery instruction을 만드는 typed CLI projection. Command syntax는 typed `volicord-command-model` invocation에서만 얻으며 Core 정책, Store read, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
 
 ## CLI와 Codex 어댑터
 

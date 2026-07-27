@@ -2,7 +2,8 @@
 
 이 문서는 Agent Connection이 요청하고 `User Channel`을 통해서만 해결하는 사용자
 행동의 공통 공개 스키마를 담당합니다. 선택형 판단과 Evidence 관찰은 요청, 근거,
-유효 상태, inbox, 불변 resolution envelope를 공유하지만 권한 의미는 구분됩니다.
+유효 상태, adapter-neutral resolution form, 불변 resolution envelope를 공유하지만
+권한 의미는 구분됩니다.
 
 ## 폐쇄형 행동 계열
 
@@ -207,7 +208,7 @@ UserActionResolution:
   action_kind: string
   body: UserActionResolutionBody
   resolved_by_actor_source: local_user
-  resolved_verification_basis: string
+  resolved_verification_basis: cli_direct_user_channel
   resolved_assurance_level: string
   channel_kind: cli
   channel_submission_id: string
@@ -225,8 +226,9 @@ Choice 선택지, 관찰 대상 후보, 관찰 아티팩트 후보는 각각 최
 권한을 담는 choice 종류는 호출자 선택지를 거부하고 Core 소유 선택지를 사용합니다.
 관찰 후보 목록과 선택 아티팩트 목록은 비어 있지 않고 고유해야 합니다. 질문과 context
 summary도 공백이면 안 됩니다. 사용자 note 성격 텍스트는 Unicode
-scalar value 1,000개, 관찰 `summary`는 4,000개, canonical 직렬화 행동 또는 resolution
-양식은 32 KiB로 제한됩니다. Core는 요청 커밋과 resolution 커밋 전에 확인하고,
+scalar value 1,000개, 관찰 `summary`는 4,000개, canonical 직렬화 행동 또는
+adapter-neutral resolution form은 32 KiB로 제한됩니다. Core는 요청 커밋과
+resolution 커밋 전에 확인하고,
 어댑터는 렌더링 또는 수신 전에 다시 확인하며 잘라내어 유효하게 만들지 않습니다.
 
 `ResolveUserActionRequest.channel_submission_id`와 `UserActionResolution`에 보존되는 값은
@@ -235,8 +237,8 @@ visible ASCII `0x21..=0x7e` 1~256 bytes입니다. 빈 값, 공백, NUL, non-ASCI
 visible-ASCII 형태를 표현하고, Core는 replay 조회나 커밋 전에 정확한 byte 상한을
 검증합니다.
 
-<a id="inbox-and-capture-form"></a>
-## Inbox와 CLI 폼
+<a id="resolution-form"></a>
+## Adapter-neutral resolution form
 
 ```yaml
 AgentSafeUserActionRequestSummary:
@@ -244,67 +246,33 @@ AgentSafeUserActionRequestSummary:
   status: pending
   next_actor: user
 
-UserChannelAvailability:
-  paths: UserChannelPathAvailability[]
-  recommended_path_kind: string | null
-  recommended_path_label: string | null
-  recommendation: string | null
-
-UserChannelPathAvailability:
-  kind: cli
-  label: string
-  available: boolean
-  status: available | unavailable
-  capture_basis: string | null
-  detail: string | null
-
-UserActionInboxItem:
-  user_action_request_id: string
-  request_ref: StateRecordRef
-  project_id: string
-  task_id: string
-  change_unit_id: string | null
-  action_kind: string
-  question: string
-  context_summary: string
-  form: UserActionInboxForm
-  required: boolean
-  requirement_status: string
-  required_for: string[]
-  status: string
-  answer_path_availability: UserChannelAvailability
-  preferred_capture_path: UserActionCapturePath | null
-  fallbacks: UserActionCapturePath[]
-  expires_at: string | null
-
-UserActionInboxForm:
-  # choice form
+UserActionResolutionForm:
+  # choice variant
   form_type: choice
-  choices: UserActionInboxChoice[]
+  choices: UserActionResolutionChoice[]
   note_allowed: boolean
   note_max_chars: integer
 
-  # evidence-observation form
+  # evidence-observation variant
   form_type: evidence_observation
   target_candidates: EvidenceTarget[]
   artifact_candidates: ArtifactRef[]
   relevance_options: [supported, contradicted]
   summary_max_chars: integer
 
-UserActionCapturePath:  # 로컬 CLI projection 전용
-  kind: cli
+UserActionResolutionChoice:
+  choice_id: string
   label: string
-  available: boolean
-  command: string | null
-  capture_basis: string | null
-  detail: string | null
+  description: string
+  consequence: string
+  is_default: boolean
 ```
 
 `AgentSafeUserActionRequestSummary`는 Agent Connection 결과에서 허용되는 유일한 대기
 요청 projection입니다. 요청 식별자, 과거 pending 상태, 다음 actor인 사용자만 담습니다.
-요청 ref, 행동 종류, 만료 시각, 요청 본문, 근거, 질문, 맥락, 후보, 캡처 폼, 캡처 경로,
-명령, URL, User Channel credential은 담지 않습니다. 현재의 pending이 아닌 상태는 이
-과거 대기 요약이 아니라 별도로 갱신한 현재 projection에 속합니다.
+요청 ref, 행동 종류, 만료 시각, 요청 본문, 근거, 질문, 맥락, 후보, resolution form,
+캡처 경로, 명령, URL, User Channel credential은 담지 않습니다. 현재의 pending이 아닌
+상태는 이 과거 대기 요약이 아니라 별도로 갱신한 현재 projection에 속합니다.
 
 이는 알 수 없거나 추가된 필드가 없는 정확한 세 필수 필드의 닫힌 객체입니다.
 `user_action_request_id`는 비어 있지 않은 크기 제한 identifier 계약을 만족해야 하고
@@ -312,21 +280,17 @@ UserActionCapturePath:  # 로컬 CLI projection 전용
 추가되거나, 타입이나 literal 값이 잘못되면 일반 출력, replay, resume,
 operation-result eligibility에서 유효하지 않습니다.
 
-공개 `UserChannelAvailability`는 유일한 `cli` 경로를 나타내는 credential 없는 닫힌
-요약입니다. Label, detail, recommendation에는 일반 CLI 안내만 담을 수 있고 영속 질문,
-context, 후보, 비공개 form, note, submission identity, credential은 담을 수 없습니다.
-`UserActionCapturePath`는 로컬 CLI projection이며 Agent Connection 결과에 중첩되지
-않습니다.
+`UserActionResolutionForm`은 저장 요청 본문에서
+`UserActionRequestBody.resolution_form()`으로 도출하는 닫힌 의미 projection입니다.
+정확한 선택지 또는 Evidence 후보, 폐쇄형 relevance 값, canonical 입력 한도만
+복사합니다. Channel availability, CLI label, command, terminal 또는 Markdown
+layout, protocol field, credential, adapter status는 담지 않습니다. Adapter는 인자,
+산문, adapter 로컬 상태에서 후보를 다시 만들면 안 됩니다.
 
-
-Core는 local consumer에 필요한 typed 저장 요청을 포함한 엄격한 adapter-neutral
-current fact를 반환합니다. 공유 adapter presentation은 이 fact에서 로컬 CLI User
-Channel 전용 `UserActionInboxItem`과 form 하나를 도출하며 capture-path syntax는
-정규 command model에서 얻습니다. Agent 대상 메서드 결과, status와 close
-projection, replay, operation-result 조회에는 이 항목이 들어가지 않습니다. CLI는
-인자, 산문, adapter 로컬 상태에서 후보를 다시 만들면 안 됩니다. MCP는 neutral
-current fact를 자체 safe projection으로 변환합니다. 요청을 만들거나 재개할 수
-있지만 해결 form을 표시하거나 제출할 수 없습니다.
+정확한 CLI inbox 문서, channel availability, capture path, CLI JSON schema는
+[관리 CLI](../admin-cli.md#user-channel-commands)가 담당합니다. MCP는 neutral current
+fact를 자체 safe protocol projection으로 변환합니다. 요청을 만들거나 재개할 수 있지만
+resolution form을 받거나 제출할 수 없습니다.
 
 
 ## MCP 복합 projection
@@ -380,10 +344,11 @@ McpUserActionResolutionSummary:
 `volicord.request_user_action` 응답 분기로 남습니다.
 `agent_workflow_result_replayed=false`는 이 호출이 요청을 만들었다는 뜻이고, `true`는 같은
 Agent Connection이 명시적 읽기 전용 resume 연산을 사용해 두 번째 Agent Workflow
-mutation이 없었다는 뜻입니다. 이 정확한 과거 결과는 `UserActionRequest`나
-`UserActionInboxItem`이 아니라 `AgentSafeUserActionRequestSummary`를 담으며 replay와
-page 단위 operation-result 조회도 같은 안전한 byte를 보존합니다. 폐기된 전체 폼 형태를
-사용하는 저장 결과는 Agent Connection replay나 조회 대상이 아닙니다. 즉시 또는 이후의 채널 resolution은
+mutation이 없었다는 뜻입니다. 이 정확한 과거 결과는
+`AgentSafeUserActionRequestSummary`를 담으며 `UserActionRequest`,
+`UserActionResolutionForm`, CLI inbox presentation은 담지 않습니다. Replay와
+page 단위 operation-result 조회도 같은 안전한 byte를 보존합니다. 즉시 또는 이후의
+채널 resolution은
 별도 nullable projection입니다. resolution ref는 불변 resolution을 식별하지만 private
 body를 조회하지 않습니다. agent-safe 값은 사용자 자유 형식 note, 관찰 summary, channel
 submission identity, verification basis, assurance text를 제외합니다. 요청 operation

@@ -1141,5 +1141,5 @@ Owner links:
 - [API Methods](methods.md) and method owner documents for the methods that return these schemas.
 - [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.
 - [API User Action Schemas](schema-user-action.md) for durable action requests
-  and capture forms.
+  and adapter-neutral resolution forms.
 - [Storage Effects](../storage-effects.md) for persistence and state-effect consequences.

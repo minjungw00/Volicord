@@ -22,13 +22,14 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     EvidenceRelevanceStatus, JudgmentKind, UserActionBasisStatus, UserActionChannelKind,
-    UserActionOptionAction,
+    UserActionOptionAction, UserActionVerificationBasis,
 };
 
 pub(crate) fn channel_kind_from_verified_invocation(
     invocation: &VerifiedInvocationContext,
 ) -> Option<UserActionChannelKind> {
-    UserActionChannelKind::from_verification_basis(&invocation.verification_basis)
+    UserActionVerificationBasis::parse(&invocation.verification_basis)
+        .map(UserActionChannelKind::from_verification_basis)
 }
 
 pub(crate) fn validate_current_resolution_basis(
@@ -288,7 +289,7 @@ pub(crate) fn user_action_resolution_from_record(
             "resolved_by_actor_source",
             &record.resolved_by_actor_source,
         )?,
-        resolved_verification_basis: record.resolved_verification_basis.clone(),
+        resolved_verification_basis: record.resolved_verification_basis,
         resolved_assurance_level: record.resolved_assurance_level.clone(),
         channel_kind: record.channel_kind,
         channel_submission_id: record.channel_submission_id.clone(),

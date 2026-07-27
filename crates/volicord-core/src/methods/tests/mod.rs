@@ -51,7 +51,7 @@ use volicord_types::schema::{
 use volicord_types::values::CloseMutationIntent;
 use volicord_types::values::{
     ActorSource, ChangeUnitEffectKind, EvidenceAssuranceLevel, EvidenceSourceKind,
-    OperationCategory, VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+    OperationCategory,
 };
 use volicord_types::{
     canonical::canonical_json_size_bytes, ids::*, methods::*, schema::*, values::*,
@@ -675,7 +675,9 @@ fn assert_verified_invocation(response: &PipelineResponse, operation_category: O
     assert_eq!(
         verified.verification_basis,
         if operation_category == OperationCategory::UserOnly {
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL.to_owned()
+            UserActionVerificationBasis::CliDirectUserChannel
+                .as_str()
+                .to_owned()
         } else {
             crate::agent_session::validated_agent_session_for_test(CONNECTION_ID, PROJECT_ID)
                 .verification_basis()

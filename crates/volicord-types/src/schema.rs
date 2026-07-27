@@ -29,8 +29,9 @@ use crate::values::{
     TaskLineageRelation, TaskMode, TaskResult, UnrecordedChangeConfidence,
     UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionBasisStatus,
     UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-    UserActionStatus, UtcTimestamp, ValidatorSeverity, ValidatorStatus, WorkPhase, WorkspaceVcs,
-    WriteDecisionCategory, WriteTicketInvalidationReason, WriteTicketState, WriteTicketStatus,
+    UserActionStatus, UserActionVerificationBasis, UtcTimestamp, ValidatorSeverity,
+    ValidatorStatus, WorkPhase, WorkspaceVcs, WriteDecisionCategory, WriteTicketInvalidationReason,
+    WriteTicketState, WriteTicketStatus,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -1916,19 +1917,19 @@ impl UserActionRequestBody {
         }
     }
 
-    /// Projects this immutable request body into the canonical User Channel form.
+    /// Projects this immutable request body into its adapter-neutral resolution form.
     ///
     /// The projection validates the stored body first and copies only the exact
     /// user-presentable candidates and canonical input limits. Current channel
-    /// availability and capture-path selection are separate runtime facts.
-    pub fn capture_form(&self) -> Result<UserActionInboxForm, UserActionShapeError> {
+    /// availability and adapter presentation are separate runtime facts.
+    pub fn resolution_form(&self) -> Result<UserActionResolutionForm, UserActionShapeError> {
         self.validate_bounds()?;
         let form = match self {
-            Self::Choice(choice) => UserActionInboxForm::Choice {
+            Self::Choice(choice) => UserActionResolutionForm::Choice {
                 choices: choice
                     .options
                     .iter()
-                    .map(|option| UserActionInboxChoice {
+                    .map(|option| UserActionResolutionChoice {
                         choice_id: option.option_id.clone(),
                         label: option.label.clone(),
                         description: option.description.clone(),
@@ -1939,15 +1940,17 @@ impl UserActionRequestBody {
                 note_allowed: true,
                 note_max_chars: USER_ACTION_NOTE_MAX_CHARS as u64,
             },
-            Self::EvidenceObservation(observation) => UserActionInboxForm::EvidenceObservation {
-                target_candidates: observation.target_candidates.clone(),
-                artifact_candidates: observation.artifact_candidates.clone(),
-                relevance_options: vec![
-                    EvidenceRelevanceStatus::Supported,
-                    EvidenceRelevanceStatus::Contradicted,
-                ],
-                summary_max_chars: USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS as u64,
-            },
+            Self::EvidenceObservation(observation) => {
+                UserActionResolutionForm::EvidenceObservation {
+                    target_candidates: observation.target_candidates.clone(),
+                    artifact_candidates: observation.artifact_candidates.clone(),
+                    relevance_options: vec![
+                        EvidenceRelevanceStatus::Supported,
+                        EvidenceRelevanceStatus::Contradicted,
+                    ],
+                    summary_max_chars: USER_ACTION_OBSERVATION_SUMMARY_MAX_CHARS as u64,
+                }
+            }
         };
         form.validate_canonical_size()?;
         Ok(form)
@@ -2335,7 +2338,7 @@ pub struct UserActionResolution {
     pub action_kind: UserActionKind,
     pub body: UserActionResolutionBody,
     pub resolved_by_actor_source: ActorSource,
-    pub resolved_verification_basis: String,
+    pub resolved_verification_basis: UserActionVerificationBasis,
     pub resolved_assurance_level: String,
     pub channel_kind: UserActionChannelKind,
     #[schemars(
@@ -2358,35 +2361,12 @@ pub struct PersistedUserActionRequest {
 /// Stored resolution JSON shape for `user_action_resolutions.resolution_json`.
 pub type PersistedUserActionResolution = UserActionResolutionBody;
 
-/// User-facing inbox item for one actionable request.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct UserActionInboxItem {
-    pub user_action_request_id: UserActionRequestId,
-    pub request_ref: StateRecordRef,
-    pub project_id: ProjectId,
-    pub task_id: TaskId,
-    pub change_unit_id: RequiredNullable<ChangeUnitId>,
-    pub action_kind: UserActionKind,
-    pub question: String,
-    pub context_summary: String,
-    pub form: UserActionInboxForm,
-    pub required: bool,
-    pub requirement_status: String,
-    pub required_for: Vec<UserActionRequiredFor>,
-    pub status: UserActionStatus,
-    pub answer_path_availability: UserChannelAvailability,
-    pub preferred_capture_path: RequiredNullable<UserActionCapturePath>,
-    pub fallbacks: Vec<UserActionCapturePath>,
-    pub expires_at: RequiredNullable<UtcTimestamp>,
-}
-
-/// Closed user-facing form derived from the stored request body.
+/// Adapter-neutral resolution form derived from the stored request body.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "form_type", rename_all = "snake_case", deny_unknown_fields)]
-pub enum UserActionInboxForm {
+pub enum UserActionResolutionForm {
     Choice {
-        choices: Vec<UserActionInboxChoice>,
+        choices: Vec<UserActionResolutionChoice>,
         note_allowed: bool,
         note_max_chars: u64,
     },
@@ -2398,58 +2378,22 @@ pub enum UserActionInboxForm {
     },
 }
 
-impl UserActionInboxForm {
-    /// Validates the canonical serialized form size shared by every User Channel.
+impl UserActionResolutionForm {
+    /// Validates the canonical serialized form size shared by every adapter.
     pub fn validate_canonical_size(&self) -> Result<(), UserActionShapeError> {
         validate_user_action_serialized_size("form", self)
     }
 }
 
-/// Current availability summary for supported User Channel answer paths.
+/// Semantic answer choice for a choice-action resolution form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct UserChannelAvailability {
-    pub paths: Vec<UserChannelPathAvailability>,
-    pub recommended_path_kind: RequiredNullable<String>,
-    pub recommended_path_label: RequiredNullable<String>,
-    pub recommendation: RequiredNullable<String>,
-}
-
-/// Availability entry for one User Channel answer path.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct UserChannelPathAvailability {
-    pub kind: String,
-    pub label: String,
-    pub available: bool,
-    pub status: String,
-    pub capture_basis: RequiredNullable<String>,
-    pub detail: RequiredNullable<String>,
-}
-
-/// User-facing answer choice for a choice-action inbox item.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct UserActionInboxChoice {
+pub struct UserActionResolutionChoice {
     pub choice_id: UserActionOptionId,
     pub label: String,
     pub description: String,
     pub consequence: String,
     pub is_default: bool,
-}
-
-/// User-facing capture path for resolving one user action.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct UserActionCapturePath {
-    pub kind: String,
-    pub label: String,
-    pub available: bool,
-    pub command: RequiredNullable<String>,
-    pub url: RequiredNullable<String>,
-    pub capture_basis: RequiredNullable<String>,
-    pub expires_at: RequiredNullable<UtcTimestamp>,
-    pub detail: RequiredNullable<String>,
 }
 
 /// Caller-authored request input for a non-authority choice option.

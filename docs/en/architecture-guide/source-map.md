@@ -167,7 +167,7 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-user-action-presentation/src/lib.rs` | Shared CLI-oriented projection from adapter-neutral UserAction facts into current inbox items, availability, capture paths, and recovery instructions. It gets command syntax only from typed `volicord-command-model` invocations and owns no Core policy, Store read, command execution, terminal rendering, or MCP envelope. |
+| `crates/volicord-user-action-presentation/src/lib.rs` | Typed CLI projection from adapter-neutral UserAction facts into `CliUserActionInboxResponse`, `CliUserActionInboxItem`, closed channel/capture-path states, CLI JSON Schemas, and recovery instructions. It gets command syntax only from typed `volicord-command-model` invocations and owns no Core policy, Store read, command execution, terminal rendering, or MCP envelope. |
 
 ## CLI And Codex Adapter
 

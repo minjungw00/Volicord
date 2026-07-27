@@ -418,8 +418,8 @@ Core는 현지화된 라벨과 결과 설명도 만듭니다. 라벨, 설명 문
 답변 본문은 표시 전용입니다. 선택된 선택지의 기계 판독 가능 동작이나 결과를
 뒤집으면 안 됩니다.
 
-Core는 저장되는 각 사용자 행동 요청에 현재 상태에서 근거 스냅샷 하나와 닫힌 캡처
-폼 하나를 만듭니다. 선택 근거는 요청을 현재 `Task`, 해당될 때의 Change Unit,
+Core는 저장되는 각 사용자 행동 요청에 현재 상태에서 근거 스냅샷 하나와 닫힌
+adapter-neutral resolution form 하나를 만듭니다. 선택 근거는 요청을 현재 `Task`, 해당될 때의 Change Unit,
 `scope_revision`, 해당될 때의 닫기 근거 리비전, baseline, 결과 참조, 이름 붙은 잔여
 위험 ID, 해당될 때의 민감 동작 범위, 생성 시점 상태 버전에 묶습니다. 증거 관찰
 근거는 현재 대상 후보와 정확한 canonical 아티팩트 후보도 결속합니다. 호출자는
@@ -443,7 +443,7 @@ revision, canonical 근거 좌표, 캡처 시각을 제출하지 않습니다.
 - 범위 변경과 실행 기록 변경은 이력 요청이나 해결을 삭제하지 않습니다. 다만 호환되지
   않는 해결은 현재 닫기, 쓰기, 증거, 민감 승인 요구사항에 사용할 수 없습니다.
 
-저장된 근거나 닫힌 캡처 폼이 없는 요청은 담당 계약상 유효하지 않은 상태입니다.
+저장된 근거나 닫힌 resolution form이 없는 요청은 담당 계약상 유효하지 않은 상태입니다.
 요청 하나에는 변경 불가능한 해결이 최대 하나만 있을 수 있으며 replay나 동시 제출이
 그 결과를 갈라놓을 수 없습니다.
 
@@ -680,8 +680,8 @@ flowchart LR
   대상 identity, claim relevance를 서로 다른 축으로 평가합니다. Strong
   evidence에는 적용되는 모든 축이 필요하며 아티팩트 무결성만으로 producer나
   relevance를 증명할 수 없습니다.
-- 공통 `user_only` `volicord.resolve_user_action` 전이는 Core가 도출한 대기 캡처
-  양식에 대해서만 불변 `evidence_observation` `UserActionResolution`을 기록합니다.
+- 공통 `user_only` `volicord.resolve_user_action` 전이는 Core가 도출한 대기 resolution
+  form에 대해서만 불변 `evidence_observation` `UserActionResolution`을 기록합니다.
   이 resolution은 로컬 사용자 provenance와 supported 또는 contradicted relevance를
   사용자가 선택한 정확한 현재 아티팩트 및 근거에 결합합니다. 이는 Evidence이지 판단
   resolution이나 최종 수락이 아닙니다.

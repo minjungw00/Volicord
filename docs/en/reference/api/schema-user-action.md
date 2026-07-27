@@ -2,8 +2,9 @@
 
 This document owns the common public schema for a user action requested by an
 Agent Connection and resolved only through the `User Channel`. Choice judgments
-and evidence observations share one request, basis, effective-status, inbox,
-and immutable-resolution envelope while retaining distinct authority meanings.
+and evidence observations share one request, basis, effective-status,
+adapter-neutral resolution-form, and immutable-resolution envelope while
+retaining distinct authority meanings.
 
 ## Closed action families
 
@@ -221,7 +222,7 @@ UserActionResolution:
   action_kind: string
   body: UserActionResolutionBody
   resolved_by_actor_source: local_user
-  resolved_verification_basis: string
+  resolved_verification_basis: cli_direct_user_channel
   resolved_assurance_level: string
   channel_kind: cli
   channel_submission_id: string
@@ -241,9 +242,10 @@ choice kinds reject caller options and use Core-owned options. Observation
 candidate lists and the selected artifact list must be non-empty and unique.
 Questions and context summaries must not be blank. User note-like text is limited to
 1,000 Unicode scalar values, observation `summary` to 4,000 Unicode scalar
-values, and a canonical serialized action or resolution form to 32 KiB. Core
-checks the bounds before request commit and resolution commit. Adapters check
-again before rendering or accepting a form and never truncate into validity.
+values, and a canonical serialized action or adapter-neutral resolution form to
+32 KiB. Core checks the bounds before request commit and resolution commit.
+Adapters check again before rendering or accepting a form and never truncate
+into validity.
 
 `ResolveUserActionRequest.channel_submission_id` and the value preserved on
 `UserActionResolution` are 1 through 256 bytes of visible ASCII
@@ -252,8 +254,8 @@ invalid. The public JSON Schema expresses the matching non-empty, maximum-
 length, visible-ASCII shape, and Core validates the exact byte bound before
 replay lookup or commit.
 
-<a id="inbox-and-capture-form"></a>
-## Inbox and CLI form
+<a id="resolution-form"></a>
+## Adapter-neutral resolution form
 
 ```yaml
 AgentSafeUserActionRequestSummary:
@@ -261,67 +263,33 @@ AgentSafeUserActionRequestSummary:
   status: pending
   next_actor: user
 
-UserChannelAvailability:
-  paths: UserChannelPathAvailability[]
-  recommended_path_kind: string | null
-  recommended_path_label: string | null
-  recommendation: string | null
-
-UserChannelPathAvailability:
-  kind: cli
-  label: string
-  available: boolean
-  status: available | unavailable
-  capture_basis: string | null
-  detail: string | null
-
-UserActionInboxItem:
-  user_action_request_id: string
-  request_ref: StateRecordRef
-  project_id: string
-  task_id: string
-  change_unit_id: string | null
-  action_kind: string
-  question: string
-  context_summary: string
-  form: UserActionInboxForm
-  required: boolean
-  requirement_status: string
-  required_for: string[]
-  status: string
-  answer_path_availability: UserChannelAvailability
-  preferred_capture_path: UserActionCapturePath | null
-  fallbacks: UserActionCapturePath[]
-  expires_at: string | null
-
-UserActionInboxForm:
-  # choice form
+UserActionResolutionForm:
+  # choice variant
   form_type: choice
-  choices: UserActionInboxChoice[]
+  choices: UserActionResolutionChoice[]
   note_allowed: boolean
   note_max_chars: integer
 
-  # evidence-observation form
+  # evidence-observation variant
   form_type: evidence_observation
   target_candidates: EvidenceTarget[]
   artifact_candidates: ArtifactRef[]
   relevance_options: [supported, contradicted]
   summary_max_chars: integer
 
-UserActionCapturePath:  # local CLI projection only
-  kind: cli
+UserActionResolutionChoice:
+  choice_id: string
   label: string
-  available: boolean
-  command: string | null
-  capture_basis: string | null
-  detail: string | null
+  description: string
+  consequence: string
+  is_default: boolean
 ```
 
 `AgentSafeUserActionRequestSummary` is the only pending-request projection
 allowed in an Agent Connection result. It identifies only the request, its
 historical pending status, and the user as next actor. It does not carry the
 request ref, action kind, expiry, request body, basis, question, context,
-candidates, capture form, capture path, command, URL, or any User Channel
+candidates, resolution form, capture path, command, URL, or any User Channel
 credential. Current non-pending status belongs to the separately refreshed
 current projection rather than this historical pending summary.
 
@@ -331,22 +299,19 @@ identifier contract, while `status` and `next_actor` are the literal values
 `pending` and `user`. A missing, additional, wrong-typed, or wrong-literal field
 is invalid in ordinary output, replay, resume, and operation-result eligibility.
 
-The public `UserChannelAvailability` is a closed, credential-free summary of
-the one `cli` path. Its label, detail, and recommendation may provide generic
-CLI guidance, but never the durable question, context, candidates, private
-form, note, submission identity, or credential. `UserActionCapturePath` is a
-local CLI projection and is never nested in an Agent Connection result.
+`UserActionResolutionForm` is a closed semantic projection derived by
+`UserActionRequestBody.resolution_form()` from the stored request body. It
+copies only the exact selectable choices or evidence candidates, the closed
+relevance values, and canonical input limits. It carries no channel
+availability, CLI label, command, terminal or Markdown layout, protocol field,
+credential, or adapter status. Adapters must not reconstruct candidates from
+arguments, prose, or adapter-local state.
 
-
-Core returns strict adapter-neutral current facts, including the typed stored
-request needed by a local consumer. Shared adapter presentation derives one
-complete `UserActionInboxItem` and form from those facts only for the local CLI
-User Channel; it obtains capture-path syntax from the canonical command model.
-Agent-facing method results, status and close projections, replay, and
-operation-result retrieval never contain that item. The CLI must not
-reconstruct candidates from arguments, prose, or adapter-local state. MCP maps
-the neutral current facts into its own safe projection. It may create or resume
-the request, but it cannot render or submit the resolving form.
+The exact CLI inbox document, channel availability, capture path, and CLI JSON
+schemas are owned by [Administrative CLI](../admin-cli.md#user-channel-commands).
+MCP maps neutral current facts into its own safe protocol projection. It may
+create or resume the request, but it cannot receive or submit the resolution
+form.
 
 
 ## MCP compound projection
@@ -401,11 +366,9 @@ McpUserActionResolutionSummary:
 `operation_result_ref`. `agent_workflow_result_replayed=false` means this call
 created the request; `true` means the same Agent Connection used the explicit
 read-only resume operation and no second Agent Workflow mutation occurred.
-That exact historical result contains
-`AgentSafeUserActionRequestSummary`, not `UserActionRequest` or
-`UserActionInboxItem`; replay and paged operation-result retrieval preserve the
-same safe bytes. A stored result using the superseded full-form shape is
-ineligible for Agent Connection replay or retrieval.
+That exact historical result contains `AgentSafeUserActionRequestSummary`, not
+`UserActionRequest`, `UserActionResolutionForm`, or any CLI inbox presentation;
+replay and paged operation-result retrieval preserve the same safe bytes.
 Immediate or later channel resolution is a separate
 nullable projection. Its ref identifies the immutable resolution but does not
 retrieve its private body. The agent-safe value omits the user's free-form note,

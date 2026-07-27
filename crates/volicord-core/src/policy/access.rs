@@ -68,7 +68,7 @@ fn verified_binding_basis(
             ))
         }
         InvocationAuthority::LocalUser { channel } => Ok((
-            channel.verification_basis().to_owned(),
+            channel.verification_basis().as_str().to_owned(),
             invocation.session_id.clone(),
         )),
     }
@@ -259,7 +259,10 @@ mod tests {
 
         let (basis, session_id) =
             verified_binding_basis(&invocation).expect("typed local authority is valid");
-        assert_eq!(basis, UserActionChannelKind::Cli.verification_basis());
+        assert_eq!(
+            basis,
+            UserActionChannelKind::Cli.verification_basis().as_str()
+        );
         assert_eq!(session_id, None);
     }
 

@@ -14,7 +14,7 @@ CLI. Exact command behavior belongs to
 | plan | read-only inspection builds exact proposed file and Store changes |
 | validate | managed configuration, Connection, session, storage, and policy checks |
 | commit | one owner-defined atomic filesystem/Store boundary |
-| project and render | `volicord-user-action-presentation` owns shared CLI-oriented UserAction projection; `volicord-cli` owns terminal text or one JSON document from structured results |
+| project and render | `volicord-user-action-presentation` owns typed `Cli*` UserAction inbox models, their JSON Schemas, and command-model-backed resolution paths; `volicord-cli` renders terminal text directly from those models or serializes one typed JSON document |
 
 Parsing and rendering must not become alternate Core or Store authorities.
 
@@ -66,13 +66,16 @@ authority from a display name or repairs unknown stored values.
 
 ## UserAction Workflow
 
-`inbox` asks Core for adapter-neutral pending facts. Shared UserAction
-presentation builds the local user-owned form, channel availability, and
-preferred capture path. The capture-path command is a typed command-model
-invocation whose path and option spellings come from the same Clap declaration
-that parses it. `inbox resolve` submits one stored choice or evidence
-observation through `volicord.resolve_user_action`. The MCP adapter can create
-or resume a request but cannot call this resolution path.
+`inbox` asks Core for adapter-neutral pending facts. `volicord-types` derives
+the semantic `UserActionResolutionForm`; shared UserAction presentation
+projects it into `CliUserActionInboxResponse`, typed channel availability, and
+a tagged request-specific capture path. The available path's command is a typed
+command-model invocation whose path and option spellings come from the same
+Clap declaration that parses it. `inbox resolve` submits one stored choice or
+evidence observation through `volicord.resolve_user_action`. Text rendering
+consumes the typed CLI model directly, while `--json` serializes it once. The
+MCP adapter can create or resume a request but cannot call this resolution path
+or consume the CLI inbox presentation.
 
 Guard prompt observations never become a CLI answer. Corrupt stored request or
 resolution data fails with a persisted-data error rather than a default form.

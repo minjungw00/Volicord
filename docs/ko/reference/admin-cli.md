@@ -1592,10 +1592,78 @@ volicord inbox --repo "<repo>"
 volicord inbox resolve USER_ACTION_REQUEST_ID --choice CHOICE_ID --repo "<repo>"
 ```
 
-`inbox`는 UserAction 해결 채널입니다. 로컬 사용자 소유 표면에 저장 typed form을
-표시하고 명시적인 choice 또는 evidence observation 하나를
-`volicord.resolve_user_action`에 제출합니다. MCP 에이전트는 대기 요청을 만들거나 재개할
-수 있지만 이 해결 경로를 실행할 수 없습니다.
+`inbox`는 UserAction 해결 채널입니다. Adapter-neutral
+`UserActionResolutionForm`을 로컬 사용자 소유 표면에 투영하고 명시적인 choice 또는
+evidence observation 하나를 `volicord.resolve_user_action`에 제출합니다. MCP
+에이전트는 대기 요청을 만들거나 재개할 수 있지만 이 해결 경로를 실행할 수 없습니다.
+
+`volicord-user-action-presentation`은 다음과 같은 정확한 닫힌 CLI inbox 문서와 그
+JSON Schema를 담당합니다.
+
+```yaml
+CliUserActionInboxResponse:
+  summary_card: SummaryCard
+  user_channel_availability: CliUserChannelAvailability | null
+  pending_user_action_inbox_items: CliUserActionInboxItem[]
+
+CliUserChannelAvailability:
+  paths: CliUserChannelPath[]
+  recommended_path_kind: cli | null
+  recommended_path_label: string | null
+  recommendation: string | null
+
+CliUserChannelPath:
+  # available variant
+  status: available
+  kind: cli
+  label: string
+  capture_basis: cli_direct_user_channel
+
+  # unavailable variant
+  status: unavailable
+  kind: cli
+  label: string
+  detail: string
+
+CliUserActionInboxItem:
+  user_action_request_id: string
+  request_ref: StateRecordRef
+  project_id: string
+  task_id: string
+  change_unit_id: string | null
+  action_kind: string
+  question: string
+  context_summary: string
+  resolution_form: UserActionResolutionForm
+  requirement: required | optional
+  required_for: string[]
+  status: pending
+  capture_path: CliUserActionCapturePath
+  expires_at: string | null
+
+CliUserActionCapturePath:
+  # available variant
+  status: available
+  kind: cli
+  label: string
+  command: string
+  capture_basis: cli_direct_user_channel
+
+  # unavailable variant
+  status: unavailable
+  kind: cli
+  label: string
+  detail: string
+```
+
+Tagged path variant에는 서로 모순되는 availability boolean이나 비어 있는 available
+command fallback이 들어갈 수 없습니다. `requirement`는 required/optional 상태를
+나타내는 단일 폐쇄형 값입니다. Command syntax는
+`volicord-command-model`의 typed invocation builder에서만 얻습니다. JSON 출력은
+`CliUserActionInboxResponse`를 한 번 직렬화하고 text 출력은 같은 typed model을
+직접 렌더링하며 중간 JSON tree를 parsing하지 않습니다. 의미
+`UserActionResolutionForm`과 후보는
+[API 사용자 행동 스키마](api/schema-user-action.md#resolution-form)가 담당합니다.
 
 저장 요청과 resolution은 엄격한 typed record입니다. 손상되거나 알 수 없거나 섞이거나
 잘못된 저장 값은 영속 데이터 실패 분류로 실패하며 CLI가 기본값을 넣거나 복구하거나

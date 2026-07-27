@@ -6,7 +6,8 @@ use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
 use volicord_types::schema::UserActionBasis;
 use volicord_types::values::{
     JudgmentResolutionOutcome, MethodName, UserActionBasisStatus, UserActionChannelKind,
-    UserActionKind, UserActionOptionAction, UserActionStatus, UtcTimestamp,
+    UserActionKind, UserActionOptionAction, UserActionStatus, UserActionVerificationBasis,
+    UtcTimestamp,
 };
 
 use super::{
@@ -1112,8 +1113,7 @@ fn user_action_resolution_read_fails_closed_on_tampered_choice_authority(
 }
 
 #[test]
-fn user_action_resolution_requires_local_user_and_verified_provenance() -> Result<(), Box<dyn Error>>
-{
+fn user_action_resolution_requires_local_user_and_assurance() -> Result<(), Box<dyn Error>> {
     let harness = StoreHarness::new()?;
     let mut store = harness.store()?;
     let task_id = "task_resolution_provenance";
@@ -1150,18 +1150,10 @@ fn user_action_resolution_requires_local_user_and_verified_provenance() -> Resul
     let mut wrong_actor = user_action_resolution_insert("resolution_wrong_actor", request_id);
     wrong_actor.resolved_by_actor_source = ACTOR_SOURCE.to_owned();
     invalid_resolutions.push(("wrong_actor", wrong_actor));
-    let mut missing_basis = user_action_resolution_insert("resolution_missing_basis", request_id);
-    missing_basis.resolved_verification_basis.clear();
-    invalid_resolutions.push(("missing_basis", missing_basis));
     let mut missing_assurance =
         user_action_resolution_insert("resolution_missing_assurance", request_id);
     missing_assurance.resolved_assurance_level.clear();
     invalid_resolutions.push(("missing_assurance", missing_assurance));
-    let mut mismatched_channel_basis =
-        user_action_resolution_insert("resolution_mismatched_channel_basis", request_id);
-    mismatched_channel_basis.resolved_verification_basis =
-        "unsupported_user_action_channel".to_owned();
-    invalid_resolutions.push(("mismatched_channel_basis", mismatched_channel_basis));
 
     for (marker, resolution) in invalid_resolutions {
         let error = store
@@ -1913,7 +1905,7 @@ fn evidence_user_action_resolution_insert(
         })
         .to_string(),
         resolved_by_actor_source: "local_user".to_owned(),
-        resolved_verification_basis: "cli_direct_user_channel".to_owned(),
+        resolved_verification_basis: UserActionVerificationBasis::CliDirectUserChannel,
         resolved_assurance_level: "local_user_channel".to_owned(),
         resolved_at: "2026-01-01T00:10:00Z".to_owned(),
     }
@@ -1963,7 +1955,7 @@ fn user_action_resolution_insert(
         })
         .to_string(),
         resolved_by_actor_source: "local_user".to_owned(),
-        resolved_verification_basis: "cli_direct_user_channel".to_owned(),
+        resolved_verification_basis: UserActionVerificationBasis::CliDirectUserChannel,
         resolved_assurance_level: "local_user_channel".to_owned(),
         resolved_at: "2026-01-01T00:10:00Z".to_owned(),
     }

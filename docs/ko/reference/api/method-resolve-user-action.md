@@ -29,7 +29,7 @@ union이며 저장 요청 계열과 일치해야 합니다. 판단 해결 입력
 호출은 인식된 User Channel verification basis와 함께 서버가 파생한
 `actor_source=local_user`, `operation_category=user_only`여야 합니다. 요청은 저장
 근거에 대해 유효하게 `pending`이고 만료되지 않았으며 현재 상태여야 합니다. Core는
-커밋 전에 canonical 캡처 폼, 후보 집합, 현재 대상, 정확한 아티팩트 bytes, Task와
+커밋 전에 adapter-neutral resolution form, 후보 집합, 현재 대상, 정확한 아티팩트 bytes, Task와
 Change Unit, scope, baseline, 해당할 때의 닫기 근거를 다시 읽습니다.
 
 채널 어댑터는 `ToolEnvelope.expected_state_version`을 명시적인 `null`로 보냅니다.

@@ -458,7 +458,7 @@ Session, Guard 및 workflow 이력, evidence, authority event, replay와 그 밖
 | `volicord.prepare_evidence_capture` | 만료되는 불변 capture intent 하나 생성 | [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
 | `volicord.stage_artifact` | 임시 스테이징만 생성 | [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | 실행, 현재 닫기 근거, 증거, 증거 관찰 효과 기록 | [`volicord.record_run`](#volicordrecord_run) |
-| `volicord.request_user_action` | 대기 사용자 행동 요청과 canonical 캡처 폼 하나 생성 | [`volicord.request_user_action`](#volicordrequest_user_action) |
+| `volicord.request_user_action` | Core가 adapter-neutral resolution form을 도출하는 대기 사용자 행동 요청 하나 생성 | [`volicord.request_user_action`](#volicordrequest_user_action) |
 | `volicord.resolve_user_action` | 변경 불가능한 User Channel 해결 하나 삽입 | [`volicord.resolve_user_action`](#volicordresolve_user_action) |
 | `volicord.reconcile_changes` | 미기록 변경 해결과 대기 사용자 행동 생성 | [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | 읽기 전용 닫기 준비 상태 점검 | [`volicord.check_close`](#volicordcheck_close) |
@@ -814,7 +814,7 @@ idle timeout을 사용합니다.
 커밋되는 `dry_run=false` 호출은 다음을 수행할 수 있습니다.
 
 - `user_action_requests` 행 하나를 생성합니다.
-- Core가 canonical 캡처 폼을 도출하는 닫힌 요청과 Core 파생 근거, 현재 근거 상태,
+- Core가 adapter-neutral resolution form을 도출하는 닫힌 요청과 Core 파생 근거, 현재 근거 상태,
   required-for 대상, 후보, 만료, 정확한 원천 메서드/idempotency 관계를 저장합니다.
 - 영향받은 차단 사유를 갱신합니다.
 - 이벤트를 추가합니다.

@@ -568,16 +568,16 @@ fn explicit_choice_expiry_outside_canonical_range_rejects_dry_run_and_commit_wit
 }
 
 #[test]
-fn oversized_derived_capture_form_rejects_before_user_action_commit() -> Result<(), Box<dyn Error>>
-{
+fn oversized_derived_resolution_form_rejects_before_user_action_commit(
+) -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
-    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "capture_form_size")?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "resolution_form_size")?;
     let (state_version, mut artifact_ref) = promote_artifact_for_record_run(
         &harness,
         &task_id,
         &change_unit_id,
         2,
-        "capture_form_size",
+        "resolution_form_size",
     )?;
     let target = supplemental_evidence_target("Artifact registered for corruption coverage.");
     artifact_ref.display_name.clear();
@@ -599,7 +599,7 @@ fn oversized_derived_capture_form_rejects_before_user_action_commit() -> Result<
         USER_ACTION_FORM_MAX_BYTES
     );
     let form_error = boundary_body
-        .capture_form()
+        .resolution_form()
         .expect_err("derived form overhead must exceed the body byte boundary");
     assert_eq!(form_error.field(), "form");
 
@@ -622,8 +622,8 @@ fn oversized_derived_capture_form_rejects_before_user_action_commit() -> Result<
     let before = harness.counts()?;
 
     let mut request = observation_action_request(
-        "req_capture_form_size",
-        "idem_capture_form_size",
+        "req_resolution_form_size",
+        "idem_resolution_form_size",
         state_version,
         &task_id,
         &change_unit_id,

@@ -105,8 +105,8 @@ StatusRequest:
 
 - `include.task`는 선택된 `Task` 요약과 현재 Change Unit을 `active_task`로 반환합니다.
 - `include.pending_user_actions`는 `pending_user_action_summaries`를 반환합니다. 공개 결과는
-  User Channel 가용성, Core가 도출한 요청 본문, canonical form, 완전한
-  `UserActionInboxItem`을 반환하지 않습니다. 검증된 User Channel renderer는 별도 내부
+  User Channel 가용성, Core가 도출한 요청 본문, resolution form, 완전한
+  `CliUserActionInboxItem`을 반환하지 않습니다. 검증된 User Channel renderer는 별도 내부
   Core 경계를 통해 가용성과 완전한 항목을 조회합니다. 관련 stale 또는 superseded
   기록은 owner가 정의한 상태와 다음 행동 필드에 불투명한 authority ref로 계속 나타날
   수 있지만, 그 ref는 요청 상세 projection이 아닙니다.
@@ -198,7 +198,7 @@ Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤�
 | `authority_receipt` | Task를 선택했을 때 새로 계산한 `AuthorityReceipt`이며 Task가 없으면 `null`입니다. 같은 관찰 `state_version`에서 전체 close blocker, 최신 기록 Run, product-write 관찰, Evidence gate, 다음 actor/action, 도출된 `completion_claim_allowed`를 담습니다. 형태는 [API 상태 스키마](schema-state.md#task-lineage-workspace-and-authority-receipt)가 담당합니다. |
 
 중첩된 `AgentSafeUserActionRequestSummary` 형태는 [API 사용자 행동
-스키마](schema-user-action.md#inbox-and-capture-form)가 담당합니다. 중첩된
+스키마](schema-user-action.md#resolution-form)가 담당합니다. 중첩된
 `SummaryCard`, `StateSummary`, `StateRecordRef`, `WriteTicketStateSummary`,
 `EvidenceSummary`, `EvidenceGateSummary`, `ProjectContinuityPage`,
 `CurrentCloseBasis`, `RiskAcceptanceCoverage`, `CloseReadinessBlocker`,
@@ -241,8 +241,8 @@ Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤�
 이 메서드는 Core 상태 변경, 이벤트, 재실행 행, 닫기 변경, 상태 버전 증가를 저장하지 않습니다. 정확한 저장 의미는 아래 저장 담당 문서가 담당합니다.
 
 아래 예시는 메서드 안에서만 성립하도록 짧게 구성했습니다. 대표 응답은 공개
-agent-safe 상태 projection입니다. 검증된 User Channel renderer는 완전한 canonical inbox
-form을 `StatusResult`가 아닌 별도 내부 Core 경계에서 얻습니다. 응답은
+agent-safe 상태 projection입니다. 검증된 User Channel renderer는 완전한 typed CLI inbox
+presentation을 `StatusResult`가 아닌 별도 내부 Core 경계에서 얻습니다. 응답은
 상태 조회 결과 분기, 관찰된 참조, 상태 버전, 현재 적용 범위, 현재 적용 Change Unit,
 닫기 상태, 다음 행동을 보여 주는 데 필요한 필드로 축약했습니다.
 

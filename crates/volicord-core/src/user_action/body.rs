@@ -100,7 +100,7 @@ pub(super) fn construct_canonical_body(
             ));
         }
     };
-    body.capture_form()
+    body.resolution_form()
         .map_err(|error| UserActionDomainError::new(error.field(), error.message()))?;
     Ok(ValidatedUserAction {
         task_id,

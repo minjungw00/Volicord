@@ -411,7 +411,7 @@ verified `local_user` provenance through the `User Channel`.
 
 For authority-bearing prompts, callers do not define visible-label-to-machine-outcome mappings. Core creates the canonical authority options: `machine_action=accept` maps to `resolution_outcome=accepted`, `machine_action=reject` maps to `resolution_outcome=rejected`, and `machine_action=defer` maps to `resolution_outcome=deferred` only where the method or semantic owner permits deferral. `blocked` is not a judgment resolution outcome. Core also creates localized labels and consequences; labels, explanatory text, free-form notes, or answer-payload prose are display-only and must not invert the selected option's machine-readable action or outcome.
 
-Core creates one basis snapshot and one closed capture form for each stored
+Core creates one basis snapshot and one closed adapter-neutral resolution form for each stored
 user-action request. A choice basis ties the request to the current `Task`,
 Change Unit when applicable, `scope_revision`, close-basis revision when
 applicable, baseline, result references, named residual-risk IDs,
@@ -441,7 +441,7 @@ User-action compatibility:
   resolutions; they make incompatible resolutions ineligible for current
   close, write, evidence, or sensitive-approval requirements.
 
-Requests without a stored basis or closed capture form are invalid owner state.
+Requests without a stored basis or closed resolution form are invalid owner state.
 One request can have at most one immutable resolution, and replay or concurrent
 submission cannot fork that result.
 
@@ -684,7 +684,7 @@ Evidence authority:
   producer or relevance proof.
 - The common `user_only` `volicord.resolve_user_action` transition records an
   immutable `evidence_observation` `UserActionResolution` only for a pending
-  Core-derived capture form. It binds local-user provenance and supported or
+  Core-derived resolution form. It binds local-user provenance and supported or
   contradicted relevance to the exact selected current artifacts and basis. It
   is evidence, not a judgment resolution or final acceptance.
 - Verified command, tool, and registered-connection evidence uses one

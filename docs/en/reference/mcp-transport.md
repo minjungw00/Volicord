@@ -740,12 +740,17 @@ serialization or transport failed.
 An MCP agent may create a pending request through
 `volicord.request_user_action` or use its explicit read-only resume branch. It
 may later observe a safe snapshot of current status and the immutable CLI
-resolution identity. It never receives the private inbox form, note, submission
-identity, or credentials.
+resolution identity. Its projection never receives
+`UserActionResolutionForm`, any `CliUserActionInboxResponse` presentation,
+free-form note, submission identity, or credentials.
 
 The adapter never answers or resolves the request and sends no server-initiated
 resolution request. The user resolves only with `volicord inbox resolve`.
-Guard prompt observations, when present, remain non-authority observations.
+When MCP supplies a CLI recovery instruction, it obtains the canonical
+invocation from the same command-model-backed presentation source used by the
+CLI; MCP owns only the safe protocol projection and does not copy CLI syntax or
+CLI schema. Guard prompt observations, when present, remain non-authority
+observations.
 
 ## Shutdown And Reconnection
 

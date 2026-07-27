@@ -12,8 +12,9 @@ Core represents a user-owned action as one strict `UserActionRequest` and at
 most one immutable `UserActionResolution`. The MCP adapter exposes only the
 agent-facing request and resume path. The local CLI inbox obtains typed
 adapter-neutral `PendingUserActionFacts`, uses shared presentation to render
-the stored capture form and command-model invocation, and submits an explicit
-local-user resolution through Core.
+the semantic `UserActionResolutionForm` as a typed CLI inbox model with a
+command-model invocation, and submits an explicit local-user resolution through
+Core.
 
 The Core UserAction service validates typed action intent, constructs and
 materializes the canonical request, interprets current authority, and projects
@@ -55,9 +56,9 @@ request and resolution records and coherent resolution snapshots.
 1. An agent-facing Core call creates or resumes a current request.
 2. MCP projects only the agent-safe summary and continuation route.
 3. The CLI inbox asks Core for current adapter-neutral pending facts.
-4. Shared presentation derives the stored capture form and canonical
-   command-model invocation.
-5. The local user selects one explicit action in the stored capture form.
+4. Shared presentation projects the semantic resolution form and derives the
+   canonical command-model invocation.
+5. The local user selects one explicit action in the typed CLI presentation.
 6. Core revalidates actor provenance, basis, expiry, and current work
    coordinates.
 7. Store commits the immutable resolution and associated authority event.

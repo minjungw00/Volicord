@@ -1120,5 +1120,5 @@ GuaranteeDisclosure:
 - [API 값 집합](schema-value-sets.md#state-and-blocker-values): 차단 사유 범주 값(`CloseReadinessBlocker.category`)과 인접 상태 값.
 - [API 메서드](methods.md)와 메서드 담당 문서: 이 스키마를 반환하는 메서드.
 - [API 아티팩트 스키마](schema-artifacts.md): `ArtifactRef`.
-- [API 사용자 행동 스키마](schema-user-action.md): 영속 행동 요청과 캡처 양식.
+- [API 사용자 행동 스키마](schema-user-action.md): 영속 행동 요청과 adapter-neutral resolution form.
 - [저장 효과](../storage-effects.md): 지속 저장과 상태 효과.

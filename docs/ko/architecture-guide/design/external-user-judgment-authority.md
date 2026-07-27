@@ -11,9 +11,9 @@
 Core는 사용자 소유 동작 하나를 엄격한 `UserActionRequest` 하나와 최대 하나의 immutable
 `UserActionResolution`으로 표현합니다. MCP adapter는 agent-facing 요청과 resume
 경로만 노출합니다. Local CLI inbox는 typed adapter-neutral
-`PendingUserActionFacts`를 얻고 공유 presentation으로 저장된 capture form과
-command-model invocation을 표시한 뒤 Core를 통해 명시적인 local-user resolution을
-제출합니다.
+`PendingUserActionFacts`를 얻고 공유 presentation으로 의미
+`UserActionResolutionForm`을 command-model invocation이 포함된 typed CLI inbox
+model로 표시한 뒤 Core를 통해 명시적인 local-user resolution을 제출합니다.
 
 Core UserAction 서비스는 타입으로 표현한 행동 의도를 검증하고 정규 request를
 구성·구체화하며, 현재 권한을 해석하고 도메인 소유 pending 상태와 User Channel
@@ -54,9 +54,9 @@ resolution record와 coherent resolution snapshot을 담당합니다.
 1. Agent-facing Core 호출이 현재 request를 만들거나 resume합니다.
 2. MCP는 agent-safe summary와 continuation route만 투영합니다.
 3. CLI inbox가 Core에 현재 adapter-neutral pending fact를 요청합니다.
-4. 공유 presentation이 저장된 capture form과 정규 command-model invocation을
-   도출합니다.
-5. Local user가 저장된 capture form에서 명시적인 action 하나를 선택합니다.
+4. 공유 presentation이 의미 resolution form을 투영하고 정규 command-model
+   invocation을 도출합니다.
+5. Local user가 typed CLI presentation에서 명시적인 action 하나를 선택합니다.
 6. Core가 actor provenance, basis, expiry, 현재 work coordinate를 다시 검증합니다.
 7. Store가 immutable resolution과 관련 authority event를 commit합니다.
 8. 이후 agent 호출은 MCP의 safe current projection만 관찰합니다.

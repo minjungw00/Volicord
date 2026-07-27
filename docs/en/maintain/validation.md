@@ -426,10 +426,12 @@ Generated or source-derived reference surfaces use stable check commands:
 
 The public contract snapshot and diagnostic registry files are generated test
 artifacts marked with `_generated`. Do not edit them by hand; update the typed
-owner first, then regenerate. CLI public command drift remains covered by executable
-documentation examples and CLI help/output tests such as the `volicord-cli`
-`binary_admin` and `mcp_transport` test targets rather than by a separate CLI
-JSON schema.
+owner first, then regenerate. CLI public command drift remains covered by
+executable documentation examples and CLI help/output tests such as the
+`volicord-cli` `binary_admin` and `mcp_transport` test targets. The separate
+typed UserAction inbox JSON schema is owned and tested by
+`volicord-user-action-presentation`; CLI tests additionally deserialize actual
+`--json` output through that model.
 
 ## Storage DDL Contract Check
 

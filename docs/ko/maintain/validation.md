@@ -379,10 +379,11 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
 
 공개 계약 스냅샷과 진단 레지스트리 파일은 `_generated`로 표시된 생성 테스트
 산출물입니다. 손으로 편집하지 말고 먼저 typed 담당 원본을 바꾼 뒤 다시
-생성합니다. CLI 공개 명령
-드리프트는 별도의 CLI JSON 스키마를 새로 만들지 않고 실행 가능한 문서 예시와
+생성합니다. CLI 공개 명령 드리프트는 실행 가능한 문서 예시와
 `volicord-cli`의 `binary_admin`, `mcp_transport` 같은 CLI 도움말/출력 테스트
-대상으로 계속 다룹니다.
+대상으로 계속 다룹니다. 별도의 typed UserAction inbox JSON schema는
+`volicord-user-action-presentation`이 담당하고 테스트하며, CLI 테스트는 실제
+`--json` 출력도 이 model로 deserialize합니다.
 
 ## 저장소 DDL 계약 점검
 

@@ -736,8 +736,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: architecture_guide
   created_on: '2026-07-07'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - rust_workspace
   - mcp_initialize_profiles
@@ -1375,8 +1375,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: documentation_maintenance
   created_on: '2026-06-02'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - doc_index_schema
   primary_audience:
@@ -1570,8 +1570,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-05-07'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - agents
   - implementers
@@ -1641,8 +1641,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -1660,7 +1660,8 @@ documents:
   - exact concise, verbose, and schema-2 `DiagnosticReport` projections for init, add, status, verify, mode, and remove, including dry-run separation and exit routing
   - exact read-only `ConnectionListReport` inventory projection, row-local persisted-state issues, and list exit routing
   - managed stdio MCP launch and preflight commands
-  - CLI inbox listing and CLI-only UserAction resolution
+  - exact typed CLI inbox JSON document, channel and capture-path schemas, listing,
+    and CLI-only UserAction resolution
   - bounded finding and runtime-session diagnostic lookup commands, workflow metrics,
     privacy-footprint diagnostic projection, policy, authority-bundle export, and
     change-reconciliation commands
@@ -1684,8 +1685,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: agent_connection
   created_on: '2026-06-19'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - mcp_initialize_profiles
   primary_audience:
@@ -2026,8 +2027,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2049,8 +2050,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2164,8 +2165,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2212,8 +2213,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-13'
-  last_verified_on: '2026-07-13'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2230,13 +2231,13 @@ documents:
   path_en: docs/en/reference/api/schema-user-action.md
   path_ko: docs/ko/reference/api/schema-user-action.md
   kind: reference
-  summary: Reference contract for unified user-action request, status, capture-form, and resolution schemas.
+  summary: Reference contract for unified user-action request, status, adapter-neutral resolution-form, and immutable resolution schemas.
   normative_level: contract
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2250,7 +2251,7 @@ documents:
   - Agent-visible pending user-action projection boundary
   - user-action effective status and basis compatibility
   - user-action canonical-time sampling and timestamp relationships
-  - Core-derived user-action capture forms and channel paths
+  - Core-derived adapter-neutral `UserActionResolutionForm`
   - User Channel evidence-observation request and resolution payloads
 - doc_id: reference.api.schema-value-sets
   path_en: docs/en/reference/api/schema-value-sets.md
@@ -2481,8 +2482,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - storage implementers
   - maintainers
@@ -2516,8 +2517,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-17'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - storage implementers
   - API implementers
@@ -2553,8 +2554,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: storage
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - storage implementers
   - API implementers
@@ -2705,8 +2706,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-10'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - implementers
   - maintainers

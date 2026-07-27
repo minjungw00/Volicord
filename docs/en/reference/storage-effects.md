@@ -482,7 +482,7 @@ This table summarizes persistence effects. Method behavior and response unions r
 | `volicord.prepare_evidence_capture` | creates one immutable expiring capture intent | See [`volicord.prepare_evidence_capture`](#volicordprepare_evidence_capture) |
 | `volicord.stage_artifact` | creates transient staging only | See [`volicord.stage_artifact`](#volicordstage_artifact) |
 | `volicord.record_run` | records run, current close-basis, evidence, and evidence-observation effects | See [`volicord.record_run`](#volicordrecord_run) |
-| `volicord.request_user_action` | creates one pending user-action request and canonical capture form | See [`volicord.request_user_action`](#volicordrequest_user_action) |
+| `volicord.request_user_action` | creates one pending user-action request from which Core derives the adapter-neutral resolution form | See [`volicord.request_user_action`](#volicordrequest_user_action) |
 | `volicord.resolve_user_action` | inserts one immutable User Channel resolution | See [`volicord.resolve_user_action`](#volicordresolve_user_action) |
 | `volicord.reconcile_changes` | resolves Unrecorded Changes and creates pending user actions | See [`volicord.reconcile_changes`](#volicordreconcile_changes) |
 | `volicord.check_close` | read-only close-readiness check | See [`volicord.check_close`](#volicordcheck_close) |
@@ -845,7 +845,7 @@ Owner links:
 Committed `dry_run=false` may:
 
 - create one `user_action_requests` row
-- store the closed request from which Core derives the canonical capture form,
+- store the closed request from which Core derives the adapter-neutral resolution form,
   plus the Core-derived basis, current basis status, required-for targets,
   candidates, expiry, and exact originating method/idempotency relation
 - update affected blockers

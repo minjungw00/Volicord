@@ -1,7 +1,7 @@
 # API 판단 스키마
 
 이 문서는 공통 사용자 행동 스키마 안에 중첩되는 선택형 판단 payload를 담당합니다.
-별도의 영속 판단 생명주기를 담당하지 않습니다. 요청 identity, 유효 상태, 근거, 캡처 폼,
+별도의 영속 판단 생명주기를 담당하지 않습니다. 요청 identity, 유효 상태, 근거, adapter-neutral resolution form,
 만료, 채널 경로, 불변 resolution identity는 [API 사용자 행동
 스키마](schema-user-action.md)가 담당합니다.
 

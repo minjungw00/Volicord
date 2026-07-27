@@ -5,7 +5,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_command_model::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
 use volicord_core::{
@@ -23,15 +22,18 @@ use volicord_types::ids::{
     ArtifactId, IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId,
 };
 use volicord_types::methods::{ResolveUserActionRequest, StatusInclude, StatusRequest};
-use volicord_types::presentation::{UserActionPresentationForm, UserActionPresentationPlan};
 use volicord_types::schema::{
-    EvidenceTarget, PersistedUserActionRequest, SummaryCard, ToolEnvelope, UserActionInboxForm,
-    UserActionInboxItem, UserActionResolutionInput,
+    EvidenceTarget, PersistedUserActionRequest, SummaryCard, ToolEnvelope,
+    UserActionResolutionChoice, UserActionResolutionForm, UserActionResolutionInput,
 };
 use volicord_types::values::{
-    EvidenceRelevanceStatus, OperationCategory, UserActionChannelKind, UserActionStatus,
+    ArtifactAvailability, ArtifactIntegrityStatus, EvidenceRelevanceStatus, MethodName,
+    OperationCategory, RedactionState, UserActionChannelKind, UserActionStatus,
 };
-use volicord_user_action_presentation::{cli_inbox_item, cli_user_channel_availability};
+use volicord_user_action_presentation::{
+    cli_inbox_item, cli_user_channel_availability, CliUserActionInboxItem,
+    CliUserActionInboxResponse, CliUserChannelAvailability,
+};
 
 use crate::mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError};
 use crate::project_context::{
@@ -395,7 +397,7 @@ fn command_inbox_resolve_admitted(
                         .to_owned(),
                     )
                 })?;
-            let form = action.request.body.capture_form().map_err(|error| {
+            let form = action.request.body.resolution_form().map_err(|error| {
                 UserCommandError::Runtime(format!("invalid pending user-action facts: {error}"))
             })?;
             resolution_from_form(&form, parsed)?
@@ -451,7 +453,7 @@ fn cli_resolution_unavailable_error(
     };
     UserCommandError::Runtime(format!(
         "selected user action is not pending (status: {}); refresh `volicord inbox`",
-        enum_text(status)
+        status.as_str()
     ))
 }
 
@@ -465,7 +467,7 @@ fn resolution_from_immutable_request(
                 "failed to decode user_action_requests.request_json for replay: {error}"
             ))
         })?;
-    let form = request.body.capture_form().map_err(|error| {
+    let form = request.body.resolution_form().map_err(|error| {
         UserCommandError::Runtime(format!(
             "invalid immutable user-action request for replay: {error}"
         ))
@@ -474,43 +476,41 @@ fn resolution_from_immutable_request(
 }
 
 fn resolution_from_form(
-    form: &UserActionInboxForm,
+    form: &UserActionResolutionForm,
     parsed: &ParsedInboxOptions,
 ) -> Result<UserActionResolutionInput, UserCommandError> {
     match form {
-        UserActionInboxForm::Choice { choices, .. } => {
+        UserActionResolutionForm::Choice { choices, .. } => {
             reject_observation_flags(parsed)?;
             let selector = parsed
                 .choice
                 .as_deref()
                 .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| {
-                    UserCommandError::Usage("missing required option: --choice".to_owned())
-                })?;
+                .ok_or_else(|| UserCommandError::Usage("a choice answer is required".to_owned()))?;
             let selected = select_inbox_choice(choices, selector)?;
             Ok(UserActionResolutionInput::Choice {
                 selected_option_id: selected.choice_id,
                 note: parsed.note.clone().into(),
             })
         }
-        UserActionInboxForm::EvidenceObservation {
+        UserActionResolutionForm::EvidenceObservation {
             target_candidates,
             artifact_candidates,
             ..
         } => {
             if parsed.choice.is_some() || parsed.note.is_some() {
                 return Err(UserCommandError::Usage(
-                    "--choice and --note are valid only for a choice user action".to_owned(),
+                    "choice and note arguments are valid only for a choice user action".to_owned(),
                 ));
             }
             if parsed.acceptance_criterion_id.is_some() == parsed.evidence_claim_id.is_some() {
                 return Err(UserCommandError::Usage(
-                    "exactly one of --criterion or --claim is required".to_owned(),
+                    "exactly one evidence target is required".to_owned(),
                 ));
             }
             if parsed.artifact_ids.is_empty() {
                 return Err(UserCommandError::Usage(
-                    "at least one non-empty --artifact is required".to_owned(),
+                    "at least one non-empty artifact identifier is required".to_owned(),
                 ));
             }
             let summary = parsed
@@ -519,7 +519,9 @@ fn resolution_from_form(
                 .filter(|value| !value.trim().is_empty())
                 .cloned()
                 .ok_or_else(|| {
-                    UserCommandError::Usage("a non-empty --summary is required".to_owned())
+                    UserCommandError::Usage(
+                        "a non-empty observation summary is required".to_owned(),
+                    )
                 })?;
             let target = selected_target(parsed, target_candidates)?;
             validate_artifact_selection(&parsed.artifact_ids, artifact_candidates)?;
@@ -534,9 +536,9 @@ fn resolution_from_form(
 }
 
 pub(crate) fn select_inbox_choice(
-    choices: &[volicord_types::schema::UserActionInboxChoice],
+    choices: &[UserActionResolutionChoice],
     selector: &str,
-) -> Result<volicord_types::schema::UserActionInboxChoice, UserCommandError> {
+) -> Result<UserActionResolutionChoice, UserCommandError> {
     if let Some(index) = parse_positive_index(selector)? {
         let choice = choices.get(index - 1).cloned().ok_or_else(|| {
             UserCommandError::Usage(format!(
@@ -616,7 +618,7 @@ fn validate_artifact_selection(
     for artifact_id in artifact_ids {
         if artifact_id.trim().is_empty() {
             return Err(UserCommandError::Usage(
-                "--artifact must not be empty".to_owned(),
+                "artifact identifiers must not be empty".to_owned(),
             ));
         }
         if !seen.insert(artifact_id) {
@@ -654,7 +656,7 @@ fn parse_task_selector(value: Option<String>) -> Result<TaskSelector, UserComman
     match value.as_deref() {
         None | Some("active") => Ok(TaskSelector::Active),
         Some(value) if value.trim().is_empty() => Err(UserCommandError::Usage(
-            "--task must not be empty".to_owned(),
+            "the task selector must not be empty".to_owned(),
         )),
         Some(value) => Ok(TaskSelector::Id(value.to_owned())),
     }
@@ -709,7 +711,7 @@ pub(crate) fn resolve_user_action_from_record(
     if input.record.status != UserActionStatus::Pending && input.channel_submission_id.is_none() {
         return Err(UserCommandError::Runtime(format!(
             "selected user action is not pending (status: {}); refresh `volicord inbox`",
-            enum_text(input.record.status)
+            input.record.status.as_str()
         )));
     }
     let request_id = input
@@ -794,7 +796,7 @@ fn render_inbox_response(
     output: OutputFormat,
     has_selected_task: bool,
 ) -> Result<String, UserCommandError> {
-    let rendered_items = facts
+    let items = facts
         .map(|facts| {
             facts
                 .actions
@@ -807,43 +809,45 @@ fn render_inbox_response(
         })
         .transpose()?
         .unwrap_or_default();
-    let items = rendered_items.iter().collect::<Vec<_>>();
     let availability = facts.map(|_| cli_user_channel_availability());
     let summary_card = inbox_summary_card(&items, has_selected_task);
+    let response = CliUserActionInboxResponse {
+        summary_card,
+        user_channel_availability: availability.into(),
+        pending_user_action_inbox_items: items,
+    };
+    render_cli_inbox_response(&response, output)
+}
+
+fn render_cli_inbox_response(
+    response: &CliUserActionInboxResponse,
+    output: OutputFormat,
+) -> Result<String, UserCommandError> {
     if output == OutputFormat::Json {
-        return serde_json::to_string_pretty(&json!({
-            "summary_card": summary_card,
-            "user_channel_availability": availability.as_ref(),
-            "pending_user_action_inbox_items": items,
-        }))
-        .map(|text| format!("{text}\n"))
-        .map_err(|error| UserCommandError::Runtime(error.to_string()));
+        return serde_json::to_string_pretty(response)
+            .map(|text| format!("{text}\n"))
+            .map_err(|error| UserCommandError::Runtime(error.to_string()));
     }
     let mut text = String::from("User Action Inbox\n");
-    text.push_str(&render_summary_card_text(&summary_card));
-    if items.is_empty() {
+    text.push_str(&render_summary_card_text(&response.summary_card));
+    if response.pending_user_action_inbox_items.is_empty() {
         text.push_str("No pending user actions.\n");
         return Ok(text);
     }
-    let availability_value = availability
-        .as_ref()
-        .map(serde_json::to_value)
-        .transpose()
-        .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
-    if let Some(line) = render_user_channel_availability_text(availability_value.as_ref()) {
+    if let Some(line) =
+        render_user_channel_availability_text(response.user_channel_availability.as_ref())
+    {
         text.push_str(&line);
     }
-    for (index, item) in items.iter().enumerate() {
+    for (index, item) in response.pending_user_action_inbox_items.iter().enumerate() {
         text.push_str(&format!("{}. {}\n", index + 1, item.question));
         text.push_str(&format!("   id: {}\n", item.user_action_request_id));
-        text.push_str(&format!("   kind: {}\n", enum_text(item.action_kind)));
+        text.push_str(&format!("   kind: {}\n", item.action_kind.as_str()));
         if !item.context_summary.trim().is_empty() {
             text.push_str(&format!("   context: {}\n", item.context_summary));
         }
-        let presentation = UserActionPresentationPlan::from_form(&item.form)
-            .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
-        match &presentation.form {
-            UserActionPresentationForm::Choice {
+        match &item.resolution_form {
+            UserActionResolutionForm::Choice {
                 choices,
                 note_allowed,
                 note_max_chars,
@@ -864,29 +868,82 @@ fn render_inbox_response(
                 ));
                 append_resolution_command(&mut text, item);
             }
-            UserActionPresentationForm::EvidenceObservation {
-                targets,
-                artifacts,
+            UserActionResolutionForm::EvidenceObservation {
+                target_candidates,
+                artifact_candidates,
                 relevance_options,
                 summary_max_chars,
             } => {
                 text.push_str("   target candidates:\n");
-                for target in targets {
-                    text.push_str(&format!(
-                        "   - {}: {}\n     metadata: {}\n",
-                        target.selector, target.display_name, target.metadata_json
-                    ));
+                for target in target_candidates {
+                    match target {
+                        EvidenceTarget::AcceptanceCriterion {
+                            acceptance_criterion_id,
+                        } => text.push_str(&format!(
+                            "   - Acceptance criterion {acceptance_criterion_id}\n     target kind: acceptance_criterion\n"
+                        )),
+                        EvidenceTarget::SupplementalClaim {
+                            evidence_claim_id,
+                            statement,
+                        } => text.push_str(&format!(
+                            "   - Supplemental claim {evidence_claim_id}: {statement}\n     target kind: supplemental_claim\n"
+                        )),
+                    }
                 }
                 text.push_str("   artifact candidates:\n");
-                for artifact in artifacts {
+                for artifact in artifact_candidates {
                     text.push_str(&format!(
-                        "   - {}: {}\n     metadata: {}\n",
-                        artifact.artifact_id, artifact.display_name, artifact.metadata_json
+                        concat!(
+                            "   - {}: {}\n",
+                            "     project: {}\n",
+                            "     task: {}\n",
+                            "     content type: {}\n",
+                            "     sha256: {}\n",
+                            "     size bytes: {}\n",
+                            "     integrity: {}\n",
+                            "     redaction: {}\n",
+                            "     availability: {}\n",
+                            "     created by run: {}\n",
+                            "     created by actor: {}\n",
+                            "     storage ref: {}\n",
+                        ),
+                        artifact.artifact_id,
+                        artifact.display_name,
+                        artifact.project_id,
+                        artifact.task_id,
+                        artifact
+                            .content_type
+                            .as_ref()
+                            .map_or("none", String::as_str),
+                        artifact.sha256.as_ref().map_or("none", String::as_str),
+                        artifact
+                            .size_bytes
+                            .as_ref()
+                            .map_or_else(|| "none".to_owned(), u64::to_string),
+                        artifact_integrity_text(artifact.integrity_status),
+                        redaction_state_text(artifact.redaction_state),
+                        artifact_availability_text(artifact.availability),
+                        artifact
+                            .created_by_run_ref
+                            .as_ref()
+                            .map_or("none", |record| record.record_id.as_str()),
+                        artifact
+                            .created_by_actor_source
+                            .as_ref()
+                            .map_or_else(|| "none".to_owned(), ToString::to_string),
+                        artifact
+                            .storage_ref
+                            .as_ref()
+                            .map_or("none", |storage_ref| storage_ref.as_str()),
                     ));
                 }
                 text.push_str(&format!(
                     "   relevance options: {}\n   summary max characters: {}\n",
-                    relevance_options.join(", "),
+                    relevance_options
+                        .iter()
+                        .map(|status| status.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     summary_max_chars
                 ));
                 append_resolution_command(&mut text, item);
@@ -896,7 +953,34 @@ fn render_inbox_response(
     Ok(text)
 }
 
-fn inbox_summary_card(items: &[&UserActionInboxItem], has_selected_task: bool) -> SummaryCard {
+const fn artifact_integrity_text(status: ArtifactIntegrityStatus) -> &'static str {
+    match status {
+        ArtifactIntegrityStatus::Verified => "verified",
+        ArtifactIntegrityStatus::Corrupt => "corrupt",
+    }
+}
+
+const fn redaction_state_text(state: RedactionState) -> &'static str {
+    match state {
+        RedactionState::None => "none",
+        RedactionState::Redacted => "redacted",
+        RedactionState::SecretOmitted => "secret_omitted",
+        RedactionState::Blocked => "blocked",
+    }
+}
+
+const fn artifact_availability_text(availability: ArtifactAvailability) -> &'static str {
+    match availability {
+        ArtifactAvailability::Available => "available",
+        ArtifactAvailability::Unavailable => "unavailable",
+        ArtifactAvailability::Missing => "missing",
+        ArtifactAvailability::IntegrityFailed => "integrity_failed",
+        ArtifactAvailability::Blocked => "blocked",
+        ArtifactAvailability::Unusable => "unusable",
+    }
+}
+
+fn inbox_summary_card(items: &[CliUserActionInboxItem], has_selected_task: bool) -> SummaryCard {
     SummaryCard {
         task: if has_selected_task {
             "selected"
@@ -926,12 +1010,8 @@ fn inbox_summary_card(items: &[&UserActionInboxItem], has_selected_task: bool) -
     }
 }
 
-fn append_resolution_command(text: &mut String, item: &UserActionInboxItem) {
-    if let Some(command) = item
-        .preferred_capture_path
-        .as_ref()
-        .and_then(|path| path.command.as_ref())
-    {
+fn append_resolution_command(text: &mut String, item: &CliUserActionInboxItem) {
+    if let Some(command) = item.capture_path.command() {
         text.push_str(&format!("   resolve:\n     {command}\n"));
     }
 }
@@ -949,14 +1029,16 @@ fn render_resolve_response(
     Ok("User action resolved\n".to_owned())
 }
 
-fn render_user_channel_availability_text(availability: Option<&Value>) -> Option<String> {
-    let paths = availability?.get("paths")?.as_array()?;
-    let path = paths
+fn render_user_channel_availability_text(
+    availability: Option<&CliUserChannelAvailability>,
+) -> Option<String> {
+    let path = availability?
+        .paths
         .iter()
-        .find(|path| path["kind"].as_str() == Some("cli"))?;
+        .find(|path| path.kind() == UserActionChannelKind::Cli)?;
     Some(format!(
         "CLI inbox {}\n",
-        if path["available"].as_bool().unwrap_or(false) {
+        if path.is_available() {
             "available"
         } else {
             "unavailable"
@@ -1009,8 +1091,8 @@ fn generated_id(prefix: &str) -> String {
 fn stable_cli_resolution_ids(user_action_request_id: &str) -> (String, String) {
     let mut hasher = Sha256::new();
     for part in [
-        "cli_direct_user_channel",
-        "resolve_user_action",
+        UserActionChannelKind::Cli.verification_basis().as_str(),
+        MethodName::ResolveUserAction.as_str(),
         user_action_request_id,
     ] {
         hasher.update(part.as_bytes());
@@ -1024,18 +1106,11 @@ fn stable_cli_resolution_ids(user_action_request_id: &str) -> (String, String) {
     )
 }
 
-fn enum_text<T: serde::Serialize>(value: T) -> String {
-    serde_json::to_value(value)
-        .expect("closed user-action enum serialization cannot fail")
-        .as_str()
-        .expect("closed user-action enums must serialize as strings")
-        .to_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use std::{error::Error, ffi::OsString, fs};
 
+    use serde_json::Value;
     use volicord_store::diagnostics::diagnostics_db_path;
     use volicord_test_support::{
         core_fixtures::{
@@ -1405,7 +1480,13 @@ mod tests {
             None,
         )?
         .expect("fixture should have pending user-action facts");
-        let rendered = render_inbox_response(Some(&facts), OutputFormat::Text, true)?;
+        let json_output = render_inbox_response(Some(&facts), OutputFormat::Json, true)?;
+        let typed: CliUserActionInboxResponse = serde_json::from_str(&json_output)?;
+        assert_eq!(typed.pending_user_action_inbox_items.len(), 1);
+        assert!(typed.pending_user_action_inbox_items[0].is_required());
+        let rendered = render_cli_inbox_response(&typed, OutputFormat::Text)?;
+        let directly_rendered = render_inbox_response(Some(&facts), OutputFormat::Text, true)?;
+        assert_eq!(directly_rendered, rendered);
         let expected = volicord_command_model::InboxResolveInvocation::new(
             &pending.request_id,
             volicord_command_model::InboxResolutionArguments::Choice {

@@ -33,7 +33,7 @@ selected stored target, selected candidate artifact IDs, `supported` or
 The invocation must be server-derived as `actor_source=local_user` and
 `operation_category=user_only` with a recognized User Channel verification
 basis. The request must be effectively `pending`, unexpired, and current for
-its stored basis. Core re-reads the canonical capture form, candidate set,
+its stored basis. Core re-reads the adapter-neutral resolution form, candidate set,
 current target, exact artifact bytes, Task/Change Unit, scope, baseline, and
 close basis as applicable before commit.
 

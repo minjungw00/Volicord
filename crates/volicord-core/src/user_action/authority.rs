@@ -112,7 +112,7 @@ pub(crate) fn user_action_authority_from_record(
         resolved_verification_basis: record
             .resolution
             .as_ref()
-            .map(|resolution| resolution.resolved_verification_basis.clone()),
+            .map(|resolution| resolution.resolved_verification_basis),
         resolved_assurance_level: record
             .resolution
             .as_ref()

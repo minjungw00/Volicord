@@ -464,7 +464,7 @@ Expected-write와 unrecorded-change 기록은 프로젝트 로컬입니다. Guar
 관찰 경로를 숨기지 않습니다.
 
 Prompt 관찰은 제한된 관찰 schema 아래에서만 저장할 수 있습니다. 사용자 choice,
-resolution 본문, 비공개 inbox form, credential을 담지 않습니다.
+resolution 본문, 비공개 resolution form, credential을 담지 않습니다.
 
 ## 현재 close basis와 continuity
 

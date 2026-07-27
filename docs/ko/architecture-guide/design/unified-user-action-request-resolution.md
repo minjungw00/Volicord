@@ -26,9 +26,9 @@ resolution snapshot, immutable resolution insertion, grouped mutation 적용을 
 MCP adapter는 request/resume 경로를 호출하고 `CurrentUserActionFacts`를 다시 읽은
 뒤 자체 safe protocol projection을 구성합니다. CLI는 `PendingUserActionFacts`를
 사용합니다. `volicord-user-action-presentation`은 이 neutral fact에서 현재
-`UserActionInboxItem`, availability label, CLI recovery instruction을 만듭니다.
-명령은 실제 Clap 선언에서 도출한 typed `volicord-command-model` invocation을
-사용합니다.
+의미 `UserActionResolutionForm`을 `CliUserActionInboxItem`, 폐쇄형 availability 및
+capture-path 상태, CLI JSON Schema, recovery instruction으로 투영합니다. 명령은
+실제 Clap 선언에서 도출한 typed `volicord-command-model` invocation을 사용합니다.
 
 ## 불변 조건
 
@@ -49,15 +49,16 @@ MCP adapter는 request/resume 경로를 호출하고 `CurrentUserActionFacts`를
 
 ## 책임 경계
 
-`volicord-types`는 dependency-safe request, resolution, form, basis, summary shape를
-담당합니다. Core `user_action` 모듈은 재사용되는 의미 검증, 구성, identity,
+`volicord-types`는 dependency-safe request, 불변 resolution, adapter-neutral
+resolution form, basis, summary shape를 담당하며 CLI presentation helper는
+담당하지 않습니다. Core `user_action` 모듈은 재사용되는 의미 검증, 구성, identity,
 구체화, 권한 해석, lifecycle 정책, 읽기, adapter-neutral semantic fact를
 담당합니다. 개별 메서드 모듈은 요청별 연산과 응답 구성을 담당합니다. Store는
 strict record와 snapshot consistency를 담당합니다. Command model은 정규 CLI
 invocation 구성을 담당하고
-`volicord-user-action-presentation`은 공유 CLI 지향 projection을 담당합니다. CLI는
-terminal rendering을 담당하며 MCP는 bounded protocol projection과 adapter별 failure
-mapping을 담당합니다.
+`volicord-user-action-presentation`은 typed `Cli*` projection과 CLI JSON Schema를
+담당합니다. CLI는 typed model의 직접 terminal rendering을 담당하며 MCP는 bounded
+protocol projection과 adapter별 failure mapping을 담당합니다.
 
 ## 실행 흐름
 
@@ -75,8 +76,8 @@ mapping을 담당합니다.
 9. CLI가 Task 하나의 neutral pending fact를 요청합니다.
 10. Store가 project snapshot 하나에서 effective record를 읽고 Core가 typed
    lifecycle 및 resolution-availability fact를 반환합니다.
-11. 공유 presentation이 local inbox item을 만들고 command model에서 정규 typed
-    resolution invocation을 얻습니다.
+11. 공유 presentation이 typed local CLI inbox item을 만들고 command model에서 정규
+    typed resolution invocation을 얻습니다.
 12. Core가 선택한 local-user answer를 검증하고 immutable resolution 하나를
     planning합니다.
 13. Store가 resolution, derived record, event, replay response를 atomic하게

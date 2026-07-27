@@ -78,12 +78,12 @@ the public method execution path.
 
 | Workspace member | Guide-level role |
 |---|---|
-| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; single-declaration public method-result and fields-only composition types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. Its public Rust vocabulary is routed through the module that owns each item; the crate root provides module routing rather than an aggregate type facade. |
+| `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; semantic UserAction request, immutable resolution, and adapter-neutral `UserActionResolutionForm` types; single-declaration public method-result and fields-only composition types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. It owns no CLI presentation model or rendering helper. Its public Rust vocabulary is routed through the module that owns each item; the crate root provides module routing rather than an aggregate type facade. |
 | `crates/volicord-host-contract` | Dependency-safe semantic Codex contracts through `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames`; explicit MCP server/raw-tool identities; collision-checked callable projection and catalog lookup; deterministic contract identities; bounded host values and errors; and source-specific correlation types. It owns no Store, Core, CLI, or MCP policy. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, one-time managed MCP launch leases, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
 | `crates/volicord-core` | Adapter-independent Core service, host-neutral typed invocation authority, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, and Store coordination. |
 | `crates/volicord-command-model` | Complete Clap declaration for the `volicord` binary: root parser, public and hidden subcommand tree, command and argument DTOs, command-surface value enums and validators, actual-model visibility classification, a fresh root `clap::Command`, command-path traversal, canonical synopses, canonical parseable public invocations, and typed inbox-resolution invocation builders derived from that declaration. It owns no command execution or application service. |
-| `crates/volicord-user-action-presentation` | Shared adapter presentation for CLI-oriented UserAction inbox items, availability, capture paths, and recovery instructions. It consumes shared semantic types and canonical command-model invocations and owns no Core policy, Store access, command execution, terminal rendering, or MCP envelope. |
+| `crates/volicord-user-action-presentation` | Typed CLI UserAction presentation through `CliUserActionInboxResponse`, `CliUserActionInboxItem`, tagged channel/capture-path states, CLI JSON Schemas, and command-model-backed recovery instructions. It consumes shared semantic types and canonical command-model invocations and owns no Core policy, Store access, command execution, terminal rendering, or MCP envelope. |
 | `crates/volicord-cli` | Local `volicord` process startup, administrative command dispatch and reusable execution modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, host/MCP/Guard verification checks, dependency-graph policy, rendering, the hidden same-process managed-host launcher, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
 | `crates/volicord-platform-fs` | Internal safe facade for process-target and platform observation, native Linux/WSL2 classification, WSL2 distribution validation and filesystem observation, typed atomic no-replace regular-file publication, platform-native filesystem namespace operations, per-canonical-Runtime-Home shared/exclusive OS-backed mutation admission and borrowed mutation permits, and read-only canonical Git common-directory/worktree snapshots. It does not own managed launch or Codex configuration policy. |
 | `crates/volicord-platform-process` | Internal safe facade for bounded platform-specific child-process containment and nonblocking child-pipe readiness. It owns low-level Unix process-group, Windows Job Object, and pipe-polling primitives. |
@@ -233,11 +233,13 @@ and resolution method orchestration and decides how the shared typed results
 participate in each operation result. Callers supply semantic intent to
 `user_action::service`; they do not construct canonical stored action JSON.
 
-`volicord-user-action-presentation` builds the shared current CLI inbox and
-recovery presentation from those facts. Its command text comes from typed
+`volicord-types` derives the adapter-neutral `UserActionResolutionForm` from the
+stored semantic request body. `volicord-user-action-presentation` projects
+those facts into the typed `CliUserActionInboxResponse` and its closed
+channel/capture-path states and JSON Schemas. Its command text comes from typed
 `volicord-command-model` invocations derived from the actual Clap declaration.
-CLI owns terminal rendering. MCP owns the compound protocol projection and
-maps neutral fact-read failures into MCP errors.
+CLI renders that typed model directly. MCP owns only its safe compound protocol
+projection and maps neutral fact-read failures into MCP errors.
 `methods/reconcile_changes.rs` and other Core consumers call the shared
 responsibility owners directly and decide how typed UserAction results
 participate in their own plans and responses. Production method modules do

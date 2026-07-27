@@ -652,12 +652,15 @@ Core 효과를 커밋한 뒤 전달이 실패하면 operation-result 좌표를 �
 
 MCP 에이전트는 `volicord.request_user_action`으로 대기 요청을 만들거나 명시적인 읽기
 전용 resume 분기를 사용할 수 있습니다. 나중에 현재 상태와 불변 CLI resolution
-identity의 안전한 snapshot을 관찰할 수 있습니다. 비공개 inbox form, note, submission
-identity, credential은 받지 않습니다.
+identity의 안전한 snapshot을 관찰할 수 있습니다. 이 projection은
+`UserActionResolutionForm`, `CliUserActionInboxResponse` presentation, 자유 형식
+note, submission identity, credential을 받지 않습니다.
 
 어댑터는 요청에 답하거나 해결하지 않고 서버가 시작하는 resolution 요청도 보내지
-않습니다. 사용자는 `volicord inbox resolve`로만 해결합니다. Guard prompt 관찰이
-있다면 권한이 아닌 관찰로 남습니다.
+않습니다. 사용자는 `volicord inbox resolve`로만 해결합니다. MCP가 CLI recovery
+instruction을 제공할 때는 CLI와 같은 command-model 기반 presentation 원본에서 정규
+invocation을 얻습니다. MCP는 safe protocol projection만 담당하며 CLI syntax나 CLI
+schema를 복사하지 않습니다. Guard prompt 관찰이 있다면 권한이 아닌 관찰로 남습니다.
 
 ## 종료와 재연결
 

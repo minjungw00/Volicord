@@ -346,7 +346,7 @@ files.
 - A green or positive label is a canonical enum value without support from [API Value Sets](api/schema-value-sets.md).
 - Artifact availability alone proves evidence sufficiency.
 - Missing source data can be replaced by optimistic wording.
-- An existing pending request's question, options, context, canonical form,
+- An existing pending request's question, options, context, resolution form,
   capture path, command, URL, or credential can be reconstructed from blocker,
   next-action, or template text. Display that request only by request ID,
   `pending`, and next actor/User Channel. A pre-request
@@ -375,7 +375,7 @@ Otherwise, avoid those words.
 - [Core Model](core-model.md) for Core authority and close-readiness meaning.
 - [API State Schemas](api/schema-state.md) for state-shaped display inputs.
 - [API User-Action Schemas](api/schema-user-action.md) for the shared request,
-  inbox, status, and resolution shapes.
+  adapter-neutral resolution form, status, and resolution shapes.
 - [API Judgment Schemas](api/schema-judgment.md) for choice-specific judgment
   detail.
 - [API Artifact Schemas](api/schema-artifacts.md) for `ArtifactRef` display inputs.
@@ -385,7 +385,7 @@ Otherwise, avoid those words.
 
 ### Input state
 
-- One Core-derived internal `UserActionInboxItem` supplied to a verified User
+- One typed `CliUserActionInboxItem` supplied to a verified User
   Channel renderer. This template is never built from the Agent-facing
   `volicord.request_user_action` result, which contains only the safe summary.
 - Exact question and bounded options.
@@ -426,7 +426,7 @@ Avoid pressure wording such as `obviously`, `just approve`, or `I can decide thi
 - [Core Model](core-model.md) for user-owned judgment and non-substitution rules.
 - [Request-user-action method](api/method-request-user-action.md) for request behavior.
 - [Resolve-user-action method](api/method-resolve-user-action.md) for immutable User Channel resolution behavior.
-- [API user-action schemas](api/schema-user-action.md) for the common request, resolution, inbox, and capture forms.
+- [API user-action schemas](api/schema-user-action.md) for the common request, resolution, status, and adapter-neutral resolution form.
 - [API Judgment Schemas](api/schema-judgment.md) for choice payloads, `SensitiveActionScope`, and accepted-risk shapes.
 - [Security](security.md) for sensitive-action approval boundaries.
 
@@ -574,7 +574,7 @@ an actual state-changing close result.
 - The packet should include full schemas, DDL, logs, artifact bodies, or unrelated contract material by default.
 - The packet should include out-of-scope capability catalogs or paired bilingual docs by default.
 - The packet should include or reconstruct a pending request's question,
-  options, context, canonical form, capture path, command, URL, or credential.
+  options, context, resolution form, capture path, command, URL, or credential.
 
 ### User-facing wording
 

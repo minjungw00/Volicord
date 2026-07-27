@@ -1086,6 +1086,9 @@ dependencies = [
 name = "volicord-user-action-presentation"
 version = "0.9.1"
 dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
  "volicord-command-model",
  "volicord-types",
 ]

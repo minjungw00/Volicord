@@ -425,9 +425,6 @@ pub enum StatusDetailLevel {
 /// Controlled registration-basis value for local administrative registration.
 pub const VERIFICATION_BASIS_LOCAL_ADMIN_REGISTRATION: &str = "local_admin_registration";
 
-/// Controlled adapter-binding basis value for direct CLI invocation.
-pub const VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL: &str = "cli_direct_user_channel";
-
 /// Baseline actor assurance level for cooperative Agent Connection provenance.
 pub const ACTOR_ASSURANCE_AGENT_CONNECTION_COOPERATIVE: &str = "agent_connection_cooperative";
 
@@ -1363,6 +1360,16 @@ pub enum EvidenceRelevanceStatus {
     Contradicted,
 }
 
+impl EvidenceRelevanceStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unassessed => "unassessed",
+            Self::Supported => "supported",
+            Self::Contradicted => "contradicted",
+        }
+    }
+}
+
 /// Validator status values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1514,6 +1521,19 @@ impl From<JudgmentKind> for UserActionKind {
 }
 
 impl UserActionKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ProductDecision => "product_decision",
+            Self::TechnicalDecision => "technical_decision",
+            Self::ScopeDecision => "scope_decision",
+            Self::SensitiveApproval => "sensitive_approval",
+            Self::FinalAcceptance => "final_acceptance",
+            Self::ResidualRiskAcceptance => "residual_risk_acceptance",
+            Self::Cancellation => "cancellation",
+            Self::EvidenceObservation => "evidence_observation",
+        }
+    }
+
     /// Returns the choice judgment kind, or `None` for evidence observation.
     pub const fn judgment_kind(self) -> Option<JudgmentKind> {
         match self {
@@ -1607,6 +1627,18 @@ pub enum UserActionStatus {
     Expired,
 }
 
+impl UserActionStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Resolved => "resolved",
+            Self::Stale => "stale",
+            Self::Superseded => "superseded",
+            Self::Expired => "expired",
+        }
+    }
+}
+
 /// Choice action resolution outcome values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1652,19 +1684,42 @@ pub enum UserActionChannelKind {
     Cli,
 }
 
+/// Verified bases accepted for one User Channel resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UserActionVerificationBasis {
+    CliDirectUserChannel,
+}
+
+impl UserActionVerificationBasis {
+    /// Returns the stable serialized value owned by this basis.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CliDirectUserChannel => "cli_direct_user_channel",
+        }
+    }
+
+    /// Strictly decodes one persisted basis value.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "cli_direct_user_channel" => Some(Self::CliDirectUserChannel),
+            _ => None,
+        }
+    }
+}
+
 impl UserActionChannelKind {
     /// Returns the single verified invocation basis owned by this User Channel.
-    pub const fn verification_basis(self) -> &'static str {
+    pub const fn verification_basis(self) -> UserActionVerificationBasis {
         match self {
-            Self::Cli => VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            Self::Cli => UserActionVerificationBasis::CliDirectUserChannel,
         }
     }
 
     /// Resolves one controlled verification basis to its owning User Channel.
-    pub fn from_verification_basis(verification_basis: &str) -> Option<Self> {
+    pub const fn from_verification_basis(verification_basis: UserActionVerificationBasis) -> Self {
         match verification_basis {
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL => Some(Self::Cli),
-            _ => None,
+            UserActionVerificationBasis::CliDirectUserChannel => Self::Cli,
         }
     }
 }

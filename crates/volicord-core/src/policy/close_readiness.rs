@@ -8,7 +8,7 @@ use volicord_types::schema::{
 use volicord_types::values::{
     AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, StateRecordKind,
     UserActionBasisStatus, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-    UserActionStatus, UtcTimestamp,
+    UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
 };
 
 use super::evidence::state_record_ref_identity_key;
@@ -37,7 +37,7 @@ pub(crate) struct UserActionAuthority {
     pub(crate) machine_action: Option<UserActionOptionAction>,
     pub(crate) resolution_outcome: Option<JudgmentResolutionOutcome>,
     pub(crate) resolved_by_actor_source: Option<ActorSource>,
-    pub(crate) resolved_verification_basis: Option<String>,
+    pub(crate) resolved_verification_basis: Option<UserActionVerificationBasis>,
     pub(crate) resolved_assurance_level: Option<String>,
     pub(crate) basis_status: UserActionBasisStatus,
     pub(crate) basis: Option<UserActionBasis>,
@@ -286,10 +286,7 @@ pub(crate) fn accepted_current_user_authority(
 
 pub(crate) fn verified_user_channel_provenance(judgment: &UserActionAuthority) -> bool {
     judgment.resolved_by_actor_source == Some(ActorSource::LocalUser)
-        && judgment
-            .resolved_verification_basis
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty())
+        && judgment.resolved_verification_basis.is_some()
         && judgment
             .resolved_assurance_level
             .as_deref()

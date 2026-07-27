@@ -106,8 +106,8 @@ addresses only a request created directly by `volicord.request_user_action`,
 requires the same enabled workflow Agent Connection actor scope and an allowed
 project, and replays the byte-exact original agent-safe Agent Workflow response
 with the same `operation_result_ref`. The replayed result contains only the
-canonical request summary; it never contains the full request, inbox item,
-capture form, capture path, or User Channel credential. It creates no request,
+canonical request summary; it never contains the full request, CLI inbox item,
+resolution form, capture path, or User Channel credential. It creates no request,
 event, replay row, prompt, token, resolution, or state-version increment. A
 request created by another connection or by `volicord.reconcile_changes` is
 unavailable through this branch. An unrelated later Git or authority-state
@@ -155,10 +155,10 @@ Neither dry run nor rejection updates the persisted canonical-UTC floor.
 MCP exposes create to a writable `workflow` Agent Connection. A workflow
 connection whose project storage has degraded to readable-only may still
 discover and use resume, while create rejects before Core mutation. A
-`read_only` Agent Connection cannot use either branch. The adapter may render
-the canonical capture form through a supported User Channel only for a newly
-created request that is still pending; the Agent Connection call itself never
-receives that form or resolves the action. Resume returns only the exact safe
+`read_only` Agent Connection cannot use either branch. The CLI presentation may
+render the adapter-neutral resolution form through a supported User Channel
+only for a newly created request that is still pending; the Agent Connection
+call itself never receives that form or resolves the action. Resume returns only the exact safe
 replay and current safe projection and never opens a User Channel.
 
 ## Related owners

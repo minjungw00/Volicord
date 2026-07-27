@@ -22,7 +22,8 @@ use volicord_types::values::{
     ActorSource, EvidenceAssuranceLevel, EvidenceSourceKind, OperationCategory,
     PersistedCloseSummary, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, UserActionBasisStatus,
-    UserActionChannelKind, UserActionKind, UserActionRequiredFor, UtcTimestamp,
+    UserActionChannelKind, UserActionKind, UserActionRequiredFor, UserActionVerificationBasis,
+    UtcTimestamp,
 };
 
 use super::{PendingTaskEvent, VerifiedReplayContext};
@@ -734,7 +735,7 @@ pub(super) fn validate_user_action_resolution_column_agreement(
 pub(super) fn validate_user_action_resolution_provenance(
     channel_kind: UserActionChannelKind,
     resolved_by_actor_source: &str,
-    resolved_verification_basis: &str,
+    resolved_verification_basis: UserActionVerificationBasis,
     resolved_assurance_level: &str,
 ) -> StoreResult<()> {
     if resolved_by_actor_source != "local_user"

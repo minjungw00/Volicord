@@ -25,7 +25,7 @@
 
 ## 자주 갈리는 경로
 
-- 사용자 소유 행동과 판단의 의미는 [Core 모델](core-model.md)에, 요청과 해결 메서드 동작은 [사용자 행동 요청 메서드](api/method-request-user-action.md)와 [사용자 행동 해결 메서드](api/method-resolve-user-action.md)에 있습니다. 공통 요청, 해결, 상태, inbox, 캡처 폼 형태는 [사용자 행동 스키마](api/schema-user-action.md)가 담당하고 중첩된 선택 판단 payload는 [판단 스키마](api/schema-judgment.md)가 담당합니다.
+- 사용자 소유 행동과 판단의 의미는 [Core 모델](core-model.md)에, 요청과 해결 메서드 동작은 [사용자 행동 요청 메서드](api/method-request-user-action.md)와 [사용자 행동 해결 메서드](api/method-resolve-user-action.md)에 있습니다. 공통 요청, 해결, 상태, adapter-neutral resolution-form 형태는 [사용자 행동 스키마](api/schema-user-action.md)가, 정확한 CLI inbox schema는 [관리 CLI](admin-cli.md#user-channel-commands)가 담당하며 중첩된 선택 판단 payload는 [판단 스키마](api/schema-judgment.md)가 담당합니다.
 - 닫기 준비 상태 권한 개념은 [Core 모델](core-model.md)에, `volicord.check_close`와 `volicord.close_task` 동작은 [닫기 메서드](api/method-close-task.md)에, `CloseReadinessBlocker` 형태는 [상태 스키마](api/schema-state.md)에, 차단 사유와 API 응답 사이의 경계 질문은 [API 차단 사유 처리 경로](api/blocker-routing.md)에 있습니다.
 - 쓰기 티켓 의미와 대체 금지 규칙은 [Core 모델](core-model.md)에, 정책 적용과 Guard 후보 동작은 [관리 CLI](admin-cli.md)에 있습니다. 발급, 현재 정책 재평가, 재사용은 [쓰기 준비 메서드](api/method-prepare-write.md)가, 소비와 독립적인 현재 정책 검사는 [실행 기록 메서드](api/method-record-run.md)가 담당합니다. `write_authority_fingerprint` 필드와 범위는 [상태 스키마](api/schema-state.md)에, 영속 효과와 저장소 프로필 경계는 [저장 효과](storage-effects.md)와 [저장소 버전 관리](storage-versioning.md)에, 보안 비보장은 [보안](security.md)에 있습니다.
 - 정확한 `.volicord/policy.json` object, 정책 명령, 기본값, 프로젝트/Connection binding 검사는 [관리 CLI](admin-cli.md#project-workflow-policy-commands)가 담당합니다. Core 정책 권한은 [Core 모델](core-model.md), 영속 저장은 [저장소 기록](storage-records.md)과 [저장 효과](storage-effects.md)가 담당합니다.

@@ -1273,12 +1273,18 @@ fn stdio_record_guard_uses_the_cli_inbox_without_projecting_the_private_form(
         .iter()
         .filter_map(|content| content["text"].as_str())
         .collect::<Vec<_>>();
+    let request_id = workflow["user_action_request_summary"]["user_action_request_id"]
+        .as_str()
+        .expect("pending summary request id");
+    let expected_command = volicord_user_action_presentation::cli_resolution_path_command(
+        &volicord_types::ids::UserActionRequestId::new(request_id),
+    )?;
     assert!(fallback_texts
         .iter()
         .any(|text| text.contains("pending UserAction requires the user")));
     assert!(fallback_texts
         .iter()
-        .any(|text| text.contains("`volicord inbox resolve ")));
+        .any(|text| text.contains(&format!("`{expected_command}`"))));
     assert!(fallback_texts
         .iter()
         .all(|text| !text.contains("prompt_capture")));
@@ -1531,12 +1537,18 @@ fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), B
         }
 
         assert!(tool_result.get("_meta").is_none(), "{}", case.name);
+        let request_id = summary["user_action_request_id"]
+            .as_str()
+            .expect("pending summary request id");
+        let expected_command = volicord_user_action_presentation::cli_resolution_path_command(
+            &volicord_types::ids::UserActionRequestId::new(request_id),
+        )?;
         assert!(
             tool_result["content"]
                 .as_array()
                 .is_some_and(|content| content.iter().any(|item| item["text"]
                     .as_str()
-                    .is_some_and(|text| text.contains("`volicord inbox resolve ")))),
+                    .is_some_and(|text| text.contains(&format!("`{expected_command}`"))))),
             "{}",
             case.name
         );

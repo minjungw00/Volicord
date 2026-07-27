@@ -21,7 +21,6 @@ pub mod managed_mcp_client_info;
 pub mod mcp_verification_evidence;
 pub mod methods;
 pub mod platform;
-pub mod presentation;
 pub mod release_target;
 pub mod schema;
 pub mod storage_contract;
@@ -1640,17 +1639,21 @@ mod tests {
     fn user_action_channels_have_one_exhaustive_verification_basis_mapping() {
         let rows = [(
             UserActionChannelKind::Cli,
-            VERIFICATION_BASIS_CLI_DIRECT_USER_CHANNEL,
+            UserActionVerificationBasis::CliDirectUserChannel,
         )];
         for (channel_kind, verification_basis) in rows {
             assert_eq!(channel_kind.verification_basis(), verification_basis);
             assert_eq!(
                 UserActionChannelKind::from_verification_basis(verification_basis),
-                Some(channel_kind)
+                channel_kind
+            );
+            assert_eq!(
+                UserActionVerificationBasis::parse(verification_basis.as_str()),
+                Some(verification_basis)
             );
         }
         assert_eq!(
-            UserActionChannelKind::from_verification_basis("unsupported_user_channel"),
+            UserActionVerificationBasis::parse("unsupported_user_channel"),
             None
         );
     }
@@ -2120,8 +2123,8 @@ mod tests {
     }
 
     #[test]
-    fn immutable_user_action_body_is_the_single_validated_capture_form_owner() {
-        let choice_context_private = "choice-context-must-not-enter-the-capture-form";
+    fn immutable_user_action_body_is_the_single_validated_resolution_form_owner() {
+        let choice_context_private = "choice-context-must-not-enter-the-resolution-form";
         let choice_body: UserActionRequestBody = serde_json::from_value(json!({
             "action_type": "choice",
             "judgment_kind": "product_decision",
@@ -2139,11 +2142,13 @@ mod tests {
             "sensitive_action_scope": null
         }))
         .expect("choice request body");
-        let choice_form = choice_body.capture_form().expect("valid choice form");
+        let choice_form = choice_body
+            .resolution_form()
+            .expect("valid choice resolution form");
         assert_eq!(
             choice_form,
-            UserActionInboxForm::Choice {
-                choices: vec![UserActionInboxChoice {
+            UserActionResolutionForm::Choice {
+                choices: vec![UserActionResolutionChoice {
                     choice_id: UserActionOptionId::new("accept"),
                     label: "Accept".to_owned(),
                     description: "Accept the focused judgment.".to_owned(),
@@ -2158,10 +2163,10 @@ mod tests {
             .expect("choice form serializes")
             .contains(choice_context_private));
 
-        let observation_context_private = "observation-context-must-not-enter-the-capture-form";
+        let observation_context_private = "observation-context-must-not-enter-the-resolution-form";
         let target = json!({
             "target_kind": "acceptance_criterion",
-            "acceptance_criterion_id": "criterion_capture_form"
+            "acceptance_criterion_id": "criterion_resolution_form"
         });
         let artifact = artifact_ref_json(
             "verified",
@@ -2178,8 +2183,8 @@ mod tests {
         }))
         .expect("observation request body");
         let observation_form = observation_body
-            .capture_form()
-            .expect("valid observation form");
+            .resolution_form()
+            .expect("valid observation resolution form");
         assert_eq!(
             serde_json::to_value(&observation_form).expect("observation form serializes"),
             json!({
@@ -2212,16 +2217,16 @@ mod tests {
         }))
         .expect("invalid body remains syntactically decodable");
         assert_eq!(
-            invalid_body.capture_form().unwrap_err().field(),
+            invalid_body.resolution_form().unwrap_err().field(),
             "body.question"
         );
     }
 
     #[test]
     fn canonical_user_action_form_size_accepts_32768_and_rejects_the_next_byte() {
-        fn form_with_size(target: usize) -> UserActionInboxForm {
-            let mut form = UserActionInboxForm::Choice {
-                choices: vec![UserActionInboxChoice {
+        fn form_with_size(target: usize) -> UserActionResolutionForm {
+            let mut form = UserActionResolutionForm::Choice {
+                choices: vec![UserActionResolutionChoice {
                     choice_id: UserActionOptionId::new("boundary"),
                     label: "Boundary".to_owned(),
                     description: "Canonical form byte boundary.".to_owned(),
@@ -2232,7 +2237,7 @@ mod tests {
                 note_max_chars: USER_ACTION_NOTE_MAX_CHARS as u64,
             };
             let base = canonical_json_size_bytes(&form).expect("form should serialize");
-            let UserActionInboxForm::Choice { choices, .. } = &mut form else {
+            let UserActionResolutionForm::Choice { choices, .. } = &mut form else {
                 unreachable!("choice fixture")
             };
             choices[0].consequence = "x".repeat(target - base);
