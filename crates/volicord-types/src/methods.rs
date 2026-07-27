@@ -9,28 +9,22 @@ use crate::ids::{
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary,
     ArtifactInput, ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ContinuityPageRequest, CurrentCloseBasis, EventRef,
-    EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary,
-    EvidenceObservation, EvidenceObservationInput, EvidenceProducer, EvidenceSummary,
-    EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisplay, JsonObject, NextActionSummary,
-    ObservedChanges, ProjectContinuityPage, ProjectContinuitySummary, RequiredNullable,
-    RiskAcceptanceCoverage, RunSummary, SourceRef, StagedArtifactHandle, StateRecordRef,
-    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolDryRunResponse, ToolEnvelope,
-    ToolRejectedResponse, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    CloseReadinessBlocker, ContinuityPageRequest, CurrentCloseBasis, EvidenceCaptureIntent,
+    EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation,
+    EvidenceObservationInput, EvidenceProducer, EvidenceSummary, EvidenceTarget, GuaranteeDisplay,
+    JsonObject, NextActionSummary, ObservedChanges, ProjectContinuityPage,
+    ProjectContinuitySummary, RequiredNullable, RiskAcceptanceCoverage, RunSummary, SourceRef,
+    StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard, TaskFlowItem,
+    TaskLineageInput, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest, UserActionResolution,
     UserActionResolutionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
     CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
-use crate::tool_names::AgentToolId;
 use crate::values::{
-    AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
-    CloseState, EffectKind, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
-    EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentResolutionOutcome,
-    MethodName, MutationDetailLevel, OperationCategory, PrepareWriteDecision, RedactionState,
+    AcceptancePolicy, ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState,
+    EvidenceDisplayState, MethodName, OperationCategory, PrepareWriteDecision, RedactionState,
     RequestedControlLevel, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
-    StatusDetailLevel, UnrecordedChangeResolutionBasis, UserActionChannelKind, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
-    WriteTicketEffect,
+    UnrecordedChangeResolutionBasis, UserActionRequiredFor, UtcTimestamp, WriteTicketEffect,
 };
 
 /// Shared typed mapping from a public request to its operation category.
@@ -150,90 +144,6 @@ pub type ReconcileChangesResponse = ToolResponse<ReconcileChangesResult>;
 /// Response branch type for `volicord.close_task`.
 pub type CloseTaskResponse = ToolResponse<CloseTaskResult>;
 
-/// Compound MCP projection that keeps the agent-workflow transaction distinct
-/// from any later immutable user-channel resolution observed by the adapter.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpRequestUserActionResponse {
-    pub agent_workflow_result: RequestUserActionResponse,
-    pub agent_workflow_result_replayed: bool,
-    pub current_projection_state_version: u64,
-    pub current_projection_observed_at: UtcTimestamp,
-    pub current_status: UserActionStatus,
-    pub user_channel_resolution_ref: RequiredNullable<StateRecordRef>,
-    pub user_channel_resolution: RequiredNullable<AgentSafeUserActionResolution>,
-    pub derived_refs: Vec<StateRecordRef>,
-}
-
-/// Agent-safe projection of a verified user-channel resolution.
-///
-/// User-authored notes and evidence-observation summaries intentionally remain
-/// outside the MCP-visible compound response.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct AgentSafeUserActionResolution {
-    pub user_action_resolution_id: UserActionResolutionId,
-    pub user_action_request_id: UserActionRequestId,
-    pub action_kind: UserActionKind,
-    pub channel_kind: UserActionChannelKind,
-    pub resolved_at: UtcTimestamp,
-    pub resolution_summary: McpUserActionResolutionSummary,
-}
-
-/// Stable top-level error code for a known MCP tool failure before Core entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum McpToolErrorCode {
-    #[serde(rename = "MCP_INVALID_ARGUMENTS")]
-    InvalidArguments,
-    #[serde(rename = "MCP_ADAPTER_PRECONDITION_FAILED")]
-    AdapterPreconditionFailed,
-}
-
-/// MCP wire-owned identity for operational unavailability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum McpOperationalErrorCode {
-    #[serde(rename = "MCP_UNAVAILABLE")]
-    Unavailable,
-}
-
-/// MCP wire projection of the operation that could not complete.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum McpOperationalOperation {
-    #[serde(rename = "product_path_observation")]
-    ProductPathObservation,
-    #[serde(rename = "store_access")]
-    StoreAccess,
-}
-
-/// MCP wire projection of the unavailable infrastructure resource.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum McpOperationalResource {
-    #[serde(rename = "product_repository")]
-    ProductRepository,
-    #[serde(rename = "store")]
-    Store,
-    #[serde(rename = "registry_store")]
-    RegistryStore,
-    #[serde(rename = "project_store")]
-    ProjectStore,
-    #[serde(rename = "runtime_home")]
-    RuntimeHome,
-    #[serde(rename = "platform_environment")]
-    PlatformEnvironment,
-}
-
-/// Maximum number of independently discoverable issues returned for one known MCP tool call.
-pub const MAX_VALIDATION_ISSUES: usize = 32;
-
-/// Maximum UTF-8 byte length of one returned MCP tool issue JSON Pointer.
-pub const MAX_MCP_TOOL_ISSUE_PATH_BYTES: usize = 256;
-
-/// Maximum UTF-8 byte length of one returned MCP tool issue message.
-pub const MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES: usize = 512;
-
-/// Maximum compact-JSON byte length of one known-tool MCP `CallToolResult` error.
-pub const MAX_MCP_TOOL_ERROR_RESULT_BYTES: usize = 64 * 1024;
-
 /// Maximum number of source UTF-8 bytes returned in one operation-result page.
 pub const MAX_OPERATION_RESULT_PAGE_BYTES: usize = 16_384;
 
@@ -250,319 +160,6 @@ pub struct OperationResultRef {
     pub committed_state_version: u64,
     pub response_sha256: String,
     pub response_size_bytes: u64,
-}
-
-/// Stable issue code within a known MCP tool error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum McpToolIssueCode {
-    #[serde(rename = "MCP_ARGUMENT_REQUIRED")]
-    ArgumentRequired,
-    #[serde(rename = "MCP_ARGUMENT_UNKNOWN")]
-    ArgumentUnknown,
-    #[serde(rename = "MCP_ARGUMENT_TYPE_MISMATCH")]
-    ArgumentTypeMismatch,
-    #[serde(rename = "MCP_ARGUMENT_ENUM_VALUE")]
-    ArgumentEnumValue,
-    #[serde(rename = "MCP_ARGUMENT_DECODE_FAILED")]
-    ArgumentDecodeFailed,
-    #[serde(rename = "MCP_ADAPTER_PRECONDITION_FAILED")]
-    AdapterPreconditionFailed,
-}
-
-/// One independently discoverable MCP tool error issue.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpToolErrorIssue {
-    #[schemars(length(max = "MAX_MCP_TOOL_ISSUE_PATH_BYTES"))]
-    pub path: String,
-    pub code: McpToolIssueCode,
-    #[schemars(length(min = 1, max = "MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES"))]
-    pub message: String,
-}
-
-/// Structured known-tool failure returned before Core method entry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpToolErrorResponse {
-    pub code: McpToolErrorCode,
-    pub tool_name: String,
-    pub retryable: bool,
-    pub reached_core: bool,
-    pub committed: bool,
-    #[schemars(range(min = 1, max = "MAX_VALIDATION_ISSUES"))]
-    pub reported_issue_count: usize,
-    pub truncated: bool,
-    #[schemars(length(min = 1, max = "MAX_VALIDATION_ISSUES"))]
-    pub issues: Vec<McpToolErrorIssue>,
-}
-
-/// Structured MCP failure when an operational dependency cannot produce a tool result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpOperationalFailure {
-    pub code: McpOperationalErrorCode,
-    pub tool_name: MethodName,
-    pub operation: McpOperationalOperation,
-    pub resource: McpOperationalResource,
-    pub retryable: bool,
-    pub reached_core: bool,
-    pub committed: bool,
-}
-
-/// Structured MCP result advertised by each known tool.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum McpToolStructuredContent<T> {
-    Response(Box<T>),
-    AdapterError(McpToolErrorResponse),
-}
-
-/// Structured MCP result advertised by a Core-owned read-only tool.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum McpCoreToolStructuredContent<T> {
-    Response(Box<T>),
-    OperationalFailure(McpOperationalFailure),
-    AdapterError(McpToolErrorResponse),
-}
-
-/// Compact method-effect facts preserved by mutation projections and recoveries.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpMutationEffectSummary {
-    pub effect_kind: EffectKind,
-    pub state_version: Option<u64>,
-    pub events: Vec<EventRef>,
-}
-
-/// Compact `volicord.prepare_write` outcome needed by the next write step.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpPrepareWriteCompactResult {
-    pub effect: McpMutationEffectSummary,
-    pub decision: PrepareWriteDecision,
-    pub write_ticket_id: Option<WriteTicketId>,
-    pub write_ticket_ref: Option<StateRecordRef>,
-    pub write_ticket: Option<WriteTicket>,
-    pub write_ticket_effect: WriteTicketEffect,
-    pub allowed_path_patterns: Vec<String>,
-    pub denied_path_patterns: Vec<String>,
-    pub write_decision_reasons: Vec<WriteDecisionReason>,
-    pub user_action_draft: Option<UserActionDraft>,
-}
-
-/// Compact `volicord.prepare_evidence_capture` outcome needed by the source and Run steps.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpPrepareEvidenceCaptureCompactResult {
-    pub effect: McpMutationEffectSummary,
-    pub capture_intent_ref: StateRecordRef,
-    pub capture_intent: EvidenceCaptureIntent,
-    pub expires_at: UtcTimestamp,
-}
-
-/// Compact `volicord.stage_artifact` outcome needed to consume the staged input.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpStageArtifactCompactResult {
-    pub effect: McpMutationEffectSummary,
-    pub evidence_state: EvidenceDisplayState,
-    pub staged_artifact_handle: StagedArtifactHandle,
-    pub expires_at: UtcTimestamp,
-}
-
-/// Task-owned close-basis coordinates created by one compact `volicord.record_run` result.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpRecordRunCloseBasisAnchor {
-    pub close_basis_revision: u64,
-    pub scope_revision: u64,
-    pub source_run_ref: StateRecordRef,
-    pub evidence_summary_ref: RequiredNullable<StateRecordRef>,
-}
-
-/// Compact `volicord.record_run` outcome needed by evidence and close follow-up work.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpRecordRunCompactResult {
-    pub effect: McpMutationEffectSummary,
-    pub run_ref: StateRecordRef,
-    pub registered_artifact_refs: Vec<ArtifactRef>,
-    pub evidence_observation_refs: Vec<StateRecordRef>,
-    pub evidence_producer_refs: Vec<StateRecordRef>,
-    pub close_basis_anchor: RequiredNullable<McpRecordRunCloseBasisAnchor>,
-}
-
-/// Compact host-native user-action outcome safe for ordinary agent consumption.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpRequestUserActionCompactResult {
-    pub effect: McpMutationEffectSummary,
-    pub agent_workflow_result_replayed: bool,
-    pub user_action_request_summary: AgentSafeUserActionRequestSummary,
-    pub current_projection_state_version: u64,
-    pub current_projection_observed_at: UtcTimestamp,
-    pub user_action_resolution_ref: RequiredNullable<StateRecordRef>,
-    pub status: UserActionStatus,
-    pub resolution_summary: RequiredNullable<McpUserActionResolutionSummary>,
-    pub derived_refs: Vec<StateRecordRef>,
-}
-
-/// Closed compact resolution summary preserving choice and observation semantics.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(
-    tag = "resolution_type",
-    rename_all = "snake_case",
-    deny_unknown_fields
-)]
-pub enum McpUserActionResolutionSummary {
-    Choice {
-        selected_option_id: crate::ids::UserActionOptionId,
-        selected_option_label: String,
-        machine_action: UserActionOptionAction,
-        resolution_outcome: JudgmentResolutionOutcome,
-    },
-    EvidenceObservation {
-        target: EvidenceTarget,
-        artifact_refs: Vec<ArtifactRef>,
-        relevance_status: EvidenceRelevanceStatus,
-    },
-}
-
-/// Compact per-finding `volicord.reconcile_changes` outcome.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpReconcileChangesCompactResult {
-    pub effect: McpMutationEffectSummary,
-    pub unresolved_changes: Vec<UnrecordedChangeFinding>,
-    pub resolved_changes: Vec<UnrecordedChangeResolutionSummary>,
-    pub pending_user_action_summaries: Vec<AgentSafeUserActionRequestSummary>,
-    pub rejected_resolution_requests: Vec<UnrecordedChangeRejection>,
-}
-
-/// Summary-detail MCP mutation branch over one fresh authority receipt.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpMutationSummaryResponse<T> {
-    pub operation_result_ref: RequiredNullable<OperationResultRef>,
-    pub authority_receipt: AuthorityReceipt,
-    pub method_result: T,
-}
-
-/// Workflow-detail MCP mutation branch over one fresh authority receipt.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpMutationWorkflowResponse<T> {
-    pub operation_result_ref: RequiredNullable<OperationResultRef>,
-    pub authority_receipt: AuthorityReceipt,
-    pub method_result: T,
-    pub next_actions: Vec<NextActionSummary>,
-}
-
-/// Full-detail MCP mutation branch pairing fresh authority with the exact method result.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpMutationFullResponse<T> {
-    pub operation_result_ref: RequiredNullable<OperationResultRef>,
-    pub authority_receipt: AuthorityReceipt,
-    pub method_result: T,
-}
-
-/// Bounded non-retryable MCP recovery branch used when authoritative refresh fails.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpAuthoritativeRefreshFailure<T> {
-    pub code: McpOperationalErrorCode,
-    pub tool_name: MethodName,
-    pub retryable: bool,
-    pub reached_core: bool,
-    pub committed: bool,
-    pub effect_kind: RequiredNullable<EffectKind>,
-    pub effect_applied: bool,
-    /// Correlates the applied effect; it is not an exact-result lookup credential.
-    pub effect_anchor: RequiredNullable<String>,
-    pub operation_result_ref: RequiredNullable<OperationResultRef>,
-    pub method_result: RequiredNullable<T>,
-    pub status_read_required: bool,
-    pub completion_claim_withheld: bool,
-}
-
-/// Stable MCP adapter code for a compact mutation projection failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum McpMutationProjectionErrorCode {
-    McpResponseBudgetExceeded,
-}
-
-/// Stable MCP adapter code for a failure after a mutation effect was observed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum McpPostEffectFailureCode {
-    McpResponseProjectionFailed,
-    McpPostEffectAdapterFailed,
-}
-
-/// Bounded success-class recovery when post-effect adapter work cannot safely
-/// project a normal mutation response.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpMutationPostEffectFailure {
-    pub code: McpPostEffectFailureCode,
-    pub tool_name: MethodName,
-    pub requested_detail: MutationDetailLevel,
-    pub retryable: bool,
-    pub reached_core: bool,
-    pub committed: bool,
-    pub effect_kind: RequiredNullable<EffectKind>,
-    pub effect_applied: bool,
-    /// Correlates the applied effect; it is not an exact-result lookup credential.
-    pub effect_anchor: RequiredNullable<String>,
-    pub operation_result_ref: RequiredNullable<OperationResultRef>,
-    pub authority_receipt: RequiredNullable<AuthorityReceipt>,
-    pub method_result: RequiredNullable<JsonObject>,
-    pub authoritative_refresh_succeeded: bool,
-    pub response_projection_omitted: bool,
-    pub status_read_required: bool,
-    pub completion_claim_withheld: bool,
-}
-
-/// Bounded non-retryable MCP recovery branch used when a projection exceeds its budget.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpMutationResponseBudgetExceeded<T> {
-    pub code: McpMutationProjectionErrorCode,
-    pub tool_name: MethodName,
-    pub requested_detail: MutationDetailLevel,
-    pub retryable: bool,
-    pub reached_core: bool,
-    pub committed: bool,
-    pub effect_kind: RequiredNullable<EffectKind>,
-    pub effect_applied: bool,
-    /// Correlates the applied effect; it is not an exact-result lookup credential.
-    pub effect_anchor: RequiredNullable<String>,
-    pub operation_result_ref: RequiredNullable<OperationResultRef>,
-    pub authority_receipt: RequiredNullable<AuthorityReceipt>,
-    pub method_result: RequiredNullable<T>,
-    pub authoritative_refresh_succeeded: bool,
-    pub response_projection_omitted: bool,
-    pub status_read_required: bool,
-    pub completion_claim_withheld: bool,
-}
-
-/// Structured MCP output advertised by mutation tools.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged)]
-pub enum McpMutationStructuredContent<T, C> {
-    Rejected(ToolRejectedResponse),
-    DryRun(ToolDryRunResponse),
-    Full(McpMutationFullResponse<Box<T>>),
-    Summary(McpMutationSummaryResponse<C>),
-    Workflow(McpMutationWorkflowResponse<C>),
-    OperationalFailure(McpOperationalFailure),
-    RefreshFailure(McpAuthoritativeRefreshFailure<C>),
-    ResponseBudgetExceeded(McpMutationResponseBudgetExceeded<C>),
-    PostEffectFailure(McpMutationPostEffectFailure),
-    AdapterError(McpToolErrorResponse),
 }
 
 /// `volicord.intake` request params.
@@ -590,28 +187,6 @@ impl MethodOperationCategory for IntakeRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
-}
-
-/// MCP-visible `volicord.intake` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpIntakeArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub plain_language_request: String,
-    pub requested_mode: RequestedMode,
-    #[serde(default)]
-    pub requested_control_level: RequestedControlLevel,
-    pub resume_policy: ResumePolicy,
-    pub acceptance_policy: RequiredNullable<AcceptancePolicy>,
-    pub lineage: RequiredNullable<TaskLineageInput>,
-    pub initial_scope: InitialScope,
-    #[serde(default)]
-    pub initial_context_refs: Vec<StateRecordRef>,
-    #[serde(default)]
-    pub initial_source_refs: Vec<SourceRef>,
 }
 
 /// Intake initial scope object.
@@ -658,34 +233,6 @@ impl MethodOperationCategory for UpdateScopeRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
-}
-
-/// MCP-visible `volicord.update_scope` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpUpdateScopeArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub task_id: TaskId,
-    #[serde(default)]
-    pub goal_summary: RequiredNullable<String>,
-    #[serde(default)]
-    pub scope_update: RequiredNullable<ScopeUpdate>,
-    #[serde(default)]
-    pub scope_boundary: RequiredNullable<String>,
-    #[serde(default)]
-    pub non_goals: RequiredNullable<Vec<String>>,
-    #[serde(default)]
-    pub acceptance_criteria: RequiredNullable<Vec<AcceptanceCriterionReplacement>>,
-    #[serde(default)]
-    pub autonomy_boundary: RequiredNullable<String>,
-    #[serde(default)]
-    pub baseline_ref: RequiredNullable<BaselineRef>,
-    pub change_unit: ChangeUnitUpdate,
-    #[serde(default)]
-    pub related_scope_decision_refs: Vec<StateRecordRef>,
 }
 
 /// Include/exclude scope-update object.
@@ -736,55 +283,6 @@ impl MethodOperationCategory for StatusRequest {
 
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::Read
-    }
-}
-
-/// MCP-visible `volicord.status` arguments.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpStatusArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub task_id: RequiredNullable<TaskId>,
-    #[serde(default)]
-    pub detail: StatusDetailLevel,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub continuity_page: Option<RequiredNullable<ContinuityPageRequest>>,
-}
-
-impl StatusDetailLevel {
-    /// Expands the MCP-visible detail level into the Core status include matrix.
-    pub const fn include(self) -> StatusInclude {
-        match self {
-            Self::Summary => StatusInclude {
-                task: true,
-                pending_user_actions: false,
-                write_ticket: false,
-                evidence: false,
-                close: false,
-                guarantees: false,
-                continuity: false,
-            },
-            Self::Workflow => StatusInclude {
-                task: true,
-                pending_user_actions: true,
-                write_ticket: true,
-                evidence: true,
-                close: true,
-                guarantees: true,
-                continuity: false,
-            },
-            Self::Full => StatusInclude {
-                task: true,
-                pending_user_actions: true,
-                write_ticket: true,
-                evidence: true,
-                close: true,
-                guarantees: true,
-                continuity: true,
-            },
-        }
     }
 }
 
@@ -1011,17 +509,6 @@ impl MethodOperationCategory for GetOperationResultRequest {
     }
 }
 
-/// MCP-visible `volicord.get_operation_result` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpGetOperationResultArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    pub operation_result_ref: OperationResultRef,
-    #[serde(default)]
-    pub cursor: RequiredNullable<String>,
-}
-
 declare_method_result! {
     /// One bounded page of an immutable historical mutation response.
     pub struct GetOperationResultResult from GetOperationResultResultFields {
@@ -1058,64 +545,6 @@ impl MethodOperationCategory for PrepareEvidenceCaptureRequest {
     }
 }
 
-/// MCP-visible evidence-capture source selection with omission-equivalent expected outcomes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "capture_kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum McpEvidenceCaptureSpec {
-    VerifiedCommandExecution {
-        command_sha256: String,
-        command_label: String,
-        #[serde(default)]
-        expected_exit_code: RequiredNullable<i32>,
-    },
-    VerifiedToolInvocation {
-        tool_name: String,
-        tool_input_sha256: String,
-        #[serde(default)]
-        expected_success: RequiredNullable<bool>,
-    },
-}
-
-impl From<McpEvidenceCaptureSpec> for EvidenceCaptureSpec {
-    fn from(value: McpEvidenceCaptureSpec) -> Self {
-        match value {
-            McpEvidenceCaptureSpec::VerifiedCommandExecution {
-                command_sha256,
-                command_label,
-                expected_exit_code,
-            } => Self::VerifiedCommandExecution {
-                command_sha256,
-                command_label,
-                expected_exit_code,
-            },
-            McpEvidenceCaptureSpec::VerifiedToolInvocation {
-                tool_name,
-                tool_input_sha256,
-                expected_success,
-            } => Self::VerifiedToolInvocation {
-                tool_name,
-                tool_input_sha256,
-                expected_success,
-            },
-        }
-    }
-}
-
-/// MCP-visible `volicord.prepare_evidence_capture` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpPrepareEvidenceCaptureArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub task_id: TaskId,
-    pub change_unit_id: ChangeUnitId,
-    pub baseline_ref: BaselineRef,
-    pub target: EvidenceTarget,
-    pub capture: McpEvidenceCaptureSpec,
-}
-
 declare_method_result! {
     /// `volicord.prepare_evidence_capture` method result branch and its method-specific fields.
     pub struct PrepareEvidenceCaptureResult from PrepareEvidenceCaptureResultFields {
@@ -1147,26 +576,6 @@ impl MethodOperationCategory for PrepareWriteRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
-}
-
-/// MCP-visible `volicord.prepare_write` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpPrepareWriteArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    #[serde(default)]
-    pub task_id: RequiredNullable<TaskId>,
-    #[serde(default)]
-    pub change_unit_id: RequiredNullable<ChangeUnitId>,
-    pub intended_operation: String,
-    pub intended_paths: Vec<String>,
-    pub product_file_write_intended: bool,
-    #[serde(default)]
-    pub sensitive_categories: Vec<String>,
-    pub baseline_ref: BaselineRef,
 }
 
 declare_method_result! {
@@ -1212,27 +621,6 @@ impl MethodOperationCategory for StageArtifactRequest {
     }
 }
 
-/// MCP-visible `volicord.stage_artifact` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpStageArtifactArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub task_id: TaskId,
-    pub display_name: String,
-    pub content_type: String,
-    pub redaction_state: RedactionState,
-    pub safe_bytes_or_notice: String,
-    #[serde(default)]
-    pub expected_sha256: RequiredNullable<String>,
-    #[serde(default)]
-    pub expected_size_bytes: RequiredNullable<u64>,
-    #[serde(default)]
-    pub relation_hint: RequiredNullable<String>,
-}
-
 /// `volicord.stage_artifact` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct StageArtifactResult {
@@ -1273,113 +661,6 @@ impl MethodOperationCategory for RecordRunRequest {
     }
 }
 
-/// MCP-visible `volicord.record_run` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpRecordRunArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub task_id: TaskId,
-    pub change_unit_id: ChangeUnitId,
-    pub kind: RunKind,
-    #[serde(default)]
-    pub run_id: RequiredNullable<RunId>,
-    pub baseline_ref: BaselineRef,
-    #[serde(default)]
-    pub write_ticket_id: RequiredNullable<WriteTicketId>,
-    #[serde(default)]
-    pub performed_operation: RequiredNullable<String>,
-    pub summary: String,
-    pub observed_changes: ObservedChanges,
-    #[serde(default)]
-    pub artifact_inputs: Vec<ArtifactInput>,
-    #[serde(default)]
-    pub evidence_updates: Vec<McpEvidenceCoverageUpdate>,
-    #[serde(default)]
-    pub evidence_observations: Vec<McpEvidenceObservationInput>,
-    #[serde(default)]
-    pub close_assessment: RequiredNullable<CloseAssessmentInput>,
-}
-
-/// MCP-visible evidence coverage input with omission-equivalent collection defaults.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpEvidenceCoverageUpdate {
-    pub target: EvidenceTarget,
-    pub coverage_state: EvidenceCoverageUpdateState,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provenance: Option<EvidenceUpdateProvenance>,
-    #[serde(default)]
-    pub supporting_run_refs: Vec<StateRecordRef>,
-    #[serde(default)]
-    pub observation_refs: Vec<StateRecordRef>,
-    #[serde(default)]
-    pub supporting_artifact_refs: Vec<ArtifactRef>,
-    #[serde(default)]
-    pub gap_refs: Vec<StateRecordRef>,
-}
-
-impl From<McpEvidenceCoverageUpdate> for EvidenceCoverageUpdate {
-    fn from(value: McpEvidenceCoverageUpdate) -> Self {
-        Self {
-            target: value.target,
-            coverage_state: value.coverage_state,
-            provenance: value.provenance,
-            supporting_run_refs: value.supporting_run_refs,
-            observation_refs: value.observation_refs,
-            supporting_artifact_refs: value.supporting_artifact_refs,
-            gap_refs: value.gap_refs,
-        }
-    }
-}
-
-/// MCP-visible evidence observation input with omission-equivalent null and collection defaults.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpEvidenceObservationInput {
-    pub target: EvidenceTarget,
-    pub source_kind: EvidenceSourceKind,
-    pub assurance_level: EvidenceAssuranceLevel,
-    #[serde(default)]
-    pub observed_by_actor_source: RequiredNullable<ActorSource>,
-    #[serde(default)]
-    pub tool_name: RequiredNullable<String>,
-    #[serde(default)]
-    pub tool_invocation_id: RequiredNullable<String>,
-    #[serde(default)]
-    pub tool_metadata: JsonObject,
-    #[serde(default)]
-    pub input_refs: Vec<StateRecordRef>,
-    #[serde(default)]
-    pub source_refs: Vec<SourceRef>,
-    #[serde(default)]
-    pub output_artifact_refs: Vec<ArtifactRef>,
-    #[serde(default)]
-    pub limitations: Vec<String>,
-    pub observed_at: UtcTimestamp,
-}
-
-impl From<McpEvidenceObservationInput> for EvidenceObservationInput {
-    fn from(value: McpEvidenceObservationInput) -> Self {
-        Self {
-            target: value.target,
-            source_kind: value.source_kind,
-            assurance_level: value.assurance_level,
-            observed_by_actor_source: value.observed_by_actor_source,
-            tool_name: value.tool_name,
-            tool_invocation_id: value.tool_invocation_id,
-            tool_metadata: value.tool_metadata,
-            input_refs: value.input_refs,
-            source_refs: value.source_refs,
-            output_artifact_refs: value.output_artifact_refs,
-            limitations: value.limitations,
-            observed_at: value.observed_at,
-        }
-    }
-}
-
 declare_method_result! {
     /// `volicord.record_run` method result branch and its method-specific fields.
     pub struct RecordRunResult from RecordRunResultFields {
@@ -1414,35 +695,6 @@ impl MethodOperationCategory for RequestUserActionRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
-}
-
-/// MCP-visible `volicord.request_user_action` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpRequestUserActionArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub request: McpRequestUserActionOperation,
-}
-
-/// Create-or-resume operation selected for the MCP user-action tool.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
-pub enum McpRequestUserActionOperation {
-    Create {
-        task_id: TaskId,
-        #[serde(default)]
-        change_unit_id: RequiredNullable<ChangeUnitId>,
-        action: UserActionDraft,
-        required_for: Vec<UserActionRequiredFor>,
-        #[serde(default)]
-        expires_at: RequiredNullable<UtcTimestamp>,
-    },
-    Resume {
-        user_action_request_id: UserActionRequestId,
-    },
 }
 
 declare_method_result! {
@@ -1509,19 +761,6 @@ impl MethodOperationCategory for ReconcileChangesRequest {
     fn operation_category(&self) -> OperationCategory {
         OperationCategory::AgentWorkflow
     }
-}
-
-/// MCP-visible `volicord.reconcile_changes` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpReconcileChangesArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub task_id: TaskId,
-    #[serde(default)]
-    pub resolution_requests: Vec<UnrecordedChangeResolutionRequest>,
 }
 
 /// Optional caller-supplied reconciliation request for a specific finding.
@@ -1599,33 +838,6 @@ impl MethodOperationCategory for CloseTaskRequest {
     }
 }
 
-/// MCP-visible read-only `volicord.check_close` arguments.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpCheckCloseArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    pub task_id: TaskId,
-}
-
-/// MCP-visible workflow `volicord.close_task` arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct McpCloseTaskArguments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub project_selector: Option<String>,
-    #[serde(default)]
-    pub detail: MutationDetailLevel,
-    pub task_id: TaskId,
-    pub intent: CloseMutationIntent,
-    #[serde(default)]
-    pub close_reason: RequiredNullable<CloseReason>,
-    #[serde(default)]
-    pub superseding_task_id: RequiredNullable<TaskId>,
-    #[serde(default)]
-    pub user_note: RequiredNullable<String>,
-}
-
 declare_method_result! {
     /// `volicord.close_task` method result branch and its method-specific fields.
     pub struct CloseTaskResult from CloseTaskResultFields {
@@ -1688,79 +900,6 @@ pub fn public_response_schema(method_name: &str) -> Option<Value> {
         "volicord.reconcile_changes" => Some(response_schema::<ReconcileChangesResponse>()),
         "volicord.close_task" => Some(response_schema::<CloseTaskResponse>()),
         _ => None,
-    }
-}
-
-/// Returns the generated JSON Schema for one MCP-visible tool argument shape.
-pub fn mcp_request_schema(tool: AgentToolId) -> Option<Value> {
-    match tool.method()? {
-        MethodName::Intake => Some(request_schema::<McpIntakeArguments>()),
-        MethodName::UpdateScope => Some(request_schema::<McpUpdateScopeArguments>()),
-        MethodName::Status => Some(request_schema::<McpStatusArguments>()),
-        MethodName::GetOperationResult => Some(request_schema::<McpGetOperationResultArguments>()),
-        MethodName::PrepareEvidenceCapture => {
-            Some(request_schema::<McpPrepareEvidenceCaptureArguments>())
-        }
-        MethodName::PrepareWrite => Some(request_schema::<McpPrepareWriteArguments>()),
-        MethodName::StageArtifact => Some(request_schema::<McpStageArtifactArguments>()),
-        MethodName::RecordRun => Some(request_schema::<McpRecordRunArguments>()),
-        MethodName::RequestUserAction => Some(request_schema::<McpRequestUserActionArguments>()),
-        MethodName::ReconcileChanges => Some(request_schema::<McpReconcileChangesArguments>()),
-        MethodName::CheckClose => Some(request_schema::<McpCheckCloseArguments>()),
-        MethodName::CloseTask => Some(request_schema::<McpCloseTaskArguments>()),
-        MethodName::ResolveUserAction => None,
-    }
-}
-
-/// Returns the generated JSON Schema for one MCP-visible public method result.
-pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
-    match tool.method()? {
-        MethodName::RequestUserAction => Some(response_schema::<
-            McpMutationStructuredContent<
-                McpRequestUserActionResponse,
-                McpRequestUserActionCompactResult,
-            >,
-        >()),
-        MethodName::Intake => Some(response_schema::<
-            McpMutationStructuredContent<IntakeResponse, McpMutationEffectSummary>,
-        >()),
-        MethodName::UpdateScope => Some(response_schema::<
-            McpMutationStructuredContent<UpdateScopeResponse, McpMutationEffectSummary>,
-        >()),
-        MethodName::Status => Some(response_schema::<
-            McpCoreToolStructuredContent<StatusResponse>,
-        >()),
-        MethodName::GetOperationResult => Some(response_schema::<
-            McpCoreToolStructuredContent<GetOperationResultResponse>,
-        >()),
-        MethodName::PrepareEvidenceCapture => Some(response_schema::<
-            McpMutationStructuredContent<
-                PrepareEvidenceCaptureResponse,
-                McpPrepareEvidenceCaptureCompactResult,
-            >,
-        >()),
-        MethodName::PrepareWrite => Some(response_schema::<
-            McpMutationStructuredContent<PrepareWriteResponse, McpPrepareWriteCompactResult>,
-        >()),
-        MethodName::StageArtifact => Some(response_schema::<
-            McpMutationStructuredContent<StageArtifactResponse, McpStageArtifactCompactResult>,
-        >()),
-        MethodName::RecordRun => Some(response_schema::<
-            McpMutationStructuredContent<RecordRunResponse, McpRecordRunCompactResult>,
-        >()),
-        MethodName::ReconcileChanges => Some(response_schema::<
-            McpMutationStructuredContent<
-                ReconcileChangesResponse,
-                McpReconcileChangesCompactResult,
-            >,
-        >()),
-        MethodName::CheckClose => Some(response_schema::<
-            McpCoreToolStructuredContent<CheckCloseResponse>,
-        >()),
-        MethodName::CloseTask => Some(response_schema::<
-            McpMutationStructuredContent<CloseTaskResponse, McpMutationEffectSummary>,
-        >()),
-        MethodName::ResolveUserAction => None,
     }
 }
 

@@ -10,6 +10,9 @@
       "crates/volicord-types/src/schema.rs",
       "crates/volicord-types/src/tool_names.rs",
       "crates/volicord-types/src/values.rs",
+      "crates/volicord-mcp-protocol/src/lib.rs",
+      "crates/volicord-mcp-wire/src/methods.rs",
+      "crates/volicord-mcp-wire/src/tools.rs",
       "crates/volicord-mcp/src/routing.rs",
       "crates/volicord-mcp/src/tool_registry.rs"
     ],
@@ -145,7 +148,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3701af06bfe510d406d619a4c0d4c997f5806af5b9e83bf439aed150f15e8fc5"
+        "sha256": "sha256:817d5ecf6df680456191d78c49a1e5c1380221e0f84211d583257d3c4e069690"
       }
     },
     {
@@ -211,7 +214,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3b9a805405431c1fea325fc7c21eb6b80b12661f8282072fce40063e659afe29"
+        "sha256": "sha256:a42c4dec627c5357b21d4b47e6ff21bd8743f21cfddead2501ea8665690ed0ce"
       }
     },
     {
@@ -333,7 +336,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d2712dbc78f24c27cd9ddd6993e07e57e0ca801ce2a839e8730e876b4c001947"
+        "sha256": "sha256:00e63d6701b2500adbd13cc746e4e279233b278b4bcb1032c09d2fcc05139414"
       }
     },
     {

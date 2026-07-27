@@ -14,9 +14,10 @@ use crate::diagnostics::{
 };
 use crate::errors::McpAdapterError;
 use crate::json_rpc::{
-    self, invalid_params_response, invalid_request_response, json_rpc_error,
-    notification_params_are_object_or_absent, parse_client_message, response_id, success_response,
-    validate_optional_object_params, ClientMessage, JsonRpcNotification, JsonRpcRequest,
+    self, diagnostic_for_failure, invalid_params_response, invalid_request_response,
+    json_rpc_error, notification_params_are_object_or_absent, parse_client_message, response_id,
+    success_response, validate_optional_object_params, ClientMessage, JsonRpcNotification,
+    JsonRpcRequest,
 };
 use crate::mutation_admission::with_mcp_runtime_home_mutation;
 use crate::session_metrics::start_transport_diagnostic_session;
@@ -308,7 +309,7 @@ fn handle_single_json_rpc_message(
                 context,
                 adapter,
                 state.runtime_mut(),
-                McpDiagnostic::JsonRpc(error.diagnostic),
+                McpDiagnostic::JsonRpc(diagnostic_for_failure(&error)),
                 Some(error.code),
                 error.data,
                 None,

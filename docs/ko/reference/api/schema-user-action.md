@@ -293,77 +293,10 @@ fact를 자체 safe protocol projection으로 변환합니다. 요청을 만들�
 resolution form을 받거나 제출할 수 없습니다.
 
 
-## MCP 복합 projection
-
-```yaml
-McpRequestUserActionResponse:
-  agent_workflow_result: RequestUserActionResponse
-  agent_workflow_result_replayed: boolean
-  current_projection_state_version: integer
-  current_projection_observed_at: string
-  current_status: pending | resolved | stale | superseded | expired
-  user_channel_resolution_ref: StateRecordRef | null
-  user_channel_resolution: AgentSafeUserActionResolution | null
-  derived_refs: StateRecordRef[]
-
-McpRequestUserActionCompactResult:
-  effect: McpMutationEffectSummary
-  agent_workflow_result_replayed: boolean
-  user_action_request_summary: AgentSafeUserActionRequestSummary
-  current_projection_state_version: integer
-  current_projection_observed_at: string
-  user_action_resolution_ref: StateRecordRef | null
-  status: pending | resolved | stale | superseded | expired
-  resolution_summary: McpUserActionResolutionSummary | null
-  derived_refs: StateRecordRef[]
-
-AgentSafeUserActionResolution:
-  user_action_resolution_id: string
-  user_action_request_id: string
-  action_kind: string
-  channel_kind: cli
-  resolved_at: string
-  resolution_summary: McpUserActionResolutionSummary
-
-McpUserActionResolutionSummary:
-  # choice variant
-  resolution_type: choice
-  selected_option_id: string
-  selected_option_label: string
-  machine_action: accept | reject | defer
-  resolution_outcome: accepted | rejected | deferred
-
-  # evidence-observation variant
-  resolution_type: evidence_observation
-  target: EvidenceTarget
-  artifact_refs: ArtifactRef[]
-  relevance_status: supported | contradicted
-```
-
-`agent_workflow_result`는 자체 `operation_result_ref`가 가리키는 정확한 커밋
-`volicord.request_user_action` 응답 분기로 남습니다.
-`agent_workflow_result_replayed=false`는 이 호출이 요청을 만들었다는 뜻이고, `true`는 같은
-Agent Connection이 명시적 읽기 전용 resume 연산을 사용해 두 번째 Agent Workflow
-mutation이 없었다는 뜻입니다. 이 정확한 과거 결과는
-`AgentSafeUserActionRequestSummary`를 담으며 `UserActionRequest`,
-`UserActionResolutionForm`, CLI inbox presentation은 담지 않습니다. Replay와
-page 단위 operation-result 조회도 같은 안전한 byte를 보존합니다. 즉시 또는 이후의
-채널 resolution은
-별도 nullable projection입니다. resolution ref는 불변 resolution을 식별하지만 private
-body를 조회하지 않습니다. agent-safe 값은 사용자 자유 형식 note, 관찰 summary, channel
-submission identity, verification basis, assurance text를 제외합니다. 요청 operation
-result를 통해 정확한 user-only `volicord.resolve_user_action` 응답을 조회할 수 있게 하지
-않습니다. `derived_refs`는 선택적 해결이 만든 연속성 기록을 포함한 정확한 공개 ref를
-보존합니다. 요청이 계속 보류 중이면 비어 있으며, 해결이 있으면 compact와 예산 복구
-projection이 이 값을 보존해야 합니다.
-
-`current_status`, nullable 안전 resolution과 ref, `derived_refs`는
-`current_projection_state_version`과 `current_projection_observed_at`에 관찰한 하나의
-Core/Store 읽기 snapshot입니다. Resolution ref와 derived ref는 정확한 과거
-`produced_at_state_version`을 보존하며 이후 관계없는 상태 증가가 이를 다시 쓰면 안 됩니다.
-이 snapshot 뒤 만든 일반 authority receipt는 더 큰 state version일 수 있으므로 소비자는
-서로 다른 두 관찰값을 한 transaction snapshot으로 취급하지 말고 명시적 projection
-anchor를 사용해야 합니다.
+정확한 MCP 복합 응답, 간결한 projection, 안전한 resolution, wire 직렬화는
+[MCP 전송](../mcp-transport.md#user-action-wire-projection)이 담당합니다. 이 공개 schema
+담당자는 해당 projection이 소비하는 adapter-neutral 요청, resolution, 참조, 현재 상태
+fact만 제공합니다.
 
 ## 관련 담당 문서
 

@@ -25,6 +25,23 @@ pub(crate) use volicord_mcp_protocol::{
     McpProtocolCapabilities, McpProtocolProfile, ProtocolRegistry, ServerCapabilityField,
     ToolDefinitionField, ToolResultCarrier, ToolResultField,
 };
+pub(crate) use volicord_mcp_wire::{
+    client_capability_field_name, mcp_request_schema, mcp_response_schema,
+    server_capability_field_name, tool_definition_field_name, tool_result_field_name,
+    McpAuthoritativeRefreshFailure, McpCheckCloseArguments, McpCloseTaskArguments,
+    McpGetOperationResultArguments, McpIntakeArguments, McpMutationEffectSummary,
+    McpMutationFullResponse, McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
+    McpMutationResponseBudgetExceeded, McpMutationSummaryResponse, McpMutationWorkflowResponse,
+    McpPostEffectFailureCode, McpPrepareEvidenceCaptureArguments,
+    McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteArguments, McpPrepareWriteCompactResult,
+    McpReconcileChangesArguments, McpReconcileChangesCompactResult, McpRecordRunArguments,
+    McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult, McpRequestUserActionArguments,
+    McpRequestUserActionCompactResult, McpRequestUserActionOperation, McpRequestUserActionResponse,
+    McpStageArtifactArguments, McpStageArtifactCompactResult, McpStatusArguments,
+    McpToolAnnotations, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
+    McpToolIssueCode, McpUpdateScopeArguments, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
+};
 pub(crate) use volicord_platform_fs::{
     canonical_runtime_home_path, CanonicalRuntimeHomePath, RuntimeHomeMutationLeaseError,
 };
@@ -92,25 +109,12 @@ pub(crate) use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, IntegrationVerificationIdArguments,
 };
 pub(crate) use volicord_types::methods::{
-    mcp_request_schema, mcp_response_schema, CheckCloseRequest, CloseTaskRequest,
-    GetOperationResultRequest, IntakeRequest, McpAuthoritativeRefreshFailure,
-    McpCheckCloseArguments, McpCloseTaskArguments, McpGetOperationResultArguments,
-    McpIntakeArguments, McpMutationEffectSummary, McpMutationFullResponse,
-    McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
-    McpMutationResponseBudgetExceeded, McpMutationSummaryResponse, McpMutationWorkflowResponse,
-    McpPostEffectFailureCode, McpPrepareEvidenceCaptureArguments,
-    McpPrepareEvidenceCaptureCompactResult, McpPrepareWriteArguments, McpPrepareWriteCompactResult,
-    McpReconcileChangesArguments, McpReconcileChangesCompactResult, McpRecordRunArguments,
-    McpRecordRunCloseBasisAnchor, McpRecordRunCompactResult, McpRequestUserActionArguments,
-    McpRequestUserActionCompactResult, McpRequestUserActionOperation, McpRequestUserActionResponse,
-    McpStageArtifactArguments, McpStageArtifactCompactResult, McpStatusArguments, McpToolErrorCode,
-    McpToolErrorIssue, McpToolErrorResponse, McpToolIssueCode, McpUpdateScopeArguments,
+    CheckCloseRequest, CloseTaskRequest, GetOperationResultRequest, IntakeRequest,
     MethodOperationCategory, OperationResultRef, PrepareEvidenceCaptureRequest,
     PrepareEvidenceCaptureResult, PrepareWriteRequest, PrepareWriteResult, ReconcileChangesRequest,
     ReconcileChangesResult, RecordRunRequest, RecordRunResult, RequestUserActionRequest,
     RequestUserActionResponse, RequestUserActionResult, StageArtifactRequest, StageArtifactResult,
-    StatusRequest, UpdateScopeRequest, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
-    MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES, MAX_VALIDATION_ISSUES,
+    StatusRequest, UpdateScopeRequest,
 };
 pub(crate) use volicord_types::schema::{
     AuthorityReceipt, NextActionSummary, RequiredNullable, StateRecordRef, ToolEnvelope,

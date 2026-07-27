@@ -207,7 +207,8 @@ fn every_production_profile_tools_list_is_a_projection_of_one_canonical_registry
             .schema()
             .tool_definition_fields()
             .iter()
-            .map(|field| field.as_str())
+            .copied()
+            .map(tool_definition_field_name)
             .collect::<BTreeSet<_>>();
         for (canonical_tool, projected) in canonical.iter().zip(
             result["tools"]
@@ -387,7 +388,8 @@ fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
                 .schema()
                 .tool_result_fields()
                 .iter()
-                .map(|field| field.as_str())
+                .copied()
+                .map(tool_result_field_name)
                 .collect::<BTreeSet<_>>();
             let fields = projected
                 .as_object()

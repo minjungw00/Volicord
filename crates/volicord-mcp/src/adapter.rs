@@ -21,6 +21,13 @@ use volicord_core::pipeline::{
     CorePipelineError, CoreService, GitWorkspaceContext, InvocationContext, PipelineResponse,
 };
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
+use volicord_mcp_wire::{
+    status_include, McpCheckCloseArguments, McpCloseTaskArguments, McpGetOperationResultArguments,
+    McpIntakeArguments, McpPrepareEvidenceCaptureArguments, McpPrepareWriteArguments,
+    McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserActionArguments,
+    McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments,
+    McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments,
+};
 use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_platform_fs::{canonical_runtime_home_path, CanonicalRuntimeHomePath};
 use volicord_store::agent_connections::{
@@ -46,13 +53,9 @@ use volicord_types::integration_verification::{
 };
 use volicord_types::methods::{
     CheckCloseRequest, CloseTaskRequest, GetOperationResultRequest, IntakeRequest,
-    McpCheckCloseArguments, McpCloseTaskArguments, McpGetOperationResultArguments,
-    McpIntakeArguments, McpPrepareEvidenceCaptureArguments, McpPrepareWriteArguments,
-    McpReconcileChangesArguments, McpRecordRunArguments, McpRequestUserActionArguments,
-    McpRequestUserActionOperation, McpStageArtifactArguments, McpStatusArguments,
-    McpToolErrorIssue, McpToolIssueCode, McpUpdateScopeArguments, MethodOperationCategory,
-    PrepareEvidenceCaptureRequest, PrepareWriteRequest, ReconcileChangesRequest, RecordRunRequest,
-    RequestUserActionRequest, StageArtifactRequest, StatusRequest, UpdateScopeRequest,
+    MethodOperationCategory, PrepareEvidenceCaptureRequest, PrepareWriteRequest,
+    ReconcileChangesRequest, RecordRunRequest, RequestUserActionRequest, StageArtifactRequest,
+    StatusRequest, UpdateScopeRequest,
 };
 use volicord_types::schema::{RequiredNullable, ToolEnvelope};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
@@ -513,7 +516,7 @@ impl McpAdapter {
             StatusRequest {
                 envelope,
                 continuity_page: args.continuity_page,
-                include: args.detail.include(),
+                include: status_include(args.detail),
             },
             |core, _, request, invocation| core.status(request, invocation),
             session,
@@ -580,7 +583,7 @@ impl McpAdapter {
             StatusRequest {
                 envelope,
                 continuity_page: None,
-                include: StatusDetailLevel::Workflow.include(),
+                include: status_include(StatusDetailLevel::Workflow),
             },
             |core, _, request, invocation| core.status(request, invocation),
             session,
@@ -629,7 +632,7 @@ impl McpAdapter {
                 change_unit_id: args.change_unit_id,
                 baseline_ref: args.baseline_ref,
                 target: args.target,
-                capture: args.capture.into(),
+                capture: args.capture.into_core(),
             },
             CoreService::prepare_evidence_capture,
             session,
@@ -742,11 +745,15 @@ impl McpAdapter {
                 summary: args.summary,
                 observed_changes: args.observed_changes,
                 artifact_inputs: args.artifact_inputs,
-                evidence_updates: args.evidence_updates.into_iter().map(Into::into).collect(),
+                evidence_updates: args
+                    .evidence_updates
+                    .into_iter()
+                    .map(|update| update.into_core())
+                    .collect(),
                 evidence_observations: args
                     .evidence_observations
                     .into_iter()
-                    .map(Into::into)
+                    .map(|observation| observation.into_core())
                     .collect(),
                 close_assessment: args.close_assessment,
             },

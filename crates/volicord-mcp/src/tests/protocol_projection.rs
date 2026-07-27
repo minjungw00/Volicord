@@ -317,19 +317,19 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
         }
 
         let mut expected_annotations = match tool.id.category() {
-            AgentToolCategory::ReadOnly => CanonicalToolAnnotations {
+            AgentToolCategory::ReadOnly => McpToolAnnotations {
                 read_only_hint: true,
                 destructive_hint: false,
                 idempotent_hint: true,
                 open_world_hint: false,
             },
-            AgentToolCategory::NonDestructiveMutation => CanonicalToolAnnotations {
+            AgentToolCategory::NonDestructiveMutation => McpToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: false,
                 idempotent_hint: false,
                 open_world_hint: false,
             },
-            AgentToolCategory::DestructiveMutation => CanonicalToolAnnotations {
+            AgentToolCategory::DestructiveMutation => McpToolAnnotations {
                 read_only_hint: false,
                 destructive_hint: true,
                 idempotent_hint: false,
@@ -357,10 +357,7 @@ fn request_user_action_output_schema_covers_compound_agent_safe_response() {
         &schema,
         "McpRequestUserActionResponse"
     ));
-    assert!(schema_has_definition(
-        &schema,
-        "AgentSafeUserActionResolution"
-    ));
+    assert!(schema_has_definition(&schema, "McpUserActionResolution"));
     assert!(schema_has_definition(&schema, "AuthorityReceipt"));
     assert!(schema_has_definition(
         &schema,
@@ -620,7 +617,7 @@ fn prepare_evidence_capture_arguments_map_strict_variants_and_omission_defaults(
         let decoded: McpPrepareEvidenceCaptureArguments =
             serde_json::from_value(arguments.clone())?;
         assert_eq!(decoded.detail, MutationDetailLevel::Summary);
-        let core_capture: volicord_types::schema::EvidenceCaptureSpec = decoded.capture.into();
+        let core_capture: volicord_types::schema::EvidenceCaptureSpec = decoded.capture.into_core();
         assert_eq!(serde_json::to_value(core_capture)?, expected_capture);
 
         let mut invalid = arguments;
@@ -1177,7 +1174,7 @@ fn mcp_minimal_smoke_definition_uses_canonical_identity() {
             "required": ["message"],
             "additionalProperties": false
         }),
-        annotations: CanonicalToolAnnotations {
+        annotations: McpToolAnnotations {
             read_only_hint: true,
             destructive_hint: false,
             idempotent_hint: true,

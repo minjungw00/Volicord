@@ -50,6 +50,11 @@ use volicord_core::pipeline::{
 use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
+use volicord_mcp_wire::{
+    McpOperationalErrorCode, McpOperationalFailure, McpOperationalOperation,
+    McpOperationalResource, McpPostEffectFailureCode, McpToolErrorCode, McpToolErrorIssue,
+    McpToolErrorResponse, McpToolIssueCode, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
+};
 use volicord_store::agent_connections::{
     agent_connection_record_read_only, CONNECTION_MODE_READ_ONLY, CONNECTION_MODE_WORKFLOW,
 };
@@ -58,12 +63,7 @@ use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_store::operational_sessions::{
     record_mcp_tools_list, record_mcp_verification_tool_observation,
 };
-use volicord_types::methods::{
-    McpOperationalErrorCode, McpOperationalFailure, McpOperationalOperation,
-    McpOperationalResource, McpPostEffectFailureCode, McpToolErrorCode, McpToolErrorIssue,
-    McpToolErrorResponse, McpToolIssueCode, OperationResultRef, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
-    MAX_VALIDATION_ISSUES,
-};
+use volicord_types::methods::OperationResultRef;
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner, ToolVerificationRole};
 use volicord_types::values::MethodName;
 use volicord_types::values::{AgentConnectionMode, EffectKind};

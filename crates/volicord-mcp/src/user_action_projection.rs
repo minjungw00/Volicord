@@ -4,13 +4,13 @@ use crate::adapter::McpAdapter;
 use crate::errors::McpAdapterError;
 use crate::tool_dispatch::ToolCallOutput;
 use volicord_core::pipeline::{CoreService, PipelineResponse};
+use volicord_mcp_wire::{
+    McpRequestUserActionResponse, McpUserActionResolution, McpUserActionResolutionSummary,
+};
 use volicord_store::diagnostics::DiagnosticFallbackKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{ProjectId, UserActionRequestId};
-use volicord_types::methods::{
-    AgentSafeUserActionResolution, McpRequestUserActionResponse, McpUserActionResolutionSummary,
-    RequestUserActionResponse, RequestUserActionResult,
-};
+use volicord_types::methods::{RequestUserActionResponse, RequestUserActionResult};
 use volicord_user_action_presentation::cli_pending_user_action_instruction;
 use volicord_user_action_service::{
     CurrentUserActionFacts, CurrentUserActionRead, CurrentUserActionUnavailableReason,
@@ -41,7 +41,7 @@ fn compound_user_action_output(
     let user_channel_resolution = current
         .user_action_resolution
         .as_ref()
-        .map(agent_safe_user_action_resolution);
+        .map(mcp_user_action_resolution);
     let compound = McpRequestUserActionResponse {
         agent_workflow_result: serde_json::from_value::<RequestUserActionResponse>(
             pending_response.response_value.clone(),
@@ -126,9 +126,7 @@ pub(crate) fn cli_recovery_fallback(
     })
 }
 
-fn agent_safe_user_action_resolution(
-    facts: &UserActionResolutionFacts,
-) -> AgentSafeUserActionResolution {
+fn mcp_user_action_resolution(facts: &UserActionResolutionFacts) -> McpUserActionResolution {
     let resolution_summary = match &facts.resolution {
         UserActionResolutionFactsBody::Choice {
             selected_option_id,
@@ -151,7 +149,7 @@ fn agent_safe_user_action_resolution(
             relevance_status: *relevance_status,
         },
     };
-    AgentSafeUserActionResolution {
+    McpUserActionResolution {
         user_action_resolution_id: facts.user_action_resolution_id.clone(),
         user_action_request_id: facts.user_action_request_id.clone(),
         action_kind: facts.action_kind,

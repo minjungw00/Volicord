@@ -2,6 +2,7 @@
 members = [
     "crates/volicord-host-contract",
     "crates/volicord-mcp-protocol",
+    "crates/volicord-mcp-wire",
     "crates/volicord-types",
     "crates/volicord-store",
     "crates/volicord-user-action-service",
@@ -58,6 +59,17 @@ kind = "schema"
 production = true
 boundary = "neutral"
 normal = []
+development = []
+build = []
+
+[workspace.metadata.architecture.packages.volicord-mcp-wire]
+group = "mcp-wire"
+description = "MCP request, result, error, structured-content, JSON-RPC envelope, and generated wire-schema ownership."
+description_ko = "MCP 요청, 결과, 오류, 구조화 콘텐츠, JSON-RPC 엔벌로프, 생성 wire 스키마를 담당합니다."
+kind = "schema"
+production = true
+boundary = "adapter"
+normal = ["volicord-mcp-protocol", "volicord-types"]
 development = []
 build = []
 
@@ -163,6 +175,7 @@ normal = [
     "volicord-core",
     "volicord-host-contract",
     "volicord-mcp-protocol",
+    "volicord-mcp-wire",
     "volicord-platform-fs",
     "volicord-store",
     "volicord-types",
@@ -256,6 +269,7 @@ normal = []
 development = [
     "volicord-core",
     "volicord-mcp",
+    "volicord-mcp-wire",
     "volicord-store",
     "volicord-test-support",
     "volicord-types",
@@ -298,6 +312,7 @@ boundary = "neutral"
 normal = [
     "volicord-command-model",
     "volicord-mcp-protocol",
+    "volicord-mcp-wire",
     "volicord-types",
 ]
 development = []

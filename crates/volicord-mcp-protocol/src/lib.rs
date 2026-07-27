@@ -411,19 +411,6 @@ pub enum ClientCapabilityField {
     Tasks,
 }
 
-impl ClientCapabilityField {
-    /// Returns the exact wire field name.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Elicitation => "elicitation",
-            Self::Experimental => "experimental",
-            Self::Roots => "roots",
-            Self::Sampling => "sampling",
-            Self::Tasks => "tasks",
-        }
-    }
-}
-
 /// A top-level field in the pinned `ServerCapabilities` schema.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ServerCapabilityField {
@@ -434,21 +421,6 @@ pub enum ServerCapabilityField {
     Resources,
     Tasks,
     Tools,
-}
-
-impl ServerCapabilityField {
-    /// Returns the exact wire field name.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Completions => "completions",
-            Self::Experimental => "experimental",
-            Self::Logging => "logging",
-            Self::Prompts => "prompts",
-            Self::Resources => "resources",
-            Self::Tasks => "tasks",
-            Self::Tools => "tools",
-        }
-    }
 }
 
 /// A top-level field in the pinned `Tool` definition schema.
@@ -465,23 +437,6 @@ pub enum ToolDefinitionField {
     Title,
 }
 
-impl ToolDefinitionField {
-    /// Returns the exact wire field name.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Meta => "_meta",
-            Self::Annotations => "annotations",
-            Self::Description => "description",
-            Self::Execution => "execution",
-            Self::Icons => "icons",
-            Self::InputSchema => "inputSchema",
-            Self::Name => "name",
-            Self::OutputSchema => "outputSchema",
-            Self::Title => "title",
-        }
-    }
-}
-
 /// A top-level field in the pinned `CallToolResult` schema.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ToolResultField {
@@ -490,19 +445,6 @@ pub enum ToolResultField {
     Content,
     IsError,
     StructuredContent,
-}
-
-impl ToolResultField {
-    /// Returns the exact wire field name.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Meta => "_meta",
-            Self::ToolResult => "toolResult",
-            Self::Content => "content",
-            Self::IsError => "isError",
-            Self::StructuredContent => "structuredContent",
-        }
-    }
 }
 
 /// Exact revision-specific capability, tool-definition, and tool-result fields.
@@ -976,7 +918,7 @@ impl ProtocolContractDescriptor {
         self.id
     }
 
-    /// Returns exact public revision, capability, and wire-field identifiers.
+    /// Returns exact public protocol revision identifiers.
     pub const fn identifiers(&self) -> &BTreeSet<String> {
         &self.identifiers
     }
@@ -989,35 +931,10 @@ impl ProtocolContractDescriptor {
 
 /// Returns the semantic MCP contract derived from the production registry.
 pub fn protocol_contract_descriptors() -> Vec<ProtocolContractDescriptor> {
-    let mut identifiers = BTreeSet::new();
-    for profile in PRODUCTION_PROFILES {
-        identifiers.insert(profile.revision().as_str().to_owned());
-        let schema = profile.schema();
-        identifiers.extend(
-            schema
-                .client_capability_fields()
-                .iter()
-                .map(|field| field.as_str().to_owned()),
-        );
-        identifiers.extend(
-            schema
-                .server_capability_fields()
-                .iter()
-                .map(|field| field.as_str().to_owned()),
-        );
-        identifiers.extend(
-            schema
-                .tool_definition_fields()
-                .iter()
-                .map(|field| field.as_str().to_owned()),
-        );
-        identifiers.extend(
-            schema
-                .tool_result_fields()
-                .iter()
-                .map(|field| field.as_str().to_owned()),
-        );
-    }
+    let identifiers = PRODUCTION_PROFILES
+        .iter()
+        .map(|profile| profile.revision().as_str().to_owned())
+        .collect();
     vec![ProtocolContractDescriptor {
         id: "mcp.protocol",
         identifiers,

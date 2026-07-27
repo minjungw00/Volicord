@@ -533,6 +533,7 @@ documents:
   - diagnostic.mcp
   - diagnostic.process
   - mcp.protocol
+  - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-22'
   last_updated_on: '2026-07-26'
@@ -577,6 +578,7 @@ documents:
   - diagnostic.store
   - diagnostic.trust
   - mcp.protocol
+  - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-23'
   last_updated_on: '2026-07-26'
@@ -769,6 +771,7 @@ documents:
   - api.schema.state
   - api.schema.user_action
   - mcp.protocol
+  - mcp.wire
   owner_area: architecture_guide
   created_on: '2026-06-20'
   last_updated_on: '2026-07-26'
@@ -1042,6 +1045,7 @@ documents:
   - api.methods
   - api.schema.state
   - mcp.protocol
+  - mcp.wire
   owner_area: architecture_guide
   created_on: '2026-07-16'
   last_updated_on: '2026-07-26'
@@ -1520,6 +1524,7 @@ documents:
   - api.methods
   - cli.surface.public
   - mcp.protocol
+  - mcp.wire
   owner_area: core_api
   created_on: '2026-07-17'
   last_updated_on: '2026-07-19'
@@ -1674,6 +1679,7 @@ documents:
   - diagnostic.runtime_home
   - diagnostic.store
   - mcp.protocol
+  - mcp.wire
   owner_area: runtime_security
   created_on: '2026-06-07'
   last_updated_on: '2026-07-27'
@@ -1729,6 +1735,7 @@ documents:
   - diagnostic.setup
   - diagnostic.trust
   - mcp.protocol
+  - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
   last_updated_on: '2026-07-27'
@@ -1820,6 +1827,7 @@ documents:
   - cli.surface.public
   - diagnostic.mcp
   - mcp.protocol
+  - mcp.wire
   owner_area: agent_connection
   created_on: '2026-06-19'
   last_updated_on: '2026-07-27'
@@ -2332,6 +2340,7 @@ documents:
   - api.schema.user_action
   - cli.output.inbox
   - mcp.protocol
+  - mcp.wire
   owner_area: core_api
   created_on: '2026-06-04'
   last_updated_on: '2026-07-27'
@@ -2923,6 +2932,7 @@ documents:
   - diagnostic.revision
   - diagnostic.trust
   - mcp.protocol
+  - mcp.wire
   owner_area: agent_connection
   created_on: '2026-05-23'
   last_updated_on: '2026-07-26'

@@ -314,80 +314,11 @@ create or resume the request, but it cannot receive or submit the resolution
 form.
 
 
-## MCP compound projection
-
-```yaml
-McpRequestUserActionResponse:
-  agent_workflow_result: RequestUserActionResponse
-  agent_workflow_result_replayed: boolean
-  current_projection_state_version: integer
-  current_projection_observed_at: string
-  current_status: pending | resolved | stale | superseded | expired
-  user_channel_resolution_ref: StateRecordRef | null
-  user_channel_resolution: AgentSafeUserActionResolution | null
-  derived_refs: StateRecordRef[]
-
-McpRequestUserActionCompactResult:
-  effect: McpMutationEffectSummary
-  agent_workflow_result_replayed: boolean
-  user_action_request_summary: AgentSafeUserActionRequestSummary
-  current_projection_state_version: integer
-  current_projection_observed_at: string
-  user_action_resolution_ref: StateRecordRef | null
-  status: pending | resolved | stale | superseded | expired
-  resolution_summary: McpUserActionResolutionSummary | null
-  derived_refs: StateRecordRef[]
-
-AgentSafeUserActionResolution:
-  user_action_resolution_id: string
-  user_action_request_id: string
-  action_kind: string
-  channel_kind: cli
-  resolved_at: string
-  resolution_summary: McpUserActionResolutionSummary
-
-McpUserActionResolutionSummary:
-  # choice variant
-  resolution_type: choice
-  selected_option_id: string
-  selected_option_label: string
-  machine_action: accept | reject | defer
-  resolution_outcome: accepted | rejected | deferred
-
-  # evidence-observation variant
-  resolution_type: evidence_observation
-  target: EvidenceTarget
-  artifact_refs: ArtifactRef[]
-  relevance_status: supported | contradicted
-```
-
-`agent_workflow_result` remains the exact committed response branch from the
-`volicord.request_user_action` result addressed by its own
-`operation_result_ref`. `agent_workflow_result_replayed=false` means this call
-created the request; `true` means the same Agent Connection used the explicit
-read-only resume operation and no second Agent Workflow mutation occurred.
-That exact historical result contains `AgentSafeUserActionRequestSummary`, not
-`UserActionRequest`, `UserActionResolutionForm`, or any CLI inbox presentation;
-replay and paged operation-result retrieval preserve the same safe bytes.
-Immediate or later channel resolution is a separate
-nullable projection. Its ref identifies the immutable resolution but does not
-retrieve its private body. The agent-safe value omits the user's free-form note,
-observation summary, channel submission identity, verification basis, and
-assurance text. It never makes the exact user-only
-`volicord.resolve_user_action` response retrievable through the request
-operation result. `derived_refs` preserves the exact public refs created by the
-optional resolution, including continuity records; it is empty while the
-request remains pending and must be preserved by compact and budget-recovery
-projections when a resolution is present.
-
-`current_status`, the nullable safe resolution and ref, and `derived_refs` are
-one Core/Store read snapshot observed at
-`current_projection_state_version` and `current_projection_observed_at`.
-The resolution ref and derived refs preserve their exact historical
-`produced_at_state_version`; a later unrelated state advance must not rewrite
-them. A generic authority receipt produced after this snapshot may have a
-greater state version, so consumers use the explicit projection anchors rather
-than treating two separately observed values as one transaction snapshot.
+The exact MCP compound response, compact projection, safe resolution, and
+wire serialization are owned by
+[MCP transport](../mcp-transport.md#user-action-wire-projection). This public
+schema owner supplies only the adapter-neutral request, resolution, reference,
+and current-state facts consumed by that projection.
 
 ## Related owners
 

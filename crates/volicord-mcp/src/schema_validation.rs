@@ -5,7 +5,7 @@ use serde_json::json;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use volicord_types::methods::{McpToolErrorIssue, McpToolIssueCode, MAX_VALIDATION_ISSUES};
+use volicord_mcp_wire::{McpToolErrorIssue, McpToolIssueCode, MAX_VALIDATION_ISSUES};
 use volicord_types::tool_names::AgentToolId;
 
 const MAX_SCHEMA_DEPTH: usize = 64;

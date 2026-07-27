@@ -223,6 +223,7 @@ fn load_contract_catalog(root: &Path, issues: &mut Vec<ValidationIssue>) -> Cont
     load_public_api_descriptors(&mut catalog, issues);
     load_cli_descriptors(&mut catalog, issues);
     load_protocol_descriptors(&mut catalog, issues);
+    load_wire_descriptors(&mut catalog, issues);
     load_json_descriptor_file(
         root,
         DIAGNOSTIC_DESCRIPTOR_PATH,
@@ -301,6 +302,29 @@ fn load_protocol_descriptors(catalog: &mut ContractCatalog, issues: &mut Vec<Val
             descriptor.id(),
             OwnerCatalog {
                 owner: "crates/volicord-mcp-protocol/src/lib.rs".to_owned(),
+                domain: ContractDomain::Protocol,
+                identifiers: BTreeMap::from([(
+                    IdentifierCategory::ProtocolIdentifier,
+                    descriptor.identifiers().clone(),
+                )]),
+                related_contracts: descriptor
+                    .related_contracts()
+                    .iter()
+                    .map(|related| (*related).to_owned())
+                    .collect(),
+                schema: None,
+            },
+            issues,
+        );
+    }
+}
+
+fn load_wire_descriptors(catalog: &mut ContractCatalog, issues: &mut Vec<ValidationIssue>) {
+    for descriptor in volicord_mcp_wire::wire_contract_descriptors() {
+        catalog.insert(
+            descriptor.id(),
+            OwnerCatalog {
+                owner: "crates/volicord-mcp-wire/src/contracts.rs".to_owned(),
                 domain: ContractDomain::Protocol,
                 identifiers: BTreeMap::from([(
                     IdentifierCategory::ProtocolIdentifier,
@@ -1683,6 +1707,34 @@ mod tests {
         );
 
         assert!(issues.is_empty(), "{issues:#?}");
+    }
+
+    #[test]
+    fn mcp_wire_identifiers_resolve_to_the_wire_owner_descriptor() {
+        let mut catalog = ContractCatalog::default();
+        let mut issues = Vec::new();
+        load_protocol_descriptors(&mut catalog, &mut issues);
+        load_wire_descriptors(&mut catalog, &mut issues);
+
+        assert!(issues.is_empty(), "{issues:#?}");
+        let owner = catalog
+            .contracts
+            .get("mcp.wire")
+            .expect("MCP wire contract");
+        assert_eq!(owner.owner, "crates/volicord-mcp-wire/src/contracts.rs");
+        assert!(owner
+            .identifiers
+            .get(&IdentifierCategory::ProtocolIdentifier)
+            .is_some_and(|identifiers| identifiers.contains("MCP_UNAVAILABLE")));
+        assert!(catalog
+            .contracts
+            .get("mcp.protocol")
+            .and_then(|protocol| {
+                protocol
+                    .identifiers
+                    .get(&IdentifierCategory::ProtocolIdentifier)
+            })
+            .is_some_and(|identifiers| !identifiers.contains("MCP_UNAVAILABLE")));
     }
 
     #[test]

@@ -8,6 +8,7 @@ publish = false
 [dev-dependencies]
 volicord-core = { path = "../../crates/volicord-core" }
 volicord-mcp = { path = "../../crates/volicord-mcp" }
+volicord-mcp-wire = { path = "../../crates/volicord-mcp-wire" }
 volicord-store = { path = "../../crates/volicord-store" }
 volicord-test-support = { path = "../../crates/volicord-test-support" }
 volicord-types = { path = "../../crates/volicord-types" }

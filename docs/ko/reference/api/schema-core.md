@@ -34,6 +34,12 @@
 - 저장소 기록과 효과: [저장소 기록](../storage-records.md), [저장 효과](../storage-effects.md)
 - MCP revision별 도구 정의, 결과 carrier, 오류 flag: [MCP 전송](../mcp-transport.md)
 
+`volicord-types`는 이 문서가 설명하는 adapter-neutral 공개 schema 계열을 구현합니다.
+여기에서 생성하는 공개 메서드 schema에는 MCP 요청 wrapper, MCP 오류 identity,
+structured-content union, 도구 정의 envelope, JSON-RPC field가 없습니다. 생성 wire
+schema와 정확한 직렬화 규칙은 `volicord-mcp-wire`가 담당하고 semantic profile 선택은
+`volicord-mcp-protocol`이 담당합니다.
+
 Core 소유 MCP 도구의 정규 `AgentToolId` identity는 기존 `MethodName` domain을 재사용하고
 안정적인 MCP wire 이름을 투영합니다. Adapter utility도 같은 폐쇄형 identity catalog에
 속합니다. 운영 `ToolVerificationRole::ManagedHostRoundTrip`과

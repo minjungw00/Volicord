@@ -225,16 +225,26 @@
 | `crates/volicord-mcp-protocol/src/lib.rs` | 폐쇄형 MCP 리비전 타입 파싱, 정확한 프로덕션 프로필 조회, 유일한 revision-to-semantic-capability map, 결정론적인 지원 리비전 순회, 추적 중인 사전 릴리스 분류, 알 수 없거나 지원하지 않는 값의 명시적 거절. |
 | `crates/volicord-mcp-protocol/tests/protocol_registry.rs` | 고정 매니페스트 일치, 완전한 semantic/schema capability 일치, registry 유일성, 결정론적 순회, 정확한 파싱과 선택, 선호 리비전 포함, 사전 릴리스 배제 검증. |
 
+## MCP Wire
+
+| 경로 | 책임 |
+|---|---|
+| `crates/volicord-mcp-wire/src/methods.rs` | 정확한 MCP 인자, 구조화 결과, 운영 오류, 간결한 mutation, UserAction projection, 직렬화, 생성 요청/결과 schema 소유권. |
+| `crates/volicord-mcp-wire/src/tools.rs` | 정확한 capability field 이름, tool annotation, capability가 선택하는 tool-definition 및 tool-result envelope. |
+| `crates/volicord-mcp-wire/src/json_rpc.rs` | Core 접근 없는 JSON 구문 decoding, JSON-RPC envelope 분류, request ID와 object parameter 검증, 성공/오류 응답 구성. |
+| `crates/volicord-mcp-wire/src/contracts.rs` | 정규 MCP schema, profile field 어휘, envelope에서 `mcp.wire` identifier 도출. |
+| `crates/volicord-mcp-wire/tests/wire_contract.rs` | 정확한 직렬화와 JSON-RPC round trip, 생성 MCP schema 소유권, neutral 공개 schema 분리. |
+
 ## MCP 어댑터
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-mcp/src/lib.rs` | 어댑터 소유 공개 진입점과 경계 타입. 공유 타입과 도구 identity는 각 `volicord-types` 담당 모듈 경로에 남습니다. |
+| `crates/volicord-mcp/src/lib.rs` | 어댑터 소유 공개 진입점과 정규 adapter 결과 구성. Neutral 메서드와 도구 identity는 각 `volicord-types` 담당 모듈 경로에 남고 MCP wire 값은 `volicord-mcp-wire`에서 직접 소비합니다. |
 | `crates/volicord-mcp/src/managed_launch.rs` | 정규 typed 개인/공유 숨은 launcher 명령과 인자, Runtime Home 환경 binding, 엄격한 시작 형태 검증, 공개 수동 probe 구체화, projection, fingerprint 입력. |
 | `crates/volicord-mcp/src/mutation_admission.rs` | Message 및 tool별 `SharedWriter` 획득, Store context 구성, typed setup-busy 전파, 전체 MCP 효과 동안의 한정된 lease 수명. |
 | `crates/volicord-mcp/src/stdio.rs` | 공개 수동 stdio와 메모리 내 lease에 결속된 managed stdio facade. 진입 경로 binding을 선택하고 연결된 stream을 위임하며 protocol, lifecycle, tool dispatch 구현을 보유하지 않습니다. |
 | `crates/volicord-mcp/src/transport.rs` | 한도가 있는 줄바꿈 구분 stdio 읽기·쓰기, UTF-8 및 frame 한도 집행, transport loop 종료, 디코딩한 JSON 값을 lifecycle 처리로 위임하는 경계. |
-| `crates/volicord-mcp/src/json_rpc.rs` | JSON 구문 디코딩, JSON-RPC envelope 분류, 문자열·정수 request ID 검증, object parameter 검증, Core 접근 없는 성공·오류 응답 구성. |
+| `crates/volicord-mcp/src/json_rpc.rs` | Wire 담당 JSON-RPC envelope decoding과 응답 구성을 둘러싼 adapter 오류 및 diagnostic mapping. |
 | `crates/volicord-mcp/src/lifecycle.rs` | 정확한 initialize profile 선택, initialized notification 승인, capability 기반 batch와 method별 lifecycle 유효성, runtime session 시작·종료, 폐쇄형 `SessionState` variant인 `AwaitingInitialization`, `AwaitingInitializedNotification`, `InitializedAndReady`, `Closed`. Initialization 선택 정보는 initialized variant에만 있고 종료 정보는 `Closed`에만 있습니다. |
 | `crates/volicord-mcp/src/binding.rs` | Runtime Home 해석, repository 탐색, Connection/project 사전 점검과 binding, managed Codex session/thread/turn 상관관계. |
 | `crates/volicord-mcp/src/tool_dispatch.rs` | `tools/list`와 `tools/call` parameter 디코딩, 정규 도구 선택, adapter/Core 호출, 공유 정규 tool-result carrier 조립. Transport message framing이나 mutation, recovery, UserAction, metric projection은 담당하지 않습니다. |
@@ -257,7 +267,7 @@
 |---|---|
 | `crates/*/tests/`와 module-local `tests` | crate 경계와 unit test. |
 | `crates/volicord-command-model/src/lib.rs` module test | Clap 구조 assertion, 완전한 공개 순회, 숨은 하위 tree 배제, 정규 invocation 자체 parsing, typed inbox-resolution invocation round trip, 현재 필수 인수·충돌·값 집합 동작. |
-| `crates/volicord-mcp/src/transport.rs`, `json_rpc.rs`, `binding.rs` module test | 각 구현 담당 모듈에서 frame 한도와 drain, delimiter와 UTF-8 동작, request ID와 notification 분류, 정확한 managed call metadata, Runtime Home binding failure를 검증합니다. |
+| `crates/volicord-mcp/src/transport.rs`, `binding.rs` module test와 `crates/volicord-mcp-wire/tests/wire_contract.rs` | 각 구현 담당 모듈에서 frame 한도와 drain, delimiter와 UTF-8 동작, wire 담당 request ID와 notification 분류, 정확한 managed call metadata, Runtime Home binding failure를 검증합니다. |
 | `crates/volicord-mcp/src/tests/lifecycle.rs` | Initialization 순서, 거절, 종료, EOF 계약. |
 | `crates/volicord-mcp/src/tests/batching.rs` | JSON-RPC batch 순서, notification, 응답 계약. |
 | `crates/volicord-mcp/src/tests/protocol_projection.rs` | Registry/profile wire projection과 schema 호환성 계약. |
@@ -285,7 +295,7 @@
 
 | 경로 | 책임 |
 |---|---|
-| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-command-model`에서 문서 예시용 공개 명령 grammar를 받고, `volicord-types`에서 런타임 담당 계약 식별자를 받으며, `volicord-mcp-protocol`에서 고정 명세 일치 검사용 프로덕션 profile을 받습니다. `volicord-mcp`, Core, Store, CLI, platform, test-process 크레이트는 끌어오지 않습니다. |
+| `xtask/Cargo.toml` | 가벼운 유지보수 의존 경계. `volicord-command-model`에서 공개 명령 grammar, `volicord-types`에서 neutral 공개 계약 식별자, `volicord-mcp-protocol`에서 프로덕션 profile, `volicord-mcp-wire`에서 wire 계약 descriptor를 받습니다. MCP runtime adapter, Core, Store, CLI, platform, test-process 크레이트는 끌어오지 않습니다. |
 | `xtask/src/lib.rs` | 간결한 저장소 점검 조합과 공개 보고 타입 재노출. |
 | `xtask/src/diagnostics.rs` | 경로, 범주, 선택적 줄 번호, 메시지를 담는 공통 검증 이슈 표현. |
 | `xtask/src/doc_index.rs` | 현재 문서 색인 스키마, 적용 가능성과 정확한 의미 기반 계약 경로, 담당 경로, 색인 경로, 유지 문서 coverage. |
@@ -295,7 +305,7 @@
 | `xtask/src/terminology.rs` | 용어 지도 경로와 신원 민감 역할 검증. |
 | `xtask/src/cli_docs.rs` | `docs-sync` 조합, 생성 관리 CLI 영역, `volicord-command-model`을 통한 문서 invocation 검증. 셸 tokenization은 두 번째 명령 grammar가 아닙니다. |
 | `xtask/src/document_structure.rs` | 현재 아키텍처 설계 절과 표면 안정성 구조. |
-| `xtask/src/contract_identifiers.rs` | 현재 공개 스키마, 명령 모델, typed 진단, 프로토콜 레지스트리 식별자 도출, 대응 의미 단위 검증, 작업 범주 표 일치. |
+| `xtask/src/contract_identifiers.rs` | 현재 neutral 공개 스키마, 명령 모델, typed 진단, semantic protocol profile, MCP wire 담당 식별자 도출, 대응 의미 단위 검증, 작업 범주 표 일치. |
 | `xtask/src/workspace_manifests.rs` | 공유 workspace manifest parsing과 현재 package 및 Rust 적용 가능성 값. |
 | `xtask/src/architecture.rs` | Cargo metadata에서 가져온 package manifest, target source root, 의존 edge, 패키지 수준 아키텍처 검증, 한영 생성 책임 및 의존 영역, 생성 영역 drift 검사, 정보 제공용 유지보수성 보고. |
 | `xtask/src/release_metadata.rs` | workspace release version 상속과 release tag 검증. |

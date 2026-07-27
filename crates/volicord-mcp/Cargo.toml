@@ -11,6 +11,7 @@ volicord-user-action-presentation = { path = "../volicord-user-action-presentati
 volicord-user-action-service = { path = "../volicord-user-action-service" }
 volicord-host-contract = { path = "../volicord-host-contract" }
 volicord-mcp-protocol = { path = "../volicord-mcp-protocol" }
+volicord-mcp-wire = { path = "../volicord-mcp-wire" }
 volicord-platform-fs = { path = "../volicord-platform-fs" }
 volicord-store = { path = "../volicord-store" }
 volicord-types = { path = "../volicord-types" }

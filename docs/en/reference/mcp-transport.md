@@ -20,6 +20,23 @@ Labels use [Documentation Policy](../maintain/documentation-policy.md#surface-st
 | Hidden managed launcher, launch leases, and generated configuration details | `internal` |
 | Host executable version, MCP client name/version, and best-effort protocol metrics | `diagnostic` |
 
+## Wire schema ownership
+
+`volicord-mcp-protocol` owns the closed protocol-profile registry and its
+semantic capabilities. `volicord-mcp-wire` owns the exact MCP request, result,
+error, structured-content, annotation, JSON-RPC envelope, and generated wire
+schema vocabulary. This includes `McpOperationalErrorCode`,
+`McpOperationalOperation`, `McpOperationalResource`,
+`McpOperationalFailure`, `McpReadOnlyToolStructuredContent`,
+`McpToolDefinitionEnvelope`, and `McpToolResultEnvelope`.
+
+`volicord-types` owns only adapter-neutral method facts, domain values, and
+public method schemas. `volicord-mcp` consumes those neutral outcomes and maps
+them into the wire-owned values. Core, Store, the UserAction service, the
+administrative CLI, and UserAction presentation have no dependency on
+`volicord-mcp-wire`. Profile-dependent carriers and optional fields are chosen
+only from the selected profile's semantic capabilities.
+
 ## Process Model
 
 The hidden `volicord _host-launch codex` entry is started by managed Codex
@@ -553,6 +570,78 @@ Public schemas hide Core envelopes, internal connection/project IDs, protocol
 metadata, idempotency fields, actor source, operation category, and verification
 basis. Hidden fields are rejected before Core. Compact discovery schemas never
 relax the complete owner-defined request validation.
+
+<a id="user-action-wire-projection"></a>
+### UserAction wire projection
+
+```yaml
+McpRequestUserActionResponse:
+  agent_workflow_result: RequestUserActionResponse
+  agent_workflow_result_replayed: boolean
+  current_projection_state_version: integer
+  current_projection_observed_at: string
+  current_status: pending | resolved | stale | superseded | expired
+  user_channel_resolution_ref: StateRecordRef | null
+  user_channel_resolution: McpUserActionResolution | null
+  derived_refs: StateRecordRef[]
+
+McpRequestUserActionCompactResult:
+  effect: McpMutationEffectSummary
+  agent_workflow_result_replayed: boolean
+  user_action_request_summary: AgentSafeUserActionRequestSummary
+  current_projection_state_version: integer
+  current_projection_observed_at: string
+  user_action_resolution_ref: StateRecordRef | null
+  status: pending | resolved | stale | superseded | expired
+  resolution_summary: McpUserActionResolutionSummary | null
+  derived_refs: StateRecordRef[]
+
+McpUserActionResolution:
+  user_action_resolution_id: string
+  user_action_request_id: string
+  action_kind: string
+  channel_kind: cli
+  resolved_at: string
+  resolution_summary: McpUserActionResolutionSummary
+
+McpUserActionResolutionSummary:
+  # choice variant
+  resolution_type: choice
+  selected_option_id: string
+  selected_option_label: string
+  machine_action: accept | reject | defer
+  resolution_outcome: accepted | rejected | deferred
+
+  # evidence-observation variant
+  resolution_type: evidence_observation
+  target: EvidenceTarget
+  artifact_refs: ArtifactRef[]
+  relevance_status: supported | contradicted
+```
+
+`agent_workflow_result` is the exact committed
+`volicord.request_user_action` response branch addressed by its
+`operation_result_ref`. `agent_workflow_result_replayed=false` means the call
+created the request; `true` means the same Agent Connection used the explicit
+read-only resume operation without a second Agent Workflow mutation. The
+historical result contains `AgentSafeUserActionRequestSummary`, not the stored
+request, resolution form, or CLI inbox presentation.
+
+An immediate or later channel resolution is a separate nullable projection.
+Its ref identifies the immutable resolution without retrieving the private
+body. `McpUserActionResolution` omits the user's free-form note, observation
+summary, channel submission identity, verification basis, and assurance text.
+It never makes the user-only `volicord.resolve_user_action` response
+retrievable through the request operation result. `derived_refs` preserves
+the exact public refs created by an optional resolution and is empty while the
+request remains pending.
+
+`current_status`, the nullable safe resolution and ref, and `derived_refs`
+come from one Core/Store read observed at
+`current_projection_state_version` and
+`current_projection_observed_at`. Resolution and derived refs preserve their
+historical `produced_at_state_version`; a later unrelated state advance does
+not rewrite them.
 
 <a id="in-chat-integration-verification-schemas"></a>
 ### In-chat integration-verification schemas

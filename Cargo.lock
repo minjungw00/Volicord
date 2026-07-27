@@ -955,6 +955,7 @@ dependencies = [
  "serde_json",
  "volicord-core",
  "volicord-mcp",
+ "volicord-mcp-wire",
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
@@ -972,6 +973,7 @@ dependencies = [
  "volicord-core",
  "volicord-host-contract",
  "volicord-mcp-protocol",
+ "volicord-mcp-wire",
  "volicord-platform-fs",
  "volicord-store",
  "volicord-test-support",
@@ -987,6 +989,17 @@ dependencies = [
  "serde",
  "serde_json",
  "toml_edit",
+]
+
+[[package]]
+name = "volicord-mcp-wire"
+version = "0.9.1"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
+ "volicord-mcp-protocol",
+ "volicord-types",
 ]
 
 [[package]]
@@ -1379,6 +1392,7 @@ dependencies = [
  "toml_edit",
  "volicord-command-model",
  "volicord-mcp-protocol",
+ "volicord-mcp-wire",
  "volicord-types",
 ]
 

@@ -10,6 +10,9 @@
       "crates/volicord-types/src/schema.rs",
       "crates/volicord-types/src/tool_names.rs",
       "crates/volicord-types/src/values.rs",
+      "crates/volicord-mcp-protocol/src/lib.rs",
+      "crates/volicord-mcp-wire/src/methods.rs",
+      "crates/volicord-mcp-wire/src/tools.rs",
       "crates/volicord-mcp/src/routing.rs",
       "crates/volicord-mcp/src/tool_registry.rs"
     ],
@@ -181,7 +184,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c13ac3513db581daed8cef8f97f82e93d5f9fbb22d7f0fad0e84ea6423736d95"
+        "sha256": "sha256:41a0d93926237c3324fe2add4a174c3db5b5adfddad03572b71e105afc7ce6d6"
       }
     },
     {
@@ -328,7 +331,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8605455bb7843ae7bafa31bcd66e20594148d16acaae3a3b05f471b36b2c1a08"
+        "sha256": "sha256:b3a2163bbe2a0769c65dc89bfc1c2eda8bf3334f4cfa89632b6e3381bb540a52"
       }
     },
     {
@@ -459,7 +462,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3701af06bfe510d406d619a4c0d4c997f5806af5b9e83bf439aed150f15e8fc5"
+        "sha256": "sha256:817d5ecf6df680456191d78c49a1e5c1380221e0f84211d583257d3c4e069690"
       }
     },
     {
@@ -525,7 +528,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:3b9a805405431c1fea325fc7c21eb6b80b12661f8282072fce40063e659afe29"
+        "sha256": "sha256:a42c4dec627c5357b21d4b47e6ff21bd8743f21cfddead2501ea8665690ed0ce"
       }
     },
     {
@@ -623,7 +626,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a7cc1dfbf2a74db96e5124e158623a424e216090ad8369adae711cd8a8d29de6"
+        "sha256": "sha256:5be43d697887d5630dd5be462880599d746d6da864c14aaf489e4004557f39af"
       }
     },
     {
@@ -776,7 +779,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:2a47196dbf93fce3251806b6e51d8f8556976465f1ed4688cf4cd722dc2286cf"
+        "sha256": "sha256:586b51f5b247c3a0a0c5c5ca2fe2d453a77de0f56de079b9794ad0522f079b22"
       }
     },
     {
@@ -876,7 +879,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d8313f7bf799e18178fdbd376b2e1dd27ab880774a413d04ec7ad526c920b57e"
+        "sha256": "sha256:bd9808b68731abd36b2bdc54ccd817b3debf212fa6dcbceb1ee35003f4054e81"
       }
     },
     {
@@ -1075,7 +1078,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8c655bc22a4ed6108c0a8bf2256213e884549ae579fd638ba694ac64bc6a1ded"
+        "sha256": "sha256:87d77bda3b6a3e64db0fc007cff7ebc8e9f18c3d68676b95046f90510b2cfcd2"
       }
     },
     {
@@ -1127,7 +1130,6 @@
           "AgentSafePendingUserActionStatus",
           "AgentSafeUserActionNextActor",
           "AgentSafeUserActionRequestSummary",
-          "AgentSafeUserActionResolution",
           "ArtifactAvailability",
           "ArtifactIntegrityStatus",
           "ArtifactRef",
@@ -1181,6 +1183,7 @@
           "McpToolErrorIssue",
           "McpToolErrorResponse",
           "McpToolIssueCode",
+          "McpUserActionResolution",
           "McpUserActionResolutionSummary",
           "MethodName",
           "MutationDetailLevel",
@@ -1231,7 +1234,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:9e3154c822bd8b6399e62d3e92a5a8d9d94ec28bf5bb1d346bee755d05396bc3"
+        "sha256": "sha256:43aad39bfacccf9ea809c423e66b078d3154015a7498d8c3c304db166869a42c"
       }
     },
     {
@@ -1370,7 +1373,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c2a1c252a9fe710184574a37ff9088afca668e9eab8f06494d3357303d5d5269"
+        "sha256": "sha256:d0718007fc444dec3de49bf281060a1b9ca378f9129630d5d7238742e4fb5d5b"
       }
     },
     {
@@ -1492,7 +1495,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d2712dbc78f24c27cd9ddd6993e07e57e0ca801ce2a839e8730e876b4c001947"
+        "sha256": "sha256:00e63d6701b2500adbd13cc746e4e279233b278b4bcb1032c09d2fcc05139414"
       }
     },
     {
@@ -1635,7 +1638,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e32296ba10dabeb816ea4b7444a6df31afc56e148c1ac639767d7067617e649d"
+        "sha256": "sha256:faac27b7cfefc2ac1e009433e1926296f40cf7a0145e8bc7083301c4d97da6d7"
       }
     },
     {

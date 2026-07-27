@@ -85,7 +85,10 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 의존 허용 목록을 담당하는 하나의 기계 판독 원본입니다. `architecture-check`는
 이 선언을 실제 Cargo 메타데이터와 비교하고 Core, UserAction 서비스, 공유 타입,
 Store, 어댑터, 표현, 테스트 지원 경계를 강제하며 일반·빌드 의존 그래프의 순환을
-거부합니다. 개발 전용 역방향 간선은 배포 그래프에 참여하지 않습니다.
+거부합니다. 또한 각 `*-wire` 그룹을 일치하는 adapter와 검증 도구 또는 테스트만
+사용할 수 있게 제한합니다. 따라서 allowlist 항목을 추가하더라도 Core, 공유 타입,
+Store, UserAction 서비스, CLI, presentation package는 `volicord-mcp-wire`를 사용할 수
+없습니다. 개발 전용 역방향 간선은 배포 그래프에 참여하지 않습니다.
 
 아래 표는 `docs-sync`가 생성합니다. 정확한 모듈 배치는
 [소스 지도](source-map.md)에 남습니다.
@@ -108,6 +111,7 @@ Store, 어댑터, 표현, 테스트 지원 경계를 강제하며 일반·빌드
 | `volicord-integration-tests` | `integration-validation` | 검증 | 비프로덕션 | 중립 | 계층 간 통합, Agent Connection, 공개 계약 스냅샷 테스트를 담당합니다. |
 | `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, 전송, 도구 투영, 세션 결속, Core 호출 어댑터를 담당합니다. |
 | `volicord-mcp-protocol` | `mcp-protocol` | 스키마 | 프로덕션 | 중립 | 호스트 독립 MCP 리비전 프로필과 의미 기반 역량 레지스트리를 담당합니다. |
+| `volicord-mcp-wire` | `mcp-wire` | 스키마 | 프로덕션 | 어댑터 | MCP 요청, 결과, 오류, 구조화 콘텐츠, JSON-RPC 엔벌로프, 생성 wire 스키마를 담당합니다. |
 | `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | Product Repository 및 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
 | `volicord-platform-process` | `platform-process` | 인프라 | 프로덕션 | 중립 | 플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다. |
 | `volicord-release-integrity-tests` | `release-integrity` | 검증 | 비프로덕션 | 중립 | 릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다. |
@@ -132,9 +136,10 @@ Store, 어댑터, 표현, 테스트 지원 경계를 강제하며 일반·빌드
 | `volicord-conformance-tests` | — | `volicord-core`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
 | `volicord-core` | `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-host-contract` | `volicord-types` | — | — |
-| `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
-| `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-mcp-wire`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
+| `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-mcp-wire`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-mcp-protocol` | — | — | — |
+| `volicord-mcp-wire` | `volicord-mcp-protocol`, `volicord-types` | — | — |
 | `volicord-platform-fs` | `volicord-types` | — | — |
 | `volicord-platform-process` | — | — | — |
 | `volicord-release-integrity-tests` | `volicord-store`, `volicord-types` | — | — |
@@ -145,7 +150,7 @@ Store, 어댑터, 표현, 테스트 지원 경계를 강제하며 일반·빌드
 | `volicord-types` | — | — | — |
 | `volicord-user-action-presentation` | `volicord-command-model`, `volicord-types` | — | — |
 | `volicord-user-action-service` | `volicord-store`, `volicord-types` | `volicord-test-support` | — |
-| `xtask` | `volicord-command-model`, `volicord-mcp-protocol`, `volicord-types` | — | — |
+| `xtask` | `volicord-command-model`, `volicord-mcp-protocol`, `volicord-mcp-wire`, `volicord-types` | — | — |
 
 <!-- END GENERATED: workspace-package-architecture -->
 

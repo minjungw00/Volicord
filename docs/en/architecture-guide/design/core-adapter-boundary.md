@@ -31,7 +31,8 @@ Store owns strict persisted-record decoding, aggregate reads, grouped mutation
 application, and transaction mechanics. Shared diagnostic identity and report
 shapes live in `volicord-types`; domain conversion, persistence, and rendering
 remain with their domain owners. `xtask` consumes the command model and MCP
-protocol registry for repository checks but remains outside runtime.
+protocol registry and wire-contract descriptors for repository checks but
+remains outside runtime.
 
 ## Invariants
 
@@ -53,6 +54,11 @@ protocol registry for repository checks but remains outside runtime.
 - A required infrastructure dependency that cannot produce a method result
   returns a typed neutral Core operational error outside every public response
   branch.
+- `volicord-types` contains no MCP request, result, error, structured-content,
+  tool-envelope, or JSON-RPC wire types.
+- `volicord-mcp-wire` is reachable only from the matching MCP adapter and
+  validation tooling or tests. Core, shared types, Store, UserAction service,
+  CLI, and presentation packages cannot depend on it.
 - Store does not derive method policy from adapter input.
 - Adapter projections cannot widen a Core result or replace typed diagnostic
   identity with rendered prose.
@@ -65,7 +71,10 @@ Adapters select the host integration, validate host-specific values, derive
 trusted local semantic context, and translate transport data. Core owns
 authority-aware planning and policy evaluation. Store owns persistence and
 atomicity. `volicord-types` owns dependency-safe shared shapes.
-`volicord-host-contract` and `volicord-mcp-protocol` own external-wire profiles.
+`volicord-host-contract` owns semantic host contracts.
+`volicord-mcp-protocol` owns protocol profiles and semantic capabilities.
+`volicord-mcp-wire` owns exact MCP fields, error identities, structured
+content, JSON-RPC and tool envelopes, and generated MCP schemas.
 `volicord-user-action-presentation` owns shared CLI-oriented UserAction
 presentation. CLI owns terminal rendering, while MCP owns its protocol result
 projection and maps neutral Core availability failures at that boundary.
@@ -124,7 +133,12 @@ adapter internals through Core or use version-selected alternate module paths.
   [`policy/`](../../../../crates/volicord-core/src/policy/): typed Core
   coordination, method planning, and focused policy.
 - [`crates/volicord-types/src/methods.rs`](../../../../crates/volicord-types/src/methods.rs):
-  fields-only and complete public result declarations.
+  fields-only and complete adapter-neutral public result declarations.
+- [`crates/volicord-mcp-protocol/src/lib.rs`](../../../../crates/volicord-mcp-protocol/src/lib.rs):
+  exact profile selection and semantic capabilities.
+- [`crates/volicord-mcp-wire/src/`](../../../../crates/volicord-mcp-wire/src/):
+  MCP wire values, envelopes, serialization, schemas, and contract
+  descriptors.
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   project Store facade, aggregate ownership, and commit coordination.
 - [`crates/volicord-mcp/src/`](../../../../crates/volicord-mcp/src/),

@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use volicord_host_contract::{HostContractProfileId, McpServerKey};
 use volicord_mcp_protocol::ProtocolRegistry;
+use volicord_mcp_wire::McpToolStructuredContent;
 use volicord_platform_fs::resolve_git_worktree_layout;
 use volicord_store::agent_connections::{
     agent_connection_project_access_read_only, agent_connection_record_read_only,
@@ -594,10 +595,9 @@ pub(crate) struct ListProjectItem {
 }
 
 pub(crate) fn list_projects_output_schema() -> Value {
-    let mut schema = serde_json::to_value(schema_for!(
-        volicord_types::methods::McpToolStructuredContent<ListProjectsResult>
-    ))
-    .expect("list-projects output schema should serialize");
+    let mut schema =
+        serde_json::to_value(schema_for!(McpToolStructuredContent<ListProjectsResult>))
+            .expect("list-projects output schema should serialize");
     schema
         .as_object_mut()
         .expect("list-projects output schema should be an object")

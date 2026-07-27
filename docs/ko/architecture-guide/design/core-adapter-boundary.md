@@ -26,7 +26,7 @@ Store는 엄격한 저장 record decoding, aggregate read, grouped mutation 적�
 transaction mechanism을 담당합니다. 공유 diagnostic identity와 report shape는
 `volicord-types`에 있고 domain 변환, 지속 저장, rendering은 각 domain 담당자에게
 남습니다. `xtask`는 저장소 검사를 위해 command model과 MCP protocol registry를
-사용하지만 runtime 밖에 있습니다.
+비롯해 wire contract descriptor를 사용하지만 runtime 밖에 있습니다.
 
 ## 불변 조건
 
@@ -47,6 +47,11 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
   fact가 정해진 뒤에만 공통 fact를 추가합니다.
 - 필수 인프라 의존성이 메서드 결과를 만들 수 없으면 모든 공개 응답 분기 밖의 typed
   neutral Core 운영 오류를 반환합니다.
+- `volicord-types`에는 MCP 요청, 결과, 오류, structured content, 도구 envelope,
+  JSON-RPC wire type이 없습니다.
+- `volicord-mcp-wire`는 일치하는 MCP adapter와 검증 도구 또는 테스트에서만 접근할 수
+  있습니다. Core, shared type, Store, UserAction service, CLI, presentation package는
+  이 crate에 의존할 수 없습니다.
 - Store는 adapter 입력에서 메서드 정책을 파생하지 않습니다.
 - Adapter projection은 Core 결과를 넓히거나 typed diagnostic identity를 rendered
   prose로 대신하지 못합니다.
@@ -58,8 +63,11 @@ Adapter는 host integration을 선택하고 host별 값을 검증하며 신뢰�
 semantic context를 파생하고 transport data를 변환합니다. Core는 권한을 고려한
 planning과 policy 평가를 담당합니다. Store는 persistence와 atomicity를 담당합니다.
 `volicord-types`는 dependency-safe shared shape를 담당합니다.
-`volicord-host-contract`와 `volicord-mcp-protocol`은 external-wire profile을
-담당합니다. `volicord-user-action-presentation`은 공유 CLI 지향 UserAction
+`volicord-host-contract`는 semantic host contract를 담당합니다.
+`volicord-mcp-protocol`은 protocol profile과 semantic capability를 담당합니다.
+`volicord-mcp-wire`는 정확한 MCP field, error identity, structured content,
+JSON-RPC 및 tool envelope, 생성 MCP schema를 담당합니다.
+`volicord-user-action-presentation`은 공유 CLI 지향 UserAction
 presentation을 담당합니다. CLI는 terminal rendering을 담당하고 MCP는 자체
 protocol result projection과 neutral Core availability failure의 경계 변환을
 담당합니다. `xtask`는 현재 저장소 검증과 생성 작업 흐름을 담당합니다.
@@ -114,7 +122,11 @@ protocol carrier와 MCP 소유 wire identity로 변환합니다. 영속 담당 �
   [`policy/`](../../../../crates/volicord-core/src/policy/): typed Core 조율,
   메서드 planning, 집중 policy.
 - [`crates/volicord-types/src/methods.rs`](../../../../crates/volicord-types/src/methods.rs):
-  fields-only 및 완전한 공개 result 선언.
+  fields-only 및 완전한 adapter-neutral 공개 result 선언.
+- [`crates/volicord-mcp-protocol/src/lib.rs`](../../../../crates/volicord-mcp-protocol/src/lib.rs):
+  정확한 profile 선택과 semantic capability.
+- [`crates/volicord-mcp-wire/src/`](../../../../crates/volicord-mcp-wire/src/):
+  MCP wire 값, envelope, 직렬화, schema, contract descriptor.
 - [`crates/volicord-store/src/core_pipeline/`](../../../../crates/volicord-store/src/core_pipeline/):
   project Store facade, aggregate 소유권, commit 조율.
 - [`crates/volicord-mcp/src/`](../../../../crates/volicord-mcp/src/),

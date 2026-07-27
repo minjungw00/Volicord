@@ -9,11 +9,14 @@ use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_host_contract::{HostContractError, McpServerKey, McpToolCatalog};
 use volicord_mcp_protocol::{McpProtocolCapabilities, ToolResultCarrier};
+use volicord_mcp_wire::{
+    mcp_request_schema, mcp_response_schema, McpToolAnnotations, McpToolDefinitionEnvelope,
+    McpToolResultEnvelope, McpToolStructuredContent,
+};
 use volicord_types::integration_verification::{
     BeginIntegrationVerificationArguments, BeginIntegrationVerificationResult,
     GetIntegrationVerificationResult, GuardProbeResult, IntegrationVerificationIdArguments,
 };
-use volicord_types::methods::{mcp_request_schema, mcp_response_schema};
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{AgentConnectionMode, MethodName};
 
@@ -23,44 +26,6 @@ pub(crate) fn method_name_for_tool(tool_name: &str) -> Option<MethodName> {
 
 #[cfg(test)]
 pub(crate) const MAX_RUNTIME_TOOLS_LIST_BYTES: usize = 38_000;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CanonicalToolAnnotations {
-    pub read_only_hint: bool,
-    pub destructive_hint: bool,
-    pub idempotent_hint: bool,
-    pub open_world_hint: bool,
-}
-
-impl CanonicalToolAnnotations {
-    const fn read_only() -> Self {
-        Self {
-            read_only_hint: true,
-            destructive_hint: false,
-            idempotent_hint: true,
-            open_world_hint: false,
-        }
-    }
-
-    const fn non_destructive_mutation() -> Self {
-        Self {
-            read_only_hint: false,
-            destructive_hint: false,
-            idempotent_hint: false,
-            open_world_hint: false,
-        }
-    }
-
-    const fn destructive_mutation() -> Self {
-        Self {
-            read_only_hint: false,
-            destructive_hint: true,
-            idempotent_hint: false,
-            open_world_hint: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CanonicalToolDefinition {
@@ -73,7 +38,7 @@ pub struct CanonicalToolDefinition {
     pub input_schema: Value,
     #[serde(rename = "outputSchema")]
     pub output_schema: Value,
-    pub annotations: CanonicalToolAnnotations,
+    pub annotations: McpToolAnnotations,
     #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Map<String, Value>>,
 }
@@ -108,36 +73,11 @@ pub struct CanonicalToolResult {
     pub is_error: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct VersionedToolDefinition(Value);
-
-impl VersionedToolDefinition {
-    pub fn as_value(&self) -> &Value {
-        &self.0
-    }
-
-    pub fn into_value(self) -> Value {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct VersionedToolResult(Value);
-
-impl VersionedToolResult {
-    pub fn as_value(&self) -> &Value {
-        &self.0
-    }
-
-    pub fn into_value(self) -> Value {
-        self.0
-    }
-}
-
 impl CanonicalToolDefinition {
-    pub fn project(&self, capabilities: McpProtocolCapabilities) -> VersionedToolDefinition {
+    pub(crate) fn project(
+        &self,
+        capabilities: McpProtocolCapabilities,
+    ) -> McpToolDefinitionEnvelope {
         let tool_capabilities = capabilities.tools();
         let mut projected = Map::from_iter([
             (
@@ -170,7 +110,7 @@ impl CanonicalToolDefinition {
                 projected.insert("title".to_owned(), Value::String(title.to_owned()));
             }
         }
-        VersionedToolDefinition(Value::Object(projected))
+        McpToolDefinitionEnvelope::new(Value::Object(projected))
     }
 }
 
@@ -190,10 +130,10 @@ pub fn effective_mcp_tool_catalog(
 }
 
 impl CanonicalToolResult {
-    pub fn project(
+    pub(crate) fn project(
         &self,
         capabilities: McpProtocolCapabilities,
-    ) -> Result<VersionedToolResult, serde_json::Error> {
+    ) -> Result<McpToolResultEnvelope, serde_json::Error> {
         let tool_capabilities = capabilities.tools();
         let mut projected = Map::new();
 
@@ -241,7 +181,7 @@ impl CanonicalToolResult {
             projected.insert("isError".to_owned(), Value::Bool(self.is_error));
         }
 
-        Ok(VersionedToolResult(Value::Object(projected)))
+        Ok(McpToolResultEnvelope::new(Value::Object(projected)))
     }
 }
 
@@ -1123,13 +1063,11 @@ fn base36(mut value: usize) -> String {
     digits.iter().rev().collect()
 }
 
-fn tool_annotations(tool: AgentToolId) -> CanonicalToolAnnotations {
+fn tool_annotations(tool: AgentToolId) -> McpToolAnnotations {
     let mut annotations = match tool.category() {
-        AgentToolCategory::ReadOnly => CanonicalToolAnnotations::read_only(),
-        AgentToolCategory::NonDestructiveMutation => {
-            CanonicalToolAnnotations::non_destructive_mutation()
-        }
-        AgentToolCategory::DestructiveMutation => CanonicalToolAnnotations::destructive_mutation(),
+        AgentToolCategory::ReadOnly => McpToolAnnotations::read_only(),
+        AgentToolCategory::NonDestructiveMutation => McpToolAnnotations::non_destructive_mutation(),
+        AgentToolCategory::DestructiveMutation => McpToolAnnotations::destructive_mutation(),
     };
     if tool.is_idempotent() {
         annotations.idempotent_hint = true;
@@ -1255,21 +1193,17 @@ fn integration_verification_input_schema(tool: AgentToolId) -> Value {
 
 fn integration_verification_output_schema(tool: AgentToolId) -> Value {
     let mut schema = match tool {
-        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => serde_json::to_value(
-            schema_for!(volicord_types::methods::McpToolStructuredContent<
-                BeginIntegrationVerificationResult,
-            >),
-        )
-        .expect("begin integration-verification result schema serializes"),
-        AgentToolId::GUARD_PROBE => serde_json::to_value(schema_for!(
-            volicord_types::methods::McpToolStructuredContent<GuardProbeResult>
+        AgentToolId::BEGIN_INTEGRATION_VERIFICATION => serde_json::to_value(schema_for!(
+            McpToolStructuredContent<BeginIntegrationVerificationResult>
         ))
-        .expect("Guard probe result schema serializes"),
-        AgentToolId::GET_INTEGRATION_VERIFICATION => serde_json::to_value(
-            schema_for!(volicord_types::methods::McpToolStructuredContent<
-                GetIntegrationVerificationResult,
-            >),
-        )
+        .expect("begin integration-verification result schema serializes"),
+        AgentToolId::GUARD_PROBE => {
+            serde_json::to_value(schema_for!(McpToolStructuredContent<GuardProbeResult>))
+                .expect("Guard probe result schema serializes")
+        }
+        AgentToolId::GET_INTEGRATION_VERIFICATION => serde_json::to_value(schema_for!(
+            McpToolStructuredContent<GetIntegrationVerificationResult>
+        ))
         .expect("get integration-verification result schema serializes"),
         _ => unreachable!("connection-integration owner has an exact output schema"),
     };

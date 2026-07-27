@@ -36,6 +36,12 @@ Product Repository 경로 테스트도 같은 소유권 분리를 따릅니다.
 routing을 검증합니다. UserAction 서비스 테스트는 파일시스템을 사용하지 않습니다.
 Adapter 테스트는 안정적인 operation 및 resource identity projection을 검증합니다.
 
+`volicord-mcp-wire` 테스트는 정확한 MCP 직렬화, JSON-RPC envelope, 생성 MCP
+요청/결과 schema, wire contract descriptor를 담당합니다. `volicord-types` 테스트는
+neutral 공개 schema만 담당합니다. 담당자 간 coverage는 공개 메서드 schema에 MCP 전용
+구조가 없고 MCP adapter가 neutral Core 운영 실패를 현재 wire 오류로 변환하는지
+확인합니다.
+
 일회용 Runtime Home과 Product Repository를 사용합니다. fixture는 최소이며 typed여야
 합니다. fixture는 parser 또는 구현 동작만 증명하며 실제 Codex 설치의 행동이나 플랫폼
 지원을 증명하지 않습니다.
@@ -56,12 +62,14 @@ Windows Job Object, 비차단 파이프 primitive를 조합하며 해당 OS 구�
 간선을 거부합니다. 또한 프로덕션 패키지에서 테스트 지원 패키지로 향하는 일반
 또는 빌드 의존성, Core 쪽에서 어댑터나 표현 패키지로 향하는 의존성, 필수
 UserAction 서비스·Core·공유 타입·Store 경계 위반, 일반·빌드 의존 그래프의
-순환을 독립적으로 거부합니다.
+순환을 독립적으로 거부합니다. 의미 기반 wire-family 규칙은 출발점이 일치하는 adapter
+또는 검증 도구나 테스트가 아니면 `*-wire` 담당자 의존성을 거부합니다.
 
 집중 검증기 테스트는 중립적인 합성 패키지와 그룹 이름으로 유효한 현재
 메타데이터, 종류별 허용되지 않은 간선, 등록되지 않은 패키지, 잘못된 의존 종류,
-프로덕션과 테스트 지원의 분리, Core와 어댑터의 독립성, 순환을 다룹니다. 별도
-테스트는 같은 검증기를 현재 Cargo 워크스페이스와 담당 원본에 실행합니다.
+프로덕션과 테스트 지원의 분리, Core와 어댑터의 독립성, 일치하는 adapter의 wire
+접근, 관련 없는 adapter 및 foundational package의 wire 접근 거부, 순환을 다룹니다.
+별도 테스트는 같은 검증기를 현재 Cargo 워크스페이스와 담당 원본에 실행합니다.
 테스트에 워크스페이스 패키지 그래프의 두 번째 사본을 두지 않습니다. 아키텍처
 규칙은 현재 그래프에 직접 적용하며 패키지, 스키마, 프로토콜 버전으로 선택하지
 않습니다.

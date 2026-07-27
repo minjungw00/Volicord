@@ -551,6 +551,8 @@ fn validate_architecture_owner(owner: &ArchitectureOwner, issues: &mut Vec<Valid
                 declaration.kind,
                 ArchitecturePackageKind::Adapter | ArchitecturePackageKind::Presentation
             )
+            && !(declaration.kind == ArchitecturePackageKind::Schema
+                && declaration.group.ends_with("-wire"))
         {
             issues.push(ValidationIssue::new(
                 ARCHITECTURE_OWNER_PATH,
@@ -747,6 +749,21 @@ fn validate_required_boundary(
             "store_layer",
             "Store packages cannot depend on Core or adapter packages",
         ))
+    } else if let Some(wire_family) = target.group.strip_suffix("-wire") {
+        let matching_adapter = format!("{wire_family}-adapter");
+        if source.group != matching_adapter
+            && !matches!(
+                source.kind,
+                ArchitecturePackageKind::TestSupport | ArchitecturePackageKind::Validation
+            )
+        {
+            Some((
+                "wire_layer",
+                "wire-owner packages may be consumed only by their matching adapter and validation tooling or tests",
+            ))
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -759,10 +776,12 @@ fn validate_required_boundary(
             ("architecture.owner", "core_layer") => "architecture.owner.core_layer",
             ("architecture.owner", "types_layer") => "architecture.owner.types_layer",
             ("architecture.owner", "store_layer") => "architecture.owner.store_layer",
+            ("architecture.owner", "wire_layer") => "architecture.owner.wire_layer",
             (_, "user_action_boundary") => "architecture.dependency.user_action_boundary",
             (_, "core_layer") => "architecture.dependency.core_layer",
             (_, "types_layer") => "architecture.dependency.types_layer",
             (_, "store_layer") => "architecture.dependency.store_layer",
+            (_, "wire_layer") => "architecture.dependency.wire_layer",
             _ => unreachable!("required architecture boundary categories are closed"),
         };
         issues.push(ValidationIssue::new(
@@ -1955,6 +1974,160 @@ mod tests {
             .any(|issue| issue.category() == "architecture.dependency.core_adapter"));
         assert!(issues.iter().any(|issue| {
             issue.category() == "architecture.dependency.production_test_support"
+        }));
+    }
+
+    #[test]
+    fn synthetic_graph_allows_wire_owner_only_for_matching_adapter_and_validation() {
+        let owner = ArchitectureOwner {
+            packages: BTreeMap::from([
+                (
+                    "transport-runtime".to_owned(),
+                    declaration(
+                        "transport-adapter",
+                        ArchitecturePackageKind::Adapter,
+                        ArchitectureBoundaryKind::Adapter,
+                        &["transport-contracts"],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "transport-contracts".to_owned(),
+                    declaration(
+                        "transport-wire",
+                        ArchitecturePackageKind::Schema,
+                        ArchitectureBoundaryKind::Adapter,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "contract-checker".to_owned(),
+                    declaration(
+                        "contract-validation",
+                        ArchitecturePackageKind::Validation,
+                        ArchitectureBoundaryKind::Neutral,
+                        &["transport-contracts"],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "contract-fixtures".to_owned(),
+                    declaration(
+                        "contract-tests",
+                        ArchitecturePackageKind::TestSupport,
+                        ArchitectureBoundaryKind::Neutral,
+                        &[],
+                        &["transport-contracts"],
+                        &[],
+                    ),
+                ),
+            ]),
+        };
+        let graph = BTreeMap::from([
+            (
+                "transport-runtime".to_owned(),
+                package(&[("transport-contracts", ArchitectureDependencyKind::Normal)]),
+            ),
+            ("transport-contracts".to_owned(), package(&[])),
+            (
+                "contract-checker".to_owned(),
+                package(&[("transport-contracts", ArchitectureDependencyKind::Normal)]),
+            ),
+            (
+                "contract-fixtures".to_owned(),
+                package(&[(
+                    "transport-contracts",
+                    ArchitectureDependencyKind::Development,
+                )]),
+            ),
+        ]);
+
+        assert!(validate_architecture_graph(&owner, &graph).is_empty());
+    }
+
+    #[test]
+    fn synthetic_graph_rejects_unrelated_adapter_core_and_foundation_wire_dependencies() {
+        let owner = ArchitectureOwner {
+            packages: BTreeMap::from([
+                (
+                    "console-runtime".to_owned(),
+                    declaration(
+                        "console-adapter",
+                        ArchitecturePackageKind::Adapter,
+                        ArchitectureBoundaryKind::Adapter,
+                        &["transport-contracts"],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "domain-foundation".to_owned(),
+                    declaration(
+                        "domain-foundation",
+                        ArchitecturePackageKind::Infrastructure,
+                        ArchitectureBoundaryKind::CoreFacing,
+                        &["transport-contracts"],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "domain-engine".to_owned(),
+                    declaration(
+                        "domain-core",
+                        ArchitecturePackageKind::Application,
+                        ArchitectureBoundaryKind::Core,
+                        &["transport-contracts"],
+                        &[],
+                        &[],
+                    ),
+                ),
+                (
+                    "transport-contracts".to_owned(),
+                    declaration(
+                        "transport-wire",
+                        ArchitecturePackageKind::Schema,
+                        ArchitectureBoundaryKind::Adapter,
+                        &[],
+                        &[],
+                        &[],
+                    ),
+                ),
+            ]),
+        };
+        let graph = BTreeMap::from([
+            (
+                "console-runtime".to_owned(),
+                package(&[("transport-contracts", ArchitectureDependencyKind::Normal)]),
+            ),
+            (
+                "domain-foundation".to_owned(),
+                package(&[("transport-contracts", ArchitectureDependencyKind::Normal)]),
+            ),
+            (
+                "domain-engine".to_owned(),
+                package(&[("transport-contracts", ArchitectureDependencyKind::Normal)]),
+            ),
+            ("transport-contracts".to_owned(), package(&[])),
+        ]);
+
+        let issues = validate_architecture_graph(&owner, &graph);
+
+        assert!(issues.iter().any(|issue| {
+            issue.category() == "architecture.dependency.wire_layer"
+                && issue.message().contains("console-runtime")
+        }));
+        assert!(issues.iter().any(|issue| {
+            issue.category() == "architecture.dependency.wire_layer"
+                && issue.message().contains("domain-foundation")
+        }));
+        assert!(issues.iter().any(|issue| {
+            issue.category() == "architecture.dependency.wire_layer"
+                && issue.message().contains("domain-engine")
         }));
     }
 

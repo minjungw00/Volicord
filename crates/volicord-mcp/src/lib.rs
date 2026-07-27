@@ -62,6 +62,6 @@ pub use stdio::{
 };
 pub use tool_registry::{
     adapter_utility_tools, canonical_mcp_tool_catalog, effective_mcp_tool_catalog, mcp_tools,
-    mcp_tools_for_mode, public_method_tools, CanonicalContent, CanonicalToolAnnotations,
-    CanonicalToolDefinition, CanonicalToolResult, VersionedToolDefinition, VersionedToolResult,
+    mcp_tools_for_mode, public_method_tools, CanonicalContent, CanonicalToolDefinition,
+    CanonicalToolResult,
 };

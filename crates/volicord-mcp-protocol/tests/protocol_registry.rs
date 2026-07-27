@@ -92,6 +92,52 @@ fn names<T: Copy>(values: &[T], name: impl Fn(T) -> &'static str) -> BTreeSet<&'
     values.iter().copied().map(name).collect()
 }
 
+fn client_capability_name(field: ClientCapabilityField) -> &'static str {
+    match field {
+        ClientCapabilityField::Elicitation => "elicitation",
+        ClientCapabilityField::Experimental => "experimental",
+        ClientCapabilityField::Roots => "roots",
+        ClientCapabilityField::Sampling => "sampling",
+        ClientCapabilityField::Tasks => "tasks",
+    }
+}
+
+fn server_capability_name(field: ServerCapabilityField) -> &'static str {
+    match field {
+        ServerCapabilityField::Completions => "completions",
+        ServerCapabilityField::Experimental => "experimental",
+        ServerCapabilityField::Logging => "logging",
+        ServerCapabilityField::Prompts => "prompts",
+        ServerCapabilityField::Resources => "resources",
+        ServerCapabilityField::Tasks => "tasks",
+        ServerCapabilityField::Tools => "tools",
+    }
+}
+
+fn tool_definition_name(field: ToolDefinitionField) -> &'static str {
+    match field {
+        ToolDefinitionField::Meta => "_meta",
+        ToolDefinitionField::Annotations => "annotations",
+        ToolDefinitionField::Description => "description",
+        ToolDefinitionField::Execution => "execution",
+        ToolDefinitionField::Icons => "icons",
+        ToolDefinitionField::InputSchema => "inputSchema",
+        ToolDefinitionField::Name => "name",
+        ToolDefinitionField::OutputSchema => "outputSchema",
+        ToolDefinitionField::Title => "title",
+    }
+}
+
+fn tool_result_name(field: ToolResultField) -> &'static str {
+    match field {
+        ToolResultField::Meta => "_meta",
+        ToolResultField::ToolResult => "toolResult",
+        ToolResultField::Content => "content",
+        ToolResultField::IsError => "isError",
+        ToolResultField::StructuredContent => "structuredContent",
+    }
+}
+
 fn json_rpc_message_allows_batch(definitions: &Map<String, Value>) -> bool {
     definitions
         .get("JSONRPCMessage")
@@ -374,7 +420,7 @@ fn profile_feature_differences_match_the_pinned_schemas() {
 
         assert_eq!(client.shape(), ClientCapabilitiesShape::OpenObject);
         assert_eq!(
-            names(client.known_fields(), ClientCapabilityField::as_str),
+            names(client.known_fields(), client_capability_name),
             property_names(definitions, "ClientCapabilities")
         );
         assert_eq!(
@@ -384,22 +430,19 @@ fn profile_feature_differences_match_the_pinned_schemas() {
         assert_eq!(
             names(
                 schema_features.server_capability_fields(),
-                ServerCapabilityField::as_str
+                server_capability_name
             ),
             property_names(definitions, "ServerCapabilities")
         );
         assert_eq!(
             names(
                 schema_features.tool_definition_fields(),
-                ToolDefinitionField::as_str
+                tool_definition_name
             ),
             tool_fields
         );
         assert_eq!(
-            names(
-                schema_features.tool_result_fields(),
-                ToolResultField::as_str
-            ),
+            names(schema_features.tool_result_fields(), tool_result_name),
             tool_result_fields
         );
         assert_eq!(

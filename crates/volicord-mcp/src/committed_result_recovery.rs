@@ -10,11 +10,11 @@ use crate::tool_dispatch::{rendered_tool_call_output_size_for_capabilities, Tool
 use crate::tool_registry::method_name_for_tool;
 use serde_json::Value;
 use volicord_mcp_protocol::{CommittedResultRecovery, McpProtocolCapabilities};
-use volicord_types::methods::{
+use volicord_mcp_wire::{
     McpAuthoritativeRefreshFailure, McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
     McpMutationResponseBudgetExceeded, McpOperationalErrorCode, McpPostEffectFailureCode,
-    OperationResultRef,
 };
+use volicord_types::methods::OperationResultRef;
 use volicord_types::schema::{AuthorityReceipt, NextActionSummary, RequiredNullable};
 use volicord_types::values::MutationDetailLevel;
 

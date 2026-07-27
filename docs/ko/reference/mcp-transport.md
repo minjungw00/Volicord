@@ -19,6 +19,22 @@ lifecycle, 도구 검색, 공개 인자 projection, 응답 wrapping, 종료를 �
 | 숨겨진 관리 launcher, launch lease, 생성 구성 세부사항 | `internal` |
 | Host 실행 파일 version, MCP client name/version, best-effort protocol metric | `diagnostic` |
 
+## Wire schema 소유권
+
+`volicord-mcp-protocol`은 닫힌 protocol profile registry와 그 semantic capability를
+담당합니다. `volicord-mcp-wire`는 정확한 MCP 요청, 결과, 오류, structured content,
+annotation, JSON-RPC envelope, 생성 wire schema 어휘를 담당합니다. 여기에는
+`McpOperationalErrorCode`, `McpOperationalOperation`,
+`McpOperationalResource`, `McpOperationalFailure`,
+`McpReadOnlyToolStructuredContent`, `McpToolDefinitionEnvelope`,
+`McpToolResultEnvelope`가 포함됩니다.
+
+`volicord-types`는 adapter-neutral 메서드 fact, domain 값, 공개 메서드 schema만
+담당합니다. `volicord-mcp`는 이 neutral outcome을 소비해 wire 담당 값으로 변환합니다.
+Core, Store, UserAction 서비스, 관리 CLI, UserAction presentation은
+`volicord-mcp-wire`에 의존하지 않습니다. Profile별 carrier와 선택 필드는 선택한
+profile의 semantic capability로만 결정합니다.
+
 ## 프로세스 모델
 
 관리 Codex 구성은 숨겨진 `volicord _host-launch codex` entry를 시작하며, 이 entry는
@@ -480,6 +496,75 @@ registry가 값이 있는 필드를 소유할 때만 이 필드를 내보냅니�
 공개 schema는 Core envelope, 내부 연결/프로젝트 ID, protocol metadata, idempotency
 필드, actor source, operation category, verification basis를 숨깁니다. 숨긴 필드는 Core
 전에 거부합니다. 간결한 검색 schema는 담당 문서의 완전한 요청 검증을 느슨하게 하지
+않습니다.
+
+<a id="user-action-wire-projection"></a>
+### UserAction wire projection
+
+```yaml
+McpRequestUserActionResponse:
+  agent_workflow_result: RequestUserActionResponse
+  agent_workflow_result_replayed: boolean
+  current_projection_state_version: integer
+  current_projection_observed_at: string
+  current_status: pending | resolved | stale | superseded | expired
+  user_channel_resolution_ref: StateRecordRef | null
+  user_channel_resolution: McpUserActionResolution | null
+  derived_refs: StateRecordRef[]
+
+McpRequestUserActionCompactResult:
+  effect: McpMutationEffectSummary
+  agent_workflow_result_replayed: boolean
+  user_action_request_summary: AgentSafeUserActionRequestSummary
+  current_projection_state_version: integer
+  current_projection_observed_at: string
+  user_action_resolution_ref: StateRecordRef | null
+  status: pending | resolved | stale | superseded | expired
+  resolution_summary: McpUserActionResolutionSummary | null
+  derived_refs: StateRecordRef[]
+
+McpUserActionResolution:
+  user_action_resolution_id: string
+  user_action_request_id: string
+  action_kind: string
+  channel_kind: cli
+  resolved_at: string
+  resolution_summary: McpUserActionResolutionSummary
+
+McpUserActionResolutionSummary:
+  # choice variant
+  resolution_type: choice
+  selected_option_id: string
+  selected_option_label: string
+  machine_action: accept | reject | defer
+  resolution_outcome: accepted | rejected | deferred
+
+  # evidence-observation variant
+  resolution_type: evidence_observation
+  target: EvidenceTarget
+  artifact_refs: ArtifactRef[]
+  relevance_status: supported | contradicted
+```
+
+`agent_workflow_result`는 자체 `operation_result_ref`가 가리키는 정확한 커밋
+`volicord.request_user_action` 응답 분기입니다.
+`agent_workflow_result_replayed=false`는 호출이 요청을 만들었다는 뜻이고, `true`는 같은
+Agent Connection이 명시적인 읽기 전용 resume 연산을 사용해 두 번째 Agent Workflow
+mutation이 없었다는 뜻입니다. 이 과거 결과는 저장 요청, resolution form, CLI inbox
+presentation이 아니라 `AgentSafeUserActionRequestSummary`를 담습니다.
+
+즉시 또는 나중의 channel resolution은 별도 nullable projection입니다. 해당 ref는
+private body를 조회하지 않고 불변 resolution을 식별합니다.
+`McpUserActionResolution`은 사용자 자유 형식 note, observation summary, channel
+submission identity, verification basis, assurance text를 제외합니다. User-only
+`volicord.resolve_user_action` 응답을 요청 operation result로 조회할 수 있게 만들지
+않습니다. `derived_refs`는 선택적 resolution이 만든 정확한 공개 ref를 보존하고 요청이
+pending이면 비어 있습니다.
+
+`current_status`, nullable 안전 resolution과 ref, `derived_refs`는
+`current_projection_state_version`과 `current_projection_observed_at`에 관찰한 하나의
+Core/Store read에서 나옵니다. Resolution과 derived ref는 과거
+`produced_at_state_version`을 보존하며 이후 관계없는 상태 증가가 이를 다시 쓰지
 않습니다.
 
 <a id="in-chat-integration-verification-schemas"></a>

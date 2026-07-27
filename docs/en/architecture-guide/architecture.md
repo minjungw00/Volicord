@@ -92,7 +92,11 @@ group, responsibility, classification, production status, boundary, and
 normal, development, and build dependency allowlists. `architecture-check`
 compares those declarations with actual Cargo metadata, enforces the Core,
 UserAction service, shared-types, Store, adapter, presentation, and test-support
-boundaries, and rejects normal/build dependency cycles. Development-only
+boundaries, restricts each `*-wire` group to its matching adapter and
+validation tooling or tests, and rejects normal/build dependency cycles.
+`volicord-mcp-wire` is therefore unavailable to Core, shared types, Store,
+UserAction service, CLI, and presentation packages even if an allowlist entry
+were added. Development-only
 backedges do not participate in the deployable graph.
 
 The generated tables below are replaced by `docs-sync`. Exact module placement
@@ -116,6 +120,7 @@ Each current workspace package has one responsibility entry in the root Cargo me
 | `volicord-integration-tests` | `integration-validation` | validation | non-production | neutral | Cross-layer integration, Agent Connection, and public contract snapshot tests. |
 | `volicord-mcp` | `mcp-adapter` | adapter | production | adapter | MCP lifecycle, transport, tool projection, session binding, and Core invocation adapter. |
 | `volicord-mcp-protocol` | `mcp-protocol` | schema | production | neutral | Host-independent MCP revision profiles and semantic capability registry. |
+| `volicord-mcp-wire` | `mcp-wire` | schema | production | adapter | MCP request, result, error, structured-content, JSON-RPC envelope, and generated wire-schema ownership. |
 | `volicord-platform-fs` | `platform-filesystem` | infrastructure | production | Core-facing | Product Repository and platform filesystem observation, publication, mutation admission, and Git layout primitives. |
 | `volicord-platform-process` | `platform-process` | infrastructure | production | neutral | Platform child-process containment, termination, and pipe-readiness primitives. |
 | `volicord-release-integrity-tests` | `release-integrity` | validation | non-production | neutral | Release packaging, version, canonical-byte, checksum, and workflow integrity validation. |
@@ -140,9 +145,10 @@ The lists are package-level allowlists by Cargo dependency kind. An em dash mean
 | `volicord-conformance-tests` | — | `volicord-core`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
 | `volicord-core` | `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-host-contract` | `volicord-types` | — | — |
-| `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
-| `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-mcp-wire`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
+| `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-mcp-wire`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-mcp-protocol` | — | — | — |
+| `volicord-mcp-wire` | `volicord-mcp-protocol`, `volicord-types` | — | — |
 | `volicord-platform-fs` | `volicord-types` | — | — |
 | `volicord-platform-process` | — | — | — |
 | `volicord-release-integrity-tests` | `volicord-store`, `volicord-types` | — | — |
@@ -153,7 +159,7 @@ The lists are package-level allowlists by Cargo dependency kind. An em dash mean
 | `volicord-types` | — | — | — |
 | `volicord-user-action-presentation` | `volicord-command-model`, `volicord-types` | — | — |
 | `volicord-user-action-service` | `volicord-store`, `volicord-types` | `volicord-test-support` | — |
-| `xtask` | `volicord-command-model`, `volicord-mcp-protocol`, `volicord-types` | — | — |
+| `xtask` | `volicord-command-model`, `volicord-mcp-protocol`, `volicord-mcp-wire`, `volicord-types` | — | — |
 
 <!-- END GENERATED: workspace-package-architecture -->
 

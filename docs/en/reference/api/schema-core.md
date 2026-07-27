@@ -36,6 +36,13 @@ This document does not own:
 - MCP revision-specific tool definitions, result carriers, or error flags; see
   [MCP transport](../mcp-transport.md)
 
+`volicord-types` implements the adapter-neutral public schema family described
+here. Its generated public method schemas contain no MCP request wrappers,
+MCP error identities, structured-content unions, tool-definition envelopes, or
+JSON-RPC fields. Those generated wire schemas and exact serialization rules
+belong to `volicord-mcp-wire`; semantic profile selection belongs to
+`volicord-mcp-protocol`.
+
 For Core-owned MCP tools, the canonical `AgentToolId` identity reuses the
 existing `MethodName` domain and projects its stable MCP wire name. Adapter
 utilities belong to the same closed identity catalog. The operational

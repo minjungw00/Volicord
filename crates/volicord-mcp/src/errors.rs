@@ -1,12 +1,12 @@
 use std::{error::Error, fmt, io};
 use volicord_core::pipeline::CorePipelineError;
+use volicord_mcp_wire::{
+    McpToolErrorIssue, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES,
+};
 use volicord_platform_fs::RuntimeHomeMutationLeaseError;
 use volicord_store::error::StoreError;
 use volicord_store::mutation::RuntimeHomeMutationSetupInProgress;
 use volicord_store::runtime_home::RuntimeHomeResolutionError;
-use volicord_types::methods::{
-    McpToolErrorIssue, MAX_MCP_TOOL_ISSUE_MESSAGE_BYTES, MAX_MCP_TOOL_ISSUE_PATH_BYTES,
-};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpHostError {
     MalformedNativeMetadata,

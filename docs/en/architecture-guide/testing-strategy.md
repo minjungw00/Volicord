@@ -39,6 +39,12 @@ neutral operational routing without reimplementing platform observation.
 UserAction service tests remain filesystem-free. Adapter tests verify the
 stable projected operation and resource identities.
 
+`volicord-mcp-wire` tests own exact MCP serialization, JSON-RPC envelopes,
+generated MCP request/result schemas, and wire contract descriptors.
+`volicord-types` tests own only neutral public schemas. Cross-owner coverage
+asserts that public method schemas contain no MCP-only structures and that the
+MCP adapter maps neutral Core operational failures to the current wire error.
+
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
 prove behavior of a real Codex installation or platform support.
@@ -60,15 +66,18 @@ edge outside the source package's kind-specific allowlist. It independently
 rejects normal or build production dependencies on test-support packages,
 Core-facing dependencies on adapter or presentation packages, the required
 UserAction service, Core, shared-types, and Store boundary violations, and
-cycles in the normal/build dependency graph.
+cycles in the normal/build dependency graph. A semantic wire-family rule also
+rejects a dependency on a `*-wire` owner unless the source is its matching
+adapter or validation tooling or tests.
 
 Focused validator tests use neutral synthetic package and group names to cover
 valid current metadata, kind-specific disallowed edges, unregistered packages,
 invalid dependency kinds, production/test-support separation, Core/adapter
-independence, and cycles. A separate test runs the same validator against the
-current Cargo workspace and its owner. Tests do not carry a second copy of the
-workspace package graph. Architecture rules apply directly to the current graph
-and are not selected through package, schema, or protocol versions.
+independence, matching-adapter wire access, unrelated adapter and foundational
+wire rejection, and cycles. A separate test runs the same validator against
+the current Cargo workspace and its owner. Tests do not carry a second copy of
+the workspace package graph. Architecture rules apply directly to the current
+graph and are not selected through package, schema, or protocol versions.
 
 Current-workspace coverage also asserts that
 `volicord-user-action-service` has its dedicated responsibility entry and
