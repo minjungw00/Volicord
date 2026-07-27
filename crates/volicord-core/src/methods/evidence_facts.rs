@@ -18,8 +18,8 @@ use crate::policy::{
 };
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
-    CoreProjectStore, EffectiveUserActionRecord, EvidenceObservationRecord, EvidenceSummaryRecord,
-    TaskRecord, UserActionResolutionRecord,
+    CoreProjectStore, EvidenceObservationRecord, EvidenceSummaryRecord, StoredUserActionRecordSet,
+    StoredUserActionResolution, TaskRecord,
 };
 use volicord_store::error::StoreError;
 use volicord_store::evidence_capture::{
@@ -142,8 +142,8 @@ pub(super) fn capture_spec_producer_kind(capture: &EvidenceCaptureSpec) -> Evide
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn user_action_observation_resolution_authority(
-    action_record: &EffectiveUserActionRecord,
-    resolution_record: &UserActionResolutionRecord,
+    action_record: &StoredUserActionRecordSet,
+    resolution_record: &StoredUserActionResolution,
     project_id: &ProjectId,
     task_id: &TaskId,
     change_unit_id: &str,
@@ -152,19 +152,19 @@ pub(super) fn user_action_observation_resolution_authority(
     target: &EvidenceTarget,
     output_artifact_refs: &[ArtifactRef],
 ) -> CoreResult<Option<UserActionObservationResolutionAuthority>> {
-    let request = &action_record.request.request;
-    let basis = &action_record.request.basis;
-    let resolution = &resolution_record.resolution;
-    let observed_by_actor_source = &resolution_record.resolved_by_actor_source;
+    let request = action_record.request().request();
+    let basis = action_record.request().basis();
+    let resolution = resolution_record.resolution();
+    let observed_by_actor_source = resolution_record.resolved_by_actor_source();
     let UserActionResolutionBody::EvidenceObservation { observation } = resolution else {
         return Ok(None);
     };
     let coordinates = basis.coordinates();
-    if action_record.status != UserActionStatus::Resolved
-        || action_record.request.action_kind != UserActionKind::EvidenceObservation
+    if action_record.status() != UserActionStatus::Resolved
+        || action_record.request().action_kind() != UserActionKind::EvidenceObservation
         || request.body.action_kind() != UserActionKind::EvidenceObservation
-        || action_record.request.project_id != project_id.as_str()
-        || action_record.request.task_id != task_id.as_str()
+        || action_record.request().project_id() != project_id.as_str()
+        || action_record.request().task_id() != task_id.as_str()
         || coordinates
             .change_unit_id
             .as_ref()
@@ -184,7 +184,7 @@ pub(super) fn user_action_observation_resolution_authority(
     }
     Ok(Some(UserActionObservationResolutionAuthority {
         relevance_status: observation.relevance_status,
-        resolved_at: resolution_record.resolved_at.clone(),
+        resolved_at: resolution_record.resolved_at().clone(),
     }))
 }
 
@@ -672,7 +672,7 @@ fn user_channel_authority_is_current(
         return Ok(false);
     };
     let Some(action_record) = store
-        .user_action_record(&resolution_record.user_action_request_id, basis.now)
+        .user_action_record(resolution_record.user_action_request_id(), basis.now)
         .map_err(CorePipelineError::from)?
     else {
         return Ok(false);
@@ -692,7 +692,7 @@ fn user_channel_authority_is_current(
         return Ok(false);
     };
     Ok(producer_anchor.verification_basis.as_deref()
-        == Some(resolution_record.resolved_verification_basis.as_str())
+        == Some(resolution_record.resolved_verification_basis().as_str())
         && relevance_assessment.status == resolution_authority.relevance_status
         && **observed_at == resolution_authority.resolved_at)
 }

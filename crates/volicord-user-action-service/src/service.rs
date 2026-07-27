@@ -314,7 +314,7 @@ pub fn resolved_user_action_authorities_for_all_kinds(
         .user_action_records_for_task(task_id, now)
         .map_err(UserActionServiceError::from_store)?
         .into_iter()
-        .filter(|record| record.status == UserActionStatus::Resolved)
+        .filter(|record| record.status() == UserActionStatus::Resolved)
         .map(|record| user_action_authority_from_record(&record))
         .collect()
 }

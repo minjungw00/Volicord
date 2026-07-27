@@ -170,6 +170,13 @@ session을 무효화하지 않습니다.
 필드를 거절하는 곳의 추가 필드, 필드 간 invariant 위반은 모두 `Corrupt`입니다.
 어느 경우도 빈 배열, 빈 객체, 값 부재, 호스트별 기본값으로 바꾸면 안 됩니다.
 
+Typed record가 공개 경계를 건너기 전에 Store가 영속 row decode와 영속 record
+일관성을 담당합니다. 하위 서비스는 Store failure를 전파할 수 있지만 물리 손상
+진단을 다시 구성하지 않습니다. 각각 유효한 typed fact에서 파생된 의미 불변 조건
+위반은 집중 담당 문서가 정한 서비스 또는 Core invariant, validation, availability
+failure입니다. 그 fact가 저장소에서 왔다는 이유만으로 영속 데이터 `Corrupt`가
+되지는 않습니다.
+
 표시 전용 또는 보조 데이터가 없다고 해서 자동으로 손상은 아닙니다. 집중 담당
 문서가 이를 `Unavailable` 또는 `Degraded`로 분류하고 핵심 동작을 계속할 수
 있는지 정해야 합니다. 유효한 빈 배열이나 객체는 선언된 스키마가 그 정확한 값을

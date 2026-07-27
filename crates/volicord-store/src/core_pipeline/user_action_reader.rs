@@ -4,8 +4,8 @@ use volicord_types::{
 };
 
 use super::{
-    AcceptanceCriterionRecord, ChangeUnitRecord, CoreProjectStore, EffectiveUserActionRecord,
-    EvidenceClaimRecord, StoredArtifactRecord, StoredRecordRef, TaskRevisionRecord,
+    AcceptanceCriterionRecord, ChangeUnitRecord, CoreProjectStore, EvidenceClaimRecord,
+    StoredArtifactRecord, StoredRecordRef, StoredUserActionRecordSet, TaskRevisionRecord,
 };
 use crate::{artifacts::PersistentArtifactVerification, StoreResult};
 
@@ -44,19 +44,19 @@ pub trait UserActionStoreReader {
         task_id: &TaskId,
         action_kind: UserActionKind,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>>;
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>>;
 
     fn pending_user_action_records(
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>>;
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>>;
 
     fn user_action_records_for_task(
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>>;
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>>;
 
     fn pending_user_action_refs(
         &self,
@@ -114,7 +114,7 @@ impl UserActionStoreReader for CoreProjectStore<'_> {
         task_id: &TaskId,
         action_kind: UserActionKind,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>> {
         CoreProjectStore::resolved_user_action_records(self, task_id, action_kind, now)
     }
 
@@ -122,7 +122,7 @@ impl UserActionStoreReader for CoreProjectStore<'_> {
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>> {
         CoreProjectStore::pending_user_action_records(self, task_id, now)
     }
 
@@ -130,7 +130,7 @@ impl UserActionStoreReader for CoreProjectStore<'_> {
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>> {
         CoreProjectStore::user_action_records_for_task(self, task_id, now)
     }
 

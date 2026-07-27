@@ -116,12 +116,12 @@ Store, UserAction 서비스, CLI, presentation package는 `volicord-mcp-wire`를
 | `volicord-platform-process` | `platform-process` | 인프라 | 프로덕션 | 중립 | 플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다. |
 | `volicord-release-integrity-tests` | `release-integrity` | 검증 | 비프로덕션 | 중립 | 릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다. |
 | `volicord-release-smoke` | `release-smoke` | 검증 | 비프로덕션 | 중립 | 크로스 플랫폼 실제 바이너리 릴리스 스모크 조율과 transcript 검증을 담당합니다. |
-| `volicord-store` | `storage` | 인프라 | 프로덕션 | Core 지향 | 정규 영속화, Runtime Home 메커니즘, 엄격한 디코딩, 트랜잭션 적용을 담당합니다. |
+| `volicord-store` | `storage` | 인프라 | 프로덕션 | Core 지향 | 정규 영속화, Runtime Home 메커니즘, 영속 row를 불변 조건 보존 typed record로 바꾸는 엄격한 디코딩, 트랜잭션 적용을 담당합니다. |
 | `volicord-test-process` | `test-process` | 테스트 지원 | 비프로덕션 | 중립 | 테스트와 스모크 하네스를 위한 재사용 가능한 한도 프로세스 실행과 정리를 담당합니다. |
 | `volicord-test-support` | `test-support` | 테스트 지원 | 비프로덕션 | 중립 | 재사용 가능한 폐기형 Runtime Home, Store, Core 요청, Agent Connection 픽스처를 담당합니다. |
 | `volicord-types` | `shared-types` | 스키마 | 프로덕션 | Core 지향 | 의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 플랫폼 중립 경로 값, 어댑터 중립 도메인 사실을 담당합니다. |
 | `volicord-user-action-presentation` | `user-action-presentation` | 표현 | 프로덕션 | 어댑터 | 타입이 있는 CLI UserAction 표현, JSON Schema, 명령 모델 기반 복구 안내를 담당합니다. |
-| `volicord-user-action-service` | `user-action-service` | 애플리케이션 | 프로덕션 | Core 지향 | UserAction 검증, 권한, 생명주기, 영속화 매핑, 해결, 연속성, 의미 투영을 담당합니다. |
+| `volicord-user-action-service` | `user-action-service` | 애플리케이션 | 프로덕션 | Core 지향 | 의미 기반 UserAction 검증, 권한, 생명주기, 영속화 매핑, 해결, 연속성, Store가 검증한 typed record 기반 투영을 담당합니다. |
 | `xtask` | `repository-validation` | 검증 | 비프로덕션 | 중립 | 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터 검증과 동기화를 담당합니다. |
 
 ### 허용되는 내부 의존 방향
@@ -172,8 +172,12 @@ identity, authority, lifecycle 해석, 구체화, 영속화 매핑, resolution, 
 파생, adapter-neutral projection과 summary를 담당합니다. 이 크레이트는 명시적인
 의미 구성 및 영속화 context를 받고 typed 서비스 오류와 fact를 반환하며, Core나
 어댑터에 의존하지 않고 Store와 공유 타입에만 의존합니다. Store 의존성은 집중된
-`UserActionStoreReader` typed 읽기 capability이며 물리 row와 직렬화된 값 표현은
-Store 내부에만 둡니다.
+`UserActionStoreReader` typed 읽기 capability입니다. Store는 비공개 field와 typed
+의미 accessor를 갖춘 불변 조건 보존 `StoredUserActionRequest`,
+`StoredUserActionResolution`, `StoredUserActionRecordSet` 값을 반환합니다. 물리
+row와 직렬화된 값 표현, 중복 column 검사, 요청-resolution pairing, 영속 손상
+진단은 Store 내부에만 둡니다. 서비스는 이 record에서 의미 policy를 평가하고,
+일관되지 않은 유효 typed fact에는 서비스 담당 invariant failure를 보고합니다.
 
 `crates/volicord-core/src/methods/user_action.rs`,
 `user_action_read.rs`, `user_action_continuity.rs`는 invocation authority, 생성한

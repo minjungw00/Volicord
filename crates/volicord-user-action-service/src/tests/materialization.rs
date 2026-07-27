@@ -2,9 +2,7 @@ use crate::materialization::{
     materialize_user_action_resolution, UserActionResolutionMaterializationInput,
 };
 use volicord_store::core_pipeline::{CoreStorageMutation, UserActionMutation};
-use volicord_types::ids::{
-    ProjectId, UserActionOptionId, UserActionRequestId, UserActionResolutionId,
-};
+use volicord_types::ids::{UserActionOptionId, UserActionRequestId, UserActionResolutionId};
 use volicord_types::schema::{RequiredNullable, UserActionResolutionBody};
 use volicord_types::values::{
     ActorSource, JudgmentResolutionOutcome, UserActionChannelKind, UserActionKind,
@@ -12,7 +10,7 @@ use volicord_types::values::{
 };
 
 #[test]
-fn resolution_materialization_serializes_only_at_the_store_boundary() {
+fn resolution_materialization_produces_one_typed_store_input() {
     let resolution = UserActionResolutionBody::Choice {
         selected_option_id: UserActionOptionId::new("accept"),
         machine_action: UserActionOptionAction::Accept,
@@ -22,7 +20,6 @@ fn resolution_materialization_serializes_only_at_the_store_boundary() {
     };
     let materialized =
         materialize_user_action_resolution(UserActionResolutionMaterializationInput {
-            project_id: &ProjectId::new("project-test"),
             user_action_resolution_id: UserActionResolutionId::new("resolution-test"),
             user_action_request_id: &UserActionRequestId::new("action-test"),
             action_kind: UserActionKind::ProductDecision,
@@ -37,16 +34,12 @@ fn resolution_materialization_serializes_only_at_the_store_boundary() {
         })
         .expect("typed resolution must materialize");
 
-    assert_eq!(materialized.record.resolution, resolution);
-    assert_eq!(
-        materialized.record.resolved_by_actor_source,
-        ActorSource::LocalUser
-    );
     let CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(insert)) =
         materialized.mutation
     else {
         panic!("resolution materialization must produce a typed Store mutation")
     };
     assert_eq!(insert.user_action_resolution_id, "resolution-test");
-    assert_eq!(insert.resolution, materialized.record.resolution);
+    assert_eq!(insert.resolution, resolution);
+    assert_eq!(insert.resolved_by_actor_source, ActorSource::LocalUser);
 }

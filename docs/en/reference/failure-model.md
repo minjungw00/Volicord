@@ -192,6 +192,14 @@ field, an extra field where the owner rejects extras, or a violated cross-field
 invariant is `Corrupt`. None of those conditions becomes an empty array, empty
 object, absent value, or host-specific default.
 
+Store owns persisted-row decoding and persisted-record consistency before a
+typed record crosses its public boundary. Downstream services may propagate
+the Store failure, but they do not recreate physical corruption diagnostics.
+A semantic invariant failure derived from individually valid typed facts is a
+service or Core invariant, validation, or availability failure under its
+focused owner; it is not persisted-data `Corrupt` merely because the facts
+originated from storage.
+
 Missing display-only or auxiliary data is not automatically corruption. Its
 focused owner must classify it as `Unavailable` or `Degraded` and state whether
 the core operation can continue. A valid empty array or object remains a valid

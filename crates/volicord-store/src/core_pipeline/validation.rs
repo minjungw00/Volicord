@@ -930,13 +930,13 @@ pub(super) fn parse_user_action_basis_status(
 }
 
 pub(super) fn parse_user_action_kind(
+    table: &'static str,
     record_ref: &str,
     logical_column: &'static str,
     value: &str,
 ) -> StoreResult<UserActionKind> {
-    serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
-        StoreError::corrupt_owner_state_value("user_action_requests", record_ref, logical_column)
-    })
+    serde_json::from_value(Value::String(value.to_owned()))
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_ref, logical_column))
 }
 
 pub(super) fn parse_user_action_channel_kind(

@@ -1590,13 +1590,13 @@ fn all_eight_user_action_kinds_preserve_the_cli_inbox_boundary() -> Result<(), B
 
         let record = stored_action_record(&fixture, &prepared.task_id, &response)?;
         assert_eq!(
-            serde_json::to_value(record.request.action_kind)?,
+            serde_json::to_value(record.request().action_kind())?,
             json!(case.name),
             "{}: fixture must exercise the intended action kind",
             case.name
         );
         assert!(
-            record.resolution.is_none(),
+            record.resolution().is_none(),
             "{}: handoff delivery must not resolve the action",
             case.name
         );

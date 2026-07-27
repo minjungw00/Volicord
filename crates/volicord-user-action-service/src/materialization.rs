@@ -7,11 +7,12 @@ use super::{
     },
 };
 use crate::error::{UserActionInvariantError, UserActionServiceError};
-use volicord_store::core_pipeline::{
-    CoreStorageMutation, EffectiveUserActionRecord, UserActionResolutionRecord,
+use volicord_store::{
+    core_pipeline::{CoreStorageMutation, StoredUserActionRecordSet, UserActionResolutionInsert},
+    StoreError,
 };
 use volicord_types::{
-    ids::{ProjectId, UserActionRequestId, UserActionResolutionId},
+    ids::{UserActionRequestId, UserActionResolutionId},
     schema::{
         PersistedUserActionRequest, RequiredNullable, StateRecordRef, UserActionRequest,
         UserActionResolutionBody,
@@ -34,13 +35,12 @@ pub struct UserActionMaterializationInput {
 pub struct MaterializedUserActionRequest {
     pub request_ref: StateRecordRef,
     pub public_request: UserActionRequest,
-    pub effective: EffectiveUserActionRecord,
+    pub effective: StoredUserActionRecordSet,
     pub mutation: CoreStorageMutation,
 }
 
 /// Typed semantic values needed to materialize one immutable resolution.
 pub struct UserActionResolutionMaterializationInput<'a> {
-    pub project_id: &'a ProjectId,
     pub user_action_resolution_id: UserActionResolutionId,
     pub user_action_request_id: &'a UserActionRequestId,
     pub action_kind: UserActionKind,
@@ -53,10 +53,28 @@ pub struct UserActionResolutionMaterializationInput<'a> {
     pub resolved_at: &'a UtcTimestamp,
 }
 
-/// One immutable resolution record plus its exact Store mutation.
+/// One immutable resolution projection plus its exact Store mutation.
 pub struct MaterializedUserActionResolution {
-    pub record: UserActionResolutionRecord,
+    insert: UserActionResolutionInsert,
     pub mutation: CoreStorageMutation,
+}
+
+impl MaterializedUserActionResolution {
+    /// Applies the semantic resolution to an already validated Store record set.
+    pub fn project_record_set(
+        &self,
+        current: &StoredUserActionRecordSet,
+        now: &UtcTimestamp,
+    ) -> Result<StoredUserActionRecordSet, UserActionServiceError> {
+        current
+            .with_resolution(&self.insert, now)
+            .map_err(|error| match error {
+                StoreError::InvalidInput { .. } => {
+                    UserActionServiceError::Invariant(UserActionInvariantError::ActionFactsMismatch)
+                }
+                error => UserActionServiceError::from_store(error),
+            })
+    }
 }
 
 /// Adds canonical identity and serializes typed action values at the Store boundary.
@@ -136,12 +154,11 @@ pub fn materialize_user_action_request(
     })
 }
 
-/// Serializes one canonical typed resolution at the Store boundary.
+/// Maps one canonical typed resolution to the Store boundary.
 pub fn materialize_user_action_resolution(
     input: UserActionResolutionMaterializationInput<'_>,
 ) -> Result<MaterializedUserActionResolution, UserActionServiceError> {
-    let record = UserActionResolutionRecord {
-        project_id: input.project_id.as_str().to_owned(),
+    let insert = UserActionResolutionInsert {
         user_action_resolution_id: input.user_action_resolution_id.as_str().to_owned(),
         user_action_request_id: input.user_action_request_id.as_str().to_owned(),
         action_kind: input.action_kind,
@@ -153,6 +170,6 @@ pub fn materialize_user_action_resolution(
         resolved_assurance_level: input.assurance_level,
         resolved_at: input.resolved_at.clone(),
     };
-    let mutation = materialize_user_action_resolution_mutation(record.clone())?;
-    Ok(MaterializedUserActionResolution { record, mutation })
+    let mutation = materialize_user_action_resolution_mutation(insert.clone())?;
+    Ok(MaterializedUserActionResolution { insert, mutation })
 }

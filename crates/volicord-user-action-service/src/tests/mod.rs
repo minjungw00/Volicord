@@ -5,6 +5,7 @@ mod identity;
 mod lifecycle;
 mod materialization;
 mod persistence;
+mod projection;
 mod relevance;
 mod validation;
 

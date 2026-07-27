@@ -353,16 +353,25 @@ source method/idempotency identity, actor, expiry를 저장합니다.
 `resolved_by_actor_source=local_user`, verification basis, assurance, Core capture
 time을 저장합니다.
 
-Store는 쓰기와 읽기 모두에서 완전한 typed 요청과 resolution을 검증합니다. 다음을
-거부합니다.
+Store는 쓰기와 읽기 모두에서 완전한 typed 요청과 resolution을 검증합니다.
+`StoredUserActionRequest`, `StoredUserActionResolution`,
+`StoredUserActionRecordSet`이 검증된 경계를 전달합니다. 불변 조건을 지닌 field는
+비공개이며, 공개 typed accessor는 caller가 모순된 영속 record를 조립할 수 없게
+하면서 의미 fact를 제공합니다. Store는 다음을 거부합니다.
 
 - 알 수 없거나 섞인 union tag와 추가 필드
 - 빠진 종류별 필드
 - 요청 본문과 일치하지 않는 `action_kind`
+- 닫힌 요청과 일치하지 않는 basis, `required_for`, expiry 중복 표현
 - 저장 후보 밖의 option 또는 evidence 선택
 - CLI가 아닌 channel 또는 local-user가 아닌 provenance
 - 잘못된 제한, timestamp, ref, submission identity
-- 요청, 프로젝트, Task, 현재 basis가 일치하지 않는 resolution
+- 요청 identity, action kind, 프로젝트, Task, 현재 basis가 일치하지 않는 resolution
+
+요청과 resolution을 함께 읽어야 할 때는 검증된 `StoredUserActionRecordSet` 하나를
+반환합니다. 일반 공개 Store API는 유효하지 않은 set을 반환하거나 구성할 수
+없습니다. Commit 전 정규 typed 메모리 projection에도 같은 Store 담당 일관성
+검사를 적용하며 unchecked constructor를 노출하지 않습니다.
 
 잘못된 저장 값은 영속 데이터 기계 판독 code를 가진 `Corrupt`입니다. 기본값을 넣거나
 조용히 건너뛰거나 다른 column에서 복구하거나 부분적으로 유효한 객체로 반환하지 않습니다.
@@ -490,6 +499,11 @@ decode하고, 이 record family의 typed mutation input을 받습니다. 형식�
 표현이나 알 수 없는 닫힌 값은 typed 영속 데이터 `Corrupt` failure를 만들며 빈 값,
 기본값, 다른 column을 통해 다시 해석하지 않습니다. 의미 metadata는 service와 Core를
 지나는 동안 typed 상태를 유지하고, Store가 SQLite 경계에서 한 번 직렬화합니다.
+
+UserAction 서비스는 이 검증된 typed record를 사용해 의미 기반 authority,
+lifecycle, resolution, projection policy를 평가합니다. 영속 표현을 다시 decode하거나
+Store 손상 진단을 구성하지 않습니다. 유효한 typed fact 사이의 서비스 불변 조건
+위반은 영속 record 손상과 구분합니다.
 
 명시적으로 비권한으로 분류한 metadata는 계속 비권한입니다. 사용자 판단, evidence
 assurance, acceptance, 쓰기 티켓 권한, 닫기 준비 상태를 만들 수 없습니다.

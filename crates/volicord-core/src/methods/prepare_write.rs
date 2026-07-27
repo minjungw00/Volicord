@@ -733,12 +733,12 @@ fn plan_prepare_write_mutations(
             now: &plan_now,
         })?;
         if let Some(record) = matching_sensitive_approval {
-            if let Some(resolution) = record.resolution.as_ref() {
+            if let Some(resolution) = record.resolution() {
                 created_by_user_action_resolution_id =
-                    Some(resolution.user_action_resolution_id.clone());
+                    Some(resolution.user_action_resolution_id().to_owned());
                 active_user_action_refs.push(state_ref(
                     StateRecordKind::UserActionResolution,
-                    &resolution.user_action_resolution_id,
+                    resolution.user_action_resolution_id(),
                     &request.envelope.project_id,
                     Some(&task_id),
                     Some(project_state.state_version),

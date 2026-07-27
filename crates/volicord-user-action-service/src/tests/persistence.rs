@@ -3,7 +3,7 @@ use crate::persistence::{
     UserActionRequestPersistenceInput,
 };
 use volicord_store::core_pipeline::{
-    CoreStorageMutation, UserActionMutation, UserActionResolutionRecord,
+    CoreStorageMutation, UserActionMutation, UserActionResolutionInsert,
 };
 use volicord_types::ids::UserActionOptionId;
 use volicord_types::schema::{
@@ -51,16 +51,16 @@ fn request_mapping_produces_matching_effective_record_and_store_input() {
     else {
         panic!("request mapping must produce a typed request insert")
     };
-    assert_eq!(effective.status, UserActionStatus::Pending);
-    assert!(effective.resolution.is_none());
+    assert_eq!(effective.status(), UserActionStatus::Pending);
+    assert!(effective.resolution().is_none());
     assert_eq!(
-        effective.request.user_action_request_id,
+        effective.request().user_action_request_id(),
         insert.user_action_request_id
     );
-    assert_eq!(effective.request.request, insert.request);
-    assert_eq!(effective.request.basis, insert.basis);
+    assert_eq!(effective.request().request(), &insert.request);
+    assert_eq!(effective.request().basis(), &insert.basis);
     assert_eq!(
-        effective.request.source_idempotency_key,
+        effective.request().source_idempotency_key(),
         insert.source_idempotency_key
     );
     assert_eq!(insert.source_idempotency_key, "idem-test");
@@ -68,8 +68,7 @@ fn request_mapping_produces_matching_effective_record_and_store_input() {
 
 #[test]
 fn resolution_mapping_preserves_the_immutable_store_input() {
-    let mutation = materialize_user_action_resolution_mutation(UserActionResolutionRecord {
-        project_id: "project-test".to_owned(),
+    let mutation = materialize_user_action_resolution_mutation(UserActionResolutionInsert {
         user_action_resolution_id: "resolution-test".to_owned(),
         user_action_request_id: "action-test".to_owned(),
         action_kind: UserActionKind::ProductDecision,

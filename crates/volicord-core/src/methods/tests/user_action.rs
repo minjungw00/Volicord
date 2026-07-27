@@ -168,7 +168,10 @@ fn admitted_resolution_snapshot_reuses_one_writable_store() -> Result<(), Box<dy
         .expect("the admitted local User Channel should receive the resolution snapshot");
 
     assert_eq!(snapshot.project_id, ProjectId::new(PROJECT_ID));
-    assert_eq!(snapshot.record.request.user_action_request_id, request_id);
+    assert_eq!(
+        snapshot.record.request().user_action_request_id(),
+        request_id
+    );
     assert_eq!(
         snapshot.observed_state_version,
         requested.response_value["base"]["state_version"]
@@ -1959,10 +1962,10 @@ fn read_snapshot_prevents_mixed_projection_rows_across_concurrent_resolution_com
                 .user_action_record(&user_action_request_id, &snapshot_now)?
                 .expect("origin request should remain visible in its read snapshot");
             assert_eq!(
-                record.status,
+                record.status(),
                 volicord_types::values::UserActionStatus::Pending
             );
-            assert!(record.resolution.is_none());
+            assert!(record.resolution().is_none());
             let origin_replay = snapshot
                 .tool_invocation(
                     MethodName::RequestUserAction,
@@ -1994,10 +1997,10 @@ fn read_snapshot_prevents_mixed_projection_rows_across_concurrent_resolution_com
         .user_action_record(&user_action_request_id, &snapshot_now)?
         .expect("fresh read should observe the resolved request");
     assert_eq!(
-        resolved.status,
+        resolved.status(),
         volicord_types::values::UserActionStatus::Resolved
     );
-    assert!(resolved.resolution.is_some());
+    assert!(resolved.resolution().is_some());
     let resolution_replay = fresh
         .tool_invocation(
             MethodName::ResolveUserAction,

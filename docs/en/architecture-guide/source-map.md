@@ -91,7 +91,7 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation inputs, storage validation and SQL application; Run and observed-change projections, strict decoding, facade reads, and focused tests. |
 | `crates/volicord-store/src/core_pipeline/evidence.rs` | Evidence mutation inputs, storage validation and SQL application; evidence-summary and observation projections, strict row decoding, record-reference projection, facade reads, and focused tests. |
 | `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact mutation inputs, storage validation and SQL application; staging and durable-artifact projections, strict decoding, link reads, persistent-body verification, facade reads, and focused tests. |
-| `crates/volicord-store/src/core_pipeline/user_actions.rs` | User-action mutation inputs, storage validation and SQL application; strict decoding from physical JSON and stored scalars into typed request and resolution records; effective-status derivation, facade reads, and focused tests. |
+| `crates/volicord-store/src/core_pipeline/user_actions.rs` | User-action mutation inputs, storage validation and SQL application; strict decoding from physical JSON and stored scalars into opaque `StoredUserActionRequest`, `StoredUserActionResolution`, and paired `StoredUserActionRecordSet` values; effective-status derivation, facade reads, and focused consistency tests. |
 | `crates/volicord-store/src/core_pipeline/continuity.rs` | Continuity mutation inputs, storage validation and SQL application; project-continuity projection, bounded snapshot pages, facade reads, and focused tests. |
 | `crates/volicord-store/src/core_pipeline/replay.rs` | Tool-invocation projection, SQL, strict replay-context decoding, immutable operation-result projection, and facade reads. |
 | `crates/volicord-store/src/core_pipeline/reconciliation.rs` | Confirmed expected-write and unrecorded-change observation candidate projections, plus current-handle unresolved-change reads used by close-readiness fact acquisition. |
@@ -123,11 +123,11 @@ product contract; use the focused Reference document for exact behavior.
 | `crates/volicord-user-action-service/src/service.rs` | Store-backed acquisition of typed construction, artifact, target, pending, and resolved authority facts without Core request orchestration. |
 | `crates/volicord-user-action-service/src/materialization.rs` | Application of caller-supplied operation identity and construction of canonical public requests and immutable resolutions. |
 | `crates/volicord-user-action-service/src/persistence.rs` | Exact typed mapping from canonical request or resolution values to Store mutation inputs. |
-| `crates/volicord-user-action-service/src/authority.rs` | Normalized authority and public request projection from Store-decoded typed records. |
+| `crates/volicord-user-action-service/src/authority.rs` | Normalized authority and public request projection from Store-validated typed records without physical persisted-row validation. |
 | `crates/volicord-user-action-service/src/lifecycle.rs` | Pure projected Task lifecycle interpretation from current pending authority facts. |
 | `crates/volicord-user-action-service/src/resolution.rs` | Current-basis validation, canonical typed resolution construction, and replay-input comparison. |
 | `crates/volicord-user-action-service/src/continuity.rs` | Semantic derivation of continuity drafts for accepted authority-bearing resolutions. |
-| `crates/volicord-user-action-service/src/projection.rs`, `summary.rs` | Adapter-neutral pending, resolution, instruction, and safe-summary facts. |
+| `crates/volicord-user-action-service/src/projection.rs`, `summary.rs` | Adapter-neutral pending, resolution, instruction, and safe-summary facts, with semantic typed-fact mismatches reported as service invariants. |
 | `crates/volicord-user-action-service/src/tests/` | Responsibility-local validation, body, identity, authority, lifecycle, materialization, persistence, resolution, continuity, and projection tests. |
 
 ## Core

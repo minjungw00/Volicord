@@ -609,11 +609,11 @@ fn plan_resolve_user_action(
         .user_action_resolution_for_channel_submission(channel_kind, &request.channel_submission_id)
         .map_err(CorePipelineError::from)?
     {
-        let exact = existing.user_action_request_id == request.user_action_request_id.as_str()
-            && existing.resolved_by_actor_source == verified_actor.actor_source
-            && existing.resolved_verification_basis.as_str() == verified_actor.verification_basis
-            && existing.resolved_assurance_level == verified_actor.assurance_level
-            && domain_resolution_input_matches_body(&request.resolution, &existing.resolution);
+        let exact = existing.user_action_request_id() == request.user_action_request_id.as_str()
+            && existing.resolved_by_actor_source() == &verified_actor.actor_source
+            && existing.resolved_verification_basis().as_str() == verified_actor.verification_basis
+            && existing.resolved_assurance_level() == verified_actor.assurance_level
+            && domain_resolution_input_matches_body(&request.resolution, existing.resolution());
         if !exact {
             return Err(PlanError::Response(Box::new(decision_rejected_response(
                 &request.envelope,
@@ -637,11 +637,11 @@ fn plan_resolve_user_action(
                 "user_action_request_id does not identify a current user action",
             )))
         })?;
-    if effective.status != UserActionStatus::Pending {
+    if effective.status() != UserActionStatus::Pending {
         return Err(PlanError::Response(Box::new(decision_rejected_response(
             &request.envelope,
             Some(project_state.state_version),
-            match effective.status {
+            match effective.status() {
                 UserActionStatus::Expired => "user action expired at or before this resolution",
                 UserActionStatus::Stale => "user action basis is stale",
                 UserActionStatus::Superseded => "user action basis is superseded",
@@ -654,7 +654,7 @@ fn plan_resolve_user_action(
         .envelope
         .task_id
         .as_ref()
-        .is_some_and(|task_id| task_id.as_str() != effective.request.task_id)
+        .is_some_and(|task_id| task_id.as_str() != effective.request().task_id())
     {
         return validation_plan_error(
             request.envelope.dry_run,
@@ -663,7 +663,7 @@ fn plan_resolve_user_action(
             "envelope.task_id must match the addressed user action Task",
         );
     }
-    let task_id = TaskId::new(effective.request.task_id.clone());
+    let task_id = TaskId::new(effective.request().task_id());
     let task = store
         .task_record(&task_id)
         .map_err(CorePipelineError::from)?
@@ -676,8 +676,8 @@ fn plan_resolve_user_action(
     let current_change_unit = store
         .current_change_unit(&task_id)
         .map_err(CorePipelineError::from)?;
-    let persisted = &effective.request.request;
-    let basis = &effective.request.basis;
+    let persisted = effective.request().request();
+    let basis = effective.request().basis();
     validate_domain_resolution_basis(
         store,
         project_state.state_version,
@@ -716,10 +716,9 @@ fn plan_resolve_user_action(
     })?;
     let materialized_resolution =
         materialize_user_action_resolution(UserActionResolutionMaterializationInput {
-            project_id: &request.envelope.project_id,
             user_action_resolution_id: resolution_id.clone(),
             user_action_request_id: &request.user_action_request_id,
-            action_kind: effective.request.action_kind,
+            action_kind: effective.request().action_kind(),
             channel_kind,
             channel_submission_id: &request.channel_submission_id,
             resolution: resolution_body.clone(),
@@ -729,14 +728,16 @@ fn plan_resolve_user_action(
             resolved_at: &now,
         })
         .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
-    let resolution_record = materialized_resolution.record;
-    let mut projected_effective = effective.clone();
-    projected_effective.status = UserActionStatus::Resolved;
-    projected_effective.resolution = Some(resolution_record.clone());
+    let projected_effective = materialized_resolution
+        .project_record_set(&effective, &now)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
+    let resolution_record = projected_effective
+        .resolution()
+        .expect("a projected resolution record set must contain its resolution");
     let planned_state_version = project_state.state_version + 1;
     let public_request = user_action_from_record(&projected_effective, planned_state_version)
         .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
-    let public_resolution = resolution_from_stored_record(&resolution_record, &task_id)
+    let public_resolution = resolution_from_stored_record(resolution_record, &task_id)
         .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let request_ref = state_ref(
         StateRecordKind::UserActionRequest,
@@ -822,7 +823,7 @@ fn plan_resolve_user_action(
             event_payload: object_from_value(json!({
                 "user_action_request_id": request.user_action_request_id,
                 "user_action_resolution_id": resolution_id,
-                "action_kind": effective.request.action_kind,
+                "action_kind": effective.request().action_kind(),
                 "channel_kind": channel_kind,
                 "channel_submission_id": request.channel_submission_id,
             }))?,

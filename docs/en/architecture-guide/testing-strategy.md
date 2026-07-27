@@ -28,7 +28,11 @@ materialization, persistence mapping, resolution, continuity, and neutral
 projection behavior. Core tests own request orchestration, generated
 identifiers and timestamps, replay, transaction sequencing, and service-error
 mapping. Store tests own physical persistence, transactions, and strict row
-decoding into typed UserAction records.
+decoding into typed UserAction records. UserAction duplicated representations,
+closed stored values, missing physical values, and request-resolution identity
+or action-kind disagreement are Store tests. Service tests use only valid
+Store-constructed records and cover semantic policy and service-owned invariant
+failures.
 
 Product Repository path tests follow the same ownership split.
 `volicord-types` tests lexical values and pure relationships without temporary

@@ -340,12 +340,12 @@ fn current_sensitive_approvals(
     for record in
         store.resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)?
     {
-        let Some(resolution) = record.resolution else {
+        let Some(resolution) = record.resolution() else {
             continue;
         };
-        let request = record.request.request;
-        let basis = record.request.basis;
-        let resolution_body = resolution.resolution;
+        let request = record.request().request();
+        let basis = record.request().basis();
+        let resolution_body = resolution.resolution();
         let accepted = matches!(
             resolution_body,
             UserActionResolutionBody::Choice {
@@ -362,7 +362,7 @@ fn current_sensitive_approvals(
         });
         if basis.compatibility_status() == UserActionBasisStatus::Current
             && accepted
-            && resolution.resolved_by_actor_source == ActorSource::LocalUser
+            && resolution.resolved_by_actor_source() == &ActorSource::LocalUser
             && request
                 .required_for
                 .contains(&UserActionRequiredFor::PrepareWrite)
@@ -370,12 +370,12 @@ fn current_sensitive_approvals(
         {
             approvals.push(CurrentSensitiveApproval {
                 identity: (
-                    resolution.project_id,
-                    record.request.task_id,
-                    resolution.user_action_resolution_id,
+                    resolution.project_id().to_owned(),
+                    record.request().task_id().to_owned(),
+                    resolution.user_action_resolution_id().to_owned(),
                 ),
-                basis,
-                required_for: request.required_for,
+                basis: basis.clone(),
+                required_for: request.required_for.clone(),
             });
         }
     }

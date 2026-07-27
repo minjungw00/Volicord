@@ -1,15 +1,12 @@
 use crate::{
     authority::user_action_from_record,
-    error::UserActionServiceError,
+    error::{UserActionInvariantError, UserActionServiceError},
     model::{
         PendingUserAction, PendingUserActionFacts, UserActionResolutionAvailability,
         UserActionResolutionFacts, UserActionResolutionFactsBody,
     },
 };
-use volicord_store::{
-    core_pipeline::{EffectiveUserActionRecord, ProjectStateHeader},
-    StoreError,
-};
+use volicord_store::core_pipeline::{ProjectStateHeader, StoredUserActionRecordSet};
 use volicord_types::{
     ids::{ProjectId, TaskId},
     schema::{
@@ -24,7 +21,7 @@ pub fn pending_user_action_facts_from_records(
     task_id: TaskId,
     project_state: ProjectStateHeader,
     observed_at: UtcTimestamp,
-    records: Vec<EffectiveUserActionRecord>,
+    records: Vec<StoredUserActionRecordSet>,
 ) -> Result<PendingUserActionFacts, UserActionServiceError> {
     let actions = records
         .iter()
@@ -40,7 +37,7 @@ pub fn pending_user_action_facts_from_records(
                 ),
                 request,
                 resolution_availability: UserActionResolutionAvailability::from_status(
-                    record.status,
+                    record.status(),
                 ),
             })
         })
@@ -66,14 +63,14 @@ pub fn user_action_resolution_facts(
             ..
         } => {
             let UserActionRequestBody::Choice(choice) = &request.body else {
-                return Err(corrupt_resolution(resolution));
+                return Err(invalid_resolution_projection());
             };
             let selected_option_label = choice
                 .options
                 .iter()
                 .find(|option| option.option_id == *selected_option_id)
                 .map(|option| option.label.clone())
-                .ok_or_else(|| corrupt_resolution(resolution))?;
+                .ok_or_else(invalid_resolution_projection)?;
             UserActionResolutionFactsBody::Choice {
                 selected_option_id: selected_option_id.clone(),
                 selected_option_label,
@@ -83,7 +80,7 @@ pub fn user_action_resolution_facts(
         }
         UserActionResolutionBody::EvidenceObservation { observation } => {
             if !matches!(request.body, UserActionRequestBody::EvidenceObservation(_)) {
-                return Err(corrupt_resolution(resolution));
+                return Err(invalid_resolution_projection());
             }
             UserActionResolutionFactsBody::EvidenceObservation {
                 target: observation.target.clone(),
@@ -102,10 +99,6 @@ pub fn user_action_resolution_facts(
     })
 }
 
-fn corrupt_resolution(resolution: &UserActionResolution) -> UserActionServiceError {
-    UserActionServiceError::CorruptStoredState(StoreError::corrupt_owner_state_value(
-        "user_action_resolutions",
-        resolution.user_action_resolution_id.as_str(),
-        "resolution_json",
-    ))
+fn invalid_resolution_projection() -> UserActionServiceError {
+    UserActionServiceError::Invariant(UserActionInvariantError::ActionFactsMismatch)
 }

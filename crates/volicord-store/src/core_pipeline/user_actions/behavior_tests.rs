@@ -1762,6 +1762,253 @@ fn effective_user_action_read_enforces_requested_at_lower_bound() -> Result<(), 
     Ok(())
 }
 
+#[test]
+fn validated_user_action_record_set_construction_enforces_store_invariants(
+) -> Result<(), Box<dyn Error>> {
+    let request = user_action_request_insert("action_constructed", "task_constructed", None);
+    let pending = super::StoredUserActionRecordSet::from_pending_insert(PROJECT_ID, &request)?;
+
+    assert_eq!(pending.status(), UserActionStatus::Pending);
+    assert_eq!(
+        pending.request().user_action_request_id(),
+        "action_constructed"
+    );
+    assert!(pending.resolution().is_none());
+
+    let resolution = user_action_resolution_insert("resolution_constructed", "action_constructed");
+    assert!(matches!(
+        pending.with_resolution(&resolution, &UtcTimestamp::parse("2026-01-01T00:09:00Z")?),
+        Err(StoreError::InvalidInput { .. })
+    ));
+    let resolved =
+        pending.with_resolution(&resolution, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?;
+    assert_eq!(resolved.status(), UserActionStatus::Resolved);
+    assert_eq!(
+        resolved
+            .resolution()
+            .expect("validated resolution must be present")
+            .user_action_request_id(),
+        "action_constructed"
+    );
+
+    let mut invalid = request;
+    invalid.action_kind = UserActionKind::TechnicalDecision;
+    assert!(matches!(
+        super::StoredUserActionRecordSet::from_pending_insert(PROJECT_ID, &invalid),
+        Err(StoreError::InvalidInput { .. })
+    ));
+    Ok(())
+}
+
+#[test]
+fn stored_user_action_request_rejects_duplicated_representation_disagreement(
+) -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let task_id = "task_request_representation_disagreement";
+    let request_ids = [
+        "action_kind_disagreement",
+        "action_basis_status_disagreement",
+        "action_expiration_disagreement",
+        "action_unknown_basis_status",
+    ];
+    store.commit_with(
+        commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RequestUserAction,
+            Some(&IdempotencyKey::new(
+                "idem_request_representation_disagreement",
+            )),
+            &RequestHash::new("sha256:request-representation-disagreement"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task(
+                "request_representation_disagreement",
+                task_id,
+            )],
+        ),
+        |mutation, facts| {
+            CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            for request_id in request_ids {
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(request_id, task_id, None),
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            }
+            Ok(())
+        },
+        response_json,
+    )?;
+
+    store
+        .conn
+        .pragma_update(None, "ignore_check_constraints", true)?;
+    store.conn.execute(
+        "UPDATE user_action_requests
+            SET action_kind = 'technical_decision'
+          WHERE project_id = ?1 AND user_action_request_id = ?2",
+        params![PROJECT_ID, request_ids[0]],
+    )?;
+    store.conn.execute(
+        "UPDATE user_action_requests
+            SET basis_status = 'stale'
+          WHERE project_id = ?1 AND user_action_request_id = ?2",
+        params![PROJECT_ID, request_ids[1]],
+    )?;
+    store.conn.execute(
+        "UPDATE user_action_requests
+            SET expires_at = '2026-01-01T00:10:00Z'
+          WHERE project_id = ?1 AND user_action_request_id = ?2",
+        params![PROJECT_ID, request_ids[2]],
+    )?;
+    store.conn.execute(
+        "UPDATE user_action_requests
+            SET basis_status = 'unknown'
+          WHERE project_id = ?1 AND user_action_request_id = ?2",
+        params![PROJECT_ID, request_ids[3]],
+    )?;
+
+    for (request_id, expected_column) in [
+        (request_ids[0], "request_json"),
+        (request_ids[1], "basis_json"),
+        (request_ids[2], "request_json"),
+        (request_ids[3], "basis_status"),
+    ] {
+        let error = store
+            .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:05:00Z")?)
+            .expect_err("contradictory persisted request representations must not cross Store");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_requests",
+                logical_column,
+                ..
+            } if logical_column == expected_column
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn stored_user_action_resolution_rejects_malformed_and_unpaired_representations(
+) -> Result<(), Box<dyn Error>> {
+    let harness = StoreHarness::new()?;
+    let mut store = harness.store()?;
+    let task_id = "task_resolution_representation_disagreement";
+    let request_ids = [
+        "action_malformed_resolution",
+        "action_resolution_kind_disagreement",
+        "action_orphaned_resolution",
+    ];
+    let resolution_ids = [
+        "resolution_malformed",
+        "resolution_kind_disagreement",
+        "resolution_orphaned",
+    ];
+    store.commit_with(
+        commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::RequestUserAction,
+            Some(&IdempotencyKey::new(
+                "idem_resolution_representation_requests",
+            )),
+            &RequestHash::new("sha256:resolution-representation-requests"),
+            Some(replay_context(CONNECTION_ID, "agent_workflow")),
+            Some(0),
+            vec![pending_event_for_task(
+                "resolution_representation_requests",
+                task_id,
+            )],
+        ),
+        |mutation, facts| {
+            CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            for request_id in request_ids {
+                CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
+                    user_action_request_insert(request_id, task_id, None),
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            }
+            Ok(())
+        },
+        response_json,
+    )?;
+    store.commit_with(
+        commit_input(
+            &ProjectId::new(PROJECT_ID),
+            MethodName::ResolveUserAction,
+            Some(&IdempotencyKey::new(
+                "idem_resolution_representation_resolutions",
+            )),
+            &RequestHash::new("sha256:resolution-representation-resolutions"),
+            Some(user_replay_context()),
+            Some(1),
+            vec![pending_event_for_task(
+                "resolution_representation_resolutions",
+                task_id,
+            )],
+        ),
+        |mutation, facts| {
+            for (resolution_id, request_id) in resolution_ids.into_iter().zip(request_ids) {
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                    user_action_resolution_insert(resolution_id, request_id),
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())?;
+            }
+            Ok(())
+        },
+        response_json,
+    )?;
+
+    store.conn.pragma_update(None, "foreign_keys", false)?;
+    store
+        .conn
+        .pragma_update(None, "ignore_check_constraints", true)?;
+    store.conn.execute(
+        "UPDATE user_action_resolutions
+            SET resolution_json = 'not-json'
+          WHERE project_id = ?1 AND user_action_resolution_id = ?2",
+        params![PROJECT_ID, resolution_ids[0]],
+    )?;
+    store.conn.execute(
+        "UPDATE user_action_resolutions
+            SET action_kind = 'technical_decision'
+          WHERE project_id = ?1 AND user_action_resolution_id = ?2",
+        params![PROJECT_ID, resolution_ids[1]],
+    )?;
+    store.conn.execute(
+        "UPDATE user_action_resolutions
+            SET user_action_request_id = 'action_missing'
+          WHERE project_id = ?1 AND user_action_resolution_id = ?2",
+        params![PROJECT_ID, resolution_ids[2]],
+    )?;
+
+    for (resolution_id, expected_column) in [
+        (resolution_ids[0], "resolution_json"),
+        (resolution_ids[1], "action_kind"),
+        (resolution_ids[2], "user_action_request_id"),
+    ] {
+        let error = store
+            .user_action_resolution_record(resolution_id)
+            .expect_err("invalid persisted resolution representations must not cross Store");
+        assert!(matches!(
+            error,
+            StoreError::CorruptOwnerStateValue {
+                table: "user_action_resolutions",
+                logical_column,
+                ..
+            } if logical_column == expected_column
+        ));
+    }
+    Ok(())
+}
+
 fn user_action_request_insert(
     request_id: &str,
     task_id: &str,

@@ -5,7 +5,7 @@ use crate::{
 };
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, TaskRecord, UserActionResolutionRecord, UserActionStoreReader,
+    ChangeUnitRecord, StoredUserActionResolution, TaskRecord, UserActionStoreReader,
 };
 use volicord_types::{
     ids::{
@@ -207,24 +207,22 @@ pub fn construct_user_action_resolution(
 }
 
 pub fn user_action_resolution_from_record(
-    record: &UserActionResolutionRecord,
+    record: &StoredUserActionResolution,
     task_id: &TaskId,
 ) -> Result<UserActionResolution, UserActionServiceError> {
     Ok(UserActionResolution {
-        user_action_resolution_id: UserActionResolutionId::new(
-            record.user_action_resolution_id.clone(),
-        ),
-        user_action_request_id: UserActionRequestId::new(record.user_action_request_id.clone()),
-        project_id: ProjectId::new(record.project_id.clone()),
+        user_action_resolution_id: UserActionResolutionId::new(record.user_action_resolution_id()),
+        user_action_request_id: UserActionRequestId::new(record.user_action_request_id()),
+        project_id: ProjectId::new(record.project_id()),
         task_id: task_id.clone(),
-        action_kind: record.action_kind,
-        body: record.resolution.clone(),
-        resolved_by_actor_source: record.resolved_by_actor_source.clone(),
-        resolved_verification_basis: record.resolved_verification_basis,
-        resolved_assurance_level: record.resolved_assurance_level.clone(),
-        channel_kind: record.channel_kind,
-        channel_submission_id: record.channel_submission_id.clone(),
-        resolved_at: record.resolved_at.clone(),
+        action_kind: record.action_kind(),
+        body: record.resolution().clone(),
+        resolved_by_actor_source: record.resolved_by_actor_source().clone(),
+        resolved_verification_basis: record.resolved_verification_basis(),
+        resolved_assurance_level: record.resolved_assurance_level().to_owned(),
+        channel_kind: record.channel_kind(),
+        channel_submission_id: record.channel_submission_id().to_owned(),
+        resolved_at: record.resolved_at().clone(),
     })
 }
 

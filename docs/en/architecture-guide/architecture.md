@@ -125,12 +125,12 @@ Each current workspace package has one responsibility entry in the root Cargo me
 | `volicord-platform-process` | `platform-process` | infrastructure | production | neutral | Platform child-process containment, termination, and pipe-readiness primitives. |
 | `volicord-release-integrity-tests` | `release-integrity` | validation | non-production | neutral | Release packaging, version, canonical-byte, checksum, and workflow integrity validation. |
 | `volicord-release-smoke` | `release-smoke` | validation | non-production | neutral | Cross-platform actual-binary release smoke orchestration and transcript validation. |
-| `volicord-store` | `storage` | infrastructure | production | Core-facing | Canonical persistence, Runtime Home mechanics, strict decoding, and transaction application. |
+| `volicord-store` | `storage` | infrastructure | production | Core-facing | Canonical persistence, Runtime Home mechanics, strict persisted-row decoding into invariant-preserving typed records, and transaction application. |
 | `volicord-test-process` | `test-process` | test support | non-production | neutral | Reusable bounded process execution and cleanup for tests and smoke harnesses. |
 | `volicord-test-support` | `test-support` | test support | non-production | neutral | Reusable disposable Runtime Home, Store, Core request, and Agent Connection fixtures. |
 | `volicord-types` | `shared-types` | schema | production | Core-facing | Dependency-safe shared schemas, identifiers, closed values, canonical encodings, platform-neutral path values, and adapter-neutral domain facts. |
 | `volicord-user-action-presentation` | `user-action-presentation` | presentation | production | adapter | Typed CLI UserAction presentation, JSON Schemas, and command-model-backed recovery instructions. |
-| `volicord-user-action-service` | `user-action-service` | application | production | Core-facing | UserAction validation, authority, lifecycle, persistence mapping, resolution, continuity, and semantic projection. |
+| `volicord-user-action-service` | `user-action-service` | application | production | Core-facing | Semantic UserAction validation, authority, lifecycle, persistence mapping, resolution, continuity, and projection from Store-validated typed records. |
 | `xtask` | `repository-validation` | validation | non-production | neutral | Repository architecture, documentation, protocol fixture, and release metadata validation and synchronization. |
 
 ### Allowed internal dependency directions
@@ -184,8 +184,13 @@ adapter-neutral projections and summaries. The crate accepts explicit semantic
 construction and persistence contexts, returns typed service errors and facts,
 and depends on Store and shared types without depending on Core or adapters.
 Its Store dependency is the focused `UserActionStoreReader` typed read
-capability; physical row and serialized-value representations remain private
-to Store.
+capability. Store returns invariant-preserving `StoredUserActionRequest`,
+`StoredUserActionResolution`, and `StoredUserActionRecordSet` values with
+private fields and typed semantic accessors. Physical row and serialized-value
+representations, duplicated-column checks, request-resolution pairing, and
+persisted corruption diagnostics remain private to Store. The service
+evaluates semantic policy from those records and reports service-owned
+invariant failures for inconsistent valid typed facts.
 
 `crates/volicord-core/src/methods/user_action.rs`,
 `user_action_read.rs`, and `user_action_continuity.rs` own request

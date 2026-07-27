@@ -27,9 +27,12 @@ results participate in their own method plans and responses.
 Store's `core_pipeline/user_actions.rs` owns effective-status reads, coherent
 inbox resolution snapshots, immutable resolution insertion, grouped mutation
 application, and focused decoding from physical JSON and stored values into
-typed request and resolution records. Its raw row representations remain
-private. The service consumes the focused `UserActionStoreReader` typed read
-capability instead of the full project Store facade or serialized values.
+opaque `StoredUserActionRequest`, `StoredUserActionResolution`, and paired
+`StoredUserActionRecordSet` values. Store validates duplicated representations,
+closed persisted values, and request-resolution relationships before returning
+them. Its raw row representations and corruption construction remain private.
+The service consumes the focused `UserActionStoreReader` typed read capability
+instead of the full project Store facade or serialized values.
 
 The MCP adapter calls the request/resume path, rereads
 `CurrentUserActionFacts`, and constructs its own safe protocol projection. The
@@ -59,6 +62,10 @@ Schema, and recovery instruction. Its commands come from a typed
 - The local inbox reads one coherent Store snapshot before planning
   resolution.
 - Resolution replay cannot fork immutable authority state.
+- An invalid persisted UserAction record cannot be assembled through the
+  normal public Store record API.
+- The service evaluates semantic policy from Store-validated typed records and
+  does not reconstruct persisted-row consistency.
 
 ## Responsibility boundaries
 
@@ -70,8 +77,10 @@ only on shared types, Store, and focused utility libraries. Core allocates
 current IDs and timestamps, verifies invocation context, invokes the service,
 participates in the Store mutation pipeline, and maps service errors and
 results into request-specific responses. Store owns physical persistence,
-strict row decoding, and snapshot consistency. The command model owns
-canonical CLI invocation construction.
+strict row decoding, persisted-record consistency, validated record-set
+construction, and snapshot consistency. Service-owned invariant errors keep
+valid typed-fact inconsistencies distinct from Store corruption. The command
+model owns canonical CLI invocation construction.
 `volicord-user-action-presentation` owns the typed `Cli*` projection and CLI
 JSON Schemas. CLI owns direct typed terminal rendering; MCP owns the bounded
 protocol projection and adapter-specific failure mapping.
@@ -86,8 +95,8 @@ protocol projection and adapter-specific failure mapping.
    readers.
 4. Pure body construction produces the canonical typed request body and basis.
 5. Core supplies the durable request ID and operation identity. Service
-   identity and materialization return a typed public request, effective Store
-   record, and mutation plan.
+   identity and materialization return a typed public request, validated Store
+   record set, and mutation plan.
 6. The calling method decides how that result participates in its operation and
    response, or returns the explicit resume projection.
 7. Store persists the request with the normal Core commit.
@@ -108,7 +117,10 @@ protocol projection and adapter-specific failure mapping.
 Malformed stored variants, missing basis or form, stale coordinates, expiry,
 existing conflicting resolution, invalid choice, or provenance mismatch fails
 without partial derived state. Read-only status calculation does not mutate a
-record merely because time has advanced.
+record merely because time has advanced. Store reports physical persisted-row
+or pairing failures as corruption. A semantic projection mismatch among valid
+typed facts is a service invariant failure and carries no table or column
+identity.
 
 ## Scope exclusions
 

@@ -1542,7 +1542,7 @@ fn pending_refs_after_record_run_invalidation(
             .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
         if record
             .as_ref()
-            .is_some_and(|record| invalidated_kinds.contains(&record.request.action_kind))
+            .is_some_and(|record| invalidated_kinds.contains(&record.request().action_kind()))
         {
             continue;
         }
@@ -2419,7 +2419,7 @@ fn derive_user_observation_authority(
         };
         let Some(action_record) = context
             .store
-            .user_action_record(&resolution_record.user_action_request_id, context.now)
+            .user_action_record(resolution_record.user_action_request_id(), context.now)
             .map_err(CorePipelineError::from)?
         else {
             continue;
@@ -2440,7 +2440,7 @@ fn derive_user_observation_authority(
         };
         let producer_ref = state_ref(
             StateRecordKind::UserActionResolution,
-            &resolution_record.user_action_resolution_id,
+            resolution_record.user_action_resolution_id(),
             &context.request.envelope.project_id,
             Some(&context.request.task_id),
             Some(context.project_state.state_version),
@@ -2455,7 +2455,7 @@ fn derive_user_observation_authority(
                 output_artifact_refs: output_artifact_refs.to_vec(),
                 verification_basis: Some(
                     resolution_record
-                        .resolved_verification_basis
+                        .resolved_verification_basis()
                         .as_str()
                         .to_owned(),
                 )

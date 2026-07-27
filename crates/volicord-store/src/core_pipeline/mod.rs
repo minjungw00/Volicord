@@ -143,9 +143,10 @@ pub use tasks::{
 };
 pub use user_action_reader::UserActionStoreReader;
 pub use user_actions::{
-    effective_user_action_status, EffectiveUserActionRecord, UserActionBasisStatusMark,
-    UserActionBasisUpdate, UserActionInvalidation, UserActionMutation, UserActionRequestInsert,
-    UserActionRequestRecord, UserActionResolutionInsert, UserActionResolutionRecord,
+    effective_user_action_status, StoredUserActionRecordSet, StoredUserActionRequest,
+    StoredUserActionResolution, UserActionBasisStatusMark, UserActionBasisUpdate,
+    UserActionInvalidation, UserActionMutation, UserActionRequestInsert,
+    UserActionResolutionInsert,
 };
 pub use write_tickets::{
     WriteTicketByIdInvalidation, WriteTicketConsumption, WriteTicketInsert,

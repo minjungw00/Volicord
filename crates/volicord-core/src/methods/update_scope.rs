@@ -1086,7 +1086,7 @@ fn validate_related_scope_decisions(
                 )))
             })?;
         let record = store
-            .user_action_record(&resolution.user_action_request_id, now)
+            .user_action_record(resolution.user_action_request_id(), now)
             .map_err(CorePipelineError::from)?
             .ok_or_else(|| {
                 PlanError::Response(Box::new(decision_rejected_response(

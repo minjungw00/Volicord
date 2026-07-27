@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use volicord_command_model::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
 use volicord_core::{CorePipelineError, CoreService, InvocationContext, PipelineResponse};
 use volicord_store::{
-    core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
+    core_pipeline::{CoreProjectStore, StoredUserActionRecordSet},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
     runtime_home::{resolve_runtime_home, RuntimeHomeResolutionError},
     RuntimeHomeMutationContext, StoreError,
@@ -157,7 +157,7 @@ struct ResolvedUserProject {
 
 pub(crate) struct UserActionResolutionRecordingInput<'a> {
     pub project_id: &'a str,
-    pub record: &'a EffectiveUserActionRecord,
+    pub record: &'a StoredUserActionRecordSet,
     pub resolution: UserActionResolutionInput,
     pub request_id: Option<String>,
     pub channel_submission_id: Option<String>,
@@ -404,7 +404,7 @@ fn command_inbox_resolve_admitted(
         }
         UserActionResolutionAvailability::Unavailable(
             UserActionResolutionUnavailableReason::AlreadyResolved,
-        ) if snapshot.record.resolution.is_some() => {
+        ) if snapshot.record.resolution().is_some() => {
             resolution_from_immutable_request(&snapshot.record, parsed)?
         }
         UserActionResolutionAvailability::Unavailable(reason) => {
@@ -458,10 +458,10 @@ fn cli_resolution_unavailable_error(
 }
 
 fn resolution_from_immutable_request(
-    record: &EffectiveUserActionRecord,
+    record: &StoredUserActionRecordSet,
     parsed: &ParsedInboxOptions,
 ) -> Result<UserActionResolutionInput, UserCommandError> {
-    let request = &record.request.request;
+    let request = record.request().request();
     let form = request.body.resolution_form().map_err(|error| {
         UserCommandError::Runtime(format!(
             "invalid immutable user-action request for replay: {error}"
@@ -703,10 +703,10 @@ pub(crate) fn resolve_user_action_from_record(
     context: &RuntimeHomeMutationContext<'_>,
     input: UserActionResolutionRecordingInput<'_>,
 ) -> Result<PipelineResponse, UserCommandError> {
-    if input.record.status != UserActionStatus::Pending && input.channel_submission_id.is_none() {
+    if input.record.status() != UserActionStatus::Pending && input.channel_submission_id.is_none() {
         return Err(UserCommandError::Runtime(format!(
             "selected user action is not pending (status: {}); refresh `volicord inbox`",
-            input.record.status.as_str()
+            input.record.status().as_str()
         )));
     }
     let request_id = input
@@ -726,12 +726,12 @@ pub(crate) fn resolve_user_action_from_record(
             ResolveUserActionRequest {
                 envelope: envelope(
                     input.project_id,
-                    Some(&input.record.request.task_id),
+                    Some(input.record.request().task_id()),
                     request_id,
                     Some(channel_submission_id.clone()),
                 ),
                 user_action_request_id: UserActionRequestId::new(
-                    &input.record.request.user_action_request_id,
+                    input.record.request().user_action_request_id(),
                 ),
                 channel_submission_id,
                 resolution: input.resolution,

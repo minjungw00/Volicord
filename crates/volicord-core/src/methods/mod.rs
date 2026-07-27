@@ -42,10 +42,10 @@ use volicord_store::{
     },
     core_pipeline::{
         AcceptanceCriterionRecord, ChangeUnitInsert, ChangeUnitRecord, ChangeUnitStatus,
-        ContinuityMutation, CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
-        ProjectContinuityRecordInsert, ProjectContinuityRecordRecord, ProjectStateHeader,
-        StoredArtifactRecord, StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary,
-        StoredChangeUnitWriteBasis, StoredRecordRef, TaskMutation, TaskRecord, TaskScopeUpdate,
+        ContinuityMutation, CoreProjectStore, CoreStorageMutation, ProjectContinuityRecordInsert,
+        ProjectContinuityRecordRecord, ProjectStateHeader, StoredArtifactRecord,
+        StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis,
+        StoredRecordRef, StoredUserActionRecordSet, TaskMutation, TaskRecord, TaskScopeUpdate,
         WriteTicketRecord,
     },
     diagnostics::{record_workflow_metric_event, WorkflowMetricEvent, WorkflowMetricKind},
@@ -1353,7 +1353,7 @@ struct SensitiveApprovalSearch<'a> {
 
 fn matching_sensitive_approval(
     search: SensitiveApprovalSearch<'_>,
-) -> Result<Option<EffectiveUserActionRecord>, PlanError> {
+) -> Result<Option<StoredUserActionRecordSet>, PlanError> {
     let SensitiveApprovalSearch {
         store,
         project_state,

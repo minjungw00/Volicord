@@ -908,7 +908,7 @@ pub(super) fn stored_action_record(
     fixture: &CoreFixture,
     task_id: &str,
     response: &Value,
-) -> Result<volicord_store::core_pipeline::EffectiveUserActionRecord, Box<dyn Error>> {
+) -> Result<volicord_store::core_pipeline::StoredUserActionRecordSet, Box<dyn Error>> {
     let request_id = response
         .pointer("/agent_workflow_result/user_action_request_summary/user_action_request_id")
         .or_else(|| response.pointer("/user_action_request_summary/user_action_request_id"))
@@ -923,7 +923,7 @@ pub(super) fn stored_action_record(
     let record = store
         .user_action_records_for_task(&volicord_types::ids::TaskId::new(task_id), &now)?
         .into_iter()
-        .find(|record| record.request.user_action_request_id == request_id)
+        .find(|record| record.request().user_action_request_id() == request_id)
         .ok_or("stored user-action record should exist")?;
     Ok(record)
 }

@@ -1,27 +1,19 @@
 use crate::{error::UserActionServiceError, model::UserActionAuthority};
-use volicord_store::{core_pipeline::EffectiveUserActionRecord, StoreError};
+use volicord_store::core_pipeline::StoredUserActionRecordSet;
 use volicord_types::{
     ids::{ChangeUnitId, ProjectId, TaskId, UserActionRequestId},
     schema::{StateRecordRef, UserActionRequest, UserActionResolutionBody},
-    values::{StateRecordKind, UserActionStatus},
+    values::StateRecordKind,
 };
 
 /// Decodes one effective stored record into normalized UserAction authority facts.
 pub fn user_action_authority_from_record(
-    record: &EffectiveUserActionRecord,
+    record: &StoredUserActionRecordSet,
 ) -> Result<UserActionAuthority, UserActionServiceError> {
-    validate_request_record(record)?;
+    let request = record.request();
     let resolution = record
-        .resolution
-        .as_ref()
-        .map(|resolution| resolution.resolution.clone());
-    if record.status == UserActionStatus::Resolved && resolution.is_none() {
-        return Err(corrupt_value(
-            "user_action_requests",
-            &record.request.user_action_request_id,
-            "resolution",
-        ));
-    }
+        .resolution()
+        .map(|resolution| resolution.resolution().clone());
     let (machine_action, resolution_outcome) = match resolution.as_ref() {
         Some(UserActionResolutionBody::Choice {
             machine_action,
@@ -31,34 +23,30 @@ pub fn user_action_authority_from_record(
         _ => (None, None),
     };
     Ok(UserActionAuthority {
-        user_action_request_id: record.request.user_action_request_id.clone(),
+        user_action_request_id: request.user_action_request_id().to_owned(),
         user_action_resolution_id: record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.user_action_resolution_id.clone()),
-        task_id: TaskId::new(record.request.task_id.clone()),
-        action_kind: record.request.action_kind,
-        status: record.status,
-        required_for: record.request.request.required_for.clone(),
-        affected_refs: record.request.request.body.affected_refs().to_vec(),
+            .resolution()
+            .map(|resolution| resolution.user_action_resolution_id().to_owned()),
+        task_id: TaskId::new(request.task_id()),
+        action_kind: request.action_kind(),
+        status: record.status(),
+        required_for: request.request().required_for.clone(),
+        affected_refs: request.request().body.affected_refs().to_vec(),
         machine_action,
         resolution_outcome,
         resolved_by_actor_source: record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.resolved_by_actor_source.clone()),
+            .resolution()
+            .map(|resolution| resolution.resolved_by_actor_source().clone()),
         resolved_verification_basis: record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.resolved_verification_basis),
+            .resolution()
+            .map(|resolution| resolution.resolved_verification_basis()),
         resolved_assurance_level: record
-            .resolution
-            .as_ref()
-            .map(|resolution| resolution.resolved_assurance_level.clone()),
-        basis_status: record.request.basis_status,
-        basis: Some(record.request.basis.clone()),
+            .resolution()
+            .map(|resolution| resolution.resolved_assurance_level().to_owned()),
+        basis_status: request.basis_status(),
+        basis: Some(request.basis().clone()),
         resolution,
-        expires_at: record.request.request.expires_at.as_ref().cloned(),
+        expires_at: request.request().expires_at.as_ref().cloned(),
     })
 }
 
@@ -86,95 +74,36 @@ pub fn user_action_authority_from_state(request: &UserActionRequest) -> UserActi
 
 /// Projects one typed effective Store record into its public request shape.
 pub fn user_action_from_record(
-    record: &EffectiveUserActionRecord,
+    record: &StoredUserActionRecordSet,
     state_version: u64,
 ) -> Result<UserActionRequest, UserActionServiceError> {
-    validate_request_record(record)?;
-    let project_id = ProjectId::new(record.request.project_id.clone());
-    let task_id = TaskId::new(record.request.task_id.clone());
-    let resolution_ref = record.resolution.as_ref().map(|resolution| {
+    let stored_request = record.request();
+    let project_id = ProjectId::new(stored_request.project_id());
+    let task_id = TaskId::new(stored_request.task_id());
+    let resolution_ref = record.resolution().map(|resolution| {
         StateRecordRef::new(
             StateRecordKind::UserActionResolution,
-            resolution.user_action_resolution_id.clone(),
+            resolution.user_action_resolution_id(),
             project_id.clone(),
             Some(task_id.clone()),
             Some(state_version),
         )
     });
     Ok(UserActionRequest {
-        user_action_request_id: UserActionRequestId::new(
-            record.request.user_action_request_id.clone(),
-        ),
+        user_action_request_id: UserActionRequestId::new(stored_request.user_action_request_id()),
         project_id,
         task_id,
-        change_unit_id: record
-            .request
-            .change_unit_id
-            .clone()
+        change_unit_id: stored_request
+            .change_unit_id()
             .map(ChangeUnitId::new)
             .into(),
-        action_kind: record.request.action_kind,
-        status: record.status,
-        body: record.request.request.body.clone(),
-        basis: record.request.basis.clone(),
-        required_for: record.request.request.required_for.clone(),
+        action_kind: stored_request.action_kind(),
+        status: record.status(),
+        body: stored_request.request().body.clone(),
+        basis: stored_request.basis().clone(),
+        required_for: stored_request.request().required_for.clone(),
         user_action_resolution_ref: resolution_ref.into(),
-        expires_at: record.request.request.expires_at.clone(),
-        created_at: record.request.requested_at.clone(),
+        expires_at: stored_request.request().expires_at.clone(),
+        created_at: stored_request.requested_at().clone(),
     })
-}
-
-fn validate_request_record(
-    record: &EffectiveUserActionRecord,
-) -> Result<(), UserActionServiceError> {
-    if record.request.request.body.action_kind() != record.request.action_kind
-        || record.request.basis.compatibility_status() != record.request.basis_status
-        || record.request.request.required_for != record.request.required_for
-        || record.request.request.expires_at.as_ref() != record.request.expires_at.as_ref()
-    {
-        return Err(corrupt_json(
-            "user_action_requests",
-            &record.request.user_action_request_id,
-            "request_json",
-        ));
-    }
-    if record
-        .resolution
-        .as_ref()
-        .is_some_and(|resolution| resolution.action_kind != record.request.action_kind)
-    {
-        return Err(corrupt_value(
-            "user_action_resolutions",
-            record
-                .resolution
-                .as_ref()
-                .map_or("", |resolution| &resolution.user_action_resolution_id),
-            "action_kind",
-        ));
-    }
-    Ok(())
-}
-
-fn corrupt_json(
-    table: &'static str,
-    record_ref: &str,
-    logical_column: &'static str,
-) -> UserActionServiceError {
-    UserActionServiceError::CorruptStoredState(StoreError::corrupt_owner_state_json(
-        table,
-        record_ref,
-        logical_column,
-    ))
-}
-
-fn corrupt_value(
-    table: &'static str,
-    record_ref: &str,
-    logical_column: &'static str,
-) -> UserActionServiceError {
-    UserActionServiceError::CorruptStoredState(StoreError::corrupt_owner_state_value(
-        table,
-        record_ref,
-        logical_column,
-    ))
 }

@@ -1710,7 +1710,6 @@ name = "volicord-user-action-service"
 version = "0.9.1"
 dependencies = [
  "chrono",
- "serde",
  "serde_json",
  "volicord-store",
  "volicord-test-support",

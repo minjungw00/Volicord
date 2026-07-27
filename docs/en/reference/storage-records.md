@@ -402,15 +402,28 @@ lengths and non-hex values are invalid on write and corrupt on read.
 capture time.
 
 Store validates the complete typed request and resolution on both write and
-read. It rejects:
+read. `StoredUserActionRequest`, `StoredUserActionResolution`, and
+`StoredUserActionRecordSet` carry the validated boundary. Their
+invariant-bearing fields are private; public typed accessors expose semantic
+facts without permitting callers to assemble a contradictory persisted
+record. Store rejects:
 
 - unknown or mixed union tags and extra fields;
 - missing kind-specific fields;
 - an `action_kind` inconsistent with the request body;
+- a basis, `required_for`, or expiry duplicated representation that disagrees
+  with the closed request;
 - option or evidence selections outside the stored candidates;
 - a non-CLI channel or non-local-user provenance;
 - invalid limits, timestamps, refs, or submission identity; and
-- a resolution whose request, project, Task, or current basis does not match.
+- a resolution whose request identity, action kind, project, Task, or current
+  basis does not match.
+
+Reads that need a request and resolution together return one validated
+`StoredUserActionRecordSet`. The normal public Store API cannot return or
+construct an invalid set. A canonical typed in-memory projection used before
+commit passes the same Store-owned consistency checks and does not expose an
+unchecked constructor.
 
 A malformed stored value is `Corrupt` with the persisted-data machine-readable
 code. It is not defaulted, silently skipped, repaired from another column, or
@@ -554,6 +567,12 @@ produces the typed persisted-data `Corrupt` failure; it is not reinterpreted
 through an empty value, a default, or another column. Semantic metadata remains
 typed through service and Core code, and Store performs its single
 serialization at the SQLite boundary.
+
+The UserAction service consumes these validated typed records and evaluates
+semantic authority, lifecycle, resolution, and projection policy. It neither
+re-decodes persisted representations nor constructs Store corruption
+diagnostics. A service invariant involving valid typed facts remains distinct
+from persisted-record corruption.
 
 Metadata explicitly classified as non-authority remains non-authority. It cannot
 create user judgment, evidence assurance, acceptance, Write Ticket authority,

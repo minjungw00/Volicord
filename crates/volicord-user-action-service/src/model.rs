@@ -1,5 +1,5 @@
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, EffectiveUserActionRecord, TaskRecord, UserActionStoreReader,
+    ChangeUnitRecord, StoredUserActionRecordSet, TaskRecord, UserActionStoreReader,
 };
 use volicord_types::ids::{
     ChangeUnitId, IdempotencyKey, ProjectId, RiskId, TaskId, UserActionOptionId,
@@ -255,7 +255,7 @@ pub struct PendingUserActionResolutionSnapshot {
     pub project_id: ProjectId,
     pub observed_state_version: u64,
     pub observed_at: UtcTimestamp,
-    pub record: EffectiveUserActionRecord,
+    pub record: StoredUserActionRecordSet,
     pub resolution_availability: UserActionResolutionAvailability,
     pub pending_actions: Option<PendingUserActionFacts>,
 }

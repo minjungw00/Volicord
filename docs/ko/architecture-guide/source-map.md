@@ -91,7 +91,7 @@
 | `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation 입력, 저장 검증과 SQL 적용, Run 및 observed-change projection, 엄격한 decoding, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/evidence.rs` | 증거 mutation 입력, 저장 검증과 SQL 적용, 증거 요약 및 관찰 projection, 엄격한 row decoding, record reference projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact mutation 입력, 저장 검증과 SQL 적용, staging 및 영속 artifact projection, 엄격한 decoding, link 읽기, 영속 본문 검증, facade 읽기, 집중 테스트. |
-| `crates/volicord-store/src/core_pipeline/user_actions.rs` | User Action mutation 입력, 저장 검증과 SQL 적용, 물리 JSON 및 저장 scalar에서 typed 요청·해결 레코드로의 엄격한 decoding, 유효 상태 파생, facade 읽기, 집중 테스트. |
+| `crates/volicord-store/src/core_pipeline/user_actions.rs` | User Action mutation 입력, 저장 검증과 SQL 적용, 물리 JSON 및 저장 scalar에서 opaque `StoredUserActionRequest`, `StoredUserActionResolution`, paired `StoredUserActionRecordSet` 값으로의 엄격한 decoding, 유효 상태 파생, facade 읽기, 집중 일관성 테스트. |
 | `crates/volicord-store/src/core_pipeline/continuity.rs` | Continuity mutation 입력, 저장 검증과 SQL 적용, 프로젝트 continuity projection, 한도 있는 snapshot page, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/replay.rs` | Tool invocation projection, SQL, 엄격한 replay context decoding, 변경 불가능한 operation-result projection, facade 읽기. |
 | `crates/volicord-store/src/core_pipeline/reconciliation.rs` | 확인된 expected-write 및 unrecorded-change 관찰 후보 projection과, 닫기 준비 상태 사실 취득에 사용하는 현재 handle 기반 미조정 변경 읽기. |
@@ -123,11 +123,11 @@
 | `crates/volicord-user-action-service/src/service.rs` | Core 요청 조율 없이 typed 구성, artifact, target, pending, resolved authority fact를 Store에서 취득합니다. |
 | `crates/volicord-user-action-service/src/materialization.rs` | Caller가 제공한 연산 identity를 적용하고 정규 공개 request와 불변 resolution을 구성합니다. |
 | `crates/volicord-user-action-service/src/persistence.rs` | 정규 request 또는 resolution 값을 Store mutation 입력으로 정확하게 typed 매핑합니다. |
-| `crates/volicord-user-action-service/src/authority.rs` | Store가 decoding한 typed 레코드에서 정규화된 authority와 공개 request를 투영합니다. |
+| `crates/volicord-user-action-service/src/authority.rs` | 물리 영속 row 검증 없이 Store가 검증한 typed 레코드에서 정규화된 authority와 공개 request를 투영합니다. |
 | `crates/volicord-user-action-service/src/lifecycle.rs` | 현재 pending authority fact에서 투영된 Task lifecycle을 순수하게 해석합니다. |
 | `crates/volicord-user-action-service/src/resolution.rs` | 현재 basis 검증, 정규 typed resolution 구성, replay 입력 비교. |
 | `crates/volicord-user-action-service/src/continuity.rs` | 권한을 갖는 수락 resolution에서 continuity draft를 의미적으로 파생합니다. |
-| `crates/volicord-user-action-service/src/projection.rs`, `summary.rs` | Adapter-neutral pending, resolution, instruction, safe-summary fact. |
+| `crates/volicord-user-action-service/src/projection.rs`, `summary.rs` | Adapter-neutral pending, resolution, instruction, safe-summary fact. 의미 typed fact 불일치는 서비스 invariant로 보고합니다. |
 | `crates/volicord-user-action-service/src/tests/` | 책임별 validation, body, identity, authority, lifecycle, materialization, persistence, resolution, continuity, projection 테스트. |
 
 ## Core

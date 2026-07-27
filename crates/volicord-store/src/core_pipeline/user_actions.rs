@@ -113,40 +113,159 @@ impl UserActionMutation {
     }
 }
 
-/// Stored user-action request row data needed by Core method implementations.
+/// Store-validated persisted UserAction request.
+///
+/// The fields are private so external crates can only obtain values that have
+/// passed Store-owned persisted-record validation.
+///
+/// ```compile_fail
+/// use volicord_store::core_pipeline::StoredUserActionRequest;
+///
+/// let _invalid = StoredUserActionRequest {
+///     project_id: "project".to_owned(),
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq)]
-pub struct UserActionRequestRecord {
-    pub project_id: String,
-    pub user_action_request_id: String,
-    pub task_id: String,
-    pub change_unit_id: Option<String>,
-    pub action_kind: UserActionKind,
-    pub request: PersistedUserActionRequest,
-    pub basis: UserActionBasis,
-    pub basis_status: UserActionBasisStatus,
-    pub required_for: Vec<UserActionRequiredFor>,
-    pub requested_by_actor_source: ActorSource,
-    pub source_method: MethodName,
-    pub source_idempotency_key: String,
-    pub requested_at: UtcTimestamp,
-    pub expires_at: Option<UtcTimestamp>,
-    pub metadata: PersistedUserActionRequestMetadata,
+pub struct StoredUserActionRequest {
+    project_id: String,
+    user_action_request_id: String,
+    task_id: String,
+    change_unit_id: Option<String>,
+    action_kind: UserActionKind,
+    request: PersistedUserActionRequest,
+    basis: UserActionBasis,
+    basis_status: UserActionBasisStatus,
+    required_for: Vec<UserActionRequiredFor>,
+    requested_by_actor_source: ActorSource,
+    source_method: MethodName,
+    source_idempotency_key: String,
+    requested_at: UtcTimestamp,
+    expires_at: Option<UtcTimestamp>,
+    metadata: PersistedUserActionRequestMetadata,
 }
 
-/// Stored immutable user-action resolution row.
+impl StoredUserActionRequest {
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    pub fn user_action_request_id(&self) -> &str {
+        &self.user_action_request_id
+    }
+
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    pub fn change_unit_id(&self) -> Option<&str> {
+        self.change_unit_id.as_deref()
+    }
+
+    pub const fn action_kind(&self) -> UserActionKind {
+        self.action_kind
+    }
+
+    pub const fn request(&self) -> &PersistedUserActionRequest {
+        &self.request
+    }
+
+    pub const fn basis(&self) -> &UserActionBasis {
+        &self.basis
+    }
+
+    pub const fn basis_status(&self) -> UserActionBasisStatus {
+        self.basis_status
+    }
+
+    pub fn required_for(&self) -> &[UserActionRequiredFor] {
+        &self.required_for
+    }
+
+    pub const fn requested_by_actor_source(&self) -> &ActorSource {
+        &self.requested_by_actor_source
+    }
+
+    pub const fn source_method(&self) -> MethodName {
+        self.source_method
+    }
+
+    pub fn source_idempotency_key(&self) -> &str {
+        &self.source_idempotency_key
+    }
+
+    pub const fn requested_at(&self) -> &UtcTimestamp {
+        &self.requested_at
+    }
+
+    pub const fn expires_at(&self) -> Option<&UtcTimestamp> {
+        self.expires_at.as_ref()
+    }
+
+    pub const fn metadata(&self) -> &PersistedUserActionRequestMetadata {
+        &self.metadata
+    }
+}
+
+/// Store-validated persisted immutable UserAction resolution.
 #[derive(Debug, Clone, PartialEq)]
-pub struct UserActionResolutionRecord {
-    pub project_id: String,
-    pub user_action_resolution_id: String,
-    pub user_action_request_id: String,
-    pub action_kind: UserActionKind,
-    pub channel_kind: UserActionChannelKind,
-    pub channel_submission_id: String,
-    pub resolution: PersistedUserActionResolution,
-    pub resolved_by_actor_source: ActorSource,
-    pub resolved_verification_basis: UserActionVerificationBasis,
-    pub resolved_assurance_level: String,
-    pub resolved_at: UtcTimestamp,
+pub struct StoredUserActionResolution {
+    project_id: String,
+    user_action_resolution_id: String,
+    user_action_request_id: String,
+    action_kind: UserActionKind,
+    channel_kind: UserActionChannelKind,
+    channel_submission_id: String,
+    resolution: PersistedUserActionResolution,
+    resolved_by_actor_source: ActorSource,
+    resolved_verification_basis: UserActionVerificationBasis,
+    resolved_assurance_level: String,
+    resolved_at: UtcTimestamp,
+}
+
+impl StoredUserActionResolution {
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    pub fn user_action_resolution_id(&self) -> &str {
+        &self.user_action_resolution_id
+    }
+
+    pub fn user_action_request_id(&self) -> &str {
+        &self.user_action_request_id
+    }
+
+    pub const fn action_kind(&self) -> UserActionKind {
+        self.action_kind
+    }
+
+    pub const fn channel_kind(&self) -> UserActionChannelKind {
+        self.channel_kind
+    }
+
+    pub fn channel_submission_id(&self) -> &str {
+        &self.channel_submission_id
+    }
+
+    pub const fn resolution(&self) -> &PersistedUserActionResolution {
+        &self.resolution
+    }
+
+    pub const fn resolved_by_actor_source(&self) -> &ActorSource {
+        &self.resolved_by_actor_source
+    }
+
+    pub const fn resolved_verification_basis(&self) -> UserActionVerificationBasis {
+        self.resolved_verification_basis
+    }
+
+    pub fn resolved_assurance_level(&self) -> &str {
+        &self.resolved_assurance_level
+    }
+
+    pub const fn resolved_at(&self) -> &UtcTimestamp {
+        &self.resolved_at
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,12 +302,188 @@ struct UserActionResolutionRecordRaw {
     resolved_at: String,
 }
 
-/// Stored request and optional resolution with its derived current lifecycle status.
+/// One validated persisted UserAction request and its optional resolution.
 #[derive(Debug, Clone, PartialEq)]
-pub struct EffectiveUserActionRecord {
-    pub request: UserActionRequestRecord,
-    pub resolution: Option<UserActionResolutionRecord>,
-    pub status: UserActionStatus,
+pub struct StoredUserActionRecordSet {
+    request: StoredUserActionRequest,
+    resolution: Option<StoredUserActionResolution>,
+    status: UserActionStatus,
+}
+
+impl StoredUserActionRecordSet {
+    /// Constructs the pending projection for a canonical typed Store insert.
+    pub fn from_pending_insert(
+        project_id: impl Into<String>,
+        input: &UserActionRequestInsert,
+    ) -> StoreResult<Self> {
+        let request = stored_user_action_request_from_insert(project_id.into(), input)?;
+        Ok(Self {
+            request,
+            resolution: None,
+            status: UserActionStatus::Pending,
+        })
+    }
+
+    /// Projects one canonical typed resolution against this validated request.
+    pub fn with_resolution(
+        &self,
+        input: &UserActionResolutionInsert,
+        now: &UtcTimestamp,
+    ) -> StoreResult<Self> {
+        if self.resolution.is_some() {
+            return Err(StoreError::InvalidInput {
+                detail: "a UserAction request cannot have more than one resolution".to_owned(),
+            });
+        }
+        let resolution =
+            stored_user_action_resolution_from_insert(self.request.project_id(), input)?;
+        validate_user_action_request_resolution_pair(&self.request, &resolution).map_err(|_| {
+            StoreError::InvalidInput {
+                detail: "UserAction resolution does not match the validated request".to_owned(),
+            }
+        })?;
+        let status =
+            effective_user_action_status(&self.request, Some(&resolution), now).map_err(|_| {
+                StoreError::InvalidInput {
+                    detail: "UserAction resolution is not valid at the supplied instant".to_owned(),
+                }
+            })?;
+        Ok(Self {
+            request: self.request.clone(),
+            resolution: Some(resolution),
+            status,
+        })
+    }
+
+    pub const fn request(&self) -> &StoredUserActionRequest {
+        &self.request
+    }
+
+    pub const fn resolution(&self) -> Option<&StoredUserActionResolution> {
+        self.resolution.as_ref()
+    }
+
+    pub const fn status(&self) -> UserActionStatus {
+        self.status
+    }
+}
+
+fn stored_user_action_request_from_insert(
+    project_id: String,
+    input: &UserActionRequestInsert,
+) -> StoreResult<StoredUserActionRequest> {
+    if input.basis_status != UserActionBasisStatus::Current {
+        return Err(StoreError::InvalidInput {
+            detail: "a newly constructed UserAction request must have a current basis".to_owned(),
+        });
+    }
+    let request_json = encode_json_column("user_action_requests.request_json", &input.request)?;
+    let basis_json = encode_json_column("user_action_requests.basis_json", &input.basis)?;
+    let required_for_json = encode_json_column(
+        "user_action_requests.required_for_json",
+        &input.required_for,
+    )?;
+    let metadata_json = encode_json_column("user_action_requests.metadata_json", &input.metadata)?;
+    let requested_at = input.requested_at.to_string();
+    let expires_at = input.expires_at.as_ref().map(ToString::to_string);
+    validate_identifier("project_id", &project_id)?;
+    validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+    validate_identifier("task_id", &input.task_id)?;
+    if let Some(change_unit_id) = &input.change_unit_id {
+        validate_identifier("change_unit_id", change_unit_id)?;
+    }
+    validate_user_action_request_column_agreement(UserActionRequestColumnFacts {
+        task_id: &input.task_id,
+        change_unit_id: input.change_unit_id.as_deref(),
+        request_json: &request_json,
+        basis_json: &basis_json,
+        required_for_json: &required_for_json,
+        requested_at: &requested_at,
+        expires_at: expires_at.as_deref(),
+        action_kind: input.action_kind,
+        basis_status: input.basis_status,
+    })?;
+    validate_json_text("user_action_requests.metadata_json", &metadata_json)?;
+    let origin_matches_source = matches!(
+        (&input.source_method, &input.metadata),
+        (
+            MethodName::RequestUserAction,
+            PersistedUserActionRequestMetadata::DirectRequest(_)
+        ) | (
+            MethodName::ReconcileChanges,
+            PersistedUserActionRequestMetadata::Reconciliation(_)
+        )
+    );
+    if !origin_matches_source {
+        return Err(StoreError::InvalidInput {
+            detail: "UserAction request origin must match its source method".to_owned(),
+        });
+    }
+    validate_identifier(
+        "requested_by_actor_source",
+        &input.requested_by_actor_source.to_canonical_string(),
+    )?;
+    validate_identifier("source_idempotency_key", &input.source_idempotency_key)?;
+    Ok(StoredUserActionRequest {
+        project_id,
+        user_action_request_id: input.user_action_request_id.clone(),
+        task_id: input.task_id.clone(),
+        change_unit_id: input.change_unit_id.clone(),
+        action_kind: input.action_kind,
+        request: input.request.clone(),
+        basis: input.basis.clone(),
+        basis_status: input.basis_status,
+        required_for: input.required_for.clone(),
+        requested_by_actor_source: input.requested_by_actor_source.clone(),
+        source_method: input.source_method,
+        source_idempotency_key: input.source_idempotency_key.clone(),
+        requested_at: input.requested_at.clone(),
+        expires_at: input.expires_at.clone(),
+        metadata: input.metadata.clone(),
+    })
+}
+
+fn stored_user_action_resolution_from_insert(
+    project_id: &str,
+    input: &UserActionResolutionInsert,
+) -> StoreResult<StoredUserActionResolution> {
+    let resolution_json =
+        encode_json_column("user_action_resolutions.resolution_json", &input.resolution)?;
+    validate_identifier("project_id", project_id)?;
+    validate_identifier(
+        "user_action_resolution_id",
+        &input.user_action_resolution_id,
+    )?;
+    validate_identifier("user_action_request_id", &input.user_action_request_id)?;
+    validate_channel_submission_id(&input.channel_submission_id).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: error.to_string(),
+        }
+    })?;
+    validate_user_action_resolution_column_agreement(
+        &resolution_json,
+        input.action_kind,
+        &input.user_action_resolution_id,
+    )?;
+    validate_user_action_resolution_provenance(
+        input.channel_kind,
+        &input.resolved_by_actor_source.to_canonical_string(),
+        input.resolved_verification_basis,
+        &input.resolved_assurance_level,
+    )?;
+    Ok(StoredUserActionResolution {
+        project_id: project_id.to_owned(),
+        user_action_resolution_id: input.user_action_resolution_id.clone(),
+        user_action_request_id: input.user_action_request_id.clone(),
+        action_kind: input.action_kind,
+        channel_kind: input.channel_kind,
+        channel_submission_id: input.channel_submission_id.clone(),
+        resolution: input.resolution.clone(),
+        resolved_by_actor_source: input.resolved_by_actor_source.clone(),
+        resolved_verification_basis: input.resolved_verification_basis,
+        resolved_assurance_level: input.resolved_assurance_level.clone(),
+        resolved_at: input.resolved_at.clone(),
+    })
 }
 
 impl CoreProjectStore<'_> {
@@ -214,7 +509,7 @@ impl CoreProjectStore<'_> {
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>> {
         effective_user_action_records_for_task(
             &self.conn,
             &self.project.project_id,
@@ -229,7 +524,7 @@ impl CoreProjectStore<'_> {
         &self,
         task_id: &TaskId,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>> {
         effective_user_action_records_for_task(
             &self.conn,
             &self.project.project_id,
@@ -262,7 +557,7 @@ impl CoreProjectStore<'_> {
         &self,
         user_action_request_id: &str,
         now: &UtcTimestamp,
-    ) -> StoreResult<Option<EffectiveUserActionRecord>> {
+    ) -> StoreResult<Option<StoredUserActionRecordSet>> {
         effective_user_action_record(
             &self.conn,
             &self.project.project_id,
@@ -289,7 +584,7 @@ impl CoreProjectStore<'_> {
     pub fn user_action_resolution_record(
         &self,
         user_action_resolution_id: &str,
-    ) -> StoreResult<Option<UserActionResolutionRecord>> {
+    ) -> StoreResult<Option<StoredUserActionResolution>> {
         user_action_resolution_record_by_id(
             &self.conn,
             &self.project.project_id,
@@ -302,7 +597,7 @@ impl CoreProjectStore<'_> {
         &self,
         channel_kind: UserActionChannelKind,
         channel_submission_id: &str,
-    ) -> StoreResult<Option<UserActionResolutionRecord>> {
+    ) -> StoreResult<Option<StoredUserActionResolution>> {
         user_action_resolution_record_by_channel_submission(
             &self.conn,
             &self.project.project_id,
@@ -317,7 +612,7 @@ impl CoreProjectStore<'_> {
         task_id: &TaskId,
         action_kind: UserActionKind,
         now: &UtcTimestamp,
-    ) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+    ) -> StoreResult<Vec<StoredUserActionRecordSet>> {
         effective_user_action_records_for_task_and_kind(
             &self.conn,
             &self.project.project_id,
@@ -333,7 +628,7 @@ pub(crate) fn user_action_request_record(
     conn: &Connection,
     project_id: &str,
     user_action_request_id: &str,
-) -> StoreResult<Option<UserActionRequestRecord>> {
+) -> StoreResult<Option<StoredUserActionRequest>> {
     let sql = format!(
         "SELECT {USER_ACTION_REQUEST_COLUMNS}
            FROM user_action_requests
@@ -354,7 +649,7 @@ fn user_action_resolution_record_by_request(
     conn: &Connection,
     project_id: &str,
     user_action_request_id: &str,
-) -> StoreResult<Option<UserActionResolutionRecord>> {
+) -> StoreResult<Option<StoredUserActionResolution>> {
     let sql = format!(
         "SELECT {USER_ACTION_RESOLUTION_COLUMNS}
            FROM user_action_resolutions
@@ -375,7 +670,7 @@ fn user_action_resolution_record_by_id(
     conn: &Connection,
     project_id: &str,
     user_action_resolution_id: &str,
-) -> StoreResult<Option<UserActionResolutionRecord>> {
+) -> StoreResult<Option<StoredUserActionResolution>> {
     let sql = format!(
         "SELECT {USER_ACTION_RESOLUTION_COLUMNS}
            FROM user_action_resolutions
@@ -398,7 +693,7 @@ fn user_action_resolution_record_by_channel_submission(
     project_id: &str,
     channel_kind: UserActionChannelKind,
     channel_submission_id: &str,
-) -> StoreResult<Option<UserActionResolutionRecord>> {
+) -> StoreResult<Option<StoredUserActionResolution>> {
     let sql = format!(
         "SELECT {USER_ACTION_RESOLUTION_COLUMNS}
            FROM user_action_resolutions
@@ -445,18 +740,16 @@ fn user_action_request_record_raw_from_row(
 
 fn decode_user_action_request_record(
     raw: UserActionRequestRecordRaw,
-) -> StoreResult<UserActionRequestRecord> {
+) -> StoreResult<StoredUserActionRequest> {
     let record_id = raw.user_action_request_id.as_str();
     let action_kind = parse_user_action_kind(
+        "user_action_requests",
         record_id,
-        "user_action_requests.action_kind",
+        "action_kind",
         &raw.action_kind,
     )?;
-    let basis_status = parse_user_action_basis_status(
-        record_id,
-        "user_action_requests.basis_status",
-        &raw.basis_status,
-    )?;
+    let basis_status =
+        parse_user_action_basis_status(record_id, "basis_status", &raw.basis_status)?;
     validate_json_text("user_action_requests.metadata_json", &raw.metadata_json).map_err(|_| {
         StoreError::corrupt_owner_state_json("user_action_requests", record_id, "metadata_json")
     })?;
@@ -542,7 +835,24 @@ fn decode_user_action_request_record(
         .map_err(|_| {
         StoreError::corrupt_owner_state_json("user_action_requests", record_id, "metadata_json")
     })?;
-    Ok(UserActionRequestRecord {
+    let origin_matches_source = matches!(
+        (&source_method, &metadata),
+        (
+            MethodName::RequestUserAction,
+            PersistedUserActionRequestMetadata::DirectRequest(_)
+        ) | (
+            MethodName::ReconcileChanges,
+            PersistedUserActionRequestMetadata::Reconciliation(_)
+        )
+    );
+    if !origin_matches_source {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            record_id,
+            "source_method",
+        ));
+    }
+    Ok(StoredUserActionRequest {
         project_id: raw.project_id,
         user_action_request_id: raw.user_action_request_id,
         task_id: raw.task_id,
@@ -581,18 +891,16 @@ fn user_action_resolution_record_raw_from_row(
 
 fn decode_user_action_resolution_record(
     raw: UserActionResolutionRecordRaw,
-) -> StoreResult<UserActionResolutionRecord> {
+) -> StoreResult<StoredUserActionResolution> {
     let record_id = raw.user_action_resolution_id.as_str();
     let action_kind = parse_user_action_kind(
+        "user_action_resolutions",
         record_id,
-        "user_action_resolutions.action_kind",
+        "action_kind",
         &raw.action_kind,
     )?;
-    let channel_kind = parse_user_action_channel_kind(
-        record_id,
-        "user_action_resolutions.channel_kind",
-        &raw.channel_kind,
-    )?;
+    let channel_kind =
+        parse_user_action_channel_kind(record_id, "channel_kind", &raw.channel_kind)?;
     let resolved_verification_basis =
         UserActionVerificationBasis::parse(&raw.resolved_verification_basis).ok_or_else(|| {
             StoreError::corrupt_owner_state_value(
@@ -654,7 +962,7 @@ fn decode_user_action_resolution_record(
     let resolved_at = UtcTimestamp::parse(&raw.resolved_at).map_err(|_| {
         StoreError::corrupt_owner_state_value("user_action_resolutions", record_id, "resolved_at")
     })?;
-    Ok(UserActionResolutionRecord {
+    Ok(StoredUserActionResolution {
         project_id: raw.project_id,
         user_action_resolution_id: raw.user_action_resolution_id,
         user_action_request_id: raw.user_action_request_id,
@@ -674,7 +982,7 @@ pub(crate) fn effective_user_action_record(
     project_id: &str,
     user_action_request_id: &str,
     now: &UtcTimestamp,
-) -> StoreResult<Option<EffectiveUserActionRecord>> {
+) -> StoreResult<Option<StoredUserActionRecordSet>> {
     let Some(request) = user_action_request_record(conn, project_id, user_action_request_id)?
     else {
         return Ok(None);
@@ -685,7 +993,7 @@ pub(crate) fn effective_user_action_record(
         validate_user_action_request_resolution_pair(&request, resolution)?;
     }
     let status = effective_user_action_status(&request, resolution.as_ref(), now)?;
-    Ok(Some(EffectiveUserActionRecord {
+    Ok(Some(StoredUserActionRecordSet {
         request,
         resolution,
         status,
@@ -698,7 +1006,7 @@ fn effective_user_action_records_for_task(
     task_id: &str,
     status_filter: Option<UserActionStatus>,
     now: &UtcTimestamp,
-) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+) -> StoreResult<Vec<StoredUserActionRecordSet>> {
     let mut statement = conn.prepare(
         "SELECT user_action_request_id
            FROM user_action_requests
@@ -733,7 +1041,7 @@ fn effective_user_action_records_for_task_and_kind(
     action_kind: UserActionKind,
     status_filter: UserActionStatus,
     now: &UtcTimestamp,
-) -> StoreResult<Vec<EffectiveUserActionRecord>> {
+) -> StoreResult<Vec<StoredUserActionRecordSet>> {
     Ok(
         effective_user_action_records_for_task(conn, project_id, task_id, None, now)?
             .into_iter()
@@ -746,8 +1054,8 @@ fn effective_user_action_records_for_task_and_kind(
 
 /// Derives the current lifecycle status from immutable resolution presence, basis status, and time.
 pub fn effective_user_action_status(
-    request: &UserActionRequestRecord,
-    resolution: Option<&UserActionResolutionRecord>,
+    request: &StoredUserActionRequest,
+    resolution: Option<&StoredUserActionResolution>,
     now: &UtcTimestamp,
 ) -> StoreResult<UserActionStatus> {
     if let Some(resolution) = resolution {
@@ -776,18 +1084,29 @@ pub fn effective_user_action_status(
 }
 
 pub(super) fn validate_user_action_request_resolution_pair(
-    request: &UserActionRequestRecord,
-    resolution: &UserActionResolutionRecord,
+    request: &StoredUserActionRequest,
+    resolution: &StoredUserActionResolution,
 ) -> StoreResult<()> {
-    if request.project_id != resolution.project_id
-        || request.user_action_request_id != resolution.user_action_request_id
-        || request.action_kind != resolution.action_kind
-    {
-        return Err(StoreError::SchemaInvariant {
-            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
-            detail: "user-action resolution does not match its request identity and kind"
-                .to_owned(),
-        });
+    if request.project_id != resolution.project_id {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            &resolution.user_action_resolution_id,
+            "project_id",
+        ));
+    }
+    if request.user_action_request_id != resolution.user_action_request_id {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            &resolution.user_action_resolution_id,
+            "user_action_request_id",
+        ));
+    }
+    if request.action_kind != resolution.action_kind {
+        return Err(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            &resolution.user_action_resolution_id,
+            "action_kind",
+        ));
     }
     validate_stored_user_action_timestamp_order(request, resolution)?;
     let agrees = match (
@@ -866,8 +1185,8 @@ pub(super) fn validate_user_action_request_resolution_pair(
 }
 
 fn validate_stored_user_action_timestamp_order(
-    request: &UserActionRequestRecord,
-    resolution: &UserActionResolutionRecord,
+    request: &StoredUserActionRequest,
+    resolution: &StoredUserActionResolution,
 ) -> StoreResult<()> {
     match validate_user_action_timestamp_order(
         &request.requested_at,
@@ -900,15 +1219,18 @@ fn user_action_artifact_ref_agrees(candidate: &ArtifactRef, selected: &ArtifactR
 fn validate_resolution_with_stored_request(
     conn: &Connection,
     project_id: &str,
-    resolution: Option<UserActionResolutionRecord>,
-) -> StoreResult<Option<UserActionResolutionRecord>> {
+    resolution: Option<StoredUserActionResolution>,
+) -> StoreResult<Option<StoredUserActionResolution>> {
     let Some(resolution) = resolution else {
         return Ok(None);
     };
     let request = user_action_request_record(conn, project_id, &resolution.user_action_request_id)?
-        .ok_or_else(|| StoreError::SchemaInvariant {
-            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
-            detail: "user-action resolution has no matching request".to_owned(),
+        .ok_or_else(|| {
+            StoreError::corrupt_owner_state_value(
+                "user_action_resolutions",
+                &resolution.user_action_resolution_id,
+                "user_action_request_id",
+            )
         })?;
     validate_user_action_request_resolution_pair(&request, &resolution)?;
     Ok(Some(resolution))
@@ -966,7 +1288,7 @@ fn effective_user_action_refs(
 }
 
 fn validate_user_action_resolution_timestamp_order_for_insert(
-    request: &UserActionRequestRecord,
+    request: &StoredUserActionRequest,
     resolved_at: &str,
 ) -> StoreResult<()> {
     let resolved_at = UtcTimestamp::parse(resolved_at).map_err(|_| StoreError::InvalidInput {
@@ -1152,7 +1474,7 @@ impl MutationContext<'_> {
             user_action_request_record(self.tx, self.project_id, &input.user_action_request_id)?
         {
             validate_user_action_resolution_timestamp_order_for_insert(&request, &resolved_at)?;
-            let candidate = UserActionResolutionRecord {
+            let candidate = StoredUserActionResolution {
                 project_id: self.project_id.to_owned(),
                 user_action_resolution_id: input.user_action_resolution_id.clone(),
                 user_action_request_id: input.user_action_request_id.clone(),

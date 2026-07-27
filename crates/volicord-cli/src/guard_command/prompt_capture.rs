@@ -157,13 +157,13 @@ pub(super) fn pending_agent_user_action_summaries(
     let records = store.user_action_records_for_task(task_id, now)?;
     let mut summaries = Vec::new();
     for record in records {
-        if record.status != UserActionStatus::Pending
-            || record.request.requested_by_actor_source != expected_actor
+        if record.status() != UserActionStatus::Pending
+            || record.request().requested_by_actor_source() != &expected_actor
         {
             continue;
         }
         summaries.push(AgentSafeUserActionRequestSummary::pending(
-            UserActionRequestId::new(record.request.user_action_request_id),
+            UserActionRequestId::new(record.request().user_action_request_id()),
         ));
     }
     Ok(summaries)

@@ -24,9 +24,11 @@ Core 메서드, pipeline, 응답, CLI, MCP, command model, presentation 구현�
 
 Store의 `core_pipeline/user_actions.rs`는 유효 상태 읽기, 일관된 받은 편지함 해결
 snapshot, 변경 불가능한 resolution 삽입, grouped mutation 적용, 물리 JSON과 저장
-값을 typed 요청 및 해결 record로 바꾸는 집중 decoding을 담당합니다. Raw row 표현은
-Store 내부에만 둡니다. 서비스는 전체 프로젝트 Store facade나 직렬화된 값 대신 집중된
-`UserActionStoreReader` typed 읽기 capability를 사용합니다.
+값을 opaque `StoredUserActionRequest`, `StoredUserActionResolution`, paired
+`StoredUserActionRecordSet` 값으로 바꾸는 집중 decoding을 담당합니다. Store는 값을
+반환하기 전에 중복 표현, 닫힌 영속 값, 요청-resolution 관계를 검증합니다. Raw row
+표현과 손상 구성은 Store 내부에만 둡니다. 서비스는 전체 프로젝트 Store facade나
+직렬화된 값 대신 집중된 `UserActionStoreReader` typed 읽기 capability를 사용합니다.
 
 MCP adapter는 request/resume 경로를 호출하고 `CurrentUserActionFacts`를 다시 읽은
 뒤 자체 safe protocol projection을 구성합니다. CLI는 `PendingUserActionFacts`를
@@ -52,6 +54,10 @@ capture-path 상태, CLI JSON Schema, recovery instruction으로 투영합니다
 - CLI resolution command는 이를 parsing하는 같은 Clap 선언에서 도출합니다.
 - Local inbox는 resolution planning 전에 coherent Store snapshot 하나를 읽습니다.
 - Resolution replay는 immutable authority state를 분기하지 못합니다.
+- 유효하지 않은 영속 UserAction record는 일반 공개 Store record API로 조립할 수
+  없습니다.
+- 서비스는 Store가 검증한 typed record에서 의미 policy를 평가하며 영속 row
+  일관성을 다시 구성하지 않습니다.
 
 ## 책임 경계
 
@@ -62,8 +68,9 @@ resolution form, basis, summary shape, 제품 경로, 의미 기반 `StateRecord
 Store, 집중 유틸리티 라이브러리에만 의존합니다. Core는 현재 ID와 timestamp를
 할당하고 invocation context를 검증하며 서비스를 호출하고 Store mutation
 pipeline에 참여한 뒤 서비스 오류와 결과를 요청별 응답으로 매핑합니다. Store는
-물리 영속화, 엄격한 row decoding, snapshot 일관성을 담당합니다. Command model은
-정규 CLI invocation 구성을 담당하고
+물리 영속화, 엄격한 row decoding, 영속 record 일관성, 검증된 record-set 구성,
+snapshot 일관성을 담당합니다. 서비스 담당 invariant 오류는 유효한 typed fact의
+불일치를 Store 손상과 구분합니다. Command model은 정규 CLI invocation 구성을 담당하고
 `volicord-user-action-presentation`은 typed `Cli*` projection과 CLI JSON Schema를
 담당합니다. CLI는 typed model의 직접 terminal rendering을 담당하며 MCP는 bounded
 protocol projection과 adapter별 failure mapping을 담당합니다.
@@ -76,7 +83,8 @@ protocol projection과 adapter별 failure mapping을 담당합니다.
 3. 서비스가 typed Store reader를 통해 나머지 현재 도메인 fact를 취득합니다.
 4. 순수 body 구성이 정규 typed request body와 basis를 만듭니다.
 5. Core가 영속 request ID와 operation identity를 제공하고, 서비스 identity와
-   구체화 단계가 typed 공개 request, 유효 Store record, mutation plan을 반환합니다.
+   구체화 단계가 typed 공개 request, 검증된 Store record set, mutation plan을
+   반환합니다.
 6. 호출 메서드가 그 결과를 자신의 연산과 응답에 반영하거나 explicit resume
    projection을 반환합니다.
 7. Store가 일반 Core commit으로 request를 지속 저장합니다.
@@ -96,7 +104,9 @@ protocol projection과 adapter별 failure mapping을 담당합니다.
 Malformed stored variant, missing basis 또는 form, stale coordinate, expiry, existing
 conflicting resolution, invalid choice, provenance mismatch는 partial derived state 없이
 실패합니다. Read-only status 계산은 시간이 지났다는 이유만으로 record를 변경하지
-않습니다.
+않습니다. Store는 물리 영속 row 또는 pairing failure를 손상으로 보고합니다. 유효한
+typed fact 사이의 의미 projection 불일치는 서비스 invariant failure이며 table 또는
+column identity를 담지 않습니다.
 
 ## 범위 제외
 
