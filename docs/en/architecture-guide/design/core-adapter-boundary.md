@@ -50,6 +50,9 @@ protocol registry for repository checks but remains outside runtime.
   not on Core, Store, CLI, or MCP.
 - Method planners return typed fields and planned effects; the shared pipeline
   adds common branch facts only after the branch is known.
+- A required infrastructure dependency that cannot produce a method result
+  returns a typed neutral Core operational error outside every public response
+  branch.
 - Store does not derive method policy from adapter input.
 - Adapter projections cannot widen a Core result or replace typed diagnostic
   identity with rendered prose.
@@ -77,7 +80,9 @@ projection and maps neutral Core availability failures at that boundary.
    policy owners.
 4. The selected branch remains typed as read-only, no-effect, dry-run,
    staging, or committed mutation.
-5. Store reads or applies the planned effect.
+5. Store reads or applies the planned effect. Operational unavailability
+   returns through the neutral Core error path with typed operation, resource,
+   and retryability facts.
 6. Core composes public method results or returns adapter-neutral semantic
    facts for internal adapter reads.
 7. Shared presentation derives any CLI inbox item or recovery instruction from
@@ -88,8 +93,12 @@ projection and maps neutral Core availability failures at that boundary.
 ## Failure behavior
 
 Syntax failures stay at the command or protocol boundary. Public rejections
-remain structured Core responses. Persisted owner-data failures and unexpected
-implementation failures retain their typed Store/Core/adapter routes.
+remain structured Core responses. A required Store or infrastructure failure
+that prevents any method result is a typed Core operational error and never a
+public rejection or successful response. CLI maps that neutral failure to its
+runtime diagnostic contract. MCP maps it to its capability-selected protocol
+carrier and MCP-owned wire identity. Persisted owner-data corruption and
+unexpected implementation failures retain their typed Store/Core/adapter routes.
 Repository check failures are reported by `xtask` and do not trigger runtime
 fallback behavior.
 

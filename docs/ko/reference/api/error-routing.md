@@ -2,7 +2,7 @@
 
 이 문서는 거부 응답, 차단 결과, `dry_run` 미리보기에 대한 API 응답 분기 경로를 담당합니다.
 
-[오류와 차단 사유의 정식 결정 흐름](error-precedence.md#canonical-error-blocker-decision-flow)이 전송 또는 어댑터 실패와 Core 응답을 구분한 뒤 Volicord API 응답 분기를 고를 때 이 문서를 사용합니다. 개별 닫기 차단 사유를 매핑하거나, 차단 사유 범주와 코드를 정의하거나, 메서드별 동작을 결정하는 문서로 사용하지 않습니다.
+[오류와 차단 사유의 정식 결정 흐름](error-precedence.md#canonical-error-blocker-decision-flow)이 전송, 어댑터, Core 운영 실패와 Core 메서드 응답을 구분한 뒤 Volicord API 응답 분기를 고를 때 이 문서를 사용합니다. 개별 닫기 차단 사유를 매핑하거나, 차단 사유 범주와 코드를 정의하거나, 메서드별 동작을 결정하는 문서로 사용하지 않습니다.
 
 이 문서가 담당합니다.
 
@@ -40,6 +40,8 @@
 - 상태 영향: 커밋된 동작이 없고 상태 변경도 없습니다.
 
 Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에 있습니다. [MCP 전송](../mcp-transport.md)이나 해당 전송 또는 어댑터 담당 문서로 보냅니다.
+어떤 메서드 결과도 만들 수 없게 하는 typed Core 운영 불가도 이 분기 밖에 있으며 호출
+어댑터가 변환합니다.
 
 <a id="error-vs-blocker-blocked-result"></a>
 차단 결과:
@@ -64,7 +66,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 |---|---|
 | `rejected` | 정책 평가 전의 구조적 요청 또는 필수 맥락 실패는 `ToolRejectedResponse`를 사용합니다. |
 | `not_allowed` | 메서드 담당자가 정책 평가 뒤 비허용 결과를 정의하면 같은 조건을 `ToolRejectedResponse`로 만들지 않고 그 메서드별 결과를 사용합니다. 커밋 여부는 메서드와 저장 효과 담당자가 정합니다. |
-| `unavailable` | 필수 동작이나 조회를 계속할 수 없으면 적용되는 사용 불가 공개 코드와 함께 `ToolRejectedResponse`를 사용합니다. |
+| `unavailable` | 적용되는 사용 불가 공개 코드가 있는 담당자 정의 메서드 결과는 `ToolRejectedResponse`를 사용합니다. 필수 인프라 의존성이 어떤 메서드 결과도 만들 수 없으면 typed Core 운영 오류 경로로 나가며 API 분기가 없습니다. |
 | `degraded` | 핵심 동작을 진실하게 계속하면 성공 메서드 결과에서 담당자가 정의한 진단으로 불완전한 보조 구성 요소를 드러냅니다. 같은 동작을 `ToolError(category=degraded)`로 거절하지 않습니다. |
 | `corrupt` | 종속 동작은 `PERSISTED_DATA_CORRUPT`를 담은 `ToolRejectedResponse`를 사용하고 정책이나 효과 전에 닫힌 실패로 중단합니다. |
 
@@ -108,9 +110,9 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 ### 선행조건 실패
 
 조건:
-- 커밋 전에 Core, MCP, 호출 맥락, `actor_source`/`operation_category` 호환성, 상태 조회,
-  `Task` 식별자, 영속 담당 데이터 검증, 정확한 계약 선택, 그 밖의 필수 선행조건이
-  실패합니다.
+- 커밋 전에 호출 맥락, `actor_source`/`operation_category` 호환성, 결정적으로 존재하지
+  않는 `Task` 식별자, 영속 담당 데이터 검증, 정확한 계약 선택, 그 밖의 메서드 수준
+  선행조건이 거부를 확정합니다.
 
 응답 경로:
 - `ToolRejectedResponse.errors[]`.
@@ -142,7 +144,8 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 ### `dry_run=true` 미리보기 전 실패
 
 조건:
-- `dry_run=true` 요청이 읽기 결과나 `dry_run` 미리보기를 만들기 전에 실패합니다.
+- `dry_run=true` 요청이 읽기 결과나 `dry_run` 미리보기를 만들기 전에 메서드 수준
+  거부를 확정합니다. Core 운영 불가에는 API 응답 분기가 없습니다.
 
 응답 경로:
 - `dry_run=true`인 `ToolRejectedResponse`.

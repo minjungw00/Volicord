@@ -24,11 +24,11 @@ use super::{
     projected_evidence_summary_for_criteria, projected_write_ticket_summary,
     record_core_workflow_metric_best_effort, redaction_state_value, rejected_pipeline_response,
     response_committed_fresh_effect, sorted_unique, state_ref, state_ref_from_stored,
-    storage_value, store_error_response, string_member, task_lifecycle_mutation,
-    validation_plan_error, validation_rejected, workspace_context_matches,
-    workspace_stale_response, write_ticket_invalid_response, write_ticket_ref,
-    write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
-    PersistedWriteBasis, PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
+    storage_value, store_error_plan, string_member, task_lifecycle_mutation, validation_plan_error,
+    validation_rejected, workspace_context_matches, workspace_stale_response,
+    write_ticket_invalid_response, write_ticket_ref, write_ticket_required_response,
+    write_ticket_summary_for_record, MethodPlan, PersistedWriteBasis,
+    PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -697,13 +697,7 @@ fn resolve_record_run_context(
         &normalized.normalized_observed_changes.sensitive_categories;
     let task = store
         .task_record(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(no_active_task_response(
                 &request.envelope,
@@ -745,13 +739,7 @@ fn resolve_record_run_context(
     }
     let change_unit = store
         .change_unit_record(&request.task_id, request.change_unit_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(no_active_change_unit_response(
                 &request.envelope,
@@ -841,13 +829,7 @@ fn decide_record_run_policy(
         }
         let record = store
             .write_ticket_record(write_ticket_id.as_str())
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
             .ok_or_else(|| {
                 PlanError::Response(Box::new(write_ticket_invalid_response(
                     &request.envelope,
@@ -947,13 +929,9 @@ fn decide_record_run_policy(
         None => allocate_run_id(service, store).map_err(PlanError::Core)?,
     };
     if request.run_id.is_some()
-        && store.run_id_exists(run_id.as_str()).map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        && store
+            .run_id_exists(run_id.as_str())
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
     {
         let response = validation_rejected(
             request.envelope.dry_run,
@@ -1130,13 +1108,7 @@ fn plan_record_run_mutations(
         .transpose()?;
     let blocker_refs = store
         .active_blocker_refs(&request.task_id, planned_state_version)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
@@ -1600,23 +1572,11 @@ fn pending_refs_after_record_run_invalidation(
     let mut refs = Vec::new();
     for record_ref in store
         .pending_user_action_refs(&request.task_id, planned_state_version, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
     {
         let record = store
             .user_action_record(&record_ref.record_id, now)
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?;
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
         if record
             .as_ref()
             .is_some_and(|record| invalidated_kinds.contains(&record.request.action_kind))
@@ -3257,13 +3217,7 @@ fn previous_current_sensitive_action_requirements(
 ) -> Result<Vec<SensitiveActionRequirement>, PlanError> {
     let task_revision = store
         .task_revision_record(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let Some(previous_basis) = task_revision.and_then(|record| record.current_close_basis) else {
         return Ok(Vec::new());
     };
@@ -3476,13 +3430,7 @@ fn resolve_close_basis_run_ref(
     let record = context
         .store
         .run_record(record_ref.record_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                context.project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, context.project_state, error))?;
     let compatible = match record.as_ref() {
         Some(record) => run_record_is_close_basis_compatible(context, record)?,
         None => false,
@@ -3524,13 +3472,7 @@ fn run_record_is_close_basis_compatible(
     Ok(context
         .store
         .current_change_unit(&context.request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &context.request.envelope,
-                context.project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&context.request.envelope, context.project_state, error))?
         .as_ref()
         .is_some_and(|record| {
             record.change_unit_id == change_unit_id
@@ -3547,13 +3489,7 @@ fn resolve_close_basis_change_unit_ref(
     let record = context
         .store
         .change_unit_record(&request.task_id, record_ref.record_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                context.project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, context.project_state, error))?;
     if record.as_ref().is_none_or(|record| {
         record.project_id != request.envelope.project_id.as_str()
             || record.task_id != request.task_id.as_str()
@@ -3594,23 +3530,11 @@ fn resolve_close_basis_evidence_summary_ref(
     let record = context
         .store
         .evidence_summary_record(record_ref.record_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                context.project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, context.project_state, error))?;
     let latest = context
         .store
         .latest_evidence_summary(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                context.project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, context.project_state, error))?;
     if record.as_ref().is_none_or(|record| {
         record.project_id != request.envelope.project_id.as_str()
             || record.task_id != request.task_id.as_str()
@@ -3654,23 +3578,11 @@ fn resolve_close_basis_artifact_ref(
     let record = context
         .store
         .artifact_record(record_ref.record_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                context.project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, context.project_state, error))?;
     let owner_link_exists = context
         .store
         .artifact_has_task_owner_link(record_ref.record_id.as_str(), request.task_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                context.project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, context.project_state, error))?;
     if record
         .as_ref()
         .map(|record| {
@@ -3857,13 +3769,7 @@ fn plan_staged_artifact_input(
 
     let record = store
         .artifact_staging_record(handle.handle_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(artifact_input_validation_response(
                 request,
@@ -4156,13 +4062,7 @@ fn plan_existing_artifact_input(
     }
     let record = store
         .artifact_record(existing_ref.artifact_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(artifact_missing_response(
                 request,
@@ -4179,13 +4079,7 @@ fn plan_existing_artifact_input(
                 existing_ref.artifact_id.as_str(),
                 request.task_id.as_str(),
             )
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
     {
         return Err(PlanError::Response(Box::new(artifact_missing_response(
             request,
@@ -4557,13 +4451,7 @@ fn write_ticket_approval_basis_is_current(
     };
     let records = store
         .resolved_user_action_records(&request.task_id, UserActionKind::SensitiveApproval, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let mut current_resolution_ids = BTreeSet::new();
     for record in records {
         let authority = user_action_authority_from_record(&record)?;

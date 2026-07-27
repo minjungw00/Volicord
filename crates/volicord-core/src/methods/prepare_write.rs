@@ -11,7 +11,7 @@ use super::{
     plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
     projected_evidence_summary, record_core_workflow_metric_best_effort,
     rejected_pipeline_response, resolve_prepare_write_task, response_committed_fresh_effect,
-    state_ref, state_ref_from_stored, store_error_response, validate_prepare_write_change_unit,
+    state_ref, state_ref_from_stored, store_error_plan, validate_prepare_write_change_unit,
     validation_rejected, workspace_context_matches, write_ticket_summary_for_record,
     PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan, SensitiveApprovalSearch,
     SummaryBuild,
@@ -308,13 +308,10 @@ fn resolve_prepare_write_context(
 ) -> Result<PrepareWriteResolvedContext, PlanError> {
     let request = &normalized.raw.request;
     let (task_id, task, mut reasons) = resolve_prepare_write_task(store, project_state, request)?;
-    let change_unit = match store.current_change_unit(&task_id).map_err(|error| {
-        PlanError::Response(Box::new(store_error_response(
-            &request.envelope,
-            project_state,
-            error,
-        )))
-    })? {
+    let change_unit = match store
+        .current_change_unit(&task_id)
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
+    {
         Some(change_unit) => change_unit,
         None => {
             let _ = record_core_rejection_diagnostic(
@@ -1051,13 +1048,7 @@ fn project_prepare_write_response(
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let blocker_refs = store
         .active_blocker_refs(&task_id, planned_state_version)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
@@ -1408,13 +1399,7 @@ fn write_ticket_approval_basis_is_current_for_prepare(
             UserActionKind::SensitiveApproval,
             now,
         )
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let mut current_resolution_refs = Vec::new();
     for record in records {
         let authority = user_action_authority_from_record(&record)?;

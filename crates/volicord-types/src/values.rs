@@ -1755,7 +1755,6 @@ pub enum ErrorCode {
     ValidationFailed,
     PersistedDataCorrupt,
     StateVersionConflict,
-    McpUnavailable,
     InvocationContextMismatch,
     NoActiveTask,
     NoActiveChangeUnit,
@@ -1785,8 +1784,7 @@ impl ErrorCode {
     pub const fn failure_category(self) -> FailureCategory {
         match self {
             Self::PersistedDataCorrupt => FailureCategory::Corrupt,
-            Self::McpUnavailable
-            | Self::OperationResultUnavailable
+            Self::OperationResultUnavailable
             | Self::ProjectionStale
             | Self::ArtifactMissing
             | Self::ValidatorFailed => FailureCategory::Unavailable,
@@ -1847,10 +1845,6 @@ mod tests {
         assert_eq!(
             ErrorCode::PersistedDataCorrupt.failure_category(),
             FailureCategory::Corrupt
-        );
-        assert_eq!(
-            ErrorCode::McpUnavailable.failure_category(),
-            FailureCategory::Unavailable
         );
         assert_eq!(
             ErrorCode::ScopeViolation.failure_category(),

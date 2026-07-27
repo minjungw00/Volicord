@@ -24,7 +24,7 @@ use crate::schema::{
 use crate::tool_names::AgentToolId;
 use crate::values::{
     AcceptancePolicy, ActorSource, ChangeUnitOperation, CloseMutationIntent, CloseReason,
-    CloseState, EffectKind, ErrorCode, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
+    CloseState, EffectKind, EvidenceAssuranceLevel, EvidenceCoverageUpdateState,
     EvidenceDisplayState, EvidenceRelevanceStatus, EvidenceSourceKind, JudgmentResolutionOutcome,
     MethodName, MutationDetailLevel, OperationCategory, PrepareWriteDecision, RedactionState,
     RequestedControlLevel, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
@@ -189,6 +189,35 @@ pub enum McpToolErrorCode {
     AdapterPreconditionFailed,
 }
 
+/// MCP wire-owned identity for operational unavailability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum McpOperationalErrorCode {
+    #[serde(rename = "MCP_UNAVAILABLE")]
+    Unavailable,
+}
+
+/// MCP wire projection of the operation that could not complete.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum McpOperationalOperation {
+    #[serde(rename = "store_access")]
+    StoreAccess,
+}
+
+/// MCP wire projection of the unavailable infrastructure resource.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum McpOperationalResource {
+    #[serde(rename = "store")]
+    Store,
+    #[serde(rename = "registry_store")]
+    RegistryStore,
+    #[serde(rename = "project_store")]
+    ProjectStore,
+    #[serde(rename = "runtime_home")]
+    RuntimeHome,
+    #[serde(rename = "platform_environment")]
+    PlatformEnvironment,
+}
+
 /// Maximum number of independently discoverable issues returned for one known MCP tool call.
 pub const MAX_VALIDATION_ISSUES: usize = 32;
 
@@ -263,11 +292,33 @@ pub struct McpToolErrorResponse {
     pub issues: Vec<McpToolErrorIssue>,
 }
 
+/// Structured MCP failure when an operational dependency cannot produce a tool result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct McpOperationalFailure {
+    pub code: McpOperationalErrorCode,
+    pub tool_name: MethodName,
+    pub operation: McpOperationalOperation,
+    pub resource: McpOperationalResource,
+    pub retryable: bool,
+    pub reached_core: bool,
+    pub committed: bool,
+}
+
 /// Structured MCP result advertised by each known tool.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum McpToolStructuredContent<T> {
     Response(Box<T>),
+    AdapterError(McpToolErrorResponse),
+}
+
+/// Structured MCP result advertised by a Core-owned read-only tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum McpCoreToolStructuredContent<T> {
+    Response(Box<T>),
+    OperationalFailure(McpOperationalFailure),
     AdapterError(McpToolErrorResponse),
 }
 
@@ -417,7 +468,7 @@ pub struct McpMutationFullResponse<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct McpAuthoritativeRefreshFailure<T> {
-    pub code: ErrorCode,
+    pub code: McpOperationalErrorCode,
     pub tool_name: MethodName,
     pub retryable: bool,
     pub reached_core: bool,
@@ -503,6 +554,7 @@ pub enum McpMutationStructuredContent<T, C> {
     Full(McpMutationFullResponse<Box<T>>),
     Summary(McpMutationSummaryResponse<C>),
     Workflow(McpMutationWorkflowResponse<C>),
+    OperationalFailure(McpOperationalFailure),
     RefreshFailure(McpAuthoritativeRefreshFailure<C>),
     ResponseBudgetExceeded(McpMutationResponseBudgetExceeded<C>),
     PostEffectFailure(McpMutationPostEffectFailure),
@@ -1671,9 +1723,11 @@ pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
         MethodName::UpdateScope => Some(response_schema::<
             McpMutationStructuredContent<UpdateScopeResponse, McpMutationEffectSummary>,
         >()),
-        MethodName::Status => Some(response_schema::<McpToolStructuredContent<StatusResponse>>()),
+        MethodName::Status => Some(response_schema::<
+            McpCoreToolStructuredContent<StatusResponse>,
+        >()),
         MethodName::GetOperationResult => Some(response_schema::<
-            McpToolStructuredContent<GetOperationResultResponse>,
+            McpCoreToolStructuredContent<GetOperationResultResponse>,
         >()),
         MethodName::PrepareEvidenceCapture => Some(response_schema::<
             McpMutationStructuredContent<
@@ -1697,7 +1751,7 @@ pub fn mcp_response_schema(tool: AgentToolId) -> Option<Value> {
             >,
         >()),
         MethodName::CheckClose => Some(response_schema::<
-            McpToolStructuredContent<CheckCloseResponse>,
+            McpCoreToolStructuredContent<CheckCloseResponse>,
         >()),
         MethodName::CloseTask => Some(response_schema::<
             McpMutationStructuredContent<CloseTaskResponse, McpMutationEffectSummary>,

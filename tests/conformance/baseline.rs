@@ -3,8 +3,9 @@ use std::{error::Error, fs, path::Path};
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use volicord_core::{
-    rejected_response, tool_error, Clock, CoreResult, CoreService, GitWorkspaceContext,
-    InvocationContext, PendingUserActionFactsRequest, PipelineResponse,
+    rejected_response, tool_error, Clock, CoreOperationalOperation, CoreOperationalResource,
+    CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,
+    PendingUserActionFactsRequest, PipelineResponse,
 };
 use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
@@ -243,8 +244,8 @@ fn direct_public_request_parsing_rejects_invocation_authority_fields() -> Result
 }
 
 #[test]
-fn structured_store_unavailability_does_not_expose_sql_or_local_paths() -> Result<(), Box<dyn Error>>
-{
+fn core_store_unavailability_is_neutral_and_does_not_expose_sql_or_local_paths(
+) -> Result<(), Box<dyn Error>> {
     let fixture = CoreFixture::new("store_unavailable")?;
     let invocation = invocation(&fixture, OperationCategory::Read);
     fs::remove_file(
@@ -255,20 +256,20 @@ fn structured_store_unavailability_does_not_expose_sql_or_local_paths() -> Resul
             .join("state.sqlite"),
     )?;
 
-    let response = core(&fixture).status(
-        fixture.status_request("req_missing_state_db", None),
-        invocation,
-    )?;
+    let error = core(&fixture)
+        .status(
+            fixture.status_request("req_missing_state_db", None),
+            invocation,
+        )
+        .expect_err("missing project storage must be a neutral Core error");
 
-    assert_rejected_code(&response.response_value, "MCP_UNAVAILABLE");
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["store_failure_category"],
-        "project_state_database_missing"
-    );
-    assert_public_response_has_no_internal_leak(
-        &response.response_json,
-        fixture.runtime_home_path(),
-    );
+    let CorePipelineError::OperationalUnavailable(failure) = &error else {
+        panic!("expected operational unavailability, got {error}");
+    };
+    assert_eq!(failure.operation(), CoreOperationalOperation::StoreAccess);
+    assert_eq!(failure.resource(), CoreOperationalResource::ProjectStore);
+    assert!(failure.retryable());
+    assert_public_response_has_no_internal_leak(&error.to_string(), fixture.runtime_home_path());
     Ok(())
 }
 

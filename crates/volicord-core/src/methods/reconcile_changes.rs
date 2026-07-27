@@ -11,7 +11,7 @@ use super::{
     project_state_projection, projected_close_basis, projected_evidence_summary,
     projected_write_ticket_summary, record_core_workflow_metric_best_effort,
     response_committed_fresh_effect, state_ref, state_ref_from_stored, storage_value,
-    store_error_response, summary_card_for_core, utc_timestamp, validation_rejected,
+    store_error_plan, summary_card_for_core, utc_timestamp, validation_rejected,
     write_ticket_summary_text, PlanError, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
@@ -235,13 +235,7 @@ fn plan_reconcile_changes(
 ) -> Result<ReconciliationPlan, PlanError> {
     let task = store
         .task_record(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(no_active_task_response(
                 &request.envelope,
@@ -250,13 +244,7 @@ fn plan_reconcile_changes(
         })?;
     let current_change_unit = store
         .current_change_unit(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let unresolved = unresolved_records_for_request(store, verified_invocation, &request)?;
     let request_by_change = resolution_requests_by_change(&request.resolution_requests);
     let resolved_authorities = resolved_user_action_authorities_for_all_kinds(
@@ -275,22 +263,10 @@ fn plan_reconcile_changes(
     )?;
     let runs = store
         .run_observed_changes_for_task(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let write_tickets = store
         .write_tickets_for_task(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let mut planned_resolutions = Vec::new();
     let mut planned_user_actions = Vec::new();
     let mut unresolved_findings = Vec::new();
@@ -438,13 +414,7 @@ fn plan_reconcile_changes(
     )?;
     let blocker_refs = store
         .active_blocker_refs(&request.task_id, planned_state_version)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
@@ -969,13 +939,7 @@ fn projected_pending_refs(
 ) -> Result<Vec<StateRecordRef>, PlanError> {
     let mut refs = store
         .pending_user_action_refs(&request.task_id, planned_state_version, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();

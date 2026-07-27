@@ -55,9 +55,10 @@ diagnostic_code: string
 ```
 
 `diagnostic_code`는 typed 플랫폼 diagnostic kind가 선택한 정규 namespaced
-`platform.*` code입니다. 지원하지 않는 플랫폼 kind는 `VALIDATION_FAILED`, 관찰할 수
-없는 kind는 `MCP_UNAVAILABLE`로 routing합니다. 그 밖의 Store failure는 Store 소유
-분류에 `store_failure_category`를 사용합니다.
+`platform.*` code입니다. 지원하지 않는 플랫폼 kind는 `VALIDATION_FAILED`로
+routing합니다. 플랫폼을 관찰할 수 없는 경우는 `ToolError` 밖의 typed Core 운영
+실패이므로 `ToolError.details`가 없습니다. 그 밖의 Store failure는 Store 소유 분류가
+공개 메서드 거부를 선택한 경우에만 `store_failure_category`를 사용합니다.
 
 <a id="state-conflict-detail-fields"></a>
 

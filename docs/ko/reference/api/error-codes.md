@@ -32,7 +32,6 @@
 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
-| `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](#errorcode-operation-result-unavailable) |
 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](#errorcode-no-active-task) |
@@ -111,23 +110,6 @@
 참고:
 - 멱등 요청 해시 충돌은 [상태 버전 충돌](error-precedence.md#state-conflict-behavior)에서 다룹니다. `WriteTicket.basis_state_version`은 감사 메타데이터이며 그 자체로 이 오류를 선택하지 않습니다.
 
-<a id="errorcode-mcp-unavailable"></a>
-### `MCP_UNAVAILABLE`
-
-사용 위치:
-- `ToolRejectedResponse.errors[]`
-
-조건:
-- 필요한 Core, MCP, Store, 담당 상태 조회, Agent Connection에 현재 접근할 수 없고,
-  사용할 수 있는 데이터가 영속 데이터 손상이나 다른 결정적 거부를 확정하지 않습니다.
-
-필수 실패 범주:
-- `unavailable`
-
-경계:
-- 알려진 영속 데이터 손상은 `PERSISTED_DATA_CORRUPT`, 알 수 없는 경계 입력은
-  `VALIDATION_FAILED`를 사용합니다.
-
 <a id="errorcode-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`
 
@@ -154,8 +136,9 @@
 참고:
 - 접근 맥락 비호환은 계속 `INVOCATION_CONTEXT_MISMATCH`이며 이 코드보다 먼저
   선택합니다. 따라서 결과 없음 분기는 접근을 허용하거나 접근 정보를 설명하지 않습니다.
-- Store 접근 불가는 계속 `MCP_UNAVAILABLE`이고, 알려진 타입 지정 담당 상태 손상이나
-  저장 byte 무결성 실패는 `PERSISTED_DATA_CORRUPT`를 사용합니다.
+- Store 운영 불가는 공개 메서드 결과 밖에 있으며 호출 어댑터가 변환합니다. 알려진
+  타입 지정 담당 상태 손상이나 저장 byte 무결성 실패는
+  `PERSISTED_DATA_CORRUPT`를 사용합니다.
 
 <a id="errorcode-no-active-task"></a>
 ### `NO_ACTIVE_TASK`

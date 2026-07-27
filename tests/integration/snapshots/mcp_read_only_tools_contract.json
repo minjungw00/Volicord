@@ -85,6 +85,10 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -141,7 +145,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:88581b09c998d07b8a099c09f667b0d276f32ceb26e9c94bb23df23936e8836f"
+        "sha256": "sha256:9978b38e54181729ce8872cd2c7ea7416cdf3a4c2c372141723317ba8ecd7c0b"
       }
     },
     {
@@ -178,6 +182,10 @@
           "GetOperationResultResult",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -203,7 +211,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:babb687866f3b7a9fc872f11cbb85cf0565c44d747b721632ed6dcdcf81957eb"
+        "sha256": "sha256:39539369c29e1169087adacbcff96034661a5d6ca4341f5b5855c264e5f21ed8"
       }
     },
     {
@@ -268,6 +276,10 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -321,7 +333,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a9c4fe53b67f772b18f8961c505f67ae8b3dcf0fac25bdeded05d8dbd1c6bdad"
+        "sha256": "sha256:1ba16635019f0625a6bab7ed68ad7c637a930ef89508d951c7c17d3b0a52e149"
       }
     },
     {

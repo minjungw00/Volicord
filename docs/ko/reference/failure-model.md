@@ -51,6 +51,19 @@ diagnostic입니다.
 잘못되었거나 알려지지 않은 경우는 `Corrupt`가 아니라 `Rejected`이며 지원되는
 형태로 추정하지 않습니다.
 
+### Core 운영 불가
+
+Core 메서드 거부는 공개 메서드 응답으로 표현할 수 있는 현재 domain, validation,
+policy, 영속 손상, invocation, 상태 충돌 결과에만 사용합니다. Store 또는 다른 필수
+인프라 의존성이 어떤 메서드 결과도 만들 수 없으면 Core는 operation, resource,
+retryability fact를 담은 typed 운영 불가 오류를 반환합니다. 이 오류 경로에는
+`PipelineResponse`, 공개 `ErrorCode`, `ToolError`, 성공 응답 envelope가 없습니다.
+
+호출 어댑터가 표면 변환을 담당합니다. CLI는 neutral 실패를 runtime 진단 채널로
+보냅니다. MCP는 선택한 semantic protocol capability로 실패를 projection하며 MCP wire
+code, 결과 carrier, `isError`, 한도가 있는 message, retryability field를 담당합니다.
+공개 메서드 스키마와 Core 우선순위에는 메서드 수준 거부 identity만 있습니다.
+
 ### Runtime Home setup 진행 중
 
 `runtime_home.mutation.setup_in_progress`는 setup이 `ExclusiveSetup`을 보유해

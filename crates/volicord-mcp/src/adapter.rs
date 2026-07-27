@@ -18,8 +18,7 @@ use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use volicord_core::pipeline::{
-    rejected_response, tool_error, CorePipelineError, CoreService, GitWorkspaceContext,
-    InvocationContext, PipelineResponse,
+    CorePipelineError, CoreService, GitWorkspaceContext, InvocationContext, PipelineResponse,
 };
 use volicord_host_contract::{CodexMcpCorrelation, HostNativeCorrelation};
 use volicord_platform_fs::capture_git_workspace_snapshot;
@@ -58,7 +57,7 @@ use volicord_types::methods::{
 use volicord_types::schema::{RequiredNullable, ToolEnvelope};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
 use volicord_types::values::{
-    ErrorCode, IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
+    IntegrationProfile, MethodName, OperationCategory, StatusDetailLevel, UtcTimestamp,
 };
 
 /// Invocation context derived for one tool call before entering Core.
@@ -936,56 +935,25 @@ impl McpAdapter {
         )
     }
 
-    fn readonly_storage_rejection_for_tool(
+    fn ensure_storage_writable_for_tool(
         &self,
         context: &RuntimeHomeMutationContext<'_>,
         tool_name: &str,
-    ) -> Result<Option<PipelineResponse>, McpAdapterError> {
+    ) -> Result<(), McpAdapterError> {
         let Some(operation_category) = public_tool_operation_category(tool_name) else {
-            return Ok(None);
+            return Ok(());
         };
         if operation_category == OperationCategory::Read {
-            return Ok(None);
+            return Ok(());
         }
         let storage_capability = self.session_storage_capability(context)?;
         if storage_capability.allows_mutation() {
-            return Ok(None);
+            return Ok(());
         }
-        let mut details = Map::new();
-        details.insert(
-            "storage_capability".to_owned(),
-            Value::String(storage_capability.as_str().to_owned()),
-        );
-        details.insert(
-            "required_storage_capability".to_owned(),
-            Value::String(McpStorageCapability::ReadWrite.as_str().to_owned()),
-        );
-        details.insert("tool_name".to_owned(), Value::String(tool_name.to_owned()));
-        details.insert(
-            "operation_category".to_owned(),
-            Value::String(operation_category.as_str().to_owned()),
-        );
-        let response = rejected_response(
-            false,
-            None,
-            vec![tool_error(
-                ErrorCode::McpUnavailable,
-                "Volicord project state is not writable in the current MCP host environment.",
-                false,
-                Some(details),
-            )],
-        );
-        let response_value = serde_json::to_value(response).map_err(McpAdapterError::Json)?;
-        let response_json =
-            serde_json::to_string(&response_value).map_err(McpAdapterError::Json)?;
-        Ok(Some(PipelineResponse {
-            response_json,
-            response_value,
-            operation_result_ref: None,
-            verified_invocation: None,
-            resolved_task_id: None,
-            replayed: false,
-        }))
+        Err(McpAdapterError::OperationalUnavailable {
+            retryable: false,
+            reached_core: false,
+        })
     }
 
     fn call_core_request<T, F>(
@@ -1005,9 +973,7 @@ impl McpAdapter {
             InvocationContext,
         ) -> Result<PipelineResponse, CorePipelineError>,
     {
-        if let Some(response) = self.readonly_storage_rejection_for_tool(context, tool_name)? {
-            return Ok(response);
-        }
+        self.ensure_storage_writable_for_tool(context, tool_name)?;
         let operation_category = request.operation_category();
         self.ensure_mode_allows(context, tool_name, operation_category)?;
         let owned_session = if session.is_none() {

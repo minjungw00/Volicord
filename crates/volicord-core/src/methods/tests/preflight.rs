@@ -1,8 +1,8 @@
 use super::*;
 
 #[test]
-fn invalid_stored_method_owned_json_routes_to_structured_unavailability(
-) -> Result<(), Box<dyn Error>> {
+fn invalid_stored_method_owned_json_routes_to_structured_corruption() -> Result<(), Box<dyn Error>>
+{
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "bad_method_json")?;
     let judgment = harness.service.request_user_action(

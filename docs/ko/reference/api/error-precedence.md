@@ -40,10 +40,11 @@
 |---:|---|---|---|---|
 | 1 | 공개 Volicord 요청이 생기기 전에 전송, JSON-RPC, 또는 어댑터 메시지 형태가 실패합니다. | Core 실행 전 전송 또는 어댑터 계층. | JSON-RPC `error`, 프로세스 종료 진단, 또는 전송 담당 실패 형태입니다. Volicord `ErrorCode`는 선택하지 않습니다. | [MCP 전송](../mcp-transport.md)이나 해당 전송 또는 어댑터 담당 문서로 보냅니다. 요청이 Core 전에 실패한 뒤 이를 `ToolRejectedResponse.errors[]`로 바꾸지 않습니다. |
 | 2 | 알려진 MCP 도구 호출이 Core 실행 전에 MCP 어댑터에서 거절됩니다. 여기에는 Agent Connection 모드 거절, 프로젝트 선택 실패, 프로젝트 허용 목록 실패, 호출자 소유 호출 필드, 알려진 도구 인자 디코딩/스키마 거절이 포함됩니다. | Core 실행 전 MCP 어댑터 계층. | 그 조건이 [MCP 전송](../mcp-transport.md)이 담당하는 JSON-RPC 프로토콜 또는 파라미터 오류가 아닌 한, 텍스트 콘텐츠와 `isError: true`를 담은 MCP `CallToolResult`입니다. | Volicord 메서드 결과가 아니며 `ToolRejectedResponse.errors[]`가 없습니다. 다시 시도하기 전에 MCP 호출, 연결 모드, 프로젝트 선택자를 고칩니다. |
-| 3 | 타입이 정해진 Volicord 요청이 Core에 도달했지만 메서드가 담당하는 결과 분기 전에 요청 검증, 정확한 계약 선택, 영속 담당 데이터 검증, Core 사전 확인, 호출 호환성, `Task` 조회, 최신성, 멱등성이 실패합니다. | Core 안, 커밋되는 메서드 실행 전. | 필수 `FailureCategory`와 공개 `ErrorCode` 값을 담은 `ToolRejectedResponse.errors[]`입니다. | 거부 분기는 [API 오류 처리 경로](error-routing.md)를 사용하고, `errors[0]`에는 이 문서의 우선순위 표를 사용합니다. 커밋되는 동작은 진행되지 않습니다. 알려진 손상은 고유한 범주와 코드를 보존합니다. |
-| 4 | 유효한 `dry_run` 요청이 사전 확인 뒤 미리보기 분기에 도달합니다. | Core 안, 검증과 사전 확인 뒤, 커밋 전. | 메서드가 정의한 경우 `DryRunSummary.would_errors[]` 또는 `DryRunSummary.would_blockers[]`를 담은 `ToolDryRunResponse`입니다. | 미리보기 분기 동작은 [API 오류 처리 경로](error-routing.md#dry-run-behavior)로 보냅니다. 미리보기 차단 사유는 저장된 `CloseReadinessBlocker` 객체가 아니라 `PlannedBlocker`입니다. |
-| 5 | 유효한 메서드 평가가 `NotAllowed`에 도달하고 커밋 효과를 선택하지 않는 메서드 정의 비허용 결과를 반환합니다. | Core 안, 메서드별 정책 평가 뒤. | `CloseTaskResult(close_state=blocked)` 또는 메서드가 담당하는 판단 필드 같은 메서드별 `MethodResult` 필드입니다. `errors[]` 분기는 없습니다. | 메서드 담당자가 이 결과를 정의하면 [API 오류 처리 경로](error-routing.md#blocked-result-behavior), [API 차단 사유 처리 경로](blocker-routing.md), 메서드 담당 문서로 보냅니다. 구조적 `Rejected`가 아닙니다. |
-| 6 | 유효한 메서드 평가가 `NotAllowed`에 도달하고 커밋되는 차단 사유형 또는 비허용 결과를 선택합니다. | Core 안, 메서드별 커밋 분기. | 메서드와 저장 효과 담당 문서가 허용할 때만 커밋 효과를 가진 메서드별 `MethodResult`입니다. 예를 들면 커밋된 `PrepareWriteResult` 비허용 결정입니다. | 실패한 전송 호출이 아니라 지속 상태일 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)로, 정확한 결과 필드는 메서드 담당 문서로 보냅니다. `ToolRejectedResponse.errors[]` 분기가 없으므로 공개 오류 우선순위는 적용되지 않습니다. 범주 자체는 커밋을 허용하지 않습니다. |
+| 3 | 타입이 정해진 Volicord 요청이 Core에 도달했지만 메서드 결과를 만들기 위해 필요한 인프라 의존성을 운영상 사용할 수 없습니다. | Core 안, 사전 확인, planning, Store 접근, commit 중. | Typed neutral Core 운영 오류입니다. 공개 `ErrorCode`, `ToolRejectedResponse`, 그 밖의 메서드 응답 분기가 없습니다. | 호출 어댑터가 neutral operation, resource, retryability fact를 자체 실패 계약으로 변환합니다. CLI는 runtime 진단 채널을, MCP는 capability가 선택한 MCP 결과 carrier를 사용합니다. 공개 오류 우선순위는 적용되지 않습니다. |
+| 4 | 타입이 정해진 Volicord 요청이 Core에 도달하고, 메서드 담당 결과 분기 전에 요청 검증, 정확한 계약 선택, 영속 담당 데이터 검증, Core 사전 확인, 호출 호환성, `Task` 조회, 최신성, 멱등성이 결정적인 메서드 거부를 확정합니다. | Core 안, 커밋되는 메서드 실행 전. | 필수 `FailureCategory`와 공개 `ErrorCode` 값을 담은 `ToolRejectedResponse.errors[]`입니다. | 거부 분기는 [API 오류 처리 경로](error-routing.md)를 사용하고, `errors[0]`에는 이 문서의 우선순위 표를 사용합니다. 커밋되는 동작은 진행되지 않습니다. 알려진 손상은 고유한 범주와 코드를 보존합니다. |
+| 5 | 유효한 `dry_run` 요청이 사전 확인 뒤 미리보기 분기에 도달합니다. | Core 안, 검증과 사전 확인 뒤, 커밋 전. | 메서드가 정의한 경우 `DryRunSummary.would_errors[]` 또는 `DryRunSummary.would_blockers[]`를 담은 `ToolDryRunResponse`입니다. | 미리보기 분기 동작은 [API 오류 처리 경로](error-routing.md#dry-run-behavior)로 보냅니다. 미리보기 차단 사유는 저장된 `CloseReadinessBlocker` 객체가 아니라 `PlannedBlocker`입니다. |
+| 6 | 유효한 메서드 평가가 `NotAllowed`에 도달하고 커밋 효과를 선택하지 않는 메서드 정의 비허용 결과를 반환합니다. | Core 안, 메서드별 정책 평가 뒤. | `CloseTaskResult(close_state=blocked)` 또는 메서드가 담당하는 판단 필드 같은 메서드별 `MethodResult` 필드입니다. `errors[]` 분기는 없습니다. | 메서드 담당자가 이 결과를 정의하면 [API 오류 처리 경로](error-routing.md#blocked-result-behavior), [API 차단 사유 처리 경로](blocker-routing.md), 메서드 담당 문서로 보냅니다. 구조적 `Rejected`가 아닙니다. |
+| 7 | 유효한 메서드 평가가 `NotAllowed`에 도달하고 커밋되는 차단 사유형 또는 비허용 결과를 선택합니다. | Core 안, 메서드별 커밋 분기. | 메서드와 저장 효과 담당 문서가 허용할 때만 커밋 효과를 가진 메서드별 `MethodResult`입니다. 예를 들면 커밋된 `PrepareWriteResult` 비허용 결정입니다. | 실패한 전송 호출이 아니라 지속 상태일 수 있습니다. 정확한 저장 효과는 [저장 효과](../storage-effects.md)로, 정확한 결과 필드는 메서드 담당 문서로 보냅니다. `ToolRejectedResponse.errors[]` 분기가 없으므로 공개 오류 우선순위는 적용되지 않습니다. 범주 자체는 커밋을 허용하지 않습니다. |
 
 MCP `tools/call` 전송이 성공하면 Volicord 도메인 수준 `ToolRejectedResponse`를 포함한
 Volicord 응답을 오류가 아닌 도구 결과로 전달합니다. 호출자는 `2024-10-07`에서는
@@ -67,29 +68,28 @@ Volicord 응답을 오류가 아닌 도구 결과로 전달합니다. 호출자�
 | <a id="precedence-validation-failed"></a>1 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](error-codes.md#errorcode-validation-failed) |
 | <a id="precedence-persisted-data-corrupt"></a>2 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](error-codes.md#errorcode-persisted-data-corrupt) |
 | 3 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](error-codes.md#errorcode-state-version-conflict) |
-| <a id="precedence-mcp-unavailable"></a>4 | `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](error-codes.md#errorcode-mcp-unavailable) |
-| <a id="precedence-invocation-context-mismatch"></a>5 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](error-codes.md#errorcode-invocation-context-mismatch) |
-| <a id="precedence-no-active-task"></a>6 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](error-codes.md#errorcode-no-active-task) |
-| <a id="precedence-no-active-change-unit"></a>7 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](error-codes.md#errorcode-no-active-change-unit) |
-| <a id="precedence-baseline-stale"></a>8 | `BASELINE_STALE` | [`BASELINE_STALE`](error-codes.md#errorcode-baseline-stale) |
-| <a id="precedence-scope-required"></a>9 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](error-codes.md#errorcode-scope-required) |
-| <a id="precedence-scope-violation"></a>10 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](error-codes.md#errorcode-scope-violation) |
-| <a id="precedence-write-ticket-required"></a>11 | `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](error-codes.md#errorcode-write-ticket-required) |
-| <a id="precedence-write-ticket-invalid"></a>12 | `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](error-codes.md#errorcode-write-ticket-invalid) |
-| <a id="precedence-approval-denied"></a>13 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](error-codes.md#errorcode-approval-denied) |
-| <a id="precedence-approval-expired"></a>14 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](error-codes.md#errorcode-approval-expired) |
-| <a id="precedence-approval-required"></a>15 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](error-codes.md#errorcode-approval-required) |
-| <a id="precedence-decision-unresolved"></a>16 | `DECISION_UNRESOLVED` | [`DECISION_UNRESOLVED`](error-codes.md#errorcode-decision-unresolved) |
-| <a id="precedence-autonomy-boundary-exceeded"></a>17 | `AUTONOMY_BOUNDARY_EXCEEDED` | [`AUTONOMY_BOUNDARY_EXCEEDED`](error-codes.md#errorcode-autonomy-boundary-exceeded) |
-| <a id="precedence-decision-required"></a>18 | `DECISION_REQUIRED` | [`DECISION_REQUIRED`](error-codes.md#errorcode-decision-required) |
-| <a id="precedence-capability-insufficient"></a>19 | `CAPABILITY_INSUFFICIENT` | [`CAPABILITY_INSUFFICIENT`](error-codes.md#errorcode-capability-insufficient) |
-| <a id="precedence-evidence-insufficient"></a>20 | `EVIDENCE_INSUFFICIENT` | [`EVIDENCE_INSUFFICIENT`](error-codes.md#errorcode-evidence-insufficient) |
-| <a id="precedence-residual-risk-not-visible"></a>21 | `RESIDUAL_RISK_NOT_VISIBLE` | [`RESIDUAL_RISK_NOT_VISIBLE`](error-codes.md#errorcode-residual-risk-not-visible) |
-| <a id="precedence-acceptance-required"></a>22 | `ACCEPTANCE_REQUIRED` | [`ACCEPTANCE_REQUIRED`](error-codes.md#errorcode-acceptance-required) |
-| <a id="precedence-projection-stale"></a>23 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
-| <a id="precedence-artifact-missing"></a>24 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
-| <a id="precedence-validator-failed"></a>25 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
-| <a id="precedence-operation-result-unavailable"></a>26 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
+| <a id="precedence-invocation-context-mismatch"></a>4 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](error-codes.md#errorcode-invocation-context-mismatch) |
+| <a id="precedence-no-active-task"></a>5 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](error-codes.md#errorcode-no-active-task) |
+| <a id="precedence-no-active-change-unit"></a>6 | `NO_ACTIVE_CHANGE_UNIT` | [`NO_ACTIVE_CHANGE_UNIT`](error-codes.md#errorcode-no-active-change-unit) |
+| <a id="precedence-baseline-stale"></a>7 | `BASELINE_STALE` | [`BASELINE_STALE`](error-codes.md#errorcode-baseline-stale) |
+| <a id="precedence-scope-required"></a>8 | `SCOPE_REQUIRED` | [`SCOPE_REQUIRED`](error-codes.md#errorcode-scope-required) |
+| <a id="precedence-scope-violation"></a>9 | `SCOPE_VIOLATION` | [`SCOPE_VIOLATION`](error-codes.md#errorcode-scope-violation) |
+| <a id="precedence-write-ticket-required"></a>10 | `WRITE_TICKET_REQUIRED` | [`WRITE_TICKET_REQUIRED`](error-codes.md#errorcode-write-ticket-required) |
+| <a id="precedence-write-ticket-invalid"></a>11 | `WRITE_TICKET_INVALID` | [`WRITE_TICKET_INVALID`](error-codes.md#errorcode-write-ticket-invalid) |
+| <a id="precedence-approval-denied"></a>12 | `APPROVAL_DENIED` | [`APPROVAL_DENIED`](error-codes.md#errorcode-approval-denied) |
+| <a id="precedence-approval-expired"></a>13 | `APPROVAL_EXPIRED` | [`APPROVAL_EXPIRED`](error-codes.md#errorcode-approval-expired) |
+| <a id="precedence-approval-required"></a>14 | `APPROVAL_REQUIRED` | [`APPROVAL_REQUIRED`](error-codes.md#errorcode-approval-required) |
+| <a id="precedence-decision-unresolved"></a>15 | `DECISION_UNRESOLVED` | [`DECISION_UNRESOLVED`](error-codes.md#errorcode-decision-unresolved) |
+| <a id="precedence-autonomy-boundary-exceeded"></a>16 | `AUTONOMY_BOUNDARY_EXCEEDED` | [`AUTONOMY_BOUNDARY_EXCEEDED`](error-codes.md#errorcode-autonomy-boundary-exceeded) |
+| <a id="precedence-decision-required"></a>17 | `DECISION_REQUIRED` | [`DECISION_REQUIRED`](error-codes.md#errorcode-decision-required) |
+| <a id="precedence-capability-insufficient"></a>18 | `CAPABILITY_INSUFFICIENT` | [`CAPABILITY_INSUFFICIENT`](error-codes.md#errorcode-capability-insufficient) |
+| <a id="precedence-evidence-insufficient"></a>19 | `EVIDENCE_INSUFFICIENT` | [`EVIDENCE_INSUFFICIENT`](error-codes.md#errorcode-evidence-insufficient) |
+| <a id="precedence-residual-risk-not-visible"></a>20 | `RESIDUAL_RISK_NOT_VISIBLE` | [`RESIDUAL_RISK_NOT_VISIBLE`](error-codes.md#errorcode-residual-risk-not-visible) |
+| <a id="precedence-acceptance-required"></a>21 | `ACCEPTANCE_REQUIRED` | [`ACCEPTANCE_REQUIRED`](error-codes.md#errorcode-acceptance-required) |
+| <a id="precedence-projection-stale"></a>22 | `PROJECTION_STALE` | [`PROJECTION_STALE`](error-codes.md#errorcode-projection-stale) |
+| <a id="precedence-artifact-missing"></a>23 | `ARTIFACT_MISSING` | [`ARTIFACT_MISSING`](error-codes.md#errorcode-artifact-missing) |
+| <a id="precedence-validator-failed"></a>24 | `VALIDATOR_FAILED` | [`VALIDATOR_FAILED`](error-codes.md#errorcode-validator-failed) |
+| <a id="precedence-operation-result-unavailable"></a>25 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](error-codes.md#errorcode-operation-result-unavailable) |
 
 `volicord.get_operation_result`에서는 접근 맥락 불일치가 메서드 범위 결과 없음 분기보다
 먼저 `INVOCATION_CONTEXT_MISMATCH`를 선택합니다. 그 밖에 적용되는 전역 순서는

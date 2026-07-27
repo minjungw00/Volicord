@@ -597,21 +597,17 @@ fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<
     let adapter = adapter(&fixture)?;
     let _guard = make_project_state_readonly(&fixture)?;
 
-    let response = adapter.call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))?;
+    let error = adapter
+        .call_tool(AgentToolId::INTAKE.wire_name(), intake_args(None))
+        .expect_err("read-only storage must remain outside the Core method response");
 
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
-    );
-    assert_eq!(
-        response.response_value["errors"][0]["message"],
-        "Volicord project state is not writable in the current MCP host environment."
-    );
-    assert_eq!(
-        response.response_value["errors"][0]["details"]["storage_capability"],
-        "read_only"
-    );
+    assert!(matches!(
+        error,
+        McpAdapterError::OperationalUnavailable {
+            retryable: false,
+            reached_core: false,
+        }
+    ));
     assert_eq!(read_only_state_version(&fixture)?, before_version);
     assert_eq!(
         read_only_table_count(&fixture, "authority_events")?,
@@ -621,6 +617,44 @@ fn mcp_write_tool_returns_unavailable_when_storage_readonly() -> Result<(), Box<
         read_only_table_count(&fixture, "tool_invocations")?,
         before_invocations
     );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_wire_maps_operational_unavailability_to_the_selected_profile() -> Result<(), Box<dyn Error>>
+{
+    let fixture = CoreFixture::new("mcp-readonly-wire-unavailable")?;
+    let adapter = adapter(&fixture)?;
+    let _guard = make_project_state_readonly(&fixture)?;
+    let input = Cursor::new(json_lines(&[
+        initialize_request(1, json!({})),
+        initialized_notification(),
+        tools_call(2, AgentToolId::INTAKE.wire_name(), intake_args(None)),
+    ])?);
+    let mut output = Vec::new();
+
+    run_stdio(adapter, BufReader::new(input), &mut output)?;
+
+    let responses = stdio_responses(&output)?;
+    assert_eq!(responses.len(), 2);
+    let result = &responses[1]["result"];
+    assert_eq!(result["isError"], true);
+    assert_eq!(result["structuredContent"]["code"], "MCP_UNAVAILABLE");
+    assert_eq!(
+        result["structuredContent"]["tool_name"],
+        MethodName::Intake.as_str()
+    );
+    assert_eq!(result["structuredContent"]["operation"], "store_access");
+    assert_eq!(result["structuredContent"]["resource"], "project_store");
+    assert_eq!(result["structuredContent"]["retryable"], false);
+    assert_eq!(result["structuredContent"]["reached_core"], false);
+    assert_eq!(result["structuredContent"]["committed"], false);
+    let message = result["content"][0]["text"]
+        .as_str()
+        .ok_or("MCP unavailability must include bounded compatibility text")?;
+    assert!(message.len() <= 512);
+    assert!(!message.contains(fixture.runtime_home_path().to_string_lossy().as_ref()));
     Ok(())
 }
 
@@ -907,18 +941,19 @@ fn readonly_degraded_user_action_tool_rejects_create_but_allows_exact_resume(
     let _guard = make_project_state_readonly(&fixture)?;
 
     assert!(tool_names(&adapter.tools()?).contains(&AgentToolId::REQUEST_USER_ACTION.wire_name()));
-    let rejected_create = adapter.call_tool(
-        AgentToolId::REQUEST_USER_ACTION.wire_name(),
-        product_action_args(&fixture, &task_id, before_version),
-    )?;
-    assert_eq!(
-        rejected_create.response_value["base"]["response_kind"],
-        "rejected"
-    );
-    assert_eq!(
-        rejected_create.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
-    );
+    let create_error = adapter
+        .call_tool(
+            AgentToolId::REQUEST_USER_ACTION.wire_name(),
+            product_action_args(&fixture, &task_id, before_version),
+        )
+        .expect_err("read-only create must remain outside the Core method response");
+    assert!(matches!(
+        create_error,
+        McpAdapterError::OperationalUnavailable {
+            retryable: false,
+            reached_core: false,
+        }
+    ));
 
     let resumed = adapter.call_tool(
         AgentToolId::REQUEST_USER_ACTION.wire_name(),

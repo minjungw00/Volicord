@@ -1802,6 +1802,10 @@ failed human operational report is rendered on stdout. Unexpected runtime or
 serialization errors use stderr and exit `1`. Exit selection uses the typed
 report status, never rendered text or reparsed JSON.
 
+A neutral Core operational-unavailability error uses that same runtime-error
+path: bounded text on stderr and exit `1`. CLI renders no MCP wire identity and
+does not synthesize a public method rejection.
+
 `diagnostics show` and `diagnostics session` use lookup status rather than
 finding severity for exit selection. A found record or session exits `0`, even
 when an active finding or terminal occurrence has `error` severity. A typed

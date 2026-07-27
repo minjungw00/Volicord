@@ -5,7 +5,7 @@ use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
 use crate::methods::{
     change_unit_ref, decode_required_json, parse_acceptance_policy, parse_task_control_level,
-    state_ref, store_error_response, stored_refs_to_state_refs, PlanError,
+    state_ref, store_error_plan, stored_refs_to_state_refs, PlanError,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness::{
@@ -813,13 +813,7 @@ fn non_current_judgment_refs_for_plan(
             project_state.state_version,
             &context.now,
         )
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))
         .map(stored_refs_to_state_refs)?;
     context
         .non_current_judgment_refs

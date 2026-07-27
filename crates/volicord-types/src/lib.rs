@@ -1179,6 +1179,7 @@ mod tests {
             "volicord.status",
             "volicord.get_operation_result",
             "volicord.check_close",
+            "volicord.prepare_evidence_capture",
             "volicord.prepare_write",
             "volicord.stage_artifact",
             "volicord.record_run",
@@ -1196,6 +1197,12 @@ mod tests {
             assert!(
                 schema["anyOf"].is_array(),
                 "{method_name} response schema should expose public response branches"
+            );
+            let rendered =
+                serde_json::to_string(&schema).expect("public response schema should serialize");
+            assert!(
+                !rendered.contains("MCP_UNAVAILABLE"),
+                "{method_name} public response schema must not expose MCP wire identities"
             );
         }
 
@@ -1311,6 +1318,28 @@ mod tests {
     fn generated_mcp_response_schema_includes_stable_adapter_error_shape() {
         let schema = mcp_response_schema(AgentToolId::STATUS).expect("status MCP response schema");
         assert_eq!(schema["type"], "object");
+
+        let unavailable = definition(&schema, "McpOperationalFailure");
+        assert_required(
+            unavailable,
+            &[
+                "code",
+                "tool_name",
+                "operation",
+                "resource",
+                "retryable",
+                "reached_core",
+                "committed",
+            ],
+            "McpOperationalFailure",
+        );
+        assert_eq!(unavailable["additionalProperties"], false);
+        assert!(
+            serde_json::to_string(&schema)
+                .expect("MCP response schema should serialize")
+                .contains("MCP_UNAVAILABLE"),
+            "MCP response schema should own the operational wire identity"
+        );
 
         let error = definition(&schema, "McpToolErrorResponse");
         assert_required(

@@ -1,7 +1,7 @@
 use crate::methods::evidence_facts::load_close_evidence_summary_facts;
 use crate::methods::{
     active_acceptance_criteria_for_task, no_active_task_response, state_ref_from_stored,
-    store_error_response, PlanError,
+    store_error_plan, PlanError,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness::UserActionAuthority;
@@ -141,57 +141,29 @@ pub(super) fn acquire_close_readiness_facts(
 ) -> Result<CloseReadinessFacts, PlanError> {
     let task = store
         .task_record(task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(no_active_task_response(envelope, project_state)))
         })?;
-    let current_change_unit = store.current_change_unit(task_id).map_err(|error| {
-        PlanError::Response(Box::new(store_error_response(
-            envelope,
-            project_state,
-            error,
-        )))
-    })?;
+    let current_change_unit = store
+        .current_change_unit(task_id)
+        .map_err(|error| store_error_plan(envelope, project_state, error))?;
     let task_revision = store
         .task_revision_record(task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(no_active_task_response(envelope, project_state)))
         })?;
     let current_close_basis = task_revision.current_close_basis;
     let pending_user_action_refs = store
         .pending_user_action_refs(task_id, project_state.state_version, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(envelope, project_state, error))?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
     let blocker_refs = store
         .active_blocker_refs(task_id, project_state.state_version)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(envelope, project_state, error))?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
@@ -201,13 +173,7 @@ pub(super) fn acquire_close_readiness_facts(
         .map(|evidence_ref| {
             store
                 .evidence_summary_record(evidence_ref.record_id.as_str())
-                .map_err(|error| {
-                    PlanError::Response(Box::new(store_error_response(
-                        envelope,
-                        project_state,
-                        error,
-                    )))
-                })
+                .map_err(|error| store_error_plan(envelope, project_state, error))
         })
         .transpose()?
         .flatten();

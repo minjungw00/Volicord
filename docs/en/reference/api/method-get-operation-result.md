@@ -102,8 +102,9 @@ bound cursor, or an unavailable eligible row returns
 state that violates its current contract returns `PERSISTED_DATA_CORRUPT`.
 Actor or project-context incompatibility returns
 `INVOCATION_CONTEXT_MISMATCH`. Malformed request or cursor syntax returns
-`VALIDATION_FAILED`. Store reachability remains `MCP_UNAVAILABLE`. No failure
-returns partial historical bytes.
+`VALIDATION_FAILED`. Store operational unavailability exits through the typed
+Core error path. The calling adapter maps that path, and no method response
+exists. No failure returns partial historical bytes.
 
 ## State and authority effects
 

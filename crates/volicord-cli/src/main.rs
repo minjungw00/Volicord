@@ -563,6 +563,27 @@ mod tests {
     }
 
     #[test]
+    fn core_operational_unavailability_maps_to_the_cli_runtime_diagnostic() {
+        let core_error =
+            volicord_core::CorePipelineError::from(volicord_store::StoreError::NotFound {
+                entity: "project_state_database",
+                id: "bounded-fixture-identity".to_owned(),
+            });
+        let user_error = UserCommandError::from(core_error);
+        let error = CliError::from(user_error);
+
+        let CliError::Runtime(message) = error else {
+            panic!("Core operational unavailability must map to CLI runtime failure");
+        };
+        assert_eq!(
+            message,
+            "Core operation unavailable: operation=store_access, resource=project_store, retryable=true"
+        );
+        assert!(!message.contains("MCP"));
+        assert!(!message.contains("bounded-fixture-identity"));
+    }
+
+    #[test]
     fn hidden_host_launcher_requires_exactly_one_binding() {
         let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
         let personal = run_cli(

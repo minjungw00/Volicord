@@ -211,15 +211,6 @@ pub enum McpStorageCapability {
 }
 
 impl McpStorageCapability {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::ReadWrite => "read_write",
-            Self::ReadOnly => "read_only",
-            Self::Unavailable => "unavailable",
-            Self::Unknown => "unknown",
-        }
-    }
-
     pub(crate) const fn allows_mutation(self) -> bool {
         matches!(self, Self::ReadWrite)
     }

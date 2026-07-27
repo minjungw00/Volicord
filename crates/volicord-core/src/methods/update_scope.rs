@@ -11,7 +11,7 @@ use super::{
     parse_acceptance_policy, parse_task_mode, plan_error_response, prepare_or_response,
     project_state_projection, projected_close_basis, projected_evidence_summary_for_criteria,
     projected_write_ticket_summary, rejected_pipeline_response, state_ref, state_ref_from_stored,
-    storage_value, store_error_response, synthetic_change_unit_record, task_lifecycle_mutation,
+    storage_value, store_error_plan, synthetic_change_unit_record, task_lifecycle_mutation,
     validation_rejected, work_phase_storage, write_ticket_ref, MethodPlan, PlanError, StoredScope,
     SummaryBuild,
 };
@@ -187,13 +187,7 @@ fn resolve_update_scope_context(
     let planned_state_version = project_state.state_version + 1;
     let task = store
         .task_record(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(no_active_task_response(
                 &request.envelope,
@@ -202,13 +196,7 @@ fn resolve_update_scope_context(
         })?;
     let current_change_unit = store
         .current_change_unit(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     validate_requested_effect_contract(store, project_state, &request)?;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
 
@@ -430,13 +418,7 @@ fn plan_update_scope_mutations(
 
     let active_write_tickets = store
         .active_write_tickets(&request.task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let stale_write_ticket_refs = if scope_changed {
         active_write_tickets
             .iter()
@@ -754,26 +736,14 @@ fn project_update_scope_response(
     } else {
         store
             .pending_user_action_refs(&request.task_id, planned_state_version, &plan_now)
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
             .into_iter()
             .map(state_ref_from_stored)
             .collect::<Vec<_>>()
     };
     let blocker_refs = store
         .active_blocker_refs(&request.task_id, planned_state_version)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
@@ -1113,13 +1083,7 @@ fn validate_related_scope_decisions(
         }
         let resolution = store
             .user_action_resolution_record(related_ref.record_id.as_str())
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
             .ok_or_else(|| {
                 PlanError::Response(Box::new(decision_rejected_response(
                     &request.envelope,

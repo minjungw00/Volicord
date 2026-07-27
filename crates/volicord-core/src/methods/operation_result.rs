@@ -120,7 +120,7 @@ impl CoreService {
                 return core_error_response(
                     &request.envelope,
                     Some(state_version),
-                    CorePipelineError::Store(error),
+                    CorePipelineError::from(error),
                 )
             }
         };

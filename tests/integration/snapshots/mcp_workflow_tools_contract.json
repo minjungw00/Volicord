@@ -128,6 +128,10 @@
           "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
           "McpMutationSummaryResponse_for_McpMutationEffectSummary",
           "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -177,7 +181,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8ffa21ae2192c1ff593e9c2333e320fc5e913ce5ec21ec79ce78aef1bfad8745"
+        "sha256": "sha256:d8a68acb24c0c4a4f94f26624c06e3f81c5c17cdd634f0762761df0261af8ac0"
       }
     },
     {
@@ -270,6 +274,10 @@
           "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
           "McpMutationSummaryResponse_for_McpMutationEffectSummary",
           "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -320,7 +328,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:db2dfcbb6b8833d75b3fda6504d83c4debfced86024b9ba9ad1eaec968c1306d"
+        "sha256": "sha256:62dde3725c9a986cf5fb342497edb6400f41998f8bc9a28a4374099e15323c92"
       }
     },
     {
@@ -391,6 +399,10 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -447,7 +459,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:88581b09c998d07b8a099c09f667b0d276f32ceb26e9c94bb23df23936e8836f"
+        "sha256": "sha256:9978b38e54181729ce8872cd2c7ea7416cdf3a4c2c372141723317ba8ecd7c0b"
       }
     },
     {
@@ -484,6 +496,10 @@
           "GetOperationResultResult",
           "GuaranteeClass",
           "GuaranteeDisclosure",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -509,7 +525,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:babb687866f3b7a9fc872f11cbb85cf0565c44d747b721632ed6dcdcf81957eb"
+        "sha256": "sha256:39539369c29e1169087adacbcff96034661a5d6ca4341f5b5855c264e5f21ed8"
       }
     },
     {
@@ -572,6 +588,10 @@
           "McpMutationResponseBudgetExceeded_for_McpPrepareEvidenceCaptureCompactResult",
           "McpMutationSummaryResponse_for_McpPrepareEvidenceCaptureCompactResult",
           "McpMutationWorkflowResponse_for_McpPrepareEvidenceCaptureCompactResult",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpPrepareEvidenceCaptureCompactResult",
           "McpToolErrorCode",
@@ -603,7 +623,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:80866d4c0b09391efedcee87257e621a5a675a85169f621563094f074933a048"
+        "sha256": "sha256:46d344457b620570bf444a46ad48615d959c493b6ef43a3c9440220182a85df8"
       }
     },
     {
@@ -689,6 +709,10 @@
           "McpMutationResponseBudgetExceeded_for_McpPrepareWriteCompactResult",
           "McpMutationSummaryResponse_for_McpPrepareWriteCompactResult",
           "McpMutationWorkflowResponse_for_McpPrepareWriteCompactResult",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpPrepareWriteCompactResult",
           "McpToolErrorCode",
@@ -752,7 +776,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:181a2880b182d072e34cb73893c6ca8344513296dd6679c037debee0306d1487"
+        "sha256": "sha256:d69627dc4581f29463ac2b61b31c730b7591705b428badcbb0a65d6f35588637"
       }
     },
     {
@@ -815,6 +839,10 @@
           "McpMutationResponseBudgetExceeded_for_McpStageArtifactCompactResult",
           "McpMutationSummaryResponse_for_McpStageArtifactCompactResult",
           "McpMutationWorkflowResponse_for_McpStageArtifactCompactResult",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpStageArtifactCompactResult",
           "McpToolErrorCode",
@@ -848,7 +876,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5710d15999f45da670cacef414ba5e317ff9799ca0d83069302ea673819f8721"
+        "sha256": "sha256:ce4896cf6b00bb24933d7918ccfd22fe5600f00a25a3469d60b58095a1b6e42e"
       }
     },
     {
@@ -982,6 +1010,10 @@
           "McpMutationResponseBudgetExceeded_for_McpRecordRunCompactResult",
           "McpMutationSummaryResponse_for_McpRecordRunCompactResult",
           "McpMutationWorkflowResponse_for_McpRecordRunCompactResult",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpRecordRunCloseBasisAnchor",
           "McpRecordRunCompactResult",
@@ -1043,7 +1075,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0ed72c949b7ca03a8391084d307ff0cb44308e986046871f1be5f9ae6e117e77"
+        "sha256": "sha256:db7395c7086d0a7c9867aa678903b46e92fd42cb13380660607b59ff11bb4313"
       }
     },
     {
@@ -1138,6 +1170,10 @@
           "McpMutationResponseBudgetExceeded_for_McpRequestUserActionCompactResult",
           "McpMutationSummaryResponse_for_McpRequestUserActionCompactResult",
           "McpMutationWorkflowResponse_for_McpRequestUserActionCompactResult",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpRequestUserActionCompactResult",
           "McpRequestUserActionResponse",
@@ -1195,7 +1231,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:34775e0a09bd3a1233513f98cc73dc1f89fa875e4973d05c989c860e223c906f"
+        "sha256": "sha256:9d474580dfeaead69a8f60e012adde8e435bffed063fe3cb60ea4e4118212ca8"
       }
     },
     {
@@ -1272,6 +1308,10 @@
           "McpMutationResponseBudgetExceeded_for_McpReconcileChangesCompactResult",
           "McpMutationSummaryResponse_for_McpReconcileChangesCompactResult",
           "McpMutationWorkflowResponse_for_McpReconcileChangesCompactResult",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpReconcileChangesCompactResult",
           "McpToolErrorCode",
@@ -1330,7 +1370,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:370726bd9b0c46e859ec8ce6bec78fad6d0da6fe19b3dbd84264ed111a6c1196"
+        "sha256": "sha256:8a3964be09b3190dc275de307932f6a3fc26b87b9129befb85311f3874b4942d"
       }
     },
     {
@@ -1395,6 +1435,10 @@
           "GuaranteeDisclosure",
           "GuaranteeDisplay",
           "GuaranteeLevel",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpToolErrorCode",
           "McpToolErrorIssue",
           "McpToolErrorResponse",
@@ -1448,7 +1492,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a9c4fe53b67f772b18f8961c505f67ae8b3dcf0fac25bdeded05d8dbd1c6bdad"
+        "sha256": "sha256:1ba16635019f0625a6bab7ed68ad7c637a930ef89508d951c7c17d3b0a52e149"
       }
     },
     {
@@ -1531,6 +1575,10 @@
           "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
           "McpMutationSummaryResponse_for_McpMutationEffectSummary",
           "McpMutationWorkflowResponse_for_McpMutationEffectSummary",
+          "McpOperationalErrorCode",
+          "McpOperationalFailure",
+          "McpOperationalOperation",
+          "McpOperationalResource",
           "McpPostEffectFailureCode",
           "McpToolErrorCode",
           "McpToolErrorIssue",
@@ -1587,7 +1635,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:294b84942fa312676f03141a37f3fbe2129dfb0ad0cb9b86dbbfdcd5f3d62027"
+        "sha256": "sha256:a94d3c016de1e872907b3cce93eddabbe2fbecbda950830feab74c674348c80e"
       }
     },
     {

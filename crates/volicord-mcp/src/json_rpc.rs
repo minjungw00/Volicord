@@ -176,7 +176,8 @@ pub(crate) fn json_rpc_error_for_adapter(id: Value, error: McpAdapterError) -> V
         | McpAdapterError::ToolOutputSchema { .. } => (-32602, "Invalid params"),
         McpAdapterError::MutationAdmission(_) => (-32000, "Runtime Home setup in progress"),
         McpAdapterError::MutationAdmissionAcquisition { .. } => (-32603, "Internal error"),
-        McpAdapterError::Core(_)
+        McpAdapterError::OperationalUnavailable { .. }
+        | McpAdapterError::Core(_)
         | McpAdapterError::Json(_)
         | McpAdapterError::Io(_)
         | McpAdapterError::Store(_) => (-32603, "Internal error"),

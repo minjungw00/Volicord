@@ -1505,8 +1505,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-17'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - implementers
   - agent integrators
@@ -1519,6 +1519,8 @@ documents:
     category meanings and machine-readable identifiers
   - structural rejection versus policy non-allow boundary
   - unavailable versus degraded and rejected versus corrupt boundaries
+  - typed Core operational unavailability outside public method-result branches and adapter-owned
+    surface mapping
   - bounded versioned host-contract rejection without cross-profile inference or raw-payload retention
   - fail-closed persisted authority, policy, and typed-data corruption handling
   - shared bounded `DiagnosticFinding` fields, safe-fact projection, cause-graph integrity, and
@@ -1655,6 +1657,7 @@ documents:
   canonical_for:
   - local `volicord` administrative and bootstrap command contract
   - command arguments, defaults, output routing, exit codes, and noninteractive behavior
+  - neutral Core operational-unavailability mapping to the CLI runtime diagnostic channel
   - Runtime Home selection and project registration commands
   - personal and shared Codex Record connection setup, verification, mode, repair, and removal
   - exact concise, verbose, and schema-2 `DiagnosticReport` projections for init, add, status, verify, mode, and remove, including dry-run separation and exit routing
@@ -1710,6 +1713,7 @@ documents:
   - MCP public input and output projections without hidden Core context
   - known-tool argument, lifecycle, and adapter-precondition failure shapes
   - capability-driven `tools/call` result carriers and authority-preserving committed-result recovery
+  - MCP-owned operational-unavailability wire identity and capability-selected failure projection
   - MCP creation or resume of UserAction requests without resolution authority
   - Runtime Home forwarding, connection binding, project selection, and repository discovery
   - native host session retention before project-selected Agent Session derivation
@@ -1877,8 +1881,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-07-13'
-  last_updated_on: '2026-07-14'
-  last_verified_on: '2026-07-14'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2322,8 +2326,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-18'
-  last_verified_on: '2026-07-18'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2347,8 +2351,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2364,7 +2368,7 @@ documents:
   - '`STATE_VERSION_CONFLICT` conflict selection'
   - stale-state conflict behavior
   - idempotency request-hash conflict behavior
-  - rejection, corruption, and unavailable-error precedence
+  - rejection and corruption error precedence
   depends_on:
   - reference.failure-model
   - reference.api.error-codes
@@ -2378,8 +2382,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators
@@ -2392,7 +2396,7 @@ documents:
   - rejected response branch routing
   - blocked result response branch routing
   - '`dry_run` preview response branch routing'
-  - API routing for `Rejected`, `NotAllowed`, `Unavailable`, `Degraded`, and `Corrupt`
+  - API routing for `Rejected`, `NotAllowed`, owner-defined `Unavailable`, `Degraded`, and `Corrupt`
   depends_on:
   - reference.failure-model
   - reference.api.schema-core
@@ -2431,8 +2435,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - API implementers
   - agent integrators

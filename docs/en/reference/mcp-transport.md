@@ -719,6 +719,17 @@ against the exact compact `outputSchema` advertised for that tool. A pre-Core
 adapter rejection uses the same revision carrier and retains its structured
 error code and retry/side-effect flags even where `isError` is not available.
 
+When Core returns typed operational unavailability without a method result,
+MCP emits the MCP-owned `MCP_UNAVAILABLE` structured failure through that same
+selected carrier. The object carries the tool name, typed `operation` and
+`resource` projections, `retryable`, `reached_core`, and `committed=false`.
+Profiles with `isError` set it to `true`; profiles without that field retain
+the failure identity in the authoritative carrier. The bounded compatibility
+message contains no Store source detail. This is not a public
+`ToolRejectedResponse`, and `MCP_UNAVAILABLE` is not a public Volicord
+`ErrorCode`. Carrier and field selection use only the current semantic
+capability registry; an unknown or unsupported profile is rejected.
+
 Mutations retain the selected `summary`, `workflow`, or `full` public
 projection with one fresh `AuthorityReceipt`, exact effect identity, replay
 facts, and bounded recovery information. Response-size accounting and compact

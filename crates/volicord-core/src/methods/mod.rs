@@ -1000,13 +1000,7 @@ fn canonical_source_artifact_ref(
     }
     let record = store
         .artifact_record(submitted.artifact_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(envelope, project_state, error))?;
     let Some(record) = record else {
         return source_ref_error(
             envelope,
@@ -1017,13 +1011,7 @@ fn canonical_source_artifact_ref(
     };
     let owner_link = store
         .artifact_has_task_owner_link(submitted.artifact_id.as_str(), artifact_task_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(envelope, project_state, error))?;
     if record.project_id != envelope.project_id.as_str()
         || record.task_id != artifact_task_id.as_str()
         || !owner_link
@@ -1219,13 +1207,7 @@ fn resolve_prepare_write_task(
         })?;
     let task = store
         .task_record(&task_id)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
         .ok_or_else(|| {
             PlanError::Response(Box::new(no_active_task_response(
                 &request.envelope,
@@ -1385,13 +1367,7 @@ fn matching_sensitive_approval(
     } = search;
     let records = store
         .resolved_user_action_records(task_id, UserActionKind::SensitiveApproval, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let requirement = SensitiveApprovalRequirement {
         task_id,
@@ -3048,17 +3024,19 @@ fn infallible_rejected_pipeline_response(
         .expect("rejected response serialization should succeed")
 }
 
-pub(crate) fn store_error_response(
+pub(crate) fn store_error_plan(
     envelope: &ToolEnvelope,
     project_state: &ProjectStateHeader,
     error: StoreError,
-) -> PipelineResponse {
-    rejected_pipeline_response(
-        envelope.dry_run,
+) -> PlanError {
+    match core_error_response(
+        envelope,
         Some(project_state.state_version),
-        vec![store_failure_error(error)],
-    )
-    .expect("rejected response serialization should succeed")
+        CorePipelineError::from(error),
+    ) {
+        Ok(response) => PlanError::Response(Box::new(response)),
+        Err(error) => PlanError::Core(error),
+    }
 }
 
 fn core_error_response(
@@ -3067,11 +3045,14 @@ fn core_error_response(
     error: CorePipelineError,
 ) -> CoreResult<PipelineResponse> {
     match error {
-        CorePipelineError::Store(error) => rejected_pipeline_response(
-            envelope.dry_run,
-            state_version,
-            vec![store_failure_error(error)],
-        ),
+        CorePipelineError::Store(error) => match CorePipelineError::from(error) {
+            CorePipelineError::Store(error) => rejected_pipeline_response(
+                envelope.dry_run,
+                state_version,
+                vec![store_failure_error(error)],
+            ),
+            error => Err(error),
+        },
         error => Err(error),
     }
 }

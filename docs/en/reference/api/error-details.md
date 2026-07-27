@@ -57,9 +57,10 @@ diagnostic_code: string
 
 `diagnostic_code` is the canonical namespaced `platform.*` code selected by the
 typed platform diagnostic kind. Unsupported platform kinds route through
-`VALIDATION_FAILED`; unavailable-observation kinds route through
-`MCP_UNAVAILABLE`. Other Store failures use `store_failure_category` for their
-Store-owned classification.
+`VALIDATION_FAILED`. An unavailable platform observation is a typed Core
+operational failure outside `ToolError` and therefore has no
+`ToolError.details`. Other Store failures use `store_failure_category` only
+when their Store-owned classification selects a public method rejection.
 
 <a id="state-conflict-detail-fields"></a>
 

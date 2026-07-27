@@ -55,6 +55,22 @@ trusted contract violates that contract. A malformed or unknown untrusted
 boundary input that has not become persisted owner state is `Rejected`, not
 `Corrupt`, and is not guessed into a supported shape.
 
+### Core operational unavailability
+
+Core method rejection is limited to current domain, validation, policy,
+persisted-corruption, invocation, and state-conflict outcomes that can be
+expressed as a public method response. If Store or another required
+infrastructure dependency cannot produce any method result, Core returns a
+typed operational-unavailability error with operation, resource, and
+retryability facts. That error path contains no `PipelineResponse`, public
+`ErrorCode`, `ToolError`, or successful response envelope.
+
+The calling adapter owns the surface mapping. CLI sends the neutral failure to
+its runtime diagnostic channel. MCP projects it through the selected semantic
+protocol capabilities and owns the MCP wire code, result carrier, `isError`,
+bounded message, and retryability fields. Public method schemas and Core
+precedence contain only method-level rejection identities.
+
 ### Runtime Home setup in progress
 
 `runtime_home.mutation.setup_in_progress` is the stable typed coordination

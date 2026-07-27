@@ -635,6 +635,16 @@ Text 전용 profile에서는 첫 text 항목이 권위 있는 JSON 객체입니�
 거절도 같은 revision carrier를 사용하며 `isError`를 쓸 수 없는 revision에서도 구조화된
 오류 코드와 재시도/부작용 flag를 보존합니다.
 
+Core가 메서드 결과 없이 typed 운영 불가를 반환하면 MCP는 같은 선택 carrier를 통해 MCP
+소유 `MCP_UNAVAILABLE` 구조화 실패를 내보냅니다. 이 객체는 tool name, typed
+`operation`과 `resource` projection, `retryable`, `reached_core`,
+`committed=false`를 담습니다. `isError`를 지원하는 profile은 이를 `true`로 설정하고,
+그 field가 없는 profile은 권위 있는 carrier에 실패 identity를 보존합니다. 한도가 있는
+호환 message에는 Store source 세부사항을 넣지 않습니다. 이 객체는 공개
+`ToolRejectedResponse`가 아니며 `MCP_UNAVAILABLE`은 공개 Volicord `ErrorCode`가
+아닙니다. Carrier와 field는 현재 semantic capability registry로만 선택하며 알 수 없거나
+지원하지 않는 profile은 거부합니다.
+
 Mutation은 선택한 `summary`, `workflow`, `full` 공개 projection에 새
 `AuthorityReceipt`, 정확한 효과 identity, replay 사실, 제한된 복구 정보를 그대로
 담습니다. 응답 크기 계산과 간결한 복구는 선택한 profile의 semantic carrier capability를

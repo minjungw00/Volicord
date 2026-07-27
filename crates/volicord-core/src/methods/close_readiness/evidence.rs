@@ -9,7 +9,7 @@ use crate::methods::evidence_facts::{
 };
 use crate::methods::{
     change_unit_ref, parse_owner_storage_value, persistent_artifact_is_verified_current, state_ref,
-    store_error_response, PlanError,
+    store_error_plan, PlanError,
 };
 use crate::pipeline::CorePipelineError;
 use crate::policy::close_readiness_evidence::{
@@ -270,13 +270,7 @@ fn close_evidence_issue_for_item(
         }
         let record = store
             .evidence_observation_record(observation_ref.record_id.as_str())
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?;
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
         let Some(record) = record else {
             dispositions.push(CloseEvidenceObservationDisposition::Weak);
             continue;
@@ -364,13 +358,7 @@ fn unavailable_close_artifact_refs(
             }
             let stored = store
                 .artifact_record(artifact_ref.artifact_id.as_str())
-                .map_err(|error| {
-                    PlanError::Response(Box::new(store_error_response(
-                        &request.envelope,
-                        project_state,
-                        error,
-                    )))
-                })?;
+                .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
             let Some(stored) = stored else {
                 unavailable.push(state_ref);
                 continue;
@@ -380,13 +368,7 @@ fn unavailable_close_artifact_refs(
                     artifact_ref.artifact_id.as_str(),
                     request.task_id.as_str(),
                 )
-                .map_err(|error| {
-                    PlanError::Response(Box::new(store_error_response(
-                        &request.envelope,
-                        project_state,
-                        error,
-                    )))
-                })?;
+                .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
             let stored_available = persistent_artifact_is_verified_current(store, &stored)?;
             let stored_redaction_state: RedactionState = parse_owner_storage_value(
                 "artifacts",
@@ -459,22 +441,10 @@ fn close_basis_artifact_ref_unavailable(
     }
     let stored = store
         .artifact_record(record_ref.record_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let owner_link_exists = store
         .artifact_has_task_owner_link(record_ref.record_id.as_str(), request.task_id.as_str())
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     Ok(stored
         .as_ref()
         .map(|record| {

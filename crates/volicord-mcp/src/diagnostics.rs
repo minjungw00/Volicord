@@ -160,6 +160,13 @@ impl From<&McpAdapterError> for McpDiagnostic {
             | McpAdapterError::MutationAdmissionAcquisition { .. } => {
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
             }
+            McpAdapterError::OperationalUnavailable { reached_core, .. } => {
+                if *reached_core {
+                    Self::ToolCall(McpToolCallDiagnostic::CoreExecutionError)
+                } else {
+                    Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError)
+                }
+            }
             McpAdapterError::Core(_) => Self::ToolCall(McpToolCallDiagnostic::CoreExecutionError),
             McpAdapterError::Store(error) => error.platform_diagnostic().map_or(
                 Self::ToolCall(McpToolCallDiagnostic::AdapterExecutionError),

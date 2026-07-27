@@ -2,7 +2,7 @@
 
 use crate::methods::{
     artifact_ref_from_verified_record, decision_rejected_response, normalize_display_text,
-    persistent_artifact_is_verified_current, state_ref, store_error_response,
+    persistent_artifact_is_verified_current, state_ref, store_error_plan,
     stored_refs_to_state_refs, validation_plan_error, PlanError, StoredScope,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
@@ -275,13 +275,7 @@ pub(crate) fn resolved_user_action_authorities_for_plan(
 ) -> Result<Vec<UserActionAuthority>, PlanError> {
     store
         .resolved_user_action_records(task_id, judgment_kind.into(), now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(envelope, project_state, error))?
         .iter()
         .map(user_action_authority_from_record)
         .collect::<CoreResult<Vec<_>>>()
@@ -298,13 +292,7 @@ pub(crate) fn pending_user_action_authorities_for_plan(
 ) -> Result<Vec<UserActionAuthority>, PlanError> {
     store
         .pending_user_action_records(task_id, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(envelope, project_state, error))?
         .iter()
         .map(user_action_authority_from_record)
         .collect::<CoreResult<Vec<_>>>()
@@ -350,13 +338,7 @@ pub(crate) fn resolved_user_action_authorities_for_all_kinds(
 ) -> Result<Vec<UserActionAuthority>, PlanError> {
     store
         .user_action_records_for_task(task_id, now)
-        .map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                envelope,
-                project_state,
-                error,
-            )))
-        })?
+        .map_err(|error| store_error_plan(envelope, project_state, error))?
         .into_iter()
         .filter(|record| record.status == UserActionStatus::Resolved)
         .map(|record| user_action_authority_from_record(&record))

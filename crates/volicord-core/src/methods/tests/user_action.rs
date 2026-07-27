@@ -1,4 +1,5 @@
 use super::*;
+use crate::{CoreOperationalOperation, CoreOperationalResource};
 
 fn request_id(response: &PipelineResponse) -> String {
     response.response_value["user_action_request_summary"]["user_action_request_id"]
@@ -259,7 +260,7 @@ fn custom_clock_is_bounded_by_persisted_and_same_handle_floors() -> Result<(), B
 }
 
 #[test]
-fn chrono_max_custom_clock_is_rejected_without_effects() -> Result<(), Box<dyn Error>> {
+fn chrono_max_custom_clock_is_an_operational_error_without_effects() -> Result<(), Box<dyn Error>> {
     let mut harness = MethodHarness::new()?;
     let before = harness.counts()?;
     let before_floor: String = harness.conn()?.query_row(
@@ -269,20 +270,24 @@ fn chrono_max_custom_clock_is_rejected_without_effects() -> Result<(), Box<dyn E
     )?;
     harness.use_clock(ManualClock::from_datetime(DateTime::<Utc>::MAX_UTC));
 
-    let response = harness.service.status(
-        StatusRequest {
-            envelope: envelope("req_extreme_clock", None, false, None, None),
-            continuity_page: None,
-            include: status_include(),
-        },
-        invocation(OperationCategory::Read),
-    )?;
+    let error = harness
+        .service
+        .status(
+            StatusRequest {
+                envelope: envelope("req_extreme_clock", None, false, None, None),
+                continuity_page: None,
+                include: status_include(),
+            },
+            invocation(OperationCategory::Read),
+        )
+        .expect_err("an unusable Core clock must not produce a method response");
 
-    assert_eq!(response.response_value["base"]["response_kind"], "rejected");
-    assert_eq!(
-        response.response_value["errors"][0]["code"],
-        "MCP_UNAVAILABLE"
-    );
+    let CorePipelineError::OperationalUnavailable(failure) = error else {
+        panic!("expected operational unavailability, got {error}");
+    };
+    assert_eq!(failure.operation(), CoreOperationalOperation::StoreAccess);
+    assert_eq!(failure.resource(), CoreOperationalResource::Store);
+    assert!(!failure.retryable());
     assert_eq!(harness.counts()?, before);
     let after_floor: String = harness.conn()?.query_row(
         "SELECT updated_at FROM project_state WHERE project_id = ?1",

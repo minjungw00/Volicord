@@ -95,8 +95,9 @@ code point를 나누지 않습니다. 첫 page는 `start_offset_bytes=0`이며 �
 `OPERATION_RESULT_UNAVAILABLE`을 반환합니다. 저장 byte 무결성 실패 또는 현재 계약을
 위반하는 typed owner state는 `PERSISTED_DATA_CORRUPT`를 반환합니다. Actor 또는
 project context 불일치는 `INVOCATION_CONTEXT_MISMATCH`, 잘못된 요청이나 cursor 문법은
-`VALIDATION_FAILED`를 반환합니다. Store 접근 불가는 `MCP_UNAVAILABLE`로 유지됩니다.
-실패 응답은 과거 응답 일부를 노출하지 않습니다.
+`VALIDATION_FAILED`를 반환합니다. Store 운영 불가는 typed Core 오류 경로로 나가며
+호출 어댑터가 그 경로를 변환합니다. 메서드 응답은 존재하지 않습니다. 실패는 과거
+응답 일부를 노출하지 않습니다.
 
 ## 상태와 권한 효과
 

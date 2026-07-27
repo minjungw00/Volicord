@@ -57,6 +57,10 @@ pub enum McpAdapterError {
         mutation_domain: &'static str,
         source: RuntimeHomeMutationLeaseError,
     },
+    OperationalUnavailable {
+        retryable: bool,
+        reached_core: bool,
+    },
     Core(CorePipelineError),
     Store(StoreError),
     Io(io::Error),
@@ -109,6 +113,9 @@ impl fmt::Display for McpAdapterError {
                 formatter,
                 "Runtime Home mutation admission failed for {mutation_domain}: {source}"
             ),
+            Self::OperationalUnavailable { .. } => {
+                formatter.write_str("MCP operation is unavailable")
+            }
             Self::Core(error) => write!(formatter, "{error}"),
             Self::Store(error) => write!(formatter, "store error: {error}"),
             Self::Io(error) => write!(formatter, "{error}"),
@@ -136,6 +143,7 @@ impl Error for McpAdapterError {
             | Self::InvalidParams { source: None, .. }
             | Self::ToolExecution { .. }
             | Self::ToolOutputSchema { .. }
+            | Self::OperationalUnavailable { .. }
             | Self::Host(_)
             | Self::Protocol(_)
             | Self::Environment(_) => None,

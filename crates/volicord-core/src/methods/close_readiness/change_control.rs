@@ -4,7 +4,7 @@ use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
 use crate::methods::{
     change_unit_ref, decode_required_json, effective_write_ticket_status, state_ref,
-    store_error_response, write_ticket_is_current_for_projection, write_ticket_ref,
+    store_error_plan, write_ticket_is_current_for_projection, write_ticket_ref,
     PersistedLifecycleState, PlanError, StoredScope,
 };
 use crate::pipeline::CoreResult;
@@ -62,13 +62,9 @@ pub(super) fn terminal_blockers(
             .superseding_task_id
             .as_ref()
             .map(|task_id| {
-                store.task_record(task_id).map_err(|error| {
-                    PlanError::Response(Box::new(store_error_response(
-                        &request.envelope,
-                        project_state,
-                        error,
-                    )))
-                })
+                store
+                    .task_record(task_id)
+                    .map_err(|error| store_error_plan(&request.envelope, project_state, error))
             })
             .transpose()?
             .flatten();
@@ -229,13 +225,7 @@ fn unresolved_write_ticket_blockers(
     if context.write_tickets.is_none() {
         let records = store
             .write_tickets_for_task(&request.task_id)
-            .map_err(|error| {
-                PlanError::Response(Box::new(store_error_response(
-                    &request.envelope,
-                    project_state,
-                    error,
-                )))
-            })?;
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
         context.write_tickets = Some(records);
     }
     for record in context
@@ -354,13 +344,9 @@ fn incompatible_close_basis_run_refs_blocker(
         }) {
             continue;
         }
-        let record = store.run_record(record_id).map_err(|error| {
-            PlanError::Response(Box::new(store_error_response(
-                &request.envelope,
-                project_state,
-                error,
-            )))
-        })?;
+        let record = store
+            .run_record(record_id)
+            .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
         if record.as_ref().is_none_or(|record| {
             !run_record_matches_close_basis_context(
                 record,

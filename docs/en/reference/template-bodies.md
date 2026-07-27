@@ -117,18 +117,6 @@ Suggested label:
 Recovery cue:
 - Refresh current state and retry with the current `project_state.state_version`, or replay the original idempotent request.
 
-<a id="label-mcp-unavailable"></a>
-### `MCP_UNAVAILABLE`
-
-Label-selection input:
-- `MCP_UNAVAILABLE`.
-
-Suggested label:
-- Core or Agent Connection unavailable
-
-Recovery cue:
-- Reconnect Core, MCP, or the selected Agent Connection, or show that the route is unavailable.
-
 <a id="label-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`
 

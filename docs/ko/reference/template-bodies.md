@@ -119,18 +119,6 @@
 해결 안내:
 - 현재 상태를 새로 고치고 현재 `project_state.state_version`으로 다시 시도하거나 원래 멱등 요청을 재실행합니다.
 
-<a id="label-mcp-unavailable"></a>
-### `MCP_UNAVAILABLE`
-
-라벨 선택 입력:
-- `MCP_UNAVAILABLE`.
-
-표시 라벨:
-- Core 또는 Agent Connection 사용 불가
-
-해결 안내:
-- Core, MCP, 또는 선택된 연결을 다시 연결하거나 그 경로를 사용할 수 없다고 표시합니다.
-
 <a id="label-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`
 

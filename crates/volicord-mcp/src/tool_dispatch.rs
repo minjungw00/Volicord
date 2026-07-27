@@ -43,7 +43,10 @@ use crate::tool_registry::{CanonicalContent, CanonicalToolResult};
 use crate::user_action_projection::{user_action_tool_output, UserActionFallback};
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Instant};
-use volicord_core::pipeline::PipelineResponse;
+use volicord_core::pipeline::{
+    CoreOperationalOperation, CoreOperationalResource, CoreOperationalUnavailable,
+    CorePipelineError, PipelineResponse,
+};
 use volicord_mcp_protocol::McpProtocolCapabilities;
 #[cfg(test)]
 use volicord_mcp_protocol::ProtocolRegistry;
@@ -56,11 +59,12 @@ use volicord_store::operational_sessions::{
     record_mcp_tools_list, record_mcp_verification_tool_observation,
 };
 use volicord_types::methods::{
-    McpPostEffectFailureCode, McpToolErrorCode, McpToolErrorIssue, McpToolErrorResponse,
-    McpToolIssueCode, OperationResultRef, MAX_MCP_TOOL_ERROR_RESULT_BYTES, MAX_VALIDATION_ISSUES,
+    McpOperationalErrorCode, McpOperationalFailure, McpOperationalOperation,
+    McpOperationalResource, McpPostEffectFailureCode, McpToolErrorCode, McpToolErrorIssue,
+    McpToolErrorResponse, McpToolIssueCode, OperationResultRef, MAX_MCP_TOOL_ERROR_RESULT_BYTES,
+    MAX_VALIDATION_ISSUES,
 };
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner, ToolVerificationRole};
-#[cfg(test)]
 use volicord_types::values::MethodName;
 use volicord_types::values::{AgentConnectionMode, EffectKind};
 
@@ -372,6 +376,24 @@ pub(crate) fn call_tool_result(
                 ToolCallOutput::from_operation_result_response(&response, capabilities)?
             }
             Ok(response) => ToolCallOutput::from_pipeline_response(&response)?,
+            Err(McpAdapterError::Core(CorePipelineError::OperationalUnavailable(failure))) => {
+                ToolCallOutput::from_core_operational_unavailable(
+                    tool.method()
+                        .expect("Core-owned MCP tools must have a MethodName"),
+                    &failure,
+                )?
+            }
+            Err(McpAdapterError::OperationalUnavailable {
+                retryable,
+                reached_core,
+            }) => ToolCallOutput::operational_unavailable(
+                tool.method()
+                    .expect("Core-owned MCP tools must have a MethodName"),
+                retryable,
+                reached_core,
+                McpOperationalOperation::StoreAccess,
+                McpOperationalResource::ProjectStore,
+            )?,
             Err(error @ McpAdapterError::InvalidParams { .. }) => {
                 state.pending_finding = Some(McpDiagnostic::from(&error));
                 let response =
@@ -593,6 +615,53 @@ impl ToolCallOutput {
         })
     }
 
+    fn operational_unavailable(
+        tool_name: MethodName,
+        retryable: bool,
+        reached_core: bool,
+        operation: McpOperationalOperation,
+        resource: McpOperationalResource,
+    ) -> Result<Self, McpAdapterError> {
+        let structured_content = serde_json::to_value(McpOperationalFailure {
+            code: McpOperationalErrorCode::Unavailable,
+            tool_name,
+            operation,
+            resource,
+            retryable,
+            reached_core,
+            committed: false,
+        })
+        .map_err(McpAdapterError::Json)?;
+        Ok(Self {
+            primary_text:
+                "Volicord could not produce a tool result because an operational dependency is unavailable."
+                    .to_owned(),
+            structured_content,
+            extra_texts: Vec::new(),
+            is_error: true,
+            diagnostic_facts: ToolDiagnosticFacts {
+                core_reached: reached_core,
+                ..ToolDiagnosticFacts::default()
+            },
+            operation_result_ref: None,
+            mutation_refresh_context: None,
+            post_effect_failure: None,
+        })
+    }
+
+    fn from_core_operational_unavailable(
+        tool_name: MethodName,
+        failure: &CoreOperationalUnavailable,
+    ) -> Result<Self, McpAdapterError> {
+        Self::operational_unavailable(
+            tool_name,
+            failure.retryable(),
+            true,
+            mcp_operational_operation(failure.operation()),
+            mcp_operational_resource(failure.resource()),
+        )
+    }
+
     pub(crate) fn from_pipeline_response(
         response: &PipelineResponse,
     ) -> Result<Self, McpAdapterError> {
@@ -706,6 +775,22 @@ impl ToolCallOutput {
 
     fn diagnostic_facts(&self) -> ToolDiagnosticFacts {
         self.diagnostic_facts.clone()
+    }
+}
+
+fn mcp_operational_operation(operation: CoreOperationalOperation) -> McpOperationalOperation {
+    match operation {
+        CoreOperationalOperation::StoreAccess => McpOperationalOperation::StoreAccess,
+    }
+}
+
+fn mcp_operational_resource(resource: CoreOperationalResource) -> McpOperationalResource {
+    match resource {
+        CoreOperationalResource::Store => McpOperationalResource::Store,
+        CoreOperationalResource::RegistryStore => McpOperationalResource::RegistryStore,
+        CoreOperationalResource::ProjectStore => McpOperationalResource::ProjectStore,
+        CoreOperationalResource::RuntimeHome => McpOperationalResource::RuntimeHome,
+        CoreOperationalResource::PlatformEnvironment => McpOperationalResource::PlatformEnvironment,
     }
 }
 
@@ -961,6 +1046,7 @@ fn serialize_tool_error_result(
 #[cfg(test)]
 mod mutation_projection_and_recovery_tests {
     use super::*;
+    use volicord_mcp_protocol::ToolResultCarrier;
     use volicord_store::evidence_capture::EvidenceCaptureReceiptInsert;
     use volicord_test_support::core_fixtures::{
         CoreFixture, UpdateScopeFixture, UserActionFixture,
@@ -976,6 +1062,53 @@ mod mutation_projection_and_recovery_tests {
         ChangeUnitOperation, EvidenceAssuranceLevel, EvidenceSourceKind, JudgmentKind,
         StateRecordKind, UtcTimestamp,
     };
+
+    #[test]
+    fn operational_unavailability_projects_through_every_supported_profile() {
+        for profile in ProtocolRegistry::production().oldest_to_newest() {
+            let capabilities = profile.capabilities();
+            let core_error = CorePipelineError::from(volicord_store::StoreError::NotFound {
+                entity: "project_state_database",
+                id: "bounded-fixture-identity".to_owned(),
+            });
+            let CorePipelineError::OperationalUnavailable(failure) = core_error else {
+                panic!("Store unavailability should remain a neutral Core error");
+            };
+            let output =
+                ToolCallOutput::from_core_operational_unavailable(MethodName::Status, &failure)
+                    .expect("operational failure should serialize");
+            let projected = tool_call_result_from_output_for_capabilities(
+                MethodName::Status.as_str(),
+                output,
+                capabilities,
+            )
+            .expect("supported profile should project operational failure");
+            let structured = match capabilities.tools().result_carrier() {
+                ToolResultCarrier::DirectToolResult => projected["toolResult"].clone(),
+                ToolResultCarrier::JsonTextContent => serde_json::from_str(
+                    projected["content"][0]["text"]
+                        .as_str()
+                        .expect("JSON text carrier must contain text"),
+                )
+                .expect("JSON text carrier must contain the structured failure"),
+                ToolResultCarrier::StructuredContentWithText => {
+                    projected["structuredContent"].clone()
+                }
+            };
+
+            assert_eq!(structured["code"], "MCP_UNAVAILABLE");
+            assert_eq!(structured["tool_name"], MethodName::Status.as_str());
+            assert_eq!(structured["operation"], "store_access");
+            assert_eq!(structured["resource"], "project_store");
+            assert_eq!(structured["retryable"], true);
+            assert_eq!(structured["reached_core"], true);
+            assert_eq!(structured["committed"], false);
+            assert_eq!(
+                projected.get("isError").and_then(Value::as_bool),
+                capabilities.tools().is_error().then_some(true)
+            );
+        }
+    }
 
     fn test_agent_invocation(
         fixture: &CoreFixture,

@@ -45,6 +45,8 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
   Store, CLI, MCP에는 의존하지 않습니다.
 - 메서드 planner는 typed field와 계획된 effect를 반환합니다. 공유 pipeline은 branch
   fact가 정해진 뒤에만 공통 fact를 추가합니다.
+- 필수 인프라 의존성이 메서드 결과를 만들 수 없으면 모든 공개 응답 분기 밖의 typed
+  neutral Core 운영 오류를 반환합니다.
 - Store는 adapter 입력에서 메서드 정책을 파생하지 않습니다.
 - Adapter projection은 Core 결과를 넓히거나 typed diagnostic identity를 rendered
   prose로 대신하지 못합니다.
@@ -71,7 +73,8 @@ protocol result projection과 neutral Core availability failure의 경계 변환
    수행합니다.
 4. 선택한 branch는 read-only, no-effect, dry-run, staging, committed mutation 중
    하나의 typed 상태를 유지합니다.
-5. Store가 계획된 effect를 읽거나 적용합니다.
+5. Store가 계획된 effect를 읽거나 적용합니다. 운영 불가는 typed operation,
+   resource, retryability fact와 함께 neutral Core 오류 경로로 반환됩니다.
 6. Core가 공개 메서드 결과를 구성하거나 내부 adapter read에 adapter-neutral
    semantic fact를 반환합니다.
 7. 공유 presentation이 typed command-model invocation을 통해 이 fact에서 CLI inbox
@@ -82,9 +85,12 @@ protocol result projection과 neutral Core availability failure의 경계 변환
 ## 실패 동작
 
 문법 실패는 command 또는 protocol 경계에 남습니다. 공개 거부는 구조화된 Core
-response로 남습니다. 지속되는 담당 데이터 실패와 예상하지 못한 구현 실패는 typed
-Store/Core/adapter 경로를 유지합니다. 저장소 검사 실패는 `xtask`가 보고하며 runtime
-fallback 동작을 시작하지 않습니다.
+response로 남습니다. 필수 Store 또는 인프라 실패 때문에 어떤 메서드 결과도 만들 수
+없으면 typed Core 운영 오류를 반환하며 공개 거부나 성공 응답을 만들지 않습니다.
+CLI는 이 neutral 실패를 runtime 진단 계약으로 변환합니다. MCP는 capability가 선택한
+protocol carrier와 MCP 소유 wire identity로 변환합니다. 영속 담당 데이터 손상과
+예상하지 못한 구현 실패는 typed Store/Core/adapter 경로를 유지합니다. 저장소 검사
+실패는 `xtask`가 보고하며 runtime fallback 동작을 시작하지 않습니다.
 
 ## 범위 제외
 

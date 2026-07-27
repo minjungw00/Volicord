@@ -49,9 +49,108 @@ use crate::policy::{
 /// Result type for Core pipeline execution errors.
 pub type CoreResult<T> = Result<T, CorePipelineError>;
 
+/// Typed Core operation that could not produce a method result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreOperationalOperation {
+    StoreAccess,
+}
+
+impl CoreOperationalOperation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::StoreAccess => "store_access",
+        }
+    }
+}
+
+/// Typed infrastructure resource that was unavailable to Core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreOperationalResource {
+    Store,
+    RegistryStore,
+    ProjectStore,
+    RuntimeHome,
+    PlatformEnvironment,
+}
+
+impl CoreOperationalResource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Store => "store",
+            Self::RegistryStore => "registry_store",
+            Self::ProjectStore => "project_store",
+            Self::RuntimeHome => "runtime_home",
+            Self::PlatformEnvironment => "platform_environment",
+        }
+    }
+}
+
+/// Neutral Core failure produced when infrastructure cannot provide a method result.
+#[derive(Debug)]
+pub struct CoreOperationalUnavailable {
+    operation: CoreOperationalOperation,
+    resource: CoreOperationalResource,
+    retryable: bool,
+    source: StoreError,
+}
+
+impl CoreOperationalUnavailable {
+    fn from_store(source: StoreError) -> Self {
+        let classification = source.classification();
+        let resource = if source.platform_diagnostic().is_some() {
+            CoreOperationalResource::PlatformEnvironment
+        } else if classification.entity == Some("runtime_home") {
+            CoreOperationalResource::RuntimeHome
+        } else {
+            match classification.database_kind {
+                Some("registry") => CoreOperationalResource::RegistryStore,
+                Some("project_state") => CoreOperationalResource::ProjectStore,
+                _ => CoreOperationalResource::Store,
+            }
+        };
+        Self {
+            operation: CoreOperationalOperation::StoreAccess,
+            resource,
+            retryable: classification.retryable,
+            source,
+        }
+    }
+
+    pub const fn operation(&self) -> CoreOperationalOperation {
+        self.operation
+    }
+
+    pub const fn resource(&self) -> CoreOperationalResource {
+        self.resource
+    }
+
+    pub const fn retryable(&self) -> bool {
+        self.retryable
+    }
+}
+
+impl fmt::Display for CoreOperationalUnavailable {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "Core operation unavailable: operation={}, resource={}, retryable={}",
+            self.operation.as_str(),
+            self.resource.as_str(),
+            self.retryable
+        )
+    }
+}
+
+impl Error for CoreOperationalUnavailable {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
 /// Errors that indicate implementation or storage failure outside public API rejection routing.
 #[derive(Debug)]
 pub enum CorePipelineError {
+    OperationalUnavailable(CoreOperationalUnavailable),
     Store(StoreError),
     Json(serde_json::Error),
     DurableId(DurableIdError),
@@ -67,6 +166,7 @@ pub enum CorePipelineError {
 impl fmt::Display for CorePipelineError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::OperationalUnavailable(error) => error.fmt(formatter),
             Self::Store(error) => write!(formatter, "store error: {error}"),
             Self::Json(error) => write!(formatter, "json error: {error}"),
             Self::DurableId(error) => write!(formatter, "{error}"),
@@ -84,6 +184,7 @@ impl fmt::Display for CorePipelineError {
 impl Error for CorePipelineError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::OperationalUnavailable(error) => Some(error),
             Self::Store(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::DurableId(error) => Some(error),
@@ -94,7 +195,11 @@ impl Error for CorePipelineError {
 
 impl From<StoreError> for CorePipelineError {
     fn from(error: StoreError) -> Self {
-        Self::Store(error)
+        if error.classification().route == StoreFailureRoute::OperationalUnavailable {
+            Self::OperationalUnavailable(CoreOperationalUnavailable::from_store(error))
+        } else {
+            Self::Store(error)
+        }
     }
 }
 
@@ -727,32 +832,38 @@ impl CoreService {
             &request.policy,
         ) {
             Ok(store) => store,
-            Err(error) => {
-                return response_outcome_from_rejected(
-                    rejected_response(
-                        request.envelope.dry_run,
+            Err(error) => match CorePipelineError::from(error) {
+                CorePipelineError::Store(error) => {
+                    return response_outcome_from_rejected(
+                        rejected_response(
+                            request.envelope.dry_run,
+                            None,
+                            vec![store_failure_error(error)],
+                        ),
                         None,
-                        vec![store_failure_error(error)],
-                    ),
-                    None,
-                    None,
-                );
-            }
+                        None,
+                    );
+                }
+                error => return Err(error),
+            },
         };
 
         let project_state = match store.project_state() {
             Ok(project_state) => project_state,
-            Err(error) => {
-                return response_outcome_from_rejected(
-                    rejected_response(
-                        request.envelope.dry_run,
+            Err(error) => match CorePipelineError::from(error) {
+                CorePipelineError::Store(error) => {
+                    return response_outcome_from_rejected(
+                        rejected_response(
+                            request.envelope.dry_run,
+                            None,
+                            vec![store_failure_error(error)],
+                        ),
                         None,
-                        vec![store_failure_error(error)],
-                    ),
-                    None,
-                    None,
-                );
-            }
+                        None,
+                    );
+                }
+                error => return Err(error),
+            },
         };
 
         let verified_invocation = match derive_verified_invocation(
@@ -809,7 +920,7 @@ impl CoreService {
             request.policy.task.clone(),
         ) {
             Ok(task_id) => task_id,
-            Err(error) => {
+            Err(TaskResolutionError::Rejection(error)) => {
                 return response_outcome_from_rejected(
                     rejected_response(
                         request.envelope.dry_run,
@@ -820,6 +931,7 @@ impl CoreService {
                     None,
                 );
             }
+            Err(TaskResolutionError::Pipeline(error)) => return Err(error),
         };
 
         if let Some(freshness_response) = freshness_preflight_response(
@@ -1550,7 +1662,7 @@ fn resolve_task(
     project_state: &ProjectStateHeader,
     envelope: &ToolEnvelope,
     requirement: TaskRequirement,
-) -> Result<Option<TaskId>, ToolError> {
+) -> Result<Option<TaskId>, TaskResolutionError> {
     match requirement {
         TaskRequirement::None => Ok(None),
         TaskRequirement::Optional => match envelope.task_id.as_ref() {
@@ -1565,7 +1677,7 @@ fn resolve_task(
             let active_task_id = project_state
                 .active_task_id
                 .as_ref()
-                .ok_or_else(no_active_task_error)?;
+                .ok_or_else(|| TaskResolutionError::Rejection(no_active_task_error()))?;
             let task_id = TaskId::new(active_task_id.clone());
             ensure_task_exists(store, &task_id).map(Some)
         }
@@ -1573,11 +1685,21 @@ fn resolve_task(
     }
 }
 
-fn ensure_task_exists(store: &CoreProjectStore, task_id: &TaskId) -> Result<TaskId, ToolError> {
+enum TaskResolutionError {
+    Rejection(ToolError),
+    Pipeline(CorePipelineError),
+}
+
+fn ensure_task_exists(
+    store: &CoreProjectStore,
+    task_id: &TaskId,
+) -> Result<TaskId, TaskResolutionError> {
     match store.task_exists(task_id) {
         Ok(true) => Ok(task_id.clone()),
-        Ok(false) => Err(no_active_task_error()),
-        Err(_) => Err(mcp_unavailable_error("task lookup failed")),
+        Ok(false) => Err(TaskResolutionError::Rejection(no_active_task_error())),
+        Err(error) => Err(TaskResolutionError::Pipeline(CorePipelineError::from(
+            error,
+        ))),
     }
 }
 
@@ -1954,6 +2076,11 @@ fn state_conflict_details(
 
 pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
     let classification = error.classification();
+    assert_ne!(
+        classification.route,
+        StoreFailureRoute::OperationalUnavailable,
+        "operational Store failures must remain on the Core error path"
+    );
     let mut details = Map::new();
     if let Some(diagnostic) = error.platform_diagnostic() {
         details.insert(
@@ -2005,14 +2132,15 @@ pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
         );
     }
     let code = match classification.route {
-        StoreFailureRoute::OperationalUnavailable => ErrorCode::McpUnavailable,
+        StoreFailureRoute::OperationalUnavailable => {
+            unreachable!("operational Store failures must remain on the Core error path")
+        }
         StoreFailureRoute::InvalidEnvironment => ErrorCode::ValidationFailed,
         StoreFailureRoute::InvocationContextMismatch => ErrorCode::InvocationContextMismatch,
         StoreFailureRoute::PersistedDataCorrupt => ErrorCode::PersistedDataCorrupt,
     };
     let message = match code {
         ErrorCode::ValidationFailed => "platform environment is invalid",
-        ErrorCode::McpUnavailable => "Core storage is unavailable",
         ErrorCode::InvocationContextMismatch => {
             "project binding or invocation context does not match registration"
         }
@@ -2020,10 +2148,6 @@ pub(crate) fn store_failure_error(error: StoreError) -> ToolError {
         _ => "Core storage is unavailable",
     };
     tool_error(code, message, classification.retryable, Some(details))
-}
-
-fn mcp_unavailable_error(message: &'static str) -> ToolError {
-    tool_error(ErrorCode::McpUnavailable, message, true, None)
 }
 
 fn no_active_task_error() -> ToolError {
@@ -2040,29 +2164,28 @@ fn error_precedence(code: ErrorCode) -> u8 {
         ErrorCode::ValidationFailed => 1,
         ErrorCode::PersistedDataCorrupt => 2,
         ErrorCode::StateVersionConflict => 3,
-        ErrorCode::McpUnavailable => 4,
-        ErrorCode::InvocationContextMismatch => 5,
-        ErrorCode::NoActiveTask => 6,
-        ErrorCode::NoActiveChangeUnit => 7,
-        ErrorCode::BaselineStale => 8,
-        ErrorCode::ScopeRequired => 9,
-        ErrorCode::ScopeViolation => 10,
-        ErrorCode::WriteTicketRequired => 11,
-        ErrorCode::WriteTicketInvalid => 12,
-        ErrorCode::ApprovalDenied => 13,
-        ErrorCode::ApprovalExpired => 14,
-        ErrorCode::ApprovalRequired => 15,
-        ErrorCode::DecisionUnresolved => 16,
-        ErrorCode::AutonomyBoundaryExceeded => 17,
-        ErrorCode::DecisionRequired => 18,
-        ErrorCode::CapabilityInsufficient => 19,
-        ErrorCode::EvidenceInsufficient => 20,
-        ErrorCode::ResidualRiskNotVisible => 21,
-        ErrorCode::AcceptanceRequired => 22,
-        ErrorCode::ProjectionStale => 23,
-        ErrorCode::ArtifactMissing => 24,
-        ErrorCode::ValidatorFailed => 25,
-        ErrorCode::OperationResultUnavailable => 26,
+        ErrorCode::InvocationContextMismatch => 4,
+        ErrorCode::NoActiveTask => 5,
+        ErrorCode::NoActiveChangeUnit => 6,
+        ErrorCode::BaselineStale => 7,
+        ErrorCode::ScopeRequired => 8,
+        ErrorCode::ScopeViolation => 9,
+        ErrorCode::WriteTicketRequired => 10,
+        ErrorCode::WriteTicketInvalid => 11,
+        ErrorCode::ApprovalDenied => 12,
+        ErrorCode::ApprovalExpired => 13,
+        ErrorCode::ApprovalRequired => 14,
+        ErrorCode::DecisionUnresolved => 15,
+        ErrorCode::AutonomyBoundaryExceeded => 16,
+        ErrorCode::DecisionRequired => 17,
+        ErrorCode::CapabilityInsufficient => 18,
+        ErrorCode::EvidenceInsufficient => 19,
+        ErrorCode::ResidualRiskNotVisible => 20,
+        ErrorCode::AcceptanceRequired => 21,
+        ErrorCode::ProjectionStale => 22,
+        ErrorCode::ArtifactMissing => 23,
+        ErrorCode::ValidatorFailed => 24,
+        ErrorCode::OperationResultUnavailable => 25,
     }
 }
 
@@ -2210,9 +2333,9 @@ mod tests {
             false,
             Some(7),
             vec![tool_error(
-                ErrorCode::McpUnavailable,
+                ErrorCode::ValidationFailed,
                 "stored response fixture",
-                true,
+                false,
                 None,
             )],
         ))
@@ -2506,59 +2629,53 @@ mod tests {
     }
 
     #[test]
-    fn invalid_project_registration_rejects_core_execution() -> Result<(), Box<dyn Error>> {
+    fn invalid_project_registration_is_an_operational_core_error() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         harness.replace_project_repo_root(&harness.runtime_home_path)?;
         let envelope = envelope("req_invalid_project_path", None, false, None, None);
 
-        let response = harness.execute(PipelineRequest {
-            method_name: MethodName::Status,
-            request_json: request_json(MethodName::Status, &envelope, "invalid-project-path"),
-            envelope,
-            invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
-            operation_category: OperationCategory::Read,
-            task_requirement: TaskRequirement::Optional,
-            branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("invalid_project_path"),
-            },
-        })?;
+        let error = harness
+            .execute(PipelineRequest {
+                method_name: MethodName::Status,
+                request_json: request_json(MethodName::Status, &envelope, "invalid-project-path"),
+                envelope,
+                invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
+                operation_category: OperationCategory::Read,
+                task_requirement: TaskRequirement::Optional,
+                branch: OwnerPipelineBranch::ReadOnly {
+                    result_fields: result_fields("invalid_project_path"),
+                },
+            })
+            .expect_err("invalid project registration must not produce a method response");
 
-        assert_store_rejection(&response, "MCP_UNAVAILABLE", "invalid_project_registration");
-        assert_eq!(
-            response.response_value["errors"][0]["details"]["path_relationship"],
-            "same_path"
-        );
+        assert_operational_unavailable(error, CoreOperationalResource::RegistryStore, false);
         Ok(())
     }
 
     #[test]
-    fn missing_project_state_database_routes_to_structured_unavailability(
-    ) -> Result<(), Box<dyn Error>> {
+    fn missing_project_state_database_is_an_operational_core_error() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         fs::remove_file(harness.state_db_path())?;
 
-        let response = harness.execute(PipelineRequest {
-            method_name: MethodName::Status,
-            request_json: request_json(
-                MethodName::Status,
-                &envelope("req_missing_db", None, false, None, None),
-                "missing-db",
-            ),
-            envelope: envelope("req_missing_db", None, false, None, None),
-            invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
-            operation_category: OperationCategory::Read,
-            task_requirement: TaskRequirement::Optional,
-            branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("missing_db"),
-            },
-        })?;
+        let error = harness
+            .execute(PipelineRequest {
+                method_name: MethodName::Status,
+                request_json: request_json(
+                    MethodName::Status,
+                    &envelope("req_missing_db", None, false, None, None),
+                    "missing-db",
+                ),
+                envelope: envelope("req_missing_db", None, false, None, None),
+                invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
+                operation_category: OperationCategory::Read,
+                task_requirement: TaskRequirement::Optional,
+                branch: OwnerPipelineBranch::ReadOnly {
+                    result_fields: result_fields("missing_db"),
+                },
+            })
+            .expect_err("missing project Store must not produce a method response");
 
-        assert_store_rejection(
-            &response,
-            "MCP_UNAVAILABLE",
-            "project_state_database_missing",
-        );
-        assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
+        assert_operational_unavailable(error, CoreOperationalResource::ProjectStore, true);
         Ok(())
     }
 
@@ -3017,8 +3134,7 @@ mod tests {
     }
 
     #[test]
-    fn unexpected_uniqueness_failure_routes_to_structured_unavailability(
-    ) -> Result<(), Box<dyn Error>> {
+    fn unexpected_uniqueness_failure_is_an_operational_core_error() -> Result<(), Box<dyn Error>> {
         let harness = PipelineHarness::new()?;
         let first_envelope = envelope(
             "req_unique_first",
@@ -3045,18 +3161,23 @@ mod tests {
             Some(1),
             Some(TASK_ID),
         );
-        let response = harness.execute(PipelineRequest {
-            method_name: MethodName::UpdateScope,
-            request_json: request_json(MethodName::UpdateScope, &second_envelope, "unique-second"),
-            envelope: second_envelope,
-            invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
-            operation_category: OperationCategory::AgentWorkflow,
-            task_requirement: TaskRequirement::Required,
-            branch: change_unit_commit_branch("change_unit_unique_second", "unique_second"),
-        })?;
+        let error = harness
+            .execute(PipelineRequest {
+                method_name: MethodName::UpdateScope,
+                request_json: request_json(
+                    MethodName::UpdateScope,
+                    &second_envelope,
+                    "unique-second",
+                ),
+                envelope: second_envelope,
+                invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
+                operation_category: OperationCategory::AgentWorkflow,
+                task_requirement: TaskRequirement::Required,
+                branch: change_unit_commit_branch("change_unit_unique_second", "unique_second"),
+            })
+            .expect_err("Store constraint failure must not produce a method response");
 
-        assert_store_rejection(&response, "MCP_UNAVAILABLE", "constraint_unique");
-        assert_public_response_has_no_internal_leak(&response, &harness.runtime_home_path);
+        assert_operational_unavailable(error, CoreOperationalResource::Store, false);
         assert_eq!(harness.counts()?, after_first);
         Ok(())
     }
@@ -3243,6 +3364,19 @@ mod tests {
             response.response_value["errors"][0]["details"]["store_failure_category"],
             expected_category
         );
+    }
+
+    fn assert_operational_unavailable(
+        error: CorePipelineError,
+        expected_resource: CoreOperationalResource,
+        expected_retryable: bool,
+    ) {
+        let CorePipelineError::OperationalUnavailable(failure) = error else {
+            panic!("expected operational unavailability, got {error}");
+        };
+        assert_eq!(failure.operation(), CoreOperationalOperation::StoreAccess);
+        assert_eq!(failure.resource(), expected_resource);
+        assert_eq!(failure.retryable(), expected_retryable);
     }
 
     fn assert_constraint_error(error: rusqlite::Error) {

@@ -34,7 +34,6 @@ Adjacent owners:
 | `VALIDATION_FAILED` | [`VALIDATION_FAILED`](#errorcode-validation-failed) |
 | `PERSISTED_DATA_CORRUPT` | [`PERSISTED_DATA_CORRUPT`](#errorcode-persisted-data-corrupt) |
 | `STATE_VERSION_CONFLICT` | [`STATE_VERSION_CONFLICT`](#errorcode-state-version-conflict) |
-| `MCP_UNAVAILABLE` | [`MCP_UNAVAILABLE`](#errorcode-mcp-unavailable) |
 | `INVOCATION_CONTEXT_MISMATCH` | [`INVOCATION_CONTEXT_MISMATCH`](#errorcode-invocation-context-mismatch) |
 | `OPERATION_RESULT_UNAVAILABLE` | [`OPERATION_RESULT_UNAVAILABLE`](#errorcode-operation-result-unavailable) |
 | `NO_ACTIVE_TASK` | [`NO_ACTIVE_TASK`](#errorcode-no-active-task) |
@@ -113,23 +112,6 @@ Condition:
 Notes:
 - Idempotency request-hash conflicts are covered in [State version conflict](error-precedence.md#state-conflict-behavior). `WriteTicket.basis_state_version` is audit metadata and never selects this error by itself.
 
-<a id="errorcode-mcp-unavailable"></a>
-### `MCP_UNAVAILABLE`
-
-Used in:
-- `ToolRejectedResponse.errors[]`
-
-Condition:
-- Required Core, MCP, Store, owner-state read, or Agent Connection reachability
-  is currently unavailable, and the available data does not establish corrupt
-  persisted data or another deterministic rejection.
-
-Required failure category:
-- `unavailable`
-
-Boundary:
-- Known persisted-data corruption uses `PERSISTED_DATA_CORRUPT`. Unknown boundary input is rejected with `VALIDATION_FAILED`.
-
 <a id="errorcode-invocation-context-mismatch"></a>
 ### `INVOCATION_CONTEXT_MISMATCH`
 
@@ -158,8 +140,9 @@ Notes:
 - Access-context incompatibility remains `INVOCATION_CONTEXT_MISMATCH` and is
   selected before this code so the unavailable-result branch does not grant or
   describe access.
-- Store reachability remains `MCP_UNAVAILABLE`; known corrupt typed owner state
-  or stored-byte integrity failure uses `PERSISTED_DATA_CORRUPT`.
+- Store operational unavailability is outside the public method result and is
+  mapped by the calling adapter. Known corrupt typed owner state or stored-byte
+  integrity failure uses `PERSISTED_DATA_CORRUPT`.
 
 <a id="errorcode-no-active-task"></a>
 ### `NO_ACTIVE_TASK`

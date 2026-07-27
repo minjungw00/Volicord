@@ -2,7 +2,7 @@
 
 This document owns API response branch routing for rejected responses, blocked results, and `dry_run` previews.
 
-Use it to choose the Volicord API response branch after the [canonical error/blocker decision flow](error-precedence.md#canonical-error-blocker-decision-flow) has distinguished transport or adapter failures from Core responses. Do not use it to map individual close-readiness blockers, define blocker categories or codes, or decide method-specific behavior.
+Use it to choose the Volicord API response branch after the [canonical error/blocker decision flow](error-precedence.md#canonical-error-blocker-decision-flow) has distinguished transport, adapter, and Core operational failures from Core method responses. Do not use it to map individual close-readiness blockers, define blocker categories or codes, or decide method-specific behavior.
 
 Owned here:
 
@@ -41,6 +41,8 @@ Rejected response:
 - State effect: No committed operation and no state change.
 
 Transport and adapter failures that happen before Core execution are outside this branch. Route them through [MCP transport](../mcp-transport.md) or the owning transport or adapter.
+Typed Core operational unavailability that prevents any method result is also
+outside this branch and is mapped by the calling adapter.
 
 <a id="error-vs-blocker-blocked-result"></a>
 Blocked result:
@@ -65,7 +67,7 @@ Display wording belongs to [Template Bodies](../template-bodies.md) only. It doe
 |---|---|
 | `rejected` | A structural request or required-context failure before policy evaluation uses `ToolRejectedResponse`. |
 | `not_allowed` | When a method owner defines a non-allow result after policy evaluation, use that method-specific result rather than `ToolRejectedResponse` for the same condition. The method and storage-effect owners decide whether it commits. |
-| `unavailable` | If the required operation or read cannot continue, use `ToolRejectedResponse` with the applicable unavailable public code. |
+| `unavailable` | An owner-defined method outcome with an applicable unavailable public code uses `ToolRejectedResponse`. A required infrastructure dependency that cannot produce any method result exits through the typed Core operational error path and has no API branch. |
 | `degraded` | If the core operation truthfully continues, expose the incomplete auxiliary component in the successful method result's owner-defined diagnostic. Do not reject that same operation with a `ToolError(category=degraded)`. |
 | `corrupt` | A dependent operation uses `ToolRejectedResponse` with `PERSISTED_DATA_CORRUPT` and fails closed before policy or effects. |
 
@@ -109,10 +111,10 @@ Result boundary:
 ### Precondition failure
 
 Condition:
-- Core, MCP, invocation context, `actor_source`/`operation_category`
-  compatibility, state lookup, `Task` identity, persisted owner-data validation,
-  exact-contract selection, or another required precondition fails before
-  commit.
+- Invocation context, `actor_source`/`operation_category` compatibility, a
+  deterministically absent `Task` identity, persisted owner-data validation,
+  exact-contract selection, or another method-level precondition establishes a
+  rejection before commit.
 
 Route:
 - `ToolRejectedResponse.errors[]`.
@@ -144,7 +146,9 @@ Routing boundary:
 ### `dry_run=true` pre-preview failure
 
 Condition:
-- A `dry_run=true` request fails before a read result or dry-run preview can be produced.
+- A `dry_run=true` request establishes a method-level rejection before a read
+  result or dry-run preview can be produced. Core operational unavailability
+  has no API response branch.
 
 Route:
 - `ToolRejectedResponse` with `dry_run=true`.

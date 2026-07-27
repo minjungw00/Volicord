@@ -1681,6 +1681,10 @@ dry run은 `0`으로 종료합니다. Typed `failed` 운영 보고서는 `1`, �
 stderr를 사용하고 `1`로 종료합니다. 종료 상태는 표시 문자열이나 다시 parsing한 JSON이
 아니라 typed report 상태로 선택합니다.
 
+Neutral Core 운영 불가 오류도 같은 runtime 오류 경로를 사용합니다. 한도가 있는 text를
+stderr에 쓰고 `1`로 종료합니다. CLI는 MCP wire identity를 표시하거나 공개 메서드 거부를
+합성하지 않습니다.
+
 `diagnostics show`와 `diagnostics session`은 finding severity가 아니라 lookup status로
 종료 상태를 정합니다. Active finding이나 terminal occurrence의 severity가 `error`여도 찾은
 record 또는 session은 `0`으로 종료합니다. Typed `not_found` lookup은 lookup report를

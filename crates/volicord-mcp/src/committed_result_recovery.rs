@@ -12,10 +12,11 @@ use serde_json::Value;
 use volicord_mcp_protocol::{CommittedResultRecovery, McpProtocolCapabilities};
 use volicord_types::methods::{
     McpAuthoritativeRefreshFailure, McpMutationPostEffectFailure, McpMutationProjectionErrorCode,
-    McpMutationResponseBudgetExceeded, McpPostEffectFailureCode, OperationResultRef,
+    McpMutationResponseBudgetExceeded, McpOperationalErrorCode, McpPostEffectFailureCode,
+    OperationResultRef,
 };
 use volicord_types::schema::{AuthorityReceipt, NextActionSummary, RequiredNullable};
-use volicord_types::values::{ErrorCode, MutationDetailLevel};
+use volicord_types::values::MutationDetailLevel;
 
 pub(crate) const MAX_MCP_MUTATION_COMPATIBILITY_TEXT_BYTES: usize = 512;
 
@@ -326,7 +327,7 @@ pub(crate) fn authoritative_refresh_failure_output(
             let method_result_preserved = candidate.method_result.is_some();
             let structured_content =
                 serde_json::to_value(McpAuthoritativeRefreshFailure::<Value> {
-                    code: ErrorCode::McpUnavailable,
+                    code: McpOperationalErrorCode::Unavailable,
                     tool_name: method_name,
                     retryable: false,
                     reached_core: facts.core_reached,

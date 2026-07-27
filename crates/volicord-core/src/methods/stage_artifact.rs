@@ -4,7 +4,7 @@ use super::{
     ValidatedStageArtifactInput, MAX_STAGED_BODY_BYTES,
 };
 use crate::pipeline::{
-    dry_run_response, method_result_base, store_failure_error, tool_error, CoreResult, CoreService,
+    dry_run_response, method_result_base, tool_error, CorePipelineError, CoreResult, CoreService,
     FreshnessPolicy, InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse,
     ReplayPolicy, TaskRequirement,
 };
@@ -177,10 +177,10 @@ impl CoreService {
                 expires_at: expires_at.to_string(),
             })
         {
-            return rejected_pipeline_response(
-                request.envelope.dry_run,
+            return core_error_response(
+                &request.envelope,
                 Some(project_state.state_version),
-                vec![store_failure_error(error)],
+                CorePipelineError::from(error),
             );
         }
         Ok(PipelineResponse {
