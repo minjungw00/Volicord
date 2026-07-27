@@ -67,7 +67,7 @@ any attachment link or promotion according to the evidence rules below.
   `status=active` write ticket from `volicord.prepare_write`. A non-sensitive
   Run with no product-file write does not.
 - New artifact bytes must already be represented by a valid `StagedArtifactHandle`; `volicord.record_run` does not stage new bytes. The handle remains an Evidence attachment input until accepted in a committed run result.
-- A supported evidence update must be backed by a target-matching
+- A `supported` evidence update must be backed by a target-matching
   `EvidenceObservationInput`, a usable target-matching evidence observation ref,
   or `EvidenceCoverageUpdate.provenance` from which Core can create an evidence
   observation. Request-side `source_kind` and `assurance_level` select a claimed
@@ -167,13 +167,13 @@ Close-assessment ref rules:
 - Caller-supplied `close_assessment.result_refs` and `ResidualRiskInput.source_refs` are restricted to `record_kind=run`, `artifact`, `evidence_summary`, or `change_unit` unless an owner explicitly adds another kind.
 - The method rejects or excludes caller-supplied `project_state`, `write_ticket`, `user_action_request`, `user_action_resolution`, `blocker`, `task_event`, and `task` refs from the close basis unless an owner explicitly adds them.
 - Every accepted ref must exist and belong to the same project and Task. Artifact refs must be linked to the Task and pass current-byte verification with `integrity_status=verified`; evidence refs must identify the current Task evidence summary; Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status.
-- Historical Run refs are audit records for close-basis purposes unless this new current Run explicitly reuses verified artifacts or evidence from history and records that reuse in its committed evidence or close assessment.
+- Historical Run refs are audit records for close-basis purposes unless this new current Run explicitly reuses `verified` artifacts or evidence from history and records that reuse in its committed evidence or close assessment.
 - Core stores canonical refs in `CurrentCloseBasis` and never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
 - Core may add the current Run, current Change Unit, and current EvidenceSummary refs while constructing the canonical close basis.
 
 Evidence update provenance rules:
 - `coverage_state=supported` is a claim about coverage, not sufficient provenance by itself.
-- When `EvidenceCoverageUpdate.provenance` is supplied for a supported item and
+- When `EvidenceCoverageUpdate.provenance` is supplied for a `supported` item and
   no explicit target-matching observation input is supplied, Core creates an
   `EvidenceObservation` for the current Run and links its ref into the committed
   evidence summary.
@@ -203,7 +203,7 @@ Evidence update provenance rules:
   - Direct caller-supplied `reused_evidence` is not a validated reuse path.
   - An unproved strong claim is committed as `agent_report` /
     `cooperative_report`; `unverified_claim` / `unverified` remains unverified.
-- When a supported update relies only on strong, usable target-matching
+- When a `supported` update relies only on strong, usable target-matching
   `observation_refs`, Core records a current-Run `source_kind=reused_evidence`
   observation. Its single `input_ref` retains the original observation ref, so the
   historical observation is a provenance input rather than being relabeled as
@@ -289,8 +289,6 @@ Non-claims:
 
 ## State version behavior
 
-Exact identifiers used in this section: `light`.
-
 A compatible committed result increments `project_state.state_version` exactly once.
 
 A compatible committed result increments the selected `Task.close_basis_revision` exactly once. When `close_assessment` is non-null, the commit establishes a new `CurrentCloseBasis` from the committed current Run, the assessment fields, generated residual-risk IDs, current Task, current Change Unit, selected current scope revision, and compatible baseline. When `close_assessment=null`, the committed Run explicitly does not establish a current close basis, and any existing current close basis becomes stale or absent.
@@ -307,7 +305,7 @@ The matching Run consumes it and preserves its operation, Change Unit, scope,
 baseline, and approval-bound sensitive-action requirement through close.
 Ordinary non-sensitive Runs with no product-file write still require no ticket.
 
-Category-only `observed_changes.sensitive_categories` is a caller report rather than a Core-confirmed approval basis. It does not by itself raise the Task's effective control level or create sensitive-action approval authority. It does atomically strengthen the Task's acceptance policy to `required`, so policy-dependent Light auto-close cannot consume the signal and current final acceptance remains mandatory. A Core-confirmed `sensitive` control basis still requires both matching user approval and final acceptance; category-only input can provide neither.
+Category-only `observed_changes.sensitive_categories` is a caller report rather than a Core-confirmed approval basis. It does not by itself raise the Task's effective control level or create sensitive-action approval authority. It does atomically strengthen the Task's acceptance policy to `required`, so policy-dependent `light` auto-close cannot consume the signal and current final acceptance remains mandatory. A Core-confirmed `sensitive` control basis still requires both matching user approval and final acceptance; category-only input can provide neither.
 
 Recording a successful Run, its close assessment, or later final acceptance
 does not repair a missing pre-write approval and does not retroactively
@@ -435,7 +433,7 @@ Returns `ToolRejectedResponse` for:
   evidence-capture intent or receipt
 - capture-intent/receipt source, digest, bytes, completeness, redaction,
   outcome, target, or connection mismatch
-- supported evidence update without required observation provenance
+- `supported` evidence update without required observation provenance
 - missing artifact
 - scope violation
 - baseline staleness
@@ -466,7 +464,7 @@ For an idle-timeout-invalidated write ticket, rejection happens before consumpti
 
 Task-mode or advisor read-only validation rejection likewise creates no Run, close-basis revision, evidence update, evidence observation, artifact link or promotion, event, replay row, write-ticket effect, or state-version increment.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 For `dry_run=true`, a valid preview:
 
@@ -483,7 +481,7 @@ and artifact promotion details are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the committed run, promoted artifact ref, updated evidence summary, evidence observation, blocker refs, state version, and current state snapshot.
 
-## Advisor no-product-write request
+## `advisor` no-product-write request
 
 This example records a read-only repository analysis for an existing advisor
 Task. Method-local precondition: `task_advisor_review_001` is the current Task

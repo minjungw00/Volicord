@@ -32,8 +32,6 @@ Adjacent owners:
 
 ## Canonical error/blocker decision flow
 
-Exact identifiers used in this section: `Task`.
-
 Use this flow before applying [primary error-code precedence](#primary-error-code-precedence). It chooses the response family first. The precedence table below applies only after a call has become a Volicord rejected response with `ToolRejectedResponse.errors[]`.
 
 | Order | Boundary | Execution point | Public shape | Routing rule |

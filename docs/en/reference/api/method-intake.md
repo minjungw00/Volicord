@@ -204,7 +204,7 @@ A committed `dry_run=false` result:
 
 The following create no `Task`, Change Unit, event, replay row, blocker update, or state-version increment:
 
-- dry run
+- `dry_run`
 - read failure
 - validation failure
 - actor-source or operation-category mismatch
@@ -260,7 +260,7 @@ Returns `ToolRejectedResponse` for pre-commit failures such as:
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 For `dry_run=true`, a valid state-effecting preview:
 
@@ -270,9 +270,7 @@ For `dry_run=true`, a valid state-effecting preview:
 
 ## Storage effect
 
-Exact identifiers used in this section: `volicord`, `volicord.intake`.
-
-On commit, the method may persist intake-owned `Task` or Change Unit state. Exact storage effects and storage record shapes are owned by the storage documents linked below.
+On commit, the method may persist `Task` or Change Unit state owned by `volicord.intake`. Exact storage effects and storage record shapes are owned by the storage documents linked below.
 
 The examples are intentionally compact and method-local. The representative response is abbreviated to the fields needed to show the intake branch, refs, state version, lifecycle, current scope, current Change Unit, and next action.
 

@@ -69,8 +69,6 @@ flags cannot be used together. Exact output and exit behavior belong to
 
 ## Review Managed Changes
 
-Exact identifiers used in this section: `read_only`.
-
 Before accepting setup, review the structured result and every managed file.
 Project-owned configuration may include `.codex/config.toml`,
 `.volicord/policy.json`, and a Volicord-managed `AGENTS.md` block. Setup must

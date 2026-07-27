@@ -4,8 +4,6 @@ This document defines baseline method-to-storage effect semantics.
 
 ## Owns / Does not own
 
-Exact identifiers used in this section: `project_state.state_version`, `state_version`.
-
 This document owns:
 
 - read-only, `dry_run`, rejected, staging-created, Core-committed, and committed-blocked storage-effect distinctions
@@ -472,8 +470,6 @@ current Registry ownership.
 <a id="method-effects"></a>
 ## Method effect summary
 
-Exact identifiers used in this section: `Task`.
-
 This table summarizes persistence effects. Method behavior and response unions remain owned by method owner documents routed from the [API Methods](api/methods.md).
 
 | Method | Primary storage effect | Details |
@@ -890,8 +886,6 @@ Owner links:
 <a id="volicordresolve_user_action"></a>
 ### `volicord.resolve_user_action`
 
-Exact identifiers used in this section: `operation_category`, `user_only`.
-
 Committed `dry_run=false` may:
 
 - insert one immutable one-to-one `user_action_resolutions` row, causing the Core effective-status evaluator to return `resolved`
@@ -1065,8 +1059,6 @@ Owner links:
 - [Storage Versioning](storage-versioning.md)
 
 ## Related owners
-
-Exact identifiers used in this section: `state_version`.
 
 - [API Methods](api/methods.md) and method owner documents for selected method behavior and response unions.
 - [API error routing](api/error-routing.md) and [API error codes](api/error-codes.md) for rejected-response public errors.

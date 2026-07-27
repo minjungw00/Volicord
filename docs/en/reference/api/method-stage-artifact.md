@@ -63,7 +63,7 @@ This method applies the baseline staging defaults owned by [Artifact Storage](..
 - binary input is represented only by a safe textual notice
 - raw secrets must not be stored; use `redaction_state=secret_omitted` or `redaction_state=blocked` safe notices where applicable
 
-Requests that fail these admission requirements use the existing rejected-result behavior for invalid or unsafe artifact input. This section applies and routes storage-owned defaults; artifact lifecycle, retention, redaction-state value meaning, and body-read eligibility remain owned by [Artifact Storage](../storage-artifacts.md) and [API Value Sets](schema-value-sets.md#artifact-values).
+Requests that fail these admission requirements use the existing rejected-result behavior for invalid or unsafe artifact input. This section applies and routes storage-owned defaults; artifact lifecycle, retention, `redaction_state` value meaning, and body-read eligibility remain owned by [Artifact Storage](../storage-artifacts.md) and [API Value Sets](schema-value-sets.md#artifact-values).
 
 ## Access requirements
 
@@ -148,7 +148,7 @@ Returns `ToolRejectedResponse` for:
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 For `dry_run=true`, a valid staging preview:
 

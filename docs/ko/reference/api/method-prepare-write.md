@@ -184,10 +184,6 @@ PrepareWriteRequest:
 
 ## 메서드 결과 필드
 
-| 현재 결과에서 정확히 사용하는 식별자 |
-|---|
-| `accepted`, `record_kind` |
-
 `PrepareWriteResult`는 커밋된 쓰기 준비 결정에 대한 메서드별 결과 분기입니다. 이 결과는 `base: ToolResultBase`와 아래 메서드 소유 최상위 필드를 담습니다.
 
 | 필드 | 결과 필드 의미 |
@@ -287,7 +283,7 @@ PrepareWriteRequest:
 - 이 코드는 메서드 로컬 `WriteDecisionReason.code` 값입니다. 공개 `ErrorCode` 값, `CloseReadinessBlocker.code` 값, 전역 값 집합 항목이 아닙니다.
 - `STATE_VERSION_CONFLICT`는 거절 응답 `ErrorCode`입니다. 메서드 로컬 쓰기 결정 이유로 표현하면 안 됩니다.
 - `write_decision_reasons`는 `CloseReadinessBlocker` 값이 아닙니다.
-- 쓰기 결정 이유는 닫기 준비 상태를 평가하지 않습니다.
+- `write_decision_reasons`는 닫기 준비 상태를 평가하지 않습니다.
 - 효과 계약 결정 사유는 민감 동작 승인, 사용자 소유 판단, 증거, 최종 수락, 닫기 준비 상태, 잔여 위험 수락, 또는 이 메서드가 `decision=allowed`일 때만 고르는 발급/재사용 티켓을 대신하지 않습니다.
 - 쓰기 티켓은 발급되지 않습니다.
 - 결과 공개는 OS 샌드박싱, 네트워크 격리, 악성 코드 방어, 전체 쓰기 방지, 정확성 증명, 테스트 충분성 증명, 인간 검토 대체, 행위자 귀속 증명이 아닙니다.
@@ -373,8 +369,6 @@ params:
 ## 대표 응답
 
 ### 허용 분기
-
-이 절에서 사용하는 정확한 식별자: `record`.
 
 별도의 민감 동작 승인이 이미 있을 때 적용되는 분기입니다.
 
@@ -556,8 +550,6 @@ guarantee_display:
 ```
 
 ### 승인 필요 분기
-
-이 절에서 사용하는 정확한 식별자: `record`, `sensitive`.
 
 대응하는 민감 동작 승인이 없을 때 적용되는 분기입니다.
 

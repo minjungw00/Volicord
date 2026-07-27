@@ -4,8 +4,6 @@ This document owns supported API value sets and enum-like public values for the 
 
 ## Owns / does not own
 
-Exact identifiers used in this section: `operation_category`.
-
 This document owns:
 
 - supported public method-name values
@@ -169,15 +167,13 @@ The fields below are intentionally not global closed value sets:
 
 | Field | Classification | Owner route |
 |---|---|---|
-| `EventRef.event_kind` | Opaque event classification string. Method examples may show event-kind strings, but this document does not publish an exhaustive public event-kind value set. | Shape owner: [API Schema Core](schema-core.md#shared-support-shapes). Event-producing behavior: method owner documents. |
+| `EventRef.event_kind` | Opaque `event_kind` classification string. Method examples may show event-kind strings, but this document does not publish an exhaustive public event-kind value set. | Shape owner: [API Schema Core](schema-core.md#shared-support-shapes). Event-producing behavior: method owner documents. |
 | `WriteDecisionReason.code` | Method-scoped opaque reason code. Method owners may show example codes without creating a global exhaustive code list. | Shape owner: [API State Schemas](schema-state.md#current-position-display-shapes). Production and local meaning: [`volicord.prepare_write`](method-prepare-write.md) and other affected method owners. |
 
 Public `ErrorCode` values are separate and are owned by [API error codes](error-codes.md).
 
 <a id="operation-category-values"></a>
 ## Operation category values
-
-Exact identifiers used in this section: `operation_category`.
 
 Method-owned API compatibility checks use exactly one request-level operation category per public API request:
 
@@ -427,7 +423,7 @@ Value meanings:
 - `create_current` creates the current Change Unit when there is no suitable current Change Unit.
 - `replace_current` replaces the current Change Unit with a new work boundary.
 
-Method behavior for each operation is owned by [`volicord.update_scope`](method-update-scope.md). The supported value set stays here so API examples and schema readers have one canonical value owner.
+Method behavior for each `operation` is owned by [`volicord.update_scope`](method-update-scope.md). The supported value set stays here so API examples and schema readers have one canonical value owner.
 
 `ChangeUnitEffectContract.allowed_effects` and `ChangeUnitEffectContract.forbidden_effects` use:
 
@@ -668,7 +664,7 @@ blocked
 | `stale` | Required evidence or its provenance is stale against the current close basis and no higher-precedence evidence condition is blocked. |
 | `blocked` | A required criterion is contradicted, or a non-stale evidence or provenance condition blocks the evidence gate, or an unavailable artifact blocker names an artifact that supports a required criterion. |
 
-Core computes this derived projection once from active criterion requirements and coverage, canonical evidence observation freshness and provenance, canonical availability of required-criterion supporting artifacts, and evidence-related close blockers. `blocked` takes precedence over `stale`; then required coverage selects `sufficient`, `partial`, or `required_missing`. Optional and `not_required` criteria never create close blockers and never lower a sufficient required gate. Non-evidence close blockers, including unavailable close-basis result artifacts that do not support a required criterion, do not change the evidence gate. The projection is copied into status and close results, `StateSummary.evidence_gate`, and `SummaryCard.evidence`; attachment display states are not another gate calculation.
+Core computes this derived projection once from active criterion requirements and coverage, canonical evidence observation freshness and provenance, canonical availability of required-criterion supporting artifacts, and evidence-related close blockers. `blocked` takes precedence over `stale`; then required coverage selects `sufficient`, `partial`, or `required_missing`. `optional` and `not_required` criteria never create close blockers and never lower a sufficient required gate. Non-evidence close blockers, including unavailable close-basis result artifacts that do not support a required criterion, do not change the evidence gate. The projection is copied into status and close results, `StateSummary.evidence_gate`, and `SummaryCard.evidence`; attachment display states are not another gate calculation.
 
 `AcceptanceCriterion.evidence_requirement`, intake criterion input, and
 update-scope criterion replacement input use:

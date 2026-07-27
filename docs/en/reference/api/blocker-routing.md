@@ -74,7 +74,7 @@ Not allowed:
 
 ## Close method route
 
-Method-specific close behavior belongs to [`volicord.check_close` and `volicord.close_task`](method-close-task.md). Route read-only close-readiness validation, intent handling, terminal mutation, state-version behavior, and response-only blocked outcomes to that method owner.
+Method-specific close behavior belongs to [`volicord.check_close` and `volicord.close_task`](method-close-task.md). Route read-only close-readiness validation, `intent` handling, terminal mutation, state-version behavior, and response-only blocked outcomes to that method owner.
 
 This document only defines the boundary between the blocker data returned by those methods and the neighboring API error, schema, value-set, Core, storage, and display owners.
 

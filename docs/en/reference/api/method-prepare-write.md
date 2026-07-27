@@ -154,7 +154,7 @@ Requires:
   Change Unit context captured at its baseline, when the Product Repository is
   Git-backed
 - required user-owned judgments
-- any separate accepted sensitive-action approval (`sensitive_approval`)
+- any separate `accepted` sensitive-action approval (`sensitive_approval`)
 - compatible `actor_source` for the agent workflow invocation
 
 A separate sensitive-action approval satisfies this method only when the user action is current, resolved with `resolved_by_actor_source=local_user` and compatible User Channel provenance, selected an option with `resolution_outcome=accepted`, and its `UserActionBasis` remains compatible with the current `scope_revision`, current Change Unit, intended operation, normalized `intended_paths`, sensitive categories, and `baseline_ref`. A user action cannot satisfy sensitive-action approval if it has invalid basis state or is stale, superseded, expired, rejected, deferred, missing required resolution authority, or incompatible. Callers do not submit revision fields to make an approval compatible.
@@ -170,14 +170,12 @@ active ticket with `invalidation_reason=explicit_revoke`; dry-run and
 
 ## State version behavior
 
-Exact identifiers used in this section: `dry_run`.
-
 | Result | State-version effect | Write-ticket effect |
 |---|---|---|
 | Committed `decision=allowed`, new ticket | Increments `project_state.state_version` exactly once. | Issues one open ticket; `write_ticket_effect=issued`. |
 | Committed `decision=allowed`, compatible ticket found | Increments `project_state.state_version` exactly once. | Reuses the existing ticket; `write_ticket_effect=reused`; no ticket row is inserted. |
 | Committed non-allow decision | Increments `project_state.state_version` exactly once. | Issues no write ticket; may invalidate selected stale active tickets with `explicit_revoke`. |
-| Pre-commit rejection or dry run | Increments nothing. | Creates or invalidates no ticket. |
+| Pre-commit rejection or `dry_run` | Increments nothing. | Creates or invalidates no ticket. |
 
 The committed state-version increment is authority-event ordering. It does not
 invalidate the issued or reused ticket and is not part of ticket validity.
@@ -199,10 +197,6 @@ not allocate a durable ID.
 
 ## Method result fields
 
-| Exact current result identifiers |
-|---|
-| `accepted`, `record_kind` |
-
 `PrepareWriteResult` is the method-specific result branch for committed write-preparation decisions. It carries `base: ToolResultBase` and these method-owned top-level fields:
 
 | Field | Result-field meaning |
@@ -216,7 +210,7 @@ not allocate a durable ID.
 | `write_ticket_effect` | `issued` means this commit created the ticket, `reused` means it selected an existing compatible active ticket, and `none` means no ticket was selected. `would_issue` remains preview-only. |
 | `allowed_path_patterns` | Normalized Product Repository path patterns captured as allowed by the ticket decision. In an allowed result, this is the ticket's allowed path pattern list. |
 | `denied_path_patterns` | Normalized Product Repository path patterns captured as denied by the ticket decision, or `[]` when no path-level denial applies. |
-| `active_user_action_refs` | `StateRecordRef[]` for current accepted user-owned judgments applied to the write-preparation decision, including matching `sensitive_approval` judgments when present. |
+| `active_user_action_refs` | `StateRecordRef[]` for current `accepted` user-owned judgments applied to the write-preparation decision, including matching `sensitive_approval` judgments when present. |
 | `write_decision_reasons` | `WriteDecisionReason[]` explaining non-allow decisions. The shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `user_action_draft` | `UserActionDraft | null` when the method proposes a focused choice action instead of issuing a write ticket; otherwise `null`. It is a proposal for a later `volicord.request_user_action` call, not a durable request. The shape is owned by [API User Action Schemas](schema-user-action.md). |
 | `guarantee_display` | `GuaranteeDisplay | null` for the method's compatibility display. The display shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes); security guarantee meaning is owned by [Security](../security.md). |
@@ -256,11 +250,11 @@ For `decision=allowed`:
   Rejected and dry-run paths do not mutate it. The stale ticket cannot preserve
   an earlier Light classification across a current Sensitive decision or
   approval requirement.
-- `active_user_action_refs` may cite current accepted user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
+- `active_user_action_refs` may cite current `accepted` user-owned judgments that satisfy write preconditions, including a separate `sensitive_approval`
 
 ## Blocked result
 
-Committed blocked decisions are `PrepareWriteResult` values with one of these decision values:
+Committed blocked decisions are `PrepareWriteResult` values with one of these `decision` values:
 
 - `decision=blocked`
 - `decision=approval_required`
@@ -311,7 +305,7 @@ Non-claims:
 
 ## Rejected result
 
-Returns `ToolRejectedResponse` for failures before decision evaluation or commit, including:
+Returns `ToolRejectedResponse` for failures before `decision` evaluation or commit, including:
 
 - `Task.mode=advisor`
 - stale `expected_state_version`
@@ -340,13 +334,13 @@ effect. It has the same result for otherwise identical normal and `dry_run`
 requests, and repeated calls do not turn the rejection into a committed or
 replayed result.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 For `dry_run=true`, a valid preview:
 
 - returns `ToolDryRunResponse`
 - issues no committed write ticket
-- may describe a planned `write_ticket` effect such as `would_issue` in the dry-run summary when the preview would otherwise be allowed
+- may describe a planned `write_ticket` effect such as `would_issue` in the `dry_run` summary when the preview would otherwise be allowed
 - may describe `would_reuse` as a planned effect when a compatible active
   ticket exists; this is preview text, not a committed `WriteTicketEffect`
 - persists no write-decision state
@@ -617,5 +611,5 @@ guarantee_display:
 - Write ticket, write approval, sensitive-action approval, final-acceptance, and residual-risk boundaries: [Core Model](../core-model.md).
 - Product Repository path normalization: [Runtime Boundaries](../runtime-boundaries.md#product-repository-api-path-normalization).
 - Supported values and operation categories: [API Value Sets](schema-value-sets.md#operation-category-values).
-- Public errors, `STATE_VERSION_CONFLICT`, branch routing, and blocked/dry-run behavior: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).
+- Public errors, `STATE_VERSION_CONFLICT`, branch routing, and blocked/`dry_run` behavior: [API error codes](error-codes.md), [API error precedence](error-precedence.md), and [API error routing](error-routing.md).
 - Persistence effects and state clocks: [Storage Effects](../storage-effects.md) and [Storage Versioning](../storage-versioning.md).

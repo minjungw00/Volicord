@@ -14,16 +14,22 @@ contracts, glossary entries, or owner-routing indexes.
 English and Korean documents are both maintained. Neither language is an
 archive, appendix, or translation-only copy.
 
-Maintain parity by meaning unit, not by line count or sentence count. A meaning
-unit can be a rule, warning, paragraph, table row, example, route, list item, or
-heading. Korean may change sentence order, split or combine sentences, or use a
-different paragraph rhythm when that makes the meaning clearer.
+Maintain parity by meaning unit, not by line count or sentence count. For
+automated identifier parity, parsed structural units are headings, paragraphs,
+nested list items, table cells, definition entries, callouts, footnotes, and
+fenced examples. Korean may change sentence order or split and combine
+sentences within a unit when that makes the meaning clearer. Ordinary prose
+with no contract identifier may use a different paragraph rhythm, but an
+owner-derived identifier must remain in the corresponding structural unit.
 
 Semantic parity requires the same reader purpose, normative strength, baseline
 and out-of-scope boundary, owner routing, user-judgment boundary, evidence
 boundary, verification boundary, acceptance boundary, residual-risk boundary,
 security guarantee level, exact identifiers, and exact product labels where
 those items are present in the paired material.
+
+The current policy has no structural exception for contract-bearing units.
+Marker prose and identifier-only inventory tables are not exceptions.
 
 Do not finish a meaning-changing edit with only one language updated. If Korean
 editing exposes an English problem, fix the English too. If English editing
@@ -122,6 +128,15 @@ unless the English document has the same meaning unit.
 
 Commands, flags, identifiers, status meanings, negative clauses, limitations,
 warnings, and local reader routes must remain equivalent by meaning.
+
+`docs-check` compares exact current owner-catalog identifiers at parsed
+structural coordinates. Catalog membership, not capitalization or identifier
+shape, recognizes a token, so lowercase schema values are covered alongside
+`snake_case` fields, hyphenated CLI tokens, dotted diagnostic codes, and protocol
+identifiers. This automation detects placement and spelling mismatches only.
+Human review remains responsible for natural translation, semantic
+equivalence, context, normative strength, omissions, and whether a shared
+identifier is used to express the same contract meaning.
 
 When examples appear in paired documents, preserve the same scenario meaning
 while writing Korean naturally. Keep refs, paths, method names, schema fields,

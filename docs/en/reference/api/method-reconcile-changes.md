@@ -108,7 +108,7 @@ do not consume or invalidate a write ticket unless a separate operation changes
 one of that ticket's explicit validity coordinates; their state-version
 increments alone are irrelevant to ticket validity.
 
-Dry run previews planned resolutions or pending user actions without creating refs, events, replay rows, user-action requests, or resolution rows. Rejected attempts create no effects.
+`dry_run` previews planned resolutions or pending user actions without creating refs, events, replay rows, user-action requests, or resolution rows. Rejected attempts create no effects.
 
 ## Success result
 
@@ -146,7 +146,7 @@ The result disclosure is not correctness proof, test sufficiency proof, human re
 
 ## Resolution behavior
 
-Core-owned deterministic bases:
+Core-owned deterministic `basis` values:
 
 - `invalid_observation`: stored observation data is invalid for interpretation as Product Repository paths.
 - `not_product_change`: stored observation data contains no Product Repository path to reconcile.
@@ -169,7 +169,7 @@ resolves those actions only through `volicord inbox`.
 After the user-owned action is resolved, `volicord.reconcile_changes` can
 resolve the linked Unrecorded Change with `accepted_by_user`.
 
-Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one active write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored Unrecorded Change needs user acceptance, reconciliation leaves it unresolved or creates a pending user-owned action. Only compatible local-user authority can supply `accepted_by_user`; sensitive approval and other user-owned judgments remain separate and are never inferred from reconciliation.
+Core does not resolve ambiguous or unauthorized Product Repository changes through an agent-only dismissal. If more than one `active` write ticket could cover the paths, no active ticket covers the paths, the paths are outside ticket scope, or the stored Unrecorded Change needs user acceptance, reconciliation leaves it unresolved or creates a pending user-owned action. Only compatible local-user authority can supply `accepted_by_user`; sensitive approval and other user-owned judgments remain separate and are never inferred from reconciliation.
 
 ## Rejected result
 
@@ -185,7 +185,7 @@ Returns `ToolRejectedResponse` for pre-commit failures such as:
 
 Agent-only dismissal attempts for individual Unrecorded Changes do not normally reject the whole method call. They appear in `rejected_resolution_requests` and leave the change unresolved.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 For `dry_run=true`, a valid preview returns `ToolDryRunResponse` with a `DryRunSummary`. The preview uses the same classification logic as the commit path and reports:
 
@@ -196,7 +196,7 @@ For `dry_run=true`, a valid preview returns `ToolDryRunResponse` with a `DryRunS
 - projected close blockers that would remain after the planned reconciliation
 - non-guarantees, including no actor proof, no intent proof, and no correctness proof
 
-Dry run does not resolve Unrecorded Changes, create pending user actions, append events, create replay rows, stage or attach artifacts, or increment `project_state.state_version`.
+`dry_run` does not resolve Unrecorded Changes, create pending user actions, append events, create replay rows, stage or attach artifacts, or increment `project_state.state_version`.
 
 ## Storage effect
 

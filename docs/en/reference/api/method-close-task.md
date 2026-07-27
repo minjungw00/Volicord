@@ -7,7 +7,7 @@
 
 This document owns baseline method behavior for the close method family:
 
-- method-specific request conditions, intent handling, access requirements, state-version behavior, result branches, and `dry_run` behavior for `volicord.check_close` and `volicord.close_task`
+- method-specific request conditions, `intent` handling, access requirements, state-version behavior, result branches, and `dry_run` behavior for `volicord.check_close` and `volicord.close_task`
 - method-specific evaluation order for the `volicord.check_close` and `volicord.close_task` requests
 - method-specific blocker-producing branches for `CloseTaskResult.blockers`
 - method-specific `CloseReadinessBlocker.code` production behavior
@@ -43,8 +43,8 @@ Close is a Core state transition, not a report. `volicord.close_task` evaluates 
 Method-owned block:
 
 - request validation for `volicord.check_close`
-- request validation and intent-field combinations for `volicord.close_task`
-- the order in which these methods reach read-only check, mutation, blocked, rejected, and dry-run branches
+- request validation and combinations of the `intent` field for `volicord.close_task`
+- the order in which these methods reach read-only check, mutation, blocked, rejected, and `dry_run` branches
 - whether a valid mutating branch commits a terminal result or returns a response-only blocked result
 - which method-specific blocker codes may be produced in `CloseTaskResult.blockers`
 
@@ -82,7 +82,7 @@ Read-only check condition:
 
 Mutation conditions:
 
-- `dry_run=false` mutating intents require a non-null `idempotency_key` and current `expected_state_version`.
+- `dry_run=false` mutating `intent` values require a non-null `idempotency_key` and current `expected_state_version`.
 - Stale `expected_state_version` or an idempotency request-hash conflict is rejected before close readiness evaluation.
 - A close-relevant write ticket is checked against its explicit validity basis: current Task, Change Unit, scope revision, baseline, workspace context, current normalized project write-authority binding, approval basis, task state, and an optional configured idle timeout. Its audit-only `basis_state_version` is not compared with the global state version.
 - A write-ticket validity check does not record final acceptance, residual-risk acceptance, user-owned judgment, sensitive-action approval, or broad approval.
@@ -105,7 +105,7 @@ Close condition:
 - Only current acceptance criteria with `evidence_requirement=required` create
   evidence close requirements. Each must have current target-matching evidence
   observation provenance. Optional, `not_required`, supplemental, and retired
-  targets never block close. Unverified, provenance-free, stale,
+  `optional`, `not_required`, supplemental, and retired targets never block close. Unverified, provenance-free, stale,
   contradicted, partial, unsupported, or cooperative-agent-only evidence does
   not satisfy a required criterion when stronger provenance is required.
   Strong evaluation independently requires current byte integrity, an
@@ -194,10 +194,10 @@ Implementations evaluate `volicord.check_close` in this order:
 
 Implementations evaluate `volicord.close_task` in this order:
 
-1. Validate the envelope, method fields, intent-field combination, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
+1. Validate the envelope, method fields, `intent` field combination, and same-project `Task` identity. Shape failures, wrong-project identity, and unreadable `Task` identity return `ToolRejectedResponse`.
 2. Verify the invocation context, operation category, actor source, and requested terminal-path preconditions.
-3. For `dry_run=false` mutating intents, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and the explicit state-bound validity of each close-relevant write ticket, including its current project write-authority binding. A conflicting envelope version or request hash returns `ToolRejectedResponse`. An invalidated, revoked, policy-authority-stale, or effective idle-timeout-invalidated ticket remains disclosed but does not create a close blocker by itself. `basis_state_version` remains audit-only.
-4. For mutating intents with `dry_run=true`, return the common preview branch after valid preflight.
+3. For `dry_run=false` mutating `intent` values, check `idempotency_key`, current `expected_state_version`, idempotency request hash, and the explicit state-bound validity of each close-relevant write ticket, including its current project write-authority binding. A conflicting envelope version or request hash returns `ToolRejectedResponse`. An invalidated, revoked, policy-authority-stale, or effective idle-timeout-invalidated ticket remains disclosed but does not create a close blocker by itself. `basis_state_version` remains audit-only.
+4. For mutating `intent` values with `dry_run=true`, return the common preview branch after valid preflight.
 5. For `intent=complete`, run the close readiness evaluation over the current `CurrentCloseBasis`. If blockers remain, return the blocked branch; otherwise commit `close_state=closed`, the mode-compatible terminal close result, and any method-selected project continuity records for close-basis known limits that do not require residual-risk acceptance. The terminal result is `advice_only` for `Task.mode=advisor` and `completed` for `Task.mode=direct` or `work`.
 6. For `intent=cancel`, require a current accepted `judgment_kind=cancellation` with `machine_action=accept`, `resolution_outcome=accepted`, `resolved_by_actor_source=local_user`, compatible User Channel provenance, and compatibility with the current Task, scope revision, and Change Unit. Missing or incompatible cancellation authority returns the blocked branch.
 7. For `intent=cancel` or `intent=supersede`, evaluate only the requested terminal path. If terminal-path blockers remain, return the blocked branch; otherwise atomically invalidate the Task's active write tickets with `task_closed` and commit `close_state=cancelled` or `close_state=superseded`.
@@ -237,7 +237,7 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 
 | Field | Result-field meaning |
 |---|---|
-| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close`, `base.effect_kind=core_committed` for a successful terminal mutation, and `base.effect_kind=no_effect` for a blocked mutating intent. |
+| `base` | Common result metadata. The `ToolResultBase` shape, including `disclosure` and `events`, is owned by [API Schema Core](schema-core.md#common-response). Valid `CloseTaskResult` branches use `base.response_kind=result` and `base.disclosure.guarantee_class=authority_record`; this document selects `base.effect_kind=read_only` for `volicord.check_close`, `base.effect_kind=core_committed` for a successful terminal mutation, and `base.effect_kind=no_effect` for a blocked mutating `intent`. |
 | `summary_card` | `SummaryCard` for the selected close or check-close result. It summarizes close status, evidence, pending user actions, changes, transport, one selected next action, and the guarantee line without adding authority beyond the structured result fields. `summary_card.evidence` is exactly `evidence_gate.state`. Shape is owned by [API State Schemas](schema-state.md#current-position-display-shapes). |
 | `close_state` | Method result close state for the requested path. Supported values are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). `close_state=blocked` is a method result after valid close or terminal-path evaluation, not `ToolRejectedResponse`. |
 | `state` | `StateSummary` for the selected `Task` after the check, terminal mutation, or response-only blocked evaluation. Nested state fields, including `close_blockers`, are owned by [API State Schemas](schema-state.md). |
@@ -311,7 +311,7 @@ Result:
 
 - The method may return `CloseTaskResult(close_state=blocked)` with `blockers: CloseReadinessBlocker[]`.
 - `volicord.check_close` returns blockers as response observation data and never creates blocker rows.
-- A `dry_run=false` mutating intent with blockers returns a response-only result with `base.effect_kind=no_effect`. It does not persist close blocker rows, append an authority event, create a replay row, mutate terminal state, or increment `project_state.state_version`.
+- A `dry_run=false` mutating `intent` with blockers returns a response-only result with `base.effect_kind=no_effect`. It does not persist close blocker rows, append an authority event, create a replay row, mutate terminal state, or increment `project_state.state_version`.
 
 Method-specific blocker branches:
 
@@ -361,11 +361,11 @@ Rejected responses:
 
 Public error meaning, precedence, and response-branch routing are owned by the API error documents linked below.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 `volicord.check_close` with `dry_run=true` remains the read-only `CloseTaskResult` branch with `base.effect_kind=read_only`.
 
-Mutating intents with `dry_run=true` use `ToolDryRunResponse` after valid preflight. Preview blockers are `PlannedBlocker` data, not stored `CloseReadinessBlocker` objects.
+Mutating `intent` values with `dry_run=true` use `ToolDryRunResponse` after valid preflight. Preview blockers are `PlannedBlocker` data, not stored `CloseReadinessBlocker` objects.
 
 Pre-preview failures with `dry_run=true` return `ToolRejectedResponse`, not `DryRunSummary.would_errors[]` or `PlannedBlocker`.
 
@@ -384,7 +384,7 @@ Every returned authority receipt derives `completion_claim_allowed`; callers
 must treat `false` as an authority boundary and must not emit a completion claim
 from summary wording, a successful transport, or a partial result.
 
-Rejected responses and valid mutating-intent `ToolDryRunResponse` previews have no storage effect.
+Rejected responses and valid `ToolDryRunResponse` previews for mutating `intent` values have no storage effect.
 
 ## Examples
 

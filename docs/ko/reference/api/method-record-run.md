@@ -495,8 +495,6 @@ params:
 
 ## 최소 유효 요청
 
-이 절에서 사용하는 정확한 식별자: `passed`, `result`.
-
 이 예시는 이 메서드 문서 안에서 전제로 둔 스테이징된 핸들의 검증 출력을 기록합니다. 메서드 안의 전제: `staged_runprobe_001`은 만료되지 않았고 소비되지 않았으며 `proj_runprobe_001` / `task_runprobe_001`에 속합니다. 스테이징 시점에 캡처된 기록된 행위자 출처는 `agent_connection:conn_run_probe`입니다. 대상과 연결된 스테이징 아티팩트는 바이트 무결성을 설정하지만 요청에 capture-intent producer 앵커가 없으므로 요청한 외부 도구 분류는 협력적 agent report로 커밋됩니다. 요청은 `observed_by_actor_source=null`로 두며 응답은 확인된 호출에서 파생된 행위자 출처를 보여 줍니다. 이 전제는 이 문서의 예시 안에서만 성립하며 다른 메서드 예시를 재사용하지 않습니다.
 
 ```yaml
@@ -578,8 +576,6 @@ params:
 ```
 
 ## 대표 응답
-
-이 절에서 사용하는 정확한 식별자: `passed`.
 
 결과 분기(`RecordRunResult`, 커밋됨):
 

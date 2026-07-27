@@ -498,8 +498,6 @@ Not allowed:
 
 ## Validation and failures
 
-Exact identifiers used in this section: `Task`.
-
 Rejected staged-handle inputs remain artifact validation failures. They must not be hidden as evidence sufficiency, invocation-context mismatch, capability insufficiency, or method success.
 
 | Failure type | Details |

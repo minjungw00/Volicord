@@ -30,7 +30,7 @@ Adjacent owners:
 |---|---|---|
 | Rejected response | `ToolRejectedResponse.errors[]` | [Rejected response](#error-vs-blocker-rejected-response) |
 | Blocked result | method-specific result fields | [Blocked result](#error-vs-blocker-blocked-result) |
-| `dry_run` preview | `ToolDryRunResponse` | [Dry-run preview](#error-vs-blocker-dry-run-preview) |
+| `dry_run` preview | `ToolDryRunResponse` | [`dry_run` preview](#error-vs-blocker-dry-run-preview) |
 
 <a id="error-vs-blocker-rejected-response"></a>
 Rejected response:
@@ -50,9 +50,9 @@ Blocked result:
 - State effect: It may be response-only or committed. Only the method owner with [Storage Effects](../storage-effects.md) may allow a committed blocker-shaped result.
 
 <a id="error-vs-blocker-dry-run-preview"></a>
-Dry-run preview:
+`dry_run` preview:
 - Public shape: `ToolDryRunResponse` with `DryRunSummary.would_errors[]` or `DryRunSummary.would_blockers[]`.
-- Meaning: Previewable diagnostics for a valid dry-run request.
+- Meaning: Previewable diagnostics for a valid `dry_run` request.
 - State effect: Not a committed write and not stored blocker state.
 
 `ErrorCode` values are public API identifiers. Close-readiness blocker/API response boundaries and public-code-to-blocker boundaries belong to [API blocker routing](blocker-routing.md).
@@ -150,7 +150,7 @@ Route:
 - `ToolRejectedResponse` with `dry_run=true`.
 
 State effect:
-- No committed operation or dry-run preview is produced.
+- No committed operation or `dry_run` preview is produced.
 
 Preview boundary:
 - The rejection is not represented as `DryRunSummary.would_errors[]` or `PlannedBlocker`.
@@ -202,7 +202,7 @@ Response branch:
 - The method result carries `blockers: CloseReadinessBlocker[]`.
 
 State effect:
-- The close-task method owner and [Storage Effects](../storage-effects.md) define whether a blocked close-task result is response-only or committed.
+- The method owner for `close_task` and [Storage Effects](../storage-effects.md) define whether a blocked close-task result is response-only or committed.
 
 Result data boundary:
 - Close-readiness blocker/API response routing and public-code-to-blocker routing belong to [API blocker routing](blocker-routing.md).
@@ -227,13 +227,13 @@ Blocked result means the method may have returned an operation-specific blocked 
 
 <a id="dry-run-behavior"></a>
 
-## Dry-run behavior
+## `dry_run` behavior
 
-| Dry-run case | Detail section |
+| `dry_run` case | Detail section |
 |---|---|
 | valid read-only call | [Valid read-only `dry_run=true`](#dry-run-valid-read-only) |
-| valid state-effecting or staging preview | [Valid dry-run preview](#dry-run-valid-preview) |
-| expected blockers in preview | [Expected blockers in dry-run preview](#dry-run-expected-blockers) |
+| valid state-effecting or staging preview | [Valid `dry_run` preview](#dry-run-valid-preview) |
+| expected blockers in preview | [Expected blockers in `dry_run` preview](#dry-run-expected-blockers) |
 | pre-commit failure | [Pre-commit failure with `dry_run=true`](#dry-run-pre-commit-failure) |
 
 <a id="dry-run-valid-read-only"></a>
@@ -249,7 +249,7 @@ Branch boundary:
 - `dry_run=true` is not a synonym for `ToolDryRunResponse`.
 
 <a id="dry-run-valid-preview"></a>
-### Valid dry-run preview
+### Valid `dry_run` preview
 
 Condition:
 - A valid state-effecting or storage-owned staging operation sets `dry_run=true`.
@@ -258,13 +258,13 @@ Response path:
 - `ToolDryRunResponse` with `DryRunSummary`.
 
 State effect:
-- The dry-run preview is not a committed write.
+- The `dry_run` preview is not a committed write.
 
 <a id="dry-run-expected-blockers"></a>
 ### Expected blockers in `dry_run` preview
 
 Condition:
-- A valid dry-run preview has expected blockers.
+- A valid `dry_run` preview has expected blockers.
 
 Response path:
 - `DryRunSummary.would_blockers: PlannedBlocker[]`.
@@ -283,5 +283,5 @@ Response path:
 - `ToolRejectedResponse`.
 
 Preview boundary:
-- The failure is not represented as dry-run preview data.
+- The failure is not represented as `dry_run` preview data.
 - Stale state is rejected before preview.

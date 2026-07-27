@@ -92,8 +92,6 @@ metadata, not a validity coordinate.
 
 ## Success result
 
-Exact identifiers used in this section: `suspected`.
-
 Returns `StatusResult` with:
 
 - `base.response_kind=result`
@@ -102,9 +100,9 @@ Returns `StatusResult` with:
 
 When `include.close=true`, `StatusResult.close_blockers` are read-only `CloseReadinessBlocker[]` observations.
 
-Non-claim: `StatusResult.close_blockers` are not stored close results, correctness proof, test sufficiency proof, or human review replacement. `base.disclosure.non_guarantees` carries the stable machine-readable values.
+Non-claim: `StatusResult.close_blockers` are not stored `close_task` results, correctness proof, test sufficiency proof, or human review replacement. `base.disclosure.non_guarantees` carries the stable machine-readable values.
 
-Include projection contract:
+`include` projection contract:
 
 - `include.task` returns the selected `Task` summary and current Change Unit through `active_task`.
 - `include.pending_user_actions` returns `pending_user_action_summaries`. The
@@ -167,7 +165,7 @@ Truthful projection rules:
   `false` when no active Task exists, authority refresh cannot be completed, or
   any blocker remains; display text and an agent assertion cannot override it.
 - Confirmed unresolved Unrecorded Changes contribute the close blocker.
-  Suspected changes remain visible as warnings or verification requests and do
+  `suspected` changes remain visible as warnings or verification requests and do
   not block close unless later promoted to `confirmed`.
 - A terminal selected Task projects its stored terminal state as `closed`,
   `cancelled`, or `superseded`, with an empty close-blocker set and no next
@@ -181,10 +179,6 @@ Truthful projection rules:
 `include.evidence=true` or `include.close=true` and [`volicord.check_close`](method-close-task.md#volicordcheck_close) use the same close-readiness evidence-gate calculation. Therefore an evidence-only status result and check-close result at the same state version return the same `evidence_gate`; selecting close controls exposure of close fields, not a second gate calculation. `volicord.status` creates no replay row, event, Core state mutation, close mutation, or state-version increment.
 
 ## Method result fields
-
-| Exact identifiers used in this section |
-|---|
-| `Task`, `close`, `close_task`, `evidence` |
 
 `StatusResult` is the method-specific result branch for a successful status read. It carries `base: ToolResultBase` and these method-owned top-level fields:
 
@@ -203,7 +197,7 @@ Truthful projection rules:
 | `close_state` | Status close-state value for the current view. Supported values, including `none` when no current close state is available, are owned by [API Value Sets](schema-value-sets.md#task-lifecycle-values). |
 | `current_close_basis` | `CurrentCloseBasis | null` selected into the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
 | `risk_acceptance_coverage` | `RiskAcceptanceCoverage[]` for current residual-risk acceptance coverage in the close status view. Shape is owned by [API State Schemas](schema-state.md#close-readiness-and-validation-shapes). |
-| `close_blockers` | Read-only `CloseReadinessBlocker[]` observations for the current view. They are not stored close results. |
+| `close_blockers` | Read-only `CloseReadinessBlocker[]` observations for the current view. They are not stored `close_task` results. |
 | `guarantee_display` | `GuaranteeDisplay | null` for the current status view. |
 | `continuity_summary` | `ProjectContinuityPage` when `include.continuity=true`; omitted when the projection is not selected. It always reports `items` and complete `page_info`, including an empty page. Shape is owned by [API State Schemas](schema-state.md#project-continuity-shapes). |
 | `task_flow` | `TaskFlowItem[]` when `include.continuity=true` and a Task is selected; omitted otherwise. It is the connected lineage projection, not inherited current authority. |
@@ -240,7 +234,7 @@ Returns `ToolRejectedResponse` only when the read cannot be safely served, such 
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 `dry_run=true` does not create a `ToolDryRunResponse` branch for this read-style method.
 

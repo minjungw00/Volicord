@@ -174,10 +174,6 @@ Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤�
 
 ## 메서드 결과 필드
 
-| 이 절에서 정확히 사용하는 식별자 |
-|---|
-| `Task`, `close`, `close_task`, `evidence` |
-
 `StatusResult`는 성공적인 상태 조회에 대한 메서드별 결과 분기입니다. 이 결과는 `base: ToolResultBase`와 아래 메서드 소유 최상위 필드를 담습니다.
 
 | 필드 | 결과 필드 의미 |
@@ -276,8 +272,6 @@ params:
 ```
 
 ## 대표 응답
-
-이 절에서 사용하는 정확한 식별자: `applied`.
 
 축약한 결과 분기(`StatusResult`, 읽기 전용):
 

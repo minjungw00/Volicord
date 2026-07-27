@@ -1,7 +1,6 @@
 use crate::diagnostics::ValidationIssue;
 use crate::doc_index::DocIndex;
 use crate::markdown;
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
@@ -60,7 +59,7 @@ pub(crate) fn validate_bilingual_structure(
 fn read_structure(root: &Path, relative_path: &str) -> Result<markdown::MarkdownStructure, String> {
     let contents = fs::read_to_string(root.join(relative_path))
         .map_err(|error| format!("failed to read paired Markdown: {error}"))?;
-    Ok(markdown::identifier_structure(&contents, &BTreeSet::new()))
+    Ok(markdown::structure(&contents, &[]))
 }
 
 #[cfg(test)]
@@ -69,12 +68,8 @@ mod tests {
 
     #[test]
     fn structural_parser_ignores_identifier_contents() {
-        let en =
-            markdown::identifier_structure("# State\n\nThe item is `queued`.", &BTreeSet::new());
-        let ko = markdown::identifier_structure(
-            "# 상태\n\n항목은 `local_note`입니다.",
-            &BTreeSet::new(),
-        );
+        let en = markdown::structure("# State\n\nThe item is `queued`.", &[]);
+        let ko = markdown::structure("# 상태\n\n항목은 `local_note`입니다.", &[]);
 
         assert_eq!(
             en.sections

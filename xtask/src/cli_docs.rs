@@ -123,7 +123,7 @@ fn replace_generated_region(contents: &str, expected: &str) -> Result<String> {
     Ok(updated)
 }
 
-fn generated_region_range(contents: &str) -> Result<std::ops::Range<usize>> {
+pub(crate) fn generated_region_range(contents: &str) -> Result<std::ops::Range<usize>> {
     let starts = contents
         .match_indices(CLI_SYNOPSIS_BEGIN_MARKER)
         .map(|(index, _)| index)

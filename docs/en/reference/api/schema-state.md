@@ -165,7 +165,7 @@ StateSummary:
 
 Meaning:
 - `StateSummary` is a compact response shape for state references, summaries, and close-readiness fields.
-- Method include flags may select only part of this shape. When a method owner says a projection is not selected, include-controlled fields such as `evidence_summary`, `evidence_gate`, `close_state`, `close_blockers`, or `guarantee_display` are omitted instead of being returned as null or empty. A returned empty array means the projection was computed and found empty.
+- Method `include` flags may select only part of this shape. When a method owner says a projection is not selected, include-controlled fields such as `evidence_summary`, `evidence_gate`, `close_state`, `close_blockers`, or `guarantee_display` are omitted instead of being returned as null or empty. A returned empty array means the projection was computed and found empty.
 - `mode`, `work_phase`, `acceptance_policy`, and `close_state` are controlled
   value strings when present. `acceptance_policy_reason` records why Core chose
   the Task-owned final-acceptance policy; it is not an approval or waiver.
@@ -207,8 +207,6 @@ Owner links:
 
 <a id="task-lineage-workspace-and-authority-receipt"></a>
 ### Task lineage, workspace, and authority receipt
-
-Exact identifiers used in this section: `applied`.
 
 ```yaml
 TaskLineageSummary:
@@ -262,7 +260,7 @@ AuthorityReceipt:
 
 Meaning:
 
-- `TaskLineageSummary` records exactly one predecessor relation. Applied
+- `TaskLineageSummary` records exactly one predecessor relation. `applied`
   carry-forward becomes newly validated Task input; `reference_only` preserves
   predecessor context without making its authority current.
 - `TaskFlowItem[]` is a full-status projection over the connected predecessor
@@ -957,7 +955,7 @@ Meaning:
   statements are free-form display strings. They are never evidence identity.
 - `EvidenceCoverageUpdate.provenance` is optional on request input and is
   omitted from committed `EvidenceCoverageItem` values after Core creates or
-  links the corresponding target-matching `EvidenceObservation`. A supported
+  links the corresponding target-matching `EvidenceObservation`. A `supported`
   update must have a target-matching observation input, a usable
   target-matching observation ref, or this provenance object.
 - `supporting_run_refs` accepts same-Task Run refs. `observation_refs`,
@@ -985,7 +983,7 @@ Meaning:
 - `EvidenceObservationInput` is the request-side shape accepted by `volicord.record_run`; Core fills `observation_id`, project and Task coordinates, `run_ref`, `recorded_at`, and the observer actor source when it commits. Request-side source and assurance values are provenance claims, not caller-granted assurance.
 - Only coverage for a current criterion with
   `evidence_requirement=required` participates in close authority. Required
-  criteria reject `coverage_state=not_applicable`; optional, `not_required`,
+  criteria reject `coverage_state=not_applicable`; `optional`, `not_required`,
   supplemental, and retired targets remain non-authoritative for close.
 - Submitted `observed_by_actor_source` does not select the committed actor. Core
   derives it from a validated producer record when present and otherwise from
@@ -1016,7 +1014,7 @@ Meaning:
 
 Owner links:
 - `ArtifactRef`: [API Artifact Schemas](schema-artifacts.md)
-- evidence, coverage, evidence observation, and run-kind values: [state and blocker values](schema-value-sets.md#state-and-blocker-values), [evidence observation values](schema-value-sets.md#evidence-observation-values), and [method-local values](schema-value-sets.md#method-local-values)
+- evidence, `coverage_state`, evidence observation, and run-kind values: [state and blocker values](schema-value-sets.md#state-and-blocker-values), [evidence observation values](schema-value-sets.md#evidence-observation-values), and [method-local values](schema-value-sets.md#method-local-values)
 - evidence observation actor values: [actor values](schema-value-sets.md#actor-values)
 - Evidence sufficiency meaning: [Core Model evidence and run authority](../core-model.md#9-evidence-and-run-authority)
 - Method behavior: method owner documents routed from [API Methods](methods.md)
@@ -1117,7 +1115,7 @@ Close-basis reference rules:
   explicitly adds them.
 - Every accepted ref must exist, belong to the same project and `Task`, and be canonicalized by Core. Core never treats caller-supplied `produced_at_state_version` metadata as authority or concurrency input.
 - Artifact refs used for close evidence must be linked to the Task and have `integrity_status=verified` plus current-byte verification at use time under [Artifact Storage](../storage-artifacts.md).
-- Evidence refs must identify the current Task evidence summary. Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status. Historical Runs are audit records unless a current Run explicitly reuses their verified artifacts or evidence and records that reuse.
+- Evidence refs must identify the current Task evidence summary. Run refs used as current close-basis result refs must identify a recorded current Run compatible with the current Task, current Change Unit, current scope revision, compatible baseline, and recorded status. Historical Runs are audit records unless a current Run explicitly reuses their `verified` artifacts or evidence and records that reuse.
 - Core may add the current Run, current Change Unit, and current EvidenceSummary refs when constructing the canonical close basis.
 
 Guarantee display rules:
@@ -1138,10 +1136,8 @@ Owner links:
 
 ## Related owners
 
-Exact identifiers used in this section: `CloseReadinessBlocker`, `CloseReadinessBlocker.category`.
-
 - [API Schema Core](schema-core.md) for `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, and `ToolDryRunResponse`.
-- [API Value Sets](schema-value-sets.md#state-and-blocker-values) for exact close-readiness blocker category values and neighboring state values.
+- [API Value Sets](schema-value-sets.md#state-and-blocker-values) for exact `CloseReadinessBlocker.category` values and neighboring state values.
 - [API Methods](methods.md) and method owner documents for the methods that return these schemas.
 - [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.
 - [API User Action Schemas](schema-user-action.md) for durable action requests

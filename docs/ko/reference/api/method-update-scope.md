@@ -216,8 +216,6 @@ UpdateScopeRequest:
 
 ## 최소 유효 요청
 
-이 절에서 사용하는 정확한 식별자: `scope`.
-
 ```yaml
 method: volicord.update_scope
 params:

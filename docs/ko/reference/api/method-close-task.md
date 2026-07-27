@@ -413,8 +413,6 @@ params:
 
 ### 대표 차단 확인 응답
 
-이 절에서 사용하는 정확한 식별자: `Complete`, `complete`.
-
 `state_version: 72`의 `task_close_001`에 대해, 이 메서드 예시의 응답이 최종 수락 차단 사유 하나를 보고하는 읽기 전용 `CloseTaskResult`:
 
 ```yaml

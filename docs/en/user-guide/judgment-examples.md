@@ -231,8 +231,6 @@ Reference links:
 
 ## Close Status
 
-Exact identifiers used in this section: `Task`.
-
 Scenario:
 
 - The user asks whether the task can honestly finish now.

@@ -6,8 +6,6 @@ Neighboring contracts stay with their owners: method behavior routes through [AP
 
 ## Owns / Does not own
 
-Exact identifiers used in this section: `operation_category`.
-
 This document owns:
 
 - schema notation conventions for API schema owner documents
@@ -143,7 +141,7 @@ Every public method response uses exactly one branch:
 
 - a method-specific `MethodResult`
 - `ToolRejectedResponse`
-- `ToolDryRunResponse` when the method owner defines a dry-run preview branch
+- `ToolDryRunResponse` when the method owner defines a `dry_run` preview branch
 
 Meaning:
 - `MethodResult` is the method-specific result branch defined by method owner documents routed from [API Methods](methods.md).
@@ -195,7 +193,7 @@ Owner links:
 ## `dry_run` summary shapes
 
 Meaning:
-- `DryRunSummary`, `PlannedEffect`, and `PlannedBlocker` are common dry-run branch support shapes.
+- `DryRunSummary`, `PlannedEffect`, and `PlannedBlocker` are common `dry_run` branch support shapes.
 - They are descriptive preview-data shapes only.
 
 Does not imply:
@@ -228,7 +226,7 @@ Owner links:
 - `PlannedBlocker.category` value routing: [state and blocker values](schema-value-sets.md#state-and-blocker-values)
 - public `ErrorCode` values used in `ToolError.code`: [API error codes](error-codes.md)
 
-`PlannedEffect.target_kind` and `PlannedEffect.action` are opaque preview classification strings unless a method owner narrows them for a specific dry-run branch. `PlannedEffect.description` and `DryRunSummary.diagnostics[]` entries are free-form display strings.
+`PlannedEffect.target_kind` and `PlannedEffect.action` are opaque preview classification strings unless a method owner narrows them for a specific `dry_run` branch. `PlannedEffect.description` and `DryRunSummary.diagnostics[]` entries are free-form display strings.
 
 `PlannedBlocker.category` uses the category set for the blocker family named by `PlannedBlocker.source_kind`: write-decision categories for `source_kind=write_decision`, and close-readiness blocker categories for `source_kind=close_readiness`. `PlannedBlocker.code` is an opaque preview reason code unless the method owner explicitly defines a narrower local code list. `PlannedBlocker.message` is a free-form display string.
 

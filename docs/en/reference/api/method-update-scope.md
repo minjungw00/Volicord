@@ -4,12 +4,10 @@
 
 ## What this document owns
 
-Exact identifiers used in this section: `volicord.intake`.
-
 This document owns baseline method behavior for `volicord.update_scope`:
 
 - method-specific required inputs, access requirements, state version behavior, result branches, and `dry_run` behavior
-- scope and Change Unit update behavior after intake
+- scope and Change Unit update behavior after `volicord.intake`
 - update-scope examples
 
 ## What this document does not own
@@ -23,9 +21,7 @@ This document does not own:
 
 ## Purpose
 
-Exact identifiers used in this section: `volicord.intake`.
-
-`volicord.update_scope` updates current `Task` and currently applied Change Unit fields after intake:
+`volicord.update_scope` updates current `Task` and currently applied Change Unit fields after `volicord.intake`:
 
 - goal summary
 - scope boundary
@@ -142,15 +138,13 @@ Invalidation does not consume or silently reuse it.
 
 ## Success result
 
-Exact identifiers used in this section: `scope_decision`.
-
 Returns `UpdateScopeResult` with:
 
 - `base.response_kind=result`
 - `base.effect_kind=core_committed`
 - `task_ref`
 - optional `change_unit_ref`
-- linked scope-decision refs
+- linked `scope_decision` refs
 - stale write-ticket refs
 - blocker refs
 - current `state`
@@ -209,7 +203,7 @@ Returns `ToolRejectedResponse` for pre-commit failures such as:
 
 Public error code meaning, precedence, and rejected-response routing are owned by the error documents linked below.
 
-## Dry-run behavior
+## `dry_run` behavior
 
 For `dry_run=true`, a valid state-effecting preview:
 

@@ -154,8 +154,6 @@ not equal the current normalized project write-authority fingerprint.
 
 ### `artifact_input_error.reason`
 
-Exact identifiers used in this section: `actor_source`.
-
 `ToolError.details.artifact_input_error.reason` uses these detail helper values. They are not top-level public `ErrorCode` values; staged-handle validation failures keep the public code `VALIDATION_FAILED` unless the actual failure is a request-level invocation-context, actor-source, or Product Repository path-boundary mismatch.
 
 | `artifact_input_error.reason` | Meaning |

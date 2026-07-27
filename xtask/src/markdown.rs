@@ -1,22 +1,97 @@
 //! Shared Markdown parsing for links, anchors, and bilingual structure checks.
 
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use std::collections::BTreeSet;
+use std::fmt;
 use std::ops::Range;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum MarkdownUnitKind {
+    Heading,
     Paragraph,
     ListItem,
-    TableRow,
+    TableCell,
+    DefinitionTitle,
+    Definition,
+    Callout,
+    Footnote,
     CodeBlock,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct MarkdownUnit {
+impl fmt::Display for MarkdownUnitKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Heading => "heading",
+            Self::Paragraph => "paragraph",
+            Self::ListItem => "list item",
+            Self::TableCell => "table cell",
+            Self::DefinitionTitle => "definition title",
+            Self::Definition => "definition",
+            Self::Callout => "callout",
+            Self::Footnote => "footnote",
+            Self::CodeBlock => "code block",
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct HeadingCoordinate {
+    pub(crate) level: u8,
+    pub(crate) ordinal: usize,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum MeaningUnitCoordinate {
+    ListItem(usize),
+    TableRow(usize),
+    TableCell(usize),
+    Definition(usize),
+    DefinitionPart(usize),
+    Callout(usize),
+    Footnote(usize),
+    CodeExample(usize),
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct MeaningUnitKey {
+    pub(crate) heading_path: Vec<HeadingCoordinate>,
+    pub(crate) block_ordinal: Option<usize>,
     pub(crate) kind: MarkdownUnitKind,
-    pub(crate) line: usize,
-    pub(crate) identifiers: BTreeSet<String>,
+    pub(crate) coordinates: Vec<MeaningUnitCoordinate>,
+}
+
+impl fmt::Display for MeaningUnitKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.heading_path.is_empty() {
+            formatter.write_str("preamble")?;
+        } else {
+            formatter.write_str("heading ")?;
+            for (index, heading) in self.heading_path.iter().enumerate() {
+                if index > 0 {
+                    formatter.write_str("/")?;
+                }
+                write!(formatter, "h{}:{}", heading.level, heading.ordinal)?;
+            }
+        }
+        if let Some(block) = self.block_ordinal {
+            write!(formatter, " > block {block}")?;
+        }
+        write!(formatter, " > {}", self.kind)?;
+        for coordinate in &self.coordinates {
+            match coordinate {
+                MeaningUnitCoordinate::ListItem(index) => write!(formatter, " {index}")?,
+                MeaningUnitCoordinate::TableRow(index) => write!(formatter, " row {index}")?,
+                MeaningUnitCoordinate::TableCell(index) => write!(formatter, " cell {index}")?,
+                MeaningUnitCoordinate::Definition(index) => write!(formatter, " entry {index}")?,
+                MeaningUnitCoordinate::DefinitionPart(index) => {
+                    write!(formatter, " definition {index}")?
+                }
+                MeaningUnitCoordinate::Callout(index) => write!(formatter, " callout {index}")?,
+                MeaningUnitCoordinate::Footnote(index) => write!(formatter, " footnote {index}")?,
+                MeaningUnitCoordinate::CodeExample(index) => write!(formatter, " example {index}")?,
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -28,10 +103,18 @@ pub(crate) enum MarkdownLiteralKind {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct MarkdownLiteral {
     pub(crate) kind: MarkdownLiteralKind,
-    pub(crate) unit_kind: Option<MarkdownUnitKind>,
     pub(crate) language: Option<String>,
+    pub(crate) attributes: Vec<String>,
     pub(crate) line: usize,
     pub(crate) text: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct MarkdownUnit {
+    pub(crate) key: MeaningUnitKey,
+    pub(crate) line: usize,
+    pub(crate) owner_source: Option<String>,
+    pub(crate) literals: Vec<MarkdownLiteral>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -39,14 +122,75 @@ pub(crate) struct MarkdownSection {
     pub(crate) heading_level: Option<u8>,
     pub(crate) line: usize,
     pub(crate) heading: String,
-    pub(crate) heading_identifiers: BTreeSet<String>,
+    pub(crate) heading_path: Vec<HeadingCoordinate>,
     pub(crate) units: Vec<MarkdownUnit>,
-    pub(crate) literals: Vec<MarkdownLiteral>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct MarkdownStructure {
     pub(crate) sections: Vec<MarkdownSection>,
+}
+
+impl MarkdownStructure {
+    pub(crate) fn units(&self) -> impl Iterator<Item = &MarkdownUnit> {
+        self.sections.iter().flat_map(|section| &section.units)
+    }
+
+    pub(crate) fn line_for_heading_path(&self, heading_path: &[HeadingCoordinate]) -> usize {
+        self.sections
+            .iter()
+            .find(|section| section.heading_path == heading_path)
+            .map_or(1, |section| section.line)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct MarkdownOwnerRegion {
+    pub(crate) range: Range<usize>,
+    pub(crate) source_id: String,
+}
+
+#[derive(Debug)]
+struct ListState {
+    next_item: usize,
+    current_item: Option<usize>,
+}
+
+#[derive(Debug, Default)]
+struct TableState {
+    row: usize,
+    cell: usize,
+}
+
+#[derive(Debug, Default)]
+struct DefinitionState {
+    entry: usize,
+    definition: usize,
+}
+
+#[derive(Debug, Default)]
+struct CalloutState {
+    coordinate: usize,
+    next_child: usize,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum RootBlockEnd {
+    Paragraph,
+    List,
+    Table,
+    DefinitionList,
+    BlockQuote,
+    Footnote,
+    CodeBlock,
+}
+
+#[derive(Debug)]
+struct RootBlock {
+    ordinal: usize,
+    end: RootBlockEnd,
+    next_code_example: usize,
+    owner_source: Option<String>,
 }
 
 pub(crate) fn options() -> Options {
@@ -55,12 +199,14 @@ pub(crate) fn options() -> Options {
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_HEADING_ATTRIBUTES
+        | Options::ENABLE_DEFINITION_LIST
 }
 
-pub(crate) fn identifier_structure(
+pub(crate) fn structure(
     contents: &str,
-    exact_identifiers: &BTreeSet<String>,
+    owner_regions: &[MarkdownOwnerRegion],
 ) -> MarkdownStructure {
+    let parse_contents = mask_code_span_pipes(contents);
     let newline_offsets = contents
         .bytes()
         .enumerate()
@@ -70,124 +216,504 @@ pub(crate) fn identifier_structure(
         heading_level: None,
         line: 1,
         heading: "document preamble".to_owned(),
-        heading_identifiers: BTreeSet::new(),
+        heading_path: Vec::new(),
         units: Vec::new(),
-        literals: Vec::new(),
     }];
-    let mut in_heading = false;
+    let mut heading_ordinals = [0_usize; 6];
+    let mut current_heading_path = Vec::new();
+    let mut active_heading_unit = None;
+    let mut active_units = Vec::new();
+    let mut paragraph_unit_started = Vec::new();
+    let mut list_stack = Vec::<ListState>::new();
+    let mut table = None::<TableState>;
+    let mut definition = None::<DefinitionState>;
+    let mut callout_stack = Vec::<CalloutState>::new();
+    let mut footnote_ordinal = 0;
     let mut in_code_block = false;
     let mut code_block_language = None;
-    let mut active_unit = None;
+    let mut code_block_attributes = Vec::new();
+    let mut block_ordinal = 0;
+    let mut root_block = None::<RootBlock>;
+    let mut pending_owner_source = None::<String>;
 
-    for (event, range) in Parser::new_ext(contents, options()).into_offset_iter() {
+    for (event, range) in Parser::new_ext(&parse_contents, options()).into_offset_iter() {
+        let line = source_line(&newline_offsets, &range);
         match event {
             Event::Start(Tag::Heading { level, .. }) => {
-                finish_unit(&mut active_unit, &mut sections);
+                pending_owner_source = None;
+                let level = heading_level(level);
+                let level_index = usize::from(level - 1);
+                heading_ordinals[level_index] += 1;
+                heading_ordinals[level_index + 1..].fill(0);
+                current_heading_path = heading_ordinals
+                    .iter()
+                    .enumerate()
+                    .take(level_index + 1)
+                    .filter(|(_, ordinal)| **ordinal > 0)
+                    .map(|(index, ordinal)| HeadingCoordinate {
+                        level: u8::try_from(index + 1).expect("Markdown heading level fits u8"),
+                        ordinal: *ordinal,
+                    })
+                    .collect();
                 sections.push(MarkdownSection {
-                    heading_level: Some(heading_level(level)),
-                    line: source_line(&newline_offsets, &range),
+                    heading_level: Some(level),
+                    line,
                     heading: String::new(),
-                    heading_identifiers: BTreeSet::new(),
+                    heading_path: current_heading_path.clone(),
                     units: Vec::new(),
-                    literals: Vec::new(),
                 });
-                in_heading = true;
+                block_ordinal = 0;
+                active_heading_unit = Some(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: None,
+                        kind: MarkdownUnitKind::Heading,
+                        coordinates: Vec::new(),
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    None,
+                ));
             }
-            Event::End(TagEnd::Heading(_)) => in_heading = false,
-            Event::Start(Tag::Item) => start_unit(
-                MarkdownUnitKind::ListItem,
-                source_line(&newline_offsets, &range),
-                &mut active_unit,
-            ),
-            Event::End(TagEnd::Item) => {
-                finish_if_kind(MarkdownUnitKind::ListItem, &mut active_unit, &mut sections)
+            Event::End(TagEnd::Heading(_)) => active_heading_unit = None,
+            Event::Start(Tag::Paragraph) => {
+                let started = if active_units.is_empty() {
+                    let ordinal = ensure_root_block(
+                        &mut root_block,
+                        &mut block_ordinal,
+                        RootBlockEnd::Paragraph,
+                        &mut pending_owner_source,
+                    );
+                    active_units.push(push_unit(
+                        &mut sections,
+                        MeaningUnitKey {
+                            heading_path: current_heading_path.clone(),
+                            block_ordinal: Some(ordinal),
+                            kind: MarkdownUnitKind::Paragraph,
+                            coordinates: Vec::new(),
+                        },
+                        line,
+                        range.start,
+                        owner_regions,
+                        root_block
+                            .as_ref()
+                            .and_then(|root| root.owner_source.as_deref()),
+                    ));
+                    true
+                } else {
+                    false
+                };
+                paragraph_unit_started.push(started);
             }
-            Event::Start(Tag::TableRow) => start_unit(
-                MarkdownUnitKind::TableRow,
-                source_line(&newline_offsets, &range),
-                &mut active_unit,
-            ),
-            Event::End(TagEnd::TableRow) => {
-                finish_if_kind(MarkdownUnitKind::TableRow, &mut active_unit, &mut sections)
-            }
-            Event::Start(Tag::Paragraph) => start_unit(
-                MarkdownUnitKind::Paragraph,
-                source_line(&newline_offsets, &range),
-                &mut active_unit,
-            ),
             Event::End(TagEnd::Paragraph) => {
-                finish_if_kind(MarkdownUnitKind::Paragraph, &mut active_unit, &mut sections)
+                if paragraph_unit_started.pop().unwrap_or(false) {
+                    active_units.pop();
+                }
+                finish_root_block(&mut root_block, RootBlockEnd::Paragraph);
+            }
+            Event::Start(Tag::List(_)) => {
+                ensure_root_block(
+                    &mut root_block,
+                    &mut block_ordinal,
+                    RootBlockEnd::List,
+                    &mut pending_owner_source,
+                );
+                list_stack.push(ListState {
+                    next_item: 0,
+                    current_item: None,
+                });
+            }
+            Event::End(TagEnd::List(_)) => {
+                list_stack.pop();
+                if list_stack.is_empty() {
+                    finish_root_block(&mut root_block, RootBlockEnd::List);
+                }
+            }
+            Event::Start(Tag::Item) => {
+                let Some(list) = list_stack.last_mut() else {
+                    continue;
+                };
+                list.next_item += 1;
+                list.current_item = Some(list.next_item);
+                let coordinates = list_stack
+                    .iter()
+                    .filter_map(|list| list.current_item)
+                    .map(MeaningUnitCoordinate::ListItem)
+                    .collect();
+                active_units.push(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: Some(current_root_ordinal(&root_block)),
+                        kind: MarkdownUnitKind::ListItem,
+                        coordinates,
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    root_block
+                        .as_ref()
+                        .and_then(|root| root.owner_source.as_deref()),
+                ));
+            }
+            Event::End(TagEnd::Item) => {
+                active_units.pop();
+                if let Some(list) = list_stack.last_mut() {
+                    list.current_item = None;
+                }
+            }
+            Event::Start(Tag::Table(_)) => {
+                ensure_root_block(
+                    &mut root_block,
+                    &mut block_ordinal,
+                    RootBlockEnd::Table,
+                    &mut pending_owner_source,
+                );
+                table = Some(TableState::default());
+            }
+            Event::End(TagEnd::Table) => {
+                table = None;
+                finish_root_block(&mut root_block, RootBlockEnd::Table);
+            }
+            Event::Start(Tag::TableHead) => {
+                let table = table.as_mut().expect("table head belongs to a table");
+                table.row += 1;
+                table.cell = 0;
+            }
+            Event::End(TagEnd::TableHead) => {}
+            Event::Start(Tag::TableRow) => {
+                let table = table.as_mut().expect("table row belongs to a table");
+                table.row += 1;
+                table.cell = 0;
+            }
+            Event::End(TagEnd::TableRow) => {}
+            Event::Start(Tag::TableCell) => {
+                let table = table.as_mut().expect("table cell belongs to a table");
+                table.cell += 1;
+                active_units.push(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: Some(current_root_ordinal(&root_block)),
+                        kind: MarkdownUnitKind::TableCell,
+                        coordinates: vec![
+                            MeaningUnitCoordinate::TableRow(table.row),
+                            MeaningUnitCoordinate::TableCell(table.cell),
+                        ],
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    root_block
+                        .as_ref()
+                        .and_then(|root| root.owner_source.as_deref()),
+                ));
+            }
+            Event::End(TagEnd::TableCell) => {
+                active_units.pop();
+            }
+            Event::Start(Tag::DefinitionList) => {
+                ensure_root_block(
+                    &mut root_block,
+                    &mut block_ordinal,
+                    RootBlockEnd::DefinitionList,
+                    &mut pending_owner_source,
+                );
+                definition = Some(DefinitionState::default());
+            }
+            Event::End(TagEnd::DefinitionList) => {
+                definition = None;
+                finish_root_block(&mut root_block, RootBlockEnd::DefinitionList);
+            }
+            Event::Start(Tag::DefinitionListTitle) => {
+                let definition = definition
+                    .as_mut()
+                    .expect("definition title belongs to a definition list");
+                definition.entry += 1;
+                definition.definition = 0;
+                active_units.push(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: Some(current_root_ordinal(&root_block)),
+                        kind: MarkdownUnitKind::DefinitionTitle,
+                        coordinates: vec![MeaningUnitCoordinate::Definition(definition.entry)],
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    root_block
+                        .as_ref()
+                        .and_then(|root| root.owner_source.as_deref()),
+                ));
+            }
+            Event::End(TagEnd::DefinitionListTitle) => {
+                active_units.pop();
+            }
+            Event::Start(Tag::DefinitionListDefinition) => {
+                let definition = definition
+                    .as_mut()
+                    .expect("definition belongs to a definition list");
+                definition.definition += 1;
+                active_units.push(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: Some(current_root_ordinal(&root_block)),
+                        kind: MarkdownUnitKind::Definition,
+                        coordinates: vec![
+                            MeaningUnitCoordinate::Definition(definition.entry),
+                            MeaningUnitCoordinate::DefinitionPart(definition.definition),
+                        ],
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    root_block
+                        .as_ref()
+                        .and_then(|root| root.owner_source.as_deref()),
+                ));
+            }
+            Event::End(TagEnd::DefinitionListDefinition) => {
+                active_units.pop();
+            }
+            Event::Start(Tag::BlockQuote(_)) => {
+                ensure_root_block(
+                    &mut root_block,
+                    &mut block_ordinal,
+                    RootBlockEnd::BlockQuote,
+                    &mut pending_owner_source,
+                );
+                let coordinate = if let Some(parent) = callout_stack.last_mut() {
+                    parent.next_child += 1;
+                    parent.next_child
+                } else {
+                    1
+                };
+                callout_stack.push(CalloutState {
+                    coordinate,
+                    next_child: 0,
+                });
+                let coordinates = callout_stack
+                    .iter()
+                    .map(|callout| MeaningUnitCoordinate::Callout(callout.coordinate))
+                    .collect();
+                active_units.push(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: Some(current_root_ordinal(&root_block)),
+                        kind: MarkdownUnitKind::Callout,
+                        coordinates,
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    root_block
+                        .as_ref()
+                        .and_then(|root| root.owner_source.as_deref()),
+                ));
+            }
+            Event::End(TagEnd::BlockQuote(_)) => {
+                active_units.pop();
+                callout_stack.pop();
+                if callout_stack.is_empty() {
+                    finish_root_block(&mut root_block, RootBlockEnd::BlockQuote);
+                }
+            }
+            Event::Start(Tag::FootnoteDefinition(_)) => {
+                footnote_ordinal += 1;
+                let ordinal = ensure_root_block(
+                    &mut root_block,
+                    &mut block_ordinal,
+                    RootBlockEnd::Footnote,
+                    &mut pending_owner_source,
+                );
+                active_units.push(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: Some(ordinal),
+                        kind: MarkdownUnitKind::Footnote,
+                        coordinates: vec![MeaningUnitCoordinate::Footnote(footnote_ordinal)],
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    root_block
+                        .as_ref()
+                        .and_then(|root| root.owner_source.as_deref()),
+                ));
+            }
+            Event::End(TagEnd::FootnoteDefinition) => {
+                active_units.pop();
+                finish_root_block(&mut root_block, RootBlockEnd::Footnote);
             }
             Event::Start(Tag::CodeBlock(kind)) => {
-                in_code_block = true;
-                code_block_language = match kind {
-                    CodeBlockKind::Indented => None,
-                    CodeBlockKind::Fenced(info) => info
-                        .split_whitespace()
-                        .next()
-                        .filter(|language| !language.is_empty())
-                        .map(|language| language.to_ascii_lowercase()),
-                };
-                start_unit(
-                    MarkdownUnitKind::CodeBlock,
-                    source_line(&newline_offsets, &range),
-                    &mut active_unit,
+                let was_nested = root_block.is_some();
+                let ordinal = ensure_root_block(
+                    &mut root_block,
+                    &mut block_ordinal,
+                    RootBlockEnd::CodeBlock,
+                    &mut pending_owner_source,
                 );
+                let coordinates = if was_nested {
+                    let root = root_block.as_mut().expect("root block exists");
+                    root.next_code_example += 1;
+                    let mut coordinates = active_units
+                        .last()
+                        .and_then(|index| {
+                            sections.last().expect("section exists").units.get(*index)
+                        })
+                        .map(|unit| unit.key.coordinates.clone())
+                        .unwrap_or_default();
+                    coordinates.push(MeaningUnitCoordinate::CodeExample(root.next_code_example));
+                    coordinates
+                } else {
+                    Vec::new()
+                };
+                in_code_block = true;
+                match kind {
+                    CodeBlockKind::Indented => {
+                        code_block_language = None;
+                        code_block_attributes.clear();
+                    }
+                    CodeBlockKind::Fenced(info) => {
+                        let mut parts = info.split_whitespace();
+                        code_block_language = parts
+                            .next()
+                            .filter(|language| !language.is_empty())
+                            .map(|language| language.to_ascii_lowercase());
+                        code_block_attributes = parts.map(str::to_owned).collect();
+                    }
+                }
+                active_units.push(push_unit(
+                    &mut sections,
+                    MeaningUnitKey {
+                        heading_path: current_heading_path.clone(),
+                        block_ordinal: Some(ordinal),
+                        kind: MarkdownUnitKind::CodeBlock,
+                        coordinates,
+                    },
+                    line,
+                    range.start,
+                    owner_regions,
+                    root_block
+                        .as_ref()
+                        .and_then(|root| root.owner_source.as_deref()),
+                ));
             }
             Event::End(TagEnd::CodeBlock) => {
                 in_code_block = false;
                 code_block_language = None;
-                finish_if_kind(MarkdownUnitKind::CodeBlock, &mut active_unit, &mut sections);
+                code_block_attributes.clear();
+                active_units.pop();
+                finish_root_block(&mut root_block, RootBlockEnd::CodeBlock);
             }
             Event::Code(code) => {
-                let unit_kind = active_unit.as_ref().map(|unit| unit.kind);
-                let identifiers = exact_identifier_mentions(
-                    &code,
-                    exact_identifiers,
-                    unit_kind == Some(MarkdownUnitKind::TableRow),
-                );
-                record_identifiers(&mut sections, active_unit.as_mut(), in_heading, identifiers);
-                if in_heading {
+                let unit_index = active_heading_unit.or_else(|| active_units.last().copied());
+                if let Some(unit_index) = unit_index {
+                    sections.last_mut().expect("section exists").units[unit_index]
+                        .literals
+                        .push(MarkdownLiteral {
+                            kind: MarkdownLiteralKind::Inline,
+                            language: None,
+                            attributes: Vec::new(),
+                            line,
+                            text: restore_masked_pipes(&code),
+                        });
+                }
+                if active_heading_unit.is_some() {
                     append_heading_text(&mut sections, &code);
                 }
-                sections
-                    .last_mut()
-                    .expect("section exists")
-                    .literals
-                    .push(MarkdownLiteral {
-                        kind: MarkdownLiteralKind::Inline,
-                        unit_kind,
-                        language: None,
-                        line: source_line(&newline_offsets, &range),
-                        text: code.into_string(),
-                    });
             }
             Event::Text(text) if in_code_block => {
-                let identifiers = code_block_identifier_mentions(
-                    &text,
-                    code_block_language.as_deref(),
-                    exact_identifiers,
-                );
-                record_identifiers(&mut sections, active_unit.as_mut(), in_heading, identifiers);
-                sections
-                    .last_mut()
-                    .expect("section exists")
-                    .literals
-                    .push(MarkdownLiteral {
-                        kind: MarkdownLiteralKind::Fenced,
-                        unit_kind: Some(MarkdownUnitKind::CodeBlock),
-                        language: code_block_language.clone(),
-                        line: source_line(&newline_offsets, &range),
-                        text: text.into_string(),
-                    });
+                if let Some(unit_index) = active_units.last().copied() {
+                    sections.last_mut().expect("section exists").units[unit_index]
+                        .literals
+                        .push(MarkdownLiteral {
+                            kind: MarkdownLiteralKind::Fenced,
+                            language: code_block_language.clone(),
+                            attributes: code_block_attributes.clone(),
+                            line,
+                            text: restore_masked_pipes(&text),
+                        });
+                }
             }
-            Event::Text(text) if in_heading => append_heading_text(&mut sections, &text),
+            Event::Text(text) if active_heading_unit.is_some() => {
+                append_heading_text(&mut sections, &text);
+            }
+            Event::Html(html) | Event::InlineHtml(html) if root_block.is_none() => {
+                if let Some(source_id) = contract_source_marker(&html) {
+                    pending_owner_source = Some(source_id);
+                }
+            }
             _ => {}
         }
     }
-    finish_unit(&mut active_unit, &mut sections);
 
     MarkdownStructure { sections }
+}
+
+fn contract_source_marker(html: &str) -> Option<String> {
+    let body = html
+        .trim()
+        .strip_prefix("<!--")?
+        .strip_suffix("-->")?
+        .trim();
+    let source_id = body.strip_prefix("contract-source:")?.trim();
+    (!source_id.is_empty()
+        && source_id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+        }))
+    .then(|| source_id.to_owned())
+}
+
+fn mask_code_span_pipes(contents: &str) -> String {
+    let mut bytes = contents.as_bytes().to_vec();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        if bytes[cursor] != b'`' {
+            cursor += 1;
+            continue;
+        }
+        let delimiter_start = cursor;
+        while cursor < bytes.len() && bytes[cursor] == b'`' {
+            cursor += 1;
+        }
+        let delimiter_length = cursor - delimiter_start;
+        let content_start = cursor;
+        let mut closing = None;
+        while cursor < bytes.len() {
+            if bytes[cursor] != b'`' {
+                cursor += 1;
+                continue;
+            }
+            let run_start = cursor;
+            while cursor < bytes.len() && bytes[cursor] == b'`' {
+                cursor += 1;
+            }
+            if cursor - run_start == delimiter_length {
+                closing = Some(run_start);
+                break;
+            }
+        }
+        let Some(closing) = closing else {
+            break;
+        };
+        for byte in &mut bytes[content_start..closing] {
+            if *byte == b'|' {
+                *byte = b'\x1f';
+            }
+        }
+    }
+    String::from_utf8(bytes).expect("masking ASCII pipe bytes preserves UTF-8")
+}
+
+fn restore_masked_pipes(contents: &str) -> String {
+    contents.replace('\u{1f}', "|")
 }
 
 fn append_heading_text(sections: &mut [MarkdownSection], text: &str) {
@@ -198,47 +724,57 @@ fn append_heading_text(sections: &mut [MarkdownSection], text: &str) {
     heading.push_str(text);
 }
 
-fn start_unit(kind: MarkdownUnitKind, line: usize, active: &mut Option<MarkdownUnit>) {
-    if active.is_none() {
-        *active = Some(MarkdownUnit {
-            kind,
-            line,
-            identifiers: BTreeSet::new(),
+fn push_unit(
+    sections: &mut [MarkdownSection],
+    key: MeaningUnitKey,
+    line: usize,
+    offset: usize,
+    owner_regions: &[MarkdownOwnerRegion],
+    declared_owner: Option<&str>,
+) -> usize {
+    let section = sections.last_mut().expect("section exists");
+    let index = section.units.len();
+    section.units.push(MarkdownUnit {
+        key,
+        line,
+        owner_source: declared_owner.map(str::to_owned).or_else(|| {
+            owner_regions
+                .iter()
+                .find(|region| region.range.contains(&offset))
+                .map(|region| region.source_id.clone())
+        }),
+        literals: Vec::new(),
+    });
+    index
+}
+
+fn ensure_root_block(
+    root: &mut Option<RootBlock>,
+    block_ordinal: &mut usize,
+    end: RootBlockEnd,
+    pending_owner_source: &mut Option<String>,
+) -> usize {
+    if root.is_none() {
+        *block_ordinal += 1;
+        *root = Some(RootBlock {
+            ordinal: *block_ordinal,
+            end,
+            next_code_example: 0,
+            owner_source: pending_owner_source.take(),
         });
     }
+    current_root_ordinal(root)
 }
 
-fn finish_if_kind(
-    kind: MarkdownUnitKind,
-    active: &mut Option<MarkdownUnit>,
-    sections: &mut [MarkdownSection],
-) {
-    if active.as_ref().is_some_and(|unit| unit.kind == kind) {
-        finish_unit(active, sections);
-    }
+fn current_root_ordinal(root: &Option<RootBlock>) -> usize {
+    root.as_ref()
+        .expect("Markdown unit has a root block")
+        .ordinal
 }
 
-fn finish_unit(active: &mut Option<MarkdownUnit>, sections: &mut [MarkdownSection]) {
-    if let Some(unit) = active.take() {
-        sections
-            .last_mut()
-            .expect("preamble section exists")
-            .units
-            .push(unit);
-    }
-}
-
-fn record_identifiers(
-    sections: &mut [MarkdownSection],
-    active: Option<&mut MarkdownUnit>,
-    in_heading: bool,
-    identifiers: BTreeSet<String>,
-) {
-    if in_heading {
-        let section = sections.last_mut().expect("heading section exists");
-        section.heading_identifiers.extend(identifiers);
-    } else if let Some(unit) = active {
-        unit.identifiers.extend(identifiers);
+fn finish_root_block(root: &mut Option<RootBlock>, end: RootBlockEnd) {
+    if root.as_ref().is_some_and(|root| root.end == end) {
+        *root = None;
     }
 }
 
@@ -257,82 +793,7 @@ fn heading_level(level: HeadingLevel) -> u8 {
     }
 }
 
-fn exact_identifier_mentions(
-    literal: &str,
-    exact_identifiers: &BTreeSet<String>,
-    allow_simple_identifiers: bool,
-) -> BTreeSet<String> {
-    exact_identifiers
-        .iter()
-        .filter(|identifier| {
-            allow_simple_identifiers || is_explicit_contract_identifier(identifier)
-        })
-        .filter(|identifier| contains_exact_identifier(literal, identifier))
-        .cloned()
-        .collect()
-}
-
-fn code_block_identifier_mentions(
-    literal: &str,
-    language: Option<&str>,
-    exact_identifiers: &BTreeSet<String>,
-) -> BTreeSet<String> {
-    match language {
-        Some("json" | "yaml" | "yml") => {
-            let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(literal) else {
-                return BTreeSet::new();
-            };
-            let mut tokens = BTreeSet::new();
-            collect_structured_tokens(&value, &mut tokens);
-            tokens.intersection(exact_identifiers).cloned().collect()
-        }
-        Some("bash" | "console" | "sh" | "shell" | "zsh") => {
-            exact_identifier_mentions(literal, exact_identifiers, true)
-        }
-        _ => BTreeSet::new(),
-    }
-}
-
-fn collect_structured_tokens(value: &serde_yaml::Value, tokens: &mut BTreeSet<String>) {
-    match value {
-        serde_yaml::Value::Mapping(mapping) => {
-            for (key, value) in mapping {
-                if let Some(key) = key.as_str() {
-                    tokens.insert(normalize_structured_key(key).to_owned());
-                }
-                collect_structured_tokens(value, tokens);
-            }
-        }
-        serde_yaml::Value::Sequence(sequence) => {
-            for value in sequence {
-                collect_structured_tokens(value, tokens);
-            }
-        }
-        serde_yaml::Value::String(value) if looks_like_structured_identifier(value) => {
-            tokens.insert(value.to_owned());
-        }
-        _ => {}
-    }
-}
-
-fn normalize_structured_key(key: &str) -> &str {
-    key.strip_suffix('?').unwrap_or(key)
-}
-
-fn looks_like_structured_identifier(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
-        })
-}
-
-pub(crate) fn is_explicit_contract_identifier(identifier: &str) -> bool {
-    identifier.chars().any(|character| {
-        matches!(character, '_' | '-' | '.' | ' ') || character.is_ascii_uppercase()
-    })
-}
-
-fn contains_exact_identifier(haystack: &str, identifier: &str) -> bool {
+pub(crate) fn contains_exact_identifier(haystack: &str, identifier: &str) -> bool {
     if identifier.is_empty() {
         return false;
     }
@@ -358,45 +819,111 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extracts_only_explicit_catalog_identifiers_from_inline_meaning_units() {
-        let identifiers = ["Ready", "ready", "state_version", "status"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-        let parsed = identifier_structure(
-            "# `Ready`\n\nThe `state_version` has `status` `ready`; `unmapped` is ignored.\n",
-            &identifiers,
+    fn assigns_deterministic_paragraph_and_nested_list_keys() {
+        let parsed = structure(
+            "# Example\n\nFirst.\n\n- Parent `state`\n  - Child `ready`\n",
+            &[],
         );
+        let keys = parsed
+            .units()
+            .map(|unit| unit.key.to_string())
+            .collect::<Vec<_>>();
 
-        assert_eq!(parsed.sections.len(), 2);
         assert_eq!(
-            parsed.sections[1].heading_identifiers,
-            ["Ready".to_owned()].into_iter().collect()
-        );
-        assert_eq!(
-            parsed.sections[1].units[0].identifiers,
-            ["state_version".to_owned()].into_iter().collect()
+            keys,
+            [
+                "heading h1:1 > heading",
+                "heading h1:1 > block 1 > paragraph",
+                "heading h1:1 > block 2 > list item 1",
+                "heading h1:1 > block 2 > list item 1 1",
+            ]
         );
     }
 
     #[test]
-    fn does_not_match_identifiers_inside_larger_tokens() {
-        let identifiers = ["complete".to_owned()].into_iter().collect();
-        let parsed = identifier_structure("# Example\n\n`completed`\n", &identifiers);
-        assert!(parsed.sections[1].units[0].identifiers.is_empty());
+    fn assigns_each_table_cell_its_own_coordinate() {
+        let parsed = structure(
+            "# Example\n\n| Field | Value |\n|---|---|\n| `status` | `ready` |\n",
+            &[],
+        );
+        let keys = parsed
+            .units()
+            .filter(|unit| unit.key.kind == MarkdownUnitKind::TableCell)
+            .map(|unit| unit.key.to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            keys,
+            [
+                "heading h1:1 > block 1 > table cell row 1 cell 1",
+                "heading h1:1 > block 1 > table cell row 1 cell 2",
+                "heading h1:1 > block 1 > table cell row 2 cell 1",
+                "heading h1:1 > block 1 > table cell row 2 cell 2",
+            ]
+        );
     }
 
     #[test]
-    fn structured_optional_marker_preserves_the_exact_field_identifier() {
-        let identifiers = ["continuity_page".to_owned()].into_iter().collect();
-        let parsed = identifier_structure(
-            "# Example\n\n```yaml\ncontinuity_page?: object\n```\n",
-            &identifiers,
+    fn table_cells_preserve_code_after_union_pipes() {
+        let parsed = structure(
+            "# Example\n\n| Field | Value |\n|---|---|\n| `state` | `StateRecordRef | null` with `record_kind=state` |\n",
+            &[],
+        );
+        let literals = parsed
+            .units()
+            .find(|unit| unit.key.to_string() == "heading h1:1 > block 1 > table cell row 2 cell 2")
+            .expect("value cell")
+            .literals
+            .iter()
+            .map(|literal| literal.text.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(literals, ["StateRecordRef | null", "record_kind=state"]);
+    }
+
+    #[test]
+    fn contract_source_metadata_owns_the_next_structural_block() {
+        let parsed = structure(
+            "# Example\n\n<!-- contract-source: public_api -->\n| Field |\n|---|\n| `status` |\n\nOrdinary `note`.\n",
+            &[],
+        );
+        let table_units = parsed
+            .units()
+            .filter(|unit| unit.key.kind == MarkdownUnitKind::TableCell)
+            .collect::<Vec<_>>();
+        let paragraph = parsed
+            .units()
+            .find(|unit| unit.key.kind == MarkdownUnitKind::Paragraph)
+            .expect("ordinary paragraph");
+
+        assert!(table_units
+            .iter()
+            .all(|unit| unit.owner_source.as_deref() == Some("public_api")));
+        assert_eq!(paragraph.owner_source, None);
+    }
+
+    #[test]
+    fn owner_regions_annotate_generated_units() {
+        let markdown = "# Manual\n\n<!-- begin -->\n## `volicord inspect`\n\n```text\n--report\n```\n<!-- end -->\n";
+        let start = markdown.find("<!-- begin -->").expect("begin");
+        let end = markdown.find("<!-- end -->").expect("end") + "<!-- end -->".len();
+        let parsed = structure(
+            markdown,
+            &[MarkdownOwnerRegion {
+                range: start..end,
+                source_id: "administrative_cli".to_owned(),
+            }],
         );
 
-        assert_eq!(
-            parsed.sections[1].units[0].identifiers,
-            ["continuity_page".to_owned()].into_iter().collect()
-        );
+        assert!(parsed
+            .units()
+            .filter(|unit| unit.key.heading_path.len() == 2)
+            .all(|unit| unit.owner_source.as_deref() == Some("administrative_cli")));
+    }
+
+    #[test]
+    fn exact_identifier_matching_includes_simple_lowercase_values() {
+        assert!(contains_exact_identifier("status is ready", "ready"));
+        assert!(!contains_exact_identifier("status is unready", "ready"));
     }
 }

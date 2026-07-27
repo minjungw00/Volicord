@@ -207,8 +207,6 @@ Exact reconciliation behavior belongs to
 
 ## Review Close Status
 
-Exact identifiers used in this section: `Task`.
-
 Before calling larger work done, ask:
 
 ```text

@@ -89,15 +89,34 @@ read-only and verifies the machine-checkable shape:
   `docs/ko/architecture-guide/design/` uses the language-specific exact H2
   sequence defined by the Documentation Policy and has no nested heading
   sections outside that positive schema.
-- For each paired document selected by `contract_sources`, `docs-check` derives
-  exact identifiers from the current generated public JSON Schemas,
-  `volicord-command-model`, generated typed diagnostic registry, and current
-  protocol registry. Corresponding heading sections preserve identifiers found
-  in structured JSON/YAML tokens, shell command blocks, code cells in tables,
-  and distinctive inline identifiers. Focused diagnostics name the pair,
-  section, contract owner, and missing or invalid identifier. Arbitrary prose,
-  Mermaid/text fences, and unrelated simple code spans are not treated as
-  contract identifiers.
+- For each paired document selected by `contract_sources`, `docs-check` builds
+  owner catalogs directly from the generated public JSON Schemas, the
+  `volicord-command-model` command tree, the generated typed diagnostic
+  registry artifact, and the current protocol registry. Public-schema catalogs
+  include property names, named schema definitions and titles, enum strings,
+  and constant strings.
+- The checker compares catalog members within corresponding parsed Markdown
+  meaning units: heading coordinates, paragraphs, nested list items, table
+  cells, definition entries, callouts, footnotes, and fenced examples. A unit's
+  structural coordinate uses heading and block ordinals rather than translated
+  heading text. Moving an identifier to another paragraph, list item, or table
+  cell is therefore a mismatch even when it remains under the same heading.
+- Recognition is exact catalog membership, including simple lowercase values,
+  `snake_case` fields, hyphenated CLI tokens, dotted diagnostic codes, and
+  protocol identifiers. Inline code is contract-bearing only when an exact
+  owner catalog contains the token; arbitrary prose and unrelated inline code
+  are ignored. Structured JSON/YAML examples contribute parsed keys and literal
+  values. A contract-bound JSON/YAML fence can declare
+  `contract=<source_id>` to reject unknown keys against that current owner.
+  The `<!-- contract-source: <source_id> -->` metadata immediately before a
+  table or other block binds that block's inline identifiers to the selected
+  current owner and rejects unknown tokens. Shell examples and generated
+  Administrative CLI regions use their routed command-model owner. Fuzzy
+  matching may suggest nearby current identifiers in diagnostics but never
+  accepts a spelling.
+- Identifier diagnostics are deterministic and name the document pair,
+  structural meaning unit, current contract source and owner, and the missing
+  or invalid identifier.
 - Existing-file and duplicate-path rules apply to the root README pair in the
   same way they apply to other indexed paths.
 - Relative links resolve to existing files.
@@ -170,6 +189,10 @@ For bilingual changes, compare English and Korean by meaning unit. Preserve
 reader purpose, normative strength, owner routing, baseline and out-of-scope
 boundaries, user-judgment boundaries, negative clauses, non-claims, guarantee
 strength, headings, tables, lists, examples, links, and exact identifiers.
+For a contract-bearing meaning unit, also preserve the identifier in the same
+parsed structural coordinate. The current policy defines no exception that
+allows moving an owner-derived identifier between paragraphs, list items, or
+table cells.
 
 For contract-adjacent edits, confirm exact API behavior, schema meaning, error
 meaning, storage effects, security wording, access boundaries, close-readiness
@@ -213,10 +236,13 @@ focused Reference-owner link.
 
 The automated `docs-check` command includes local documentation-link parity,
 heading-level structure parity, and current-owner-derived exact-identifier
-parity for maintained English/Korean pairs. It does not perform full semantic
-bilingual review, contract-owner review, technical-accuracy review, translation
-judgment, API example consistency review, or product meaning review. The
-remaining checks stay manual and owner-routed.
+parity by parsed structural meaning unit for maintained English/Korean pairs.
+It proves neither that prose with no recognized identifier says the same thing
+nor that a shared identifier is used with the same meaning. It also does not
+perform full semantic bilingual review, contract-owner review,
+technical-accuracy review, translation judgment, API example consistency
+review, or product meaning review. Those responsibilities stay with human
+semantic review and the focused owners.
 
 ## Durable Tests
 
@@ -373,8 +399,6 @@ Use narrower Cargo commands only when the repository structure or task scope
 clearly calls for them, and report the reason.
 
 ## Generated Reference And Contract Drift Checks
-
-Exact identifiers used in this section: `read_only`.
 
 Generated or source-derived reference surfaces use stable check commands:
 
