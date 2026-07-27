@@ -2,6 +2,7 @@ use std::{
     collections::BTreeSet,
     path::{Component, Path},
 };
+use volicord_platform_fs::PlatformDiagnosticClass;
 use volicord_types::canonical::canonical_git_object_id;
 use volicord_types::ids::{
     AcceptanceCriterionId, ArtifactId, BaselineRef, ChangeUnitId, DurableIdKind,
@@ -13,7 +14,7 @@ use volicord_types::methods::{
     CloseTaskResultFields, PrepareWriteRequest, PrepareWriteResultFields, RecordRunRequest,
     UpdateScopeRequest,
 };
-use volicord_types::product_path::{normalize_product_paths, path_is_within};
+use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{
     AcceptanceCriterion, ArtifactInput, ArtifactRef, CarryForwardDisposition,
     ChangeUnitEffectContract, CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary,
@@ -63,6 +64,9 @@ use crate::policy::{
         resolve_task_control_authority,
     },
     write_ticket::{write_decision_reason, write_ticket_is_idle_expired},
+};
+use crate::product_path::{
+    observe_product_paths, parse_stored_product_paths, ProductPathValidationError,
 };
 use volicord_user_action_service::{current_sensitive_approval, SensitiveApprovalRequirement};
 
@@ -173,8 +177,7 @@ fn first_product_write_duration_micros(
         .into_iter()
         .filter_map(|candidate| {
             let paths = serde_json::from_str::<Vec<String>>(&candidate.observed_paths_json).ok()?;
-            let normalized =
-                normalize_product_paths(&store.project_record().repo_root, &paths).ok()?;
+            let normalized = parse_stored_product_paths(&paths).ok()?;
             if normalized.is_empty() {
                 return None;
             }
@@ -1320,7 +1323,6 @@ fn workspace_context_matches(
 }
 
 fn paths_match_current_change_unit(
-    repo_root: &Path,
     intended_paths: &[String],
     change_unit: &ChangeUnitRecord,
 ) -> CoreResult<bool> {
@@ -1330,20 +1332,57 @@ fn paths_match_current_change_unit(
     if change_unit.bounded_paths.is_empty() {
         return Ok(false);
     }
-    let bounded_paths =
-        normalize_product_paths(repo_root, &change_unit.bounded_paths).map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-                "change_units",
-                change_unit.change_unit_id.clone(),
-                "bounded_paths_json",
-            ))
-        })?;
+    let bounded_paths = parse_stored_product_paths(&change_unit.bounded_paths).map_err(|_| {
+        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
+            "change_units",
+            change_unit.change_unit_id.clone(),
+            "bounded_paths_json",
+        ))
+    })?;
     Ok(!bounded_paths.is_empty()
         && intended_paths.iter().all(|path| {
             bounded_paths
                 .iter()
                 .any(|scope| path_is_within(path, scope))
         }))
+}
+
+pub(crate) fn observe_request_product_paths(
+    repository_root: &Path,
+    raw_paths: &[String],
+    dry_run: bool,
+    state_version: Option<u64>,
+    field: &'static str,
+    invalid_message: &'static str,
+    containment_message: &'static str,
+) -> Result<Vec<String>, PlanError> {
+    match observe_product_paths(repository_root, raw_paths) {
+        Ok(paths) => Ok(paths),
+        Err(ProductPathValidationError::Lexical(_)) => {
+            let response = validation_rejected(dry_run, state_version, field, invalid_message)
+                .map_err(PlanError::Core)?;
+            Err(PlanError::Response(Box::new(response)))
+        }
+        Err(error @ ProductPathValidationError::Platform(_))
+            if error.platform_class() == Some(PlatformDiagnosticClass::Rejected) =>
+        {
+            let response = rejected_pipeline_response(
+                dry_run,
+                state_version,
+                vec![tool_error(
+                    ErrorCode::InvocationContextMismatch,
+                    containment_message,
+                    false,
+                    None,
+                )],
+            )
+            .map_err(PlanError::Core)?;
+            Err(PlanError::Response(Box::new(response)))
+        }
+        Err(ProductPathValidationError::Platform(error)) => {
+            Err(PlanError::Core(CorePipelineError::from(error)))
+        }
+    }
 }
 
 fn change_unit_effect_contract(
@@ -1394,7 +1433,6 @@ fn matching_sensitive_approval(
         baseline_ref: Some(&request.baseline_ref),
         required_for: UserActionRequiredFor::PrepareWrite,
         now,
-        repo_root: &store.project_record().repo_root,
     };
 
     for record in records {
@@ -2136,7 +2174,6 @@ fn write_ticket_projection_invalidation_reason(
         baseline_ref: scope.baseline_ref.as_ref(),
         required_for: UserActionRequiredFor::PrepareWrite,
         now: &now,
-        repo_root: &store.project_record().repo_root,
     };
     let records = store
         .resolved_user_action_records(

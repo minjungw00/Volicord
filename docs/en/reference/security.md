@@ -22,6 +22,9 @@ Within the owner-defined local boundary, Volicord guarantees:
 - current Connection, project membership, mode, and authoritative managed-host
   session validation for Agent Connection calls;
 - Runtime Home and Product Repository separation;
+- lexical Product Repository path validation separated from platform-owned
+  canonical root, link, and containment observation before Core accepts a
+  request path;
 - CLI-only UserAction resolution with `resolved_by_actor_source=local_user`;
 - managed stdio MCP without a network listener; and
 - machine-readable failure categories instead of permissive fallback.
@@ -87,6 +90,11 @@ Product Repository files are user product data. Runtime Home rows are Volicord
 authority records. Managed Codex configuration starts a process but is not
 authority, approval, a Write Ticket, or proof that Codex loaded it.
 
+A validated relative Product Repository path is not filesystem permission or
+proof of future containment. The platform observation is a bounded local fact
+at the time Core obtains it. Semantic services and stored authority records do
+not carry canonical absolute paths or independently reopen caller path text.
+
 Behavioral connection observations establish compatibility for the current
 managed configuration and observed protocol, tool, safe-call, and Guard
 behavior. Core authority separately validates the current enabled Connection,
@@ -130,6 +138,8 @@ Volicord does not guarantee:
 - actor attribution from client name/version, host version, environment values,
   or local session metadata;
 - complete detection or prevention of Product Repository changes;
+- continued path existence or containment after a completed platform
+  observation;
 - correctness, test sufficiency, QA, deployment readiness, or human review;
 - that Close Status replaces final user acceptance where acceptance is required;
 - that configuration presence proves active tool exposure;

@@ -9,7 +9,7 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-types/src/lib.rs` | Public owner-module routing. Shared definitions are public through their owning modules. |
 | `crates/volicord-types/src/schema.rs` | Shared request, response, and stored-record shapes. |
-| `crates/volicord-types/src/product_path.rs` | Typed owner-defined relative product paths and their normalization. |
+| `crates/volicord-types/src/product_path.rs` | Platform-neutral Product Repository relative-path value, lexical validation, and pure component-aware containment relationships; no filesystem observation. |
 | `crates/volicord-types/src/values.rs` | Closed product value sets. |
 | `crates/volicord-types/src/ids.rs` | Opaque identifiers. |
 | `crates/volicord-types/src/canonical.rs` | Canonical serialization and hashing. |
@@ -34,7 +34,8 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, closed typed platform diagnostic kinds with unique canonical codes and bounded detail, shared platform-finding projection, effect-aware exact directory-tree removal, typed atomic no-replace regular-file publication and parent-entry durability, platform-native namespace operations, safe Runtime Home mutation-lease and permit exports, and canonical read-only Git layout discovery. |
+| `crates/volicord-platform-fs/src/lib.rs` | Current process target and platform observation, native Linux/WSL2 kernel classification, WSL2 `/etc/os-release` distribution validation, path-filesystem observation, closed typed platform diagnostic kinds with unique canonical codes and bounded detail, shared platform-finding projection, effect-aware exact directory-tree removal, typed atomic no-replace regular-file publication and parent-entry durability, platform-native namespace operations, safe Runtime Home mutation-lease and permit exports, canonical read-only Git layout discovery, and Product Repository observation exports. |
+| `crates/volicord-platform-fs/src/product_path.rs` | Exclusive live Product Repository root/candidate observation, private canonical identities, nearest-existing-ancestor handling for missing candidates, link-aware containment, and opaque typed observations. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | Canonical Runtime Home identity, domain-separated full-digest external coordination-file derivation, shared-writer and exclusive-setup modes on one OS lock region, immediate and bounded typed acquisition, borrowed mutation permits, and Unix/macOS or native Windows handle-lifetime release. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | Cross-process shared/exclusive mutation-lease contention and process-termination release regression. |
 | `crates/volicord-cli/src/host_integration/process.rs` | Process-target validation, target-path filesystem enforcement from platform-boundary observations, and canonical platform diagnostic display projection. |
@@ -115,7 +116,8 @@ product contract; use the focused Reference document for exact behavior.
 |---|---|
 | `crates/volicord-user-action-service/src/lib.rs` | Narrow public routing for typed contexts, intents, facts, service errors, and responsibility-owner functions; no Core or adapter facade. |
 | `crates/volicord-user-action-service/src/model.rs` | Semantic intent, validated construction values, explicit construction and persistence contexts, and adapter-neutral pending/current/resolution facts. |
-| `crates/volicord-user-action-service/src/validation.rs` | Pure validation and normalization of action kinds, coordinates, authority-bearing combinations, operation targets, and expiration semantics. |
+| `crates/volicord-user-action-service/src/validation.rs` | Filesystem-free validation and normalization of action kinds, coordinates, authority-bearing combinations, semantic Product Repository path values, operation targets, and expiration semantics. |
+| `crates/volicord-user-action-service/src/relevance.rs` | Pure current-authority and operation-relevance decisions over typed semantic facts, including component-aware sensitive-path relationships without repository access. |
 | `crates/volicord-user-action-service/src/body.rs` | Pure construction of canonical typed `UserActionRequestBody` and `UserActionBasis` values from validated intent and acquired facts. |
 | `crates/volicord-user-action-service/src/identity.rs` | Stable source identity, deduplication metadata, and focused request-identity availability checks. |
 | `crates/volicord-user-action-service/src/service.rs` | Store-backed acquisition of typed construction, artifact, target, pending, and resolved authority facts without Core request orchestration. |
@@ -132,7 +134,8 @@ product contract; use the focused Reference document for exact behavior.
 
 | Path | Responsibility |
 |---|---|
-| `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, commit orchestration, and Store-error detail projection including canonical platform diagnostic codes. |
+| `crates/volicord-core/src/pipeline.rs` | Separate read-only path and admitted-context `CoreService` construction, typed Core/Store Runtime Home authorization, common preflight, replay, plan selection, response, commit orchestration, Store-error detail projection, and neutral typed operational projection of platform-owned Product Repository observation failures. |
+| `crates/volicord-core/src/product_path.rs` | Coordination of shared lexical parsing with platform-owned live Product Repository observations, plus filesystem-free parsing of already stored semantic identities. |
 | `crates/volicord-core/src/methods/` | Method-specific structural validation and planning. Production method modules import shared helpers, pipeline and policy functions, Store services, and shared types from their explicit owners; the parent module is not an import prelude. |
 | `crates/volicord-core/src/methods/evidence_facts.rs` | Shared Store reads and strict decoding that acquire typed facts for stored and projected evidence without owning evidence-policy classification. |
 | `crates/volicord-core/src/methods/close_readiness/mod.rs` | Narrow package surface for close-readiness services, projections, and blocker helpers consumed by method planners. |

@@ -199,6 +199,8 @@ pub enum McpOperationalErrorCode {
 /// MCP wire projection of the operation that could not complete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum McpOperationalOperation {
+    #[serde(rename = "product_path_observation")]
+    ProductPathObservation,
     #[serde(rename = "store_access")]
     StoreAccess,
 }
@@ -206,6 +208,8 @@ pub enum McpOperationalOperation {
 /// MCP wire projection of the unavailable infrastructure resource.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum McpOperationalResource {
+    #[serde(rename = "product_repository")]
+    ProductRepository,
     #[serde(rename = "store")]
     Store,
     #[serde(rename = "registry_store")]

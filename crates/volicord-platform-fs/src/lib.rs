@@ -21,6 +21,7 @@ use volicord_types::release_target::ReleaseTargetTriple;
 use volicord_types::values::UtcTimestamp;
 
 mod mutation_lease;
+mod product_path;
 
 pub use mutation_lease::{
     canonical_runtime_home_path, CanonicalRuntimeHomePath, RuntimeHomeMutationBusy,
@@ -28,6 +29,7 @@ pub use mutation_lease::{
     RuntimeHomeMutationLeaseOutcome, RuntimeHomeMutationLockIdentity, RuntimeHomeMutationPermit,
     RuntimeHomeMutationWaitPolicy,
 };
+pub use product_path::{ObservedProductPath, ObservedProductPathState, ObservedProductRepository};
 
 #[cfg(windows)]
 use std::fs::File;
@@ -67,6 +69,8 @@ pub enum PathFilesystemKind {
 /// Stable routing class for a local platform-boundary diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformDiagnosticClass {
+    /// The observed path violates a required platform-owned boundary.
+    Rejected,
     /// Required local observation could not be completed.
     Unavailable,
     /// The observed platform or topology is outside the supported platform boundary.
@@ -88,6 +92,16 @@ pub enum PlatformDiagnosticKind {
     UnsupportedWsl2Distribution,
     /// A required filesystem observation could not be completed.
     FilesystemObservationFailure,
+    /// The selected Product Repository root does not exist.
+    ProductRepositoryNotFound,
+    /// The selected Product Repository root is not a usable directory.
+    InvalidProductRepositoryRoot,
+    /// An operation requiring an existing Product Repository path could not find it.
+    ProductPathNotFound,
+    /// A Product Repository path could not be accessed or inspected.
+    ProductPathInaccessible,
+    /// A Product Repository path resolves outside the canonical repository root.
+    ProductPathContainmentFailure,
     /// A path is on a filesystem outside the supported platform boundary.
     UnsupportedFilesystemBoundary,
     /// A required platform observation could not be completed.
@@ -96,13 +110,18 @@ pub enum PlatformDiagnosticKind {
 
 impl PlatformDiagnosticKind {
     /// Every owner-defined kind in canonical registry order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 13] = [
         Self::UnsupportedOperatingSystem,
         Self::UnsupportedTarget,
         Self::Wsl1,
         Self::Wsl2DistributionIdentityUnavailable,
         Self::UnsupportedWsl2Distribution,
         Self::FilesystemObservationFailure,
+        Self::ProductRepositoryNotFound,
+        Self::InvalidProductRepositoryRoot,
+        Self::ProductPathNotFound,
+        Self::ProductPathInaccessible,
+        Self::ProductPathContainmentFailure,
         Self::UnsupportedFilesystemBoundary,
         Self::PlatformObservationFailure,
     ];
@@ -118,6 +137,11 @@ impl PlatformDiagnosticKind {
             }
             Self::UnsupportedWsl2Distribution => "platform.wsl2.distribution_unsupported",
             Self::FilesystemObservationFailure => "platform.filesystem.observation_failed",
+            Self::ProductRepositoryNotFound => "platform.product_repository.not_found",
+            Self::InvalidProductRepositoryRoot => "platform.product_repository.invalid_root",
+            Self::ProductPathNotFound => "platform.product_path.not_found",
+            Self::ProductPathInaccessible => "platform.product_path.inaccessible",
+            Self::ProductPathContainmentFailure => "platform.product_path.containment_failed",
             Self::UnsupportedFilesystemBoundary => "platform.filesystem.unsupported",
             Self::PlatformObservationFailure => "platform.observation.failed",
         }
@@ -138,6 +162,13 @@ impl PlatformDiagnosticKind {
             Self::FilesystemObservationFailure => {
                 "The selected path filesystem could not be observed"
             }
+            Self::ProductRepositoryNotFound => "The selected Product Repository root was not found",
+            Self::InvalidProductRepositoryRoot => "The selected Product Repository root is invalid",
+            Self::ProductPathNotFound => "The required Product Repository path was not found",
+            Self::ProductPathInaccessible => "The Product Repository path could not be accessed",
+            Self::ProductPathContainmentFailure => {
+                "The Product Repository path resolves outside the repository boundary"
+            }
             Self::UnsupportedFilesystemBoundary => {
                 "The selected path is outside the supported filesystem boundary"
             }
@@ -148,6 +179,7 @@ impl PlatformDiagnosticKind {
     /// Stable broad routing class derived from the semantic kind.
     pub const fn class(self) -> PlatformDiagnosticClass {
         match self {
+            Self::ProductPathContainmentFailure => PlatformDiagnosticClass::Rejected,
             Self::UnsupportedOperatingSystem
             | Self::UnsupportedTarget
             | Self::Wsl1
@@ -155,8 +187,26 @@ impl PlatformDiagnosticKind {
             | Self::UnsupportedFilesystemBoundary => PlatformDiagnosticClass::Unsupported,
             Self::Wsl2DistributionIdentityUnavailable
             | Self::FilesystemObservationFailure
+            | Self::ProductRepositoryNotFound
+            | Self::InvalidProductRepositoryRoot
+            | Self::ProductPathNotFound
+            | Self::ProductPathInaccessible
             | Self::PlatformObservationFailure => PlatformDiagnosticClass::Unavailable,
         }
+    }
+
+    /// Returns whether retrying after an external-state change can succeed.
+    pub const fn retryable(self) -> bool {
+        matches!(
+            self,
+            Self::Wsl2DistributionIdentityUnavailable
+                | Self::FilesystemObservationFailure
+                | Self::ProductRepositoryNotFound
+                | Self::InvalidProductRepositoryRoot
+                | Self::ProductPathNotFound
+                | Self::ProductPathInaccessible
+                | Self::PlatformObservationFailure
+        )
     }
 }
 
@@ -220,6 +270,10 @@ pub fn platform_diagnostic_finding(
     observed_at: UtcTimestamp,
 ) -> Result<DiagnosticFinding, DiagnosticError> {
     let action = match diagnostic.class() {
+        PlatformDiagnosticClass::Rejected => DiagnosticAction::try_new(
+            DiagnosticCode::parse("action.platform.select_contained_product_path")?,
+            "Select a path contained by the canonical Product Repository",
+        )?,
         PlatformDiagnosticClass::Unsupported => DiagnosticAction::try_new(
             DiagnosticCode::parse("action.platform.use_supported_environment")?,
             "Use a supported Volicord platform target and environment",
@@ -2409,6 +2463,26 @@ mod tests {
             (
                 PlatformDiagnosticKind::FilesystemObservationFailure,
                 "platform.filesystem.observation_failed",
+            ),
+            (
+                PlatformDiagnosticKind::ProductRepositoryNotFound,
+                "platform.product_repository.not_found",
+            ),
+            (
+                PlatformDiagnosticKind::InvalidProductRepositoryRoot,
+                "platform.product_repository.invalid_root",
+            ),
+            (
+                PlatformDiagnosticKind::ProductPathNotFound,
+                "platform.product_path.not_found",
+            ),
+            (
+                PlatformDiagnosticKind::ProductPathInaccessible,
+                "platform.product_path.inaccessible",
+            ),
+            (
+                PlatformDiagnosticKind::ProductPathContainmentFailure,
+                "platform.product_path.containment_failed",
             ),
             (
                 PlatformDiagnosticKind::UnsupportedFilesystemBoundary,

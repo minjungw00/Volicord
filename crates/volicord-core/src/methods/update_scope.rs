@@ -8,12 +8,12 @@ use super::{
     change_unit_insert, change_unit_ref, decision_rejected_response, dry_run_summary,
     evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
     next_actions_for_state, no_active_task_response, normalize_display_text, object_from_value,
-    parse_acceptance_policy, parse_task_mode, plan_error_response, prepare_or_response,
-    project_state_projection, projected_close_basis, projected_evidence_summary_for_criteria,
-    projected_write_ticket_summary, rejected_pipeline_response, state_ref, state_ref_from_stored,
-    storage_value, store_error_plan, synthetic_change_unit_record, task_lifecycle_mutation,
-    validation_rejected, work_phase_storage, write_ticket_ref, MethodPlan, PlanError, StoredScope,
-    SummaryBuild,
+    observe_request_product_paths, parse_acceptance_policy, parse_task_mode, plan_error_response,
+    prepare_or_response, project_state_projection, projected_close_basis,
+    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
+    rejected_pipeline_response, state_ref, state_ref_from_stored, storage_value, store_error_plan,
+    synthetic_change_unit_record, task_lifecycle_mutation, validation_rejected, work_phase_storage,
+    write_ticket_ref, MethodPlan, PlanError, StoredScope, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -23,9 +23,7 @@ use crate::policy::close_readiness::{
     accepted_current_scope_decision_authority, ScopeDecisionAuthorityRequirement,
 };
 use crate::policy::close_readiness_evidence::evidence_summary_with_required_criteria;
-use crate::policy::effect_contract::{
-    validate_effect_contract, validate_effect_contract_paths, EffectContractValidationError,
-};
+use crate::policy::effect_contract::{validate_effect_contract, EffectContractValidationError};
 use crate::policy::workflow::{
     acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
     resolve_task_control_authority, ProjectWorkflowPolicy,
@@ -43,7 +41,6 @@ use volicord_types::ids::{ChangeUnitId, TaskId};
 use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
 };
-use volicord_types::product_path::ProductPathError;
 use volicord_types::schema::{AcceptanceCriterion, JsonObject, NextActionSummary, StateRecordRef};
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
@@ -1012,29 +1009,16 @@ fn validate_requested_effect_contract(
         }
     }
 
-    match validate_effect_contract_paths(&store.project_record().repo_root, contract) {
-        Ok(()) => Ok(()),
-        Err(ProductPathError::Invalid) => scope_validation_rejection(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                "change_unit.effect_contract.allowed_paths",
-                "effect_contract.allowed_paths must be relative Product Repository paths that stay inside the repository",
-            ),
-        Err(ProductPathError::LocalAccess) => {
-            let response = rejected_pipeline_response(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                vec![tool_error(
-                    ErrorCode::InvocationContextMismatch,
-                    "effect_contract.allowed_paths resolve outside the Product Repository",
-                    false,
-                    None,
-                )],
-            )
-            .map_err(PlanError::Core)?;
-            Err(PlanError::Response(Box::new(response)))
-        }
-    }
+    observe_request_product_paths(
+        &store.project_record().repo_root,
+        &contract.allowed_paths,
+        request.envelope.dry_run,
+        Some(project_state.state_version),
+        "change_unit.effect_contract.allowed_paths",
+        "effect_contract.allowed_paths must be normalized relative Product Repository paths",
+        "effect_contract.allowed_paths resolve outside the Product Repository",
+    )
+    .map(|_| ())
 }
 
 fn validate_related_scope_decisions(

@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+volicord-platform-fs = { path = "../volicord-platform-fs" }
 volicord-store = { path = "../volicord-store" }
 volicord-types = { path = "../volicord-types" }
 volicord-user-action-service = { path = "../volicord-user-action-service" }

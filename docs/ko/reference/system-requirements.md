@@ -196,6 +196,11 @@ connection은 저장소에 이식 가능한 관리 Codex 설정을 설치하고,
 - Codex, Volicord와 Runtime Home과 같은 플랫폼 환경에 있습니다.
 - WSL2에서는 `/mnt/*` 밖의 배포판 ext4 파일 시스템으로 해석됩니다.
 
+저장소 내부의 공개 경로는 플랫폼 중립 상대 값입니다. 먼저 어휘 검증을 통과해야 하며,
+그 뒤 `volicord-platform-fs`가 활성 canonical root, 후보 또는 가장 가까운 기존 상위,
+link 해석 뒤 containment를 관찰합니다. 이 좌표에 접근하거나 관찰할 수 없으면 typed
+운영 실패가 되며 어휘 text만으로 계속 진행할 수 없습니다.
+
 저장소 이동, 정규 identity 변경, Connection scope 변경 또는 integration revision
 증가는 이전 project session을 stale로 만듭니다. 새로운 관리 MCP project session이
 필요하며 호출자가 이전 좌표를 암묵적으로 고쳐 쓰면 안 됩니다.

@@ -37,6 +37,7 @@ flowchart LR
   presentation["UserAction presentation"]
   core["volicord-core"]
   action_service["volicord-user-action-service"]
+  platform_fs["volicord-platform-fs"]
   store["volicord-store<br/>(아티팩트 기능 포함)"]
   runtime["Volicord Runtime Home"]
   product["Product Repository"]
@@ -51,10 +52,11 @@ flowchart LR
   inbox --> presentation
   presentation --> syntax
   core --> action_service
+  core --> platform_fs
   core --> store
   action_service --> store
   store --> runtime
-  product -. 관찰 입력 및 담당 문서가 정의한 경로 .-> core
+  product -. 활성 경로 관찰 .-> platform_fs
   host -. 공개 API 밖의 제품 파일 도구 .-> product
 ```
 
@@ -70,7 +72,9 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 `Product Repository`는 별도의 제품 파일 경계로 남습니다. 공개 Volicord 메서드는
 담당 문서가 정의한 호환성, 관찰, 판단, 증거, 아티팩트 링크를 기록합니다. 제품
 파일 쓰기 자체는 공개 메서드 실행 경로 밖에서 Agent Connection, 로컬 도구, 또는
-명시적인 관리 통합 경로가 수행합니다.
+명시적인 관리 통합 경로가 수행합니다. 공유 타입은 플랫폼 중립 상대 경로 identity와
+순수 관계만 전달합니다. Core는 `volicord-platform-fs`에 활성 containment 관찰을
+요청하며 의미 서비스는 그 결과인 상대 identity만 받고 파일시스템을 검사하지 않습니다.
 
 <a id="workspace-package-architecture"></a>
 
@@ -104,14 +108,14 @@ Store, 어댑터, 표현, 테스트 지원 경계를 강제하며 일반·빌드
 | `volicord-integration-tests` | `integration-validation` | 검증 | 비프로덕션 | 중립 | 계층 간 통합, Agent Connection, 공개 계약 스냅샷 테스트를 담당합니다. |
 | `volicord-mcp` | `mcp-adapter` | 어댑터 | 프로덕션 | 어댑터 | MCP 생명주기, 전송, 도구 투영, 세션 결속, Core 호출 어댑터를 담당합니다. |
 | `volicord-mcp-protocol` | `mcp-protocol` | 스키마 | 프로덕션 | 중립 | 호스트 독립 MCP 리비전 프로필과 의미 기반 역량 레지스트리를 담당합니다. |
-| `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
+| `volicord-platform-fs` | `platform-filesystem` | 인프라 | 프로덕션 | Core 지향 | Product Repository 및 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다. |
 | `volicord-platform-process` | `platform-process` | 인프라 | 프로덕션 | 중립 | 플랫폼 자식 프로세스 격리, 종료, 파이프 준비 상태 프리미티브를 담당합니다. |
 | `volicord-release-integrity-tests` | `release-integrity` | 검증 | 비프로덕션 | 중립 | 릴리스 패키징, 버전, 정규 바이트, 체크섬, 워크플로 무결성 검증을 담당합니다. |
 | `volicord-release-smoke` | `release-smoke` | 검증 | 비프로덕션 | 중립 | 크로스 플랫폼 실제 바이너리 릴리스 스모크 조율과 transcript 검증을 담당합니다. |
 | `volicord-store` | `storage` | 인프라 | 프로덕션 | Core 지향 | 정규 영속화, Runtime Home 메커니즘, 엄격한 디코딩, 트랜잭션 적용을 담당합니다. |
 | `volicord-test-process` | `test-process` | 테스트 지원 | 비프로덕션 | 중립 | 테스트와 스모크 하네스를 위한 재사용 가능한 한도 프로세스 실행과 정리를 담당합니다. |
 | `volicord-test-support` | `test-support` | 테스트 지원 | 비프로덕션 | 중립 | 재사용 가능한 폐기형 Runtime Home, Store, Core 요청, Agent Connection 픽스처를 담당합니다. |
-| `volicord-types` | `shared-types` | 스키마 | 프로덕션 | Core 지향 | 의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 어댑터 중립 도메인 사실을 담당합니다. |
+| `volicord-types` | `shared-types` | 스키마 | 프로덕션 | Core 지향 | 의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 플랫폼 중립 경로 값, 어댑터 중립 도메인 사실을 담당합니다. |
 | `volicord-user-action-presentation` | `user-action-presentation` | 표현 | 프로덕션 | 어댑터 | 타입이 있는 CLI UserAction 표현, JSON Schema, 명령 모델 기반 복구 안내를 담당합니다. |
 | `volicord-user-action-service` | `user-action-service` | 애플리케이션 | 프로덕션 | Core 지향 | UserAction 검증, 권한, 생명주기, 영속화 매핑, 해결, 연속성, 의미 투영을 담당합니다. |
 | `xtask` | `repository-validation` | 검증 | 비프로덕션 | 중립 | 저장소 아키텍처, 문서, 프로토콜 픽스처, 릴리스 메타데이터 검증과 동기화를 담당합니다. |
@@ -126,7 +130,7 @@ Store, 어댑터, 표현, 테스트 지원 경계를 강제하며 일반·빌드
 | `volicord-cli` | `volicord-command-model`, `volicord-core`, `volicord-host-contract`, `volicord-mcp`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-platform-process`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-store`, `volicord-test-support` | — |
 | `volicord-command-model` | — | — | — |
 | `volicord-conformance-tests` | — | `volicord-core`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
-| `volicord-core` | `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-core` | `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-host-contract` | `volicord-types` | — | — |
 | `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
 | `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
@@ -250,8 +254,10 @@ Core와 Store는 호스트 설정 문법, 셸 문법, 생성 wrapper, 플랫폼 
 분기하지 않습니다. Store는 매니페스트와 정규 SQL digest가 현재 릴리스 계약과
 일치하는 데이터베이스만 엽니다. Codex 어댑터는 Codex 구성의 parsing과 직렬화,
 관리 entry 검증을 담당합니다. 플랫폼 파일시스템 경계는 프로세스 target과 환경 관찰,
-target 및 파일시스템 검증을 별도로 담당합니다. MCP는 Store가 소유한 현재
-runtime/project session을 검증하고 typed `ValidatedAgentSession`을 Core에 제공합니다.
+target 및 파일시스템 검증을 별도로 담당합니다. 또한 Product Repository root와 후보
+경로의 canonical 관찰, 가장 가까운 기존 상위와 link containment 검사를 담당하고
+불투명한 typed 관찰을 Core에 반환합니다. MCP는 Store가 소유한 현재 runtime/project
+session을 검증하고 typed `ValidatedAgentSession`을 Core에 제공합니다.
 
 실패, 저장소, Agent Connection 계약은
 [실패 모델](../reference/failure-model.md),
@@ -327,7 +333,7 @@ Core 권한 부여는 계속 분리되어 각 managed MCP 호출을 검증합니
 | MCP 어댑터 경계 | `volicord mcp serve`가 공개 수동 전송 진입 경로이며 숨은 launcher의 메모리 내 lease claim만 `managed_host` runtime을 만들 수 있습니다. `stdio` facade는 한도가 있는 transport, JSON-RPC envelope, lifecycle, Runtime Home/repository/Connection binding, tool dispatch, telemetry를 각각 담당하는 모듈에 위임합니다. Lifecycle은 폐쇄형 `SessionState` variant를 사용하므로 initialize 전에는 initialization 선택 정보가, initialized 전환 전에는 ready 전용 session 정보가, `Closed` 밖에서는 종료 정보가 존재할 수 없습니다. Framing은 결과 projection을 알지 못하고, JSON-RPC parsing은 Core 연산을 수행하지 않으며, lifecycle은 message를 승인하고, binding은 routing identity를 선택하며, tool dispatch는 framing을 담당하지 않은 채 호출을 디코딩하고 adapter를 호출합니다. `volicord-types`는 Core 소유 도구에 `MethodName`을 재사용하고 운영 verification role을 컴파일 시점에 결합하는 폐쇄형 `AgentToolId` identity catalog를 제공합니다. `volicord-mcp`는 정규 registry를 이 identity로 식별하고 revision별 도구 소유권을 나누지 않은 채 선택한 semantic profile을 통해 wire 이름, 정의, 메서드 결과, MCP 소유 운영 실패를 투영합니다. 어댑터는 연산 전 Runtime Home과 Agent Connection routing context를 해석한 뒤 각 활성 mutation context가 그 routing identity와 일치하는지 요구합니다. Project routing, 진단, Store 접근, Core 구성에는 승인된 identity를 사용하고 adapter 관리 local invocation fact를 파생하며 Core JSON을 MCP 콘텐츠로 감쌉니다. Neutral Core 운영 실패는 메서드 응답을 만들지 않고 MCP로 변환합니다. | [요청 생명주기](request-lifecycle.md), [소스 지도](source-map.md), [MCP 전송](../reference/mcp-transport.md), [Agent Connection](../reference/agent-connection.md). |
 | 관리 CLI와 Codex 어댑터 | `volicord-cli`는 parsing된 command-model DTO에 대한 프로세스 시작과 디스패치, Codex 설정 탐색, 관리 entry 설치 및 검증, dependency-aware 검증 정책, 결정론적 진단 root 선택, 선택한 Connection 보고서의 concise/verbose/JSON 표시, lifecycle-aware finding 및 runtime-session lookup 출력, 복구, 제거, 숨은 동일 프로세스 host launcher를 담당합니다. Launcher는 일회성 Store lease를 발급하기 전에 현재 entry를 정확히 다시 검증하며 lease 자료를 구성, 인자, 환경, 출력에 두지 않습니다. Lookup 성공 여부는 저장된 finding severity와 독립적입니다. Codex 어댑터는 허용된 도구 승인 overlay만 보존하면서 정규 관리 시작 계약을 Codex TOML로 변환하고 다시 읽습니다. Linux나 WSL2를 분류하지 않습니다. | [CLI 작업 흐름](cli-workflows.md), [소스 지도](source-map.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), [보안](../reference/security.md). |
 | 릴리스 무결성 | 일반 점검은 모든 게시 Volicord target, 패키지와 checksum 연속성, workflow 의미를 다룹니다. 재사용 workflow action 하나가 일반 CI의 로컬 debug build 뒤에 전용 `tests/release-smoke` 패키지를 정확히 한 번 호출하고, 네이티브 릴리스 target마다 artifact staging 전에 정확히 한 번 호출합니다. 이 패키지는 안정적인 테스트 소유 Codex fixture와 전달받은 정확한 바이너리를 사용해 공개 수동 stdio를 실행하며 선택적 실제 Codex 관찰 및 managed-host 증거와 구분됩니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |
-| 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 프로세스 target과 kernel을 관찰하고 네이티브 Linux와 WSL2를 구분하며 `/etc/os-release`를 통해 WSL2 배포판을 검증하고 target 경로 제한 집행에 필요한 파일시스템 관찰을 제공합니다. 또한 효과를 인식하는 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 primitive, 정규 Runtime Home별 공유·배타 변경 승인과 빌린 permit, 정규 읽기 전용 Git common-directory/worktree 탐색을 격리합니다. 어떤 파일을 관리할지, 교체나 쓰기를 승인할지, 복구가 무엇을 뜻할지는 결정하지 않습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
+| 플랫폼 파일시스템 파사드 | `volicord-platform-fs`는 프로세스 target과 kernel을 관찰하고 네이티브 Linux와 WSL2를 구분하며 `/etc/os-release`를 통해 WSL2 배포판을 검증하고 target 경로 제한 집행에 필요한 파일시스템 관찰을 제공합니다. Product Repository root와 후보 경로의 활성 관찰, 비공개 canonical identity, 가장 가까운 기존 상위 처리, link containment, typed 경로 diagnostic을 단독으로 담당합니다. Core는 불투명한 관찰을 사용하며 의미 서비스에는 파일시스템 좌표를 전달하지 않습니다. 또한 효과를 인식하는 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 primitive, 정규 Runtime Home별 공유·배타 변경 승인과 빌린 permit, 정규 읽기 전용 Git common-directory/worktree 탐색을 격리합니다. 어떤 파일을 관리할지, 교체나 쓰기를 승인할지, 복구가 무엇을 뜻할지는 결정하지 않습니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [런타임 경계](../reference/runtime-boundaries.md), [시스템 요구사항](../reference/system-requirements.md). |
 | 플랫폼 프로세스 파사드 | `volicord-platform-process`는 한도가 있는 자식 프로세스 격리와 자식 파이프 준비 상태를 위한 안전한 API를 노출합니다. 저수준 프로세스 그룹, Windows Job Object, 비차단 파이프 설정, 파이프 폴링을 담당합니다. `volicord-cli`는 MCP 감독 정책, 생명주기 기한, 프로토콜 프레이밍, 교환 진행 상태, 진단 책임을 유지합니다. | [소스 지도](source-map.md), [CLI 작업 흐름](cli-workflows.md), [관리 CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md). |
 | 테스트 프로세스 경계 | `volicord-test-process`는 저장소 테스트와 스모크 하네스가 재사용하는 한도 있는 자식 프로세스 실행을 담당합니다. 프로세스를 시작하기 전에 플랫폼 격리를 만들고, 하나의 lifecycle 기한 안에서 한도 있는 stdio를 함께 처리하며, 시간 초과나 실패 시 프로세스 트리를 종료하고, 직접 자식을 회수하고, 마지막 파이프 정리 시간을 제한합니다. Volicord 제품 API를 노출하지 않으며 제품 프로세스 정책은 `volicord-cli`에 남습니다. | [소스 지도](source-map.md), [테스트 전략](testing-strategy.md). |
 | 테스트와 검증 | 구현 테스트는 담당 문서가 정의한 사실을 적절한 계층에서 검증합니다. MCP 모듈 테스트는 lifecycle, batching, protocol projection, tool call, managed-host observation, diagnostics, conformance 계약별로 나누며 공유 설정은 그 assertion과 분리합니다. MCP 프로덕션 지원에는 고정 manifest의 릴리스 항목과 프로덕션 profile이 필요하며 가벼운 checker가 정확한 집합 일치를 강제합니다. 독립적인 registry 기반 적합성 테스트는 모든 프로덕션 profile의 실제 wire 동작을 실행합니다. 추적 중인 pre-release schema는 프로덕션 순회 밖에 있고 저장소 로컬 적합성 범위는 외부 인증이 아닙니다. 테스트, 픽스처, 생성 스냅샷, 문서 점검은 제품 계약 담당 문서가 되지 않습니다. | [테스트 전략](testing-strategy.md), [검증](../maintain/validation.md). |

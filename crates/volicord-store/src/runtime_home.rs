@@ -467,6 +467,9 @@ fn validate_platform_path(path: &Path, role: &'static str) -> Result<(), Runtime
 fn runtime_platform_error(error: PlatformBoundaryError) -> RuntimePathBoundaryError {
     let diagnostic = error.into_diagnostic();
     match diagnostic.class() {
+        PlatformDiagnosticClass::Rejected => {
+            RuntimePathBoundaryError::PlatformUnavailable { diagnostic }
+        }
         PlatformDiagnosticClass::Unsupported => {
             RuntimePathBoundaryError::UnsupportedEnvironment { diagnostic }
         }

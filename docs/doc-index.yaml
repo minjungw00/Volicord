@@ -1437,8 +1437,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: onboarding
   created_on: '2026-06-23'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   applies_to:
   - rust_workspace
   primary_audience:
@@ -1870,8 +1870,8 @@ documents:
   translation_policy: semantic_parity
   owner_area: runtime_security
   created_on: '2026-05-28'
-  last_updated_on: '2026-07-26'
-  last_verified_on: '2026-07-26'
+  last_updated_on: '2026-07-27'
+  last_verified_on: '2026-07-27'
   primary_audience:
   - agents
   - implementers

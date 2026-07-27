@@ -13,7 +13,6 @@ use crate::model::{
     UserActionBodyFacts, UserActionIntent, UserActionValidationInput, ValidatedUserAction,
     ValidatedUserActionIntent,
 };
-use std::path::PathBuf;
 use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, UserActionOptionId};
 use volicord_types::schema::{
     RequiredNullable, UserActionBasisCoordinates, UserActionChoiceDraft, UserActionContext,
@@ -60,7 +59,6 @@ pub(super) fn product_choice_draft() -> UserActionDraft {
 pub(super) fn validation_input() -> UserActionValidationInput {
     UserActionValidationInput {
         project_id: ProjectId::new("project-test"),
-        repository_root: PathBuf::from("/product"),
         actual_task_id: "task-test".to_owned(),
         task_scope_revision: 3,
         baseline_ref: Some("baseline-test".to_owned()),

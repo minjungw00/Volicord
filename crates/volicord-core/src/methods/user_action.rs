@@ -8,12 +8,13 @@ use super::{
     allocate_user_action_resolution_id, build_state_summary, decision_rejected_response,
     dry_run_summary, evidence_summary_for_display, guarantee_display_for_invocation,
     mutation_method_policy, next_actions_for_state, no_active_task_response, object_from_value,
-    parse_task_mode, plan_error_response, prepare_or_response, project_state_projection,
-    projected_blocker_refs, projected_close_basis, projected_evidence_summary,
-    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
-    rejected_pipeline_response, response_committed_fresh_effect, state_ref, state_ref_from_stored,
-    task_lifecycle_mutation, user_action_service_plan_error, validation_plan_error,
-    validation_rejected, MethodPlan, PlanError, SummaryBuild,
+    observe_request_product_paths, parse_task_mode, plan_error_response, prepare_or_response,
+    project_state_projection, projected_blocker_refs, projected_close_basis,
+    projected_evidence_summary, projected_write_ticket_summary,
+    record_core_workflow_metric_best_effort, rejected_pipeline_response,
+    response_committed_fresh_effect, state_ref, state_ref_from_stored, task_lifecycle_mutation,
+    user_action_service_plan_error, validation_plan_error, validation_rejected, MethodPlan,
+    PlanError, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -180,6 +181,20 @@ fn plan_request_user_action(
     let current_change_unit = store
         .current_change_unit(&request.task_id)
         .map_err(CorePipelineError::from)?;
+    let mut action = request.action.clone();
+    if let volicord_types::schema::UserActionDraft::Choice(choice) = &mut action {
+        if let Some(scope) = choice.sensitive_action_scope.as_mut() {
+            scope.intended_paths = observe_request_product_paths(
+                &store.project_record().repo_root,
+                &scope.intended_paths,
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                "action.sensitive_action_scope.intended_paths",
+                "sensitive-action intended_paths must be normalized relative Product Repository paths",
+                "sensitive-action intended_paths must resolve within the Product Repository",
+            )?;
+        }
+    }
     let constructed = construct_user_action(UserActionConstructionInput {
         store,
         task: &task,
@@ -193,7 +208,7 @@ fn plan_request_user_action(
         intent: UserActionIntent {
             task_id: request.task_id.clone(),
             change_unit_id: request.change_unit_id.as_ref().cloned(),
-            action: request.action.clone(),
+            action,
             required_for: request.required_for.clone(),
             expires_at: request.expires_at.clone(),
         },

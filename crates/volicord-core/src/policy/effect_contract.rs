@@ -1,9 +1,9 @@
-use std::{collections::BTreeSet, path::Path};
+use std::collections::BTreeSet;
 
 use volicord_types::schema::ChangeUnitEffectContract;
 use volicord_types::values::ChangeUnitEffectKind;
 
-use volicord_types::product_path::{normalize_product_paths, path_is_within, ProductPathError};
+use volicord_types::product_path::{parse_product_paths, path_is_within, ProductPathError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EffectContractValidationError {
@@ -45,18 +45,7 @@ pub(crate) fn validate_effect_contract(
     Ok(())
 }
 
-pub(crate) fn validate_effect_contract_paths(
-    repo_root: &Path,
-    contract: &ChangeUnitEffectContract,
-) -> Result<(), ProductPathError> {
-    if contract.allowed_paths.is_empty() {
-        return Ok(());
-    }
-    normalize_product_paths(repo_root, &contract.allowed_paths).map(|_| ())
-}
-
 pub(crate) fn product_write_violations(
-    repo_root: &Path,
     contract: &ChangeUnitEffectContract,
     product_file_write_intended: bool,
     intended_paths: &[String],
@@ -80,7 +69,10 @@ pub(crate) fn product_write_violations(
         violations.push(EffectContractViolation::FileWriteNotAllowed);
     }
     if !contract.allowed_paths.is_empty() && !intended_paths.is_empty() {
-        let allowed_paths = normalize_product_paths(repo_root, &contract.allowed_paths)?;
+        let allowed_paths = parse_product_paths(&contract.allowed_paths)?
+            .into_iter()
+            .map(|path| path.into_string())
+            .collect::<Vec<_>>();
         if intended_paths.iter().any(|path| {
             allowed_paths
                 .iter()

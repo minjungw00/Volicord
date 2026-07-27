@@ -407,6 +407,10 @@ impl McpDiagnostic {
     const fn recommended_action(self) -> (&'static str, &'static str) {
         match self {
             Self::Platform(kind) => match kind.class() {
+                PlatformDiagnosticClass::Rejected => (
+                    "action.platform.select_contained_product_path",
+                    "Select a path contained by the canonical Product Repository",
+                ),
                 PlatformDiagnosticClass::Unsupported => (
                     "action.platform.use_supported_environment",
                     "Use a supported Volicord platform and release target",

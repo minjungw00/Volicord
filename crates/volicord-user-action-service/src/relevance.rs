@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
-use std::path::Path;
 use volicord_types::ids::{BaselineRef, ChangeUnitId, RiskId, TaskId};
-use volicord_types::product_path::{normalize_product_paths, path_is_within};
+use volicord_types::product_path::{parse_product_paths, path_is_within};
 use volicord_types::schema::{
     CurrentCloseBasis, SensitiveActionScope, StateRecordRef, UserActionBasis,
 };
@@ -194,7 +193,6 @@ pub struct SensitiveApprovalRequirement<'a> {
     pub baseline_ref: Option<&'a BaselineRef>,
     pub required_for: UserActionRequiredFor,
     pub now: &'a UtcTimestamp,
-    pub repo_root: &'a Path,
 }
 
 pub fn sensitive_action_scope_matches_requirement(
@@ -223,14 +221,13 @@ pub fn sensitive_action_scope_matches_requirement(
     {
         return false;
     }
-    let Ok(approved_paths) = normalize_product_paths(requirement.repo_root, &scope.intended_paths)
-    else {
+    let Ok(approved_paths) = parse_product_paths(&scope.intended_paths) else {
         return false;
     };
     requirement.normalized_paths.iter().all(|path| {
         approved_paths
             .iter()
-            .any(|approved| path_is_within(path, approved))
+            .any(|approved| path_is_within(path, approved.as_str()))
     })
 }
 

@@ -9,7 +9,7 @@
 |---|---|
 | `crates/volicord-types/src/lib.rs` | 공개 담당 모듈 경로. 공유 정의는 각 담당 모듈을 통해 공개됩니다. |
 | `crates/volicord-types/src/schema.rs` | 공유 요청, 응답, 저장 레코드 형태. |
-| `crates/volicord-types/src/product_path.rs` | 담당 문서가 정의한 typed 상대 제품 경로와 정규화. |
+| `crates/volicord-types/src/product_path.rs` | 플랫폼 중립 Product Repository 상대 경로 값, 어휘 검증, 순수 component 기반 containment 관계. 파일시스템은 관찰하지 않습니다. |
 | `crates/volicord-types/src/values.rs` | 폐쇄 제품 값 집합. |
 | `crates/volicord-types/src/ids.rs` | 불투명 식별자. |
 | `crates/volicord-types/src/canonical.rs` | 정규 직렬화와 해시. |
@@ -34,7 +34,8 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 고유 정규 code와 한도가 있는 세부사항을 가진 폐쇄형 typed 플랫폼 diagnostic kind, 공유 플랫폼 finding projection, 효과를 인식하는 정확한 directory-tree 제거, typed 원자적 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 연산, 안전한 Runtime Home 변경 lease와 permit export, 정규 읽기 전용 Git layout 탐색. |
+| `crates/volicord-platform-fs/src/lib.rs` | 현재 프로세스 target 및 플랫폼 관찰, kernel을 통한 네이티브 Linux/WSL2 분류, WSL2 `/etc/os-release` 배포판 검증, 경로 파일시스템 관찰, 고유 정규 code와 한도가 있는 세부사항을 가진 폐쇄형 typed 플랫폼 diagnostic kind, 공유 플랫폼 finding projection, 효과를 인식하는 정확한 directory-tree 제거, typed 원자적 기존 대상 비대체 일반 파일 공개와 상위 entry 내구성, 플랫폼 고유 이름 공간 연산, 안전한 Runtime Home 변경 lease와 permit export, 정규 읽기 전용 Git layout 탐색, Product Repository 관찰 export. |
+| `crates/volicord-platform-fs/src/product_path.rs` | Product Repository root와 후보 경로의 활성 관찰, 비공개 canonical identity, 아직 없는 후보의 가장 가까운 기존 상위 처리, link-aware containment, 불투명한 typed 관찰을 단독으로 담당합니다. |
 | `crates/volicord-platform-fs/src/mutation_lease.rs` | 정규 Runtime Home identity, domain-separated 전체 digest 기반 외부 coordination 파일 파생, OS lock 영역 하나를 공유하는 shared-writer 및 exclusive-setup mode, 즉시 및 한도 있는 typed 획득, 빌린 변경 permit, Unix/macOS 또는 네이티브 Windows의 handle 수명 기반 해제. |
 | `crates/volicord-platform-fs/tests/mutation_lease_process.rs` | 프로세스 간 공유·배타 변경 lease 경합과 프로세스 종료 시 해제 regression. |
 | `crates/volicord-cli/src/host_integration/process.rs` | 플랫폼 경계 관찰을 바탕으로 한 프로세스 target 검증, target 경로 파일시스템 제한 집행, 정규 플랫폼 diagnostic 표시 projection. |
@@ -115,7 +116,8 @@
 |---|---|
 | `crates/volicord-user-action-service/src/lib.rs` | Typed context, intent, fact, 서비스 오류, 책임 담당 함수를 위한 좁은 공개 routing. Core 또는 어댑터 facade는 제공하지 않습니다. |
 | `crates/volicord-user-action-service/src/model.rs` | 의미 intent, 검증된 구성 값, 명시적인 구성 및 영속화 context, adapter-neutral pending/current/resolution fact. |
-| `crates/volicord-user-action-service/src/validation.rs` | Action kind, 좌표, 권한을 갖는 조합, 연산 대상, 만료 의미의 순수 검증과 정규화. |
+| `crates/volicord-user-action-service/src/validation.rs` | Action kind, 좌표, 권한을 갖는 조합, 의미 기반 Product Repository 경로 값, 연산 대상, 만료 의미를 파일시스템 접근 없이 검증하고 정규화합니다. |
+| `crates/volicord-user-action-service/src/relevance.rs` | Typed 의미 fact에 대한 순수한 현재 권한 및 연산 관련성 판단. 저장소 접근 없이 component 기반 민감 경로 관계를 평가합니다. |
 | `crates/volicord-user-action-service/src/body.rs` | 검증된 intent와 취득한 fact에서 정규 typed `UserActionRequestBody`와 `UserActionBasis`를 순수하게 구성합니다. |
 | `crates/volicord-user-action-service/src/identity.rs` | 안정적인 source identity, 중복 제거 metadata, 집중된 request identity 가용성 검사. |
 | `crates/volicord-user-action-service/src/service.rs` | Core 요청 조율 없이 typed 구성, artifact, target, pending, resolved authority fact를 Store에서 취득합니다. |
@@ -132,7 +134,8 @@
 
 | 경로 | 책임 |
 |---|---|
-| `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, 정규 플랫폼 diagnostic code를 포함한 Store 오류 세부사항 projection. |
+| `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, Store 오류 세부사항 projection, 플랫폼 소유 Product Repository 관찰 실패의 중립 typed 운영 projection. |
+| `crates/volicord-core/src/product_path.rs` | 공유 어휘 parsing과 플랫폼 소유 활성 Product Repository 관찰을 조율하고, 이미 저장된 의미 identity는 파일시스템 없이 parsing합니다. |
 | `crates/volicord-core/src/methods/` | 메서드별 구조 검증과 계획. 프로덕션 메서드 모듈은 공유 helper, pipeline과 정책 함수, Store 서비스, 공유 타입을 각 담당 모듈에서 명시적으로 가져오며 상위 모듈을 import prelude로 사용하지 않습니다. |
 | `crates/volicord-core/src/methods/evidence_facts.rs` | 증거 정책 분류를 담당하지 않으면서 저장된 증거와 투영된 증거를 위한 typed 사실을 취득하는 공유 Store 조회와 엄격한 디코딩. |
 | `crates/volicord-core/src/methods/close_readiness/mod.rs` | 메서드 plan이 사용하는 닫기 준비 상태 서비스, projection, 차단 사유 helper의 좁은 패키지 표면. |

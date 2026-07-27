@@ -1,5 +1,7 @@
 use super::validation_input;
 use crate::validation::validate_user_action;
+use volicord_types::schema::{RequiredNullable, SensitiveActionScope, UserActionDraft};
+use volicord_types::values::JudgmentKind;
 use volicord_types::values::{UserActionRequiredFor, UtcTimestamp};
 
 #[test]
@@ -84,4 +86,38 @@ fn validation_uses_a_half_open_expiration_boundary() {
     after_boundary.intent.expires_at =
         Some(UtcTimestamp::parse("2026-07-27T00:00:00.000000001Z").unwrap()).into();
     assert!(validate_user_action(after_boundary).is_ok());
+}
+
+#[test]
+fn sensitive_action_paths_are_validated_semantically_without_a_repository_fixture() {
+    let sensitive_input = |path: &str| {
+        let mut input = validation_input();
+        let UserActionDraft::Choice(choice) = &mut input.intent.action else {
+            panic!("fixture must be a choice");
+        };
+        choice.judgment_kind = JudgmentKind::SensitiveApproval;
+        choice.options = RequiredNullable::null();
+        choice.sensitive_action_scope = RequiredNullable::some(SensitiveActionScope {
+            action_kind: "local_sensitive_step".to_owned(),
+            description: "Allow one bounded sensitive step.".to_owned(),
+            intended_paths: vec![path.to_owned()],
+            sensitive_categories: vec!["local_command".to_owned()],
+            command_or_tool_summary: RequiredNullable::some("Run a local command.".to_owned()),
+            network_or_host_summary: RequiredNullable::null(),
+            secret_or_credential_summary: RequiredNullable::null(),
+            capability_claim: "This is not a write ticket.".to_owned(),
+            expires_at: RequiredNullable::null(),
+        });
+        input
+    };
+
+    validate_user_action(sensitive_input("src/domain/model.rs"))
+        .expect("valid semantic path must not require a repository fixture");
+
+    let error = validate_user_action(sensitive_input("src/../secrets"))
+        .expect_err("parent traversal must reject");
+    assert_eq!(
+        error.field(),
+        "action.sensitive_action_scope.intended_paths"
+    );
 }

@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, EffectiveUserActionRecord, TaskRecord,
 };
@@ -71,7 +70,6 @@ pub(super) enum UserActionBodyFacts {
 /// Pure validation input assembled from semantic intent and current facts.
 pub(super) struct UserActionValidationInput {
     pub(super) project_id: ProjectId,
-    pub(super) repository_root: PathBuf,
     pub(super) actual_task_id: String,
     pub(super) task_scope_revision: u64,
     pub(super) baseline_ref: Option<String>,

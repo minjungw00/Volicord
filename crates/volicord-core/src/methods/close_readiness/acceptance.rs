@@ -250,7 +250,6 @@ fn pending_user_action_refs_for_close_operation(
             && authority.action_kind == UserActionKind::SensitiveApproval
         {
             pending_sensitive_judgment_blocks_close(
-                store,
                 request,
                 context,
                 authority,
@@ -330,7 +329,6 @@ fn resolved_judgment_authorities_for_context(
 }
 
 fn pending_sensitive_judgment_blocks_close(
-    store: &CoreProjectStore,
     request: &CloseReadinessRequest,
     context: &CloseReadinessFacts,
     authority: &UserActionAuthority,
@@ -355,7 +353,6 @@ fn pending_sensitive_judgment_blocks_close(
                 baseline_ref: close_requirement.baseline_ref.as_ref(),
                 required_for: UserActionRequiredFor::CloseComplete,
                 now,
-                repo_root: &store.project_record().repo_root,
             };
             let operation_context = UserActionOperationContext {
                 operation: UserActionOperation::CloseComplete,
@@ -764,7 +761,6 @@ fn has_current_sensitive_approval_for_close(
                 baseline_ref: close_requirement.baseline_ref.as_ref(),
                 required_for: UserActionRequiredFor::CloseComplete,
                 now,
-                repo_root: &store.project_record().repo_root,
             };
             authorities
                 .iter()

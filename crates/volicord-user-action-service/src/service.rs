@@ -59,7 +59,6 @@ pub fn construct_user_action(
         current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
     let validated = validate_user_action(UserActionValidationInput {
         project_id: context.project_id.clone(),
-        repository_root: store.project_record().repo_root.clone(),
         actual_task_id: task.task_id.clone(),
         task_scope_revision: task.scope_revision,
         baseline_ref,

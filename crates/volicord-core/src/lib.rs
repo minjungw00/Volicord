@@ -13,6 +13,7 @@ mod authority_status;
 mod methods;
 pub mod pipeline;
 mod policy;
+mod product_path;
 
 pub use agent_session::{AgentSessionValidationError, ValidatedAgentSession};
 pub use authority_status::{

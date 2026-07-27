@@ -28,6 +28,14 @@ neutral projection 동작을 unit test가 담당합니다. Core 테스트는 요
 담당합니다. Store 테스트는 물리 영속화, transaction, typed UserAction
 레코드로의 엄격한 row decoding을 담당합니다.
 
+Product Repository 경로 테스트도 같은 소유권 분리를 따릅니다.
+`volicord-types`는 임시 directory 없이 어휘 값과 순수 관계를 테스트합니다.
+`volicord-platform-fs`는 실제 일회용 directory로 기존 경로, 아직 없는 경로,
+가장 가까운 기존 상위, 접근 불가 경로, link escape를 테스트합니다. Core
+테스트는 플랫폼 관찰을 다시 구현하지 않고 typed 플랫폼 결과를 사용해 중립 운영
+routing을 검증합니다. UserAction 서비스 테스트는 파일시스템을 사용하지 않습니다.
+Adapter 테스트는 안정적인 operation 및 resource identity projection을 검증합니다.
+
 일회용 Runtime Home과 Product Repository를 사용합니다. fixture는 최소이며 typed여야
 합니다. fixture는 parser 또는 구현 동작만 증명하며 실제 Codex 설치의 행동이나 플랫폼
 지원을 증명하지 않습니다.
@@ -62,6 +70,11 @@ UserAction 서비스·Core·공유 타입·Store 경계 위반, 일반·빌드 �
 있고, 일반 의존성으로 `volicord-types`와 `volicord-store`만, 개발 의존성으로
 `volicord-test-support`만 허용하는지도 확인합니다. Core, CLI, MCP, presentation
 의존성은 아키텍처 gate를 실패시킵니다.
+
+Core의 일반 허용 목록은 typed Product Repository 관찰을 위해
+`volicord-platform-fs`를 허용합니다. 공유 타입과 UserAction 서비스 그룹은 이
+의존성을 허용하지 않으므로 활성 파일시스템 관찰이 의미 값이나 검증으로 이동할 수
+없습니다.
 
 Core 테스트는 typed local-user authority 또는 검증된 Agent Connection authority로
 호스트 중립 요청을 구성합니다. CLI, MCP, application, host-contract 담당자는 자신의

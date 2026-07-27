@@ -780,12 +780,16 @@ impl ToolCallOutput {
 
 fn mcp_operational_operation(operation: CoreOperationalOperation) -> McpOperationalOperation {
     match operation {
+        CoreOperationalOperation::ProductPathObservation => {
+            McpOperationalOperation::ProductPathObservation
+        }
         CoreOperationalOperation::StoreAccess => McpOperationalOperation::StoreAccess,
     }
 }
 
 fn mcp_operational_resource(resource: CoreOperationalResource) -> McpOperationalResource {
     match resource {
+        CoreOperationalResource::ProductRepository => McpOperationalResource::ProductRepository,
         CoreOperationalResource::Store => McpOperationalResource::Store,
         CoreOperationalResource::RegistryStore => McpOperationalResource::RegistryStore,
         CoreOperationalResource::ProjectStore => McpOperationalResource::ProjectStore,
@@ -1108,6 +1112,26 @@ mod mutation_projection_and_recovery_tests {
                 capabilities.tools().is_error().then_some(true)
             );
         }
+    }
+
+    #[test]
+    fn product_path_operational_identity_projects_without_adapter_fallback() {
+        let projected = serde_json::to_value(McpOperationalFailure {
+            code: McpOperationalErrorCode::Unavailable,
+            tool_name: MethodName::PrepareWrite,
+            operation: mcp_operational_operation(CoreOperationalOperation::ProductPathObservation),
+            resource: mcp_operational_resource(CoreOperationalResource::ProductRepository),
+            retryable: true,
+            reached_core: true,
+            committed: false,
+        })
+        .expect("typed MCP operational failure");
+
+        assert_eq!(projected["code"], "MCP_UNAVAILABLE");
+        assert_eq!(projected["operation"], "product_path_observation");
+        assert_eq!(projected["resource"], "product_repository");
+        assert_eq!(projected["reached_core"], true);
+        assert_eq!(projected["committed"], false);
     }
 
     fn test_agent_invocation(

@@ -723,6 +723,10 @@ When Core returns typed operational unavailability without a method result,
 MCP emits the MCP-owned `MCP_UNAVAILABLE` structured failure through that same
 selected carrier. The object carries the tool name, typed `operation` and
 `resource` projections, `retryable`, `reached_core`, and `committed=false`.
+Store failures use the existing `store_access` operation and Store resource
+identities. A platform-owned Product Repository observation failure uses
+`product_path_observation` with `product_repository`; the adapter does not
+collapse it into a Store failure or expose a local absolute path.
 Profiles with `isError` set it to `true`; profiles without that field retain
 the failure identity in the authoritative carrier. The bounded compatibility
 message contains no Store source detail. This is not a public

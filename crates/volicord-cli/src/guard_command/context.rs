@@ -15,6 +15,7 @@ use volicord_store::{
 };
 use volicord_types::canonical::canonical_json_bare_sha256;
 use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
+use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{
     UserActionBasis, UserActionResolutionBody, WriteTicketAttemptScope, WriteTicketValidityBasis,
 };
@@ -587,11 +588,4 @@ fn sensitive_approval_matches_ticket(
                 .iter()
                 .any(|approved| path_is_within(path, approved))
         })
-}
-
-fn path_is_within(path: &str, prefix: &str) -> bool {
-    path == prefix
-        || path
-            .strip_prefix(prefix)
-            .is_some_and(|suffix| suffix.starts_with('/'))
 }

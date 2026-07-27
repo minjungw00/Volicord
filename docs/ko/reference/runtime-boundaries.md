@@ -46,9 +46,17 @@ WSL2에서는 정규 Linux 형태의 경로만으로 충분하지 않습니다. 
 저장소 root를 벗어나는 경로는 유효하지 않습니다. 정규 경로는 `/`로 시작하거나 끝나지
 않고 반복 separator를 포함하지 않습니다.
 
-문자열 정규화만으로 파일시스템 containment가 성립하지 않습니다. 경로를 읽거나 쓰는
-메서드는 현재 저장소 root를 해결하고 효과 전에 담당 문서의 symlink와 canonicalization
-검사를 적용해야 합니다. 저장 기록의 경로는 정규 저장소 상대 identity로 남습니다.
+`volicord-types`는 플랫폼 중립 상대 경로 값, 어휘 검증, 순수한 component 기반 관계만
+담당하며 파일시스템을 관찰하지 않습니다. `volicord-platform-fs`는 실시간 관찰을
+담당합니다. Product Repository root를 canonicalize하고, 기존 후보 또는 아직 없는
+후보의 가장 가까운 기존 상위를 관찰하고, link를 해석한 뒤 결과가 정규 root 안에
+남아 있을 때만 불투명한 typed 관찰을 반환합니다.
+
+Core는 요청 경로를 받아들이기 전에 이 typed 플랫폼 관찰을 얻습니다. UserAction
+서비스 같은 의미 서비스는 검증된 저장소 상대 identity만 사용하며 경로를 다시 열거나
+저장소 root를 전달받지 않습니다. 저장 경로는 플랫폼 중립 identity로 남습니다. 저장된
+값을 parsing하는 행위는 대응하는 활성 경로가 여전히 존재하거나 containment를
+유지한다는 주장이 아닙니다.
 
 ## 관리 Codex 구성
 
@@ -244,14 +252,21 @@ raw request body 또는 projection하지 않은 다른 입력을 담으면 안 �
 | `platform.wsl2.distribution_unsupported` | 관찰한 WSL2 배포판이 지원되는 배포판 식별 정보와 일치하지 않습니다. |
 | `platform.filesystem.unsupported` | 선택한 경로가 지원되는 파일시스템 경계 밖에 있습니다. |
 | `platform.filesystem.observation_failed` | 파일시스템 identity를 관찰할 수 없습니다. |
+| `platform.product_repository.not_found` | 선택한 Product Repository root를 찾을 수 없습니다. |
+| `platform.product_repository.invalid_root` | 선택한 Product Repository root가 사용할 수 있는 directory가 아닙니다. |
+| `platform.product_path.not_found` | 존재해야 하는 Product Repository 경로를 찾을 수 없습니다. |
+| `platform.product_path.inaccessible` | Product Repository 경로나 그 상위를 검사할 수 없습니다. |
+| `platform.product_path.containment_failed` | Link 해석 결과 관찰 경로가 정규 Product Repository root 밖에 놓였습니다. |
 | `platform.observation.failed` | 그 밖의 필수 플랫폼 관찰이 실패했습니다. |
 
 각 플랫폼 diagnostic kind는 이 registry의 code 하나에만 대응합니다. 타입이 지정된
 diagnostic과 한도가 있는 사람이 읽는 세부사항은 runtime-path와 Store 경계를 함께
 통과합니다. Store 분류, CLI 표시, MCP bootstrap 또는 terminal finding, 영속 diagnostic
-fact는 모두 같은 code를 사용합니다. Action은 typed kind의 `Unsupported` 또는
-`Unavailable` class에서 선택합니다. 사람용 표시는 `<code>: <bounded-detail>` 형식이며
-세부사항은 identity에 참여하지 않습니다.
+fact는 모두 같은 code를 사용합니다. Action은 typed kind의 `Rejected`,
+`Unsupported`, `Unavailable` class에서 선택합니다.
+`platform.product_path.containment_failed`는 `Rejected`이며 관찰과 접근 실패는
+`Unavailable`입니다. 사람용 표시는 `<code>: <bounded-detail>` 형식이며 세부사항은
+identity에 참여하지 않습니다.
 
 Runtime Home finding은 `runtime_home.path.missing`,
 `runtime_home.path.empty_or_relative`, `runtime_home.path.invalid`,

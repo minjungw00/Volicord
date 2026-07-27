@@ -18,13 +18,13 @@ use super::{
     decode_required_json_object, dry_run_summary, evidence_summary_for_display,
     first_product_write_duration_micros, guarantee_display_for_invocation, mutation_method_policy,
     no_active_change_unit_response, no_active_task_response, normalize_source_refs,
-    object_from_value, parse_acceptance_policy, parse_owner_storage_value, parse_storage_value,
-    parse_task_mode, parse_work_phase, persistent_artifact_is_verified_current,
-    plan_error_response, prepare_or_response, project_state_projection,
-    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
-    record_core_workflow_metric_best_effort, redaction_state_value, rejected_pipeline_response,
-    response_committed_fresh_effect, sorted_unique, state_ref, state_ref_from_stored,
-    storage_value, store_error_plan, string_member, task_lifecycle_mutation,
+    object_from_value, observe_request_product_paths, parse_acceptance_policy,
+    parse_owner_storage_value, parse_storage_value, parse_task_mode, parse_work_phase,
+    persistent_artifact_is_verified_current, plan_error_response, prepare_or_response,
+    project_state_projection, projected_evidence_summary_for_criteria,
+    projected_write_ticket_summary, record_core_workflow_metric_best_effort, redaction_state_value,
+    rejected_pipeline_response, response_committed_fresh_effect, sorted_unique, state_ref,
+    state_ref_from_stored, storage_value, store_error_plan, string_member, task_lifecycle_mutation,
     user_action_service_plan_error, validation_plan_error, validation_rejected,
     workspace_context_matches, workspace_stale_response, write_ticket_invalid_response,
     write_ticket_ref, write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
@@ -58,6 +58,7 @@ use crate::policy::{
         EvidenceObservationBasis,
     },
 };
+use crate::product_path::parse_stored_product_paths;
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -81,7 +82,7 @@ use volicord_types::ids::{
     RunId, StagedArtifactHandleId, StorageRef, TaskId,
 };
 use volicord_types::methods::{MethodOperationCategory, RecordRunRequest, RecordRunResultFields};
-use volicord_types::product_path::{normalize_product_paths, path_is_within, ProductPathError};
+use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{
     AcceptanceCriterion, ArtifactInput, ArtifactRef, CurrentCloseBasis, EvidenceCaptureIntent,
     EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceCoverageUpdate, EvidenceObservation,
@@ -608,34 +609,15 @@ fn normalize_record_run_request(
         );
     }
 
-    let normalized_changed_paths = match normalize_product_paths(
+    let normalized_changed_paths = sorted_unique(observe_request_product_paths(
         &store.project_record().repo_root,
         &request.observed_changes.changed_paths,
-    ) {
-        Ok(paths) => sorted_unique(paths),
-        Err(ProductPathError::Invalid) => {
-            return validation_plan_error(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                "observed_changes.changed_paths",
-                "changed_paths must be relative Product Repository paths that stay inside the repository",
-            );
-        }
-        Err(ProductPathError::LocalAccess) => {
-            let response = rejected_pipeline_response(
-                request.envelope.dry_run,
-                Some(project_state.state_version),
-                vec![tool_error(
-                    ErrorCode::InvocationContextMismatch,
-                    "changed_paths resolve outside the Product Repository",
-                    false,
-                    None,
-                )],
-            )
-            .map_err(PlanError::Core)?;
-            return Err(PlanError::Response(Box::new(response)));
-        }
-    };
+        request.envelope.dry_run,
+        Some(project_state.state_version),
+        "observed_changes.changed_paths",
+        "changed_paths must be normalized relative Product Repository paths",
+        "changed_paths resolve outside the Product Repository",
+    )?);
     if request.observed_changes.product_file_write_observed && normalized_changed_paths.is_empty() {
         return validation_plan_error(
             request.envelope.dry_run,
@@ -896,7 +878,6 @@ fn decide_record_run_policy(
             baseline_ref: Some(&request.baseline_ref),
             required_for: UserActionRequiredFor::RecordRun,
             now: plan_now,
-            repo_root: &store.project_record().repo_root,
         });
     let operation_context = UserActionOperationContext {
         operation: UserActionOperation::RecordRun,
@@ -3183,7 +3164,7 @@ fn current_sensitive_action_requirements(
         previous_current_sensitive_action_requirements(store, project_state, request, task)?;
     if let Some((record, scope)) = write_ticket_scope {
         if let Some(requirement) =
-            sensitive_action_requirement_from_write_ticket(store, run_ref, record, scope)?
+            sensitive_action_requirement_from_write_ticket(run_ref, record, scope)?
         {
             requirements.push(requirement);
         }
@@ -3216,7 +3197,6 @@ fn previous_current_sensitive_action_requirements(
 }
 
 fn sensitive_action_requirement_from_write_ticket(
-    store: &CoreProjectStore,
     run_ref: &StateRecordRef,
     record: &WriteTicketRecord,
     scope: &WriteTicketAttemptScope,
@@ -3241,18 +3221,15 @@ fn sensitive_action_requirement_from_write_ticket(
             ),
         )));
     }
-    let normalized_paths =
-        normalize_product_paths(&store.project_record().repo_root, &scope.intended_paths).map_err(
-            |_| {
-                PlanError::Core(CorePipelineError::Store(
-                    StoreError::corrupt_owner_state_json(
-                        "write_tickets",
-                        record.write_ticket_id.clone(),
-                        "attempt_scope_json",
-                    ),
-                ))
-            },
-        )?;
+    let normalized_paths = parse_stored_product_paths(&scope.intended_paths).map_err(|_| {
+        PlanError::Core(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_json(
+                "write_tickets",
+                record.write_ticket_id.clone(),
+                "attempt_scope_json",
+            ),
+        ))
+    })?;
     Ok(Some(SensitiveActionRequirement {
         action_kind,
         normalized_paths,
@@ -4337,16 +4314,15 @@ fn validate_write_ticket_for_run(
         "denied_path_prefixes_json",
         Some(&record.denied_path_prefixes_json),
     )?;
-    let scope_paths = normalize_product_paths(&store.project_record().repo_root, &allowed_paths)
-        .map_err(|_| {
-            PlanError::Core(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_json(
-                    "write_tickets",
-                    record.write_ticket_id.clone(),
-                    "attempt_scope_json",
-                ),
-            ))
-        })?;
+    let scope_paths = parse_stored_product_paths(&allowed_paths).map_err(|_| {
+        PlanError::Core(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_json(
+                "write_tickets",
+                record.write_ticket_id.clone(),
+                "attempt_scope_json",
+            ),
+        ))
+    })?;
     if let Some(mismatch) = run_write_ticket_mismatch(
         record,
         &scope,
@@ -4423,7 +4399,6 @@ fn write_ticket_approval_basis_is_current(
         baseline_ref: scope.baseline_ref.as_ref(),
         required_for: UserActionRequiredFor::PrepareWrite,
         now,
-        repo_root: &store.project_record().repo_root,
     };
     let records = store
         .resolved_user_action_records(&request.task_id, UserActionKind::SensitiveApproval, now)

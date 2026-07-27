@@ -221,6 +221,12 @@ The repository path must:
   Runtime Home; and
 - for WSL2, resolve on the distribution ext4 filesystem outside `/mnt/*`.
 
+Public paths within that repository are platform-neutral relative values.
+They must pass lexical validation before `volicord-platform-fs` observes the
+live canonical root, the candidate or nearest existing ancestor, and
+link-resolved containment. Failure to access or observe those coordinates is a
+typed operational failure, not permission to continue with lexical text alone.
+
 Moving the repository, changing its canonical identity, changing Connection
 scope, or advancing its integration revision makes prior project sessions
 stale. A new managed MCP project session is required; callers must not rewrite

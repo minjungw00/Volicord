@@ -30,6 +30,15 @@ identifiers and timestamps, replay, transaction sequencing, and service-error
 mapping. Store tests own physical persistence, transactions, and strict row
 decoding into typed UserAction records.
 
+Product Repository path tests follow the same ownership split.
+`volicord-types` tests lexical values and pure relationships without temporary
+directories. `volicord-platform-fs` tests live existing and missing paths,
+nearest existing ancestors, inaccessible paths, and link escape with real
+disposable directories. Core tests consume typed platform results and verify
+neutral operational routing without reimplementing platform observation.
+UserAction service tests remain filesystem-free. Adapter tests verify the
+stable projected operation and resource identities.
+
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
 prove behavior of a real Codex installation or platform support.
@@ -66,6 +75,11 @@ Current-workspace coverage also asserts that
 admits only `volicord-types` and `volicord-store` as normal dependencies and
 `volicord-test-support` as a development dependency. Any dependency on Core,
 CLI, MCP, or presentation fails the architecture gate.
+
+Core's normal allowlist admits `volicord-platform-fs` for typed Product
+Repository observation. The shared-types and UserAction-service groups do not
+admit that dependency, so live filesystem observation cannot move into their
+semantic values or validation.
 
 Core tests construct host-neutral requests with typed local-user or validated
 Agent Connection authority. CLI, MCP, application, and host-contract owners

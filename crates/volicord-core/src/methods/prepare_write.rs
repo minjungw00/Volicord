@@ -6,15 +6,15 @@ use super::{
     acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_write_ticket_id,
     baseline_matches, build_state_summary, change_unit_effect_contract, change_unit_ref,
     decode_required_json, guarantee_display_for_invocation, infallible_rejected_pipeline_response,
-    matching_sensitive_approval, object_from_value, parse_acceptance_policy,
-    parse_owner_storage_value, parse_task_mode, parse_work_phase, paths_match_current_change_unit,
-    plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
-    projected_evidence_summary, record_core_workflow_metric_best_effort,
-    rejected_pipeline_response, resolve_prepare_write_task, response_committed_fresh_effect,
-    state_ref, state_ref_from_stored, store_error_plan, user_action_service_plan_error,
-    validate_prepare_write_change_unit, validation_rejected, workspace_context_matches,
-    write_ticket_summary_for_record, PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan,
-    SensitiveApprovalSearch, SummaryBuild,
+    matching_sensitive_approval, object_from_value, observe_request_product_paths,
+    parse_acceptance_policy, parse_owner_storage_value, parse_task_mode, parse_work_phase,
+    paths_match_current_change_unit, plan_error_response, prepare_or_response,
+    project_state_projection, projected_close_basis, projected_evidence_summary,
+    record_core_workflow_metric_best_effort, resolve_prepare_write_task,
+    response_committed_fresh_effect, state_ref, state_ref_from_stored, store_error_plan,
+    user_action_service_plan_error, validate_prepare_write_change_unit, validation_rejected,
+    workspace_context_matches, write_ticket_summary_for_record, PersistedWriteTicketAttemptScope,
+    PlanError, PrepareWritePlan, SensitiveApprovalSearch, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -48,7 +48,7 @@ use volicord_types::ids::{ChangeUnitId, TaskId, WriteTicketId};
 use volicord_types::methods::{
     MethodOperationCategory, PrepareWriteRequest, PrepareWriteResultFields,
 };
-use volicord_types::product_path::{normalize_product_paths, path_is_within, ProductPathError};
+use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{
     DryRunSummary, GuaranteeDisplay, JsonObject, StateRecordRef, WriteDecisionReason, WriteTicket,
     WriteTicketAttemptScope, WriteTicketPathPatterns, WriteTicketScope, WriteTicketValidityBasis,
@@ -407,34 +407,15 @@ fn normalize_prepare_write_request(
     }
     let intended_operation = raw.request.intended_operation.trim().to_owned();
     let sensitive_categories = normalized_string_set(&raw.request.sensitive_categories);
-    let intended_paths = match normalize_product_paths(
+    let intended_paths = observe_request_product_paths(
         &store.project_record().repo_root,
         &raw.request.intended_paths,
-    ) {
-        Ok(paths) => paths,
-        Err(ProductPathError::Invalid) => {
-            return prepare_write_validation_error(
-                raw.request.envelope.dry_run,
-                project_state.state_version,
-                "intended_paths",
-                "intended_paths must be relative Product Repository paths that stay inside the repository",
-            );
-        }
-        Err(ProductPathError::LocalAccess) => {
-            let response = rejected_pipeline_response(
-                raw.request.envelope.dry_run,
-                Some(project_state.state_version),
-                vec![tool_error(
-                    ErrorCode::InvocationContextMismatch,
-                    "intended_paths resolve outside the Product Repository",
-                    false,
-                    None,
-                )],
-            )
-            .map_err(PlanError::Core)?;
-            return Err(PlanError::Response(Box::new(response)));
-        }
-    };
+        raw.request.envelope.dry_run,
+        Some(project_state.state_version),
+        "intended_paths",
+        "intended_paths must be normalized relative Product Repository paths",
+        "intended_paths resolve outside the Product Repository",
+    )?;
     Ok(PrepareWriteNormalizedRequest {
         raw,
         planned_state_version: project_state.state_version + 1,
@@ -633,11 +614,7 @@ fn plan_prepare_write_mutations(
         ));
     }
 
-    if !paths_match_current_change_unit(
-        &store.project_record().repo_root,
-        &normalized_paths,
-        &change_unit,
-    )? {
+    if !paths_match_current_change_unit(&normalized_paths, &change_unit)? {
         reasons.push(write_decision_reason(
             WriteDecisionCategory::Scope,
             "path_out_of_scope",
@@ -653,7 +630,6 @@ fn plan_prepare_write_mutations(
 
     if let Some(contract) = change_unit_effect_contract(&change_unit)? {
         let contract_violations = product_write_violations(
-            &store.project_record().repo_root,
             &contract,
             request.product_file_write_intended,
             &normalized_paths,
@@ -708,7 +684,6 @@ fn plan_prepare_write_mutations(
             baseline_ref: Some(&request.baseline_ref),
             required_for: UserActionRequiredFor::PrepareWrite,
             now: &plan_now,
-            repo_root: &store.project_record().repo_root,
         })
     };
     let pending_authorities = pending_user_action_authorities(store, &task_id, &plan_now)
@@ -1385,7 +1360,6 @@ fn write_ticket_approval_basis_is_current_for_prepare(
         baseline_ref: scope.baseline_ref.as_ref(),
         required_for: UserActionRequiredFor::PrepareWrite,
         now,
-        repo_root: &store.project_record().repo_root,
     };
     let records = store
         .resolved_user_action_records(

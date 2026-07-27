@@ -19,6 +19,8 @@ Volicord는 협력적 로컬 권한 기록입니다. 담당 문서가 정의한 
 - Agent Connection 호출을 위한 현재 Connection, 프로젝트 membership, mode, 권위 있는
   managed-host session 검증
 - Runtime Home과 Product Repository 분리
+- Core가 요청 경로를 받아들이기 전에 수행하는 어휘 Product Repository 경로 검증과
+  플랫폼 소유 canonical root, link, containment 관찰의 분리
 - `resolved_by_actor_source=local_user`인 CLI 전용 UserAction 해결
 - 네트워크 listener가 없는 관리 stdio MCP
 - 허용적인 fallback 대신 기계 판독 실패 분류
@@ -75,6 +77,11 @@ Product Repository 파일은 사용자 제품 데이터입니다. Runtime Home r
 권한 기록입니다. 관리 Codex 구성은 프로세스를 시작하지만 권한, 승인, 쓰기 티켓,
 Codex가 이를 읽었다는 증명이 아닙니다.
 
+검증된 상대 Product Repository 경로는 파일시스템 권한이나 미래 containment의 증명이
+아닙니다. 플랫폼 관찰은 Core가 얻은 시점의 한도 있는 로컬 사실입니다. 의미 서비스와
+저장 권한 레코드는 canonical 절대 경로를 전달받거나 caller의 경로 text를 독립적으로
+다시 열지 않습니다.
+
 행동 기반 연결 관찰은 현재 관리 구성과 관찰한 protocol, 도구, 안전 호출, Guard 동작의
 호환성을 성립시킵니다. Core 권한은 현재 활성 Connection, 프로젝트 membership, mode,
 관리 runtime session, revision 범위 프로젝트 session, 정확한 Registry/프로젝트 binding을
@@ -112,6 +119,7 @@ Volicord는 다음을 보장하지 않습니다.
 - process, path, timing, prompt, observation 데이터에서 actor 귀속
 - client name/version, host version, 환경 값, 로컬 session metadata에서 actor 귀속
 - Product Repository 변경의 완전한 탐지 또는 예방
+- 플랫폼 관찰이 끝난 뒤에도 경로가 계속 존재하거나 containment를 유지함
 - 정확성, 테스트 충분성, QA, 배포 준비, 사람 검토
 - 수락이 필요할 때 닫기 상태가 최종 사용자 수락을 대신함
 - 구성이 있다고 활성 tool 노출이 증명됨

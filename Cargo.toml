@@ -30,8 +30,8 @@ version = "0.9.1"
 
 [workspace.metadata.architecture.packages.volicord-types]
 group = "shared-types"
-description = "Dependency-safe shared schemas, identifiers, closed values, canonical encodings, and adapter-neutral domain facts."
-description_ko = "의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 어댑터 중립 도메인 사실을 담당합니다."
+description = "Dependency-safe shared schemas, identifiers, closed values, canonical encodings, platform-neutral path values, and adapter-neutral domain facts."
+description_ko = "의존 안전한 공유 스키마, 식별자, 폐쇄형 값, 정규 인코딩, 플랫폼 중립 경로 값, 어댑터 중립 도메인 사실을 담당합니다."
 kind = "schema"
 production = true
 boundary = "core-facing"
@@ -78,8 +78,8 @@ build = []
 
 [workspace.metadata.architecture.packages.volicord-platform-fs]
 group = "platform-filesystem"
-description = "Platform filesystem observation, publication, mutation admission, and Git layout primitives."
-description_ko = "플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다."
+description = "Product Repository and platform filesystem observation, publication, mutation admission, and Git layout primitives."
+description_ko = "Product Repository 및 플랫폼 파일시스템 관찰, 게시, 변경 승인, Git 레이아웃 프리미티브를 담당합니다."
 kind = "infrastructure"
 production = true
 boundary = "core-facing"
@@ -122,6 +122,7 @@ kind = "application"
 production = true
 boundary = "core"
 normal = [
+    "volicord-platform-fs",
     "volicord-store",
     "volicord-types",
     "volicord-user-action-service",

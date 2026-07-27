@@ -14,6 +14,7 @@ use serde::{
 };
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+use volicord_platform_fs::{PlatformBoundaryError, PlatformDiagnosticKind};
 use volicord_store::{
     core_pipeline::{
         commit_input, CommitMutationInput, CommittedEventRef, CoreProjectStore,
@@ -52,12 +53,14 @@ pub type CoreResult<T> = Result<T, CorePipelineError>;
 /// Typed Core operation that could not produce a method result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoreOperationalOperation {
+    ProductPathObservation,
     StoreAccess,
 }
 
 impl CoreOperationalOperation {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::ProductPathObservation => "product_path_observation",
             Self::StoreAccess => "store_access",
         }
     }
@@ -66,6 +69,7 @@ impl CoreOperationalOperation {
 /// Typed infrastructure resource that was unavailable to Core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoreOperationalResource {
+    ProductRepository,
     Store,
     RegistryStore,
     ProjectStore,
@@ -76,6 +80,7 @@ pub enum CoreOperationalResource {
 impl CoreOperationalResource {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::ProductRepository => "product_repository",
             Self::Store => "store",
             Self::RegistryStore => "registry_store",
             Self::ProjectStore => "project_store",
@@ -91,7 +96,13 @@ pub struct CoreOperationalUnavailable {
     operation: CoreOperationalOperation,
     resource: CoreOperationalResource,
     retryable: bool,
-    source: StoreError,
+    source: CoreOperationalSource,
+}
+
+#[derive(Debug)]
+enum CoreOperationalSource {
+    Platform(PlatformBoundaryError),
+    Store(StoreError),
 }
 
 impl CoreOperationalUnavailable {
@@ -112,7 +123,17 @@ impl CoreOperationalUnavailable {
             operation: CoreOperationalOperation::StoreAccess,
             resource,
             retryable: classification.retryable,
-            source,
+            source: CoreOperationalSource::Store(source),
+        }
+    }
+
+    fn from_platform(source: PlatformBoundaryError) -> Self {
+        let (operation, resource, retryable) = product_path_operational_route(source.kind());
+        Self {
+            operation,
+            resource,
+            retryable,
+            source: CoreOperationalSource::Platform(source),
         }
     }
 
@@ -127,6 +148,25 @@ impl CoreOperationalUnavailable {
     pub const fn retryable(&self) -> bool {
         self.retryable
     }
+
+    /// Returns the platform diagnostic kind when the unavailable resource was
+    /// observed by the platform owner.
+    pub const fn platform_diagnostic_kind(&self) -> Option<PlatformDiagnosticKind> {
+        match &self.source {
+            CoreOperationalSource::Platform(error) => Some(error.kind()),
+            CoreOperationalSource::Store(_) => None,
+        }
+    }
+}
+
+fn product_path_operational_route(
+    kind: PlatformDiagnosticKind,
+) -> (CoreOperationalOperation, CoreOperationalResource, bool) {
+    (
+        CoreOperationalOperation::ProductPathObservation,
+        CoreOperationalResource::ProductRepository,
+        kind.retryable(),
+    )
 }
 
 impl fmt::Display for CoreOperationalUnavailable {
@@ -143,7 +183,10 @@ impl fmt::Display for CoreOperationalUnavailable {
 
 impl Error for CoreOperationalUnavailable {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(&self.source)
+        match &self.source {
+            CoreOperationalSource::Platform(error) => Some(error),
+            CoreOperationalSource::Store(error) => Some(error),
+        }
     }
 }
 
@@ -200,6 +243,12 @@ impl From<StoreError> for CorePipelineError {
         } else {
             Self::Store(error)
         }
+    }
+}
+
+impl From<PlatformBoundaryError> for CorePipelineError {
+    fn from(error: PlatformBoundaryError) -> Self {
+        Self::OperationalUnavailable(CoreOperationalUnavailable::from_platform(error))
     }
 }
 
@@ -3406,6 +3455,26 @@ mod tests {
         assert_eq!(failure.operation(), CoreOperationalOperation::StoreAccess);
         assert_eq!(failure.resource(), expected_resource);
         assert_eq!(failure.retryable(), expected_retryable);
+    }
+
+    #[test]
+    fn typed_product_path_diagnostic_selects_the_core_operational_route() {
+        assert_eq!(
+            product_path_operational_route(PlatformDiagnosticKind::ProductRepositoryNotFound),
+            (
+                CoreOperationalOperation::ProductPathObservation,
+                CoreOperationalResource::ProductRepository,
+                true,
+            )
+        );
+        assert_eq!(
+            product_path_operational_route(PlatformDiagnosticKind::ProductPathContainmentFailure),
+            (
+                CoreOperationalOperation::ProductPathObservation,
+                CoreOperationalResource::ProductRepository,
+                false,
+            )
+        );
     }
 
     fn assert_constraint_error(error: rusqlite::Error) {

@@ -41,6 +41,7 @@ flowchart LR
   presentation["UserAction presentation"]
   core["volicord-core"]
   action_service["volicord-user-action-service"]
+  platform_fs["volicord-platform-fs"]
   store["volicord-store<br/>(including artifact facilities)"]
   runtime["Volicord Runtime Home"]
   product["Product Repository"]
@@ -55,10 +56,11 @@ flowchart LR
   inbox --> presentation
   presentation --> syntax
   core --> action_service
+  core --> platform_fs
   core --> store
   action_service --> store
   store --> runtime
-  product -. observed inputs and owner-defined paths .-> core
+  product -. live path observations .-> platform_fs
   host -. product-file tools outside public API .-> product
 ```
 
@@ -75,7 +77,10 @@ manual transport and always records `manual_cli`.
 methods record owner-defined compatibility, observations, judgments, evidence,
 and artifact links. Product-file writes themselves happen through an Agent
 Connection, local tooling, or explicit administrative integration paths outside
-the public method execution path.
+the public method execution path. Shared types carry only platform-neutral
+relative path identities and pure relationships. Core requests live
+containment observations from `volicord-platform-fs`; semantic services receive
+only the resulting relative identities and do not inspect the filesystem.
 
 <a id="workspace-package-architecture"></a>
 
@@ -111,14 +116,14 @@ Each current workspace package has one responsibility entry in the root Cargo me
 | `volicord-integration-tests` | `integration-validation` | validation | non-production | neutral | Cross-layer integration, Agent Connection, and public contract snapshot tests. |
 | `volicord-mcp` | `mcp-adapter` | adapter | production | adapter | MCP lifecycle, transport, tool projection, session binding, and Core invocation adapter. |
 | `volicord-mcp-protocol` | `mcp-protocol` | schema | production | neutral | Host-independent MCP revision profiles and semantic capability registry. |
-| `volicord-platform-fs` | `platform-filesystem` | infrastructure | production | Core-facing | Platform filesystem observation, publication, mutation admission, and Git layout primitives. |
+| `volicord-platform-fs` | `platform-filesystem` | infrastructure | production | Core-facing | Product Repository and platform filesystem observation, publication, mutation admission, and Git layout primitives. |
 | `volicord-platform-process` | `platform-process` | infrastructure | production | neutral | Platform child-process containment, termination, and pipe-readiness primitives. |
 | `volicord-release-integrity-tests` | `release-integrity` | validation | non-production | neutral | Release packaging, version, canonical-byte, checksum, and workflow integrity validation. |
 | `volicord-release-smoke` | `release-smoke` | validation | non-production | neutral | Cross-platform actual-binary release smoke orchestration and transcript validation. |
 | `volicord-store` | `storage` | infrastructure | production | Core-facing | Canonical persistence, Runtime Home mechanics, strict decoding, and transaction application. |
 | `volicord-test-process` | `test-process` | test support | non-production | neutral | Reusable bounded process execution and cleanup for tests and smoke harnesses. |
 | `volicord-test-support` | `test-support` | test support | non-production | neutral | Reusable disposable Runtime Home, Store, Core request, and Agent Connection fixtures. |
-| `volicord-types` | `shared-types` | schema | production | Core-facing | Dependency-safe shared schemas, identifiers, closed values, canonical encodings, and adapter-neutral domain facts. |
+| `volicord-types` | `shared-types` | schema | production | Core-facing | Dependency-safe shared schemas, identifiers, closed values, canonical encodings, platform-neutral path values, and adapter-neutral domain facts. |
 | `volicord-user-action-presentation` | `user-action-presentation` | presentation | production | adapter | Typed CLI UserAction presentation, JSON Schemas, and command-model-backed recovery instructions. |
 | `volicord-user-action-service` | `user-action-service` | application | production | Core-facing | UserAction validation, authority, lifecycle, persistence mapping, resolution, continuity, and semantic projection. |
 | `xtask` | `repository-validation` | validation | non-production | neutral | Repository architecture, documentation, protocol fixture, and release metadata validation and synchronization. |
@@ -133,7 +138,7 @@ The lists are package-level allowlists by Cargo dependency kind. An em dash mean
 | `volicord-cli` | `volicord-command-model`, `volicord-core`, `volicord-host-contract`, `volicord-mcp`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-platform-process`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-store`, `volicord-test-support` | — |
 | `volicord-command-model` | — | — | — |
 | `volicord-conformance-tests` | — | `volicord-core`, `volicord-store`, `volicord-test-support`, `volicord-types`, `volicord-user-action-service` | — |
-| `volicord-core` | `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
+| `volicord-core` | `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-service` | `volicord-test-support` | — |
 | `volicord-host-contract` | `volicord-types` | — | — |
 | `volicord-integration-tests` | — | `volicord-core`, `volicord-mcp`, `volicord-store`, `volicord-test-support`, `volicord-types` | — |
 | `volicord-mcp` | `volicord-core`, `volicord-host-contract`, `volicord-mcp-protocol`, `volicord-platform-fs`, `volicord-store`, `volicord-types`, `volicord-user-action-presentation`, `volicord-user-action-service` | `volicord-test-support` | — |
@@ -267,8 +272,11 @@ the database whose manifest and canonical SQL digests match the current release
 contract. The Codex adapter owns Codex configuration parsing, serialization,
 and managed-entry validation. The platform filesystem boundary separately owns
 process target and environment observation plus target and filesystem
-validation. MCP validates current Store-owned runtime/project sessions and
-supplies Core with a typed `ValidatedAgentSession`.
+validation. It also owns canonical Product Repository root and candidate-path
+observation, including nearest-existing-ancestor and link containment checks,
+and returns opaque typed observations to Core. MCP validates current
+Store-owned runtime/project sessions and supplies Core with a typed
+`ValidatedAgentSession`.
 
 The failure, storage, and Agent Connection contracts remain in
 [Failure Model](../reference/failure-model.md),
@@ -349,7 +357,7 @@ Core authorization remains separate and still validates every managed MCP call.
 | MCP adapter boundary | `volicord mcp serve` is the public manual transport entry path; only the hidden launcher's in-memory lease claim may create a `managed_host` runtime. The `stdio` facade delegates to responsibility-owned modules for bounded transport, JSON-RPC envelopes, lifecycle, Runtime Home/repository/Connection binding, tool dispatch, and telemetry. Lifecycle uses closed `SessionState` variants: initialization selection cannot exist before initialize, ready-only session data cannot exist before the initialized transition, and termination data exists only in `Closed`. Framing has no result-projection knowledge, JSON-RPC parsing performs no Core operation, lifecycle admits messages, binding selects routing identity, and tool dispatch decodes calls and invokes the adapter without owning framing. `volicord-types` supplies the closed `AgentToolId` identity catalog, reusing `MethodName` for Core-owned tools and binding operational verification roles at compile time. `volicord-mcp` keys the canonical registry by that identity and projects wire names, definitions, method results, and MCP-owned operational failures through the selected semantic profile instead of forking tool ownership by revision. The adapter resolves its pre-operation Runtime Home and Agent Connection routing context, then requires each live mutation context to match that routing identity. It uses the admitted identity for project routing, diagnostics, Store access, and Core construction, derives adapter-managed local invocation facts, wraps Core JSON as MCP content, and maps neutral Core operational failures without creating a method response. | [Request Lifecycle](request-lifecycle.md), [Source Map](source-map.md), [MCP Transport](../reference/mcp-transport.md), and [Agent Connection](../reference/agent-connection.md). |
 | Administrative CLI and Codex adapter | `volicord-cli` owns process startup and dispatch over parsed command-model DTOs, Codex configuration discovery, managed-entry installation and validation, dependency-aware verification policy, deterministic diagnostic root selection, concise/verbose/JSON selected-Connection reports, lifecycle-aware finding and runtime-session lookup output, repair, uninstall, and the hidden same-process host launcher. The launcher revalidates the exact current entry before issuing a one-time Store lease; it does not place lease material in configuration, arguments, environment, or output. Lookup success is independent of stored finding severity. The Codex adapter converts the canonical managed launch contract to and from Codex TOML while preserving only the allowed tool-approval overlay. It does not classify Linux or WSL2. | [CLI Workflows](cli-workflows.md), [Source Map](source-map.md), [Administrative CLI](../reference/admin-cli.md), [Agent Connection](../reference/agent-connection.md), and [Security](../reference/security.md). |
 | Release integrity | Generic checks cover every published Volicord target, package and checksum continuity, and workflow semantics. One reusable workflow action invokes the dedicated `tests/release-smoke` package exactly once after the local debug build in ordinary CI and exactly once for every native release target before artifact staging. The package exercises the exact supplied binary through public manual stdio with a stable test-owned Codex fixture and remains separate from optional real-Codex observation and managed-host evidence. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |
-| Platform filesystem facade | `volicord-platform-fs` observes the process target and kernel, distinguishes native Linux from WSL2, validates the WSL2 distribution through `/etc/os-release`, and supplies path-filesystem observations for target-path restriction enforcement. It also isolates effect-aware no-replace regular-file publication with parent-entry durability, platform-native namespace primitives, per-canonical-Runtime-Home shared/exclusive mutation admission, borrowed permits, and canonical read-only Git common-directory/worktree discovery. It does not decide which files are managed, whether a replacement or write is authorized, or what recovery means. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
+| Platform filesystem facade | `volicord-platform-fs` observes the process target and kernel, distinguishes native Linux from WSL2, validates the WSL2 distribution through `/etc/os-release`, and supplies path-filesystem observations for target-path restriction enforcement. It exclusively owns live Product Repository root and candidate-path observation, private canonical identities, nearest-existing-ancestor handling, link containment, and typed path diagnostics; Core consumes its opaque observation and semantic services never receive filesystem coordinates. It also isolates effect-aware no-replace regular-file publication with parent-entry durability, platform-native namespace primitives, per-canonical-Runtime-Home shared/exclusive mutation admission, borrowed permits, and canonical read-only Git common-directory/worktree discovery. It does not decide which files are managed, whether a replacement or write is authorized, or what recovery means. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), [Runtime Boundaries](../reference/runtime-boundaries.md), and [System Requirements](../reference/system-requirements.md). |
 | Platform process facade | `volicord-platform-process` exposes safe bounded child-process containment and child-pipe readiness APIs. It owns low-level process groups, Windows Job Objects, nonblocking pipe configuration, and pipe polling. `volicord-cli` retains MCP supervision policy, lifecycle deadlines, protocol framing, exchange progress, and diagnostics. | [Source Map](source-map.md), [CLI Workflows](cli-workflows.md), [Administrative CLI](../reference/admin-cli.md), and [Agent Connection](../reference/agent-connection.md). |
 | Test process boundary | `volicord-test-process` owns reusable bounded child execution for repository tests and smoke harnesses. It creates platform containment before spawn, pumps bounded stdio under one lifecycle deadline, terminates the process tree on timeout or failure, reaps the direct child, and bounds final pipe cleanup. It exposes no Volicord product API, and product process policy remains in `volicord-cli`. | [Source Map](source-map.md) and [Testing Strategy](testing-strategy.md). |
 | Tests and validation | Implementation tests verify owner-defined facts at the appropriate layer. MCP module tests are partitioned by lifecycle, batching, protocol projection, tool calls, managed-host observation, diagnostics, and conformance contracts, with shared setup isolated from those assertions. MCP production support requires a pinned released manifest entry and a production profile with exact set parity enforced by the lightweight checker. The independent registry-driven conformance test executes actual wire behavior for every production profile. Tracked pre-release schemas remain outside production iteration, and local conformance is not external certification. Tests, fixtures, generated snapshots, and documentation checks do not become product contract owners. | [Testing Strategy](testing-strategy.md) and [Validation](../maintain/validation.md). |

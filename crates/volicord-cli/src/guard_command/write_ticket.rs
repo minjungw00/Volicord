@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use volicord_types::product_path::path_is_within;
 
 use super::{
     context::{ActiveWriteTicketSummary, GuardStateSummary},
@@ -172,11 +173,4 @@ pub(super) fn paths_are_authorized(
                     .iter()
                     .any(|denied| path_is_within(path, denied))
         })
-}
-
-pub(super) fn path_is_within(path: &str, scope: &str) -> bool {
-    path == scope
-        || path
-            .strip_prefix(scope)
-            .is_some_and(|rest| rest.starts_with('/'))
 }

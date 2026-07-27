@@ -3,7 +3,7 @@ use crate::error::UserActionValidationError as UserActionDomainError;
 use chrono::Duration;
 use std::collections::BTreeSet;
 use volicord_types::ids::BaselineRef;
-use volicord_types::product_path::normalize_product_paths;
+use volicord_types::product_path::parse_product_paths;
 use volicord_types::schema::{
     RequiredNullable, SensitiveActionScope, UserActionBasisCoordinates, UserActionDraft,
     USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES,
@@ -17,7 +17,6 @@ pub(super) fn validate_user_action(
 ) -> Result<ValidatedUserActionIntent, UserActionDomainError> {
     let UserActionValidationInput {
         project_id,
-        repository_root,
         actual_task_id,
         task_scope_revision,
         baseline_ref,
@@ -148,7 +147,7 @@ pub(super) fn validate_user_action(
         }
     }
 
-    validate_and_normalize_body_input(&mut action, &repository_root)?;
+    validate_and_normalize_body_input(&mut action)?;
 
     let coordinate_change_unit_id = intent
         .change_unit_id
@@ -174,7 +173,6 @@ pub(super) fn validate_user_action(
 
 fn validate_and_normalize_body_input(
     action: &mut UserActionDraft,
-    repository_root: &std::path::Path,
 ) -> Result<(), UserActionDomainError> {
     match action {
         UserActionDraft::Choice(choice) => {
@@ -201,15 +199,14 @@ fn validate_and_normalize_body_input(
                 ));
             }
             if let Some(scope) = choice.sensitive_action_scope.as_ref() {
-                choice.sensitive_action_scope = Some(
-                    normalize_sensitive_action_scope(repository_root, scope).map_err(|_| {
+                choice.sensitive_action_scope =
+                    Some(normalize_sensitive_action_scope(scope).map_err(|_| {
                         UserActionDomainError::new(
                             "action.sensitive_action_scope.intended_paths",
                             "sensitive action paths must stay within the Product Repository",
                         )
-                    })?,
-                )
-                .into();
+                    })?)
+                    .into();
             }
 
             let authority_bearing = matches!(
@@ -329,7 +326,6 @@ fn validate_choice_affected_refs(
 }
 
 fn normalize_sensitive_action_scope(
-    repository_root: &std::path::Path,
     scope: &SensitiveActionScope,
 ) -> Result<SensitiveActionScope, volicord_types::product_path::ProductPathError> {
     let normalize_text = |value: &str| value.trim().to_owned();
@@ -343,8 +339,9 @@ fn normalize_sensitive_action_scope(
     Ok(SensitiveActionScope {
         action_kind: normalize_text(&scope.action_kind),
         description: normalize_text(&scope.description),
-        intended_paths: normalize_product_paths(repository_root, &scope.intended_paths)?
+        intended_paths: parse_product_paths(&scope.intended_paths)?
             .into_iter()
+            .map(|path| path.into_string())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect(),

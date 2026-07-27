@@ -49,10 +49,20 @@ Absolute paths, drive or UNC prefixes, backslashes, empty components, `.` or
 invalid. A normalized path never begins or ends with `/` and contains no
 repeated separator.
 
-Lexical normalization does not establish filesystem containment. Any method
-that reads or writes a path must resolve the current repository root and apply
-the owner-defined symlink and canonicalization checks before effects. Paths in
-stored records remain normalized repository-relative identities.
+`volicord-types` owns only the platform-neutral relative value, lexical
+validation, and pure component-aware relationships. It does not inspect the
+filesystem. `volicord-platform-fs` owns live observation: it canonicalizes the
+Product Repository root, observes an existing candidate or the nearest
+existing ancestor of a missing candidate, resolves links, and returns an
+opaque typed observation only when the result remains contained by the
+canonical root.
+
+Core obtains that typed platform observation before accepting request paths.
+Semantic services such as the UserAction service consume only validated
+repository-relative identities and never reopen paths or receive a repository
+root. Stored paths remain platform-neutral identities; parsing a stored value
+does not claim that the corresponding live path still exists or remains
+contained.
 
 ## Managed Codex Configuration
 
@@ -281,15 +291,21 @@ stable codes:
 | `platform.wsl2.distribution_unsupported` | The observed WSL2 distribution does not match the supported distribution identity. |
 | `platform.filesystem.unsupported` | A selected path is outside the supported filesystem boundary. |
 | `platform.filesystem.observation_failed` | Filesystem identity could not be observed. |
+| `platform.product_repository.not_found` | The selected Product Repository root was not found. |
+| `platform.product_repository.invalid_root` | The selected Product Repository root is not a usable directory. |
+| `platform.product_path.not_found` | A Product Repository path required to exist was not found. |
+| `platform.product_path.inaccessible` | A Product Repository path or ancestor could not be inspected. |
+| `platform.product_path.containment_failed` | Link resolution placed the observed path outside the canonical Product Repository root. |
 | `platform.observation.failed` | Another required platform observation failed. |
 
 Each platform diagnostic kind maps to exactly one code in this registry. The
 typed diagnostic and its bounded human-readable detail cross the runtime-path
 and Store boundaries together. Store classification, CLI display, MCP
 bootstrap or terminal findings, and persisted diagnostic facts use that same
-code. Action selection uses the typed kind's `Unsupported` or `Unavailable`
-class. Human display is `<code>: <bounded-detail>`; detail does not participate
-in identity.
+code. Action selection uses the typed kind's `Rejected`, `Unsupported`, or
+`Unavailable` class. `platform.product_path.containment_failed` is
+`Rejected`; observation and access failures are `Unavailable`. Human display
+is `<code>: <bounded-detail>`; detail does not participate in identity.
 
 Runtime Home findings use `runtime_home.path.missing`,
 `runtime_home.path.empty_or_relative`, `runtime_home.path.invalid`,
