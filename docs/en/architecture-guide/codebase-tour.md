@@ -17,13 +17,16 @@ Read the workspace from the outside inward:
    connection setup, the CLI inbox, rendering, and stdio process launch.
 4. `volicord-mcp` owns MCP lifecycle, JSON-RPC stdio framing, public tool
    decoding, and response projection.
-5. `volicord-core` owns method planning, policy, replay decisions, authority
-   results, and atomic commit orchestration.
-6. `volicord-store` owns Runtime Home discovery, SQLite access, strict stored
+5. `volicord-core` owns request orchestration, method planning, replay
+   decisions, authority results, and atomic commit sequencing.
+6. `volicord-user-action-service` owns reusable UserAction semantic
+   validation, construction, authority, lifecycle, persistence mapping,
+   resolution, continuity, and adapter-neutral facts.
+7. `volicord-store` owns Runtime Home discovery, SQLite access, strict stored
    record validation, and transaction application.
-7. `volicord-types` owns shared closed values, identifiers, and canonical
+8. `volicord-types` owns shared closed values, identifiers, and canonical
    encodings.
-8. `volicord-platform-fs` owns platform-specific filesystem inspection behind
+9. `volicord-platform-fs` owns platform-specific filesystem inspection behind
    a narrow internal facade.
 
 Core-facing code does not depend on CLI or MCP adapter details. Adapters derive
@@ -98,11 +101,13 @@ the Record-profile stdio boundary.
 
 `volicord.request_user_action` creates or resumes the pending Core request.
 Follow
-[`crates/volicord-core/src/user_action/`](../../../crates/volicord-core/src/user_action/)
-from semantic `model` and pure `validation` through canonical `body` and
-`identity`, then through Store-aware `service`, `materialization`, and
-`persistence`. Direct request and resolution method planning remains in
-[`methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs);
+[`crates/volicord-user-action-service/src/`](../../../crates/volicord-user-action-service/src/)
+for the reusable semantic model, validation, canonical body and identity,
+Store-backed typed fact acquisition, materialization, persistence mapping,
+resolution, continuity, and projections. Core request orchestration remains in
+[`methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs),
+with User Channel reads and continuity persistence in the adjacent
+`user_action_read.rs` and `user_action_continuity.rs` modules;
 reconciliation supplies semantic intent from
 [`methods/reconcile_changes.rs`](../../../crates/volicord-core/src/methods/reconcile_changes.rs).
 
@@ -121,7 +126,7 @@ Read the exact contracts in
 
 Keep durable checks at the narrowest layer that owns the invariant:
 
-- unit tests beside pure parsing, encoding, and policy;
+- unit tests beside pure parsing, encoding, policy, and UserAction service semantics;
 - crate integration tests for adapter and Store boundaries;
 - workspace conformance tests for public cross-method behavior; and
 - generic release-integrity tests for target, package, checksum, and workflow invariants.

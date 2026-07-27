@@ -3,40 +3,24 @@ use super::close_readiness::{
     plan_projected_close_readiness, CloseReadinessSummary,
 };
 use super::{
-    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
-    close_state_text, core_error_response, decode_required_json, evidence_gate_summary_text,
-    evidence_summary_for_display, guarantee_display_for_invocation, no_active_task_response,
-    normalize_next_action_collection, object_from_value, parse_owner_storage_value,
-    parse_storage_value, prepare_or_response, primary_next_action, profile_summary_text,
-    project_state_projection, projected_close_basis, projected_evidence_summary,
-    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
-    response_committed_fresh_effect, state_ref, state_ref_from_stored, storage_value,
-    store_error_plan, summary_card_for_core, utc_timestamp, validation_rejected,
-    write_ticket_summary_text, PlanError, SummaryBuild, SummaryCardBuild,
+    active_acceptance_criteria_for_task, allocate_user_action_request_id, build_state_summary,
+    changes_summary_text, close_state_text, core_error_response, decode_required_json,
+    evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_for_invocation,
+    no_active_task_response, normalize_next_action_collection, object_from_value,
+    parse_owner_storage_value, parse_storage_value, prepare_or_response, primary_next_action,
+    profile_summary_text, project_state_projection, projected_close_basis,
+    projected_evidence_summary, projected_write_ticket_summary,
+    record_core_workflow_metric_best_effort, response_committed_fresh_effect, state_ref,
+    state_ref_from_stored, storage_value, store_error_plan, summary_card_for_core,
+    user_action_service_plan_error, utc_timestamp, validation_rejected, write_ticket_summary_text,
+    PlanError, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
     MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::policy::close_readiness::{
-    user_action_has_current_basis, verified_user_channel_provenance, UserActionAuthority,
-};
-use crate::policy::path::{path_is_within, paths_are_authorized};
 use crate::policy::write_ticket::write_ticket_is_idle_expired;
-use crate::user_action::authority::user_action_authority_from_state;
-use crate::user_action::identity::UserActionOrigin;
-use crate::user_action::materialization::{
-    materialize_user_action_request, UserActionMaterializationInput,
-};
-use crate::user_action::model::{UserActionConstructionInput, UserActionIntent};
-use crate::user_action::service::{
-    construct_user_action, pending_user_action_authorities_for_plan,
-    resolved_user_action_authorities_for_all_kinds,
-};
-use crate::user_action::summary::{
-    agent_safe_pending_user_action_summaries, pending_user_action_instruction,
-};
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -55,6 +39,7 @@ use volicord_types::ids::{
 use volicord_types::methods::{
     ReconcileChangesRequest, ReconcileChangesResultFields, UnrecordedChangeResolutionRequest,
 };
+use volicord_types::product_path::{path_is_within, paths_are_authorized};
 use volicord_types::schema::{
     CloseReadinessBlocker, DryRunSummary, EvidenceSummary, JsonObject, NextActionSummary,
     PlannedBlocker, PlannedEffect, RequiredNullable, StateRecordRef, UnrecordedChangeFinding,
@@ -67,6 +52,15 @@ use volicord_types::values::{
     NextActionKind, NextActionPresentationRole, PlannedBlockerSourceKind, StateRecordKind,
     UnrecordedChangeResolutionBasis, UnrecordedChangeStatus, UserActionKind,
     UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+};
+use volicord_user_action_service::{
+    agent_safe_pending_user_action_summaries, construct_user_action,
+    materialize_user_action_request, pending_user_action_authorities,
+    pending_user_action_instruction, resolved_user_action_authorities_for_all_kinds,
+    user_action_authority_from_state, user_action_has_current_basis,
+    verified_user_channel_provenance, UserActionAuthority, UserActionConstructionContext,
+    UserActionConstructionInput, UserActionIntent, UserActionMaterializationInput,
+    UserActionOrigin, UserActionPersistenceContext,
 };
 
 #[derive(Debug, Clone)]
@@ -247,20 +241,14 @@ fn plan_reconcile_changes(
         .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
     let unresolved = unresolved_records_for_request(store, verified_invocation, &request)?;
     let request_by_change = resolution_requests_by_change(&request.resolution_requests);
-    let resolved_authorities = resolved_user_action_authorities_for_all_kinds(
-        store,
-        project_state,
-        &request.envelope,
-        &request.task_id,
-        now,
-    )?;
-    let existing_pending_authorities = pending_user_action_authorities_for_plan(
-        store,
-        project_state,
-        &request.envelope,
-        &request.task_id,
-        now,
-    )?;
+    let resolved_authorities =
+        resolved_user_action_authorities_for_all_kinds(store, &request.task_id, now).map_err(
+            |error| user_action_service_plan_error(&request.envelope, project_state, error),
+        )?;
+    let existing_pending_authorities =
+        pending_user_action_authorities(store, &request.task_id, now).map_err(|error| {
+            user_action_service_plan_error(&request.envelope, project_state, error)
+        })?;
     let runs = store
         .run_observed_changes_for_task(&request.task_id)
         .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
@@ -889,11 +877,14 @@ fn plan_reconciliation_user_action(
         current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
     let constructed = construct_user_action(UserActionConstructionInput {
         store,
-        project_state,
-        envelope: &request.envelope,
         task,
         current_change_unit,
-        operation_now: now,
+        context: UserActionConstructionContext {
+            project_id: request.envelope.project_id.clone(),
+            observed_state_version: project_state.state_version,
+            observed_at: now.clone(),
+            locale: request.envelope.locale.as_ref().cloned(),
+        },
         intent: UserActionIntent {
             task_id: request.task_id.clone(),
             change_unit_id: coordinate_change_unit_id,
@@ -901,19 +892,33 @@ fn plan_reconciliation_user_action(
             required_for: vec![UserActionRequiredFor::Informational],
             expires_at: RequiredNullable::null(),
         },
-    })?;
+    })
+    .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let (user_action, mutation) = if materialize_mutation {
+        let Some(operation_identity) = request.envelope.idempotency_key.as_ref().cloned() else {
+            return Err(PlanError::Response(Box::new(validation_rejected(
+                request.envelope.dry_run,
+                Some(project_state.state_version),
+                "envelope.idempotency_key",
+                "a reconciliation user-action request requires an idempotency key",
+            )?)));
+        };
+        let user_action_request_id =
+            allocate_user_action_request_id(service, store).map_err(PlanError::Core)?;
         let materialized = materialize_user_action_request(UserActionMaterializationInput {
-            service,
-            store,
-            project_state,
-            verified_invocation,
-            envelope: &request.envelope,
+            context: UserActionPersistenceContext {
+                project_id: request.envelope.project_id.clone(),
+                actor_source: verified_invocation.actor_source.clone(),
+                operation_identity,
+                planned_state_version: project_state.state_version + 1,
+                user_action_request_id,
+            },
             origin: UserActionOrigin::Reconciliation {
                 unrecorded_change_id: UnrecordedChangeId::new(record.unrecorded_change_id.clone()),
             },
             constructed,
-        })?;
+        })
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
         (
             Some(materialized.public_request),
             Some(materialized.mutation),

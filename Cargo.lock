@@ -895,6 +895,7 @@ dependencies = [
  "volicord-test-support",
  "volicord-types",
  "volicord-user-action-presentation",
+ "volicord-user-action-service",
 ]
 
 [[package]]
@@ -914,6 +915,7 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+ "volicord-user-action-service",
 ]
 
 [[package]]
@@ -928,6 +930,7 @@ dependencies = [
  "volicord-store",
  "volicord-test-support",
  "volicord-types",
+ "volicord-user-action-service",
 ]
 
 [[package]]
@@ -973,6 +976,7 @@ dependencies = [
  "volicord-test-support",
  "volicord-types",
  "volicord-user-action-presentation",
+ "volicord-user-action-service",
 ]
 
 [[package]]
@@ -1090,6 +1094,18 @@ dependencies = [
  "serde",
  "serde_json",
  "volicord-command-model",
+ "volicord-types",
+]
+
+[[package]]
+name = "volicord-user-action-service"
+version = "0.9.1"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "volicord-store",
+ "volicord-test-support",
  "volicord-types",
 ]
 

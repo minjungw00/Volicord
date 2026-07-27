@@ -37,8 +37,7 @@ use volicord_types::schema::{
     EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceObservation, EvidenceProducer,
     EvidenceProducerAnchor, EvidenceRelevanceAssessment, EvidenceTarget, JsonObject,
     PersistedEvidenceCaptureReceiptBody, PersistedEvidenceMetadata,
-    PersistedEvidenceObservationAuthority, PersistedUserActionRequest,
-    PersistedUserActionResolution, StateRecordRef, UserActionBasis, UserActionResolutionBody,
+    PersistedEvidenceObservationAuthority, StateRecordRef, UserActionResolutionBody,
     EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
 };
 use volicord_types::values::{
@@ -237,30 +236,10 @@ pub(super) fn user_action_observation_resolution_authority(
     target: &EvidenceTarget,
     output_artifact_refs: &[ArtifactRef],
 ) -> CoreResult<Option<UserActionObservationResolutionAuthority>> {
-    let request: PersistedUserActionRequest = decode_required_json(
-        "user_action_requests",
-        action_record.request.user_action_request_id.clone(),
-        "request_json",
-        Some(&action_record.request.request_json),
-    )?;
-    let basis: UserActionBasis = decode_required_json(
-        "user_action_requests",
-        action_record.request.user_action_request_id.clone(),
-        "basis_json",
-        Some(&action_record.request.basis_json),
-    )?;
-    let resolution: PersistedUserActionResolution = decode_required_json(
-        "user_action_resolutions",
-        resolution_record.user_action_resolution_id.clone(),
-        "resolution_json",
-        Some(&resolution_record.resolution_json),
-    )?;
-    let observed_by_actor_source: ActorSource = parse_owner_storage_value(
-        "user_action_resolutions",
-        resolution_record.user_action_resolution_id.clone(),
-        "observed_by_actor_source",
-        &resolution_record.resolved_by_actor_source,
-    )?;
+    let request = &action_record.request.request;
+    let basis = &action_record.request.basis;
+    let resolution = &resolution_record.resolution;
+    let observed_by_actor_source = &resolution_record.resolved_by_actor_source;
     let UserActionResolutionBody::EvidenceObservation { observation } = resolution else {
         return Ok(None);
     };
@@ -281,22 +260,15 @@ pub(super) fn user_action_observation_resolution_authority(
             observation.relevance_status,
             EvidenceRelevanceStatus::Supported | EvidenceRelevanceStatus::Contradicted
         )
-        || observed_by_actor_source != ActorSource::LocalUser
+        || observed_by_actor_source != &ActorSource::LocalUser
         || observation.target != *target
         || !exact_artifact_ref_sets_match(&observation.output_artifact_refs, output_artifact_refs)
     {
         return Ok(None);
     }
-    let resolved_at = UtcTimestamp::parse(&resolution_record.resolved_at).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "user_action_resolutions",
-            resolution_record.user_action_resolution_id.clone(),
-            "resolved_at",
-        ))
-    })?;
     Ok(Some(UserActionObservationResolutionAuthority {
         relevance_status: observation.relevance_status,
-        resolved_at,
+        resolved_at: resolution_record.resolved_at.clone(),
     }))
 }
 

@@ -1,5 +1,5 @@
 use super::validation_input;
-use crate::user_action::validation::validate_user_action;
+use crate::validation::validate_user_action;
 use volicord_types::values::UserActionRequiredFor;
 
 #[test]

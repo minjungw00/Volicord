@@ -4,6 +4,7 @@ members = [
     "crates/volicord-mcp-protocol",
     "crates/volicord-types",
     "crates/volicord-store",
+    "crates/volicord-user-action-service",
     "crates/volicord-core",
     "crates/volicord-command-model",
     "crates/volicord-user-action-presentation",
@@ -32,6 +33,7 @@ volicord-types = { group = "shared-types" }
 volicord-host-contract = { group = "host-contract" }
 volicord-mcp-protocol = { group = "mcp-protocol" }
 volicord-store = { group = "storage" }
+volicord-user-action-service = { group = "user-action-service" }
 volicord-core = { group = "core" }
 volicord-command-model = { group = "command-model" }
 volicord-user-action-presentation = { group = "adapter-presentation" }
@@ -102,12 +104,21 @@ normal = ["shared-types", "host-contract", "platform-filesystem"]
 development = ["platform-filesystem", "test-support"]
 build = []
 
+[workspace.metadata.architecture.groups.user-action-service]
+description = "UserAction validation, authority, lifecycle, persistence planning, resolution, and semantic projections."
+kind = "production"
+boundary = "core-facing"
+core_dependency = "runtime"
+normal = ["shared-types", "storage"]
+development = ["test-support"]
+build = []
+
 [workspace.metadata.architecture.groups.core]
 description = "Adapter-independent Core services."
 kind = "production"
 boundary = "core"
 core_dependency = "forbidden"
-normal = ["shared-types", "storage"]
+normal = ["shared-types", "storage", "user-action-service"]
 development = ["test-support"]
 build = []
 
@@ -141,6 +152,7 @@ normal = [
     "adapter-presentation",
     "platform-filesystem",
     "storage",
+    "user-action-service",
     "core",
 ]
 development = ["test-support"]
@@ -160,6 +172,7 @@ normal = [
     "platform-filesystem",
     "platform-process",
     "storage",
+    "user-action-service",
     "core",
     "mcp-adapter",
 ]
@@ -190,7 +203,7 @@ kind = "test-suite"
 boundary = "neutral"
 core_dependency = "forbidden"
 normal = []
-development = ["shared-types", "storage", "core", "test-support"]
+development = ["shared-types", "storage", "user-action-service", "core", "test-support"]
 build = []
 
 [workspace.metadata.architecture.groups.integration-tests]

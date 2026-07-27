@@ -7,10 +7,6 @@ use std::{
 };
 
 use crate::pipeline::method_result_base;
-use crate::{
-    CurrentUserActionFacts, CurrentUserActionRead, PendingUserActionFacts,
-    PendingUserActionFactsRequest, UserActionResolutionFactsBody,
-};
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::OptionalExtension;
 use serde::{de::DeserializeOwned, Serialize};
@@ -55,6 +51,10 @@ use volicord_types::values::{
 };
 use volicord_types::{
     canonical::canonical_json_size_bytes, ids::*, methods::*, schema::*, values::*,
+};
+use volicord_user_action_service::{
+    CurrentUserActionFacts, CurrentUserActionRead, PendingUserActionFacts,
+    PendingUserActionFactsRequest, UserActionResolutionFactsBody,
 };
 
 use super::*;

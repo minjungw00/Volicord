@@ -1,35 +1,16 @@
 use super::model::{UserActionValidationInput, ValidatedUserActionIntent};
-use crate::policy::write_ticket::normalize_sensitive_action_scope;
+use crate::error::UserActionValidationError as UserActionDomainError;
 use chrono::Duration;
 use std::collections::BTreeSet;
 use volicord_types::ids::BaselineRef;
+use volicord_types::product_path::normalize_product_paths;
 use volicord_types::schema::{
-    RequiredNullable, UserActionBasisCoordinates, UserActionDraft,
+    RequiredNullable, SensitiveActionScope, UserActionBasisCoordinates, UserActionDraft,
     USER_ACTION_EVIDENCE_OBSERVATION_TTL_MINUTES,
 };
 use volicord_types::values::{
     JudgmentKind, StateRecordKind, UserActionBasisStatus, UserActionKind,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct UserActionDomainError {
-    field: &'static str,
-    message: &'static str,
-}
-
-impl UserActionDomainError {
-    pub(super) const fn new(field: &'static str, message: &'static str) -> Self {
-        Self { field, message }
-    }
-
-    pub(super) const fn field(self) -> &'static str {
-        self.field
-    }
-
-    pub(super) const fn message(self) -> &'static str {
-        self.message
-    }
-}
 
 pub(super) fn validate_user_action(
     input: UserActionValidationInput,
@@ -345,4 +326,40 @@ fn validate_choice_affected_refs(
         }
     }
     Ok(())
+}
+
+fn normalize_sensitive_action_scope(
+    repository_root: &std::path::Path,
+    scope: &SensitiveActionScope,
+) -> Result<SensitiveActionScope, volicord_types::product_path::ProductPathError> {
+    let normalize_text = |value: &str| value.trim().to_owned();
+    let normalize_optional = |value: &RequiredNullable<String>| {
+        value
+            .as_ref()
+            .map(|value| normalize_text(value))
+            .filter(|value| !value.is_empty())
+            .into()
+    };
+    Ok(SensitiveActionScope {
+        action_kind: normalize_text(&scope.action_kind),
+        description: normalize_text(&scope.description),
+        intended_paths: normalize_product_paths(repository_root, &scope.intended_paths)?
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
+        sensitive_categories: scope
+            .sensitive_categories
+            .iter()
+            .map(|value| normalize_text(value))
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
+        command_or_tool_summary: normalize_optional(&scope.command_or_tool_summary),
+        network_or_host_summary: normalize_optional(&scope.network_or_host_summary),
+        secret_or_credential_summary: normalize_optional(&scope.secret_or_credential_summary),
+        capability_claim: normalize_text(&scope.capability_claim),
+        expires_at: scope.expires_at.clone(),
+    })
 }

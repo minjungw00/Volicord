@@ -60,8 +60,8 @@ and
 [`crates/volicord-store/src/agent_connections.rs`](../../../crates/volicord-store/src/agent_connections.rs).
 For local User Channel behavior, continue with
 [`crates/volicord-cli/src/user_command.rs`](../../../crates/volicord-cli/src/user_command.rs)
-and the Core UserAction service at
-[`crates/volicord-core/src/user_action/`](../../../crates/volicord-core/src/user_action/),
+and the reusable UserAction service at
+[`crates/volicord-user-action-service/src/`](../../../crates/volicord-user-action-service/src/),
 then the direct public-method orchestration at
 [`crates/volicord-core/src/methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs).
 

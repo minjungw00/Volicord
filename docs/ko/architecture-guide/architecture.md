@@ -36,6 +36,7 @@ flowchart LR
   syntax["volicord-command-model"]
   presentation["UserAction presentation"]
   core["volicord-core"]
+  action_service["volicord-user-action-service"]
   store["volicord-store<br/>(아티팩트 기능 포함)"]
   runtime["Volicord Runtime Home"]
   product["Product Repository"]
@@ -49,7 +50,9 @@ flowchart LR
   inbox --> core
   inbox --> presentation
   presentation --> syntax
+  core --> action_service
   core --> store
+  action_service --> store
   store --> runtime
   product -. 관찰 입력 및 담당 문서가 정의한 경로 .-> core
   host -. 공개 API 밖의 제품 파일 도구 .-> product
@@ -76,7 +79,8 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 | `crates/volicord-types` | 공유 요청, 응답, 스키마 형태, 값 집합, 식별자, 정규 해시, 플랫폼, 호스트 구성 타입, 의미 UserAction 요청·불변 resolution·adapter-neutral `UserActionResolutionForm` 타입, 선언 하나에서 함께 만드는 공개 메서드 결과와 필드 전용 구성 타입, 진단 lifecycle 및 `CurrentDiagnosticKey` identity 타입, 선택한 Connection 및 lifecycle-aware lookup report 타입, 공유 tagged integration-verification workflow 모델, 정규 `AgentToolId` catalog와 wire 이름 투영. CLI presentation model이나 rendering helper는 담당하지 않습니다. 공개 Rust 어휘는 각 항목을 담당하는 모듈 경로로 제공하며, 크레이트 루트는 타입 집계 파사드가 아니라 모듈 경로를 제공합니다. |
 | `crates/volicord-host-contract` | `CodexMcpTurnMetadata`, `CodexCommandHooks`, `CodexMcpCallableNames`를 통한 의존성이 안전한 semantic Codex 계약, 명시적인 MCP server/raw-tool identity, 충돌 검사를 거친 callable 투영과 catalog 조회, 결정적인 contract identity, 한도 있는 host 값과 error, source별 상관관계 타입. Store, Core, CLI, MCP policy는 소유하지 않습니다. |
 | `crates/volicord-store` | 정규 SQLite 저장소, Runtime Home, 부트스트랩, 프로젝트 Store, 일회성 managed MCP launch lease, Agent Connection runtime/project session, lifecycle별 구조화 finding 영속화, 명시적인 진단 조회 및 cause graph 순회 API, 아티팩트 저장소, 검사, 내보내기 스냅샷, 저장소 오류 구현. |
-| `crates/volicord-core` | 어댑터와 독립적인 Core 서비스, 호스트 중립 typed invocation authority, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율. |
+| `crates/volicord-user-action-service` | 재사용 가능한 UserAction 의미 검증, 정규 구성, identity, authority, lifecycle, 영속화 매핑, 구체화, resolution, continuity 파생, adapter-neutral fact projection. Core pipeline, 메서드 결과, CLI, MCP 인프라는 담당하지 않습니다. |
+| `crates/volicord-core` | 어댑터와 독립적인 요청 조율, 호스트 중립 typed invocation authority, 공유 typed 요청 및 결과 구성 파이프라인, 필드 전용 메서드 계획, 정책 점검, 분기 사실이 확정된 뒤의 최종 응답 구성, Store 조율, UserAction 서비스 결과의 메서드 결과 매핑. |
 | `crates/volicord-command-model` | `volicord` 바이너리의 완전한 Clap 선언을 담당합니다. Root parser, 공개 및 숨은 하위 명령 tree, 명령과 인수 DTO, 명령 표면의 value enum과 validator, 실제 모델 기반 가시성 분류, 새로운 root `clap::Command`, 명령 경로 순회, 정규 synopsis, parsing 가능한 정규 공개 invocation, 그 선언에서 도출한 typed inbox-resolution invocation builder를 제공합니다. 명령 실행이나 application service는 담당하지 않습니다. |
 | `crates/volicord-user-action-presentation` | `CliUserActionInboxResponse`, `CliUserActionInboxItem`, tagged channel/capture-path 상태, CLI JSON Schema, command-model 기반 recovery instruction을 담당하는 typed CLI UserAction presentation입니다. Shared semantic type과 정규 command-model invocation을 사용하며 Core 정책, Store 접근, command 실행, terminal rendering, MCP envelope는 담당하지 않습니다. |
 | `crates/volicord-cli` | 설정, 프로젝트 등록, CLI 받은 편지함 명령, Codex Agent Connection 설치·검증·복구·제거, host/MCP/Guard 검증 check, dependency graph 정책, 렌더링, 숨은 동일 프로세스 managed-host launcher, 관리형 stdio MCP 감독 정책·기한·프레이밍·진행 상태·진단을 위한 로컬 `volicord` 프로세스 시작, 관리 명령 디스패치, 재사용 실행 모듈. |
@@ -125,7 +129,10 @@ Registry lease를 발급한 뒤 claim을 메모리에서만 MCP 어댑터로 넘
 - `volicord-store`는 공유 타입과 저장된 소유자 경로 검증에 쓰는 읽기 전용 정규 Git
   layout primitive에 의존하고 지속 저장 메커니즘을 담당합니다. Core, CLI, MCP 어댑터
   크레이트에는 의존하지 않습니다.
-- `volicord-core`는 Store와 공유 타입에 의존하고 테스트 지원은 개발 의존성으로만
+- `volicord-user-action-service`는 Store와 공유 타입에만 의존하고 테스트 지원은
+  개발 의존성으로 사용합니다. Core, CLI, MCP, presentation, 메서드 결과
+  인프라에는 의존할 수 없습니다.
+- `volicord-core`는 UserAction 서비스, Store, 공유 타입에 의존하고 테스트 지원은 개발 의존성으로만
   사용합니다. 공개 invocation 경계는 typed local `UserActionChannelKind` 또는
   불투명한 `ValidatedAgentSession`으로 구성된 `InvocationAuthority`를 받습니다.
   Core는 어댑터가 선택한 actor label, 호스트 명령 문법, 시작 인자, 구성 경로,
@@ -185,31 +192,21 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 호출 및 분리된 변경 context 구성을 막습니다. Compile-fail coverage는 접근할 수
 없는 Store 진입점과 permit에 결속된 context 수명을 함께 보호합니다.
 
-## Core UserAction 담당 경계
+## UserAction 담당 경계
 
-`crates/volicord-core/src/user_action/`은 메서드별 조율을 제외한 공유 UserAction
-도메인 및 애플리케이션 동작을 담당합니다. `model.rs`는 의미 의도, 검증된 구성 값,
-adapter-neutral fact type을 담습니다. `validation.rs`, `body.rs`, `identity.rs`는
-각각 순수 의미 검증, 정규 typed `UserActionRequestBody` 및 `UserActionBasis` 구성,
-안정적인 source identity와 request ID 할당을 담당합니다. `service.rs`는 현재 Store
-fact를 취득하고 쓰기 없이 이 순수 단계를 조율합니다. `materialization.rs`는 연산
-identity를 더해 공개 request 또는 불변 resolution을 만들고, `persistence.rs`는
-유효 Store record와 typed `CoreStorageMutation`으로 정확히 매핑합니다. 직렬화는
-이 구체화 및 영속화 경계에서만 수행합니다.
+`crates/volicord-user-action-service/`는 재사용 가능한 UserAction 의미를
+담당합니다. 책임별 모듈이 검증, 정규 typed request body와 basis 구성, source
+identity, authority, lifecycle 해석, 구체화, 영속화 매핑, resolution, continuity
+파생, adapter-neutral projection과 summary를 담당합니다. 이 크레이트는 명시적인
+의미 구성 및 영속화 context를 받고 typed 서비스 오류와 fact를 반환하며, Core나
+어댑터에 의존하지 않고 Store와 공유 타입에만 의존합니다.
 
-`authority.rs`는 저장된 권한을 엄격하게 디코딩하고 정규화하며, `lifecycle.rs`는
-투영된 Task lifecycle을 해석합니다. `resolution.rs`는 typed resolution 검증과
-구성을 담당하고, `continuity.rs`는 수락된 resolution에서 파생되는 continuity
-record를 계획합니다. `projection.rs`, `reader.rs`, `summary.rs`는 각각 neutral
-pending/current fact 투영, Store 기반 읽기와 원래 result replay, adapter-safe
-요약을 담당합니다. 이 fact에는 의미 좌표, status, availability, safe resolution
-fact가 있으며 command string, label, CLI capture metadata, rendered instruction,
-MCP envelope는 없습니다.
-
-`crates/volicord-core/src/methods/user_action.rs`는 직접 request 및 resolution
-메서드 조율만 유지하며 공유 typed 결과를 각 연산 결과에 반영하는 방식을
-결정합니다. Caller는 의미 의도를 `user_action::service`에 제공하며 정규 저장
-action JSON을 직접 구성하지 않습니다.
+`crates/volicord-core/src/methods/user_action.rs`,
+`user_action_read.rs`, `user_action_continuity.rs`는 invocation authority, 생성한
+식별자와 timestamp, Store transaction 순서, 원래 result replay, 메서드 결과
+구성, 서비스 오류의 Core 결과 변환을 포함하는 요청 조율을 담당합니다. Caller는
+서비스에 의미 의도를 제공하며 Core consumer와 어댑터는 정규 저장 action JSON을
+직접 구성하지 않습니다.
 
 `volicord-types`는 저장된 의미 request body에서 adapter-neutral
 `UserActionResolutionForm`을 도출합니다. `volicord-user-action-presentation`은 이

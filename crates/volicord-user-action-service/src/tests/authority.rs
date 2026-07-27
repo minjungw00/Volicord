@@ -1,5 +1,5 @@
 use super::canonical_choice;
-use crate::user_action::authority::user_action_authority_from_state;
+use crate::authority::user_action_authority_from_state;
 use volicord_types::ids::{ProjectId, UserActionRequestId};
 use volicord_types::schema::{RequiredNullable, UserActionRequest};
 use volicord_types::values::{UserActionKind, UserActionStatus};

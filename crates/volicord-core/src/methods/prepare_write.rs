@@ -11,10 +11,10 @@ use super::{
     plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
     projected_evidence_summary, record_core_workflow_metric_best_effort,
     rejected_pipeline_response, resolve_prepare_write_task, response_committed_fresh_effect,
-    state_ref, state_ref_from_stored, store_error_plan, validate_prepare_write_change_unit,
-    validation_rejected, workspace_context_matches, write_ticket_summary_for_record,
-    PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan, SensitiveApprovalSearch,
-    SummaryBuild,
+    state_ref, state_ref_from_stored, store_error_plan, user_action_service_plan_error,
+    validate_prepare_write_change_unit, validation_rejected, workspace_context_matches,
+    write_ticket_summary_for_record, PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan,
+    SensitiveApprovalSearch, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -22,21 +22,14 @@ use crate::pipeline::{
     TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::effect_contract::{product_write_violations, EffectContractViolation};
-use crate::policy::path::{normalize_product_paths, path_is_within, ProductPathError};
-use crate::policy::user_action_relevance::{
-    user_action_blocks_operation, UserActionOperation, UserActionOperationContext,
-};
 use crate::policy::workflow::{
     acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
     resolve_task_control_authority, ProjectWorkflowPolicy,
 };
 use crate::policy::write_ticket::{
-    current_sensitive_approval, normalized_string_set, prepare_write_decision,
-    prepare_write_dry_run_summary, write_decision_reason, write_ticket_is_idle_expired,
-    SensitiveApprovalRequirement,
+    normalized_string_set, prepare_write_decision, prepare_write_dry_run_summary,
+    write_decision_reason, write_ticket_is_idle_expired,
 };
-use crate::user_action::authority::user_action_authority_from_record;
-use crate::user_action::service::pending_user_action_authorities_for_plan;
 use chrono::Duration;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -55,6 +48,7 @@ use volicord_types::ids::{ChangeUnitId, TaskId, WriteTicketId};
 use volicord_types::methods::{
     MethodOperationCategory, PrepareWriteRequest, PrepareWriteResultFields,
 };
+use volicord_types::product_path::{normalize_product_paths, path_is_within, ProductPathError};
 use volicord_types::schema::{
     DryRunSummary, GuaranteeDisplay, JsonObject, StateRecordRef, WriteDecisionReason, WriteTicket,
     WriteTicketAttemptScope, WriteTicketPathPatterns, WriteTicketScope, WriteTicketValidityBasis,
@@ -63,6 +57,11 @@ use volicord_types::values::{
     AcceptancePolicy, CloseState, ErrorCode, MethodName, PrepareWriteDecision, StateRecordKind,
     TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor, UtcTimestamp, WorkPhase,
     WriteDecisionCategory, WriteTicketEffect, WriteTicketInvalidationReason, WriteTicketState,
+};
+use volicord_user_action_service::{
+    current_sensitive_approval, pending_user_action_authorities, user_action_authority_from_record,
+    user_action_blocks_operation, SensitiveApprovalRequirement, UserActionOperation,
+    UserActionOperationContext,
 };
 
 impl CoreService {
@@ -712,13 +711,8 @@ fn plan_prepare_write_mutations(
             repo_root: &store.project_record().repo_root,
         })
     };
-    let pending_authorities = pending_user_action_authorities_for_plan(
-        store,
-        project_state,
-        &request.envelope,
-        &task_id,
-        &plan_now,
-    )?;
+    let pending_authorities = pending_user_action_authorities(store, &task_id, &plan_now)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let operation_context = UserActionOperationContext {
         operation: UserActionOperation::PrepareWrite,
         task_id: &task_id,

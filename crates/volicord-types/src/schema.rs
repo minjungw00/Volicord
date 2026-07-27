@@ -399,6 +399,25 @@ pub struct StateRecordRef {
     pub produced_at_state_version: RequiredNullable<u64>,
 }
 
+impl StateRecordRef {
+    /// Constructs one semantic reference to a Core-owned state record.
+    pub fn new(
+        record_kind: StateRecordKind,
+        record_id: impl Into<RecordId>,
+        project_id: ProjectId,
+        task_id: Option<TaskId>,
+        produced_at_state_version: Option<u64>,
+    ) -> Self {
+        Self {
+            record_kind,
+            record_id: record_id.into(),
+            project_id,
+            task_id: task_id.into(),
+            produced_at_state_version: produced_at_state_version.into(),
+        }
+    }
+}
+
 /// One-based inclusive line range within a repository-file source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

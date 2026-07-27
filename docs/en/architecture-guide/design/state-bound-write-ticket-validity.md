@@ -67,10 +67,11 @@ capability.
 - [`crates/volicord-core/src/methods/prepare_write.rs`](../../../../crates/volicord-core/src/methods/prepare_write.rs)
   and [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs):
   issue/reuse and protected consumption planning.
-- [`crates/volicord-core/src/policy/write_ticket.rs`](../../../../crates/volicord-core/src/policy/write_ticket.rs),
-  [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs), and
-  [`path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
+- [`crates/volicord-core/src/policy/write_ticket.rs`](../../../../crates/volicord-core/src/policy/write_ticket.rs)
+  and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
   typed current-basis evaluation.
+- [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
+  shared typed product-path normalization and containment.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):
   strict records, queries, and grouped mutation application.
 

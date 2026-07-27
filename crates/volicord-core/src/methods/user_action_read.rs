@@ -1,31 +1,164 @@
 //! Adapter-neutral UserAction reads and originating-result replay.
 
-use super::authority::user_action_from_record;
-use super::model::{
-    CurrentUserActionFacts, CurrentUserActionRead, CurrentUserActionUnavailableReason,
-    PendingUserActionFacts, PendingUserActionFactsRequest, PendingUserActionResolutionSnapshot,
-    UserActionResolutionAvailability,
-};
-use super::projection::{
-    pending_user_action_fact_records, pending_user_action_facts_from_records,
-    user_action_resolution_facts, user_action_resolution_replay_projection,
-    user_channel_projection_invocation_is_authorized, user_channel_projection_is_authorized,
-};
-use super::resolution::user_action_resolution_from_record;
-use crate::methods::decode_required_json;
+use crate::methods::{decode_required_json, state_ref};
 use crate::pipeline::{
     operation_result_ref, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
     InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement,
 };
-use volicord_store::core_pipeline::CoreProjectStore;
+use crate::policy::evidence::state_record_ref_identity_key;
+use volicord_store::core_pipeline::{
+    CoreProjectStore, ProjectContinuityRecordRecord, ToolInvocationRecord,
+    UserActionResolutionRecord,
+};
 use volicord_store::StoreError;
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId};
-use volicord_types::methods::RequestUserActionResult;
-use volicord_types::schema::{AgentSafeUserActionRequestSummary, RequiredNullable, ToolEnvelope};
-use volicord_types::values::{
-    EffectKind, MethodName, OperationCategory, ResponseKind, UserActionStatus,
+use volicord_types::methods::{RequestUserActionResult, ResolveUserActionResult};
+use volicord_types::schema::{
+    AgentSafeUserActionRequestSummary, RequiredNullable, StateRecordRef, ToolEnvelope,
+    UserActionResolution,
 };
+use volicord_types::values::{
+    ActorSource, EffectKind, MethodName, OperationCategory, ResponseKind, StateRecordKind,
+    UserActionChannelKind, UserActionStatus,
+};
+use volicord_user_action_service::{
+    pending_user_action_facts_from_records, user_action_from_record, user_action_resolution_facts,
+    user_action_resolution_from_record, CurrentUserActionFacts, CurrentUserActionRead,
+    CurrentUserActionUnavailableReason, PendingUserActionFacts, PendingUserActionFactsRequest,
+    PendingUserActionResolutionSnapshot, UserActionResolutionAvailability,
+};
+
+fn user_channel_projection_is_authorized(
+    service: &CoreService,
+    store: &CoreProjectStore,
+    project_id: &ProjectId,
+    invocation: &InvocationContext,
+) -> bool {
+    let same_runtime_home = match (
+        store.canonical_runtime_home(),
+        service.admitted_runtime_home(),
+    ) {
+        (Some(store_runtime_home), Some(service_runtime_home)) => {
+            store_runtime_home == service_runtime_home
+        }
+        (None, None) => store.runtime_home() == service.runtime_home(),
+        _ => false,
+    };
+    same_runtime_home
+        && store.project_record().project_internal_id == project_id.as_str()
+        && user_channel_projection_invocation_is_authorized(project_id, invocation)
+}
+
+fn user_channel_projection_invocation_is_authorized(
+    project_id: &ProjectId,
+    invocation: &InvocationContext,
+) -> bool {
+    project_id == &invocation.project_id
+        && invocation.operation_category == OperationCategory::Read
+        && invocation.actor_source() == ActorSource::LocalUser
+        && invocation.user_channel() == Some(UserActionChannelKind::Cli)
+}
+
+fn user_action_resolution_replay_projection(
+    replay: Option<&ToolInvocationRecord>,
+    continuity_records: &[ProjectContinuityRecordRecord],
+    resolution: &UserActionResolutionRecord,
+    public_resolution: &UserActionResolution,
+    resolution_ref: &StateRecordRef,
+) -> CoreResult<(StateRecordRef, Vec<StateRecordRef>)> {
+    let replay = replay.ok_or_else(|| {
+        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            resolution.user_action_resolution_id.clone(),
+            "channel_submission_id",
+        ))
+    })?;
+    let replay_ref = format!(
+        "{}/{}/{}",
+        replay.project_id, replay.tool_name, replay.idempotency_key
+    );
+    let result: ResolveUserActionResult = decode_required_json(
+        "tool_invocations",
+        replay_ref.clone(),
+        "response_json",
+        Some(&replay.response_json),
+    )?;
+    let exact_replay_context = replay.project_id == resolution.project_id
+        && replay.tool_name == MethodName::ResolveUserAction.as_str()
+        && replay.idempotency_key == resolution.channel_submission_id
+        && replay.actor_source == resolution.resolved_by_actor_source.to_canonical_string()
+        && replay.actor_source == ActorSource::LocalUser.to_canonical_string()
+        && replay.operation_category == OperationCategory::UserOnly.as_str()
+        && replay.verification_basis.as_deref()
+            == Some(resolution.resolved_verification_basis.as_str())
+        && replay.git_workspace_context_json.is_none();
+    let exact_resolution = exact_replay_context
+        && result.user_action_resolution == *public_resolution
+        && result.user_action_resolution_ref.record_kind == StateRecordKind::UserActionResolution
+        && result.user_action_resolution_ref.record_id == resolution_ref.record_id
+        && result.user_action_resolution_ref.project_id == resolution_ref.project_id
+        && result.user_action_resolution_ref.task_id == resolution_ref.task_id
+        && result.base.response_kind == ResponseKind::Result
+        && result.base.effect_kind == EffectKind::CoreCommitted
+        && !result.base.dry_run
+        && result.base.state_version == Some(replay.committed_state_version)
+        && result
+            .user_action_resolution_ref
+            .produced_at_state_version
+            .as_ref()
+            == Some(&replay.committed_state_version);
+    if !exact_resolution {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_json("tool_invocations", replay_ref, "response_json"),
+        ));
+    }
+    let resolution_source_ref = state_ref(
+        StateRecordKind::UserActionResolution,
+        &resolution.user_action_resolution_id,
+        &ProjectId::new(resolution.project_id.clone()),
+        Some(&public_resolution.task_id),
+        Some(replay.committed_state_version),
+    );
+    let mut expected_derived_refs = Vec::new();
+    for record in continuity_records {
+        if record.project_id != resolution.project_id
+            || record.source_task_id != public_resolution.task_id.as_str()
+        {
+            return Err(CorePipelineError::Store(
+                StoreError::corrupt_owner_state_value(
+                    "project_continuity_records",
+                    &record.continuity_record_id,
+                    "source_task_id",
+                ),
+            ));
+        }
+        let source_refs = decode_required_json::<Vec<StateRecordRef>>(
+            "project_continuity_records",
+            record.continuity_record_id.clone(),
+            "source_refs_json",
+            Some(&record.source_refs_json),
+        )?;
+        if source_refs.first() == Some(&resolution_source_ref) {
+            expected_derived_refs.push(state_ref(
+                StateRecordKind::ProjectContinuityRecord,
+                &record.continuity_record_id,
+                &ProjectId::new(record.project_id.clone()),
+                Some(&TaskId::new(record.source_task_id.clone())),
+                Some(replay.committed_state_version),
+            ));
+        }
+    }
+    let mut actual_derived_refs = result.derived_refs.clone();
+    expected_derived_refs.sort_by_key(state_record_ref_identity_key);
+    actual_derived_refs.sort_by_key(state_record_ref_identity_key);
+    if actual_derived_refs != expected_derived_refs {
+        return Err(CorePipelineError::Store(
+            StoreError::corrupt_owner_state_json("tool_invocations", replay_ref, "response_json"),
+        ));
+    }
+    Ok((result.user_action_resolution_ref, result.derived_refs))
+}
 
 impl CoreService {
     /// Reads pending user-action semantic facts for an authenticated User
@@ -61,19 +194,24 @@ impl CoreService {
         }
 
         let Some((project_state, observed_at, records)) = store.with_read_snapshot(|snapshot| {
-            pending_user_action_fact_records(self, snapshot, &request.task_id)
+            if !snapshot.task_exists(&request.task_id)? {
+                return Ok(None);
+            }
+            let project_state = snapshot.project_state()?;
+            let observed_at = self.project_store_now(snapshot)?;
+            let records = snapshot.pending_user_action_records(&request.task_id, &observed_at)?;
+            Ok(Some((project_state, observed_at, records)))
         })?
         else {
             return Ok(None);
         };
-        pending_user_action_facts_from_records(
+        Ok(Some(pending_user_action_facts_from_records(
             request.project_id,
             request.task_id,
             project_state,
             observed_at,
             records,
-        )
-        .map(Some)
+        )?))
     }
 
     /// Reads the exact effective request and pending semantic facts from one Store
@@ -239,9 +377,7 @@ impl CoreService {
             let record = store.user_action_record(user_action_request_id.as_str(), &now)?;
             let origin_replay = record
                 .as_ref()
-                .filter(|record| {
-                    record.request.source_method == MethodName::RequestUserAction.as_str()
-                })
+                .filter(|record| record.request.source_method == MethodName::RequestUserAction)
                 .map(|record| {
                     store.tool_invocation(
                         MethodName::RequestUserAction,
@@ -255,7 +391,7 @@ impl CoreService {
         let Some(record) = record else {
             return Ok(None);
         };
-        if record.request.source_method != MethodName::RequestUserAction.as_str() {
+        if record.request.source_method != MethodName::RequestUserAction {
             return Ok(None);
         }
         let task_id = TaskId::new(record.request.task_id.clone());
@@ -297,7 +433,12 @@ impl CoreService {
         {
             return Ok(None);
         }
-        if replay.actor_source != record.request.requested_by_actor_source {
+        if replay.actor_source
+            != record
+                .request
+                .requested_by_actor_source
+                .to_canonical_string()
+        {
             return Err(CorePipelineError::Store(
                 StoreError::corrupt_owner_state_value(
                     "user_action_requests",
@@ -331,7 +472,11 @@ impl CoreService {
             && replay.tool_name == MethodName::RequestUserAction.as_str()
             && replay.idempotency_key == source_idempotency_key.as_str()
             && replay.operation_category == OperationCategory::AgentWorkflow.as_str()
-            && replay.actor_source == record.request.requested_by_actor_source
+            && replay.actor_source
+                == record
+                    .request
+                    .requested_by_actor_source
+                    .to_canonical_string()
             && replay.committed_state_version > replay.basis_state_version
             && result.base.response_kind == ResponseKind::Result
             && result.base.effect_kind == EffectKind::CoreCommitted

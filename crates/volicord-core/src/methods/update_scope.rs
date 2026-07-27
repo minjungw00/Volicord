@@ -26,15 +26,10 @@ use crate::policy::close_readiness_evidence::evidence_summary_with_required_crit
 use crate::policy::effect_contract::{
     validate_effect_contract, validate_effect_contract_paths, EffectContractValidationError,
 };
-use crate::policy::path::ProductPathError;
-use crate::policy::user_action_relevance::{UserActionOperation, UserActionOperationContext};
 use crate::policy::workflow::{
     acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
     resolve_task_control_authority, ProjectWorkflowPolicy,
 };
-use crate::user_action::authority::user_action_authority_from_record;
-use crate::user_action::lifecycle::projected_user_action_lifecycle_phase;
-use crate::user_action::service::pending_user_action_refs_for_operation;
 use serde_json::json;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
@@ -48,11 +43,16 @@ use volicord_types::ids::{ChangeUnitId, TaskId};
 use volicord_types::methods::{
     MethodOperationCategory, UpdateScopeRequest, UpdateScopeResultFields,
 };
+use volicord_types::product_path::ProductPathError;
 use volicord_types::schema::{AcceptanceCriterion, JsonObject, NextActionSummary, StateRecordRef};
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
     StateRecordKind, TaskControlLevel, TaskMode, UtcTimestamp, WorkPhase,
     WriteTicketInvalidationReason,
+};
+use volicord_user_action_service::{
+    pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
+    user_action_authority_from_record, UserActionOperation, UserActionOperationContext,
 };
 
 impl CoreService {
@@ -318,8 +318,8 @@ fn decide_update_scope_policy(
     };
     if !pending_user_action_refs_for_operation(
         store,
-        project_state,
-        &request.envelope,
+        &request.envelope.project_id,
+        project_state.state_version,
         &plan_now,
         &operation_context,
     )?

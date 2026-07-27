@@ -18,8 +18,6 @@ use crate::pipeline::{
 use crate::policy::close_readiness::is_terminal_lifecycle;
 use crate::policy::evidence::{state_record_ref_identity_key, unique_state_record_refs};
 use crate::policy::workflow::{project_workflow_policy, resolve_task_control_authority};
-use crate::user_action::service::projected_pending_user_action_refs;
-use crate::user_action::summary::agent_safe_pending_user_action_summaries;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader, TaskRecord};
@@ -35,6 +33,9 @@ use volicord_types::schema::{
 use volicord_types::values::{
     AuthorityNextActor, CloseState, MethodName, OperationCategory, StateRecordKind,
     StatusCloseState, TaskLifecyclePhase, UtcTimestamp,
+};
+use volicord_user_action_service::{
+    agent_safe_pending_user_action_summaries, projected_pending_user_action_refs,
 };
 
 impl CoreService {

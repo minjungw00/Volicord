@@ -16,11 +16,10 @@ use volicord_store::{
 use volicord_types::canonical::canonical_json_bare_sha256;
 use volicord_types::ids::{BaselineRef, ProjectId, TaskId};
 use volicord_types::schema::{
-    PersistedUserActionRequest, UserActionBasis, UserActionResolutionBody, WriteTicketAttemptScope,
-    WriteTicketValidityBasis,
+    UserActionBasis, UserActionResolutionBody, WriteTicketAttemptScope, WriteTicketValidityBasis,
 };
 use volicord_types::values::{
-    AcceptancePolicy, JudgmentResolutionOutcome, PromptCaptureStatus, StateRecordKind,
+    AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, PromptCaptureStatus, StateRecordKind,
     TaskControlLevel, UserActionBasisStatus, UserActionKind, UserActionOptionAction,
     UserActionRequiredFor, UtcTimestamp,
 };
@@ -342,12 +341,9 @@ fn current_sensitive_approvals(
         let Some(resolution) = record.resolution else {
             continue;
         };
-        let request: PersistedUserActionRequest =
-            serde_json::from_str(&record.request.request_json).map_err(json_error)?;
-        let basis: UserActionBasis =
-            serde_json::from_str(&record.request.basis_json).map_err(json_error)?;
-        let resolution_body: UserActionResolutionBody =
-            serde_json::from_str(&resolution.resolution_json).map_err(json_error)?;
+        let request = record.request.request;
+        let basis = record.request.basis;
+        let resolution_body = resolution.resolution;
         let accepted = matches!(
             resolution_body,
             UserActionResolutionBody::Choice {
@@ -364,7 +360,7 @@ fn current_sensitive_approvals(
         });
         if basis.compatibility_status() == UserActionBasisStatus::Current
             && accepted
-            && resolution.resolved_by_actor_source == "local_user"
+            && resolution.resolved_by_actor_source == ActorSource::LocalUser
             && request
                 .required_for
                 .contains(&UserActionRequiredFor::PrepareWrite)

@@ -4,12 +4,12 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProductPathError {
+pub enum ProductPathError {
     Invalid,
     LocalAccess,
 }
 
-pub(crate) fn normalize_product_paths(
+pub fn normalize_product_paths(
     repo_root: &Path,
     raw_paths: &[String],
 ) -> Result<Vec<String>, ProductPathError> {
@@ -87,14 +87,14 @@ fn ensure_product_path_does_not_escape(
     }
 }
 
-pub(crate) fn path_is_within(path: &str, scope: &str) -> bool {
+pub fn path_is_within(path: &str, scope: &str) -> bool {
     path == scope
         || path
             .strip_prefix(scope)
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
-pub(crate) fn paths_are_authorized(observed_paths: &[String], authorized_paths: &[String]) -> bool {
+pub fn paths_are_authorized(observed_paths: &[String], authorized_paths: &[String]) -> bool {
     !observed_paths.is_empty()
         && !authorized_paths.is_empty()
         && observed_paths.iter().all(|path| {

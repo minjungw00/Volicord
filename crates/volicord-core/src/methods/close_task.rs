@@ -18,7 +18,6 @@ use crate::pipeline::{
     MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
-use crate::user_action::summary::agent_safe_pending_user_action_summaries;
 use serde_json::json;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
@@ -40,6 +39,7 @@ use volicord_types::values::{
     ProjectContinuityKind, StateRecordKind, StatusCloseState, TaskMode, UtcTimestamp,
     WriteTicketInvalidationReason,
 };
+use volicord_user_action_service::agent_safe_pending_user_action_summaries;
 
 /// Canonical close-method request after request-local identity and intent validation.
 #[derive(Debug, Clone, PartialEq)]

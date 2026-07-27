@@ -8,7 +8,7 @@ use volicord_store::{
 use volicord_types::schema::{ProjectWorkflowPolicySummary, WORKFLOW_POLICY_CONTRACT_ID};
 use volicord_types::values::{AcceptancePolicy, RequestedControlLevel, TaskControlLevel, TaskMode};
 
-use crate::policy::path::path_is_within;
+use volicord_types::product_path::path_is_within;
 
 /// Core-owned view of the project workflow policy.
 ///

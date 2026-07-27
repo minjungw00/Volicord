@@ -15,16 +15,17 @@ Core는 사용자 소유 동작 하나를 엄격한 `UserActionRequest` 하나�
 `UserActionResolutionForm`을 command-model invocation이 포함된 typed CLI inbox
 model로 표시한 뒤 Core를 통해 명시적인 local-user resolution을 제출합니다.
 
-Core UserAction 서비스는 타입으로 표현한 행동 의도를 검증하고 정규 request를
+UserAction 서비스는 타입으로 표현한 행동 의도를 검증하고 정규 request를
 구성·구체화하며, 현재 권한을 해석하고 도메인 소유 pending 상태와 User Channel
 안내 대신 semantic pending, current, availability, safe resolution fact를
-투영합니다. 직접 UserAction 메서드 모듈은 request/resume 및 resolution 조율과
-neutral fact read를 담당합니다. Core는 CLI command, channel label, rendered
-instruction, capture metadata, MCP envelope를 구성하지 않습니다.
+투영합니다. UserAction 메서드 모듈은 request/resume 및 resolution 조율,
+User Channel 권한 검사, replay, neutral fact read를 담당합니다. Core는 CLI
+command, channel label, rendered instruction, capture metadata, MCP envelope를
+구성하지 않습니다.
 
-Core policy 모듈은 현재 basis, action relevance, actor provenance, close 또는 write
-compatibility를 평가합니다. Adapter는 chat text, summary text, model이 작성한
-recommendation에서 judgment를 추론하지 않습니다.
+UserAction 서비스는 현재 basis와 action relevance를 평가합니다. Core는 invocation
+provenance와 close 또는 write compatibility를 평가합니다. Adapter는 chat text,
+summary text, model이 작성한 recommendation에서 judgment를 추론하지 않습니다.
 
 ## 불변 조건
 
@@ -39,10 +40,11 @@ recommendation에서 judgment를 추론하지 않습니다.
 
 ## 책임 경계
 
-Core UserAction 서비스는 공유 request 구성과 구체화, 권한 해석, lifecycle 정책,
-adapter-neutral fact를 담당합니다. 직접 메서드 모듈은 typed 공개
-request/resolution transition과 요청별 결과 구성을 담당합니다. Core policy
-모듈은 순수 정책 평가를 담당합니다. `volicord-command-model`은 정규 CLI syntax를
+UserAction 서비스는 공유 request 구성과 구체화, 권한 해석, lifecycle 정책, action
+relevance, 영속화 매핑, continuity 파생, adapter-neutral fact를 담당합니다. Core
+메서드 모듈은 typed 공개 request/resolution transition, User Channel 읽기,
+transaction 순서, 요청별 결과 구성을 담당합니다. 나머지 Core policy 모듈은 각자의
+집중된 순수 정책 평가를 담당합니다. `volicord-command-model`은 정규 CLI syntax를
 담당합니다. `volicord-user-action-presentation`은 공유 CLI 지향 inbox와 recovery
 presentation을 담당합니다. `volicord-cli`는 terminal rendering과 명시적인 choice
 collection을 담당합니다. `volicord-mcp`는 agent-safe protocol projection, neutral
@@ -76,14 +78,13 @@ User Channel로 만들지 않습니다.
 
 ## 구현 경로
 
-- [`crates/volicord-core/src/user_action/`](../../../../crates/volicord-core/src/user_action/):
-  typed request 구성과 구체화, 현재 권한 해석, lifecycle 정책, neutral read,
-  semantic fact.
+- [`crates/volicord-user-action-service/src/`](../../../../crates/volicord-user-action-service/src/):
+  typed request 구성과 구체화, 현재 권한 해석, lifecycle 및 relevance 의미,
+  영속화 매핑, continuity 파생, neutral semantic fact.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
-  직접 request 및 resolution 메서드 조율.
-- [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../../crates/volicord-core/src/policy/user_action_relevance.rs)와
-  [`policy/close_readiness.rs`](../../../../crates/volicord-core/src/policy/close_readiness.rs):
-  현재 relevance와 authority 평가.
+  직접 request 및 resolution 메서드 조율. 인접한 `user_action_read.rs`와
+  `user_action_continuity.rs`는 User Channel read/replay와 continuity 영속화
+  조율을 담당합니다.
 - [`crates/volicord-cli/src/user_command.rs`](../../../../crates/volicord-cli/src/user_command.rs):
   local User Channel 조율과 terminal rendering.
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs)와

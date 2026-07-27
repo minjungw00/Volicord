@@ -5,26 +5,18 @@ use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
 use crate::methods::{
     change_unit_ref, decode_required_json, parse_acceptance_policy, parse_task_control_level,
-    state_ref, store_error_plan, stored_refs_to_state_refs, PlanError,
+    state_ref, store_error_plan, stored_refs_to_state_refs, user_action_service_plan_error,
+    PlanError,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness::{
     current_cancellation_authority, current_final_acceptance,
     current_residual_risk_acceptance_coverage, final_acceptance_requirement,
-    user_action_has_current_basis, verified_user_channel_provenance,
-    CancellationAuthorityRequirement, UserActionAuthority,
-};
-use crate::policy::path::{path_is_within, paths_are_authorized};
-use crate::policy::user_action_relevance::{
-    user_action_blocks_operation, user_action_required_for, UserActionOperation,
-    UserActionOperationContext,
-};
-use crate::policy::write_ticket::{current_sensitive_approval, SensitiveApprovalRequirement};
-use crate::user_action::service::{
-    pending_user_action_authorities_for_plan, resolved_user_action_authorities_for_plan,
+    CancellationAuthorityRequirement,
 };
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::{BaselineRef, ChangeUnitId};
+use volicord_types::product_path::{path_is_within, paths_are_authorized};
 use volicord_types::schema::{
     CloseReadinessBlocker, RiskAcceptanceCoverage, StateRecordRef, WriteTicketValidityBasis,
 };
@@ -32,6 +24,12 @@ use volicord_types::values::{
     AcceptancePolicy, ActorSource, CloseIntent, CloseReadinessBlockerCategory, JudgmentKind,
     JudgmentResolutionOutcome, StateRecordKind, TaskControlLevel, UserActionKind,
     UserActionRequiredFor, UtcTimestamp,
+};
+use volicord_user_action_service::{
+    current_sensitive_approval, pending_user_action_authorities, resolved_user_action_authorities,
+    user_action_blocks_operation, user_action_has_current_basis, user_action_required_for,
+    verified_user_channel_provenance, SensitiveApprovalRequirement, UserActionAuthority,
+    UserActionOperation, UserActionOperationContext,
 };
 
 pub(super) fn terminal_blockers(
@@ -294,13 +292,8 @@ fn pending_user_action_authorities_for_context(
     if let Some(authorities) = &context.pending_user_action_authorities {
         return Ok(authorities.clone());
     }
-    let authorities = pending_user_action_authorities_for_plan(
-        store,
-        project_state,
-        &request.envelope,
-        &request.task_id,
-        &context.now,
-    )?;
+    let authorities = pending_user_action_authorities(store, &request.task_id, &context.now)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     context.pending_user_action_authorities = Some(authorities.clone());
     Ok(authorities)
 }
@@ -325,14 +318,11 @@ fn resolved_judgment_authorities_for_context(
     {
         return Ok(authorities.clone());
     }
-    let authorities = resolved_user_action_authorities_for_plan(
-        store,
-        project_state,
-        &request.envelope,
-        &request.task_id,
-        judgment_kind,
-        &context.now,
-    )?;
+    let authorities =
+        resolved_user_action_authorities(store, &request.task_id, judgment_kind, &context.now)
+            .map_err(|error| {
+                user_action_service_plan_error(&request.envelope, project_state, error)
+            })?;
     context
         .stored_resolved_judgment_authorities
         .insert(judgment_kind, authorities.clone());

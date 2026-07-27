@@ -1,13 +1,14 @@
 mod authority;
 mod body;
+mod continuity;
 mod identity;
 mod lifecycle;
 mod materialization;
 mod persistence;
 mod validation;
 
-use crate::user_action::body::construct_canonical_body;
-use crate::user_action::model::{
+use crate::body::construct_canonical_body;
+use crate::model::{
     UserActionBodyFacts, UserActionIntent, UserActionValidationInput, ValidatedUserAction,
     ValidatedUserActionIntent,
 };

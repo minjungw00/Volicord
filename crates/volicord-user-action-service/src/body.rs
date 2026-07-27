@@ -1,6 +1,5 @@
 use super::model::{UserActionBodyFacts, ValidatedUserAction, ValidatedUserActionIntent};
-use super::validation::UserActionDomainError;
-use crate::methods::normalize_display_text;
+use crate::error::UserActionValidationError as UserActionDomainError;
 use volicord_types::ids::UserActionOptionId;
 use volicord_types::schema::{
     UserActionBasis, UserActionChoiceBasis, UserActionChoiceDraft, UserActionChoiceRequestBody,
@@ -215,4 +214,8 @@ fn authority_option_copy(
             format!("This user action resolves as {outcome}."),
         )
     }
+}
+
+fn normalize_display_text(value: &str) -> String {
+    value.trim().to_owned()
 }

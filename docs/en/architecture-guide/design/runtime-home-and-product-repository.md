@@ -78,8 +78,8 @@ lifecycles. A location does not prove authority or actor identity.
 - [`crates/volicord-cli/src/setup_command/`](../../../../crates/volicord-cli/src/setup_command/)
   and [`connection_command/setup_transaction.rs`](../../../../crates/volicord-cli/src/connection_command/setup_transaction.rs):
   setup and managed-file transactions.
-- [`crates/volicord-core/src/policy/path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
-  Core policy path helpers.
+- [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
+  shared typed product-path normalization and containment helpers.
 - [`xtask/src/repository.rs`](../../../../xtask/src/repository.rs):
   source-repository root and path handling.
 

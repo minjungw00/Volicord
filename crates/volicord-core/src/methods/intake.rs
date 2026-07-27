@@ -25,7 +25,6 @@ use crate::policy::workflow::{
     project_workflow_policy, resolve_task_control_authority, ProjectWorkflowPolicy,
 };
 use crate::policy::write_ticket::normalized_string_set;
-use crate::user_action::service::projected_pending_user_action_refs;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
@@ -45,6 +44,7 @@ use volicord_types::values::{
     RequestedControlLevel, ResumePolicy, StateRecordKind, TaskControlLevel, TaskLineageRelation,
     TaskMode, UtcTimestamp, WriteTicketInvalidationReason,
 };
+use volicord_user_action_service::projected_pending_user_action_refs;
 
 impl CoreService {
     /// Executes `volicord.intake` through the shared Core mutation pipeline.

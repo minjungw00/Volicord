@@ -40,6 +40,7 @@ flowchart LR
   syntax["volicord-command-model"]
   presentation["UserAction presentation"]
   core["volicord-core"]
+  action_service["volicord-user-action-service"]
   store["volicord-store<br/>(including artifact facilities)"]
   runtime["Volicord Runtime Home"]
   product["Product Repository"]
@@ -53,7 +54,9 @@ flowchart LR
   inbox --> core
   inbox --> presentation
   presentation --> syntax
+  core --> action_service
   core --> store
+  action_service --> store
   store --> runtime
   product -. observed inputs and owner-defined paths .-> core
   host -. product-file tools outside public API .-> product
@@ -81,7 +84,8 @@ the public method execution path.
 | `crates/volicord-types` | Shared request, response, schema-shaped, value-set, identifier, canonical-hash, platform, and host-configuration types; semantic UserAction request, immutable resolution, and adapter-neutral `UserActionResolutionForm` types; single-declaration public method-result and fields-only composition types; diagnostic lifecycle and `CurrentDiagnosticKey` identity types; selected-Connection and lifecycle-aware lookup report types; the shared tagged integration-verification workflow model; and the canonical `AgentToolId` catalog and wire-name projection. It owns no CLI presentation model or rendering helper. Its public Rust vocabulary is routed through the module that owns each item; the crate root provides module routing rather than an aggregate type facade. |
 | `crates/volicord-host-contract` | Dependency-safe semantic Codex contracts through `CodexMcpTurnMetadata`, `CodexCommandHooks`, and `CodexMcpCallableNames`; explicit MCP server/raw-tool identities; collision-checked callable projection and catalog lookup; deterministic contract identities; bounded host values and errors; and source-specific correlation types. It owns no Store, Core, CLI, or MCP policy. |
 | `crates/volicord-store` | Canonical SQLite storage, Runtime Home, bootstrap, project Store, one-time managed MCP launch leases, Agent Connection runtime/project sessions, lifecycle-specific structured finding persistence, explicit diagnostic query and cause-graph traversal APIs, artifact storage, inspection, export snapshots, and storage-error implementation. |
-| `crates/volicord-core` | Adapter-independent Core service, host-neutral typed invocation authority, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, and Store coordination. |
+| `crates/volicord-user-action-service` | Reusable UserAction semantic validation, canonical construction, identity, authority, lifecycle, persistence mapping, materialization, resolution, continuity derivation, and adapter-neutral fact projection. It owns no Core pipeline, method-result, CLI, or MCP infrastructure. |
+| `crates/volicord-core` | Adapter-independent request orchestration, host-neutral typed invocation authority, shared typed request and result-composition pipeline, fields-only method planning, policy checks, final response construction after branch facts are known, Store coordination, and mapping of UserAction service outcomes into method results. |
 | `crates/volicord-command-model` | Complete Clap declaration for the `volicord` binary: root parser, public and hidden subcommand tree, command and argument DTOs, command-surface value enums and validators, actual-model visibility classification, a fresh root `clap::Command`, command-path traversal, canonical synopses, canonical parseable public invocations, and typed inbox-resolution invocation builders derived from that declaration. It owns no command execution or application service. |
 | `crates/volicord-user-action-presentation` | Typed CLI UserAction presentation through `CliUserActionInboxResponse`, `CliUserActionInboxItem`, tagged channel/capture-path states, CLI JSON Schemas, and command-model-backed recovery instructions. It consumes shared semantic types and canonical command-model invocations and owns no Core policy, Store access, command execution, terminal rendering, or MCP envelope. |
 | `crates/volicord-cli` | Local `volicord` process startup, administrative command dispatch and reusable execution modules for setup, project registration, CLI inbox commands, Codex Agent Connection install/verify/repair/uninstall, host/MCP/Guard verification checks, dependency-graph policy, rendering, the hidden same-process managed-host launcher, and managed stdio MCP supervision policy, deadlines, framing, progress, and diagnostics. |
@@ -135,8 +139,11 @@ The durable dependency direction is:
 - `volicord-store` depends on shared types and the read-only canonical Git
   layout primitive used to validate stored owner paths. It owns persistence
   mechanics and does not depend on Core, CLI, or MCP adapter crates.
-- `volicord-core` depends on Store and shared types and uses test support only
-  as a development dependency. Its public invocation boundary accepts
+- `volicord-user-action-service` depends only on Store and shared types, with
+  test support as a development dependency. It cannot depend on Core, CLI,
+  MCP, presentation, or method-result infrastructure.
+- `volicord-core` depends on the UserAction service, Store, and shared types
+  and uses test support only as a development dependency. Its public invocation boundary accepts
   `InvocationAuthority`: a typed local `UserActionChannelKind` or an opaque
   `ValidatedAgentSession`. Core does not accept adapter-selected actor labels,
   host command syntax, launch arguments, configuration paths, or rendering
@@ -203,35 +210,23 @@ external crate from calling the internal opens or constructing a detached
 mutation context. Compile-fail coverage protects both inaccessible Store entry
 points and the permit-bound context lifetime.
 
-## Core UserAction ownership
+## UserAction ownership
 
-`crates/volicord-core/src/user_action/` owns shared UserAction domain and
-application behavior outside method-specific orchestration. `model.rs` carries
-semantic intent, validated construction values, and adapter-neutral fact
-types. `validation.rs`, `body.rs`, and `identity.rs` respectively own pure
-semantic validation, canonical typed `UserActionRequestBody` and
-`UserActionBasis` construction, and stable source identity plus request-ID
-allocation. `service.rs` acquires current Store facts and coordinates those
-pure stages without writing. `materialization.rs` adds operation identity and
-forms the public request or immutable resolution, while `persistence.rs`
-performs the exact mapping to the effective Store record and typed
-`CoreStorageMutation`. Serialization is confined to this materialization and
-persistence boundary.
+`crates/volicord-user-action-service/` owns reusable UserAction semantics.
+Its responsibility modules cover validation, canonical typed request-body and
+basis construction, source identity, authority, lifecycle interpretation,
+materialization, persistence mapping, resolution, continuity derivation, and
+adapter-neutral projections and summaries. The crate accepts explicit semantic
+construction and persistence contexts, returns typed service errors and facts,
+and depends on Store and shared types without depending on Core or adapters.
 
-`authority.rs` strictly decodes and normalizes stored authority,
-`lifecycle.rs` interprets projected Task lifecycle, `resolution.rs` owns typed
-resolution validation and construction, and `continuity.rs` plans continuity
-records derived from accepted resolutions. `projection.rs`, `reader.rs`, and
-`summary.rs` own neutral pending/current fact projection, Store-backed reads
-and originating-result replay, and adapter-safe summaries. These facts contain
-semantic coordinates, status, availability, and safe resolution facts rather
-than command strings, labels, CLI capture metadata, rendered instructions, or
-MCP envelopes.
-
-`crates/volicord-core/src/methods/user_action.rs` retains only direct request
-and resolution method orchestration and decides how the shared typed results
-participate in each operation result. Callers supply semantic intent to
-`user_action::service`; they do not construct canonical stored action JSON.
+`crates/volicord-core/src/methods/user_action.rs`,
+`user_action_read.rs`, and `user_action_continuity.rs` own request
+orchestration: invocation authority, generated identifiers and timestamps,
+Store transaction sequencing, originating-result replay, method-result
+composition, and translation of service errors into Core outcomes. Callers
+supply semantic intent to the service; neither Core consumers nor adapters
+construct canonical stored action JSON.
 
 `volicord-types` derives the adapter-neutral `UserActionResolutionForm` from the
 stored semantic request body. `volicord-user-action-presentation` projects

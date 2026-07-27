@@ -57,7 +57,7 @@ without adding a second Store abstraction:
 | `tasks.rs` | Task and acceptance mutation inputs and SQL; Task rows, acceptance criteria, evidence claims, and Task revisions. |
 | `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change-unit, write-ticket, and Run mutation inputs and SQL; their reads and Run observed-change projection. |
 | `evidence.rs`, `artifacts.rs` | Evidence and artifact mutation inputs and SQL; evidence summary and observation reads, artifact staging records, durable artifact records, artifact links, and artifact-body verification on reads. |
-| `user_actions.rs`, `continuity.rs` | User-action and continuity mutation inputs and SQL; user-action request/resolution and effective-status reads, plus project-continuity rows and bounded pages. |
+| `user_actions.rs`, `continuity.rs` | User-action and continuity mutation inputs and SQL; strict decoding of physical JSON and stored scalar values into typed request/resolution records, effective-status reads, project-continuity rows, and bounded pages. |
 | `replay.rs` | Tool-invocation lookup, verified replay context, and immutable operation-result projection. |
 | `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | Product-write observation candidates, active blocker references, event identity lookup, and the project-local Agent Session entry point. |
 | `record_refs.rs`, `inspection.rs` | Shared stored-record references and no-effect storage counters used by verification paths. |

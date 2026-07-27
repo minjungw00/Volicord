@@ -1,39 +1,58 @@
 use std::path::PathBuf;
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, EffectiveUserActionRecord, ProjectStateHeader, TaskRecord,
+    ChangeUnitRecord, CoreProjectStore, EffectiveUserActionRecord, TaskRecord,
 };
 use volicord_types::ids::{
-    ChangeUnitId, ProjectId, RiskId, TaskId, UserActionOptionId, UserActionRequestId,
-    UserActionResolutionId,
+    ChangeUnitId, IdempotencyKey, ProjectId, RiskId, TaskId, UserActionOptionId,
+    UserActionRequestId, UserActionResolutionId,
 };
 use volicord_types::schema::{
-    ArtifactRef, EvidenceTarget, RequiredNullable, StateRecordRef, ToolEnvelope, UserActionBasis,
+    ArtifactRef, EvidenceTarget, RequiredNullable, StateRecordRef, UserActionBasis,
     UserActionBasisCoordinates, UserActionDraft, UserActionRequest, UserActionRequestBody,
+    UserActionResolutionBody,
 };
 use volicord_types::values::{
-    EvidenceRelevanceStatus, JudgmentResolutionOutcome, UserActionChannelKind, UserActionKind,
-    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UtcTimestamp,
+    ActorSource, EvidenceRelevanceStatus, JudgmentResolutionOutcome, UserActionBasisStatus,
+    UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
+    UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
 };
 
 /// Semantic intent supplied by a Core operation that needs one current UserAction.
 #[derive(Debug, Clone)]
-pub(crate) struct UserActionIntent {
-    pub(crate) task_id: TaskId,
-    pub(crate) change_unit_id: Option<ChangeUnitId>,
-    pub(crate) action: UserActionDraft,
-    pub(crate) required_for: Vec<UserActionRequiredFor>,
-    pub(crate) expires_at: RequiredNullable<UtcTimestamp>,
+pub struct UserActionIntent {
+    pub task_id: TaskId,
+    pub change_unit_id: Option<ChangeUnitId>,
+    pub action: UserActionDraft,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Semantic operation facts needed to validate and construct a UserAction.
+#[derive(Debug, Clone)]
+pub struct UserActionConstructionContext {
+    pub project_id: ProjectId,
+    pub observed_state_version: u64,
+    pub observed_at: UtcTimestamp,
+    pub locale: Option<String>,
 }
 
 /// Current domain facts used to validate and construct one canonical UserAction.
-pub(crate) struct UserActionConstructionInput<'a> {
-    pub(crate) store: &'a CoreProjectStore<'a>,
-    pub(crate) project_state: &'a ProjectStateHeader,
-    pub(crate) envelope: &'a ToolEnvelope,
-    pub(crate) task: &'a TaskRecord,
-    pub(crate) current_change_unit: Option<&'a ChangeUnitRecord>,
-    pub(crate) operation_now: &'a UtcTimestamp,
-    pub(crate) intent: UserActionIntent,
+pub struct UserActionConstructionInput<'a> {
+    pub store: &'a CoreProjectStore<'a>,
+    pub task: &'a TaskRecord,
+    pub current_change_unit: Option<&'a ChangeUnitRecord>,
+    pub context: UserActionConstructionContext,
+    pub intent: UserActionIntent,
+}
+
+/// Durable identity and actor facts used to materialize one request.
+#[derive(Debug, Clone)]
+pub struct UserActionPersistenceContext {
+    pub project_id: ProjectId,
+    pub actor_source: ActorSource,
+    pub operation_identity: IdempotencyKey,
+    pub planned_state_version: u64,
+    pub user_action_request_id: UserActionRequestId,
 }
 
 /// Store-acquired facts needed by canonical body construction.
@@ -77,14 +96,35 @@ pub(super) struct ValidatedUserActionIntent {
 
 /// Validated semantic intent with its canonical typed body and authority basis.
 #[derive(Debug, Clone)]
-pub(crate) struct ValidatedUserAction {
-    pub(crate) task_id: TaskId,
-    pub(crate) coordinate_change_unit_id: Option<ChangeUnitId>,
-    pub(crate) body: UserActionRequestBody,
-    pub(crate) basis: UserActionBasis,
-    pub(crate) required_for: Vec<UserActionRequiredFor>,
-    pub(crate) expires_at: RequiredNullable<UtcTimestamp>,
-    pub(crate) created_at: UtcTimestamp,
+pub struct ValidatedUserAction {
+    pub task_id: TaskId,
+    pub coordinate_change_unit_id: Option<ChangeUnitId>,
+    pub body: UserActionRequestBody,
+    pub basis: UserActionBasis,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub expires_at: RequiredNullable<UtcTimestamp>,
+    pub created_at: UtcTimestamp,
+}
+
+/// Normalized authority facts decoded from one current UserAction record.
+#[derive(Debug, Clone)]
+pub struct UserActionAuthority {
+    pub user_action_request_id: String,
+    pub user_action_resolution_id: Option<String>,
+    pub task_id: TaskId,
+    pub action_kind: UserActionKind,
+    pub status: UserActionStatus,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub affected_refs: Vec<StateRecordRef>,
+    pub machine_action: Option<UserActionOptionAction>,
+    pub resolution_outcome: Option<JudgmentResolutionOutcome>,
+    pub resolved_by_actor_source: Option<ActorSource>,
+    pub resolved_verification_basis: Option<UserActionVerificationBasis>,
+    pub resolved_assurance_level: Option<String>,
+    pub basis_status: UserActionBasisStatus,
+    pub basis: Option<UserActionBasis>,
+    pub resolution: Option<UserActionResolutionBody>,
+    pub expires_at: Option<UtcTimestamp>,
 }
 
 /// Current adapter-neutral semantic facts for one user-action request.

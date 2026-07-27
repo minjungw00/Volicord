@@ -61,7 +61,7 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 | `tasks.rs` | Task 및 수락 mutation 입력과 SQL, Task row, 수락 기준, 증거 주장, Task revision. |
 | `change_units.rs`, `write_tickets.rs`, `runs.rs` | Change Unit, Write Ticket, Run mutation 입력과 SQL, 해당 읽기와 Run observed-change projection. |
 | `evidence.rs`, `artifacts.rs` | 증거 및 artifact mutation 입력과 SQL, 증거 요약과 관찰 읽기, artifact staging record, 영속 artifact record, artifact link, 읽기 시 artifact 본문 검증. |
-| `user_actions.rs`, `continuity.rs` | User Action 및 continuity mutation 입력과 SQL, User Action 요청·해결 및 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
+| `user_actions.rs`, `continuity.rs` | User Action 및 continuity mutation 입력과 SQL, 물리 JSON 및 저장 scalar를 typed 요청·해결 레코드로 엄격하게 decoding하는 읽기, 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
 | `replay.rs` | Tool invocation 조회, 검증된 replay context, 변경 불가능한 operation-result projection. |
 | `reconciliation.rs`, `blockers.rs`, `events.rs`, `agent_sessions.rs` | 제품 쓰기 관찰 후보, 활성 blocker reference, event identity 조회, 프로젝트 로컬 Agent Session 진입점. |
 | `record_refs.rs`, `inspection.rs` | 공유 저장 record reference와 검증 경로에서 사용하는 무효과 저장소 counter. |

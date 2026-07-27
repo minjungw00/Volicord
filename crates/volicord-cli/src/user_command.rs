@@ -7,11 +7,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 use volicord_command_model::{InboxArgs, InboxCommand, InboxResolveArgs, StatusArgs};
-use volicord_core::{
-    CorePipelineError, CoreService, InvocationContext, PendingUserActionFacts,
-    PendingUserActionFactsRequest, PipelineResponse, UserActionResolutionAvailability,
-    UserActionResolutionUnavailableReason,
-};
+use volicord_core::{CorePipelineError, CoreService, InvocationContext, PipelineResponse};
 use volicord_store::{
     core_pipeline::{CoreProjectStore, EffectiveUserActionRecord},
     diagnostics::{start_diagnostic_session, DiagnosticSessionStart, DiagnosticTransport},
@@ -23,8 +19,8 @@ use volicord_types::ids::{
 };
 use volicord_types::methods::{ResolveUserActionRequest, StatusInclude, StatusRequest};
 use volicord_types::schema::{
-    EvidenceTarget, PersistedUserActionRequest, SummaryCard, ToolEnvelope,
-    UserActionResolutionChoice, UserActionResolutionForm, UserActionResolutionInput,
+    EvidenceTarget, SummaryCard, ToolEnvelope, UserActionResolutionChoice,
+    UserActionResolutionForm, UserActionResolutionInput,
 };
 use volicord_types::values::{
     ArtifactAvailability, ArtifactIntegrityStatus, EvidenceRelevanceStatus, MethodName,
@@ -33,6 +29,10 @@ use volicord_types::values::{
 use volicord_user_action_presentation::{
     cli_inbox_item, cli_user_channel_availability, CliUserActionInboxItem,
     CliUserActionInboxResponse, CliUserChannelAvailability,
+};
+use volicord_user_action_service::{
+    PendingUserActionFacts, PendingUserActionFactsRequest, UserActionResolutionAvailability,
+    UserActionResolutionUnavailableReason,
 };
 
 use crate::mutation_admission::{with_cli_runtime_home_mutation_result, CliMutationAdmissionError};
@@ -461,12 +461,7 @@ fn resolution_from_immutable_request(
     record: &EffectiveUserActionRecord,
     parsed: &ParsedInboxOptions,
 ) -> Result<UserActionResolutionInput, UserCommandError> {
-    let request: PersistedUserActionRequest = serde_json::from_str(&record.request.request_json)
-        .map_err(|error| {
-            UserCommandError::Runtime(format!(
-                "failed to decode user_action_requests.request_json for replay: {error}"
-            ))
-        })?;
+    let request = &record.request.request;
     let form = request.body.resolution_form().map_err(|error| {
         UserCommandError::Runtime(format!(
             "invalid immutable user-action request for replay: {error}"

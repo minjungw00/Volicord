@@ -1,20 +1,15 @@
-use std::{collections::BTreeSet, path::Path};
+use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
 use volicord_store::{core_pipeline::WriteTicketRecord, StoreError};
 use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
+use volicord_types::product_path::paths_are_authorized;
 use volicord_types::schema::{
     DryRunSummary, GuaranteeDisplay, ObservedChanges, PlannedBlocker, PlannedEffect,
-    SensitiveActionScope, StateRecordRef, WriteDecisionReason, WriteTicketAttemptScope,
+    StateRecordRef, WriteDecisionReason, WriteTicketAttemptScope,
 };
 use volicord_types::values::{
-    PlannedBlockerSourceKind, PrepareWriteDecision, UserActionKind, UserActionRequiredFor,
-    UtcTimestamp, WriteDecisionCategory,
-};
-
-use crate::policy::{
-    close_readiness::{accepted_current_user_authority, UserActionAuthority},
-    path::{normalize_product_paths, path_is_within, paths_are_authorized, ProductPathError},
+    PlannedBlockerSourceKind, PrepareWriteDecision, UtcTimestamp, WriteDecisionCategory,
 };
 
 pub(crate) fn write_ticket_is_idle_expired(
@@ -196,112 +191,6 @@ fn write_decision_category_value(category: WriteDecisionCategory) -> &'static st
         WriteDecisionCategory::EffectContract => "effect_contract",
         WriteDecisionCategory::ConnectionCapability => "connection_capability",
     }
-}
-
-pub(crate) struct SensitiveApprovalRequirement<'a> {
-    pub(crate) task_id: &'a TaskId,
-    pub(crate) change_unit_id: &'a ChangeUnitId,
-    pub(crate) scope_revision: u64,
-    pub(crate) operation: &'a str,
-    pub(crate) normalized_paths: &'a [String],
-    pub(crate) sensitive_categories: &'a [String],
-    pub(crate) baseline_ref: Option<&'a BaselineRef>,
-    pub(crate) required_for: UserActionRequiredFor,
-    pub(crate) now: &'a UtcTimestamp,
-    pub(crate) repo_root: &'a Path,
-}
-
-pub(crate) fn current_sensitive_approval(
-    judgment: &UserActionAuthority,
-    requirement: &SensitiveApprovalRequirement<'_>,
-) -> bool {
-    if !accepted_current_user_authority(judgment, UserActionKind::SensitiveApproval) {
-        return false;
-    }
-    if !judgment.required_for.contains(&requirement.required_for) {
-        return false;
-    }
-    let Some(basis) = judgment.basis.as_ref() else {
-        return false;
-    };
-    let coordinates = basis.coordinates();
-    if coordinates.task_id != *requirement.task_id
-        || coordinates.change_unit_id.as_ref() != Some(requirement.change_unit_id)
-        || coordinates.scope_revision != requirement.scope_revision
-        || coordinates.baseline_ref.as_ref() != requirement.baseline_ref
-    {
-        return false;
-    }
-    let Some(scope) = basis.sensitive_action_scope() else {
-        return false;
-    };
-    sensitive_action_scope_matches_requirement(scope, requirement)
-}
-
-pub(crate) fn sensitive_action_scope_matches_requirement(
-    scope: &SensitiveActionScope,
-    requirement: &SensitiveApprovalRequirement<'_>,
-) -> bool {
-    if scope
-        .expires_at
-        .as_ref()
-        .is_some_and(|expires_at| requirement.now >= expires_at)
-    {
-        return false;
-    }
-    if scope.action_kind != normalize_sensitive_text(requirement.operation) {
-        return false;
-    }
-    if !category_set(requirement.sensitive_categories)
-        .is_subset(&category_set(&scope.sensitive_categories))
-    {
-        return false;
-    }
-    let Ok(approved_paths) = normalize_product_paths(requirement.repo_root, &scope.intended_paths)
-    else {
-        return false;
-    };
-    requirement.normalized_paths.iter().all(|path| {
-        approved_paths
-            .iter()
-            .any(|approved| path_is_within(path, approved))
-    })
-}
-
-pub(crate) fn normalize_sensitive_action_scope(
-    repo_root: &Path,
-    scope: &SensitiveActionScope,
-) -> Result<SensitiveActionScope, ProductPathError> {
-    Ok(SensitiveActionScope {
-        action_kind: normalize_sensitive_text(&scope.action_kind),
-        description: normalize_sensitive_text(&scope.description),
-        intended_paths: normalize_product_paths(repo_root, &scope.intended_paths)?
-            .into_iter()
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect(),
-        sensitive_categories: normalized_string_set(&scope.sensitive_categories),
-        command_or_tool_summary: scope
-            .command_or_tool_summary
-            .as_ref()
-            .map(|value| normalize_sensitive_text(value))
-            .filter(|value| !value.is_empty())
-            .into(),
-        network_or_host_summary: scope
-            .network_or_host_summary
-            .as_ref()
-            .map(|value| normalize_sensitive_text(value))
-            .filter(|value| !value.is_empty())
-            .into(),
-        secret_or_credential_summary: scope
-            .secret_or_credential_summary
-            .as_ref()
-            .map(|value| normalize_sensitive_text(value))
-            .filter(|value| !value.is_empty())
-            .into(),
-        capability_claim: normalize_sensitive_text(&scope.capability_claim),
-        expires_at: scope.expires_at.clone(),
-    })
 }
 
 pub(crate) fn normalized_string_set(values: &[String]) -> Vec<String> {

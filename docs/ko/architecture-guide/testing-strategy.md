@@ -21,6 +21,13 @@ replay 순서, rollback, 내구성, aggregate 간 저장 효과 테스트는
 저장 효과를 우선하며, 정규 SQL 담당 문서가 해당 byte를 현재 계약으로 정한
 경우에만 완전한 SQL text를 직접 비교합니다.
 
+`volicord-user-action-service`에서는 의미 검증, 정규 body와 identity 구성,
+authority, lifecycle, materialization, 영속화 매핑, resolution, continuity,
+neutral projection 동작을 unit test가 담당합니다. Core 테스트는 요청 조율,
+생성된 식별자와 timestamp, replay, transaction 순서, 서비스 오류 매핑을
+담당합니다. Store 테스트는 물리 영속화, transaction, typed UserAction
+레코드로의 엄격한 row decoding을 담당합니다.
+
 일회용 Runtime Home과 Product Repository를 사용합니다. fixture는 최소이며 typed여야
 합니다. fixture는 parser 또는 구현 동작만 증명하며 실제 Codex 설치의 행동이나 플랫폼
 지원을 증명하지 않습니다.
@@ -48,6 +55,11 @@ Core와 어댑터의 독립성을 다룹니다. 별도 테스트는 같은 검�
 워크스페이스와 담당 원본에 실행합니다. 테스트에 워크스페이스 패키지 그래프의
 두 번째 사본을 두지 않습니다. 아키텍처 규칙은 현재 그래프에 직접 적용하며 패키지,
 스키마, 프로토콜 버전으로 선택하지 않습니다.
+
+현재 워크스페이스 coverage는 `volicord-user-action-service`가 전용 아키텍처
+그룹에 선언되어 있고, 그 그룹이 일반 의존성으로 공유 타입과 Store만, 개발
+의존성으로 테스트 지원만 허용하는지도 확인합니다. 따라서 Core, CLI, MCP,
+presentation 의존성은 아키텍처 gate를 실패시킵니다.
 
 Core 테스트는 typed local-user authority 또는 검증된 Agent Connection authority로
 호스트 중립 요청을 구성합니다. CLI, MCP, application, host-contract 담당자는 자신의

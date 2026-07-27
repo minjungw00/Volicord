@@ -16,16 +16,18 @@ the semantic `UserActionResolutionForm` as a typed CLI inbox model with a
 command-model invocation, and submits an explicit local-user resolution through
 Core.
 
-The Core UserAction service validates typed action intent, constructs and
+The UserAction service validates typed action intent, constructs and
 materializes the canonical request, interprets current authority, and projects
 semantic pending, current, availability, and safe resolution facts. The direct
-UserAction method module owns request/resume and resolution orchestration plus
-those neutral fact reads. Core does not construct CLI commands, channel labels,
-rendered instructions, capture metadata, or MCP envelopes.
+UserAction method modules own request/resume and resolution orchestration,
+User Channel authorization, replay, and neutral fact reads. Core does not
+construct CLI commands, channel labels, rendered instructions, capture
+metadata, or MCP envelopes.
 
-Core policy modules evaluate current basis, action relevance, actor
-provenance, and close or write compatibility. Adapters do not infer judgment
-from chat text, summary text, or a model-authored recommendation.
+The UserAction service evaluates current basis and action relevance. Core
+evaluates invocation provenance and close or write compatibility. Adapters do
+not infer judgment from chat text, summary text, or a model-authored
+recommendation.
 
 ## Invariants
 
@@ -40,10 +42,12 @@ from chat text, summary text, or a model-authored recommendation.
 
 ## Responsibility boundaries
 
-The Core UserAction service owns shared request construction, materialization,
-authority interpretation, lifecycle policy, and adapter-neutral facts. The
-direct method module owns the typed public request/resolution transition and
-request-specific composition. Core policy modules own pure policy evaluation.
+The UserAction service owns shared request construction, materialization,
+authority interpretation, lifecycle policy, action relevance, persistence
+mapping, continuity derivation, and adapter-neutral facts. Core method modules
+own typed public request/resolution transitions, User Channel reads, transaction
+sequencing, and request-specific composition. Remaining Core policy modules own
+their focused pure policy evaluation.
 `volicord-command-model` owns canonical CLI syntax.
 `volicord-user-action-presentation` owns shared CLI-oriented inbox and recovery
 presentation. `volicord-cli` owns terminal rendering and explicit choice
@@ -79,14 +83,14 @@ require one UI for every host and does not make ordinary chat a User Channel.
 
 ## Implementation routes
 
-- [`crates/volicord-core/src/user_action/`](../../../../crates/volicord-core/src/user_action/):
+- [`crates/volicord-user-action-service/src/`](../../../../crates/volicord-user-action-service/src/):
   typed request construction and materialization, current authority
-  interpretation, lifecycle policy, neutral reads, and semantic facts.
+  interpretation, lifecycle and relevance semantics, persistence mapping,
+  continuity derivation, and neutral semantic facts.
 - [`crates/volicord-core/src/methods/user_action.rs`](../../../../crates/volicord-core/src/methods/user_action.rs):
-  direct request and resolution method orchestration.
-- [`crates/volicord-core/src/policy/user_action_relevance.rs`](../../../../crates/volicord-core/src/policy/user_action_relevance.rs)
-  and [`policy/close_readiness.rs`](../../../../crates/volicord-core/src/policy/close_readiness.rs):
-  current relevance and authority evaluation.
+  direct request and resolution method orchestration. Adjacent
+  `user_action_read.rs` and `user_action_continuity.rs` own User Channel
+  reads/replay and continuity persistence orchestration.
 - [`crates/volicord-cli/src/user_command.rs`](../../../../crates/volicord-cli/src/user_command.rs):
   local User Channel orchestration and terminal rendering.
 - [`crates/volicord-command-model/src/lib.rs`](../../../../crates/volicord-command-model/src/lib.rs)

@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use volicord_core::{
     rejected_response, tool_error, Clock, CoreOperationalOperation, CoreOperationalResource,
     CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationContext,
-    PendingUserActionFactsRequest, PipelineResponse,
+    PipelineResponse,
 };
 use volicord_store::guards::{insert_unrecorded_change, UnrecordedChangeInsert};
 use volicord_test_support::core_fixtures::{
@@ -31,6 +31,7 @@ use volicord_types::values::{
     JudgmentResolutionOutcome, OperationCategory, ResponseKind, StateRecordKind,
     UserActionChannelKind, UserActionOptionAction, UserActionRequiredFor, UtcTimestamp,
 };
+use volicord_user_action_service::PendingUserActionFactsRequest;
 
 #[test]
 fn no_effect_branches_state_version_and_idempotency_are_stable() -> Result<(), Box<dyn Error>> {
@@ -4925,7 +4926,7 @@ fn trusted_pending_user_action_facts(
     fixture: &CoreFixture,
     _service: &AdmittedCore<'_>,
     task_id: &str,
-) -> Result<volicord_core::PendingUserActionFacts, Box<dyn Error>> {
+) -> Result<volicord_user_action_service::PendingUserActionFacts, Box<dyn Error>> {
     let now = fixture.store()?.current_clock_floor()?.into_datetime();
     CoreService::for_read_only_with_clock(fixture.runtime_home_path(), FixedClock { now })
         .pending_user_action_facts(

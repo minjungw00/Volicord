@@ -1,90 +1,72 @@
-use super::service::{
-    canonical_user_action_artifacts, user_action_validation_error, validate_user_action_target,
+use crate::{
+    error::{UserActionServiceError, UserActionUnavailable, UserActionValidationError},
+    model::UserActionConstructionContext,
+    service::{canonical_user_action_artifacts, validate_user_action_target},
 };
-use crate::methods::{
-    decision_rejected_response, decode_required_json, no_active_change_unit_response,
-    normalize_display_text, parse_owner_storage_value, validation_rejected, PlanError, StoredScope,
-};
-use crate::pipeline::{CorePipelineError, CoreResult, VerifiedInvocationContext};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, TaskRecord, UserActionResolutionRecord,
+    ChangeUnitRecord, CoreProjectStore, TaskRecord, UserActionResolutionRecord,
 };
-use volicord_store::StoreError;
-use volicord_types::ids::{
-    BaselineRef, ChangeUnitId, ProjectId, TaskId, UserActionRequestId, UserActionResolutionId,
-};
-use volicord_types::methods::ResolveUserActionRequest;
-use volicord_types::schema::{
-    ArtifactRef, PersistedUserActionResolution, StateRecordRef, UserActionBasis,
-    UserActionEvidenceObservation, UserActionRequestBody, UserActionResolution,
-    UserActionResolutionBody, UserActionResolutionInput,
-};
-use volicord_types::values::{
-    EvidenceRelevanceStatus, JudgmentKind, UserActionBasisStatus, UserActionChannelKind,
-    UserActionOptionAction, UserActionVerificationBasis,
+use volicord_types::{
+    ids::{
+        BaselineRef, ChangeUnitId, ProjectId, TaskId, UserActionRequestId, UserActionResolutionId,
+    },
+    schema::{
+        ArtifactRef, StateRecordRef, UserActionBasis, UserActionEvidenceObservation,
+        UserActionRequestBody, UserActionResolution, UserActionResolutionBody,
+        UserActionResolutionInput,
+    },
+    values::{
+        EvidenceRelevanceStatus, JudgmentKind, UserActionBasisStatus, UserActionOptionAction,
+    },
 };
 
-pub(crate) fn channel_kind_from_verified_invocation(
-    invocation: &VerifiedInvocationContext,
-) -> Option<UserActionChannelKind> {
-    UserActionVerificationBasis::parse(&invocation.verification_basis)
-        .map(UserActionChannelKind::from_verification_basis)
-}
-
-pub(crate) fn validate_current_resolution_basis(
+pub fn validate_current_resolution_basis(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &ResolveUserActionRequest,
+    observed_state_version: u64,
     task: &TaskRecord,
     current_change_unit: Option<&ChangeUnitRecord>,
     basis: &UserActionBasis,
-) -> Result<(), PlanError> {
+) -> Result<(), UserActionServiceError> {
     let coordinates = basis.coordinates();
-    let current_scope = StoredScope::from_task(task)?;
+    let baseline_ref = task_baseline_ref(task)?;
     let current_change_unit_id =
         current_change_unit.map(|record| ChangeUnitId::new(record.change_unit_id.clone()));
     if basis.compatibility_status() != UserActionBasisStatus::Current
         || coordinates.task_id.as_str() != task.task_id
         || coordinates.scope_revision != task.scope_revision
-        || coordinates.created_at_state_version > project_state.state_version
-        || coordinates.baseline_ref.as_ref().map(BaselineRef::as_str)
-            != current_scope.baseline_ref.as_deref()
+        || coordinates.created_at_state_version > observed_state_version
+        || coordinates.baseline_ref.as_ref().map(BaselineRef::as_str) != baseline_ref.as_deref()
         || coordinates.change_unit_id.as_ref() != current_change_unit_id.as_ref()
     {
-        return Err(PlanError::Response(Box::new(decision_rejected_response(
-            &request.envelope,
-            Some(project_state.state_version),
-            "user-action basis is not current for this resolution",
-        ))));
+        return Err(UserActionServiceError::Unavailable(
+            UserActionUnavailable::BasisNotCurrent,
+        ));
     }
     if let Some(close_basis_revision) = basis.close_basis_revision() {
         let current = store
             .task_revision_record(&TaskId::new(task.task_id.clone()))
-            .map_err(CorePipelineError::from)?
+            .map_err(UserActionServiceError::from_store)?
             .is_some_and(|record| record.close_basis_revision == close_basis_revision);
         if !current {
-            return Err(PlanError::Response(Box::new(decision_rejected_response(
-                &request.envelope,
-                Some(project_state.state_version),
-                "user-action close basis is no longer current",
-            ))));
+            return Err(UserActionServiceError::Unavailable(
+                UserActionUnavailable::CloseBasisNotCurrent,
+            ));
         }
     }
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn construct_user_action_resolution(
+pub fn construct_user_action_resolution(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &ResolveUserActionRequest,
+    context: &UserActionConstructionContext,
+    resolution_input: &UserActionResolutionInput,
     request_body: &UserActionRequestBody,
     basis: &UserActionBasis,
     task_id: &TaskId,
     current_change_unit: Option<&ChangeUnitRecord>,
-) -> Result<(UserActionResolutionBody, Vec<StateRecordRef>), PlanError> {
-    match (request_body, &request.resolution) {
+) -> Result<(UserActionResolutionBody, Vec<StateRecordRef>), UserActionServiceError> {
+    match (request_body, resolution_input) {
         (
             UserActionRequestBody::Choice(choice),
             UserActionResolutionInput::Choice {
@@ -97,15 +79,10 @@ pub(crate) fn construct_user_action_resolution(
                 .iter()
                 .find(|option| option.option_id == *selected_option_id)
                 .ok_or_else(|| {
-                    PlanError::Response(Box::new(
-                        validation_rejected(
-                            request.envelope.dry_run,
-                            Some(project_state.state_version),
-                            "resolution.selected_option_id",
-                            "selected option must belong to the stored user-action request",
-                        )
-                        .expect("validation response should serialize"),
-                    ))
+                    validation(
+                        "resolution.selected_option_id",
+                        "selected option must belong to the stored user-action request",
+                    )
                 })?;
             let accepted_risk_ids = if choice.judgment_kind == JudgmentKind::ResidualRiskAcceptance
                 && selected.machine_action == UserActionOptionAction::Accept
@@ -138,37 +115,29 @@ pub(crate) fn construct_user_action_resolution(
                 relevance_status,
                 EvidenceRelevanceStatus::Supported | EvidenceRelevanceStatus::Contradicted
             ) {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
+                return Err(validation(
                     "resolution.relevance_status",
                     "user observation relevance must be supported or contradicted",
-                );
+                ));
             }
             let normalized_summary = normalize_display_text(summary);
             if normalized_summary.is_empty() {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
+                return Err(validation(
                     "resolution.summary",
                     "user observation summary must be non-empty",
-                );
+                ));
             }
             if !observation_request.target_candidates.contains(target) {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
+                return Err(validation(
                     "resolution.target",
                     "observation target must be one of the stored candidates",
-                );
+                ));
             }
             if artifact_ids.iter().collect::<BTreeSet<_>>().len() != artifact_ids.len() {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
+                return Err(validation(
                     "resolution.artifact_ids",
                     "observation artifact IDs must not contain duplicates",
-                );
+                ));
             }
             let candidate_ids = observation_request
                 .artifact_candidates
@@ -179,25 +148,16 @@ pub(crate) fn construct_user_action_resolution(
                 .iter()
                 .any(|artifact_id| !candidate_ids.contains(artifact_id))
             {
-                return user_action_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
+                return Err(validation(
                     "resolution.artifact_ids",
                     "observation artifacts must be selected from the stored candidates",
-                );
+                ));
             }
-            validate_user_action_target(
-                store,
-                project_state,
-                &request.envelope,
-                task_id,
-                target,
-                "resolution.target",
-            )?;
+            validate_user_action_target(store, task_id, target, "resolution.target")?;
             let output_artifact_refs = canonical_user_action_artifacts(
                 store,
-                project_state,
-                &request.envelope,
+                &context.project_id,
+                context.observed_state_version,
                 task_id,
                 artifact_ids,
                 "resolution.artifact_ids",
@@ -213,29 +173,20 @@ pub(crate) fn construct_user_action_resolution(
                 &stored_selected_refs,
                 &output_artifact_refs,
             ) {
-                return Err(PlanError::Response(Box::new(decision_rejected_response(
-                    &request.envelope,
-                    Some(project_state.state_version),
-                    "selected observation artifact changed after the request was created",
-                ))));
+                return Err(UserActionServiceError::Unavailable(
+                    UserActionUnavailable::SelectedArtifactChanged,
+                ));
             }
-            let coordinates = basis.coordinates();
-            let _change_unit_id = current_change_unit
-                .map(|record| ChangeUnitId::new(record.change_unit_id.clone()))
-                .ok_or_else(|| {
-                    PlanError::Response(Box::new(no_active_change_unit_response(
-                        &request.envelope,
-                        Some(project_state.state_version),
-                        "evidence observation resolution requires the current Change Unit",
-                    )))
-                })?;
-            let _baseline_ref = coordinates.baseline_ref.as_ref().cloned().ok_or_else(|| {
-                PlanError::Response(Box::new(decision_rejected_response(
-                    &request.envelope,
-                    Some(project_state.state_version),
-                    "evidence observation resolution requires a current baseline",
-                )))
-            })?;
+            if current_change_unit.is_none() {
+                return Err(UserActionServiceError::Unavailable(
+                    UserActionUnavailable::CurrentChangeUnitRequired,
+                ));
+            }
+            if basis.coordinates().baseline_ref.is_none() {
+                return Err(UserActionServiceError::Unavailable(
+                    UserActionUnavailable::CurrentBaselineRequired,
+                ));
+            }
             Ok((
                 UserActionResolutionBody::EvidenceObservation {
                     observation: UserActionEvidenceObservation {
@@ -248,32 +199,17 @@ pub(crate) fn construct_user_action_resolution(
                 Vec::new(),
             ))
         }
-        _ => user_action_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
+        _ => Err(validation(
             "resolution.resolution_type",
             "resolution type must match the stored user-action request",
-        ),
+        )),
     }
 }
 
-pub(crate) fn user_action_resolution_from_record(
+pub fn user_action_resolution_from_record(
     record: &UserActionResolutionRecord,
     task_id: &TaskId,
-) -> CoreResult<UserActionResolution> {
-    let body: PersistedUserActionResolution = decode_required_json(
-        "user_action_resolutions",
-        record.user_action_resolution_id.clone(),
-        "resolution_json",
-        Some(&record.resolution_json),
-    )?;
-    body.validate().map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_json(
-            "user_action_resolutions",
-            record.user_action_resolution_id.clone(),
-            "resolution_json",
-        ))
-    })?;
+) -> Result<UserActionResolution, UserActionServiceError> {
     Ok(UserActionResolution {
         user_action_resolution_id: UserActionResolutionId::new(
             record.user_action_resolution_id.clone(),
@@ -282,27 +218,17 @@ pub(crate) fn user_action_resolution_from_record(
         project_id: ProjectId::new(record.project_id.clone()),
         task_id: task_id.clone(),
         action_kind: record.action_kind,
-        body,
-        resolved_by_actor_source: parse_owner_storage_value(
-            "user_action_resolutions",
-            record.user_action_resolution_id.clone(),
-            "resolved_by_actor_source",
-            &record.resolved_by_actor_source,
-        )?,
+        body: record.resolution.clone(),
+        resolved_by_actor_source: record.resolved_by_actor_source.clone(),
         resolved_verification_basis: record.resolved_verification_basis,
         resolved_assurance_level: record.resolved_assurance_level.clone(),
         channel_kind: record.channel_kind,
         channel_submission_id: record.channel_submission_id.clone(),
-        resolved_at: parse_owner_storage_value(
-            "user_action_resolutions",
-            record.user_action_resolution_id.clone(),
-            "resolved_at",
-            &record.resolved_at,
-        )?,
+        resolved_at: record.resolved_at.clone(),
     })
 }
 
-pub(crate) fn resolution_input_matches_body(
+pub fn resolution_input_matches_body(
     input: &UserActionResolutionInput,
     body: &UserActionResolutionBody,
 ) -> bool {
@@ -344,7 +270,6 @@ pub(crate) fn resolution_input_matches_body(
     }
 }
 
-/// Compares immutable request candidates with their current projection.
 fn current_artifact_refs_preserve_candidates(left: &[ArtifactRef], right: &[ArtifactRef]) -> bool {
     if left.len() != right.len() {
         return false;
@@ -374,4 +299,33 @@ fn current_artifact_refs_preserve_candidates(left: &[ArtifactRef], right: &[Arti
             }
             candidate == &normalized_current
         })
+}
+
+fn task_baseline_ref(task: &TaskRecord) -> Result<Option<String>, UserActionServiceError> {
+    #[derive(serde::Deserialize)]
+    struct Shaping {
+        #[serde(default)]
+        baseline_ref: Option<String>,
+        #[serde(flatten)]
+        _other: serde_json::Map<String, serde_json::Value>,
+    }
+    serde_json::from_str::<Shaping>(&task.shaping_summary_json)
+        .map(|shaping| shaping.baseline_ref)
+        .map_err(|_| {
+            UserActionServiceError::CorruptStoredState(
+                volicord_store::StoreError::corrupt_owner_state_json(
+                    "tasks",
+                    &task.task_id,
+                    "shaping_summary_json",
+                ),
+            )
+        })
+}
+
+fn validation(field: &'static str, message: &'static str) -> UserActionServiceError {
+    UserActionServiceError::Validation(UserActionValidationError::new(field, message))
+}
+
+fn normalize_display_text(value: &str) -> String {
+    value.trim().to_owned()
 }

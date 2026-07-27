@@ -1,14 +1,16 @@
 use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::Value;
 use volicord_types::{
     ids::TaskId,
     schema::{
         effective_user_action_status as derive_user_action_status, validate_channel_submission_id,
-        ArtifactRef, PersistedUserActionRequest, UserActionBasis, UserActionRequestBody,
-        UserActionResolutionBody,
+        ArtifactRef, PersistedUserActionRequest, PersistedUserActionResolution, UserActionBasis,
+        UserActionRequestBody, UserActionResolutionBody,
     },
     values::{
-        MethodName, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
-        UserActionOptionAction, UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
+        ActorSource, MethodName, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
+        UserActionOptionAction, UserActionRequiredFor, UserActionStatus,
+        UserActionVerificationBasis, UtcTimestamp,
     },
 };
 
@@ -111,27 +113,27 @@ impl UserActionMutation {
 }
 
 /// Stored user-action request row data needed by Core method implementations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UserActionRequestRecord {
     pub project_id: String,
     pub user_action_request_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub action_kind: UserActionKind,
-    pub request_json: String,
-    pub basis_json: String,
+    pub request: PersistedUserActionRequest,
+    pub basis: UserActionBasis,
     pub basis_status: UserActionBasisStatus,
-    pub required_for_json: String,
-    pub requested_by_actor_source: String,
-    pub source_method: String,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub requested_by_actor_source: ActorSource,
+    pub source_method: MethodName,
     pub source_idempotency_key: String,
-    pub requested_at: String,
-    pub expires_at: Option<String>,
-    pub metadata_json: String,
+    pub requested_at: UtcTimestamp,
+    pub expires_at: Option<UtcTimestamp>,
+    pub metadata: Value,
 }
 
 /// Stored immutable user-action resolution row.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UserActionResolutionRecord {
     pub project_id: String,
     pub user_action_resolution_id: String,
@@ -139,11 +141,11 @@ pub struct UserActionResolutionRecord {
     pub action_kind: UserActionKind,
     pub channel_kind: UserActionChannelKind,
     pub channel_submission_id: String,
-    pub resolution_json: String,
-    pub resolved_by_actor_source: String,
+    pub resolution: PersistedUserActionResolution,
+    pub resolved_by_actor_source: ActorSource,
     pub resolved_verification_basis: UserActionVerificationBasis,
     pub resolved_assurance_level: String,
-    pub resolved_at: String,
+    pub resolved_at: UtcTimestamp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +183,7 @@ struct UserActionResolutionRecordRaw {
 }
 
 /// Stored request and optional resolution with its derived current lifecycle status.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EffectiveUserActionRecord {
     pub request: UserActionRequestRecord,
     pub resolution: Option<UserActionResolutionRecord>,
@@ -495,22 +497,65 @@ fn decode_user_action_request_record(
             basis_status,
         },
     )?;
+    let request =
+        serde_json::from_str::<PersistedUserActionRequest>(&raw.request_json).map_err(|_| {
+            StoreError::corrupt_owner_state_json("user_action_requests", record_id, "request_json")
+        })?;
+    let basis = serde_json::from_str::<UserActionBasis>(&raw.basis_json).map_err(|_| {
+        StoreError::corrupt_owner_state_json("user_action_requests", record_id, "basis_json")
+    })?;
+    let required_for = serde_json::from_str::<Vec<UserActionRequiredFor>>(&raw.required_for_json)
+        .map_err(|_| {
+        StoreError::corrupt_owner_state_json("user_action_requests", record_id, "required_for_json")
+    })?;
+    let requested_by_actor_source = raw.requested_by_actor_source.parse().map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_requests",
+            record_id,
+            "requested_by_actor_source",
+        )
+    })?;
+    let source_method = match raw.source_method.as_str() {
+        value if value == MethodName::RequestUserAction.as_str() => MethodName::RequestUserAction,
+        value if value == MethodName::ReconcileChanges.as_str() => MethodName::ReconcileChanges,
+        _ => {
+            return Err(StoreError::corrupt_owner_state_value(
+                "user_action_requests",
+                record_id,
+                "source_method",
+            ))
+        }
+    };
+    let requested_at = UtcTimestamp::parse(&raw.requested_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value("user_action_requests", record_id, "requested_at")
+    })?;
+    let expires_at = raw
+        .expires_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value("user_action_requests", record_id, "expires_at")
+        })?;
+    let metadata = serde_json::from_str(&raw.metadata_json).map_err(|_| {
+        StoreError::corrupt_owner_state_json("user_action_requests", record_id, "metadata_json")
+    })?;
     Ok(UserActionRequestRecord {
         project_id: raw.project_id,
         user_action_request_id: raw.user_action_request_id,
         task_id: raw.task_id,
         change_unit_id: raw.change_unit_id,
         action_kind,
-        request_json: raw.request_json,
-        basis_json: raw.basis_json,
+        request,
+        basis,
         basis_status,
-        required_for_json: raw.required_for_json,
-        requested_by_actor_source: raw.requested_by_actor_source,
-        source_method: raw.source_method,
+        required_for,
+        requested_by_actor_source,
+        source_method,
         source_idempotency_key: raw.source_idempotency_key,
-        requested_at: raw.requested_at,
-        expires_at: raw.expires_at,
-        metadata_json: raw.metadata_json,
+        requested_at,
+        expires_at,
+        metadata,
     })
 }
 
@@ -582,6 +627,31 @@ fn decode_user_action_resolution_record(
         ));
     }
     validate_stored_timestamp("user_action_resolutions.resolved_at", &raw.resolved_at)?;
+    let resolution = serde_json::from_str::<PersistedUserActionResolution>(&raw.resolution_json)
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_json(
+                "user_action_resolutions",
+                record_id,
+                "resolution_json",
+            )
+        })?;
+    resolution.validate().map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "user_action_resolutions",
+            record_id,
+            "resolution_json",
+        )
+    })?;
+    let resolved_by_actor_source = raw.resolved_by_actor_source.parse().map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "user_action_resolutions",
+            record_id,
+            "resolved_by_actor_source",
+        )
+    })?;
+    let resolved_at = UtcTimestamp::parse(&raw.resolved_at).map_err(|_| {
+        StoreError::corrupt_owner_state_value("user_action_resolutions", record_id, "resolved_at")
+    })?;
     Ok(UserActionResolutionRecord {
         project_id: raw.project_id,
         user_action_resolution_id: raw.user_action_resolution_id,
@@ -589,11 +659,11 @@ fn decode_user_action_resolution_record(
         action_kind,
         channel_kind,
         channel_submission_id: raw.channel_submission_id,
-        resolution_json: raw.resolution_json,
-        resolved_by_actor_source: raw.resolved_by_actor_source,
+        resolution,
+        resolved_by_actor_source,
         resolved_verification_basis,
         resolved_assurance_level: raw.resolved_assurance_level,
-        resolved_at: raw.resolved_at,
+        resolved_at,
     })
 }
 
@@ -678,31 +748,8 @@ pub fn effective_user_action_status(
     resolution: Option<&UserActionResolutionRecord>,
     now: &UtcTimestamp,
 ) -> StoreResult<UserActionStatus> {
-    let created_at = UtcTimestamp::parse(&request.requested_at).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "user_action_requests",
-            &request.user_action_request_id,
-            "requested_at",
-        )
-    })?;
-    let expires_at = request
-        .expires_at
-        .as_deref()
-        .map(UtcTimestamp::parse)
-        .transpose()
-        .map_err(|_| StoreError::CorruptStoredValue {
-            database_kind: crate::schema::PROJECT_STATE_DATABASE_KIND,
-            field: "user_action_requests.expires_at",
-        })?;
     if let Some(resolution) = resolution {
-        let resolved_at = UtcTimestamp::parse(&resolution.resolved_at).map_err(|_| {
-            StoreError::corrupt_owner_state_value(
-                "user_action_resolutions",
-                &resolution.user_action_resolution_id,
-                "resolved_at",
-            )
-        })?;
-        if &resolved_at > now {
+        if &resolution.resolved_at > now {
             return Err(StoreError::corrupt_owner_state_value(
                 "user_action_resolutions",
                 &resolution.user_action_resolution_id,
@@ -712,8 +759,8 @@ pub fn effective_user_action_status(
     }
     derive_user_action_status(
         request.basis_status,
-        &created_at,
-        expires_at.as_ref(),
+        &request.requested_at,
+        request.expires_at.as_ref(),
         resolution.is_some(),
         now,
     )
@@ -741,35 +788,11 @@ pub(super) fn validate_user_action_request_resolution_pair(
         });
     }
     validate_stored_user_action_timestamp_order(request, resolution)?;
-    let persisted_request = serde_json::from_str::<PersistedUserActionRequest>(
-        &request.request_json,
-    )
-    .map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "user_action_requests",
-            &request.user_action_request_id,
-            "request_json",
-        )
-    })?;
-    let basis = serde_json::from_str::<UserActionBasis>(&request.basis_json).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "user_action_requests",
-            &request.user_action_request_id,
-            "basis_json",
-        )
-    })?;
-    let resolution_body = serde_json::from_str::<UserActionResolutionBody>(
-        &resolution.resolution_json,
-    )
-    .map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "user_action_resolutions",
-            &resolution.user_action_resolution_id,
-            "resolution_json",
-        )
-    })?;
-
-    let agrees = match (&persisted_request.body, &basis, &resolution_body) {
+    let agrees = match (
+        &request.request.body,
+        &request.basis,
+        &resolution.resolution,
+    ) {
         (
             UserActionRequestBody::Choice(choice),
             UserActionBasis::Choice(choice_basis),
@@ -844,36 +867,10 @@ fn validate_stored_user_action_timestamp_order(
     request: &UserActionRequestRecord,
     resolution: &UserActionResolutionRecord,
 ) -> StoreResult<()> {
-    let requested_at = UtcTimestamp::parse(&request.requested_at).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "user_action_requests",
-            &request.user_action_request_id,
-            "requested_at",
-        )
-    })?;
-    let expires_at = request
-        .expires_at
-        .as_deref()
-        .map(UtcTimestamp::parse)
-        .transpose()
-        .map_err(|_| {
-            StoreError::corrupt_owner_state_value(
-                "user_action_requests",
-                &request.user_action_request_id,
-                "expires_at",
-            )
-        })?;
-    let resolved_at = UtcTimestamp::parse(&resolution.resolved_at).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "user_action_resolutions",
-            &resolution.user_action_resolution_id,
-            "resolved_at",
-        )
-    })?;
     match validate_user_action_timestamp_order(
-        &requested_at,
-        expires_at.as_ref(),
-        Some(&resolved_at),
+        &request.requested_at,
+        request.expires_at.as_ref(),
+        Some(&resolution.resolved_at),
     ) {
         Ok(()) => Ok(()),
         Err(UserActionTimestampOrderFailure::ExpiryNotAfterRequest) => {
@@ -970,31 +967,12 @@ fn validate_user_action_resolution_timestamp_order_for_insert(
     request: &UserActionRequestRecord,
     resolved_at: &str,
 ) -> StoreResult<()> {
-    let requested_at = UtcTimestamp::parse(&request.requested_at).map_err(|_| {
-        StoreError::corrupt_owner_state_value(
-            "user_action_requests",
-            &request.user_action_request_id,
-            "requested_at",
-        )
-    })?;
-    let expires_at = request
-        .expires_at
-        .as_deref()
-        .map(UtcTimestamp::parse)
-        .transpose()
-        .map_err(|_| {
-            StoreError::corrupt_owner_state_value(
-                "user_action_requests",
-                &request.user_action_request_id,
-                "expires_at",
-            )
-        })?;
     let resolved_at = UtcTimestamp::parse(resolved_at).map_err(|_| StoreError::InvalidInput {
         detail: "user_action_resolutions.resolved_at must be a valid RFC 3339 timestamp".to_owned(),
     })?;
     match validate_user_action_timestamp_order(
-        &requested_at,
-        expires_at.as_ref(),
+        &request.requested_at,
+        request.expires_at.as_ref(),
         Some(&resolved_at),
     ) {
         Ok(()) => Ok(()),
@@ -1162,11 +1140,23 @@ impl MutationContext<'_> {
                 action_kind: input.action_kind,
                 channel_kind: input.channel_kind,
                 channel_submission_id: input.channel_submission_id.clone(),
-                resolution_json: input.resolution_json.clone(),
-                resolved_by_actor_source: input.resolved_by_actor_source.clone(),
+                resolution: serde_json::from_str(&input.resolution_json).map_err(|_| {
+                    StoreError::InvalidInput {
+                        detail: "user-action resolution must contain a typed body".to_owned(),
+                    }
+                })?,
+                resolved_by_actor_source: input.resolved_by_actor_source.parse().map_err(|_| {
+                    StoreError::InvalidInput {
+                        detail: "user-action resolution actor provenance is invalid".to_owned(),
+                    }
+                })?,
                 resolved_verification_basis: input.resolved_verification_basis,
                 resolved_assurance_level: input.resolved_assurance_level.clone(),
-                resolved_at: input.resolved_at.clone(),
+                resolved_at: UtcTimestamp::parse(&input.resolved_at).map_err(|_| {
+                    StoreError::InvalidInput {
+                        detail: "user-action resolution timestamp is invalid".to_owned(),
+                    }
+                })?,
             };
             validate_user_action_request_resolution_pair(&request, &candidate).map_err(|_| {
                 StoreError::InvalidInput {

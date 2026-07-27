@@ -24,30 +24,27 @@ use super::{
     projected_evidence_summary_for_criteria, projected_write_ticket_summary,
     record_core_workflow_metric_best_effort, redaction_state_value, rejected_pipeline_response,
     response_committed_fresh_effect, sorted_unique, state_ref, state_ref_from_stored,
-    storage_value, store_error_plan, string_member, task_lifecycle_mutation, validation_plan_error,
-    validation_rejected, workspace_context_matches, workspace_stale_response,
-    write_ticket_invalid_response, write_ticket_ref, write_ticket_required_response,
-    write_ticket_summary_for_record, MethodPlan, PersistedWriteBasis,
-    PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
+    storage_value, store_error_plan, string_member, task_lifecycle_mutation,
+    user_action_service_plan_error, validation_plan_error, validation_rejected,
+    workspace_context_matches, workspace_stale_response, write_ticket_invalid_response,
+    write_ticket_ref, write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
+    PersistedWriteBasis, PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
     PipelineResponse, TaskRequirement, VerifiedInvocationContext,
 };
-use crate::policy::close_readiness::UserActionAuthority;
 use crate::policy::evidence::{
     evidence_status_for_items, state_record_ref_identity_key, unique_artifact_refs,
     unique_state_record_refs,
 };
-use crate::policy::path::{normalize_product_paths, path_is_within, ProductPathError};
-use crate::policy::user_action_relevance::{UserActionOperation, UserActionOperationContext};
 use crate::policy::workflow::{
     parse_task_control_level, project_workflow_policy, resolve_task_control_authority,
     ProjectWorkflowPolicy,
 };
 use crate::policy::write_ticket::{
-    current_sensitive_approval, normalized_string_set, run_write_ticket_mismatch,
-    write_ticket_is_idle_expired, RunWriteTicketAttempt, SensitiveApprovalRequirement,
+    normalized_string_set, run_write_ticket_mismatch, write_ticket_is_idle_expired,
+    RunWriteTicketAttempt,
 };
 use crate::policy::{
     close_readiness_evidence::evidence_summary_with_required_criteria,
@@ -60,11 +57,6 @@ use crate::policy::{
         stored_observation_target_matches, supplemental_claim_target_matches,
         EvidenceObservationBasis,
     },
-};
-use crate::user_action::authority::user_action_authority_from_record;
-use crate::user_action::lifecycle::projected_user_action_lifecycle_phase;
-use crate::user_action::service::{
-    pending_user_action_authorities_for_plan, pending_user_action_refs_for_operation,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
@@ -89,6 +81,7 @@ use volicord_types::ids::{
     RunId, StagedArtifactHandleId, StorageRef, TaskId,
 };
 use volicord_types::methods::{MethodOperationCategory, RecordRunRequest, RecordRunResultFields};
+use volicord_types::product_path::{normalize_product_paths, path_is_within, ProductPathError};
 use volicord_types::schema::{
     AcceptanceCriterion, ArtifactInput, ArtifactRef, CurrentCloseBasis, EvidenceCaptureIntent,
     EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceCoverageUpdate, EvidenceObservation,
@@ -105,6 +98,12 @@ use volicord_types::values::{
     EvidenceRelevanceStatus, EvidenceRequirement, EvidenceSourceKind, MethodName, RedactionState,
     RunKind, StateRecordKind, TaskControlLevel, TaskMode, UserActionKind, UserActionRequiredFor,
     UtcTimestamp, WorkPhase, WriteTicketStatus,
+};
+use volicord_user_action_service::{
+    current_sensitive_approval, pending_user_action_authorities,
+    pending_user_action_refs_for_operation, projected_user_action_lifecycle_phase,
+    user_action_authority_from_record, SensitiveApprovalRequirement, UserActionAuthority,
+    UserActionOperation, UserActionOperationContext,
 };
 
 impl CoreService {
@@ -910,8 +909,8 @@ fn decide_record_run_policy(
     };
     if !pending_user_action_refs_for_operation(
         store,
-        project_state,
-        &request.envelope,
+        &request.envelope.project_id,
+        project_state.state_version,
         plan_now,
         &operation_context,
     )?
@@ -1119,21 +1118,16 @@ fn plan_record_run_mutations(
         planned_state_version,
         plan_now,
     )?;
-    let pending_authorities = pending_user_action_authorities_for_plan(
-        store,
-        project_state,
-        &request.envelope,
-        &request.task_id,
-        plan_now,
-    )?
-    .into_iter()
-    .filter(|authority| {
-        !matches!(
-            authority.action_kind,
-            UserActionKind::FinalAcceptance | UserActionKind::ResidualRiskAcceptance
-        )
-    })
-    .collect::<Vec<_>>();
+    let pending_authorities = pending_user_action_authorities(store, &request.task_id, plan_now)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?
+        .into_iter()
+        .filter(|authority| {
+            !matches!(
+                authority.action_kind,
+                UserActionKind::FinalAcceptance | UserActionKind::ResidualRiskAcceptance
+            )
+        })
+        .collect::<Vec<_>>();
     let lifecycle_phase = projected_user_action_lifecycle_phase(
         project_state,
         &task,

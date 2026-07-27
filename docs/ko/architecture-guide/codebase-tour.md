@@ -15,12 +15,15 @@ workspace를 바깥쪽에서 안쪽 순서로 읽습니다.
    편지함, 렌더링, stdio 프로세스 시작을 소유합니다.
 4. `volicord-mcp`는 MCP 생명주기, JSON-RPC stdio 프레이밍, 공개 도구 디코딩, 응답
    projection을 소유합니다.
-5. `volicord-core`는 메서드 계획, 정책, replay 결정, 권한 결과, 원자적 commit 조율을
+5. `volicord-core`는 요청 조율, 메서드 계획, replay 결정, 권한 결과, 원자적 commit
+   순서 조율을 소유합니다.
+6. `volicord-user-action-service`는 재사용 가능한 UserAction 의미 검증, 구성,
+   authority, lifecycle, 영속화 매핑, resolution, continuity, adapter-neutral fact를
    소유합니다.
-6. `volicord-store`는 Runtime Home 탐색, SQLite 접근, 엄격한 저장 레코드 검증,
+7. `volicord-store`는 Runtime Home 탐색, SQLite 접근, 엄격한 저장 레코드 검증,
    transaction 적용을 소유합니다.
-7. `volicord-types`는 공유 폐쇄 값, 식별자, 정규 인코딩을 소유합니다.
-8. `volicord-platform-fs`는 좁은 내부 facade 뒤의 플랫폼별 파일시스템 검사를
+8. `volicord-types`는 공유 폐쇄 값, 식별자, 정규 인코딩을 소유합니다.
+9. `volicord-platform-fs`는 좁은 내부 facade 뒤의 플랫폼별 파일시스템 검사를
    소유합니다.
 
 Core-facing 코드는 CLI나 MCP 어댑터 세부사항에 의존하지 않습니다. 어댑터는 서버 소유
@@ -88,12 +91,13 @@ MCP 호출은 다음 순서로 추적합니다.
 
 `volicord.request_user_action`은 pending Core 요청을 생성하거나 재개합니다. 로컬
 구현 흐름은
-[`crates/volicord-core/src/user_action/`](../../../crates/volicord-core/src/user_action/)의
-의미 `model`과 순수 `validation`에서 시작해 정규 `body`와 `identity`를 거친 뒤
-Store-aware `service`, `materialization`, `persistence`로 이어집니다. 직접 request와
-resolution 메서드 계획은
+[`crates/volicord-user-action-service/src/`](../../../crates/volicord-user-action-service/src/)의
+재사용 가능한 의미 model, validation, 정규 body와 identity, Store 기반 typed fact
+취득, materialization, 영속화 매핑, resolution, continuity, projection으로
+이어집니다. Core 요청 조율은
 [`methods/user_action.rs`](../../../crates/volicord-core/src/methods/user_action.rs)에
-있고, reconciliation은
+있고 User Channel 읽기와 continuity 영속화는 인접한 `user_action_read.rs`,
+`user_action_continuity.rs`에 있습니다. Reconciliation은
 [`methods/reconcile_changes.rs`](../../../crates/volicord-core/src/methods/reconcile_changes.rs)에서
 의미 의도를 제공합니다.
 
@@ -110,7 +114,7 @@ resolution 경로를 호출합니다. MCP는 자체 safe projection을 구성하
 
 지속 가능한 검사는 불변식을 소유하는 가장 좁은 계층에 둡니다.
 
-- 순수 파싱, 인코딩, 정책은 인접 unit test
+- 순수 파싱, 인코딩, 정책, UserAction 서비스 의미는 인접 unit test
 - 어댑터와 Store 경계는 crate integration test
 - 공개 교차 메서드 동작은 workspace conformance test
 - target, 패키지, checksum, workflow invariant는 일반 release-integrity 테스트

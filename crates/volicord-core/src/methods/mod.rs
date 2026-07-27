@@ -7,12 +7,13 @@ use volicord_types::ids::{
     AcceptanceCriterionId, ArtifactId, BaselineRef, ChangeUnitId, DurableIdKind,
     EvidenceCaptureIntentId, EvidenceObservationId, EvidenceProducerId, ProjectContinuityRecordId,
     ProjectId, RecordId, RiskId, RunId, StagedArtifactHandleId, StorageRef, TaskId,
-    UserActionResolutionId, WriteTicketId,
+    UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
     CloseTaskResultFields, PrepareWriteRequest, PrepareWriteResultFields, RecordRunRequest,
     UpdateScopeRequest,
 };
+use volicord_types::product_path::{normalize_product_paths, path_is_within};
 use volicord_types::schema::{
     AcceptanceCriterion, ArtifactInput, ArtifactRef, CarryForwardDisposition,
     ChangeUnitEffectContract, CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary,
@@ -57,16 +58,13 @@ use crate::pipeline::{
 use crate::policy::{
     close_readiness_evidence::{project_close_evidence_summary, required_acceptance_criterion_ids},
     evidence::{state_record_ref_identity_key, unique_artifact_refs},
-    path::{normalize_product_paths, path_is_within},
     workflow::{
         parse_requested_control_level, parse_task_control_level, project_workflow_policy,
         resolve_task_control_authority,
     },
-    write_ticket::{
-        current_sensitive_approval, write_decision_reason, write_ticket_is_idle_expired,
-        SensitiveApprovalRequirement,
-    },
+    write_ticket::{write_decision_reason, write_ticket_is_idle_expired},
 };
+use volicord_user_action_service::{current_sensitive_approval, SensitiveApprovalRequirement};
 
 mod close_readiness;
 mod close_task;
@@ -83,6 +81,8 @@ mod status;
 mod tests;
 mod update_scope;
 mod user_action;
+mod user_action_continuity;
+mod user_action_read;
 
 struct MethodPlan<F> {
     task_id: TaskId,
@@ -239,6 +239,12 @@ impl From<serde_json::Error> for PlanError {
     }
 }
 
+impl From<volicord_user_action_service::UserActionServiceError> for PlanError {
+    fn from(error: volicord_user_action_service::UserActionServiceError) -> Self {
+        Self::Core(CorePipelineError::from(error))
+    }
+}
+
 fn allocate_task_id(service: &CoreService, store: &CoreProjectStore) -> CoreResult<TaskId> {
     service
         .allocate_generated_id(DurableIdKind::Task, |candidate| {
@@ -274,6 +280,19 @@ fn allocate_user_action_resolution_id(
                 .map_err(CorePipelineError::from)
         })
         .map(UserActionResolutionId::new)
+}
+
+fn allocate_user_action_request_id(
+    service: &CoreService,
+    store: &CoreProjectStore,
+) -> CoreResult<UserActionRequestId> {
+    service
+        .allocate_generated_id(DurableIdKind::UserActionRequest, |candidate| {
+            store
+                .user_action_request_id_exists(candidate)
+                .map_err(CorePipelineError::from)
+        })
+        .map(UserActionRequestId::new)
 }
 
 fn allocate_write_ticket_id(
@@ -1383,7 +1402,7 @@ fn matching_sensitive_approval(
     };
 
     for record in records {
-        let authority = crate::user_action::authority::user_action_authority_from_record(&record)?;
+        let authority = volicord_user_action_service::user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
             return Ok(Some(record));
         }
@@ -1966,7 +1985,7 @@ fn build_state_summary(
         workspace_context,
         shaping_readiness: None,
         pending_user_action_summaries:
-            crate::user_action::summary::agent_safe_pending_user_action_summaries(
+            volicord_user_action_service::agent_safe_pending_user_action_summaries(
                 pending_user_action_refs,
             ),
         blocker_refs,
@@ -2161,7 +2180,7 @@ fn write_ticket_projection_invalidation_reason(
         .map_err(CorePipelineError::from)?;
     let mut current_resolution_ids = BTreeSet::new();
     for record in records {
-        let authority = crate::user_action::authority::user_action_authority_from_record(&record)?;
+        let authority = volicord_user_action_service::user_action_authority_from_record(&record)?;
         if current_sensitive_approval(&authority, &requirement) {
             if let Some(resolution_id) = authority.user_action_resolution_id {
                 current_resolution_ids.insert(resolution_id);
@@ -3036,6 +3055,46 @@ pub(crate) fn store_error_plan(
     ) {
         Ok(response) => PlanError::Response(Box::new(response)),
         Err(error) => PlanError::Core(error),
+    }
+}
+
+pub(crate) fn user_action_service_plan_error(
+    envelope: &ToolEnvelope,
+    project_state: &ProjectStateHeader,
+    error: volicord_user_action_service::UserActionServiceError,
+) -> PlanError {
+    use volicord_user_action_service::UserActionServiceError;
+    match error {
+        UserActionServiceError::Validation(error) => {
+            match validation_rejected(
+                envelope.dry_run,
+                Some(project_state.state_version),
+                error.field(),
+                error.message(),
+            ) {
+                Ok(response) => PlanError::Response(Box::new(response)),
+                Err(error) => PlanError::Core(error),
+            }
+        }
+        UserActionServiceError::Unavailable(error) => {
+            PlanError::Response(Box::new(decision_rejected_response(
+                envelope,
+                Some(project_state.state_version),
+                error.message(),
+            )))
+        }
+        UserActionServiceError::CorruptStoredState(error)
+        | UserActionServiceError::Store(error) => store_error_plan(envelope, project_state, error),
+        UserActionServiceError::Identity(error) => {
+            PlanError::Core(CorePipelineError::InvalidDispatch {
+                detail: format!("user-action identity invariant failed: {error:?}"),
+            })
+        }
+        UserActionServiceError::Invariant(error) => {
+            PlanError::Core(CorePipelineError::InvalidDispatch {
+                detail: format!("user-action service invariant failed: {error:?}"),
+            })
+        }
     }
 }
 

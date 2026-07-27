@@ -4,10 +4,6 @@ use crate::adapter::McpAdapter;
 use crate::errors::McpAdapterError;
 use crate::tool_dispatch::ToolCallOutput;
 use volicord_core::pipeline::{CoreService, PipelineResponse};
-use volicord_core::{
-    CurrentUserActionFacts, CurrentUserActionRead, CurrentUserActionUnavailableReason,
-    UserActionResolutionFacts, UserActionResolutionFactsBody,
-};
 use volicord_store::diagnostics::DiagnosticFallbackKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{ProjectId, UserActionRequestId};
@@ -16,6 +12,10 @@ use volicord_types::methods::{
     RequestUserActionResponse, RequestUserActionResult,
 };
 use volicord_user_action_presentation::cli_pending_user_action_instruction;
+use volicord_user_action_service::{
+    CurrentUserActionFacts, CurrentUserActionRead, CurrentUserActionUnavailableReason,
+    UserActionResolutionFacts, UserActionResolutionFactsBody,
+};
 
 pub(crate) fn user_action_tool_output(
     context: &RuntimeHomeMutationContext<'_>,

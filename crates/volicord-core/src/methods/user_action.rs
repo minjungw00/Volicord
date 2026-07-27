@@ -2,41 +2,22 @@ use super::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_authorities,
     plan_projected_close_readiness,
 };
+use super::user_action_continuity::plan_user_action_continuity_records;
 use super::{
-    active_acceptance_criteria_for_task, allocate_user_action_resolution_id, build_state_summary,
-    decision_rejected_response, decode_required_json, dry_run_summary,
-    evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
-    next_actions_for_state, no_active_task_response, object_from_value, parse_task_mode,
-    plan_error_response, prepare_or_response, project_state_projection, projected_blocker_refs,
-    projected_close_basis, projected_evidence_summary, projected_write_ticket_summary,
-    record_core_workflow_metric_best_effort, rejected_pipeline_response,
-    response_committed_fresh_effect, state_ref, state_ref_from_stored, task_lifecycle_mutation,
-    validation_plan_error, validation_rejected, MethodPlan, PlanError, SummaryBuild,
+    active_acceptance_criteria_for_task, allocate_user_action_request_id,
+    allocate_user_action_resolution_id, build_state_summary, decision_rejected_response,
+    dry_run_summary, evidence_summary_for_display, guarantee_display_for_invocation,
+    mutation_method_policy, next_actions_for_state, no_active_task_response, object_from_value,
+    parse_task_mode, plan_error_response, prepare_or_response, project_state_projection,
+    projected_blocker_refs, projected_close_basis, projected_evidence_summary,
+    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
+    rejected_pipeline_response, response_committed_fresh_effect, state_ref, state_ref_from_stored,
+    task_lifecycle_mutation, user_action_service_plan_error, validation_plan_error,
+    validation_rejected, MethodPlan, PlanError, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
     PipelineResponse, TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
-};
-use crate::policy::close_readiness::UserActionAuthority;
-use crate::user_action::authority::{user_action_authority_from_record, user_action_from_record};
-use crate::user_action::continuity::plan_user_action_continuity_records;
-use crate::user_action::identity::UserActionOrigin;
-use crate::user_action::lifecycle::projected_user_action_lifecycle_phase;
-use crate::user_action::materialization::{
-    materialize_user_action_request, materialize_user_action_resolution,
-    UserActionMaterializationInput, UserActionResolutionMaterializationInput,
-};
-use crate::user_action::model::{UserActionConstructionInput, UserActionIntent};
-use crate::user_action::resolution::{
-    channel_kind_from_verified_invocation,
-    construct_user_action_resolution as construct_domain_user_action_resolution,
-    resolution_input_matches_body as domain_resolution_input_matches_body,
-    user_action_resolution_from_record as resolution_from_stored_record,
-    validate_current_resolution_basis as validate_domain_resolution_basis,
-};
-use crate::user_action::service::{
-    construct_user_action, pending_user_action_authorities_for_plan,
-    resolved_user_action_authorities_for_all_kinds,
 };
 use serde_json::json;
 use volicord_store::core_pipeline::{
@@ -51,13 +32,32 @@ use volicord_types::methods::{
 };
 use volicord_types::schema::{
     validate_channel_submission_id, AgentSafeUserActionRequestSummary, NextActionSummary,
-    PersistedUserActionRequest, PersistedUserActionResolution, StateRecordRef, StateSummary,
-    ToolEnvelope, UserActionBasis,
+    StateRecordRef, StateSummary, ToolEnvelope,
 };
 use volicord_types::values::{
     ActorSource, ErrorCode, MethodName, StateRecordKind, UserActionChannelKind, UserActionStatus,
-    UtcTimestamp,
+    UserActionVerificationBasis, UtcTimestamp,
 };
+use volicord_user_action_service::{
+    construct_user_action,
+    construct_user_action_resolution as construct_domain_user_action_resolution,
+    materialize_user_action_request, materialize_user_action_resolution,
+    pending_user_action_authorities, projected_user_action_lifecycle_phase,
+    resolution_input_matches_body as domain_resolution_input_matches_body,
+    resolved_user_action_authorities_for_all_kinds, user_action_authority_from_record,
+    user_action_from_record, user_action_resolution_from_record as resolution_from_stored_record,
+    validate_current_resolution_basis as validate_domain_resolution_basis, UserActionAuthority,
+    UserActionConstructionContext, UserActionConstructionInput, UserActionIntent,
+    UserActionMaterializationInput, UserActionOrigin, UserActionPersistenceContext,
+    UserActionResolutionMaterializationInput,
+};
+
+fn channel_kind_from_verified_invocation(
+    invocation: &VerifiedInvocationContext,
+) -> Option<UserActionChannelKind> {
+    UserActionVerificationBasis::parse(&invocation.verification_basis)
+        .map(UserActionChannelKind::from_verification_basis)
+}
 
 impl CoreService {
     /// Executes `volicord.request_user_action` through the shared Core mutation pipeline.
@@ -182,11 +182,14 @@ fn plan_request_user_action(
         .map_err(CorePipelineError::from)?;
     let constructed = construct_user_action(UserActionConstructionInput {
         store,
-        project_state,
-        envelope: &request.envelope,
         task: &task,
         current_change_unit: current_change_unit.as_ref(),
-        operation_now: &now,
+        context: UserActionConstructionContext {
+            project_id: request.envelope.project_id.clone(),
+            observed_state_version: project_state.state_version,
+            observed_at: now.clone(),
+            locale: request.envelope.locale.as_ref().cloned(),
+        },
         intent: UserActionIntent {
             task_id: request.task_id.clone(),
             change_unit_id: request.change_unit_id.as_ref().cloned(),
@@ -194,30 +197,43 @@ fn plan_request_user_action(
             required_for: request.required_for.clone(),
             expires_at: request.expires_at.clone(),
         },
-    })?;
+    })
+    .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let coordinate_change_unit_id = constructed.coordinate_change_unit_id.clone();
     let planned_state_version = project_state.state_version + 1;
+    let Some(operation_identity) = request.envelope.idempotency_key.as_ref().cloned() else {
+        return validation_plan_error(
+            request.envelope.dry_run,
+            Some(project_state.state_version),
+            "envelope.idempotency_key",
+            "a user-action request requires an idempotency key",
+        );
+    };
+    let user_action_request_id =
+        allocate_user_action_request_id(service, store).map_err(PlanError::Core)?;
     let materialized = materialize_user_action_request(UserActionMaterializationInput {
-        service,
-        store,
-        project_state,
-        verified_invocation,
-        envelope: &request.envelope,
+        context: UserActionPersistenceContext {
+            project_id: request.envelope.project_id.clone(),
+            actor_source: verified_invocation.actor_source.clone(),
+            operation_identity,
+            planned_state_version,
+            user_action_request_id,
+        },
         origin: UserActionOrigin::DirectRequest,
         constructed,
-    })?;
+    })
+    .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let action_kind = materialized.public_request.action_kind;
     let request_id = materialized.public_request.user_action_request_id.clone();
     let request_ref = materialized.request_ref.clone();
     let effective = materialized.effective;
-    let mut pending_authorities = pending_user_action_authorities_for_plan(
-        store,
-        project_state,
-        &request.envelope,
-        &request.task_id,
-        &now,
-    )?;
-    pending_authorities.push(user_action_authority_from_record(&effective)?);
+    let mut pending_authorities = pending_user_action_authorities(store, &request.task_id, &now)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
+    pending_authorities.push(
+        user_action_authority_from_record(&effective).map_err(|error| {
+            user_action_service_plan_error(&request.envelope, project_state, error)
+        })?,
+    );
     let lifecycle_phase = projected_user_action_lifecycle_phase(
         project_state,
         &task,
@@ -237,7 +253,11 @@ fn plan_request_user_action(
         current_change_unit.as_ref(),
         &now,
         planned_state_version,
-        Some(user_action_authority_from_record(&effective)?),
+        Some(
+            user_action_authority_from_record(&effective).map_err(|error| {
+                user_action_service_plan_error(&request.envelope, project_state, error)
+            })?,
+        ),
         Some(request_ref.clone()),
         None,
     )?;
@@ -329,19 +349,15 @@ fn projected_user_action_state(
     let evidence_summary =
         projected_evidence_summary(store, &envelope.project_id, planned_state_version, task)?
             .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref()));
-    let mut pending_authorities =
-        pending_user_action_authorities_for_plan(store, project_state, envelope, &task_id, now)?;
+    let mut pending_authorities = pending_user_action_authorities(store, &task_id, now)
+        .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
     if let Some(resolved_request_id) = resolved_request_id {
         pending_authorities
             .retain(|authority| authority.user_action_request_id != resolved_request_id.as_str());
     }
-    let mut resolved_authorities = resolved_user_action_authorities_for_all_kinds(
-        store,
-        project_state,
-        envelope,
-        &task_id,
-        now,
-    )?;
+    let mut resolved_authorities =
+        resolved_user_action_authorities_for_all_kinds(store, &task_id, now)
+            .map_err(|error| user_action_service_plan_error(envelope, project_state, error))?;
     if let Some(authority) = projected_authority {
         match authority.status {
             UserActionStatus::Pending => {
@@ -578,18 +594,11 @@ fn plan_resolve_user_action(
         .user_action_resolution_for_channel_submission(channel_kind, &request.channel_submission_id)
         .map_err(CorePipelineError::from)?
     {
-        let body: PersistedUserActionResolution = decode_required_json(
-            "user_action_resolutions",
-            existing.user_action_resolution_id.clone(),
-            "resolution_json",
-            Some(&existing.resolution_json),
-        )?;
         let exact = existing.user_action_request_id == request.user_action_request_id.as_str()
-            && existing.resolved_by_actor_source
-                == verified_actor.actor_source.to_canonical_string()
+            && existing.resolved_by_actor_source == verified_actor.actor_source
             && existing.resolved_verification_basis.as_str() == verified_actor.verification_basis
             && existing.resolved_assurance_level == verified_actor.assurance_level
-            && domain_resolution_input_matches_body(&request.resolution, &body);
+            && domain_resolution_input_matches_body(&request.resolution, &existing.resolution);
         if !exact {
             return Err(PlanError::Response(Box::new(decision_rejected_response(
                 &request.envelope,
@@ -652,37 +661,33 @@ fn plan_resolve_user_action(
     let current_change_unit = store
         .current_change_unit(&task_id)
         .map_err(CorePipelineError::from)?;
-    let persisted: PersistedUserActionRequest = decode_required_json(
-        "user_action_requests",
-        effective.request.user_action_request_id.clone(),
-        "request_json",
-        Some(&effective.request.request_json),
-    )?;
-    let basis: UserActionBasis = decode_required_json(
-        "user_action_requests",
-        effective.request.user_action_request_id.clone(),
-        "basis_json",
-        Some(&effective.request.basis_json),
-    )?;
+    let persisted = &effective.request.request;
+    let basis = &effective.request.basis;
     validate_domain_resolution_basis(
         store,
-        project_state,
-        &request,
+        project_state.state_version,
         &task,
         current_change_unit.as_ref(),
-        &basis,
-    )?;
+        basis,
+    )
+    .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let resolution_id =
         allocate_user_action_resolution_id(service, store).map_err(PlanError::Core)?;
     let (resolution_body, mut derived_refs) = construct_domain_user_action_resolution(
         store,
-        project_state,
-        &request,
+        &UserActionConstructionContext {
+            project_id: request.envelope.project_id.clone(),
+            observed_state_version: project_state.state_version,
+            observed_at: now.clone(),
+            locale: request.envelope.locale.as_ref().cloned(),
+        },
+        &request.resolution,
         &persisted.body,
-        &basis,
+        basis,
         &task_id,
         current_change_unit.as_ref(),
-    )?;
+    )
+    .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     resolution_body.validate().map_err(|error| {
         PlanError::Response(Box::new(
             validation_rejected(
@@ -703,17 +708,21 @@ fn plan_resolve_user_action(
             channel_kind,
             channel_submission_id: &request.channel_submission_id,
             resolution: resolution_body.clone(),
-            verified_actor,
+            actor_source: verified_actor.actor_source.clone(),
+            verification_basis: channel_kind.verification_basis(),
+            assurance_level: verified_actor.assurance_level.clone(),
             resolved_at: &now,
         })
-        .map_err(PlanError::Core)?;
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let resolution_record = materialized_resolution.record;
     let mut projected_effective = effective.clone();
     projected_effective.status = UserActionStatus::Resolved;
     projected_effective.resolution = Some(resolution_record.clone());
     let planned_state_version = project_state.state_version + 1;
-    let public_request = user_action_from_record(&projected_effective, planned_state_version)?;
-    let public_resolution = resolution_from_stored_record(&resolution_record, &task_id)?;
+    let public_request = user_action_from_record(&projected_effective, planned_state_version)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
+    let public_resolution = resolution_from_stored_record(&resolution_record, &task_id)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     let request_ref = state_ref(
         StateRecordKind::UserActionRequest,
         request.user_action_request_id.as_str(),
@@ -736,19 +745,14 @@ fn plan_resolve_user_action(
         &task_id,
         current_change_unit.as_ref(),
         &persisted.body,
-        &basis,
+        basis,
         &resolution_body,
         &resolution_ref,
         &now,
     )?;
     derived_refs.extend(continuity_plans.iter().map(|plan| plan.record_ref.clone()));
-    let mut pending_authorities = pending_user_action_authorities_for_plan(
-        store,
-        project_state,
-        &request.envelope,
-        &task_id,
-        &now,
-    )?;
+    let mut pending_authorities = pending_user_action_authorities(store, &task_id, &now)
+        .map_err(|error| user_action_service_plan_error(&request.envelope, project_state, error))?;
     pending_authorities.retain(|authority| {
         authority.user_action_request_id != request.user_action_request_id.as_str()
     });
@@ -771,7 +775,11 @@ fn plan_resolve_user_action(
         current_change_unit.as_ref(),
         &now,
         planned_state_version,
-        Some(user_action_authority_from_record(&projected_effective)?),
+        Some(
+            user_action_authority_from_record(&projected_effective).map_err(|error| {
+                user_action_service_plan_error(&request.envelope, project_state, error)
+            })?,
+        ),
         None,
         Some(&request.user_action_request_id),
     )?;

@@ -4,7 +4,6 @@ use crate::methods::{
     store_error_plan, PlanError,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
-use crate::policy::close_readiness::UserActionAuthority;
 use crate::policy::close_readiness_evidence::{
     project_close_evidence_summary, required_acceptance_criterion_ids,
 };
@@ -20,6 +19,7 @@ use volicord_types::schema::{
     StateRecordRef, ToolEnvelope,
 };
 use volicord_types::values::{JudgmentKind, UtcTimestamp};
+use volicord_user_action_service::UserActionAuthority;
 
 /// Typed close-readiness facts acquired from Store state or a method projection.
 pub(crate) struct CloseReadinessFacts {

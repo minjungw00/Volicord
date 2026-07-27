@@ -1,4 +1,4 @@
-use crate::user_action::identity::UserActionOrigin;
+use crate::identity::UserActionOrigin;
 use volicord_types::ids::{IdempotencyKey, UnrecordedChangeId};
 use volicord_types::values::MethodName;
 

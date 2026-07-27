@@ -6,10 +6,9 @@ use volicord_types::schema::{
     UserActionResolutionBody,
 };
 use volicord_types::values::{
-    AcceptancePolicy, ActorSource, JudgmentResolutionOutcome, StateRecordKind,
-    UserActionBasisStatus, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-    UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
+    AcceptancePolicy, StateRecordKind, UserActionKind, UserActionRequiredFor, UtcTimestamp,
 };
+use volicord_user_action_service::{accepted_current_user_authority, UserActionAuthority};
 
 use super::evidence::state_record_ref_identity_key;
 
@@ -23,26 +22,6 @@ pub(crate) fn close_acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {
         AcceptancePolicy::PolicyDependent => 1,
         AcceptancePolicy::Required => 2,
     }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct UserActionAuthority {
-    pub(crate) user_action_request_id: String,
-    pub(crate) user_action_resolution_id: Option<String>,
-    pub(crate) task_id: TaskId,
-    pub(crate) action_kind: UserActionKind,
-    pub(crate) status: UserActionStatus,
-    pub(crate) required_for: Vec<UserActionRequiredFor>,
-    pub(crate) affected_refs: Vec<StateRecordRef>,
-    pub(crate) machine_action: Option<UserActionOptionAction>,
-    pub(crate) resolution_outcome: Option<JudgmentResolutionOutcome>,
-    pub(crate) resolved_by_actor_source: Option<ActorSource>,
-    pub(crate) resolved_verification_basis: Option<UserActionVerificationBasis>,
-    pub(crate) resolved_assurance_level: Option<String>,
-    pub(crate) basis_status: UserActionBasisStatus,
-    pub(crate) basis: Option<UserActionBasis>,
-    pub(crate) resolution: Option<UserActionResolutionBody>,
-    pub(crate) expires_at: Option<UtcTimestamp>,
 }
 
 #[derive(Debug, Clone)]
@@ -257,48 +236,6 @@ pub(crate) fn accepted_current_scope_decision_authority(
             requirement.affected_refs,
             requirement.task_id,
         )
-}
-
-pub(crate) fn accepted_current_user_authority(
-    judgment: &UserActionAuthority,
-    required_kind: UserActionKind,
-) -> bool {
-    if !user_action_has_current_basis(judgment)
-        || judgment.status != UserActionStatus::Resolved
-        || judgment.action_kind != required_kind
-        || judgment.machine_action != Some(UserActionOptionAction::Accept)
-        || judgment.resolution_outcome != Some(JudgmentResolutionOutcome::Accepted)
-    {
-        return false;
-    }
-    let Some(resolution) = judgment.resolution.as_ref() else {
-        return false;
-    };
-    matches!(
-        resolution,
-        UserActionResolutionBody::Choice {
-            machine_action: UserActionOptionAction::Accept,
-            resolution_outcome: JudgmentResolutionOutcome::Accepted,
-            ..
-        }
-    ) && verified_user_channel_provenance(judgment)
-}
-
-pub(crate) fn verified_user_channel_provenance(judgment: &UserActionAuthority) -> bool {
-    judgment.resolved_by_actor_source == Some(ActorSource::LocalUser)
-        && judgment.resolved_verification_basis.is_some()
-        && judgment
-            .resolved_assurance_level
-            .as_deref()
-            .is_some_and(|value| !value.trim().is_empty())
-}
-
-pub(crate) fn user_action_has_current_basis(user_action: &UserActionAuthority) -> bool {
-    user_action.basis_status == UserActionBasisStatus::Current
-        && user_action
-            .basis
-            .as_ref()
-            .is_some_and(|basis| basis.compatibility_status() == UserActionBasisStatus::Current)
 }
 
 pub(crate) fn current_acceptance_required_risk_ids(

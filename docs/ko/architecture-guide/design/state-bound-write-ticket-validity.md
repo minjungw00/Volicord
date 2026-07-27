@@ -61,10 +61,11 @@ actor identity나 transferable capability가 아닙니다.
 - [`crates/volicord-core/src/methods/prepare_write.rs`](../../../../crates/volicord-core/src/methods/prepare_write.rs)와
   [`record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs):
   issue/reuse와 protected consumption planning.
-- [`crates/volicord-core/src/policy/write_ticket.rs`](../../../../crates/volicord-core/src/policy/write_ticket.rs),
-  [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs),
-  [`path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
+- [`crates/volicord-core/src/policy/write_ticket.rs`](../../../../crates/volicord-core/src/policy/write_ticket.rs)와
+  [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
   typed current-basis 평가.
+- [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
+  공유 typed 제품 경로 정규화와 포함 관계.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):
   strict record, query, grouped mutation 적용.
 

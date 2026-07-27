@@ -215,6 +215,35 @@ impl From<DurableIdError> for CorePipelineError {
     }
 }
 
+impl From<volicord_user_action_service::UserActionServiceError> for CorePipelineError {
+    fn from(error: volicord_user_action_service::UserActionServiceError) -> Self {
+        use volicord_user_action_service::UserActionServiceError;
+        match error {
+            UserActionServiceError::CorruptStoredState(error)
+            | UserActionServiceError::Store(error) => Self::from(error),
+            UserActionServiceError::Validation(error) => Self::InvalidDispatch {
+                detail: format!(
+                    "user-action service validation escaped method mapping: {}: {}",
+                    error.field(),
+                    error.message()
+                ),
+            },
+            UserActionServiceError::Identity(error) => Self::InvalidDispatch {
+                detail: format!("user-action service identity invariant failed: {error:?}"),
+            },
+            UserActionServiceError::Invariant(error) => Self::InvalidDispatch {
+                detail: format!("user-action service invariant failed: {error:?}"),
+            },
+            UserActionServiceError::Unavailable(error) => Self::InvalidDispatch {
+                detail: format!(
+                    "user-action service availability escaped method mapping: {}",
+                    error.message()
+                ),
+            },
+        }
+    }
+}
+
 /// Adapter-captured Git coordinate for the selected Product Repository.
 ///
 /// Core never discovers Git state itself. The selected adapter captures this

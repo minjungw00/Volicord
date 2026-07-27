@@ -1,6 +1,6 @@
 use super::canonical_choice;
-use crate::user_action::authority::user_action_authority_from_state;
-use crate::user_action::lifecycle::projected_user_action_lifecycle_phase;
+use crate::authority::user_action_authority_from_state;
+use crate::lifecycle::projected_user_action_lifecycle_phase;
 use volicord_store::core_pipeline::{ChangeUnitRecord, ProjectStateHeader, TaskRecord};
 use volicord_types::ids::{ProjectId, UserActionRequestId};
 use volicord_types::schema::{RequiredNullable, UserActionRequest};
@@ -54,7 +54,7 @@ fn change_unit() -> ChangeUnitRecord {
     }
 }
 
-fn pending_authority() -> crate::policy::close_readiness::UserActionAuthority {
+fn pending_authority() -> crate::model::UserActionAuthority {
     let constructed = canonical_choice();
     user_action_authority_from_state(&UserActionRequest {
         user_action_request_id: UserActionRequestId::new("action-test"),

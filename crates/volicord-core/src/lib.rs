@@ -13,7 +13,6 @@ mod authority_status;
 mod methods;
 pub mod pipeline;
 mod policy;
-mod user_action;
 
 pub use agent_session::{AgentSessionValidationError, ValidatedAgentSession};
 pub use authority_status::{
@@ -25,11 +24,4 @@ pub use pipeline::{
     CoreOperationalOperation, CoreOperationalResource, CoreOperationalUnavailable,
     CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationAuthority,
     InvocationContext, PipelineResponse, SystemClock, VerifiedInvocationContext,
-};
-pub use user_action::{
-    CurrentUserActionFacts, CurrentUserActionRead, CurrentUserActionUnavailableReason,
-    PendingUserAction, PendingUserActionFacts, PendingUserActionFactsRequest,
-    PendingUserActionResolutionSnapshot, UserActionResolutionAvailability,
-    UserActionResolutionFacts, UserActionResolutionFactsBody,
-    UserActionResolutionUnavailableReason,
 };

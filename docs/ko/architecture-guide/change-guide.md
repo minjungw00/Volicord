@@ -18,6 +18,7 @@
 |---|---|---|
 | 공개 메서드, 요청, 응답, 오류, 값 | `volicord-types`, 그다음 Core | API 메서드/schema와 Failure Model |
 | 계획, 정책, replay, 권한 | `volicord-core` | 집중된 API, Core Model, Storage Effects |
+| 재사용 가능한 UserAction 검증, 구성, authority, lifecycle, 영속화 매핑, resolution, continuity, fact projection | `volicord-user-action-service` | User Action API/schema, Core Model, Storage Records와 Effects |
 | DDL, 엄격한 저장 레코드, transaction 효과 | `volicord-store` | Storage DDL, Records, Effects, Versioning |
 | MCP 생명주기, 디코딩, 도구 목록, projection | `volicord-mcp` | MCP Transport와 API 소유자 |
 | 관리 MCP 시작 또는 runtime source | 숨겨진 CLI launcher, MCP bootstrap, 그다음 Store session | Agent Connection, MCP Transport, Storage Records와 DDL |
@@ -37,6 +38,8 @@ resolution channel을 추가하지 않습니다.
   렌더링, Runtime Home, application service 동작을 소유하지 않습니다.
 - CLI와 MCP 어댑터는 Core-facing interface를 호출할 수 있지만 Core는 어댑터 내부에
   의존하지 않습니다.
+- `volicord-user-action-service`는 Store와 공유 타입에 의존할 수 있지만 Core,
+  어댑터, presentation, 메서드 결과 인프라에는 의존할 수 없습니다.
 - Store는 저장된 엄격한 owner record를 사용 전에 검증하고 owner-defined effect를
   원자적으로 적용합니다.
 - 공개 어댑터는 숨은 invocation context를 거부하며 서버 소유 맥락은 로컬에서

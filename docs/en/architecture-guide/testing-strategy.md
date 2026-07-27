@@ -22,6 +22,14 @@ cross-aggregate storage-effect tests stay at the
 observable storage effects; complete SQL text is asserted only where a
 canonical SQL owner makes those bytes part of the current contract.
 
+Within `volicord-user-action-service`, unit tests own semantic validation,
+canonical body and identity construction, authority, lifecycle,
+materialization, persistence mapping, resolution, continuity, and neutral
+projection behavior. Core tests own request orchestration, generated
+identifiers and timestamps, replay, transaction sequencing, and service-error
+mapping. Store tests own physical persistence, transactions, and strict row
+decoding into typed UserAction records.
+
 Use disposable Runtime Homes and Product Repositories. Keep fixtures minimal and
 typed. A fixture proves parser or implementation behavior only; it does not
 prove behavior of a real Codex installation or platform support.
@@ -51,6 +59,12 @@ test runs the same validator against the current Cargo workspace and its owner.
 Tests do not carry a second copy of the workspace package graph. Architecture
 rules apply directly to the current graph and are not selected through package,
 schema, or protocol versions.
+
+Current-workspace coverage also asserts that
+`volicord-user-action-service` is declared in its dedicated architecture group
+and that the group admits only shared types and Store as normal dependencies
+and test support as a development dependency. This makes any dependency on
+Core, CLI, MCP, or presentation fail the architecture gate.
 
 Core tests construct host-neutral requests with typed local-user or validated
 Agent Connection authority. CLI, MCP, application, and host-contract owners

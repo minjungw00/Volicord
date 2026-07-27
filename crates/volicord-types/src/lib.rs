@@ -21,6 +21,7 @@ pub mod managed_mcp_client_info;
 pub mod mcp_verification_evidence;
 pub mod methods;
 pub mod platform;
+pub mod product_path;
 pub mod release_target;
 pub mod schema;
 pub mod storage_contract;

@@ -1,11 +1,11 @@
-use crate::pipeline::{CoreResult, CoreService};
+use crate::error::{UserActionInvariantError, UserActionServiceError};
 use serde::Serialize;
-use volicord_types::ids::{DurableIdKind, IdempotencyKey, UnrecordedChangeId, UserActionRequestId};
+use volicord_types::ids::{IdempotencyKey, UnrecordedChangeId};
 use volicord_types::values::MethodName;
 
 /// Current Core operation that owns a newly constructed UserAction.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum UserActionOrigin {
+pub enum UserActionOrigin {
     DirectRequest,
     Reconciliation {
         unrecorded_change_id: UnrecordedChangeId,
@@ -27,7 +27,7 @@ impl UserActionOrigin {
         }
     }
 
-    fn metadata_json(&self) -> CoreResult<String> {
+    fn metadata_json(&self) -> Result<String, UserActionServiceError> {
         #[derive(Serialize)]
         #[serde(deny_unknown_fields)]
         struct EmptyMetadata {}
@@ -40,37 +40,29 @@ impl UserActionOrigin {
         }
 
         match self {
-            Self::DirectRequest => serde_json::to_string(&EmptyMetadata {}).map_err(Into::into),
+            Self::DirectRequest => serde_json::to_string(&EmptyMetadata {}).map_err(|_| {
+                UserActionServiceError::Invariant(UserActionInvariantError::Serialization)
+            }),
             Self::Reconciliation {
                 unrecorded_change_id,
             } => serde_json::to_string(&ReconciliationMetadata {
                 created_by: MethodName::ReconcileChanges.as_str(),
                 unrecorded_change_id,
             })
-            .map_err(Into::into),
+            .map_err(|_| {
+                UserActionServiceError::Invariant(UserActionInvariantError::Serialization)
+            }),
         }
     }
 
     pub(super) fn persistence_identity(
         &self,
         source_idempotency_key: &IdempotencyKey,
-    ) -> CoreResult<UserActionPersistenceIdentity> {
+    ) -> Result<UserActionPersistenceIdentity, UserActionServiceError> {
         Ok(UserActionPersistenceIdentity {
             source_method: self.source_method(),
             source_idempotency_key: source_idempotency_key.as_str().to_owned(),
             metadata_json: self.metadata_json()?,
         })
     }
-}
-
-/// Allocates one stable request identity against a focused existence query.
-pub(super) fn allocate_user_action_request_id(
-    service: &CoreService,
-    mut exists: impl FnMut(&str) -> CoreResult<bool>,
-) -> CoreResult<UserActionRequestId> {
-    service
-        .allocate_generated_id(DurableIdKind::UserActionRequest, |candidate| {
-            exists(candidate)
-        })
-        .map(UserActionRequestId::new)
 }

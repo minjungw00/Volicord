@@ -20,6 +20,7 @@ focused Reference owner, not by current code or this guide.
 |---|---|---|
 | Public method, request, response, error, or value | `volicord-types`, then Core | API method/schema and Failure Model |
 | Planning, policy, replay, or authority | `volicord-core` | focused API, Core Model, Storage Effects |
+| Reusable UserAction validation, construction, authority, lifecycle, persistence mapping, resolution, continuity, or fact projection | `volicord-user-action-service` | User Action API/schema, Core Model, Storage Records and Effects |
 | DDL, strict stored record, or transaction effect | `volicord-store` | Storage DDL, Records, Effects, Versioning |
 | MCP lifecycle, decoding, tool list, or projection | `volicord-mcp` | MCP Transport and API owners |
 | Managed MCP launch or runtime source | hidden CLI launcher, MCP bootstrap, then Store sessions | Agent Connection, MCP Transport, Storage Records and DDL |
@@ -39,6 +40,8 @@ transport, or user-action resolution channel without an explicit owner change.
   Core, Store, MCP, rendering, Runtime Home, or application-service behavior.
 - CLI and MCP adapters may call Core-facing interfaces; Core must not depend on
   adapter internals.
+- `volicord-user-action-service` may depend on Store and shared types, but not
+  on Core, adapters, presentation, or method-result infrastructure.
 - Store validates strict persisted owner records before use and applies
   owner-defined effects atomically.
 - Public adapters reject hidden invocation context; server-owned context is

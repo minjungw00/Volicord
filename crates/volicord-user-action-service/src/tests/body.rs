@@ -1,6 +1,6 @@
 use super::validated_choice_intent;
-use crate::user_action::body::construct_canonical_body;
-use crate::user_action::model::UserActionBodyFacts;
+use crate::body::construct_canonical_body;
+use crate::model::UserActionBodyFacts;
 use volicord_types::schema::UserActionRequestBody;
 use volicord_types::values::{JudgmentResolutionOutcome, UserActionOptionAction};
 

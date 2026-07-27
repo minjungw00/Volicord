@@ -3,11 +3,10 @@ use std::error::Error;
 use rusqlite::params;
 use serde_json::{json, Value};
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
-use volicord_types::schema::UserActionBasis;
 use volicord_types::values::{
-    JudgmentResolutionOutcome, MethodName, UserActionBasisStatus, UserActionChannelKind,
-    UserActionKind, UserActionOptionAction, UserActionStatus, UserActionVerificationBasis,
-    UtcTimestamp,
+    ActorSource, JudgmentResolutionOutcome, MethodName, UserActionBasisStatus,
+    UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
+    UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
 };
 
 use super::{
@@ -67,10 +66,19 @@ fn user_action_request_and_basis_store_apis_round_trip() -> Result<(), Box<dyn E
     assert_eq!(current.request.task_id, task_id);
     assert_eq!(current.request.action_kind, UserActionKind::ProductDecision);
     assert_eq!(current.request.basis_status, UserActionBasisStatus::Current);
-    assert_eq!(current.request.required_for_json, r#"["informational"]"#);
-    assert_eq!(current.request.requested_by_actor_source, ACTOR_SOURCE);
+    assert_eq!(
+        current.request.required_for,
+        vec![UserActionRequiredFor::Informational]
+    );
+    assert_eq!(
+        current
+            .request
+            .requested_by_actor_source
+            .to_canonical_string(),
+        ACTOR_SOURCE
+    );
     assert!(current.resolution.is_none());
-    let basis: UserActionBasis = serde_json::from_str(&current.request.basis_json)?;
+    let basis = &current.request.basis;
     assert_eq!(basis.compatibility_status(), UserActionBasisStatus::Current);
     assert_eq!(basis.coordinates().task_id.as_str(), task_id);
 
@@ -103,7 +111,7 @@ fn user_action_request_and_basis_store_apis_round_trip() -> Result<(), Box<dyn E
         .expect("stale request should remain readable");
     assert_eq!(stale.status, UserActionStatus::Stale);
     assert_eq!(stale.request.basis_status, UserActionBasisStatus::Stale);
-    let stale_basis: UserActionBasis = serde_json::from_str(&stale.request.basis_json)?;
+    let stale_basis = &stale.request.basis;
     assert_eq!(
         stale_basis.compatibility_status(),
         UserActionBasisStatus::Stale
@@ -483,8 +491,7 @@ fn user_action_store_derives_expiry_resolution_and_stale_status() -> Result<(), 
         .expect("stale action should be readable");
     assert_eq!(stale.status, UserActionStatus::Stale);
     assert_eq!(
-        serde_json::from_str::<Value>(&stale.request.basis_json)?["coordinates"]
-            ["compatibility_status"],
+        serde_json::to_value(&stale.request.basis)?["coordinates"]["compatibility_status"],
         "stale"
     );
     Ok(())
@@ -574,9 +581,9 @@ fn user_action_resolution_round_trips_choice_and_channel_provenance() -> Result<
     assert_eq!(record.user_action_request_id, request_id);
     assert_eq!(record.channel_kind, UserActionChannelKind::Cli);
     assert_eq!(record.channel_submission_id, "submission_deferred_pair");
-    assert_eq!(record.resolved_by_actor_source, "local_user");
+    assert_eq!(record.resolved_by_actor_source, ActorSource::LocalUser);
     assert_eq!(
-        serde_json::from_str::<Value>(&record.resolution_json)?["machine_action"],
+        serde_json::to_value(&record.resolution)?["machine_action"],
         "defer"
     );
     assert_eq!(
@@ -719,7 +726,7 @@ fn user_action_resolution_timestamp_order_enforces_half_open_boundaries(
                         .user_action_resolution_record(&resolution_id)?
                         .expect("in-window resolution should remain readable")
                         .resolved_at,
-                    resolved_at
+                    UtcTimestamp::parse(resolved_at)?
                 );
             }
         }
@@ -812,12 +819,12 @@ fn evidence_observation_resolution_preserves_exact_candidate_after_projection_ad
         .user_action_resolution_record(resolution_id)?
         .expect("the immutable resolution should be readable by id");
     assert_eq!(
-        serde_json::from_str::<Value>(&resolution.resolution_json)?["observation"]
-            ["output_artifact_refs"][0]["created_by_run_ref"]["produced_at_state_version"],
+        serde_json::to_value(&resolution.resolution)?["observation"]["output_artifact_refs"][0]
+            ["created_by_run_ref"]["produced_at_state_version"],
         3
     );
 
-    let mut tampered: Value = serde_json::from_str(&resolution.resolution_json)?;
+    let mut tampered: Value = serde_json::to_value(&resolution.resolution)?;
     tampered["observation"]["output_artifact_refs"][0]["sha256"] =
         json!("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     store.conn.execute(

@@ -72,8 +72,8 @@ actor identity를 증명하지 않습니다.
 - [`crates/volicord-cli/src/setup_command/`](../../../../crates/volicord-cli/src/setup_command/)와
   [`connection_command/setup_transaction.rs`](../../../../crates/volicord-cli/src/connection_command/setup_transaction.rs):
   setup 및 managed-file transaction.
-- [`crates/volicord-core/src/policy/path.rs`](../../../../crates/volicord-core/src/policy/path.rs):
-  Core policy path helper.
+- [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
+  공유 typed 제품 경로 정규화와 포함 관계 helper.
 - [`xtask/src/repository.rs`](../../../../xtask/src/repository.rs):
   source-repository root 및 path 처리.
 
