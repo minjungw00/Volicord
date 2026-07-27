@@ -1,9 +1,9 @@
 use crate::error::{UserActionServiceError, UserActionUnavailable};
-use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use volicord_types::{
     schema::{
-        ArtifactRef, CurrentCloseBasis, StateRecordRef, UserActionBasis, UserActionRequestBody,
+        ArtifactRef, CurrentCloseBasis, PersistedProjectContinuityMetadata,
+        PersistedProjectContinuitySource, StateRecordRef, UserActionBasis, UserActionRequestBody,
         UserActionResolutionBody,
     },
     values::{
@@ -34,7 +34,7 @@ pub struct UserActionContinuityDraft {
     pub artifact_refs: Vec<ArtifactRef>,
     pub supersedes_refs: Vec<StateRecordRef>,
     pub review_triggers: Vec<String>,
-    pub metadata: Value,
+    pub metadata: PersistedProjectContinuityMetadata,
 }
 
 /// Derives the exact continuity facts authorized by one accepted UserAction.
@@ -97,12 +97,12 @@ pub fn derive_user_action_continuity(
                 artifact_refs: choice.context.artifact_refs.clone(),
                 supersedes_refs: Vec::new(),
                 review_triggers: Vec::new(),
-                metadata: json!({
-                    "source": "resolve_user_action",
-                    "action_kind": input.request_body.action_kind(),
-                    "resolution_outcome": resolution_outcome,
-                    "selected_option_id": selected_option_id
-                }),
+                metadata: PersistedProjectContinuityMetadata::ResolveUserActionDecision {
+                    source: PersistedProjectContinuitySource::ResolveUserAction,
+                    action_kind: input.request_body.action_kind(),
+                    resolution_outcome: *resolution_outcome,
+                    selected_option_id: selected_option_id.clone(),
+                },
             }])
         }
         ProjectContinuityKind::AcceptedRisk => {
@@ -144,12 +144,13 @@ pub fn derive_user_action_continuity(
                         artifact_refs: choice.context.artifact_refs.clone(),
                         supersedes_refs: Vec::new(),
                         review_triggers: Vec::new(),
-                        metadata: json!({
-                            "source": "resolve_user_action",
-                            "action_kind": input.request_body.action_kind(),
-                            "risk_id": risk.risk_id,
-                            "close_basis_revision": close_basis.close_basis_revision
-                        }),
+                        metadata:
+                            PersistedProjectContinuityMetadata::ResolveUserActionAcceptedRisk {
+                                source: PersistedProjectContinuitySource::ResolveUserAction,
+                                action_kind: input.request_body.action_kind(),
+                                risk_id: risk.risk_id.clone(),
+                                close_basis_revision: close_basis.close_basis_revision,
+                            },
                     }
                 })
                 .collect())

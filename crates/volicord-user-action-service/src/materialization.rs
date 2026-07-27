@@ -111,8 +111,6 @@ pub fn materialize_user_action_request(
         expires_at: expires_at.clone(),
         created_at: created_at.clone(),
     };
-    let metadata = serde_json::from_str(&persistence_identity.metadata_json)
-        .map_err(|_| UserActionServiceError::Invariant(UserActionInvariantError::Serialization))?;
     let (effective, mutation) =
         map_user_action_request_persistence(UserActionRequestPersistenceInput {
             project_id: context.project_id.as_str().to_owned(),
@@ -128,7 +126,7 @@ pub fn materialize_user_action_request(
             source_idempotency_key: persistence_identity.source_idempotency_key,
             requested_at: created_at,
             expires_at: expires_at.into_option(),
-            metadata,
+            metadata: persistence_identity.metadata,
         })?;
     Ok(MaterializedUserActionRequest {
         request_ref,

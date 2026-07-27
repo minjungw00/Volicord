@@ -5,9 +5,10 @@ use std::{
 };
 
 use rusqlite::{params, Transaction};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use volicord_types::values::UtcTimestamp;
+use volicord_types::values::{ActorSource, ArtifactIntegrityStatus, RedactionState, UtcTimestamp};
 
 use crate::{
     core_pipeline::{clock::advance_project_utc_floor_tx, CoreProjectStore},
@@ -30,6 +31,16 @@ pub enum PersistentArtifactVerificationStatus {
     BoundaryViolation,
 }
 
+/// Closed lifecycle status stored by the persistent Artifact table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PersistentArtifactStatus {
+    Available,
+    Missing,
+    IntegrityFailed,
+    Unavailable,
+}
+
 /// Result of verifying a persistent artifact body without mutating storage.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistentArtifactVerification {
@@ -45,8 +56,8 @@ pub struct PersistentArtifactBodySpec<'a> {
     pub sha256: Option<&'a str>,
     pub size_bytes: Option<u64>,
     pub content_type: Option<&'a str>,
-    pub integrity_status: &'a str,
-    pub availability_status: &'a str,
+    pub integrity_status: ArtifactIntegrityStatus,
+    pub availability_status: PersistentArtifactStatus,
 }
 
 /// Storage representation for a staged payload.
@@ -72,17 +83,17 @@ impl StagedPayloadKind {
 pub struct ArtifactStagingInsert {
     pub handle_id: String,
     pub task_id: String,
-    pub created_by_actor_source: String,
+    pub created_by_actor_source: ActorSource,
     pub display_name: String,
     pub content_type: String,
     pub sha256: String,
     pub size_bytes: u64,
-    pub redaction_state: String,
+    pub redaction_state: RedactionState,
     pub relation_hint: Option<String>,
     pub payload_kind: StagedPayloadKind,
     pub safe_bytes_or_notice: Vec<u8>,
-    pub created_at: String,
-    pub expires_at: String,
+    pub created_at: UtcTimestamp,
+    pub expires_at: UtcTimestamp,
 }
 
 /// Stored staged-handle facts returned after staging creation.
@@ -90,12 +101,12 @@ pub struct ArtifactStagingInsert {
 pub struct ArtifactStagingRecord {
     pub handle_id: String,
     pub task_id: String,
-    pub created_by_actor_source: String,
+    pub created_by_actor_source: ActorSource,
     pub content_type: String,
     pub sha256: String,
     pub size_bytes: u64,
-    pub redaction_state: String,
-    pub expires_at: String,
+    pub redaction_state: RedactionState,
+    pub expires_at: UtcTimestamp,
     pub tmp_path: String,
 }
 
@@ -150,38 +161,28 @@ pub fn verify_persistent_artifact_body(
     spec: &PersistentArtifactBodySpec<'_>,
 ) -> StoreResult<PersistentArtifactVerification> {
     match spec.integrity_status {
-        "verified" => {}
-        "corrupt" => {
+        ArtifactIntegrityStatus::Verified => {}
+        ArtifactIntegrityStatus::Corrupt => {
             return Ok(verification(
                 PersistentArtifactVerificationStatus::IntegrityFailed,
             ))
-        }
-        _ => {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                "artifact integrity_status is outside the owner-defined value set",
-            ));
         }
     }
 
     match spec.availability_status {
-        "available" => {}
-        "missing" => return Ok(verification(PersistentArtifactVerificationStatus::Missing)),
-        "integrity_failed" => {
+        PersistentArtifactStatus::Available => {}
+        PersistentArtifactStatus::Missing => {
+            return Ok(verification(PersistentArtifactVerificationStatus::Missing))
+        }
+        PersistentArtifactStatus::IntegrityFailed => {
             return Ok(verification(
                 PersistentArtifactVerificationStatus::IntegrityFailed,
             ));
         }
-        "unavailable" => {
+        PersistentArtifactStatus::Unavailable => {
             return Ok(verification(
                 PersistentArtifactVerificationStatus::Unavailable,
             ))
-        }
-        _ => {
-            return Err(StoreError::schema_invariant(
-                "project_state",
-                "artifact status is outside the owner-defined value set",
-            ));
         }
     }
 
@@ -485,16 +486,16 @@ pub(crate) fn insert_artifact_staging_tx(
             project_id,
             handle_id,
             input.task_id,
-            input.created_by_actor_source,
+            input.created_by_actor_source.to_canonical_string(),
             artifact_json,
             safe_metadata_json,
             relative_tmp_path,
             input.sha256,
             size_bytes,
             input.content_type,
-            input.redaction_state,
-            input.expires_at,
-            input.created_at,
+            redaction_state_storage_value(input.redaction_state),
+            input.expires_at.to_canonical_string(),
+            input.created_at.to_canonical_string(),
             metadata_json
         ],
     );
@@ -523,19 +524,21 @@ pub(crate) fn insert_artifact_staging_tx(
 pub(crate) fn validate_insert(input: &ArtifactStagingInsert) -> StoreResult<UtcTimestamp> {
     validate_identifier("handle_id", &input.handle_id)?;
     validate_identifier("task_id", &input.task_id)?;
-    validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
+    validate_identifier(
+        "created_by_actor_source",
+        &input.created_by_actor_source.to_canonical_string(),
+    )?;
     validate_nonempty_text("display_name", &input.display_name)?;
     validate_nonempty_text("content_type", &input.content_type)?;
     validate_artifact_sha256("sha256", &input.sha256)?;
-    validate_identifier("redaction_state", &input.redaction_state)?;
-    let created_at = validate_timestamp("created_at", &input.created_at)?;
-    let expires_at = validate_timestamp("expires_at", &input.expires_at)?;
-    if created_at >= expires_at {
+    validate_timestamp("created_at", &input.created_at)?;
+    validate_timestamp("expires_at", &input.expires_at)?;
+    if input.created_at >= input.expires_at {
         return Err(StoreError::InvalidInput {
             detail: "expires_at must be later than created_at".to_owned(),
         });
     }
-    Ok(created_at)
+    Ok(input.created_at.clone())
 }
 
 fn path_component(value: &str) -> String {
@@ -565,17 +568,21 @@ fn validate_identifier(field: &'static str, value: &str) -> StoreResult<()> {
     }
 }
 
-fn validate_timestamp(field: &'static str, value: &str) -> StoreResult<UtcTimestamp> {
-    UtcTimestamp::parse(value)
-        .and_then(|timestamp| {
-            timestamp
-                .ensure_canonical_rfc3339_representable()
-                .map(|()| timestamp)
-                .map_err(|_| volicord_types::values::UtcTimestampParseError)
-        })
+fn validate_timestamp(field: &'static str, value: &UtcTimestamp) -> StoreResult<()> {
+    value
+        .ensure_canonical_rfc3339_representable()
         .map_err(|_| StoreError::InvalidInput {
             detail: format!("{field} must be a valid RFC 3339 timestamp"),
         })
+}
+
+fn redaction_state_storage_value(value: RedactionState) -> &'static str {
+    match value {
+        RedactionState::None => "none",
+        RedactionState::Redacted => "redacted",
+        RedactionState::SecretOmitted => "secret_omitted",
+        RedactionState::Blocked => "blocked",
+    }
 }
 
 fn validate_nonempty_text(field: &'static str, value: &str) -> StoreResult<()> {
@@ -660,35 +667,36 @@ mod tests {
         )?;
         let before_state_version = store.project_state()?.state_version;
         let bytes = b"safe staged payload".to_vec();
-        let created_at = "2999-07-13T12:34:56.789Z";
+        let created_at = UtcTimestamp::parse("2999-07-13T12:34:56.789Z")?;
         store.create_artifact_staging(ArtifactStagingInsert {
             handle_id: "staged_clock_floor".to_owned(),
             task_id: "task_staging_floor".to_owned(),
-            created_by_actor_source: fixture.actor_source(),
+            created_by_actor_source: fixture.actor_source().parse()?,
             display_name: "clock-floor.txt".to_owned(),
             content_type: "text/plain".to_owned(),
             sha256: sha256_hex(&bytes),
             size_bytes: u64::try_from(bytes.len())?,
-            redaction_state: "redacted".to_owned(),
+            redaction_state: RedactionState::Redacted,
             relation_hint: None,
             payload_kind: StagedPayloadKind::SafeTextBody,
             safe_bytes_or_notice: bytes,
-            created_at: created_at.to_owned(),
-            expires_at: "2999-07-13T13:34:56.789Z".to_owned(),
+            created_at: created_at.clone(),
+            expires_at: UtcTimestamp::parse("2999-07-13T13:34:56.789Z")?,
         })?;
 
         let state = store.project_state()?;
         assert_eq!(state.state_version, before_state_version);
-        assert_eq!(state.updated_at, created_at);
-        assert!(
-            UtcTimestamp::parse(&store.current_timestamp()?)? >= UtcTimestamp::parse(created_at)?
-        );
+        assert_eq!(state.updated_at, created_at.to_canonical_string());
+        assert!(UtcTimestamp::parse(&store.current_timestamp()?)? >= created_at);
         drop(store);
         let reopened = CoreProjectStore::open_read_only(
             fixture.runtime_home_path(),
             &ProjectId::new(fixture.project_id()),
         )?;
-        assert_eq!(reopened.project_state()?.updated_at, created_at);
+        assert_eq!(
+            reopened.project_state()?.updated_at,
+            created_at.to_canonical_string()
+        );
         Ok(())
     }
 
@@ -740,26 +748,20 @@ mod tests {
         for (handle_id, created_at, expires_at, expected_detail) in [
             (
                 "staged_year_10000",
-                year_10000.to_owned(),
-                "2999-07-13T13:34:56.789Z".to_owned(),
+                parsed_year_10000,
+                UtcTimestamp::parse("2999-07-13T13:34:56.789Z")?,
                 "created_at must be a valid RFC 3339 timestamp",
             ),
             (
-                "staged_chrono_max_expiry",
-                "2999-07-13T12:34:56.789Z".to_owned(),
-                chrono_max,
-                "expires_at must be a valid RFC 3339 timestamp",
-            ),
-            (
                 "staged_equal_expiry",
-                "2999-07-13T12:34:56.789Z".to_owned(),
-                "2999-07-13T12:34:56.789Z".to_owned(),
+                UtcTimestamp::parse("2999-07-13T12:34:56.789Z")?,
+                UtcTimestamp::parse("2999-07-13T12:34:56.789Z")?,
                 "expires_at must be later than created_at",
             ),
             (
                 "staged_reversed_expiry",
-                "2999-07-13T12:34:56.789Z".to_owned(),
-                "2999-07-13T11:34:56.789Z".to_owned(),
+                UtcTimestamp::parse("2999-07-13T12:34:56.789Z")?,
+                UtcTimestamp::parse("2999-07-13T11:34:56.789Z")?,
                 "expires_at must be later than created_at",
             ),
         ] {
@@ -768,12 +770,12 @@ mod tests {
                 .create_artifact_staging(ArtifactStagingInsert {
                     handle_id: handle_id.to_owned(),
                     task_id: "task_staging_invalid_clock".to_owned(),
-                    created_by_actor_source: fixture.actor_source(),
+                    created_by_actor_source: fixture.actor_source().parse()?,
                     display_name: format!("{handle_id}.txt"),
                     content_type: "text/plain".to_owned(),
                     sha256: sha256_hex(&bytes),
                     size_bytes: u64::try_from(bytes.len())?,
-                    redaction_state: "redacted".to_owned(),
+                    redaction_state: RedactionState::Redacted,
                     relation_hint: None,
                     payload_kind: StagedPayloadKind::SafeTextBody,
                     safe_bytes_or_notice: bytes,
@@ -817,17 +819,17 @@ mod tests {
             .create_artifact_staging(ArtifactStagingInsert {
                 handle_id: "staged_read_only".to_owned(),
                 task_id: "task_read_only".to_owned(),
-                created_by_actor_source: fixture.actor_source(),
+                created_by_actor_source: fixture.actor_source().parse()?,
                 display_name: "read-only.txt".to_owned(),
                 content_type: "text/plain".to_owned(),
                 sha256: sha256_hex(&bytes),
                 size_bytes: u64::try_from(bytes.len())?,
-                redaction_state: "redacted".to_owned(),
+                redaction_state: RedactionState::Redacted,
                 relation_hint: None,
                 payload_kind: StagedPayloadKind::SafeTextBody,
                 safe_bytes_or_notice: bytes,
-                created_at: "2026-07-25T00:00:00Z".to_owned(),
-                expires_at: "2026-07-25T01:00:00Z".to_owned(),
+                created_at: UtcTimestamp::parse("2026-07-25T00:00:00Z")?,
+                expires_at: UtcTimestamp::parse("2026-07-25T01:00:00Z")?,
             })
             .expect_err("read-only Store must not authorize artifact staging");
 
@@ -955,8 +957,8 @@ mod tests {
             sha256: Some(sha256),
             size_bytes: Some(size_bytes),
             content_type: Some("application/json"),
-            integrity_status: "verified",
-            availability_status: "available",
+            integrity_status: ArtifactIntegrityStatus::Verified,
+            availability_status: PersistentArtifactStatus::Available,
         }
     }
 

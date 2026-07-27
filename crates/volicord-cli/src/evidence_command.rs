@@ -3,7 +3,6 @@ use std::{
     fmt,
     io::Read,
     path::Path,
-    str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
@@ -28,7 +27,11 @@ use volicord_platform_fs::capture_git_workspace_snapshot;
 use volicord_store::{
     agent_connections::{agent_connection_project_access, agent_connection_record_read_only},
     bootstrap::{ProjectRecord, ACTIVE_PROJECT_STATUS},
-    core_pipeline::{CoreProjectStore, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptInsert},
+    core_pipeline::{
+        AcceptanceCriterionStatus, ChangeUnitStatus, CoreProjectStore, EvidenceCaptureIntentRecord,
+        EvidenceCaptureReceiptInsert,
+    },
+    evidence_capture::{EvidenceCaptureCompleteness, StoredEvidenceCaptureReceiptMetadata},
     guards::{
         agent_session, guard_event, guard_installation, guard_observation_summary,
         validate_stored_guard_installation_manifest_binding, GuardEventRecord,
@@ -47,7 +50,9 @@ use volicord_types::schema::{
     EVIDENCE_CAPTURE_COMMAND_LIMITATION as COMMAND_LIMITATION,
     EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
 };
-use volicord_types::values::{ActorSource, EvidenceProducerKind, RedactionState, UtcTimestamp};
+use volicord_types::values::{
+    EvidenceProducerKind, RedactionState, TaskLifecyclePhase, UtcTimestamp,
+};
 
 use crate::mutation_admission::{with_cli_runtime_home_mutation, CliMutationAdmissionError};
 use crate::project_context::{
@@ -232,45 +237,25 @@ fn load_and_validate_intent(
             "evidence capture intent belongs to another project",
         ));
     }
-    validate_connection_access(context, &record.requesting_connection_internal_id)?;
+    validate_connection_access(context, record.requesting_connection_internal_id.as_str())?;
     validate_current_basis(context, &record)?;
     validate_not_expired(&context.store, &record)?;
 
-    let capture: EvidenceCaptureSpec = strict_json(
-        "evidence capture intent capture_spec_json",
-        &record.capture_spec_json,
-    )?;
+    let capture = record.capture.clone();
     if evidence_capture_input_sha256(&capture).map_err(json_runtime)? != record.input_sha256 {
         return Err(EvidenceCommandError::runtime(
             "evidence capture intent input digest is corrupt",
         ));
     }
-    let target: EvidenceTarget =
-        strict_json("evidence capture intent target_json", &record.target_json)?;
-    validate_target(&context.store, &record, &target)?;
+    validate_target(&context.store, &record, &record.target)?;
     validate_workspace(context, &record)?;
-    if capture_kind(&capture) != record.capture_kind {
+    if capture_producer_kind(&capture) != record.capture_kind {
         return Err(EvidenceCommandError::runtime(
             "evidence capture intent kind is inconsistent",
         ));
     }
-    let expected_outcome: JsonObject = strict_json(
-        "evidence capture intent expected_outcome_json",
-        &record.expected_outcome_json,
-    )?;
-    let session_context = json_object(
-        "evidence capture intent session_context_json",
-        &record.session_context_json,
-    )?;
-    let session_id = match session_context.get("session_id") {
-        Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
-        Some(Value::Null) | None => None,
-        _ => {
-            return Err(EvidenceCommandError::runtime(
-                "evidence capture intent session context is corrupt",
-            ))
-        }
-    };
+    let expected_outcome = record.expected_outcome.clone();
+    let session_id = record.session_context.session_id.clone();
     Ok(ValidatedIntent {
         record,
         capture,
@@ -314,8 +299,12 @@ fn validate_current_basis(
         .store
         .task_record(&task_id)?
         .ok_or_else(|| EvidenceCommandError::runtime("capture-intent Task is missing"))?;
-    if task.lifecycle_phase == "closed"
-        || task.current_change_unit_id.as_deref() != Some(intent.change_unit_id.as_str())
+    if matches!(
+        task.lifecycle_phase,
+        TaskLifecyclePhase::Completed
+            | TaskLifecyclePhase::Cancelled
+            | TaskLifecyclePhase::Superseded
+    ) || task.current_change_unit_id.as_deref() != Some(intent.change_unit_id.as_str())
         || task.scope_revision != intent.scope_revision
     {
         return stale_intent("Task, Change Unit, or scope revision changed");
@@ -324,16 +313,20 @@ fn validate_current_basis(
         .store
         .change_unit_record(&task_id, &intent.change_unit_id)?
         .ok_or_else(|| EvidenceCommandError::runtime("capture-intent Change Unit is missing"))?;
-    if !change_unit.is_current || change_unit.status != "active" {
+    if !change_unit.is_current || change_unit.status != ChangeUnitStatus::Active {
         return stale_intent("Change Unit is no longer current and active");
     }
-    let shaping = json_object("tasks.shaping_summary_json", &task.shaping_summary_json)?;
-    let write_basis = json_object(
-        "change_units.write_basis_json",
-        &change_unit.write_basis_json,
-    )?;
-    if shaping.get("baseline_ref").and_then(Value::as_str) != Some(intent.baseline_ref.as_str())
-        || write_basis.get("baseline_ref").and_then(Value::as_str)
+    if task
+        .shaping
+        .baseline_ref
+        .as_ref()
+        .map(|value| value.as_str())
+        != Some(intent.baseline_ref.as_str())
+        || change_unit
+            .write_basis
+            .baseline_ref
+            .as_ref()
+            .map(|value| value.as_str())
             != Some(intent.baseline_ref.as_str())
     {
         return stale_intent("baseline changed");
@@ -355,7 +348,9 @@ fn validate_target(
                 .ok_or_else(|| {
                     EvidenceCommandError::runtime("capture-intent acceptance criterion is missing")
                 })?;
-            if criterion.task_id != intent.task_id || criterion.status != "active" {
+            if criterion.task_id != intent.task_id
+                || criterion.status != AcceptanceCriterionStatus::Active
+            {
                 return stale_intent("acceptance criterion is no longer current");
             }
         }
@@ -397,10 +392,7 @@ fn validate_workspace(
         "head_sha": snapshot.head_sha,
         "workspace_fingerprint": snapshot.workspace_fingerprint,
     });
-    let expected = json_object(
-        "evidence capture intent workspace_context_json",
-        &intent.workspace_context_json,
-    )?;
+    let expected = Value::Object(intent.workspace_context.clone());
     if canonical_json_string(&current).map_err(json_runtime)?
         != canonical_json_string(&expected).map_err(json_runtime)?
     {
@@ -423,14 +415,8 @@ fn project_time_before_intent_expiry(
     store: &CoreProjectStore,
     intent: &EvidenceCaptureIntentRecord,
 ) -> Result<(UtcTimestamp, UtcTimestamp), EvidenceCommandError> {
-    let created_at = strict_stored_timestamp(
-        &intent.created_at,
-        "evidence capture intent creation timestamp is corrupt",
-    )?;
-    let expires_at = strict_stored_timestamp(
-        &intent.expires_at,
-        "evidence capture intent expiry is corrupt",
-    )?;
+    let created_at = intent.created_at.clone();
+    let expires_at = intent.expires_at.clone();
     if expires_at <= created_at {
         return Err(EvidenceCommandError::runtime(
             "evidence capture intent time window is corrupt",
@@ -544,7 +530,7 @@ fn fulfill_command(
     Ok(FulfillmentFacts {
         observed_outcome,
         source: source_object(
-            &intent.record.requesting_connection_internal_id,
+            intent.record.requesting_connection_internal_id.as_str(),
             Some(&host_invocation_id),
         ),
         observed_at: observed_at.to_string(),
@@ -831,8 +817,7 @@ fn persist_fulfillment(
         canonical_json_bare_sha256(&facts.observed_outcome).map_err(json_runtime)?;
     let observed_at = UtcTimestamp::parse(&facts.observed_at)
         .map_err(|_| EvidenceCommandError::runtime("source observation timestamp is invalid"))?;
-    let observed_by_actor_source = ActorSource::from_str(&intent.record.requested_by_actor_source)
-        .map_err(|error| EvidenceCommandError::runtime(error.to_string()))?;
+    let observed_by_actor_source = intent.record.requested_by_actor_source.clone();
     let safe_receipt = PersistedEvidenceCaptureReceiptBody {
         contract_id: EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID.to_owned(),
         capture_kind: capture_producer_kind(&intent.capture),
@@ -848,7 +833,6 @@ fn persist_fulfillment(
         observed_by_actor_source,
         observed_at,
     };
-    let safe_receipt_json = canonical_json_string(&safe_receipt).map_err(json_runtime)?;
     let generator = RandomDurableIdGenerator;
     let receipt_id = generator
         .generate(DurableIdKind::EvidenceCaptureReceipt)
@@ -856,15 +840,6 @@ fn persist_fulfillment(
     let staging_handle_id = generator
         .generate(DurableIdKind::StagedArtifact)
         .map_err(|error| EvidenceCommandError::runtime(error.to_string()))?;
-    let expected_outcome_json =
-        canonical_json_string(&intent.expected_outcome).map_err(json_runtime)?;
-    let observed_outcome_json =
-        canonical_json_string(&safe_receipt.observed_outcome).map_err(json_runtime)?;
-    let limitations_json =
-        canonical_json_string(&safe_receipt.limitations).map_err(json_runtime)?;
-    let observed_at = safe_receipt.observed_at.to_canonical_string();
-    let metadata_json =
-        canonical_json_string(&json!({ "source": &safe_receipt.source })).map_err(json_runtime)?;
     let created_at =
         receipt_creation_timestamp(&context.store, &intent.record, &safe_receipt.observed_at)?;
     let record = context
@@ -874,19 +849,20 @@ fn persist_fulfillment(
             evidence_capture_intent_id: intent.record.evidence_capture_intent_id.clone(),
             staging_handle_id,
             task_id: intent.record.task_id.clone(),
-            capture_kind: intent.record.capture_kind.clone(),
             input_sha256: intent.record.input_sha256.clone(),
             result_sha256,
-            expected_outcome_json,
-            observed_outcome_json,
-            source_refs_json: "[]".to_owned(),
+            expected_outcome: intent.expected_outcome.clone(),
+            observed_outcome: safe_receipt.observed_outcome.clone(),
+            source_refs: Vec::new(),
             observed_by_actor_source: intent.record.requested_by_actor_source.clone(),
-            observed_at,
-            limitations_json,
-            safe_receipt_json,
-            created_at: created_at.to_string(),
+            observed_at: safe_receipt.observed_at.clone(),
+            limitations: safe_receipt.limitations.clone(),
+            metadata: StoredEvidenceCaptureReceiptMetadata {
+                source: safe_receipt.source.clone(),
+            },
+            safe_receipt,
+            created_at,
             staging_expires_at: intent.record.expires_at.clone(),
-            metadata_json,
         })?;
     render_receipt(&record, output_json)
 }
@@ -895,17 +871,14 @@ fn render_receipt(
     record: &volicord_store::core_pipeline::EvidenceCaptureReceiptRecord,
     output_json: bool,
 ) -> Result<String, EvidenceCommandError> {
-    let observed_outcome: Value = strict_json(
-        "evidence capture receipt observed_outcome_json",
-        &record.observed_outcome_json,
-    )?;
+    let observed_outcome = Value::Object(record.observed_outcome.clone());
     if output_json {
         return serde_json::to_string_pretty(&json!({
             "capture_intent_id": record.evidence_capture_intent_id,
             "capture_receipt_id": record.evidence_capture_receipt_id,
             "capture_kind": record.capture_kind,
             "staged_receipt_handle_id": record.staging_handle_id,
-            "complete": record.completeness == "complete",
+            "complete": record.completeness == EvidenceCaptureCompleteness::Complete,
             "observed_at": record.observed_at,
             "observed_outcome": observed_outcome,
         }))
@@ -917,7 +890,7 @@ fn render_receipt(
         "Evidence capture receipt created\nintent: {}\nreceipt: {}\ncapture_kind: {}\nstaged_receipt_handle: {}\ncomplete: true\nobserved_at: {}\nobserved_outcome: {}\n",
         record.evidence_capture_intent_id,
         record.evidence_capture_receipt_id,
-        record.capture_kind,
+        evidence_producer_kind_label(record.capture_kind),
         record.staging_handle_id,
         record.observed_at,
         observed,
@@ -940,7 +913,7 @@ fn validate_exact_guard_scope(
     post: &GuardEventRecord,
 ) -> Result<(), EvidenceCommandError> {
     if pre.connection_internal_id != post.connection_internal_id
-        || pre.connection_internal_id != intent.record.requesting_connection_internal_id
+        || pre.connection_internal_id != intent.record.requesting_connection_internal_id.as_str()
         || pre.session_id.is_none()
         || pre.session_id != post.session_id
         || pre.guard_installation_id != post.guard_installation_id
@@ -1040,14 +1013,8 @@ fn validate_source_time_window(
     observed_at: &str,
     source_label: &str,
 ) -> Result<(), EvidenceCommandError> {
-    let created_at = strict_stored_timestamp(
-        &intent.record.created_at,
-        "evidence capture intent creation timestamp is corrupt",
-    )?;
-    let expires_at = strict_stored_timestamp(
-        &intent.record.expires_at,
-        "evidence capture intent expiry is corrupt",
-    )?;
+    let created_at = intent.record.created_at.clone();
+    let expires_at = intent.record.expires_at.clone();
     if expires_at <= created_at {
         return Err(EvidenceCommandError::runtime(
             "evidence capture intent time window is corrupt",
@@ -1201,10 +1168,13 @@ fn source_object(
     }
 }
 
-fn capture_kind(capture: &EvidenceCaptureSpec) -> &'static str {
-    match capture {
-        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => "verified_command_execution",
-        EvidenceCaptureSpec::VerifiedToolInvocation { .. } => "verified_tool_invocation",
+fn evidence_producer_kind_label(kind: EvidenceProducerKind) -> &'static str {
+    match kind {
+        EvidenceProducerKind::UnverifiedCaller => "unverified_caller",
+        EvidenceProducerKind::UserChannelObservation => "user_channel_observation",
+        EvidenceProducerKind::VerifiedToolInvocation => "verified_tool_invocation",
+        EvidenceProducerKind::VerifiedCommandExecution => "verified_command_execution",
+        EvidenceProducerKind::ReusedEvidence => "reused_evidence",
     }
 }
 

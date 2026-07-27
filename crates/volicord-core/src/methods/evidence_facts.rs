@@ -1,6 +1,6 @@
 use super::{
-    artifact_ref_from_verified_record, object_from_value, parse_owner_storage_value,
-    persistent_artifact_is_verified_current, state_ref,
+    artifact_ref_from_verified_record, object_from_value, persistent_artifact_is_verified_current,
+    state_ref,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::{
@@ -16,9 +16,6 @@ use crate::policy::{
         EvidenceObservationBasis,
     },
 };
-use chrono::Duration;
-use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     CoreProjectStore, EffectiveUserActionRecord, EvidenceObservationRecord, EvidenceSummaryRecord,
@@ -26,17 +23,15 @@ use volicord_store::core_pipeline::{
 };
 use volicord_store::error::StoreError;
 use volicord_store::evidence_capture::{
-    EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord, MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES,
+    EvidenceCaptureCompleteness, EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord,
 };
-use volicord_types::canonical::canonical_json_string;
 use volicord_types::ids::{BaselineRef, ChangeUnitId, EvidenceCaptureIntentId, ProjectId, TaskId};
 use volicord_types::schema::{
-    evidence_capture_input_sha256, evidence_capture_observed_outcome_matches_expected,
-    validate_evidence_capture_expected_outcome, validate_evidence_capture_limitations,
-    validate_evidence_capture_observed_outcome, ArtifactRef, EvidenceCaptureIntent,
-    EvidenceCaptureSpec, EvidenceObservation, EvidenceProducer, EvidenceProducerAnchor,
+    evidence_capture_observed_outcome_matches_expected, validate_evidence_capture_expected_outcome,
+    validate_evidence_capture_limitations, validate_evidence_capture_observed_outcome, ArtifactRef,
+    EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceObservation, EvidenceProducerAnchor,
     EvidenceRelevanceAssessment, EvidenceTarget, JsonObject, PersistedEvidenceCaptureReceiptBody,
-    StateRecordRef, UserActionResolutionBody, EVIDENCE_CAPTURE_INTENT_TTL_MINUTES,
+    StateRecordRef, UserActionResolutionBody,
 };
 use volicord_types::values::{
     ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, EvidenceAssuranceLevel,
@@ -52,61 +47,21 @@ pub(super) struct UserActionObservationResolutionAuthority {
 pub(super) fn decode_capture_intent_record(
     record: &EvidenceCaptureIntentRecord,
 ) -> CoreResult<EvidenceCaptureIntent> {
-    let corrupt = |column: &'static str| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "evidence_capture_intents",
-            record.evidence_capture_intent_id.clone(),
-            column,
-        ))
-    };
-    let target = serde_json::from_str::<EvidenceTarget>(&record.target_json)
-        .map_err(|_| corrupt("target_json"))?;
-    let capture = serde_json::from_str::<EvidenceCaptureSpec>(&record.capture_spec_json)
-        .map_err(|_| corrupt("capture_spec_json"))?;
-    if evidence_capture_input_sha256(&capture).map_err(|_| corrupt("capture_spec_json"))?
-        != record.input_sha256
-    {
-        return Err(corrupt("input_sha256"));
-    }
-    let expected_outcome = serde_json::from_str::<JsonObject>(&record.expected_outcome_json)
-        .map_err(|_| corrupt("expected_outcome_json"))?;
-    validate_evidence_capture_expected_outcome(&capture, &expected_outcome)
-        .map_err(|_| corrupt("expected_outcome_json"))?;
-    let requested_by_actor_source = record
-        .requested_by_actor_source
-        .parse::<ActorSource>()
-        .map_err(|_| corrupt("requested_by_actor_source"))?;
-    let workspace_context = serde_json::from_str::<JsonObject>(&record.workspace_context_json)
-        .map_err(|_| corrupt("workspace_context_json"))?;
-    let created_at = UtcTimestamp::parse(&record.created_at).map_err(|_| corrupt("created_at"))?;
-    let expires_at = UtcTimestamp::parse(&record.expires_at).map_err(|_| corrupt("expires_at"))?;
-    created_at
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| corrupt("created_at"))?;
-    expires_at
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| corrupt("expires_at"))?;
-    let expected_expires_at = created_at
-        .checked_add(Duration::minutes(EVIDENCE_CAPTURE_INTENT_TTL_MINUTES))
-        .map_err(|_| corrupt("expires_at"))?;
-    if expires_at != expected_expires_at {
-        return Err(corrupt("expires_at"));
-    }
     Ok(EvidenceCaptureIntent {
         capture_intent_id: EvidenceCaptureIntentId::new(&record.evidence_capture_intent_id),
         project_id: ProjectId::new(&record.project_id),
         task_id: TaskId::new(&record.task_id),
         change_unit_id: ChangeUnitId::new(&record.change_unit_id),
         scope_revision: record.scope_revision,
-        baseline_ref: BaselineRef::new(&record.baseline_ref),
-        target,
-        capture,
+        baseline_ref: record.baseline_ref.clone(),
+        target: record.target.clone(),
+        capture: record.capture.clone(),
         input_sha256: record.input_sha256.clone(),
-        expected_outcome,
-        requested_by_actor_source,
-        workspace_context,
-        created_at,
-        expires_at,
+        expected_outcome: record.expected_outcome.clone(),
+        requested_by_actor_source: record.requested_by_actor_source.clone(),
+        workspace_context: record.workspace_context.clone(),
+        created_at: record.created_at.clone(),
+        expires_at: record.expires_at.clone(),
     })
 }
 
@@ -121,41 +76,7 @@ pub(super) fn validate_capture_receipt_record(
             column,
         ))
     };
-    if receipt.safe_receipt_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES
-        || receipt.metadata_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES
-        || receipt.safe_receipt_json.len() as u64 != receipt.safe_receipt_size_bytes
-        || format!("{:x}", Sha256::digest(receipt.safe_receipt_json.as_bytes()))
-            != receipt.safe_receipt_sha256
-    {
-        return Err(corrupt("safe_receipt_json"));
-    }
-    let safe_value = serde_json::from_str::<Value>(&receipt.safe_receipt_json)
-        .map_err(|_| corrupt("safe_receipt_json"))?;
-    let body = serde_json::from_value::<PersistedEvidenceCaptureReceiptBody>(safe_value.clone())
-        .map_err(|_| corrupt("safe_receipt_json"))?;
-    let canonical_body = canonical_json_string(&body).map_err(|_| corrupt("safe_receipt_json"))?;
-    let metadata = serde_json::from_str::<Value>(&receipt.metadata_json)
-        .map_err(|_| corrupt("metadata_json"))?;
-    let stored_expected = serde_json::from_str::<JsonObject>(&receipt.expected_outcome_json)
-        .map_err(|_| corrupt("expected_outcome_json"))?;
-    let stored_observed = serde_json::from_str::<JsonObject>(&receipt.observed_outcome_json)
-        .map_err(|_| corrupt("observed_outcome_json"))?;
-    let stored_source_refs = serde_json::from_str::<Vec<StateRecordRef>>(&receipt.source_refs_json)
-        .map_err(|_| corrupt("source_refs_json"))?;
-    let receipt_created_at =
-        UtcTimestamp::parse(&receipt.created_at).map_err(|_| corrupt("created_at"))?;
-    receipt_created_at
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| corrupt("created_at"))?;
-    body.observed_at
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| corrupt("observed_at"))?;
-    let producer_kind = parse_owner_storage_value::<EvidenceProducerKind>(
-        "evidence_capture_receipts",
-        receipt.evidence_capture_receipt_id.clone(),
-        "capture_kind",
-        &receipt.capture_kind,
-    )?;
+    let body = &receipt.safe_receipt;
     let intent_producer_kind = capture_spec_producer_kind(&intent.capture);
     validate_evidence_capture_expected_outcome(&intent.capture, &body.expected_outcome)
         .map_err(|_| corrupt("expected_outcome_json"))?;
@@ -165,13 +86,11 @@ pub(super) fn validate_capture_receipt_record(
         .map_err(|_| corrupt("limitations_json"))?;
     let observed_outcome_sha256 =
         volicord_types::canonical::canonical_json_bare_sha256(&body.observed_outcome)?;
-    let expected_metadata = serde_json::json!({"source": &body.source});
     if body.contract_id != volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
-        || canonical_body != receipt.safe_receipt_json
         || !body.complete
         || body.redaction_state != RedactionState::Redacted
-        || receipt.completeness != "complete"
-        || body.capture_kind != producer_kind
+        || receipt.completeness != EvidenceCaptureCompleteness::Complete
+        || body.capture_kind != receipt.capture_kind
         || body.capture_kind != intent_producer_kind
         || body.capture_intent_id != intent.capture_intent_id
         || body.input_sha256 != intent.input_sha256
@@ -179,21 +98,20 @@ pub(super) fn validate_capture_receipt_record(
         || body.result_sha256 != receipt.result_sha256
         || body.result_sha256 != observed_outcome_sha256
         || body.expected_outcome != intent.expected_outcome
-        || body.expected_outcome != stored_expected
-        || body.observed_outcome != stored_observed
-        || !stored_source_refs.is_empty()
-        || receipt.source_refs_json != "[]"
-        || body.observed_at.to_canonical_string() != receipt.observed_at
+        || body.expected_outcome != receipt.expected_outcome
+        || body.observed_outcome != receipt.observed_outcome
+        || !receipt.source_refs.is_empty()
+        || body.observed_at != receipt.observed_at
         || body.observed_at < intent.created_at
         || body.observed_at >= intent.expires_at
-        || receipt_created_at < body.observed_at
-        || receipt_created_at >= intent.expires_at
-        || body.observed_by_actor_source.to_canonical_string() != receipt.observed_by_actor_source
-        || metadata != expected_metadata
+        || receipt.created_at < body.observed_at
+        || receipt.created_at >= intent.expires_at
+        || body.observed_by_actor_source != receipt.observed_by_actor_source
+        || receipt.metadata.source != body.source
     {
         return Err(corrupt("safe_receipt_json"));
     }
-    Ok(body)
+    Ok(body.clone())
 }
 
 pub(super) fn capture_outcome_matches_expected(
@@ -276,8 +194,8 @@ pub(super) fn stored_evidence_observation_provenance_facts(
     basis: &EvidenceObservationBasis<'_>,
 ) -> CoreResult<EvidenceProvenanceFacts> {
     let basis_matches = stored_evidence_observation_matches_basis(store, record, basis)?;
-    let source_kind = record.source;
-    let assurance_level = record.assurance;
+    let source_kind = record.source_kind;
+    let assurance_level = record.assurance_level;
     let binding_matches = if basis_matches
         && evidence_assurance_matches_source(source_kind, assurance_level)
         && !(source_kind == EvidenceSourceKind::AgentReport
@@ -399,8 +317,8 @@ fn stored_evidence_observation_anchored_assurance(
         return Ok(None);
     }
 
-    let source_kind = record.source;
-    let assurance_level = record.assurance;
+    let source_kind = record.source_kind;
+    let assurance_level = record.assurance_level;
     if !evidence_assurance_matches_source(source_kind, assurance_level) {
         return Ok(None);
     }
@@ -413,8 +331,8 @@ fn stored_evidence_observation_anchored_assurance(
     }
     let input_refs = &record.input_refs;
     let output_artifact_refs = &record.output_artifact_refs;
-    let observed_by_actor_source = record.observed_by.as_ref();
-    let observed_at = &record.observed_time;
+    let observed_by_actor_source = record.observed_by_actor_source.as_ref();
+    let observed_at = &record.observed_at;
     if !stored_observation_artifacts_are_current(store, record, basis, output_artifact_refs)?
         || !producer_output_binding_matches(&authority.producer_anchor, output_artifact_refs)
     {
@@ -547,36 +465,8 @@ fn stored_capture_authority_is_current(
     else {
         return Ok(false);
     };
-    let producer: EvidenceProducer = serde_json::from_str(&record.canonical_producer_json)
-        .map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                "evidence_producers",
-                record.evidence_producer_id.clone(),
-                "canonical_producer_json",
-            ))
-        })?;
-    let producer_metadata = serde_json::from_str::<Value>(&record.metadata_json).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "evidence_producers",
-            record.evidence_producer_id.clone(),
-            "metadata_json",
-        ))
-    })?;
-    let record_producer_kind = parse_owner_storage_value::<EvidenceProducerKind>(
-        "evidence_producers",
-        record.evidence_producer_id.clone(),
-        "producer_kind",
-        &record.producer_kind,
-    )?;
-    let canonical_producer_json = canonical_json_string(&producer).map_err(|_| {
-        CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-            "evidence_producers",
-            record.evidence_producer_id.clone(),
-            "canonical_producer_json",
-        ))
-    })?;
-    if canonical_producer_json != record.canonical_producer_json
-        || record.project_id != basis.project_id.as_str()
+    let producer = &record.canonical_producer;
+    if record.project_id != basis.project_id.as_str()
         || producer.evidence_producer_id.as_str() != record.evidence_producer_id
         || producer.capture_intent_id.as_str() != record.evidence_capture_intent_id
         || producer.capture_receipt_id.as_str() != record.evidence_capture_receipt_id
@@ -588,9 +478,9 @@ fn stored_capture_authority_is_current(
         || producer.task_id.as_str() != record.task_id
         || producer.change_unit_id.as_str() != record.change_unit_id
         || producer.scope_revision != record.scope_revision
-        || producer.baseline_ref.as_str() != record.baseline_ref
-        || producer.producer_kind != record_producer_kind
-        || producer.finalized_at.to_canonical_string() != record.created_at
+        || producer.baseline_ref != record.baseline_ref
+        || producer.producer_kind != record.producer_kind
+        || producer.finalized_at != record.created_at
         || producer.project_id != *basis.project_id
         || producer.task_id != *basis.task_id
         || producer.change_unit_id.as_str() != basis.change_unit_id
@@ -619,10 +509,8 @@ fn stored_capture_authority_is_current(
         || producer.producer_kind != producer_anchor.producer_kind
         || producer_anchor.verification_basis.as_deref()
             != capture_verification_basis(producer.producer_kind)
-        || producer_metadata
-            != serde_json::json!({
-                "verification_basis": capture_verification_basis(producer.producer_kind)
-            })
+        || Some(record.metadata.verification_basis.as_str())
+            != capture_verification_basis(producer.producer_kind)
     {
         return Ok(false);
     }
@@ -655,14 +543,7 @@ fn stored_capture_authority_is_current(
         &receipt_body.observed_outcome,
     )?;
     let expected_relevance = capture_outcome_relevance(outcome_matches_expected);
-    let receipt_source_refs =
-        serde_json::from_str::<Vec<StateRecordRef>>(&receipt.source_refs_json).map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                "evidence_capture_receipts",
-                receipt.evidence_capture_receipt_id.clone(),
-                "source_refs_json",
-            ))
-        })?;
+    let receipt_source_refs = receipt.source_refs.clone();
     let expected_tool_name = match &intent.capture {
         EvidenceCaptureSpec::VerifiedCommandExecution { .. } => {
             Some("volicord.command_runner".to_owned())
@@ -677,9 +558,6 @@ fn stored_capture_authority_is_current(
         "connection_id": receipt_body.source.connection_id,
         "host_invocation_id": receipt_body.source.host_invocation_id
     }))?;
-    let expected_tool_metadata_json = canonical_json_string(&expected_tool_metadata)?;
-    let expected_source_refs_json = canonical_json_string(&receipt_source_refs)?;
-    let expected_limitations_json = canonical_json_string(&receipt_body.limitations)?;
     Ok(intent.capture_intent_id == producer.capture_intent_id
         && intent.project_id == *basis.project_id
         && intent.task_id == *basis.task_id
@@ -703,11 +581,11 @@ fn stored_capture_authority_is_current(
         && producer.observed_at == receipt_body.observed_at
         && observation_record.tool_name == expected_tool_name
         && observation_record.tool_invocation_id == expected_tool_invocation_id
-        && observation_record.tool_metadata_json == expected_tool_metadata_json
-        && observation_record.source_refs_json == expected_source_refs_json
-        && observation_record.limitations_json == expected_limitations_json
-        && observation_record.observed_at == receipt_body.observed_at.to_canonical_string()
-        && observation_record.recorded_at == producer.finalized_at.to_canonical_string()
+        && observation_record.tool_metadata == expected_tool_metadata
+        && observation_record.source_refs.is_empty()
+        && observation_record.limitations == receipt_body.limitations
+        && observation_record.observed_at == receipt_body.observed_at
+        && observation_record.recorded_at == producer.finalized_at
         && relevance_assessment.status == expected_relevance
         && receipt_body.observed_by_actor_source == producer.observed_by_actor_source)
 }
@@ -834,7 +712,7 @@ fn stored_observation_artifacts_are_current(
                 .artifact_has_owner_link(
                     artifact_ref.artifact_id.as_str(),
                     basis.task_id.as_str(),
-                    "evidence_observation",
+                    StateRecordKind::EvidenceObservation,
                     &record.evidence_observation_id,
                 )
                 .map_err(CorePipelineError::from)?
@@ -963,12 +841,7 @@ pub(super) fn load_required_evidence_criterion_ids(
         .map_err(CorePipelineError::from)?
         .into_iter()
         .map(|criterion| {
-            let requirement: EvidenceRequirement = parse_owner_storage_value(
-                "acceptance_criteria",
-                criterion.acceptance_criterion_id.clone(),
-                "evidence_requirement",
-                &criterion.evidence_requirement,
-            )?;
+            let requirement = criterion.evidence_requirement;
             Ok::<_, CorePipelineError>((criterion.acceptance_criterion_id, requirement))
         })
         .collect::<CoreResult<Vec<_>>>()?

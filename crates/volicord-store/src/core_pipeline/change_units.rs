@@ -1,5 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use volicord_types::ids::{BaselineRef, TaskId};
 use volicord_types::schema::ChangeUnitEffectContract;
 
@@ -23,11 +23,11 @@ pub enum ChangeUnitMutation {
 pub struct ChangeUnitInsert {
     pub change_unit_id: String,
     pub task_id: String,
-    pub scope_summary_json: String,
-    pub bounded_paths_json: String,
-    pub write_basis_json: String,
-    pub effect_contract_json: String,
-    pub lifecycle_json: String,
+    pub scope_summary: StoredChangeUnitScopeSummary,
+    pub bounded_paths: Vec<String>,
+    pub write_basis: StoredChangeUnitWriteBasis,
+    pub effect_contract: Option<ChangeUnitEffectContract>,
+    pub lifecycle: StoredChangeUnitLifecycle,
 }
 
 impl ChangeUnitMutation {
@@ -53,22 +53,40 @@ pub struct ChangeUnitRecord {
     pub project_id: String,
     pub change_unit_id: String,
     pub task_id: String,
-    pub status: String,
+    pub status: ChangeUnitStatus,
     pub is_current: bool,
     pub basis_state_version: u64,
-    pub scope_summary_json: String,
-    pub bounded_paths_json: String,
-    pub write_basis_json: String,
-    pub effect_contract_json: String,
-    pub lifecycle_json: String,
+    pub scope_summary: StoredChangeUnitScopeSummary,
     pub bounded_paths: Vec<String>,
     pub write_basis: StoredChangeUnitWriteBasis,
     pub effect_contract: Option<ChangeUnitEffectContract>,
     pub lifecycle: StoredChangeUnitLifecycle,
 }
 
+/// Closed lifecycle status of a persisted Change Unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeUnitStatus {
+    Proposed,
+    Active,
+    Replaced,
+    Closed,
+}
+
+/// Strictly decoded Change Unit scope-summary fields owned by Store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredChangeUnitScopeSummary {
+    #[serde(default)]
+    pub scope_summary: Option<String>,
+    #[serde(default)]
+    pub affected_areas: Vec<String>,
+    #[serde(default)]
+    pub constraints: Vec<String>,
+}
+
 /// Strictly decoded Change Unit write-basis fields owned by Store.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredChangeUnitWriteBasis {
     #[serde(default)]
@@ -78,7 +96,7 @@ pub struct StoredChangeUnitWriteBasis {
 }
 
 /// Strictly decoded Git coordinate carried by a Change Unit write basis.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredGitWorkspaceContext {
     pub git_common_dir: String,
@@ -89,7 +107,7 @@ pub struct StoredGitWorkspaceContext {
 }
 
 /// Strictly decoded Change Unit lifecycle fields owned by Store.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredChangeUnitLifecycle {
     #[serde(default)]
@@ -231,12 +249,18 @@ fn validate_decoded_change_unit_record(
         1 => true,
         _ => return Err(corrupt_value("is_current")),
     };
-    if !matches!(
-        record.status.as_str(),
-        "proposed" | "active" | "replaced" | "closed"
-    ) {
-        return Err(corrupt_value("status"));
-    }
+    let status = decode_owner_closed_value(
+        "change_units",
+        record.change_unit_id.clone(),
+        "status",
+        &record.status,
+    )?;
+    let scope_summary = decode_owner_json_text(
+        "change_units",
+        record.change_unit_id.clone(),
+        "scope_summary_json",
+        &record.scope_summary_json,
+    )?;
     let bounded_paths = decode_owner_json_text(
         "change_units",
         record.change_unit_id.clone(),
@@ -265,14 +289,10 @@ fn validate_decoded_change_unit_record(
         project_id: record.project_id,
         change_unit_id: record.change_unit_id,
         task_id: record.task_id,
-        status: record.status,
+        status,
         is_current,
         basis_state_version,
-        scope_summary_json: record.scope_summary_json,
-        bounded_paths_json: record.bounded_paths_json,
-        write_basis_json: record.write_basis_json,
-        effect_contract_json: record.effect_contract_json,
-        lifecycle_json: record.lifecycle_json,
+        scope_summary,
         bounded_paths,
         write_basis,
         effect_contract,
@@ -318,14 +338,15 @@ impl MutationContext<'_> {
     ) -> StoreResult<()> {
         validate_identifier("change_unit_id", &input.change_unit_id)?;
         validate_identifier("task_id", &input.task_id)?;
-        validate_json_text("change_units.scope_summary_json", &input.scope_summary_json)?;
-        validate_json_text("change_units.bounded_paths_json", &input.bounded_paths_json)?;
-        validate_json_text("change_units.write_basis_json", &input.write_basis_json)?;
-        validate_effect_contract_json(
-            "change_units.effect_contract_json",
-            &input.effect_contract_json,
-        )?;
-        validate_json_text("change_units.lifecycle_json", &input.lifecycle_json)?;
+        let scope_summary_json =
+            encode_json_column("change_units.scope_summary_json", &input.scope_summary)?;
+        let bounded_paths_json =
+            encode_json_column("change_units.bounded_paths_json", &input.bounded_paths)?;
+        let write_basis_json =
+            encode_json_column("change_units.write_basis_json", &input.write_basis)?;
+        let effect_contract_json =
+            encode_json_column("change_units.effect_contract_json", &input.effect_contract)?;
+        let lifecycle_json = encode_json_column("change_units.lifecycle_json", &input.lifecycle)?;
         let basis_state_version = u64_to_i64("basis_state_version", committed_state_version)?;
 
         self.tx.execute(
@@ -364,11 +385,11 @@ impl MutationContext<'_> {
                 input.change_unit_id,
                 input.task_id,
                 basis_state_version,
-                input.scope_summary_json,
-                input.bounded_paths_json,
-                input.write_basis_json,
-                input.effect_contract_json,
-                input.lifecycle_json,
+                scope_summary_json,
+                bounded_paths_json,
+                write_basis_json,
+                effect_contract_json,
+                lifecycle_json,
                 self.committed_at
             ],
         )?;
@@ -474,6 +495,17 @@ mod tests {
                 } if logical_column == column
             ));
         }
+
+        let mut unknown_status = valid();
+        unknown_status.status = "legacy".to_owned();
+        assert!(matches!(
+            validate_decoded_change_unit_record(unknown_status),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "change_units",
+                logical_column: "status",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -482,11 +514,20 @@ mod tests {
             ChangeUnitMutation::InsertCurrent(ChangeUnitInsert {
                 change_unit_id: " ".to_owned(),
                 task_id: "task".to_owned(),
-                scope_summary_json: "{}".to_owned(),
-                bounded_paths_json: "[]".to_owned(),
-                write_basis_json: "{}".to_owned(),
-                effect_contract_json: "null".to_owned(),
-                lifecycle_json: "{}".to_owned(),
+                scope_summary: StoredChangeUnitScopeSummary {
+                    scope_summary: None,
+                    affected_areas: Vec::new(),
+                    constraints: Vec::new(),
+                },
+                bounded_paths: Vec::new(),
+                write_basis: StoredChangeUnitWriteBasis {
+                    baseline_ref: None,
+                    git_workspace_context: None,
+                },
+                effect_contract: None,
+                lifecycle: StoredChangeUnitLifecycle {
+                    recovery_required: false,
+                },
             })
             .apply(context, 1)
             .expect_err("blank Change Unit id must fail before SQL")

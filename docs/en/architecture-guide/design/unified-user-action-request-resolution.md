@@ -27,7 +27,9 @@ results participate in their own method plans and responses.
 Store's `core_pipeline/user_actions.rs` owns effective-status reads, coherent
 inbox resolution snapshots, immutable resolution insertion, grouped mutation
 application, and focused decoding from physical JSON and stored values into
-typed request and resolution records.
+typed request and resolution records. Its raw row representations remain
+private. The service consumes the focused `UserActionStoreReader` typed read
+capability instead of the full project Store facade or serialized values.
 
 The MCP adapter calls the request/resume path, rereads
 `CurrentUserActionFacts`, and constructs its own safe protocol projection. The
@@ -43,7 +45,8 @@ Schema, and recovery instruction. Its commands come from a typed
 - Request creation/resume and resolution are separate Core operations.
 - Callers provide typed semantic intent and current domain facts; they do not
   construct canonical request JSON.
-- Canonical request bodies and bases remain typed until the Store boundary.
+- Canonical request bodies, bases, and UserAction-derived continuity metadata
+  remain typed until the Store boundary.
 - Effective status is derived from the stored resolution and current basis.
 - Agent-facing projections never include the complete resolving form or
   user-only resolution body.

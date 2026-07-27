@@ -3,8 +3,8 @@ use super::{
     baseline_stale_response, checked_derived_expiration, dry_run_summary, mutation_method_policy,
     no_active_change_unit_response, no_active_task_response, normalize_display_text,
     object_from_value, plan_error_response, prepare_or_response, rejected_pipeline_response,
-    state_ref, storage_value, validation_plan_error, validation_rejected,
-    workspace_context_matches, workspace_stale_response, MethodPlan, PlanError,
+    state_ref, validation_plan_error, validation_rejected, workspace_context_matches,
+    workspace_stale_response, MethodPlan, PlanError,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -18,7 +18,10 @@ use serde_json::json;
 use volicord_store::core_pipeline::{
     CoreProjectStore, CoreStorageMutation, EvidenceMutation, ProjectStateHeader,
 };
-use volicord_store::evidence_capture::EvidenceCaptureIntentInsert;
+use volicord_store::evidence_capture::{
+    EvidenceCaptureIntentInsert, StoredEvidenceCaptureIntentMetadata,
+    StoredEvidenceCaptureIntentSessionContext,
+};
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::methods::{
     MethodOperationCategory, PrepareEvidenceCaptureRequest, PrepareEvidenceCaptureResultFields,
@@ -189,7 +192,9 @@ fn plan_prepare_evidence_capture(
                 "change_unit_id does not identify a Change Unit for this Task",
             )))
         })?;
-    if change_unit.status != "active" || !change_unit.is_current {
+    if change_unit.status != volicord_store::core_pipeline::ChangeUnitStatus::Active
+        || !change_unit.is_current
+    {
         return Err(PlanError::Response(Box::new(
             no_active_change_unit_response(
                 &request.envelope,
@@ -278,35 +283,33 @@ fn plan_prepare_evidence_capture(
         capture_intent: capture_intent.clone(),
         expires_at: expires_at.clone(),
     };
-    let capture_kind = storage_value(normalized.producer_kind)?;
     let storage_mutations = vec![CoreStorageMutation::Evidence(
         EvidenceMutation::InsertCaptureIntent(EvidenceCaptureIntentInsert {
             evidence_capture_intent_id: capture_intent_id.as_str().to_owned(),
             task_id: request.task_id.as_str().to_owned(),
             change_unit_id: request.change_unit_id.as_str().to_owned(),
             scope_revision: task.scope_revision,
-            baseline_ref: request.baseline_ref.as_str().to_owned(),
-            target_json: serde_json::to_string(&request.target)?,
-            capture_kind: capture_kind.clone(),
-            capture_spec_json: serde_json::to_string(&request.capture)?,
+            baseline_ref: request.baseline_ref.clone(),
+            target: request.target.clone(),
+            capture: request.capture.clone(),
             input_sha256: normalized.input_sha256.clone(),
-            expected_outcome_json: serde_json::to_string(&normalized.expected_outcome)?,
-            requested_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-            requesting_connection_internal_id: connection_id.as_str().to_owned(),
-            session_context_json: serde_json::to_string(&json!({
-                "session_id": verified_invocation.session_id
-            }))?,
-            workspace_context_json: serde_json::to_string(&workspace_context)?,
-            created_at: created_at.to_canonical_string(),
-            expires_at: expires_at.to_canonical_string(),
-            metadata_json: serde_json::to_string(&json!({
-                "verification_basis": verified_invocation.verification_basis
-            }))?,
+            expected_outcome: normalized.expected_outcome.clone(),
+            requested_by_actor_source: verified_invocation.actor_source.clone(),
+            requesting_connection_internal_id: connection_id.clone(),
+            session_context: StoredEvidenceCaptureIntentSessionContext {
+                session_id: verified_invocation.session_id.clone(),
+            },
+            workspace_context,
+            created_at: created_at.clone(),
+            expires_at: expires_at.clone(),
+            metadata: StoredEvidenceCaptureIntentMetadata {
+                verification_basis: verified_invocation.verification_basis.clone(),
+            },
         }),
     )];
     let event_payload = object_from_value(json!({
         "capture_intent_ref": capture_intent_ref,
-        "capture_kind": capture_kind,
+        "capture_kind": normalized.producer_kind,
         "task_id": request.task_id,
         "change_unit_id": request.change_unit_id,
         "scope_revision": task.scope_revision,

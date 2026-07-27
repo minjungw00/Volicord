@@ -4,14 +4,14 @@ use super::close_readiness::{
 };
 use super::{
     active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
-    close_state_text, decode_required_json_object, dry_run_summary, elapsed_micros,
-    evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_from_profile,
-    mutation_method_policy, object_from_value, parse_task_mode, plan_error_response,
-    plan_project_continuity_record, prepare_or_response, primary_next_action, profile_summary_text,
-    projected_write_ticket_summary, record_core_workflow_metric_best_effort,
-    response_committed_fresh_effect, state_ref, summary_card_for_core, validation_rejected,
-    write_ticket_summary_text, CloseTaskPlan, PlanError, PlannedProjectContinuityRecord,
-    ProjectContinuityDraft, ProjectContinuityPlanContext, SummaryBuild, SummaryCardBuild,
+    close_state_text, dry_run_summary, elapsed_micros, evidence_gate_summary_text,
+    evidence_summary_for_display, guarantee_display_from_profile, mutation_method_policy,
+    object_from_value, plan_error_response, plan_project_continuity_record, prepare_or_response,
+    primary_next_action, profile_summary_text, projected_write_ticket_summary,
+    record_core_workflow_metric_best_effort, response_committed_fresh_effect, state_ref,
+    summary_card_for_core, validation_rejected, write_ticket_summary_text, CloseTaskPlan,
+    PlanError, PlannedProjectContinuityRecord, ProjectContinuityDraft,
+    ProjectContinuityPlanContext, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -36,8 +36,8 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     AuthorityNextActor, CloseIntent, CloseReason, CloseState, MethodName, OperationCategory,
-    ProjectContinuityKind, StateRecordKind, StatusCloseState, TaskMode, UtcTimestamp,
-    WriteTicketInvalidationReason,
+    PersistedCloseSummary, ProjectContinuityKind, StateRecordKind, StatusCloseState,
+    TaskLifecyclePhase, TaskMode, TaskResult, UtcTimestamp, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::agent_safe_pending_user_action_summaries;
 
@@ -572,12 +572,12 @@ fn plan_close_task_mutations(
     let mut event_payload = Map::new();
 
     if committed_terminal {
-        let terminal = close_terminal_storage(request.intent, parse_task_mode(&context.task.mode)?);
-        let close_summary_json = terminal_close_summary_json(&context.task, &request, now)?;
-        synthetic_task.lifecycle_phase = terminal.lifecycle_phase.to_owned();
-        synthetic_task.result = Some(terminal.result.to_owned());
-        synthetic_task.close_summary_json = close_summary_json.clone();
-        synthetic_task.closed_at = Some(now.to_string());
+        let terminal = close_terminal_storage(request.intent, context.task.mode);
+        let close_summary = terminal_close_summary(&context.task, &request, now);
+        synthetic_task.lifecycle_phase = terminal.lifecycle_phase;
+        synthetic_task.result = Some(terminal.result);
+        synthetic_task.close_summary = close_summary.clone();
+        synthetic_task.closed_at = Some(now.clone());
         storage_mutations.push(CoreStorageMutation::WriteTicket(
             WriteTicketMutation::InvalidateActive(WriteTicketInvalidation {
                 task_id: request.task_id.as_str().to_owned(),
@@ -589,10 +589,10 @@ fn plan_close_task_mutations(
         storage_mutations.push(CoreStorageMutation::Task(TaskMutation::Close(
             TaskCloseUpdate {
                 task_id: request.task_id.as_str().to_owned(),
-                lifecycle_phase: terminal.lifecycle_phase.to_owned(),
-                result: terminal.result.to_owned(),
-                close_summary_json,
-                closed_at: now.to_string(),
+                lifecycle_phase: terminal.lifecycle_phase,
+                result: terminal.result,
+                close_summary,
+                closed_at: now.clone(),
             },
         )));
         if request.intent == CloseIntent::Supersede {
@@ -756,7 +756,7 @@ fn project_close_task_response(
         .run_observed_changes_for_task(&request.task_id)
         .map_err(CorePipelineError::from)?
         .into_iter()
-        .find(|record| record.status == "recorded");
+        .find(|record| record.status == volicord_store::core_pipeline::RunStatus::Recorded);
     let latest_run_ref = latest_run.as_ref().map(|record| {
         state_ref(
             StateRecordKind::Run,
@@ -901,11 +901,12 @@ fn plan_close_completion_continuity_records(
             artifact_refs: Vec::new(),
             supersedes_refs: Vec::new(),
             review_triggers: Vec::new(),
-            metadata: json!({
-                "source": "close_task",
-                "risk_id": risk.risk_id,
-                "close_basis_revision": close_basis.close_basis_revision
-            }),
+            metadata:
+                volicord_types::schema::PersistedProjectContinuityMetadata::CloseTaskKnownLimit {
+                    source: volicord_types::schema::PersistedProjectContinuitySource::CloseTask,
+                    risk_id: risk.risk_id.clone(),
+                    close_basis_revision: close_basis.close_basis_revision,
+                },
         };
         records.push(
             plan_project_continuity_record(continuity_context, draft).map_err(PlanError::Core)?,
@@ -915,77 +916,53 @@ fn plan_close_completion_continuity_records(
 }
 
 struct CloseTerminalStorage {
-    lifecycle_phase: &'static str,
-    result: &'static str,
+    lifecycle_phase: TaskLifecyclePhase,
+    result: TaskResult,
     event_kind: &'static str,
 }
 
 fn close_terminal_storage(intent: CloseIntent, task_mode: TaskMode) -> CloseTerminalStorage {
     match intent {
         CloseIntent::Complete => CloseTerminalStorage {
-            lifecycle_phase: "completed",
+            lifecycle_phase: TaskLifecyclePhase::Completed,
             result: if task_mode == TaskMode::Advisor {
-                "advice_only"
+                TaskResult::AdviceOnly
             } else {
-                "completed"
+                TaskResult::Completed
             },
             event_kind: "task_completed",
         },
         CloseIntent::Cancel => CloseTerminalStorage {
-            lifecycle_phase: "cancelled",
-            result: "cancelled",
+            lifecycle_phase: TaskLifecyclePhase::Cancelled,
+            result: TaskResult::Cancelled,
             event_kind: "task_cancelled",
         },
         CloseIntent::Supersede => CloseTerminalStorage {
-            lifecycle_phase: "superseded",
-            result: "superseded",
+            lifecycle_phase: TaskLifecyclePhase::Superseded,
+            result: TaskResult::Superseded,
             event_kind: "task_superseded",
         },
         CloseIntent::Check => CloseTerminalStorage {
-            lifecycle_phase: "ready",
-            result: "none",
+            lifecycle_phase: TaskLifecyclePhase::Ready,
+            result: TaskResult::None,
             event_kind: "task_close_checked",
         },
     }
 }
 
-fn terminal_close_summary_json(
+fn terminal_close_summary(
     task: &TaskRecord,
     request: &CloseTaskPlanRequest,
     closed_at: &UtcTimestamp,
-) -> CoreResult<String> {
-    let mut close_summary = decode_required_json_object(
-        "tasks",
-        task.task_id.clone(),
-        "close_summary_json",
-        Some(&task.close_summary_json),
-    )?;
-    close_summary.insert(
-        "close_reason".to_owned(),
-        serde_json::to_value(
-            request
-                .close_reason
-                .as_ref()
-                .expect("validated terminal close_reason is present"),
-        )?,
-    );
-    close_summary.insert("closed_at".to_owned(), serde_json::to_value(closed_at)?);
-    close_summary.insert("intent".to_owned(), serde_json::to_value(request.intent)?);
-    close_summary.insert(
-        "user_note".to_owned(),
-        request
-            .user_note
-            .clone()
-            .map(Value::String)
-            .unwrap_or(Value::Null),
-    );
-    close_summary.insert(
-        "superseding_task_id".to_owned(),
-        request
-            .superseding_task_id
-            .as_ref()
-            .map(|id| Value::String(id.as_str().to_owned()))
-            .unwrap_or(Value::Null),
-    );
-    serde_json::to_string(&Value::Object(close_summary)).map_err(CorePipelineError::from)
+) -> PersistedCloseSummary {
+    let mut close_summary = task.close_summary.clone();
+    close_summary.close_reason = *request
+        .close_reason
+        .as_ref()
+        .expect("validated terminal close_reason is present");
+    close_summary.closed_at = Some(closed_at.clone());
+    close_summary.intent = Some(request.intent);
+    close_summary.user_note = request.user_note.clone().into_option();
+    close_summary.superseding_task_id = request.superseding_task_id.clone().into_option();
+    close_summary
 }

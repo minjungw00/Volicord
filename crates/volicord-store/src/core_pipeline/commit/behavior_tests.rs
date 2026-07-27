@@ -1,16 +1,26 @@
 use std::error::Error;
 
-use serde_json::{json, Value};
-use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash, TaskId};
-use volicord_types::values::MethodName;
+use volicord_types::ids::{
+    AgentConnectionId, IdempotencyKey, ProjectId, RequestHash, RunId, TaskId,
+};
+use volicord_types::schema::{
+    EvidenceProducerAnchor, EvidenceRelevanceAssessment, JsonObject, ObservedChanges,
+    PersistedEvidenceObservationAuthority, SourceRef, UserContextSource,
+};
+use volicord_types::values::{
+    ActorSource, EvidenceAssuranceLevel, EvidenceProducerKind, EvidenceRelevanceStatus,
+    EvidenceSourceKind, MethodName, RunKind, UtcTimestamp,
+};
 
 use crate::core_pipeline::test_support::{
     pending_event, pending_event_for_task, replay_context, response_json, task_insert,
-    StoreFixture as StoreHarness, ACTOR_SOURCE, CONNECTION_ID, PROJECT_ID,
+    StoreFixture as StoreHarness, CONNECTION_ID, PROJECT_ID,
 };
 use crate::core_pipeline::{
     commit_input, CoreStorageMutation, EvidenceClaimInsert, EvidenceMutation,
-    EvidenceObservationInsert, MutationCommitOutcome, RunInsert, RunMutation, TaskMutation,
+    EvidenceObservationInsert, MutationCommitOutcome, RunInsert, RunMutation, RunStatus,
+    StoredRunMetadata, StoredRunSummary, StoredRunWriteTicketEffect,
+    StoredRunWriteTicketEffectKind, TaskMutation,
 };
 
 #[test]
@@ -48,38 +58,39 @@ fn ordered_multi_aggregate_commit_is_versioned_replayable_and_durable() -> Resul
                 run_id: Some(run_id.to_owned()),
                 acceptance_criterion_id: None,
                 evidence_claim_id: Some("claim_search_result_count".to_owned()),
-                source_kind: "external_tool".to_owned(),
-                assurance_level: "external_tool_result".to_owned(),
-                observed_by_actor_source: Some(ACTOR_SOURCE.to_owned()),
+                source_kind: EvidenceSourceKind::ExternalTool,
+                assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
+                observed_by_actor_source: Some(ActorSource::AgentConnection(
+                    AgentConnectionId::new(CONNECTION_ID),
+                )),
                 tool_name: Some("local-test-runner".to_owned()),
                 tool_invocation_id: Some("tool_invocation_001".to_owned()),
-                tool_metadata_json: json!({"exit_code": 0}).to_string(),
-                input_refs_json: "[]".to_owned(),
-                source_refs_json: json!([{
-                    "source_kind": "user_context",
-                    "source": {"context_id": "message_store_evidence"}
-                }])
-                .to_string(),
-                output_artifact_refs_json: "[]".to_owned(),
-                limitations_json: json!(["External tool result is not a proof."]).to_string(),
-                observed_at: "2026-06-18T00:00:00Z".to_owned(),
-                recorded_at: "2026-06-18T00:00:01Z".to_owned(),
-                metadata_json: json!({
-                    "recorded_by_run_id": run_id,
-                    "invocation_verification_basis": "store_test_boundary",
-                    "producer_anchor": {
-                        "producer_kind": "unverified_caller",
-                        "producer_ref": null,
-                        "output_artifact_refs": [],
-                        "verification_basis": null
+                tool_metadata: JsonObject::from_iter([("exit_code".to_owned(), 0.into())]),
+                input_refs: Vec::new(),
+                source_refs: vec![SourceRef::UserContext(UserContextSource {
+                    context_id: "message_store_evidence".to_owned(),
+                })],
+                output_artifact_refs: Vec::new(),
+                limitations: vec!["External tool result is not a proof.".to_owned()],
+                observed_at: UtcTimestamp::parse("2026-06-18T00:00:00Z")
+                    .expect("test timestamp must parse"),
+                recorded_at: UtcTimestamp::parse("2026-06-18T00:00:01Z")
+                    .expect("test timestamp must parse"),
+                metadata: PersistedEvidenceObservationAuthority {
+                    recorded_by_run_id: RunId::new(run_id),
+                    invocation_verification_basis: "store_test_boundary".to_owned(),
+                    producer_anchor: EvidenceProducerAnchor {
+                        producer_kind: EvidenceProducerKind::UnverifiedCaller,
+                        producer_ref: None.into(),
+                        output_artifact_refs: Vec::new(),
+                        verification_basis: None.into(),
                     },
-                    "relevance_assessment": {
-                        "status": "unassessed",
-                        "assessment_ref": null,
-                        "assessed_by_actor_source": null
-                    }
-                })
-                .to_string(),
+                    relevance_assessment: EvidenceRelevanceAssessment {
+                        status: EvidenceRelevanceStatus::Unassessed,
+                        assessment_ref: None.into(),
+                        assessed_by_actor_source: None.into(),
+                    },
+                },
             },
         )),
     ];
@@ -101,17 +112,19 @@ fn ordered_multi_aggregate_commit_is_versioned_replayable_and_durable() -> Resul
         .evidence_observation_record(observation_id)?
         .expect("evidence observation should be readable");
     assert_eq!(record.run_id.as_deref(), Some(run_id));
-    assert_eq!(record.source_kind, "external_tool");
-    assert_eq!(record.assurance_level, "external_tool_result");
+    assert_eq!(record.source_kind, EvidenceSourceKind::ExternalTool);
     assert_eq!(
-        serde_json::from_str::<Value>(&record.source_refs_json)?,
-        json!([{
-            "source_kind": "user_context",
-            "source": {"context_id": "message_store_evidence"}
-        }])
+        record.assurance_level,
+        EvidenceAssuranceLevel::ExternalToolResult
     );
     assert_eq!(
-        serde_json::from_str::<Vec<String>>(&record.limitations_json)?,
+        record.source_refs,
+        vec![SourceRef::UserContext(UserContextSource {
+            context_id: "message_store_evidence".to_owned(),
+        })]
+    );
+    assert_eq!(
+        record.limitations,
         vec!["External tool result is not a proof."]
     );
     let committed_counts = store.effect_counts()?;
@@ -206,20 +219,23 @@ fn run_insert_with_missing_task() -> RunInsert {
         change_unit_id: None,
         scope_revision: 0,
         write_ticket_id: None,
-        kind: "implementation".to_owned(),
-        status: "completed".to_owned(),
-        summary_json: "{}".to_owned(),
-        observed_changes_json: json!({
-            "changed_paths": [],
-            "product_file_write_observed": false,
-            "sensitive_categories": [],
-            "baseline_ref": null
-        })
-        .to_string(),
-        evidence_updates_json: "[]".to_owned(),
-        write_ticket_effect_json: "{}".to_owned(),
-        created_by_actor_source: ACTOR_SOURCE.to_owned(),
-        metadata_json: "{}".to_owned(),
+        kind: RunKind::Implementation,
+        status: RunStatus::Recorded,
+        summary: StoredRunSummary {
+            summary: String::new(),
+        },
+        observed_changes: empty_observed_changes(),
+        evidence_updates: Vec::new(),
+        write_ticket_effect: StoredRunWriteTicketEffect {
+            write_ticket_id: None,
+            effect: StoredRunWriteTicketEffectKind::None,
+        },
+        created_by_actor_source: ActorSource::AgentConnection(AgentConnectionId::new(
+            CONNECTION_ID,
+        )),
+        metadata: StoredRunMetadata {
+            verification_basis: "store_test_boundary".to_owned(),
+        },
     }
 }
 
@@ -230,19 +246,31 @@ fn run_insert(run_id: &str, task_id: &str) -> RunInsert {
         change_unit_id: None,
         scope_revision: 0,
         write_ticket_id: None,
-        kind: "implementation".to_owned(),
-        status: "recorded".to_owned(),
-        summary_json: "{}".to_owned(),
-        observed_changes_json: json!({
-            "changed_paths": [],
-            "product_file_write_observed": false,
-            "sensitive_categories": [],
-            "baseline_ref": null
-        })
-        .to_string(),
-        evidence_updates_json: "[]".to_owned(),
-        write_ticket_effect_json: "{}".to_owned(),
-        created_by_actor_source: ACTOR_SOURCE.to_owned(),
-        metadata_json: "{}".to_owned(),
+        kind: RunKind::Implementation,
+        status: RunStatus::Recorded,
+        summary: StoredRunSummary {
+            summary: String::new(),
+        },
+        observed_changes: empty_observed_changes(),
+        evidence_updates: Vec::new(),
+        write_ticket_effect: StoredRunWriteTicketEffect {
+            write_ticket_id: None,
+            effect: StoredRunWriteTicketEffectKind::None,
+        },
+        created_by_actor_source: ActorSource::AgentConnection(AgentConnectionId::new(
+            CONNECTION_ID,
+        )),
+        metadata: StoredRunMetadata {
+            verification_basis: "store_test_boundary".to_owned(),
+        },
+    }
+}
+
+fn empty_observed_changes() -> ObservedChanges {
+    ObservedChanges {
+        changed_paths: Vec::new(),
+        product_file_write_observed: false,
+        sensitive_categories: Vec::new(),
+        baseline_ref: None.into(),
     }
 }

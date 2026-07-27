@@ -48,7 +48,5 @@ fn resolution_materialization_serializes_only_at_the_store_boundary() {
         panic!("resolution materialization must produce a typed Store mutation")
     };
     assert_eq!(insert.user_action_resolution_id, "resolution-test");
-    let stored: UserActionResolutionBody =
-        serde_json::from_str(&insert.resolution_json).expect("stored resolution must be canonical");
-    assert_eq!(stored, materialized.record.resolution);
+    assert_eq!(insert.resolution, materialized.record.resolution);
 }

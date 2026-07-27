@@ -8,8 +8,8 @@ use crate::methods::evidence_facts::{
     stored_evidence_observation_provenance_facts,
 };
 use crate::methods::{
-    change_unit_ref, parse_owner_storage_value, persistent_artifact_is_verified_current, state_ref,
-    store_error_plan, PlanError,
+    change_unit_ref, persistent_artifact_is_verified_current, state_ref, store_error_plan,
+    PlanError,
 };
 use crate::pipeline::CorePipelineError;
 use crate::policy::close_readiness_evidence::{
@@ -32,7 +32,7 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     ArtifactAvailability, ArtifactIntegrityStatus, CloseReadinessBlockerCategory,
-    EvidenceCoverageState, EvidenceRelevanceStatus, RedactionState, StateRecordKind,
+    EvidenceCoverageState, EvidenceRelevanceStatus, StateRecordKind,
 };
 
 pub(super) fn completion_blockers(
@@ -370,12 +370,7 @@ fn unavailable_close_artifact_refs(
                 )
                 .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
             let stored_available = persistent_artifact_is_verified_current(store, &stored)?;
-            let stored_redaction_state: RedactionState = parse_owner_storage_value(
-                "artifacts",
-                stored.artifact_id.clone(),
-                "redaction_state",
-                &stored.redaction_state,
-            )?;
+            let stored_redaction_state = stored.redaction_state;
             let artifact_sha256 = artifact_ref.sha256.as_ref();
             let artifact_size_bytes = artifact_ref.size_bytes.as_ref().copied();
             if stored.project_id != request.envelope.project_id.as_str()

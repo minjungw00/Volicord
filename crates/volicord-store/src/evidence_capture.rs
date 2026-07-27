@@ -2,16 +2,18 @@ use std::fs;
 
 use chrono::Duration;
 use rusqlite::{params, OptionalExtension};
-use serde_json::Value;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use volicord_types::canonical::{canonical_json_bare_sha256, canonical_json_string};
+use volicord_types::ids::{AgentConnectionId, BaselineRef};
 use volicord_types::schema::{
     evidence_capture_input_sha256, validate_evidence_capture_expected_outcome,
     validate_evidence_capture_limitations, validate_evidence_capture_observed_outcome,
-    EvidenceCaptureSpec, JsonObject, PersistedEvidenceCaptureReceiptBody,
+    EvidenceCaptureSpec, EvidenceProducer, EvidenceTarget, JsonObject,
+    PersistedEvidenceCaptureReceiptBody, PersistedEvidenceCaptureReceiptSource, StateRecordRef,
     EVIDENCE_CAPTURE_INTENT_TTL_MINUTES, EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
 };
-use volicord_types::values::{EvidenceProducerKind, RedactionState, UtcTimestamp};
+use volicord_types::values::{ActorSource, EvidenceProducerKind, RedactionState, UtcTimestamp};
 
 use crate::{
     artifacts::{
@@ -62,19 +64,18 @@ pub struct EvidenceCaptureIntentInsert {
     pub task_id: String,
     pub change_unit_id: String,
     pub scope_revision: u64,
-    pub baseline_ref: String,
-    pub target_json: String,
-    pub capture_kind: String,
-    pub capture_spec_json: String,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub capture: EvidenceCaptureSpec,
     pub input_sha256: String,
-    pub expected_outcome_json: String,
-    pub requested_by_actor_source: String,
-    pub requesting_connection_internal_id: String,
-    pub session_context_json: String,
-    pub workspace_context_json: String,
-    pub created_at: String,
-    pub expires_at: String,
-    pub metadata_json: String,
+    pub expected_outcome: JsonObject,
+    pub requested_by_actor_source: ActorSource,
+    pub requesting_connection_internal_id: AgentConnectionId,
+    pub session_context: StoredEvidenceCaptureIntentSessionContext,
+    pub workspace_context: JsonObject,
+    pub created_at: UtcTimestamp,
+    pub expires_at: UtcTimestamp,
+    pub metadata: StoredEvidenceCaptureIntentMetadata,
 }
 
 /// Stored immutable evidence-capture intent facts.
@@ -85,65 +86,92 @@ pub struct EvidenceCaptureIntentRecord {
     pub task_id: String,
     pub change_unit_id: String,
     pub scope_revision: u64,
-    pub baseline_ref: String,
-    pub target_json: String,
-    pub capture_kind: String,
-    pub capture_spec_json: String,
+    pub baseline_ref: BaselineRef,
+    pub target: EvidenceTarget,
+    pub capture_kind: EvidenceProducerKind,
+    pub capture: EvidenceCaptureSpec,
     pub input_sha256: String,
-    pub expected_outcome_json: String,
-    pub requested_by_actor_source: String,
-    pub requesting_connection_internal_id: String,
-    pub session_context_json: String,
-    pub workspace_context_json: String,
-    pub created_at: String,
-    pub expires_at: String,
-    pub metadata_json: String,
+    pub expected_outcome: JsonObject,
+    pub requested_by_actor_source: ActorSource,
+    pub requesting_connection_internal_id: AgentConnectionId,
+    pub session_context: StoredEvidenceCaptureIntentSessionContext,
+    pub workspace_context: JsonObject,
+    pub created_at: UtcTimestamp,
+    pub expires_at: UtcTimestamp,
+    pub metadata: StoredEvidenceCaptureIntentMetadata,
+}
+
+/// Persisted session coordinate carried by one evidence-capture intent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredEvidenceCaptureIntentSessionContext {
+    pub session_id: Option<String>,
+}
+
+/// Persisted invocation metadata carried by one evidence-capture intent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredEvidenceCaptureIntentMetadata {
+    pub verification_basis: String,
 }
 
 /// Source-neutral input for atomically staging and recording one complete safe receipt.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceCaptureReceiptInsert {
     pub evidence_capture_receipt_id: String,
     pub evidence_capture_intent_id: String,
     pub staging_handle_id: String,
     pub task_id: String,
-    pub capture_kind: String,
     pub input_sha256: String,
     pub result_sha256: String,
-    pub expected_outcome_json: String,
-    pub observed_outcome_json: String,
-    pub source_refs_json: String,
-    pub observed_by_actor_source: String,
-    pub observed_at: String,
-    pub limitations_json: String,
-    pub safe_receipt_json: String,
-    pub created_at: String,
-    pub staging_expires_at: String,
-    pub metadata_json: String,
+    pub expected_outcome: JsonObject,
+    pub observed_outcome: JsonObject,
+    pub source_refs: Vec<StateRecordRef>,
+    pub observed_by_actor_source: ActorSource,
+    pub observed_at: UtcTimestamp,
+    pub limitations: Vec<String>,
+    pub safe_receipt: PersistedEvidenceCaptureReceiptBody,
+    pub created_at: UtcTimestamp,
+    pub staging_expires_at: UtcTimestamp,
+    pub metadata: StoredEvidenceCaptureReceiptMetadata,
 }
 
 /// Stored immutable source receipt facts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceCaptureReceiptRecord {
     pub project_id: String,
     pub evidence_capture_receipt_id: String,
     pub evidence_capture_intent_id: String,
     pub staging_handle_id: String,
-    pub capture_kind: String,
+    pub capture_kind: EvidenceProducerKind,
     pub input_sha256: String,
     pub result_sha256: String,
-    pub expected_outcome_json: String,
-    pub observed_outcome_json: String,
-    pub source_refs_json: String,
-    pub observed_by_actor_source: String,
-    pub observed_at: String,
-    pub completeness: String,
-    pub limitations_json: String,
-    pub safe_receipt_json: String,
+    pub expected_outcome: JsonObject,
+    pub observed_outcome: JsonObject,
+    pub source_refs: Vec<StateRecordRef>,
+    pub observed_by_actor_source: ActorSource,
+    pub observed_at: UtcTimestamp,
+    pub completeness: EvidenceCaptureCompleteness,
+    pub limitations: Vec<String>,
+    pub safe_receipt: PersistedEvidenceCaptureReceiptBody,
     pub safe_receipt_sha256: String,
     pub safe_receipt_size_bytes: u64,
-    pub created_at: String,
-    pub metadata_json: String,
+    pub created_at: UtcTimestamp,
+    pub metadata: StoredEvidenceCaptureReceiptMetadata,
+}
+
+/// Closed completeness value persisted for a source receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceCaptureCompleteness {
+    Complete,
+}
+
+/// Persisted source metadata carried by one evidence-capture receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredEvidenceCaptureReceiptMetadata {
+    pub source: PersistedEvidenceCaptureReceiptSource,
 }
 
 /// Project-scoped identity class for one claimed underlying source fact.
@@ -165,12 +193,12 @@ impl EvidenceCaptureSourceClaimKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvidenceCaptureSourceClaimRecord {
     pub project_id: String,
-    pub source_claim_kind: String,
+    pub source_claim_kind: EvidenceCaptureSourceClaimKind,
     pub source_claim_id: String,
     pub evidence_capture_intent_id: String,
     pub evidence_capture_receipt_id: String,
-    pub capture_kind: String,
-    pub claimed_at: String,
+    pub capture_kind: EvidenceProducerKind,
+    pub claimed_at: UtcTimestamp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,7 +213,7 @@ struct ValidatedEvidenceCaptureSource {
 }
 
 /// Storage input for inserting one canonical evidence producer in a Core commit.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceProducerInsert {
     pub evidence_producer_id: String,
     pub evidence_capture_intent_id: String,
@@ -196,15 +224,15 @@ pub struct EvidenceProducerInsert {
     pub task_id: String,
     pub change_unit_id: String,
     pub scope_revision: u64,
-    pub baseline_ref: String,
-    pub producer_kind: String,
-    pub canonical_producer_json: String,
-    pub created_at: String,
-    pub metadata_json: String,
+    pub baseline_ref: BaselineRef,
+    pub producer_kind: EvidenceProducerKind,
+    pub canonical_producer: EvidenceProducer,
+    pub created_at: UtcTimestamp,
+    pub metadata: StoredEvidenceProducerMetadata,
 }
 
 /// Stored canonical evidence-producer facts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceProducerRecord {
     pub project_id: String,
     pub evidence_producer_id: String,
@@ -216,11 +244,93 @@ pub struct EvidenceProducerRecord {
     pub task_id: String,
     pub change_unit_id: String,
     pub scope_revision: u64,
-    pub baseline_ref: String,
-    pub producer_kind: String,
-    pub canonical_producer_json: String,
-    pub created_at: String,
-    pub metadata_json: String,
+    pub baseline_ref: BaselineRef,
+    pub producer_kind: EvidenceProducerKind,
+    pub canonical_producer: EvidenceProducer,
+    pub created_at: UtcTimestamp,
+    pub metadata: StoredEvidenceProducerMetadata,
+}
+
+/// Persisted producer metadata selected by Core.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoredEvidenceProducerMetadata {
+    pub verification_basis: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawEvidenceCaptureIntentRecord {
+    project_id: String,
+    evidence_capture_intent_id: String,
+    task_id: String,
+    change_unit_id: String,
+    scope_revision: i64,
+    baseline_ref: String,
+    target_json: String,
+    capture_kind: String,
+    capture_spec_json: String,
+    input_sha256: String,
+    expected_outcome_json: String,
+    requested_by_actor_source: String,
+    requesting_connection_internal_id: String,
+    session_context_json: String,
+    workspace_context_json: String,
+    created_at: String,
+    expires_at: String,
+    metadata_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawEvidenceCaptureReceiptRecord {
+    project_id: String,
+    evidence_capture_receipt_id: String,
+    evidence_capture_intent_id: String,
+    staging_handle_id: String,
+    capture_kind: String,
+    input_sha256: String,
+    result_sha256: String,
+    expected_outcome_json: String,
+    observed_outcome_json: String,
+    source_refs_json: String,
+    observed_by_actor_source: String,
+    observed_at: String,
+    completeness: String,
+    limitations_json: String,
+    safe_receipt_json: String,
+    safe_receipt_sha256: String,
+    safe_receipt_size_bytes: i64,
+    created_at: String,
+    metadata_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawEvidenceProducerRecord {
+    project_id: String,
+    evidence_producer_id: String,
+    evidence_capture_intent_id: String,
+    evidence_capture_receipt_id: String,
+    evidence_observation_id: String,
+    artifact_id: String,
+    run_id: String,
+    task_id: String,
+    change_unit_id: String,
+    scope_revision: i64,
+    baseline_ref: String,
+    producer_kind: String,
+    canonical_producer_json: String,
+    created_at: String,
+    metadata_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawEvidenceCaptureSourceClaimRecord {
+    project_id: String,
+    source_claim_kind: String,
+    source_claim_id: String,
+    evidence_capture_intent_id: String,
+    evidence_capture_receipt_id: String,
+    capture_kind: String,
+    claimed_at: String,
 }
 
 impl CoreProjectStore<'_> {
@@ -278,7 +388,7 @@ impl CoreProjectStore<'_> {
             || receipt.evidence_capture_intent_id != intent.evidence_capture_intent_id
             || receipt.capture_kind != intent.capture_kind
             || body.capture_intent_id.as_str() != intent.evidence_capture_intent_id
-            || body.source.connection_id.as_str() != intent.requesting_connection_internal_id
+            || body.source.connection_id != intent.requesting_connection_internal_id
         {
             return Err(StoreError::corrupt_owner_state_value(
                 "evidence_capture_source_claims",
@@ -305,7 +415,7 @@ impl CoreProjectStore<'_> {
                 .zip(expected.iter())
                 .all(|(record, identity)| {
                     record.project_id == self.project.project_id
-                        && record.source_claim_kind == identity.source_claim_kind.as_str()
+                        && record.source_claim_kind == identity.source_claim_kind
                         && record.source_claim_id == identity.source_claim_id
                         && record.evidence_capture_intent_id == intent.evidence_capture_intent_id
                         && record.evidence_capture_receipt_id == receipt.evidence_capture_receipt_id
@@ -358,12 +468,18 @@ impl CoreProjectStore<'_> {
                 id: input.evidence_capture_intent_id.clone(),
             })?;
         let validated_source = validate_receipt_against_intent(&input, &intent)?;
-        let created_at =
-            UtcTimestamp::parse(&input.created_at).map_err(|_| StoreError::InvalidInput {
-                detail: "created_at must be a valid RFC 3339 timestamp".to_owned(),
-            })?;
-
-        let safe_bytes = input.safe_receipt_json.as_bytes().to_vec();
+        let created_at = input.created_at.clone();
+        let safe_receipt_json = canonical_json_string(&input.safe_receipt).map_err(|error| {
+            StoreError::InvalidInput {
+                detail: format!("safe receipt could not be serialized: {error}"),
+            }
+        })?;
+        let expected_outcome_json = encode_input_json("expected_outcome", &input.expected_outcome)?;
+        let observed_outcome_json = encode_input_json("observed_outcome", &input.observed_outcome)?;
+        let source_refs_json = encode_input_json("source_refs", &input.source_refs)?;
+        let limitations_json = encode_input_json("limitations", &input.limitations)?;
+        let metadata_json = encode_input_json("metadata", &input.metadata)?;
+        let safe_bytes = safe_receipt_json.as_bytes().to_vec();
         let safe_receipt_sha256 = sha256_hex(&safe_bytes);
         let safe_receipt_size_bytes =
             u64::try_from(safe_bytes.len()).map_err(|_| StoreError::InvalidInput {
@@ -377,7 +493,7 @@ impl CoreProjectStore<'_> {
             content_type: "application/json".to_owned(),
             sha256: safe_receipt_sha256.clone(),
             size_bytes: safe_receipt_size_bytes,
-            redaction_state: "redacted".to_owned(),
+            redaction_state: RedactionState::Redacted,
             relation_hint: Some("evidence capture receipt".to_owned()),
             payload_kind: StagedPayloadKind::SafeTextBody,
             safe_bytes_or_notice: safe_bytes,
@@ -427,23 +543,23 @@ impl CoreProjectStore<'_> {
                 input.evidence_capture_receipt_id,
                 input.evidence_capture_intent_id,
                 input.staging_handle_id,
-                input.capture_kind,
+                evidence_producer_kind_storage_value(input.safe_receipt.capture_kind),
                 input.input_sha256,
                 input.result_sha256,
-                input.expected_outcome_json,
-                input.observed_outcome_json,
-                input.source_refs_json,
-                input.observed_by_actor_source,
-                input.observed_at,
-                input.limitations_json,
-                input.safe_receipt_json,
+                expected_outcome_json,
+                observed_outcome_json,
+                source_refs_json,
+                input.observed_by_actor_source.to_canonical_string(),
+                input.observed_at.to_canonical_string(),
+                limitations_json,
+                safe_receipt_json,
                 safe_receipt_sha256,
                 i64::try_from(safe_receipt_size_bytes).map_err(|_| StoreError::InvalidInput {
                     detail: "safe evidence-capture receipt size does not fit in SQLite integer"
                         .to_owned(),
                 })?,
-                input.created_at,
-                input.metadata_json
+                input.created_at.to_canonical_string(),
+                metadata_json
             ],
         );
         if let Err(error) = insert_result {
@@ -468,8 +584,8 @@ impl CoreProjectStore<'_> {
                     claim.source_claim_id,
                     input.evidence_capture_intent_id,
                     input.evidence_capture_receipt_id,
-                    input.capture_kind,
-                    input.created_at,
+                    evidence_producer_kind_storage_value(input.safe_receipt.capture_kind),
+                    input.created_at.to_canonical_string(),
                 ],
             ) {
                 let _ = fs::remove_file(&write_path);
@@ -498,7 +614,7 @@ fn read_intent(
     project_id: &str,
     intent_id: &str,
 ) -> StoreResult<Option<EvidenceCaptureIntentRecord>> {
-    let record = conn
+    let raw = conn
         .query_row(
             "SELECT project_id, evidence_capture_intent_id, task_id, change_unit_id,
                 scope_revision, baseline_ref, target_json, capture_kind,
@@ -510,13 +626,12 @@ fn read_intent(
           WHERE project_id = ?1 AND evidence_capture_intent_id = ?2",
             params![project_id, intent_id],
             |row| {
-                let scope_revision = row.get::<_, i64>(4)?;
-                Ok(EvidenceCaptureIntentRecord {
+                Ok(RawEvidenceCaptureIntentRecord {
                     project_id: row.get(0)?,
                     evidence_capture_intent_id: row.get(1)?,
                     task_id: row.get(2)?,
                     change_unit_id: row.get(3)?,
-                    scope_revision: nonnegative(scope_revision, 4)?,
+                    scope_revision: row.get(4)?,
                     baseline_ref: row.get(5)?,
                     target_json: row.get(6)?,
                     capture_kind: row.get(7)?,
@@ -535,25 +650,133 @@ fn read_intent(
         )
         .optional()
         .map_err(StoreError::from)?;
-    record.map(validate_intent_record).transpose()
+    raw.map(decode_intent_record).transpose()
 }
 
-fn validate_intent_record(
-    record: EvidenceCaptureIntentRecord,
+fn decode_intent_record(
+    raw: RawEvidenceCaptureIntentRecord,
 ) -> StoreResult<EvidenceCaptureIntentRecord> {
-    validate_evidence_capture_intent_window(&record.created_at, &record.expires_at).map_err(
-        |field| {
-            StoreError::corrupt_owner_state_value(
-                "evidence_capture_intents",
-                record.evidence_capture_intent_id.clone(),
-                match field {
-                    EvidenceCaptureIntentWindowError::CreatedAt => "created_at",
-                    EvidenceCaptureIntentWindowError::ExpiresAt => "expires_at",
-                },
-            )
-        },
+    let record_id = raw.evidence_capture_intent_id.clone();
+    let created_at = decode_owner_timestamp(
+        "evidence_capture_intents",
+        &record_id,
+        "created_at",
+        &raw.created_at,
     )?;
-    Ok(record)
+    let expires_at = decode_owner_timestamp(
+        "evidence_capture_intents",
+        &record_id,
+        "expires_at",
+        &raw.expires_at,
+    )?;
+    validate_evidence_capture_intent_window(&raw.created_at, &raw.expires_at).map_err(|field| {
+        StoreError::corrupt_owner_state_value(
+            "evidence_capture_intents",
+            record_id.clone(),
+            match field {
+                EvidenceCaptureIntentWindowError::CreatedAt => "created_at",
+                EvidenceCaptureIntentWindowError::ExpiresAt => "expires_at",
+            },
+        )
+    })?;
+    let capture = decode_owner_json::<EvidenceCaptureSpec>(
+        "evidence_capture_intents",
+        &record_id,
+        "capture_spec_json",
+        &raw.capture_spec_json,
+    )?;
+    let capture_kind = decode_owner_value::<EvidenceProducerKind>(
+        "evidence_capture_intents",
+        &record_id,
+        "capture_kind",
+        &raw.capture_kind,
+    )?;
+    if capture_kind != producer_kind_for_capture(&capture) {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_capture_intents",
+            record_id,
+            "capture_kind",
+        ));
+    }
+    let input_sha256 = evidence_capture_input_sha256(&capture).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "evidence_capture_intents",
+            raw.evidence_capture_intent_id.clone(),
+            "capture_spec_json",
+        )
+    })?;
+    if input_sha256 != raw.input_sha256 {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_capture_intents",
+            raw.evidence_capture_intent_id,
+            "input_sha256",
+        ));
+    }
+    let expected_outcome = decode_owner_json::<JsonObject>(
+        "evidence_capture_intents",
+        &record_id,
+        "expected_outcome_json",
+        &raw.expected_outcome_json,
+    )?;
+    validate_evidence_capture_expected_outcome(&capture, &expected_outcome).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "evidence_capture_intents",
+            record_id.clone(),
+            "expected_outcome_json",
+        )
+    })?;
+    Ok(EvidenceCaptureIntentRecord {
+        project_id: raw.project_id,
+        evidence_capture_intent_id: record_id.clone(),
+        task_id: raw.task_id,
+        change_unit_id: raw.change_unit_id,
+        scope_revision: decode_owner_nonnegative(
+            "evidence_capture_intents",
+            &record_id,
+            "scope_revision",
+            raw.scope_revision,
+        )?,
+        baseline_ref: BaselineRef::new(raw.baseline_ref),
+        target: decode_owner_json(
+            "evidence_capture_intents",
+            &record_id,
+            "target_json",
+            &raw.target_json,
+        )?,
+        capture_kind,
+        capture,
+        input_sha256: raw.input_sha256,
+        expected_outcome,
+        requested_by_actor_source: decode_owner_actor_source(
+            "evidence_capture_intents",
+            &record_id,
+            "requested_by_actor_source",
+            &raw.requested_by_actor_source,
+        )?,
+        requesting_connection_internal_id: AgentConnectionId::new(
+            raw.requesting_connection_internal_id,
+        ),
+        session_context: decode_owner_json(
+            "evidence_capture_intents",
+            &record_id,
+            "session_context_json",
+            &raw.session_context_json,
+        )?,
+        workspace_context: decode_owner_json(
+            "evidence_capture_intents",
+            &record_id,
+            "workspace_context_json",
+            &raw.workspace_context_json,
+        )?,
+        created_at,
+        expires_at,
+        metadata: decode_owner_json(
+            "evidence_capture_intents",
+            &record_id,
+            "metadata_json",
+            &raw.metadata_json,
+        )?,
+    })
 }
 
 fn read_receipt(
@@ -571,10 +794,11 @@ fn read_receipt(
            FROM evidence_capture_receipts
           WHERE project_id = ?1 AND evidence_capture_receipt_id = ?2",
         params![project_id, receipt_id],
-        receipt_from_row,
+        raw_receipt_from_row,
     )
     .optional()
     .map_err(StoreError::from)
+    .and_then(|raw| raw.map(decode_receipt_record).transpose())
 }
 
 fn read_receipt_for_intent(
@@ -592,15 +816,17 @@ fn read_receipt_for_intent(
            FROM evidence_capture_receipts
           WHERE project_id = ?1 AND evidence_capture_intent_id = ?2",
         params![project_id, intent_id],
-        receipt_from_row,
+        raw_receipt_from_row,
     )
     .optional()
     .map_err(StoreError::from)
+    .and_then(|raw| raw.map(decode_receipt_record).transpose())
 }
 
-fn receipt_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EvidenceCaptureReceiptRecord> {
-    let size = row.get::<_, i64>(16)?;
-    Ok(EvidenceCaptureReceiptRecord {
+fn raw_receipt_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<RawEvidenceCaptureReceiptRecord> {
+    Ok(RawEvidenceCaptureReceiptRecord {
         project_id: row.get(0)?,
         evidence_capture_receipt_id: row.get(1)?,
         evidence_capture_intent_id: row.get(2)?,
@@ -617,10 +843,126 @@ fn receipt_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EvidenceCapture
         limitations_json: row.get(13)?,
         safe_receipt_json: row.get(14)?,
         safe_receipt_sha256: row.get(15)?,
-        safe_receipt_size_bytes: nonnegative(size, 16)?,
+        safe_receipt_size_bytes: row.get(16)?,
         created_at: row.get(17)?,
         metadata_json: row.get(18)?,
     })
+}
+
+fn decode_receipt_record(
+    raw: RawEvidenceCaptureReceiptRecord,
+) -> StoreResult<EvidenceCaptureReceiptRecord> {
+    let record_id = raw.evidence_capture_receipt_id.clone();
+    let safe_receipt = decode_owner_json::<PersistedEvidenceCaptureReceiptBody>(
+        "evidence_capture_receipts",
+        &record_id,
+        "safe_receipt_json",
+        &raw.safe_receipt_json,
+    )?;
+    let canonical_safe_receipt = canonical_json_string(&safe_receipt).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "evidence_capture_receipts",
+            record_id.clone(),
+            "safe_receipt_json",
+        )
+    })?;
+    let safe_receipt_size_bytes = decode_owner_nonnegative(
+        "evidence_capture_receipts",
+        &record_id,
+        "safe_receipt_size_bytes",
+        raw.safe_receipt_size_bytes,
+    )?;
+    if raw.safe_receipt_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES
+        || raw.metadata_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES
+        || canonical_safe_receipt != raw.safe_receipt_json
+        || safe_receipt_size_bytes != raw.safe_receipt_json.len() as u64
+        || sha256_hex(raw.safe_receipt_json.as_bytes()) != raw.safe_receipt_sha256
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_capture_receipts",
+            record_id,
+            "safe_receipt_json",
+        ));
+    }
+    let capture_kind = decode_owner_value(
+        "evidence_capture_receipts",
+        &record_id,
+        "capture_kind",
+        &raw.capture_kind,
+    )?;
+    let expected_outcome = decode_owner_json(
+        "evidence_capture_receipts",
+        &record_id,
+        "expected_outcome_json",
+        &raw.expected_outcome_json,
+    )?;
+    let observed_outcome = decode_owner_json(
+        "evidence_capture_receipts",
+        &record_id,
+        "observed_outcome_json",
+        &raw.observed_outcome_json,
+    )?;
+    let source_refs = decode_owner_json(
+        "evidence_capture_receipts",
+        &record_id,
+        "source_refs_json",
+        &raw.source_refs_json,
+    )?;
+    let limitations = decode_owner_json(
+        "evidence_capture_receipts",
+        &record_id,
+        "limitations_json",
+        &raw.limitations_json,
+    )?;
+    let metadata = decode_owner_json(
+        "evidence_capture_receipts",
+        &record_id,
+        "metadata_json",
+        &raw.metadata_json,
+    )?;
+    let record = EvidenceCaptureReceiptRecord {
+        project_id: raw.project_id,
+        evidence_capture_receipt_id: record_id.clone(),
+        evidence_capture_intent_id: raw.evidence_capture_intent_id,
+        staging_handle_id: raw.staging_handle_id,
+        capture_kind,
+        input_sha256: raw.input_sha256,
+        result_sha256: raw.result_sha256,
+        expected_outcome,
+        observed_outcome,
+        source_refs,
+        observed_by_actor_source: decode_owner_actor_source(
+            "evidence_capture_receipts",
+            &record_id,
+            "observed_by_actor_source",
+            &raw.observed_by_actor_source,
+        )?,
+        observed_at: decode_owner_timestamp(
+            "evidence_capture_receipts",
+            &record_id,
+            "observed_at",
+            &raw.observed_at,
+        )?,
+        completeness: decode_owner_value(
+            "evidence_capture_receipts",
+            &record_id,
+            "completeness",
+            &raw.completeness,
+        )?,
+        limitations,
+        safe_receipt,
+        safe_receipt_sha256: raw.safe_receipt_sha256,
+        safe_receipt_size_bytes,
+        created_at: decode_owner_timestamp(
+            "evidence_capture_receipts",
+            &record_id,
+            "created_at",
+            &raw.created_at,
+        )?,
+        metadata,
+    };
+    validate_decoded_receipt_owner_fields(&record)?;
+    Ok(record)
 }
 
 fn read_source_claim(
@@ -636,10 +978,11 @@ fn read_source_claim(
            FROM evidence_capture_source_claims
           WHERE project_id = ?1 AND source_claim_kind = ?2 AND source_claim_id = ?3",
         params![project_id, claim_kind.as_str(), claim_id],
-        source_claim_from_row,
+        raw_source_claim_from_row,
     )
     .optional()
     .map_err(StoreError::from)
+    .and_then(|raw| raw.map(decode_source_claim_record).transpose())
 }
 
 fn read_source_claims_for_receipt(
@@ -655,15 +998,18 @@ fn read_source_claims_for_receipt(
           WHERE project_id = ?1 AND evidence_capture_receipt_id = ?2
           ORDER BY source_claim_kind, source_claim_id",
     )?;
-    let rows = statement.query_map(params![project_id, receipt_id], source_claim_from_row)?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(StoreError::from)
+    let rows = statement.query_map(params![project_id, receipt_id], raw_source_claim_from_row)?;
+    rows.map(|raw| {
+        raw.map_err(StoreError::from)
+            .and_then(decode_source_claim_record)
+    })
+    .collect()
 }
 
-fn source_claim_from_row(
+fn raw_source_claim_from_row(
     row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<EvidenceCaptureSourceClaimRecord> {
-    Ok(EvidenceCaptureSourceClaimRecord {
+) -> rusqlite::Result<RawEvidenceCaptureSourceClaimRecord> {
+    Ok(RawEvidenceCaptureSourceClaimRecord {
         project_id: row.get(0)?,
         source_claim_kind: row.get(1)?,
         source_claim_id: row.get(2)?,
@@ -671,6 +1017,41 @@ fn source_claim_from_row(
         evidence_capture_receipt_id: row.get(4)?,
         capture_kind: row.get(5)?,
         claimed_at: row.get(6)?,
+    })
+}
+
+fn decode_source_claim_record(
+    raw: RawEvidenceCaptureSourceClaimRecord,
+) -> StoreResult<EvidenceCaptureSourceClaimRecord> {
+    let record_id = raw.source_claim_id.clone();
+    let source_claim_kind = match raw.source_claim_kind.as_str() {
+        "host_invocation" => EvidenceCaptureSourceClaimKind::HostInvocation,
+        _ => {
+            return Err(StoreError::corrupt_owner_state_value(
+                "evidence_capture_source_claims",
+                record_id,
+                "source_claim_kind",
+            ))
+        }
+    };
+    Ok(EvidenceCaptureSourceClaimRecord {
+        project_id: raw.project_id,
+        source_claim_kind,
+        source_claim_id: raw.source_claim_id,
+        evidence_capture_intent_id: raw.evidence_capture_intent_id,
+        evidence_capture_receipt_id: raw.evidence_capture_receipt_id,
+        capture_kind: decode_owner_value(
+            "evidence_capture_source_claims",
+            &record_id,
+            "capture_kind",
+            &raw.capture_kind,
+        )?,
+        claimed_at: decode_owner_timestamp(
+            "evidence_capture_source_claims",
+            &record_id,
+            "claimed_at",
+            &raw.claimed_at,
+        )?,
     })
 }
 
@@ -687,29 +1068,11 @@ fn read_producer(
            FROM evidence_producers
           WHERE project_id = ?1 AND evidence_producer_id = ?2",
         params![project_id, producer_id],
-        |row| {
-            let scope_revision = row.get::<_, i64>(9)?;
-            Ok(EvidenceProducerRecord {
-                project_id: row.get(0)?,
-                evidence_producer_id: row.get(1)?,
-                evidence_capture_intent_id: row.get(2)?,
-                evidence_capture_receipt_id: row.get(3)?,
-                evidence_observation_id: row.get(4)?,
-                artifact_id: row.get(5)?,
-                run_id: row.get(6)?,
-                task_id: row.get(7)?,
-                change_unit_id: row.get(8)?,
-                scope_revision: nonnegative(scope_revision, 9)?,
-                baseline_ref: row.get(10)?,
-                producer_kind: row.get(11)?,
-                canonical_producer_json: row.get(12)?,
-                created_at: row.get(13)?,
-                metadata_json: row.get(14)?,
-            })
-        },
+        raw_producer_from_row,
     )
     .optional()
     .map_err(StoreError::from)
+    .and_then(|raw| raw.map(decode_producer_record).transpose())
 }
 
 fn read_producer_for_intent(
@@ -725,29 +1088,94 @@ fn read_producer_for_intent(
            FROM evidence_producers
           WHERE project_id = ?1 AND evidence_capture_intent_id = ?2",
         params![project_id, intent_id],
-        |row| {
-            let scope_revision = row.get::<_, i64>(9)?;
-            Ok(EvidenceProducerRecord {
-                project_id: row.get(0)?,
-                evidence_producer_id: row.get(1)?,
-                evidence_capture_intent_id: row.get(2)?,
-                evidence_capture_receipt_id: row.get(3)?,
-                evidence_observation_id: row.get(4)?,
-                artifact_id: row.get(5)?,
-                run_id: row.get(6)?,
-                task_id: row.get(7)?,
-                change_unit_id: row.get(8)?,
-                scope_revision: nonnegative(scope_revision, 9)?,
-                baseline_ref: row.get(10)?,
-                producer_kind: row.get(11)?,
-                canonical_producer_json: row.get(12)?,
-                created_at: row.get(13)?,
-                metadata_json: row.get(14)?,
-            })
-        },
+        raw_producer_from_row,
     )
     .optional()
     .map_err(StoreError::from)
+    .and_then(|raw| raw.map(decode_producer_record).transpose())
+}
+
+fn raw_producer_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawEvidenceProducerRecord> {
+    Ok(RawEvidenceProducerRecord {
+        project_id: row.get(0)?,
+        evidence_producer_id: row.get(1)?,
+        evidence_capture_intent_id: row.get(2)?,
+        evidence_capture_receipt_id: row.get(3)?,
+        evidence_observation_id: row.get(4)?,
+        artifact_id: row.get(5)?,
+        run_id: row.get(6)?,
+        task_id: row.get(7)?,
+        change_unit_id: row.get(8)?,
+        scope_revision: row.get(9)?,
+        baseline_ref: row.get(10)?,
+        producer_kind: row.get(11)?,
+        canonical_producer_json: row.get(12)?,
+        created_at: row.get(13)?,
+        metadata_json: row.get(14)?,
+    })
+}
+
+fn decode_producer_record(raw: RawEvidenceProducerRecord) -> StoreResult<EvidenceProducerRecord> {
+    let record_id = raw.evidence_producer_id.clone();
+    let canonical_producer = decode_owner_json(
+        "evidence_producers",
+        &record_id,
+        "canonical_producer_json",
+        &raw.canonical_producer_json,
+    )?;
+    if canonical_json_string(&canonical_producer).map_err(|_| {
+        StoreError::corrupt_owner_state_json(
+            "evidence_producers",
+            record_id.clone(),
+            "canonical_producer_json",
+        )
+    })? != raw.canonical_producer_json
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_producers",
+            record_id,
+            "canonical_producer_json",
+        ));
+    }
+    let record = EvidenceProducerRecord {
+        project_id: raw.project_id,
+        evidence_producer_id: record_id.clone(),
+        evidence_capture_intent_id: raw.evidence_capture_intent_id,
+        evidence_capture_receipt_id: raw.evidence_capture_receipt_id,
+        evidence_observation_id: raw.evidence_observation_id,
+        artifact_id: raw.artifact_id,
+        run_id: raw.run_id,
+        task_id: raw.task_id,
+        change_unit_id: raw.change_unit_id,
+        scope_revision: decode_owner_nonnegative(
+            "evidence_producers",
+            &record_id,
+            "scope_revision",
+            raw.scope_revision,
+        )?,
+        baseline_ref: BaselineRef::new(raw.baseline_ref),
+        producer_kind: decode_owner_value(
+            "evidence_producers",
+            &record_id,
+            "producer_kind",
+            &raw.producer_kind,
+        )?,
+        canonical_producer,
+        created_at: decode_owner_timestamp(
+            "evidence_producers",
+            &record_id,
+            "created_at",
+            &raw.created_at,
+        )?,
+        metadata: decode_owner_json(
+            "evidence_producers",
+            &record_id,
+            "metadata_json",
+            &raw.metadata_json,
+        )?,
+    };
+    validate_decoded_producer_owner_fields(&record)?;
+    Ok(record)
 }
 
 fn validate_receipt_input(input: &EvidenceCaptureReceiptInsert) -> StoreResult<()> {
@@ -762,10 +1190,6 @@ fn validate_receipt_input(input: &EvidenceCaptureReceiptInsert) -> StoreResult<(
         ),
         ("staging_handle_id", input.staging_handle_id.as_str()),
         ("task_id", input.task_id.as_str()),
-        (
-            "observed_by_actor_source",
-            input.observed_by_actor_source.as_str(),
-        ),
     ] {
         if value.trim().is_empty() {
             return Err(StoreError::InvalidInput {
@@ -773,38 +1197,29 @@ fn validate_receipt_input(input: &EvidenceCaptureReceiptInsert) -> StoreResult<(
             });
         }
     }
-    validate_capture_kind(&input.capture_kind)?;
     validate_sha256("input_sha256", &input.input_sha256)?;
     validate_sha256("result_sha256", &input.result_sha256)?;
-    validate_json_object("expected_outcome_json", &input.expected_outcome_json)?;
-    validate_json_object("observed_outcome_json", &input.observed_outcome_json)?;
-    validate_json_array("source_refs_json", &input.source_refs_json)?;
-    validate_json_array("limitations_json", &input.limitations_json)?;
-    validate_json_object("safe_receipt_json", &input.safe_receipt_json)?;
-    validate_json_object("metadata_json", &input.metadata_json)?;
     for (field, value) in [
-        ("observed_at", input.observed_at.as_str()),
-        ("created_at", input.created_at.as_str()),
-        ("staging_expires_at", input.staging_expires_at.as_str()),
+        ("observed_at", &input.observed_at),
+        ("created_at", &input.created_at),
+        ("staging_expires_at", &input.staging_expires_at),
     ] {
-        UtcTimestamp::parse(value)
-            .and_then(|timestamp| {
-                timestamp
-                    .ensure_canonical_rfc3339_representable()
-                    .map_err(|_| volicord_types::values::UtcTimestampParseError)
-            })
+        value
+            .ensure_canonical_rfc3339_representable()
             .map_err(|_| StoreError::InvalidInput {
                 detail: format!("{field} must be a canonical four-digit RFC 3339 timestamp"),
             })?;
     }
-    if input.safe_receipt_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES {
+    let safe_receipt_json = encode_input_json("safe_receipt", &input.safe_receipt)?;
+    if safe_receipt_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES {
         return Err(StoreError::InvalidInput {
             detail: format!(
                 "safe_receipt_json exceeds the {MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES}-byte bound"
             ),
         });
     }
-    if input.metadata_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES {
+    let metadata_json = encode_input_json("metadata", &input.metadata)?;
+    if metadata_json.len() > MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES {
         return Err(StoreError::InvalidInput {
             detail: format!(
                 "metadata_json exceeds the {MAX_EVIDENCE_CAPTURE_RECEIPT_BYTES}-byte bound"
@@ -819,9 +1234,9 @@ fn validate_receipt_against_intent(
     intent: &EvidenceCaptureIntentRecord,
 ) -> StoreResult<ValidatedEvidenceCaptureSource> {
     if input.task_id != intent.task_id
-        || input.capture_kind != intent.capture_kind
+        || input.safe_receipt.capture_kind != intent.capture_kind
         || input.input_sha256 != intent.input_sha256
-        || input.expected_outcome_json != intent.expected_outcome_json
+        || input.expected_outcome != intent.expected_outcome
     {
         return Err(StoreError::Conflict {
             entity: "evidence_capture_intent",
@@ -829,40 +1244,14 @@ fn validate_receipt_against_intent(
             detail: "source receipt does not match the immutable capture intent".to_owned(),
         });
     }
-    if input.source_refs_json != "[]" {
+    if !input.source_refs.is_empty() {
         return Err(StoreError::InvalidInput {
-            detail: "source_refs_json must be the canonical empty array for source fulfillment"
-                .to_owned(),
+            detail: "source_refs must be empty for source fulfillment".to_owned(),
         });
     }
-    let body =
-        serde_json::from_str::<PersistedEvidenceCaptureReceiptBody>(&input.safe_receipt_json)
-            .map_err(|error| StoreError::InvalidInput {
-                detail: format!(
-                    "safe_receipt_json is not a valid evidence-capture receipt: {error}"
-                ),
-            })?;
-    let canonical_body =
-        canonical_json_string(&body).map_err(|error| StoreError::InvalidInput {
-            detail: format!("safe_receipt_json could not be canonicalized: {error}"),
-        })?;
-    let expected_outcome = serde_json::from_str::<JsonObject>(&input.expected_outcome_json)
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("expected_outcome_json is invalid: {error}"),
-        })?;
-    let observed_outcome = serde_json::from_str::<JsonObject>(&input.observed_outcome_json)
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("observed_outcome_json is invalid: {error}"),
-        })?;
-    let capture_spec = serde_json::from_str::<EvidenceCaptureSpec>(&intent.capture_spec_json)
-        .map_err(|_| {
-            StoreError::corrupt_owner_state_json(
-                "evidence_capture_intents",
-                intent.evidence_capture_intent_id.clone(),
-                "capture_spec_json",
-            )
-        })?;
-    if evidence_capture_input_sha256(&capture_spec).map_err(|_| {
+    let body = &input.safe_receipt;
+    let capture_spec = &intent.capture;
+    if evidence_capture_input_sha256(capture_spec).map_err(|_| {
         StoreError::corrupt_owner_state_json(
             "evidence_capture_intents",
             intent.evidence_capture_intent_id.clone(),
@@ -876,73 +1265,45 @@ fn validate_receipt_against_intent(
             "input_sha256",
         ));
     }
-    validate_evidence_capture_expected_outcome(&capture_spec, &expected_outcome).map_err(
+    validate_evidence_capture_expected_outcome(capture_spec, &input.expected_outcome).map_err(
         |detail| StoreError::InvalidInput {
-            detail: format!("expected_outcome_json does not match its capture class: {detail}"),
+            detail: format!("expected_outcome does not match its capture class: {detail}"),
         },
     )?;
-    validate_evidence_capture_observed_outcome(&capture_spec, &observed_outcome).map_err(
+    validate_evidence_capture_observed_outcome(capture_spec, &input.observed_outcome).map_err(
         |detail| StoreError::InvalidInput {
-            detail: format!("observed_outcome_json does not match its capture class: {detail}"),
+            detail: format!("observed_outcome does not match its capture class: {detail}"),
         },
     )?;
-    let limitations =
-        serde_json::from_str::<Vec<String>>(&input.limitations_json).map_err(|error| {
-            StoreError::InvalidInput {
-                detail: format!("limitations_json is invalid: {error}"),
-            }
-        })?;
-    validate_evidence_capture_limitations(&capture_spec, &limitations).map_err(|detail| {
+    validate_evidence_capture_limitations(capture_spec, &input.limitations).map_err(|detail| {
         StoreError::InvalidInput {
-            detail: format!("limitations_json does not match its capture class: {detail}"),
+            detail: format!("limitations do not match their capture class: {detail}"),
         }
     })?;
-    let metadata = serde_json::from_str::<Value>(&input.metadata_json).map_err(|error| {
-        StoreError::InvalidInput {
-            detail: format!("metadata_json is invalid: {error}"),
-        }
-    })?;
-    let capture_kind = match input.capture_kind.as_str() {
-        "verified_command_execution" => EvidenceProducerKind::VerifiedCommandExecution,
-        "verified_tool_invocation" => EvidenceProducerKind::VerifiedToolInvocation,
-        _ => {
-            return Err(StoreError::InvalidInput {
-                detail: "capture_kind is not supported for evidence capture".to_owned(),
-            })
-        }
-    };
     let result_sha256 = canonical_json_bare_sha256(&body.observed_outcome).map_err(|error| {
         StoreError::InvalidInput {
             detail: format!("observed outcome could not be hashed: {error}"),
         }
     })?;
-    let source_value =
-        serde_json::to_value(&body.source).map_err(|error| StoreError::InvalidInput {
-            detail: format!("receipt source could not be serialized: {error}"),
-        })?;
-    let expected_metadata = serde_json::json!({"source": source_value});
-    let expected_metadata_json =
-        canonical_json_string(&expected_metadata).map_err(|error| StoreError::InvalidInput {
-            detail: format!("receipt metadata could not be canonicalized: {error}"),
-        })?;
-    if canonical_body != input.safe_receipt_json
-        || body.contract_id != EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
+    let expected_metadata = StoredEvidenceCaptureReceiptMetadata {
+        source: body.source.clone(),
+    };
+    if body.contract_id != EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
         || !body.complete
         || body.redaction_state != RedactionState::Redacted
-        || body.capture_kind != capture_kind
+        || body.capture_kind != intent.capture_kind
         || body.capture_intent_id.as_str() != intent.evidence_capture_intent_id
         || body.input_sha256 != input.input_sha256
         || body.result_sha256 != input.result_sha256
         || body.result_sha256 != result_sha256
-        || body.expected_outcome != expected_outcome
-        || body.observed_outcome != observed_outcome
-        || body.limitations != limitations
-        || body.observed_by_actor_source.to_canonical_string() != input.observed_by_actor_source
-        || body.observed_by_actor_source.to_canonical_string() != intent.requested_by_actor_source
-        || body.source.connection_id.as_str() != intent.requesting_connection_internal_id
-        || body.observed_at.to_canonical_string() != input.observed_at
-        || metadata != expected_metadata
-        || input.metadata_json != expected_metadata_json
+        || body.expected_outcome != input.expected_outcome
+        || body.observed_outcome != input.observed_outcome
+        || body.limitations != input.limitations
+        || body.observed_by_actor_source != input.observed_by_actor_source
+        || body.observed_by_actor_source != intent.requested_by_actor_source
+        || body.source.connection_id != intent.requesting_connection_internal_id
+        || body.observed_at != input.observed_at
+        || input.metadata != expected_metadata
     {
         return Err(StoreError::Conflict {
             entity: "evidence_capture_intent",
@@ -952,7 +1313,7 @@ fn validate_receipt_against_intent(
         });
     }
     let source_claims =
-        derive_evidence_capture_source_claims(&capture_spec, &body).map_err(|_| {
+        derive_evidence_capture_source_claims(capture_spec, body).map_err(|_| {
             StoreError::Conflict {
                 entity: "evidence_capture_intent",
                 id: intent.evidence_capture_intent_id.clone(),
@@ -960,38 +1321,7 @@ fn validate_receipt_against_intent(
                     .to_owned(),
             }
         })?;
-    let observed_at =
-        UtcTimestamp::parse(&input.observed_at).map_err(|_| StoreError::InvalidInput {
-            detail: "observed_at must be a valid RFC 3339 timestamp".to_owned(),
-        })?;
-    let created_at =
-        UtcTimestamp::parse(&input.created_at).map_err(|_| StoreError::InvalidInput {
-            detail: "created_at must be a valid RFC 3339 timestamp".to_owned(),
-        })?;
-    observed_at
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| StoreError::InvalidInput {
-            detail: "observed_at must be a canonical four-digit RFC 3339 timestamp".to_owned(),
-        })?;
-    created_at
-        .ensure_canonical_rfc3339_representable()
-        .map_err(|_| StoreError::InvalidInput {
-            detail: "created_at must be a canonical four-digit RFC 3339 timestamp".to_owned(),
-        })?;
-    let (intent_created_at, expires_at) =
-        validate_evidence_capture_intent_window(&intent.created_at, &intent.expires_at).map_err(
-            |field| {
-                StoreError::corrupt_owner_state_value(
-                    "evidence_capture_intents",
-                    intent.evidence_capture_intent_id.clone(),
-                    match field {
-                        EvidenceCaptureIntentWindowError::CreatedAt => "created_at",
-                        EvidenceCaptureIntentWindowError::ExpiresAt => "expires_at",
-                    },
-                )
-            },
-        )?;
-    if observed_at < intent_created_at || observed_at >= expires_at {
+    if input.observed_at < intent.created_at || input.observed_at >= intent.expires_at {
         return Err(StoreError::Conflict {
             entity: "evidence_capture_intent",
             id: intent.evidence_capture_intent_id.clone(),
@@ -999,7 +1329,7 @@ fn validate_receipt_against_intent(
                 .to_owned(),
         });
     }
-    if created_at < observed_at || created_at >= expires_at {
+    if input.created_at < input.observed_at || input.created_at >= intent.expires_at {
         return Err(StoreError::Conflict {
             entity: "evidence_capture_intent",
             id: intent.evidence_capture_intent_id.clone(),
@@ -1059,19 +1389,6 @@ pub fn derive_evidence_capture_source_claims(
         })?,
     }])
 }
-fn validate_capture_kind(value: &str) -> StoreResult<()> {
-    if matches!(
-        value,
-        "verified_command_execution" | "verified_tool_invocation"
-    ) {
-        Ok(())
-    } else {
-        Err(StoreError::InvalidInput {
-            detail: "capture_kind is outside the evidence-capture value set".to_owned(),
-        })
-    }
-}
-
 fn validate_sha256(field: &'static str, value: &str) -> StoreResult<()> {
     if value.len() == 64
         && value
@@ -1086,24 +1403,6 @@ fn validate_sha256(field: &'static str, value: &str) -> StoreResult<()> {
     }
 }
 
-fn validate_json_object(field: &'static str, text: &str) -> StoreResult<()> {
-    match serde_json::from_str::<Value>(text) {
-        Ok(Value::Object(_)) => Ok(()),
-        _ => Err(StoreError::InvalidInput {
-            detail: format!("{field} must be a JSON object"),
-        }),
-    }
-}
-
-fn validate_json_array(field: &'static str, text: &str) -> StoreResult<()> {
-    match serde_json::from_str::<Value>(text) {
-        Ok(Value::Array(_)) => Ok(()),
-        _ => Err(StoreError::InvalidInput {
-            detail: format!("{field} must be a JSON array"),
-        }),
-    }
-}
-
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     const HEX: &[u8; 16] = b"0123456789abcdef";
@@ -1115,12 +1414,306 @@ fn sha256_hex(bytes: &[u8]) -> String {
     output
 }
 
-fn nonnegative(value: i64, column: usize) -> rusqlite::Result<u64> {
-    u64::try_from(value).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(
-            column,
-            rusqlite::types::Type::Integer,
-            Box::new(error),
-        )
+fn producer_kind_for_capture(capture: &EvidenceCaptureSpec) -> EvidenceProducerKind {
+    match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => {
+            EvidenceProducerKind::VerifiedCommandExecution
+        }
+        EvidenceCaptureSpec::VerifiedToolInvocation { .. } => {
+            EvidenceProducerKind::VerifiedToolInvocation
+        }
+    }
+}
+
+fn evidence_producer_kind_storage_value(value: EvidenceProducerKind) -> &'static str {
+    match value {
+        EvidenceProducerKind::UnverifiedCaller => "unverified_caller",
+        EvidenceProducerKind::UserChannelObservation => "user_channel_observation",
+        EvidenceProducerKind::VerifiedToolInvocation => "verified_tool_invocation",
+        EvidenceProducerKind::VerifiedCommandExecution => "verified_command_execution",
+        EvidenceProducerKind::ReusedEvidence => "reused_evidence",
+    }
+}
+
+fn encode_input_json<T: Serialize>(field: &'static str, value: &T) -> StoreResult<String> {
+    canonical_json_string(value).map_err(|error| StoreError::InvalidInput {
+        detail: format!("{field} could not be serialized: {error}"),
     })
+}
+
+fn decode_owner_json<T: DeserializeOwned>(
+    table: &'static str,
+    record_id: &str,
+    column: &'static str,
+    text: &str,
+) -> StoreResult<T> {
+    serde_json::from_str(text)
+        .map_err(|_| StoreError::corrupt_owner_state_json(table, record_id.to_owned(), column))
+}
+
+fn decode_owner_value<T: DeserializeOwned>(
+    table: &'static str,
+    record_id: &str,
+    column: &'static str,
+    value: &str,
+) -> StoreResult<T> {
+    serde_json::from_value(serde_json::Value::String(value.to_owned()))
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_id.to_owned(), column))
+}
+
+fn decode_owner_actor_source(
+    table: &'static str,
+    record_id: &str,
+    column: &'static str,
+    value: &str,
+) -> StoreResult<ActorSource> {
+    let actor = value
+        .parse::<ActorSource>()
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_id.to_owned(), column))?;
+    if actor.to_canonical_string() == value {
+        Ok(actor)
+    } else {
+        Err(StoreError::corrupt_owner_state_value(
+            table,
+            record_id.to_owned(),
+            column,
+        ))
+    }
+}
+
+fn decode_owner_timestamp(
+    table: &'static str,
+    record_id: &str,
+    column: &'static str,
+    value: &str,
+) -> StoreResult<UtcTimestamp> {
+    let timestamp = UtcTimestamp::parse(value)
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_id.to_owned(), column))?;
+    timestamp
+        .ensure_canonical_rfc3339_representable()
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_id.to_owned(), column))?;
+    if timestamp.to_canonical_string() == value {
+        Ok(timestamp)
+    } else {
+        Err(StoreError::corrupt_owner_state_value(
+            table,
+            record_id.to_owned(),
+            column,
+        ))
+    }
+}
+
+fn decode_owner_nonnegative(
+    table: &'static str,
+    record_id: &str,
+    column: &'static str,
+    value: i64,
+) -> StoreResult<u64> {
+    u64::try_from(value)
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_id.to_owned(), column))
+}
+
+fn validate_decoded_receipt_owner_fields(record: &EvidenceCaptureReceiptRecord) -> StoreResult<()> {
+    let body = &record.safe_receipt;
+    let result_sha256 = canonical_json_bare_sha256(&body.observed_outcome).map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "evidence_capture_receipts",
+            record.evidence_capture_receipt_id.clone(),
+            "observed_outcome_json",
+        )
+    })?;
+    if body.contract_id != EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID
+        || !body.complete
+        || body.redaction_state != RedactionState::Redacted
+        || record.completeness != EvidenceCaptureCompleteness::Complete
+        || body.capture_kind != record.capture_kind
+        || body.capture_intent_id.as_str() != record.evidence_capture_intent_id
+        || body.input_sha256 != record.input_sha256
+        || body.result_sha256 != record.result_sha256
+        || body.result_sha256 != result_sha256
+        || body.expected_outcome != record.expected_outcome
+        || body.observed_outcome != record.observed_outcome
+        || !record.source_refs.is_empty()
+        || body.limitations != record.limitations
+        || body.observed_by_actor_source != record.observed_by_actor_source
+        || body.observed_at != record.observed_at
+        || record.metadata.source != body.source
+    {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_capture_receipts",
+            record.evidence_capture_receipt_id.clone(),
+            "safe_receipt_json",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_decoded_producer_owner_fields(record: &EvidenceProducerRecord) -> StoreResult<()> {
+    let producer = &record.canonical_producer;
+    let mismatch = if producer.evidence_producer_id.as_str() != record.evidence_producer_id {
+        Some("canonical_producer_json.evidence_producer_id")
+    } else if producer.capture_intent_id.as_str() != record.evidence_capture_intent_id {
+        Some("canonical_producer_json.capture_intent_id")
+    } else if producer.capture_receipt_id.as_str() != record.evidence_capture_receipt_id {
+        Some("canonical_producer_json.capture_receipt_id")
+    } else if producer.observation_ref.record_id.as_str() != record.evidence_observation_id {
+        Some("canonical_producer_json.observation_ref")
+    } else if producer.receipt_artifact_refs.len() != 1
+        || producer.receipt_artifact_refs[0].artifact_id.as_str() != record.artifact_id
+    {
+        Some("canonical_producer_json.receipt_artifact_refs")
+    } else if producer.run_ref.record_id.as_str() != record.run_id {
+        Some("canonical_producer_json.run_ref")
+    } else if producer.project_id.as_str() != record.project_id {
+        Some("canonical_producer_json.project_id")
+    } else if producer.task_id.as_str() != record.task_id {
+        Some("canonical_producer_json.task_id")
+    } else if producer.change_unit_id.as_str() != record.change_unit_id {
+        Some("canonical_producer_json.change_unit_id")
+    } else if producer.scope_revision != record.scope_revision {
+        Some("canonical_producer_json.scope_revision")
+    } else if producer.baseline_ref != record.baseline_ref {
+        Some("canonical_producer_json.baseline_ref")
+    } else if producer.producer_kind != record.producer_kind {
+        Some("canonical_producer_json.producer_kind")
+    } else if producer.finalized_at != record.created_at {
+        Some("canonical_producer_json.finalized_at")
+    } else {
+        None
+    };
+    if let Some(logical_column) = mismatch {
+        return Err(StoreError::corrupt_owner_state_value(
+            "evidence_producers",
+            record.evidence_producer_id.clone(),
+            logical_column,
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use volicord_types::{
+        ids::EvidenceClaimId,
+        schema::{evidence_capture_expected_outcome, RequiredNullable},
+    };
+
+    fn valid_raw_intent() -> RawEvidenceCaptureIntentRecord {
+        let capture = EvidenceCaptureSpec::VerifiedCommandExecution {
+            command_sha256: "a".repeat(64),
+            command_label: "Run bounded verification.".to_owned(),
+            expected_exit_code: RequiredNullable::some(0),
+        };
+        let target = EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: EvidenceClaimId::new("claim"),
+            statement: "The bounded verification succeeds.".to_owned(),
+        };
+        RawEvidenceCaptureIntentRecord {
+            project_id: "project".to_owned(),
+            evidence_capture_intent_id: "intent".to_owned(),
+            task_id: "task".to_owned(),
+            change_unit_id: "change".to_owned(),
+            scope_revision: 1,
+            baseline_ref: "baseline".to_owned(),
+            target_json: serde_json::to_string(&target).expect("target must serialize"),
+            capture_kind: "verified_command_execution".to_owned(),
+            capture_spec_json: serde_json::to_string(&capture).expect("capture must serialize"),
+            input_sha256: "a".repeat(64),
+            expected_outcome_json: serde_json::to_string(&evidence_capture_expected_outcome(
+                &capture,
+            ))
+            .expect("expected outcome must serialize"),
+            requested_by_actor_source: ActorSource::System.to_canonical_string(),
+            requesting_connection_internal_id: "connection".to_owned(),
+            session_context_json: r#"{"session_id":null}"#.to_owned(),
+            workspace_context_json: "{}".to_owned(),
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            expires_at: "2026-01-01T00:15:00Z".to_owned(),
+            metadata_json: r#"{"verification_basis":"test"}"#.to_owned(),
+        }
+    }
+
+    #[test]
+    fn capture_intent_decoder_owns_structured_and_closed_value_corruption() {
+        let decoded =
+            decode_intent_record(valid_raw_intent()).expect("valid physical row must decode");
+        assert_eq!(
+            decoded.capture_kind,
+            EvidenceProducerKind::VerifiedCommandExecution
+        );
+
+        let mut unknown_kind = valid_raw_intent();
+        unknown_kind.capture_kind = "legacy".to_owned();
+        assert!(matches!(
+            decode_intent_record(unknown_kind),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "evidence_capture_intents",
+                logical_column: "capture_kind",
+                ..
+            })
+        ));
+
+        for malformed in [
+            "{",
+            r#"{"capture_kind":"verified_command_execution"}"#,
+            r#"{"capture_kind":"verified_command_execution","command_sha256":0,"command_label":"verify","expected_exit_code":0}"#,
+        ] {
+            let mut row = valid_raw_intent();
+            row.capture_spec_json = malformed.to_owned();
+            assert!(matches!(
+                decode_intent_record(row),
+                Err(StoreError::CorruptOwnerStateJson {
+                    table: "evidence_capture_intents",
+                    logical_column: "capture_spec_json",
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn source_claim_decoder_owns_closed_values_and_timestamps() {
+        let valid = || RawEvidenceCaptureSourceClaimRecord {
+            project_id: "project".to_owned(),
+            source_claim_kind: "host_invocation".to_owned(),
+            source_claim_id: "claim".to_owned(),
+            evidence_capture_intent_id: "intent".to_owned(),
+            evidence_capture_receipt_id: "receipt".to_owned(),
+            capture_kind: "verified_command_execution".to_owned(),
+            claimed_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let decoded =
+            decode_source_claim_record(valid()).expect("valid physical source claim must decode");
+        assert_eq!(
+            decoded.source_claim_kind,
+            EvidenceCaptureSourceClaimKind::HostInvocation
+        );
+        assert_eq!(
+            decoded.capture_kind,
+            EvidenceProducerKind::VerifiedCommandExecution
+        );
+
+        let mut unknown_kind = valid();
+        unknown_kind.source_claim_kind = "legacy".to_owned();
+        assert!(matches!(
+            decode_source_claim_record(unknown_kind),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "evidence_capture_source_claims",
+                logical_column: "source_claim_kind",
+                ..
+            })
+        ));
+
+        let mut invalid_time = valid();
+        invalid_time.claimed_at = "not-a-time".to_owned();
+        assert!(matches!(
+            decode_source_claim_record(invalid_time),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "evidence_capture_source_claims",
+                logical_column: "claimed_at",
+                ..
+            })
+        ));
+    }
 }

@@ -654,7 +654,7 @@ pub(crate) fn apply_project_workflow_policy_mutation(
 pub fn task_policy_control_reevaluation(
     task: &TaskRecord,
 ) -> StoreResult<Option<TaskPolicyControlReevaluation>> {
-    task_policy_control_reevaluation_from_metadata(&task.metadata_json, &task.task_id)
+    task_policy_control_reevaluation_from_object(&task.metadata, &task.task_id)
 }
 
 pub(crate) fn clear_satisfied_task_policy_reevaluation(
@@ -1117,6 +1117,43 @@ fn task_policy_control_reevaluation_from_metadata(
     Ok(Some(mark))
 }
 
+fn task_policy_control_reevaluation_from_object(
+    metadata: &serde_json::Map<String, Value>,
+    task_id: &str,
+) -> StoreResult<Option<TaskPolicyControlReevaluation>> {
+    let Some(value) = metadata.get(POLICY_CONTROL_REEVALUATION_METADATA_KEY) else {
+        return Ok(None);
+    };
+    decode_task_policy_control_reevaluation(value, task_id)
+}
+
+fn decode_task_policy_control_reevaluation(
+    value: &Value,
+    task_id: &str,
+) -> StoreResult<Option<TaskPolicyControlReevaluation>> {
+    let mark: TaskPolicyControlReevaluation = serde_json::from_value(value.clone())
+        .map_err(|_| StoreError::corrupt_owner_state_json("tasks", task_id, "metadata_json"))?;
+    if mark.policy_version == 0 || !canonical_sha256(&mark.policy_fingerprint) {
+        return Err(StoreError::corrupt_owner_state_json(
+            "tasks",
+            task_id,
+            "metadata_json",
+        ));
+    }
+    parse_control_level(
+        &mark.required_effective_control_level,
+        "tasks",
+        task_id,
+        POLICY_CONTROL_REEVALUATION_METADATA_KEY,
+    )?;
+    if let Some(required) = mark.required_acceptance_policy.as_deref() {
+        acceptance_policy_rank(required)?;
+    }
+    validate_timestamp("marked_at", &mark.marked_at)
+        .map_err(|_| StoreError::corrupt_owner_state_json("tasks", task_id, "metadata_json"))?;
+    Ok(Some(mark))
+}
+
 fn task_metadata_object(
     metadata_json: &str,
     task_id: &str,
@@ -1417,7 +1454,7 @@ mod tests {
                 lifecycle_phase, created_at, updated_at
              ) VALUES (?1, 'task_policy_active', ?2, 'direct', 'auto', 'observe',
                        'Initial observe control.', 'implementation', 'not_required',
-                       'Observe control needs no acceptance.', 'implementation',
+                       'Observe control needs no acceptance.', 'executing',
                        '2026-07-16T00:00:00Z', '2026-07-16T00:00:00Z')",
             params![fixture.project_id(), fixture.actor_source()],
         )?;
@@ -1589,9 +1626,9 @@ mod tests {
         };
         let marker_raise = crate::core_pipeline::TaskControlLevelUpdate {
             task_id: "task_policy_active".to_owned(),
-            effective_control_level: "tracked".to_owned(),
+            effective_control_level: TaskControlLevel::Tracked,
             control_level_reason: "Raised for pending project policy reevaluation.".to_owned(),
-            acceptance_policy: Some("required".to_owned()),
+            acceptance_policy: Some(AcceptancePolicy::Required),
             acceptance_policy_reason: Some("Tracked control requires acceptance.".to_owned()),
         };
         let mutations = [CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
@@ -1600,7 +1637,7 @@ mod tests {
         let outcome = store.commit_mutation(marker_commit, &mutations, |_| Ok("{}".to_owned()))?;
         assert!(matches!(outcome, MutationCommitOutcome::Committed { .. }));
         let raised = store.active_task_record()?.expect("active Task");
-        assert_eq!(raised.effective_control_level, "tracked");
+        assert_eq!(raised.effective_control_level, TaskControlLevel::Tracked);
         assert_eq!(task_policy_control_reevaluation(&raised)?, None);
         assert_eq!(store.project_state()?.state_version, 4);
         Ok(())
@@ -1710,7 +1747,7 @@ mod tests {
                  ) VALUES (?1, 'task_policy_binding', ?2, 'direct', 'light', 'light',
                            'Light policy fixture control.', 'implementation',
                            'policy_dependent', 'Light policy fixture acceptance.',
-                           'implementation', '2026-07-17T00:00:00Z',
+                           'executing', '2026-07-17T00:00:00Z',
                            '2026-07-17T00:00:00Z')",
                 params![fixture.project_id(), fixture.actor_source()],
             )?;
@@ -1857,7 +1894,7 @@ mod tests {
              ) VALUES (?1, 'task_policy_equivalent', ?2, 'direct', 'light', 'light',
                        'Light policy fixture control.', 'implementation',
                        'policy_dependent', 'Light policy fixture acceptance.',
-                       'implementation', '2026-07-17T00:00:00Z',
+                       'executing', '2026-07-17T00:00:00Z',
                        '2026-07-17T00:00:00Z')",
             params![fixture.project_id(), fixture.actor_source()],
         )?;
@@ -2038,7 +2075,7 @@ mod tests {
                 lifecycle_phase, created_at, updated_at
              ) VALUES (?1, 'task_policy_acceptance', ?2, 'direct', 'light', 'light',
                        'Initial Light control.', 'implementation', 'policy_dependent',
-                       'Initial policy-dependent acceptance.', 'implementation',
+                       'Initial policy-dependent acceptance.', 'executing',
                        '2026-07-16T00:00:00Z', '2026-07-16T00:00:00Z')",
             params![fixture.project_id(), fixture.actor_source()],
         )?;
@@ -2077,8 +2114,9 @@ mod tests {
         assert_eq!(mark.required_acceptance_policy.as_deref(), Some("required"));
         assert_eq!(mark.policy_fingerprint, required_fingerprint);
         let task = store.active_task_record()?.expect("active Task");
+        let task_metadata_json = serde_json::to_string(&Value::Object(task.metadata.clone()))?;
         let still_marked = clear_satisfied_task_policy_reevaluation(
-            &task.metadata_json,
+            &task_metadata_json,
             &task.task_id,
             "light",
             "policy_dependent",

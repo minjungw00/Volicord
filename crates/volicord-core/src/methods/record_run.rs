@@ -9,25 +9,23 @@ use super::evidence_facts::{
     user_action_observation_resolution_authority, validate_capture_receipt_record,
 };
 use super::{
-    acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_artifact_id,
-    allocate_evidence_observation_id, allocate_evidence_producer_id, allocate_evidence_summary_id,
-    allocate_risk_id, allocate_run_id, artifact_input_validation_plan_error,
-    artifact_input_validation_response, artifact_missing_response,
-    artifact_ref_from_verified_record, baseline_matches, baseline_stale_response,
-    build_state_summary, change_unit_ref, decision_rejected_response, decode_required_json,
-    decode_required_json_object, dry_run_summary, evidence_summary_for_display,
+    active_acceptance_criteria_for_task, allocate_artifact_id, allocate_evidence_observation_id,
+    allocate_evidence_producer_id, allocate_evidence_summary_id, allocate_risk_id, allocate_run_id,
+    artifact_input_validation_plan_error, artifact_input_validation_response,
+    artifact_missing_response, artifact_ref_from_verified_record, baseline_matches,
+    baseline_stale_response, build_state_summary, change_unit_ref, decision_rejected_response,
+    decode_required_json, dry_run_summary, evidence_summary_for_display,
     first_product_write_duration_micros, guarantee_display_for_invocation, mutation_method_policy,
     no_active_change_unit_response, no_active_task_response, normalize_source_refs,
-    object_from_value, observe_request_product_paths, parse_acceptance_policy,
-    parse_owner_storage_value, parse_storage_value, parse_task_mode, parse_work_phase,
-    persistent_artifact_is_verified_current, plan_error_response, prepare_or_response,
-    project_state_projection, projected_evidence_summary_for_criteria,
-    projected_write_ticket_summary, record_core_workflow_metric_best_effort, redaction_state_value,
-    rejected_pipeline_response, response_committed_fresh_effect, sorted_unique, state_ref,
-    state_ref_from_stored, storage_value, store_error_plan, string_member, task_lifecycle_mutation,
-    user_action_service_plan_error, validation_plan_error, validation_rejected,
-    workspace_context_matches, workspace_stale_response, write_ticket_invalid_response,
-    write_ticket_ref, write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
+    object_from_value, observe_request_product_paths, persistent_artifact_is_verified_current,
+    plan_error_response, prepare_or_response, project_state_projection,
+    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
+    record_core_workflow_metric_best_effort, rejected_pipeline_response,
+    response_committed_fresh_effect, sorted_unique, state_ref, state_ref_from_stored,
+    storage_value, store_error_plan, task_lifecycle_mutation, user_action_service_plan_error,
+    validation_plan_error, validation_rejected, workspace_context_matches,
+    workspace_stale_response, write_ticket_invalid_response, write_ticket_ref,
+    write_ticket_required_response, write_ticket_summary_for_record, MethodPlan,
     PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
 };
 use crate::pipeline::{
@@ -39,8 +37,7 @@ use crate::policy::evidence::{
     unique_state_record_refs,
 };
 use crate::policy::workflow::{
-    parse_task_control_level, project_workflow_policy, resolve_task_control_authority,
-    ProjectWorkflowPolicy,
+    project_workflow_policy, resolve_task_control_authority, ProjectWorkflowPolicy,
 };
 use crate::policy::write_ticket::{
     normalized_string_set, run_write_ticket_mismatch, write_ticket_is_idle_expired,
@@ -63,20 +60,21 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
-    ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, ChangeUnitRecord, CoreProjectStore,
-    CoreStorageMutation, EvidenceClaimInsert, EvidenceMutation, EvidenceObservationInsert,
-    EvidenceSummaryUpsert, ProjectStateHeader, RunInsert, RunMutation, RunRecord,
-    StoredArtifactStagingRecord, TaskCloseBasisUpdate, TaskControlLevelUpdate, TaskMutation,
-    TaskRecord, UserActionInvalidation, UserActionMutation, WriteTicketConsumption,
-    WriteTicketMutation, WriteTicketRecord,
+    ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, ArtifactStagingStatus,
+    ChangeUnitRecord, ChangeUnitStatus, CoreProjectStore, CoreStorageMutation, EvidenceClaimInsert,
+    EvidenceMutation, EvidenceObservationInsert, EvidenceSummaryUpsert, ProjectStateHeader,
+    RunInsert, RunMutation, RunRecord, RunStatus, StoredArtifactStagingRecord, StoredRunMetadata,
+    StoredRunSummary, StoredRunWriteTicketEffect, StoredRunWriteTicketEffectKind,
+    TaskCloseBasisUpdate, TaskControlLevelUpdate, TaskMutation, TaskRecord, UserActionInvalidation,
+    UserActionMutation, WriteTicketConsumption, WriteTicketMutation, WriteTicketRecord,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::error::StoreError;
 use volicord_store::evidence_capture::{
     EvidenceCaptureIntentRecord, EvidenceCaptureReceiptRecord, EvidenceProducerInsert,
+    StoredEvidenceProducerMetadata,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
-use volicord_types::canonical::canonical_json_string;
 use volicord_types::ids::{
     AgentConnectionId, ArtifactInputId, ChangeUnitId, EvidenceCaptureReceiptId, EvidenceProducerId,
     RunId, StagedArtifactHandleId, StorageRef, TaskId,
@@ -88,7 +86,8 @@ use volicord_types::schema::{
     EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceCoverageUpdate, EvidenceObservation,
     EvidenceObservationInput, EvidenceProducer, EvidenceProducerAnchor,
     EvidenceRelevanceAssessment, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance,
-    JsonObject, ObservedChanges, PersistedEvidenceObservationAuthority, ResidualRisk, RunSummary,
+    JsonObject, ObservedChanges, PersistedArtifactProducer, PersistedArtifactProvenanceMetadata,
+    PersistedEvidenceMetadata, PersistedEvidenceObservationAuthority, ResidualRisk, RunSummary,
     SensitiveActionRequirement, StagedArtifactHandle, StateRecordRef, WriteTicketAttemptScope,
     WriteTicketValidityBasis,
 };
@@ -313,8 +312,8 @@ struct RecordRunMutationAssembly<'a> {
     run_id: &'a RunId,
     normalized_observed_changes: &'a ObservedChanges,
     close_basis_revision: u64,
-    close_basis_json: Option<String>,
-    lifecycle_phase: Option<&'static str>,
+    close_basis: Option<CurrentCloseBasis>,
+    lifecycle_phase: Option<volicord_types::values::TaskLifecyclePhase>,
     sensitive_category_acceptance_update: Option<CoreStorageMutation>,
     evidence_claim_mutations: Vec<CoreStorageMutation>,
     artifact_plans: &'a [RecordRunArtifactPlan],
@@ -491,12 +490,7 @@ fn validate_record_run_evidence_targets(
                     .acceptance_criterion_record(acceptance_criterion_id.as_str())
                     .map_err(CorePipelineError::from)?
                     .expect("target validation ensures the criterion exists");
-                let requirement: EvidenceRequirement = parse_owner_storage_value(
-                    "acceptance_criteria",
-                    record.acceptance_criterion_id,
-                    "evidence_requirement",
-                    &record.evidence_requirement,
-                )?;
+                let requirement = record.evidence_requirement;
                 if requirement == EvidenceRequirement::Required {
                     return validation_plan_error(
                         request.envelope.dry_run,
@@ -685,11 +679,11 @@ fn resolve_record_run_context(
                 project_state,
             )))
         })?;
-    let task_mode = parse_task_mode(&task.mode)?;
+    let task_mode = task.mode;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
     let resolved_control =
         resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
-    let work_phase = parse_work_phase(&task.work_phase)?;
+    let work_phase = task.work_phase;
     if !task_mode_allows_run_kind(task_mode, work_phase, request.kind) {
         return validation_plan_error(
             request.envelope.dry_run,
@@ -728,7 +722,7 @@ fn resolve_record_run_context(
                 "change_unit_id does not identify a Change Unit for the Task",
             )))
         })?;
-    if change_unit.status != "active" || !change_unit.is_current {
+    if change_unit.status != ChangeUnitStatus::Active || !change_unit.is_current {
         return Err(PlanError::Response(Box::new(
             no_active_change_unit_response(
                 &request.envelope,
@@ -1082,10 +1076,7 @@ fn plan_record_run_mutations(
         )?
         .map(|summary| evidence_summary_for_display(summary, current_close_basis.as_ref())),
     };
-    let close_basis_json = current_close_basis
-        .as_ref()
-        .map(serde_json::to_string)
-        .transpose()?;
+    let close_basis = current_close_basis.clone();
     let blocker_refs = store
         .active_blocker_refs(&request.task_id, planned_state_version)
         .map_err(|error| store_error_plan(&request.envelope, project_state, error))?
@@ -1120,28 +1111,25 @@ fn plan_record_run_mutations(
     let sensitive_category_acceptance_update = if normalized_observed_changes
         .sensitive_categories
         .is_empty()
-        || parse_acceptance_policy(&projected_task.acceptance_policy)? == AcceptancePolicy::Required
+        || projected_task.acceptance_policy == AcceptancePolicy::Required
     {
         None
     } else {
         let acceptance_reason = "A recorded sensitive-category signal requires final acceptance without establishing sensitive-action approval authority.".to_owned();
-        projected_task.acceptance_policy =
-            acceptance_policy_storage(AcceptancePolicy::Required).to_owned();
+        projected_task.acceptance_policy = AcceptancePolicy::Required;
         projected_task.acceptance_policy_reason = acceptance_reason.clone();
         Some(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: projected_task.task_id.clone(),
-                effective_control_level: projected_task.effective_control_level.clone(),
+                effective_control_level: projected_task.effective_control_level,
                 control_level_reason: projected_task.control_level_reason.clone(),
-                acceptance_policy: Some(
-                    acceptance_policy_storage(AcceptancePolicy::Required).to_owned(),
-                ),
+                acceptance_policy: Some(AcceptancePolicy::Required),
                 acceptance_policy_reason: Some(acceptance_reason),
             },
         )))
     };
     if let Some(lifecycle_phase) = lifecycle_phase {
-        projected_task.lifecycle_phase = lifecycle_phase.to_owned();
+        projected_task.lifecycle_phase = lifecycle_phase;
     }
     let observation_refs = observation_plans
         .iter()
@@ -1156,7 +1144,7 @@ fn plan_record_run_mutations(
         run_id: &run_id,
         normalized_observed_changes,
         close_basis_revision,
-        close_basis_json,
+        close_basis,
         lifecycle_phase,
         sensitive_category_acceptance_update,
         evidence_claim_mutations,
@@ -1243,7 +1231,7 @@ fn assemble_record_run_storage_mutations(
         run_id,
         normalized_observed_changes,
         close_basis_revision,
-        close_basis_json,
+        close_basis,
         lifecycle_phase,
         sensitive_category_acceptance_update,
         evidence_claim_mutations,
@@ -1263,21 +1251,25 @@ fn assemble_record_run_storage_mutations(
             .write_ticket_id
             .as_ref()
             .map(|id| id.as_str().to_owned()),
-        kind: storage_value(request.kind)?,
-        status: "recorded".to_owned(),
-        summary_json: serde_json::to_string(&json!({
-            "summary": request.summary
-        }))?,
-        observed_changes_json: serde_json::to_string(normalized_observed_changes)?,
-        evidence_updates_json: serde_json::to_string(&request.evidence_updates)?,
-        write_ticket_effect_json: serde_json::to_string(&json!({
-            "write_ticket_id": request.write_ticket_id,
-            "effect": if write_ticket_scope.is_some() { "consumed" } else { "none" }
-        }))?,
-        created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-        metadata_json: serde_json::to_string(&json!({
-            "verification_basis": verified_invocation.verification_basis.clone()
-        }))?,
+        kind: request.kind,
+        status: RunStatus::Recorded,
+        summary: StoredRunSummary {
+            summary: request.summary.clone(),
+        },
+        observed_changes: normalized_observed_changes.clone(),
+        evidence_updates: request.evidence_updates.clone(),
+        write_ticket_effect: StoredRunWriteTicketEffect {
+            write_ticket_id: request.write_ticket_id.as_ref().cloned(),
+            effect: if write_ticket_scope.is_some() {
+                StoredRunWriteTicketEffectKind::Consumed
+            } else {
+                StoredRunWriteTicketEffectKind::None
+            },
+        },
+        created_by_actor_source: verified_invocation.actor_source.clone(),
+        metadata: StoredRunMetadata {
+            verification_basis: verified_invocation.verification_basis.clone(),
+        },
     }))];
     if let Some(acceptance_update) = sensitive_category_acceptance_update {
         storage_mutations.push(acceptance_update);
@@ -1286,7 +1278,7 @@ fn assemble_record_run_storage_mutations(
         TaskCloseBasisUpdate {
             task_id: request.task_id.as_str().to_owned(),
             close_basis_revision,
-            close_basis_json,
+            close_basis,
         },
     )));
     storage_mutations.push(CoreStorageMutation::UserAction(
@@ -1327,10 +1319,10 @@ fn assemble_record_run_storage_mutations(
                 ArtifactLinkInsert {
                     artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
                     task_id: request.task_id.as_str().to_owned(),
-                    owner_record_kind: "evidence_observation".to_owned(),
+                    owner_record_kind: StateRecordKind::EvidenceObservation,
                     owner_record_id: plan.observation.observation_id.as_str().to_owned(),
                     created_by_run_id: run_id.as_str().to_owned(),
-                    metadata_json: serde_json::to_string(&json!({
+                    metadata: object_from_value(json!({
                         "relation": "evidence_observation_output"
                     }))?,
                 },
@@ -1345,10 +1337,10 @@ fn assemble_record_run_storage_mutations(
                     ArtifactLinkInsert {
                         artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
                         task_id: request.task_id.as_str().to_owned(),
-                        owner_record_kind: "evidence_producer".to_owned(),
+                        owner_record_kind: StateRecordKind::EvidenceProducer,
                         owner_record_id: producer.evidence_producer_id.as_str().to_owned(),
                         created_by_run_id: run_id.as_str().to_owned(),
-                        metadata_json: serde_json::to_string(&json!({
+                        metadata: object_from_value(json!({
                             "relation": "evidence_capture_receipt"
                         }))?,
                     },
@@ -1364,25 +1356,21 @@ fn assemble_record_run_storage_mutations(
                 evidence_summary_id: evidence_summary_id.clone(),
                 task_id: request.task_id.as_str().to_owned(),
                 change_unit_id: Some(request.change_unit_id.as_str().to_owned()),
-                status: storage_value(evidence_summary.status)?,
-                coverage_json: serde_json::to_string(&evidence_summary.coverage_items)?,
-                supporting_refs_json: serde_json::to_string(
-                    &evidence_summary
-                        .coverage_items
-                        .iter()
-                        .flat_map(|item| item.supporting_run_refs.clone())
-                        .collect::<Vec<_>>(),
-                )?,
-                gap_refs_json: serde_json::to_string(
-                    &evidence_summary
-                        .coverage_items
-                        .iter()
-                        .flat_map(|item| item.gap_refs.clone())
-                        .collect::<Vec<_>>(),
-                )?,
-                metadata_json: serde_json::to_string(&json!({
-                    "updated_by_run_id": run_id.as_str()
-                }))?,
+                status: evidence_summary.status,
+                coverage: evidence_summary.coverage_items.clone(),
+                supporting_refs: evidence_summary
+                    .coverage_items
+                    .iter()
+                    .flat_map(|item| item.supporting_run_refs.clone())
+                    .collect(),
+                gap_refs: evidence_summary
+                    .coverage_items
+                    .iter()
+                    .flat_map(|item| item.gap_refs.clone())
+                    .collect(),
+                metadata: PersistedEvidenceMetadata {
+                    updated_by_run_id: run_id.clone(),
+                },
             }),
         ));
         for artifact_ref in registered_artifacts {
@@ -1390,10 +1378,10 @@ fn assemble_record_run_storage_mutations(
                 ArtifactLinkInsert {
                     artifact_id: artifact_ref.artifact_id.as_str().to_owned(),
                     task_id: request.task_id.as_str().to_owned(),
-                    owner_record_kind: "evidence_summary".to_owned(),
+                    owner_record_kind: StateRecordKind::EvidenceSummary,
                     owner_record_id: evidence_summary_id.clone(),
                     created_by_run_id: run_id.as_str().to_owned(),
-                    metadata_json: serde_json::to_string(&json!({
+                    metadata: object_from_value(json!({
                         "relation": "evidence_support"
                     }))?,
                 },
@@ -1678,12 +1666,7 @@ fn plan_record_run_capture_authority(
             &body,
         )
         .map_err(CorePipelineError::from)?;
-    let receipt_created_at: UtcTimestamp = parse_owner_storage_value(
-        "evidence_capture_receipts",
-        receipt.evidence_capture_receipt_id.clone(),
-        "created_at",
-        &receipt.created_at,
-    )?;
+    let receipt_created_at = receipt.created_at.clone();
     if body.observed_at > *artifact_context.now
         || receipt_created_at > *artifact_context.now
         || body.observed_at >= intent.expires_at
@@ -1696,7 +1679,7 @@ fn plan_record_run_capture_authority(
         );
     }
     if body.observed_by_actor_source != intent.requested_by_actor_source
-        || body.source.connection_id.as_str() != intent_record.requesting_connection_internal_id
+        || body.source.connection_id != intent_record.requesting_connection_internal_id
         || artifact_context.verified_invocation.actor_source != intent.requested_by_actor_source
     {
         return capture_authority_error(
@@ -1719,8 +1702,8 @@ fn plan_record_run_capture_authority(
     if staging.sha256.as_deref() != Some(receipt.safe_receipt_sha256.as_str())
         || staging.size_bytes != Some(receipt.safe_receipt_size_bytes)
         || staging.content_type.as_deref() != Some("application/json")
-        || staging.redaction_state != "redacted"
-        || staging.expires_at != intent.expires_at.to_canonical_string()
+        || staging.redaction_state != RedactionState::Redacted
+        || staging.expires_at != intent.expires_at
     {
         return capture_authority_error(
             request,
@@ -1737,13 +1720,8 @@ fn plan_record_run_capture_authority(
         sha256: receipt.safe_receipt_sha256.clone(),
         size_bytes: receipt.safe_receipt_size_bytes,
         redaction_state: RedactionState::Redacted,
-        expires_at: parse_owner_storage_value(
-            "artifact_staging",
-            staging.handle_id.clone(),
-            "expires_at",
-            &staging.expires_at,
-        )?,
-        consumed: staging.status == "consumed",
+        expires_at: staging.expires_at.clone(),
+        consumed: staging.status == ArtifactStagingStatus::Consumed,
     };
     let artifact_input = ArtifactInput {
         artifact_input_id: ArtifactInputId::new(format!("capture_receipt_{intent_id}")),
@@ -1799,14 +1777,7 @@ fn plan_record_run_capture_authority(
         &body.observed_outcome,
     )?;
     let relevance_status = capture_outcome_relevance(outcome_matches_expected);
-    let source_refs = serde_json::from_str::<Vec<StateRecordRef>>(&receipt.source_refs_json)
-        .map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                "evidence_capture_receipts",
-                receipt.evidence_capture_receipt_id.clone(),
-                "source_refs_json",
-            ))
-        })?;
+    let source_refs = receipt.source_refs.clone();
     for source_ref in &source_refs {
         if source_ref.project_id != request.envelope.project_id
             || source_ref
@@ -1857,14 +1828,7 @@ fn validate_capture_intent_current(
         .map(serde_json::to_value)
         .transpose()?
         .unwrap_or(Value::Null);
-    let stored_workspace =
-        serde_json::from_str::<Value>(&record.workspace_context_json).map_err(|_| {
-            CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                "evidence_capture_intents",
-                record.evidence_capture_intent_id.clone(),
-                "workspace_context_json",
-            ))
-        })?;
+    let stored_workspace = Value::Object(record.workspace_context.clone());
     if intent.project_id != request.envelope.project_id
         || intent.task_id != request.task_id
         || intent.change_unit_id != request.change_unit_id
@@ -2223,22 +2187,19 @@ fn plan_record_run_observation(
                 } => Some(evidence_claim_id.as_str().to_owned()),
                 EvidenceTarget::AcceptanceCriterion { .. } => None,
             },
-            source_kind: storage_value(observation.source_kind)?,
-            assurance_level: storage_value(observation.assurance_level)?,
-            observed_by_actor_source: observation
-                .observed_by_actor_source
-                .as_ref()
-                .map(ActorSource::to_canonical_string),
+            source_kind: observation.source_kind,
+            assurance_level: observation.assurance_level,
+            observed_by_actor_source: observation.observed_by_actor_source.clone().into_option(),
             tool_name: observation.tool_name.as_ref().cloned(),
             tool_invocation_id: observation.tool_invocation_id.as_ref().cloned(),
-            tool_metadata_json: serde_json::to_string(&observation.tool_metadata)?,
-            input_refs_json: serde_json::to_string(&observation.input_refs)?,
-            source_refs_json: serde_json::to_string(&observation.source_refs)?,
-            output_artifact_refs_json: serde_json::to_string(&observation.output_artifact_refs)?,
-            limitations_json: serde_json::to_string(&observation.limitations)?,
-            observed_at: observation.observed_at.to_canonical_string(),
-            recorded_at: observation.recorded_at.to_canonical_string(),
-            metadata_json: serde_json::to_string(&PersistedEvidenceObservationAuthority {
+            tool_metadata: observation.tool_metadata.clone(),
+            input_refs: observation.input_refs.clone(),
+            source_refs: observation.source_refs.clone(),
+            output_artifact_refs: observation.output_artifact_refs.clone(),
+            limitations: observation.limitations.clone(),
+            observed_at: observation.observed_at.clone(),
+            recorded_at: observation.recorded_at.clone(),
+            metadata: PersistedEvidenceObservationAuthority {
                 recorded_by_run_id: context.run_id.clone(),
                 invocation_verification_basis: context
                     .verified_invocation
@@ -2246,7 +2207,7 @@ fn plan_record_run_observation(
                     .clone(),
                 producer_anchor: authority.producer_anchor.clone(),
                 relevance_assessment: authority.relevance_assessment.clone(),
-            })?,
+            },
         },
     ));
     let (producer, producer_mutation) = if let (Some(capture), Some(producer_id)) =
@@ -2294,13 +2255,13 @@ fn plan_record_run_observation(
                 task_id: context.request.task_id.as_str().to_owned(),
                 change_unit_id: context.request.change_unit_id.as_str().to_owned(),
                 scope_revision: context.current_scope_revision,
-                baseline_ref: context.request.baseline_ref.as_str().to_owned(),
-                producer_kind: storage_value(capture.producer_kind)?,
-                canonical_producer_json: canonical_json_string(&producer)?,
-                created_at: context.now.to_canonical_string(),
-                metadata_json: serde_json::to_string(&json!({
-                    "verification_basis": capture.verification_basis
-                }))?,
+                baseline_ref: context.request.baseline_ref.clone(),
+                producer_kind: capture.producer_kind,
+                canonical_producer: producer.clone(),
+                created_at: context.now.clone(),
+                metadata: StoredEvidenceProducerMetadata {
+                    verification_basis: capture.verification_basis.clone(),
+                },
             },
         ));
         (Some(producer), Some(mutation))
@@ -2786,7 +2747,7 @@ fn reused_observation_inputs_for_update(
         inputs.push(EvidenceObservationInput {
             target: update.target.clone(),
             source_kind: EvidenceSourceKind::ReusedEvidence,
-            assurance_level: record.assurance,
+            assurance_level: record.assurance_level,
             observed_by_actor_source: None.into(),
             tool_name: None.into(),
             tool_invocation_id: None.into(),
@@ -2831,7 +2792,7 @@ fn validate_supporting_run_refs(
                 && stored_run.as_ref().is_none_or(|run| {
                     run.task_id != context.request.task_id.as_str()
                         || run.project_id != context.request.envelope.project_id.as_str()
-                        || run.status != "recorded"
+                        || run.status != RunStatus::Recorded
                 }))
         {
             return validation_plan_error(
@@ -3435,7 +3396,7 @@ fn run_record_is_close_basis_compatible(
         .as_ref()
         .is_some_and(|record| {
             record.change_unit_id == change_unit_id
-                && record.status == "active"
+                && record.status == ChangeUnitStatus::Active
                 && record.is_current
         }))
 }
@@ -3453,7 +3414,7 @@ fn resolve_close_basis_change_unit_ref(
         record.project_id != request.envelope.project_id.as_str()
             || record.task_id != request.task_id.as_str()
             || record.change_unit_id != request.change_unit_id.as_str()
-            || record.status != "active"
+            || record.status != ChangeUnitStatus::Active
             || !record.is_current
     }) {
         return validation_plan_error(
@@ -3766,8 +3727,7 @@ fn plan_staged_artifact_input(
     let size_bytes = record
         .size_bytes
         .expect("staged artifact validation ensures size_bytes is present");
-    let redaction_state =
-        parse_storage_value("artifact_staging.redaction_state", &record.redaction_state)?;
+    let redaction_state = record.redaction_state;
     let artifact_ref = ArtifactRef {
         artifact_id: artifact_id.clone(),
         project_id: request.envelope.project_id.clone(),
@@ -3780,19 +3740,7 @@ fn plan_staged_artifact_input(
         redaction_state,
         availability: ArtifactAvailability::Available,
         created_by_run_ref: Some(run_ref.clone()).into(),
-        created_by_actor_source: Some(
-            record
-                .created_by_actor_source
-                .parse::<ActorSource>()
-                .map_err(|_| {
-                    CorePipelineError::Store(StoreError::corrupt_owner_state_value(
-                        "artifact_staging",
-                        handle.handle_id.as_str(),
-                        "created_by_actor_source",
-                    ))
-                })?,
-        )
-        .into(),
+        created_by_actor_source: Some(record.created_by_actor_source.clone()).into(),
         storage_ref: Some(StorageRef::new(uri.clone())).into(),
     };
     let source_mutation = Some(CoreStorageMutation::Artifact(
@@ -3801,36 +3749,34 @@ fn plan_staged_artifact_input(
             artifact_id: artifact_id.as_str().to_owned(),
             task_id: request.task_id.as_str().to_owned(),
             run_id: run_id.as_str().to_owned(),
-            expected_created_by_actor_source: verified_invocation
-                .actor_source
-                .to_canonical_string(),
+            expected_created_by_actor_source: verified_invocation.actor_source.clone(),
             expected_sha256: sha256,
             expected_size_bytes: size_bytes,
-            expected_redaction_state: record.redaction_state.clone(),
+            expected_redaction_state: record.redaction_state,
             expected_created_at: record.created_at.clone(),
             expected_expires_at: record.expires_at.clone(),
             uri,
-            retention_json: "{}".to_owned(),
-            producer_json: serde_json::to_string(&json!({
-                "display_name": display_name,
-                "content_type": content_type,
-                "created_by_actor_source": verified_invocation.actor_source,
-                "artifact_input_id": input.artifact_input_id.as_str(),
-                "relation_hint": input.relation_hint,
-                "evidence_target": input.evidence_target
-            }))?,
-            metadata_json: serde_json::to_string(&json!({
-                "source_kind": "staged_artifact"
-            }))?,
+            retention: JsonObject::new(),
+            producer: PersistedArtifactProducer {
+                display_name: Some(display_name),
+                content_type: Some(content_type),
+                created_by_actor_source: verified_invocation.actor_source.clone(),
+                artifact_input_id: input.artifact_input_id.clone(),
+                relation_hint: input.relation_hint.clone(),
+                evidence_target: input.evidence_target.clone(),
+            },
+            metadata: PersistedArtifactProvenanceMetadata {
+                source_kind: ArtifactInputSourceKind::StagedArtifact,
+            },
         }),
     ));
     let run_link = CoreStorageMutation::Artifact(ArtifactMutation::Link(ArtifactLinkInsert {
         artifact_id: artifact_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
-        owner_record_kind: "run".to_owned(),
+        owner_record_kind: StateRecordKind::Run,
         owner_record_id: run_id.as_str().to_owned(),
         created_by_run_id: run_id.as_str().to_owned(),
-        metadata_json: artifact_link_metadata(input)?,
+        metadata: artifact_link_metadata(input)?,
     }));
 
     Ok(RecordRunArtifactPlan {
@@ -3868,9 +3814,8 @@ fn validate_staged_artifact_record(
             "stored staged artifact belongs to a different Task",
         );
     }
-    let verified_actor_source = verified_invocation.actor_source.to_canonical_string();
-    if record.created_by_actor_source != verified_actor_source
-        || handle.created_by_actor_source.to_canonical_string() != record.created_by_actor_source
+    if record.created_by_actor_source != verified_invocation.actor_source
+        || handle.created_by_actor_source != record.created_by_actor_source
     {
         return artifact_input_validation_plan_error(
             request,
@@ -3880,7 +3825,7 @@ fn validate_staged_artifact_record(
             "staged artifact provenance does not match the verified actor source",
         );
     }
-    if record.status == "consumed" {
+    if record.status == ArtifactStagingStatus::Consumed {
         return artifact_input_validation_plan_error(
             request,
             project_state,
@@ -3889,18 +3834,8 @@ fn validate_staged_artifact_record(
             "staged artifact handle is already consumed",
         );
     }
-    let stored_created_at: UtcTimestamp = parse_owner_storage_value(
-        "artifact_staging",
-        record.handle_id.clone(),
-        "created_at",
-        &record.created_at,
-    )?;
-    let stored_expires_at: UtcTimestamp = parse_owner_storage_value(
-        "artifact_staging",
-        record.handle_id.clone(),
-        "expires_at",
-        &record.expires_at,
-    )?;
+    let stored_created_at = &record.created_at;
+    let stored_expires_at = &record.expires_at;
     if stored_expires_at <= stored_created_at {
         return Err(PlanError::Core(CorePipelineError::Store(
             StoreError::corrupt_owner_state_value(
@@ -3910,7 +3845,7 @@ fn validate_staged_artifact_record(
             ),
         )));
     }
-    if now < &stored_created_at {
+    if now < stored_created_at {
         return Err(PlanError::Core(CorePipelineError::Store(
             StoreError::corrupt_owner_state_value(
                 "artifact_staging",
@@ -3919,7 +3854,7 @@ fn validate_staged_artifact_record(
             ),
         )));
     }
-    if record.status == "expired" || now >= &stored_expires_at {
+    if record.status == ArtifactStagingStatus::Expired || now >= stored_expires_at {
         return artifact_input_validation_plan_error(
             request,
             project_state,
@@ -3928,7 +3863,7 @@ fn validate_staged_artifact_record(
             "staged artifact handle is expired",
         );
     }
-    if stored_expires_at != handle.expires_at {
+    if stored_expires_at != &handle.expires_at {
         return artifact_input_validation_plan_error(
             request,
             project_state,
@@ -3937,7 +3872,7 @@ fn validate_staged_artifact_record(
             "staged artifact expiration does not match the submitted handle",
         );
     }
-    if record.status != "staged" {
+    if record.status != ArtifactStagingStatus::Staged {
         return artifact_input_validation_plan_error(
             request,
             project_state,
@@ -3976,8 +3911,8 @@ fn validate_staged_artifact_record(
         );
     }
     let expected_redaction = input.redaction_state.unwrap_or(handle.redaction_state);
-    if record.redaction_state != redaction_state_value(handle.redaction_state)
-        || record.redaction_state != redaction_state_value(expected_redaction)
+    if record.redaction_state != handle.redaction_state
+        || record.redaction_state != expected_redaction
     {
         return artifact_input_validation_plan_error(
             request,
@@ -4116,12 +4051,7 @@ fn plan_existing_artifact_input(
             "existing artifact content_type does not match the stored artifact",
         );
     }
-    let stored_redaction_state: RedactionState = parse_owner_storage_value(
-        "artifacts",
-        record.artifact_id.clone(),
-        "redaction_state",
-        &record.redaction_state,
-    )?;
+    let stored_redaction_state = record.redaction_state;
     let expected_redaction = input
         .redaction_state
         .unwrap_or(existing_ref.redaction_state);
@@ -4145,10 +4075,10 @@ fn plan_existing_artifact_input(
     let run_link = CoreStorageMutation::Artifact(ArtifactMutation::Link(ArtifactLinkInsert {
         artifact_id: existing_ref.artifact_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
-        owner_record_kind: "run".to_owned(),
+        owner_record_kind: StateRecordKind::Run,
         owner_record_id: run_id.as_str().to_owned(),
         created_by_run_id: run_id.as_str().to_owned(),
-        metadata_json: artifact_link_metadata(input)?,
+        metadata: artifact_link_metadata(input)?,
     }));
     Ok(RecordRunArtifactPlan {
         artifact_ref,
@@ -4332,9 +4262,7 @@ fn validate_write_ticket_for_run(
             baseline_ref: &request.baseline_ref,
             performed_operation: request.performed_operation.as_ref().map(String::as_str),
             performed_operation_required: !observed_changes.product_file_write_observed
-                && parse_task_control_level(&task.effective_control_level)
-                    .map_err(CorePipelineError::from)?
-                    == TaskControlLevel::Sensitive,
+                && task.effective_control_level == TaskControlLevel::Sensitive,
             observed_changes,
             normalized_scope_paths: &scope_paths,
         },
@@ -4384,9 +4312,7 @@ fn write_ticket_approval_basis_is_current(
 ) -> Result<bool, PlanError> {
     if validity_basis.approval_basis_refs.is_empty() {
         return Ok(scope.sensitive_categories.is_empty()
-            && parse_task_control_level(&task.effective_control_level)
-                .map_err(CorePipelineError::from)?
-                != TaskControlLevel::Sensitive);
+            && task.effective_control_level != TaskControlLevel::Sensitive);
     }
 
     let requirement = SensitiveApprovalRequirement {
@@ -4528,20 +4454,14 @@ fn build_record_run_evidence_summary(
 }
 
 fn staged_artifact_display_name(record: &StoredArtifactStagingRecord) -> CoreResult<String> {
-    let artifact = decode_required_json_object(
-        "artifact_staging",
-        record.handle_id.clone(),
-        "artifact_json",
-        Some(&record.artifact_json),
-    )?;
-    Ok(string_member(&artifact, "display_name").unwrap_or_else(|| record.handle_id.clone()))
+    Ok(record.display_name.clone())
 }
 
-fn artifact_link_metadata(input: &ArtifactInput) -> CoreResult<String> {
-    Ok(serde_json::to_string(&json!({
+fn artifact_link_metadata(input: &ArtifactInput) -> CoreResult<JsonObject> {
+    object_from_value(json!({
         "artifact_input_id": input.artifact_input_id.as_str(),
         "source_kind": input.source_kind,
         "relation_hint": input.relation_hint,
         "evidence_target": input.evidence_target
-    }))?)
+    }))
 }

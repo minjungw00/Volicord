@@ -174,10 +174,10 @@ pub(crate) fn resolve_task_control_authority(
     task: &TaskRecord,
     policy: &ProjectWorkflowPolicy,
 ) -> Result<ResolvedTaskControlAuthority, StoreError> {
-    let requested = parse_requested_control_level(&task.requested_control_level)?;
-    let current_control = parse_task_control_level(&task.effective_control_level)?;
-    let mode = parse_task_mode(&task.mode)?;
-    let current_acceptance = parse_acceptance_policy(&task.acceptance_policy)?;
+    let requested = task.requested_control_level;
+    let current_control = task.effective_control_level;
+    let mode = task.mode;
+    let current_acceptance = task.acceptance_policy;
     let (policy_control, policy_reason) = effective_control_level(mode, requested, policy);
     let mark = task_policy_control_reevaluation(task)?;
     let marked_control = mark
@@ -311,23 +311,10 @@ pub(crate) fn acceptance_policy_for_control(
     }
 }
 
-pub(crate) fn parse_requested_control_level(
-    value: &str,
-) -> Result<RequestedControlLevel, StoreError> {
-    serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
-        StoreError::corrupt_owner_state_value("tasks", "current", "requested_control_level")
-    })
-}
-
 pub(crate) fn parse_task_control_level(value: &str) -> Result<TaskControlLevel, StoreError> {
     serde_json::from_value(Value::String(value.to_owned())).map_err(|_| {
         StoreError::corrupt_owner_state_value("tasks", "current", "effective_control_level")
     })
-}
-
-fn parse_task_mode(value: &str) -> Result<TaskMode, StoreError> {
-    serde_json::from_value(Value::String(value.to_owned()))
-        .map_err(|_| StoreError::corrupt_owner_state_value("tasks", "current", "mode"))
 }
 
 fn parse_acceptance_policy(value: &str) -> Result<AcceptancePolicy, StoreError> {

@@ -97,6 +97,7 @@ mod record_refs;
 mod replay;
 mod runs;
 mod tasks;
+mod user_action_reader;
 mod user_actions;
 pub(crate) mod validation;
 mod write_tickets;
@@ -106,12 +107,13 @@ mod test_support;
 
 pub use crate::workflow_records::{ProjectWorkflowPolicyMutation, WorkflowPolicyMutation};
 pub use artifacts::{
-    ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, StoredArtifactRecord,
-    StoredArtifactStagingRecord,
+    ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, ArtifactStagingStatus,
+    StoredArtifactRecord, StoredArtifactStagingRecord,
 };
 pub use change_units::{
-    ChangeUnitInsert, ChangeUnitMutation, ChangeUnitRecord, StoredChangeUnitLifecycle,
-    StoredChangeUnitWriteBasis, StoredGitWorkspaceContext,
+    ChangeUnitInsert, ChangeUnitMutation, ChangeUnitRecord, ChangeUnitStatus,
+    StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis,
+    StoredGitWorkspaceContext,
 };
 pub use continuity::{
     ActiveProjectContinuityPage, ContinuityMutation, ProjectContinuityRecordInsert,
@@ -129,12 +131,17 @@ pub use project_state::ProjectStateHeader;
 pub use reconciliation::ProductWriteObservationCandidate;
 pub use record_refs::StoredRecordRef;
 pub use replay::{StoredOperationResult, ToolInvocationRecord, VerifiedReplayContext};
-pub use runs::{RunInsert, RunMutation, RunObservedChangesRecord, RunRecord};
-pub use tasks::{
-    AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionUpsert,
-    EvidenceClaimRecord, TaskCloseBasisUpdate, TaskCloseUpdate, TaskControlLevelUpdate, TaskInsert,
-    TaskMutation, TaskRecord, TaskRevisionRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
+pub use runs::{
+    RunInsert, RunMutation, RunObservedChangesRecord, RunRecord, RunStatus, StoredRunMetadata,
+    StoredRunSummary, StoredRunWriteTicketEffect, StoredRunWriteTicketEffectKind,
 };
+pub use tasks::{
+    AcceptanceCriteriaReplace, AcceptanceCriterionRecord, AcceptanceCriterionStatus,
+    AcceptanceCriterionUpsert, EvidenceClaimRecord, TaskAutonomyBoundary, TaskCloseBasisUpdate,
+    TaskCloseUpdate, TaskControlLevelUpdate, TaskInsert, TaskMutation, TaskRecord,
+    TaskRevisionRecord, TaskScopeRevisionUpdate, TaskScopeUpdate, TaskShapingFacts,
+};
+pub use user_action_reader::UserActionStoreReader;
 pub use user_actions::{
     effective_user_action_status, EffectiveUserActionRecord, UserActionBasisStatusMark,
     UserActionBasisUpdate, UserActionInvalidation, UserActionMutation, UserActionRequestInsert,

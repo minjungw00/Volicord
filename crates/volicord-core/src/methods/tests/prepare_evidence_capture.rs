@@ -85,59 +85,57 @@ fn fulfill_command_receipt(
     let intent = store
         .evidence_capture_intent_record(intent_id)?
         .expect("capture intent should exist");
-    let observed_at = UtcTimestamp::from_datetime(
-        *UtcTimestamp::parse(&intent.created_at)?.as_datetime() + Duration::minutes(1),
-    )
-    .to_canonical_string();
-    let observed_outcome = json!({
+    let observed_at = intent.created_at.checked_add(Duration::minutes(1))?;
+    let observed_outcome: JsonObject = serde_json::from_value(json!({
         "exit_code": exit_code,
         "stdout_sha256": lowercase_sha256(b"fixture stdout"),
         "stdout_size_bytes": 14,
         "stderr_sha256": lowercase_sha256(b""),
         "stderr_size_bytes": 0
-    });
+    }))?;
     let result_sha256 = lowercase_sha256(&volicord_types::canonical::canonical_json_bytes(
         &observed_outcome,
     )?);
-    let source = json!({
+    let source: PersistedEvidenceCaptureReceiptSource = serde_json::from_value(json!({
         "connection_id": CONNECTION_ID,
         "host_invocation_id": format!("host_invocation_command_{suffix}")
-    });
-    let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
-    let safe_receipt = json!({
-        "contract_id": volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
-        "capture_kind": "verified_command_execution",
-        "capture_intent_id": intent_id,
-        "input_sha256": intent.input_sha256,
-        "result_sha256": result_sha256,
-        "expected_outcome": expected_outcome,
-        "observed_outcome": observed_outcome,
-        "source": source,
-        "complete": true,
-        "limitations": [EVIDENCE_CAPTURE_COMMAND_LIMITATION],
-        "redaction_state": "redacted",
-        "observed_by_actor_source": AGENT_ACTOR_SOURCE,
-        "observed_at": observed_at
-    });
+    }))?;
+    let limitations = vec![EVIDENCE_CAPTURE_COMMAND_LIMITATION.to_owned()];
+    let safe_receipt = PersistedEvidenceCaptureReceiptBody {
+        contract_id: volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID.to_owned(),
+        capture_kind: EvidenceProducerKind::VerifiedCommandExecution,
+        capture_intent_id: EvidenceCaptureIntentId::new(intent_id),
+        input_sha256: intent.input_sha256.clone(),
+        result_sha256: result_sha256.clone(),
+        expected_outcome: intent.expected_outcome.clone(),
+        observed_outcome: observed_outcome.clone(),
+        source: source.clone(),
+        complete: true,
+        limitations: limitations.clone(),
+        redaction_state: RedactionState::Redacted,
+        observed_by_actor_source: AGENT_ACTOR_SOURCE.parse()?,
+        observed_at: observed_at.clone(),
+    };
     store.fulfill_evidence_capture_source(
         volicord_store::evidence_capture::EvidenceCaptureReceiptInsert {
             evidence_capture_receipt_id: format!("evidence_capture_receipt_{suffix}"),
             evidence_capture_intent_id: intent_id.to_owned(),
             staging_handle_id: format!("staged_capture_receipt_{suffix}"),
             task_id: intent.task_id,
-            capture_kind: intent.capture_kind,
             input_sha256: intent.input_sha256,
             result_sha256,
-            expected_outcome_json: intent.expected_outcome_json,
-            observed_outcome_json: serde_json::to_string(&observed_outcome)?,
-            source_refs_json: "[]".to_owned(),
-            observed_by_actor_source: AGENT_ACTOR_SOURCE.to_owned(),
+            expected_outcome: intent.expected_outcome,
+            observed_outcome,
+            source_refs: Vec::new(),
+            observed_by_actor_source: AGENT_ACTOR_SOURCE.parse()?,
             observed_at: observed_at.clone(),
-            limitations_json: serde_json::to_string(&json!([EVIDENCE_CAPTURE_COMMAND_LIMITATION]))?,
-            safe_receipt_json: serde_json::to_string(&safe_receipt)?,
+            limitations,
+            safe_receipt,
             created_at: observed_at,
             staging_expires_at: intent.expires_at,
-            metadata_json: serde_json::to_string(&json!({"source": source}))?,
+            metadata: volicord_store::evidence_capture::StoredEvidenceCaptureReceiptMetadata {
+                source,
+            },
         },
     )?;
     Ok(())
@@ -155,49 +153,49 @@ fn fulfill_registered_source_receipt(
     let intent = store
         .evidence_capture_intent_record(intent_id)?
         .expect("capture intent should exist");
-    let observed_at = UtcTimestamp::from_datetime(
-        *UtcTimestamp::parse(&intent.created_at)?.as_datetime() + Duration::minutes(1),
-    )
-    .to_canonical_string();
+    let observed_at = intent.created_at.checked_add(Duration::minutes(1))?;
     let result_sha256 = lowercase_sha256(&volicord_types::canonical::canonical_json_bytes(
         &observed_outcome,
     )?);
-    let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
     let limitation = EVIDENCE_CAPTURE_COMMAND_LIMITATION;
-    let safe_receipt = json!({
-        "contract_id": volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
-        "capture_kind": intent.capture_kind,
-        "capture_intent_id": intent_id,
-        "input_sha256": intent.input_sha256,
-        "result_sha256": result_sha256,
-        "expected_outcome": expected_outcome,
-        "observed_outcome": observed_outcome,
-        "source": source,
-        "complete": true,
-        "limitations": [limitation],
-        "redaction_state": "redacted",
-        "observed_by_actor_source": AGENT_ACTOR_SOURCE,
-        "observed_at": observed_at
-    });
+    let observed_outcome: JsonObject = serde_json::from_value(observed_outcome)?;
+    let source: PersistedEvidenceCaptureReceiptSource = serde_json::from_value(source)?;
+    let limitations = vec![limitation.to_owned()];
+    let safe_receipt = PersistedEvidenceCaptureReceiptBody {
+        contract_id: volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID.to_owned(),
+        capture_kind: intent.capture_kind,
+        capture_intent_id: EvidenceCaptureIntentId::new(intent_id),
+        input_sha256: intent.input_sha256.clone(),
+        result_sha256: result_sha256.clone(),
+        expected_outcome: intent.expected_outcome.clone(),
+        observed_outcome: observed_outcome.clone(),
+        source: source.clone(),
+        complete: true,
+        limitations: limitations.clone(),
+        redaction_state: RedactionState::Redacted,
+        observed_by_actor_source: AGENT_ACTOR_SOURCE.parse()?,
+        observed_at: observed_at.clone(),
+    };
     store.fulfill_evidence_capture_source(
         volicord_store::evidence_capture::EvidenceCaptureReceiptInsert {
             evidence_capture_receipt_id: format!("evidence_capture_receipt_{suffix}"),
             evidence_capture_intent_id: intent_id.to_owned(),
             staging_handle_id: format!("staged_capture_receipt_{suffix}"),
             task_id: intent.task_id,
-            capture_kind: intent.capture_kind,
             input_sha256: intent.input_sha256,
             result_sha256,
-            expected_outcome_json: intent.expected_outcome_json,
-            observed_outcome_json: serde_json::to_string(&observed_outcome)?,
-            source_refs_json: "[]".to_owned(),
-            observed_by_actor_source: AGENT_ACTOR_SOURCE.to_owned(),
+            expected_outcome: intent.expected_outcome,
+            observed_outcome,
+            source_refs: Vec::new(),
+            observed_by_actor_source: AGENT_ACTOR_SOURCE.parse()?,
             observed_at: observed_at.clone(),
-            limitations_json: serde_json::to_string(&json!([limitation]))?,
-            safe_receipt_json: serde_json::to_string(&safe_receipt)?,
+            limitations,
+            safe_receipt,
             created_at: observed_at,
             staging_expires_at: intent.expires_at,
-            metadata_json: serde_json::to_string(&json!({"source": source}))?,
+            metadata: volicord_store::evidence_capture::StoredEvidenceCaptureReceiptMetadata {
+                source,
+            },
         },
     )?;
     Ok(())
@@ -327,13 +325,19 @@ fn command_capture_defaults_are_persisted_once_and_replay_is_exact() -> Result<(
     let row = store
         .evidence_capture_intent_record(&intent_id)?
         .expect("committed intent should be immediately readable");
-    assert_eq!(row.capture_kind, "verified_command_execution");
-    assert_eq!(row.input_sha256, "a".repeat(64));
-    assert_eq!(row.requesting_connection_internal_id, CONNECTION_ID);
-    assert_eq!(row.created_at, "2026-07-13T01:00:00Z");
-    assert_eq!(row.expires_at, "2026-07-13T01:15:00Z");
     assert_eq!(
-        serde_json::from_str::<Value>(&row.capture_spec_json)?,
+        row.capture_kind,
+        EvidenceProducerKind::VerifiedCommandExecution
+    );
+    assert_eq!(row.input_sha256, "a".repeat(64));
+    assert_eq!(
+        row.requesting_connection_internal_id,
+        AgentConnectionId::new(CONNECTION_ID)
+    );
+    assert_eq!(row.created_at.to_canonical_string(), "2026-07-13T01:00:00Z");
+    assert_eq!(row.expires_at.to_canonical_string(), "2026-07-13T01:15:00Z");
+    assert_eq!(
+        serde_json::to_value(&row.capture)?,
         committed.response_value["capture_intent"]["capture"]
     );
 
@@ -603,7 +607,7 @@ fn record_run_finalizes_command_provenance_without_self_approving_criterion(
     let producer_row = store
         .evidence_producer_record(producer_id)?
         .expect("producer should be immediately readable");
-    let producer: EvidenceProducer = serde_json::from_str(&producer_row.canonical_producer_json)?;
+    let producer = producer_row.canonical_producer;
     assert_eq!(
         response.response_value["evidence_producers"],
         json!([producer.clone()]),

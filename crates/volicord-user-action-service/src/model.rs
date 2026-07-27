@@ -1,5 +1,5 @@
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, EffectiveUserActionRecord, TaskRecord,
+    ChangeUnitRecord, EffectiveUserActionRecord, TaskRecord, UserActionStoreReader,
 };
 use volicord_types::ids::{
     ChangeUnitId, IdempotencyKey, ProjectId, RiskId, TaskId, UserActionOptionId,
@@ -37,7 +37,7 @@ pub struct UserActionConstructionContext {
 
 /// Current domain facts used to validate and construct one canonical UserAction.
 pub struct UserActionConstructionInput<'a> {
-    pub store: &'a CoreProjectStore<'a>,
+    pub store: &'a dyn UserActionStoreReader,
     pub task: &'a TaskRecord,
     pub current_change_unit: Option<&'a ChangeUnitRecord>,
     pub context: UserActionConstructionContext,

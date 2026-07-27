@@ -1,10 +1,12 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use serde::{Deserialize, Serialize};
 use volicord_types::{
     ids::{RunId, StagedArtifactHandleId, TaskId},
     schema::{
-        PersistedArtifactProducer, PersistedArtifactProvenance, PersistedArtifactProvenanceMetadata,
+        JsonObject, PersistedArtifactProducer, PersistedArtifactProvenance,
+        PersistedArtifactProvenanceMetadata,
     },
-    values::UtcTimestamp,
+    values::{ActorSource, ArtifactIntegrityStatus, RedactionState, StateRecordKind, UtcTimestamp},
 };
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
@@ -12,7 +14,7 @@ use crate::{
     artifacts::{
         persistent_body_path_from_staging_tmp_path,
         verify_persistent_artifact_body as verify_persistent_artifact_body_in_store,
-        PersistentArtifactBodySpec, PersistentArtifactVerification,
+        PersistentArtifactBodySpec, PersistentArtifactStatus, PersistentArtifactVerification,
     },
     sqlite::ARTIFACTS_DIR,
     StoreError, StoreResult,
@@ -30,6 +32,7 @@ const ARTIFACT_RECORD_COLUMNS: &str = "
     metadata_json";
 
 /// Artifact mutation applied inside one Core commit transaction.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArtifactMutation {
     PromoteStaged(ArtifactPromotion),
@@ -43,16 +46,16 @@ pub struct ArtifactPromotion {
     pub artifact_id: String,
     pub task_id: String,
     pub run_id: String,
-    pub expected_created_by_actor_source: String,
+    pub expected_created_by_actor_source: ActorSource,
     pub expected_sha256: String,
     pub expected_size_bytes: u64,
-    pub expected_redaction_state: String,
-    pub expected_created_at: String,
-    pub expected_expires_at: String,
+    pub expected_redaction_state: RedactionState,
+    pub expected_created_at: UtcTimestamp,
+    pub expected_expires_at: UtcTimestamp,
     pub uri: String,
-    pub retention_json: String,
-    pub producer_json: String,
-    pub metadata_json: String,
+    pub retention: JsonObject,
+    pub producer: PersistedArtifactProducer,
+    pub metadata: PersistedArtifactProvenanceMetadata,
 }
 
 /// Storage input for linking a persistent artifact to an owner relation.
@@ -60,10 +63,10 @@ pub struct ArtifactPromotion {
 pub struct ArtifactLinkInsert {
     pub artifact_id: String,
     pub task_id: String,
-    pub owner_record_kind: String,
+    pub owner_record_kind: StateRecordKind,
     pub owner_record_id: String,
     pub created_by_run_id: String,
-    pub metadata_json: String,
+    pub metadata: JsonObject,
 }
 
 impl ArtifactMutation {
@@ -81,16 +84,52 @@ pub struct StoredArtifactStagingRecord {
     pub project_id: String,
     pub handle_id: String,
     pub task_id: String,
-    pub created_by_actor_source: String,
-    pub artifact_json: String,
+    pub created_by_actor_source: ActorSource,
+    pub display_name: String,
+    pub relation_hint: Option<String>,
     pub tmp_path: Option<String>,
     pub sha256: Option<String>,
     pub size_bytes: Option<u64>,
     pub content_type: Option<String>,
-    pub redaction_state: String,
-    pub status: String,
-    pub created_at: String,
-    pub expires_at: String,
+    pub redaction_state: RedactionState,
+    pub status: ArtifactStagingStatus,
+    pub created_at: UtcTimestamp,
+    pub expires_at: UtcTimestamp,
+}
+
+/// Closed lifecycle values for a transient artifact staging row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactStagingStatus {
+    Staged,
+    Consumed,
+    Expired,
+    Discarded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StoredArtifactStagingRow {
+    project_id: String,
+    handle_id: String,
+    task_id: String,
+    created_by_actor_source: String,
+    artifact_json: String,
+    tmp_path: Option<String>,
+    sha256: Option<String>,
+    size_bytes: Option<u64>,
+    content_type: Option<String>,
+    redaction_state: String,
+    status: String,
+    created_at: String,
+    expires_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedArtifactStagingFacts {
+    display_name: String,
+    #[serde(default)]
+    relation_hint: Option<String>,
 }
 
 /// Stored persistent artifact facts needed by `volicord.record_run`.
@@ -106,9 +145,9 @@ pub struct StoredArtifactRecord {
     pub sha256: Option<String>,
     pub size_bytes: Option<u64>,
     pub content_type: Option<String>,
-    pub integrity_status: String,
-    pub redaction_state: String,
-    pub status: String,
+    pub integrity_status: ArtifactIntegrityStatus,
+    pub redaction_state: RedactionState,
+    pub status: PersistentArtifactStatus,
     pub producer: PersistedArtifactProducer,
     pub provenance: PersistedArtifactProvenance,
 }
@@ -168,8 +207,8 @@ impl CoreProjectStore<'_> {
                 sha256: record.sha256.as_deref(),
                 size_bytes: record.size_bytes,
                 content_type: record.content_type.as_deref(),
-                integrity_status: &record.integrity_status,
-                availability_status: &record.status,
+                integrity_status: record.integrity_status,
+                availability_status: record.status,
             },
         )
     }
@@ -188,15 +227,17 @@ impl CoreProjectStore<'_> {
         &self,
         artifact_id: &str,
         task_id: &str,
-        owner_record_kind: &str,
+        owner_record_kind: StateRecordKind,
         owner_record_id: &str,
     ) -> StoreResult<bool> {
+        let owner_record_kind =
+            encode_closed_value("artifact_links.owner_record_kind", &owner_record_kind)?;
         artifact_has_owner_link(
             &self.conn,
             &self.project.project_id,
             artifact_id,
             task_id,
-            owner_record_kind,
+            &owner_record_kind,
             owner_record_id,
         )
     }
@@ -284,12 +325,12 @@ pub(super) fn artifact_staging_record_tx(
 
 fn artifact_staging_record_from_row(
     row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<StoredArtifactStagingRecord> {
+) -> rusqlite::Result<StoredArtifactStagingRow> {
     let size_bytes = row
         .get::<_, Option<i64>>(7)?
         .map(|value| nonnegative_i64_to_u64("artifact_staging.size_bytes", value))
         .transpose()?;
-    Ok(StoredArtifactStagingRecord {
+    Ok(StoredArtifactStagingRow {
         project_id: row.get(0)?,
         handle_id: row.get(1)?,
         task_id: row.get(2)?,
@@ -307,10 +348,54 @@ fn artifact_staging_record_from_row(
 }
 
 fn validate_stored_artifact_staging_record(
-    record: StoredArtifactStagingRecord,
+    row: StoredArtifactStagingRow,
 ) -> StoreResult<StoredArtifactStagingRecord> {
-    stored_artifact_staging_window(&record.handle_id, &record.created_at, &record.expires_at)?;
-    Ok(record)
+    let record_id = row.handle_id.as_str();
+    let facts = decode_owner_json_text::<PersistedArtifactStagingFacts>(
+        "artifact_staging",
+        record_id,
+        "artifact_json",
+        &row.artifact_json,
+    )?;
+    if facts.display_name.trim().is_empty() {
+        return Err(StoreError::corrupt_owner_state_value(
+            "artifact_staging",
+            record_id,
+            "artifact_json.display_name",
+        ));
+    }
+    let created_by_actor_source = row.created_by_actor_source.parse().map_err(|_| {
+        StoreError::corrupt_owner_state_value(
+            "artifact_staging",
+            record_id,
+            "created_by_actor_source",
+        )
+    })?;
+    let redaction_state = decode_owner_closed_value(
+        "artifact_staging",
+        record_id,
+        "redaction_state",
+        &row.redaction_state,
+    )?;
+    let status = decode_owner_closed_value("artifact_staging", record_id, "status", &row.status)?;
+    let (created_at, expires_at) =
+        stored_artifact_staging_window(record_id, &row.created_at, &row.expires_at)?;
+    Ok(StoredArtifactStagingRecord {
+        project_id: row.project_id,
+        handle_id: row.handle_id,
+        task_id: row.task_id,
+        created_by_actor_source,
+        display_name: facts.display_name,
+        relation_hint: facts.relation_hint,
+        tmp_path: row.tmp_path,
+        sha256: row.sha256,
+        size_bytes: row.size_bytes,
+        content_type: row.content_type,
+        redaction_state,
+        status,
+        created_at,
+        expires_at,
+    })
 }
 
 fn stored_artifact_staging_window(
@@ -396,6 +481,20 @@ fn stored_artifact_record_from_raw(
         producer_run_id: RunId::new(producer_run_id.clone()),
         source_staging_handle_id: StagedArtifactHandleId::new(source_staging_handle_id.clone()),
     };
+    let integrity_status = decode_owner_closed_value(
+        "artifacts",
+        raw.artifact_id.as_str(),
+        "integrity_status",
+        &raw.integrity_status,
+    )?;
+    let redaction_state = decode_owner_closed_value(
+        "artifacts",
+        raw.artifact_id.as_str(),
+        "redaction_state",
+        &raw.redaction_state,
+    )?;
+    let status =
+        decode_owner_closed_value("artifacts", raw.artifact_id.as_str(), "status", &raw.status)?;
     Ok(StoredArtifactRecord {
         project_id: raw.project_id,
         artifact_id: raw.artifact_id,
@@ -407,9 +506,9 @@ fn stored_artifact_record_from_raw(
         sha256: raw.sha256,
         size_bytes: raw.size_bytes,
         content_type: raw.content_type,
-        integrity_status: raw.integrity_status,
-        redaction_state: raw.redaction_state,
-        status: raw.status,
+        integrity_status,
+        redaction_state,
+        status,
         producer,
         provenance,
     })
@@ -489,25 +588,33 @@ fn artifact_has_owner_link(
 
 impl MutationContext<'_> {
     fn promote_staged_artifact(&mut self, input: &ArtifactPromotion) -> StoreResult<()> {
+        let expected_created_by_actor_source =
+            input.expected_created_by_actor_source.to_canonical_string();
+        let expected_redaction_state = encode_closed_value(
+            "artifact_staging.redaction_state",
+            &input.expected_redaction_state,
+        )?;
+        let expected_created_at = input.expected_created_at.to_string();
+        let expected_expires_at = input.expected_expires_at.to_string();
+        let retention_json = encode_json_column("artifacts.retention_json", &input.retention)?;
+        let producer_json = encode_json_column("artifacts.producer_json", &input.producer)?;
+        let metadata_json = encode_json_column("artifacts.metadata_json", &input.metadata)?;
         validate_identifier("artifact_staging.handle_id", &input.handle_id)?;
         validate_identifier("artifact_id", &input.artifact_id)?;
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("run_id", &input.run_id)?;
         validate_identifier(
             "expected_created_by_actor_source",
-            &input.expected_created_by_actor_source,
+            &expected_created_by_actor_source,
         )?;
         validate_artifact_sha256("expected_sha256", &input.expected_sha256)?;
-        validate_identifier("expected_redaction_state", &input.expected_redaction_state)?;
-        validate_timestamp("expected_created_at", &input.expected_created_at)?;
-        validate_timestamp("expected_expires_at", &input.expected_expires_at)?;
+        validate_identifier("expected_redaction_state", &expected_redaction_state)?;
+        validate_timestamp("expected_created_at", &expected_created_at)?;
+        validate_timestamp("expected_expires_at", &expected_expires_at)?;
         validate_identifier("artifacts.uri", &input.uri)?;
-        validate_json_text("artifacts.retention_json", &input.retention_json)?;
-        validate_artifact_producer_json("artifacts.producer_json", &input.producer_json)?;
-        validate_artifact_provenance_metadata_json(
-            "artifacts.metadata_json",
-            &input.metadata_json,
-        )?;
+        validate_json_text("artifacts.retention_json", &retention_json)?;
+        validate_artifact_producer_json("artifacts.producer_json", &producer_json)?;
+        validate_artifact_provenance_metadata_json("artifacts.metadata_json", &metadata_json)?;
 
         let staging = artifact_staging_record_tx(self.tx, self.project_id, &input.handle_id)?
             .ok_or_else(|| StoreError::SchemaInvariant {
@@ -516,7 +623,7 @@ impl MutationContext<'_> {
             })?;
         if staging.task_id != input.task_id
             || staging.created_by_actor_source != input.expected_created_by_actor_source
-            || staging.status != "staged"
+            || staging.status != ArtifactStagingStatus::Staged
             || staging.sha256.as_deref() != Some(input.expected_sha256.as_str())
             || staging.size_bytes != Some(input.expected_size_bytes)
             || staging.redaction_state != input.expected_redaction_state
@@ -528,24 +635,10 @@ impl MutationContext<'_> {
                 detail: "staged artifact changed before promotion".to_owned(),
             });
         }
-        let created_at = UtcTimestamp::parse(&staging.created_at).map_err(|_| {
-            StoreError::corrupt_owner_state_value(
-                "artifact_staging",
-                &staging.handle_id,
-                "created_at",
-            )
-        })?;
-        let expires_at = UtcTimestamp::parse(&staging.expires_at).map_err(|_| {
-            StoreError::corrupt_owner_state_value(
-                "artifact_staging",
-                &staging.handle_id,
-                "expires_at",
-            )
-        })?;
         let committed_at = UtcTimestamp::parse(self.committed_at).map_err(|_| {
             StoreError::corrupt_owner_state_value("project_state", self.project_id, "updated_at")
         })?;
-        if committed_at < created_at || committed_at >= expires_at {
+        if committed_at < staging.created_at || committed_at >= staging.expires_at {
             return Err(StoreError::SchemaInvariant {
                 database_kind: "project_state",
                 detail: "staged artifact is outside its exact eligibility window".to_owned(),
@@ -620,11 +713,11 @@ impl MutationContext<'_> {
                 input.expected_sha256,
                 size_bytes,
                 staging.content_type,
-                input.expected_redaction_state,
-                input.retention_json,
-                input.producer_json,
+                expected_redaction_state,
+                retention_json,
+                producer_json,
                 self.committed_at,
-                input.metadata_json
+                metadata_json
             ],
         )?;
 
@@ -656,12 +749,15 @@ impl MutationContext<'_> {
     }
 
     fn link_artifact(&mut self, input: &ArtifactLinkInsert) -> StoreResult<()> {
+        let owner_record_kind =
+            encode_closed_value("artifact_links.owner_record_kind", &input.owner_record_kind)?;
+        let metadata_json = encode_json_column("artifact_links.metadata_json", &input.metadata)?;
         validate_identifier("artifact_id", &input.artifact_id)?;
         validate_identifier("task_id", &input.task_id)?;
-        validate_identifier("owner_record_kind", &input.owner_record_kind)?;
+        validate_identifier("owner_record_kind", &owner_record_kind)?;
         validate_identifier("owner_record_id", &input.owner_record_id)?;
         validate_identifier("created_by_run_id", &input.created_by_run_id)?;
-        validate_json_text("artifact_links.metadata_json", &input.metadata_json)?;
+        validate_json_text("artifact_links.metadata_json", &metadata_json)?;
 
         self.tx.execute(
             "INSERT OR IGNORE INTO artifact_links (
@@ -688,11 +784,11 @@ impl MutationContext<'_> {
                 self.project_id,
                 input.artifact_id,
                 input.task_id,
-                input.owner_record_kind,
+                owner_record_kind,
                 input.owner_record_id,
                 input.created_by_run_id,
                 self.committed_at,
-                input.metadata_json
+                metadata_json
             ],
         )?;
         Ok(())
@@ -774,6 +870,17 @@ mod tests {
                 ..
             })
         ));
+
+        let mut unknown_status = artifact_record_raw();
+        unknown_status.status = "legacy".to_owned();
+        assert!(matches!(
+            stored_artifact_record_from_raw(unknown_status),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "artifacts",
+                logical_column: "status",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -782,10 +889,10 @@ mod tests {
             ArtifactMutation::Link(ArtifactLinkInsert {
                 artifact_id: " ".to_owned(),
                 task_id: "task".to_owned(),
-                owner_record_kind: "run".to_owned(),
+                owner_record_kind: StateRecordKind::Run,
                 owner_record_id: "run".to_owned(),
                 created_by_run_id: "run".to_owned(),
-                metadata_json: "{}".to_owned(),
+                metadata: JsonObject::new(),
             })
             .apply(context)
             .expect_err("blank artifact id must fail before SQL")

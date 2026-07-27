@@ -633,6 +633,37 @@ pub struct ProjectContinuityRecord {
     pub updated_at: UtcTimestamp,
 }
 
+/// Closed persisted metadata shapes for project continuity authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PersistedProjectContinuityMetadata {
+    ResolveUserActionDecision {
+        source: PersistedProjectContinuitySource,
+        action_kind: UserActionKind,
+        resolution_outcome: JudgmentResolutionOutcome,
+        selected_option_id: UserActionOptionId,
+    },
+    ResolveUserActionAcceptedRisk {
+        source: PersistedProjectContinuitySource,
+        action_kind: UserActionKind,
+        risk_id: RiskId,
+        close_basis_revision: u64,
+    },
+    CloseTaskKnownLimit {
+        source: PersistedProjectContinuitySource,
+        risk_id: RiskId,
+        close_basis_revision: u64,
+    },
+}
+
+/// Closed producer source carried by persisted project continuity metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PersistedProjectContinuitySource {
+    ResolveUserAction,
+    CloseTask,
+}
+
 /// Compact project-level continuity view for status responses.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -2382,6 +2413,27 @@ pub struct PersistedUserActionRequest {
     pub body: UserActionRequestBody,
     pub required_for: Vec<UserActionRequiredFor>,
     pub expires_at: RequiredNullable<UtcTimestamp>,
+}
+
+/// Stored origin metadata for `user_action_requests.metadata_json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PersistedUserActionRequestMetadata {
+    Reconciliation(PersistedUserActionReconciliationMetadata),
+    DirectRequest(PersistedUserActionDirectRequestMetadata),
+}
+
+/// Empty metadata for a direct user-action request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedUserActionDirectRequestMetadata {}
+
+/// Origin metadata for a reconciliation-created user-action request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PersistedUserActionReconciliationMetadata {
+    pub created_by: MethodName,
+    pub unrecorded_change_id: UnrecordedChangeId,
 }
 
 /// Stored resolution JSON shape for `user_action_resolutions.resolution_json`.

@@ -1454,7 +1454,7 @@ fn insert_active_continuity_records(
     let transaction = conn.transaction()?;
     for record_id in record_ids {
         transaction.execute(
-            "INSERT INTO project_continuity_records (
+            r#"INSERT INTO project_continuity_records (
                 project_id, continuity_record_id, source_task_id, source_change_unit_id,
                 kind, title, summary, rationale, applies_to_paths_json,
                 applies_to_refs_json, source_refs_json, artifact_refs_json, status,
@@ -1462,8 +1462,9 @@ fn insert_active_continuity_records(
                 metadata_json
              ) VALUES (
                 ?1, ?2, ?3, ?4, 'decision', ?2, ?2, NULL, '[]', '[]', '[]', '[]',
-                'active', '[]', '[]', ?5, ?5, '{}'
-             )",
+                'active', '[]', '[]', ?5, ?5,
+                '{"source":"resolve_user_action","action_kind":"product_decision","resolution_outcome":"accepted","selected_option_id":"option"}'
+             )"#,
             rusqlite::params![PROJECT_ID, record_id, task_id, change_unit_id, updated_at],
         )?;
     }

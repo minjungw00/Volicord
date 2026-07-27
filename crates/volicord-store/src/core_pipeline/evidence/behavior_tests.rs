@@ -1,9 +1,15 @@
 use std::error::Error;
 
 use rusqlite::params;
-use serde_json::json;
-use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash, TaskId};
-use volicord_types::values::MethodName;
+use volicord_types::ids::{
+    AgentConnectionId, BaselineRef, EvidenceClaimId, IdempotencyKey, ProjectId, RequestHash, RunId,
+    TaskId,
+};
+use volicord_types::schema::{
+    evidence_capture_expected_outcome, EvidenceCaptureSpec, EvidenceTarget,
+    PersistedEvidenceMetadata,
+};
+use volicord_types::values::{ActorSource, EvidenceStatus, MethodName, UtcTimestamp};
 
 use super::{EvidenceMutation, EvidenceSummaryUpsert};
 use crate::core_pipeline::test_support::{
@@ -12,7 +18,11 @@ use crate::core_pipeline::test_support::{
 };
 use crate::core_pipeline::{
     commit_input, ChangeUnitInsert, ChangeUnitMutation, CoreStorageMutation,
-    EvidenceCaptureIntentInsert, TaskMutation,
+    EvidenceCaptureIntentInsert, StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary,
+    StoredChangeUnitWriteBasis, TaskMutation,
+};
+use crate::evidence_capture::{
+    StoredEvidenceCaptureIntentMetadata, StoredEvidenceCaptureIntentSessionContext,
 };
 use crate::StoreError;
 
@@ -152,33 +162,33 @@ fn evidence_capture_intent_insert_rejects_extended_ttl_without_effect() -> Resul
     let change_unit_id = "cu_capture_intent_extended_ttl";
     let before_state = store.project_state()?;
     let before_effects = store.effect_counts()?;
+    let capture = EvidenceCaptureSpec::VerifiedCommandExecution {
+        command_sha256: "a".repeat(64),
+        command_label: "Run a bounded local verification.".to_owned(),
+        expected_exit_code: Some(0).into(),
+    };
     let capture_intent = EvidenceCaptureIntentInsert {
         evidence_capture_intent_id: "capture_intent_extended_ttl".to_owned(),
         task_id: task_id.to_owned(),
         change_unit_id: change_unit_id.to_owned(),
         scope_revision: 0,
-        baseline_ref: "baseline_capture_intent_extended_ttl".to_owned(),
-        target_json: json!({
-            "target_kind": "supplemental_claim",
-            "evidence_claim_id": "claim_capture_intent_extended_ttl",
-            "statement": "A fixed capture-intent TTL is required."
-        })
-        .to_string(),
-        capture_kind: "verified_command_execution".to_owned(),
-        capture_spec_json: json!({
-            "capture_type": "verified_command_execution",
-            "command_summary": "Run a bounded local verification."
-        })
-        .to_string(),
+        baseline_ref: BaselineRef::new("baseline_capture_intent_extended_ttl"),
+        target: EvidenceTarget::SupplementalClaim {
+            evidence_claim_id: EvidenceClaimId::new("claim_capture_intent_extended_ttl"),
+            statement: "A fixed capture-intent TTL is required.".to_owned(),
+        },
+        capture: capture.clone(),
         input_sha256: "a".repeat(64),
-        expected_outcome_json: "{}".to_owned(),
-        requested_by_actor_source: ACTOR_SOURCE.to_owned(),
-        requesting_connection_internal_id: CONNECTION_ID.to_owned(),
-        session_context_json: "{}".to_owned(),
-        workspace_context_json: "{}".to_owned(),
-        created_at: "2026-01-01T00:00:00Z".to_owned(),
-        expires_at: "2026-01-01T00:16:00Z".to_owned(),
-        metadata_json: "{}".to_owned(),
+        expected_outcome: evidence_capture_expected_outcome(&capture),
+        requested_by_actor_source: ACTOR_SOURCE.parse::<ActorSource>()?,
+        requesting_connection_internal_id: AgentConnectionId::new(CONNECTION_ID),
+        session_context: StoredEvidenceCaptureIntentSessionContext { session_id: None },
+        workspace_context: Default::default(),
+        created_at: UtcTimestamp::parse("2026-01-01T00:00:00Z")?,
+        expires_at: UtcTimestamp::parse("2026-01-01T00:16:00Z")?,
+        metadata: StoredEvidenceCaptureIntentMetadata {
+            verification_basis: "test".to_owned(),
+        },
     };
 
     let mutations = [
@@ -186,7 +196,6 @@ fn evidence_capture_intent_insert_rejects_extended_ttl_without_effect() -> Resul
         CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit_insert(
             change_unit_id,
             task_id,
-            "null".to_owned(),
         ))),
         CoreStorageMutation::Evidence(EvidenceMutation::InsertCaptureIntent(capture_intent)),
     ];
@@ -224,32 +233,33 @@ fn evidence_summary_upsert(
         evidence_summary_id: evidence_summary_id.to_owned(),
         task_id: task_id.to_owned(),
         change_unit_id: None,
-        status: "unknown".to_owned(),
-        coverage_json: "[]".to_owned(),
-        supporting_refs_json: "[]".to_owned(),
-        gap_refs_json: "[]".to_owned(),
-        metadata_json: json!({ "updated_by_run_id": updated_by_run_id }).to_string(),
+        status: EvidenceStatus::Unknown,
+        coverage: Vec::new(),
+        supporting_refs: Vec::new(),
+        gap_refs: Vec::new(),
+        metadata: PersistedEvidenceMetadata {
+            updated_by_run_id: RunId::new(updated_by_run_id),
+        },
     }
 }
 
-fn change_unit_insert(
-    change_unit_id: &str,
-    task_id: &str,
-    effect_contract_json: String,
-) -> ChangeUnitInsert {
+fn change_unit_insert(change_unit_id: &str, task_id: &str) -> ChangeUnitInsert {
     ChangeUnitInsert {
         change_unit_id: change_unit_id.to_owned(),
         task_id: task_id.to_owned(),
-        scope_summary_json: json!({
-            "scope_summary": "Store effect contract scope."
-        })
-        .to_string(),
-        bounded_paths_json: json!(["src/export.rs"]).to_string(),
-        write_basis_json: json!({
-            "baseline_ref": "baseline_store"
-        })
-        .to_string(),
-        effect_contract_json,
-        lifecycle_json: "{}".to_owned(),
+        scope_summary: StoredChangeUnitScopeSummary {
+            scope_summary: Some("Store effect contract scope.".to_owned()),
+            affected_areas: Vec::new(),
+            constraints: Vec::new(),
+        },
+        bounded_paths: vec!["src/export.rs".to_owned()],
+        write_basis: StoredChangeUnitWriteBasis {
+            baseline_ref: Some(BaselineRef::new("baseline_store")),
+            git_workspace_context: None,
+        },
+        effect_contract: None,
+        lifecycle: StoredChangeUnitLifecycle {
+            recovery_required: false,
+        },
     }
 }

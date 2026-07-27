@@ -1,11 +1,14 @@
 use rusqlite::{params, Connection, OptionalExtension};
+use volicord_types::canonical::canonical_json_string;
 use volicord_types::ids::TaskId;
 use volicord_types::schema::{
-    ArtifactRef, EvidenceCoverageItem, JsonObject, PersistedEvidenceMetadata,
+    evidence_capture_input_sha256, validate_evidence_capture_expected_outcome, ArtifactRef,
+    EvidenceCaptureSpec, EvidenceCoverageItem, JsonObject, PersistedEvidenceMetadata,
     PersistedEvidenceObservationAuthority, SourceRef, StateRecordRef,
 };
 use volicord_types::values::{
-    ActorSource, EvidenceAssuranceLevel, EvidenceSourceKind, UtcTimestamp,
+    ActorSource, EvidenceAssuranceLevel, EvidenceProducerKind, EvidenceSourceKind, EvidenceStatus,
+    StateRecordKind, UtcTimestamp,
 };
 
 use super::{
@@ -33,7 +36,8 @@ const EVIDENCE_OBSERVATION_COLUMNS: &str = "
     limitations_json, observed_at, recorded_at, metadata_json";
 
 /// Evidence mutation applied inside one Core commit transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EvidenceMutation {
     EnsureClaim(EvidenceClaimInsert),
     InsertCaptureIntent(EvidenceCaptureIntentInsert),
@@ -51,20 +55,20 @@ pub struct EvidenceClaimInsert {
 }
 
 /// Storage input for creating or replacing one evidence summary row.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceSummaryUpsert {
     pub evidence_summary_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
-    pub status: String,
-    pub coverage_json: String,
-    pub supporting_refs_json: String,
-    pub gap_refs_json: String,
-    pub metadata_json: String,
+    pub status: EvidenceStatus,
+    pub coverage: Vec<EvidenceCoverageItem>,
+    pub supporting_refs: Vec<StateRecordRef>,
+    pub gap_refs: Vec<StateRecordRef>,
+    pub metadata: PersistedEvidenceMetadata,
 }
 
 /// Storage input for inserting one durable evidence observation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EvidenceObservationInsert {
     pub evidence_observation_id: String,
     pub task_id: String,
@@ -72,19 +76,19 @@ pub struct EvidenceObservationInsert {
     pub run_id: Option<String>,
     pub acceptance_criterion_id: Option<String>,
     pub evidence_claim_id: Option<String>,
-    pub source_kind: String,
-    pub assurance_level: String,
-    pub observed_by_actor_source: Option<String>,
+    pub source_kind: EvidenceSourceKind,
+    pub assurance_level: EvidenceAssuranceLevel,
+    pub observed_by_actor_source: Option<ActorSource>,
     pub tool_name: Option<String>,
     pub tool_invocation_id: Option<String>,
-    pub tool_metadata_json: String,
-    pub input_refs_json: String,
-    pub source_refs_json: String,
-    pub output_artifact_refs_json: String,
-    pub limitations_json: String,
-    pub observed_at: String,
-    pub recorded_at: String,
-    pub metadata_json: String,
+    pub tool_metadata: JsonObject,
+    pub input_refs: Vec<StateRecordRef>,
+    pub source_refs: Vec<SourceRef>,
+    pub output_artifact_refs: Vec<ArtifactRef>,
+    pub limitations: Vec<String>,
+    pub observed_at: UtcTimestamp,
+    pub recorded_at: UtcTimestamp,
+    pub metadata: PersistedEvidenceObservationAuthority,
 }
 
 impl EvidenceMutation {
@@ -113,11 +117,7 @@ pub struct EvidenceSummaryRecord {
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub produced_at_state_version: u64,
-    pub status: String,
-    pub coverage_json: String,
-    pub supporting_refs_json: String,
-    pub gap_refs_json: String,
-    pub metadata_json: String,
+    pub status: EvidenceStatus,
     pub coverage: Vec<EvidenceCoverageItem>,
     pub supporting_refs: Vec<StateRecordRef>,
     pub gap_refs: Vec<StateRecordRef>,
@@ -134,29 +134,18 @@ pub struct EvidenceObservationRecord {
     pub run_id: Option<String>,
     pub acceptance_criterion_id: Option<String>,
     pub evidence_claim_id: Option<String>,
-    pub source_kind: String,
-    pub assurance_level: String,
-    pub observed_by_actor_source: Option<String>,
+    pub source_kind: EvidenceSourceKind,
+    pub assurance_level: EvidenceAssuranceLevel,
+    pub observed_by_actor_source: Option<ActorSource>,
     pub tool_name: Option<String>,
     pub tool_invocation_id: Option<String>,
-    pub tool_metadata_json: String,
-    pub input_refs_json: String,
-    pub source_refs_json: String,
-    pub output_artifact_refs_json: String,
-    pub limitations_json: String,
-    pub observed_at: String,
-    pub recorded_at: String,
-    pub metadata_json: String,
-    pub source: EvidenceSourceKind,
-    pub assurance: EvidenceAssuranceLevel,
-    pub observed_by: Option<ActorSource>,
     pub tool_metadata: JsonObject,
     pub input_refs: Vec<StateRecordRef>,
     pub source_refs: Vec<SourceRef>,
     pub output_artifact_refs: Vec<ArtifactRef>,
     pub limitations: Vec<String>,
-    pub observed_time: UtcTimestamp,
-    pub recorded_time: UtcTimestamp,
+    pub observed_at: UtcTimestamp,
+    pub recorded_at: UtcTimestamp,
     pub metadata: PersistedEvidenceObservationAuthority,
 }
 
@@ -289,7 +278,7 @@ fn evidence_observation_refs_for_run(
     )?;
     let rows = statement.query_map(params![project_id, task_id, run_id], |row| {
         Ok(StoredRecordRef {
-            record_kind: "evidence_observation".to_owned(),
+            record_kind: StateRecordKind::EvidenceObservation,
             record_id: row.get(0)?,
             project_id: project_id.to_owned(),
             task_id: Some(task_id.to_owned()),
@@ -426,17 +415,19 @@ fn decode_evidence_summary_record(
         "metadata_json",
         &raw.metadata_json,
     )?;
+    let status = decode_owner_closed_value(
+        "evidence_summaries",
+        raw.evidence_summary_id.as_str(),
+        "status",
+        &raw.status,
+    )?;
     Ok(EvidenceSummaryRecord {
         project_id: raw.project_id,
         evidence_summary_id: raw.evidence_summary_id,
         task_id: raw.task_id,
         change_unit_id: raw.change_unit_id,
         produced_at_state_version: raw.produced_at_state_version,
-        status: raw.status,
-        coverage_json: raw.coverage_json,
-        supporting_refs_json: raw.supporting_refs_json,
-        gap_refs_json: raw.gap_refs_json,
-        metadata_json: raw.metadata_json,
+        status,
         coverage,
         supporting_refs,
         gap_refs,
@@ -503,15 +494,19 @@ fn decode_evidence_observation_record(
             column,
         )
     };
-    let source = serde_json::from_value::<EvidenceSourceKind>(serde_json::Value::String(
-        raw.source_kind.clone(),
-    ))
-    .map_err(|_| corrupt_value("source_kind"))?;
-    let assurance = serde_json::from_value::<EvidenceAssuranceLevel>(serde_json::Value::String(
-        raw.assurance_level.clone(),
-    ))
-    .map_err(|_| corrupt_value("assurance_level"))?;
-    let observed_by = raw
+    let source_kind = decode_owner_closed_value(
+        "evidence_observations",
+        raw.evidence_observation_id.as_str(),
+        "source_kind",
+        &raw.source_kind,
+    )?;
+    let assurance_level = decode_owner_closed_value(
+        "evidence_observations",
+        raw.evidence_observation_id.as_str(),
+        "assurance_level",
+        &raw.assurance_level,
+    )?;
+    let observed_by_actor_source = raw
         .observed_by_actor_source
         .as_deref()
         .map(str::parse)
@@ -554,9 +549,9 @@ fn decode_evidence_observation_record(
         "metadata_json",
         &raw.metadata_json,
     )?;
-    let observed_time =
+    let observed_at =
         UtcTimestamp::parse(&raw.observed_at).map_err(|_| corrupt_value("observed_at"))?;
-    let recorded_time =
+    let recorded_at =
         UtcTimestamp::parse(&raw.recorded_at).map_err(|_| corrupt_value("recorded_at"))?;
     Ok(EvidenceObservationRecord {
         project_id: raw.project_id,
@@ -566,46 +561,30 @@ fn decode_evidence_observation_record(
         run_id: raw.run_id,
         acceptance_criterion_id: raw.acceptance_criterion_id,
         evidence_claim_id: raw.evidence_claim_id,
-        source_kind: raw.source_kind,
-        assurance_level: raw.assurance_level,
-        observed_by_actor_source: raw.observed_by_actor_source,
+        source_kind,
+        assurance_level,
+        observed_by_actor_source,
         tool_name: raw.tool_name,
         tool_invocation_id: raw.tool_invocation_id,
-        tool_metadata_json: raw.tool_metadata_json,
-        input_refs_json: raw.input_refs_json,
-        source_refs_json: raw.source_refs_json,
-        output_artifact_refs_json: raw.output_artifact_refs_json,
-        limitations_json: raw.limitations_json,
-        observed_at: raw.observed_at,
-        recorded_at: raw.recorded_at,
-        metadata_json: raw.metadata_json,
-        source,
-        assurance,
-        observed_by,
         tool_metadata,
         input_refs,
         source_refs,
         output_artifact_refs,
         limitations,
-        observed_time,
-        recorded_time,
+        observed_at,
+        recorded_at,
         metadata,
     })
 }
 
-fn validate_evidence_capture_kind(field: &'static str, value: &str) -> StoreResult<()> {
-    if matches!(
-        value,
-        "verified_command_execution"
-            | "verified_tool_invocation"
-            | "registered_connection_observation"
-    ) {
-        Ok(())
-    } else {
-        Err(StoreError::schema_invariant(
-            "project_state",
-            format!("{field} is outside the evidence-capture value set"),
-        ))
+fn producer_kind_for_capture(capture: &EvidenceCaptureSpec) -> EvidenceProducerKind {
+    match capture {
+        EvidenceCaptureSpec::VerifiedCommandExecution { .. } => {
+            EvidenceProducerKind::VerifiedCommandExecution
+        }
+        EvidenceCaptureSpec::VerifiedToolInvocation { .. } => {
+            EvidenceProducerKind::VerifiedToolInvocation
+        }
     }
 }
 
@@ -646,48 +625,61 @@ impl MutationContext<'_> {
         )?;
         validate_identifier("task_id", &input.task_id)?;
         validate_identifier("change_unit_id", &input.change_unit_id)?;
-        validate_identifier("baseline_ref", &input.baseline_ref)?;
-        validate_evidence_capture_kind("capture_kind", &input.capture_kind)?;
+        validate_identifier("baseline_ref", input.baseline_ref.as_str())?;
         validate_artifact_sha256("input_sha256", &input.input_sha256)?;
         validate_identifier(
-            "requested_by_actor_source",
-            &input.requested_by_actor_source,
-        )?;
-        validate_identifier(
             "requesting_connection_internal_id",
-            &input.requesting_connection_internal_id,
+            input.requesting_connection_internal_id.as_str(),
         )?;
-        for (field, value) in [
-            ("target_json", input.target_json.as_str()),
-            ("capture_spec_json", input.capture_spec_json.as_str()),
-            (
-                "expected_outcome_json",
-                input.expected_outcome_json.as_str(),
-            ),
-            ("session_context_json", input.session_context_json.as_str()),
-            (
-                "workspace_context_json",
-                input.workspace_context_json.as_str(),
-            ),
-            ("metadata_json", input.metadata_json.as_str()),
-        ] {
-            validate_json_text(field, value)?;
+        if evidence_capture_input_sha256(&input.capture).map_err(|_| StoreError::InvalidInput {
+            detail: "capture could not provide its immutable input digest".to_owned(),
+        })? != input.input_sha256
+        {
+            return Err(StoreError::InvalidInput {
+                detail: "input_sha256 does not match the evidence capture".to_owned(),
+            });
         }
-        validate_evidence_capture_intent_window(&input.created_at, &input.expires_at).map_err(
-            |field| {
-                StoreError::schema_invariant(
-                    "project_state",
-                    match field {
-                        EvidenceCaptureIntentWindowError::CreatedAt => {
-                            "invalid capture-intent created_at"
-                        }
-                        EvidenceCaptureIntentWindowError::ExpiresAt => {
-                            "capture-intent expires_at must be exactly 15 minutes after created_at"
-                        }
-                    },
-                )
-            },
+        validate_evidence_capture_expected_outcome(&input.capture, &input.expected_outcome)
+            .map_err(|detail| StoreError::InvalidInput {
+                detail: format!("expected_outcome does not match the evidence capture: {detail}"),
+            })?;
+        let created_at = input.created_at.to_canonical_string();
+        let expires_at = input.expires_at.to_canonical_string();
+        validate_evidence_capture_intent_window(&created_at, &expires_at).map_err(|field| {
+            StoreError::schema_invariant(
+                "project_state",
+                match field {
+                    EvidenceCaptureIntentWindowError::CreatedAt => {
+                        "invalid capture-intent created_at"
+                    }
+                    EvidenceCaptureIntentWindowError::ExpiresAt => {
+                        "capture-intent expires_at must be exactly 15 minutes after created_at"
+                    }
+                },
+            )
+        })?;
+        let target_json =
+            encode_json_column("evidence_capture_intents.target_json", &input.target)?;
+        let capture_kind = encode_closed_value(
+            "evidence_capture_intents.capture_kind",
+            &producer_kind_for_capture(&input.capture),
         )?;
+        let capture_spec_json =
+            encode_json_column("evidence_capture_intents.capture_spec_json", &input.capture)?;
+        let expected_outcome_json = encode_json_column(
+            "evidence_capture_intents.expected_outcome_json",
+            &input.expected_outcome,
+        )?;
+        let session_context_json = encode_json_column(
+            "evidence_capture_intents.session_context_json",
+            &input.session_context,
+        )?;
+        let workspace_context_json = encode_json_column(
+            "evidence_capture_intents.workspace_context_json",
+            &input.workspace_context,
+        )?;
+        let metadata_json =
+            encode_json_column("evidence_capture_intents.metadata_json", &input.metadata)?;
 
         self.tx.execute(
             "INSERT INTO evidence_capture_intents (
@@ -722,19 +714,19 @@ impl MutationContext<'_> {
                     "evidence_capture_intents.scope_revision",
                     input.scope_revision
                 )?,
-                input.baseline_ref,
-                input.target_json,
-                input.capture_kind,
-                input.capture_spec_json,
+                input.baseline_ref.as_str(),
+                target_json,
+                capture_kind,
+                capture_spec_json,
                 input.input_sha256,
-                input.expected_outcome_json,
-                input.requested_by_actor_source,
-                input.requesting_connection_internal_id,
-                input.session_context_json,
-                input.workspace_context_json,
-                input.created_at,
-                input.expires_at,
-                input.metadata_json
+                expected_outcome_json,
+                input.requested_by_actor_source.to_canonical_string(),
+                input.requesting_connection_internal_id.as_str(),
+                session_context_json,
+                workspace_context_json,
+                created_at,
+                expires_at,
+                metadata_json
             ],
         )?;
         Ok(())
@@ -745,19 +737,30 @@ impl MutationContext<'_> {
         input: &EvidenceSummaryUpsert,
         committed_state_version: u64,
     ) -> StoreResult<()> {
+        let status = encode_closed_value("evidence_summaries.status", &input.status)?;
+        let coverage_json =
+            encode_json_column("evidence_summaries.coverage_json", &input.coverage)?;
+        let supporting_refs_json = encode_json_column(
+            "evidence_summaries.supporting_refs_json",
+            &input.supporting_refs,
+        )?;
+        let gap_refs_json =
+            encode_json_column("evidence_summaries.gap_refs_json", &input.gap_refs)?;
+        let metadata_json =
+            encode_json_column("evidence_summaries.metadata_json", &input.metadata)?;
         validate_identifier("evidence_summary_id", &input.evidence_summary_id)?;
         validate_identifier("task_id", &input.task_id)?;
         if let Some(change_unit_id) = &input.change_unit_id {
             validate_identifier("change_unit_id", change_unit_id)?;
         }
-        validate_identifier("evidence_summaries.status", &input.status)?;
-        validate_evidence_coverage_json("evidence_summaries.coverage_json", &input.coverage_json)?;
+        validate_identifier("evidence_summaries.status", &status)?;
+        validate_evidence_coverage_json("evidence_summaries.coverage_json", &coverage_json)?;
         validate_state_refs_json(
             "evidence_summaries.supporting_refs_json",
-            &input.supporting_refs_json,
+            &supporting_refs_json,
         )?;
-        validate_state_refs_json("evidence_summaries.gap_refs_json", &input.gap_refs_json)?;
-        validate_evidence_metadata_json("evidence_summaries.metadata_json", &input.metadata_json)?;
+        validate_state_refs_json("evidence_summaries.gap_refs_json", &gap_refs_json)?;
+        validate_evidence_metadata_json("evidence_summaries.metadata_json", &metadata_json)?;
         let produced_at_state_version = u64_to_i64(
             "evidence_summaries.produced_at_state_version",
             committed_state_version,
@@ -808,12 +811,12 @@ impl MutationContext<'_> {
                 input.task_id,
                 input.change_unit_id,
                 produced_at_state_version,
-                input.status,
-                input.coverage_json,
-                input.supporting_refs_json,
-                input.gap_refs_json,
+                status,
+                coverage_json,
+                supporting_refs_json,
+                gap_refs_json,
                 self.committed_at,
-                input.metadata_json
+                metadata_json
             ],
         )?;
         Ok(())
@@ -823,6 +826,34 @@ impl MutationContext<'_> {
         &mut self,
         input: &EvidenceObservationInsert,
     ) -> StoreResult<()> {
+        let source_kind =
+            encode_closed_value("evidence_observations.source_kind", &input.source_kind)?;
+        let assurance_level = encode_closed_value(
+            "evidence_observations.assurance_level",
+            &input.assurance_level,
+        )?;
+        let observed_by_actor_source = input
+            .observed_by_actor_source
+            .as_ref()
+            .map(ActorSource::to_canonical_string);
+        let tool_metadata_json = encode_json_column(
+            "evidence_observations.tool_metadata_json",
+            &input.tool_metadata,
+        )?;
+        let input_refs_json =
+            encode_json_column("evidence_observations.input_refs_json", &input.input_refs)?;
+        let source_refs_json =
+            encode_json_column("evidence_observations.source_refs_json", &input.source_refs)?;
+        let output_artifact_refs_json = encode_json_column(
+            "evidence_observations.output_artifact_refs_json",
+            &input.output_artifact_refs,
+        )?;
+        let limitations_json =
+            encode_json_column("evidence_observations.limitations_json", &input.limitations)?;
+        let observed_at = input.observed_at.to_string();
+        let recorded_at = input.recorded_at.to_string();
+        let metadata_json =
+            encode_json_column("evidence_observations.metadata_json", &input.metadata)?;
         validate_identifier("evidence_observation_id", &input.evidence_observation_id)?;
         validate_identifier("task_id", &input.task_id)?;
         if let Some(change_unit_id) = &input.change_unit_id {
@@ -837,12 +868,12 @@ impl MutationContext<'_> {
                 "evidence observation must select exactly one target identity",
             ));
         }
-        validate_evidence_source_kind("evidence_observations.source_kind", &input.source_kind)?;
+        validate_evidence_source_kind("evidence_observations.source_kind", &source_kind)?;
         validate_evidence_assurance_level(
             "evidence_observations.assurance_level",
-            &input.assurance_level,
+            &assurance_level,
         )?;
-        if let Some(actor_source) = &input.observed_by_actor_source {
+        if let Some(actor_source) = &observed_by_actor_source {
             validate_identifier("observed_by_actor_source", actor_source)?;
         }
         if let Some(tool_name) = &input.tool_name {
@@ -853,29 +884,20 @@ impl MutationContext<'_> {
         }
         validate_evidence_observation_tool_metadata_json(
             "evidence_observations.tool_metadata_json",
-            &input.tool_metadata_json,
+            &tool_metadata_json,
         )?;
-        validate_state_refs_json(
-            "evidence_observations.input_refs_json",
-            &input.input_refs_json,
-        )?;
-        validate_source_refs_json(
-            "evidence_observations.source_refs_json",
-            &input.source_refs_json,
-        )?;
+        validate_state_refs_json("evidence_observations.input_refs_json", &input_refs_json)?;
+        validate_source_refs_json("evidence_observations.source_refs_json", &source_refs_json)?;
         validate_artifact_refs_json(
             "evidence_observations.output_artifact_refs_json",
-            &input.output_artifact_refs_json,
+            &output_artifact_refs_json,
         )?;
-        validate_string_list_json(
-            "evidence_observations.limitations_json",
-            &input.limitations_json,
-        )?;
-        validate_timestamp("observed_at", &input.observed_at)?;
-        validate_timestamp("recorded_at", &input.recorded_at)?;
+        validate_string_list_json("evidence_observations.limitations_json", &limitations_json)?;
+        validate_timestamp("observed_at", &observed_at)?;
+        validate_timestamp("recorded_at", &recorded_at)?;
         validate_evidence_observation_metadata_json(
             "evidence_observations.metadata_json",
-            &input.metadata_json,
+            &metadata_json,
         )?;
 
         self.tx.execute(
@@ -931,19 +953,19 @@ impl MutationContext<'_> {
                 input.run_id,
                 input.acceptance_criterion_id,
                 input.evidence_claim_id,
-                input.source_kind,
-                input.assurance_level,
-                input.observed_by_actor_source,
+                source_kind,
+                assurance_level,
+                observed_by_actor_source,
                 input.tool_name,
                 input.tool_invocation_id,
-                input.tool_metadata_json,
-                input.input_refs_json,
-                input.source_refs_json,
-                input.output_artifact_refs_json,
-                input.limitations_json,
-                input.observed_at,
-                input.recorded_at,
-                input.metadata_json
+                tool_metadata_json,
+                input_refs_json,
+                source_refs_json,
+                output_artifact_refs_json,
+                limitations_json,
+                observed_at,
+                recorded_at,
+                metadata_json
             ],
         )?;
         Ok(())
@@ -972,13 +994,19 @@ impl MutationContext<'_> {
         ] {
             validate_identifier(field, value)?;
         }
-        validate_evidence_capture_kind("producer_kind", &input.producer_kind)?;
-        validate_json_text(
-            "evidence_producers.canonical_producer_json",
-            &input.canonical_producer_json,
-        )?;
-        validate_timestamp("created_at", &input.created_at)?;
-        validate_json_text("evidence_producers.metadata_json", &input.metadata_json)?;
+        let producer_kind =
+            encode_closed_value("evidence_producers.producer_kind", &input.producer_kind)?;
+        let canonical_producer_json =
+            canonical_json_string(&input.canonical_producer).map_err(|_| {
+                StoreError::InvalidInput {
+                    detail: "evidence_producers.canonical_producer_json could not be serialized"
+                        .to_owned(),
+                }
+            })?;
+        let created_at = input.created_at.to_canonical_string();
+        validate_timestamp("created_at", &created_at)?;
+        let metadata_json =
+            encode_json_column("evidence_producers.metadata_json", &input.metadata)?;
 
         self.tx.execute(
             "INSERT INTO evidence_producers (
@@ -1012,11 +1040,11 @@ impl MutationContext<'_> {
                 input.task_id,
                 input.change_unit_id,
                 u64_to_i64("evidence_producers.scope_revision", input.scope_revision)?,
-                input.baseline_ref,
-                input.producer_kind,
-                input.canonical_producer_json,
-                input.created_at,
-                input.metadata_json
+                input.baseline_ref.as_str(),
+                producer_kind,
+                canonical_producer_json,
+                created_at,
+                metadata_json
             ],
         )?;
         Ok(())

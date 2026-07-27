@@ -6,14 +6,20 @@ use volicord_types::schema::{
     UserActionResolutionBody,
 };
 use volicord_types::values::{
-    AcceptancePolicy, StateRecordKind, UserActionKind, UserActionRequiredFor, UtcTimestamp,
+    AcceptancePolicy, StateRecordKind, TaskLifecyclePhase, UserActionKind, UserActionRequiredFor,
+    UtcTimestamp,
 };
 use volicord_user_action_service::{accepted_current_user_authority, UserActionAuthority};
 
 use super::evidence::state_record_ref_identity_key;
 
-pub(crate) fn is_terminal_lifecycle(value: &str) -> bool {
-    matches!(value, "completed" | "cancelled" | "superseded")
+pub(crate) fn is_terminal_lifecycle(value: &TaskLifecyclePhase) -> bool {
+    matches!(
+        value,
+        TaskLifecyclePhase::Completed
+            | TaskLifecyclePhase::Cancelled
+            | TaskLifecyclePhase::Superseded
+    )
 }
 
 pub(crate) fn close_acceptance_policy_rank(policy: AcceptancePolicy) -> u8 {

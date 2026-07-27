@@ -2,18 +2,15 @@ use super::close_readiness::{
     facts_from_projection, facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
 use super::{
-    acceptance_policy_storage, active_acceptance_criteria_for_task,
-    allocate_acceptance_criterion_id, allocate_task_id, build_state_summary,
-    decision_rejected_response, decode_required_json, dry_run_summary,
+    active_acceptance_criteria_for_task, allocate_acceptance_criterion_id, allocate_task_id,
+    build_state_summary, decision_rejected_response, dry_run_summary,
     guarantee_display_for_invocation, initial_work_phase, mutation_method_policy,
     next_actions_for_state, normalize_display_text, normalize_source_refs,
-    normalize_source_refs_with_carried_artifact_task, object_from_value, parse_owner_storage_value,
-    parse_task_mode, plan_error_response, prepare_or_response, project_continuity_ref,
-    project_state_projection, projected_blocker_refs, projected_close_basis,
-    projected_evidence_summary_for_criteria, projected_write_ticket_summary,
-    resolve_requested_mode, state_ref, storage_value, task_lineage_relation_storage,
-    task_mode_storage, task_shaping_json, validation_rejected, work_phase_storage, MethodPlan,
-    PersistedTaskShaping, PlanError, StoredScope, SummaryBuild,
+    normalize_source_refs_with_carried_artifact_task, object_from_value, plan_error_response,
+    prepare_or_response, project_continuity_ref, project_state_projection, projected_blocker_refs,
+    projected_close_basis, projected_evidence_summary_for_criteria, projected_write_ticket_summary,
+    resolve_requested_mode, state_ref, validation_rejected, MethodPlan, PlanError, StoredScope,
+    SummaryBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -21,16 +18,17 @@ use crate::pipeline::{
 };
 use crate::policy::evidence::unique_state_record_refs;
 use crate::policy::workflow::{
-    acceptance_policy_for_control, effective_control_level, parse_requested_control_level,
-    project_workflow_policy, resolve_task_control_authority, ProjectWorkflowPolicy,
+    acceptance_policy_for_control, effective_control_level, project_workflow_policy,
+    resolve_task_control_authority, ProjectWorkflowPolicy,
 };
 use crate::policy::write_ticket::normalized_string_set;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     AcceptanceCriteriaReplace, AcceptanceCriterionUpsert, ChangeUnitRecord, CoreProjectStore,
-    CoreStorageMutation, ProjectStateHeader, TaskControlLevelUpdate, TaskInsert, TaskMutation,
-    TaskRecord, WriteTicketInvalidation, WriteTicketMutation,
+    CoreStorageMutation, ProjectStateHeader, TaskAutonomyBoundary, TaskControlLevelUpdate,
+    TaskInsert, TaskMutation, TaskRecord, TaskShapingFacts, WriteTicketInvalidation,
+    WriteTicketMutation,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{BaselineRef, TaskId};
@@ -41,8 +39,9 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     AcceptancePolicy, CarryForwardDispositionStatus, CarryForwardKind, MethodName,
-    RequestedControlLevel, ResumePolicy, StateRecordKind, TaskControlLevel, TaskLineageRelation,
-    TaskMode, UtcTimestamp, WriteTicketInvalidationReason,
+    PersistedCloseSummary, ProjectContinuityKind, ProjectContinuityStatus, RequestedControlLevel,
+    ResumePolicy, StateRecordKind, TaskControlLevel, TaskLifecyclePhase, TaskLineageRelation,
+    TaskMode, TaskResult, UtcTimestamp, WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::projected_pending_user_action_refs;
 
@@ -264,9 +263,7 @@ fn decide_intake_policy(
         let active = active_task
             .as_ref()
             .expect("active_task exists when resume selects an existing Task");
-        let requested_control_level =
-            parse_requested_control_level(&active.requested_control_level)
-                .map_err(CorePipelineError::from)?;
+        let requested_control_level = active.requested_control_level;
         let resolved_control = resolve_task_control_authority(active, &workflow_policy)
             .map_err(CorePipelineError::from)?;
         (
@@ -410,9 +407,9 @@ fn plan_intake_mutations(
         storage_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: task_id.as_str().to_owned(),
-                effective_control_level: effective_control_level.as_str().to_owned(),
+                effective_control_level,
                 control_level_reason: control_level_reason.clone(),
-                acceptance_policy: Some(acceptance_policy_storage(acceptance_policy).to_owned()),
+                acceptance_policy: Some(acceptance_policy),
                 acceptance_policy_reason: Some(acceptance_policy_reason.clone()),
             },
         )));
@@ -447,91 +444,85 @@ fn plan_intake_mutations(
     };
 
     let task_record = if create_new {
-        let mut shaping_summary = task_shaping_json(
-            Some(request.plain_language_request.clone()),
-            Some(request.initial_scope.boundary.clone()),
-            request.initial_scope.non_goals.clone(),
-            None,
-            None,
-            Some(serde_json::to_value(&request.initial_context_refs)?),
-        );
-        shaping_summary["initial_source_refs"] = serde_json::to_value(&initial_source_refs)?;
+        let mut shaping = TaskShapingFacts {
+            goal_summary: Some(request.plain_language_request.clone()),
+            scope_summary: Some(request.initial_scope.boundary.clone()),
+            non_goals: request.initial_scope.non_goals.clone(),
+            baseline_ref: None,
+            autonomy_boundary: None,
+            initial_context_refs: request.initial_context_refs.clone(),
+            initial_source_refs: initial_source_refs.clone(),
+        };
         if let Some(lineage) = planned_lineage.as_ref() {
             if let Some(baseline_ref) = lineage.carried_baseline_ref.as_ref() {
-                shaping_summary["baseline_ref"] = serde_json::to_value(baseline_ref)?;
+                shaping.baseline_ref = Some(baseline_ref.clone());
             }
         }
         let work_phase = initial_work_phase(mode);
         let task = TaskRecord {
             project_id: request.envelope.project_id.as_str().to_owned(),
             task_id: task_id.as_str().to_owned(),
-            mode: task_mode_storage(mode).to_owned(),
-            requested_control_level: requested_control_level.as_str().to_owned(),
-            effective_control_level: effective_control_level.as_str().to_owned(),
+            mode,
+            requested_control_level,
+            effective_control_level,
             control_level_reason: control_level_reason.clone(),
-            work_phase: work_phase_storage(work_phase).to_owned(),
-            acceptance_policy: acceptance_policy_storage(acceptance_policy).to_owned(),
+            work_phase,
+            acceptance_policy,
             acceptance_policy_reason: acceptance_policy_reason.clone(),
             predecessor_task_id: planned_lineage
                 .as_ref()
                 .map(|lineage| lineage.predecessor_task_id.clone()),
-            lineage_relation: planned_lineage
-                .as_ref()
-                .map(|lineage| task_lineage_relation_storage(lineage.relation).to_owned()),
+            lineage_relation: planned_lineage.as_ref().map(|lineage| lineage.relation),
             lineage_reason: planned_lineage
                 .as_ref()
                 .map(|lineage| lineage.creation_reason.clone()),
-            carry_forward_json: serde_json::to_string(
-                &planned_lineage
-                    .as_ref()
-                    .map(|lineage| lineage.dispositions.clone())
-                    .unwrap_or_default(),
-            )?,
-            lifecycle_phase: "shaping".to_owned(),
-            result: Some("none".to_owned()),
+            carry_forward: planned_lineage
+                .as_ref()
+                .map(|lineage| lineage.dispositions.clone())
+                .unwrap_or_default(),
+            lifecycle_phase: TaskLifecyclePhase::Shaping,
+            result: Some(TaskResult::None),
             title: Some(request.plain_language_request.clone()),
             summary: Some(request.plain_language_request.clone()),
-            shaping_summary_json: serde_json::to_string(&shaping_summary)?,
-            bounded_context_json: serde_json::to_string(&json!({
+            shaping,
+            bounded_context: object_from_value(json!({
                 "initial_context_refs": request.initial_context_refs,
                 "initial_source_refs": initial_source_refs
             }))?,
-            autonomy_boundary_json: serde_json::to_string(&json!({
-                "autonomy_boundary": Value::Null
-            }))?,
+            autonomy_boundary: TaskAutonomyBoundary {
+                autonomy_boundary: None,
+            },
             scope_revision: 0,
             close_basis_revision: 0,
-            close_basis_json: None,
-            close_summary_json: serde_json::to_string(&json!({
-                "close_reason": "none"
-            }))?,
+            close_basis: None,
+            close_summary: PersistedCloseSummary::default(),
             current_change_unit_id: None,
             closed_at: None,
-            metadata_json: "{}".to_owned(),
+            metadata: JsonObject::new(),
         };
         storage_mutations.push(CoreStorageMutation::Task(TaskMutation::insert(
             TaskInsert {
                 task_id: task.task_id.clone(),
-                created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
-                mode: task.mode.clone(),
-                requested_control_level: task.requested_control_level.clone(),
-                effective_control_level: task.effective_control_level.clone(),
+                created_by_actor_source: verified_invocation.actor_source.clone(),
+                mode: task.mode,
+                requested_control_level: task.requested_control_level,
+                effective_control_level: task.effective_control_level,
                 control_level_reason: task.control_level_reason.clone(),
-                work_phase: task.work_phase.clone(),
-                acceptance_policy: task.acceptance_policy.clone(),
+                work_phase: task.work_phase,
+                acceptance_policy: task.acceptance_policy,
                 acceptance_policy_reason: task.acceptance_policy_reason.clone(),
                 predecessor_task_id: task.predecessor_task_id.clone(),
-                lineage_relation: task.lineage_relation.clone(),
+                lineage_relation: task.lineage_relation,
                 lineage_reason: task.lineage_reason.clone(),
-                carry_forward_json: task.carry_forward_json.clone(),
-                lifecycle_phase: task.lifecycle_phase.clone(),
-                result: task.result.clone(),
+                carry_forward: task.carry_forward.clone(),
+                lifecycle_phase: task.lifecycle_phase,
+                result: task.result,
                 title: task.title.clone(),
                 summary: task.summary.clone(),
-                shaping_summary_json: task.shaping_summary_json.clone(),
-                bounded_context_json: task.bounded_context_json.clone(),
-                autonomy_boundary_json: task.autonomy_boundary_json.clone(),
-                close_summary_json: task.close_summary_json.clone(),
+                shaping: task.shaping.clone(),
+                bounded_context: task.bounded_context.clone(),
+                autonomy_boundary: task.autonomy_boundary.clone(),
+                close_summary: task.close_summary.clone(),
                 current_change_unit_id: None,
             },
         )));
@@ -547,8 +538,7 @@ fn plan_intake_mutations(
                             .as_str()
                             .to_owned(),
                         statement: criterion.statement.clone(),
-                        evidence_requirement: storage_value(criterion.evidence_requirement)
-                            .expect("EvidenceRequirement serialization should be infallible"),
+                        evidence_requirement: criterion.evidence_requirement,
                         position: position as u64,
                     })
                     .collect(),
@@ -560,9 +550,9 @@ fn plan_intake_mutations(
         task
     } else {
         let mut active = active_task.expect("active_task exists when create_new is false");
-        active.effective_control_level = effective_control_level.as_str().to_owned();
+        active.effective_control_level = effective_control_level;
         active.control_level_reason = control_level_reason;
-        active.acceptance_policy = acceptance_policy_storage(acceptance_policy).to_owned();
+        active.acceptance_policy = acceptance_policy;
         active.acceptance_policy_reason = acceptance_policy_reason;
         active
     };
@@ -688,7 +678,7 @@ fn project_intake_response(
         projected_blocker_refs(store, &task_id, planned_state_version)?
     };
     let next_actions = next_actions_for_state(
-        parse_task_mode(&task_record.mode)?,
+        task_record.mode,
         &task_ref,
         change_unit_ref.as_ref(),
         planned_state_version,
@@ -834,9 +824,9 @@ fn plan_task_lineage(
             )))
         })?;
     if lineage.relation == TaskLineageRelation::ImplementsAdviceFrom
-        && !(predecessor.mode == "advisor"
-            && predecessor.lifecycle_phase == "completed"
-            && predecessor.result.as_deref() == Some("advice_only"))
+        && !(predecessor.mode == TaskMode::Advisor
+            && predecessor.lifecycle_phase == TaskLifecyclePhase::Completed
+            && predecessor.result == Some(TaskResult::AdviceOnly))
     {
         return intake_validation_rejection(
             request.envelope.dry_run,
@@ -875,12 +865,7 @@ fn plan_task_lineage(
             .map(|record| {
                 Ok(AcceptanceCriterionInput {
                     statement: record.statement,
-                    evidence_requirement: parse_owner_storage_value(
-                        "acceptance_criteria",
-                        record.acceptance_criterion_id,
-                        "evidence_requirement",
-                        &record.evidence_requirement,
-                    )?,
+                    evidence_requirement: record.evidence_requirement,
                 })
             })
             .collect::<CoreResult<Vec<_>>>()?;
@@ -939,18 +924,8 @@ fn plan_task_lineage(
         }
     }
 
-    let shaping: PersistedTaskShaping = decode_required_json(
-        "tasks",
-        predecessor.task_id.clone(),
-        "shaping_summary_json",
-        Some(&predecessor.shaping_summary_json),
-    )?;
     if selected.contains(&CarryForwardKind::ContextRefs) {
-        let refs = shaping
-            .initial_context_refs
-            .map(serde_json::from_value::<Vec<StateRecordRef>>)
-            .transpose()?
-            .unwrap_or_default();
+        let refs = predecessor.shaping.initial_context_refs.clone();
         if refs.is_empty() {
             return intake_validation_rejection(
                 request.envelope.dry_run,
@@ -964,11 +939,7 @@ fn plan_task_lineage(
             unique_state_record_refs(request.initial_context_refs.clone());
     }
     let carried_source_refs = if selected.contains(&CarryForwardKind::SourceRefs) {
-        let refs = shaping
-            .initial_source_refs
-            .map(serde_json::from_value::<Vec<SourceRef>>)
-            .transpose()?
-            .unwrap_or_default();
+        let refs = predecessor.shaping.initial_source_refs.clone();
         if refs.is_empty() {
             return intake_validation_rejection(
                 request.envelope.dry_run,
@@ -1079,10 +1050,22 @@ fn reference_only_carry_sources(
     planned_state_version: u64,
 ) -> Result<BTreeMap<CarryForwardKind, Vec<StateRecordRef>>, PlanError> {
     let reference_only_kinds = [
-        (CarryForwardKind::UserDecisions, "decision"),
-        (CarryForwardKind::KnownLimitations, "known_limit"),
-        (CarryForwardKind::UnresolvedObligations, "obligation"),
-        (CarryForwardKind::ResidualRisks, "accepted_risk"),
+        (
+            CarryForwardKind::UserDecisions,
+            ProjectContinuityKind::Decision,
+        ),
+        (
+            CarryForwardKind::KnownLimitations,
+            ProjectContinuityKind::KnownLimit,
+        ),
+        (
+            CarryForwardKind::UnresolvedObligations,
+            ProjectContinuityKind::Obligation,
+        ),
+        (
+            CarryForwardKind::ResidualRisks,
+            ProjectContinuityKind::AcceptedRisk,
+        ),
     ];
     if !reference_only_kinds
         .iter()
@@ -1116,7 +1099,9 @@ fn reference_only_carry_sources(
         }
         let mut source_refs = continuity_records
             .iter()
-            .filter(|record| record.status == "active" && record.kind == continuity_kind)
+            .filter(|record| {
+                record.status == ProjectContinuityStatus::Active && record.kind == continuity_kind
+            })
             .map(|record| project_continuity_ref(record, planned_state_version))
             .collect::<Vec<_>>();
 

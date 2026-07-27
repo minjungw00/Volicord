@@ -133,13 +133,7 @@ fn user_action_resolution_replay_projection(
                 ),
             ));
         }
-        let source_refs = decode_required_json::<Vec<StateRecordRef>>(
-            "project_continuity_records",
-            record.continuity_record_id.clone(),
-            "source_refs_json",
-            Some(&record.source_refs_json),
-        )?;
-        if source_refs.first() == Some(&resolution_source_ref) {
+        if record.source_refs.first() == Some(&resolution_source_ref) {
             expected_derived_refs.push(state_ref(
                 StateRecordKind::ProjectContinuityRecord,
                 &record.continuity_record_id,

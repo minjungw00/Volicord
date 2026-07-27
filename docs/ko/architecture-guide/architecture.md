@@ -166,7 +166,9 @@ Store의 쓰기 가능 데이터베이스 open과 저수준 변경 helper는 cra
 identity, authority, lifecycle 해석, 구체화, 영속화 매핑, resolution, continuity
 파생, adapter-neutral projection과 summary를 담당합니다. 이 크레이트는 명시적인
 의미 구성 및 영속화 context를 받고 typed 서비스 오류와 fact를 반환하며, Core나
-어댑터에 의존하지 않고 Store와 공유 타입에만 의존합니다.
+어댑터에 의존하지 않고 Store와 공유 타입에만 의존합니다. Store 의존성은 집중된
+`UserActionStoreReader` typed 읽기 capability이며 물리 row와 직렬화된 값 표현은
+Store 내부에만 둡니다.
 
 `crates/volicord-core/src/methods/user_action.rs`,
 `user_action_read.rs`, `user_action_continuity.rs`는 invocation authority, 생성한

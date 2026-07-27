@@ -1029,7 +1029,7 @@ pub enum CloseReason {
 /// Every Task records an explicit close reason, including `none` while the
 /// Task is open. The remaining members are present only when their owning
 /// close workflow has produced them.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PersistedCloseSummary {
     pub close_reason: CloseReason,
@@ -1059,6 +1059,27 @@ pub struct PersistedCloseSummary {
     pub residual_risks: Vec<Value>,
     #[serde(default)]
     pub residual_risk_present: bool,
+}
+
+impl Default for PersistedCloseSummary {
+    fn default() -> Self {
+        Self {
+            close_reason: CloseReason::None,
+            closed_at: None,
+            intent: None,
+            user_note: None,
+            superseding_task_id: None,
+            required_sensitive_categories: Vec::new(),
+            sensitive_categories: Vec::new(),
+            baseline_stale: false,
+            baseline_status: None,
+            recovery_required: false,
+            visible_risks: Vec::new(),
+            residual_risk_visible: false,
+            residual_risks: Vec::new(),
+            residual_risk_present: false,
+        }
+    }
 }
 
 /// Task result values.

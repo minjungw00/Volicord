@@ -2,42 +2,56 @@ use super::canonical_choice;
 use crate::authority::user_action_authority_from_state;
 use crate::lifecycle::projected_user_action_lifecycle_phase;
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, ProjectStateHeader, StoredChangeUnitLifecycle, StoredChangeUnitWriteBasis,
-    TaskRecord,
+    ChangeUnitRecord, ChangeUnitStatus, ProjectStateHeader, StoredChangeUnitLifecycle,
+    StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis, TaskAutonomyBoundary, TaskRecord,
+    TaskShapingFacts,
 };
 use volicord_types::ids::{ProjectId, UserActionRequestId};
-use volicord_types::schema::{RequiredNullable, UserActionRequest};
-use volicord_types::values::{UserActionKind, UserActionStatus};
+use volicord_types::schema::{JsonObject, RequiredNullable, UserActionRequest};
+use volicord_types::values::{
+    AcceptancePolicy, PersistedCloseSummary, RequestedControlLevel, TaskControlLevel,
+    TaskLifecyclePhase, TaskMode, UserActionKind, UserActionStatus, WorkPhase,
+};
 
-fn task(lifecycle_phase: &str) -> TaskRecord {
+fn task(lifecycle_phase: TaskLifecyclePhase) -> TaskRecord {
     TaskRecord {
         project_id: "project-test".to_owned(),
         task_id: "task-test".to_owned(),
-        mode: "deliverable".to_owned(),
-        requested_control_level: "collaborative".to_owned(),
-        effective_control_level: "collaborative".to_owned(),
+        mode: TaskMode::Work,
+        requested_control_level: RequestedControlLevel::Tracked,
+        effective_control_level: TaskControlLevel::Tracked,
         control_level_reason: String::new(),
-        work_phase: "implementation".to_owned(),
-        acceptance_policy: "evidence_required".to_owned(),
+        work_phase: WorkPhase::Implementation,
+        acceptance_policy: AcceptancePolicy::Required,
         acceptance_policy_reason: String::new(),
         predecessor_task_id: None,
         lineage_relation: None,
         lineage_reason: None,
-        carry_forward_json: "{}".to_owned(),
-        lifecycle_phase: lifecycle_phase.to_owned(),
+        carry_forward: Vec::new(),
+        lifecycle_phase,
         result: None,
         title: None,
         summary: None,
-        shaping_summary_json: "{}".to_owned(),
-        bounded_context_json: "{}".to_owned(),
-        autonomy_boundary_json: "{}".to_owned(),
+        shaping: TaskShapingFacts {
+            goal_summary: None,
+            scope_summary: None,
+            non_goals: Vec::new(),
+            baseline_ref: None,
+            autonomy_boundary: None,
+            initial_context_refs: Vec::new(),
+            initial_source_refs: Vec::new(),
+        },
+        bounded_context: JsonObject::new(),
+        autonomy_boundary: TaskAutonomyBoundary {
+            autonomy_boundary: None,
+        },
         scope_revision: 3,
         close_basis_revision: 0,
-        close_basis_json: None,
-        close_summary_json: "{}".to_owned(),
+        close_basis: None,
+        close_summary: PersistedCloseSummary::default(),
         current_change_unit_id: Some("change-test".to_owned()),
         closed_at: None,
-        metadata_json: "{}".to_owned(),
+        metadata: JsonObject::new(),
     }
 }
 
@@ -46,14 +60,14 @@ fn change_unit() -> ChangeUnitRecord {
         project_id: "project-test".to_owned(),
         change_unit_id: "change-test".to_owned(),
         task_id: "task-test".to_owned(),
-        status: "current".to_owned(),
+        status: ChangeUnitStatus::Active,
         is_current: true,
         basis_state_version: 11,
-        scope_summary_json: "{}".to_owned(),
-        bounded_paths_json: "[]".to_owned(),
-        write_basis_json: "{}".to_owned(),
-        effect_contract_json: "{}".to_owned(),
-        lifecycle_json: "{}".to_owned(),
+        scope_summary: StoredChangeUnitScopeSummary {
+            scope_summary: None,
+            affected_areas: Vec::new(),
+            constraints: Vec::new(),
+        },
         bounded_paths: Vec::new(),
         write_basis: StoredChangeUnitWriteBasis {
             baseline_ref: None,
@@ -97,19 +111,19 @@ fn lifecycle_enters_and_leaves_waiting_user_from_current_authority() {
     assert_eq!(
         projected_user_action_lifecycle_phase(
             &project_state,
-            &task("ready"),
+            &task(TaskLifecyclePhase::Ready),
             Some(&change_unit),
             &[pending_authority()],
         ),
-        Some("waiting_user")
+        Some(TaskLifecyclePhase::WaitingUser)
     );
     assert_eq!(
         projected_user_action_lifecycle_phase(
             &project_state,
-            &task("waiting_user"),
+            &task(TaskLifecyclePhase::WaitingUser),
             Some(&change_unit),
             &[],
         ),
-        Some("ready")
+        Some(TaskLifecyclePhase::Ready)
     );
 }

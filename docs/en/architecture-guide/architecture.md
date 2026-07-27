@@ -177,6 +177,9 @@ materialization, persistence mapping, resolution, continuity derivation, and
 adapter-neutral projections and summaries. The crate accepts explicit semantic
 construction and persistence contexts, returns typed service errors and facts,
 and depends on Store and shared types without depending on Core or adapters.
+Its Store dependency is the focused `UserActionStoreReader` typed read
+capability; physical row and serialized-value representations remain private
+to Store.
 
 `crates/volicord-core/src/methods/user_action.rs`,
 `user_action_read.rs`, and `user_action_continuity.rs` own request

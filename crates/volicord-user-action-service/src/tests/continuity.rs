@@ -1,7 +1,10 @@
 use crate::{derive_user_action_continuity, UserActionContinuityInput, UserActionUnavailable};
 use volicord_types::{
     ids::{ProjectId, UserActionOptionId},
-    schema::{RequiredNullable, StateRecordRef, UserActionResolutionBody},
+    schema::{
+        PersistedProjectContinuityMetadata, PersistedProjectContinuitySource, RequiredNullable,
+        StateRecordRef, UserActionResolutionBody,
+    },
     values::{
         JudgmentResolutionOutcome, ProjectContinuityKind, StateRecordKind, UserActionOptionAction,
     },
@@ -38,6 +41,15 @@ fn accepted_product_decision_derives_semantic_continuity() {
     assert_eq!(drafts[0].title, "Product decision: Keep");
     assert_eq!(drafts[0].rationale, None);
     assert_eq!(drafts[0].source_refs.first(), Some(&resolution_ref));
+    assert_eq!(
+        drafts[0].metadata,
+        PersistedProjectContinuityMetadata::ResolveUserActionDecision {
+            source: PersistedProjectContinuitySource::ResolveUserAction,
+            action_kind: constructed.body.action_kind(),
+            resolution_outcome: JudgmentResolutionOutcome::Accepted,
+            selected_option_id: UserActionOptionId::new("keep"),
+        }
+    );
 }
 
 #[test]

@@ -1,8 +1,13 @@
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use volicord_types::{
-    ids::TaskId,
-    schema::CurrentCloseBasis,
-    values::{PersistedCloseSummary, UtcTimestamp},
+    ids::{BaselineRef, TaskId},
+    schema::{CarryForwardDisposition, CurrentCloseBasis, JsonObject, SourceRef, StateRecordRef},
+    values::{
+        AcceptancePolicy, ActorSource, EvidenceRequirement, PersistedCloseSummary,
+        RequestedControlLevel, TaskControlLevel, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
+        TaskResult, UtcTimestamp, WorkPhase,
+    },
 };
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
@@ -29,7 +34,7 @@ const TASK_REVISION_COLUMNS: &str = "
     project_id, task_id, scope_revision, close_basis_revision, close_basis_json";
 
 /// Task and acceptance mutation applied inside one Core commit transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TaskMutation {
     Insert(Box<TaskInsert>),
     SetActive { task_id: String },
@@ -43,54 +48,54 @@ pub enum TaskMutation {
 }
 
 /// Storage input for inserting a Task current row.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaskInsert {
     pub task_id: String,
-    pub created_by_actor_source: String,
-    pub mode: String,
-    pub requested_control_level: String,
-    pub effective_control_level: String,
+    pub created_by_actor_source: ActorSource,
+    pub mode: TaskMode,
+    pub requested_control_level: RequestedControlLevel,
+    pub effective_control_level: TaskControlLevel,
     pub control_level_reason: String,
-    pub work_phase: String,
-    pub acceptance_policy: String,
+    pub work_phase: WorkPhase,
+    pub acceptance_policy: AcceptancePolicy,
     pub acceptance_policy_reason: String,
     pub predecessor_task_id: Option<String>,
-    pub lineage_relation: Option<String>,
+    pub lineage_relation: Option<TaskLineageRelation>,
     pub lineage_reason: Option<String>,
-    pub carry_forward_json: String,
-    pub lifecycle_phase: String,
-    pub result: Option<String>,
+    pub carry_forward: Vec<CarryForwardDisposition>,
+    pub lifecycle_phase: TaskLifecyclePhase,
+    pub result: Option<TaskResult>,
     pub title: Option<String>,
     pub summary: Option<String>,
-    pub shaping_summary_json: String,
-    pub bounded_context_json: String,
-    pub autonomy_boundary_json: String,
-    pub close_summary_json: String,
+    pub shaping: TaskShapingFacts,
+    pub bounded_context: JsonObject,
+    pub autonomy_boundary: TaskAutonomyBoundary,
+    pub close_summary: PersistedCloseSummary,
     pub current_change_unit_id: Option<String>,
 }
 
 /// Storage input for updating Task scope-shaped current fields.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaskScopeUpdate {
     pub task_id: String,
-    pub work_phase: Option<String>,
-    pub lifecycle_phase: Option<String>,
-    pub result: Option<String>,
+    pub work_phase: Option<WorkPhase>,
+    pub lifecycle_phase: Option<TaskLifecyclePhase>,
+    pub result: Option<TaskResult>,
     pub title: Option<String>,
     pub summary: Option<String>,
-    pub shaping_summary_json: Option<String>,
-    pub bounded_context_json: Option<String>,
-    pub autonomy_boundary_json: Option<String>,
-    pub close_summary_json: Option<String>,
+    pub shaping: Option<TaskShapingFacts>,
+    pub bounded_context: Option<JsonObject>,
+    pub autonomy_boundary: Option<TaskAutonomyBoundary>,
+    pub close_summary: Option<PersistedCloseSummary>,
 }
 
 /// Storage input for an upward-only Task control transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskControlLevelUpdate {
     pub task_id: String,
-    pub effective_control_level: String,
+    pub effective_control_level: TaskControlLevel,
     pub control_level_reason: String,
-    pub acceptance_policy: Option<String>,
+    pub acceptance_policy: Option<AcceptancePolicy>,
     pub acceptance_policy_reason: Option<String>,
 }
 
@@ -99,7 +104,7 @@ pub struct TaskControlLevelUpdate {
 pub struct AcceptanceCriterionUpsert {
     pub acceptance_criterion_id: String,
     pub statement: String,
-    pub evidence_requirement: String,
+    pub evidence_requirement: EvidenceRequirement,
     pub position: u64,
 }
 
@@ -118,21 +123,21 @@ pub struct TaskScopeRevisionUpdate {
 }
 
 /// Storage input for atomically replacing a Task close-basis coordinate and JSON.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaskCloseBasisUpdate {
     pub task_id: String,
     pub close_basis_revision: u64,
-    pub close_basis_json: Option<String>,
+    pub close_basis: Option<CurrentCloseBasis>,
 }
 
 /// Storage input for applying one terminal Task close transition.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaskCloseUpdate {
     pub task_id: String,
-    pub lifecycle_phase: String,
-    pub result: String,
-    pub close_summary_json: String,
-    pub closed_at: String,
+    pub lifecycle_phase: TaskLifecyclePhase,
+    pub result: TaskResult,
+    pub close_summary: PersistedCloseSummary,
+    pub closed_at: UtcTimestamp,
 }
 
 impl TaskMutation {
@@ -157,35 +162,69 @@ impl TaskMutation {
 }
 
 /// Current Task row data needed by Core method implementations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaskRecord {
     pub project_id: String,
     pub task_id: String,
-    pub mode: String,
-    pub requested_control_level: String,
-    pub effective_control_level: String,
+    pub mode: TaskMode,
+    pub requested_control_level: RequestedControlLevel,
+    pub effective_control_level: TaskControlLevel,
     pub control_level_reason: String,
-    pub work_phase: String,
-    pub acceptance_policy: String,
+    pub work_phase: WorkPhase,
+    pub acceptance_policy: AcceptancePolicy,
     pub acceptance_policy_reason: String,
     pub predecessor_task_id: Option<String>,
-    pub lineage_relation: Option<String>,
+    pub lineage_relation: Option<TaskLineageRelation>,
     pub lineage_reason: Option<String>,
-    pub carry_forward_json: String,
-    pub lifecycle_phase: String,
-    pub result: Option<String>,
+    pub carry_forward: Vec<CarryForwardDisposition>,
+    pub lifecycle_phase: TaskLifecyclePhase,
+    pub result: Option<TaskResult>,
     pub title: Option<String>,
     pub summary: Option<String>,
-    pub shaping_summary_json: String,
-    pub bounded_context_json: String,
-    pub autonomy_boundary_json: String,
+    pub shaping: TaskShapingFacts,
+    pub bounded_context: JsonObject,
+    pub autonomy_boundary: TaskAutonomyBoundary,
     pub scope_revision: u64,
     pub close_basis_revision: u64,
-    pub close_basis_json: Option<String>,
-    pub close_summary_json: String,
+    pub close_basis: Option<CurrentCloseBasis>,
+    pub close_summary: PersistedCloseSummary,
     pub current_change_unit_id: Option<String>,
-    pub closed_at: Option<String>,
-    pub metadata_json: String,
+    pub closed_at: Option<UtcTimestamp>,
+    pub metadata: JsonObject,
+}
+
+/// Strictly decoded Task shaping facts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskShapingFacts {
+    #[serde(default)]
+    pub goal_summary: Option<String>,
+    #[serde(default)]
+    pub scope_summary: Option<String>,
+    #[serde(default)]
+    pub non_goals: Vec<String>,
+    #[serde(default)]
+    pub baseline_ref: Option<BaselineRef>,
+    #[serde(default)]
+    pub autonomy_boundary: Option<String>,
+    #[serde(default)]
+    pub initial_context_refs: Vec<StateRecordRef>,
+    #[serde(default)]
+    pub initial_source_refs: Vec<SourceRef>,
+}
+
+/// Strictly decoded Task autonomy-boundary facts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskAutonomyBoundary {
+    #[serde(default)]
+    pub autonomy_boundary: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcceptanceCriterionStatus {
+    Active,
+    Retired,
 }
 
 /// Canonical acceptance criterion row.
@@ -195,9 +234,9 @@ pub struct AcceptanceCriterionRecord {
     pub acceptance_criterion_id: String,
     pub task_id: String,
     pub statement: String,
-    pub evidence_requirement: String,
+    pub evidence_requirement: EvidenceRequirement,
     pub position: u64,
-    pub status: String,
+    pub status: AcceptanceCriterionStatus,
 }
 
 /// Canonical Task-scoped supplemental evidence claim row.
@@ -209,6 +248,17 @@ pub struct EvidenceClaimRecord {
     pub statement: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AcceptanceCriterionRow {
+    project_id: String,
+    acceptance_criterion_id: String,
+    task_id: String,
+    statement: String,
+    evidence_requirement: String,
+    position: u64,
+    status: String,
+}
+
 /// Current Task revision coordinates and optional strict-decoded close basis.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskRevisionRecord {
@@ -216,8 +266,38 @@ pub struct TaskRevisionRecord {
     pub task_id: String,
     pub scope_revision: u64,
     pub close_basis_revision: u64,
-    pub close_basis_json: Option<String>,
     pub current_close_basis: Option<CurrentCloseBasis>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskRecordRow {
+    project_id: String,
+    task_id: String,
+    mode: String,
+    requested_control_level: String,
+    effective_control_level: String,
+    control_level_reason: String,
+    work_phase: String,
+    acceptance_policy: String,
+    acceptance_policy_reason: String,
+    predecessor_task_id: Option<String>,
+    lineage_relation: Option<String>,
+    lineage_reason: Option<String>,
+    carry_forward_json: String,
+    lifecycle_phase: String,
+    result: Option<String>,
+    title: Option<String>,
+    summary: Option<String>,
+    shaping_summary_json: String,
+    bounded_context_json: String,
+    autonomy_boundary_json: String,
+    scope_revision: u64,
+    close_basis_revision: u64,
+    close_basis_json: Option<String>,
+    close_summary_json: String,
+    current_change_unit_id: Option<String>,
+    closed_at: Option<String>,
+    metadata_json: String,
 }
 
 impl CoreProjectStore<'_> {
@@ -372,8 +452,8 @@ fn task_records(conn: &Connection, project_id: &str) -> StoreResult<Vec<TaskReco
         .collect()
 }
 
-fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord> {
-    Ok(TaskRecord {
+fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecordRow> {
+    Ok(TaskRecordRow {
         project_id: row.get(0)?,
         task_id: row.get(1)?,
         mode: row.get(2)?,
@@ -404,11 +484,124 @@ fn task_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord>
     })
 }
 
-fn validate_decoded_task_record(record: TaskRecord) -> StoreResult<TaskRecord> {
-    serde_json::from_str::<PersistedCloseSummary>(&record.close_summary_json).map_err(|_| {
-        StoreError::corrupt_owner_state_json("tasks", record.task_id.clone(), "close_summary_json")
-    })?;
-    Ok(record)
+fn validate_decoded_task_record(row: TaskRecordRow) -> StoreResult<TaskRecord> {
+    let record_id = row.task_id.clone();
+    let mode: TaskMode = decode_owner_closed_value("tasks", record_id.clone(), "mode", &row.mode)?;
+    let requested_control_level: RequestedControlLevel = decode_owner_closed_value(
+        "tasks",
+        record_id.clone(),
+        "requested_control_level",
+        &row.requested_control_level,
+    )?;
+    let effective_control_level: TaskControlLevel = decode_owner_closed_value(
+        "tasks",
+        record_id.clone(),
+        "effective_control_level",
+        &row.effective_control_level,
+    )?;
+    let work_phase: WorkPhase =
+        decode_owner_closed_value("tasks", record_id.clone(), "work_phase", &row.work_phase)?;
+    let acceptance_policy: AcceptancePolicy = decode_owner_closed_value(
+        "tasks",
+        record_id.clone(),
+        "acceptance_policy",
+        &row.acceptance_policy,
+    )?;
+    let lineage_relation = row
+        .lineage_relation
+        .as_deref()
+        .map(|value| {
+            decode_owner_closed_value::<TaskLineageRelation>(
+                "tasks",
+                record_id.clone(),
+                "lineage_relation",
+                value,
+            )
+        })
+        .transpose()?;
+    let lifecycle_phase: TaskLifecyclePhase = decode_owner_closed_value(
+        "tasks",
+        record_id.clone(),
+        "lifecycle_phase",
+        &row.lifecycle_phase,
+    )?;
+    let result = row
+        .result
+        .as_deref()
+        .map(|value| {
+            decode_owner_closed_value::<TaskResult>("tasks", record_id.clone(), "result", value)
+        })
+        .transpose()?;
+    let carry_forward = decode_owner_json_text(
+        "tasks",
+        record_id.clone(),
+        "carry_forward_json",
+        &row.carry_forward_json,
+    )?;
+    let shaping = decode_owner_json_text(
+        "tasks",
+        record_id.clone(),
+        "shaping_summary_json",
+        &row.shaping_summary_json,
+    )?;
+    let bounded_context = decode_owner_json_text(
+        "tasks",
+        record_id.clone(),
+        "bounded_context_json",
+        &row.bounded_context_json,
+    )?;
+    let autonomy_boundary = decode_owner_json_text(
+        "tasks",
+        record_id.clone(),
+        "autonomy_boundary_json",
+        &row.autonomy_boundary_json,
+    )?;
+    let close_basis =
+        decode_current_close_basis_column(&record_id, row.close_basis_json.as_deref())?;
+    let close_summary = decode_owner_json_text(
+        "tasks",
+        record_id.clone(),
+        "close_summary_json",
+        &row.close_summary_json,
+    )?;
+    let closed_at = row
+        .closed_at
+        .as_deref()
+        .map(UtcTimestamp::parse)
+        .transpose()
+        .map_err(|_| {
+            StoreError::corrupt_owner_state_value("tasks", record_id.clone(), "closed_at")
+        })?;
+    let metadata = decode_owner_json_text("tasks", record_id, "metadata_json", &row.metadata_json)?;
+    Ok(TaskRecord {
+        project_id: row.project_id,
+        task_id: row.task_id,
+        mode,
+        requested_control_level,
+        effective_control_level,
+        control_level_reason: row.control_level_reason,
+        work_phase,
+        acceptance_policy,
+        acceptance_policy_reason: row.acceptance_policy_reason,
+        predecessor_task_id: row.predecessor_task_id,
+        lineage_relation,
+        lineage_reason: row.lineage_reason,
+        carry_forward,
+        lifecycle_phase,
+        result,
+        title: row.title,
+        summary: row.summary,
+        shaping,
+        bounded_context,
+        autonomy_boundary,
+        scope_revision: row.scope_revision,
+        close_basis_revision: row.close_basis_revision,
+        close_basis,
+        close_summary,
+        current_change_unit_id: row.current_change_unit_id,
+        closed_at,
+        metadata,
+    })
 }
 
 fn active_acceptance_criteria(
@@ -425,12 +618,14 @@ fn active_acceptance_criteria(
           ORDER BY position, acceptance_criterion_id"
     );
     let mut statement = conn.prepare(&sql)?;
-    let rows = statement.query_map(
-        params![project_id, task_id],
-        acceptance_criterion_record_from_row,
-    )?;
+    let rows = statement.query_map(params![project_id, task_id], acceptance_criterion_row)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(StoreError::from)
+        .and_then(|rows| {
+            rows.into_iter()
+                .map(decode_acceptance_criterion_record)
+                .collect()
+        })
 }
 
 fn acceptance_criterion_record(
@@ -447,16 +642,16 @@ fn acceptance_criterion_record(
     conn.query_row(
         &sql,
         params![project_id, acceptance_criterion_id],
-        acceptance_criterion_record_from_row,
+        acceptance_criterion_row,
     )
     .optional()
-    .map_err(StoreError::from)
+    .map_err(StoreError::from)?
+    .map(decode_acceptance_criterion_record)
+    .transpose()
 }
 
-fn acceptance_criterion_record_from_row(
-    row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<AcceptanceCriterionRecord> {
-    Ok(AcceptanceCriterionRecord {
+fn acceptance_criterion_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AcceptanceCriterionRow> {
+    Ok(AcceptanceCriterionRow {
         project_id: row.get(0)?,
         acceptance_criterion_id: row.get(1)?,
         task_id: row.get(2)?,
@@ -464,6 +659,38 @@ fn acceptance_criterion_record_from_row(
         evidence_requirement: row.get(4)?,
         position: nonnegative_i64_to_u64("acceptance_criteria.position", row.get(5)?)?,
         status: row.get(6)?,
+    })
+}
+
+fn decode_acceptance_criterion_record(
+    row: AcceptanceCriterionRow,
+) -> StoreResult<AcceptanceCriterionRecord> {
+    let acceptance_criterion_id = row.acceptance_criterion_id;
+    let evidence_requirement = decode_owner_closed_value(
+        "acceptance_criteria",
+        acceptance_criterion_id.clone(),
+        "evidence_requirement",
+        &row.evidence_requirement,
+    )?;
+    let status = match row.status.as_str() {
+        "active" => AcceptanceCriterionStatus::Active,
+        "retired" => AcceptanceCriterionStatus::Retired,
+        _ => {
+            return Err(StoreError::corrupt_owner_state_value(
+                "acceptance_criteria",
+                acceptance_criterion_id,
+                "status",
+            ))
+        }
+    };
+    Ok(AcceptanceCriterionRecord {
+        project_id: row.project_id,
+        acceptance_criterion_id,
+        task_id: row.task_id,
+        statement: row.statement,
+        evidence_requirement,
+        position: row.position,
+        status,
     })
 }
 
@@ -536,80 +763,75 @@ fn task_revision_record(
             close_basis_revision,
         )
         .map_err(StoreError::from)?,
-        close_basis_json,
         current_close_basis,
     }))
 }
 
-fn task_control_level_rank(value: &str) -> StoreResult<u8> {
+fn task_control_level_rank(value: TaskControlLevel) -> u8 {
     match value {
-        "observe" => Ok(0),
-        "light" => Ok(1),
-        "tracked" => Ok(2),
-        "sensitive" => Ok(3),
-        _ => Err(StoreError::InvalidInput {
-            detail: "effective_control_level is not supported".to_owned(),
-        }),
+        TaskControlLevel::Observe => 0,
+        TaskControlLevel::Light => 1,
+        TaskControlLevel::Tracked => 2,
+        TaskControlLevel::Sensitive => 3,
     }
 }
 
-fn acceptance_policy_rank(value: &str) -> StoreResult<u8> {
+fn acceptance_policy_rank(value: AcceptancePolicy) -> u8 {
     match value {
-        "not_required" => Ok(0),
-        "policy_dependent" => Ok(1),
-        "required" => Ok(2),
-        _ => Err(StoreError::InvalidInput {
-            detail: "acceptance_policy is not supported".to_owned(),
-        }),
+        AcceptancePolicy::NotRequired => 0,
+        AcceptancePolicy::PolicyDependent => 1,
+        AcceptancePolicy::Required => 2,
     }
 }
 
 impl MutationContext<'_> {
     fn insert_task(&mut self, input: &TaskInsert) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        validate_identifier("created_by_actor_source", &input.created_by_actor_source)?;
-        validate_identifier("mode", &input.mode)?;
-        if !matches!(
-            input.requested_control_level.as_str(),
-            "auto" | "observe" | "light" | "tracked" | "sensitive"
-        ) {
-            return Err(StoreError::InvalidInput {
-                detail: "requested_control_level is not supported".to_owned(),
-            });
-        }
-        if !matches!(
-            input.effective_control_level.as_str(),
-            "observe" | "light" | "tracked" | "sensitive"
-        ) {
-            return Err(StoreError::InvalidInput {
-                detail: "effective_control_level is not supported".to_owned(),
-            });
-        }
         if input.control_level_reason.trim().is_empty() {
             return Err(StoreError::InvalidInput {
                 detail: "control_level_reason must not be empty".to_owned(),
             });
         }
-        validate_identifier("work_phase", &input.work_phase)?;
-        validate_identifier("acceptance_policy", &input.acceptance_policy)?;
         if input.acceptance_policy_reason.trim().is_empty() {
             return Err(StoreError::schema_invariant(
                 "project_state",
                 "Task acceptance policy reason must not be empty",
             ));
         }
-        validate_json_text("tasks.carry_forward_json", &input.carry_forward_json)?;
-        validate_identifier("lifecycle_phase", &input.lifecycle_phase)?;
-        validate_json_text("tasks.shaping_summary_json", &input.shaping_summary_json)?;
-        validate_json_text("tasks.bounded_context_json", &input.bounded_context_json)?;
-        validate_json_text(
-            "tasks.autonomy_boundary_json",
-            &input.autonomy_boundary_json,
+        let created_by_actor_source = input.created_by_actor_source.to_canonical_string();
+        let mode = encode_closed_value("tasks.mode", &input.mode)?;
+        let requested_control_level = encode_closed_value(
+            "tasks.requested_control_level",
+            &input.requested_control_level,
         )?;
-        validate_persisted_close_summary_json(
-            "tasks.close_summary_json",
-            &input.close_summary_json,
+        let effective_control_level = encode_closed_value(
+            "tasks.effective_control_level",
+            &input.effective_control_level,
         )?;
+        let work_phase = encode_closed_value("tasks.work_phase", &input.work_phase)?;
+        let acceptance_policy =
+            encode_closed_value("tasks.acceptance_policy", &input.acceptance_policy)?;
+        let lineage_relation = input
+            .lineage_relation
+            .as_ref()
+            .map(|value| encode_closed_value("tasks.lineage_relation", value))
+            .transpose()?;
+        let carry_forward_json =
+            encode_json_column("tasks.carry_forward_json", &input.carry_forward)?;
+        let lifecycle_phase = encode_closed_value("tasks.lifecycle_phase", &input.lifecycle_phase)?;
+        let result = input
+            .result
+            .as_ref()
+            .map(|value| encode_closed_value("tasks.result", value))
+            .transpose()?;
+        let shaping_summary_json =
+            encode_json_column("tasks.shaping_summary_json", &input.shaping)?;
+        let bounded_context_json =
+            encode_json_column("tasks.bounded_context_json", &input.bounded_context)?;
+        let autonomy_boundary_json =
+            encode_json_column("tasks.autonomy_boundary_json", &input.autonomy_boundary)?;
+        let close_summary_json =
+            encode_json_column("tasks.close_summary_json", &input.close_summary)?;
         self.tx.execute(
             "INSERT INTO tasks (
                 project_id,
@@ -652,26 +874,26 @@ impl MutationContext<'_> {
             params![
                 self.project_id,
                 input.task_id,
-                input.created_by_actor_source,
-                input.mode,
-                input.requested_control_level,
-                input.effective_control_level,
+                created_by_actor_source,
+                mode,
+                requested_control_level,
+                effective_control_level,
                 input.control_level_reason,
-                input.work_phase,
-                input.acceptance_policy,
+                work_phase,
+                acceptance_policy,
                 input.acceptance_policy_reason,
                 input.predecessor_task_id,
-                input.lineage_relation,
+                lineage_relation,
                 input.lineage_reason,
-                input.carry_forward_json,
-                input.lifecycle_phase,
-                input.result,
+                carry_forward_json,
+                lifecycle_phase,
+                result,
                 input.title,
                 input.summary,
-                input.shaping_summary_json,
-                input.bounded_context_json,
-                input.autonomy_boundary_json,
-                input.close_summary_json,
+                shaping_summary_json,
+                bounded_context_json,
+                autonomy_boundary_json,
+                close_summary_json,
                 input.current_change_unit_id,
                 self.committed_at
             ],
@@ -681,19 +903,19 @@ impl MutationContext<'_> {
 
     fn update_task_control_level(&mut self, input: &TaskControlLevelUpdate) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        let requested_rank = task_control_level_rank(&input.effective_control_level)?;
+        let requested_rank = task_control_level_rank(input.effective_control_level);
         if input.control_level_reason.trim().is_empty() {
             return Err(StoreError::InvalidInput {
                 detail: "control_level_reason must not be empty".to_owned(),
             });
         }
         let acceptance_update = match (
-            input.acceptance_policy.as_deref(),
+            input.acceptance_policy,
             input.acceptance_policy_reason.as_deref(),
         ) {
             (None, None) => None,
             (Some(policy), Some(reason)) if !reason.trim().is_empty() => {
-                Some((policy, reason, acceptance_policy_rank(policy)?))
+                Some((policy, reason, acceptance_policy_rank(policy)))
             }
             _ => {
                 return Err(StoreError::InvalidInput {
@@ -722,7 +944,19 @@ impl MutationContext<'_> {
                 entity: "task",
                 id: input.task_id.clone(),
             })?;
-        if requested_rank < task_control_level_rank(&current_level)? {
+        let current_level: TaskControlLevel = decode_owner_closed_value(
+            "tasks",
+            input.task_id.clone(),
+            "effective_control_level",
+            &current_level,
+        )?;
+        let current_acceptance_policy: AcceptancePolicy = decode_owner_closed_value(
+            "tasks",
+            input.task_id.clone(),
+            "acceptance_policy",
+            &current_acceptance_policy,
+        )?;
+        if requested_rank < task_control_level_rank(current_level) {
             return Err(StoreError::Conflict {
                 entity: "task",
                 id: input.task_id.clone(),
@@ -730,7 +964,7 @@ impl MutationContext<'_> {
             });
         }
         if let Some((_, _, requested_acceptance_rank)) = &acceptance_update {
-            if *requested_acceptance_rank < acceptance_policy_rank(&current_acceptance_policy)? {
+            if *requested_acceptance_rank < acceptance_policy_rank(current_acceptance_policy) {
                 return Err(StoreError::Conflict {
                     entity: "task",
                     id: input.task_id.clone(),
@@ -741,11 +975,23 @@ impl MutationContext<'_> {
         let (acceptance_policy, acceptance_policy_reason) = acceptance_update
             .map(|(policy, reason, _)| (Some(policy), Some(reason)))
             .unwrap_or((None, None));
+        let effective_control_level = encode_closed_value(
+            "tasks.effective_control_level",
+            &input.effective_control_level,
+        )?;
+        let acceptance_policy_text = acceptance_policy
+            .as_ref()
+            .map(|value| encode_closed_value("tasks.acceptance_policy", value))
+            .transpose()?;
+        let current_acceptance_policy_text =
+            encode_closed_value("tasks.acceptance_policy", &current_acceptance_policy)?;
         let metadata_json = clear_satisfied_task_policy_reevaluation(
             &metadata_json,
             &input.task_id,
-            &input.effective_control_level,
-            acceptance_policy.unwrap_or(&current_acceptance_policy),
+            &effective_control_level,
+            acceptance_policy_text
+                .as_deref()
+                .unwrap_or(&current_acceptance_policy_text),
         )?;
         self.tx.execute(
             "UPDATE tasks
@@ -760,9 +1006,9 @@ impl MutationContext<'_> {
             params![
                 self.project_id,
                 input.task_id,
-                input.effective_control_level,
+                effective_control_level,
                 input.control_level_reason,
-                acceptance_policy,
+                acceptance_policy_text,
                 acceptance_policy_reason,
                 metadata_json,
                 self.committed_at
@@ -807,13 +1053,11 @@ impl MutationContext<'_> {
 
     fn close_task(&mut self, input: &TaskCloseUpdate) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        validate_identifier("lifecycle_phase", &input.lifecycle_phase)?;
-        validate_identifier("result", &input.result)?;
-        validate_persisted_close_summary_json(
-            "tasks.close_summary_json",
-            &input.close_summary_json,
-        )?;
-        validate_timestamp("tasks.closed_at", &input.closed_at)?;
+        let lifecycle_phase = encode_closed_value("tasks.lifecycle_phase", &input.lifecycle_phase)?;
+        let result = encode_closed_value("tasks.result", &input.result)?;
+        let close_summary_json =
+            encode_json_column("tasks.close_summary_json", &input.close_summary)?;
+        let closed_at = input.closed_at.to_string();
 
         let changed = self.tx.execute(
             "UPDATE tasks
@@ -827,10 +1071,10 @@ impl MutationContext<'_> {
             params![
                 self.project_id,
                 input.task_id,
-                input.lifecycle_phase,
-                input.result,
-                input.close_summary_json,
-                input.closed_at,
+                lifecycle_phase,
+                result,
+                close_summary_json,
+                closed_at,
                 self.committed_at
             ],
         )?;
@@ -846,33 +1090,33 @@ impl MutationContext<'_> {
 
     fn update_task_scope(&mut self, input: &TaskScopeUpdate) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        if let Some(value) = &input.shaping_summary_json {
-            validate_json_text("tasks.shaping_summary_json", value)?;
-            self.update_task_text_column(&input.task_id, "shaping_summary_json", value)?;
+        if let Some(value) = &input.shaping {
+            let value = encode_json_column("tasks.shaping_summary_json", value)?;
+            self.update_task_text_column(&input.task_id, "shaping_summary_json", &value)?;
         }
-        if let Some(value) = &input.bounded_context_json {
-            validate_json_text("tasks.bounded_context_json", value)?;
-            self.update_task_text_column(&input.task_id, "bounded_context_json", value)?;
+        if let Some(value) = &input.bounded_context {
+            let value = encode_json_column("tasks.bounded_context_json", value)?;
+            self.update_task_text_column(&input.task_id, "bounded_context_json", &value)?;
         }
-        if let Some(value) = &input.autonomy_boundary_json {
-            validate_json_text("tasks.autonomy_boundary_json", value)?;
-            self.update_task_text_column(&input.task_id, "autonomy_boundary_json", value)?;
+        if let Some(value) = &input.autonomy_boundary {
+            let value = encode_json_column("tasks.autonomy_boundary_json", value)?;
+            self.update_task_text_column(&input.task_id, "autonomy_boundary_json", &value)?;
         }
-        if let Some(value) = &input.close_summary_json {
-            validate_persisted_close_summary_json("tasks.close_summary_json", value)?;
-            self.update_task_text_column(&input.task_id, "close_summary_json", value)?;
+        if let Some(value) = &input.close_summary {
+            let value = encode_json_column("tasks.close_summary_json", value)?;
+            self.update_task_text_column(&input.task_id, "close_summary_json", &value)?;
         }
         if let Some(value) = &input.lifecycle_phase {
-            validate_identifier("lifecycle_phase", value)?;
-            self.update_task_text_column(&input.task_id, "lifecycle_phase", value)?;
+            let value = encode_closed_value("tasks.lifecycle_phase", value)?;
+            self.update_task_text_column(&input.task_id, "lifecycle_phase", &value)?;
         }
         if let Some(value) = &input.work_phase {
-            validate_identifier("work_phase", value)?;
-            self.update_task_text_column(&input.task_id, "work_phase", value)?;
+            let value = encode_closed_value("tasks.work_phase", value)?;
+            self.update_task_text_column(&input.task_id, "work_phase", &value)?;
         }
         if let Some(value) = &input.result {
-            validate_identifier("result", value)?;
-            self.update_task_text_column(&input.task_id, "result", value)?;
+            let value = encode_closed_value("tasks.result", value)?;
+            self.update_task_text_column(&input.task_id, "result", &value)?;
         }
         if let Some(value) = &input.title {
             self.update_task_nullable_text_column(&input.task_id, "title", Some(value))?;
@@ -894,7 +1138,7 @@ impl MutationContext<'_> {
                 "acceptance_criterion_id",
                 &criterion.acceptance_criterion_id,
             )?;
-            validate_identifier(
+            let evidence_requirement = encode_closed_value(
                 "acceptance_criteria.evidence_requirement",
                 &criterion.evidence_requirement,
             )?;
@@ -936,7 +1180,7 @@ impl MutationContext<'_> {
                     criterion.acceptance_criterion_id,
                     input.task_id,
                     criterion.statement,
-                    criterion.evidence_requirement,
+                    evidence_requirement,
                     i64::try_from(criterion.position).map_err(|_| StoreError::schema_invariant(
                         "project_state",
                         "acceptance criterion position exceeds SQLite INTEGER range",
@@ -1009,9 +1253,11 @@ impl MutationContext<'_> {
 
     fn update_task_close_basis(&mut self, input: &TaskCloseBasisUpdate) -> StoreResult<()> {
         validate_identifier("task_id", &input.task_id)?;
-        if let Some(value) = &input.close_basis_json {
-            validate_current_close_basis_json("tasks.close_basis_json", value)?;
-        }
+        let close_basis_json = input
+            .close_basis
+            .as_ref()
+            .map(|value| encode_json_column("tasks.close_basis_json", value))
+            .transpose()?;
         let close_basis_revision =
             u64_to_i64("tasks.close_basis_revision", input.close_basis_revision)?;
         let changed = self.tx.execute(
@@ -1025,7 +1271,7 @@ impl MutationContext<'_> {
                 self.project_id,
                 input.task_id,
                 close_basis_revision,
-                input.close_basis_json,
+                close_basis_json,
                 self.committed_at
             ],
         )?;
@@ -1131,10 +1377,10 @@ mod tests {
 
     #[test]
     fn task_decoder_rejects_a_close_summary_without_an_explicit_reason() {
-        let record = TaskRecord {
+        let record = TaskRecordRow {
             project_id: "project".to_owned(),
             task_id: "task".to_owned(),
-            mode: "normal".to_owned(),
+            mode: "work".to_owned(),
             requested_control_level: "light".to_owned(),
             effective_control_level: "light".to_owned(),
             control_level_reason: "reason".to_owned(),
@@ -1144,8 +1390,8 @@ mod tests {
             predecessor_task_id: None,
             lineage_relation: None,
             lineage_reason: None,
-            carry_forward_json: "{}".to_owned(),
-            lifecycle_phase: "active".to_owned(),
+            carry_forward_json: "[]".to_owned(),
+            lifecycle_phase: "ready".to_owned(),
             result: None,
             title: None,
             summary: None,
@@ -1169,10 +1415,10 @@ mod tests {
 
     #[test]
     fn task_decoders_own_close_summary_and_current_basis_corruption() {
-        let mut record = TaskRecord {
+        let mut record = TaskRecordRow {
             project_id: "project".to_owned(),
             task_id: "task".to_owned(),
-            mode: "normal".to_owned(),
+            mode: "work".to_owned(),
             requested_control_level: "light".to_owned(),
             effective_control_level: "light".to_owned(),
             control_level_reason: "reason".to_owned(),
@@ -1182,8 +1428,8 @@ mod tests {
             predecessor_task_id: None,
             lineage_relation: None,
             lineage_reason: None,
-            carry_forward_json: "{}".to_owned(),
-            lifecycle_phase: "active".to_owned(),
+            carry_forward_json: "[]".to_owned(),
+            lifecycle_phase: "ready".to_owned(),
             result: None,
             title: None,
             summary: None,
@@ -1198,6 +1444,7 @@ mod tests {
             closed_at: None,
             metadata_json: "{}".to_owned(),
         };
+        let valid_record = record.clone();
 
         for malformed in [
             "{",
@@ -1220,6 +1467,17 @@ mod tests {
             Err(StoreError::CorruptOwnerStateJson {
                 table: "tasks",
                 logical_column: "close_basis_json",
+                ..
+            })
+        ));
+
+        let mut unknown_mode = valid_record;
+        unknown_mode.mode = "legacy".to_owned();
+        assert!(matches!(
+            validate_decoded_task_record(unknown_mode),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "tasks",
+                logical_column: "mode",
                 ..
             })
         ));

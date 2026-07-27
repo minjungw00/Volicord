@@ -8,7 +8,7 @@ use super::{
     allocate_user_action_resolution_id, build_state_summary, decision_rejected_response,
     dry_run_summary, evidence_summary_for_display, guarantee_display_for_invocation,
     mutation_method_policy, next_actions_for_state, no_active_task_response, object_from_value,
-    observe_request_product_paths, parse_task_mode, plan_error_response, prepare_or_response,
+    observe_request_product_paths, plan_error_response, prepare_or_response,
     project_state_projection, projected_blocker_refs, projected_close_basis,
     projected_evidence_summary, projected_write_ticket_summary,
     record_core_workflow_metric_best_effort, rejected_pipeline_response,
@@ -346,7 +346,7 @@ fn projected_user_action_state(
         )
     });
     let next_actions = next_actions_for_state(
-        parse_task_mode(&task.mode)?,
+        task.mode,
         &task_ref,
         change_unit_ref.as_ref(),
         planned_state_version,

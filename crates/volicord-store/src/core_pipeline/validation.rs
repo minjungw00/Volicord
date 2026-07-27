@@ -11,8 +11,8 @@ use volicord_types::canonical::{
     canonical_git_object_id, canonical_json_string, is_canonical_sha256_digest,
 };
 use volicord_types::schema::{
-    ArtifactRef, ChangeUnitEffectContract, CurrentCloseBasis, EvidenceCoverageItem,
-    PersistedArtifactProducer, PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
+    ArtifactRef, CurrentCloseBasis, EvidenceCoverageItem, PersistedArtifactProducer,
+    PersistedArtifactProvenanceMetadata, PersistedEvidenceMetadata,
     PersistedEvidenceObservationAuthority, PersistedUserActionRequest,
     PersistedUserActionResolution, ProjectEnforcementProfile, SourceRef, StateRecordRef,
     UserActionBasis, UserActionRequestBody, UserActionResolutionBody,
@@ -20,7 +20,6 @@ use volicord_types::schema::{
 };
 use volicord_types::values::{
     ActorSource, EvidenceAssuranceLevel, EvidenceSourceKind, OperationCategory,
-    PersistedCloseSummary, ProjectContinuityKind, ProjectContinuityStatus,
     ProjectEnforcementProfileSource, ProjectEnforcementProfileStatus, UserActionBasisStatus,
     UserActionChannelKind, UserActionKind, UserActionRequiredFor, UserActionVerificationBasis,
     UtcTimestamp,
@@ -219,28 +218,6 @@ pub(super) fn validate_identifier(field: &'static str, value: &str) -> StoreResu
     }
 }
 
-pub(super) fn validate_project_continuity_kind(
-    field: &'static str,
-    value: &str,
-) -> StoreResult<()> {
-    serde_json::from_value::<ProjectContinuityKind>(Value::String(value.to_owned()))
-        .map(|_| ())
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("{field} must be a supported project-continuity kind: {error}"),
-        })
-}
-
-pub(super) fn validate_project_continuity_status(
-    field: &'static str,
-    value: &str,
-) -> StoreResult<()> {
-    serde_json::from_value::<ProjectContinuityStatus>(Value::String(value.to_owned()))
-        .map(|_| ())
-        .map_err(|error| StoreError::InvalidInput {
-            detail: format!("{field} must be a supported project-continuity status: {error}"),
-        })
-}
-
 pub(super) fn validate_nonempty_text(field: &'static str, value: &str) -> StoreResult<()> {
     if value.trim().is_empty() {
         Err(StoreError::InvalidInput {
@@ -344,37 +321,6 @@ pub(super) fn validate_json_text(field: &'static str, text: &str) -> StoreResult
     Ok(())
 }
 
-pub(super) fn validate_effect_contract_json(field: &'static str, text: &str) -> StoreResult<()> {
-    serde_json::from_str::<Option<ChangeUnitEffectContract>>(text).map_err(|error| {
-        StoreError::InvalidInput {
-            detail: format!("{field} must be ChangeUnitEffectContract JSON or null: {error}"),
-        }
-    })?;
-    Ok(())
-}
-
-pub(super) fn validate_current_close_basis_json(
-    field: &'static str,
-    text: &str,
-) -> StoreResult<()> {
-    serde_json::from_str::<CurrentCloseBasis>(text).map_err(|error| StoreError::InvalidInput {
-        detail: format!("{field} must be CurrentCloseBasis JSON: {error}"),
-    })?;
-    Ok(())
-}
-
-pub(super) fn validate_persisted_close_summary_json(
-    field: &'static str,
-    text: &str,
-) -> StoreResult<()> {
-    serde_json::from_str::<PersistedCloseSummary>(text).map_err(|error| {
-        StoreError::InvalidInput {
-            detail: format!("{field} must be canonical persisted close-summary JSON: {error}"),
-        }
-    })?;
-    Ok(())
-}
-
 pub(super) fn validate_user_action_basis_json(field: &'static str, text: &str) -> StoreResult<()> {
     serde_json::from_str::<UserActionBasis>(text).map_err(|error| StoreError::InvalidInput {
         detail: format!("{field} must be UserActionBasis JSON: {error}"),
@@ -386,20 +332,30 @@ pub(super) fn user_action_basis_json_with_status(
     text: &str,
     status: UserActionBasisStatus,
 ) -> StoreResult<String> {
-    let mut basis = serde_json::from_str::<UserActionBasis>(text).map_err(|error| {
+    let basis = serde_json::from_str::<UserActionBasis>(text).map_err(|error| {
         StoreError::InvalidInput {
             detail: format!("user-action basis must be UserActionBasis JSON: {error}"),
         }
     })?;
+    canonical_json_string(&user_action_basis_with_status(&basis, status)).map_err(|error| {
+        StoreError::InvalidInput {
+            detail: format!("user-action basis must be canonically serializable: {error}"),
+        }
+    })
+}
+
+pub(super) fn user_action_basis_with_status(
+    basis: &UserActionBasis,
+    status: UserActionBasisStatus,
+) -> UserActionBasis {
+    let mut basis = basis.clone();
     match &mut basis {
         UserActionBasis::Choice(choice) => choice.coordinates.compatibility_status = status,
         UserActionBasis::EvidenceObservation(observation) => {
             observation.coordinates.compatibility_status = status;
         }
     }
-    canonical_json_string(&basis).map_err(|error| StoreError::InvalidInput {
-        detail: format!("user-action basis must be canonically serializable: {error}"),
-    })
+    basis
 }
 
 pub(super) fn validate_persisted_user_action_request_json(
@@ -879,6 +835,41 @@ where
     let record_ref = record_ref.into();
     serde_json::from_str(text)
         .map_err(|_| StoreError::corrupt_owner_state_json(table, record_ref, logical_column))
+}
+
+pub(super) fn decode_owner_closed_value<T>(
+    table: &'static str,
+    record_ref: impl Into<String>,
+    logical_column: &'static str,
+    text: &str,
+) -> StoreResult<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let record_ref = record_ref.into();
+    serde_json::from_value(Value::String(text.to_owned()))
+        .map_err(|_| StoreError::corrupt_owner_state_value(table, record_ref, logical_column))
+}
+
+pub(super) fn encode_closed_value<T>(field: &'static str, value: &T) -> StoreResult<String>
+where
+    T: Serialize,
+{
+    match serde_json::to_value(value) {
+        Ok(Value::String(value)) => Ok(value),
+        _ => Err(StoreError::InvalidInput {
+            detail: format!("{field} must serialize as one closed string value"),
+        }),
+    }
+}
+
+pub(super) fn encode_json_column<T>(field: &'static str, value: &T) -> StoreResult<String>
+where
+    T: Serialize,
+{
+    serde_json::to_string(value).map_err(|_| StoreError::InvalidInput {
+        detail: format!("{field} could not be serialized"),
+    })
 }
 
 pub(super) fn decode_current_close_basis_column(

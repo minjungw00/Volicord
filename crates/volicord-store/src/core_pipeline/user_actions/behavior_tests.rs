@@ -2,11 +2,25 @@ use std::error::Error;
 
 use rusqlite::params;
 use serde_json::{json, Value};
-use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
+use volicord_types::ids::{
+    AcceptanceCriterionId, AgentConnectionId, ArtifactId, IdempotencyKey, ProjectId, RecordId,
+    RequestHash, StorageRef, TaskId, UserActionOptionId,
+};
+use volicord_types::schema::{
+    ArtifactRef, EvidenceTarget, PersistedUserActionDirectRequestMetadata,
+    PersistedUserActionRequest, PersistedUserActionRequestMetadata, RequiredNullable,
+    SensitiveActionScope, StateRecordRef, UserActionBasis, UserActionBasisCoordinates,
+    UserActionChoiceBasis, UserActionChoiceRequestBody, UserActionContext,
+    UserActionEvidenceObservation, UserActionEvidenceObservationBasis,
+    UserActionEvidenceObservationRequestBody, UserActionOption, UserActionRequestBody,
+    UserActionResolutionBody,
+};
 use volicord_types::values::{
-    ActorSource, JudgmentResolutionOutcome, MethodName, UserActionBasisStatus,
-    UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
-    UserActionStatus, UserActionVerificationBasis, UtcTimestamp,
+    ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, EvidenceRelevanceStatus,
+    JudgmentKind, JudgmentPresentation, JudgmentResolutionOutcome, MethodName, RedactionState,
+    StateRecordKind, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
+    UserActionOptionAction, UserActionRequiredFor, UserActionStatus, UserActionVerificationBasis,
+    UtcTimestamp,
 };
 
 use super::{
@@ -181,37 +195,37 @@ fn user_action_request_store_rejects_empty_duplicate_and_mismatched_owner_facts(
     ] {
         match marker {
             "empty_required_for" => {
-                let mut request = serde_json::from_str::<Value>(&action.request_json)?;
-                request["required_for"] = json!([]);
-                action.request_json = request.to_string();
-                action.required_for_json = "[]".to_owned();
+                action.request.required_for.clear();
+                action.required_for.clear();
             }
             "duplicate_required_for" => {
-                let mut request = serde_json::from_str::<Value>(&action.request_json)?;
-                request["required_for"] = json!(["informational", "informational"]);
-                action.request_json = request.to_string();
-                action.required_for_json = r#"["informational","informational"]"#.to_owned();
+                action
+                    .request
+                    .required_for
+                    .push(UserActionRequiredFor::Informational);
+                action
+                    .required_for
+                    .push(UserActionRequiredFor::Informational);
             }
             "mismatched_sensitive_scope" => {
-                let mut basis = serde_json::from_str::<Value>(&action.basis_json)?;
-                basis["sensitive_action_scope"] = json!({
-                    "action_kind": "write_files",
-                    "description": "Bounded write.",
-                    "intended_paths": ["src/lib.rs"],
-                    "sensitive_categories": ["product_file_write"],
-                    "command_or_tool_summary": null,
-                    "network_or_host_summary": null,
-                    "secret_or_credential_summary": null,
-                    "capability_claim": "Local file write only.",
-                    "expires_at": null
+                let UserActionBasis::Choice(basis) = &mut action.basis else {
+                    unreachable!("choice helper must produce a choice basis")
+                };
+                basis.sensitive_action_scope = RequiredNullable::some(SensitiveActionScope {
+                    action_kind: "write_files".to_owned(),
+                    description: "Bounded write.".to_owned(),
+                    intended_paths: vec!["src/lib.rs".to_owned()],
+                    sensitive_categories: vec!["product_file_write".to_owned()],
+                    command_or_tool_summary: RequiredNullable::null(),
+                    network_or_host_summary: RequiredNullable::null(),
+                    secret_or_credential_summary: RequiredNullable::null(),
+                    capability_claim: "Local file write only.".to_owned(),
+                    expires_at: RequiredNullable::null(),
                 });
-                action.basis_json = basis.to_string();
             }
             "incompatible_required_for" => {
-                let mut request = serde_json::from_str::<Value>(&action.request_json)?;
-                request["required_for"] = json!(["close_cancel"]);
-                action.request_json = request.to_string();
-                action.required_for_json = r#"["close_cancel"]"#.to_owned();
+                action.request.required_for = vec![UserActionRequiredFor::CloseCancel];
+                action.required_for = vec![UserActionRequiredFor::CloseCancel];
             }
             _ => unreachable!("test table contains only declared invalid cases"),
         }
@@ -506,20 +520,18 @@ fn user_action_resolution_round_trips_choice_and_channel_provenance() -> Result<
     let request_id = "action_deferred_pair";
     let resolution_id = "resolution_deferred_pair";
     let mut deferred_request = user_action_request_insert(request_id, task_id, None);
-    let mut deferred_request_json = serde_json::from_str::<Value>(&deferred_request.request_json)?;
-    deferred_request_json["body"]["options"]
-        .as_array_mut()
-        .expect("choice options should be an array")
-        .push(json!({
-            "option_id": "defer",
-            "label": "Defer",
-            "description": "Defer this bounded decision.",
-            "consequence": "The request remains resolved as deferred.",
-            "machine_action": "defer",
-            "resolution_outcome": "deferred",
-            "is_default": false
-        }));
-    deferred_request.request_json = deferred_request_json.to_string();
+    let UserActionRequestBody::Choice(choice) = &mut deferred_request.request.body else {
+        unreachable!("choice helper must produce a choice request")
+    };
+    choice.options.push(UserActionOption {
+        option_id: UserActionOptionId::new("defer"),
+        label: "Defer".to_owned(),
+        description: "Defer this bounded decision.".to_owned(),
+        consequence: "The request remains resolved as deferred.".to_owned(),
+        machine_action: UserActionOptionAction::Defer,
+        resolution_outcome: JudgmentResolutionOutcome::Deferred,
+        is_default: false,
+    });
 
     let insert_input = commit_input(
         &ProjectId::new(PROJECT_ID),
@@ -549,7 +561,7 @@ fn user_action_resolution_round_trips_choice_and_channel_provenance() -> Result<
 
     let mut resolution = user_action_resolution_insert(resolution_id, request_id);
     resolution.channel_submission_id = "submission_deferred_pair".to_owned();
-    resolution.resolution_json = choice_resolution_json(
+    resolution.resolution = choice_resolution(
         "defer",
         UserActionOptionAction::Defer,
         JudgmentResolutionOutcome::Deferred,
@@ -686,7 +698,8 @@ fn user_action_resolution_timestamp_order_enforces_half_open_boundaries(
             )?;
 
             let mut resolution = user_action_resolution_insert(&resolution_id, &request_id);
-            resolution.resolved_at = resolved_at.to_owned();
+            resolution.resolved_at =
+                UtcTimestamp::parse(resolved_at).expect("test resolution timestamp must parse");
             let outcome = store.commit_with(
                 commit_input(
                     &ProjectId::new(PROJECT_ID),
@@ -1155,7 +1168,8 @@ fn user_action_resolution_requires_local_user_and_assurance() -> Result<(), Box<
 
     let mut invalid_resolutions = Vec::new();
     let mut wrong_actor = user_action_resolution_insert("resolution_wrong_actor", request_id);
-    wrong_actor.resolved_by_actor_source = ACTOR_SOURCE.to_owned();
+    wrong_actor.resolved_by_actor_source =
+        ActorSource::AgentConnection(AgentConnectionId::new(CONNECTION_ID));
     invalid_resolutions.push(("wrong_actor", wrong_actor));
     let mut missing_assurance =
         user_action_resolution_insert("resolution_missing_assurance", request_id);
@@ -1198,8 +1212,8 @@ fn user_action_resolution_requires_local_user_and_assurance() -> Result<(), Box<
 }
 
 #[test]
-fn user_action_resolution_rejects_unknown_fields_and_invalid_outcomes() -> Result<(), Box<dyn Error>>
-{
+fn user_action_resolution_rejects_an_inconsistent_typed_choice_outcome(
+) -> Result<(), Box<dyn Error>> {
     let harness = StoreHarness::new()?;
     let mut store = harness.store()?;
     let task_id = "task_invalid_resolution_json";
@@ -1232,46 +1246,38 @@ fn user_action_resolution_rejects_unknown_fields_and_invalid_outcomes() -> Resul
     assert!(matches!(inserted, MutationCommitOutcome::Committed { .. }));
     let before = store.effect_counts()?;
 
-    let mut unknown_field = user_action_resolution_insert("resolution_unknown_field", request_id);
-    let mut unknown_value: Value = serde_json::from_str(&unknown_field.resolution_json)?;
-    unknown_value["unknown_resolution_field"] = json!(true);
-    unknown_field.resolution_json = unknown_value.to_string();
     let mut invalid_outcome =
         user_action_resolution_insert("resolution_invalid_outcome", request_id);
-    let mut invalid_outcome_value: Value = serde_json::from_str(&invalid_outcome.resolution_json)?;
-    invalid_outcome_value["resolution_outcome"] = json!("blocked");
-    invalid_outcome.resolution_json = invalid_outcome_value.to_string();
-
-    for (marker, resolution) in [
-        ("unknown_field", unknown_field),
-        ("invalid_outcome", invalid_outcome),
-    ] {
-        let error = store
-            .commit_with(
-                commit_input(
-                    &ProjectId::new(PROJECT_ID),
-                    MethodName::ResolveUserAction,
-                    Some(&IdempotencyKey::new(format!(
-                        "idem_store_resolution_{marker}"
-                    ))),
-                    &RequestHash::new(format!("sha256:resolution-{marker}")),
-                    Some(user_replay_context()),
-                    Some(1),
-                    vec![pending_event_for_task(marker, task_id)],
-                ),
-                |mutation, facts| {
-                    CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
-                        resolution,
-                    ))
-                    .apply(mutation, facts)
-                    .map(|_| ())
-                },
-                response_json,
-            )
-            .expect_err("unsupported closed resolution shapes must reject");
-        assert!(matches!(error, StoreError::InvalidInput { .. }));
-        assert_eq!(store.effect_counts()?, before);
-    }
+    invalid_outcome.resolution = choice_resolution(
+        "accept",
+        UserActionOptionAction::Accept,
+        JudgmentResolutionOutcome::Deferred,
+    );
+    let error = store
+        .commit_with(
+            commit_input(
+                &ProjectId::new(PROJECT_ID),
+                MethodName::ResolveUserAction,
+                Some(&IdempotencyKey::new(
+                    "idem_store_resolution_invalid_outcome",
+                )),
+                &RequestHash::new("sha256:resolution-invalid-outcome"),
+                Some(user_replay_context()),
+                Some(1),
+                vec![pending_event_for_task("invalid_outcome", task_id)],
+            ),
+            |mutation, facts| {
+                CoreStorageMutation::UserAction(UserActionMutation::InsertResolution(
+                    invalid_outcome,
+                ))
+                .apply(mutation, facts)
+                .map(|_| ())
+            },
+            response_json,
+        )
+        .expect_err("inconsistent typed resolution must reject");
+    assert!(matches!(error, StoreError::InvalidInput { .. }));
+    assert_eq!(store.effect_counts()?, before);
     let record = store
         .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:10:00Z")?)?
         .expect("pending request should remain readable");
@@ -1579,7 +1585,8 @@ fn stored_user_action_resolution_fails_closed_on_invalid_timestamp_order(
             response_json,
         )?;
         let mut resolution = user_action_resolution_insert(&resolution_id, &request_id);
-        resolution.resolved_at = "2026-01-01T00:00:05Z".to_owned();
+        resolution.resolved_at = UtcTimestamp::parse("2026-01-01T00:00:05Z")
+            .expect("test resolution timestamp must parse");
         store.commit_with(
             commit_input(
                 &ProjectId::new(PROJECT_ID),
@@ -1760,75 +1767,76 @@ fn user_action_request_insert(
     task_id: &str,
     expires_at: Option<&str>,
 ) -> UserActionRequestInsert {
-    let request_json = json!({
-        "body": {
-            "action_type": "choice",
-            "judgment_kind": "product_decision",
-            "presentation": "short",
-            "question": "Choose the current product direction.",
-            "options": [{
-                "option_id": "accept",
-                "label": "Accept",
-                "description": "Accept the current direction.",
-                "consequence": "The work may continue.",
-                "machine_action": "accept",
-                "resolution_outcome": "accepted",
-                "is_default": true
-            }],
-            "context": {
-                "summary": "A bounded choice is required.",
-                "related_refs": [],
-                "artifact_refs": [],
-                "visible_risks": [],
-                "constraints": []
-            },
-            "affected_refs": [],
-            "sensitive_action_scope": null
-        },
-        "required_for": ["informational"],
-        "expires_at": expires_at
-    })
-    .to_string();
-    let basis_json = json!({
-        "action_type": "choice",
-        "coordinates": {
-            "task_id": task_id,
-            "change_unit_id": null,
-            "scope_revision": 0,
-            "baseline_ref": null,
-            "created_at_state_version": 0,
-            "compatibility_status": "current"
-        },
-        "close_basis_revision": null,
-        "result_refs": [],
-        "residual_risk_ids": [],
-        "sensitive_action_scope": null
-    })
-    .to_string();
+    let expires_at = expires_at
+        .map(|value| UtcTimestamp::parse(value).expect("test request expiry timestamp must parse"));
+    let required_for = vec![UserActionRequiredFor::Informational];
     UserActionRequestInsert {
         user_action_request_id: request_id.to_owned(),
         task_id: task_id.to_owned(),
         change_unit_id: None,
         action_kind: UserActionKind::ProductDecision,
-        request_json,
-        basis_json,
+        request: PersistedUserActionRequest {
+            body: UserActionRequestBody::Choice(Box::new(UserActionChoiceRequestBody {
+                judgment_kind: JudgmentKind::ProductDecision,
+                presentation: JudgmentPresentation::Short,
+                question: "Choose the current product direction.".to_owned(),
+                options: vec![UserActionOption {
+                    option_id: UserActionOptionId::new("accept"),
+                    label: "Accept".to_owned(),
+                    description: "Accept the current direction.".to_owned(),
+                    consequence: "The work may continue.".to_owned(),
+                    machine_action: UserActionOptionAction::Accept,
+                    resolution_outcome: JudgmentResolutionOutcome::Accepted,
+                    is_default: true,
+                }],
+                context: UserActionContext {
+                    summary: "A bounded choice is required.".to_owned(),
+                    related_refs: Vec::new(),
+                    artifact_refs: Vec::new(),
+                    visible_risks: Vec::new(),
+                    constraints: Vec::new(),
+                },
+                affected_refs: Vec::new(),
+                sensitive_action_scope: RequiredNullable::null(),
+            })),
+            required_for: required_for.clone(),
+            expires_at: expires_at.clone().into(),
+        },
+        basis: UserActionBasis::Choice(Box::new(UserActionChoiceBasis {
+            coordinates: UserActionBasisCoordinates {
+                task_id: TaskId::new(task_id),
+                change_unit_id: RequiredNullable::null(),
+                scope_revision: 0,
+                baseline_ref: RequiredNullable::null(),
+                created_at_state_version: 0,
+                compatibility_status: UserActionBasisStatus::Current,
+            },
+            close_basis_revision: RequiredNullable::null(),
+            result_refs: Vec::new(),
+            residual_risk_ids: Vec::new(),
+            sensitive_action_scope: RequiredNullable::null(),
+        })),
         basis_status: UserActionBasisStatus::Current,
-        required_for_json: r#"["informational"]"#.to_owned(),
-        requested_by_actor_source: ACTOR_SOURCE.to_owned(),
-        source_method: MethodName::RequestUserAction.as_str().to_owned(),
+        required_for,
+        requested_by_actor_source: ActorSource::AgentConnection(AgentConnectionId::new(
+            CONNECTION_ID,
+        )),
+        source_method: MethodName::RequestUserAction,
         source_idempotency_key: format!("idem_{request_id}"),
-        requested_at: "2026-01-01T00:00:00Z".to_owned(),
-        expires_at: expires_at.map(str::to_owned),
-        metadata_json: "{}".to_owned(),
+        requested_at: UtcTimestamp::parse("2026-01-01T00:00:00Z")
+            .expect("test request timestamp must parse"),
+        expires_at,
+        metadata: PersistedUserActionRequestMetadata::DirectRequest(
+            PersistedUserActionDirectRequestMetadata {},
+        ),
     }
 }
 
 fn set_user_action_request_expiry(input: &mut UserActionRequestInsert, expires_at: &str) {
-    let mut request_json = serde_json::from_str::<Value>(&input.request_json)
-        .expect("test user-action request JSON should decode");
-    request_json["expires_at"] = json!(expires_at);
-    input.request_json = request_json.to_string();
-    input.expires_at = Some(expires_at.to_owned());
+    let expires_at =
+        UtcTimestamp::parse(expires_at).expect("test request expiry timestamp must parse");
+    input.request.expires_at = RequiredNullable::some(expires_at.clone());
+    input.expires_at = Some(expires_at);
 }
 
 fn evidence_user_action_request_insert(
@@ -1836,50 +1844,55 @@ fn evidence_user_action_request_insert(
     task_id: &str,
     produced_at_state_version: u64,
 ) -> UserActionRequestInsert {
-    let target = json!({
-        "target_kind": "acceptance_criterion",
-        "acceptance_criterion_id": "criterion_observation_reread"
-    });
-    let artifact = user_action_artifact_ref_json(task_id, produced_at_state_version);
+    let target = EvidenceTarget::AcceptanceCriterion {
+        acceptance_criterion_id: AcceptanceCriterionId::new("criterion_observation_reread"),
+    };
+    let artifact = user_action_artifact_ref(task_id, produced_at_state_version);
+    let expires_at = UtcTimestamp::parse("2026-01-01T00:15:00Z")
+        .expect("test request expiry timestamp must parse");
+    let required_for = vec![UserActionRequiredFor::RecordRun];
     UserActionRequestInsert {
         user_action_request_id: request_id.to_owned(),
         task_id: task_id.to_owned(),
         change_unit_id: None,
         action_kind: UserActionKind::EvidenceObservation,
-        request_json: json!({
-            "body": {
-                "action_type": "evidence_observation",
-                "question": "Does this artifact support the criterion?",
-                "context_summary": "Review the exact stored artifact bytes.",
-                "target_candidates": [target.clone()],
-                "artifact_candidates": [artifact.clone()]
+        request: PersistedUserActionRequest {
+            body: UserActionRequestBody::EvidenceObservation(
+                UserActionEvidenceObservationRequestBody {
+                    question: "Does this artifact support the criterion?".to_owned(),
+                    context_summary: "Review the exact stored artifact bytes.".to_owned(),
+                    target_candidates: vec![target.clone()],
+                    artifact_candidates: vec![artifact.clone()],
+                },
+            ),
+            required_for: required_for.clone(),
+            expires_at: RequiredNullable::some(expires_at.clone()),
+        },
+        basis: UserActionBasis::EvidenceObservation(UserActionEvidenceObservationBasis {
+            coordinates: UserActionBasisCoordinates {
+                task_id: TaskId::new(task_id),
+                change_unit_id: RequiredNullable::null(),
+                scope_revision: 0,
+                baseline_ref: RequiredNullable::null(),
+                created_at_state_version: 0,
+                compatibility_status: UserActionBasisStatus::Current,
             },
-            "required_for": ["record_run"],
-            "expires_at": "2026-01-01T00:15:00Z"
-        })
-        .to_string(),
-        basis_json: json!({
-            "action_type": "evidence_observation",
-            "coordinates": {
-                "task_id": task_id,
-                "change_unit_id": null,
-                "scope_revision": 0,
-                "baseline_ref": null,
-                "created_at_state_version": 0,
-                "compatibility_status": "current"
-            },
-            "target_candidates": [target],
-            "artifact_candidates": [artifact]
-        })
-        .to_string(),
+            target_candidates: vec![target],
+            artifact_candidates: vec![artifact],
+        }),
         basis_status: UserActionBasisStatus::Current,
-        required_for_json: r#"["record_run"]"#.to_owned(),
-        requested_by_actor_source: ACTOR_SOURCE.to_owned(),
-        source_method: MethodName::RequestUserAction.as_str().to_owned(),
+        required_for,
+        requested_by_actor_source: ActorSource::AgentConnection(AgentConnectionId::new(
+            CONNECTION_ID,
+        )),
+        source_method: MethodName::RequestUserAction,
         source_idempotency_key: format!("idem_{request_id}"),
-        requested_at: "2026-01-01T00:00:00Z".to_owned(),
-        expires_at: Some("2026-01-01T00:15:00Z".to_owned()),
-        metadata_json: "{}".to_owned(),
+        requested_at: UtcTimestamp::parse("2026-01-01T00:00:00Z")
+            .expect("test request timestamp must parse"),
+        expires_at: Some(expires_at),
+        metadata: PersistedUserActionRequestMetadata::DirectRequest(
+            PersistedUserActionDirectRequestMetadata {},
+        ),
     }
 }
 
@@ -1895,51 +1908,57 @@ fn evidence_user_action_resolution_insert(
         action_kind: UserActionKind::EvidenceObservation,
         channel_kind: UserActionChannelKind::Cli,
         channel_submission_id: format!("submission_{resolution_id}"),
-        resolution_json: json!({
-            "resolution_type": "evidence_observation",
-            "observation": {
-                "target": {
-                    "target_kind": "acceptance_criterion",
-                    "acceptance_criterion_id": "criterion_observation_reread"
+        resolution: UserActionResolutionBody::EvidenceObservation {
+            observation: UserActionEvidenceObservation {
+                target: EvidenceTarget::AcceptanceCriterion {
+                    acceptance_criterion_id: AcceptanceCriterionId::new(
+                        "criterion_observation_reread",
+                    ),
                 },
-                "relevance_status": "supported",
-                "output_artifact_refs": [user_action_artifact_ref_json(
+                relevance_status: EvidenceRelevanceStatus::Supported,
+                output_artifact_refs: vec![user_action_artifact_ref(
                     task_id,
-                    produced_at_state_version
+                    produced_at_state_version,
                 )],
-                "summary": "The exact artifact bytes support the criterion."
-            }
-        })
-        .to_string(),
-        resolved_by_actor_source: "local_user".to_owned(),
+                summary: "The exact artifact bytes support the criterion.".to_owned(),
+            },
+        },
+        resolved_by_actor_source: ActorSource::LocalUser,
         resolved_verification_basis: UserActionVerificationBasis::CliDirectUserChannel,
         resolved_assurance_level: "local_user_channel".to_owned(),
-        resolved_at: "2026-01-01T00:10:00Z".to_owned(),
+        resolved_at: UtcTimestamp::parse("2026-01-01T00:10:00Z")
+            .expect("test resolution timestamp must parse"),
     }
 }
 
-fn user_action_artifact_ref_json(task_id: &str, produced_at_state_version: u64) -> Value {
-    json!({
-        "artifact_id": "artifact_observation_reread",
-        "project_id": PROJECT_ID,
-        "task_id": task_id,
-        "display_name": "observation.json",
-        "content_type": "application/json",
-        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "size_bytes": 64,
-        "integrity_status": "verified",
-        "redaction_state": "none",
-        "availability": "available",
-        "created_by_run_ref": {
-            "record_kind": "run",
-            "record_id": "run_observation_reread",
-            "project_id": PROJECT_ID,
-            "task_id": task_id,
-            "produced_at_state_version": produced_at_state_version
-        },
-        "created_by_actor_source": ACTOR_SOURCE,
-        "storage_ref": "artifact-storage://observation-reread"
-    })
+fn user_action_artifact_ref(task_id: &str, produced_at_state_version: u64) -> ArtifactRef {
+    ArtifactRef {
+        artifact_id: ArtifactId::new("artifact_observation_reread"),
+        project_id: ProjectId::new(PROJECT_ID),
+        task_id: TaskId::new(task_id),
+        display_name: "observation.json".to_owned(),
+        content_type: RequiredNullable::some("application/json".to_owned()),
+        sha256: RequiredNullable::some(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+        ),
+        size_bytes: RequiredNullable::some(64),
+        integrity_status: ArtifactIntegrityStatus::Verified,
+        redaction_state: RedactionState::None,
+        availability: ArtifactAvailability::Available,
+        created_by_run_ref: RequiredNullable::some(StateRecordRef::new(
+            StateRecordKind::Run,
+            RecordId::new("run_observation_reread"),
+            ProjectId::new(PROJECT_ID),
+            Some(TaskId::new(task_id)),
+            Some(produced_at_state_version),
+        )),
+        created_by_actor_source: RequiredNullable::some(ActorSource::AgentConnection(
+            AgentConnectionId::new(CONNECTION_ID),
+        )),
+        storage_ref: RequiredNullable::some(StorageRef::new(
+            "artifact-storage://observation-reread",
+        )),
+    }
 }
 
 fn user_action_resolution_insert(
@@ -1952,19 +1971,30 @@ fn user_action_resolution_insert(
         action_kind: UserActionKind::ProductDecision,
         channel_kind: UserActionChannelKind::Cli,
         channel_submission_id: format!("submission_{resolution_id}"),
-        resolution_json: json!({
-            "resolution_type": "choice",
-            "selected_option_id": "accept",
-            "machine_action": "accept",
-            "resolution_outcome": "accepted",
-            "note": null,
-            "accepted_risk_ids": []
-        })
-        .to_string(),
-        resolved_by_actor_source: "local_user".to_owned(),
+        resolution: choice_resolution(
+            "accept",
+            UserActionOptionAction::Accept,
+            JudgmentResolutionOutcome::Accepted,
+        ),
+        resolved_by_actor_source: ActorSource::LocalUser,
         resolved_verification_basis: UserActionVerificationBasis::CliDirectUserChannel,
         resolved_assurance_level: "local_user_channel".to_owned(),
-        resolved_at: "2026-01-01T00:10:00Z".to_owned(),
+        resolved_at: UtcTimestamp::parse("2026-01-01T00:10:00Z")
+            .expect("test resolution timestamp must parse"),
+    }
+}
+
+fn choice_resolution(
+    selected_option_id: &str,
+    machine_action: UserActionOptionAction,
+    resolution_outcome: JudgmentResolutionOutcome,
+) -> UserActionResolutionBody {
+    UserActionResolutionBody::Choice {
+        selected_option_id: UserActionOptionId::new(selected_option_id),
+        machine_action,
+        resolution_outcome,
+        note: RequiredNullable::null(),
+        accepted_risk_ids: Vec::new(),
     }
 }
 
@@ -1973,13 +2003,10 @@ fn choice_resolution_json(
     machine_action: UserActionOptionAction,
     resolution_outcome: JudgmentResolutionOutcome,
 ) -> String {
-    json!({
-        "resolution_type": "choice",
-        "selected_option_id": selected_option_id,
-        "machine_action": machine_action,
-        "resolution_outcome": resolution_outcome,
-        "note": null,
-        "accepted_risk_ids": []
-    })
-    .to_string()
+    serde_json::to_string(&choice_resolution(
+        selected_option_id,
+        machine_action,
+        resolution_outcome,
+    ))
+    .expect("test resolution must serialize")
 }

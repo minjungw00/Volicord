@@ -119,7 +119,10 @@ pub(super) fn completion_scope_blockers(
     if context
         .current_change_unit
         .as_ref()
-        .map(|record| record.status != "active" || !record.is_current)
+        .map(|record| {
+            record.status != volicord_store::core_pipeline::ChangeUnitStatus::Active
+                || !record.is_current
+        })
         .unwrap_or(true)
     {
         blockers.push(close_blocker(

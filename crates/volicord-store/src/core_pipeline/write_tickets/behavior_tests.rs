@@ -2,8 +2,9 @@ use std::error::Error;
 
 use rusqlite::params;
 use serde_json::json;
-use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
-use volicord_types::values::MethodName;
+use volicord_types::ids::{AgentConnectionId, IdempotencyKey, ProjectId, RequestHash};
+use volicord_types::schema::ObservedChanges;
+use volicord_types::values::{ActorSource, MethodName, RunKind};
 
 use super::{WriteTicketConsumption, WriteTicketInsert, WriteTicketMutation};
 use crate::core_pipeline::test_support::{
@@ -11,7 +12,8 @@ use crate::core_pipeline::test_support::{
     StoreFixture as StoreHarness, ACTOR_SOURCE, CONNECTION_ID, PROJECT_ID,
 };
 use crate::core_pipeline::{
-    commit_input, CoreStorageMutation, RunInsert, RunMutation, TaskMutation,
+    commit_input, CoreStorageMutation, RunInsert, RunMutation, RunStatus, StoredRunMetadata,
+    StoredRunSummary, StoredRunWriteTicketEffect, StoredRunWriteTicketEffectKind, TaskMutation,
 };
 use crate::StoreError;
 
@@ -219,14 +221,28 @@ fn write_ticket_consumption_revalidates_policy_authority_inside_transaction(
                     change_unit_id: None,
                     scope_revision: 0,
                     write_ticket_id: Some(write_ticket_id.to_owned()),
-                    kind: "implementation".to_owned(),
-                    status: "recorded".to_owned(),
-                    summary_json: "{}".to_owned(),
-                    observed_changes_json: "{}".to_owned(),
-                    evidence_updates_json: "[]".to_owned(),
-                    write_ticket_effect_json: "{}".to_owned(),
-                    created_by_actor_source: ACTOR_SOURCE.to_owned(),
-                    metadata_json: "{}".to_owned(),
+                    kind: RunKind::Implementation,
+                    status: RunStatus::Recorded,
+                    summary: StoredRunSummary {
+                        summary: String::new(),
+                    },
+                    observed_changes: ObservedChanges {
+                        changed_paths: Vec::new(),
+                        product_file_write_observed: false,
+                        sensitive_categories: Vec::new(),
+                        baseline_ref: None.into(),
+                    },
+                    evidence_updates: Vec::new(),
+                    write_ticket_effect: StoredRunWriteTicketEffect {
+                        write_ticket_id: Some(write_ticket_id.into()),
+                        effect: StoredRunWriteTicketEffectKind::Consumed,
+                    },
+                    created_by_actor_source: ActorSource::AgentConnection(AgentConnectionId::new(
+                        CONNECTION_ID,
+                    )),
+                    metadata: StoredRunMetadata {
+                        verification_basis: "store_test_boundary".to_owned(),
+                    },
                 }))
                 .apply(mutation, facts)
                 .map(|_| ())?;

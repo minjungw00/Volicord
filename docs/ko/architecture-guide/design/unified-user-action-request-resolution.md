@@ -24,7 +24,9 @@ Core 메서드, pipeline, 응답, CLI, MCP, command model, presentation 구현�
 
 Store의 `core_pipeline/user_actions.rs`는 유효 상태 읽기, 일관된 받은 편지함 해결
 snapshot, 변경 불가능한 resolution 삽입, grouped mutation 적용, 물리 JSON과 저장
-값을 typed 요청 및 해결 record로 바꾸는 집중 decoding을 담당합니다.
+값을 typed 요청 및 해결 record로 바꾸는 집중 decoding을 담당합니다. Raw row 표현은
+Store 내부에만 둡니다. 서비스는 전체 프로젝트 Store facade나 직렬화된 값 대신 집중된
+`UserActionStoreReader` typed 읽기 capability를 사용합니다.
 
 MCP adapter는 request/resume 경로를 호출하고 `CurrentUserActionFacts`를 다시 읽은
 뒤 자체 safe protocol projection을 구성합니다. CLI는 `PendingUserActionFacts`를
@@ -39,7 +41,8 @@ capture-path 상태, CLI JSON Schema, recovery instruction으로 투영합니다
 - Request create/resume과 resolution은 서로 다른 Core operation입니다.
 - Caller는 typed 의미 의도와 현재 도메인 사실을 제공하며 정규 request JSON을
   직접 만들지 않습니다.
-- 정규 request body와 basis는 Store 경계까지 typed 상태를 유지합니다.
+- 정규 request body, basis, UserAction에서 파생한 continuity metadata는 Store
+  경계까지 typed 상태를 유지합니다.
 - Effective status는 stored resolution과 current basis에서 파생합니다.
 - Agent-facing projection은 complete resolving form이나 user-only resolution body를
   포함하지 않습니다.

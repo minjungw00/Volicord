@@ -34,11 +34,8 @@ fn projected_acceptance_facts_cache_only_required_criterion_ids() {
 #[test]
 fn terminal_summary_is_not_promoted_to_the_current_close_basis() {
     let mut task = test_support::task();
-    task.close_summary_json = r#"{
-        "close_reason":"none",
-        "visible_risks":[{"risk_id":"risk-summary-only","summary":"terminal-only risk"}]
-    }"#
-    .to_owned();
+    task.close_summary.visible_risks =
+        vec![serde_json::json!({"risk_id":"risk-summary-only","summary":"terminal-only risk"})];
 
     let facts = facts_from_projection(
         task,

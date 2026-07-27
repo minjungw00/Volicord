@@ -4,9 +4,8 @@ use super::facts::{workflow_policy_for_close_context, CloseReadinessFacts};
 use super::guidance::{close_guidance, CloseGuidance};
 use super::service::CloseReadinessRequest;
 use crate::methods::{
-    change_unit_ref, decode_required_json, parse_acceptance_policy, parse_task_control_level,
-    state_ref, store_error_plan, stored_refs_to_state_refs, user_action_service_plan_error,
-    PlanError,
+    change_unit_ref, decode_required_json, state_ref, store_error_plan, stored_refs_to_state_refs,
+    user_action_service_plan_error, PlanError,
 };
 use crate::pipeline::{CorePipelineError, CoreResult};
 use crate::policy::close_readiness::{
@@ -499,9 +498,8 @@ fn final_acceptance_blocker(
     context: &mut CloseReadinessFacts,
     has_evidence_blockers: bool,
 ) -> Result<Option<CloseReadinessBlocker>, PlanError> {
-    let acceptance_policy = parse_acceptance_policy(&context.task.acceptance_policy)?;
-    let control = parse_task_control_level(&context.task.effective_control_level)
-        .map_err(CorePipelineError::from)?;
+    let acceptance_policy = context.task.acceptance_policy;
+    let control = context.task.effective_control_level;
     let acceptance_required = match control {
         TaskControlLevel::Observe => false,
         TaskControlLevel::Tracked | TaskControlLevel::Sensitive => true,
@@ -586,10 +584,7 @@ fn light_completion_without_acceptance_allowed(
     context: &mut CloseReadinessFacts,
     has_evidence_blockers: bool,
 ) -> Result<bool, PlanError> {
-    if parse_task_control_level(&context.task.effective_control_level)
-        .map_err(CorePipelineError::from)?
-        != TaskControlLevel::Light
-    {
+    if context.task.effective_control_level != TaskControlLevel::Light {
         return Ok(false);
     }
     let workflow_policy = workflow_policy_for_close_context(context)?.clone();
@@ -630,7 +625,7 @@ fn light_completion_without_acceptance_allowed(
         .run_observed_changes_for_task(&request.task_id)
         .map_err(CorePipelineError::from)?
     {
-        if observed.status != "recorded" {
+        if observed.status != volicord_store::core_pipeline::RunStatus::Recorded {
             return Ok(false);
         }
         if !observed.observed_changes.sensitive_categories.is_empty() {
@@ -650,7 +645,7 @@ fn light_completion_without_acceptance_allowed(
         };
         if run.scope_revision != context.task.scope_revision
             || run.change_unit_id.as_deref() != Some(close_basis.change_unit_id.as_str())
-            || run.baseline_ref.as_deref()
+            || run.baseline_ref.as_ref().map(|value| value.as_str())
                 != close_basis.baseline_ref.as_ref().map(BaselineRef::as_str)
         {
             return Ok(false);
@@ -841,8 +836,7 @@ fn refs_with_context(
 
 fn sensitive_approval_required(context: &CloseReadinessFacts) -> CoreResult<bool> {
     Ok(
-        parse_task_control_level(&context.task.effective_control_level)?
-            == TaskControlLevel::Sensitive
+        context.task.effective_control_level == TaskControlLevel::Sensitive
             || context
                 .current_close_basis
                 .as_ref()
@@ -853,8 +847,7 @@ fn sensitive_approval_required(context: &CloseReadinessFacts) -> CoreResult<bool
 
 fn sensitive_action_basis_missing(context: &CloseReadinessFacts) -> CoreResult<bool> {
     Ok(
-        parse_task_control_level(&context.task.effective_control_level)?
-            == TaskControlLevel::Sensitive
+        context.task.effective_control_level == TaskControlLevel::Sensitive
             && context
                 .current_close_basis
                 .as_ref()

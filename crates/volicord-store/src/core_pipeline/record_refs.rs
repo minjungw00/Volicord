@@ -1,7 +1,9 @@
-/// Public record reference facts read from storage rows.
+use volicord_types::values::StateRecordKind;
+
+/// Typed record reference facts decoded by Store.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredRecordRef {
-    pub record_kind: String,
+    pub record_kind: StateRecordKind,
     pub record_id: String,
     pub project_id: String,
     pub task_id: Option<String>,

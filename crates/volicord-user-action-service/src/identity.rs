@@ -1,6 +1,9 @@
-use crate::error::{UserActionInvariantError, UserActionServiceError};
-use serde::Serialize;
+use crate::error::UserActionServiceError;
 use volicord_types::ids::{IdempotencyKey, UnrecordedChangeId};
+use volicord_types::schema::{
+    PersistedUserActionDirectRequestMetadata, PersistedUserActionReconciliationMetadata,
+    PersistedUserActionRequestMetadata,
+};
 use volicord_types::values::MethodName;
 
 /// Current Core operation that owns a newly constructed UserAction.
@@ -16,7 +19,7 @@ pub enum UserActionOrigin {
 pub(super) struct UserActionPersistenceIdentity {
     pub(super) source_method: MethodName,
     pub(super) source_idempotency_key: String,
-    pub(super) metadata_json: String,
+    pub(super) metadata: PersistedUserActionRequestMetadata,
 }
 
 impl UserActionOrigin {
@@ -27,31 +30,19 @@ impl UserActionOrigin {
         }
     }
 
-    fn metadata_json(&self) -> Result<String, UserActionServiceError> {
-        #[derive(Serialize)]
-        #[serde(deny_unknown_fields)]
-        struct EmptyMetadata {}
-
-        #[derive(Serialize)]
-        #[serde(deny_unknown_fields)]
-        struct ReconciliationMetadata<'a> {
-            created_by: &'a str,
-            unrecorded_change_id: &'a UnrecordedChangeId,
-        }
-
+    fn metadata(&self) -> PersistedUserActionRequestMetadata {
         match self {
-            Self::DirectRequest => serde_json::to_string(&EmptyMetadata {}).map_err(|_| {
-                UserActionServiceError::Invariant(UserActionInvariantError::Serialization)
-            }),
+            Self::DirectRequest => PersistedUserActionRequestMetadata::DirectRequest(
+                PersistedUserActionDirectRequestMetadata {},
+            ),
             Self::Reconciliation {
                 unrecorded_change_id,
-            } => serde_json::to_string(&ReconciliationMetadata {
-                created_by: MethodName::ReconcileChanges.as_str(),
-                unrecorded_change_id,
-            })
-            .map_err(|_| {
-                UserActionServiceError::Invariant(UserActionInvariantError::Serialization)
-            }),
+            } => PersistedUserActionRequestMetadata::Reconciliation(
+                PersistedUserActionReconciliationMetadata {
+                    created_by: MethodName::ReconcileChanges,
+                    unrecorded_change_id: unrecorded_change_id.clone(),
+                },
+            ),
         }
     }
 
@@ -62,7 +53,7 @@ impl UserActionOrigin {
         Ok(UserActionPersistenceIdentity {
             source_method: self.source_method(),
             source_idempotency_key: source_idempotency_key.as_str().to_owned(),
-            metadata_json: self.metadata_json()?,
+            metadata: self.metadata(),
         })
     }
 }

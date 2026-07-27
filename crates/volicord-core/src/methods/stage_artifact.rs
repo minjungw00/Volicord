@@ -1,7 +1,7 @@
 use super::{
     allocate_staged_artifact_handle_id, core_error_response, dry_run_summary, prepare_or_response,
-    redaction_state_value, rejected_pipeline_response, validation_rejected,
-    ValidatedStageArtifactInput, MAX_STAGED_BODY_BYTES,
+    rejected_pipeline_response, validation_rejected, ValidatedStageArtifactInput,
+    MAX_STAGED_BODY_BYTES,
 };
 use crate::pipeline::{
     dry_run_response, method_result_base, tool_error, CorePipelineError, CoreResult, CoreService,
@@ -164,17 +164,17 @@ impl CoreService {
             .create_artifact_staging(ArtifactStagingInsert {
                 handle_id: handle_id.into_inner(),
                 task_id: request.task_id.as_str().to_owned(),
-                created_by_actor_source: verified_invocation.actor_source.to_canonical_string(),
+                created_by_actor_source: verified_invocation.actor_source.clone(),
                 display_name: request.display_name,
                 content_type: request.content_type,
                 sha256: stage_input.sha256.clone(),
                 size_bytes: stage_input.size_bytes,
-                redaction_state: redaction_state_value(request.redaction_state).to_owned(),
+                redaction_state: request.redaction_state,
                 relation_hint: request.relation_hint.into_option(),
                 payload_kind: stage_input.payload_kind,
                 safe_bytes_or_notice: stage_input.safe_bytes,
-                created_at: created_at.to_string(),
-                expires_at: expires_at.to_string(),
+                created_at,
+                expires_at,
             })
         {
             return core_error_response(

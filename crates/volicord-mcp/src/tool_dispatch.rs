@@ -1051,20 +1051,25 @@ fn serialize_tool_error_result(
 mod mutation_projection_and_recovery_tests {
     use super::*;
     use volicord_mcp_protocol::ToolResultCarrier;
-    use volicord_store::evidence_capture::EvidenceCaptureReceiptInsert;
+    use volicord_store::evidence_capture::{
+        EvidenceCaptureReceiptInsert, StoredEvidenceCaptureReceiptMetadata,
+    };
     use volicord_test_support::core_fixtures::{
         CoreFixture, UpdateScopeFixture, UserActionFixture,
     };
     use volicord_types::canonical::canonical_json_bare_sha256;
-    use volicord_types::ids::{AcceptanceCriterionId, BaselineRef, ChangeUnitId, RecordId};
+    use volicord_types::ids::{
+        AcceptanceCriterionId, BaselineRef, ChangeUnitId, EvidenceCaptureIntentId, RecordId,
+    };
     use volicord_types::methods::MAX_OPERATION_RESULT_PAGE_BYTES;
     use volicord_types::schema::{
         EvidenceCaptureSpec, EvidenceObservationInput, EvidenceProducer, EvidenceTarget,
+        JsonObject, PersistedEvidenceCaptureReceiptBody, PersistedEvidenceCaptureReceiptSource,
         EVIDENCE_CAPTURE_COMMAND_LIMITATION,
     };
     use volicord_types::values::{
-        ChangeUnitOperation, EvidenceAssuranceLevel, EvidenceSourceKind, JudgmentKind,
-        StateRecordKind, UtcTimestamp,
+        ActorSource, ChangeUnitOperation, EvidenceAssuranceLevel, EvidenceProducerKind,
+        EvidenceSourceKind, JudgmentKind, RedactionState, StateRecordKind, UtcTimestamp,
     };
 
     #[test]
@@ -1294,53 +1299,52 @@ mod mutation_projection_and_recovery_tests {
         let intent = store
             .evidence_capture_intent_record(capture_intent_ref.record_id.as_str())?
             .expect("committed capture intent should be readable");
-        let observed_outcome = json!({
+        let observed_outcome: JsonObject = serde_json::from_value(json!({
             "exit_code": 0,
             "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "stdout_size_bytes": 0,
             "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "stderr_size_bytes": 0
-        });
+        }))?;
         let result_sha256 = canonical_json_bare_sha256(&observed_outcome)?;
-        let source = json!({
+        let source: PersistedEvidenceCaptureReceiptSource = serde_json::from_value(json!({
             "connection_id": fixture.connection_id(),
             "host_invocation_id": "host_invocation_mcp_producer_recovery"
-        });
-        let expected_outcome: Value = serde_json::from_str(&intent.expected_outcome_json)?;
-        let safe_receipt = json!({
-            "contract_id": volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID,
-            "capture_kind": "verified_command_execution",
-            "capture_intent_id": capture_intent_ref.record_id,
-            "input_sha256": intent.input_sha256,
-            "result_sha256": result_sha256,
-            "expected_outcome": expected_outcome,
-            "observed_outcome": observed_outcome,
-            "source": source,
-            "complete": true,
-            "limitations": [EVIDENCE_CAPTURE_COMMAND_LIMITATION],
-            "redaction_state": "redacted",
-            "observed_by_actor_source": fixture.actor_source(),
-            "observed_at": intent.created_at
-        });
+        }))?;
+        let limitations = vec![EVIDENCE_CAPTURE_COMMAND_LIMITATION.to_owned()];
+        let safe_receipt = PersistedEvidenceCaptureReceiptBody {
+            contract_id: volicord_types::schema::EVIDENCE_CAPTURE_RECEIPT_CONTRACT_ID.to_owned(),
+            capture_kind: EvidenceProducerKind::VerifiedCommandExecution,
+            capture_intent_id: EvidenceCaptureIntentId::new(capture_intent_ref.record_id.as_str()),
+            input_sha256: intent.input_sha256.clone(),
+            result_sha256: result_sha256.clone(),
+            expected_outcome: intent.expected_outcome.clone(),
+            observed_outcome: observed_outcome.clone(),
+            source: source.clone(),
+            complete: true,
+            limitations: limitations.clone(),
+            redaction_state: RedactionState::Redacted,
+            observed_by_actor_source: fixture.actor_source().parse::<ActorSource>()?,
+            observed_at: intent.created_at.clone(),
+        };
         store.fulfill_evidence_capture_source(EvidenceCaptureReceiptInsert {
             evidence_capture_receipt_id: "evidence_capture_receipt_mcp_producer_recovery"
                 .to_owned(),
             evidence_capture_intent_id: capture_intent_ref.record_id.as_str().to_owned(),
             staging_handle_id: "staged_capture_receipt_mcp_producer_recovery".to_owned(),
             task_id: intent.task_id.clone(),
-            capture_kind: intent.capture_kind.clone(),
             input_sha256: intent.input_sha256.clone(),
             result_sha256: result_sha256.clone(),
-            expected_outcome_json: intent.expected_outcome_json.clone(),
-            observed_outcome_json: serde_json::to_string(&observed_outcome)?,
-            source_refs_json: "[]".to_owned(),
-            observed_by_actor_source: fixture.actor_source(),
+            expected_outcome: intent.expected_outcome.clone(),
+            observed_outcome,
+            source_refs: Vec::new(),
+            observed_by_actor_source: fixture.actor_source().parse::<ActorSource>()?,
             observed_at: intent.created_at.clone(),
-            limitations_json: serde_json::to_string(&json!([EVIDENCE_CAPTURE_COMMAND_LIMITATION]))?,
-            safe_receipt_json: serde_json::to_string(&safe_receipt)?,
+            limitations,
+            safe_receipt,
             created_at: intent.created_at.clone(),
             staging_expires_at: intent.expires_at.clone(),
-            metadata_json: serde_json::to_string(&json!({ "source": source }))?,
+            metadata: StoredEvidenceCaptureReceiptMetadata { source },
         })?;
         drop(store);
 

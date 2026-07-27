@@ -1053,7 +1053,7 @@ CREATE TABLE tasks (
   title TEXT,
   summary TEXT,
   shaping_summary_json TEXT NOT NULL DEFAULT '{}',
-  bounded_context_json TEXT NOT NULL DEFAULT '[]',
+  bounded_context_json TEXT NOT NULL DEFAULT '{}',
   autonomy_boundary_json TEXT NOT NULL DEFAULT '{}',
   scope_revision INTEGER NOT NULL DEFAULT 0 CHECK (scope_revision >= 0),
   close_basis_revision INTEGER NOT NULL DEFAULT 0 CHECK (close_basis_revision >= 0),

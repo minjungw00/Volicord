@@ -1,6 +1,7 @@
 use crate::model::UserActionAuthority;
 use volicord_store::core_pipeline::{ChangeUnitRecord, ProjectStateHeader, TaskRecord};
 use volicord_types::ids::{ChangeUnitId, TaskId};
+use volicord_types::values::TaskLifecyclePhase;
 
 /// Derives the Task lifecycle phase after applying pending UserAction facts.
 pub fn projected_user_action_lifecycle_phase(
@@ -8,7 +9,7 @@ pub fn projected_user_action_lifecycle_phase(
     task: &TaskRecord,
     current_change_unit: Option<&ChangeUnitRecord>,
     pending_authorities: &[UserActionAuthority],
-) -> Option<&'static str> {
+) -> Option<TaskLifecyclePhase> {
     if project_state.active_task_id.as_deref() != Some(task.task_id.as_str())
         || is_terminal_lifecycle(&task.lifecycle_phase)
     {
@@ -27,12 +28,12 @@ pub fn projected_user_action_lifecycle_phase(
         )
     });
     let next_phase = if waits_for_user {
-        "waiting_user"
-    } else if task.lifecycle_phase == "waiting_user" {
+        TaskLifecyclePhase::WaitingUser
+    } else if task.lifecycle_phase == TaskLifecyclePhase::WaitingUser {
         if current_change_unit.is_some() {
-            "ready"
+            TaskLifecyclePhase::Ready
         } else {
-            "shaping"
+            TaskLifecyclePhase::Shaping
         }
     } else {
         return None;
@@ -41,8 +42,13 @@ pub fn projected_user_action_lifecycle_phase(
     (task.lifecycle_phase != next_phase).then_some(next_phase)
 }
 
-fn is_terminal_lifecycle(value: &str) -> bool {
-    matches!(value, "completed" | "cancelled" | "superseded")
+fn is_terminal_lifecycle(value: &TaskLifecyclePhase) -> bool {
+    matches!(
+        value,
+        TaskLifecyclePhase::Completed
+            | TaskLifecyclePhase::Cancelled
+            | TaskLifecyclePhase::Superseded
+    )
 }
 
 fn user_action_keeps_task_waiting(

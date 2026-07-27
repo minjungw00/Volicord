@@ -1,5 +1,5 @@
 use rusqlite::params;
-use volicord_types::ids::TaskId;
+use volicord_types::{ids::TaskId, values::StateRecordKind};
 
 use super::{facade::CoreProjectStore, record_refs::StoredRecordRef};
 use crate::StoreResult;
@@ -25,7 +25,7 @@ impl CoreProjectStore<'_> {
         let mut refs = Vec::new();
         for row in rows {
             refs.push(StoredRecordRef {
-                record_kind: "blocker".to_owned(),
+                record_kind: StateRecordKind::Blocker,
                 record_id: row?,
                 project_id: self.project.project_id.clone(),
                 task_id: Some(task_id.as_str().to_owned()),

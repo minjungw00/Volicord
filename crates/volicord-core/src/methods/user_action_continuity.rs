@@ -1,7 +1,6 @@
 use crate::methods::{
-    decode_required_json, plan_project_continuity_record, user_action_service_plan_error,
-    PlanError, PlannedProjectContinuityRecord, ProjectContinuityDraft,
-    ProjectContinuityPlanContext,
+    plan_project_continuity_record, user_action_service_plan_error, PlanError,
+    PlannedProjectContinuityRecord, ProjectContinuityDraft, ProjectContinuityPlanContext,
 };
 use crate::pipeline::{CorePipelineError, CoreService};
 use volicord_store::core_pipeline::{ChangeUnitRecord, CoreProjectStore, ProjectStateHeader};
@@ -30,16 +29,7 @@ pub(crate) fn plan_user_action_continuity_records(
     now: &UtcTimestamp,
 ) -> Result<Vec<PlannedProjectContinuityRecord>, PlanError> {
     let applies_to_paths = current_change_unit
-        .map(|record| {
-            decode_required_json(
-                "change_units",
-                record.change_unit_id.clone(),
-                "bounded_paths_json",
-                Some(&record.bounded_paths_json),
-            )
-            .map_err(PlanError::Core)
-        })
-        .transpose()?
+        .map(|record| record.bounded_paths.clone())
         .unwrap_or_default();
     let current_close_basis = store
         .task_revision_record(task_id)

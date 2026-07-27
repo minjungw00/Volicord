@@ -3,17 +3,16 @@ use super::close_readiness::{
     facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
 };
 use super::{
-    acceptance_policy_storage, active_acceptance_criteria_for_task,
-    allocate_acceptance_criterion_id, allocate_change_unit_id, build_state_summary,
-    change_unit_insert, change_unit_ref, decision_rejected_response, dry_run_summary,
-    evidence_summary_for_display, guarantee_display_for_invocation, mutation_method_policy,
-    next_actions_for_state, no_active_task_response, normalize_display_text, object_from_value,
-    observe_request_product_paths, parse_acceptance_policy, parse_task_mode, plan_error_response,
+    active_acceptance_criteria_for_task, allocate_acceptance_criterion_id, allocate_change_unit_id,
+    build_state_summary, change_unit_insert, change_unit_ref, decision_rejected_response,
+    dry_run_summary, evidence_summary_for_display, guarantee_display_for_invocation,
+    mutation_method_policy, next_actions_for_state, no_active_task_response,
+    normalize_display_text, object_from_value, observe_request_product_paths, plan_error_response,
     prepare_or_response, project_state_projection, projected_close_basis,
     projected_evidence_summary_for_criteria, projected_write_ticket_summary,
-    rejected_pipeline_response, state_ref, state_ref_from_stored, storage_value, store_error_plan,
-    synthetic_change_unit_record, task_lifecycle_mutation, validation_rejected, work_phase_storage,
-    write_ticket_ref, MethodPlan, PlanError, StoredScope, SummaryBuild,
+    rejected_pipeline_response, state_ref, state_ref_from_stored, store_error_plan,
+    synthetic_change_unit_record, task_lifecycle_mutation, validation_rejected, write_ticket_ref,
+    MethodPlan, PlanError, StoredScope, SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
@@ -25,15 +24,16 @@ use crate::policy::close_readiness::{
 use crate::policy::close_readiness_evidence::evidence_summary_with_required_criteria;
 use crate::policy::effect_contract::{validate_effect_contract, EffectContractValidationError};
 use crate::policy::workflow::{
-    acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
-    resolve_task_control_authority, ProjectWorkflowPolicy,
+    acceptance_policy_for_control, project_workflow_policy, resolve_task_control_authority,
+    ProjectWorkflowPolicy,
 };
 use serde_json::json;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
-    AcceptanceCriteriaReplace, AcceptanceCriterionUpsert, ChangeUnitMutation, ChangeUnitRecord,
-    CoreProjectStore, CoreStorageMutation, ProjectStateHeader, TaskCloseBasisUpdate,
-    TaskControlLevelUpdate, TaskMutation, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate,
+    AcceptanceCriteriaReplace, AcceptanceCriterionStatus, AcceptanceCriterionUpsert,
+    ChangeUnitMutation, ChangeUnitRecord, CoreProjectStore, CoreStorageMutation,
+    ProjectStateHeader, TaskAutonomyBoundary, TaskCloseBasisUpdate, TaskControlLevelUpdate,
+    TaskMutation, TaskRecord, TaskScopeRevisionUpdate, TaskScopeUpdate, TaskShapingFacts,
     UserActionInvalidation, UserActionMutation, WriteTicketInvalidation, WriteTicketMutation,
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
@@ -44,7 +44,7 @@ use volicord_types::methods::{
 use volicord_types::schema::{AcceptanceCriterion, JsonObject, NextActionSummary, StateRecordRef};
 use volicord_types::values::{
     AcceptancePolicy, ChangeUnitEffectKind, ChangeUnitOperation, ErrorCode, MethodName,
-    StateRecordKind, TaskControlLevel, TaskMode, UtcTimestamp, WorkPhase,
+    StateRecordKind, TaskControlLevel, TaskLifecyclePhase, TaskMode, UtcTimestamp, WorkPhase,
     WriteTicketInvalidationReason,
 };
 use volicord_user_action_service::{
@@ -237,8 +237,7 @@ fn decide_update_scope_policy(
         current_change_unit,
         workflow_policy,
     } = resolved;
-    let current_control =
-        parse_task_control_level(&task.effective_control_level).map_err(CorePipelineError::from)?;
+    let current_control = task.effective_control_level;
     let resolved_control =
         resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
     let next_control = if sensitive_effect {
@@ -246,7 +245,7 @@ fn decide_update_scope_policy(
     } else {
         resolved_control.effective_control_level
     };
-    let current_acceptance = parse_acceptance_policy(&task.acceptance_policy)?;
+    let current_acceptance = task.acceptance_policy;
     let control_acceptance = acceptance_policy_for_control(next_control, &workflow_policy);
     let next_acceptance = if acceptance_policy_rank_for_scope(resolved_control.acceptance_policy)
         >= acceptance_policy_rank_for_scope(control_acceptance)
@@ -425,7 +424,25 @@ fn plan_update_scope_mutations(
         Vec::new()
     };
 
-    let task_mode = parse_task_mode(&task.mode)?;
+    let task_mode = task.mode;
+    let next_shaping = TaskShapingFacts {
+        goal_summary: next_scope.goal_summary.clone(),
+        scope_summary: next_scope.scope_summary.clone(),
+        non_goals: next_scope.non_goals.clone(),
+        baseline_ref: next_scope
+            .baseline_ref
+            .as_ref()
+            .map(|value| volicord_types::ids::BaselineRef::new(value.clone())),
+        autonomy_boundary: next_scope.autonomy_boundary.clone(),
+        initial_context_refs: task.shaping.initial_context_refs.clone(),
+        initial_source_refs: task.shaping.initial_source_refs.clone(),
+    };
+    let next_bounded_context = object_from_value(json!({
+        "scope_update": request.scope_update.clone()
+    }))?;
+    let next_autonomy_boundary = TaskAutonomyBoundary {
+        autonomy_boundary: next_scope.autonomy_boundary.clone(),
+    };
     let mut storage_mutations = vec![CoreStorageMutation::Task(TaskMutation::UpdateScope(
         TaskScopeUpdate {
             task_id: task.task_id.clone(),
@@ -433,38 +450,33 @@ fn plan_update_scope_mutations(
                 request.change_unit.operation,
                 ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
             )
-            .then(|| work_phase_storage(WorkPhase::Implementation).to_owned())
+            .then_some(WorkPhase::Implementation)
             .filter(|_| task_mode != TaskMode::Advisor),
             lifecycle_phase: None,
             result: None,
             title: next_scope.goal_summary.clone(),
             summary: next_scope.goal_summary.clone(),
-            shaping_summary_json: Some(serde_json::to_string(&next_scope.to_json())?),
-            bounded_context_json: Some(serde_json::to_string(&json!({
-                "scope_update": request.scope_update.clone()
-            }))?),
-            autonomy_boundary_json: Some(serde_json::to_string(&json!({
-                "autonomy_boundary": next_scope.autonomy_boundary
-            }))?),
-            close_summary_json: None,
+            shaping: Some(next_shaping.clone()),
+            bounded_context: Some(next_bounded_context.clone()),
+            autonomy_boundary: Some(next_autonomy_boundary.clone()),
+            close_summary: None,
         },
     ))];
     if control_raised || acceptance_raised {
         storage_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: task.task_id.clone(),
-                effective_control_level: next_control.as_str().to_owned(),
+                effective_control_level: next_control,
                 control_level_reason: control_level_reason.clone(),
-                acceptance_policy: acceptance_raised
-                    .then(|| acceptance_policy_storage(next_acceptance).to_owned()),
+                acceptance_policy: acceptance_raised.then_some(next_acceptance),
                 acceptance_policy_reason: acceptance_raised
                     .then(|| acceptance_policy_reason.clone()),
             },
         )));
-        task.effective_control_level = next_control.as_str().to_owned();
+        task.effective_control_level = next_control;
         task.control_level_reason = control_level_reason;
         if acceptance_raised {
-            task.acceptance_policy = acceptance_policy_storage(next_acceptance).to_owned();
+            task.acceptance_policy = next_acceptance;
             task.acceptance_policy_reason = acceptance_policy_reason;
         }
     }
@@ -484,7 +496,7 @@ fn plan_update_scope_mutations(
             TaskCloseBasisUpdate {
                 task_id: task.task_id.clone(),
                 close_basis_revision: next_close_basis_revision,
-                close_basis_json: None,
+                close_basis: None,
             },
         )));
     }
@@ -493,24 +505,20 @@ fn plan_update_scope_mutations(
     synthetic_task.scope_revision = next_scope_revision;
     synthetic_task.close_basis_revision = next_close_basis_revision;
     if scope_changed {
-        synthetic_task.close_basis_json = None;
+        synthetic_task.close_basis = None;
     }
     synthetic_task.title = next_scope.goal_summary.clone();
     synthetic_task.summary = next_scope.goal_summary.clone();
-    synthetic_task.shaping_summary_json = serde_json::to_string(&next_scope.to_json())?;
-    synthetic_task.bounded_context_json = serde_json::to_string(&json!({
-        "scope_update": request.scope_update.clone()
-    }))?;
-    synthetic_task.autonomy_boundary_json = serde_json::to_string(&json!({
-        "autonomy_boundary": next_scope.autonomy_boundary
-    }))?;
+    synthetic_task.shaping = next_shaping;
+    synthetic_task.bounded_context = next_bounded_context;
+    synthetic_task.autonomy_boundary = next_autonomy_boundary;
     if task_mode != TaskMode::Advisor
         && matches!(
             request.change_unit.operation,
             ChangeUnitOperation::CreateCurrent | ChangeUnitOperation::ReplaceCurrent
         )
     {
-        synthetic_task.work_phase = work_phase_storage(WorkPhase::Implementation).to_owned();
+        synthetic_task.work_phase = WorkPhase::Implementation;
     }
 
     let (change_unit_ref, synthetic_change_unit, change_unit_id) =
@@ -556,7 +564,7 @@ fn plan_update_scope_mutations(
                     ChangeUnitMutation::InsertCurrent(insert),
                 ));
                 synthetic_task.current_change_unit_id = Some(change_unit_id.as_str().to_owned());
-                synthetic_task.lifecycle_phase = "ready".to_owned();
+                synthetic_task.lifecycle_phase = TaskLifecyclePhase::Ready;
                 let change_unit_ref = state_ref(
                     StateRecordKind::ChangeUnit,
                     change_unit_id.as_str(),
@@ -595,7 +603,7 @@ fn plan_update_scope_mutations(
                     ChangeUnitMutation::ReplaceCurrent(insert),
                 ));
                 synthetic_task.current_change_unit_id = Some(change_unit_id.as_str().to_owned());
-                synthetic_task.lifecycle_phase = "ready".to_owned();
+                synthetic_task.lifecycle_phase = TaskLifecyclePhase::Ready;
                 let change_unit_ref = state_ref(
                     StateRecordKind::ChangeUnit,
                     change_unit_id.as_str(),
@@ -754,7 +762,7 @@ fn project_update_scope_response(
         Some(planned_state_version),
     );
     let next_actions = next_actions_for_state(
-        parse_task_mode(&synthetic_task.mode)?,
+        synthetic_task.mode,
         &task_ref,
         change_unit_ref.as_ref(),
         planned_state_version,
@@ -940,7 +948,7 @@ fn plan_acceptance_criteria_replacement(
                         "acceptance criterion replacement ID belongs to another Task",
                     );
                 }
-                if record.status != "active" {
+                if record.status != AcceptanceCriterionStatus::Active {
                     return scope_validation_rejection(
                         request.envelope.dry_run,
                         Some(project_state.state_version),
@@ -965,7 +973,7 @@ fn plan_acceptance_criteria_replacement(
         upserts.push(AcceptanceCriterionUpsert {
             acceptance_criterion_id: acceptance_criterion_id.as_str().to_owned(),
             statement,
-            evidence_requirement: storage_value(replacement.evidence_requirement)?,
+            evidence_requirement: replacement.evidence_requirement,
             position: position as u64,
         });
     }

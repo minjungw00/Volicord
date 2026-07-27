@@ -5,10 +5,18 @@ use std::{
 
 use serde_json::json;
 use volicord_test_support::TempRuntimeHome;
-use volicord_types::ids::ProjectId;
+use volicord_types::{
+    ids::{AgentConnectionId, ProjectId},
+    schema::JsonObject,
+    values::{
+        AcceptancePolicy, ActorSource, PersistedCloseSummary, RequestedControlLevel,
+        TaskControlLevel, TaskLifecyclePhase, TaskMode, WorkPhase,
+    },
+};
 
 use super::{
-    CommittedMutationFacts, CoreProjectStore, PendingTaskEvent, TaskInsert, VerifiedReplayContext,
+    CommittedMutationFacts, CoreProjectStore, PendingTaskEvent, TaskAutonomyBoundary, TaskInsert,
+    TaskShapingFacts, VerifiedReplayContext,
 };
 use crate::bootstrap::{
     initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
@@ -107,26 +115,38 @@ pub(super) fn pending_event_for_task(marker: &str, task_id: &str) -> PendingTask
 pub(super) fn task_insert(task_id: &str) -> TaskInsert {
     TaskInsert {
         task_id: task_id.to_owned(),
-        created_by_actor_source: ACTOR_SOURCE.to_owned(),
-        mode: "work".to_owned(),
-        requested_control_level: "tracked".to_owned(),
-        effective_control_level: "tracked".to_owned(),
+        created_by_actor_source: ActorSource::AgentConnection(AgentConnectionId::new(
+            CONNECTION_ID,
+        )),
+        mode: TaskMode::Work,
+        requested_control_level: RequestedControlLevel::Tracked,
+        effective_control_level: TaskControlLevel::Tracked,
         control_level_reason: "Store test control.".to_owned(),
-        work_phase: "shaping".to_owned(),
-        acceptance_policy: "required".to_owned(),
+        work_phase: WorkPhase::Shaping,
+        acceptance_policy: AcceptancePolicy::Required,
         acceptance_policy_reason: "Store test policy.".to_owned(),
         predecessor_task_id: None,
         lineage_relation: None,
         lineage_reason: None,
-        carry_forward_json: "[]".to_owned(),
-        lifecycle_phase: "shaping".to_owned(),
+        carry_forward: Vec::new(),
+        lifecycle_phase: TaskLifecyclePhase::Shaping,
         result: None,
         title: None,
         summary: None,
-        shaping_summary_json: "{}".to_owned(),
-        bounded_context_json: "[]".to_owned(),
-        autonomy_boundary_json: "{}".to_owned(),
-        close_summary_json: "{\"close_reason\":\"none\"}".to_owned(),
+        shaping: TaskShapingFacts {
+            goal_summary: None,
+            scope_summary: None,
+            non_goals: Vec::new(),
+            baseline_ref: None,
+            autonomy_boundary: None,
+            initial_context_refs: Vec::new(),
+            initial_source_refs: Vec::new(),
+        },
+        bounded_context: JsonObject::new(),
+        autonomy_boundary: TaskAutonomyBoundary {
+            autonomy_boundary: None,
+        },
+        close_summary: PersistedCloseSummary::default(),
         current_change_unit_id: None,
     }
 }

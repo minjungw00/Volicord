@@ -14,20 +14,17 @@ use crate::{
     relevance::{user_action_blocks_operation, UserActionOperationContext},
     validation::validate_user_action,
 };
-use serde::Deserialize;
-use serde_json::Value;
 use std::collections::BTreeMap;
 use volicord_store::{
     artifacts::PersistentArtifactVerificationStatus,
-    core_pipeline::{CoreProjectStore, StoredArtifactRecord},
-    StoreError,
+    core_pipeline::{StoredArtifactRecord, UserActionStoreReader},
 };
 use volicord_types::{
     ids::{ArtifactId, ChangeUnitId, RiskId, StorageRef, TaskId},
     schema::{ArtifactRef, EvidenceTarget, StateRecordRef, UserActionDraft},
     values::{
-        ArtifactAvailability, ArtifactIntegrityStatus, JudgmentKind, RedactionState,
-        StateRecordKind, UserActionStatus, UtcTimestamp,
+        ArtifactAvailability, ArtifactIntegrityStatus, JudgmentKind, StateRecordKind,
+        UserActionStatus, UtcTimestamp,
     },
 };
 
@@ -110,7 +107,7 @@ struct ChoiceCloseCoordinates {
 }
 
 fn choice_close_coordinates(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     judgment_kind: JudgmentKind,
 ) -> Result<ChoiceCloseCoordinates, UserActionServiceError> {
@@ -144,7 +141,7 @@ fn choice_close_coordinates(
 }
 
 pub(crate) fn validate_user_action_target(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     target: &EvidenceTarget,
     field: &'static str,
@@ -155,7 +152,11 @@ pub(crate) fn validate_user_action_target(
         } => store
             .acceptance_criterion_record(acceptance_criterion_id.as_str())
             .map_err(UserActionServiceError::from_store)?
-            .is_some_and(|record| record.task_id == task_id.as_str() && record.status == "active"),
+            .is_some_and(|record| {
+                record.task_id == task_id.as_str()
+                    && record.status
+                        == volicord_store::core_pipeline::AcceptanceCriterionStatus::Active
+            }),
         EvidenceTarget::SupplementalClaim {
             evidence_claim_id,
             statement,
@@ -173,7 +174,7 @@ pub(crate) fn validate_user_action_target(
 }
 
 pub(crate) fn canonical_user_action_artifacts(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     project_id: &volicord_types::ids::ProjectId,
     observed_state_version: u64,
     task_id: &TaskId,
@@ -214,15 +215,6 @@ fn verified_artifact_ref(
     observed_state_version: u64,
 ) -> Result<ArtifactRef, UserActionServiceError> {
     let task_id = TaskId::new(record.task_id.clone());
-    let redaction_state =
-        serde_json::from_value::<RedactionState>(Value::String(record.redaction_state.clone()))
-            .map_err(|_| {
-                UserActionServiceError::CorruptStoredState(StoreError::corrupt_owner_state_value(
-                    "artifacts",
-                    &record.artifact_id,
-                    "redaction_state",
-                ))
-            })?;
     Ok(ArtifactRef {
         artifact_id: ArtifactId::new(record.artifact_id.clone()),
         project_id: volicord_types::ids::ProjectId::new(record.project_id.clone()),
@@ -236,7 +228,7 @@ fn verified_artifact_ref(
         sha256: record.sha256.clone().into(),
         size_bytes: record.size_bytes.into(),
         integrity_status: ArtifactIntegrityStatus::Verified,
-        redaction_state,
+        redaction_state: record.redaction_state,
         availability: ArtifactAvailability::Available,
         created_by_run_ref: Some(StateRecordRef::new(
             StateRecordKind::Run,
@@ -260,7 +252,7 @@ fn artifact_validation_error(field: &'static str) -> UserActionServiceError {
 
 /// Loads resolved authority facts for one judgment kind.
 pub fn resolved_user_action_authorities(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     judgment_kind: JudgmentKind,
     now: &UtcTimestamp,
@@ -275,7 +267,7 @@ pub fn resolved_user_action_authorities(
 
 /// Loads all current pending UserAction authority facts for a Task.
 pub fn pending_user_action_authorities(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     now: &UtcTimestamp,
 ) -> Result<Vec<crate::model::UserActionAuthority>, UserActionServiceError> {
@@ -289,7 +281,7 @@ pub fn pending_user_action_authorities(
 
 /// Projects pending refs that block one typed operation.
 pub fn pending_user_action_refs_for_operation(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     project_id: &volicord_types::ids::ProjectId,
     state_version: u64,
     now: &UtcTimestamp,
@@ -314,7 +306,7 @@ pub fn pending_user_action_refs_for_operation(
 
 /// Loads every resolved UserAction authority for a Task.
 pub fn resolved_user_action_authorities_for_all_kinds(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     now: &UtcTimestamp,
 ) -> Result<Vec<crate::model::UserActionAuthority>, UserActionServiceError> {
@@ -329,7 +321,7 @@ pub fn resolved_user_action_authorities_for_all_kinds(
 
 /// Reads current pending refs for a projected Task state.
 pub fn projected_pending_user_action_refs(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     task_id: &TaskId,
     state_version: u64,
     now: &UtcTimestamp,
@@ -342,7 +334,7 @@ pub fn projected_pending_user_action_refs(
                 .into_iter()
                 .map(|record| {
                     StateRecordRef::new(
-                        stored_record_kind(&record.record_kind),
+                        record.record_kind,
                         record.record_id,
                         volicord_types::ids::ProjectId::new(record.project_id),
                         record.task_id.map(TaskId::new),
@@ -353,60 +345,14 @@ pub fn projected_pending_user_action_refs(
         })
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PersistedTaskShaping {
-    #[serde(default)]
-    goal_summary: Option<String>,
-    #[serde(default)]
-    scope_summary: Option<String>,
-    #[serde(default)]
-    non_goals: Vec<String>,
-    #[serde(default)]
-    baseline_ref: Option<String>,
-    #[serde(default)]
-    autonomy_boundary: Option<String>,
-    #[serde(default)]
-    initial_context_refs: Option<Value>,
-    #[serde(default)]
-    initial_source_refs: Option<Value>,
-}
-
 fn task_baseline_ref(
     task: &volicord_store::core_pipeline::TaskRecord,
 ) -> Result<Option<String>, UserActionServiceError> {
-    let shaping: PersistedTaskShaping =
-        serde_json::from_str(&task.shaping_summary_json).map_err(|_| {
-            UserActionServiceError::CorruptStoredState(StoreError::corrupt_owner_state_json(
-                "tasks",
-                &task.task_id,
-                "shaping_summary_json",
-            ))
-        })?;
-    let _ = (
-        shaping.goal_summary,
-        shaping.scope_summary,
-        shaping.non_goals,
-        shaping.autonomy_boundary,
-        shaping.initial_context_refs,
-        shaping.initial_source_refs,
-    );
-    Ok(shaping.baseline_ref)
-}
-
-fn stored_record_kind(value: &str) -> StateRecordKind {
-    match value {
-        "user_action_request" => StateRecordKind::UserActionRequest,
-        "user_action_resolution" => StateRecordKind::UserActionResolution,
-        "blocker" => StateRecordKind::Blocker,
-        "write_ticket" => StateRecordKind::WriteTicket,
-        "change_unit" => StateRecordKind::ChangeUnit,
-        "task" => StateRecordKind::Task,
-        "evidence_observation" => StateRecordKind::EvidenceObservation,
-        "unrecorded_change" => StateRecordKind::UnrecordedChange,
-        "project_continuity_record" => StateRecordKind::ProjectContinuityRecord,
-        _ => StateRecordKind::ProjectState,
-    }
+    Ok(task
+        .shaping
+        .baseline_ref
+        .as_ref()
+        .map(|baseline_ref| baseline_ref.as_str().to_owned()))
 }
 
 fn normalize_display_text(value: &str) -> String {

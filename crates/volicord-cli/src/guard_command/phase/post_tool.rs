@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::{
     bootstrap::ProjectRecord,
-    core_pipeline::{CoreProjectStore, RunObservedChangesRecord},
+    core_pipeline::{CoreProjectStore, RunObservedChangesRecord, RunStatus},
     guards::{
         agent_session, insert_unrecorded_change, list_expected_writes_matched_by_post_event,
         list_pending_expected_writes, list_unresolved_unrecorded_changes,
@@ -1234,7 +1234,7 @@ fn committed_run_for_correlation(
             serde_json::from_str(&ticket.validity_basis_json).map_err(|_| {
                 SuppressionFailure::new(SuppressionUnavailableReason::WriteTicketLookupFailed)
             })?;
-        if run.status != "recorded"
+        if run.status != RunStatus::Recorded
             || run.task_id != ticket.task_id
             || run.change_unit_id.as_deref() != Some(ticket.change_unit_id.as_str())
             || run_ticket_effect.write_ticket_id != ticket.write_ticket_id
@@ -1244,7 +1244,7 @@ fn committed_run_for_correlation(
                 .baseline_ref
                 .as_ref()
                 .map(|value| value.as_str())
-                != run.baseline_ref.as_deref()
+                != run.baseline_ref.as_ref().map(|value| value.as_str())
             || validity_basis.scope_revision != run.scope_revision
         {
             continue;
@@ -1264,7 +1264,7 @@ fn committed_run_for_correlation(
             .expect("task observations were inserted above");
         let Some(observed) = observations
             .iter()
-            .find(|observed| observed.run_id == run_id && observed.status == "recorded")
+            .find(|observed| observed.run_id == run_id && observed.status == RunStatus::Recorded)
         else {
             continue;
         };

@@ -607,10 +607,10 @@ fn active_task_requires_escalation(
     let Some(task) = store.active_task_record()? else {
         return Ok(false);
     };
-    let mode = parse_mode(&task.mode)?;
-    let requested = parse_requested_control(&task.requested_control_level)?;
-    let current = parse_control(&task.effective_control_level)?;
-    let current_acceptance = parse_acceptance(&task.acceptance_policy)?;
+    let mode = task.mode;
+    let requested = task.requested_control_level;
+    let current = task.effective_control_level;
+    let current_acceptance = task.acceptance_policy;
     if let Some(mark) = task_policy_control_reevaluation(&task)? {
         if parse_control(&mark.required_effective_control_level)? > current {
             return Ok(true);
@@ -671,15 +671,6 @@ fn active_task_requires_escalation(
     };
     Ok(required > current
         || acceptance_rank(required_acceptance) > acceptance_rank(current_acceptance))
-}
-
-fn parse_mode(value: &str) -> Result<TaskMode, PolicyCommandError> {
-    serde_json::from_value(Value::String(value.to_owned())).map_err(|_| corrupt_active_task("mode"))
-}
-
-fn parse_requested_control(value: &str) -> Result<RequestedControlLevel, PolicyCommandError> {
-    serde_json::from_value(Value::String(value.to_owned()))
-        .map_err(|_| corrupt_active_task("requested_control_level"))
 }
 
 fn parse_control(value: &str) -> Result<TaskControlLevel, PolicyCommandError> {

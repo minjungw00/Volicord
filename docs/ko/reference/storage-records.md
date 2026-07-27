@@ -483,6 +483,14 @@ encoding, 명시적 크기 제한을 사용합니다. 알 수 없거나 빠지�
 잘못되거나 noncanonical이거나 담당자 불변식과 맞지 않는 member는 유효하지 않은 입력이며
 영속 데이터 손상입니다.
 
+물리 row 형태와 직렬화한 JSON 또는 닫힌 `TEXT` 값은 Store 내부에만 둡니다. Store는
+Task, Change Unit, artifact, Run, evidence, project continuity, `StoredRecordRef`,
+UserAction 담당 상태를 public Store interface 밖으로 내보내기 전에 typed record로
+decode하고, 이 record family의 typed mutation input을 받습니다. 형식이 잘못된
+표현이나 알 수 없는 닫힌 값은 typed 영속 데이터 `Corrupt` failure를 만들며 빈 값,
+기본값, 다른 column을 통해 다시 해석하지 않습니다. 의미 metadata는 service와 Core를
+지나는 동안 typed 상태를 유지하고, Store가 SQLite 경계에서 한 번 직렬화합니다.
+
 명시적으로 비권한으로 분류한 metadata는 계속 비권한입니다. 사용자 판단, evidence
 assurance, acceptance, 쓰기 티켓 권한, 닫기 준비 상태를 만들 수 없습니다.
 

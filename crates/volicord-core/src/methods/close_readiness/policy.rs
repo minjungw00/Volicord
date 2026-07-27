@@ -1,16 +1,11 @@
 use super::blockers::normalize_close_blockers;
 use super::facts::{workflow_policy_for_close_context, CloseReadinessFacts};
 use super::summary::CloseReadinessAssessment;
-use crate::methods::{
-    acceptance_policy_storage, change_unit_effect_contract, evidence_summary_for_display,
-    parse_acceptance_policy, PlanError,
-};
+use crate::methods::{change_unit_effect_contract, evidence_summary_for_display, PlanError};
 use crate::pipeline::CorePipelineError;
 use crate::policy::close_readiness::close_acceptance_policy_rank;
 use crate::policy::close_readiness_evidence::evaluate_evidence_gate;
-use crate::policy::workflow::{
-    acceptance_policy_for_control, parse_task_control_level, resolve_task_control_authority,
-};
+use crate::policy::workflow::{acceptance_policy_for_control, resolve_task_control_authority};
 use volicord_store::core_pipeline::TaskControlLevelUpdate;
 use volicord_types::schema::{CloseReadinessBlocker, RiskAcceptanceCoverage};
 use volicord_types::values::{ChangeUnitEffectKind, CloseIntent, CloseState, TaskControlLevel};
@@ -33,8 +28,7 @@ pub(super) fn resolve_control(
     context: &mut CloseReadinessFacts,
 ) -> Result<Option<TaskControlLevelUpdate>, PlanError> {
     let workflow_policy = workflow_policy_for_close_context(context)?.clone();
-    let current_control = parse_task_control_level(&context.task.effective_control_level)
-        .map_err(CorePipelineError::from)?;
+    let current_control = context.task.effective_control_level;
     let resolved_control = resolve_task_control_authority(&context.task, &workflow_policy)
         .map_err(CorePipelineError::from)?;
     let sensitive_effect = context
@@ -54,7 +48,7 @@ pub(super) fn resolve_control(
                     )
                 })
         });
-    let current_acceptance = parse_acceptance_policy(&context.task.acceptance_policy)?;
+    let current_acceptance = context.task.acceptance_policy;
     let next_control = if sensitive_effect {
         TaskControlLevel::Sensitive
     } else {
@@ -80,10 +74,10 @@ pub(super) fn resolve_control(
         } else {
             context.task.control_level_reason.clone()
         };
-        context.task.effective_control_level = next_control.as_str().to_owned();
+        context.task.effective_control_level = next_control;
         context.task.control_level_reason = reason.clone();
         if acceptance_raised {
-            context.task.acceptance_policy = acceptance_policy_storage(next_acceptance).to_owned();
+            context.task.acceptance_policy = next_acceptance;
             context.task.acceptance_policy_reason = if next_control
                 == resolved_control.effective_control_level
                 && resolved_control.acceptance_raised
@@ -98,10 +92,9 @@ pub(super) fn resolve_control(
         }
         TaskControlLevelUpdate {
             task_id: context.task.task_id.clone(),
-            effective_control_level: next_control.as_str().to_owned(),
+            effective_control_level: next_control,
             control_level_reason: reason,
-            acceptance_policy: acceptance_raised
-                .then(|| acceptance_policy_storage(next_acceptance).to_owned()),
+            acceptance_policy: acceptance_raised.then_some(next_acceptance),
             acceptance_policy_reason: acceptance_raised
                 .then(|| context.task.acceptance_policy_reason.clone()),
         }

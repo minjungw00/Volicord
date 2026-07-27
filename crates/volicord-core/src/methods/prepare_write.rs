@@ -3,18 +3,18 @@ use super::close_readiness::{
     plan_projected_close_readiness,
 };
 use super::{
-    acceptance_policy_storage, active_acceptance_criteria_for_task, allocate_write_ticket_id,
-    baseline_matches, build_state_summary, change_unit_effect_contract, change_unit_ref,
-    decode_required_json, guarantee_display_for_invocation, infallible_rejected_pipeline_response,
+    active_acceptance_criteria_for_task, allocate_write_ticket_id, baseline_matches,
+    build_state_summary, change_unit_effect_contract, change_unit_ref, decode_required_json,
+    guarantee_display_for_invocation, infallible_rejected_pipeline_response,
     matching_sensitive_approval, object_from_value, observe_request_product_paths,
-    parse_acceptance_policy, parse_owner_storage_value, parse_task_mode, parse_work_phase,
-    paths_match_current_change_unit, plan_error_response, prepare_or_response,
-    project_state_projection, projected_close_basis, projected_evidence_summary,
-    record_core_workflow_metric_best_effort, resolve_prepare_write_task,
-    response_committed_fresh_effect, state_ref, state_ref_from_stored, store_error_plan,
-    user_action_service_plan_error, validate_prepare_write_change_unit, validation_rejected,
-    workspace_context_matches, write_ticket_summary_for_record, PersistedWriteTicketAttemptScope,
-    PlanError, PrepareWritePlan, SensitiveApprovalSearch, SummaryBuild,
+    parse_owner_storage_value, paths_match_current_change_unit, plan_error_response,
+    prepare_or_response, project_state_projection, projected_close_basis,
+    projected_evidence_summary, record_core_workflow_metric_best_effort,
+    resolve_prepare_write_task, response_committed_fresh_effect, state_ref, state_ref_from_stored,
+    store_error_plan, user_action_service_plan_error, validate_prepare_write_change_unit,
+    validation_rejected, workspace_context_matches, write_ticket_summary_for_record,
+    PersistedWriteTicketAttemptScope, PlanError, PrepareWritePlan, SensitiveApprovalSearch,
+    SummaryBuild,
 };
 use crate::pipeline::{
     tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -23,8 +23,8 @@ use crate::pipeline::{
 };
 use crate::policy::effect_contract::{product_write_violations, EffectContractViolation};
 use crate::policy::workflow::{
-    acceptance_policy_for_control, parse_task_control_level, project_workflow_policy,
-    resolve_task_control_authority, ProjectWorkflowPolicy,
+    acceptance_policy_for_control, project_workflow_policy, resolve_task_control_authority,
+    ProjectWorkflowPolicy,
 };
 use crate::policy::write_ticket::{
     normalized_string_set, prepare_write_decision, prepare_write_dry_run_summary,
@@ -438,7 +438,7 @@ fn decide_prepare_write_policy(
         reasons,
     } = resolved;
     let dry_run = normalized.raw.request.envelope.dry_run;
-    if parse_task_mode(&task.mode)? == TaskMode::Advisor {
+    if task.mode == TaskMode::Advisor {
         return prepare_write_validation_error(
             dry_run,
             project_state.state_version,
@@ -447,9 +447,8 @@ fn decide_prepare_write_policy(
         );
     }
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
-    let current_control =
-        parse_task_control_level(&task.effective_control_level).map_err(CorePipelineError::from)?;
-    let current_acceptance = parse_acceptance_policy(&task.acceptance_policy)?;
+    let current_control = task.effective_control_level;
+    let current_acceptance = task.acceptance_policy;
     let resolved_control =
         resolve_task_control_authority(&task, &workflow_policy).map_err(CorePipelineError::from)?;
     let resolved_base_control = resolved_control.effective_control_level;
@@ -519,21 +518,20 @@ fn decide_prepare_write_policy(
         control_mutations.push(CoreStorageMutation::Task(TaskMutation::UpdateControlLevel(
             TaskControlLevelUpdate {
                 task_id: task.task_id.clone(),
-                effective_control_level: next_control.as_str().to_owned(),
+                effective_control_level: next_control,
                 control_level_reason: next_control_reason.clone(),
-                acceptance_policy: acceptance_raised
-                    .then(|| acceptance_policy_storage(next_acceptance).to_owned()),
+                acceptance_policy: acceptance_raised.then_some(next_acceptance),
                 acceptance_policy_reason: acceptance_raised.then(|| next_acceptance_reason.clone()),
             },
         )));
-        task.effective_control_level = next_control.as_str().to_owned();
+        task.effective_control_level = next_control;
         task.control_level_reason = next_control_reason;
         if acceptance_raised {
-            task.acceptance_policy = acceptance_policy_storage(next_acceptance).to_owned();
+            task.acceptance_policy = next_acceptance;
             task.acceptance_policy_reason = next_acceptance_reason;
         }
     }
-    if parse_work_phase(&task.work_phase)? != WorkPhase::Implementation {
+    if task.work_phase != WorkPhase::Implementation {
         return prepare_write_validation_error(
             dry_run,
             project_state.state_version,

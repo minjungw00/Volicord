@@ -656,7 +656,7 @@ fn deterministic_resolution(
         )));
     }
     if runs.iter().any(|run| {
-        run.status == "recorded"
+        run.status == volicord_store::core_pipeline::RunStatus::Recorded
             && run.observed_changes.product_file_write_observed
             && paths_are_authorized(&observed_paths, &run.observed_changes.changed_paths)
     }) {
@@ -1018,14 +1018,14 @@ fn resolution_mutation(resolution: &PlannedResolution) -> CoreResult<CoreStorage
     Ok(CoreStorageMutation::Continuity(
         ContinuityMutation::ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate {
             unrecorded_change_id: resolution.record.unrecorded_change_id.clone(),
-            resolution_json: serde_json::to_string(&json!({
+            resolution: object_from_value(json!({
                 "resolution_basis": resolution.basis,
                 "capture_basis": resolution.capture_basis,
                 "user_action_resolution_ref": resolution.user_action_resolution_ref,
                 "resolved_by_method": MethodName::ReconcileChanges.as_str()
             }))?,
-            resolved_at: resolution.resolved_at.to_string(),
-            resolved_by_actor_source: resolution.resolved_by_actor_source.to_canonical_string(),
+            resolved_at: resolution.resolved_at.clone(),
+            resolved_by_actor_source: resolution.resolved_by_actor_source.clone(),
         }),
     ))
 }

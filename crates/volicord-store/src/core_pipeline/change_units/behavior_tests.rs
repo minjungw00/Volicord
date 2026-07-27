@@ -1,10 +1,14 @@
 use std::error::Error;
 
-use serde_json::{json, Value};
-use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash, TaskId};
-use volicord_types::values::MethodName;
+use rusqlite::params;
+use volicord_types::ids::{BaselineRef, IdempotencyKey, ProjectId, RequestHash, TaskId};
+use volicord_types::schema::ChangeUnitEffectContract;
+use volicord_types::values::{ChangeUnitEffectKind, MethodName};
 
-use super::{ChangeUnitInsert, ChangeUnitMutation};
+use super::{
+    ChangeUnitInsert, ChangeUnitMutation, StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary,
+    StoredChangeUnitWriteBasis,
+};
 use crate::core_pipeline::test_support::{
     pending_event_for_task, replay_context, response_json, task_insert,
     StoreFixture as StoreHarness, CONNECTION_ID, PROJECT_ID,
@@ -13,19 +17,19 @@ use crate::core_pipeline::{commit_input, CoreStorageMutation, TaskMutation};
 use crate::StoreError;
 
 #[test]
-fn change_unit_effect_contract_json_round_trips() -> Result<(), Box<dyn Error>> {
+fn change_unit_effect_contract_round_trips() -> Result<(), Box<dyn Error>> {
     let harness = StoreHarness::new()?;
     let mut store = harness.store()?;
     let task_id = "task_effect_contract";
-    let contract = json!({
-        "allowed_effects": ["product_file_write"],
-        "forbidden_effects": ["external_network"],
-        "allowed_paths": ["src/export.rs"],
-        "expected_outputs": ["Updated export behavior."],
-        "invariants": ["Keep unrelated behavior unchanged."],
-        "evidence_expectations": ["Record a focused test run."],
-        "sensitive_action_expectations": ["No secret access is expected."]
-    });
+    let contract = ChangeUnitEffectContract {
+        allowed_effects: vec![ChangeUnitEffectKind::ProductFileWrite],
+        forbidden_effects: vec![ChangeUnitEffectKind::ExternalNetwork],
+        allowed_paths: vec!["src/export.rs".to_owned()],
+        expected_outputs: vec!["Updated export behavior.".to_owned()],
+        invariants: vec!["Keep unrelated behavior unchanged.".to_owned()],
+        evidence_expectations: vec!["Record a focused test run.".to_owned()],
+        sensitive_action_expectations: vec!["No secret access is expected.".to_owned()],
+    };
 
     let input = commit_input(
         &ProjectId::new(PROJECT_ID),
@@ -45,7 +49,7 @@ fn change_unit_effect_contract_json_round_trips() -> Result<(), Box<dyn Error>> 
             CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit_insert(
                 "cu_effect_contract",
                 task_id,
-                contract.to_string(),
+                Some(contract.clone()),
             )))
             .apply(mutation, facts)
             .map(|_| ())
@@ -56,20 +60,15 @@ fn change_unit_effect_contract_json_round_trips() -> Result<(), Box<dyn Error>> 
     let record = store
         .current_change_unit(&TaskId::new(task_id))?
         .expect("current Change Unit should be readable");
-    assert_eq!(
-        serde_json::from_str::<Value>(&record.effect_contract_json)?,
-        contract
-    );
+    assert_eq!(record.effect_contract, Some(contract));
     Ok(())
 }
 
 #[test]
-fn malformed_effect_contract_json_rejects_commit_without_effect() -> Result<(), Box<dyn Error>> {
+fn malformed_effect_contract_json_fails_closed_on_read() -> Result<(), Box<dyn Error>> {
     let harness = StoreHarness::new()?;
     let mut store = harness.store()?;
     let task_id = "task_bad_effect_contract";
-    let before = store.effect_counts()?;
-
     let input = commit_input(
         &ProjectId::new(PROJECT_ID),
         MethodName::UpdateScope,
@@ -79,50 +78,64 @@ fn malformed_effect_contract_json_rejects_commit_without_effect() -> Result<(), 
         Some(0),
         vec![pending_event_for_task("bad_effect_contract", task_id)],
     );
-    let error = store
-        .commit_with(
-            input,
-            |mutation, facts| {
-                CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
-                    .apply(mutation, facts)
-                    .map(|_| ())?;
-                CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(
-                    change_unit_insert(
-                        "cu_bad_effect_contract",
-                        task_id,
-                        r#"{"allowed_effects":["not_an_effect"]}"#.to_owned(),
-                    ),
-                ))
+    store.commit_with(
+        input,
+        |mutation, facts| {
+            CoreStorageMutation::Task(TaskMutation::insert(task_insert(task_id)))
                 .apply(mutation, facts)
-                .map(|_| ())
-            },
-            response_json,
-        )
-        .expect_err("unsupported effect contract values should reject");
+                .map(|_| ())?;
+            CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit_insert(
+                "cu_bad_effect_contract",
+                task_id,
+                None,
+            )))
+            .apply(mutation, facts)
+            .map(|_| ())
+        },
+        response_json,
+    )?;
+    store.conn.execute(
+        "UPDATE change_units
+            SET effect_contract_json = '{\"allowed_effects\":[\"not_an_effect\"]}'
+          WHERE project_id = ?1 AND change_unit_id = ?2",
+        params![PROJECT_ID, "cu_bad_effect_contract"],
+    )?;
 
-    assert!(matches!(error, StoreError::InvalidInput { .. }));
-    assert_eq!(store.effect_counts()?, before);
+    let error = store
+        .current_change_unit(&TaskId::new(task_id))
+        .expect_err("unsupported effect contract values must fail closed");
+    assert!(matches!(
+        error,
+        StoreError::CorruptOwnerStateJson {
+            table: "change_units",
+            logical_column: "effect_contract_json",
+            ..
+        }
+    ));
     Ok(())
 }
 
 fn change_unit_insert(
     change_unit_id: &str,
     task_id: &str,
-    effect_contract_json: String,
+    effect_contract: Option<ChangeUnitEffectContract>,
 ) -> ChangeUnitInsert {
     ChangeUnitInsert {
         change_unit_id: change_unit_id.to_owned(),
         task_id: task_id.to_owned(),
-        scope_summary_json: json!({
-            "scope_summary": "Store effect contract scope."
-        })
-        .to_string(),
-        bounded_paths_json: json!(["src/export.rs"]).to_string(),
-        write_basis_json: json!({
-            "baseline_ref": "baseline_store"
-        })
-        .to_string(),
-        effect_contract_json,
-        lifecycle_json: "{}".to_owned(),
+        scope_summary: StoredChangeUnitScopeSummary {
+            scope_summary: Some("Store effect contract scope.".to_owned()),
+            affected_areas: Vec::new(),
+            constraints: Vec::new(),
+        },
+        bounded_paths: vec!["src/export.rs".to_owned()],
+        write_basis: StoredChangeUnitWriteBasis {
+            baseline_ref: Some(BaselineRef::new("baseline_store")),
+            git_workspace_context: None,
+        },
+        effect_contract,
+        lifecycle: StoredChangeUnitLifecycle {
+            recovery_required: false,
+        },
     }
 }

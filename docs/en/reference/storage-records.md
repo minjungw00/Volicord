@@ -545,6 +545,16 @@ encoding where a digest depends on bytes, and explicit size limits. Unknown,
 missing, duplicate, wrongly typed, noncanonical, or owner-inconsistent members
 are invalid input and corrupt persisted data.
 
+Physical row shapes and serialized JSON or closed `TEXT` values remain private
+to Store. Store decodes Task, Change Unit, artifact, Run, evidence, project
+continuity, `StoredRecordRef`, and UserAction owner state into typed records
+before it crosses a public Store interface, and accepts typed mutation inputs
+for those families. A malformed representation or unknown closed value
+produces the typed persisted-data `Corrupt` failure; it is not reinterpreted
+through an empty value, a default, or another column. Semantic metadata remains
+typed through service and Core code, and Store performs its single
+serialization at the SQLite boundary.
+
 Metadata explicitly classified as non-authority remains non-authority. It cannot
 create user judgment, evidence assurance, acceptance, Write Ticket authority,
 or close readiness.

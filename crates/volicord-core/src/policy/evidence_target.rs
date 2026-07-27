@@ -42,7 +42,10 @@ pub(crate) fn acceptance_criterion_target_is_current(
     record: Option<&AcceptanceCriterionRecord>,
     task_id: &TaskId,
 ) -> bool {
-    record.is_some_and(|record| record.task_id == task_id.as_str() && record.status == "active")
+    record.is_some_and(|record| {
+        record.task_id == task_id.as_str()
+            && record.status == volicord_store::core_pipeline::AcceptanceCriterionStatus::Active
+    })
 }
 
 pub(crate) fn supplemental_claim_target_matches(
@@ -156,13 +159,14 @@ pub(crate) fn run_record_matches_close_basis_context(
         && record.task_id == task_id.as_str()
         && record.change_unit_id.as_deref() == Some(change_unit_id)
         && record.scope_revision == scope_revision
-        && record.baseline_ref.as_deref() == baseline_ref
-        && record.status == "recorded"
+        && record.baseline_ref.as_ref().map(|value| value.as_str()) == baseline_ref
+        && record.status == volicord_store::core_pipeline::RunStatus::Recorded
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use volicord_store::core_pipeline::{AcceptanceCriterionStatus, RunStatus};
     use volicord_types::ids::{AcceptanceCriterionId, EvidenceObservationId, RecordId, RunId};
     use volicord_types::schema::{
         EvidenceProducerAnchor, EvidenceRelevanceAssessment, PersistedEvidenceObservationAuthority,
@@ -170,7 +174,7 @@ mod tests {
     };
     use volicord_types::values::{
         ActorSource, EvidenceAssuranceLevel, EvidenceProducerKind, EvidenceRelevanceStatus,
-        EvidenceSourceKind,
+        EvidenceRequirement, EvidenceSourceKind,
     };
 
     fn target(id: &str) -> EvidenceTarget {
@@ -245,29 +249,18 @@ mod tests {
             run_id: Some("run_target".to_owned()),
             acceptance_criterion_id: Some("criterion_expected".to_owned()),
             evidence_claim_id: None,
-            source_kind: "external_tool".to_owned(),
-            assurance_level: "external_tool_result".to_owned(),
+            source_kind: EvidenceSourceKind::ExternalTool,
+            assurance_level: EvidenceAssuranceLevel::ExternalToolResult,
             observed_by_actor_source: None,
             tool_name: None,
             tool_invocation_id: None,
-            tool_metadata_json: "{}".to_owned(),
-            input_refs_json: "[]".to_owned(),
-            source_refs_json: "[]".to_owned(),
-            output_artifact_refs_json: "[]".to_owned(),
-            limitations_json: "[]".to_owned(),
-            observed_at: "2026-07-26T00:00:00Z".to_owned(),
-            recorded_at: "2026-07-26T00:00:00Z".to_owned(),
-            metadata_json: "{}".to_owned(),
-            source: EvidenceSourceKind::ExternalTool,
-            assurance: EvidenceAssuranceLevel::ExternalToolResult,
-            observed_by: None,
             tool_metadata: Default::default(),
             input_refs: Vec::new(),
             source_refs: Vec::new(),
             output_artifact_refs: Vec::new(),
             limitations: Vec::new(),
-            observed_time: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
-            recorded_time: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
+            observed_at: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
+            recorded_at: UtcTimestamp::parse("2026-07-26T00:00:00Z").unwrap(),
             metadata: PersistedEvidenceObservationAuthority {
                 recorded_by_run_id: RunId::new("run_target"),
                 invocation_verification_basis: "verified".to_owned(),
@@ -290,8 +283,8 @@ mod tests {
             task_id: "task_target".to_owned(),
             change_unit_id: Some("change_target".to_owned()),
             scope_revision: 3,
-            baseline_ref: Some("baseline_target".to_owned()),
-            status: "recorded".to_owned(),
+            baseline_ref: Some(BaselineRef::new("baseline_target")),
+            status: RunStatus::Recorded,
         };
         assert_eq!(
             stored_observation_matches_basis(&stored_observation, Some(&source_run), &basis),
@@ -353,16 +346,16 @@ mod tests {
             acceptance_criterion_id: "criterion_target".to_owned(),
             task_id: task_id.as_str().to_owned(),
             statement: "criterion".to_owned(),
-            evidence_requirement: "required".to_owned(),
+            evidence_requirement: EvidenceRequirement::Required,
             position: 1,
-            status: "active".to_owned(),
+            status: AcceptanceCriterionStatus::Active,
         };
         assert!(acceptance_criterion_target_is_current(
             Some(&active),
             &task_id
         ));
         let mut retired = active;
-        retired.status = "retired".to_owned();
+        retired.status = AcceptanceCriterionStatus::Retired;
         assert!(!acceptance_criterion_target_is_current(
             Some(&retired),
             &task_id

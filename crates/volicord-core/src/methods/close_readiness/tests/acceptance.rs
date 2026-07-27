@@ -6,8 +6,8 @@ use volicord_types::schema::{
     UserActionBasisCoordinates, UserActionChoiceBasis, UserActionResolutionBody,
 };
 use volicord_types::values::{
-    JudgmentResolutionOutcome, StateRecordKind, UserActionBasisStatus, UserActionOptionAction,
-    UserActionStatus, UserActionVerificationBasis,
+    JudgmentResolutionOutcome, StateRecordKind, TaskControlLevel, UserActionBasisStatus,
+    UserActionOptionAction, UserActionStatus, UserActionVerificationBasis,
 };
 use volicord_user_action_service::UserActionAuthority;
 
@@ -17,7 +17,7 @@ fn sensitive_control_requires_approval_and_a_ticket_backed_basis() {
     assert!(!sensitive_approval_required(&facts).expect("valid light control"));
     assert!(!sensitive_action_basis_missing(&facts).expect("valid light control"));
 
-    facts.task.effective_control_level = "sensitive".to_owned();
+    facts.task.effective_control_level = TaskControlLevel::Sensitive;
     assert!(sensitive_approval_required(&facts).expect("valid sensitive control"));
     assert!(sensitive_action_basis_missing(&facts).expect("valid sensitive control"));
 }

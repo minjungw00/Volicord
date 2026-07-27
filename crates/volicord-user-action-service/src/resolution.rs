@@ -5,7 +5,7 @@ use crate::{
 };
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, TaskRecord, UserActionResolutionRecord,
+    ChangeUnitRecord, TaskRecord, UserActionResolutionRecord, UserActionStoreReader,
 };
 use volicord_types::{
     ids::{
@@ -22,7 +22,7 @@ use volicord_types::{
 };
 
 pub fn validate_current_resolution_basis(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     observed_state_version: u64,
     task: &TaskRecord,
     current_change_unit: Option<&ChangeUnitRecord>,
@@ -58,7 +58,7 @@ pub fn validate_current_resolution_basis(
 }
 
 pub fn construct_user_action_resolution(
-    store: &CoreProjectStore,
+    store: &dyn UserActionStoreReader,
     context: &UserActionConstructionContext,
     resolution_input: &UserActionResolutionInput,
     request_body: &UserActionRequestBody,
@@ -302,24 +302,11 @@ fn current_artifact_refs_preserve_candidates(left: &[ArtifactRef], right: &[Arti
 }
 
 fn task_baseline_ref(task: &TaskRecord) -> Result<Option<String>, UserActionServiceError> {
-    #[derive(serde::Deserialize)]
-    struct Shaping {
-        #[serde(default)]
-        baseline_ref: Option<String>,
-        #[serde(flatten)]
-        _other: serde_json::Map<String, serde_json::Value>,
-    }
-    serde_json::from_str::<Shaping>(&task.shaping_summary_json)
-        .map(|shaping| shaping.baseline_ref)
-        .map_err(|_| {
-            UserActionServiceError::CorruptStoredState(
-                volicord_store::StoreError::corrupt_owner_state_json(
-                    "tasks",
-                    &task.task_id,
-                    "shaping_summary_json",
-                ),
-            )
-        })
+    Ok(task
+        .shaping
+        .baseline_ref
+        .as_ref()
+        .map(|baseline_ref| baseline_ref.as_str().to_owned()))
 }
 
 fn validation(field: &'static str, message: &'static str) -> UserActionServiceError {

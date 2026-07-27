@@ -7,7 +7,8 @@ use volicord_store::core_pipeline::{
 };
 use volicord_types::ids::UserActionOptionId;
 use volicord_types::schema::{
-    PersistedUserActionRequest, RequiredNullable, UserActionResolutionBody,
+    PersistedUserActionDirectRequestMetadata, PersistedUserActionRequest,
+    PersistedUserActionRequestMetadata, RequiredNullable, UserActionResolutionBody,
 };
 use volicord_types::values::{
     ActorSource, JudgmentResolutionOutcome, MethodName, UserActionChannelKind, UserActionKind,
@@ -40,7 +41,9 @@ fn request_mapping_produces_matching_effective_record_and_store_input() {
             requested_at: UtcTimestamp::parse("2026-07-27T00:00:00Z")
                 .expect("test timestamp must parse"),
             expires_at: None,
-            metadata: serde_json::json!({}),
+            metadata: PersistedUserActionRequestMetadata::DirectRequest(
+                PersistedUserActionDirectRequestMetadata {},
+            ),
         })
         .expect("canonical request must map");
 
@@ -54,14 +57,8 @@ fn request_mapping_produces_matching_effective_record_and_store_input() {
         effective.request.user_action_request_id,
         insert.user_action_request_id
     );
-    assert_eq!(
-        serde_json::to_string(&effective.request.request).expect("request must serialize"),
-        insert.request_json
-    );
-    assert_eq!(
-        serde_json::to_string(&effective.request.basis).expect("basis must serialize"),
-        insert.basis_json
-    );
+    assert_eq!(effective.request.request, insert.request);
+    assert_eq!(effective.request.basis, insert.basis);
     assert_eq!(
         effective.request.source_idempotency_key,
         insert.source_idempotency_key

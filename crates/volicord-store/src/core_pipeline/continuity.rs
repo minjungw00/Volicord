@@ -1,5 +1,11 @@
 use rusqlite::{params, Connection};
-use volicord_types::schema::{ContinuityCursor, MAX_CONTINUITY_PAGE_SIZE};
+use volicord_types::schema::{
+    ArtifactRef, ContinuityCursor, JsonObject, PersistedProjectContinuityMetadata, StateRecordRef,
+    MAX_CONTINUITY_PAGE_SIZE,
+};
+use volicord_types::values::{
+    ActorSource, ProjectContinuityKind, ProjectContinuityStatus, UtcTimestamp,
+};
 
 use super::{facade::CoreProjectStore, mutations::MutationContext, validation::*};
 use crate::{StoreError, StoreResult};
@@ -12,7 +18,7 @@ const PROJECT_CONTINUITY_RECORD_COLUMNS: &str = "
     metadata_json";
 
 /// Continuity mutation applied inside one Core commit transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ContinuityMutation {
     ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate),
     InsertRecord(Box<ProjectContinuityRecordInsert>),
@@ -22,31 +28,31 @@ pub enum ContinuityMutation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnrecordedChangeResolutionUpdate {
     pub unrecorded_change_id: String,
-    pub resolution_json: String,
-    pub resolved_at: String,
-    pub resolved_by_actor_source: String,
+    pub resolution: JsonObject,
+    pub resolved_at: UtcTimestamp,
+    pub resolved_by_actor_source: ActorSource,
 }
 
 /// Storage input for inserting one project-level continuity record.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProjectContinuityRecordInsert {
     pub continuity_record_id: String,
     pub source_task_id: String,
     pub source_change_unit_id: Option<String>,
-    pub kind: String,
+    pub kind: ProjectContinuityKind,
     pub title: String,
     pub summary: String,
     pub rationale: Option<String>,
-    pub applies_to_paths_json: String,
-    pub applies_to_refs_json: String,
-    pub source_refs_json: String,
-    pub artifact_refs_json: String,
-    pub status: String,
-    pub supersedes_refs_json: String,
-    pub review_triggers_json: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub metadata_json: String,
+    pub applies_to_paths: Vec<String>,
+    pub applies_to_refs: Vec<StateRecordRef>,
+    pub source_refs: Vec<StateRecordRef>,
+    pub artifact_refs: Vec<ArtifactRef>,
+    pub status: ProjectContinuityStatus,
+    pub supersedes_refs: Vec<StateRecordRef>,
+    pub review_triggers: Vec<String>,
+    pub created_at: UtcTimestamp,
+    pub updated_at: UtcTimestamp,
+    pub metadata: PersistedProjectContinuityMetadata,
 }
 
 impl ContinuityMutation {
@@ -64,30 +70,52 @@ impl ContinuityMutation {
 }
 
 /// Stored project-continuity row data needed by Core method implementations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProjectContinuityRecordRecord {
     pub project_id: String,
     pub continuity_record_id: String,
     pub source_task_id: String,
     pub source_change_unit_id: Option<String>,
-    pub kind: String,
+    pub kind: ProjectContinuityKind,
     pub title: String,
     pub summary: String,
     pub rationale: Option<String>,
-    pub applies_to_paths_json: String,
-    pub applies_to_refs_json: String,
-    pub source_refs_json: String,
-    pub artifact_refs_json: String,
-    pub status: String,
-    pub supersedes_refs_json: String,
-    pub review_triggers_json: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub metadata_json: String,
+    pub applies_to_paths: Vec<String>,
+    pub applies_to_refs: Vec<StateRecordRef>,
+    pub source_refs: Vec<StateRecordRef>,
+    pub artifact_refs: Vec<ArtifactRef>,
+    pub status: ProjectContinuityStatus,
+    pub supersedes_refs: Vec<StateRecordRef>,
+    pub review_triggers: Vec<String>,
+    pub created_at: UtcTimestamp,
+    pub updated_at: UtcTimestamp,
+    pub metadata: PersistedProjectContinuityMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawProjectContinuityRecord {
+    project_id: String,
+    continuity_record_id: String,
+    source_task_id: String,
+    source_change_unit_id: Option<String>,
+    kind: String,
+    title: String,
+    summary: String,
+    rationale: Option<String>,
+    applies_to_paths_json: String,
+    applies_to_refs_json: String,
+    source_refs_json: String,
+    artifact_refs_json: String,
+    status: String,
+    supersedes_refs_json: String,
+    review_triggers_json: String,
+    created_at: String,
+    updated_at: String,
+    metadata_json: String,
 }
 
 /// One strictly bounded active project-continuity page read from a single snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActiveProjectContinuityPage {
     pub records: Vec<ProjectContinuityRecordRecord>,
     pub total_count: u64,
@@ -219,11 +247,11 @@ fn active_project_continuity_page(
                 cursor_record_id,
                 fetch_limit
             ],
-            project_continuity_record_from_row,
+            raw_project_continuity_record_from_row,
         )?;
         let mut records = Vec::new();
         for row in rows {
-            records.push(row?);
+            records.push(decode_project_continuity_record(row?)?);
         }
         records
     };
@@ -257,19 +285,19 @@ fn project_continuity_records_for_task(
     let mut statement = conn.prepare(&sql)?;
     let rows = statement.query_map(
         params![project_id, task_id],
-        project_continuity_record_from_row,
+        raw_project_continuity_record_from_row,
     )?;
     let mut records = Vec::new();
     for row in rows {
-        records.push(row?);
+        records.push(decode_project_continuity_record(row?)?);
     }
     Ok(records)
 }
 
-fn project_continuity_record_from_row(
+fn raw_project_continuity_record_from_row(
     row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<ProjectContinuityRecordRecord> {
-    Ok(ProjectContinuityRecordRecord {
+) -> rusqlite::Result<RawProjectContinuityRecord> {
+    Ok(RawProjectContinuityRecord {
         project_id: row.get(0)?,
         continuity_record_id: row.get(1)?,
         source_task_id: row.get(2)?,
@@ -291,15 +319,105 @@ fn project_continuity_record_from_row(
     })
 }
 
+fn decode_project_continuity_record(
+    raw: RawProjectContinuityRecord,
+) -> StoreResult<ProjectContinuityRecordRecord> {
+    let record_id = raw.continuity_record_id.clone();
+    let corrupt_value = |field| {
+        StoreError::corrupt_owner_state_value(
+            "project_continuity_records",
+            record_id.clone(),
+            field,
+        )
+    };
+    let decode_timestamp = |field, value: &str| {
+        let timestamp = UtcTimestamp::parse(value).map_err(|_| corrupt_value(field))?;
+        timestamp
+            .ensure_canonical_rfc3339_representable()
+            .map_err(|_| corrupt_value(field))?;
+        if timestamp.to_canonical_string() == value {
+            Ok(timestamp)
+        } else {
+            Err(corrupt_value(field))
+        }
+    };
+    Ok(ProjectContinuityRecordRecord {
+        project_id: raw.project_id,
+        continuity_record_id: raw.continuity_record_id,
+        source_task_id: raw.source_task_id,
+        source_change_unit_id: raw.source_change_unit_id,
+        kind: decode_owner_closed_value(
+            "project_continuity_records",
+            &record_id,
+            "kind",
+            &raw.kind,
+        )?,
+        title: raw.title,
+        summary: raw.summary,
+        rationale: raw.rationale,
+        applies_to_paths: decode_owner_json_text(
+            "project_continuity_records",
+            &record_id,
+            "applies_to_paths_json",
+            &raw.applies_to_paths_json,
+        )?,
+        applies_to_refs: decode_owner_json_text(
+            "project_continuity_records",
+            &record_id,
+            "applies_to_refs_json",
+            &raw.applies_to_refs_json,
+        )?,
+        source_refs: decode_owner_json_text(
+            "project_continuity_records",
+            &record_id,
+            "source_refs_json",
+            &raw.source_refs_json,
+        )?,
+        artifact_refs: decode_owner_json_text(
+            "project_continuity_records",
+            &record_id,
+            "artifact_refs_json",
+            &raw.artifact_refs_json,
+        )?,
+        status: decode_owner_closed_value(
+            "project_continuity_records",
+            &record_id,
+            "status",
+            &raw.status,
+        )?,
+        supersedes_refs: decode_owner_json_text(
+            "project_continuity_records",
+            &record_id,
+            "supersedes_refs_json",
+            &raw.supersedes_refs_json,
+        )?,
+        review_triggers: decode_owner_json_text(
+            "project_continuity_records",
+            &record_id,
+            "review_triggers_json",
+            &raw.review_triggers_json,
+        )?,
+        created_at: decode_timestamp("created_at", &raw.created_at)?,
+        updated_at: decode_timestamp("updated_at", &raw.updated_at)?,
+        metadata: decode_owner_json_text(
+            "project_continuity_records",
+            &record_id,
+            "metadata_json",
+            &raw.metadata_json,
+        )?,
+    })
+}
+
 impl MutationContext<'_> {
     fn resolve_unrecorded_change(
         &mut self,
         input: &UnrecordedChangeResolutionUpdate,
     ) -> StoreResult<()> {
         validate_identifier("unrecorded_change_id", &input.unrecorded_change_id)?;
-        validate_json_text("unrecorded_changes.resolution_json", &input.resolution_json)?;
-        validate_timestamp("resolved_at", &input.resolved_at)?;
-        validate_identifier("resolved_by_actor_source", &input.resolved_by_actor_source)?;
+        let resolution_json =
+            encode_json_column("unrecorded_changes.resolution_json", &input.resolution)?;
+        let resolved_at = input.resolved_at.to_canonical_string();
+        validate_timestamp("resolved_at", &resolved_at)?;
 
         let changed = self.tx.execute(
             "UPDATE unrecorded_changes
@@ -313,9 +431,9 @@ impl MutationContext<'_> {
             params![
                 self.project_id,
                 input.unrecorded_change_id,
-                input.resolution_json,
-                input.resolved_at,
-                input.resolved_by_actor_source,
+                resolution_json,
+                resolved_at,
+                input.resolved_by_actor_source.to_canonical_string(),
             ],
         )?;
         if changed == 1 {
@@ -337,43 +455,43 @@ impl MutationContext<'_> {
         if let Some(source_change_unit_id) = &input.source_change_unit_id {
             validate_identifier("source_change_unit_id", source_change_unit_id)?;
         }
-        validate_project_continuity_kind("project_continuity_records.kind", &input.kind)?;
         validate_nonempty_text("project_continuity_records.title", &input.title)?;
         validate_nonempty_text("project_continuity_records.summary", &input.summary)?;
         if let Some(rationale) = &input.rationale {
             validate_nonempty_text("project_continuity_records.rationale", rationale)?;
         }
-        validate_string_list_json(
+        let kind = encode_closed_value("project_continuity_records.kind", &input.kind)?;
+        let applies_to_paths_json = encode_json_column(
             "project_continuity_records.applies_to_paths_json",
-            &input.applies_to_paths_json,
+            &input.applies_to_paths,
         )?;
-        validate_state_refs_json(
+        let applies_to_refs_json = encode_json_column(
             "project_continuity_records.applies_to_refs_json",
-            &input.applies_to_refs_json,
+            &input.applies_to_refs,
         )?;
-        validate_state_refs_json(
+        let source_refs_json = encode_json_column(
             "project_continuity_records.source_refs_json",
-            &input.source_refs_json,
+            &input.source_refs,
         )?;
-        validate_artifact_refs_json(
+        let artifact_refs_json = encode_json_column(
             "project_continuity_records.artifact_refs_json",
-            &input.artifact_refs_json,
+            &input.artifact_refs,
         )?;
-        validate_project_continuity_status("project_continuity_records.status", &input.status)?;
-        validate_state_refs_json(
+        let status = encode_closed_value("project_continuity_records.status", &input.status)?;
+        let supersedes_refs_json = encode_json_column(
             "project_continuity_records.supersedes_refs_json",
-            &input.supersedes_refs_json,
+            &input.supersedes_refs,
         )?;
-        validate_string_list_json(
+        let review_triggers_json = encode_json_column(
             "project_continuity_records.review_triggers_json",
-            &input.review_triggers_json,
+            &input.review_triggers,
         )?;
-        validate_timestamp("project_continuity_records.created_at", &input.created_at)?;
-        validate_timestamp("project_continuity_records.updated_at", &input.updated_at)?;
-        validate_json_text(
-            "project_continuity_records.metadata_json",
-            &input.metadata_json,
-        )?;
+        let created_at = input.created_at.to_canonical_string();
+        let updated_at = input.updated_at.to_canonical_string();
+        validate_timestamp("project_continuity_records.created_at", &created_at)?;
+        validate_timestamp("project_continuity_records.updated_at", &updated_at)?;
+        let metadata_json =
+            encode_json_column("project_continuity_records.metadata_json", &input.metadata)?;
 
         self.tx.execute(
             "INSERT INTO project_continuity_records (
@@ -421,20 +539,20 @@ impl MutationContext<'_> {
                 input.continuity_record_id,
                 input.source_task_id,
                 input.source_change_unit_id,
-                input.kind,
+                kind,
                 input.title,
                 input.summary,
                 input.rationale,
-                input.applies_to_paths_json,
-                input.applies_to_refs_json,
-                input.source_refs_json,
-                input.artifact_refs_json,
-                input.status,
-                input.supersedes_refs_json,
-                input.review_triggers_json,
-                input.created_at,
-                input.updated_at,
-                input.metadata_json
+                applies_to_paths_json,
+                applies_to_refs_json,
+                source_refs_json,
+                artifact_refs_json,
+                status,
+                supersedes_refs_json,
+                review_triggers_json,
+                created_at,
+                updated_at,
+                metadata_json
             ],
         )?;
         Ok(())
@@ -452,20 +570,47 @@ mod tests {
     #[test]
     fn continuity_row_decoder_preserves_typed_owner_coordinates() {
         let connection = Connection::open_in_memory().expect("in-memory database must open");
-        let record = connection
+        let raw = connection
             .query_row(
                 "SELECT 'project', 'continuity', 'task', 'change', 'decision',
                         'title', 'summary', NULL, '[]', '[]', '[]', '[]',
                         'active', '[]', '[]', '2026-01-01T00:00:00Z',
-                        '2026-01-01T00:00:00Z', '{}'",
+                        '2026-01-01T00:00:00Z',
+                        '{\"source\":\"resolve_user_action\",\"action_kind\":\"product_decision\",\"resolution_outcome\":\"accepted\",\"selected_option_id\":\"option\"}'",
                 [],
-                project_continuity_record_from_row,
+                raw_project_continuity_record_from_row,
             )
-            .expect("typed row must decode");
+            .expect("physical row must load");
+        let record = decode_project_continuity_record(raw.clone()).expect("typed row must decode");
 
         assert_eq!(record.project_id, "project");
         assert_eq!(record.continuity_record_id, "continuity");
         assert_eq!(record.source_change_unit_id.as_deref(), Some("change"));
+        assert_eq!(record.kind, ProjectContinuityKind::Decision);
+        assert_eq!(record.status, ProjectContinuityStatus::Active);
+        assert!(record.source_refs.is_empty());
+
+        let mut unknown_kind = raw.clone();
+        unknown_kind.kind = "legacy".to_owned();
+        assert!(matches!(
+            decode_project_continuity_record(unknown_kind),
+            Err(StoreError::CorruptOwnerStateValue {
+                table: "project_continuity_records",
+                logical_column: "kind",
+                ..
+            })
+        ));
+
+        let mut missing_metadata_fields = raw;
+        missing_metadata_fields.metadata_json = "{}".to_owned();
+        assert!(matches!(
+            decode_project_continuity_record(missing_metadata_fields),
+            Err(StoreError::CorruptOwnerStateJson {
+                table: "project_continuity_records",
+                logical_column: "metadata_json",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -473,9 +618,10 @@ mod tests {
         let error = with_empty_mutation_context(|context| {
             ContinuityMutation::ResolveUnrecordedChange(UnrecordedChangeResolutionUpdate {
                 unrecorded_change_id: " ".to_owned(),
-                resolution_json: "{}".to_owned(),
-                resolved_at: "2026-01-01T00:00:00Z".to_owned(),
-                resolved_by_actor_source: "actor".to_owned(),
+                resolution: JsonObject::new(),
+                resolved_at: UtcTimestamp::parse("2026-01-01T00:00:00Z")
+                    .expect("timestamp must parse"),
+                resolved_by_actor_source: ActorSource::LocalUser,
             })
             .apply(context)
             .expect_err("blank unrecorded-change id must fail before SQL")

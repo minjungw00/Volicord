@@ -127,8 +127,9 @@ pub(super) fn guard_state_summary(
         let mut current_task_sensitive = false;
         let current_task = store.task_record(&task_id)?;
         if let Some(task) = current_task.as_ref() {
-            current_task_sensitive = task.effective_control_level == "sensitive";
-            active_task_effective_control_level = Some(task.effective_control_level.clone());
+            current_task_sensitive = task.effective_control_level == TaskControlLevel::Sensitive;
+            active_task_effective_control_level =
+                Some(task.effective_control_level.as_str().to_owned());
             policy_control_reevaluation = pending_policy_control_reevaluation(task)?;
             active_change_unit_id = task.current_change_unit_id.clone();
         }
@@ -279,9 +280,9 @@ fn pending_policy_control_reevaluation(
     let Some(mark) = task_policy_control_reevaluation(task)? else {
         return Ok(None);
     };
-    let current_control = strict_task_control_level(&task.effective_control_level)?;
+    let current_control = task.effective_control_level;
     let required_control = strict_task_control_level(&mark.required_effective_control_level)?;
-    let current_acceptance = strict_acceptance_policy(&task.acceptance_policy)?;
+    let current_acceptance = task.acceptance_policy;
     let acceptance_escalation = mark
         .required_acceptance_policy
         .as_deref()
@@ -435,31 +436,23 @@ fn current_write_ticket_basis(
     change_unit: Option<&volicord_store::core_pipeline::ChangeUnitRecord>,
     repo_root: &Path,
 ) -> Result<CurrentWriteTicketBasis, GuardCommandError> {
-    let task_baseline_ref = optional_baseline_ref(&task.shaping_summary_json)?;
+    let task_baseline_ref = task.shaping.baseline_ref.clone();
     let (change_unit_id, change_unit_baseline_ref, change_unit_workspace_sha256) = match change_unit
     {
         Some(change_unit) => {
-            let write_basis: Value =
-                serde_json::from_str(&change_unit.write_basis_json).map_err(json_error)?;
-            let object = write_basis.as_object().ok_or_else(|| {
-                GuardCommandError::Runtime(
-                    "current Change Unit write basis is not a JSON object".to_owned(),
-                )
-            })?;
-            let baseline_ref = object
-                .get("baseline_ref")
-                .cloned()
-                .map(serde_json::from_value::<Option<BaselineRef>>)
-                .transpose()
-                .map_err(json_error)?
-                .flatten();
-            let workspace_context = object
-                .get("git_workspace_context")
-                .cloned()
-                .map(serde_json::from_value::<Option<GitWorkspaceContext>>)
-                .transpose()
-                .map_err(json_error)?
-                .flatten();
+            let baseline_ref = change_unit.write_basis.baseline_ref.clone();
+            let workspace_context =
+                change_unit
+                    .write_basis
+                    .git_workspace_context
+                    .as_ref()
+                    .map(|context| GitWorkspaceContext {
+                        git_common_dir: context.git_common_dir.clone(),
+                        worktree_id: context.worktree_id.clone(),
+                        branch_ref: context.branch_ref.clone(),
+                        head_sha: context.head_sha.clone(),
+                        workspace_fingerprint: context.workspace_fingerprint.clone(),
+                    });
             let workspace_sha256 = workspace_context
                 .as_ref()
                 .map(canonical_json_bare_sha256)
@@ -498,20 +491,6 @@ fn current_write_ticket_basis(
         change_unit_workspace_sha256,
         workspace_probe,
     })
-}
-
-fn optional_baseline_ref(raw_json: &str) -> Result<Option<BaselineRef>, GuardCommandError> {
-    let value: Value = serde_json::from_str(raw_json).map_err(json_error)?;
-    let object = value.as_object().ok_or_else(|| {
-        GuardCommandError::Runtime("current Task shaping state is not a JSON object".to_owned())
-    })?;
-    object
-        .get("baseline_ref")
-        .cloned()
-        .map(serde_json::from_value::<Option<BaselineRef>>)
-        .transpose()
-        .map_err(json_error)
-        .map(Option::flatten)
 }
 
 fn write_ticket_owner_basis_status(

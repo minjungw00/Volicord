@@ -1,13 +1,17 @@
 use std::error::Error;
 
-use serde_json::json;
 use volicord_types::ids::{
-    IdempotencyKey, ProjectContinuityRecordId, ProjectId, RecordId, RequestHash, TaskId,
+    BaselineRef, IdempotencyKey, ProjectContinuityRecordId, ProjectId, RecordId, RequestHash,
+    TaskId, UserActionOptionId,
 };
 use volicord_types::schema::{
-    ContinuityCursor, RequiredNullable, StateRecordRef, MAX_CONTINUITY_PAGE_SIZE,
+    ContinuityCursor, PersistedProjectContinuityMetadata, PersistedProjectContinuitySource,
+    RequiredNullable, StateRecordRef, MAX_CONTINUITY_PAGE_SIZE,
 };
-use volicord_types::values::{MethodName, StateRecordKind, UtcTimestamp};
+use volicord_types::values::{
+    JudgmentResolutionOutcome, MethodName, ProjectContinuityKind, ProjectContinuityStatus,
+    StateRecordKind, UserActionKind, UtcTimestamp,
+};
 
 use super::{ContinuityMutation, ProjectContinuityRecordInsert};
 use crate::core_pipeline::test_support::{
@@ -16,6 +20,9 @@ use crate::core_pipeline::test_support::{
 };
 use crate::core_pipeline::{
     commit_input, ChangeUnitInsert, ChangeUnitMutation, CoreStorageMutation, TaskMutation,
+};
+use crate::core_pipeline::{
+    StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis,
 };
 use crate::StoreError;
 
@@ -45,7 +52,6 @@ fn project_continuity_record_mutation_persists_and_reads_active_rows() -> Result
             CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit_insert(
                 change_unit_id,
                 task_id,
-                "null".to_owned(),
             )))
             .apply(mutation, facts)
             .map(|_| ())?;
@@ -72,8 +78,8 @@ fn project_continuity_record_mutation_persists_and_reads_active_rows() -> Result
         active.records[0].continuity_record_id,
         "continuity_store_001"
     );
-    assert_eq!(active.records[0].kind, "decision");
-    assert_eq!(active.records[0].status, "active");
+    assert_eq!(active.records[0].kind, ProjectContinuityKind::Decision);
+    assert_eq!(active.records[0].status, ProjectContinuityStatus::Active);
     assert_eq!(active.records[0].source_task_id, task_id);
     assert_eq!(
         active.records[0].source_change_unit_id.as_deref(),
@@ -112,7 +118,6 @@ fn project_continuity_pages_are_exclusive_totalled_and_tie_broken_by_id(
             CoreStorageMutation::ChangeUnit(ChangeUnitMutation::InsertCurrent(change_unit_insert(
                 change_unit_id,
                 task_id,
-                "null".to_owned(),
             )))
             .apply(mutation, facts)
             .map(|_| ())?;
@@ -151,7 +156,7 @@ fn project_continuity_pages_are_exclusive_totalled_and_tie_broken_by_id(
     );
     let last = first.records.last().expect("first page cursor source");
     let cursor = ContinuityCursor {
-        updated_at: UtcTimestamp::parse(&last.updated_at)?,
+        updated_at: last.updated_at.clone(),
         continuity_record_id: ProjectContinuityRecordId::new(last.continuity_record_id.clone()),
     };
     let second = store.active_project_continuity_page(2, Some(&cursor))?;
@@ -193,32 +198,30 @@ fn project_continuity_record_insert(
         continuity_record_id: continuity_record_id.to_owned(),
         source_task_id: task_id.to_owned(),
         source_change_unit_id: Some(change_unit_id.to_owned()),
-        kind: "decision".to_owned(),
+        kind: ProjectContinuityKind::Decision,
         title: "Store continuity decision".to_owned(),
         summary: "A durable store-level continuity decision.".to_owned(),
         rationale: Some("The test records a traceable decision.".to_owned()),
-        applies_to_paths_json: json!(["src/export.rs"]).to_string(),
-        applies_to_refs_json: serde_json::to_string(&vec![state_ref(
+        applies_to_paths: vec!["src/export.rs".to_owned()],
+        applies_to_refs: vec![state_ref(
             StateRecordKind::ChangeUnit,
             change_unit_id,
             task_id,
             1,
-        )])
-        .expect("state ref JSON should serialize"),
-        source_refs_json: serde_json::to_string(&vec![state_ref(
-            StateRecordKind::Task,
-            task_id,
-            task_id,
-            1,
-        )])
-        .expect("state ref JSON should serialize"),
-        artifact_refs_json: "[]".to_owned(),
-        status: "active".to_owned(),
-        supersedes_refs_json: "[]".to_owned(),
-        review_triggers_json: json!(["Review if the source Task changes."]).to_string(),
-        created_at: updated_at.to_owned(),
-        updated_at: updated_at.to_owned(),
-        metadata_json: json!({"source": "store_test"}).to_string(),
+        )],
+        source_refs: vec![state_ref(StateRecordKind::Task, task_id, task_id, 1)],
+        artifact_refs: Vec::new(),
+        status: ProjectContinuityStatus::Active,
+        supersedes_refs: Vec::new(),
+        review_triggers: vec!["Review if the source Task changes.".to_owned()],
+        created_at: UtcTimestamp::parse(updated_at).expect("timestamp must parse"),
+        updated_at: UtcTimestamp::parse(updated_at).expect("timestamp must parse"),
+        metadata: PersistedProjectContinuityMetadata::ResolveUserActionDecision {
+            source: PersistedProjectContinuitySource::ResolveUserAction,
+            action_kind: UserActionKind::ProductDecision,
+            resolution_outcome: JudgmentResolutionOutcome::Accepted,
+            selected_option_id: UserActionOptionId::new("option_store_test"),
+        },
     }
 }
 
@@ -237,24 +240,23 @@ fn state_ref(
     }
 }
 
-fn change_unit_insert(
-    change_unit_id: &str,
-    task_id: &str,
-    effect_contract_json: String,
-) -> ChangeUnitInsert {
+fn change_unit_insert(change_unit_id: &str, task_id: &str) -> ChangeUnitInsert {
     ChangeUnitInsert {
         change_unit_id: change_unit_id.to_owned(),
         task_id: task_id.to_owned(),
-        scope_summary_json: json!({
-            "scope_summary": "Store continuity scope."
-        })
-        .to_string(),
-        bounded_paths_json: json!(["src/export.rs"]).to_string(),
-        write_basis_json: json!({
-            "baseline_ref": "baseline_store"
-        })
-        .to_string(),
-        effect_contract_json,
-        lifecycle_json: "{}".to_owned(),
+        scope_summary: StoredChangeUnitScopeSummary {
+            scope_summary: Some("Store continuity scope.".to_owned()),
+            affected_areas: Vec::new(),
+            constraints: Vec::new(),
+        },
+        bounded_paths: vec!["src/export.rs".to_owned()],
+        write_basis: StoredChangeUnitWriteBasis {
+            baseline_ref: Some(BaselineRef::new("baseline_store")),
+            git_workspace_context: None,
+        },
+        effect_contract: None,
+        lifecycle: StoredChangeUnitLifecycle {
+            recovery_required: false,
+        },
     }
 }

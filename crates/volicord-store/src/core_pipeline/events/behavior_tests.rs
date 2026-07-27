@@ -57,10 +57,10 @@ fn committed_mutations_append_authority_events_with_context_and_hash_chain(
                 result: None,
                 title: Some("Authority event projection".to_owned()),
                 summary: None,
-                shaping_summary_json: None,
-                bounded_context_json: None,
-                autonomy_boundary_json: None,
-                close_summary_json: None,
+                shaping: None,
+                bounded_context: None,
+                autonomy_boundary: None,
+                close_summary: None,
             }))
             .apply(mutation, facts)
             .map(|_| ())

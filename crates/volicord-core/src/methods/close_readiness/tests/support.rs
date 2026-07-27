@@ -1,10 +1,15 @@
 use super::facts::{facts_from_projection, CloseReadinessFacts};
 use super::service::CloseReadinessRequest;
-use volicord_store::core_pipeline::{ProjectStateHeader, TaskRecord};
+use volicord_store::core_pipeline::{
+    ProjectStateHeader, TaskAutonomyBoundary, TaskRecord, TaskShapingFacts,
+};
 use volicord_store::guards::UnrecordedChangeRecord;
 use volicord_types::ids::{ProjectId, RequestId, TaskId};
-use volicord_types::schema::ToolEnvelope;
-use volicord_types::values::UtcTimestamp;
+use volicord_types::schema::{JsonObject, ToolEnvelope};
+use volicord_types::values::{
+    AcceptancePolicy, PersistedCloseSummary, RequestedControlLevel, TaskControlLevel,
+    TaskLifecyclePhase, TaskMode, UtcTimestamp, WorkPhase,
+};
 
 pub(super) fn facts() -> CloseReadinessFacts {
     facts_from_projection(
@@ -22,31 +27,41 @@ pub(super) fn task() -> TaskRecord {
     TaskRecord {
         project_id: "project_close_readiness".to_owned(),
         task_id: "task_close_readiness".to_owned(),
-        mode: "work".to_owned(),
-        requested_control_level: "light".to_owned(),
-        effective_control_level: "light".to_owned(),
+        mode: TaskMode::Work,
+        requested_control_level: RequestedControlLevel::Light,
+        effective_control_level: TaskControlLevel::Light,
         control_level_reason: "test".to_owned(),
-        work_phase: "implementation".to_owned(),
-        acceptance_policy: "policy_dependent".to_owned(),
+        work_phase: WorkPhase::Implementation,
+        acceptance_policy: AcceptancePolicy::PolicyDependent,
         acceptance_policy_reason: "test".to_owned(),
         predecessor_task_id: None,
         lineage_relation: None,
         lineage_reason: None,
-        carry_forward_json: "{}".to_owned(),
-        lifecycle_phase: "active".to_owned(),
+        carry_forward: Vec::new(),
+        lifecycle_phase: TaskLifecyclePhase::Executing,
         result: None,
         title: None,
         summary: None,
-        shaping_summary_json: "{}".to_owned(),
-        bounded_context_json: "{}".to_owned(),
-        autonomy_boundary_json: "{}".to_owned(),
+        shaping: TaskShapingFacts {
+            goal_summary: None,
+            scope_summary: None,
+            non_goals: Vec::new(),
+            baseline_ref: None,
+            autonomy_boundary: None,
+            initial_context_refs: Vec::new(),
+            initial_source_refs: Vec::new(),
+        },
+        bounded_context: JsonObject::new(),
+        autonomy_boundary: TaskAutonomyBoundary {
+            autonomy_boundary: None,
+        },
         scope_revision: 1,
         close_basis_revision: 0,
-        close_basis_json: None,
-        close_summary_json: "{}".to_owned(),
+        close_basis: None,
+        close_summary: PersistedCloseSummary::default(),
         current_change_unit_id: None,
         closed_at: None,
-        metadata_json: "{}".to_owned(),
+        metadata: JsonObject::new(),
     }
 }
 

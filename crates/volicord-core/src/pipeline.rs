@@ -2290,7 +2290,10 @@ mod tests {
         bootstrap::{
             initialize_runtime_home, register_project, ProjectRegistration, ACTIVE_PROJECT_STATUS,
         },
-        core_pipeline::{ChangeUnitInsert, CoreProjectStore, StorageEffectCounts},
+        core_pipeline::{
+            ChangeUnitInsert, CoreProjectStore, StorageEffectCounts, StoredChangeUnitLifecycle,
+            StoredChangeUnitScopeSummary, StoredChangeUnitWriteBasis,
+        },
         sqlite::registry_db_path,
     };
     use volicord_test_support::{
@@ -3420,11 +3423,20 @@ mod tests {
                     ChangeUnitInsert {
                         change_unit_id: change_unit_id.to_owned(),
                         task_id: TASK_ID.to_owned(),
-                        scope_summary_json: json!({"goal_summary": marker}).to_string(),
-                        bounded_paths_json: "[]".to_owned(),
-                        write_basis_json: "{}".to_owned(),
-                        effect_contract_json: "null".to_owned(),
-                        lifecycle_json: "{}".to_owned(),
+                        scope_summary: StoredChangeUnitScopeSummary {
+                            scope_summary: Some(marker.to_owned()),
+                            affected_areas: Vec::new(),
+                            constraints: Vec::new(),
+                        },
+                        bounded_paths: Vec::new(),
+                        write_basis: StoredChangeUnitWriteBasis {
+                            baseline_ref: None,
+                            git_workspace_context: None,
+                        },
+                        effect_contract: None,
+                        lifecycle: StoredChangeUnitLifecycle {
+                            recovery_required: false,
+                        },
                     },
                 ),
             )],

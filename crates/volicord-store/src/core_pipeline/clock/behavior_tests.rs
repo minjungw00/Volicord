@@ -2,7 +2,9 @@ use std::error::Error;
 
 use rusqlite::params;
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestHash};
-use volicord_types::values::{MethodName, UtcTimestamp};
+use volicord_types::values::{
+    CloseReason, MethodName, PersistedCloseSummary, TaskLifecyclePhase, TaskResult, UtcTimestamp,
+};
 
 use super::advance_project_utc_floor_tx;
 use crate::core_pipeline::test_support::{
@@ -164,10 +166,14 @@ fn explicit_future_clock_floor_survives_active_task_commit_and_reopen() -> Resul
             .map(|_| ())?;
             CoreStorageMutation::Task(TaskMutation::Close(TaskCloseUpdate {
                 task_id: task_id.to_owned(),
-                lifecycle_phase: "completed".to_owned(),
-                result: "completed".to_owned(),
-                close_summary_json: "{\"close_reason\":\"completed_self_checked\"}".to_owned(),
-                closed_at: "2999-07-13T12:00:00Z".to_owned(),
+                lifecycle_phase: TaskLifecyclePhase::Completed,
+                result: TaskResult::Completed,
+                close_summary: PersistedCloseSummary {
+                    close_reason: CloseReason::CompletedSelfChecked,
+                    ..PersistedCloseSummary::default()
+                },
+                closed_at: UtcTimestamp::parse("2999-07-13T12:00:00Z")
+                    .expect("test timestamp must parse"),
             }))
             .apply(mutation, facts)
             .map(|_| ())?;

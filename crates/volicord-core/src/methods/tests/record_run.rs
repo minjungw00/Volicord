@@ -366,8 +366,8 @@ fn non_product_category_signal_requires_final_without_manufacturing_sensitive_co
     let stored_task = store
         .task_record(&TaskId::new(&task_id))?
         .expect("recorded Run Task remains current");
-    assert_eq!(stored_task.effective_control_level, "light");
-    assert_eq!(stored_task.acceptance_policy, "required");
+    assert_eq!(stored_task.effective_control_level, TaskControlLevel::Light);
+    assert_eq!(stored_task.acceptance_policy, AcceptancePolicy::Required);
     let status = harness.service.status(
         StatusRequest {
             envelope: envelope(
@@ -5047,7 +5047,11 @@ fn symlink_within_artifact_store_keeps_persistent_artifact_usable() -> Result<()
 #[test]
 fn record_run_corrupt_staged_artifact_metadata_rejects_without_effect() -> Result<(), Box<dyn Error>>
 {
-    for (suffix, artifact_json) in [("malformed", corrupt_owner_json()), ("non_object", "[]")] {
+    for (suffix, artifact_json) in [
+        ("malformed", corrupt_owner_json()),
+        ("non_object", "[]"),
+        ("missing_display_name", "{}"),
+    ] {
         let harness = MethodHarness::new()?;
         enable_record_run_capabilities(&harness)?;
         let (task_id, change_unit_id) =
@@ -5086,42 +5090,6 @@ fn record_run_corrupt_staged_artifact_metadata_rejects_without_effect() -> Resul
         assert_eq!(harness.counts()?, before, "case {suffix}");
         assert_eq!(artifact_staging_status(&harness, &handle_id)?, "staged");
     }
-    Ok(())
-}
-
-#[test]
-fn record_run_staged_artifact_without_display_name_uses_handle_id() -> Result<(), Box<dyn Error>> {
-    let harness = MethodHarness::new()?;
-    enable_record_run_capabilities(&harness)?;
-    let (task_id, change_unit_id) =
-        create_task_with_change_unit(&harness, "run_stage_default_display")?;
-    let handle = stage_artifact_for_record_run(&harness, &task_id, "default_display", 2)?;
-    let handle_id = handle.handle_id.as_str().to_owned();
-    set_artifact_staging_artifact_json(&harness, &handle_id, "{}")?;
-
-    let mut request = record_run_request(
-        "req_run_stage_default_display",
-        "idem_run_stage_default_display",
-        false,
-        Some(2),
-        &task_id,
-        &change_unit_id,
-    );
-    request.artifact_inputs = vec![artifact_input_for_handle(
-        "artifact_input_default_display",
-        handle,
-        None,
-        None,
-    )];
-    let response = harness
-        .service
-        .record_run(request, invocation(OperationCategory::AgentWorkflow))?;
-
-    assert_eq!(response.response_value["base"]["response_kind"], "result");
-    assert_eq!(
-        response.response_value["registered_artifacts"][0]["display_name"],
-        handle_id
-    );
     Ok(())
 }
 

@@ -1,11 +1,10 @@
-use crate::error::{UserActionInvariantError, UserActionServiceError};
-use serde_json::Value;
+use crate::error::UserActionServiceError;
 use volicord_store::core_pipeline::{
     CoreStorageMutation, EffectiveUserActionRecord, UserActionMutation, UserActionRequestInsert,
     UserActionRequestRecord, UserActionResolutionInsert, UserActionResolutionRecord,
 };
 use volicord_types::{
-    schema::{PersistedUserActionRequest, UserActionBasis},
+    schema::{PersistedUserActionRequest, PersistedUserActionRequestMetadata, UserActionBasis},
     values::{
         ActorSource, MethodName, UserActionBasisStatus, UserActionKind, UserActionRequiredFor,
         UserActionStatus, UtcTimestamp,
@@ -26,14 +25,13 @@ pub(super) struct UserActionRequestPersistenceInput {
     pub source_idempotency_key: String,
     pub requested_at: UtcTimestamp,
     pub expires_at: Option<UtcTimestamp>,
-    pub metadata: Value,
+    pub metadata: PersistedUserActionRequestMetadata,
 }
 
 /// Maps one validated immutable resolution record into its Store mutation input.
 pub(super) fn materialize_user_action_resolution_mutation(
     record: UserActionResolutionRecord,
 ) -> Result<CoreStorageMutation, UserActionServiceError> {
-    let resolution_json = serialize(&record.resolution)?;
     Ok(CoreStorageMutation::UserAction(
         UserActionMutation::InsertResolution(UserActionResolutionInsert {
             user_action_resolution_id: record.user_action_resolution_id,
@@ -41,11 +39,11 @@ pub(super) fn materialize_user_action_resolution_mutation(
             action_kind: record.action_kind,
             channel_kind: record.channel_kind,
             channel_submission_id: record.channel_submission_id,
-            resolution_json,
-            resolved_by_actor_source: record.resolved_by_actor_source.to_canonical_string(),
+            resolution: record.resolution,
+            resolved_by_actor_source: record.resolved_by_actor_source,
             resolved_verification_basis: record.resolved_verification_basis,
             resolved_assurance_level: record.resolved_assurance_level,
-            resolved_at: record.resolved_at.to_string(),
+            resolved_at: record.resolved_at,
         }),
     ))
 }
@@ -54,26 +52,22 @@ pub(super) fn materialize_user_action_resolution_mutation(
 pub(super) fn map_user_action_request_persistence(
     input: UserActionRequestPersistenceInput,
 ) -> Result<(EffectiveUserActionRecord, CoreStorageMutation), UserActionServiceError> {
-    let request_json = serialize(&input.request)?;
-    let basis_json = serialize(&input.basis)?;
-    let required_for_json = serialize(&input.required_for)?;
-    let metadata_json = serialize(&input.metadata)?;
     let request_record = UserActionRequestRecord {
         project_id: input.project_id,
         user_action_request_id: input.user_action_request_id.clone(),
         task_id: input.task_id.clone(),
         change_unit_id: input.change_unit_id.clone(),
         action_kind: input.action_kind,
-        request: input.request,
-        basis: input.basis,
+        request: input.request.clone(),
+        basis: input.basis.clone(),
         basis_status: UserActionBasisStatus::Current,
-        required_for: input.required_for,
+        required_for: input.required_for.clone(),
         requested_by_actor_source: input.requested_by_actor_source.clone(),
         source_method: input.source_method,
         source_idempotency_key: input.source_idempotency_key.clone(),
         requested_at: input.requested_at.clone(),
         expires_at: input.expires_at.clone(),
-        metadata: input.metadata,
+        metadata: input.metadata.clone(),
     };
     let mutation = CoreStorageMutation::UserAction(UserActionMutation::InsertRequest(
         UserActionRequestInsert {
@@ -81,16 +75,16 @@ pub(super) fn map_user_action_request_persistence(
             task_id: input.task_id,
             change_unit_id: input.change_unit_id,
             action_kind: input.action_kind,
-            request_json,
-            basis_json,
+            request: input.request,
+            basis: input.basis,
             basis_status: UserActionBasisStatus::Current,
-            required_for_json,
-            requested_by_actor_source: input.requested_by_actor_source.to_canonical_string(),
-            source_method: input.source_method.as_str().to_owned(),
+            required_for: input.required_for,
+            requested_by_actor_source: input.requested_by_actor_source,
+            source_method: input.source_method,
             source_idempotency_key: input.source_idempotency_key,
-            requested_at: input.requested_at.to_string(),
-            expires_at: input.expires_at.map(|value| value.to_string()),
-            metadata_json,
+            requested_at: input.requested_at,
+            expires_at: input.expires_at,
+            metadata: input.metadata,
         },
     ));
     Ok((
@@ -101,9 +95,4 @@ pub(super) fn map_user_action_request_persistence(
         },
         mutation,
     ))
-}
-
-fn serialize(value: &impl serde::Serialize) -> Result<String, UserActionServiceError> {
-    serde_json::to_string(value)
-        .map_err(|_| UserActionServiceError::Invariant(UserActionInvariantError::Serialization))
 }

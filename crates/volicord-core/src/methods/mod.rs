@@ -16,35 +16,37 @@ use volicord_types::methods::{
 };
 use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{
-    AcceptanceCriterion, ArtifactInput, ArtifactRef, CarryForwardDisposition,
-    ChangeUnitEffectContract, CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary,
-    EvidenceGateSummary, EvidenceSummary, GuaranteeDisplay, JsonObject, NextActionSummary,
+    AcceptanceCriterion, ArtifactInput, ArtifactRef, ChangeUnitEffectContract,
+    CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary, EvidenceGateSummary, EvidenceSummary,
+    GuaranteeDisplay, JsonObject, NextActionSummary, PersistedProjectContinuityMetadata,
     PlannedEffect, ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile,
     RequiredNullable, SourceRef, StateRecordRef, SummaryCard, TaskLifecycleState,
     TaskLineageSummary, ToolEnvelope, WorkspaceContext, WriteDecisionReason,
     WriteTicketAttemptScope, WriteTicketStateSummary, WriteTicketValidityBasis,
 };
 use volicord_types::values::{
-    AcceptancePolicy, ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, CloseReason,
-    CloseState, ErrorCode, EvidenceDisplayState, EvidenceGateState, GuaranteeLevel, MethodName,
-    NextActionKind, NextActionPresentationRole, OperationCategory, PersistedCloseSummary,
-    ProjectContinuityKind, ProjectContinuityStatus, RedactionState, RequestedMode, StateRecordKind,
-    StatusCloseState, TaskControlLevel, TaskLifecyclePhase, TaskLineageRelation, TaskMode,
-    TaskResult, UserActionKind, UserActionRequiredFor, UtcTimestamp, WorkPhase, WorkspaceVcs,
-    WriteDecisionCategory, WriteTicketInvalidationReason, WriteTicketStatus,
+    ActorSource, ArtifactAvailability, ArtifactIntegrityStatus, CloseReason, CloseState, ErrorCode,
+    EvidenceDisplayState, EvidenceGateState, GuaranteeLevel, MethodName, NextActionKind,
+    NextActionPresentationRole, OperationCategory, ProjectContinuityKind, ProjectContinuityStatus,
+    RequestedMode, StateRecordKind, StatusCloseState, TaskControlLevel, TaskLifecyclePhase,
+    TaskMode, TaskResult, UserActionKind, UserActionRequiredFor, UtcTimestamp, WorkPhase,
+    WorkspaceVcs, WriteDecisionCategory, WriteTicketInvalidationReason, WriteTicketStatus,
 };
 
 use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use volicord_store::{
-    artifacts::{PersistentArtifactVerificationStatus, StagedPayloadKind},
+    artifacts::{
+        PersistentArtifactStatus, PersistentArtifactVerificationStatus, StagedPayloadKind,
+    },
     core_pipeline::{
-        AcceptanceCriterionRecord, ChangeUnitInsert, ChangeUnitRecord, ContinuityMutation,
-        CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
+        AcceptanceCriterionRecord, ChangeUnitInsert, ChangeUnitRecord, ChangeUnitStatus,
+        ContinuityMutation, CoreProjectStore, CoreStorageMutation, EffectiveUserActionRecord,
         ProjectContinuityRecordInsert, ProjectContinuityRecordRecord, ProjectStateHeader,
-        StoredArtifactRecord, StoredChangeUnitLifecycle, StoredChangeUnitWriteBasis,
-        StoredRecordRef, TaskMutation, TaskRecord, TaskScopeUpdate, WriteTicketRecord,
+        StoredArtifactRecord, StoredChangeUnitLifecycle, StoredChangeUnitScopeSummary,
+        StoredChangeUnitWriteBasis, StoredRecordRef, TaskMutation, TaskRecord, TaskScopeUpdate,
+        WriteTicketRecord,
     },
     diagnostics::{record_workflow_metric_event, WorkflowMetricEvent, WorkflowMetricKind},
     RuntimeHomeMutationContext, StoreError,
@@ -59,10 +61,7 @@ use crate::pipeline::{
 use crate::policy::{
     close_readiness_evidence::{project_close_evidence_summary, required_acceptance_criterion_ids},
     evidence::{state_record_ref_identity_key, unique_artifact_refs},
-    workflow::{
-        parse_requested_control_level, parse_task_control_level, project_workflow_policy,
-        resolve_task_control_authority,
-    },
+    workflow::{project_workflow_policy, resolve_task_control_authority},
     write_ticket::{write_decision_reason, write_ticket_is_idle_expired},
 };
 use crate::product_path::{
@@ -129,7 +128,7 @@ pub(crate) struct ProjectContinuityDraft {
     pub(crate) artifact_refs: Vec<ArtifactRef>,
     pub(crate) supersedes_refs: Vec<StateRecordRef>,
     pub(crate) review_triggers: Vec<String>,
-    pub(crate) metadata: Value,
+    pub(crate) metadata: PersistedProjectContinuityMetadata,
 }
 
 #[derive(Clone, Copy)]
@@ -498,20 +497,20 @@ pub(crate) fn plan_project_continuity_record(
                 source_change_unit_id: context
                     .source_change_unit_id
                     .map(|change_unit_id| change_unit_id.as_str().to_owned()),
-                kind: storage_value(draft.kind)?,
+                kind: draft.kind,
                 title: draft.title,
                 summary: draft.summary,
                 rationale: draft.rationale,
-                applies_to_paths_json: serde_json::to_string(&applies_to_paths)?,
-                applies_to_refs_json: serde_json::to_string(&applies_to_refs)?,
-                source_refs_json: serde_json::to_string(&source_refs)?,
-                artifact_refs_json: serde_json::to_string(&artifact_refs)?,
-                status: storage_value(ProjectContinuityStatus::Active)?,
-                supersedes_refs_json: serde_json::to_string(&supersedes_refs)?,
-                review_triggers_json: serde_json::to_string(&review_triggers)?,
-                created_at: context.now.to_string(),
-                updated_at: context.now.to_string(),
-                metadata_json: serde_json::to_string(&draft.metadata)?,
+                applies_to_paths,
+                applies_to_refs,
+                source_refs,
+                artifact_refs,
+                status: ProjectContinuityStatus::Active,
+                supersedes_refs,
+                review_triggers,
+                created_at: context.now.clone(),
+                updated_at: context.now.clone(),
+                metadata: draft.metadata,
             },
         )),
     })
@@ -593,12 +592,7 @@ pub(crate) fn artifact_ref_from_verified_record(
         sha256: sanitized_artifact_sha256(record, integrity_status).into(),
         size_bytes: record.size_bytes.into(),
         integrity_status,
-        redaction_state: parse_owner_storage_value(
-            "artifacts",
-            record.artifact_id.clone(),
-            "redaction_state",
-            &record.redaction_state,
-        )?,
+        redaction_state: record.redaction_state,
         availability: artifact_availability_for_verification_status(record, verification_status)?,
         created_by_run_ref: Some(state_ref(
             StateRecordKind::Run,
@@ -643,17 +637,12 @@ fn artifact_availability_for_verification_status(
         PersistentArtifactVerificationStatus::IntegrityFailed => {
             Ok(ArtifactAvailability::IntegrityFailed)
         }
-        PersistentArtifactVerificationStatus::Unavailable => match record.status.as_str() {
-            "missing" => Ok(ArtifactAvailability::Missing),
-            "integrity_failed" => Ok(ArtifactAvailability::IntegrityFailed),
-            "available" | "unavailable" => Ok(ArtifactAvailability::Unavailable),
-            _ => Err(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_value(
-                    "artifacts",
-                    record.artifact_id.clone(),
-                    "status",
-                ),
-            )),
+        PersistentArtifactVerificationStatus::Unavailable => match record.status {
+            PersistentArtifactStatus::Missing => Ok(ArtifactAvailability::Missing),
+            PersistentArtifactStatus::IntegrityFailed => Ok(ArtifactAvailability::IntegrityFailed),
+            PersistentArtifactStatus::Available | PersistentArtifactStatus::Unavailable => {
+                Ok(ArtifactAvailability::Unavailable)
+            }
         },
         PersistentArtifactVerificationStatus::BoundaryViolation => {
             Ok(ArtifactAvailability::Unusable)
@@ -674,12 +663,7 @@ fn effective_artifact_integrity_status(
             Ok(ArtifactIntegrityStatus::Corrupt)
         }
         PersistentArtifactVerificationStatus::Missing
-        | PersistentArtifactVerificationStatus::Unavailable => parse_owner_storage_value(
-            "artifacts",
-            record.artifact_id.clone(),
-            "integrity_status",
-            &record.integrity_status,
-        ),
+        | PersistentArtifactVerificationStatus::Unavailable => Ok(record.integrity_status),
     }
 }
 
@@ -1045,26 +1029,12 @@ fn canonical_source_artifact_ref(
             "source artifact refs must identify an artifact owned by the request project and Task",
         );
     }
-    let integrity_status = parse_owner_storage_value(
-        "artifacts",
-        record.artifact_id.clone(),
-        "integrity_status",
-        &record.integrity_status,
-    )?;
-    let availability = match record.status.as_str() {
-        "available" => ArtifactAvailability::Available,
-        "missing" => ArtifactAvailability::Missing,
-        "integrity_failed" => ArtifactAvailability::IntegrityFailed,
-        "unavailable" => ArtifactAvailability::Unavailable,
-        _ => {
-            return Err(PlanError::Core(CorePipelineError::Store(
-                StoreError::corrupt_owner_state_value(
-                    "artifacts",
-                    record.artifact_id.clone(),
-                    "status",
-                ),
-            )))
-        }
+    let integrity_status = record.integrity_status;
+    let availability = match record.status {
+        PersistentArtifactStatus::Available => ArtifactAvailability::Available,
+        PersistentArtifactStatus::Missing => ArtifactAvailability::Missing,
+        PersistentArtifactStatus::IntegrityFailed => ArtifactAvailability::IntegrityFailed,
+        PersistentArtifactStatus::Unavailable => ArtifactAvailability::Unavailable,
     };
     Ok(ArtifactRef {
         artifact_id: ArtifactId::new(record.artifact_id.clone()),
@@ -1079,12 +1049,7 @@ fn canonical_source_artifact_ref(
         sha256: record.sha256.clone().into(),
         size_bytes: record.size_bytes.into(),
         integrity_status,
-        redaction_state: parse_owner_storage_value(
-            "artifacts",
-            record.artifact_id.clone(),
-            "redaction_state",
-            &record.redaction_state,
-        )?,
+        redaction_state: record.redaction_state,
         availability,
         created_by_run_ref: Some(state_ref(
             StateRecordKind::Run,
@@ -1126,15 +1091,6 @@ where
             logical_column,
         ))
     })
-}
-
-fn decode_required_json_object(
-    table: &'static str,
-    record_ref: impl Into<String>,
-    logical_column: &'static str,
-    raw: Option<&str>,
-) -> CoreResult<JsonObject> {
-    decode_required_json(table, record_ref, logical_column, raw)
 }
 
 fn storage_value<T>(value: T) -> CoreResult<String>
@@ -1199,15 +1155,6 @@ fn mutation_method_policy(
             FreshnessPolicy::IfPresent,
             MethodEffectPolicy::CoreMutation,
         )
-    }
-}
-
-fn redaction_state_value(redaction_state: RedactionState) -> &'static str {
-    match redaction_state {
-        RedactionState::None => "none",
-        RedactionState::Redacted => "redacted",
-        RedactionState::SecretOmitted => "secret_omitted",
-        RedactionState::Blocked => "blocked",
     }
 }
 
@@ -1658,45 +1605,6 @@ pub(crate) struct StoredScope {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(dead_code)]
-struct PersistedTaskShaping {
-    #[serde(default)]
-    goal_summary: Option<String>,
-    #[serde(default)]
-    scope_summary: Option<String>,
-    #[serde(default)]
-    non_goals: Vec<String>,
-    #[serde(default)]
-    baseline_ref: Option<String>,
-    #[serde(default)]
-    autonomy_boundary: Option<String>,
-    #[serde(default)]
-    initial_context_refs: Option<Value>,
-    #[serde(default)]
-    initial_source_refs: Option<Value>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PersistedAutonomyBoundary {
-    #[serde(default)]
-    autonomy_boundary: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[allow(dead_code)]
-struct PersistedScopeSummary {
-    #[serde(default)]
-    scope_summary: Option<String>,
-    #[serde(default)]
-    affected_areas: Vec<String>,
-    #[serde(default)]
-    constraints: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct PersistedWriteTicketAttemptScope {
     task_id: TaskId,
     change_unit_id: ChangeUnitId,
@@ -1723,24 +1631,24 @@ impl From<PersistedWriteTicketAttemptScope> for WriteTicketAttemptScope {
 
 impl StoredScope {
     pub(crate) fn from_task(task: &TaskRecord) -> CoreResult<Self> {
-        let shaping: PersistedTaskShaping = decode_required_json(
-            "tasks",
-            task.task_id.clone(),
-            "shaping_summary_json",
-            Some(&task.shaping_summary_json),
-        )?;
-        let autonomy: PersistedAutonomyBoundary = decode_required_json(
-            "tasks",
-            task.task_id.clone(),
-            "autonomy_boundary_json",
-            Some(&task.autonomy_boundary_json),
-        )?;
         Ok(Self::normalized(Self {
-            goal_summary: shaping.goal_summary.or_else(|| task.summary.clone()),
-            scope_summary: shaping.scope_summary,
-            non_goals: shaping.non_goals,
-            autonomy_boundary: autonomy.autonomy_boundary.or(shaping.autonomy_boundary),
-            baseline_ref: shaping.baseline_ref,
+            goal_summary: task
+                .shaping
+                .goal_summary
+                .clone()
+                .or_else(|| task.summary.clone()),
+            scope_summary: task.shaping.scope_summary.clone(),
+            non_goals: task.shaping.non_goals.clone(),
+            autonomy_boundary: task
+                .autonomy_boundary
+                .autonomy_boundary
+                .clone()
+                .or_else(|| task.shaping.autonomy_boundary.clone()),
+            baseline_ref: task
+                .shaping
+                .baseline_ref
+                .as_ref()
+                .map(|baseline_ref| baseline_ref.as_str().to_owned()),
         }))
     }
 
@@ -1779,17 +1687,6 @@ impl StoredScope {
         self.baseline_ref = normalize_scope_text_option(self.baseline_ref);
         self
     }
-
-    fn to_json(&self) -> Value {
-        task_shaping_json(
-            self.goal_summary.clone(),
-            self.scope_summary.clone(),
-            self.non_goals.clone(),
-            self.baseline_ref.clone(),
-            self.autonomy_boundary.clone(),
-            None,
-        )
-    }
 }
 
 fn normalize_scope_text_option(value: Option<String>) -> Option<String> {
@@ -1817,12 +1714,7 @@ fn acceptance_criterion_from_record(
     Ok(AcceptanceCriterion {
         acceptance_criterion_id: AcceptanceCriterionId::new(record.acceptance_criterion_id.clone()),
         statement: record.statement.clone(),
-        evidence_requirement: parse_owner_storage_value(
-            "acceptance_criteria",
-            record.acceptance_criterion_id.clone(),
-            "evidence_requirement",
-            &record.evidence_requirement,
-        )?,
+        evidence_requirement: record.evidence_requirement,
     })
 }
 
@@ -1908,16 +1800,10 @@ fn build_state_summary(
         });
     let lineage = match (
         task.predecessor_task_id.as_ref(),
-        task.lineage_relation.as_deref(),
+        task.lineage_relation,
         task.lineage_reason.as_ref(),
     ) {
         (Some(predecessor_task_id), Some(relation), Some(creation_reason)) => {
-            let dispositions: Vec<CarryForwardDisposition> = decode_required_json(
-                "tasks",
-                task.task_id.clone(),
-                "carry_forward_json",
-                Some(&task.carry_forward_json),
-            )?;
             Some(TaskLineageSummary {
                 predecessor_task_ref: state_ref(
                     StateRecordKind::Task,
@@ -1926,57 +1812,35 @@ fn build_state_summary(
                     Some(&TaskId::new(predecessor_task_id.clone())),
                     Some(state_version),
                 ),
-                relation: parse_task_lineage_relation(relation)?,
+                relation,
                 creation_reason: creation_reason.clone(),
-                carry_forward: dispositions,
+                carry_forward: task.carry_forward.clone(),
             })
         }
         (None, None, None) => None,
         _ => return invalid_storage("tasks.lineage"),
     };
     let scope = StoredScope::from_task(task)?;
-    let change_unit_scope = current_change_unit
-        .map(|record| {
-            decode_required_json::<PersistedScopeSummary>(
-                "change_units",
-                record.change_unit_id.clone(),
-                "scope_summary_json",
-                Some(&record.scope_summary_json),
-            )
-            .map(|summary| summary.scope_summary)
-        })
-        .transpose()?
-        .flatten();
+    let change_unit_scope =
+        current_change_unit.and_then(|record| record.scope_summary.scope_summary.clone());
     Ok(volicord_types::schema::StateSummary {
         project_id: project_id.clone(),
         state_version,
         task_ref: Some(task_ref),
-        mode: Some(parse_task_mode(&task.mode)?),
-        requested_control_level: Some(
-            parse_requested_control_level(&task.requested_control_level)
-                .map_err(CorePipelineError::from)?,
-        ),
-        effective_control_level: Some(
-            parse_task_control_level(&task.effective_control_level)
-                .map_err(CorePipelineError::from)?,
-        ),
+        mode: Some(task.mode),
+        requested_control_level: Some(task.requested_control_level),
+        effective_control_level: Some(task.effective_control_level),
         control_level_reason: Some(task.control_level_reason.clone()),
         project_policy: workflow_policy.summary,
-        work_phase: Some(parse_work_phase(&task.work_phase)?),
-        acceptance_policy: Some(parse_acceptance_policy(&task.acceptance_policy)?),
+        work_phase: Some(task.work_phase),
+        acceptance_policy: Some(task.acceptance_policy),
         acceptance_policy_reason: Some(task.acceptance_policy_reason.clone()),
         lineage,
         lifecycle: Some(TaskLifecycleState {
-            lifecycle_phase: parse_lifecycle_phase(&task.lifecycle_phase)?,
+            lifecycle_phase: task.lifecycle_phase,
             close_reason: parse_close_reason(task)?,
-            result: parse_task_result(task.result.as_deref().unwrap_or("none"))?,
-            closed_at: task
-                .closed_at
-                .as_ref()
-                .map(|closed_at| {
-                    parse_owner_storage_value("tasks", task.task_id.clone(), "closed_at", closed_at)
-                })
-                .transpose()?,
+            result: task.result.unwrap_or(TaskResult::None),
+            closed_at: task.closed_at.clone(),
         }),
         scope_revision: task.scope_revision,
         goal_summary: scope.goal_summary,
@@ -2417,18 +2281,28 @@ fn change_unit_insert(
     Ok(ChangeUnitInsert {
         change_unit_id: change_unit_id.as_str().to_owned(),
         task_id: request.task_id.as_str().to_owned(),
-        scope_summary_json: serde_json::to_string(&json!({
-            "scope_summary": scope_summary,
-            "affected_areas": affected_areas,
-            "constraints": constraints
-        }))?,
-        bounded_paths_json: serde_json::to_string(&affected_paths)?,
-        write_basis_json: serde_json::to_string(&json!({
-            "baseline_ref": request.baseline_ref,
-            "git_workspace_context": verified_invocation.git_workspace_context
-        }))?,
-        effect_contract_json: serde_json::to_string(&request.change_unit.effect_contract)?,
-        lifecycle_json: "{}".to_owned(),
+        scope_summary: StoredChangeUnitScopeSummary {
+            scope_summary: Some(scope_summary),
+            affected_areas,
+            constraints,
+        },
+        bounded_paths: affected_paths,
+        write_basis: StoredChangeUnitWriteBasis {
+            baseline_ref: request.baseline_ref.clone().into_option(),
+            git_workspace_context: verified_invocation.git_workspace_context.as_ref().map(
+                |context| volicord_store::core_pipeline::StoredGitWorkspaceContext {
+                    git_common_dir: context.git_common_dir.clone(),
+                    worktree_id: context.worktree_id.clone(),
+                    branch_ref: context.branch_ref.clone(),
+                    head_sha: context.head_sha.clone(),
+                    workspace_fingerprint: context.workspace_fingerprint.clone(),
+                },
+            ),
+        },
+        effect_contract: request.change_unit.effect_contract.clone(),
+        lifecycle: StoredChangeUnitLifecycle {
+            recovery_required: false,
+        },
     })
 }
 
@@ -2442,36 +2316,14 @@ fn synthetic_change_unit_record(
         project_id: project_id.as_str().to_owned(),
         change_unit_id: insert.change_unit_id.clone(),
         task_id: task_id.as_str().to_owned(),
-        status: "active".to_owned(),
+        status: ChangeUnitStatus::Active,
         is_current: true,
         basis_state_version: planned_state_version,
-        scope_summary_json: insert.scope_summary_json.clone(),
-        bounded_paths_json: insert.bounded_paths_json.clone(),
-        write_basis_json: insert.write_basis_json.clone(),
-        effect_contract_json: insert.effect_contract_json.clone(),
-        lifecycle_json: insert.lifecycle_json.clone(),
-        bounded_paths: serde_json::from_str(&insert.bounded_paths_json)?,
-        write_basis: serde_json::from_str::<StoredChangeUnitWriteBasis>(&insert.write_basis_json)?,
-        effect_contract: serde_json::from_str(&insert.effect_contract_json)?,
-        lifecycle: serde_json::from_str::<StoredChangeUnitLifecycle>(&insert.lifecycle_json)?,
-    })
-}
-
-fn task_shaping_json(
-    goal_summary: Option<String>,
-    scope_summary: Option<String>,
-    non_goals: Vec<String>,
-    baseline_ref: Option<String>,
-    autonomy_boundary: Option<String>,
-    initial_context_refs: Option<Value>,
-) -> Value {
-    json!({
-        "goal_summary": goal_summary,
-        "scope_summary": scope_summary,
-        "non_goals": non_goals,
-        "baseline_ref": baseline_ref,
-        "autonomy_boundary": autonomy_boundary,
-        "initial_context_refs": initial_context_refs.unwrap_or(Value::Array(Vec::new()))
+        scope_summary: insert.scope_summary.clone(),
+        bounded_paths: insert.bounded_paths.clone(),
+        write_basis: insert.write_basis.clone(),
+        effect_contract: insert.effect_contract.clone(),
+        lifecycle: insert.lifecycle.clone(),
     })
 }
 
@@ -2529,18 +2381,21 @@ fn next_actions_for_state(
     }
 }
 
-fn task_lifecycle_mutation(task_id: &TaskId, lifecycle_phase: &str) -> CoreStorageMutation {
+fn task_lifecycle_mutation(
+    task_id: &TaskId,
+    lifecycle_phase: TaskLifecyclePhase,
+) -> CoreStorageMutation {
     CoreStorageMutation::Task(TaskMutation::UpdateScope(TaskScopeUpdate {
         task_id: task_id.as_str().to_owned(),
         work_phase: None,
-        lifecycle_phase: Some(lifecycle_phase.to_owned()),
+        lifecycle_phase: Some(lifecycle_phase),
         result: None,
         title: None,
         summary: None,
-        shaping_summary_json: None,
-        bounded_context_json: None,
-        autonomy_boundary_json: None,
-        close_summary_json: None,
+        shaping: None,
+        bounded_context: None,
+        autonomy_boundary: None,
+        close_summary: None,
     }))
 }
 
@@ -2582,8 +2437,13 @@ const AUTHORITY_RECORD_SUMMARY_GUARANTEE: &str =
     "Local authority record; not OS enforcement, correctness proof, test sufficiency proof, or review completion.";
 
 fn task_summary_text(task: Option<&TaskRecord>) -> String {
-    task.map(|task| format!("selected ({})", task.lifecycle_phase))
-        .unwrap_or_else(|| "none".to_owned())
+    task.map(|task| {
+        format!(
+            "selected ({})",
+            task_lifecycle_phase_storage(task.lifecycle_phase)
+        )
+    })
+    .unwrap_or_else(|| "none".to_owned())
 }
 
 fn profile_summary_text(guarantee_display: Option<&GuaranteeDisplay>) -> Option<String> {
@@ -2855,7 +2715,6 @@ fn project_continuity_ref(
 fn project_continuity_record_from_storage(
     record: &ProjectContinuityRecordRecord,
 ) -> CoreResult<ProjectContinuityRecord> {
-    let record_id = record.continuity_record_id.clone();
     Ok(ProjectContinuityRecord {
         continuity_record_id: ProjectContinuityRecordId::new(record.continuity_record_id.clone()),
         project_id: ProjectId::new(record.project_id.clone()),
@@ -2865,69 +2724,19 @@ fn project_continuity_record_from_storage(
             .clone()
             .map(ChangeUnitId::new)
             .into(),
-        kind: parse_owner_storage_value(
-            "project_continuity_records",
-            record_id.clone(),
-            "kind",
-            &record.kind,
-        )?,
+        kind: record.kind,
         title: record.title.clone(),
         summary: record.summary.clone(),
         rationale: record.rationale.clone().into(),
-        applies_to_paths: decode_required_json(
-            "project_continuity_records",
-            record_id.clone(),
-            "applies_to_paths_json",
-            Some(&record.applies_to_paths_json),
-        )?,
-        applies_to_refs: decode_required_json(
-            "project_continuity_records",
-            record_id.clone(),
-            "applies_to_refs_json",
-            Some(&record.applies_to_refs_json),
-        )?,
-        source_refs: decode_required_json(
-            "project_continuity_records",
-            record_id.clone(),
-            "source_refs_json",
-            Some(&record.source_refs_json),
-        )?,
-        artifact_refs: decode_required_json(
-            "project_continuity_records",
-            record_id.clone(),
-            "artifact_refs_json",
-            Some(&record.artifact_refs_json),
-        )?,
-        status: parse_owner_storage_value(
-            "project_continuity_records",
-            record_id.clone(),
-            "status",
-            &record.status,
-        )?,
-        supersedes_refs: decode_required_json(
-            "project_continuity_records",
-            record_id.clone(),
-            "supersedes_refs_json",
-            Some(&record.supersedes_refs_json),
-        )?,
-        review_triggers: decode_required_json(
-            "project_continuity_records",
-            record_id.clone(),
-            "review_triggers_json",
-            Some(&record.review_triggers_json),
-        )?,
-        created_at: parse_owner_storage_value(
-            "project_continuity_records",
-            record_id.clone(),
-            "created_at",
-            &record.created_at,
-        )?,
-        updated_at: parse_owner_storage_value(
-            "project_continuity_records",
-            record_id,
-            "updated_at",
-            &record.updated_at,
-        )?,
+        applies_to_paths: record.applies_to_paths.clone(),
+        applies_to_refs: record.applies_to_refs.clone(),
+        source_refs: record.source_refs.clone(),
+        artifact_refs: record.artifact_refs.clone(),
+        status: record.status,
+        supersedes_refs: record.supersedes_refs.clone(),
+        review_triggers: record.review_triggers.clone(),
+        created_at: record.created_at.clone(),
+        updated_at: record.updated_at.clone(),
     })
 }
 
@@ -2970,20 +2779,8 @@ fn project_continuity_summary_from_record(
 }
 
 fn state_ref_from_stored(record: StoredRecordRef) -> StateRecordRef {
-    let kind = match record.record_kind.as_str() {
-        "user_action_request" => StateRecordKind::UserActionRequest,
-        "user_action_resolution" => StateRecordKind::UserActionResolution,
-        "blocker" => StateRecordKind::Blocker,
-        "write_ticket" => StateRecordKind::WriteTicket,
-        "change_unit" => StateRecordKind::ChangeUnit,
-        "task" => StateRecordKind::Task,
-        "evidence_observation" => StateRecordKind::EvidenceObservation,
-        "unrecorded_change" => StateRecordKind::UnrecordedChange,
-        "project_continuity_record" => StateRecordKind::ProjectContinuityRecord,
-        _ => StateRecordKind::ProjectState,
-    };
     StateRecordRef {
-        record_kind: kind,
+        record_kind: record.record_kind,
         record_id: RecordId::new(record.record_id),
         project_id: ProjectId::new(record.project_id),
         task_id: record.task_id.map(TaskId::new).into(),
@@ -3162,14 +2959,6 @@ fn resolve_requested_mode(requested_mode: RequestedMode) -> TaskMode {
     }
 }
 
-fn task_mode_storage(mode: TaskMode) -> &'static str {
-    match mode {
-        TaskMode::Advisor => "advisor",
-        TaskMode::Direct => "direct",
-        TaskMode::Work => "work",
-    }
-}
-
 fn initial_work_phase(mode: TaskMode) -> WorkPhase {
     match mode {
         TaskMode::Direct => WorkPhase::Implementation,
@@ -3177,101 +2966,21 @@ fn initial_work_phase(mode: TaskMode) -> WorkPhase {
     }
 }
 
-fn work_phase_storage(phase: WorkPhase) -> &'static str {
-    match phase {
-        WorkPhase::Shaping => "shaping",
-        WorkPhase::Implementation => "implementation",
-    }
-}
-
-fn parse_work_phase(value: &str) -> CoreResult<WorkPhase> {
-    match value {
-        "shaping" => Ok(WorkPhase::Shaping),
-        "implementation" => Ok(WorkPhase::Implementation),
-        _ => invalid_storage("tasks.work_phase"),
-    }
-}
-
-fn acceptance_policy_storage(policy: AcceptancePolicy) -> &'static str {
-    match policy {
-        AcceptancePolicy::Required => "required",
-        AcceptancePolicy::NotRequired => "not_required",
-        AcceptancePolicy::PolicyDependent => "policy_dependent",
-    }
-}
-
-fn parse_acceptance_policy(value: &str) -> CoreResult<AcceptancePolicy> {
-    match value {
-        "required" => Ok(AcceptancePolicy::Required),
-        "not_required" => Ok(AcceptancePolicy::NotRequired),
-        "policy_dependent" => Ok(AcceptancePolicy::PolicyDependent),
-        _ => invalid_storage("tasks.acceptance_policy"),
-    }
-}
-
-fn task_lineage_relation_storage(relation: TaskLineageRelation) -> &'static str {
-    match relation {
-        TaskLineageRelation::Continues => "continues",
-        TaskLineageRelation::DerivedFrom => "derived_from",
-        TaskLineageRelation::SplitFrom => "split_from",
-        TaskLineageRelation::Replaces => "replaces",
-        TaskLineageRelation::ImplementsAdviceFrom => "implements_advice_from",
-    }
-}
-
-fn parse_task_lineage_relation(value: &str) -> CoreResult<TaskLineageRelation> {
-    match value {
-        "continues" => Ok(TaskLineageRelation::Continues),
-        "derived_from" => Ok(TaskLineageRelation::DerivedFrom),
-        "split_from" => Ok(TaskLineageRelation::SplitFrom),
-        "replaces" => Ok(TaskLineageRelation::Replaces),
-        "implements_advice_from" => Ok(TaskLineageRelation::ImplementsAdviceFrom),
-        _ => invalid_storage("tasks.lineage_relation"),
-    }
-}
-
-fn parse_task_mode(value: &str) -> CoreResult<TaskMode> {
-    match value {
-        "advisor" => Ok(TaskMode::Advisor),
-        "direct" => Ok(TaskMode::Direct),
-        "work" => Ok(TaskMode::Work),
-        _ => invalid_storage("tasks.mode"),
-    }
-}
-
-fn parse_lifecycle_phase(value: &str) -> CoreResult<TaskLifecyclePhase> {
-    match value {
-        "shaping" => Ok(TaskLifecyclePhase::Shaping),
-        "ready" => Ok(TaskLifecyclePhase::Ready),
-        "executing" => Ok(TaskLifecyclePhase::Executing),
-        "waiting_user" => Ok(TaskLifecyclePhase::WaitingUser),
-        "blocked" => Ok(TaskLifecyclePhase::Blocked),
-        "completed" => Ok(TaskLifecyclePhase::Completed),
-        "cancelled" => Ok(TaskLifecyclePhase::Cancelled),
-        "superseded" => Ok(TaskLifecyclePhase::Superseded),
-        _ => invalid_storage("tasks.lifecycle_phase"),
-    }
-}
-
-fn parse_task_result(value: &str) -> CoreResult<TaskResult> {
-    match value {
-        "none" => Ok(TaskResult::None),
-        "advice_only" => Ok(TaskResult::AdviceOnly),
-        "completed" => Ok(TaskResult::Completed),
-        "cancelled" => Ok(TaskResult::Cancelled),
-        "superseded" => Ok(TaskResult::Superseded),
-        _ => invalid_storage("tasks.result"),
-    }
-}
-
 fn parse_close_reason(task: &TaskRecord) -> CoreResult<CloseReason> {
-    let value: PersistedCloseSummary = decode_required_json(
-        "tasks",
-        task.task_id.clone(),
-        "close_summary_json",
-        Some(&task.close_summary_json),
-    )?;
-    Ok(value.close_reason)
+    Ok(task.close_summary.close_reason)
+}
+
+fn task_lifecycle_phase_storage(value: TaskLifecyclePhase) -> &'static str {
+    match value {
+        TaskLifecyclePhase::Shaping => "shaping",
+        TaskLifecyclePhase::Ready => "ready",
+        TaskLifecyclePhase::Executing => "executing",
+        TaskLifecyclePhase::WaitingUser => "waiting_user",
+        TaskLifecyclePhase::Blocked => "blocked",
+        TaskLifecyclePhase::Completed => "completed",
+        TaskLifecyclePhase::Cancelled => "cancelled",
+        TaskLifecyclePhase::Superseded => "superseded",
+    }
 }
 
 fn invalid_storage<T>(field: &'static str) -> CoreResult<T> {

@@ -12,7 +12,8 @@ use crate::{
 };
 
 /// One responsibility-owned storage mutation in an ordered Core commit.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CoreStorageMutation {
     Task(TaskMutation),
     ChangeUnit(ChangeUnitMutation),

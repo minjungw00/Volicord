@@ -1,14 +1,13 @@
 use super::close_readiness::{close_next_action, plan_close_readiness, CloseReadinessRequest};
 use super::{
-    acceptance_policy_storage, active_acceptance_criteria_for_task, build_state_summary,
-    changes_summary_text, close_state_summary_text, core_error_response,
-    evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_from_profile,
-    next_actions_for_state, normalize_next_action_collection, parse_lifecycle_phase,
-    parse_owner_storage_value, parse_task_lineage_relation, parse_task_mode, parse_work_phase,
-    plan_error_response, prepare_or_response, primary_next_action, profile_summary_text,
-    project_continuity_summary_from_record, projected_blocker_refs, projected_evidence_summary,
-    projected_write_ticket_summary, state_ref, summary_card_for_core, validation_plan_error,
-    write_ticket_summary_text, PlanError, SummaryBuild, SummaryCardBuild,
+    active_acceptance_criteria_for_task, build_state_summary, changes_summary_text,
+    close_state_summary_text, core_error_response, evidence_gate_summary_text,
+    evidence_summary_for_display, guarantee_display_from_profile, next_actions_for_state,
+    normalize_next_action_collection, plan_error_response, prepare_or_response,
+    primary_next_action, profile_summary_text, project_continuity_summary_from_record,
+    projected_blocker_refs, projected_evidence_summary, projected_write_ticket_summary, state_ref,
+    summary_card_for_core, validation_plan_error, write_ticket_summary_text, PlanError,
+    SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
     CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
@@ -244,11 +243,9 @@ fn status_result_fields(
             .map_err(CorePipelineError::from)?;
         let mut resolved_task = task.clone();
         if resolved_control.control_raised || resolved_control.acceptance_raised {
-            resolved_task.effective_control_level =
-                resolved_control.effective_control_level.as_str().to_owned();
+            resolved_task.effective_control_level = resolved_control.effective_control_level;
             resolved_task.control_level_reason = resolved_control.control_level_reason;
-            resolved_task.acceptance_policy =
-                acceptance_policy_storage(resolved_control.acceptance_policy).to_owned();
+            resolved_task.acceptance_policy = resolved_control.acceptance_policy;
             resolved_task.acceptance_policy_reason = resolved_control.acceptance_policy_reason;
         }
         let task = &resolved_task;
@@ -276,7 +273,7 @@ fn status_result_fields(
             Vec::new()
         } else {
             next_actions_for_state(
-                parse_task_mode(&task.mode)?,
+                task.mode,
                 &task_ref,
                 change_unit_ref.as_ref(),
                 state_version,
@@ -308,7 +305,7 @@ fn status_result_fields(
             CloseReadinessRequest::check(envelope.clone(), task_id.clone()),
             &user_action_now,
         )?;
-        let lifecycle_phase = parse_lifecycle_phase(&task.lifecycle_phase)?;
+        let lifecycle_phase = task.lifecycle_phase;
         let terminal_close_state = match lifecycle_phase {
             TaskLifecyclePhase::Completed => Some(CloseState::Closed),
             TaskLifecyclePhase::Cancelled => Some(CloseState::Cancelled),
@@ -383,7 +380,7 @@ fn status_result_fields(
             .run_observed_changes_for_task(&task_id)
             .map_err(CorePipelineError::from)?
             .into_iter()
-            .find(|record| record.status == "recorded");
+            .find(|record| record.status == volicord_store::core_pipeline::RunStatus::Recorded);
         let latest_run_ref = latest_run.as_ref().map(|record| {
             state_ref(
                 StateRecordKind::Run,
@@ -566,14 +563,10 @@ fn projected_task_flow(
                         Some(state_version),
                     )
                 }),
-                relation: record
-                    .lineage_relation
-                    .as_deref()
-                    .map(parse_task_lineage_relation)
-                    .transpose()?,
-                mode: parse_task_mode(&record.mode)?,
-                work_phase: parse_work_phase(&record.work_phase)?,
-                lifecycle_phase: parse_lifecycle_phase(&record.lifecycle_phase)?,
+                relation: record.lineage_relation,
+                mode: record.mode,
+                work_phase: record.work_phase,
+                lifecycle_phase: record.lifecycle_phase,
             })
         })
         .collect()
@@ -630,14 +623,8 @@ fn projected_continuity_summary(
                 detail: "truncated continuity page has no cursor source record".to_owned(),
             })
         })?;
-        let updated_at = parse_owner_storage_value(
-            "project_continuity_records",
-            last.continuity_record_id.clone(),
-            "updated_at",
-            &last.updated_at,
-        )?;
         RequiredNullable::some(ContinuityCursor {
-            updated_at,
+            updated_at: last.updated_at.clone(),
             continuity_record_id: ProjectContinuityRecordId::new(last.continuity_record_id.clone()),
         })
     } else {

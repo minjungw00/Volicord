@@ -1,15 +1,15 @@
 use rusqlite::{params, Connection, OptionalExtension};
-use serde_json::Value;
 use volicord_types::{
     ids::TaskId,
     schema::{
         effective_user_action_status as derive_user_action_status, validate_channel_submission_id,
-        ArtifactRef, PersistedUserActionRequest, PersistedUserActionResolution, UserActionBasis,
-        UserActionRequestBody, UserActionResolutionBody,
+        ArtifactRef, PersistedUserActionRequest, PersistedUserActionRequestMetadata,
+        PersistedUserActionResolution, UserActionBasis, UserActionRequestBody,
+        UserActionResolutionBody,
     },
     values::{
-        ActorSource, MethodName, UserActionBasisStatus, UserActionChannelKind, UserActionKind,
-        UserActionOptionAction, UserActionRequiredFor, UserActionStatus,
+        ActorSource, MethodName, StateRecordKind, UserActionBasisStatus, UserActionChannelKind,
+        UserActionKind, UserActionOptionAction, UserActionRequiredFor, UserActionStatus,
         UserActionVerificationBasis, UtcTimestamp,
     },
 };
@@ -33,7 +33,8 @@ const USER_ACTION_RESOLUTION_COLUMNS: &str = "
     resolved_assurance_level, resolved_at";
 
 /// User-action mutation applied inside one Core commit transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UserActionMutation {
     InsertRequest(UserActionRequestInsert),
     InsertResolution(UserActionResolutionInsert),
@@ -43,44 +44,44 @@ pub enum UserActionMutation {
 }
 
 /// Storage input for inserting a pending user-action request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UserActionRequestInsert {
     pub user_action_request_id: String,
     pub task_id: String,
     pub change_unit_id: Option<String>,
     pub action_kind: UserActionKind,
-    pub request_json: String,
-    pub basis_json: String,
+    pub request: PersistedUserActionRequest,
+    pub basis: UserActionBasis,
     pub basis_status: UserActionBasisStatus,
-    pub required_for_json: String,
-    pub requested_by_actor_source: String,
-    pub source_method: String,
+    pub required_for: Vec<UserActionRequiredFor>,
+    pub requested_by_actor_source: ActorSource,
+    pub source_method: MethodName,
     pub source_idempotency_key: String,
-    pub requested_at: String,
-    pub expires_at: Option<String>,
-    pub metadata_json: String,
+    pub requested_at: UtcTimestamp,
+    pub expires_at: Option<UtcTimestamp>,
+    pub metadata: PersistedUserActionRequestMetadata,
 }
 
 /// Storage input for inserting one immutable user-action resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UserActionResolutionInsert {
     pub user_action_resolution_id: String,
     pub user_action_request_id: String,
     pub action_kind: UserActionKind,
     pub channel_kind: UserActionChannelKind,
     pub channel_submission_id: String,
-    pub resolution_json: String,
-    pub resolved_by_actor_source: String,
+    pub resolution: PersistedUserActionResolution,
+    pub resolved_by_actor_source: ActorSource,
     pub resolved_verification_basis: UserActionVerificationBasis,
     pub resolved_assurance_level: String,
-    pub resolved_at: String,
+    pub resolved_at: UtcTimestamp,
 }
 
 /// Storage input for replacing one user-action basis snapshot and compatibility status.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UserActionBasisUpdate {
     pub user_action_request_id: String,
-    pub basis_json: String,
+    pub basis: UserActionBasis,
     pub basis_status: UserActionBasisStatus,
 }
 
@@ -129,7 +130,7 @@ pub struct UserActionRequestRecord {
     pub source_idempotency_key: String,
     pub requested_at: UtcTimestamp,
     pub expires_at: Option<UtcTimestamp>,
-    pub metadata: Value,
+    pub metadata: PersistedUserActionRequestMetadata,
 }
 
 /// Stored immutable user-action resolution row.
@@ -537,7 +538,8 @@ fn decode_user_action_request_record(
         .map_err(|_| {
             StoreError::corrupt_owner_state_value("user_action_requests", record_id, "expires_at")
         })?;
-    let metadata = serde_json::from_str(&raw.metadata_json).map_err(|_| {
+    let metadata = serde_json::from_str::<PersistedUserActionRequestMetadata>(&raw.metadata_json)
+        .map_err(|_| {
         StoreError::corrupt_owner_state_json("user_action_requests", record_id, "metadata_json")
     })?;
     Ok(UserActionRequestRecord {
@@ -931,7 +933,7 @@ fn non_current_user_action_refs(
                     )
             })
             .map(|record| StoredRecordRef {
-                record_kind: "user_action_request".to_owned(),
+                record_kind: StateRecordKind::UserActionRequest,
                 record_id: record.request.user_action_request_id,
                 project_id: project_id.to_owned(),
                 task_id: Some(task_id.to_owned()),
@@ -953,7 +955,7 @@ fn effective_user_action_refs(
         effective_user_action_records_for_task(conn, project_id, task_id, Some(status), now)?
             .into_iter()
             .map(|record| StoredRecordRef {
-                record_kind: "user_action_request".to_owned(),
+                record_kind: StateRecordKind::UserActionRequest,
                 record_id: record.request.user_action_request_id,
                 project_id: project_id.to_owned(),
                 task_id: Some(task_id.to_owned()),
@@ -998,6 +1000,18 @@ fn validate_user_action_resolution_timestamp_order_for_insert(
 
 impl MutationContext<'_> {
     fn insert_user_action_request(&mut self, input: &UserActionRequestInsert) -> StoreResult<()> {
+        let request_json = encode_json_column("user_action_requests.request_json", &input.request)?;
+        let basis_json = encode_json_column("user_action_requests.basis_json", &input.basis)?;
+        let required_for_json = encode_json_column(
+            "user_action_requests.required_for_json",
+            &input.required_for,
+        )?;
+        let metadata_json =
+            encode_json_column("user_action_requests.metadata_json", &input.metadata)?;
+        let requested_by_actor_source = input.requested_by_actor_source.to_canonical_string();
+        let source_method = input.source_method.as_str();
+        let requested_at = input.requested_at.to_string();
+        let expires_at = input.expires_at.as_ref().map(ToString::to_string);
         validate_identifier("user_action_request_id", &input.user_action_request_id)?;
         validate_identifier("task_id", &input.task_id)?;
         if let Some(change_unit_id) = &input.change_unit_id {
@@ -1005,27 +1019,31 @@ impl MutationContext<'_> {
         }
         validate_persisted_user_action_request_json(
             "user_action_requests.request_json",
-            &input.request_json,
+            &request_json,
         )?;
-        validate_user_action_basis_json("user_action_requests.basis_json", &input.basis_json)?;
+        validate_user_action_basis_json("user_action_requests.basis_json", &basis_json)?;
         validate_user_action_required_for_json(
             "user_action_requests.required_for_json",
-            &input.required_for_json,
+            &required_for_json,
         )?;
-        validate_identifier(
-            "requested_by_actor_source",
-            &input.requested_by_actor_source,
-        )?;
-        validate_timestamp("requested_at", &input.requested_at)?;
-        if let Some(expires_at) = &input.expires_at {
+        validate_identifier("requested_by_actor_source", &requested_by_actor_source)?;
+        validate_timestamp("requested_at", &requested_at)?;
+        if let Some(expires_at) = &expires_at {
             validate_timestamp("expires_at", expires_at)?;
         }
-        validate_json_text("user_action_requests.metadata_json", &input.metadata_json)?;
-        if input.source_method != MethodName::RequestUserAction.as_str()
-            && input.source_method != MethodName::ReconcileChanges.as_str()
-        {
+        let origin_matches_source = matches!(
+            (&input.source_method, &input.metadata),
+            (
+                MethodName::RequestUserAction,
+                PersistedUserActionRequestMetadata::DirectRequest(_)
+            ) | (
+                MethodName::ReconcileChanges,
+                PersistedUserActionRequestMetadata::Reconciliation(_)
+            )
+        );
+        if !origin_matches_source {
             return Err(StoreError::InvalidInput {
-                detail: "user-action request source_method is not an allowed creator".to_owned(),
+                detail: "user-action request origin metadata must match source_method".to_owned(),
             });
         }
         validate_identifier(
@@ -1035,11 +1053,11 @@ impl MutationContext<'_> {
         validate_user_action_request_column_agreement(UserActionRequestColumnFacts {
             task_id: &input.task_id,
             change_unit_id: input.change_unit_id.as_deref(),
-            request_json: &input.request_json,
-            basis_json: &input.basis_json,
-            required_for_json: &input.required_for_json,
-            requested_at: &input.requested_at,
-            expires_at: input.expires_at.as_deref(),
+            request_json: &request_json,
+            basis_json: &basis_json,
+            required_for_json: &required_for_json,
+            requested_at: &requested_at,
+            expires_at: expires_at.as_deref(),
             action_kind: input.action_kind,
             basis_status: input.basis_status,
         })?;
@@ -1071,16 +1089,16 @@ impl MutationContext<'_> {
                 input.task_id,
                 input.change_unit_id,
                 user_action_kind_as_str(input.action_kind),
-                input.request_json,
-                input.basis_json,
+                request_json,
+                basis_json,
                 user_action_basis_status_as_str(input.basis_status),
-                input.required_for_json,
-                input.requested_by_actor_source,
-                input.source_method,
+                required_for_json,
+                requested_by_actor_source,
+                source_method,
                 input.source_idempotency_key,
-                input.requested_at,
-                input.expires_at,
-                input.metadata_json
+                requested_at,
+                expires_at,
+                metadata_json
             ],
         )?;
         Ok(())
@@ -1090,6 +1108,10 @@ impl MutationContext<'_> {
         &mut self,
         input: &UserActionResolutionInsert,
     ) -> StoreResult<()> {
+        let resolution_json =
+            encode_json_column("user_action_resolutions.resolution_json", &input.resolution)?;
+        let resolved_by_actor_source = input.resolved_by_actor_source.to_canonical_string();
+        let resolved_at = input.resolved_at.to_string();
         validate_identifier(
             "user_action_resolution_id",
             &input.user_action_resolution_id,
@@ -1102,9 +1124,9 @@ impl MutationContext<'_> {
         })?;
         validate_persisted_user_action_resolution_json(
             "user_action_resolutions.resolution_json",
-            &input.resolution_json,
+            &resolution_json,
         )?;
-        if input.resolved_by_actor_source != "local_user" {
+        if input.resolved_by_actor_source != ActorSource::LocalUser {
             return Err(StoreError::InvalidInput {
                 detail: "user-action resolution actor must be local_user".to_owned(),
             });
@@ -1116,23 +1138,20 @@ impl MutationContext<'_> {
         validate_identifier("resolved_assurance_level", &input.resolved_assurance_level)?;
         validate_user_action_resolution_provenance(
             input.channel_kind,
-            &input.resolved_by_actor_source,
+            &resolved_by_actor_source,
             input.resolved_verification_basis,
             &input.resolved_assurance_level,
         )?;
-        validate_timestamp("resolved_at", &input.resolved_at)?;
+        validate_timestamp("resolved_at", &resolved_at)?;
         validate_user_action_resolution_column_agreement(
-            &input.resolution_json,
+            &resolution_json,
             input.action_kind,
             &input.user_action_resolution_id,
         )?;
         if let Some(request) =
             user_action_request_record(self.tx, self.project_id, &input.user_action_request_id)?
         {
-            validate_user_action_resolution_timestamp_order_for_insert(
-                &request,
-                &input.resolved_at,
-            )?;
+            validate_user_action_resolution_timestamp_order_for_insert(&request, &resolved_at)?;
             let candidate = UserActionResolutionRecord {
                 project_id: self.project_id.to_owned(),
                 user_action_resolution_id: input.user_action_resolution_id.clone(),
@@ -1140,23 +1159,11 @@ impl MutationContext<'_> {
                 action_kind: input.action_kind,
                 channel_kind: input.channel_kind,
                 channel_submission_id: input.channel_submission_id.clone(),
-                resolution: serde_json::from_str(&input.resolution_json).map_err(|_| {
-                    StoreError::InvalidInput {
-                        detail: "user-action resolution must contain a typed body".to_owned(),
-                    }
-                })?,
-                resolved_by_actor_source: input.resolved_by_actor_source.parse().map_err(|_| {
-                    StoreError::InvalidInput {
-                        detail: "user-action resolution actor provenance is invalid".to_owned(),
-                    }
-                })?,
+                resolution: input.resolution.clone(),
+                resolved_by_actor_source: input.resolved_by_actor_source.clone(),
                 resolved_verification_basis: input.resolved_verification_basis,
                 resolved_assurance_level: input.resolved_assurance_level.clone(),
-                resolved_at: UtcTimestamp::parse(&input.resolved_at).map_err(|_| {
-                    StoreError::InvalidInput {
-                        detail: "user-action resolution timestamp is invalid".to_owned(),
-                    }
-                })?,
+                resolved_at: input.resolved_at.clone(),
             };
             validate_user_action_request_resolution_pair(&request, &candidate).map_err(|_| {
                 StoreError::InvalidInput {
@@ -1188,11 +1195,11 @@ impl MutationContext<'_> {
                 user_action_kind_as_str(input.action_kind),
                 user_action_channel_kind_as_str(input.channel_kind),
                 input.channel_submission_id,
-                input.resolution_json,
-                input.resolved_by_actor_source,
+                resolution_json,
+                resolved_by_actor_source,
                 input.resolved_verification_basis.as_str(),
                 input.resolved_assurance_level,
-                input.resolved_at
+                resolved_at
             ],
         )?;
         Ok(())
@@ -1200,8 +1207,10 @@ impl MutationContext<'_> {
 
     fn update_user_action_basis(&mut self, input: &UserActionBasisUpdate) -> StoreResult<()> {
         validate_identifier("user_action_request_id", &input.user_action_request_id)?;
-        validate_user_action_basis_json("user_action_requests.basis_json", &input.basis_json)?;
-        let basis_json = user_action_basis_json_with_status(&input.basis_json, input.basis_status)?;
+        let basis_json = encode_json_column(
+            "user_action_requests.basis_json",
+            &user_action_basis_with_status(&input.basis, input.basis_status),
+        )?;
         let changed = self.tx.execute(
             "UPDATE user_action_requests
                 SET basis_json = ?3,
