@@ -17,7 +17,10 @@ use volicord_store::{
 use volicord_types::ids::{
     ArtifactId, IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId,
 };
-use volicord_types::methods::{ResolveUserActionRequest, StatusInclude, StatusRequest};
+use volicord_types::methods::{
+    ResolveUserActionRequest, ResolveUserActionResponse, StatusInclude, StatusRequest,
+    StatusResponse,
+};
 use volicord_types::schema::{
     EvidenceTarget, SummaryCard, ToolEnvelope, UserActionResolutionChoice,
     UserActionResolutionForm, UserActionResolutionInput,
@@ -256,7 +259,7 @@ fn status_response(
     resolved: &ResolvedUserProject,
     task_id: Option<&str>,
 ) -> Result<PipelineResponse, UserCommandError> {
-    CoreService::for_read_only(&resolved.runtime_home)
+    let response = CoreService::for_read_only(&resolved.runtime_home)
         .status(
             StatusRequest {
                 envelope: envelope(
@@ -278,7 +281,10 @@ fn status_response(
             },
             invocation(&resolved.project_id, OperationCategory::Read),
         )
-        .map_err(Into::into)
+        .map_err(UserCommandError::from)?;
+    serde_json::from_value::<StatusResponse>(response.response_value.clone())
+        .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
+    Ok(response)
 }
 
 fn pending_user_action_facts(
@@ -720,7 +726,7 @@ pub(crate) fn resolve_user_action_from_record(
         Some(session_id) => invocation.with_session_id(session_id),
         None => invocation,
     };
-    CoreService::for_mutation(context)
+    let response = CoreService::for_mutation(context)
         .resolve_user_action(
             context,
             ResolveUserActionRequest {
@@ -738,7 +744,10 @@ pub(crate) fn resolve_user_action_from_record(
             },
             invocation,
         )
-        .map_err(Into::into)
+        .map_err(UserCommandError::from)?;
+    serde_json::from_value::<ResolveUserActionResponse>(response.response_value.clone())
+        .map_err(|error| UserCommandError::Runtime(error.to_string()))?;
+    Ok(response)
 }
 
 fn envelope(

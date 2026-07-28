@@ -1,5 +1,5 @@
 use schemars::{schema_for, JsonSchema};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ids::{
@@ -12,10 +12,10 @@ use crate::schema::{
     CloseReadinessBlocker, ContinuityPageRequest, CurrentCloseBasis, EvidenceCaptureIntent,
     EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation,
     EvidenceObservationInput, EvidenceProducer, EvidenceSummary, EvidenceTarget, GuaranteeDisplay,
-    JsonObject, NextActionSummary, ObservedChanges, ProjectContinuityPage,
+    JsonObject, NextActionSummary, ObservedChanges, PreviewableToolResponse, ProjectContinuityPage,
     ProjectContinuitySummary, RequiredNullable, RiskAcceptanceCoverage, RunSummary, SourceRef,
     StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard, TaskFlowItem,
-    TaskLineageInput, ToolEnvelope, ToolResponse, ToolResultBase, UnrecordedChangeFinding,
+    TaskLineageInput, ToolEnvelope, ToolResultBase, ToolResultOrRejected, UnrecordedChangeFinding,
     UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest, UserActionResolution,
     UserActionResolutionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
     CHANNEL_SUBMISSION_ID_MAX_BYTES,
@@ -105,44 +105,82 @@ where
         .map(Some)
 }
 
-/// Response branch type for `volicord.intake`.
-pub type IntakeResponse = ToolResponse<IntakeResult>;
+/// One branch allowed by a public method's response contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MethodResponseBranch {
+    Result,
+    Rejected,
+    DryRun,
+}
 
-/// Response branch type for `volicord.update_scope`.
-pub type UpdateScopeResponse = ToolResponse<UpdateScopeResult>;
+/// Typed relationship between one public request and its exact response family.
+pub trait MethodResponseContract {
+    type Response: DeserializeOwned + JsonSchema;
 
-/// Response branch type for `volicord.status`.
-pub type StatusResponse = ToolResponse<StatusResult>;
+    const METHOD: MethodName;
+    const RESPONSE_BRANCHES: &'static [MethodResponseBranch];
+}
 
-/// Response branch type for `volicord.get_operation_result`.
-pub type GetOperationResultResponse = ToolResponse<GetOperationResultResult>;
+/// Canonical machine-readable declaration for one public method contract.
+#[derive(Clone, Copy)]
+pub struct PublicMethodContract {
+    method: MethodName,
+    request_contract_id: &'static str,
+    response_contract_id: &'static str,
+    response_branches: &'static [MethodResponseBranch],
+    committed_result_replay: bool,
+    request_schema: fn() -> Value,
+    response_schema: fn() -> Value,
+    result_schema: fn() -> Value,
+    accepts_response: fn(&Value) -> bool,
+    accepts_result_json: fn(&str, &Value) -> bool,
+}
 
-/// Response branch type for `volicord.check_close`.
-pub type CheckCloseResponse = ToolResponse<CloseTaskResult>;
+impl PublicMethodContract {
+    pub const fn method(self) -> MethodName {
+        self.method
+    }
 
-/// Response branch type for `volicord.prepare_write`.
-pub type PrepareWriteResponse = ToolResponse<PrepareWriteResult>;
+    pub const fn request_contract_id(self) -> &'static str {
+        self.request_contract_id
+    }
 
-/// Response branch type for `volicord.prepare_evidence_capture`.
-pub type PrepareEvidenceCaptureResponse = ToolResponse<PrepareEvidenceCaptureResult>;
+    pub const fn response_contract_id(self) -> &'static str {
+        self.response_contract_id
+    }
 
-/// Response branch type for `volicord.stage_artifact`.
-pub type StageArtifactResponse = ToolResponse<StageArtifactResult>;
+    pub const fn response_branches(self) -> &'static [MethodResponseBranch] {
+        self.response_branches
+    }
 
-/// Response branch type for `volicord.record_run`.
-pub type RecordRunResponse = ToolResponse<RecordRunResult>;
+    pub fn supports_response_branch(self, branch: MethodResponseBranch) -> bool {
+        self.response_branches.contains(&branch)
+    }
 
-/// Response branch type for `volicord.request_user_action`.
-pub type RequestUserActionResponse = ToolResponse<RequestUserActionResult>;
+    pub const fn has_committed_result_replay(self) -> bool {
+        self.committed_result_replay
+    }
 
-/// Response branch type for `volicord.resolve_user_action`.
-pub type ResolveUserActionResponse = ToolResponse<ResolveUserActionResult>;
+    pub fn request_schema(self) -> Value {
+        (self.request_schema)()
+    }
 
-/// Response branch type for `volicord.reconcile_changes`.
-pub type ReconcileChangesResponse = ToolResponse<ReconcileChangesResult>;
+    pub fn response_schema(self) -> Value {
+        (self.response_schema)()
+    }
 
-/// Response branch type for `volicord.close_task`.
-pub type CloseTaskResponse = ToolResponse<CloseTaskResult>;
+    pub fn result_schema(self) -> Value {
+        (self.result_schema)()
+    }
+
+    pub fn accepts_response(self, value: &Value) -> bool {
+        (self.accepts_response)(value)
+    }
+
+    pub fn accepts_result_json(self, json: &str, value: &Value) -> bool {
+        (self.accepts_result_json)(json, value)
+    }
+}
 
 /// Maximum number of source UTF-8 bytes returned in one operation-result page.
 pub const MAX_OPERATION_RESULT_PAGE_BYTES: usize = 16_384;
@@ -856,73 +894,239 @@ declare_method_result! {
     }
 }
 
+macro_rules! response_family {
+    (result_or_rejected, $result:ty) => {
+        ToolResultOrRejected<$result>
+    };
+    (previewable, $result:ty) => {
+        PreviewableToolResponse<$result>
+    };
+}
+
+macro_rules! response_branches {
+    (result_or_rejected) => {
+        &[MethodResponseBranch::Result, MethodResponseBranch::Rejected]
+    };
+    (previewable) => {
+        &[
+            MethodResponseBranch::Result,
+            MethodResponseBranch::Rejected,
+            MethodResponseBranch::DryRun,
+        ]
+    };
+}
+
+macro_rules! declare_public_method_contracts {
+    (
+        $(
+            $variant:ident {
+                request: $request:ty,
+                result: $result:ty,
+                response: $response:ident,
+                family: $family:ident,
+                request_contract: $request_contract:literal,
+                response_contract: $response_contract:literal,
+                committed_result_replay: $committed_result_replay:literal
+            }
+        ),+ $(,)?
+    ) => {
+        $(
+            #[doc = concat!("Exact public response family for `", $response_contract, "`.")]
+            pub type $response = response_family!($family, $result);
+
+            impl MethodResponseContract for $request {
+                type Response = $response;
+
+                const METHOD: MethodName = MethodName::$variant;
+                const RESPONSE_BRANCHES: &'static [MethodResponseBranch] =
+                    response_branches!($family);
+            }
+        )+
+
+        /// Every public method's request, result, response family, and contract identities.
+        pub const PUBLIC_METHOD_CONTRACTS: &[PublicMethodContract] = &[
+            $(
+                PublicMethodContract {
+                    method: MethodName::$variant,
+                    request_contract_id: $request_contract,
+                    response_contract_id: $response_contract,
+                    response_branches: response_branches!($family),
+                    committed_result_replay: $committed_result_replay,
+                    request_schema: request_schema::<$request>,
+                    response_schema: response_schema::<$response>,
+                    result_schema: response_schema::<$result>,
+                    accepts_response: accepts_response::<$response>,
+                    accepts_result_json: accepts_result_json::<$result>,
+                },
+            )+
+        ];
+    };
+}
+
+declare_public_method_contracts! {
+    Intake {
+        request: IntakeRequest,
+        result: IntakeResult,
+        response: IntakeResponse,
+        family: previewable,
+        request_contract: "api.method.intake.request",
+        response_contract: "api.method.intake.response",
+        committed_result_replay: true
+    },
+    UpdateScope {
+        request: UpdateScopeRequest,
+        result: UpdateScopeResult,
+        response: UpdateScopeResponse,
+        family: previewable,
+        request_contract: "api.method.update_scope.request",
+        response_contract: "api.method.update_scope.response",
+        committed_result_replay: true
+    },
+    Status {
+        request: StatusRequest,
+        result: StatusResult,
+        response: StatusResponse,
+        family: result_or_rejected,
+        request_contract: "api.method.status.request",
+        response_contract: "api.method.status.response",
+        committed_result_replay: false
+    },
+    GetOperationResult {
+        request: GetOperationResultRequest,
+        result: GetOperationResultResult,
+        response: GetOperationResultResponse,
+        family: result_or_rejected,
+        request_contract: "api.method.get_operation_result.request",
+        response_contract: "api.method.get_operation_result.response",
+        committed_result_replay: false
+    },
+    CheckClose {
+        request: CheckCloseRequest,
+        result: CloseTaskResult,
+        response: CheckCloseResponse,
+        family: result_or_rejected,
+        request_contract: "api.method.check_close.request",
+        response_contract: "api.method.check_close.response",
+        committed_result_replay: false
+    },
+    PrepareEvidenceCapture {
+        request: PrepareEvidenceCaptureRequest,
+        result: PrepareEvidenceCaptureResult,
+        response: PrepareEvidenceCaptureResponse,
+        family: previewable,
+        request_contract: "api.method.prepare_evidence_capture.request",
+        response_contract: "api.method.prepare_evidence_capture.response",
+        committed_result_replay: true
+    },
+    PrepareWrite {
+        request: PrepareWriteRequest,
+        result: PrepareWriteResult,
+        response: PrepareWriteResponse,
+        family: previewable,
+        request_contract: "api.method.prepare_write.request",
+        response_contract: "api.method.prepare_write.response",
+        committed_result_replay: true
+    },
+    StageArtifact {
+        request: StageArtifactRequest,
+        result: StageArtifactResult,
+        response: StageArtifactResponse,
+        family: previewable,
+        request_contract: "api.method.stage_artifact.request",
+        response_contract: "api.method.stage_artifact.response",
+        committed_result_replay: false
+    },
+    RecordRun {
+        request: RecordRunRequest,
+        result: RecordRunResult,
+        response: RecordRunResponse,
+        family: previewable,
+        request_contract: "api.method.record_run.request",
+        response_contract: "api.method.record_run.response",
+        committed_result_replay: true
+    },
+    RequestUserAction {
+        request: RequestUserActionRequest,
+        result: RequestUserActionResult,
+        response: RequestUserActionResponse,
+        family: previewable,
+        request_contract: "api.method.request_user_action.request",
+        response_contract: "api.method.request_user_action.response",
+        committed_result_replay: true
+    },
+    ResolveUserAction {
+        request: ResolveUserActionRequest,
+        result: ResolveUserActionResult,
+        response: ResolveUserActionResponse,
+        family: previewable,
+        request_contract: "api.method.resolve_user_action.request",
+        response_contract: "api.method.resolve_user_action.response",
+        committed_result_replay: true
+    },
+    ReconcileChanges {
+        request: ReconcileChangesRequest,
+        result: ReconcileChangesResult,
+        response: ReconcileChangesResponse,
+        family: previewable,
+        request_contract: "api.method.reconcile_changes.request",
+        response_contract: "api.method.reconcile_changes.response",
+        committed_result_replay: true
+    },
+    CloseTask {
+        request: CloseTaskRequest,
+        result: CloseTaskResult,
+        response: CloseTaskResponse,
+        family: previewable,
+        request_contract: "api.method.close_task.request",
+        response_contract: "api.method.close_task.response",
+        committed_result_replay: true
+    },
+}
+
+/// Returns the canonical declaration for one public method.
+pub fn public_method_contract(method: MethodName) -> &'static PublicMethodContract {
+    PUBLIC_METHOD_CONTRACTS
+        .iter()
+        .find(|contract| contract.method == method)
+        .expect("every MethodName must have one public method contract")
+}
+
+/// Returns the canonical declaration for one public method name.
+pub fn public_method_contract_by_name(method_name: &str) -> Option<&'static PublicMethodContract> {
+    PUBLIC_METHOD_CONTRACTS
+        .iter()
+        .find(|contract| contract.method.as_str() == method_name)
+}
+
 /// Returns the generated JSON Schema for one public method request shape.
 pub fn public_request_schema(method_name: &str) -> Option<Value> {
-    match method_name {
-        "volicord.intake" => Some(request_schema::<IntakeRequest>()),
-        "volicord.update_scope" => Some(request_schema::<UpdateScopeRequest>()),
-        "volicord.status" => Some(request_schema::<StatusRequest>()),
-        "volicord.get_operation_result" => Some(request_schema::<GetOperationResultRequest>()),
-        "volicord.check_close" => Some(request_schema::<CheckCloseRequest>()),
-        "volicord.prepare_evidence_capture" => {
-            Some(request_schema::<PrepareEvidenceCaptureRequest>())
-        }
-        "volicord.prepare_write" => Some(request_schema::<PrepareWriteRequest>()),
-        "volicord.stage_artifact" => Some(request_schema::<StageArtifactRequest>()),
-        "volicord.record_run" => Some(request_schema::<RecordRunRequest>()),
-        "volicord.request_user_action" => Some(request_schema::<RequestUserActionRequest>()),
-        "volicord.resolve_user_action" => Some(request_schema::<ResolveUserActionRequest>()),
-        "volicord.reconcile_changes" => Some(request_schema::<ReconcileChangesRequest>()),
-        "volicord.close_task" => Some(request_schema::<CloseTaskRequest>()),
-        _ => None,
-    }
+    public_method_contract_by_name(method_name).map(|contract| contract.request_schema())
 }
 
 /// Returns the generated JSON Schema for one public method response shape.
 ///
-/// Public responses are object values even when their generated schema uses
-/// branch combinators for result, rejected, and dry-run variants.
+/// Public responses are object values even when their generated schema uses a
+/// branch combinator for the method's exact response family.
 pub fn public_response_schema(method_name: &str) -> Option<Value> {
-    match method_name {
-        "volicord.intake" => Some(response_schema::<IntakeResponse>()),
-        "volicord.update_scope" => Some(response_schema::<UpdateScopeResponse>()),
-        "volicord.status" => Some(response_schema::<StatusResponse>()),
-        "volicord.get_operation_result" => Some(response_schema::<GetOperationResultResponse>()),
-        "volicord.check_close" => Some(response_schema::<CheckCloseResponse>()),
-        "volicord.prepare_evidence_capture" => {
-            Some(response_schema::<PrepareEvidenceCaptureResponse>())
-        }
-        "volicord.prepare_write" => Some(response_schema::<PrepareWriteResponse>()),
-        "volicord.stage_artifact" => Some(response_schema::<StageArtifactResponse>()),
-        "volicord.record_run" => Some(response_schema::<RecordRunResponse>()),
-        "volicord.request_user_action" => Some(response_schema::<RequestUserActionResponse>()),
-        "volicord.resolve_user_action" => Some(response_schema::<ResolveUserActionResponse>()),
-        "volicord.reconcile_changes" => Some(response_schema::<ReconcileChangesResponse>()),
-        "volicord.close_task" => Some(response_schema::<CloseTaskResponse>()),
-        _ => None,
-    }
+    public_method_contract_by_name(method_name).map(|contract| contract.response_schema())
 }
 
 /// Returns the generated JSON Schema for one successful public method result body.
 pub fn public_result_schema(method_name: &str) -> Option<Value> {
-    match method_name {
-        "volicord.intake" => Some(response_schema::<IntakeResult>()),
-        "volicord.update_scope" => Some(response_schema::<UpdateScopeResult>()),
-        "volicord.status" => Some(response_schema::<StatusResult>()),
-        "volicord.get_operation_result" => Some(response_schema::<GetOperationResultResult>()),
-        "volicord.check_close" => Some(response_schema::<CloseTaskResult>()),
-        "volicord.prepare_evidence_capture" => {
-            Some(response_schema::<PrepareEvidenceCaptureResult>())
-        }
-        "volicord.prepare_write" => Some(response_schema::<PrepareWriteResult>()),
-        "volicord.stage_artifact" => Some(response_schema::<StageArtifactResult>()),
-        "volicord.record_run" => Some(response_schema::<RecordRunResult>()),
-        "volicord.request_user_action" => Some(response_schema::<RequestUserActionResult>()),
-        "volicord.resolve_user_action" => Some(response_schema::<ResolveUserActionResult>()),
-        "volicord.reconcile_changes" => Some(response_schema::<ReconcileChangesResult>()),
-        "volicord.close_task" => Some(response_schema::<CloseTaskResult>()),
-        _ => None,
-    }
+    public_method_contract_by_name(method_name).map(|contract| contract.result_schema())
+}
+
+fn accepts_response<T: DeserializeOwned>(value: &Value) -> bool {
+    serde_json::from_value::<T>(value.clone()).is_ok()
+}
+
+fn accepts_result_json<T>(json: &str, value: &Value) -> bool
+where
+    T: DeserializeOwned + Serialize,
+{
+    serde_json::from_str::<T>(json)
+        .and_then(serde_json::to_value)
+        .is_ok_and(|round_trip| round_trip == *value)
 }
 
 fn request_schema<T: JsonSchema>() -> Value {
@@ -937,4 +1141,87 @@ fn response_schema<T: JsonSchema>() -> Value {
         .expect("generated response schema should be an object")
         .insert("type".to_owned(), Value::String("object".to_owned()));
     schema
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+    use crate::schema::{DryRunSummary, GuaranteeDisclosure, ToolDryRunResponse};
+    use crate::values::{EffectKind, ResponseKind};
+
+    fn dry_run_response_value() -> Value {
+        serde_json::to_value(ToolDryRunResponse {
+            base: ToolResultBase {
+                response_kind: ResponseKind::DryRun,
+                effect_kind: EffectKind::NoEffect,
+                dry_run: true,
+                state_version: Some(1),
+                disclosure: GuaranteeDisclosure::authority_record(),
+                events: Vec::new(),
+            },
+            dry_run_summary: DryRunSummary {
+                planned_effects: Vec::new(),
+                would_blockers: Vec::new(),
+                would_errors: Vec::new(),
+                next_actions: Vec::new(),
+                diagnostics: Vec::new(),
+            },
+        })
+        .expect("dry-run response should serialize")
+    }
+
+    #[test]
+    fn canonical_registry_covers_every_method_exactly_once() {
+        assert_eq!(PUBLIC_METHOD_CONTRACTS.len(), MethodName::ALL.len());
+        assert_eq!(
+            PUBLIC_METHOD_CONTRACTS
+                .iter()
+                .map(|contract| contract.method())
+                .collect::<Vec<_>>(),
+            MethodName::ALL
+        );
+
+        let unique_methods = PUBLIC_METHOD_CONTRACTS
+            .iter()
+            .map(|contract| contract.method().as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(unique_methods.len(), MethodName::ALL.len());
+    }
+
+    #[test]
+    fn exact_response_decoders_and_schemas_follow_declared_branches() {
+        let dry_run = dry_run_response_value();
+
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            let supports_preview = contract.supports_response_branch(MethodResponseBranch::DryRun);
+            assert_eq!(
+                contract.accepts_response(&dry_run),
+                supports_preview,
+                "{} decoder disagrees with its response declaration",
+                contract.method().as_str()
+            );
+
+            let schema = contract.response_schema();
+            let branches = schema
+                .get("anyOf")
+                .and_then(Value::as_array)
+                .expect("untagged exact response family should generate anyOf");
+            assert_eq!(
+                branches.len(),
+                contract.response_branches().len(),
+                "{} schema branch count disagrees with its response declaration",
+                contract.method().as_str()
+            );
+
+            let rendered = serde_json::to_string(&schema).expect("schema should serialize");
+            assert_eq!(
+                rendered.contains("ToolDryRunResponse"),
+                supports_preview,
+                "{} schema exposes an impossible dry-run branch",
+                contract.method().as_str()
+            );
+        }
+    }
 }

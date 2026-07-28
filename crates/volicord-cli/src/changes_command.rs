@@ -12,7 +12,7 @@ use volicord_store::{
     RuntimeHomeMutationContext, StoreError,
 };
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId, TaskId};
-use volicord_types::methods::ReconcileChangesRequest;
+use volicord_types::methods::{ReconcileChangesRequest, ReconcileChangesResponse};
 use volicord_types::schema::ToolEnvelope;
 use volicord_types::values::{OperationCategory, UserActionChannelKind};
 
@@ -163,6 +163,8 @@ fn command_reconcile_admitted(
             UserActionChannelKind::Cli,
         ),
     )?;
+    serde_json::from_value::<ReconcileChangesResponse>(response.response_value.clone())
+        .map_err(|error| ChangesCommandError::Runtime(error.to_string()))?;
     render_reconcile_response(
         &response,
         if options.json {

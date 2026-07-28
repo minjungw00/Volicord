@@ -51,6 +51,10 @@ remains outside runtime.
   not on Core, Store, CLI, or MCP.
 - Method planners return typed fields and planned effects; the shared pipeline
   adds common branch facts only after the branch is known.
+- One method declaration owns the request type, result type, exact public
+  response family, semantic contract IDs, generated schemas, and replay
+  eligibility. Core branch selection and stored-result validation consume that
+  declaration rather than parallel method lists.
 - A required infrastructure dependency that cannot produce a method result
   returns a typed neutral Core operational error outside every public response
   branch.
@@ -60,8 +64,10 @@ remains outside runtime.
   validation tooling or tests. Core, shared types, Store, UserAction service,
   CLI, and presentation packages cannot depend on it.
 - Store does not derive method policy from adapter input.
-- Adapter projections cannot widen a Core result or replace typed diagnostic
-  identity with rendered prose.
+- Adapters decode Core output through the selected method's exact response
+  family before projection. Adapter projections cannot widen that family,
+  widen a Core result, or replace typed diagnostic identity with rendered
+  prose.
 - Repository validation does not become a runtime dependency or compatibility
   path.
 

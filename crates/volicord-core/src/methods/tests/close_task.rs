@@ -3,6 +3,34 @@
 use super::*;
 
 #[test]
+fn check_close_dry_run_stays_a_regular_read_result() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let (task_id, _) = create_task_with_change_unit(&harness, "check_close_dry_read")?;
+    let before = harness.counts()?;
+
+    let response = harness.service.check_close(
+        check_close_request(CloseTaskFixture {
+            request_id: "req_check_close_dry_read",
+            idempotency_key: None,
+            dry_run: true,
+            expected_state_version: None,
+            task_id: &task_id,
+            intent: CloseIntent::Check,
+            close_reason: None,
+            superseding_task_id: None,
+        }),
+        invocation(OperationCategory::Read),
+    )?;
+
+    assert_typed_result_contract::<CloseTaskResult>(&response);
+    assert_eq!(response.response_value["base"]["response_kind"], "result");
+    assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
+    assert_eq!(response.response_value["base"]["dry_run"], true);
+    assert_eq!(harness.counts()?, before);
+    Ok(())
+}
+
+#[test]
 fn advisor_check_close_uses_non_write_semantic_guidance() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, _) = create_task_with_mode_and_change_unit(

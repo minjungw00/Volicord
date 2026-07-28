@@ -236,9 +236,12 @@ descriptors by `cargo run -p xtask -- docs-sync`. Stable generated-region
 markers bind each table to exact contract IDs and shapes. The shared
 `ToolResultBase`, `ToolRejectedResponse`, and `ToolDryRunResponse` structures
 are generated once in API Schema Core; method pages generate links to those
-shared structures and keep their success-result fields separate. Authors edit
-the surrounding meaning, policy, effects, cross-field invariants, and failure
-behavior, not the generated regions or a second exhaustive field inventory.
+shared structures and keep their success-result fields separate. A method
+response region binds `dry_run` and renders preview prose only when its
+semantic response descriptor exposes that branch; `docs-check` treats any
+other generated preview branch as drift. Authors edit the surrounding meaning,
+policy, effects, cross-field invariants, and failure behavior, not the
+generated regions or a second exhaustive field inventory.
 
 The same command generates the English and Korean package-responsibility and
 dependency-direction tables in Architecture from

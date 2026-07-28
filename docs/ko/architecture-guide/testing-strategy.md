@@ -136,6 +136,9 @@ matrix를 정합니다.
 
 - 알 수 없는 멤버, 중복 키, 잘못된 폐쇄 값, 손상된 저장 owner record
 - 정책, replay, ticket 무효화, mutation 전에 일어나는 구조적 거부
+- 정규 메서드 선언에서 파생한 정확한 공개 응답 계열 coverage. 여기에는 선언되지
+  않은 미리보기 분기에 대한 decoder, 스키마, 설명자, Core 분기, adapter 거부가
+  포함됩니다.
 - authority event나 `state_version` 증가가 없는 read-only branch
 - 하나의 원자적 성공 mutation과 정확한 replay 동작
 - owner-defined corrupt-data failure로 라우팅되는 current-contract 불일치

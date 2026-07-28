@@ -280,14 +280,12 @@ fn render_response_region(
         let descriptor = descriptors
             .get(&contract_id)
             .with_context(|| format!("method document has no response descriptor {contract_id}"))?;
-        for shape in [
-            RESPONSE_VARIANTS_SHAPE,
-            RESULT_SHAPE,
-            REJECTION_SHAPE,
-            DRY_RUN_SHAPE,
-        ] {
+        for shape in [RESPONSE_VARIANTS_SHAPE, RESULT_SHAPE, REJECTION_SHAPE] {
             exact_shape(descriptor, shape)?;
             bindings.push((contract_id.clone(), shape));
+        }
+        if descriptor.example_schema(DRY_RUN_SHAPE).is_some() {
+            bindings.push((contract_id.clone(), DRY_RUN_SHAPE));
         }
         response_descriptors.push(descriptor);
     }
@@ -299,6 +297,7 @@ fn render_response_region(
     let mut shared_dry_run = false;
     let mut specific_shapes = Vec::new();
     let mut composition_kinds = BTreeSet::new();
+    let mut previewable_responses = 0usize;
 
     for descriptor in response_descriptors {
         let success = exact_shape(descriptor, RESULT_SHAPE)?;
@@ -323,22 +322,23 @@ fn render_response_region(
             ));
         }
 
-        let dry_run = exact_shape(descriptor, DRY_RUN_SHAPE)?;
-        if dry_run == common.dry_run {
-            shared_dry_run = true;
-        } else {
-            specific_shapes.push((descriptor.id(), DRY_RUN_SHAPE, dry_run, TableRole::Preview));
-        }
-
         let rejection_title = schema_title(rejection, descriptor.id(), REJECTION_SHAPE)?;
-        let dry_run_title = schema_title(dry_run, descriptor.id(), DRY_RUN_SHAPE)?;
         let composition = response_composition(exact_shape(descriptor, RESPONSE_VARIANTS_SHAPE)?)?;
-        let expected = [title, rejection_title, dry_run_title]
+        let mut expected = [title, rejection_title]
             .into_iter()
             .collect::<BTreeSet<_>>();
+        if let Some(dry_run) = descriptor.example_schema(DRY_RUN_SHAPE) {
+            previewable_responses += 1;
+            if dry_run == common.dry_run {
+                shared_dry_run = true;
+            } else {
+                specific_shapes.push((descriptor.id(), DRY_RUN_SHAPE, dry_run, TableRole::Preview));
+            }
+            expected.insert(schema_title(dry_run, descriptor.id(), DRY_RUN_SHAPE)?);
+        }
         if composition.branches != expected {
             bail!(
-                "semantic contract {} response_variants exposes {:?}, but its exact result, rejection, and dry-run shapes are {:?}",
+                "semantic contract {} response_variants exposes {:?}, but its declared response shapes are {:?}",
                 descriptor.id(),
                 composition.branches,
                 expected
@@ -380,9 +380,20 @@ fn render_response_region(
         match language {
             Language::English => {
                 body.push_str("### Shared response structures\n\n");
-                body.push_str(
-                    "The response descriptor defines success, rejection, and preview as an exact `",
-                );
+                let descriptor_subject = if methods.len() == 1 {
+                    "The response descriptor defines"
+                } else {
+                    "Each response descriptor defines"
+                };
+                body.push_str(descriptor_subject);
+                body.push(' ');
+                if previewable_responses == methods.len() {
+                    body.push_str("success, rejection, and preview as an exact `");
+                } else if previewable_responses == 0 {
+                    body.push_str("success and rejection as an exact `");
+                } else {
+                    body.push_str("its supported response branches as an exact `");
+                }
                 body.push_str(
                     &composition_kinds
                         .iter()
@@ -391,6 +402,11 @@ fn render_response_region(
                         .join("` / `"),
                 );
                 body.push_str("` branch union. ");
+                if previewable_responses > 0 && previewable_responses < methods.len() {
+                    body.push_str(
+                        "Only a response descriptor that exposes preview includes that branch. ",
+                    );
+                }
                 if shared_rejection {
                     body.push_str(
                         "The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. ",
@@ -401,13 +417,30 @@ fn render_response_region(
                         "When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. ",
                     );
                 }
-                body.push_str(
-                    "Shared rejection and preview fields remain distinct from the success fields above.",
-                );
+                if shared_dry_run {
+                    body.push_str(
+                        "Shared rejection and preview fields remain distinct from the success fields above.",
+                    );
+                } else {
+                    body.push_str(
+                        "Shared rejection fields remain distinct from the success fields above.",
+                    );
+                }
             }
             Language::Korean => {
                 body.push_str("### 공유 응답 구조\n\n");
-                body.push_str("응답 설명자는 성공, 거절, 미리보기를 정확한 `");
+                if methods.len() == 1 {
+                    body.push_str("응답 설명자는 ");
+                } else {
+                    body.push_str("각 응답 설명자는 ");
+                }
+                if previewable_responses == methods.len() {
+                    body.push_str("성공, 거절, 미리보기를 정확한 `");
+                } else if previewable_responses == 0 {
+                    body.push_str("성공과 거절을 정확한 `");
+                } else {
+                    body.push_str("지원하는 응답 분기를 정확한 `");
+                }
                 body.push_str(
                     &composition_kinds
                         .iter()
@@ -416,6 +449,9 @@ fn render_response_region(
                         .join("` / `"),
                 );
                 body.push_str("` 분기 union으로 정의합니다. ");
+                if previewable_responses > 0 && previewable_responses < methods.len() {
+                    body.push_str("미리보기를 노출하는 응답 설명자만 해당 분기를 포함합니다. ");
+                }
                 if shared_rejection {
                     body.push_str(
                         "거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. ",
@@ -426,9 +462,13 @@ fn render_response_region(
                         "메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. ",
                     );
                 }
-                body.push_str(
-                    "공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.",
-                );
+                if shared_dry_run {
+                    body.push_str(
+                        "공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.",
+                    );
+                } else {
+                    body.push_str("공유 거절 필드는 위 성공 필드와 구분된 상태로 유지됩니다.");
+                }
             }
         }
     }
@@ -548,13 +588,49 @@ fn render_region(id: String, body: String) -> RenderedRegion {
 }
 
 fn replace_regions(contents: &str, regions: &[RenderedRegion]) -> Result<String> {
-    validate_region_inventory(contents, regions)?;
+    let actual = generated_contract_region_ids(contents)?;
+    if actual.len() != regions.len() {
+        bail!(
+            "generated contract region count does not match the document owner; expected {}, found {}",
+            regions.len(),
+            actual.len()
+        );
+    }
     let mut updated = contents.to_owned();
     for region in regions {
-        let range = generated_region_range(&updated, &region.id)?;
+        let owner = region_owner_contracts(&region.id)?;
+        let matching = actual
+            .iter()
+            .filter(|actual_id| {
+                region_owner_contracts(actual_id).is_ok_and(|actual_owner| actual_owner == owner)
+            })
+            .collect::<Vec<_>>();
+        if matching.len() != 1 {
+            bail!(
+                "expected exactly one generated contract region for owner contracts {:?}",
+                owner
+            );
+        }
+        let range = generated_region_range(&updated, matching[0])?;
         updated.replace_range(range, &region.contents);
     }
+    validate_region_inventory(&updated, regions)?;
     Ok(updated)
+}
+
+fn region_owner_contracts(id: &str) -> Result<BTreeSet<&str>> {
+    let bindings = id
+        .strip_prefix("contract-structures ")
+        .context("generated contract region has an invalid prefix")?;
+    bindings
+        .split_whitespace()
+        .map(|binding| {
+            binding
+                .split_once('[')
+                .map(|(contract, _)| contract)
+                .context("generated contract binding has no shape")
+        })
+        .collect()
 }
 
 fn validate_region_inventory(contents: &str, regions: &[RenderedRegion]) -> Result<()> {
@@ -1165,6 +1241,64 @@ mod tests {
         .with_example_schema(JsonExampleShape::MethodResultBody, result)
         .with_example_schema(JsonExampleShape::MethodRejection, rejection)
         .with_example_schema(JsonExampleShape::MethodDryRun, dry_run)
+    }
+
+    fn result_or_rejected_descriptor(result: Value, rejection: Value) -> JsonContractDescriptor {
+        let result_title = result["title"].as_str().expect("result title");
+        let rejection_title = rejection["title"].as_str().expect("rejection title");
+        JsonContractDescriptor::from_owner_schema(
+            "api.method.alpha.response",
+            json!({"title": "AlphaResponse", "oneOf": []}),
+            Default::default(),
+            Vec::new(),
+        )
+        .with_example_schema(
+            JsonExampleShape::MethodResponseVariants,
+            json!({
+                "title": "AlphaResponse",
+                "anyOf": [
+                    {"$ref": format!("#/definitions/{result_title}")},
+                    {"$ref": format!("#/definitions/{rejection_title}")}
+                ]
+            }),
+        )
+        .with_example_schema(JsonExampleShape::MethodResultBody, result)
+        .with_example_schema(JsonExampleShape::MethodRejection, rejection)
+    }
+
+    #[test]
+    fn non_previewable_response_region_omits_preview_binding_and_prose() {
+        let (base, rejection, dry_run) = common_schemas();
+        let result = json!({
+            "title": "AlphaResult",
+            "type": "object",
+            "required": ["base", "value"],
+            "properties": {
+                "base": {"type": "object"},
+                "value": {"type": "string"}
+            }
+        });
+        let response = result_or_rejected_descriptor(result, rejection.clone());
+        let mut descriptors = BTreeMap::new();
+        descriptors.insert(response.id().to_owned(), response);
+
+        let rendered = render_response_region(
+            &["alpha".to_owned()],
+            &descriptors,
+            &CommonResponseSchemas {
+                result_base: &base,
+                rejection: &rejection,
+                dry_run: &dry_run,
+            },
+            Language::English,
+        )
+        .expect("result-or-rejected response region");
+
+        assert!(!rendered.id.contains(DRY_RUN_SHAPE));
+        assert!(!rendered.contents.contains("ToolDryRunResponse"));
+        assert!(rendered
+            .contents
+            .contains("success and rejection as an exact `anyOf` branch union"));
     }
 
     #[test]

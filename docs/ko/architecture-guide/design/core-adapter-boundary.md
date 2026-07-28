@@ -45,6 +45,9 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
   Store, CLI, MCP에는 의존하지 않습니다.
 - 메서드 planner는 typed field와 계획된 effect를 반환합니다. 공유 pipeline은 branch
   fact가 정해진 뒤에만 공통 fact를 추가합니다.
+- 메서드 선언 하나가 요청 타입, 결과 타입, 정확한 공개 응답 계열, 의미 기반 계약 ID,
+  생성 스키마, replay 적격 여부를 담당합니다. Core 분기 선택과 저장 결과 검증은
+  병렬 메서드 목록 대신 이 선언을 사용합니다.
 - 필수 인프라 의존성이 메서드 결과를 만들 수 없으면 모든 공개 응답 분기 밖의 typed
   neutral Core 운영 오류를 반환합니다.
 - `volicord-types`에는 MCP 요청, 결과, 오류, structured content, 도구 envelope,
@@ -53,8 +56,9 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
   있습니다. Core, shared type, Store, UserAction service, CLI, presentation package는
   이 crate에 의존할 수 없습니다.
 - Store는 adapter 입력에서 메서드 정책을 파생하지 않습니다.
-- Adapter projection은 Core 결과를 넓히거나 typed diagnostic identity를 rendered
-  prose로 대신하지 못합니다.
+- Adapter는 projection 전에 선택한 메서드의 정확한 응답 계열로 Core 출력을
+  decode합니다. Adapter projection은 이 계열이나 Core 결과를 넓힐 수 없고 typed
+  diagnostic identity를 rendered prose로 대신하지 못합니다.
 - 저장소 검증은 runtime dependency나 compatibility 경로가 되지 않습니다.
 
 ## 책임 경계

@@ -70,7 +70,6 @@
           "ContinuityCursor",
           "ContinuityPageInfo",
           "CurrentCloseBasis",
-          "DryRunSummary",
           "EffectKind",
           "ErrorCode",
           "EventRef",
@@ -102,9 +101,6 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
-          "PlannedBlocker",
-          "PlannedBlockerSourceKind",
-          "PlannedEffect",
           "ProjectContinuityKind",
           "ProjectContinuityPage",
           "ProjectContinuityStatus",
@@ -132,11 +128,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
-          "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_StatusResult",
           "ToolResultBase",
+          "ToolResultOrRejected_for_StatusResult",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -148,7 +143,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:817d5ecf6df680456191d78c49a1e5c1380221e0f84211d583257d3c4e069690"
+        "sha256": "sha256:ad3082277cf6b091a7e74f0e114b03e64d5e4e627e36080c607e7dee625e98d3"
       }
     },
     {
@@ -177,7 +172,6 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
-          "DryRunSummary",
           "EffectKind",
           "ErrorCode",
           "EventRef",
@@ -194,27 +188,17 @@
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
-          "NextActionKind",
-          "NextActionPresentationRole",
-          "NextActionSummary",
           "NonGuarantee",
-          "OperationCategory",
           "OperationResultRef",
-          "PlannedBlocker",
-          "PlannedBlockerSourceKind",
-          "PlannedEffect",
           "ResponseKind",
-          "StateRecordKind",
-          "StateRecordRef",
-          "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_GetOperationResultResult",
-          "ToolResultBase"
+          "ToolResultBase",
+          "ToolResultOrRejected_for_GetOperationResultResult"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a42c4dec627c5357b21d4b47e6ff21bd8743f21cfddead2501ea8665690ed0ce"
+        "sha256": "sha256:559ad2f3a33130d51b1168d1fbc56701914b2581653ef7303d582e31fbcaaffa"
       }
     },
     {
@@ -261,7 +245,6 @@
           "CloseState",
           "CloseTaskResult",
           "CurrentCloseBasis",
-          "DryRunSummary",
           "EffectKind",
           "ErrorCode",
           "EventRef",
@@ -293,9 +276,6 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
-          "PlannedBlocker",
-          "PlannedBlockerSourceKind",
-          "PlannedEffect",
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
@@ -320,11 +300,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
-          "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
+          "ToolResultOrRejected_for_CloseTaskResult",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -336,7 +315,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:00e63d6701b2500adbd13cc746e4e279233b278b4bcb1032c09d2fcc05139414"
+        "sha256": "sha256:8451bab4c3d51f2c0d67b4af27682662736cda5a0f8dcdc65b228a870f3cbfc6"
       }
     },
     {

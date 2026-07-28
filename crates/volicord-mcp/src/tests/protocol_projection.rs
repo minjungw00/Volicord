@@ -349,6 +349,28 @@ fn mcp_tools_publish_root_output_schemas_and_effect_specific_annotations() {
 }
 
 #[test]
+fn mcp_core_method_output_schemas_follow_exact_response_families() {
+    use volicord_types::methods::{MethodResponseBranch, PUBLIC_METHOD_CONTRACTS};
+
+    for contract in PUBLIC_METHOD_CONTRACTS {
+        let Ok(tool_id) = AgentToolId::from_wire_name(contract.method().as_str()) else {
+            continue;
+        };
+        if !matches!(tool_id.owner(), AgentToolOwner::CoreMethod(_)) {
+            continue;
+        }
+
+        let schema = tool_definition(tool_id.wire_name()).output_schema;
+        assert_eq!(
+            schema_has_definition(&schema, "ToolDryRunResponse"),
+            contract.supports_response_branch(MethodResponseBranch::DryRun),
+            "{} MCP output schema disagrees with its canonical response family",
+            contract.method().as_str()
+        );
+    }
+}
+
+#[test]
 fn request_user_action_output_schema_covers_compound_agent_safe_response() {
     let schema = tool_definition(AgentToolId::REQUEST_USER_ACTION.wire_name()).output_schema;
 

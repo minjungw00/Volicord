@@ -148,6 +148,9 @@ Durable tests should cover, as applicable:
 - unknown members, duplicate keys, malformed closed values, and corrupt stored
   owner records;
 - structural rejection before policy, replay, ticket invalidation, or mutation;
+- exact public response-family coverage derived from the canonical method
+  declaration, including decoder, schema, descriptor, Core branch, and adapter
+  rejection of undeclared preview branches;
 - read-only branches with no authority event or state-version advance;
 - one atomic successful mutation and exact replay behavior;
 - current-contract mismatch routed through the owned corrupt-data failure;

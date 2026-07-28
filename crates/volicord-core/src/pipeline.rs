@@ -9,7 +9,7 @@ use std::{
 
 use chrono::{DateTime, Timelike, Utc};
 use serde::{
-    de::{self, DeserializeOwned, MapAccess, SeqAccess, Visitor},
+    de::{self, MapAccess, SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize,
 };
 use serde_json::{json, Map, Value};
@@ -29,9 +29,7 @@ use volicord_types::ids::{
     ProjectId, RandomDurableIdGenerator, RequestHash, TaskId, DURABLE_ID_RETRY_LIMIT,
 };
 use volicord_types::methods::{
-    CloseTaskResult, IntakeResult, MethodResultFields, OperationResultRef,
-    PrepareEvidenceCaptureResult, PrepareWriteResult, ReconcileChangesResult, RecordRunResult,
-    RequestUserActionResult, ResolveUserActionResult, UpdateScopeResult,
+    public_method_contract, MethodResponseBranch, MethodResultFields, OperationResultRef,
 };
 use volicord_types::schema::{
     DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, ToolDryRunResponse, ToolEnvelope,
@@ -1075,6 +1073,7 @@ impl CoreService {
         F::Result: Serialize,
     {
         validate_branch_shape(&branch, prepared.envelope.dry_run)?;
+        validate_method_response_branch(prepared.method_name, &branch)?;
         let project_state = prepared.context.project_state.clone();
         let verified_invocation = prepared.context.verified_invocation.clone();
         let resolved_task_id = prepared.context.resolved_task_id.clone();
@@ -1416,6 +1415,27 @@ fn validate_branch_shape<F>(branch: &OwnerPipelineBranch<F>, dry_run: bool) -> C
     }
 }
 
+fn validate_method_response_branch<F>(
+    method_name: MethodName,
+    branch: &OwnerPipelineBranch<F>,
+) -> CoreResult<()> {
+    let response_branch = match branch {
+        OwnerPipelineBranch::ReadOnly { .. }
+        | OwnerPipelineBranch::NoEffectResult { .. }
+        | OwnerPipelineBranch::CommitMutation { .. } => MethodResponseBranch::Result,
+        OwnerPipelineBranch::DryRunPreview { .. } => MethodResponseBranch::DryRun,
+    };
+    if public_method_contract(method_name).supports_response_branch(response_branch) {
+        return Ok(());
+    }
+    Err(CorePipelineError::InvalidDispatch {
+        detail: format!(
+            "{} cannot produce the {response_branch:?} response branch",
+            method_name.as_str()
+        ),
+    })
+}
+
 fn replay_preflight_response(
     store: &CoreProjectStore,
     request: &PipelinePreflightRequest,
@@ -1494,13 +1514,8 @@ pub(crate) fn stored_public_response_is_current(
     response_json: &str,
     committed_state_version: u64,
 ) -> bool {
-    if matches!(
-        method_name,
-        MethodName::Status
-            | MethodName::GetOperationResult
-            | MethodName::CheckClose
-            | MethodName::StageArtifact
-    ) || !raw_json_has_unique_object_members(response_json)
+    let contract = public_method_contract(method_name);
+    if !contract.has_committed_result_replay() || !raw_json_has_unique_object_members(response_json)
     {
         return false;
     }
@@ -1523,46 +1538,7 @@ pub(crate) fn stored_public_response_is_current(
     {
         return false;
     }
-    match method_name {
-        MethodName::Intake => exact_typed_result::<IntakeResult>(response_json, &response_value),
-        MethodName::UpdateScope => {
-            exact_typed_result::<UpdateScopeResult>(response_json, &response_value)
-        }
-        MethodName::PrepareEvidenceCapture => {
-            exact_typed_result::<PrepareEvidenceCaptureResult>(response_json, &response_value)
-        }
-        MethodName::PrepareWrite => {
-            exact_typed_result::<PrepareWriteResult>(response_json, &response_value)
-        }
-        MethodName::RecordRun => {
-            exact_typed_result::<RecordRunResult>(response_json, &response_value)
-        }
-        MethodName::RequestUserAction => {
-            exact_typed_result::<RequestUserActionResult>(response_json, &response_value)
-        }
-        MethodName::ResolveUserAction => {
-            exact_typed_result::<ResolveUserActionResult>(response_json, &response_value)
-        }
-        MethodName::ReconcileChanges => {
-            exact_typed_result::<ReconcileChangesResult>(response_json, &response_value)
-        }
-        MethodName::CloseTask => {
-            exact_typed_result::<CloseTaskResult>(response_json, &response_value)
-        }
-        MethodName::Status
-        | MethodName::GetOperationResult
-        | MethodName::CheckClose
-        | MethodName::StageArtifact => false,
-    }
-}
-
-fn exact_typed_result<T>(response_json: &str, response_value: &Value) -> bool
-where
-    T: DeserializeOwned + Serialize,
-{
-    serde_json::from_str::<T>(response_json)
-        .and_then(serde_json::to_value)
-        .is_ok_and(|round_trip| round_trip == *response_value)
+    contract.accepts_result_json(response_json, &response_value)
 }
 
 fn raw_json_has_unique_object_members(response_json: &str) -> bool {
@@ -2329,6 +2305,24 @@ mod tests {
                 base,
                 pipeline_marker: self.pipeline_marker,
             }
+        }
+    }
+
+    #[test]
+    fn pipeline_accepts_dry_run_only_for_declared_method_families() {
+        use volicord_types::methods::PUBLIC_METHOD_CONTRACTS;
+
+        let branch = OwnerPipelineBranch::<PipelineTestResultFields>::DryRunPreview {
+            dry_run_summary: dry_run_summary(),
+        };
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            let accepted = validate_method_response_branch(contract.method(), &branch).is_ok();
+            assert_eq!(
+                accepted,
+                contract.supports_response_branch(MethodResponseBranch::DryRun),
+                "{} pipeline branch disagrees with its response declaration",
+                contract.method().as_str()
+            );
         }
     }
 

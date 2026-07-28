@@ -125,7 +125,7 @@
           "IntakeResult",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_IntakeResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_IntakeResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
@@ -151,6 +151,7 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "PreviewableToolResponse_for_IntakeResult",
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
@@ -171,7 +172,6 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_IntakeResult",
           "ToolResultBase",
           "UtcTimestamp",
           "WorkPhase",
@@ -184,7 +184,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:41a0d93926237c3324fe2add4a174c3db5b5adfddad03572b71e105afc7ce6d6"
+        "sha256": "sha256:30a3e33febd745b511bbc5c15d20f96fdc5c354918820ebdf55c4bac51da319e"
       }
     },
     {
@@ -271,7 +271,7 @@
           "GuaranteeLevel",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_UpdateScopeResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_UpdateScopeResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
@@ -297,6 +297,7 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "PreviewableToolResponse_for_UpdateScopeResult",
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
@@ -317,7 +318,6 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_UpdateScopeResult",
           "ToolResultBase",
           "UpdateScopeResult",
           "UtcTimestamp",
@@ -331,7 +331,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b3a2163bbe2a0769c65dc89bfc1c2eda8bf3334f4cfa89632b6e3381bb540a52"
+        "sha256": "sha256:c154b10d75b96dee0b5b474fe9b98f28f3d5ce81d5cde4f2d0337e03fc54d3e1"
       }
     },
     {
@@ -384,7 +384,6 @@
           "ContinuityCursor",
           "ContinuityPageInfo",
           "CurrentCloseBasis",
-          "DryRunSummary",
           "EffectKind",
           "ErrorCode",
           "EventRef",
@@ -416,9 +415,6 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
-          "PlannedBlocker",
-          "PlannedBlockerSourceKind",
-          "PlannedEffect",
           "ProjectContinuityKind",
           "ProjectContinuityPage",
           "ProjectContinuityStatus",
@@ -446,11 +442,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
-          "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_StatusResult",
           "ToolResultBase",
+          "ToolResultOrRejected_for_StatusResult",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -462,7 +457,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:817d5ecf6df680456191d78c49a1e5c1380221e0f84211d583257d3c4e069690"
+        "sha256": "sha256:ad3082277cf6b091a7e74f0e114b03e64d5e4e627e36080c607e7dee625e98d3"
       }
     },
     {
@@ -491,7 +486,6 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
-          "DryRunSummary",
           "EffectKind",
           "ErrorCode",
           "EventRef",
@@ -508,27 +502,17 @@
           "McpToolErrorResponse",
           "McpToolIssueCode",
           "MethodName",
-          "NextActionKind",
-          "NextActionPresentationRole",
-          "NextActionSummary",
           "NonGuarantee",
-          "OperationCategory",
           "OperationResultRef",
-          "PlannedBlocker",
-          "PlannedBlockerSourceKind",
-          "PlannedEffect",
           "ResponseKind",
-          "StateRecordKind",
-          "StateRecordRef",
-          "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_GetOperationResultResult",
-          "ToolResultBase"
+          "ToolResultBase",
+          "ToolResultOrRejected_for_GetOperationResultResult"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a42c4dec627c5357b21d4b47e6ff21bd8743f21cfddead2501ea8665690ed0ce"
+        "sha256": "sha256:559ad2f3a33130d51b1168d1fbc56701914b2581653ef7303d582e31fbcaaffa"
       }
     },
     {
@@ -585,7 +569,7 @@
           "GuaranteeDisclosure",
           "McpAuthoritativeRefreshFailure_for_McpPrepareEvidenceCaptureCompactResult",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_PrepareEvidenceCaptureResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpPrepareEvidenceCaptureCompactResult",
@@ -613,6 +597,7 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "PrepareEvidenceCaptureResult",
+          "PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
           "ResponseKind",
           "StateRecordKind",
           "StateRecordRef",
@@ -620,13 +605,12 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_PrepareEvidenceCaptureResult",
           "ToolResultBase",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5be43d697887d5630dd5be462880599d746d6da864c14aaf489e4004557f39af"
+        "sha256": "sha256:e54d02f990d332391f9c57e6f7a7efde6f00f754b8d1ee008e7fc520675a7937"
       }
     },
     {
@@ -706,7 +690,7 @@
           "JudgmentPresentation",
           "McpAuthoritativeRefreshFailure_for_McpPrepareWriteCompactResult",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_PrepareWriteResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_PrepareWriteResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpPrepareWriteCompactResult",
@@ -735,6 +719,7 @@
           "PlannedEffect",
           "PrepareWriteDecision",
           "PrepareWriteResult",
+          "PreviewableToolResponse_for_PrepareWriteResult",
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
@@ -756,7 +741,6 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_PrepareWriteResult",
           "ToolResultBase",
           "UserActionContext",
           "UserActionDraft",
@@ -779,7 +763,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:586b51f5b247c3a0a0c5c5ca2fe2d453a77de0f56de079b9794ad0522f079b22"
+        "sha256": "sha256:1e29a5948fcd5e8f9f8afe1623a9961c9b1a1c5946060f2a16a86627c500f84b"
       }
     },
     {
@@ -836,7 +820,7 @@
           "GuaranteeDisclosure",
           "McpAuthoritativeRefreshFailure_for_McpStageArtifactCompactResult",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_StageArtifactResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_StageArtifactResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpStageArtifactCompactResult",
@@ -863,6 +847,7 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "PreviewableToolResponse_for_StageArtifactResult",
           "RedactionState",
           "ResponseKind",
           "StageArtifactResult",
@@ -873,13 +858,12 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_StageArtifactResult",
           "ToolResultBase",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:bd9808b68731abd36b2bdc54ccd817b3debf212fa6dcbceb1ee35003f4054e81"
+        "sha256": "sha256:6bed875606fdbfff25621f8e92c241285800b5b15403ac6b21b3c517a1f9ba4e"
       }
     },
     {
@@ -1007,7 +991,7 @@
           "GuaranteeLevel",
           "McpAuthoritativeRefreshFailure_for_McpRecordRunCompactResult",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_RecordRunResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_RecordRunResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpRecordRunCompactResult",
@@ -1036,6 +1020,7 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "PreviewableToolResponse_for_RecordRunResult",
           "ProjectWorkflowPolicySummary",
           "RecordRunResult",
           "RedactionState",
@@ -1064,7 +1049,6 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_RecordRunResult",
           "ToolResultBase",
           "UserContextSource",
           "UtcTimestamp",
@@ -1078,7 +1062,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:87d77bda3b6a3e64db0fc007cff7ebc8e9f18c3d68676b95046f90510b2cfcd2"
+        "sha256": "sha256:efb72f02b42dc3319ff1aa5d9f7d19f62d31b9034f4530763791ecce9ff61b64"
       }
     },
     {
@@ -1196,6 +1180,7 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "PreviewableToolResponse_for_RequestUserActionResult",
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestUserActionResult",
@@ -1217,7 +1202,6 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_RequestUserActionResult",
           "ToolResultBase",
           "UserActionChannelKind",
           "UserActionKind",
@@ -1234,7 +1218,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:43aad39bfacccf9ea809c423e66b078d3154015a7498d8c3c304db166869a42c"
+        "sha256": "sha256:a66989acd8e2536fd2c0adc9a72775fe8620f26816bff1955ee1282d19e1f408"
       }
     },
     {
@@ -1305,7 +1289,7 @@
           "GuaranteeLevel",
           "McpAuthoritativeRefreshFailure_for_McpReconcileChangesCompactResult",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_ReconcileChangesResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_ReconcileChangesResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpReconcileChangesCompactResult",
@@ -1332,6 +1316,7 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "PreviewableToolResponse_for_ReconcileChangesResult",
           "ProjectWorkflowPolicySummary",
           "ReconcileChangesResult",
           "RedactionState",
@@ -1354,7 +1339,6 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_ReconcileChangesResult",
           "ToolResultBase",
           "UnrecordedChangeConfidence",
           "UnrecordedChangeFinding",
@@ -1373,7 +1357,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d0718007fc444dec3de49bf281060a1b9ca378f9129630d5d7238742e4fb5d5b"
+        "sha256": "sha256:259186799d2f6163c5988382acd21c98ce01db960175acfa02d17a830b0a9ed8"
       }
     },
     {
@@ -1420,7 +1404,6 @@
           "CloseState",
           "CloseTaskResult",
           "CurrentCloseBasis",
-          "DryRunSummary",
           "EffectKind",
           "ErrorCode",
           "EventRef",
@@ -1452,9 +1435,6 @@
           "NextActionSummary",
           "NonGuarantee",
           "OperationCategory",
-          "PlannedBlocker",
-          "PlannedBlockerSourceKind",
-          "PlannedEffect",
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
@@ -1479,11 +1459,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
-          "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
+          "ToolResultOrRejected_for_CloseTaskResult",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1495,7 +1474,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:00e63d6701b2500adbd13cc746e4e279233b278b4bcb1032c09d2fcc05139414"
+        "sha256": "sha256:8451bab4c3d51f2c0d67b4af27682662736cda5a0f8dcdc65b228a870f3cbfc6"
       }
     },
     {
@@ -1572,7 +1551,7 @@
           "GuaranteeLevel",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
-          "McpMutationFullResponse_for_ToolResponse_for_CloseTaskResult",
+          "McpMutationFullResponse_for_PreviewableToolResponse_for_CloseTaskResult",
           "McpMutationPostEffectFailure",
           "McpMutationProjectionErrorCode",
           "McpMutationResponseBudgetExceeded_for_McpMutationEffectSummary",
@@ -1598,6 +1577,7 @@
           "PlannedBlocker",
           "PlannedBlockerSourceKind",
           "PlannedEffect",
+          "PreviewableToolResponse_for_CloseTaskResult",
           "ProjectContinuityKind",
           "ProjectContinuityStatus",
           "ProjectContinuitySummary",
@@ -1625,7 +1605,6 @@
           "ToolDryRunResponse",
           "ToolError",
           "ToolRejectedResponse",
-          "ToolResponse_for_CloseTaskResult",
           "ToolResultBase",
           "UtcTimestamp",
           "WorkPhase",
@@ -1638,7 +1617,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:faac27b7cfefc2ac1e009433e1926296f40cf7a0145e8bc7083301c4d97da6d7"
+        "sha256": "sha256:e94dd9d1c68c4b853f8ed28c4edd2a86830db9457606388c1e89573f2c4f321e"
       }
     },
     {

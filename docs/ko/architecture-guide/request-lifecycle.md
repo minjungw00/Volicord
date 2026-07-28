@@ -51,10 +51,11 @@ policy 평가, 그 밖의 효과 전에 `NO_ACTIVE_CHANGE_UNIT`과
 ## Mutation planning과 commit
 
 계획 코드는 닫힌 outcome, typed 메서드 필드 값, 정확한 commit input을 반환합니다.
-서로 대응하는 메서드 필드 타입과 완전한 공개 결과 타입은
 [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)의
-선언 하나에서 함께 만들어집니다. 공유 파이프라인은 분기를 선택하는 동안 이 필드
-타입을 유지합니다. Store는 transaction 안에서 담당 문서의 최종 검증을 수행하고
+공개 메서드 선언 하나가 메서드 이름, 요청 및 결과 타입, 정확한 응답 계열, 계약 ID,
+스키마, 커밋 결과 replay 적격 여부를 함께 결합합니다. 공유 파이프라인은 분기를
+선택하는 동안 선언된 필드 타입을 유지하고, 메서드 응답 계열에 없는 분기를
+거부합니다. Store는 transaction 안에서 담당 문서의 최종 검증을 수행하고
 immutable row 삽입, current pointer 갱신, 해당할 때 authority event와 replay 추가,
 `state_version` 정확히 한 번 증가를 수행합니다.
 
@@ -62,6 +63,10 @@ immutable row 삽입, current pointer 갱신, 해당할 때 authority event와 r
 `ToolResultBase`를 결합합니다. 따라서 읽기 전용, 효과 없음, 커밋 결과는 같은 typed
 구성 경계를 사용합니다. Dry-run 분기는 공개 응답 담당 문서가 정의한 typed
 `ToolDryRunResponse` 분기로 유지됩니다.
+
+CLI와 MCP adapter는 rendering이나 protocol projection 전에 반환된 공개 객체를 해당
+메서드의 정확한 응답 계열로 decode합니다. 따라서 adapter carrier는 Core와 메서드
+스키마가 선언하지 않은 응답 분기를 추가할 수 없습니다.
 
 Rejected, dry-run, unavailable, corrupt, unsupported-contract, conflict 분기는
 [저장 효과](../reference/storage-effects.md)를 따릅니다. 가까운 성공 분기의 효과를

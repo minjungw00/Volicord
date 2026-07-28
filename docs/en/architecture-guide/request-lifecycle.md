@@ -53,10 +53,12 @@ ticket lookup, invalidation, policy evaluation, or any other effect. This is
 ## Mutation Planning And Commit
 
 Planners return a closed outcome, a typed method-fields value, and exact commit
-inputs. The matching method-fields and complete public-result types are emitted
-from one declaration in
-[`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs).
-The shared pipeline carries that fields type through branch selection. Store
+inputs. One public-method declaration in
+[`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)
+binds the method name, request and result types, exact response family,
+contract IDs, schemas, and committed-result replay eligibility. The shared
+pipeline carries the declared fields type through branch selection and rejects
+a branch that the method's response family does not contain. Store
 performs owner-defined final validation inside the transaction, inserts
 immutable rows, updates current pointers, appends authority events and replay
 when applicable, and advances `state_version` exactly once.
@@ -66,6 +68,11 @@ only after those common facts are available. Read-only, no-effect, and
 committed results therefore use the same typed composition boundary. A dry-run
 branch remains the typed `ToolDryRunResponse` branch defined by the public
 response owner.
+
+CLI and MCP adapters decode the returned public object as that method's exact
+response family before rendering or protocol projection. Adapter carriers
+therefore cannot introduce a response branch that Core and the method schema
+do not declare.
 
 Rejected, dry-run, unavailable, corrupt, unsupported-contract, and conflict
 branches follow [Storage Effects](../reference/storage-effects.md). They never

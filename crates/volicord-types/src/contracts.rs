@@ -5,9 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use schemars::{schema_for, JsonSchema};
 use serde_json::{json, Value};
 
-use crate::methods::{
-    public_request_schema, public_response_schema, public_result_schema, OperationResultRef,
-};
+use crate::methods::{MethodResponseBranch, OperationResultRef, PUBLIC_METHOD_CONTRACTS};
 use crate::schema::{
     AcceptanceCriterion, AcceptanceCriterionInput, AcceptanceCriterionReplacement,
     AcceptedRiskInput, AgentSafeUserActionRequestSummary, AgentSession, ArtifactInput, ArtifactRef,
@@ -36,7 +34,7 @@ use crate::schema::{
     WriteTicketAttemptScope, WriteTicketPathPatterns, WriteTicketScope, WriteTicketStateSummary,
     WriteTicketValidityBasis,
 };
-use crate::values::{MethodName, UserActionStatus};
+use crate::values::UserActionStatus;
 
 /// One exact JSON instance shape exposed by a semantic contract descriptor.
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -259,20 +257,9 @@ impl JsonContractDescriptor {
 /// Returns the current public JSON contract descriptors.
 pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
     let mut descriptors = Vec::new();
-    let method_ids = MethodName::ALL
-        .into_iter()
-        .map(|method| {
-            (
-                method,
-                method_contract_id(method, "request"),
-                method_contract_id(method, "response"),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    let method_names = MethodName::ALL
-        .into_iter()
-        .map(|method| method.as_str().to_owned())
+    let method_names = PUBLIC_METHOD_CONTRACTS
+        .iter()
+        .map(|contract| contract.method().as_str().to_owned())
         .collect::<BTreeSet<_>>();
     descriptors.push(JsonContractDescriptor::identifiers_only(
         "api.methods",
@@ -280,23 +267,28 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
             values: method_names,
             ..JsonContractIdentifiers::default()
         },
-        method_ids
+        PUBLIC_METHOD_CONTRACTS
             .iter()
-            .flat_map(|(_, request, response)| [request.clone(), response.clone()])
+            .flat_map(|contract| {
+                [
+                    contract.request_contract_id().to_owned(),
+                    contract.response_contract_id().to_owned(),
+                ]
+            })
             .collect(),
     ));
 
-    for (method, request_id, response_id) in &method_ids {
-        let request = public_request_schema(method.as_str())
-            .unwrap_or_else(|| panic!("public method {} has a request schema", method.as_str()));
-        let response = public_response_schema(method.as_str())
-            .unwrap_or_else(|| panic!("public method {} has a response schema", method.as_str()));
-        let result = public_result_schema(method.as_str())
-            .unwrap_or_else(|| panic!("public method {} has a result schema", method.as_str()));
+    for contract in PUBLIC_METHOD_CONTRACTS {
+        let method = contract.method();
+        let request_id = contract.request_contract_id();
+        let response_id = contract.response_contract_id();
+        let request = contract.request_schema();
+        let response = contract.response_schema();
+        let result = contract.result_schema();
         let mut request_descriptor = JsonContractDescriptor::from_schema(
             request_id,
             request.clone(),
-            vec![response_id.clone()],
+            vec![response_id.to_owned()],
         );
         request_descriptor
             .example_schemas
@@ -313,7 +305,7 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
         let mut response_descriptor = JsonContractDescriptor::from_schema(
             response_id,
             response.clone(),
-            vec![request_id.clone()],
+            vec![request_id.to_owned()],
         );
         response_descriptor.example_schemas.insert(
             JsonExampleShape::CompleteMethodResponse.id(),
@@ -329,10 +321,12 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
             JsonExampleShape::MethodRejection.id(),
             schema::<ToolRejectedResponse>(),
         );
-        response_descriptor.example_schemas.insert(
-            JsonExampleShape::MethodDryRun.id(),
-            schema::<ToolDryRunResponse>(),
-        );
+        if contract.supports_response_branch(MethodResponseBranch::DryRun) {
+            response_descriptor.example_schemas.insert(
+                JsonExampleShape::MethodDryRun.id(),
+                schema::<ToolDryRunResponse>(),
+            );
+        }
         response_descriptor
             .identifiers
             .values
@@ -370,14 +364,6 @@ fn complete_method_request_schema(method: &str, mut params: Value) -> Value {
             .insert("definitions".to_owned(), definitions);
     }
     complete
-}
-
-fn method_contract_id(method: MethodName, shape: &str) -> String {
-    let method = method
-        .as_str()
-        .strip_prefix("volicord.")
-        .expect("public method uses the volicord namespace");
-    format!("api.method.{method}.{shape}")
 }
 
 fn schema_family_descriptors() -> Vec<JsonContractDescriptor> {
@@ -672,5 +658,33 @@ mod tests {
             .example_schema("schema_object.ToolRejectedResponse")
             .is_some());
         assert!(core.example_schema("complete_request").is_none());
+    }
+
+    #[test]
+    fn response_descriptors_expose_only_canonical_method_branches() {
+        let descriptors = public_json_contract_descriptors();
+
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            let descriptor = descriptors
+                .iter()
+                .find(|descriptor| descriptor.id() == contract.response_contract_id())
+                .expect("canonical response descriptor");
+            let supports_preview = contract.supports_response_branch(MethodResponseBranch::DryRun);
+
+            assert_eq!(
+                descriptor
+                    .example_schema(&JsonExampleShape::MethodDryRun.id())
+                    .is_some(),
+                supports_preview,
+                "{} descriptor exposes an impossible response branch",
+                contract.method().as_str()
+            );
+            assert_eq!(
+                descriptor.schema(),
+                Some(&contract.response_schema()),
+                "{} descriptor schema is not canonical",
+                contract.method().as_str()
+            );
+        }
     }
 }

@@ -24,6 +24,33 @@ fn assert_rejected_without_chunk(response: &PipelineResponse, code: &str) {
     assert!(response.operation_result_ref.is_none());
 }
 
+#[test]
+fn operation_result_dry_run_is_rejected_without_preview() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    let mut request = get_request(
+        "req_operation_result_dry_run",
+        OperationResultRef {
+            project_id: ProjectId::new(PROJECT_ID),
+            source_method: MethodName::Intake,
+            source_idempotency_key: IdempotencyKey::new("idem_operation_result_dry_run"),
+            committed_state_version: 1,
+            response_sha256:
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+            response_size_bytes: 1,
+        },
+        None,
+    );
+    request.envelope.dry_run = true;
+
+    let response = harness
+        .service
+        .get_operation_result(request, invocation(OperationCategory::Read))?;
+
+    assert_rejected_without_chunk(&response, "VALIDATION_FAILED");
+    assert_eq!(response.response_value["base"]["dry_run"], false);
+    Ok(())
+}
+
 fn read_all_pages(
     harness: &MethodHarness,
     operation_result_ref: &OperationResultRef,

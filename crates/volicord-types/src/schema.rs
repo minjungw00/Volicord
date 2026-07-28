@@ -238,10 +238,18 @@ pub struct ToolDryRunResponse {
     pub dry_run_summary: DryRunSummary,
 }
 
-/// Method response branch wrapper.
+/// Response family for methods that return only a result or rejection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum ToolResponse<T> {
+pub enum ToolResultOrRejected<T> {
+    Result(T),
+    Rejected(ToolRejectedResponse),
+}
+
+/// Response family for methods that can also return a dry-run preview.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum PreviewableToolResponse<T> {
     Result(T),
     Rejected(ToolRejectedResponse),
     DryRun(ToolDryRunResponse),

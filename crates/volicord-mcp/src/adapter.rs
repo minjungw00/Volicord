@@ -53,9 +53,9 @@ use volicord_types::integration_verification::{
 };
 use volicord_types::methods::{
     CheckCloseRequest, CloseTaskRequest, GetOperationResultRequest, IntakeRequest,
-    MethodOperationCategory, PrepareEvidenceCaptureRequest, PrepareWriteRequest,
-    ReconcileChangesRequest, RecordRunRequest, RequestUserActionRequest, StageArtifactRequest,
-    StatusRequest, UpdateScopeRequest,
+    MethodOperationCategory, MethodResponseContract, PrepareEvidenceCaptureRequest,
+    PrepareWriteRequest, ReconcileChangesRequest, RecordRunRequest, RequestUserActionRequest,
+    RequestUserActionResponse, StageArtifactRequest, StatusRequest, UpdateScopeRequest,
 };
 use volicord_types::schema::{RequiredNullable, ToolEnvelope};
 use volicord_types::tool_names::{AgentToolId, AgentToolOwner};
@@ -836,7 +836,7 @@ impl McpAdapter {
                     OperationCategory::AgentWorkflow,
                     session,
                 )?;
-                CoreService::for_mutation(context)
+                let response = CoreService::for_mutation(context)
                     .resume_user_action_request(
                         prepared.project_id,
                         user_action_request_id,
@@ -846,7 +846,12 @@ impl McpAdapter {
                     .ok_or_else(|| McpAdapterError::ToolExecution {
                         tool_name: tool_name.to_owned(),
                         message: "the resumed user-action request is unavailable or was created by another Agent Connection".to_owned(),
-                    })
+                    })?;
+                serde_json::from_value::<RequestUserActionResponse>(
+                    response.response_value.clone(),
+                )
+                .map_err(McpAdapterError::Json)?;
+                Ok(response)
             }
         }
     }
@@ -972,7 +977,7 @@ impl McpAdapter {
         session: Option<AgentSessionCoordinates<'_>>,
     ) -> Result<PipelineResponse, McpAdapterError>
     where
-        T: MethodOperationCategory + HasEnvelope,
+        T: MethodOperationCategory + MethodResponseContract + HasEnvelope,
         F: FnOnce(
             &CoreService,
             &RuntimeHomeMutationContext<'_>,
@@ -1014,7 +1019,11 @@ impl McpAdapter {
             )?
         };
         let core = CoreService::for_mutation(context);
-        call(&core, context, request, invocation.core_invocation()).map_err(McpAdapterError::Core)
+        let response = call(&core, context, request, invocation.core_invocation())
+            .map_err(McpAdapterError::Core)?;
+        serde_json::from_value::<T::Response>(response.response_value.clone())
+            .map_err(McpAdapterError::Json)?;
+        Ok(response)
     }
 
     pub(crate) fn call_adapter_tool(

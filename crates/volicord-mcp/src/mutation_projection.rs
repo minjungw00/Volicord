@@ -30,7 +30,9 @@ use volicord_types::methods::{
     PrepareEvidenceCaptureResult, PrepareWriteResult, ReconcileChangesResult, RecordRunResult,
     StageArtifactResult,
 };
-use volicord_types::schema::{AuthorityReceipt, StateRecordRef, ToolResultBase};
+use volicord_types::schema::{
+    AuthorityReceipt, PreviewableToolResponse, StateRecordRef, ToolResultBase,
+};
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{MutationDetailLevel, StateRecordKind};
 
@@ -396,7 +398,7 @@ fn compact_request_user_action_result(
     let compound: McpRequestUserActionResponse =
         serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
     let agent_result = match compound.agent_workflow_result {
-        volicord_types::schema::ToolResponse::Result(result) => result,
+        PreviewableToolResponse::Result(result) => result,
         _ => {
             return Err(McpAdapterError::Protocol(
                 "request-user-action compact projection requires a result branch".to_owned(),
