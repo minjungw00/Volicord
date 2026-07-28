@@ -1,6 +1,9 @@
-use crate::persistence::{
-    map_user_action_request_persistence, materialize_user_action_resolution_mutation,
-    UserActionRequestPersistenceInput,
+use crate::{
+    authority::{user_action_authority_from_record, user_action_from_record},
+    persistence::{
+        map_user_action_request_persistence, materialize_user_action_resolution_mutation,
+        UserActionRequestPersistenceInput,
+    },
 };
 use volicord_store::core_pipeline::{
     CoreStorageMutation, UserActionMutation, UserActionResolutionInsert,
@@ -16,7 +19,7 @@ use volicord_types::values::{
 };
 
 #[test]
-fn request_mapping_produces_matching_effective_record_and_store_input() {
+fn request_mapping_produces_consumable_effective_record_and_store_input() {
     let constructed = super::canonical_choice();
     let request = PersistedUserActionRequest {
         body: constructed.body,
@@ -64,6 +67,17 @@ fn request_mapping_produces_matching_effective_record_and_store_input() {
         insert.source_idempotency_key
     );
     assert_eq!(insert.source_idempotency_key, "idem-test");
+
+    let authority = user_action_authority_from_record(&effective)
+        .expect("service must consume the validated Store record");
+    assert_eq!(authority.user_action_request_id, "action-test");
+    assert_eq!(authority.status, UserActionStatus::Pending);
+
+    let public_request = user_action_from_record(&effective, 11)
+        .expect("service must project the validated Store record");
+    assert_eq!(public_request.project_id.as_str(), "project-test");
+    assert_eq!(public_request.task_id.as_str(), "task-test");
+    assert_eq!(public_request.action_kind, UserActionKind::ProductDecision);
 }
 
 #[test]

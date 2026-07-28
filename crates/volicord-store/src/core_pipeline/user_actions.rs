@@ -118,12 +118,12 @@ impl UserActionMutation {
 /// The fields are private so external crates can only obtain values that have
 /// passed Store-owned persisted-record validation.
 ///
-/// ```compile_fail
+/// ```compile_fail,E0616
 /// use volicord_store::core_pipeline::StoredUserActionRequest;
 ///
-/// let _invalid = StoredUserActionRequest {
-///     project_id: "project".to_owned(),
-/// };
+/// fn inspect(record: &StoredUserActionRequest) {
+///     let _ = &record.project_id;
+/// }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredUserActionRequest {
@@ -207,6 +207,15 @@ impl StoredUserActionRequest {
 }
 
 /// Store-validated persisted immutable UserAction resolution.
+///
+/// ```compile_fail,E0451
+/// use volicord_store::core_pipeline::StoredUserActionResolution;
+///
+/// fn inspect(record: StoredUserActionResolution) {
+///     let StoredUserActionResolution { resolution, .. } = record;
+///     let _ = resolution;
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredUserActionResolution {
     project_id: String,
@@ -303,6 +312,33 @@ struct UserActionResolutionRecordRaw {
 }
 
 /// One validated persisted UserAction request and its optional resolution.
+///
+/// Supported consumers receive a validated set and inspect its semantic facts
+/// through typed accessors.
+///
+/// ```
+/// use volicord_store::core_pipeline::StoredUserActionRecordSet;
+///
+/// fn inspect(record: &StoredUserActionRecordSet) {
+///     let request = record.request();
+///     let _ = request.project_id();
+///     let _ = request.action_kind();
+///     let _ = record.status();
+///
+///     if let Some(resolution) = record.resolution() {
+///         let _ = resolution.user_action_resolution_id();
+///         let _ = resolution.resolution();
+///     }
+/// }
+/// ```
+///
+/// ```compile_fail,E0616
+/// use volicord_store::core_pipeline::StoredUserActionRecordSet;
+///
+/// fn inspect(record: &StoredUserActionRecordSet) {
+///     let _ = &record.request;
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredUserActionRecordSet {
     request: StoredUserActionRequest,

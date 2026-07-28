@@ -75,24 +75,22 @@ fn user_action_request_and_basis_store_apis_round_trip() -> Result<(), Box<dyn E
     let current = store
         .user_action_record(request_id, &now)?
         .expect("user-action request should be readable");
-    assert_eq!(current.status, UserActionStatus::Pending);
-    assert_eq!(current.request.user_action_request_id, request_id);
-    assert_eq!(current.request.task_id, task_id);
-    assert_eq!(current.request.action_kind, UserActionKind::ProductDecision);
-    assert_eq!(current.request.basis_status, UserActionBasisStatus::Current);
+    assert_eq!(current.status(), UserActionStatus::Pending);
+    let request = current.request();
+    assert_eq!(request.user_action_request_id(), request_id);
+    assert_eq!(request.task_id(), task_id);
+    assert_eq!(request.action_kind(), UserActionKind::ProductDecision);
+    assert_eq!(request.basis_status(), UserActionBasisStatus::Current);
     assert_eq!(
-        current.request.required_for,
-        vec![UserActionRequiredFor::Informational]
+        request.required_for(),
+        [UserActionRequiredFor::Informational]
     );
     assert_eq!(
-        current
-            .request
-            .requested_by_actor_source
-            .to_canonical_string(),
+        request.requested_by_actor_source().to_canonical_string(),
         ACTOR_SOURCE
     );
-    assert!(current.resolution.is_none());
-    let basis = &current.request.basis;
+    assert!(current.resolution().is_none());
+    let basis = request.basis();
     assert_eq!(basis.compatibility_status(), UserActionBasisStatus::Current);
     assert_eq!(basis.coordinates().task_id.as_str(), task_id);
 
@@ -123,9 +121,9 @@ fn user_action_request_and_basis_store_apis_round_trip() -> Result<(), Box<dyn E
     let stale = store
         .user_action_record(request_id, &now)?
         .expect("stale request should remain readable");
-    assert_eq!(stale.status, UserActionStatus::Stale);
-    assert_eq!(stale.request.basis_status, UserActionBasisStatus::Stale);
-    let stale_basis = &stale.request.basis;
+    assert_eq!(stale.status(), UserActionStatus::Stale);
+    assert_eq!(stale.request().basis_status(), UserActionBasisStatus::Stale);
+    let stale_basis = stale.request().basis();
     assert_eq!(
         stale_basis.compatibility_status(),
         UserActionBasisStatus::Stale
@@ -162,7 +160,7 @@ fn user_action_request_and_basis_store_apis_round_trip() -> Result<(), Box<dyn E
         store
             .user_action_record(request_id, &now)?
             .expect("superseded request should remain readable")
-            .status,
+            .status(),
         UserActionStatus::Superseded
     );
     Ok(())
@@ -590,12 +588,12 @@ fn user_action_resolution_round_trips_choice_and_channel_provenance() -> Result<
     let record = store
         .user_action_resolution_record(resolution_id)?
         .expect("resolved user action should be readable");
-    assert_eq!(record.user_action_request_id, request_id);
-    assert_eq!(record.channel_kind, UserActionChannelKind::Cli);
-    assert_eq!(record.channel_submission_id, "submission_deferred_pair");
-    assert_eq!(record.resolved_by_actor_source, ActorSource::LocalUser);
+    assert_eq!(record.user_action_request_id(), request_id);
+    assert_eq!(record.channel_kind(), UserActionChannelKind::Cli);
+    assert_eq!(record.channel_submission_id(), "submission_deferred_pair");
+    assert_eq!(record.resolved_by_actor_source(), &ActorSource::LocalUser);
     assert_eq!(
-        serde_json::to_value(&record.resolution)?["machine_action"],
+        serde_json::to_value(record.resolution())?["machine_action"],
         "defer"
     );
     assert_eq!(
@@ -611,7 +609,7 @@ fn user_action_resolution_round_trips_choice_and_channel_provenance() -> Result<
         store
             .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:11:00Z")?,)?
             .expect("resolved request should remain readable")
-            .status,
+            .status(),
         UserActionStatus::Resolved
     );
     let before_tamper = store.effect_counts()?;
@@ -1756,7 +1754,7 @@ fn effective_user_action_read_enforces_requested_at_lower_bound() -> Result<(), 
         store
             .user_action_record(request_id, &UtcTimestamp::parse("2026-01-01T00:00:00Z")?,)?
             .expect("requested_at boundary is inclusive")
-            .status,
+            .status(),
         UserActionStatus::Pending
     );
     Ok(())
