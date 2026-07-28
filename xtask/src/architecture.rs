@@ -2266,7 +2266,7 @@ version = "0.0.0"
             doc_id: ARCHITECTURE_DOC_ID.to_owned(),
             path_en: "docs/en/architecture-guide/architecture.md".to_owned(),
             path_ko: "docs/ko/architecture-guide/architecture.md".to_owned(),
-            contracts: BTreeSet::new(),
+            contract_bindings: BTreeSet::new(),
         };
         let index = crate::doc_index::DocIndex {
             indexed_paths: BTreeSet::new(),

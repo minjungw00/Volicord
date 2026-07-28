@@ -32,9 +32,11 @@ cargo run -p xtask -- architecture-check
 
 - `docs/doc-index.yaml`이 YAML로 파싱되고 `version: 3`을 갖습니다.
 - 필요한 최상위 섹션이 있으며 지원되지 않는 최상위 필드는 거부됩니다.
-- 대응 문서는 중복 없는 의미 기반 `contracts`를 선언할 수 있습니다. 일반 API
-  메서드 경로는 자체 요청과 응답 계약을 도출합니다. 선언하거나 도출한 모든
-  계약은 기계 판독 가능한 담당 설명자 하나로 해석되어야 합니다.
+- 대응 문서는 중복 없는 의미 기반 `contracts`를 선언할 수 있습니다. `DocIndex`는
+  일반 메서드 문서를 요청·응답 쌍 하나로 해석하고, 관례를 따르지 않거나 여러
+  메서드를 담당하는 문서에는 완전하고 중복 없는 `method_contracts` 선언을
+  요구합니다. 선언하거나 해석한 모든 계약은 기계 판독 가능한 담당 설명자
+  하나에 존재해야 하며 정규화된 결합 순서는 결정적이어야 합니다.
 - `owner_areas` 카탈로그는 안정적인 식별자와 문자열 설명을 사용합니다. 적용
   가능성 키는 밑줄로 구분한 소문자 의미 단어만 사용하고 버전 번호를 포함하지
   않습니다.
@@ -53,9 +55,10 @@ cargo run -p xtask -- architecture-check
 - 모든 대응 항목은 `doc_id`, `path_en`, `path_ko`, `kind`, `summary`,
   `normative_level`, `translation_policy`, `owner_area`, `created_on`,
   `last_updated_on`, `last_verified_on`, `applies_to`, `primary_audience`,
-  `journeys`, `canonical_for`, `depends_on`, `contracts`만 사용합니다.
+  `journeys`, `canonical_for`, `depends_on`, `contracts`,
+  `method_contracts`만 사용합니다.
 - 공유 항목과 대응 항목에 필요한 필드가 있으며 `applies_to`와 대응 문서의
-  `contracts`는 선택 필드입니다.
+  `contracts`, `method_contracts`는 선택 필드입니다.
 - `owner_area`는 최상위 담당 영역 카탈로그로 해석됩니다.
 - `applies_to`가 있으면 비어 있지 않고 중복이 없는 추가 카탈로그 값 목록이며
   루트 기본값을 반복하지 않습니다.
@@ -86,9 +89,10 @@ cargo run -p xtask -- architecture-check
   `docs/ko/architecture-guide/design/` 아래의 현재 개별 아키텍처 설계 문서는 문서
   정책이 언어별로 정의한 정확한 H2 순서를 사용하며 그 긍정적인 스키마 밖의 중첩
   제목 절을 두지 않습니다.
-- 의미 기반 계약이 있는 각 대응 문서에 대해 `docs-check`는 그 정확한 담당
-  카탈로그만 만듭니다. 공개 요청과 응답 설명자는 `volicord-types`에서, CLI
-  문법과 값은 `volicord-command-model`에서, CLI inbox 출력은
+- 의미 기반 계약이 있는 각 대응 문서에 대해 모든 생성기와 검증기는 정규화된
+  `DocIndex` 결합 집합 하나를 사용하고 그 정확한 담당 카탈로그만 만듭니다.
+  공개 요청과 응답 설명자는 `volicord-types`에서, CLI 문법과 값은
+  `volicord-command-model`에서, CLI inbox 출력은
   `volicord-user-action-presentation`에서, 진단 코드는 typed 진단
   레지스트리에서, MCP 식별자는 프로토콜 레지스트리에서 가져옵니다. 의도적으로
   인접한 계약 관계는 설명자에 명시하며 전체 공개 API 카탈로그로 확장하지
@@ -106,9 +110,9 @@ cargo run -p xtask -- architecture-check
   필드, 하이픈 CLI 토큰, 점으로 구분한 진단 코드, 프로토콜 식별자도 포함하며
   담당 범주를 서로 구분합니다. 임의의 산문, 경로, 파일 이름, 환경 변수, 소스
   식별자를 API 필드로 취급하지 않습니다.
-- 모든 참조 JSON/YAML 펜스는 `shape=`를 정확히 하나 선언합니다. 문서 경로가
-  사용 가능한 의미 기반 계약을 정하며, 둘 이상의 사용 가능한 계약이 그 형태를
-  제공하면 펜스는 문서에 이미 지정된
+- 모든 참조 JSON/YAML 펜스는 `shape=`를 정확히 하나 선언합니다. 해석된
+  `DocIndex` 결합 집합이 사용 가능한 의미 기반 계약을 정하며, 둘 이상의 사용
+  가능한 계약이 그 형태를 제공하면 펜스는 문서에 이미 결합된
   `contract=<semantic_contract_id>`를 정확히 하나 더 선언합니다. 요청과 응답
   설명자는 서로 분리된 채로 유지합니다.
 - 구조화 파서는 인스턴스를 만들기 전에 모든 중첩 깊이의 각 JSON 객체 또는 YAML
@@ -381,9 +385,9 @@ Rust 구현을 편집한 뒤에는 워크스페이스나 변경된 크레이트�
   교체합니다. 명령, 요청, 응답, 결과, 공유 응답 설명자 또는 워크스페이스
   아키텍처 메타데이터를 변경한 뒤 실행하고 생성 diff를 검토합니다. 두 번째로
   실행했을 때 갱신 파일이 없어야 합니다.
-- `cargo run -p xtask -- docs-check`는 유지 문서 구조, 정확한 요청 및 응답 영역
-  결합과 스키마 드리프트, 생성 또는 원본 파생 문서 표면, 실행 가능한 `volicord`
-  명령 예시, 한영 링크·제목·정확한 식별자 일치,
+- `cargo run -p xtask -- docs-check`는 유지 문서 구조, 해석된 정확한 요청 및
+  응답 영역 결합과 스키마 드리프트, 생성 또는 원본 파생 문서 표면, 실행 가능한
+  `volicord` 명령 예시, 한영 링크·제목·정확한 식별자 일치,
   용어 메타데이터 담당 경로와 역할, 그리고
   `crates/volicord-store/src/schema/registry.sql` 및
   `crates/volicord-store/src/schema/project.sql`에 대한 기준 Storage DDL SQL

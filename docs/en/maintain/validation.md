@@ -34,9 +34,12 @@ read-only and verifies the machine-checkable shape:
 - `docs/doc-index.yaml` parses as YAML and has `version: 3`.
 - Required top-level sections are present and unsupported top-level fields are
   rejected.
-- Paired documents may declare duplicate-free semantic `contracts`. Regular API
-  method routes derive their own request and response contracts. Every declared
-  or derived contract resolves to one machine-readable owner descriptor.
+- Paired documents may declare duplicate-free semantic `contracts`. `DocIndex`
+  resolves regular method pages to one request/response pair and requires
+  non-conventional or multi-method pages to declare complete, duplicate-free
+  `method_contracts`. Every declared or resolved contract exists in one
+  machine-readable owner descriptor, and the normalized binding order is
+  deterministic.
 - The `owner_areas` catalog uses stable identifiers with string descriptions.
   Applicability keys use lowercase semantic words separated by underscores and
   contain no embedded version numbers.
@@ -57,9 +60,9 @@ read-only and verifies the machine-checkable shape:
   `summary`, `normative_level`, `translation_policy`, `owner_area`,
   `created_on`, `last_updated_on`, `last_verified_on`, `applies_to`,
   `primary_audience`, `journeys`, `canonical_for`, `depends_on`, and
-  `contracts`.
+  `contracts`, and `method_contracts`.
 - Required fields are present for each shared or paired entry; `applies_to` and
-  paired-document `contracts` are optional.
+  paired-document `contracts` and `method_contracts` are optional.
 - `owner_area` resolves to the top-level owner-area catalog.
 - When present, `applies_to` is a non-empty duplicate-free list of additional
   catalog values and does not repeat a root default.
@@ -90,7 +93,8 @@ read-only and verifies the machine-checkable shape:
   `docs/ko/architecture-guide/design/` uses the language-specific exact H2
   sequence defined by the Documentation Policy and has no nested heading
   sections outside that positive schema.
-- For each paired document with semantic contracts, `docs-check` builds only
+- For each paired document with semantic contracts, every generator and
+  validator consumes the same normalized `DocIndex` binding set and builds only
   those exact owner catalogs. Public request and response descriptors come from
   `volicord-types`; CLI syntax and values come from
   `volicord-command-model`; CLI inbox output comes from
@@ -113,10 +117,10 @@ read-only and verifies the machine-checkable shape:
   protocol identifiers. Owner categories remain distinct. Arbitrary prose,
   paths, filenames, environment variables, and source identifiers are not
   treated as API fields.
-- Every Reference JSON/YAML fence declares exactly one `shape=`. The document
-  route determines the available semantic contracts; when that shape is
-  exposed by more than one available contract, the fence also declares exactly
-  one `contract=<semantic_contract_id>` already assigned to the document.
+- Every Reference JSON/YAML fence declares exactly one `shape=`. The resolved
+  `DocIndex` binding set determines the available semantic contracts; when that
+  shape is exposed by more than one available contract, the fence also declares
+  exactly one `contract=<semantic_contract_id>` already bound to the document.
   Request and response descriptors remain separate.
 - Before materializing an instance, the structured parser requires exact unique
   keys within every JSON object or YAML mapping at every nesting depth. YAML
@@ -432,7 +436,7 @@ Generated or source-derived reference surfaces use stable check commands:
   architecture metadata and review the generated diff. Run it a second time
   and require an empty update set.
 - `cargo run -p xtask -- docs-check` checks maintained documentation structure,
-  exact request and response region bindings and schema drift,
+  exact resolved request and response region bindings and schema drift,
   generated/source-derived documentation surfaces, executable `volicord`
   command examples, bilingual link/heading/exact-identifier parity, terminology
   metadata owner paths and roles, and canonical Storage DDL SQL blocks against

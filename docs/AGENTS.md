@@ -91,6 +91,11 @@ residual-risk decisions.
 - Keep API examples internally consistent across request data, visible response
   state, `state_version`, refs, paths, artifact refs, run refs, judgment refs,
   sensitive approval reasons, and close-readiness evidence.
+- Use the normalized semantic contract bindings resolved by
+  `docs/doc-index.yaml` for contract-bearing documents. Declare complete
+  `method_contracts` when a page owns multiple methods or does not follow the
+  regular method route convention; do not duplicate schema or identifier
+  inventories in documentation metadata.
 - Do not add task history, PR notes, short-lived plans, implementation logs,
   migration narratives, scratch notes, generated runtime records, archive
   copies, or work logs to maintained documentation.

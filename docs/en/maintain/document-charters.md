@@ -224,14 +224,17 @@ Reference owners.
   storage, runtime boundaries, security wording, Agent Connection behavior,
   projection and template behavior, conformance meaning, and design-quality
   meaning. Contract-bearing pages use exact semantic contract IDs routed to
-  machine-readable owner descriptors. Each JSON or YAML instance selects one
-  exact descriptor shape; method routes supply request and response contract
-  choices without combining their schemas. Reader-facing shape notation uses
-  `schema` fences. Repeated request and response field, requiredness,
-  nullability, type, and CLI syntax inventories are generated from those
-  owners. Method success shapes stay distinct from shared or method-specific
-  rejection shapes. Authors own semantic and policy prose around the generated
-  regions. The Reference Index owns human-readable Reference navigation.
+  machine-readable owner descriptors. `DocIndex` resolves each maintained page
+  to one normalized binding set consumed by generators and validators. Regular
+  method pages resolve one owned request and response pair; multi-method or
+  non-conventional pages declare complete owned pairs explicitly. Each JSON or
+  YAML instance selects one exact descriptor shape without combining schemas.
+  Reader-facing shape notation uses `schema` fences. Repeated request and
+  response field, requiredness, nullability, type, and CLI syntax inventories
+  are generated from those owners. Method success shapes stay distinct from
+  shared or method-specific rejection shapes. Authors own semantic and policy
+  prose around the generated regions. The Reference Index owns human-readable
+  Reference navigation.
 - Should not own: Tutorial flow, marketing framing, implementation history,
   migration notes, broad onboarding prose, or duplicate copies of adjacent
   Reference owners.

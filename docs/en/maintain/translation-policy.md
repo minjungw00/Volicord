@@ -129,8 +129,9 @@ unless the English document has the same meaning unit.
 Commands, flags, identifiers, status meanings, negative clauses, limitations,
 warnings, and local reader routes must remain equivalent by meaning.
 
-`docs-check` resolves each document's exact semantic contracts and validates
-English and Korean independently at parsed structural coordinates. An
+`DocIndex` resolves each document's exact semantic contract bindings once;
+`docs-check` consumes that shared set to validate English and Korean
+independently at parsed structural coordinates. An
 identifier owned by a different contract is out of scope; a likely contract
 identifier absent from the current owners is invalid even when both languages
 use the same spelling. Each JSON or YAML example first resolves its one

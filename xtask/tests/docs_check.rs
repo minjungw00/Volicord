@@ -120,6 +120,7 @@ entry_schema:
   - canonical_for
   - depends_on
   - contracts
+  - method_contracts
   maintenance_fields:
     owner_area: Current maintenance owner.
     created_on: Current creation date.

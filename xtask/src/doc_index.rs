@@ -4,10 +4,13 @@ use crate::workspace_manifests::{
     read_toml_document, workspace_package_version, workspace_rust_version,
 };
 use serde_yaml::{Mapping, Value};
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::fs;
 use std::path::Path;
 use volicord_mcp_protocol::ProtocolRegistry;
+use volicord_types::methods::PUBLIC_METHOD_CONTRACTS;
 
 fn mapping_get<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a Value> {
     mapping.get(Value::String(key.to_string()))
@@ -87,6 +90,7 @@ const OPTIONAL_FIELDS: &[&str] = &[
     "canonical_for",
     "depends_on",
     "contracts",
+    "method_contracts",
 ];
 const SHARED_ALLOWED: &[&str] = &[
     "doc_id",
@@ -122,6 +126,7 @@ const PAIRED_ALLOWED: &[&str] = &[
     "canonical_for",
     "depends_on",
     "contracts",
+    "method_contracts",
 ];
 const KINDS: &[&str] = &[
     "landing",
@@ -165,7 +170,239 @@ pub(crate) struct PairedDocument {
     pub(crate) doc_id: String,
     pub(crate) path_en: String,
     pub(crate) path_ko: String,
-    pub(crate) contracts: BTreeSet<String>,
+    pub(crate) contract_bindings: BTreeSet<DocumentContractBinding>,
+}
+
+impl PairedDocument {
+    pub(crate) fn contract_bindings(&self) -> impl Iterator<Item = &DocumentContractBinding> {
+        self.contract_bindings.iter()
+    }
+
+    pub(crate) fn bindings_for_role(
+        &self,
+        role: DocumentContractRole,
+    ) -> impl Iterator<Item = &DocumentContractBinding> {
+        self.contract_bindings
+            .iter()
+            .filter(move |binding| binding.role == role)
+    }
+
+    pub(crate) fn contract_ids(&self) -> impl Iterator<Item = &ContractId> {
+        self.contract_bindings
+            .iter()
+            .map(|binding| &binding.contract_id)
+    }
+
+    pub(crate) fn contains_contract(&self, contract_id: &str) -> bool {
+        self.contract_ids()
+            .any(|candidate| candidate.as_str() == contract_id)
+    }
+}
+
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct ContractId(String);
+
+impl ContractId {
+    pub(crate) fn parse(value: String) -> Option<Self> {
+        is_semantic_contract_identifier(&value).then_some(Self(value))
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for ContractId {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for ContractId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum DocumentContractRole {
+    MethodRequest,
+    MethodResponse,
+    PublicApiCatalog,
+    SchemaObject,
+    CliCommand,
+    CliOutput,
+    McpProtocol,
+    McpWire,
+    Diagnostic,
+    SupportingContract,
+}
+
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct DocumentContractBinding {
+    pub(crate) contract_id: ContractId,
+    pub(crate) role: DocumentContractRole,
+}
+
+#[derive(Debug, Default)]
+struct SemanticContractRegistry {
+    roles: BTreeMap<ContractId, DocumentContractRole>,
+}
+
+impl SemanticContractRegistry {
+    fn load(root: &Path, errors: &mut Vec<ValidationIssue>) -> Self {
+        let mut registry = Self::default();
+        let method_contracts = PUBLIC_METHOD_CONTRACTS
+            .iter()
+            .flat_map(|contract| {
+                [
+                    (
+                        contract.request_contract_id(),
+                        DocumentContractRole::MethodRequest,
+                    ),
+                    (
+                        contract.response_contract_id(),
+                        DocumentContractRole::MethodResponse,
+                    ),
+                ]
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        for descriptor in volicord_types::contracts::public_json_contract_descriptors() {
+            let role = method_contracts
+                .get(descriptor.id())
+                .copied()
+                .unwrap_or_else(|| {
+                    if descriptor.id() == "api.methods" {
+                        DocumentContractRole::PublicApiCatalog
+                    } else {
+                        DocumentContractRole::SchemaObject
+                    }
+                });
+            registry.insert(
+                descriptor.id(),
+                role,
+                "crates/volicord-types/src/contracts.rs",
+                errors,
+            );
+        }
+        for descriptor in volicord_command_model::public_cli_contract_descriptors() {
+            registry.insert(
+                descriptor.id(),
+                DocumentContractRole::CliCommand,
+                "crates/volicord-command-model/src/lib.rs",
+                errors,
+            );
+        }
+        for descriptor in volicord_mcp_protocol::protocol_contract_descriptors() {
+            registry.insert(
+                descriptor.id(),
+                DocumentContractRole::McpProtocol,
+                "crates/volicord-mcp-protocol/src/lib.rs",
+                errors,
+            );
+        }
+        for descriptor in volicord_mcp_wire::wire_contract_descriptors() {
+            registry.insert(
+                descriptor.id(),
+                DocumentContractRole::McpWire,
+                "crates/volicord-mcp-wire/src/contracts.rs",
+                errors,
+            );
+        }
+        registry.load_json_artifact(
+            root,
+            "crates/volicord-cli/tests/fixtures/diagnostic-registry.json",
+            DocumentContractRole::Diagnostic,
+            errors,
+        );
+        registry.load_json_artifact(
+            root,
+            "crates/volicord-user-action-presentation/tests/fixtures/cli-output-contracts.json",
+            DocumentContractRole::CliOutput,
+            errors,
+        );
+        registry
+    }
+
+    fn insert(
+        &mut self,
+        id: &str,
+        role: DocumentContractRole,
+        owner: &str,
+        errors: &mut Vec<ValidationIssue>,
+    ) {
+        let Some(contract_id) = ContractId::parse(id.to_owned()) else {
+            errors.push(ValidationIssue::new(
+                owner,
+                "metadata.contract_descriptor",
+                format!("semantic contract descriptor has invalid id {id}"),
+            ));
+            return;
+        };
+        if self.roles.insert(contract_id, role).is_some() {
+            errors.push(ValidationIssue::new(
+                owner,
+                "metadata.contract_descriptor",
+                format!("semantic contract {id} is exposed by more than one owner descriptor"),
+            ));
+        }
+    }
+
+    fn load_json_artifact(
+        &mut self,
+        root: &Path,
+        relative_path: &str,
+        role: DocumentContractRole,
+        errors: &mut Vec<ValidationIssue>,
+    ) {
+        let contents = match fs::read_to_string(root.join(relative_path)) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => {
+                errors.push(ValidationIssue::new(
+                    relative_path,
+                    "metadata.contract_descriptor",
+                    format!("failed to read semantic contract descriptors: {error}"),
+                ));
+                return;
+            }
+        };
+        let value: serde_json::Value = match serde_json::from_str(&contents) {
+            Ok(value) => value,
+            Err(error) => {
+                errors.push(ValidationIssue::new(
+                    relative_path,
+                    "metadata.contract_descriptor",
+                    format!("failed to parse semantic contract descriptors: {error}"),
+                ));
+                return;
+            }
+        };
+        let Some(descriptors) = value.get("contracts").and_then(serde_json::Value::as_array) else {
+            errors.push(ValidationIssue::new(
+                relative_path,
+                "metadata.contract_descriptor",
+                "semantic descriptor artifact must contain a contracts array",
+            ));
+            return;
+        };
+        for descriptor in descriptors {
+            let Some(id) = descriptor.get("id").and_then(serde_json::Value::as_str) else {
+                errors.push(ValidationIssue::new(
+                    relative_path,
+                    "metadata.contract_descriptor",
+                    "semantic contract descriptor must have a string id",
+                ));
+                continue;
+            };
+            self.insert(id, role, relative_path, errors);
+        }
+    }
+
+    fn role(&self, contract_id: &ContractId) -> Option<DocumentContractRole> {
+        self.roles.get(contract_id).copied()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -276,6 +513,7 @@ pub(crate) fn validate_doc_index(
     let applicability = validate_catalog(top, "applicability", APPLICABILITY_ENTRY_ALLOWED, errors);
     validate_applicability_sources(root, top, errors);
     let default_applicability = validate_default_applicability(top, &applicability, errors);
+    let semantic_contracts = SemanticContractRegistry::load(root, errors);
 
     let mut entries = Vec::new();
     let mut doc_ids = BTreeSet::new();
@@ -298,6 +536,7 @@ pub(crate) fn validate_doc_index(
         &owner_areas,
         &applicability,
         &default_applicability,
+        &semantic_contracts,
         errors,
     );
     validate_entries(
@@ -314,6 +553,7 @@ pub(crate) fn validate_doc_index(
         &owner_areas,
         &applicability,
         &default_applicability,
+        &semantic_contracts,
         errors,
     );
 
@@ -808,6 +1048,7 @@ fn validate_entries(
     owner_areas: &BTreeSet<String>,
     applicability: &BTreeSet<String>,
     default_applicability: &BTreeSet<String>,
+    semantic_contracts: &SemanticContractRegistry,
     errors: &mut Vec<ValidationIssue>,
 ) {
     let Some(value) = mapping_get(top, key) else {
@@ -971,7 +1212,8 @@ fn validate_entries(
         }
 
         validate_applies_to(entry, &doc_id, applicability, default_applicability, errors);
-        let contracts = validate_document_contracts(entry, &doc_id, mode, errors);
+        let contract_bindings =
+            resolve_document_contracts(entry, &doc_id, mode, semantic_contracts, errors);
 
         let mut paired_document = None;
         let paths = match mode {
@@ -989,7 +1231,7 @@ fn validate_entries(
                         doc_id: doc_id.clone(),
                         path_en: path_en.clone(),
                         path_ko: path_ko.clone(),
-                        contracts: contracts.clone(),
+                        contract_bindings: contract_bindings.clone(),
                     });
                 }
                 path_en.into_iter().chain(path_ko).collect::<Vec<_>>()
@@ -1013,13 +1255,16 @@ fn validate_entries(
     }
 }
 
-fn validate_document_contracts(
+fn resolve_document_contracts(
     entry: &Mapping,
     doc_id: &str,
     mode: EntryMode,
+    registry: &SemanticContractRegistry,
     errors: &mut Vec<ValidationIssue>,
-) -> BTreeSet<String> {
-    let mut contracts = BTreeSet::new();
+) -> BTreeSet<DocumentContractBinding> {
+    let mut bindings = BTreeSet::new();
+    let mut bound_ids = BTreeSet::new();
+
     if let Some(values) = mapping_get(entry, "contracts").and_then(sequence_strings) {
         if matches!(mode, EntryMode::Shared) {
             errors.push(ValidationIssue::new(
@@ -1028,38 +1273,221 @@ fn validate_document_contracts(
                 format!("{doc_id} is shared metadata and cannot declare bilingual contract scope"),
             ));
         }
-        for contract in values {
-            if !is_semantic_contract_identifier(&contract) {
+        for value in values {
+            let Some(contract_id) = parse_document_contract_id(doc_id, &value, errors) else {
+                continue;
+            };
+            let Some(descriptor_role) = registry.role(&contract_id) else {
+                report_unknown_contract(doc_id, &contract_id, errors);
+                continue;
+            };
+            let role = match descriptor_role {
+                DocumentContractRole::MethodRequest | DocumentContractRole::MethodResponse => {
+                    DocumentContractRole::SupportingContract
+                }
+                role => role,
+            };
+            insert_document_binding(
+                doc_id,
+                DocumentContractBinding { contract_id, role },
+                &mut bound_ids,
+                &mut bindings,
+                errors,
+            );
+        }
+    }
+
+    let explicit_method_contracts = mapping_get(entry, "method_contracts");
+    if explicit_method_contracts.is_some() {
+        if matches!(mode, EntryMode::Shared) {
+            errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!("{doc_id} is shared metadata and cannot declare method contracts"),
+            ));
+        }
+        if !doc_id.starts_with("reference.api.method-") {
+            errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!(
+                    "{doc_id} declares method_contracts but is not an API method Reference page"
+                ),
+            ));
+        }
+        let values = explicit_method_contracts
+            .and_then(sequence_strings)
+            .unwrap_or_default();
+        if values.is_empty() {
+            errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!("{doc_id} method_contracts must not be empty"),
+            ));
+        }
+        let mut owned_method_ids = BTreeSet::new();
+        for value in values {
+            let Some(contract_id) = parse_document_contract_id(doc_id, &value, errors) else {
+                continue;
+            };
+            let Some(role) = registry.role(&contract_id) else {
+                report_unknown_contract(doc_id, &contract_id, errors);
+                continue;
+            };
+            if !matches!(
+                role,
+                DocumentContractRole::MethodRequest | DocumentContractRole::MethodResponse
+            ) {
                 errors.push(ValidationIssue::new(
                     DOC_INDEX_PATH,
                     "metadata.contracts",
                     format!(
-                        "{doc_id} contract {contract} must use lowercase semantic dot-separated words"
+                        "{doc_id} method_contracts entry {contract_id} has unsupported role {role:?}"
                     ),
                 ));
+                continue;
             }
-            if !contracts.insert(contract.clone()) {
-                errors.push(ValidationIssue::new(
-                    DOC_INDEX_PATH,
-                    "metadata.contracts",
-                    format!("{doc_id} repeats contract {contract}"),
-                ));
-            }
+            owned_method_ids.insert(contract_id.clone());
+            insert_document_binding(
+                doc_id,
+                DocumentContractBinding { contract_id, role },
+                &mut bound_ids,
+                &mut bindings,
+                errors,
+            );
+        }
+        validate_owned_method_pairs(doc_id, &owned_method_ids, errors);
+    } else if let Some(route) = doc_id.strip_prefix("reference.api.method-") {
+        let method_name = route.replace('-', "_");
+        let Some(method) = PUBLIC_METHOD_CONTRACTS.iter().find(|contract| {
+            contract.method().as_str().strip_prefix("volicord.") == Some(method_name.as_str())
+        }) else {
+            errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!(
+                    "{doc_id} route does not resolve to a current public method; declare exact method_contracts for a non-conventional owner"
+                ),
+            ));
+            return bindings;
+        };
+        for (contract_id, role) in [
+            (
+                method.request_contract_id(),
+                DocumentContractRole::MethodRequest,
+            ),
+            (
+                method.response_contract_id(),
+                DocumentContractRole::MethodResponse,
+            ),
+        ] {
+            insert_document_binding(
+                doc_id,
+                DocumentContractBinding {
+                    contract_id: ContractId(contract_id.to_owned()),
+                    role,
+                },
+                &mut bound_ids,
+                &mut bindings,
+                errors,
+            );
         }
     }
 
-    if let Some(method) = doc_id.strip_prefix("reference.api.method-") {
-        let methods = if method == "close-task" {
-            vec!["check_close".to_owned(), "close_task".to_owned()]
-        } else {
-            vec![method.replace('-', "_")]
-        };
-        for method in methods {
-            contracts.insert(format!("api.method.{method}.request"));
-            contracts.insert(format!("api.method.{method}.response"));
+    bindings
+}
+
+fn parse_document_contract_id(
+    doc_id: &str,
+    value: &str,
+    errors: &mut Vec<ValidationIssue>,
+) -> Option<ContractId> {
+    match ContractId::parse(value.to_owned()) {
+        Some(contract_id) => Some(contract_id),
+        None => {
+            errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!(
+                    "{doc_id} contract {value} must use lowercase semantic dot-separated words"
+                ),
+            ));
+            None
         }
     }
-    contracts
+}
+
+fn report_unknown_contract(
+    doc_id: &str,
+    contract_id: &ContractId,
+    errors: &mut Vec<ValidationIssue>,
+) {
+    errors.push(ValidationIssue::new(
+        DOC_INDEX_PATH,
+        "metadata.contracts",
+        format!("{doc_id} references unknown semantic contract {contract_id}"),
+    ));
+}
+
+fn insert_document_binding(
+    doc_id: &str,
+    binding: DocumentContractBinding,
+    bound_ids: &mut BTreeSet<ContractId>,
+    bindings: &mut BTreeSet<DocumentContractBinding>,
+    errors: &mut Vec<ValidationIssue>,
+) {
+    if !bound_ids.insert(binding.contract_id.clone()) {
+        errors.push(ValidationIssue::new(
+            DOC_INDEX_PATH,
+            "metadata.contracts",
+            format!("{doc_id} repeats contract binding {}", binding.contract_id),
+        ));
+        return;
+    }
+    bindings.insert(binding);
+}
+
+fn validate_owned_method_pairs(
+    doc_id: &str,
+    owned_method_ids: &BTreeSet<ContractId>,
+    errors: &mut Vec<ValidationIssue>,
+) {
+    let mut complete_pairs = 0usize;
+    for method in PUBLIC_METHOD_CONTRACTS {
+        let request = owned_method_ids.contains(method.request_contract_id());
+        let response = owned_method_ids.contains(method.response_contract_id());
+        match (request, response) {
+            (true, true) => complete_pairs += 1,
+            (true, false) => errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!(
+                    "{doc_id} method_contracts is missing required response binding {} for {}",
+                    method.response_contract_id(),
+                    method.method().as_str()
+                ),
+            )),
+            (false, true) => errors.push(ValidationIssue::new(
+                DOC_INDEX_PATH,
+                "metadata.contracts",
+                format!(
+                    "{doc_id} method_contracts is missing required request binding {} for {}",
+                    method.request_contract_id(),
+                    method.method().as_str()
+                ),
+            )),
+            (false, false) => {}
+        }
+    }
+    if !owned_method_ids.is_empty() && complete_pairs == 0 {
+        errors.push(ValidationIssue::new(
+            DOC_INDEX_PATH,
+            "metadata.contracts",
+            format!(
+                "{doc_id} method_contracts must contain at least one complete request and response pair"
+            ),
+        ));
+    }
 }
 
 fn is_semantic_contract_identifier(identifier: &str) -> bool {
@@ -1412,5 +1840,171 @@ fn collect_markdown_files(
         } else if path.extension().is_some_and(|extension| extension == "md") {
             files.push(repo_relative(root, &path));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repository_root() -> &'static Path {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("xtask has a workspace root")
+    }
+
+    fn registry() -> SemanticContractRegistry {
+        let mut issues = Vec::new();
+        let registry = SemanticContractRegistry::load(repository_root(), &mut issues);
+        assert!(issues.is_empty(), "{issues:#?}");
+        registry
+    }
+
+    fn entry(yaml: &str) -> Mapping {
+        serde_yaml::from_str::<Value>(yaml)
+            .expect("entry YAML")
+            .as_mapping()
+            .expect("entry mapping")
+            .clone()
+    }
+
+    fn resolve(
+        doc_id: &str,
+        yaml: &str,
+    ) -> (BTreeSet<DocumentContractBinding>, Vec<ValidationIssue>) {
+        let mut issues = Vec::new();
+        let bindings = resolve_document_contracts(
+            &entry(yaml),
+            doc_id,
+            EntryMode::Paired,
+            &registry(),
+            &mut issues,
+        );
+        (bindings, issues)
+    }
+
+    fn binding_ids(
+        bindings: &BTreeSet<DocumentContractBinding>,
+    ) -> Vec<(&str, DocumentContractRole)> {
+        bindings
+            .iter()
+            .map(|binding| (binding.contract_id.as_str(), binding.role))
+            .collect()
+    }
+
+    #[test]
+    fn regular_method_document_resolves_one_owned_request_and_response_pair() {
+        let (bindings, issues) = resolve("reference.api.method-intake", "{}");
+
+        assert!(issues.is_empty(), "{issues:#?}");
+        assert_eq!(
+            binding_ids(&bindings),
+            [
+                (
+                    "api.method.intake.request",
+                    DocumentContractRole::MethodRequest
+                ),
+                (
+                    "api.method.intake.response",
+                    DocumentContractRole::MethodResponse
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_multi_method_document_is_normalized_by_semantic_contract_id() {
+        let (bindings, issues) = resolve(
+            "reference.api.method-combined",
+            r#"
+method_contracts:
+- api.method.status.response
+- api.method.intake.request
+- api.method.status.request
+- api.method.intake.response
+"#,
+        );
+
+        assert!(issues.is_empty(), "{issues:#?}");
+        assert_eq!(
+            binding_ids(&bindings),
+            [
+                (
+                    "api.method.intake.request",
+                    DocumentContractRole::MethodRequest
+                ),
+                (
+                    "api.method.intake.response",
+                    DocumentContractRole::MethodResponse
+                ),
+                (
+                    "api.method.status.request",
+                    DocumentContractRole::MethodRequest
+                ),
+                (
+                    "api.method.status.response",
+                    DocumentContractRole::MethodResponse
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_method_ownership_does_not_change_when_the_document_route_changes() {
+        let yaml = r#"
+method_contracts:
+- api.method.intake.request
+- api.method.intake.response
+"#;
+        let (original, original_issues) = resolve("reference.api.method-first-route", yaml);
+        let (renamed, renamed_issues) = resolve("reference.api.method-renamed-route", yaml);
+
+        assert!(original_issues.is_empty(), "{original_issues:#?}");
+        assert!(renamed_issues.is_empty(), "{renamed_issues:#?}");
+        assert_eq!(original, renamed);
+    }
+
+    #[test]
+    fn unknown_and_duplicate_contract_bindings_are_rejected() {
+        let (_, unknown_issues) = resolve(
+            "reference.api.method-intake",
+            "contracts:\n- api.unknown.contract\n",
+        );
+        assert!(unknown_issues
+            .iter()
+            .any(|issue| issue.message().contains("unknown semantic contract")));
+
+        let (_, duplicate_issues) = resolve(
+            "reference.api.method-renamed-route",
+            r#"
+contracts:
+- api.method.intake.request
+method_contracts:
+- api.method.intake.request
+- api.method.intake.response
+"#,
+        );
+        assert!(duplicate_issues
+            .iter()
+            .any(|issue| issue.message().contains("repeats contract binding")));
+    }
+
+    #[test]
+    fn explicit_method_ownership_requires_supported_complete_pairs() {
+        let (_, missing_issues) = resolve(
+            "reference.api.method-combined",
+            "method_contracts:\n- api.method.intake.request\n",
+        );
+        assert!(missing_issues.iter().any(|issue| issue
+            .message()
+            .contains("missing required response binding")));
+
+        let (_, unsupported_issues) = resolve(
+            "reference.api.method-combined",
+            "method_contracts:\n- api.schema.state\n",
+        );
+        assert!(unsupported_issues
+            .iter()
+            .any(|issue| issue.message().contains("unsupported role")));
     }
 }

@@ -1,5 +1,5 @@
 use crate::diagnostics::ValidationIssue;
-use crate::doc_index::{DocIndex, PairedDocument};
+use crate::doc_index::{ContractId, DocIndex, PairedDocument};
 use crate::markdown::{
     self, MarkdownLiteral, MarkdownLiteralKind, MarkdownStructure, MarkdownUnit, MeaningUnitKey,
 };
@@ -170,13 +170,12 @@ impl ContractCatalog {
             .collect()
     }
 
-    fn scoped_identifiers(
+    fn scoped_identifiers<'a>(
         &self,
-        scope: &BTreeSet<String>,
+        scope: impl Iterator<Item = &'a ContractId>,
     ) -> BTreeSet<(IdentifierCategory, String)> {
         scope
-            .iter()
-            .filter_map(|contract| self.contracts.get(contract))
+            .filter_map(|contract| self.contracts.get(contract.as_str()))
             .flat_map(|owner| {
                 owner.identifiers.iter().flat_map(|(category, values)| {
                     values
@@ -198,18 +197,17 @@ pub(crate) fn validate_contract_identifiers(
     if index
         .paired_documents
         .values()
-        .all(|paired| paired.contracts.is_empty())
+        .all(|paired| paired.contract_bindings().next().is_none())
     {
         return;
     }
     let catalog = load_contract_catalog(root, issues);
     validate_descriptor_relationships(&catalog, issues);
-    validate_document_contract_scopes(index, &catalog, issues);
 
     for paired in index
         .paired_documents
         .values()
-        .filter(|paired| !paired.contracts.is_empty())
+        .filter(|paired| paired.contract_bindings().next().is_some())
     {
         validate_pair(root, paired, &catalog, issues);
     }
@@ -512,27 +510,6 @@ fn validate_descriptor_relationships(catalog: &ContractCatalog, issues: &mut Vec
     }
 }
 
-fn validate_document_contract_scopes(
-    index: &DocIndex,
-    catalog: &ContractCatalog,
-    issues: &mut Vec<ValidationIssue>,
-) {
-    for paired in index.paired_documents.values() {
-        for contract in &paired.contracts {
-            if !catalog.contracts.contains_key(contract) {
-                issues.push(ValidationIssue::new(
-                    "docs/doc-index.yaml",
-                    "contract_identifier.scope",
-                    format!(
-                        "document {} references unknown semantic contract {contract}",
-                        paired.doc_id
-                    ),
-                ));
-            }
-        }
-    }
-}
-
 fn validate_pair(
     root: &Path,
     paired: &PairedDocument,
@@ -591,7 +568,7 @@ fn validate_language(
     language: &str,
     issues: &mut Vec<ValidationIssue>,
 ) -> LanguageValidation {
-    let scoped_identifiers = catalog.scoped_identifiers(&paired.contracts);
+    let scoped_identifiers = catalog.scoped_identifiers(paired.contract_ids());
     let mut result = LanguageValidation::default();
     for unit in structure.units() {
         let issue_count = issues.len();
@@ -617,7 +594,7 @@ fn validate_declared_contracts(
     issues: &mut Vec<ValidationIssue>,
 ) {
     for contract in unit.literals.iter().filter_map(declared_contract) {
-        if !paired.contracts.contains(contract) || !catalog.contracts.contains_key(contract) {
+        if !paired.contains_contract(contract) || !catalog.contracts.contains_key(contract) {
             issues.push(ValidationIssue::at_line(
                 path,
                 "contract_identifier.scope",
@@ -833,21 +810,20 @@ fn validate_structured_literal(
         return None;
     }
     let candidates = if let Some(contract) = contract_selectors.first().copied() {
-        if !paired.contracts.contains(contract) {
+        if !paired.contains_contract(contract) {
             return None;
         }
         vec![contract]
     } else {
         paired
-            .contracts
-            .iter()
+            .contract_ids()
             .filter(|contract| {
                 catalog
                     .contracts
-                    .get(*contract)
+                    .get(contract.as_str())
                     .is_some_and(|owner| owner.example_schemas.contains_key(shape))
             })
-            .map(String::as_str)
+            .map(ContractId::as_str)
             .collect::<Vec<_>>()
     };
     let contract = match candidates.as_slice() {
@@ -1117,7 +1093,7 @@ fn validate_exact_candidate(
     let matches = catalog.exact_matches(value, predicate);
     if matches
         .iter()
-        .any(|(contract, _)| paired.contracts.contains(contract))
+        .any(|(contract, _)| paired.contains_contract(contract))
     {
         return;
     }
@@ -1154,9 +1130,8 @@ fn document_domains(
     catalog: &ContractCatalog,
 ) -> BTreeSet<ContractDomain> {
     paired
-        .contracts
-        .iter()
-        .filter_map(|contract| catalog.contracts.get(contract))
+        .contract_ids()
+        .filter_map(|contract| catalog.contracts.get(contract.as_str()))
         .map(|owner| owner.domain)
         .collect()
 }
@@ -1365,12 +1340,11 @@ fn report_missing_identifiers(
         .collect::<Vec<_>>()
         .join(", ");
     let owners = paired
-        .contracts
-        .iter()
+        .contract_ids()
         .filter_map(|contract| {
             catalog
                 .contracts
-                .get(contract)
+                .get(contract.as_str())
                 .map(|owner| format!("{contract} ({})", owner.owner))
         })
         .collect::<Vec<_>>()
@@ -1632,6 +1606,7 @@ fn format_identifiers(values: &BTreeSet<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::doc_index::{DocumentContractBinding, DocumentContractRole};
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -1738,22 +1713,71 @@ mod tests {
         english: &str,
         korean: &str,
     ) -> Vec<ValidationIssue> {
+        validate_for_document(
+            catalog,
+            "reference.api.method-alpha",
+            contracts,
+            english,
+            korean,
+        )
+    }
+
+    fn validate_for_document(
+        catalog: &ContractCatalog,
+        doc_id: &str,
+        contracts: &[&str],
+        english: &str,
+        korean: &str,
+    ) -> Vec<ValidationIssue> {
         let root = TempDir::new().expect("fixture root");
         fs::write(root.path().join("en.md"), english).expect("English fixture");
         fs::write(root.path().join("ko.md"), korean).expect("Korean fixture");
         let paired = PairedDocument {
-            doc_id: "reference.api.method-alpha".to_owned(),
+            doc_id: doc_id.to_owned(),
             path_en: "en.md".to_owned(),
             path_ko: "ko.md".to_owned(),
-            contracts: contracts
+            contract_bindings: contracts
                 .iter()
-                .map(|contract| (*contract).to_owned())
+                .map(|contract| DocumentContractBinding {
+                    contract_id: ContractId::parse((*contract).to_owned())
+                        .expect("synthetic contract id"),
+                    role: DocumentContractRole::SupportingContract,
+                })
                 .collect(),
         };
         let mut issues = Vec::new();
         validate_pair(root.path(), &paired, catalog, &mut issues);
         issues.sort();
         issues
+    }
+
+    #[test]
+    fn identifier_validation_consumes_resolved_bindings_independent_of_document_route() {
+        let catalog = structured_catalog();
+        let issues = validate_for_document(
+            &catalog,
+            "reference.api.method-route-that-names-no-contract",
+            &["api.method.alpha.request"],
+            "# A\n\n`request_only`\n",
+            "# 가\n\n`request_only`\n",
+        );
+
+        assert!(issues.is_empty(), "{issues:#?}");
+    }
+
+    #[test]
+    fn structured_example_validation_uses_the_same_resolved_binding_set() {
+        let catalog = structured_catalog();
+        let document = "# A\n\n```json shape=params\n{\"request_only\":\"value\",\"nested\":{\"known\":true},\"items\":[1],\"state\":\"ready\",\"nonnull\":\"value\"}\n```\n";
+        let issues = validate_for_document(
+            &catalog,
+            "reference.api.method-route-that-names-no-contract",
+            &["api.method.alpha.request"],
+            document,
+            document,
+        );
+
+        assert!(issues.is_empty(), "{issues:#?}");
     }
 
     #[test]

@@ -16,10 +16,20 @@ document `kind`, summary, normative level, translation policy, primary audience,
 reader journeys, focused `canonical_for` ownership where needed, maintenance
 `owner_area`, `created_on`, `last_updated_on`, `last_verified_on`, root
 `default_applicability`, optional entry-specific `applies_to`, `depends_on`
-relationships, and optional exact semantic `contracts` for paired documents.
-Regular API method routes derive their request and response contract IDs
-deterministically. Other contract-bearing documents list only the semantic
-contract IDs they actually cover.
+relationships, optional exact semantic `contracts` for paired documents, and
+explicit `method_contracts` when a method Reference page owns a non-conventional
+or multi-method set. `DocIndex` is the only owner that resolves this metadata
+into a validated, normalized contract-binding set. Regular method pages resolve
+one request and response pair through the current route convention. Explicit
+method ownership lists complete request and response pairs and does not depend
+on the route spelling. Other contract-bearing documents list only the semantic
+contracts they actually use for identifiers or structured examples.
+
+Generators, identifier checks, structured-example validation, generated-region
+checks, and bilingual parity checks consume the resolved bindings. They do not
+interpret document routes independently. Exact schemas, shapes, and identifier
+catalogs remain with the semantic contract descriptors referenced by each
+binding.
 
 `canonical_for` names the information or contract area owned by a document.
 `owner_area` names the durable maintenance responsibility domain for keeping
@@ -205,11 +215,11 @@ response shapes, mismatched required fields, and inconsistent response branches
 are documentation failures.
 
 Every Reference `json`, `yaml`, or `yml` fence is a complete structured
-instance. It declares exactly one `shape=` value. The document route supplies
-the available semantic contracts; when more than one of them exposes that
-shape, the fence also declares exactly one `contract=` value naming a contract
-already assigned to the document. Fence metadata never carries an identifier
-inventory.
+instance. It declares exactly one `shape=` value. The document's resolved
+`DocIndex` bindings supply the available semantic contracts; when more than one
+of them exposes that shape, the fence also declares exactly one `contract=`
+value naming a contract already assigned to the document. Fence metadata never
+carries an identifier inventory.
 
 The selected descriptor supplies the exact schema for the selected shape.
 Current shapes are `complete_request`, `params`, `complete_response`,
@@ -232,8 +242,10 @@ structural and exact-identifier parity is compared.
 
 Request and response field, requiredness, nullability, and type tables in API
 method Reference pages are generated from semantic request and response
-descriptors by `cargo run -p xtask -- docs-sync`. Stable generated-region
-markers bind each table to exact contract IDs and shapes. The shared
+descriptors selected by the resolved document bindings through
+`cargo run -p xtask -- docs-sync`. Stable generated-region markers bind each
+table to exact contract IDs and shapes. Multi-method pages generate every owned
+method binding in normalized binding order. The shared
 `ToolResultBase`, `ToolRejectedResponse`, and `ToolDryRunResponse` structures
 are generated once in API Schema Core; method pages generate links to those
 shared structures and keep their success-result fields separate. A method
