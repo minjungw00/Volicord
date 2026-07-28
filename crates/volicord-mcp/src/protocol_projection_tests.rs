@@ -6,6 +6,7 @@ use crate::tool_registry::{
     ToolSchemaDetail,
 };
 use std::collections::BTreeSet;
+use volicord_types::schema::{DryRunIntent, GuaranteeDisclosure, ToolError, ToolRejectedResponse};
 
 const SCHEMA_2024_10_07: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -409,6 +410,45 @@ fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
                 assert!(projected.get("isError").is_none());
             }
         }
+    }
+}
+
+#[test]
+fn every_production_profile_preserves_required_tool_error_details() {
+    let rejection = serde_json::to_value(ToolRejectedResponse::new(
+        DryRunIntent::NotRequested,
+        Some(7),
+        GuaranteeDisclosure::authority_record(),
+        vec![ToolError::new(
+            ErrorCode::ValidationFailed,
+            "invalid request",
+            false,
+            None,
+        )],
+    ))
+    .expect("typed rejection should serialize");
+
+    for profile in production_profiles() {
+        let projected = CanonicalToolResult {
+            metadata: None,
+            content: Vec::new(),
+            structured_content: rejection.clone(),
+            is_error: false,
+        }
+        .project(profile.capabilities())
+        .expect("Core rejection should project")
+        .into_value();
+        let authoritative = authoritative_result(&projected);
+        assert_eq!(
+            authoritative["errors"][0]["details"],
+            Value::Null,
+            "{} projection omitted ToolError.details",
+            profile.revision()
+        );
+        assert!(authoritative["errors"][0]
+            .as_object()
+            .expect("ToolError should remain an object")
+            .contains_key("details"));
     }
 }
 

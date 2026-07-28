@@ -1806,6 +1806,13 @@ A neutral Core operational-unavailability error uses that same runtime-error
 path: bounded text on stderr and exit `1`. CLI renders no MCP wire identity and
 does not synthesize a public method rejection.
 
+When an administrative command emits a public Core rejection as JSON, it
+preserves the exact closed `ToolRejectedResponse`. Every nested `ToolError`
+contains the required `details` field, using `null` when no details object is
+available and the Core-produced object otherwise. Human-readable rejection
+rendering may summarize the code and message but does not define another
+structured error shape.
+
 `diagnostics show` and `diagnostics session` use lookup status rather than
 finding severity for exit selection. A found record or session exits `0`, even
 when an active finding or terminal occurrence has `error` severity. A typed

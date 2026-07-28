@@ -777,12 +777,32 @@ pub enum PreviewableToolResponse<T> {
 
 /// Public API error item.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
 pub struct ToolError {
     pub category: FailureCategory,
     pub code: ErrorCode,
     pub message: String,
     pub retryable: bool,
-    pub details: Option<JsonObject>,
+    pub details: RequiredNullable<JsonObject>,
+}
+
+impl ToolError {
+    /// Builds a public error and converts optional semantic details into the
+    /// required-nullable wire field.
+    pub fn new(
+        code: ErrorCode,
+        message: impl Into<String>,
+        retryable: bool,
+        details: Option<JsonObject>,
+    ) -> Self {
+        Self {
+            category: code.failure_category(),
+            code,
+            message: message.into(),
+            retryable,
+            details: details.into(),
+        }
+    }
 }
 
 /// Closed detail shape for a typed platform-boundary failure.
@@ -799,7 +819,7 @@ struct ToolErrorWire {
     code: ErrorCode,
     message: String,
     retryable: bool,
-    details: Option<JsonObject>,
+    details: RequiredNullable<JsonObject>,
 }
 
 impl<'de> Deserialize<'de> for ToolError {

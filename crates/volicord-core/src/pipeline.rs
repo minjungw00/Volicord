@@ -1357,13 +1357,7 @@ pub fn tool_error(
     retryable: bool,
     details: Option<JsonObject>,
 ) -> ToolError {
-    ToolError {
-        category: code.failure_category(),
-        code,
-        message: message.into(),
-        retryable,
-        details,
-    }
+    ToolError::new(code, message, retryable, details)
 }
 
 fn validate_envelope(envelope: &ToolEnvelope, request_json: &Value) -> Vec<ToolError> {
@@ -2548,6 +2542,27 @@ mod tests {
                 ErrorCode::OperationResultUnavailable,
             ]
         );
+    }
+
+    #[test]
+    fn semantic_error_without_details_serializes_required_null() {
+        let response = rejected_response(
+            DryRunIntent::NotRequested,
+            Some(7),
+            vec![tool_error(
+                ErrorCode::ValidationFailed,
+                "request validation failed",
+                false,
+                None,
+            )],
+        );
+
+        let serialized = serde_json::to_value(response).expect("rejection should serialize");
+        assert_eq!(serialized["errors"][0]["details"], Value::Null);
+        assert!(serialized["errors"][0]
+            .as_object()
+            .expect("ToolError should serialize as an object")
+            .contains_key("details"));
     }
 
     #[test]

@@ -298,26 +298,25 @@ mod tests {
     use serde_json::json;
     use volicord_test_support::{core_fixtures::CoreFixture, seed_test_agent_session};
     use volicord_types::ids::{AgentConnectionId, AgentRuntimeSessionId, AgentSessionId};
+    use volicord_types::schema::{GuaranteeDisclosure, ToolError, ToolRejectedResponse};
+    use volicord_types::values::ErrorCode;
 
     use super::*;
 
     #[test]
     fn rejected_reconcile_response_is_failure_output() {
-        let response_value = json!({
-            "base": {
-                "response_kind": "rejected",
-                "effect_kind": "no_effect",
-                "dry_run": false,
-                "state_version": 3,
-                "events": []
-            },
-            "errors": [{
-                "code": "INVOCATION_CONTEXT_MISMATCH",
-                "message": "invocation context does not match Core preflight requirements",
-                "retryable": false,
-                "details": {}
-            }]
-        });
+        let response_value = serde_json::to_value(ToolRejectedResponse::new(
+            volicord_types::schema::DryRunIntent::NotRequested,
+            Some(3),
+            GuaranteeDisclosure::authority_record(),
+            vec![ToolError::new(
+                ErrorCode::InvocationContextMismatch,
+                "invocation context does not match Core preflight requirements",
+                false,
+                None,
+            )],
+        ))
+        .expect("typed rejection should serialize");
         let response = PipelineResponse {
             response_json: response_value.to_string(),
             response_value,
@@ -333,6 +332,9 @@ mod tests {
             ChangesCommandError::FailureOutput(output) => {
                 assert!(output.contains("\"response_kind\": \"rejected\""));
                 assert!(output.contains("INVOCATION_CONTEXT_MISMATCH"));
+                let projected: serde_json::Value =
+                    serde_json::from_str(&output).expect("CLI failure output should be JSON");
+                assert_eq!(projected["errors"][0]["details"], serde_json::Value::Null);
             }
             other => panic!("expected failure output, got {other:?}"),
         }

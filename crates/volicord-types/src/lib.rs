@@ -1184,6 +1184,107 @@ mod tests {
     }
 
     #[test]
+    fn tool_error_decodes_only_the_closed_required_nullable_shape() {
+        for details in [Value::Null, json!({"field": "summary"})] {
+            let value = tool_error_json(details);
+            let decoded: ToolError =
+                serde_json::from_value(value.clone()).expect("complete ToolError should decode");
+            assert_eq!(
+                serde_json::to_value(decoded).expect("ToolError should serialize"),
+                value
+            );
+        }
+
+        let mut missing_details = tool_error_json(Value::Null);
+        missing_details
+            .as_object_mut()
+            .expect("ToolError fixture should be an object")
+            .remove("details");
+        assert!(serde_json::from_value::<ToolError>(missing_details).is_err());
+
+        for details in [json!("text"), json!(7), json!([{"field": "summary"}])] {
+            assert!(
+                serde_json::from_value::<ToolError>(tool_error_json(details)).is_err(),
+                "ToolError should reject a non-object non-null details value"
+            );
+        }
+
+        let mut unknown = tool_error_json(Value::Null);
+        unknown["unexpected"] = json!(true);
+        assert!(serde_json::from_value::<ToolError>(unknown).is_err());
+    }
+
+    #[test]
+    fn tool_error_rejects_duplicate_wire_properties() {
+        for duplicate in [
+            r#"{"category":"rejected","code":"VALIDATION_FAILED","message":"invalid request","retryable":false,"details":null,"details":{}}"#,
+            r#"{"category":"rejected","code":"VALIDATION_FAILED","code":"VALIDATION_FAILED","message":"invalid request","retryable":false,"details":null}"#,
+            r#"{"category":"rejected","code":"VALIDATION_FAILED","message":"invalid request","message":"invalid request","retryable":false,"details":null}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<ToolError>(duplicate).is_err(),
+                "ToolError should reject duplicate properties: {duplicate}"
+            );
+        }
+    }
+
+    #[test]
+    fn tool_error_constructor_serializes_explicit_null_or_object_details() {
+        let without_details =
+            ToolError::new(ErrorCode::ValidationFailed, "invalid request", false, None);
+        let serialized =
+            serde_json::to_value(without_details).expect("ToolError without details serializes");
+        assert_eq!(serialized["details"], Value::Null);
+        assert!(serialized
+            .as_object()
+            .expect("ToolError should serialize as an object")
+            .contains_key("details"));
+
+        let details = JsonObject::from_iter([("field".to_owned(), json!("summary"))]);
+        let with_details = ToolError::new(
+            ErrorCode::ValidationFailed,
+            "invalid request",
+            false,
+            Some(details.clone()),
+        );
+        assert_eq!(
+            serde_json::to_value(with_details).expect("ToolError with details serializes")
+                ["details"],
+            Value::Object(details)
+        );
+    }
+
+    #[test]
+    fn tool_error_schema_requires_nullable_details_and_closes_the_object() {
+        let schema = serde_json::to_value(schema_for!(ToolError))
+            .expect("ToolError schema should serialize");
+        assert_required(
+            &schema,
+            &["category", "code", "message", "retryable", "details"],
+            "ToolError",
+        );
+        assert_eq!(schema["additionalProperties"], false);
+        assert_schema_allows_null_property(&schema, "details");
+        assert!(validate_json_schema(&schema, &tool_error_json(Value::Null)).is_ok());
+        assert!(
+            validate_json_schema(&schema, &tool_error_json(json!({"field": "summary"}))).is_ok()
+        );
+
+        let mut missing = tool_error_json(Value::Null);
+        missing
+            .as_object_mut()
+            .expect("ToolError fixture should be an object")
+            .remove("details");
+        assert!(validate_json_schema(&schema, &missing).is_err());
+        for details in [json!("text"), json!(7), json!([{"field": "summary"}])] {
+            assert!(validate_json_schema(&schema, &tool_error_json(details)).is_err());
+        }
+        let mut unknown = tool_error_json(Value::Null);
+        unknown["unexpected"] = json!(true);
+        assert!(validate_json_schema(&schema, &unknown).is_err());
+    }
+
+    #[test]
     fn public_response_families_decode_only_closed_branch_shapes() {
         let rejection = valid_rejection_response_json(false);
         let preview = valid_dry_run_response_json();
@@ -2388,15 +2489,24 @@ mod tests {
             DryRunIntent::from_wire_bool(dry_run),
             Some(7),
             GuaranteeDisclosure::authority_record(),
-            vec![ToolError {
-                category: FailureCategory::Rejected,
-                code: ErrorCode::ValidationFailed,
-                message: "request validation failed".to_owned(),
-                retryable: false,
-                details: None,
-            }],
+            vec![ToolError::new(
+                ErrorCode::ValidationFailed,
+                "request validation failed",
+                false,
+                None,
+            )],
         ))
         .expect("valid rejection should serialize")
+    }
+
+    fn tool_error_json(details: Value) -> Value {
+        json!({
+            "category": "rejected",
+            "code": "VALIDATION_FAILED",
+            "message": "invalid request",
+            "retryable": false,
+            "details": details
+        })
     }
 
     fn valid_dry_run_response_json() -> Value {

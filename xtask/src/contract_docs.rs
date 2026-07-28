@@ -19,6 +19,7 @@ const RESPONSE_VARIANTS_SHAPE: &str = "response_variants";
 const RESULT_SHAPE: &str = "result_body";
 const REJECTION_SHAPE: &str = "rejection";
 const DRY_RUN_SHAPE: &str = "dry_run";
+const TOOL_ERROR_SHAPE: &str = "schema_object.ToolError";
 const RESULT_BASE_SHAPE: &str = "schema_object.ToolResultBase";
 const REJECTED_BASE_SHAPE: &str = "schema_object.ToolRejectedBase";
 const DRY_RUN_BASE_SHAPE: &str = "schema_object.ToolDryRunBase";
@@ -589,6 +590,7 @@ fn render_common_response_region(
     language: Language,
 ) -> Result<RenderedRegion> {
     let bindings = [
+        (descriptor.id().to_owned(), TOOL_ERROR_SHAPE),
         (descriptor.id().to_owned(), RESULT_BASE_SHAPE),
         (descriptor.id().to_owned(), REJECTED_BASE_SHAPE),
         (descriptor.id().to_owned(), DRY_RUN_BASE_SHAPE),
@@ -597,6 +599,11 @@ fn render_common_response_region(
     ];
     let id = region_id(&bindings);
     let schemas = [
+        (
+            exact_shape(descriptor, TOOL_ERROR_SHAPE)?,
+            TableRole::Common,
+            TOOL_ERROR_SHAPE,
+        ),
         (common.result_base, TableRole::Common, RESULT_BASE_SHAPE),
         (
             common.rejected_base,
@@ -1515,6 +1522,75 @@ mod tests {
                     contract.method().as_str()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn compiled_tool_error_schema_enforces_required_nullable_closed_shape() {
+        let descriptors = descriptor_catalog();
+        let core = descriptors
+            .get(CORE_SCHEMA_CONTRACT_ID)
+            .expect("core schema descriptor");
+        let schema = exact_shape(core, TOOL_ERROR_SHAPE).expect("ToolError schema");
+        let compiled = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .compile(schema)
+            .expect("ToolError schema should compile");
+
+        let fixture = |details| {
+            json!({
+                "category": "rejected",
+                "code": "VALIDATION_FAILED",
+                "message": "invalid request",
+                "retryable": false,
+                "details": details
+            })
+        };
+        assert!(compiled.is_valid(&fixture(Value::Null)));
+        assert!(compiled.is_valid(&fixture(json!({"field": "summary"}))));
+
+        let mut missing = fixture(Value::Null);
+        missing
+            .as_object_mut()
+            .expect("ToolError fixture should be an object")
+            .remove("details");
+        let mut unknown = fixture(Value::Null);
+        unknown["unexpected"] = json!(true);
+        for invalid in [
+            missing,
+            fixture(json!("text")),
+            fixture(json!(7)),
+            fixture(json!([{"field": "summary"}])),
+            unknown,
+        ] {
+            assert!(
+                !compiled.is_valid(&invalid),
+                "compiled ToolError schema accepted {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn generated_tool_error_table_uses_the_core_schema_descriptor() {
+        let descriptors = descriptor_catalog();
+        let core = descriptors
+            .get(CORE_SCHEMA_CONTRACT_ID)
+            .expect("core schema descriptor");
+        let common = common_response_schemas(&descriptors).expect("common response schemas");
+
+        for language in [Language::English, Language::Korean] {
+            let rendered =
+                render_common_response_region(core, &common, language).expect("core schema region");
+            assert!(rendered.id.contains(TOOL_ERROR_SHAPE));
+            let expected = match language {
+                Language::English => "| `details` | yes | yes | `object` |",
+                Language::Korean => "| `details` | 예 | 예 | `object` |",
+            };
+            assert!(
+                rendered.contents.contains(expected),
+                "generated ToolError table should expose required-nullable details: {}",
+                rendered.contents
+            );
         }
     }
 

@@ -30,6 +30,12 @@ Adjacent owners:
 
 `ToolError.details` is machine-readable diagnostic data. It is not display wording and does not replace the public `ToolError.code`.
 
+Every `ToolError` contains the `details` field. Its value is `null` when no
+machine-readable detail object is available; otherwise it is an object
+containing the owner-defined diagnostic facts described below. The enclosing
+`ToolError` object is closed. Exact requiredness, nullability, and field types
+come from the generated structure in [API Schema Core](schema-core.md#common-response).
+
 Detail keys and helper values are exact identifiers.
 
 Condition:

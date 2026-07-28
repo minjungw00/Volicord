@@ -808,6 +808,13 @@ against the exact compact `outputSchema` advertised for that tool. A pre-Core
 adapter rejection uses the same revision carrier and retains its structured
 error code and retry/side-effect flags even where `isError` is not available.
 
+When Core returns a public `ToolRejectedResponse`, MCP preserves that exact
+closed response object in the selected authoritative carrier. Every nested
+`ToolError` retains its required `details` field: the value is `null` when no
+details object is available and otherwise remains the Core-produced object.
+Protocol capabilities select only the carrier and do not remove or rewrite
+that field.
+
 When Core returns typed operational unavailability without a method result,
 MCP emits the MCP-owned `MCP_UNAVAILABLE` structured failure through that same
 selected carrier. The object carries the tool name, typed `operation` and
