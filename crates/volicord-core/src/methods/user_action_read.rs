@@ -99,10 +99,10 @@ fn user_action_resolution_replay_projection(
         && result.user_action_resolution_ref.record_id == resolution_ref.record_id
         && result.user_action_resolution_ref.project_id == resolution_ref.project_id
         && result.user_action_resolution_ref.task_id == resolution_ref.task_id
-        && result.base.response_kind == ResponseKind::Result
-        && result.base.effect_kind == EffectKind::CoreCommitted
-        && !result.base.dry_run
-        && result.base.state_version == Some(replay.committed_state_version)
+        && result.base.response_kind() == ResponseKind::Result
+        && result.base.effect_kind() == EffectKind::CoreCommitted
+        && !result.base.dry_run()
+        && result.base.state_version() == Some(replay.committed_state_version)
         && result
             .user_action_resolution_ref
             .produced_at_state_version
@@ -471,10 +471,10 @@ impl CoreService {
                     .requested_by_actor_source()
                     .to_canonical_string()
             && replay.committed_state_version > replay.basis_state_version
-            && result.base.response_kind == ResponseKind::Result
-            && result.base.effect_kind == EffectKind::CoreCommitted
-            && !result.base.dry_run
-            && result.base.state_version == Some(replay.committed_state_version)
+            && result.base.response_kind() == ResponseKind::Result
+            && result.base.effect_kind() == EffectKind::CoreCommitted
+            && !result.base.dry_run()
+            && result.base.state_version() == Some(replay.committed_state_version)
             && result.user_action_request_summary
                 == AgentSafeUserActionRequestSummary::pending(user_action_request_id.clone());
         if !exact_origin {

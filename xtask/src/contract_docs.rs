@@ -19,6 +19,8 @@ const RESULT_SHAPE: &str = "result_body";
 const REJECTION_SHAPE: &str = "rejection";
 const DRY_RUN_SHAPE: &str = "dry_run";
 const RESULT_BASE_SHAPE: &str = "schema_object.ToolResultBase";
+const REJECTED_BASE_SHAPE: &str = "schema_object.ToolRejectedBase";
+const DRY_RUN_BASE_SHAPE: &str = "schema_object.ToolDryRunBase";
 const SHARED_REJECTION_SHAPE: &str = "schema_object.ToolRejectedResponse";
 const SHARED_DRY_RUN_SHAPE: &str = "schema_object.ToolDryRunResponse";
 
@@ -52,6 +54,8 @@ struct ObjectVariant {
 
 struct CommonResponseSchemas<'a> {
     result_base: &'a Value,
+    rejected_base: &'a Value,
+    dry_run_base: &'a Value,
     rejection: &'a Value,
     dry_run: &'a Value,
 }
@@ -529,12 +533,20 @@ fn render_common_response_region(
 ) -> Result<RenderedRegion> {
     let bindings = [
         (descriptor.id().to_owned(), RESULT_BASE_SHAPE),
+        (descriptor.id().to_owned(), REJECTED_BASE_SHAPE),
+        (descriptor.id().to_owned(), DRY_RUN_BASE_SHAPE),
         (descriptor.id().to_owned(), SHARED_REJECTION_SHAPE),
         (descriptor.id().to_owned(), SHARED_DRY_RUN_SHAPE),
     ];
     let id = region_id(&bindings);
     let schemas = [
         (common.result_base, TableRole::Common, RESULT_BASE_SHAPE),
+        (
+            common.rejected_base,
+            TableRole::Rejection,
+            REJECTED_BASE_SHAPE,
+        ),
+        (common.dry_run_base, TableRole::Preview, DRY_RUN_BASE_SHAPE),
         (
             common.rejection,
             TableRole::Rejection,
@@ -566,6 +578,8 @@ fn common_response_schemas<'a>(
     })?;
     Ok(CommonResponseSchemas {
         result_base: exact_shape(descriptor, RESULT_BASE_SHAPE)?,
+        rejected_base: exact_shape(descriptor, REJECTED_BASE_SHAPE)?,
+        dry_run_base: exact_shape(descriptor, DRY_RUN_BASE_SHAPE)?,
         rejection: exact_shape(descriptor, SHARED_REJECTION_SHAPE)?,
         dry_run: exact_shape(descriptor, SHARED_DRY_RUN_SHAPE)?,
     })
@@ -1174,8 +1188,10 @@ fn reference_name(reference: &str) -> &str {
 mod tests {
     use super::*;
     use crate::doc_index::{ContractId, PairedDocument};
+    use jsonschema::{Draft, JSONSchema};
     use serde_json::json;
     use volicord_types::contracts::JsonExampleShape;
+    use volicord_types::methods::{MethodResponseBranch, PUBLIC_METHOD_CONTRACTS};
 
     fn binding(id: &str, role: DocumentContractRole) -> DocumentContractBinding {
         DocumentContractBinding {
@@ -1321,6 +1337,8 @@ mod tests {
             &descriptors,
             &CommonResponseSchemas {
                 result_base: &base,
+                rejected_base: &base,
+                dry_run_base: &base,
                 rejection: &rejection,
                 dry_run: &dry_run,
             },
@@ -1333,6 +1351,114 @@ mod tests {
         assert!(rendered
             .contents
             .contains("success and rejection as an exact `anyOf` branch union"));
+    }
+
+    #[test]
+    fn compiled_response_schemas_match_exact_branch_decoding() {
+        let rejection = json!({
+            "base": {
+                "response_kind": "rejected",
+                "effect_kind": "no_effect",
+                "dry_run": false,
+                "state_version": 7,
+                "disclosure": {
+                    "guarantee_class": "authority_record",
+                    "guarantees": [],
+                    "non_guarantees": []
+                },
+                "events": []
+            },
+            "errors": [{
+                "category": "rejected",
+                "code": "VALIDATION_FAILED",
+                "message": "request validation failed",
+                "retryable": false,
+                "details": null
+            }]
+        });
+        let preview = json!({
+            "base": {
+                "response_kind": "dry_run",
+                "effect_kind": "no_effect",
+                "dry_run": true,
+                "state_version": 7,
+                "disclosure": {
+                    "guarantee_class": "authority_record",
+                    "guarantees": [],
+                    "non_guarantees": []
+                },
+                "events": []
+            },
+            "dry_run_summary": {
+                "planned_effects": [],
+                "would_blockers": [],
+                "would_errors": [],
+                "next_actions": [],
+                "diagnostics": []
+            }
+        });
+
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            let schema = contract.response_schema();
+            let compiled = JSONSchema::options()
+                .with_draft(Draft::Draft7)
+                .compile(&schema)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} response schema should compile: {error}",
+                        contract.method().as_str()
+                    )
+                });
+            assert!(compiled.is_valid(&rejection));
+            assert!(contract.accepts_response(&rejection));
+
+            let supports_preview = contract.supports_response_branch(MethodResponseBranch::DryRun);
+            assert_eq!(compiled.is_valid(&preview), supports_preview);
+            assert_eq!(contract.accepts_response(&preview), supports_preview);
+
+            let mut invalid = Vec::new();
+            for (pointer, value) in [
+                ("/base/response_kind", json!("result")),
+                ("/base/effect_kind", json!("core_committed")),
+            ] {
+                let mut instance = rejection.clone();
+                *instance.pointer_mut(pointer).expect("rejection pointer") = value;
+                invalid.push(instance);
+            }
+            for (pointer, value) in [
+                ("/base/response_kind", json!("rejected")),
+                ("/base/effect_kind", json!("read_only")),
+                ("/base/dry_run", json!(false)),
+            ] {
+                let mut instance = preview.clone();
+                *instance.pointer_mut(pointer).expect("preview pointer") = value;
+                invalid.push(instance);
+            }
+            for mut instance in [rejection.clone(), preview.clone()] {
+                instance["base"]["unknown_base_field"] = json!(true);
+                invalid.push(instance);
+            }
+            for mut instance in [rejection.clone(), preview.clone()] {
+                instance["unknown_branch_field"] = json!(true);
+                invalid.push(instance);
+            }
+            let mut hybrid = rejection.clone();
+            hybrid["dry_run_summary"] = preview["dry_run_summary"].clone();
+            invalid.push(hybrid);
+
+            for instance in invalid {
+                assert!(
+                    !compiled.is_valid(&instance),
+                    "{} schema accepted invalid response {instance}",
+                    contract.method().as_str()
+                );
+                assert!(
+                    !contract.accepts_response(&instance),
+                    "{} decoder accepted invalid response {instance}",
+                    contract.method().as_str()
+                );
+            }
+        }
     }
 
     #[test]
@@ -1496,6 +1622,8 @@ mod tests {
             response_descriptor(result.clone(), rejection.clone(), dry_run.clone());
         let shared = CommonResponseSchemas {
             result_base: &base,
+            rejected_base: &base,
+            dry_run_base: &base,
             rejection: &rejection,
             dry_run: &dry_run,
         };
@@ -1582,6 +1710,8 @@ mod tests {
             &descriptors,
             &CommonResponseSchemas {
                 result_base: &base,
+                rejected_base: &base,
+                dry_run_base: &base,
                 rejection: &rejection,
                 dry_run: &dry_run,
             },

@@ -1,6 +1,10 @@
 use std::{borrow::Cow, collections::BTreeSet, fmt, ops::Deref};
 
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use schemars::{
+    gen::SchemaGenerator,
+    schema::{InstanceType, Schema, SchemaObject, SingleOrVec},
+    JsonSchema,
+};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
@@ -213,29 +217,417 @@ pub struct ToolEnvelope {
     pub locale: RequiredNullable<String>,
 }
 
-/// Common result metadata carried by each concrete response branch.
+macro_rules! fixed_string_wire_value {
+    ($name:ident, $value:literal) => {
+        #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name;
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                serializer.serialize_str($value)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = String::deserialize(deserializer)?;
+                if value == $value {
+                    Ok(Self)
+                } else {
+                    Err(serde::de::Error::custom(concat!("expected ", $value)))
+                }
+            }
+        }
+
+        impl JsonSchema for $name {
+            fn is_referenceable() -> bool {
+                false
+            }
+
+            fn schema_name() -> String {
+                stringify!($name).to_owned()
+            }
+
+            fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+                Schema::Object(SchemaObject {
+                    instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::String))),
+                    enum_values: Some(vec![Value::String($value.to_owned())]),
+                    ..Default::default()
+                })
+            }
+        }
+    };
+}
+
+macro_rules! fixed_bool_wire_value {
+    ($name:ident, $value:literal) => {
+        #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name;
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                serializer.serialize_bool($value)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = bool::deserialize(deserializer)?;
+                if value == $value {
+                    Ok(Self)
+                } else {
+                    Err(serde::de::Error::custom(concat!("expected ", $value)))
+                }
+            }
+        }
+
+        impl JsonSchema for $name {
+            fn is_referenceable() -> bool {
+                false
+            }
+
+            fn schema_name() -> String {
+                stringify!($name).to_owned()
+            }
+
+            fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+                Schema::Object(SchemaObject {
+                    instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::Boolean))),
+                    enum_values: Some(vec![Value::Bool($value)]),
+                    ..Default::default()
+                })
+            }
+        }
+    };
+}
+
+fixed_string_wire_value!(ResultResponseKind, "result");
+fixed_string_wire_value!(RejectedResponseKind, "rejected");
+fixed_string_wire_value!(DryRunResponseKind, "dry_run");
+fixed_string_wire_value!(ReadOnlyEffectKind, "read_only");
+fixed_string_wire_value!(CoreCommittedEffectKind, "core_committed");
+fixed_string_wire_value!(StagingCreatedEffectKind, "staging_created");
+fixed_string_wire_value!(NoEffectKind, "no_effect");
+fixed_bool_wire_value!(FalseValue, false);
+fixed_bool_wire_value!(TrueValue, true);
+
+/// Closed result metadata carried by each concrete method-result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct ToolResultBase {
-    pub response_kind: ResponseKind,
-    pub effect_kind: EffectKind,
-    pub dry_run: bool,
-    pub state_version: Option<u64>,
-    pub disclosure: GuaranteeDisclosure,
-    pub events: Vec<EventRef>,
+#[serde(untagged, deny_unknown_fields)]
+pub enum ToolResultBase {
+    ReadOnly {
+        response_kind: ResultResponseKind,
+        effect_kind: ReadOnlyEffectKind,
+        dry_run: bool,
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    },
+    CoreCommitted {
+        response_kind: ResultResponseKind,
+        effect_kind: CoreCommittedEffectKind,
+        dry_run: FalseValue,
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    },
+    StagingCreated {
+        response_kind: ResultResponseKind,
+        effect_kind: StagingCreatedEffectKind,
+        dry_run: FalseValue,
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    },
+    NoEffect {
+        response_kind: ResultResponseKind,
+        effect_kind: NoEffectKind,
+        dry_run: FalseValue,
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    },
+}
+
+impl ToolResultBase {
+    pub fn read_only(
+        dry_run: bool,
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    ) -> Self {
+        Self::ReadOnly {
+            response_kind: ResultResponseKind,
+            effect_kind: ReadOnlyEffectKind,
+            dry_run,
+            state_version,
+            disclosure,
+            events,
+        }
+    }
+
+    pub fn core_committed(
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    ) -> Self {
+        Self::CoreCommitted {
+            response_kind: ResultResponseKind,
+            effect_kind: CoreCommittedEffectKind,
+            dry_run: FalseValue,
+            state_version,
+            disclosure,
+            events,
+        }
+    }
+
+    pub fn staging_created(
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    ) -> Self {
+        Self::StagingCreated {
+            response_kind: ResultResponseKind,
+            effect_kind: StagingCreatedEffectKind,
+            dry_run: FalseValue,
+            state_version,
+            disclosure,
+            events,
+        }
+    }
+
+    pub fn no_effect(
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        events: Vec<EventRef>,
+    ) -> Self {
+        Self::NoEffect {
+            response_kind: ResultResponseKind,
+            effect_kind: NoEffectKind,
+            dry_run: FalseValue,
+            state_version,
+            disclosure,
+            events,
+        }
+    }
+
+    pub const fn response_kind(&self) -> ResponseKind {
+        ResponseKind::Result
+    }
+
+    pub const fn effect_kind(&self) -> EffectKind {
+        match self {
+            Self::ReadOnly { .. } => EffectKind::ReadOnly,
+            Self::CoreCommitted { .. } => EffectKind::CoreCommitted,
+            Self::StagingCreated { .. } => EffectKind::StagingCreated,
+            Self::NoEffect { .. } => EffectKind::NoEffect,
+        }
+    }
+
+    pub const fn dry_run(&self) -> bool {
+        match self {
+            Self::ReadOnly { dry_run, .. } => *dry_run,
+            Self::CoreCommitted { .. } | Self::StagingCreated { .. } | Self::NoEffect { .. } => {
+                false
+            }
+        }
+    }
+
+    pub const fn state_version(&self) -> Option<u64> {
+        match self {
+            Self::ReadOnly { state_version, .. }
+            | Self::CoreCommitted { state_version, .. }
+            | Self::StagingCreated { state_version, .. }
+            | Self::NoEffect { state_version, .. } => *state_version,
+        }
+    }
+
+    pub const fn disclosure(&self) -> &GuaranteeDisclosure {
+        match self {
+            Self::ReadOnly { disclosure, .. }
+            | Self::CoreCommitted { disclosure, .. }
+            | Self::StagingCreated { disclosure, .. }
+            | Self::NoEffect { disclosure, .. } => disclosure,
+        }
+    }
+
+    pub fn events(&self) -> &[EventRef] {
+        match self {
+            Self::ReadOnly { events, .. }
+            | Self::CoreCommitted { events, .. }
+            | Self::StagingCreated { events, .. }
+            | Self::NoEffect { events, .. } => events,
+        }
+    }
+}
+
+/// Closed rejection metadata carried by public rejection branches.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ToolRejectedBase {
+    response_kind: RejectedResponseKind,
+    effect_kind: NoEffectKind,
+    dry_run: bool,
+    state_version: Option<u64>,
+    disclosure: GuaranteeDisclosure,
+    events: Vec<EventRef>,
+}
+
+impl ToolRejectedBase {
+    fn new(dry_run: bool, state_version: Option<u64>, disclosure: GuaranteeDisclosure) -> Self {
+        Self {
+            response_kind: RejectedResponseKind,
+            effect_kind: NoEffectKind,
+            dry_run,
+            state_version,
+            disclosure,
+            events: Vec::new(),
+        }
+    }
+
+    pub const fn response_kind(&self) -> ResponseKind {
+        ResponseKind::Rejected
+    }
+
+    pub const fn effect_kind(&self) -> EffectKind {
+        EffectKind::NoEffect
+    }
+
+    pub const fn dry_run(&self) -> bool {
+        self.dry_run
+    }
+
+    pub const fn state_version(&self) -> Option<u64> {
+        self.state_version
+    }
+
+    pub const fn disclosure(&self) -> &GuaranteeDisclosure {
+        &self.disclosure
+    }
+
+    pub fn events(&self) -> &[EventRef] {
+        &self.events
+    }
+}
+
+/// Closed dry-run metadata carried by public preview branches.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ToolDryRunBase {
+    response_kind: DryRunResponseKind,
+    effect_kind: NoEffectKind,
+    dry_run: TrueValue,
+    state_version: Option<u64>,
+    disclosure: GuaranteeDisclosure,
+    events: Vec<EventRef>,
+}
+
+impl ToolDryRunBase {
+    fn new(state_version: Option<u64>, disclosure: GuaranteeDisclosure) -> Self {
+        Self {
+            response_kind: DryRunResponseKind,
+            effect_kind: NoEffectKind,
+            dry_run: TrueValue,
+            state_version,
+            disclosure,
+            events: Vec::new(),
+        }
+    }
+
+    pub const fn response_kind(&self) -> ResponseKind {
+        ResponseKind::DryRun
+    }
+
+    pub const fn effect_kind(&self) -> EffectKind {
+        EffectKind::NoEffect
+    }
+
+    pub const fn dry_run(&self) -> bool {
+        true
+    }
+
+    pub const fn state_version(&self) -> Option<u64> {
+        self.state_version
+    }
+
+    pub const fn disclosure(&self) -> &GuaranteeDisclosure {
+        &self.disclosure
+    }
+
+    pub fn events(&self) -> &[EventRef] {
+        &self.events
+    }
 }
 
 /// Rejected response branch shared by public methods.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ToolRejectedResponse {
-    pub base: ToolResultBase,
-    pub errors: Vec<ToolError>,
+    base: ToolRejectedBase,
+    errors: Vec<ToolError>,
+}
+
+impl ToolRejectedResponse {
+    pub fn new(
+        dry_run: bool,
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        errors: Vec<ToolError>,
+    ) -> Self {
+        Self {
+            base: ToolRejectedBase::new(dry_run, state_version, disclosure),
+            errors,
+        }
+    }
+
+    pub const fn base(&self) -> &ToolRejectedBase {
+        &self.base
+    }
+
+    pub fn errors(&self) -> &[ToolError] {
+        &self.errors
+    }
 }
 
 /// Dry-run preview response branch shared by methods that define one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ToolDryRunResponse {
-    pub base: ToolResultBase,
-    pub dry_run_summary: DryRunSummary,
+    base: ToolDryRunBase,
+    dry_run_summary: DryRunSummary,
+}
+
+impl ToolDryRunResponse {
+    pub fn new(
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+        dry_run_summary: DryRunSummary,
+    ) -> Self {
+        Self {
+            base: ToolDryRunBase::new(state_version, disclosure),
+            dry_run_summary,
+        }
+    }
+
+    pub const fn base(&self) -> &ToolDryRunBase {
+        &self.base
+    }
+
+    pub const fn dry_run_summary(&self) -> &DryRunSummary {
+        &self.dry_run_summary
+    }
 }
 
 /// Response family for methods that return only a result or rejection.
@@ -305,6 +697,7 @@ impl<'de> Deserialize<'de> for ToolError {
 
 /// Event reference emitted in common result metadata.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EventRef {
     pub event_id: EventId,
     pub event_kind: String,

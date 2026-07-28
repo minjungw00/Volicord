@@ -36,8 +36,8 @@ use volicord_types::schema::{
     ToolError, ToolRejectedResponse, ToolResultBase,
 };
 use volicord_types::values::{
-    ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, ResponseKind,
-    UserActionChannelKind, UtcTimestamp,
+    ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, UserActionChannelKind,
+    UtcTimestamp,
 };
 
 use crate::policy::{
@@ -1080,8 +1080,7 @@ impl CoreService {
 
         match branch {
             OwnerPipelineBranch::ReadOnly { result_fields } => {
-                let base = method_result_base(
-                    EffectKind::ReadOnly,
+                let base = read_only_result_base(
                     prepared.envelope.dry_run,
                     Some(project_state.state_version),
                     Vec::new(),
@@ -1094,12 +1093,7 @@ impl CoreService {
                 )
             }
             OwnerPipelineBranch::NoEffectResult { result_fields } => {
-                let base = method_result_base(
-                    EffectKind::NoEffect,
-                    false,
-                    Some(project_state.state_version),
-                    Vec::new(),
-                );
+                let base = no_effect_result_base(Some(project_state.state_version), Vec::new());
                 response_from_value(
                     serde_json::to_value(result_fields.with_base(base))?,
                     Some(verified_invocation),
@@ -1255,21 +1249,48 @@ fn canonical_core_utc_timestamp(timestamp: DateTime<Utc>) -> DateTime<Utc> {
         .expect("millisecond precision is always a valid UTC nanosecond")
 }
 
-/// Builds a common method-result base.
-pub fn method_result_base(
-    effect_kind: EffectKind,
+/// Builds read-only result metadata.
+pub fn read_only_result_base(
     dry_run: bool,
     state_version: Option<u64>,
     events: Vec<EventRef>,
 ) -> ToolResultBase {
-    ToolResultBase {
-        response_kind: ResponseKind::Result,
-        effect_kind,
+    ToolResultBase::read_only(
         dry_run,
         state_version,
-        disclosure: GuaranteeDisclosure::authority_record(),
+        GuaranteeDisclosure::authority_record(),
         events,
-    }
+    )
+}
+
+/// Builds committed result metadata.
+pub fn committed_result_base(state_version: Option<u64>, events: Vec<EventRef>) -> ToolResultBase {
+    ToolResultBase::core_committed(
+        state_version,
+        GuaranteeDisclosure::authority_record(),
+        events,
+    )
+}
+
+/// Builds staging-created result metadata.
+pub fn staging_created_result_base(
+    state_version: Option<u64>,
+    events: Vec<EventRef>,
+) -> ToolResultBase {
+    ToolResultBase::staging_created(
+        state_version,
+        GuaranteeDisclosure::authority_record(),
+        events,
+    )
+}
+
+/// Builds no-effect result metadata.
+pub fn no_effect_result_base(state_version: Option<u64>, events: Vec<EventRef>) -> ToolResultBase {
+    ToolResultBase::no_effect(
+        state_version,
+        GuaranteeDisclosure::authority_record(),
+        events,
+    )
 }
 
 /// Builds a rejected response and applies public error precedence.
@@ -1279,17 +1300,12 @@ pub fn rejected_response(
     mut errors: Vec<ToolError>,
 ) -> ToolRejectedResponse {
     errors.sort_by_key(|error| error_precedence(error.code));
-    ToolRejectedResponse {
-        base: ToolResultBase {
-            response_kind: ResponseKind::Rejected,
-            effect_kind: EffectKind::NoEffect,
-            dry_run,
-            state_version,
-            disclosure: GuaranteeDisclosure::authority_record(),
-            events: Vec::new(),
-        },
+    ToolRejectedResponse::new(
+        dry_run,
+        state_version,
+        GuaranteeDisclosure::authority_record(),
         errors,
-    }
+    )
 }
 
 /// Builds a dry-run preview response.
@@ -1297,17 +1313,11 @@ pub fn dry_run_response(
     state_version: Option<u64>,
     dry_run_summary: DryRunSummary,
 ) -> ToolDryRunResponse {
-    ToolDryRunResponse {
-        base: ToolResultBase {
-            response_kind: ResponseKind::DryRun,
-            effect_kind: EffectKind::NoEffect,
-            dry_run: true,
-            state_version,
-            disclosure: GuaranteeDisclosure::authority_record(),
-            events: Vec::new(),
-        },
+    ToolDryRunResponse::new(
+        state_version,
+        GuaranteeDisclosure::authority_record(),
         dry_run_summary,
-    }
+    )
 }
 
 /// Builds a public API error item.
@@ -1531,10 +1541,8 @@ pub(crate) fn stored_public_response_is_current(
     let Ok(base) = serde_json::from_value::<ToolResultBase>(base_value.clone()) else {
         return false;
     };
-    if base.response_kind != ResponseKind::Result
-        || base.effect_kind != EffectKind::CoreCommitted
-        || base.dry_run
-        || base.state_version != Some(committed_state_version)
+    if base.effect_kind() != EffectKind::CoreCommitted
+        || base.state_version() != Some(committed_state_version)
     {
         return false;
     }
@@ -1967,12 +1975,7 @@ where
             event_kind: event.event_kind,
         })
         .collect();
-    let base = method_result_base(
-        EffectKind::CoreCommitted,
-        false,
-        Some(committed_state_version),
-        event_refs,
-    );
+    let base = committed_result_base(Some(committed_state_version), event_refs);
     let response = serde_json::to_value(result_fields.with_base(base))?;
     serde_json::to_string(&response).map_err(CorePipelineError::from)
 }
@@ -2327,6 +2330,54 @@ mod tests {
     }
 
     #[test]
+    fn semantic_response_constructors_set_every_fixed_branch_fact() {
+        for (base, expected_effect, expected_dry_run) in [
+            (
+                read_only_result_base(false, Some(7), Vec::new()),
+                "read_only",
+                false,
+            ),
+            (
+                read_only_result_base(true, Some(7), Vec::new()),
+                "read_only",
+                true,
+            ),
+            (
+                committed_result_base(Some(8), Vec::new()),
+                "core_committed",
+                false,
+            ),
+            (
+                staging_created_result_base(Some(7), Vec::new()),
+                "staging_created",
+                false,
+            ),
+            (
+                no_effect_result_base(Some(7), Vec::new()),
+                "no_effect",
+                false,
+            ),
+        ] {
+            let encoded = serde_json::to_value(base).expect("result base should serialize");
+            assert_eq!(encoded["response_kind"], "result");
+            assert_eq!(encoded["effect_kind"], expected_effect);
+            assert_eq!(encoded["dry_run"], expected_dry_run);
+        }
+
+        let rejected = serde_json::to_value(rejected_response(true, Some(7), Vec::new()))
+            .expect("rejection should serialize");
+        assert_eq!(rejected["base"]["response_kind"], "rejected");
+        assert_eq!(rejected["base"]["effect_kind"], "no_effect");
+        assert_eq!(rejected["base"]["dry_run"], true);
+
+        let preview = serde_json::to_value(dry_run_response(Some(7), dry_run_summary()))
+            .expect("preview should serialize");
+        assert_eq!(preview["base"]["response_kind"], "dry_run");
+        assert_eq!(preview["base"]["effect_kind"], "no_effect");
+        assert_eq!(preview["base"]["dry_run"], true);
+    }
+
+    #[test]
     fn admitted_core_service_accepts_only_its_exact_mutation_identity() -> Result<(), Box<dyn Error>>
     {
         let first = TempRuntimeHome::new("core-service-admitted-first")?;
@@ -2390,7 +2441,7 @@ mod tests {
 
         assert_eq!(
             response
-                .errors
+                .errors()
                 .iter()
                 .map(|error| error.code)
                 .collect::<Vec<_>>(),

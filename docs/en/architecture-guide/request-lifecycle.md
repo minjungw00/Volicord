@@ -65,9 +65,11 @@ when applicable, and advances `state_version` exactly once.
 
 For a method-result branch, the pipeline attaches the final `ToolResultBase`
 only after those common facts are available. Read-only, no-effect, and
-committed results therefore use the same typed composition boundary. A dry-run
-branch remains the typed `ToolDryRunResponse` branch defined by the public
-response owner.
+committed results therefore use the same typed composition boundary. Rejection
+and dry-run responses use their distinct `ToolRejectedBase` and
+`ToolDryRunBase` metadata types. The branch-specific types own their fixed
+discriminants and effect facts, and strict decoding rejects unknown or
+cross-branch fields before an untagged family can select another branch.
 
 CLI and MCP adapters decode the returned public object as that method's exact
 response family before rendering or protocol projection. Adapter carriers

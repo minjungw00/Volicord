@@ -661,6 +661,7 @@ impl MethodOperationCategory for StageArtifactRequest {
 
 /// `volicord.stage_artifact` method result branch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct StageArtifactResult {
     pub base: ToolResultBase,
     pub evidence_state: EvidenceDisplayState,
@@ -1149,26 +1150,19 @@ mod tests {
 
     use super::*;
     use crate::schema::{DryRunSummary, GuaranteeDisclosure, ToolDryRunResponse};
-    use crate::values::{EffectKind, ResponseKind};
 
     fn dry_run_response_value() -> Value {
-        serde_json::to_value(ToolDryRunResponse {
-            base: ToolResultBase {
-                response_kind: ResponseKind::DryRun,
-                effect_kind: EffectKind::NoEffect,
-                dry_run: true,
-                state_version: Some(1),
-                disclosure: GuaranteeDisclosure::authority_record(),
-                events: Vec::new(),
-            },
-            dry_run_summary: DryRunSummary {
+        serde_json::to_value(ToolDryRunResponse::new(
+            Some(1),
+            GuaranteeDisclosure::authority_record(),
+            DryRunSummary {
                 planned_effects: Vec::new(),
                 would_blockers: Vec::new(),
                 would_errors: Vec::new(),
                 next_actions: Vec::new(),
                 diagnostics: Vec::new(),
             },
-        })
+        ))
         .expect("dry-run response should serialize")
     }
 

@@ -155,7 +155,6 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
-          "ResponseKind",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -169,8 +168,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UtcTimestamp",
@@ -184,7 +185,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:30a3e33febd745b511bbc5c15d20f96fdc5c354918820ebdf55c4bac51da319e"
+        "sha256": "sha256:797f3f8b10ebdd5716c5a45251aae110097875986fffd7696f6a1d73b8220973"
       }
     },
     {
@@ -301,7 +302,6 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
-          "ResponseKind",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -315,8 +315,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UpdateScopeResult",
@@ -331,7 +333,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:c154b10d75b96dee0b5b474fe9b98f28f3d5ce81d5cde4f2d0337e03fc54d3e1"
+        "sha256": "sha256:c7c0eedd668248fcfb5010ac7fa5b613d6098ce640fd2b715dd0fa234d27f670"
       }
     },
     {
@@ -384,7 +386,6 @@
           "ContinuityCursor",
           "ContinuityPageInfo",
           "CurrentCloseBasis",
-          "EffectKind",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -423,7 +424,6 @@
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
-          "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
           "ShapingGap",
@@ -443,6 +443,7 @@
           "TaskMode",
           "TaskResult",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "ToolResultOrRejected_for_StatusResult",
@@ -457,7 +458,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ad3082277cf6b091a7e74f0e114b03e64d5e4e627e36080c607e7dee625e98d3"
+        "sha256": "sha256:0f296fccd1d59521b76c684ec3a812d37e4f8b7b2daf9d1c83e9e58a6f073730"
       }
     },
     {
@@ -486,7 +487,6 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
-          "EffectKind",
           "ErrorCode",
           "EventRef",
           "FailureCategory",
@@ -504,15 +504,15 @@
           "MethodName",
           "NonGuarantee",
           "OperationResultRef",
-          "ResponseKind",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "ToolResultOrRejected_for_GetOperationResultResult"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:559ad2f3a33130d51b1168d1fbc56701914b2581653ef7303d582e31fbcaaffa"
+        "sha256": "sha256:01536d5aca10cdae08d4e874023abd0ae4487a3c1294090012069badc7a021dd"
       }
     },
     {
@@ -598,19 +598,20 @@
           "PlannedEffect",
           "PrepareEvidenceCaptureResult",
           "PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
-          "ResponseKind",
           "StateRecordKind",
           "StateRecordRef",
           "StatusCloseState",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e54d02f990d332391f9c57e6f7a7efde6f00f754b8d1ee008e7fc520675a7937"
+        "sha256": "sha256:0ec6f5b11a0af0df9044bc2152debeb6924f8f6eb9f921886adcc8d11b6ba73c"
       }
     },
     {
@@ -723,7 +724,6 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
-          "ResponseKind",
           "SensitiveActionScope",
           "ShapingGap",
           "ShapingReadiness",
@@ -738,8 +738,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UserActionContext",
@@ -763,7 +765,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:1e29a5948fcd5e8f9f8afe1623a9961c9b1a1c5946060f2a16a86627c500f84b"
+        "sha256": "sha256:3cf5407ab08b31107a82564c60868a19cfbf39eb55ec1985b8b6b4dcb44161a1"
       }
     },
     {
@@ -849,21 +851,22 @@
           "PlannedEffect",
           "PreviewableToolResponse_for_StageArtifactResult",
           "RedactionState",
-          "ResponseKind",
           "StageArtifactResult",
           "StagedArtifactHandle",
           "StateRecordKind",
           "StateRecordRef",
           "StatusCloseState",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:6bed875606fdbfff25621f8e92c241285800b5b15403ac6b21b3c517a1f9ba4e"
+        "sha256": "sha256:77a67453743f2a9831ff784598b8ca035a8879be4eef47ba7ffd9e201c2dd7b2"
       }
     },
     {
@@ -1027,7 +1030,6 @@
           "RepositoryFileSource",
           "RequestedControlLevel",
           "ResidualRisk",
-          "ResponseKind",
           "RunKind",
           "RunSummary",
           "SensitiveActionRequirement",
@@ -1046,8 +1048,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UserContextSource",
@@ -1062,7 +1066,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:efb72f02b42dc3319ff1aa5d9f7d19f62d31b9034f4530763791ecce9ff61b64"
+        "sha256": "sha256:5bb611db81a727fb68b371f19e42b92c5952dd28d35f0ffa247fcac311619099"
       }
     },
     {
@@ -1185,7 +1189,6 @@
           "RedactionState",
           "RequestUserActionResult",
           "RequestedControlLevel",
-          "ResponseKind",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -1199,8 +1202,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UserActionChannelKind",
@@ -1218,7 +1223,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:a66989acd8e2536fd2c0adc9a72775fe8620f26816bff1955ee1282d19e1f408"
+        "sha256": "sha256:a8ccf647786271fb6f683b2375c80d8e4bfae547a2195a9058504a3e0b94de2b"
       }
     },
     {
@@ -1321,7 +1326,6 @@
           "ReconcileChangesResult",
           "RedactionState",
           "RequestedControlLevel",
-          "ResponseKind",
           "ShapingGap",
           "ShapingReadiness",
           "StateRecordKind",
@@ -1336,8 +1340,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UnrecordedChangeConfidence",
@@ -1357,7 +1363,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:259186799d2f6163c5988382acd21c98ce01db960175acfa02d17a830b0a9ed8"
+        "sha256": "sha256:48ad7d8b58a072d9774d506abb53d774ce1b52ef803396cb5de71a1ccdafb454"
       }
     },
     {
@@ -1404,7 +1410,6 @@
           "CloseState",
           "CloseTaskResult",
           "CurrentCloseBasis",
-          "EffectKind",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -1442,7 +1447,6 @@
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
-          "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
           "ShapingGap",
@@ -1460,6 +1464,7 @@
           "TaskMode",
           "TaskResult",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "ToolResultOrRejected_for_CloseTaskResult",
@@ -1474,7 +1479,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8451bab4c3d51f2c0d67b4af27682662736cda5a0f8dcdc65b228a870f3cbfc6"
+        "sha256": "sha256:15d77ebfdd61202108d7ca9df6d3ac88c8e8d2d544777178f7e6318a9f271ea7"
       }
     },
     {
@@ -1585,7 +1590,6 @@
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
-          "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
           "ShapingGap",
@@ -1602,8 +1606,10 @@
           "TaskLineageSummary",
           "TaskMode",
           "TaskResult",
+          "ToolDryRunBase",
           "ToolDryRunResponse",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "UtcTimestamp",
@@ -1617,7 +1623,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e94dd9d1c68c4b853f8ed28c4edd2a86830db9457606388c1e89573f2c4f321e"
+        "sha256": "sha256:ec84c5418b18bd6fa5e823df6967f222ba7960b9be4aa671c1fa713c8be3696b"
       }
     },
     {

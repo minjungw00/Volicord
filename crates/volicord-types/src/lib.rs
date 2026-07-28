@@ -216,17 +216,95 @@ mod tests {
     fn tool_result_base_schema_requires_guarantee_disclosure() {
         let schema =
             serde_json::to_value(schema_for!(ToolResultBase)).expect("schema should serialize");
-        let required = schema["required"]
+        let branches = schema["anyOf"]
             .as_array()
-            .expect("ToolResultBase schema should have required fields");
-        assert!(
-            required.iter().any(|field| field == "disclosure"),
-            "ToolResultBase schema should require disclosure: {schema}"
+            .expect("ToolResultBase schema should expose exact effect branches");
+        assert_eq!(branches.len(), 4, "{schema}");
+        for branch in branches {
+            let required = branch["required"]
+                .as_array()
+                .expect("ToolResultBase branch should have required fields");
+            assert!(
+                required.iter().any(|field| field == "disclosure"),
+                "ToolResultBase branch should require disclosure: {branch}"
+            );
+            assert!(
+                branch["properties"]["disclosure"].is_object(),
+                "ToolResultBase branch should expose disclosure: {branch}"
+            );
+            assert_eq!(branch["additionalProperties"], false, "{branch}");
+        }
+    }
+
+    #[test]
+    fn response_base_schemas_expose_exact_constants_and_closed_objects() {
+        let result = serde_json::to_value(schema_for!(ToolResultBase)).expect("result base schema");
+        let result_branches = result["anyOf"].as_array().expect("result base branches");
+        let mut effects = BTreeSet::new();
+        for branch in result_branches {
+            assert_eq!(branch["additionalProperties"], false, "{branch}");
+            assert_eq!(
+                branch["properties"]["response_kind"]["enum"],
+                json!(["result"]),
+                "{branch}"
+            );
+            let effect = branch["properties"]["effect_kind"]["enum"][0]
+                .as_str()
+                .expect("result effect constant");
+            effects.insert(effect);
+            if effect == "read_only" {
+                assert_eq!(branch["properties"]["dry_run"]["type"], "boolean");
+            } else {
+                assert_eq!(
+                    branch["properties"]["dry_run"]["enum"],
+                    json!([false]),
+                    "{branch}"
+                );
+            }
+        }
+        assert_eq!(
+            effects,
+            BTreeSet::from([
+                "read_only",
+                "core_committed",
+                "staging_created",
+                "no_effect",
+            ])
         );
-        assert!(
-            schema["properties"]["disclosure"].is_object(),
-            "ToolResultBase schema should expose disclosure property: {schema}"
+
+        let rejected =
+            serde_json::to_value(schema_for!(ToolRejectedBase)).expect("rejected base schema");
+        assert_eq!(rejected["additionalProperties"], false);
+        assert_eq!(
+            rejected["properties"]["response_kind"]["enum"],
+            json!(["rejected"])
         );
+        assert_eq!(
+            rejected["properties"]["effect_kind"]["enum"],
+            json!(["no_effect"])
+        );
+        assert_eq!(rejected["properties"]["dry_run"]["type"], "boolean");
+
+        let preview =
+            serde_json::to_value(schema_for!(ToolDryRunBase)).expect("preview base schema");
+        assert_eq!(preview["additionalProperties"], false);
+        assert_eq!(
+            preview["properties"]["response_kind"]["enum"],
+            json!(["dry_run"])
+        );
+        assert_eq!(
+            preview["properties"]["effect_kind"]["enum"],
+            json!(["no_effect"])
+        );
+        assert_eq!(preview["properties"]["dry_run"]["enum"], json!([true]));
+
+        for schema in [
+            serde_json::to_value(schema_for!(ToolRejectedResponse))
+                .expect("rejected response schema"),
+            serde_json::to_value(schema_for!(ToolDryRunResponse)).expect("preview response schema"),
+        ] {
+            assert_eq!(schema["additionalProperties"], false, "{schema}");
+        }
     }
 
     #[test]
@@ -479,14 +557,11 @@ mod tests {
     #[test]
     fn stage_artifact_result_serializes_documented_shape() {
         let result = StageArtifactResult {
-            base: ToolResultBase {
-                response_kind: ResponseKind::Result,
-                effect_kind: EffectKind::StagingCreated,
-                dry_run: false,
-                state_version: Some(42),
-                disclosure: GuaranteeDisclosure::authority_record(),
-                events: vec![],
-            },
+            base: ToolResultBase::staging_created(
+                Some(42),
+                GuaranteeDisclosure::authority_record(),
+                vec![],
+            ),
             evidence_state: EvidenceDisplayState::Prepared,
             staged_artifact_handle: StagedArtifactHandle {
                 handle_id: StagedArtifactHandleId::new("staged_trace_log_001"),
@@ -1078,6 +1153,141 @@ mod tests {
         }
 
         assert!(public_response_schema("volicord.unknown").is_none());
+    }
+
+    #[test]
+    fn public_response_families_decode_only_closed_branch_shapes() {
+        let rejection = valid_rejection_response_json(false);
+        let preview = valid_dry_run_response_json();
+
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            let result = example_from_schema(&contract.result_schema());
+            assert_public_response_acceptance(contract, result.clone(), true, "valid result");
+            assert_public_response_acceptance(contract, rejection.clone(), true, "valid rejection");
+
+            let supports_preview = contract.supports_response_branch(MethodResponseBranch::DryRun);
+            assert_public_response_acceptance(
+                contract,
+                preview.clone(),
+                supports_preview,
+                "declared preview",
+            );
+
+            let mut rejection_with_result_kind = rejection.clone();
+            rejection_with_result_kind["base"]["response_kind"] = json!("result");
+            assert_public_response_acceptance(
+                contract,
+                rejection_with_result_kind,
+                false,
+                "rejection with result discriminant",
+            );
+
+            let mut rejection_with_effect = rejection.clone();
+            rejection_with_effect["base"]["effect_kind"] = json!("core_committed");
+            assert_public_response_acceptance(
+                contract,
+                rejection_with_effect,
+                false,
+                "rejection with result effect",
+            );
+
+            let mut result_with_preview_kind = result.clone();
+            result_with_preview_kind["base"]["response_kind"] = json!("dry_run");
+            assert_public_response_acceptance(
+                contract,
+                result_with_preview_kind,
+                false,
+                "result with preview discriminant",
+            );
+
+            let mut result_with_rejection_field = result.clone();
+            result_with_rejection_field["errors"] = rejection["errors"].clone();
+            assert_public_response_acceptance(
+                contract,
+                result_with_rejection_field,
+                false,
+                "result with rejection-only field",
+            );
+
+            let mut rejection_with_result_field = rejection.clone();
+            let (result_field, result_value) = result
+                .as_object()
+                .expect("generated result example should be an object")
+                .iter()
+                .find(|(field, _)| field.as_str() != "base")
+                .expect("every public result should have a method-owned field");
+            rejection_with_result_field[result_field] = result_value.clone();
+            assert_public_response_acceptance(
+                contract,
+                rejection_with_result_field,
+                false,
+                "rejection with result-only field",
+            );
+
+            let mut rejection_with_preview_field = rejection.clone();
+            rejection_with_preview_field["dry_run_summary"] = preview["dry_run_summary"].clone();
+            assert_public_response_acceptance(
+                contract,
+                rejection_with_preview_field,
+                false,
+                "rejection with preview-only field",
+            );
+
+            for (label, mut value) in [
+                ("unknown result base field", result.clone()),
+                ("unknown rejection base field", rejection.clone()),
+                ("unknown preview base field", preview.clone()),
+            ] {
+                value["base"]["unknown_base_field"] = json!(true);
+                assert_public_response_acceptance(contract, value, false, label);
+            }
+
+            for (label, mut value) in [
+                ("unknown result branch field", result.clone()),
+                ("unknown rejection branch field", rejection.clone()),
+                ("unknown preview branch field", preview.clone()),
+            ] {
+                value["unknown_branch_field"] = json!(true);
+                assert_public_response_acceptance(contract, value, false, label);
+            }
+        }
+    }
+
+    #[test]
+    fn response_base_constants_are_identical_in_schema_and_serde() {
+        let rejection = valid_rejection_response_json(true);
+        let preview = valid_dry_run_response_json();
+        let previewable = public_method_contract(MethodName::Intake);
+
+        for (label, mut value) in [
+            ("preview with rejection discriminant", preview.clone()),
+            ("preview with result effect", preview.clone()),
+            ("preview with dry_run false", preview.clone()),
+        ] {
+            match label {
+                "preview with rejection discriminant" => {
+                    value["base"]["response_kind"] = json!("rejected")
+                }
+                "preview with result effect" => value["base"]["effect_kind"] = json!("read_only"),
+                "preview with dry_run false" => value["base"]["dry_run"] = json!(false),
+                _ => unreachable!(),
+            }
+            assert_public_response_acceptance(previewable, value, false, label);
+        }
+
+        let non_previewable = public_method_contract(MethodName::Status);
+        assert_public_response_acceptance(
+            non_previewable,
+            preview,
+            false,
+            "fabricated preview for non-previewable method",
+        );
+        assert_public_response_acceptance(
+            previewable,
+            rejection,
+            true,
+            "dry-run request rejection",
+        );
     }
 
     #[test]
@@ -2143,6 +2353,200 @@ mod tests {
             ),
             ("volicord.close_task", close_task_request_json()),
         ]
+    }
+
+    fn valid_rejection_response_json(dry_run: bool) -> Value {
+        serde_json::to_value(ToolRejectedResponse::new(
+            dry_run,
+            Some(7),
+            GuaranteeDisclosure::authority_record(),
+            vec![ToolError {
+                category: FailureCategory::Rejected,
+                code: ErrorCode::ValidationFailed,
+                message: "request validation failed".to_owned(),
+                retryable: false,
+                details: None,
+            }],
+        ))
+        .expect("valid rejection should serialize")
+    }
+
+    fn valid_dry_run_response_json() -> Value {
+        serde_json::to_value(ToolDryRunResponse::new(
+            Some(7),
+            GuaranteeDisclosure::authority_record(),
+            DryRunSummary {
+                planned_effects: Vec::new(),
+                would_blockers: Vec::new(),
+                would_errors: Vec::new(),
+                next_actions: Vec::new(),
+                diagnostics: Vec::new(),
+            },
+        ))
+        .expect("valid preview should serialize")
+    }
+
+    fn assert_public_response_acceptance(
+        contract: &PublicMethodContract,
+        value: Value,
+        should_accept: bool,
+        label: &str,
+    ) {
+        let schema = contract.response_schema();
+        let schema_result = validate_json_schema(&schema, &value);
+        let serde_result = contract.accepts_response(&value);
+        assert_eq!(
+            serde_result,
+            should_accept,
+            "{} {label} Serde result disagrees: {value}",
+            contract.method().as_str()
+        );
+        assert_eq!(
+            schema_result.is_ok(),
+            should_accept,
+            "{} {label} schema result disagrees: {schema_result:?}; {value}",
+            contract.method().as_str()
+        );
+    }
+
+    fn example_from_schema(schema: &Value) -> Value {
+        example_from_schema_node(schema, schema)
+    }
+
+    fn example_from_schema_node(root: &Value, schema: &Value) -> Value {
+        if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+            return example_from_schema_node(
+                root,
+                resolve_ref(root, reference).expect("example schema reference should resolve"),
+            );
+        }
+        if let Some(value) = schema.get("const") {
+            return value.clone();
+        }
+        if let Some(values) = schema.get("enum").and_then(Value::as_array) {
+            return values
+                .first()
+                .expect("closed schema enum should not be empty")
+                .clone();
+        }
+        for key in ["anyOf", "oneOf"] {
+            if let Some(branches) = schema.get(key).and_then(Value::as_array) {
+                if branches
+                    .iter()
+                    .any(|branch| validate_against(root, branch, &Value::Null, "$").is_ok())
+                {
+                    return Value::Null;
+                }
+                return example_from_schema_node(
+                    root,
+                    branches.first().expect("schema union should not be empty"),
+                );
+            }
+        }
+
+        let schema_type = schema.get("type");
+        if schema_type.is_some_and(|kind| {
+            kind == "object"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "object"))
+        }) || schema.get("properties").is_some()
+        {
+            let mut object = serde_json::Map::new();
+            let empty = serde_json::Map::new();
+            let properties = schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .unwrap_or(&empty);
+            for field in schema
+                .get("required")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+            {
+                let property = properties
+                    .get(field)
+                    .unwrap_or_else(|| panic!("required example field {field} has no schema"));
+                let value = if field.ends_with("actor_source") {
+                    json!("local_user")
+                } else {
+                    example_from_schema_node(root, property)
+                };
+                object.insert(field.to_owned(), value);
+            }
+            if let Some(all_of) = schema.get("allOf").and_then(Value::as_array) {
+                for branch in all_of {
+                    let Value::Object(fields) = example_from_schema_node(root, branch) else {
+                        continue;
+                    };
+                    object.extend(fields);
+                }
+            }
+            return Value::Object(object);
+        }
+        if schema_type.is_some_and(|kind| {
+            kind == "array"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "array"))
+        }) || schema.get("items").is_some()
+        {
+            let count = schema.get("minItems").and_then(Value::as_u64).unwrap_or(0) as usize;
+            let item = schema
+                .get("items")
+                .map(|item| example_from_schema_node(root, item))
+                .unwrap_or(Value::Null);
+            return Value::Array(vec![item; count]);
+        }
+        if schema_type.is_some_and(|kind| {
+            kind == "boolean"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "boolean"))
+        }) {
+            return Value::Bool(false);
+        }
+        if schema_type.is_some_and(|kind| {
+            kind == "integer"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "integer"))
+        }) {
+            return json!(schema.get("minimum").and_then(Value::as_i64).unwrap_or(0));
+        }
+        if schema_type.is_some_and(|kind| {
+            kind == "number"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "number"))
+        }) {
+            return json!(schema.get("minimum").and_then(Value::as_f64).unwrap_or(0.0));
+        }
+        if schema_type.is_some_and(|kind| {
+            kind == "string"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "string"))
+        }) {
+            if schema.get("format").and_then(Value::as_str) == Some("date-time") {
+                return json!("2026-07-28T00:00:00Z");
+            }
+            if schema.get("title").and_then(Value::as_str) == Some("ActorSource") {
+                return json!("local_user");
+            }
+            let length = schema.get("minLength").and_then(Value::as_u64).unwrap_or(1) as usize;
+            return Value::String("x".repeat(length.max(1)));
+        }
+        if schema_type.is_some_and(|kind| {
+            kind == "null"
+                || kind
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "null"))
+        }) {
+            return Value::Null;
+        }
+        panic!("cannot build a valid example for schema node {schema}");
     }
 
     fn schema_enum_strings(schema: Value) -> BTreeSet<String> {

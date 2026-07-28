@@ -21,8 +21,9 @@ pub use authority_status::{
     ValidatedAuthorityStatus,
 };
 pub use pipeline::{
-    dry_run_response, method_result_base, rejected_response, tool_error, Clock,
-    CoreOperationalOperation, CoreOperationalResource, CoreOperationalUnavailable,
-    CorePipelineError, CoreResult, CoreService, GitWorkspaceContext, InvocationAuthority,
-    InvocationContext, PipelineResponse, SystemClock, VerifiedInvocationContext,
+    committed_result_base, dry_run_response, no_effect_result_base, read_only_result_base,
+    rejected_response, staging_created_result_base, tool_error, Clock, CoreOperationalOperation,
+    CoreOperationalResource, CoreOperationalUnavailable, CorePipelineError, CoreResult,
+    CoreService, GitWorkspaceContext, InvocationAuthority, InvocationContext, PipelineResponse,
+    SystemClock, VerifiedInvocationContext,
 };

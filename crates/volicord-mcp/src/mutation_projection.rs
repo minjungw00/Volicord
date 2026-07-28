@@ -385,9 +385,9 @@ fn compact_mutation_effect(
     let base: ToolResultBase =
         serde_json::from_value(method_result["base"].clone()).map_err(McpAdapterError::Json)?;
     Ok(McpMutationEffectSummary {
-        effect_kind: base.effect_kind,
-        state_version: base.state_version,
-        events: base.events,
+        effect_kind: base.effect_kind(),
+        state_version: base.state_version(),
+        events: base.events().to_vec(),
     })
 }
 

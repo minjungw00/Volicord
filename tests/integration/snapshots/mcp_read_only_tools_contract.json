@@ -70,7 +70,6 @@
           "ContinuityCursor",
           "ContinuityPageInfo",
           "CurrentCloseBasis",
-          "EffectKind",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -109,7 +108,6 @@
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
-          "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
           "ShapingGap",
@@ -129,6 +127,7 @@
           "TaskMode",
           "TaskResult",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "ToolResultOrRejected_for_StatusResult",
@@ -143,7 +142,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:ad3082277cf6b091a7e74f0e114b03e64d5e4e627e36080c607e7dee625e98d3"
+        "sha256": "sha256:0f296fccd1d59521b76c684ec3a812d37e4f8b7b2daf9d1c83e9e58a6f073730"
       }
     },
     {
@@ -172,7 +171,6 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
-          "EffectKind",
           "ErrorCode",
           "EventRef",
           "FailureCategory",
@@ -190,15 +188,15 @@
           "MethodName",
           "NonGuarantee",
           "OperationResultRef",
-          "ResponseKind",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "ToolResultOrRejected_for_GetOperationResultResult"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:559ad2f3a33130d51b1168d1fbc56701914b2581653ef7303d582e31fbcaaffa"
+        "sha256": "sha256:01536d5aca10cdae08d4e874023abd0ae4487a3c1294090012069badc7a021dd"
       }
     },
     {
@@ -245,7 +243,6 @@
           "CloseState",
           "CloseTaskResult",
           "CurrentCloseBasis",
-          "EffectKind",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -283,7 +280,6 @@
           "RedactionState",
           "RequestedControlLevel",
           "ResidualRisk",
-          "ResponseKind",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
           "ShapingGap",
@@ -301,6 +297,7 @@
           "TaskMode",
           "TaskResult",
           "ToolError",
+          "ToolRejectedBase",
           "ToolRejectedResponse",
           "ToolResultBase",
           "ToolResultOrRejected_for_CloseTaskResult",
@@ -315,7 +312,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:8451bab4c3d51f2c0d67b4af27682662736cda5a0f8dcdc65b228a870f3cbfc6"
+        "sha256": "sha256:15d77ebfdd61202108d7ca9df6d3ac88c8e8d2d544777178f7e6318a9f271ea7"
       }
     },
     {

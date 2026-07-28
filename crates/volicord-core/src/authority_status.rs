@@ -126,16 +126,16 @@ pub fn validate_authority_status(
 ) -> Result<ValidatedAuthorityStatus, AuthorityStatusValidationError> {
     let status = serde_json::from_value::<StatusResult>(response.clone())
         .map_err(|_| AuthorityStatusValidationError::MalformedStatus)?;
-    if status.base.response_kind != ResponseKind::Result
-        || status.base.effect_kind != EffectKind::ReadOnly
-        || status.base.dry_run
+    if status.base.response_kind() != ResponseKind::Result
+        || status.base.effect_kind() != EffectKind::ReadOnly
+        || status.base.dry_run()
     {
         return Err(AuthorityStatusValidationError::IneligibleStatus);
     }
 
     let state_version = status
         .base
-        .state_version
+        .state_version()
         .ok_or(AuthorityStatusValidationError::MissingProjection)?;
     let receipt = status
         .authority_receipt

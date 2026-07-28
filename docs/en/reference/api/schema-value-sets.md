@@ -118,7 +118,7 @@ These values classify derived invocation or persisted actor provenance. They do 
 <a id="response-and-effect-values"></a>
 ## Response and effect values
 
-`ToolResultBase.response_kind` uses:
+The closed `response_kind` value set is:
 
 ```text
 result
@@ -126,7 +126,7 @@ rejected
 dry_run
 ```
 
-`ToolResultBase.effect_kind` uses:
+The result-branch `effect_kind` value set is:
 
 ```text
 read_only
@@ -135,7 +135,12 @@ staging_created
 no_effect
 ```
 
-`response_kind` and `effect_kind` are branch metadata values. Common branch shape is owned by [API Schema Core](schema-core.md#common-response), method-specific effects are owned by method owner documents, and public error semantics for rejected branches are owned by [API error codes](error-codes.md) and [API error routing](error-routing.md).
+`response_kind` and `effect_kind` are branch metadata values. Their exact
+singleton assignments, result `dry_run` compatibility, and closed generated
+schemas are owned by [API Schema Core](schema-core.md#common-response).
+Method-specific effects are owned by method owner documents, and public error
+semantics for rejected branches are owned by [API error codes](error-codes.md) and
+[API error routing](error-routing.md).
 
 <a id="failure-category-values"></a>
 ## Failure category values

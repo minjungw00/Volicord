@@ -1136,7 +1136,7 @@ Owner links:
 
 ## Related owners
 
-- [API Schema Core](schema-core.md) for `ToolEnvelope`, `ToolResultBase`, `ToolRejectedResponse`, and `ToolDryRunResponse`.
+- [API Schema Core](schema-core.md) for `ToolEnvelope`, `ToolResultBase`, `ToolRejectedBase`, `ToolDryRunBase`, `ToolRejectedResponse`, and `ToolDryRunResponse`.
 - [API Value Sets](schema-value-sets.md#state-and-blocker-values) for exact `CloseReadinessBlocker.category` values and neighboring state values.
 - [API Methods](methods.md) and method owner documents for the methods that return these schemas.
 - [API Artifact Schemas](schema-artifacts.md) for `ArtifactRef`.

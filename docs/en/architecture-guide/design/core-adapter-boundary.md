@@ -51,6 +51,9 @@ remains outside runtime.
   not on Core, Store, CLI, or MCP.
 - Method planners return typed fields and planned effects; the shared pipeline
   adds common branch facts only after the branch is known.
+- Result, rejection, and preview metadata use distinct closed base types.
+  Their fixed discriminants and effect facts are encoded by the shared types,
+  and every public branch and base rejects unknown fields.
 - One method declaration owns the request type, result type, exact public
   response family, semantic contract IDs, generated schemas, and replay
   eligibility. Core branch selection and stored-result validation consume that

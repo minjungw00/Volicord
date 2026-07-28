@@ -2,7 +2,7 @@ use super::*;
 
 const REQUEST_REGION_ID: &str = "contract-structures api.method.intake.request[params]";
 const RESPONSE_REGION_ID: &str = "contract-structures api.method.intake.response[response_variants] api.method.intake.response[result_body] api.method.intake.response[rejection] api.method.intake.response[dry_run]";
-const COMMON_REGION_ID: &str = "contract-structures api.schema.core[schema_object.ToolResultBase] api.schema.core[schema_object.ToolRejectedResponse] api.schema.core[schema_object.ToolDryRunResponse]";
+const COMMON_REGION_ID: &str = "contract-structures api.schema.core[schema_object.ToolResultBase] api.schema.core[schema_object.ToolRejectedBase] api.schema.core[schema_object.ToolDryRunBase] api.schema.core[schema_object.ToolRejectedResponse] api.schema.core[schema_object.ToolDryRunResponse]";
 
 fn marker(kind: &str, id: &str) -> String {
     format!("<!-- {kind} GENERATED: {id} -->")
@@ -87,6 +87,8 @@ fn production_contract_sync_is_bilingual_and_idempotent() {
     assert!(english.contains("### `IntakeResult` success fields"));
     assert!(korean.contains("### `IntakeRequest` 필드"));
     assert!(korean.contains("### `IntakeResult` 성공 필드"));
+    assert!(common.contains("### `ToolRejectedBase` rejection fields"));
+    assert!(common.contains("### `ToolDryRunBase` preview fields"));
     assert!(common.contains("### `ToolRejectedResponse` rejection fields"));
     assert!(category_errors(&report(fixture.path()), "generated_contract.drift").is_empty());
 }

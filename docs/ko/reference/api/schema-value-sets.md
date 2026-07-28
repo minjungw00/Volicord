@@ -122,7 +122,7 @@ Connection](../agent-connection.md)과 메서드 담당 문서가 정의하는 �
 <a id="response-and-effect-values"></a>
 ## 응답과 효과 값
 
-`ToolResultBase.response_kind`는 아래 값을 사용합니다.
+닫힌 `response_kind` 값 집합은 다음과 같습니다.
 
 ```text
 result
@@ -130,7 +130,7 @@ rejected
 dry_run
 ```
 
-`ToolResultBase.effect_kind`는 아래 값을 사용합니다.
+결과 분기의 `effect_kind` 값 집합은 다음과 같습니다.
 
 ```text
 read_only
@@ -139,7 +139,12 @@ staging_created
 no_effect
 ```
 
-`response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 공통 분기 형태는 [API 코어 스키마](schema-core.md#common-response)가 담당하고, 메서드별 효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는 [API 오류 코드](error-codes.md)와 [API 오류 처리 경로](error-routing.md)가 담당합니다.
+`response_kind`와 `effect_kind`는 분기 메타데이터 값입니다. 정확한 단일 값
+배정, 결과의 `dry_run` 호환성, 닫힌 생성 스키마는
+[API 코어 스키마](schema-core.md#common-response)가 담당합니다. 메서드별
+효과는 메서드 담당 문서가 담당합니다. 거절 분기의 공개 오류 의미는
+[API 오류 코드](error-codes.md)와 [API 오류 처리 경로](error-routing.md)가
+담당합니다.
 
 <a id="failure-category-values"></a>
 ## 실패 범주 값

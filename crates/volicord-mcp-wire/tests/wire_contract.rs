@@ -3,10 +3,14 @@ use volicord_mcp_wire::json_rpc::{
     parse_client_message, success_response, ClientMessage, JsonRpcFailureKind,
 };
 use volicord_mcp_wire::{
-    mcp_request_schema, mcp_response_schema, McpOperationalErrorCode, McpOperationalFailure,
-    McpOperationalOperation, McpOperationalResource, McpStatusArguments,
+    mcp_request_schema, mcp_response_schema, McpMutationEffectSummary,
+    McpMutationStructuredContent, McpOperationalErrorCode, McpOperationalFailure,
+    McpOperationalOperation, McpOperationalResource, McpReadOnlyToolStructuredContent,
+    McpStatusArguments,
 };
-use volicord_types::methods::{public_request_schema, public_response_schema};
+use volicord_types::methods::{
+    public_request_schema, public_response_schema, IntakeResponse, StatusResponse,
+};
 use volicord_types::tool_names::AgentToolId;
 use volicord_types::values::MethodName;
 
@@ -97,5 +101,103 @@ fn wire_owner_generates_mcp_schemas_while_public_schemas_stay_neutral() {
             assert!(!public_text.contains("structuredContent"));
             assert!(!public_text.contains("\"jsonrpc\""));
         }
+    }
+}
+
+#[test]
+fn mcp_structured_output_rejects_malformed_public_response_branches() {
+    let rejection = json!({
+        "base": {
+            "response_kind": "rejected",
+            "effect_kind": "no_effect",
+            "dry_run": false,
+            "state_version": 7,
+            "disclosure": {
+                "guarantee_class": "authority_record",
+                "guarantees": [],
+                "non_guarantees": []
+            },
+            "events": []
+        },
+        "errors": [{
+            "category": "rejected",
+            "code": "VALIDATION_FAILED",
+            "message": "request validation failed",
+            "retryable": false,
+            "details": null
+        }]
+    });
+    let preview = json!({
+        "base": {
+            "response_kind": "dry_run",
+            "effect_kind": "no_effect",
+            "dry_run": true,
+            "state_version": 7,
+            "disclosure": {
+                "guarantee_class": "authority_record",
+                "guarantees": [],
+                "non_guarantees": []
+            },
+            "events": []
+        },
+        "dry_run_summary": {
+            "planned_effects": [],
+            "would_blockers": [],
+            "would_errors": [],
+            "next_actions": [],
+            "diagnostics": []
+        }
+    });
+
+    type MutationOutput = McpMutationStructuredContent<IntakeResponse, McpMutationEffectSummary>;
+    type ReadOnlyOutput = McpReadOnlyToolStructuredContent<StatusResponse>;
+
+    serde_json::from_value::<MutationOutput>(rejection.clone())
+        .expect("an exact rejection should decode through MCP structured output");
+    serde_json::from_value::<MutationOutput>(preview.clone())
+        .expect("an exact preview should decode through MCP structured output");
+
+    let mut malformed = Vec::new();
+    for (pointer, value) in [
+        ("/base/response_kind", json!("result")),
+        ("/base/effect_kind", json!("core_committed")),
+    ] {
+        let mut value_to_reject = rejection.clone();
+        *value_to_reject
+            .pointer_mut(pointer)
+            .expect("rejection field should exist") = value;
+        malformed.push(value_to_reject);
+    }
+    for (pointer, value) in [
+        ("/base/response_kind", json!("rejected")),
+        ("/base/effect_kind", json!("read_only")),
+        ("/base/dry_run", json!(false)),
+    ] {
+        let mut value_to_reject = preview.clone();
+        *value_to_reject
+            .pointer_mut(pointer)
+            .expect("preview field should exist") = value;
+        malformed.push(value_to_reject);
+    }
+
+    let mut unknown_base = rejection.clone();
+    unknown_base["base"]["unknown"] = json!(true);
+    malformed.push(unknown_base);
+    let mut result_rejection_hybrid = rejection.clone();
+    result_rejection_hybrid["task_ref"] = Value::Null;
+    malformed.push(result_rejection_hybrid);
+    let mut preview_rejection_hybrid = rejection.clone();
+    preview_rejection_hybrid["dry_run_summary"] = preview["dry_run_summary"].clone();
+    malformed.push(preview_rejection_hybrid);
+
+    for value in malformed {
+        assert!(
+            serde_json::from_value::<MutationOutput>(value.clone()).is_err(),
+            "mutation MCP output accepted malformed branch: {value}"
+        );
+        assert!(
+            serde_json::from_value::<ReadOnlyOutput>(value.clone()).is_err(),
+            "read-only MCP output accepted malformed branch: {value}"
+        );
     }
 }

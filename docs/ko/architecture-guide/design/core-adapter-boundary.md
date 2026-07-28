@@ -45,6 +45,9 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
   Store, CLI, MCP에는 의존하지 않습니다.
 - 메서드 planner는 typed field와 계획된 effect를 반환합니다. 공유 pipeline은 branch
   fact가 정해진 뒤에만 공통 fact를 추가합니다.
+- 결과, 거절, 미리보기 메타데이터는 서로 다른 닫힌 base 타입을 사용합니다. 고정된
+  discriminant와 effect fact는 공유 타입이 강제하며, 모든 공개 분기와 base는 알 수
+  없는 필드를 거절합니다.
 - 메서드 선언 하나가 요청 타입, 결과 타입, 정확한 공개 응답 계열, 의미 기반 계약 ID,
   생성 스키마, replay 적격 여부를 담당합니다. Core 분기 선택과 저장 결과 검증은
   병렬 메서드 목록 대신 이 선언을 사용합니다.
