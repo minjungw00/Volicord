@@ -507,6 +507,8 @@ mod cli_docs;
 mod cli_generation;
 #[path = "docs_check/composition.rs"]
 mod composition;
+#[path = "docs_check/contract_docs.rs"]
+mod contract_docs;
 #[path = "docs_check/contract_identifiers.rs"]
 mod contract_identifiers;
 #[path = "docs_check/doc_index.rs"]

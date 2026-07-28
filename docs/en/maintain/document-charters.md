@@ -227,9 +227,11 @@ Reference owners.
   machine-readable owner descriptors. Each JSON or YAML instance selects one
   exact descriptor shape; method routes supply request and response contract
   choices without combining their schemas. Reader-facing shape notation uses
-  `schema` fences. Repeated request field, requiredness, nullability, type, and
-  CLI syntax inventories are generated from those owners. The Reference Index
-  owns human-readable Reference navigation.
+  `schema` fences. Repeated request and response field, requiredness,
+  nullability, type, and CLI syntax inventories are generated from those
+  owners. Method success shapes stay distinct from shared or method-specific
+  rejection shapes. Authors own semantic and policy prose around the generated
+  regions. The Reference Index owns human-readable Reference navigation.
 - Should not own: Tutorial flow, marketing framing, implementation history,
   migration notes, broad onboarding prose, or duplicate copies of adjacent
   Reference owners.

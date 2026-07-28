@@ -213,7 +213,8 @@ inventory.
 
 The selected descriptor supplies the exact schema for the selected shape.
 Current shapes are `complete_request`, `params`, `complete_response`,
-`result_body`, `rejection`, `schema_object.<name>`, `cli_output`,
+`response_variants`, `result_body`, `rejection`, `dry_run`,
+`schema_object.<name>`, `cli_output`,
 `mcp_request.<tool>`, `mcp_response.<tool>`, and descriptor-exposed
 `persisted_object.<name>` or `diagnostic_object.<name>`. A descriptor exposes
 only shapes that its current owner supports. A `schema` fence is type or shape
@@ -229,12 +230,20 @@ const values, constraints, discriminated unions, references, and nullability.
 English and Korean instances are each parsed and validated before their
 structural and exact-identifier parity is compared.
 
-Request field, requiredness, nullability, and type tables in API method
-Reference pages are generated from request descriptors by
-`cargo run -p xtask -- docs-sync`. The same command generates the English and
-Korean package-responsibility and dependency-direction tables in Architecture
-from `workspace.metadata.architecture.packages`; those tables are not maintained
-as a second package registry.
+Request and response field, requiredness, nullability, and type tables in API
+method Reference pages are generated from semantic request and response
+descriptors by `cargo run -p xtask -- docs-sync`. Stable generated-region
+markers bind each table to exact contract IDs and shapes. The shared
+`ToolResultBase`, `ToolRejectedResponse`, and `ToolDryRunResponse` structures
+are generated once in API Schema Core; method pages generate links to those
+shared structures and keep their success-result fields separate. Authors edit
+the surrounding meaning, policy, effects, cross-field invariants, and failure
+behavior, not the generated regions or a second exhaustive field inventory.
+
+The same command generates the English and Korean package-responsibility and
+dependency-direction tables in Architecture from
+`workspace.metadata.architecture.packages`; those tables are not maintained as
+a second package registry.
 
 Source-code links and Architecture Guide prose should describe durable crates,
 modules, entry points, execution stages, and responsibility boundaries. Avoid

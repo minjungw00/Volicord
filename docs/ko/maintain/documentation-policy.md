@@ -193,8 +193,8 @@ API 메서드 참조 예시는 메서드 안에서만 성립해야 합니다. �
 메타데이터에는 식별자 목록을 넣지 않습니다.
 
 선택된 설명자가 선택된 형태의 정확한 스키마를 제공합니다. 현재 형태는
-`complete_request`, `params`, `complete_response`, `result_body`, `rejection`,
-`schema_object.<name>`, `cli_output`, `mcp_request.<tool>`,
+`complete_request`, `params`, `complete_response`, `response_variants`,
+`result_body`, `rejection`, `dry_run`, `schema_object.<name>`, `cli_output`, `mcp_request.<tool>`,
 `mcp_response.<tool>`과 설명자가 제공하는 `persisted_object.<name>` 또는
 `diagnostic_object.<name>`입니다. 설명자는 현재 담당 원본이 지원하는 형태만
 제공합니다. `schema` 펜스는 독자를 위한 형식 또는 형태 표기이며 JSON이나 YAML
@@ -209,11 +209,17 @@ API 메서드 참조 예시는 메서드 안에서만 성립해야 합니다. �
 영어와 한국어 인스턴스는 각각 파싱하고 검증한 뒤 구조와 정확한 식별자 동등성을
 비교합니다.
 
-API 메서드 참조의 요청 필드, 필수 여부, Null 허용 여부, 형식 표는
-`cargo run -p xtask -- docs-sync`가 요청 설명자에서 생성합니다. 같은 명령은
-`workspace.metadata.architecture.packages`에서 영어·한국어 아키텍처 문서의 패키지
-책임 및 의존 방향 표를 생성하며, 이 표를 두 번째 패키지 레지스트리로 수동
-관리하지 않습니다.
+API 메서드 참조의 요청 및 응답 필드, 필수 여부, Null 허용 여부, 형식 표는
+`cargo run -p xtask -- docs-sync`가 의미 기반 요청 및 응답 설명자에서 생성합니다.
+안정적인 생성 영역 표식은 각 표를 정확한 계약 ID와 형태에 결합합니다. 공유
+`ToolResultBase`, `ToolRejectedResponse`, `ToolDryRunResponse` 구조는 API 코어
+스키마에서 한 번 생성하고, 메서드 문서는 그 공유 구조로 가는 링크를 생성하여 성공
+결과 필드와 구분합니다. 작성자는 생성 영역이나 두 번째 완전한 필드 목록이 아니라
+주변의 의미, 정책, 효과, 필드 간 불변 조건, 실패 동작을 편집합니다.
+
+같은 명령은 `workspace.metadata.architecture.packages`에서 영어·한국어 아키텍처
+문서의 패키지 책임 및 의존 방향 표를 생성하며, 이 표를 두 번째 패키지
+레지스트리로 수동 관리하지 않습니다.
 
 소스 코드 링크와 아키텍처 가이드 문서는 오래 유지될 크레이트, 모듈, 진입점, 실행
 단계, 책임 경계를 설명해야 합니다. 줄 번호에 기대는 설명, 비공개 도우미

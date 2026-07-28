@@ -424,12 +424,15 @@ clearly calls for them, and report the reason.
 Generated or source-derived reference surfaces use stable check commands:
 
 - `cargo run -p xtask -- docs-sync` deterministically replaces the marked CLI
-  syntax regions, the marker-free request field tables in English and Korean
-  API method owners, and the bilingual package-responsibility and
-  dependency-direction regions in Architecture. Run it after changing command
-  or request descriptors or workspace architecture metadata and review the
-  generated diff.
+  syntax regions, schema-generated request and response structural regions in
+  English and Korean API method owners, the canonical shared response
+  structures in API Schema Core, and the bilingual package-responsibility and
+  dependency-direction regions in Architecture. Run it after changing command,
+  request, response, result, or shared response descriptors or workspace
+  architecture metadata and review the generated diff. Run it a second time
+  and require an empty update set.
 - `cargo run -p xtask -- docs-check` checks maintained documentation structure,
+  exact request and response region bindings and schema drift,
   generated/source-derived documentation surfaces, executable `volicord`
   command examples, bilingual link/heading/exact-identifier parity, terminology
   metadata owner paths and roles, and canonical Storage DDL SQL blocks against

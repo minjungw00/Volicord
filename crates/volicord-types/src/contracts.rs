@@ -47,10 +47,14 @@ pub enum JsonExampleShape {
     MethodParams,
     /// A complete successful public method response.
     CompleteMethodResponse,
+    /// The complete structural branch union accepted for one method response.
+    MethodResponseVariants,
     /// The successful result body for one public method.
     MethodResultBody,
     /// The rejected response body accepted for one public method.
     MethodRejection,
+    /// The dry-run response body accepted for one public method.
+    MethodDryRun,
     /// One exact named public schema object.
     PublicSchemaObject(String),
     /// One complete structured CLI output document.
@@ -72,8 +76,10 @@ impl JsonExampleShape {
             Self::CompleteMethodRequest => "complete_request".to_owned(),
             Self::MethodParams => "params".to_owned(),
             Self::CompleteMethodResponse => "complete_response".to_owned(),
+            Self::MethodResponseVariants => "response_variants".to_owned(),
             Self::MethodResultBody => "result_body".to_owned(),
             Self::MethodRejection => "rejection".to_owned(),
+            Self::MethodDryRun => "dry_run".to_owned(),
             Self::PublicSchemaObject(name) => format!("schema_object.{name}"),
             Self::CliOutput => "cli_output".to_owned(),
             Self::McpWireRequest(name) => format!("mcp_request.{name}"),
@@ -315,10 +321,17 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
         );
         response_descriptor
             .example_schemas
+            .insert(JsonExampleShape::MethodResponseVariants.id(), response);
+        response_descriptor
+            .example_schemas
             .insert(JsonExampleShape::MethodResultBody.id(), result);
         response_descriptor.example_schemas.insert(
             JsonExampleShape::MethodRejection.id(),
             schema::<ToolRejectedResponse>(),
+        );
+        response_descriptor.example_schemas.insert(
+            JsonExampleShape::MethodDryRun.id(),
+            schema::<ToolDryRunResponse>(),
         );
         response_descriptor
             .identifiers
