@@ -1774,6 +1774,15 @@ pub enum FailureCategory {
 }
 
 impl FailureCategory {
+    /// Every current product-wide failure category.
+    pub const ALL: &'static [Self] = &[
+        Self::Rejected,
+        Self::NotAllowed,
+        Self::Unavailable,
+        Self::Degraded,
+        Self::Corrupt,
+    ];
+
     /// Returns the stable machine-readable category identifier.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -1786,72 +1795,192 @@ impl FailureCategory {
     }
 }
 
-/// Public API error code values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ErrorCode {
-    ValidationFailed,
-    PersistedDataCorrupt,
-    StateVersionConflict,
-    InvocationContextMismatch,
-    NoActiveTask,
-    NoActiveChangeUnit,
-    BaselineStale,
-    ScopeRequired,
-    ScopeViolation,
-    WriteTicketRequired,
-    WriteTicketInvalid,
-    ApprovalDenied,
-    ApprovalExpired,
-    ApprovalRequired,
-    DecisionUnresolved,
-    AutonomyBoundaryExceeded,
-    DecisionRequired,
-    CapabilityInsufficient,
-    EvidenceInsufficient,
-    ResidualRiskNotVisible,
-    AcceptanceRequired,
-    ProjectionStale,
-    ArtifactMissing,
-    ValidatorFailed,
-    OperationResultUnavailable,
+/// One canonical public error-code/category relationship.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PublicErrorCodeContract {
+    code: ErrorCode,
+    wire_name: &'static str,
+    category: FailureCategory,
 }
 
-impl ErrorCode {
-    /// Returns the failure category carried by a public `ToolError` with this code.
-    pub const fn failure_category(self) -> FailureCategory {
-        match self {
-            Self::PersistedDataCorrupt => FailureCategory::Corrupt,
-            Self::OperationResultUnavailable
-            | Self::ProjectionStale
-            | Self::ArtifactMissing
-            | Self::ValidatorFailed => FailureCategory::Unavailable,
-            Self::ScopeViolation
-            | Self::ApprovalDenied
-            | Self::AutonomyBoundaryExceeded
-            | Self::CapabilityInsufficient
-            | Self::EvidenceInsufficient
-            | Self::ResidualRiskNotVisible
-            | Self::AcceptanceRequired => FailureCategory::NotAllowed,
-            Self::ValidationFailed
-            | Self::StateVersionConflict
-            | Self::InvocationContextMismatch
-            | Self::NoActiveTask
-            | Self::NoActiveChangeUnit
-            | Self::BaselineStale
-            | Self::ScopeRequired
-            | Self::WriteTicketRequired
-            | Self::WriteTicketInvalid
-            | Self::ApprovalExpired
-            | Self::ApprovalRequired
-            | Self::DecisionUnresolved
-            | Self::DecisionRequired => FailureCategory::Rejected,
-        }
+impl PublicErrorCodeContract {
+    /// Returns the typed public error code.
+    pub const fn code(self) -> ErrorCode {
+        self.code
     }
+
+    /// Returns the exact public wire identifier.
+    pub const fn wire_name(self) -> &'static str {
+        self.wire_name
+    }
+
+    /// Returns the one required failure category.
+    pub const fn category(self) -> FailureCategory {
+        self.category
+    }
+}
+
+macro_rules! public_error_codes {
+    (
+        $(
+            $variant:ident => {
+                wire: $wire_name:literal,
+                category: $category:ident,
+            },
+        )+
+    ) => {
+        /// Public API error code values.
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
+        )]
+        pub enum ErrorCode {
+            $(
+                #[serde(rename = $wire_name)]
+                $variant,
+            )+
+        }
+
+        impl ErrorCode {
+            /// Every current public error code in declaration order.
+            pub const ALL: &'static [Self] = &[
+                $(Self::$variant,)+
+            ];
+
+            /// Returns the exact public wire identifier.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $wire_name,)+
+                }
+            }
+
+            /// Returns the failure category carried by a public `ToolError` with this code.
+            pub const fn failure_category(self) -> FailureCategory {
+                match self {
+                    $(Self::$variant => FailureCategory::$category,)+
+                }
+            }
+        }
+
+        /// Canonical public error-code/category catalog.
+        pub const PUBLIC_ERROR_CODE_CONTRACTS: &[PublicErrorCodeContract] = &[
+            $(
+                PublicErrorCodeContract {
+                    code: ErrorCode::$variant,
+                    wire_name: $wire_name,
+                    category: FailureCategory::$category,
+                },
+            )+
+        ];
+    };
+}
+
+public_error_codes! {
+    ValidationFailed => {
+        wire: "VALIDATION_FAILED",
+        category: Rejected,
+    },
+    PersistedDataCorrupt => {
+        wire: "PERSISTED_DATA_CORRUPT",
+        category: Corrupt,
+    },
+    StateVersionConflict => {
+        wire: "STATE_VERSION_CONFLICT",
+        category: Rejected,
+    },
+    InvocationContextMismatch => {
+        wire: "INVOCATION_CONTEXT_MISMATCH",
+        category: Rejected,
+    },
+    NoActiveTask => {
+        wire: "NO_ACTIVE_TASK",
+        category: Rejected,
+    },
+    NoActiveChangeUnit => {
+        wire: "NO_ACTIVE_CHANGE_UNIT",
+        category: Rejected,
+    },
+    BaselineStale => {
+        wire: "BASELINE_STALE",
+        category: Rejected,
+    },
+    ScopeRequired => {
+        wire: "SCOPE_REQUIRED",
+        category: Rejected,
+    },
+    ScopeViolation => {
+        wire: "SCOPE_VIOLATION",
+        category: NotAllowed,
+    },
+    WriteTicketRequired => {
+        wire: "WRITE_TICKET_REQUIRED",
+        category: Rejected,
+    },
+    WriteTicketInvalid => {
+        wire: "WRITE_TICKET_INVALID",
+        category: Rejected,
+    },
+    ApprovalDenied => {
+        wire: "APPROVAL_DENIED",
+        category: NotAllowed,
+    },
+    ApprovalExpired => {
+        wire: "APPROVAL_EXPIRED",
+        category: Rejected,
+    },
+    ApprovalRequired => {
+        wire: "APPROVAL_REQUIRED",
+        category: Rejected,
+    },
+    DecisionUnresolved => {
+        wire: "DECISION_UNRESOLVED",
+        category: Rejected,
+    },
+    AutonomyBoundaryExceeded => {
+        wire: "AUTONOMY_BOUNDARY_EXCEEDED",
+        category: NotAllowed,
+    },
+    DecisionRequired => {
+        wire: "DECISION_REQUIRED",
+        category: Rejected,
+    },
+    CapabilityInsufficient => {
+        wire: "CAPABILITY_INSUFFICIENT",
+        category: NotAllowed,
+    },
+    EvidenceInsufficient => {
+        wire: "EVIDENCE_INSUFFICIENT",
+        category: NotAllowed,
+    },
+    ResidualRiskNotVisible => {
+        wire: "RESIDUAL_RISK_NOT_VISIBLE",
+        category: NotAllowed,
+    },
+    AcceptanceRequired => {
+        wire: "ACCEPTANCE_REQUIRED",
+        category: NotAllowed,
+    },
+    ProjectionStale => {
+        wire: "PROJECTION_STALE",
+        category: Unavailable,
+    },
+    ArtifactMissing => {
+        wire: "ARTIFACT_MISSING",
+        category: Unavailable,
+    },
+    ValidatorFailed => {
+        wire: "VALIDATOR_FAILED",
+        category: Unavailable,
+    },
+    OperationResultUnavailable => {
+        wire: "OPERATION_RESULT_UNAVAILABLE",
+        category: Unavailable,
+    },
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use chrono::{DateTime, Duration, Utc};
     use serde_json::json;
 
@@ -1879,32 +2008,34 @@ mod tests {
     }
 
     #[test]
-    fn public_error_codes_select_one_explicit_failure_category() {
+    fn public_error_contract_declares_each_code_and_wire_name_once() {
         assert_eq!(
-            ErrorCode::PersistedDataCorrupt.failure_category(),
-            FailureCategory::Corrupt
+            ErrorCode::ALL.len(),
+            super::PUBLIC_ERROR_CODE_CONTRACTS.len()
         );
-        assert_eq!(
-            ErrorCode::ScopeViolation.failure_category(),
-            FailureCategory::NotAllowed
-        );
-        assert_eq!(
-            ErrorCode::NoActiveChangeUnit.failure_category(),
-            FailureCategory::Rejected
-        );
-    }
-
-    #[test]
-    fn tool_error_decode_rejects_a_mismatched_category() {
-        let mismatch = serde_json::json!({
-            "category": "unavailable",
-            "code": "NO_ACTIVE_CHANGE_UNIT",
-            "message": "fixture",
-            "retryable": false,
-            "details": null,
-        });
-
-        assert!(serde_json::from_value::<crate::schema::ToolError>(mismatch).is_err());
+        let mut codes = HashSet::new();
+        let mut wire_names = HashSet::new();
+        for contract in super::PUBLIC_ERROR_CODE_CONTRACTS {
+            assert!(codes.insert(contract.code()));
+            assert!(wire_names.insert(contract.wire_name()));
+            assert_eq!(contract.code().as_str(), contract.wire_name());
+            assert_eq!(
+                contract.code().failure_category(),
+                contract.category(),
+                "{}",
+                contract.wire_name()
+            );
+            assert_eq!(
+                serde_json::to_value(contract.code()).expect("error code serializes"),
+                contract.wire_name()
+            );
+            assert_eq!(
+                serde_json::from_value::<ErrorCode>(serde_json::json!(contract.wire_name()))
+                    .expect("error code deserializes"),
+                contract.code()
+            );
+        }
+        assert_eq!(codes.len(), ErrorCode::ALL.len());
     }
 
     #[test]

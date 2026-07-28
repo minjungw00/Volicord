@@ -71,6 +71,9 @@ remains outside runtime.
   family before projection. Adapter projections cannot widen that family,
   widen a Core result, or replace typed diagnostic identity with rendered
   prose.
+- Public errors are constructed through the invariant-preserving shared type.
+  Core and adapters consume its code-derived category and do not keep an
+  adapter-local public code/category mapping.
 - Repository validation does not become a runtime dependency or compatibility
   path.
 

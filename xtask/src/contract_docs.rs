@@ -10,8 +10,10 @@ use volicord_types::contracts::{public_json_contract_descriptors, JsonContractDe
 use volicord_types::methods::{
     DryRunRequestPolicy, ResultDryRunContract, ResultEffectContract, ResultEventContract,
 };
+use volicord_types::values::PUBLIC_ERROR_CODE_CONTRACTS;
 
 const CORE_SCHEMA_DOC_ID: &str = "reference.api.schema-core";
+const ERROR_CODE_DOC_ID: &str = "reference.api.error-codes";
 const CORE_SCHEMA_CONTRACT_ID: &str = "api.schema.core";
 const GENERATED_REGION_PREFIX: &str = "<!-- BEGIN GENERATED: contract-structures ";
 const GENERATED_NOTICE: &str =
@@ -32,6 +34,7 @@ const REJECTED_BASE_SHAPE: &str = "schema_object.ToolRejectedBase";
 const DRY_RUN_BASE_SHAPE: &str = "schema_object.ToolDryRunBase";
 const SHARED_REJECTION_SHAPE: &str = "schema_object.ToolRejectedResponse";
 const SHARED_DRY_RUN_SHAPE: &str = "schema_object.ToolDryRunResponse";
+const ERROR_CODE_RELATIONS_SHAPE: &str = "public_error_code_categories";
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Language {
@@ -254,6 +257,27 @@ fn contract_documents<'a>(
                 language,
             )?],
         ));
+    }
+
+    if let Some(error_owner) = index.paired_documents.get(ERROR_CODE_DOC_ID) {
+        if !error_owner
+            .contract_bindings()
+            .any(|binding| binding.contract_id.as_str() == CORE_SCHEMA_CONTRACT_ID)
+        {
+            bail!(
+                "paired owner {ERROR_CODE_DOC_ID} has no resolved {CORE_SCHEMA_CONTRACT_ID} binding"
+            );
+        }
+        for (path, language) in [
+            (&error_owner.path_en, Language::English),
+            (&error_owner.path_ko, Language::Korean),
+        ] {
+            documents.push((
+                path.clone(),
+                language,
+                vec![render_error_code_region(language)?],
+            ));
+        }
     }
     Ok(documents)
 }
@@ -711,6 +735,14 @@ fn render_common_response_region(
     render_region(id, body)
 }
 
+fn render_error_code_region(language: Language) -> Result<RenderedRegion> {
+    let id = region_id(&[(
+        CORE_SCHEMA_CONTRACT_ID.to_owned(),
+        ERROR_CODE_RELATIONS_SHAPE,
+    )]);
+    render_region(id, render_error_code_pair_table(language, true))
+}
+
 fn common_response_schemas<'a>(
     descriptors: &'a BTreeMap<String, JsonContractDescriptor>,
 ) -> Result<CommonResponseSchemas<'a>> {
@@ -1131,8 +1163,18 @@ fn render_schema_tables_with_title(
     role: TableRole,
     owner_label: &str,
 ) -> Result<String> {
-    let variants = object_variants(schema)
-        .with_context(|| format!("unsupported generated structure for {owner_label}"))?;
+    let variants = if title == "ToolError" {
+        let mut variant = direct_object_variant(
+            schema
+                .as_object()
+                .context("ToolError schema must be an object")?,
+        )?;
+        variant.label = None;
+        vec![variant]
+    } else {
+        object_variants(schema)
+            .with_context(|| format!("unsupported generated structure for {owner_label}"))?
+    };
     let mut output = String::new();
     for (index, variant) in variants.iter().enumerate() {
         if index > 0 {
@@ -1164,7 +1206,58 @@ fn render_schema_tables_with_title(
         }
         output.pop();
     }
+    if title == "ToolError" {
+        output.push_str("\n\n");
+        output.push_str(&render_error_code_pair_table(language, false));
+    }
     Ok(output)
+}
+
+fn render_error_code_pair_table(language: Language, link_details: bool) -> String {
+    let mut output = String::new();
+    match language {
+        Language::English => {
+            output.push_str("### Canonical public error code/category pairs\n\n");
+            if link_details {
+                output.push_str(
+                    "| Public `ErrorCode` | Required `FailureCategory` | Detail section |\n",
+                );
+                output.push_str("|---|---|---|\n");
+            } else {
+                output.push_str("| Public `ErrorCode` | Required `FailureCategory` |\n");
+                output.push_str("|---|---|\n");
+            }
+        }
+        Language::Korean => {
+            output.push_str("### 정규 공개 오류 코드/범주 쌍\n\n");
+            if link_details {
+                output.push_str("| 공개 `ErrorCode` | 필수 `FailureCategory` | 세부 항목 |\n");
+                output.push_str("|---|---|---|\n");
+            } else {
+                output.push_str("| 공개 `ErrorCode` | 필수 `FailureCategory` |\n");
+                output.push_str("|---|---|\n");
+            }
+        }
+    }
+    for contract in PUBLIC_ERROR_CODE_CONTRACTS {
+        if link_details {
+            let anchor = contract.wire_name().to_ascii_lowercase().replace('_', "-");
+            output.push_str(&format!(
+                "| `{}` | `{}` | [`{}`](#errorcode-{anchor}) |\n",
+                contract.wire_name(),
+                contract.category().as_str(),
+                contract.wire_name(),
+            ));
+        } else {
+            output.push_str(&format!(
+                "| `{}` | `{}` |\n",
+                contract.wire_name(),
+                contract.category().as_str(),
+            ));
+        }
+    }
+    output.pop();
+    output
 }
 
 fn render_table_heading(output: &mut String, title: &str, language: Language, role: TableRole) {
@@ -2576,6 +2669,31 @@ mod tests {
         );
         assert!(english.contains("| `value` | yes | yes | `string` |"));
         assert!(korean.contains("| `value` | 예 | 예 | `string` |"));
+    }
+
+    #[test]
+    fn generated_bilingual_error_categories_come_from_the_public_error_contract() {
+        let english = render_error_code_region(Language::English).expect("English error catalog");
+        let korean = render_error_code_region(Language::Korean).expect("Korean error catalog");
+
+        for contract in PUBLIC_ERROR_CODE_CONTRACTS {
+            let english_row = format!(
+                "| `{0}` | `{2}` | [`{0}`](#errorcode-{1}) |",
+                contract.wire_name(),
+                contract.wire_name().to_ascii_lowercase().replace('_', "-"),
+                contract.category().as_str(),
+            );
+            assert!(english.contents.contains(&english_row), "{english_row}");
+            assert!(korean.contents.contains(&english_row), "{english_row}");
+        }
+        assert_eq!(
+            english
+                .contents
+                .lines()
+                .filter(|line| line.starts_with("| `"))
+                .count(),
+            PUBLIC_ERROR_CODE_CONTRACTS.len()
+        );
     }
 
     #[test]

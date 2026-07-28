@@ -334,7 +334,7 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 - 요청 검증 실패
 - 현재 Task 없음
 - Task 해석 뒤 현재 적용 Change Unit 없음. 이 경우 공개 코드
-  `NO_ACTIVE_CHANGE_UNIT`, 실패 범주 `rejected`, 메서드별 details reason
+  `NO_ACTIVE_CHANGE_UNIT`과 그 정규 범주, 메서드별 details reason
   `current_change_unit_required`를 사용하며 정책 평가 전에 거절합니다.
 - 행위자 출처 또는 작업 범주 불일치
 - Core 사용 불가

@@ -62,6 +62,9 @@ transaction mechanism을 담당합니다. 공유 diagnostic identity와 report s
 - Adapter는 projection 전에 선택한 메서드의 정확한 응답 계열로 Core 출력을
   decode합니다. Adapter projection은 이 계열이나 Core 결과를 넓힐 수 없고 typed
   diagnostic identity를 rendered prose로 대신하지 못합니다.
+- 공개 오류는 불변 조건을 보존하는 공유 타입으로 구성합니다. Core와 adapter는
+  코드에서 도출되는 범주를 사용하며 adapter 로컬 공개 코드/범주 매핑을 두지
+  않습니다.
 - 저장소 검증은 runtime dependency나 compatibility 경로가 되지 않습니다.
 
 ## 책임 경계

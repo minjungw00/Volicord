@@ -1686,10 +1686,11 @@ stderr에 쓰고 `1`로 종료합니다. CLI는 MCP wire identity를 표시하�
 합성하지 않습니다.
 
 관리 명령이 공개 Core 거부를 JSON으로 내보낼 때는 정확한 닫힌
-`ToolRejectedResponse`를 보존합니다. 중첩된 모든 `ToolError`에는 필수 `details`
-필드가 있으며, 세부사항 객체가 없으면 `null`을 쓰고 있으면 Core가 만든 객체를
-사용합니다. 사람이 읽는 거부 표시는 코드와 메시지를 요약할 수 있지만 별도 구조화
-오류 형태를 정의하지 않습니다.
+`ToolRejectedResponse`를 보존합니다. 중첩된 모든 `ToolError`에는 정규
+`code`/`category` 쌍과 필수 `details` 필드가 있으며, 세부사항 객체가 없으면
+`null`을 쓰고 있으면 Core가 만든 객체를 사용합니다. CLI는 공개 오류 범주를
+독립적으로 변환하지 않습니다. 사람이 읽는 거부 표시는 코드와 메시지를 요약할 수
+있지만 별도 구조화 오류 형태를 정의하지 않습니다.
 
 `diagnostics show`와 `diagnostics session`은 finding severity가 아니라 lookup status로
 종료 상태를 정합니다. Active finding이나 terminal occurrence의 severity가 `error`여도 찾은

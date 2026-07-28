@@ -2234,6 +2234,24 @@ mod tests {
     }
 
     #[test]
+    fn structured_tool_error_examples_enforce_the_canonical_code_category_pair() {
+        let mut catalog = ContractCatalog::default();
+        let mut owner_issues = Vec::new();
+        load_public_api_descriptors(&mut catalog, &mut owner_issues);
+        assert!(owner_issues.is_empty(), "{owner_issues:#?}");
+
+        let canonical = "# A\n\n```json contract=api.schema.core shape=schema_object.ToolError\n{\"category\":\"rejected\",\"code\":\"VALIDATION_FAILED\",\"message\":\"invalid request\",\"retryable\":false,\"details\":null}\n```\n";
+        assert!(validate(&catalog, &["api.schema.core"], canonical, canonical).is_empty());
+
+        let mismatch = "# A\n\n```json contract=api.schema.core shape=schema_object.ToolError\n{\"category\":\"corrupt\",\"code\":\"VALIDATION_FAILED\",\"message\":\"invalid request\",\"retryable\":false,\"details\":null}\n```\n";
+        let issues = validate(&catalog, &["api.schema.core"], mismatch, mismatch);
+        assert_eq!(issues.len(), 2, "{issues:#?}");
+        assert!(issues
+            .iter()
+            .all(|issue| issue.category() == "contract_example.schema"));
+    }
+
+    #[test]
     fn invalid_generated_schema_is_reported_as_an_owner_error() {
         let catalog = catalog(&[(
             "api.method.alpha.request",

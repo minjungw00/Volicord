@@ -1352,7 +1352,7 @@ pub fn rejected_response(
     state_version: Option<u64>,
     mut errors: Vec<ToolError>,
 ) -> ToolRejectedResponse {
-    errors.sort_by_key(|error| error_precedence(error.code));
+    errors.sort_by_key(|error| error_precedence(error.code()));
     ToolRejectedResponse::new(
         dry_run,
         state_version,
@@ -2642,7 +2642,7 @@ mod tests {
             response
                 .errors()
                 .iter()
-                .map(|error| error.code)
+                .map(ToolError::code)
                 .collect::<Vec<_>>(),
             vec![
                 ErrorCode::ValidationFailed,

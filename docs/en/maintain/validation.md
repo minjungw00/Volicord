@@ -128,8 +128,11 @@ read-only and verifies the machine-checkable shape:
 - The selected exact schema validates the resulting unique-key JSON-compatible
   instance. Schema compilation errors are owner errors. Instance checks enforce
   required and unknown properties, types, nested objects and arrays, enum and
-  const values, constraints, unions, references, and nullability. A `schema`
-  fence is reader-facing shape notation and is not treated as an instance.
+  const values, constraints, unions, references, and nullability. The exact
+  `ToolError` schema also enforces the canonical public error-code/category
+  relationship, so a mismatched pair is invalid even when both languages use
+  it. A `schema` fence is reader-facing shape notation and is not treated as an
+  instance.
 - English and Korean instances are independently resolved, parsed, and
   schema-validated. Structural and exact-identifier parity runs only for a
   meaning unit that is valid in both languages.

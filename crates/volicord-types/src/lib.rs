@@ -1235,12 +1235,17 @@ mod tests {
             );
         }
 
-        let mut missing_details = tool_error_json(Value::Null);
-        missing_details
-            .as_object_mut()
-            .expect("ToolError fixture should be an object")
-            .remove("details");
-        assert!(serde_json::from_value::<ToolError>(missing_details).is_err());
+        for field in ["category", "code", "message", "retryable", "details"] {
+            let mut missing = tool_error_json(Value::Null);
+            missing
+                .as_object_mut()
+                .expect("ToolError fixture should be an object")
+                .remove(field);
+            assert!(
+                serde_json::from_value::<ToolError>(missing).is_err(),
+                "ToolError should require {field}"
+            );
+        }
 
         for details in [json!("text"), json!(7), json!([{"field": "summary"}])] {
             assert!(
@@ -1252,14 +1257,28 @@ mod tests {
         let mut unknown = tool_error_json(Value::Null);
         unknown["unexpected"] = json!(true);
         assert!(serde_json::from_value::<ToolError>(unknown).is_err());
+
+        for (field, value) in [
+            ("category", json!("unknown")),
+            ("code", json!("UNKNOWN_ERROR")),
+        ] {
+            let mut invalid = tool_error_json(Value::Null);
+            invalid[field] = value;
+            assert!(
+                serde_json::from_value::<ToolError>(invalid).is_err(),
+                "ToolError should reject invalid {field}"
+            );
+        }
     }
 
     #[test]
     fn tool_error_rejects_duplicate_wire_properties() {
         for duplicate in [
+            r#"{"category":"rejected","category":"rejected","code":"VALIDATION_FAILED","message":"invalid request","retryable":false,"details":null}"#,
             r#"{"category":"rejected","code":"VALIDATION_FAILED","message":"invalid request","retryable":false,"details":null,"details":{}}"#,
             r#"{"category":"rejected","code":"VALIDATION_FAILED","code":"VALIDATION_FAILED","message":"invalid request","retryable":false,"details":null}"#,
             r#"{"category":"rejected","code":"VALIDATION_FAILED","message":"invalid request","message":"invalid request","retryable":false,"details":null}"#,
+            r#"{"category":"rejected","code":"VALIDATION_FAILED","message":"invalid request","retryable":false,"retryable":false,"details":null}"#,
         ] {
             assert!(
                 serde_json::from_str::<ToolError>(duplicate).is_err(),
@@ -1310,18 +1329,94 @@ mod tests {
             validate_json_schema(&schema, &tool_error_json(json!({"field": "summary"}))).is_ok()
         );
 
-        let mut missing = tool_error_json(Value::Null);
-        missing
-            .as_object_mut()
-            .expect("ToolError fixture should be an object")
-            .remove("details");
-        assert!(validate_json_schema(&schema, &missing).is_err());
+        for field in ["category", "code", "message", "retryable", "details"] {
+            let mut missing = tool_error_json(Value::Null);
+            missing
+                .as_object_mut()
+                .expect("ToolError fixture should be an object")
+                .remove(field);
+            assert!(
+                validate_json_schema(&schema, &missing).is_err(),
+                "ToolError schema should require {field}"
+            );
+        }
         for details in [json!("text"), json!(7), json!([{"field": "summary"}])] {
             assert!(validate_json_schema(&schema, &tool_error_json(details)).is_err());
         }
         let mut unknown = tool_error_json(Value::Null);
         unknown["unexpected"] = json!(true);
         assert!(validate_json_schema(&schema, &unknown).is_err());
+        for (field, value) in [
+            ("category", json!("unknown")),
+            ("code", json!("UNKNOWN_ERROR")),
+        ] {
+            let mut invalid = tool_error_json(Value::Null);
+            invalid[field] = value;
+            assert!(
+                validate_json_schema(&schema, &invalid).is_err(),
+                "ToolError schema should reject invalid {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_public_error_pair_round_trips_and_every_wrong_pair_is_rejected() {
+        let schema = serde_json::to_value(schema_for!(ToolError))
+            .expect("ToolError schema should serialize");
+        assert_eq!(
+            schema["oneOf"]
+                .as_array()
+                .expect("ToolError schema should expose relational branches")
+                .len(),
+            PUBLIC_ERROR_CODE_CONTRACTS.len()
+        );
+
+        for contract in PUBLIC_ERROR_CODE_CONTRACTS {
+            let canonical = json!({
+                "category": contract.category().as_str(),
+                "code": contract.wire_name(),
+                "message": "fixture",
+                "retryable": false,
+                "details": null,
+            });
+            let decoded: ToolError = serde_json::from_value(canonical.clone())
+                .unwrap_or_else(|error| panic!("{} should decode: {error}", contract.wire_name()));
+            assert_eq!(decoded.code(), contract.code());
+            assert_eq!(decoded.category(), contract.category());
+            assert_eq!(decoded.message(), "fixture");
+            assert!(!decoded.retryable());
+            assert!(decoded.details().is_none());
+            assert_eq!(
+                serde_json::to_value(decoded).expect("ToolError should serialize"),
+                canonical
+            );
+            assert!(
+                validate_json_schema(&schema, &canonical).is_ok(),
+                "{} canonical pair should satisfy the schema",
+                contract.wire_name()
+            );
+
+            for wrong_category in FailureCategory::ALL
+                .iter()
+                .copied()
+                .filter(|category| *category != contract.category())
+            {
+                let mut mismatch = canonical.clone();
+                mismatch["category"] = json!(wrong_category.as_str());
+                assert!(
+                    serde_json::from_value::<ToolError>(mismatch.clone()).is_err(),
+                    "{} with {} should fail Serde",
+                    contract.wire_name(),
+                    wrong_category.as_str()
+                );
+                assert!(
+                    validate_json_schema(&schema, &mismatch).is_err(),
+                    "{} with {} should fail the schema",
+                    contract.wire_name(),
+                    wrong_category.as_str()
+                );
+            }
+        }
     }
 
     #[test]

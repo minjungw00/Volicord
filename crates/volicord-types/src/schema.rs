@@ -2,7 +2,10 @@ use std::{borrow::Cow, collections::BTreeSet, fmt, ops::Deref};
 
 use schemars::{
     gen::SchemaGenerator,
-    schema::{InstanceType, Schema, SchemaObject, SingleOrVec},
+    schema::{
+        InstanceType, Metadata, ObjectValidation, Schema, SchemaObject, SingleOrVec,
+        SubschemaValidation,
+    },
     JsonSchema,
 };
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
@@ -35,7 +38,7 @@ use crate::values::{
     UserActionChannelKind, UserActionKind, UserActionOptionAction, UserActionRequiredFor,
     UserActionStatus, UserActionVerificationBasis, UtcTimestamp, ValidatorSeverity,
     ValidatorStatus, WorkPhase, WorkspaceVcs, WriteDecisionCategory, WriteTicketInvalidationReason,
-    WriteTicketState, WriteTicketStatus,
+    WriteTicketState, WriteTicketStatus, PUBLIC_ERROR_CODE_CONTRACTS,
 };
 
 /// JSON object used where an owner document defines a field as `object`.
@@ -930,14 +933,28 @@ pub enum PreviewableToolResponse<T> {
 }
 
 /// Public API error item.
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
-#[schemars(deny_unknown_fields)]
+///
+/// The fields are private so external consumers cannot construct a value whose
+/// public error code and failure category disagree.
+///
+/// ```compile_fail,E0451
+/// use volicord_types::schema::{RequiredNullable, ToolError};
+/// use volicord_types::values::{ErrorCode, FailureCategory};
+///
+/// let error = ToolError {
+///     code: ErrorCode::ValidationFailed,
+///     message: "invalid request".to_owned(),
+///     retryable: false,
+///     details: RequiredNullable::null(),
+/// };
+/// assert_eq!(error.category(), FailureCategory::Corrupt);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolError {
-    pub category: FailureCategory,
-    pub code: ErrorCode,
-    pub message: String,
-    pub retryable: bool,
-    pub details: RequiredNullable<JsonObject>,
+    code: ErrorCode,
+    message: String,
+    retryable: bool,
+    details: RequiredNullable<JsonObject>,
 }
 
 impl ToolError {
@@ -950,12 +967,37 @@ impl ToolError {
         details: Option<JsonObject>,
     ) -> Self {
         Self {
-            category: code.failure_category(),
             code,
             message: message.into(),
             retryable,
             details: details.into(),
         }
+    }
+
+    /// Returns the failure category canonically selected by the public code.
+    pub const fn category(&self) -> FailureCategory {
+        self.code.failure_category()
+    }
+
+    /// Returns the public error code.
+    pub const fn code(&self) -> ErrorCode {
+        self.code
+    }
+
+    /// Returns the display message.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Returns whether the same semantic operation may be retried after the
+    /// reported condition changes.
+    pub const fn retryable(&self) -> bool {
+        self.retryable
+    }
+
+    /// Returns the optional machine-readable details object.
+    pub fn details(&self) -> Option<&JsonObject> {
+        self.details.as_ref()
     }
 }
 
@@ -976,6 +1018,31 @@ struct ToolErrorWire {
     details: RequiredNullable<JsonObject>,
 }
 
+impl Serialize for ToolError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct Wire<'a> {
+            category: FailureCategory,
+            code: ErrorCode,
+            message: &'a str,
+            retryable: bool,
+            details: &'a RequiredNullable<JsonObject>,
+        }
+
+        Wire {
+            category: self.category(),
+            code: self.code,
+            message: &self.message,
+            retryable: self.retryable,
+            details: &self.details,
+        }
+        .serialize(serializer)
+    }
+}
+
 impl<'de> Deserialize<'de> for ToolError {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -988,13 +1055,88 @@ impl<'de> Deserialize<'de> for ToolError {
             ));
         }
         Ok(Self {
-            category: wire.category,
             code: wire.code,
             message: wire.message,
             retryable: wire.retryable,
             details: wire.details,
         })
     }
+}
+
+impl JsonSchema for ToolError {
+    fn schema_name() -> String {
+        "ToolError".to_owned()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let relation_branches = PUBLIC_ERROR_CODE_CONTRACTS
+            .iter()
+            .map(|contract| {
+                Schema::Object(SchemaObject {
+                    object: Some(Box::new(ObjectValidation {
+                        properties: [
+                            (
+                                "category".to_owned(),
+                                exact_string_schema(contract.category().as_str()),
+                            ),
+                            ("code".to_owned(), exact_string_schema(contract.wire_name())),
+                        ]
+                        .into_iter()
+                        .collect(),
+                        ..Default::default()
+                    })),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        Schema::Object(SchemaObject {
+            metadata: Some(Box::new(Metadata {
+                title: Some(Self::schema_name()),
+                description: Some(
+                    "Closed public error whose category is fixed by its public error code."
+                        .to_owned(),
+                ),
+                ..Default::default()
+            })),
+            instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::Object))),
+            subschemas: Some(Box::new(SubschemaValidation {
+                one_of: Some(relation_branches),
+                ..Default::default()
+            })),
+            object: Some(Box::new(ObjectValidation {
+                required: ["category", "code", "details", "message", "retryable"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+                properties: [
+                    (
+                        "category".to_owned(),
+                        generator.subschema_for::<FailureCategory>(),
+                    ),
+                    ("code".to_owned(), generator.subschema_for::<ErrorCode>()),
+                    (
+                        "details".to_owned(),
+                        generator.subschema_for::<RequiredNullable<JsonObject>>(),
+                    ),
+                    ("message".to_owned(), generator.subschema_for::<String>()),
+                    ("retryable".to_owned(), generator.subschema_for::<bool>()),
+                ]
+                .into_iter()
+                .collect(),
+                additional_properties: Some(Box::new(Schema::Bool(false))),
+                ..Default::default()
+            })),
+            ..Default::default()
+        })
+    }
+}
+
+fn exact_string_schema(value: &str) -> Schema {
+    Schema::Object(SchemaObject {
+        instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::String))),
+        enum_values: Some(vec![Value::String(value.to_owned())]),
+        ..Default::default()
+    })
 }
 
 /// Event reference emitted in common result metadata.

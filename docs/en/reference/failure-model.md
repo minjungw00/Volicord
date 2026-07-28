@@ -36,6 +36,12 @@ identifier and, when the domain distinguishes causes within that category, a
 domain-owner-defined reason identifier. Human text alone is not a category or
 reason. A reason identifier must not silently change the category meaning.
 
+For a public `ToolError`, its `ErrorCode` selects exactly one current
+`FailureCategory`. The canonical public error declaration owns that
+relationship; construction, serialization, deserialization, schema
+validation, generated documentation, and adapters consume it without treating
+the category as an independently selectable value.
+
 ## Category selection boundaries
 
 `Rejected` and `NotAllowed` are separated by policy evaluation. Missing or

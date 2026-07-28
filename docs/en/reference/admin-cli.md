@@ -1808,10 +1808,11 @@ does not synthesize a public method rejection.
 
 When an administrative command emits a public Core rejection as JSON, it
 preserves the exact closed `ToolRejectedResponse`. Every nested `ToolError`
-contains the required `details` field, using `null` when no details object is
-available and the Core-produced object otherwise. Human-readable rejection
-rendering may summarize the code and message but does not define another
-structured error shape.
+contains the canonical `code`/`category` pair and the required `details` field,
+using `null` when no details object is available and the Core-produced object
+otherwise. The CLI does not map a public error category independently.
+Human-readable rejection rendering may summarize the code and message but does
+not define another structured error shape.
 
 `diagnostics show` and `diagnostics session` use lookup status rather than
 finding severity for exit selection. A found record or session exits `0`, even

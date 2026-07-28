@@ -163,10 +163,12 @@ corrupt
 `Corrupt`에 대응합니다. 의미 경계는
 [실패 모델](../failure-model.md)이 담당합니다.
 
-`ToolError.category`는 이 값 집합을 사용하는 필수 제어 필드입니다. 실패 범주는
-`ToolError.code`, 도메인별 `ToolError.details.reason`, 응답 분기 선택을 대신하지
-않습니다. 동작을 계속하는 `degraded` 진단과 메서드가 담당하는 `not_allowed` 결과를
-포함한 API 분기 처리는 [API 오류 처리 경로](error-routing.md)가 담당합니다.
+`ToolError.category`는 이 값 집합을 사용하는 필수 제어 필드이며,
+[API 오류 코드](error-codes.md#error-taxonomy)의 생성 목록에 따라
+`ToolError.code`가 그 값을 정합니다. 실패 범주는 코드, 도메인별
+`ToolError.details.reason`, 응답 분기 선택을 대신하지 않습니다. 동작을 계속하는
+`degraded` 진단과 메서드가 담당하는 `not_allowed` 결과를 포함한 API 분기 처리는
+[API 오류 처리 경로](error-routing.md)가 담당합니다.
 
 <a id="opaque-and-method-scoped-string-fields"></a>
 ## 불투명 문자열과 메서드 범위 문자열 필드

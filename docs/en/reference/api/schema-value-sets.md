@@ -159,8 +159,10 @@ These identifiers correspond exactly to `Rejected`, `NotAllowed`,
 `Unavailable`, `Degraded`, and `Corrupt`. Their semantic
 boundaries are owned by the [Failure Model](../failure-model.md).
 
-`ToolError.category` is a required controlled field with this value set. A
-category does not replace `ToolError.code`, a domain-specific
+`ToolError.category` is a required controlled field with this value set, and
+its value is fixed by `ToolError.code` according to the generated catalog in
+[API error codes](error-codes.md#error-taxonomy). A category does not replace
+the code, a domain-specific
 `ToolError.details.reason`, or response-branch selection. API branch routing,
 including continued-operation `degraded` diagnostics and method-owned
 `not_allowed` results, is owned by [API error routing](error-routing.md).

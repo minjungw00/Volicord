@@ -212,6 +212,36 @@ ToolEnvelope:
 | `message` | 예 | 아니요 | `string` |
 | `retryable` | 예 | 아니요 | `boolean` |
 
+### 정규 공개 오류 코드/범주 쌍
+
+| 공개 `ErrorCode` | 필수 `FailureCategory` |
+|---|---|
+| `VALIDATION_FAILED` | `rejected` |
+| `PERSISTED_DATA_CORRUPT` | `corrupt` |
+| `STATE_VERSION_CONFLICT` | `rejected` |
+| `INVOCATION_CONTEXT_MISMATCH` | `rejected` |
+| `NO_ACTIVE_TASK` | `rejected` |
+| `NO_ACTIVE_CHANGE_UNIT` | `rejected` |
+| `BASELINE_STALE` | `rejected` |
+| `SCOPE_REQUIRED` | `rejected` |
+| `SCOPE_VIOLATION` | `not_allowed` |
+| `WRITE_TICKET_REQUIRED` | `rejected` |
+| `WRITE_TICKET_INVALID` | `rejected` |
+| `APPROVAL_DENIED` | `not_allowed` |
+| `APPROVAL_EXPIRED` | `rejected` |
+| `APPROVAL_REQUIRED` | `rejected` |
+| `DECISION_UNRESOLVED` | `rejected` |
+| `AUTONOMY_BOUNDARY_EXCEEDED` | `not_allowed` |
+| `DECISION_REQUIRED` | `rejected` |
+| `CAPABILITY_INSUFFICIENT` | `not_allowed` |
+| `EVIDENCE_INSUFFICIENT` | `not_allowed` |
+| `RESIDUAL_RISK_NOT_VISIBLE` | `not_allowed` |
+| `ACCEPTANCE_REQUIRED` | `not_allowed` |
+| `PROJECTION_STALE` | `unavailable` |
+| `ARTIFACT_MISSING` | `unavailable` |
+| `VALIDATOR_FAILED` | `unavailable` |
+| `OPERATION_RESULT_UNAVAILABLE` | `unavailable` |
+
 ### `RequestedIntentReadOnlyResultBase` 필드
 
 | 필드 | 필수 | Null 허용 | 형식 |
@@ -390,9 +420,10 @@ OperationResultRef:
 - `ToolError`는 닫힌 객체이며 생성된 표의 모든 필드는 필수입니다. `details`는
   반드시 있어야 하고 `null` 또는 기계 판독용 세부사항 객체를 담습니다. `null`은
   보고할 세부사항 객체가 없다는 뜻입니다.
-- `ToolError.category`는 지원되는 `FailureCategory` 식별자입니다. 더 좁은 공개 코드와
-  도메인 사유와 독립적으로 실패를 분류합니다.
-- `ToolError.code`는 공개 `ErrorCode` 값입니다.
+- `ToolError.code`는 공개 `ErrorCode` 값이며 정확한 `ToolError.category` 값 하나를
+  선택합니다. [공통 응답 분기](#common-response)의 생성 관계 표에는 허용되는 모든
+  쌍이 나옵니다. 직렬화는 코드에서 범주를 도출하며, 역직렬화와 JSON Schema
+  검증은 서로 맞지 않는 쌍을 거부합니다.
 - `ToolError.message`는 자유 형식 표시 문자열입니다.
 - `ToolError.retryable`은 보고된 조건이 바뀐 뒤 같은 의미의 동작을 다시 시도할 수
   있는지를 나타냅니다.

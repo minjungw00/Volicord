@@ -414,7 +414,7 @@ fn every_production_profile_call_tool_result_uses_its_pinned_wire_shape() {
 }
 
 #[test]
-fn every_production_profile_preserves_required_tool_error_details() {
+fn every_production_profile_preserves_the_canonical_tool_error_pair_and_details() {
     let rejection = serde_json::to_value(ToolRejectedResponse::new(
         DryRunIntent::NotRequested,
         Some(7),
@@ -439,6 +439,18 @@ fn every_production_profile_preserves_required_tool_error_details() {
         .expect("Core rejection should project")
         .into_value();
         let authoritative = authoritative_result(&projected);
+        assert_eq!(
+            authoritative["errors"][0]["code"],
+            "VALIDATION_FAILED",
+            "{} projection changed ToolError.code",
+            profile.revision()
+        );
+        assert_eq!(
+            authoritative["errors"][0]["category"],
+            "rejected",
+            "{} projection changed the canonical ToolError.category",
+            profile.revision()
+        );
         assert_eq!(
             authoritative["errors"][0]["details"],
             Value::Null,

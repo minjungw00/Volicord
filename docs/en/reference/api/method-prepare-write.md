@@ -349,8 +349,9 @@ Returns `ToolRejectedResponse` for failures before `decision` evaluation or comm
 - request validation failure
 - missing current Task
 - no current Change Unit after Task resolution; this uses public code
-  `NO_ACTIVE_CHANGE_UNIT`, failure category `rejected`, and method-specific details reason
-  `current_change_unit_required`, and occurs before policy evaluation
+  `NO_ACTIVE_CHANGE_UNIT` with its canonical category and method-specific
+  details reason `current_change_unit_required`, and occurs before policy
+  evaluation
 - actor-source or operation-category mismatch
 - Core unavailability
 - stale baseline

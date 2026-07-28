@@ -334,6 +334,11 @@ mod tests {
                 assert!(output.contains("INVOCATION_CONTEXT_MISMATCH"));
                 let projected: serde_json::Value =
                     serde_json::from_str(&output).expect("CLI failure output should be JSON");
+                assert_eq!(
+                    projected["errors"][0]["code"],
+                    "INVOCATION_CONTEXT_MISMATCH"
+                );
+                assert_eq!(projected["errors"][0]["category"], "rejected");
                 assert_eq!(projected["errors"][0]["details"], serde_json::Value::Null);
             }
             other => panic!("expected failure output, got {other:?}"),

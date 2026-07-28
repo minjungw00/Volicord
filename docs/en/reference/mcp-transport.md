@@ -810,10 +810,10 @@ error code and retry/side-effect flags even where `isError` is not available.
 
 When Core returns a public `ToolRejectedResponse`, MCP preserves that exact
 closed response object in the selected authoritative carrier. Every nested
-`ToolError` retains its required `details` field: the value is `null` when no
-details object is available and otherwise remains the Core-produced object.
-Protocol capabilities select only the carrier and do not remove or rewrite
-that field.
+`ToolError` retains the canonical `code`/`category` pair and its required
+`details` field: the value is `null` when no details object is available and
+otherwise remains the Core-produced object. Protocol capabilities select only
+the carrier and do not map the category or remove or rewrite those fields.
 
 When Core returns typed operational unavailability without a method result,
 MCP emits the MCP-owned `MCP_UNAVAILABLE` structured failure through that same

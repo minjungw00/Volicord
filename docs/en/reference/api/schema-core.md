@@ -220,6 +220,36 @@ Does not imply:
 | `message` | yes | no | `string` |
 | `retryable` | yes | no | `boolean` |
 
+### Canonical public error code/category pairs
+
+| Public `ErrorCode` | Required `FailureCategory` |
+|---|---|
+| `VALIDATION_FAILED` | `rejected` |
+| `PERSISTED_DATA_CORRUPT` | `corrupt` |
+| `STATE_VERSION_CONFLICT` | `rejected` |
+| `INVOCATION_CONTEXT_MISMATCH` | `rejected` |
+| `NO_ACTIVE_TASK` | `rejected` |
+| `NO_ACTIVE_CHANGE_UNIT` | `rejected` |
+| `BASELINE_STALE` | `rejected` |
+| `SCOPE_REQUIRED` | `rejected` |
+| `SCOPE_VIOLATION` | `not_allowed` |
+| `WRITE_TICKET_REQUIRED` | `rejected` |
+| `WRITE_TICKET_INVALID` | `rejected` |
+| `APPROVAL_DENIED` | `not_allowed` |
+| `APPROVAL_EXPIRED` | `rejected` |
+| `APPROVAL_REQUIRED` | `rejected` |
+| `DECISION_UNRESOLVED` | `rejected` |
+| `AUTONOMY_BOUNDARY_EXCEEDED` | `not_allowed` |
+| `DECISION_REQUIRED` | `rejected` |
+| `CAPABILITY_INSUFFICIENT` | `not_allowed` |
+| `EVIDENCE_INSUFFICIENT` | `not_allowed` |
+| `RESIDUAL_RISK_NOT_VISIBLE` | `not_allowed` |
+| `ACCEPTANCE_REQUIRED` | `not_allowed` |
+| `PROJECTION_STALE` | `unavailable` |
+| `ARTIFACT_MISSING` | `unavailable` |
+| `VALIDATOR_FAILED` | `unavailable` |
+| `OPERATION_RESULT_UNAVAILABLE` | `unavailable` |
+
 ### `RequestedIntentReadOnlyResultBase` fields
 
 | Field | Required | Nullable | Type |
@@ -401,10 +431,11 @@ Meaning:
 - `ToolError` is closed, and every field in its generated table is required.
   `details` must be present and contain either `null` or a machine-readable
   details object. `null` means that the error has no details object to report.
-- `ToolError.category` is a supported `FailureCategory` identifier. It
-  classifies the failure independently of the narrower public code and domain
-  reason.
-- `ToolError.code` is a public `ErrorCode` value.
+- `ToolError.code` is a public `ErrorCode` value and selects exactly one
+  `ToolError.category` value. The generated relation table under
+  [common response branches](#common-response) lists every accepted pair.
+  Serialization derives the category from the code, while deserialization and
+  JSON Schema validation reject a mismatched pair.
 - `ToolError.message` is a free-form display string.
 - `ToolError.retryable` states whether the same semantic operation may be
   retried after the reported condition changes.

@@ -721,10 +721,11 @@ Text 전용 profile에서는 첫 text 항목이 권위 있는 JSON 객체입니�
 오류 코드와 재시도/부작용 flag를 보존합니다.
 
 Core가 공개 `ToolRejectedResponse`를 반환하면 MCP는 그 정확한 닫힌 응답 객체를
-선택한 권위 있는 carrier에 보존합니다. 중첩된 모든 `ToolError`는 필수 `details`
-필드를 유지합니다. 세부사항 객체가 없으면 값은 `null`이고, 있으면 Core가 만든
-객체를 그대로 유지합니다. Protocol capability는 carrier만 선택하며 이 필드를
-제거하거나 다시 쓰지 않습니다.
+선택한 권위 있는 carrier에 보존합니다. 중첩된 모든 `ToolError`는 정규
+`code`/`category` 쌍과 필수 `details` 필드를 유지합니다. 세부사항 객체가 없으면
+값은 `null`이고, 있으면 Core가 만든 객체를 그대로 유지합니다. Protocol
+capability는 carrier만 선택하며 범주를 따로 변환하거나 이 필드들을 제거하거나
+다시 쓰지 않습니다.
 
 Core가 메서드 결과 없이 typed 운영 불가를 반환하면 MCP는 같은 선택 carrier를 통해 MCP
 소유 `MCP_UNAVAILABLE` 구조화 실패를 내보냅니다. 이 객체는 tool name, typed

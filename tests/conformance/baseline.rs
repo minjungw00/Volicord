@@ -1148,8 +1148,8 @@ fn public_error_precedence_keeps_validation_primary() {
 
     assert_eq!(response.base().response_kind(), ResponseKind::Rejected);
     assert_eq!(response.base().effect_kind(), EffectKind::NoEffect);
-    assert_eq!(response.errors()[0].code, ErrorCode::ValidationFailed);
-    assert_eq!(response.errors()[1].code, ErrorCode::StateVersionConflict);
+    assert_eq!(response.errors()[0].code(), ErrorCode::ValidationFailed);
+    assert_eq!(response.errors()[1].code(), ErrorCode::StateVersionConflict);
     let serialized = serde_json::to_value(&response).expect("rejection should serialize");
     assert_eq!(serialized["errors"][0]["details"], serde_json::Value::Null);
     assert_eq!(serialized["errors"][1]["details"], serde_json::Value::Null);
