@@ -474,7 +474,8 @@ Init은 다음 블록을 정확히 생성합니다. 고정된 status/intake/chec
 
 ### 입력 상태
 
-- `volicord.check_close` 또는 `volicord.close_task`가 반환한 `CloseTaskResult`.
+- `volicord.check_close`가 반환한 `CheckCloseResult` 또는
+  `volicord.close_task`가 반환한 `CloseTaskResult`.
 - `CloseReadinessBlocker[]`, 증거 요약, 대기 중인
   `AgentSafeUserActionRequestSummary` 항목.
 - 최종 수락 상태, 잔여 위험 상태, 아티팩트 가용성.

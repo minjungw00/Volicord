@@ -7,7 +7,9 @@ use std::fs;
 use std::ops::Range;
 use std::path::Path;
 use volicord_types::contracts::{public_json_contract_descriptors, JsonContractDescriptor};
-use volicord_types::methods::DryRunRequestPolicy;
+use volicord_types::methods::{
+    DryRunRequestPolicy, ResultDryRunContract, ResultEffectContract, ResultEventContract,
+};
 
 const CORE_SCHEMA_DOC_ID: &str = "reference.api.schema-core";
 const CORE_SCHEMA_CONTRACT_ID: &str = "api.schema.core";
@@ -17,10 +19,15 @@ const GENERATED_NOTICE: &str =
 const PARAMS_SHAPE: &str = "params";
 const RESPONSE_VARIANTS_SHAPE: &str = "response_variants";
 const RESULT_SHAPE: &str = "result_body";
+const RESULT_METADATA_SHAPE: &str = "result_metadata";
 const REJECTION_SHAPE: &str = "rejection";
 const DRY_RUN_SHAPE: &str = "dry_run";
 const TOOL_ERROR_SHAPE: &str = "schema_object.ToolError";
-const RESULT_BASE_SHAPE: &str = "schema_object.ToolResultBase";
+const REQUESTED_READ_ONLY_BASE_SHAPE: &str = "schema_object.RequestedIntentReadOnlyResultBase";
+const NOT_REQUESTED_READ_ONLY_BASE_SHAPE: &str = "schema_object.NotRequestedReadOnlyResultBase";
+const CORE_COMMITTED_BASE_SHAPE: &str = "schema_object.CoreCommittedResultBase";
+const STAGING_CREATED_BASE_SHAPE: &str = "schema_object.StagingCreatedResultBase";
+const NO_EFFECT_BASE_SHAPE: &str = "schema_object.NoEffectResultBase";
 const REJECTED_BASE_SHAPE: &str = "schema_object.ToolRejectedBase";
 const DRY_RUN_BASE_SHAPE: &str = "schema_object.ToolDryRunBase";
 const SHARED_REJECTION_SHAPE: &str = "schema_object.ToolRejectedResponse";
@@ -55,7 +62,6 @@ struct ObjectVariant {
 }
 
 struct CommonResponseSchemas<'a> {
-    result_base: &'a Value,
     rejected_base: &'a Value,
     dry_run_base: &'a Value,
     rejection: &'a Value,
@@ -279,7 +285,7 @@ fn render_request_region(
             shape,
         )?);
     }
-    Ok(render_region(id, body))
+    render_region(id, body)
 }
 
 fn render_response_region(
@@ -295,7 +301,12 @@ fn render_response_region(
         let descriptor = descriptors
             .get(contract_id)
             .with_context(|| format!("method document has no response descriptor {contract_id}"))?;
-        for shape in [RESPONSE_VARIANTS_SHAPE, RESULT_SHAPE, REJECTION_SHAPE] {
+        for shape in [
+            RESPONSE_VARIANTS_SHAPE,
+            RESULT_SHAPE,
+            RESULT_METADATA_SHAPE,
+            REJECTION_SHAPE,
+        ] {
             exact_shape(descriptor, shape)?;
             bindings.push((contract_id.to_owned(), shape));
         }
@@ -314,11 +325,25 @@ fn render_response_region(
     let mut composition_kinds = BTreeSet::new();
     let mut previewable_responses = 0usize;
     let mut method_dry_run_contracts = Vec::new();
+    let mut result_metadata_contracts = Vec::new();
 
     for descriptor in response_descriptors {
         if let Some(method_contract) = descriptor.method_dry_run_contract() {
             method_dry_run_contracts.push(method_contract);
         }
+        let (method, policy, effects) = descriptor.method_result_contract().with_context(|| {
+            format!(
+                "method response descriptor {} has no exact result contract",
+                descriptor.id()
+            )
+        })?;
+        result_metadata_contracts.push((
+            method,
+            policy,
+            effects,
+            exact_shape(descriptor, RESULT_METADATA_SHAPE)?,
+            descriptor.id(),
+        ));
         let success = exact_shape(descriptor, RESULT_SHAPE)?;
         let title = schema_title(success, descriptor.id(), RESULT_SHAPE)?;
         if let Some(previous) = rendered_success.insert(title.to_owned(), success.clone()) {
@@ -376,6 +401,27 @@ fn render_response_region(
             language,
             TableRole::Success,
             "method response result",
+        )?);
+    }
+
+    let mut effect_occurrences = BTreeMap::<ResultEffectContract, usize>::new();
+    for (_, _, effects, _, _) in &result_metadata_contracts {
+        for effect in *effects {
+            *effect_occurrences.entry(*effect).or_default() += 1;
+        }
+    }
+    for (method, policy, effects, schema, owner) in result_metadata_contracts {
+        if !body.is_empty() {
+            body.push_str("\n\n");
+        }
+        body.push_str(&render_result_metadata_tables(
+            schema,
+            method.as_str(),
+            policy,
+            effects,
+            &effect_occurrences,
+            language,
+            owner,
         )?);
     }
 
@@ -544,7 +590,7 @@ fn render_response_region(
         }
     }
 
-    Ok(render_region(id, body))
+    render_region(id, body)
 }
 
 struct ResponseComposition<'a> {
@@ -591,7 +637,14 @@ fn render_common_response_region(
 ) -> Result<RenderedRegion> {
     let bindings = [
         (descriptor.id().to_owned(), TOOL_ERROR_SHAPE),
-        (descriptor.id().to_owned(), RESULT_BASE_SHAPE),
+        (descriptor.id().to_owned(), REQUESTED_READ_ONLY_BASE_SHAPE),
+        (
+            descriptor.id().to_owned(),
+            NOT_REQUESTED_READ_ONLY_BASE_SHAPE,
+        ),
+        (descriptor.id().to_owned(), CORE_COMMITTED_BASE_SHAPE),
+        (descriptor.id().to_owned(), STAGING_CREATED_BASE_SHAPE),
+        (descriptor.id().to_owned(), NO_EFFECT_BASE_SHAPE),
         (descriptor.id().to_owned(), REJECTED_BASE_SHAPE),
         (descriptor.id().to_owned(), DRY_RUN_BASE_SHAPE),
         (descriptor.id().to_owned(), SHARED_REJECTION_SHAPE),
@@ -604,7 +657,31 @@ fn render_common_response_region(
             TableRole::Common,
             TOOL_ERROR_SHAPE,
         ),
-        (common.result_base, TableRole::Common, RESULT_BASE_SHAPE),
+        (
+            exact_shape(descriptor, REQUESTED_READ_ONLY_BASE_SHAPE)?,
+            TableRole::Common,
+            REQUESTED_READ_ONLY_BASE_SHAPE,
+        ),
+        (
+            exact_shape(descriptor, NOT_REQUESTED_READ_ONLY_BASE_SHAPE)?,
+            TableRole::Common,
+            NOT_REQUESTED_READ_ONLY_BASE_SHAPE,
+        ),
+        (
+            exact_shape(descriptor, CORE_COMMITTED_BASE_SHAPE)?,
+            TableRole::Common,
+            CORE_COMMITTED_BASE_SHAPE,
+        ),
+        (
+            exact_shape(descriptor, STAGING_CREATED_BASE_SHAPE)?,
+            TableRole::Common,
+            STAGING_CREATED_BASE_SHAPE,
+        ),
+        (
+            exact_shape(descriptor, NO_EFFECT_BASE_SHAPE)?,
+            TableRole::Common,
+            NO_EFFECT_BASE_SHAPE,
+        ),
         (
             common.rejected_base,
             TableRole::Rejection,
@@ -631,7 +708,7 @@ fn render_common_response_region(
             shape,
         )?);
     }
-    Ok(render_region(id, body))
+    render_region(id, body)
 }
 
 fn common_response_schemas<'a>(
@@ -641,7 +718,6 @@ fn common_response_schemas<'a>(
         format!("semantic contract catalog has no {CORE_SCHEMA_CONTRACT_ID} descriptor")
     })?;
     Ok(CommonResponseSchemas {
-        result_base: exact_shape(descriptor, RESULT_BASE_SHAPE)?,
         rejected_base: exact_shape(descriptor, REJECTED_BASE_SHAPE)?,
         dry_run_base: exact_shape(descriptor, DRY_RUN_BASE_SHAPE)?,
         rejection: exact_shape(descriptor, SHARED_REJECTION_SHAPE)?,
@@ -667,11 +743,12 @@ fn region_id(bindings: &[(String, &str)]) -> String {
     format!("contract-structures {bindings}")
 }
 
-fn render_region(id: String, body: String) -> RenderedRegion {
+fn render_region(id: String, body: String) -> Result<RenderedRegion> {
+    validate_unique_generated_heading_anchors(&body)?;
     let contents = format!(
         "<!-- BEGIN GENERATED: {id} -->\n{GENERATED_NOTICE}\n\n{body}\n<!-- END GENERATED: {id} -->"
     );
-    RenderedRegion { id, contents }
+    Ok(RenderedRegion { id, contents })
 }
 
 fn replace_regions(contents: &str, regions: &[RenderedRegion]) -> Result<String> {
@@ -790,6 +867,261 @@ fn render_schema_tables(
         role,
         &format!("{contract_id} shape {shape}"),
     )
+}
+
+fn render_result_metadata_tables(
+    schema: &Value,
+    method_name: &str,
+    policy: DryRunRequestPolicy,
+    effects: &'static [ResultEffectContract],
+    effect_occurrences: &BTreeMap<ResultEffectContract, usize>,
+    language: Language,
+    owner_label: &str,
+) -> Result<String> {
+    let variants = object_variants(schema)
+        .with_context(|| format!("unsupported result metadata structure for {owner_label}"))?;
+    let mut variants_by_effect = BTreeMap::new();
+    for variant in variants {
+        let effect_property = variant
+            .properties
+            .get("effect_kind")
+            .with_context(|| format!("{owner_label} result metadata has no effect_kind"))?;
+        let effect_name = exact_schema_string(effect_property, schema)?
+            .with_context(|| format!("{owner_label} effect_kind is not one exact string"))?;
+        let effect = ResultEffectContract::ALL
+            .into_iter()
+            .find(|effect| effect.as_str() == effect_name)
+            .with_context(|| {
+                format!("{owner_label} exposes unsupported result effect {effect_name}")
+            })?;
+        if variants_by_effect.insert(effect, variant).is_some() {
+            bail!(
+                "{owner_label} exposes more than one metadata variant for {}",
+                effect.as_str()
+            );
+        }
+    }
+    let declared = effects.iter().copied().collect::<BTreeSet<_>>();
+    let generated = variants_by_effect.keys().copied().collect::<BTreeSet<_>>();
+    if generated != declared {
+        bail!(
+            "{owner_label} generated result effects {generated:?} differ from the canonical declaration {declared:?}"
+        );
+    }
+
+    let mut output = String::new();
+    for (index, effect) in effects.iter().copied().enumerate() {
+        if index > 0 {
+            output.push_str("\n\n");
+        }
+        let variant = variants_by_effect
+            .get(&effect)
+            .expect("declared effect must have a generated variant");
+        let dry_run_contract = if policy == DryRunRequestPolicy::RegularResult
+            && effect == ResultEffectContract::ReadOnly
+        {
+            ResultDryRunContract::PreserveRequestedIntent
+        } else {
+            ResultDryRunContract::NotRequested
+        };
+        validate_result_metadata_variant(schema, variant, effect, dry_run_contract, owner_label)?;
+
+        let repeated = effect_occurrences.get(&effect).copied().unwrap_or_default() > 1;
+        match language {
+            Language::English => {
+                output.push_str("### `Result Metadata: ");
+                output.push_str(effect.as_str());
+                if repeated {
+                    output.push_str(" (");
+                    output.push_str(method_name);
+                    output.push(')');
+                }
+                output.push_str("` fields\n\n");
+                output.push_str("Contract: `dry_run` ");
+                match dry_run_contract {
+                    ResultDryRunContract::PreserveRequestedIntent => {
+                        output.push_str("preserves the normalized request intent")
+                    }
+                    ResultDryRunContract::NotRequested => output.push_str("is `false`"),
+                }
+                output.push_str("; `events` ");
+                match effect.event_contract() {
+                    ResultEventContract::Empty => {
+                        output.push_str("must be empty (`maxItems: 0`).\n\n")
+                    }
+                    ResultEventContract::NonEmpty => {
+                        output.push_str("contains at least one event (`minItems: 1`).\n\n")
+                    }
+                }
+                output.push_str("| Field | Required | Nullable | Type |\n");
+            }
+            Language::Korean => {
+                output.push_str("### `결과 Metadata: ");
+                output.push_str(effect.as_str());
+                if repeated {
+                    output.push_str(" (");
+                    output.push_str(method_name);
+                    output.push(')');
+                }
+                output.push_str("` 필드\n\n");
+                output.push_str("계약: `dry_run`은 ");
+                match dry_run_contract {
+                    ResultDryRunContract::PreserveRequestedIntent => {
+                        output.push_str("정규화된 요청 의도를 보존합니다")
+                    }
+                    ResultDryRunContract::NotRequested => output.push_str("`false`입니다"),
+                }
+                output.push_str("; `events`는 ");
+                match effect.event_contract() {
+                    ResultEventContract::Empty => {
+                        output.push_str("비어 있어야 합니다(`maxItems: 0`).\n\n")
+                    }
+                    ResultEventContract::NonEmpty => {
+                        output.push_str("하나 이상의 이벤트를 포함합니다(`minItems: 1`).\n\n")
+                    }
+                }
+                output.push_str("| 필드 | 필수 | Null 허용 | 형식 |\n");
+            }
+        }
+        output.push_str("|---|---|---|---|\n");
+        for required in &variant.required {
+            if !variant.properties.contains_key(required) {
+                bail!("{owner_label} marks {required} required but exposes no matching property");
+            }
+        }
+        for (field, property) in &variant.properties {
+            let nullable = schema_allows_null(property, schema, &mut BTreeSet::new())?;
+            let field_type = schema_type(property, schema)?;
+            output.push_str("| `");
+            output.push_str(field);
+            output.push_str("` | ");
+            output.push_str(required_label(language, variant.required.contains(field)));
+            output.push_str(" | ");
+            output.push_str(required_label(language, nullable));
+            output.push_str(" | `");
+            output.push_str(&field_type);
+            output.push_str("` |\n");
+        }
+        output.pop();
+    }
+    Ok(output)
+}
+
+fn validate_result_metadata_variant(
+    root: &Value,
+    variant: &ObjectVariant,
+    effect: ResultEffectContract,
+    dry_run_contract: ResultDryRunContract,
+    owner_label: &str,
+) -> Result<()> {
+    let dry_run = variant
+        .properties
+        .get("dry_run")
+        .with_context(|| format!("{owner_label} result metadata has no dry_run"))?;
+    let dry_run_schema = resolve_schema_node(dry_run, root)?;
+    match dry_run_contract {
+        ResultDryRunContract::PreserveRequestedIntent => {
+            if dry_run_schema.get("type") != Some(&Value::String("boolean".to_owned()))
+                || dry_run_schema.get("enum").is_some()
+            {
+                bail!(
+                    "{owner_label} {} dry_run must preserve a boolean request intent",
+                    effect.as_str()
+                );
+            }
+        }
+        ResultDryRunContract::NotRequested => {
+            if dry_run_schema.get("enum") != Some(&serde_json::json!([false])) {
+                bail!(
+                    "{owner_label} {} dry_run must be exactly false",
+                    effect.as_str()
+                );
+            }
+        }
+    }
+
+    let events = variant
+        .properties
+        .get("events")
+        .with_context(|| format!("{owner_label} result metadata has no events"))?;
+    let events_schema = resolve_schema_node(events, root)?;
+    match effect.event_contract() {
+        ResultEventContract::Empty if events_schema.get("maxItems") != Some(&Value::from(0)) => {
+            bail!(
+                "{owner_label} {} events must declare maxItems 0",
+                effect.as_str()
+            );
+        }
+        ResultEventContract::NonEmpty if events_schema.get("minItems") != Some(&Value::from(1)) => {
+            bail!(
+                "{owner_label} {} events must declare minItems 1",
+                effect.as_str()
+            );
+        }
+        ResultEventContract::Empty | ResultEventContract::NonEmpty => {}
+    }
+    Ok(())
+}
+
+fn exact_schema_string(schema: &Value, root: &Value) -> Result<Option<String>> {
+    let schema = resolve_schema_node(schema, root)?;
+    if let Some(value) = schema.get("const").and_then(Value::as_str) {
+        return Ok(Some(value.to_owned()));
+    }
+    let values = schema
+        .get("enum")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_owned)
+                        .context("string effect enum contains a non-string value")
+                })
+                .collect::<Result<Vec<_>>>()
+        })
+        .transpose()?;
+    Ok(values.and_then(|values| (values.len() == 1).then(|| values[0].clone())))
+}
+
+fn resolve_schema_node<'a>(schema: &'a Value, root: &'a Value) -> Result<&'a Value> {
+    match schema.get("$ref").and_then(Value::as_str) {
+        Some(reference) => resolve_reference(root, reference),
+        None => Ok(schema),
+    }
+}
+
+fn validate_unique_generated_heading_anchors(contents: &str) -> Result<()> {
+    let mut anchors = BTreeSet::new();
+    for heading in contents
+        .lines()
+        .filter_map(|line| line.strip_prefix("### "))
+    {
+        let anchor = generated_heading_anchor(heading);
+        if !anchors.insert(anchor.clone()) {
+            bail!("generated documentation contains duplicate heading anchor #{anchor}");
+        }
+    }
+    Ok(())
+}
+
+fn generated_heading_anchor(heading: &str) -> String {
+    let mut anchor = String::new();
+    let mut pending_separator = false;
+    for character in heading.chars().flat_map(char::to_lowercase) {
+        if character.is_alphanumeric() || character == '_' {
+            if pending_separator && !anchor.is_empty() {
+                anchor.push('-');
+            }
+            pending_separator = false;
+            anchor.push(character);
+        } else if character == '-' || character.is_whitespace() {
+            pending_separator = true;
+        }
+    }
+    anchor
 }
 
 fn render_schema_tables_with_title(
@@ -1256,6 +1588,7 @@ mod tests {
     use serde_json::json;
     use volicord_types::contracts::JsonExampleShape;
     use volicord_types::methods::{MethodResponseBranch, PUBLIC_METHOD_CONTRACTS};
+    use volicord_types::values::MethodName;
 
     fn binding(id: &str, role: DocumentContractRole) -> DocumentContractBinding {
         DocumentContractBinding {
@@ -1290,7 +1623,7 @@ mod tests {
     fn common_schemas() -> (Value, Value, Value) {
         (
             json!({
-                "title": "ToolResultBase",
+                "title": "SyntheticSharedBase",
                 "type": "object",
                 "required": ["response_kind"],
                 "properties": {"response_kind": {"type": "string"}}
@@ -1300,11 +1633,11 @@ mod tests {
                 "type": "object",
                 "required": ["base", "errors"],
                 "properties": {
-                    "base": {"$ref": "#/definitions/ToolResultBase"},
+                    "base": {"$ref": "#/definitions/SyntheticSharedBase"},
                     "errors": {"type": "array", "items": {"type": "string"}}
                 },
                 "definitions": {
-                    "ToolResultBase": {
+                    "SyntheticSharedBase": {
                         "type": "object",
                         "required": ["response_kind"],
                         "properties": {"response_kind": {"type": "string"}}
@@ -1323,6 +1656,34 @@ mod tests {
         )
     }
 
+    fn result_metadata_schema() -> Value {
+        json!({
+            "title": "AlphaResultBase",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "response_kind",
+                "effect_kind",
+                "dry_run",
+                "state_version",
+                "disclosure",
+                "events"
+            ],
+            "properties": {
+                "response_kind": {"enum": ["result"], "type": "string"},
+                "effect_kind": {"enum": ["read_only"], "type": "string"},
+                "dry_run": {"type": "boolean"},
+                "state_version": {"type": "integer"},
+                "disclosure": {"type": "object"},
+                "events": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "maxItems": 0
+                }
+            }
+        })
+    }
+
     fn response_descriptor(
         result: Value,
         rejection: Value,
@@ -1337,6 +1698,11 @@ mod tests {
             Default::default(),
             Vec::new(),
         )
+        .with_method_result_contract(
+            MethodName::Status,
+            DryRunRequestPolicy::RegularResult,
+            &[ResultEffectContract::ReadOnly],
+        )
         .with_example_schema(
             JsonExampleShape::MethodResponseVariants,
             json!({
@@ -1349,6 +1715,10 @@ mod tests {
             }),
         )
         .with_example_schema(JsonExampleShape::MethodResultBody, result)
+        .with_example_schema(
+            JsonExampleShape::MethodResultMetadata,
+            result_metadata_schema(),
+        )
         .with_example_schema(JsonExampleShape::MethodRejection, rejection)
         .with_example_schema(JsonExampleShape::MethodDryRun, dry_run)
     }
@@ -1362,6 +1732,11 @@ mod tests {
             Default::default(),
             Vec::new(),
         )
+        .with_method_result_contract(
+            MethodName::Status,
+            DryRunRequestPolicy::RegularResult,
+            &[ResultEffectContract::ReadOnly],
+        )
         .with_example_schema(
             JsonExampleShape::MethodResponseVariants,
             json!({
@@ -1373,6 +1748,10 @@ mod tests {
             }),
         )
         .with_example_schema(JsonExampleShape::MethodResultBody, result)
+        .with_example_schema(
+            JsonExampleShape::MethodResultMetadata,
+            result_metadata_schema(),
+        )
         .with_example_schema(JsonExampleShape::MethodRejection, rejection)
     }
 
@@ -1400,7 +1779,6 @@ mod tests {
             &[response_binding],
             &descriptors,
             &CommonResponseSchemas {
-                result_base: &base,
                 rejected_base: &base,
                 dry_run_base: &base,
                 rejection: &rejection,
@@ -1523,6 +1901,101 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn compiled_result_metadata_schemas_match_the_canonical_effect_matrix() {
+        let disclosure = json!({
+            "guarantee_class": "authority_record",
+            "guarantees": [],
+            "non_guarantees": [
+                "NotOsSandbox",
+                "NotActorAttributionProof",
+                "NotCorrectnessProof",
+                "NotTestSufficiencyProof",
+                "NotHumanReviewReplacement",
+                "NotFullFilesystemMonitoring"
+            ]
+        });
+        let event = json!({
+            "event_id": "event_schema_contract",
+            "event_kind": "schema_contract_test"
+        });
+
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            let schema = contract.result_base_schema();
+            let compiled = JSONSchema::options()
+                .with_draft(Draft::Draft7)
+                .compile(&schema)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{} result metadata schema should compile: {error}",
+                        contract.method().as_str()
+                    )
+                });
+            for effect in ResultEffectContract::ALL {
+                let valid_events = match effect.event_contract() {
+                    ResultEventContract::Empty => Vec::new(),
+                    ResultEventContract::NonEmpty => vec![event.clone()],
+                };
+                for dry_run in [false, true] {
+                    let instance = json!({
+                        "response_kind": "result",
+                        "effect_kind": effect.as_str(),
+                        "dry_run": dry_run,
+                        "state_version": 7,
+                        "disclosure": disclosure,
+                        "events": valid_events,
+                    });
+                    let accepted = contract.supports_result_effect(effect)
+                        && (!dry_run
+                            || contract.result_dry_run_contract(effect)
+                                == ResultDryRunContract::PreserveRequestedIntent);
+                    assert_eq!(
+                        compiled.is_valid(&instance),
+                        accepted,
+                        "{} schema effect={} dry_run={dry_run}",
+                        contract.method().as_str(),
+                        effect.as_str(),
+                    );
+                    assert_eq!(
+                        contract.accepts_result_base(&instance),
+                        accepted,
+                        "{} decoder effect={} dry_run={dry_run}",
+                        contract.method().as_str(),
+                        effect.as_str(),
+                    );
+                }
+
+                if contract.supports_result_effect(effect) {
+                    let invalid_events = match effect.event_contract() {
+                        ResultEventContract::Empty => vec![event.clone()],
+                        ResultEventContract::NonEmpty => Vec::new(),
+                    };
+                    let invalid = json!({
+                        "response_kind": "result",
+                        "effect_kind": effect.as_str(),
+                        "dry_run": false,
+                        "state_version": 7,
+                        "disclosure": disclosure,
+                        "events": invalid_events,
+                    });
+                    assert!(!compiled.is_valid(&invalid));
+                    assert!(!contract.accepts_result_base(&invalid));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn duplicate_generated_heading_anchors_are_rejected() {
+        let duplicate = "### `Result Metadata: read_only` fields\n\n\
+                         ### `Result Metadata: read_only` fields\n";
+        assert!(validate_unique_generated_heading_anchors(duplicate).is_err());
+
+        let unique = "### `Result Metadata: read_only` fields\n\n\
+                      ### `Result Metadata: core_committed` fields\n";
+        assert!(validate_unique_generated_heading_anchors(unique).is_ok());
     }
 
     #[test]
@@ -1827,7 +2300,6 @@ mod tests {
         let shared_descriptor =
             response_descriptor(result.clone(), rejection.clone(), dry_run.clone());
         let shared = CommonResponseSchemas {
-            result_base: &base,
             rejected_base: &base,
             dry_run_base: &base,
             rejection: &rejection,
@@ -1915,7 +2387,6 @@ mod tests {
             )],
             &descriptors,
             &CommonResponseSchemas {
-                result_base: &base,
                 rejected_base: &base,
                 dry_run_base: &base,
                 rejection: &rejection,
@@ -1993,7 +2464,7 @@ mod tests {
         );
         assert_eq!(
             english_regions[1].id,
-            "contract-structures api.method.intake.response[response_variants] api.method.intake.response[result_body] api.method.intake.response[rejection] api.method.intake.response[dry_run] api.method.status.response[response_variants] api.method.status.response[result_body] api.method.status.response[rejection]"
+            "contract-structures api.method.intake.response[response_variants] api.method.intake.response[result_body] api.method.intake.response[result_metadata] api.method.intake.response[rejection] api.method.intake.response[dry_run] api.method.status.response[response_variants] api.method.status.response[result_body] api.method.status.response[result_metadata] api.method.status.response[rejection]"
         );
         assert_eq!(
             english_regions
@@ -2112,18 +2583,21 @@ mod tests {
         let region = render_region(
             "contract-structures api.method.alpha.response[result_body]".to_owned(),
             "body".to_owned(),
-        );
+        )
+        .expect("synthetic region");
         let missing = "# Method\n";
         assert!(validate_region_inventory(missing, &[region]).is_err());
 
         let wrong = render_region(
             "contract-structures api.method.beta.response[result_body]".to_owned(),
             "body".to_owned(),
-        );
+        )
+        .expect("wrong synthetic region");
         let expected = render_region(
             "contract-structures api.method.alpha.response[result_body]".to_owned(),
             "body".to_owned(),
-        );
+        )
+        .expect("expected synthetic region");
         assert!(validate_region_inventory(&wrong.contents, &[expected]).is_err());
     }
 }

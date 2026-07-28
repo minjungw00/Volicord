@@ -972,7 +972,7 @@ Read-only calls have no Core authority-state storage effect:
 - do not touch artifacts or evidence
 - do not increment `project_state.state_version`
 
-`dry_run=true` remains `CloseTaskResult` with `effect_kind=read_only`.
+`dry_run=true` remains `CheckCloseResult` with `effect_kind=read_only`.
 
 No-effect branches:
 

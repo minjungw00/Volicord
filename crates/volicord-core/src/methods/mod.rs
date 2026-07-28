@@ -11,7 +11,7 @@ use volicord_types::ids::{
     UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
-    public_method_contract, CloseTaskResultFields, DryRunRequestRoute, PrepareWriteRequest,
+    public_method_contract, CloseAssessmentResultFields, DryRunRequestRoute, PrepareWriteRequest,
     PrepareWriteResultFields, RecordRunRequest, UpdateScopeRequest,
 };
 use volicord_types::product_path::path_is_within;
@@ -112,7 +112,7 @@ struct CloseTaskPlan {
     storage_mutations: Vec<CoreStorageMutation>,
     event_kind: String,
     event_payload: JsonObject,
-    result_fields: CloseTaskResultFields,
+    result_fields: CloseAssessmentResultFields,
     current_close_basis: Option<CurrentCloseBasis>,
     blockers: Vec<CloseReadinessBlocker>,
 }

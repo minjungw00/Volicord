@@ -4,9 +4,9 @@ use super::{
     MAX_STAGED_BODY_BYTES,
 };
 use crate::pipeline::{
-    dry_run_response, staging_created_result_base, tool_error, CorePipelineError, CoreResult,
-    CoreService, FreshnessPolicy, InvocationContext, MethodEffectPolicy, MethodPolicy,
-    PipelineResponse, ReplayPolicy, TaskRequirement,
+    dry_run_response, tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
+    InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
+    TaskRequirement,
 };
 use chrono::Duration;
 use serde_json::{Map, Value};
@@ -15,7 +15,7 @@ use volicord_store::artifacts::{ArtifactStagingInsert, StagedPayloadKind};
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::methods::{
     public_method_contract, DryRunRequestRoute, MethodOperationCategory, StageArtifactRequest,
-    StageArtifactResult,
+    StageArtifactResult, SupportsStagingCreatedResult,
 };
 use volicord_types::schema::{StagedArtifactHandle, ToolEnvelope};
 use volicord_types::values::{ErrorCode, EvidenceDisplayState, MethodName, RedactionState};
@@ -130,7 +130,7 @@ impl CoreService {
         };
         let resolved_task_id = request.task_id.clone();
         let result = StageArtifactResult {
-            base: staging_created_result_base(Some(project_state.state_version), Vec::new()),
+            base: StageArtifactRequest::staging_created_result_base(project_state.state_version),
             evidence_state: EvidenceDisplayState::Prepared,
             staged_artifact_handle: StagedArtifactHandle {
                 handle_id: handle_id.clone(),

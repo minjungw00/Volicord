@@ -27,12 +27,11 @@ use volicord_mcp_wire::{
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::RecordId;
 use volicord_types::methods::{
-    PrepareEvidenceCaptureResult, PrepareWriteResult, ReconcileChangesResult, RecordRunResult,
-    StageArtifactResult,
+    CloseTaskResult, IntakeResult, MethodResultBase, PrepareEvidenceCaptureResult,
+    PrepareWriteResult, PublicMethodResult, ReconcileChangesResult, RecordRunResult,
+    StageArtifactResult, UpdateScopeResult,
 };
-use volicord_types::schema::{
-    AuthorityReceipt, PreviewableToolResponse, StateRecordRef, ToolResultBase,
-};
+use volicord_types::schema::{AuthorityReceipt, PreviewableToolResponse, StateRecordRef};
 use volicord_types::tool_names::{AgentToolCategory, AgentToolId, AgentToolOwner};
 use volicord_types::values::{MutationDetailLevel, StateRecordKind};
 
@@ -265,13 +264,13 @@ pub(crate) fn compact_mutation_method_result(
     tool_name: &str,
     method_result: &Value,
 ) -> Result<Value, McpAdapterError> {
-    let effect = compact_mutation_effect(method_result)?;
     let tool = AgentToolId::from_wire_name(tool_name)
         .map_err(|_| McpAdapterError::UnknownTool(tool_name.to_owned()))?;
     match tool {
         AgentToolId::PREPARE_EVIDENCE_CAPTURE => {
             let result: PrepareEvidenceCaptureResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            let effect = compact_mutation_effect(&result);
             serde_json::to_value(McpPrepareEvidenceCaptureCompactResult {
                 effect,
                 capture_intent_ref: result.capture_intent_ref,
@@ -283,6 +282,7 @@ pub(crate) fn compact_mutation_method_result(
         AgentToolId::PREPARE_WRITE => {
             let result: PrepareWriteResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            let effect = compact_mutation_effect(&result);
             serde_json::to_value(McpPrepareWriteCompactResult {
                 effect,
                 decision: result.decision,
@@ -300,6 +300,7 @@ pub(crate) fn compact_mutation_method_result(
         AgentToolId::STAGE_ARTIFACT => {
             let result: StageArtifactResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            let effect = compact_mutation_effect(&result);
             serde_json::to_value(McpStageArtifactCompactResult {
                 effect,
                 evidence_state: result.evidence_state,
@@ -311,6 +312,7 @@ pub(crate) fn compact_mutation_method_result(
         AgentToolId::RECORD_RUN => {
             let result: RecordRunResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            let effect = compact_mutation_effect(&result);
             let evidence_observation_refs = result
                 .evidence_observations
                 .iter()
@@ -352,12 +354,11 @@ pub(crate) fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        AgentToolId::REQUEST_USER_ACTION => {
-            compact_request_user_action_result(effect, method_result)
-        }
+        AgentToolId::REQUEST_USER_ACTION => compact_request_user_action_result(method_result),
         AgentToolId::RECONCILE_CHANGES => {
             let result: ReconcileChangesResult =
                 serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            let effect = compact_mutation_effect(&result);
             serde_json::to_value(McpReconcileChangesCompactResult {
                 effect,
                 unresolved_changes: result.unresolved_changes,
@@ -367,8 +368,20 @@ pub(crate) fn compact_mutation_method_result(
             })
             .map_err(McpAdapterError::Json)
         }
-        AgentToolId::INTAKE | AgentToolId::UPDATE_SCOPE | AgentToolId::CLOSE_TASK => {
-            serde_json::to_value(effect).map_err(McpAdapterError::Json)
+        AgentToolId::INTAKE => {
+            let result: IntakeResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
+        }
+        AgentToolId::UPDATE_SCOPE => {
+            let result: UpdateScopeResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
+        }
+        AgentToolId::CLOSE_TASK => {
+            let result: CloseTaskResult =
+                serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
+            serde_json::to_value(compact_mutation_effect(&result)).map_err(McpAdapterError::Json)
         }
         _ => Err(McpAdapterError::Protocol(format!(
             "missing compact mutation result projection for {tool_name}"
@@ -376,25 +389,19 @@ pub(crate) fn compact_mutation_method_result(
     }
 }
 
-fn compact_mutation_effect(
-    method_result: &Value,
-) -> Result<McpMutationEffectSummary, McpAdapterError> {
-    let method_result = method_result
-        .get("agent_workflow_result")
-        .unwrap_or(method_result);
-    let base: ToolResultBase =
-        serde_json::from_value(method_result["base"].clone()).map_err(McpAdapterError::Json)?;
-    Ok(McpMutationEffectSummary {
+fn compact_mutation_effect<R>(method_result: &R) -> McpMutationEffectSummary
+where
+    R: PublicMethodResult,
+{
+    let base = method_result.base();
+    McpMutationEffectSummary {
         effect_kind: base.effect_kind(),
-        state_version: base.state_version(),
+        state_version: Some(base.state_version()),
         events: base.events().to_vec(),
-    })
+    }
 }
 
-fn compact_request_user_action_result(
-    effect: McpMutationEffectSummary,
-    method_result: &Value,
-) -> Result<Value, McpAdapterError> {
+fn compact_request_user_action_result(method_result: &Value) -> Result<Value, McpAdapterError> {
     let compound: McpRequestUserActionResponse =
         serde_json::from_value(method_result.clone()).map_err(McpAdapterError::Json)?;
     let agent_result = match compound.agent_workflow_result {
@@ -405,6 +412,7 @@ fn compact_request_user_action_result(
             ))
         }
     };
+    let effect = compact_mutation_effect(&agent_result);
     let resolution_summary = compound
         .user_channel_resolution
         .as_ref()

@@ -447,67 +447,189 @@ fixed_string_wire_value!(NoEffectKind, "no_effect");
 fixed_bool_wire_value!(FalseValue, false);
 fixed_bool_wire_value!(TrueValue, true);
 
-/// Closed result metadata carried by each concrete method-result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum ToolResultBase {
-    ReadOnly {
-        response_kind: ResultResponseKind,
-        effect_kind: ReadOnlyEffectKind,
-        dry_run: DryRunIntent,
-        state_version: Option<u64>,
-        disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
-    },
-    CoreCommitted {
-        response_kind: ResultResponseKind,
-        effect_kind: CoreCommittedEffectKind,
-        dry_run: FalseValue,
-        state_version: Option<u64>,
-        disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
-    },
-    StagingCreated {
-        response_kind: ResultResponseKind,
-        effect_kind: StagingCreatedEffectKind,
-        dry_run: FalseValue,
-        state_version: Option<u64>,
-        disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
-    },
-    NoEffect {
-        response_kind: ResultResponseKind,
-        effect_kind: NoEffectKind,
-        dry_run: FalseValue,
-        state_version: Option<u64>,
-        disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
-    },
+/// Event collection for an effect contract that permits no events.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EmptyEventRefs;
+
+impl EmptyEventRefs {
+    pub const fn new() -> Self {
+        Self
+    }
+
+    pub const fn as_slice(&self) -> &[EventRef] {
+        &[]
+    }
 }
 
-impl ToolResultBase {
-    pub fn read_only(
+impl Serialize for EmptyEventRefs {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        Vec::<EventRef>::new().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EmptyEventRefs {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let events = Vec::<EventRef>::deserialize(deserializer)?;
+        if events.is_empty() {
+            Ok(Self)
+        } else {
+            Err(serde::de::Error::custom(
+                "this result effect requires an empty events array",
+            ))
+        }
+    }
+}
+
+impl JsonSchema for EmptyEventRefs {
+    fn schema_name() -> String {
+        "EmptyEventRefs".to_owned()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let mut schema = Vec::<EventRef>::json_schema(generator);
+        if let Schema::Object(object) = &mut schema {
+            object.array.get_or_insert_with(Default::default).max_items = Some(0);
+        }
+        schema
+    }
+}
+
+/// Event collection for an effect contract that requires at least one event.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyEventRefs(Vec<EventRef>);
+
+impl NonEmptyEventRefs {
+    pub fn try_from_vec(events: Vec<EventRef>) -> Result<Self, &'static str> {
+        if events.is_empty() {
+            Err("this result effect requires at least one event")
+        } else {
+            Ok(Self(events))
+        }
+    }
+
+    pub fn as_slice(&self) -> &[EventRef] {
+        &self.0
+    }
+
+    pub fn into_vec(self) -> Vec<EventRef> {
+        self.0
+    }
+}
+
+impl Serialize for NonEmptyEventRefs {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for NonEmptyEventRefs {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let events = Vec::<EventRef>::deserialize(deserializer)?;
+        Self::try_from_vec(events).map_err(serde::de::Error::custom)
+    }
+}
+
+impl JsonSchema for NonEmptyEventRefs {
+    fn schema_name() -> String {
+        "NonEmptyEventRefs".to_owned()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let mut schema = Vec::<EventRef>::json_schema(generator);
+        if let Schema::Object(object) = &mut schema {
+            object.array.get_or_insert_with(Default::default).min_items = Some(1);
+        }
+        schema
+    }
+}
+
+/// Read-only result metadata for a method whose regular result preserves the
+/// normalized dry-run request intent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RequestedIntentReadOnlyResultBase {
+    response_kind: ResultResponseKind,
+    effect_kind: ReadOnlyEffectKind,
+    dry_run: DryRunIntent,
+    state_version: u64,
+    disclosure: GuaranteeDisclosure,
+    events: EmptyEventRefs,
+}
+
+impl RequestedIntentReadOnlyResultBase {
+    pub(crate) fn new(
         dry_run: DryRunIntent,
-        state_version: Option<u64>,
+        state_version: u64,
         disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
     ) -> Self {
-        Self::ReadOnly {
+        Self {
             response_kind: ResultResponseKind,
             effect_kind: ReadOnlyEffectKind,
             dry_run,
             state_version,
             disclosure,
-            events,
+            events: EmptyEventRefs::new(),
         }
     }
+}
 
-    pub fn core_committed(
-        state_version: Option<u64>,
+/// Read-only result metadata for a method whose regular result requires
+/// not-requested dry-run intent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NotRequestedReadOnlyResultBase {
+    response_kind: ResultResponseKind,
+    effect_kind: ReadOnlyEffectKind,
+    dry_run: FalseValue,
+    state_version: u64,
+    disclosure: GuaranteeDisclosure,
+    events: EmptyEventRefs,
+}
+
+impl NotRequestedReadOnlyResultBase {
+    pub(crate) fn new(state_version: u64, disclosure: GuaranteeDisclosure) -> Self {
+        Self {
+            response_kind: ResultResponseKind,
+            effect_kind: ReadOnlyEffectKind,
+            dry_run: FalseValue,
+            state_version,
+            disclosure,
+            events: EmptyEventRefs::new(),
+        }
+    }
+}
+
+/// Result metadata for an atomic Core authority-state commit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CoreCommittedResultBase {
+    response_kind: ResultResponseKind,
+    effect_kind: CoreCommittedEffectKind,
+    dry_run: FalseValue,
+    state_version: u64,
+    disclosure: GuaranteeDisclosure,
+    events: NonEmptyEventRefs,
+}
+
+impl CoreCommittedResultBase {
+    pub(crate) fn new(
+        state_version: u64,
         disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
+        events: NonEmptyEventRefs,
     ) -> Self {
-        Self::CoreCommitted {
+        Self {
             response_kind: ResultResponseKind,
             effect_kind: CoreCommittedEffectKind,
             dry_run: FalseValue,
@@ -516,86 +638,118 @@ impl ToolResultBase {
             events,
         }
     }
+}
 
-    pub fn staging_created(
-        state_version: Option<u64>,
-        disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
-    ) -> Self {
-        Self::StagingCreated {
+/// Result metadata for storage-owned transient staging.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StagingCreatedResultBase {
+    response_kind: ResultResponseKind,
+    effect_kind: StagingCreatedEffectKind,
+    dry_run: FalseValue,
+    state_version: u64,
+    disclosure: GuaranteeDisclosure,
+    events: EmptyEventRefs,
+}
+
+impl StagingCreatedResultBase {
+    pub(crate) fn new(state_version: u64, disclosure: GuaranteeDisclosure) -> Self {
+        Self {
             response_kind: ResultResponseKind,
             effect_kind: StagingCreatedEffectKind,
             dry_run: FalseValue,
             state_version,
             disclosure,
-            events,
+            events: EmptyEventRefs::new(),
         }
     }
+}
 
-    pub fn no_effect(
-        state_version: Option<u64>,
-        disclosure: GuaranteeDisclosure,
-        events: Vec<EventRef>,
-    ) -> Self {
-        Self::NoEffect {
+/// Result metadata for a valid response-only method result with no effect.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NoEffectResultBase {
+    response_kind: ResultResponseKind,
+    effect_kind: NoEffectKind,
+    dry_run: FalseValue,
+    state_version: u64,
+    disclosure: GuaranteeDisclosure,
+    events: EmptyEventRefs,
+}
+
+impl NoEffectResultBase {
+    pub(crate) fn new(state_version: u64, disclosure: GuaranteeDisclosure) -> Self {
+        Self {
             response_kind: ResultResponseKind,
             effect_kind: NoEffectKind,
             dry_run: FalseValue,
             state_version,
             disclosure,
-            events,
-        }
-    }
-
-    pub const fn response_kind(&self) -> ResponseKind {
-        ResponseKind::Result
-    }
-
-    pub const fn effect_kind(&self) -> EffectKind {
-        match self {
-            Self::ReadOnly { .. } => EffectKind::ReadOnly,
-            Self::CoreCommitted { .. } => EffectKind::CoreCommitted,
-            Self::StagingCreated { .. } => EffectKind::StagingCreated,
-            Self::NoEffect { .. } => EffectKind::NoEffect,
-        }
-    }
-
-    pub const fn dry_run_intent(&self) -> DryRunIntent {
-        match self {
-            Self::ReadOnly { dry_run, .. } => *dry_run,
-            Self::CoreCommitted { .. } | Self::StagingCreated { .. } | Self::NoEffect { .. } => {
-                DryRunIntent::NotRequested
-            }
-        }
-    }
-
-    pub const fn state_version(&self) -> Option<u64> {
-        match self {
-            Self::ReadOnly { state_version, .. }
-            | Self::CoreCommitted { state_version, .. }
-            | Self::StagingCreated { state_version, .. }
-            | Self::NoEffect { state_version, .. } => *state_version,
-        }
-    }
-
-    pub const fn disclosure(&self) -> &GuaranteeDisclosure {
-        match self {
-            Self::ReadOnly { disclosure, .. }
-            | Self::CoreCommitted { disclosure, .. }
-            | Self::StagingCreated { disclosure, .. }
-            | Self::NoEffect { disclosure, .. } => disclosure,
-        }
-    }
-
-    pub fn events(&self) -> &[EventRef] {
-        match self {
-            Self::ReadOnly { events, .. }
-            | Self::CoreCommitted { events, .. }
-            | Self::StagingCreated { events, .. }
-            | Self::NoEffect { events, .. } => events,
+            events: EmptyEventRefs::new(),
         }
     }
 }
+
+/// Shared inspection surface implemented by exact result metadata variants.
+pub trait ResultMetadata {
+    fn effect_kind(&self) -> EffectKind;
+    fn dry_run_intent(&self) -> DryRunIntent;
+    fn state_version(&self) -> u64;
+    fn disclosure(&self) -> &GuaranteeDisclosure;
+    fn events(&self) -> &[EventRef];
+}
+
+macro_rules! impl_result_metadata {
+    ($type:ty, $effect:ident, $dry_run:expr) => {
+        impl ResultMetadata for $type {
+            fn effect_kind(&self) -> EffectKind {
+                EffectKind::$effect
+            }
+
+            fn dry_run_intent(&self) -> DryRunIntent {
+                $dry_run(self)
+            }
+
+            fn state_version(&self) -> u64 {
+                self.state_version
+            }
+
+            fn disclosure(&self) -> &GuaranteeDisclosure {
+                &self.disclosure
+            }
+
+            fn events(&self) -> &[EventRef] {
+                self.events.as_slice()
+            }
+        }
+    };
+}
+
+impl_result_metadata!(
+    RequestedIntentReadOnlyResultBase,
+    ReadOnly,
+    |base: &RequestedIntentReadOnlyResultBase| base.dry_run
+);
+impl_result_metadata!(
+    NotRequestedReadOnlyResultBase,
+    ReadOnly,
+    |_base: &NotRequestedReadOnlyResultBase| DryRunIntent::NotRequested
+);
+impl_result_metadata!(
+    CoreCommittedResultBase,
+    CoreCommitted,
+    |_base: &CoreCommittedResultBase| DryRunIntent::NotRequested
+);
+impl_result_metadata!(
+    StagingCreatedResultBase,
+    StagingCreated,
+    |_base: &StagingCreatedResultBase| DryRunIntent::NotRequested
+);
+impl_result_metadata!(
+    NoEffectResultBase,
+    NoEffect,
+    |_base: &NoEffectResultBase| DryRunIntent::NotRequested
+);
 
 /// Closed rejection metadata carried by public rejection branches.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -606,7 +760,7 @@ pub struct ToolRejectedBase {
     dry_run: DryRunIntent,
     state_version: Option<u64>,
     disclosure: GuaranteeDisclosure,
-    events: Vec<EventRef>,
+    events: EmptyEventRefs,
 }
 
 impl ToolRejectedBase {
@@ -621,7 +775,7 @@ impl ToolRejectedBase {
             dry_run,
             state_version,
             disclosure,
-            events: Vec::new(),
+            events: EmptyEventRefs::new(),
         }
     }
 
@@ -646,7 +800,7 @@ impl ToolRejectedBase {
     }
 
     pub fn events(&self) -> &[EventRef] {
-        &self.events
+        self.events.as_slice()
     }
 }
 
@@ -659,7 +813,7 @@ pub struct ToolDryRunBase {
     dry_run: TrueValue,
     state_version: Option<u64>,
     disclosure: GuaranteeDisclosure,
-    events: Vec<EventRef>,
+    events: EmptyEventRefs,
 }
 
 impl ToolDryRunBase {
@@ -670,7 +824,7 @@ impl ToolDryRunBase {
             dry_run: TrueValue,
             state_version,
             disclosure,
-            events: Vec::new(),
+            events: EmptyEventRefs::new(),
         }
     }
 
@@ -695,7 +849,7 @@ impl ToolDryRunBase {
     }
 
     pub fn events(&self) -> &[EventRef] {
-        &self.events
+        self.events.as_slice()
     }
 }
 

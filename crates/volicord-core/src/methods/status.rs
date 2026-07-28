@@ -10,8 +10,8 @@ use super::{
     SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
-    CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
-    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
+    read_only_branch, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
+    InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::close_readiness::is_terminal_lifecycle;
@@ -112,7 +112,7 @@ impl CoreService {
         };
 
         match self
-            .execute_prepared_request(prepared, OwnerPipelineBranch::ReadOnly { result_fields })
+            .execute_prepared_request(prepared, read_only_branch::<StatusRequest>(result_fields))
         {
             Ok(response) => Ok(response),
             Err(error) => core_error_response(&request.envelope, Some(state_version), error),

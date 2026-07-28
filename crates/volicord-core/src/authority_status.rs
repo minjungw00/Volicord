@@ -2,10 +2,10 @@ use std::{error::Error, fmt};
 
 use serde_json::Value;
 use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId};
-use volicord_types::methods::StatusResult;
+use volicord_types::methods::{MethodResultBase, StatusResult};
 use volicord_types::schema::{AuthorityReceipt, NextActionSummary, StateRecordRef};
 use volicord_types::values::{
-    AuthorityNextActor, CloseState, EffectKind, OperationCategory, ResponseKind, StateRecordKind,
+    AuthorityNextActor, CloseState, EffectKind, OperationCategory, StateRecordKind,
     StatusCloseState,
 };
 
@@ -126,17 +126,13 @@ pub fn validate_authority_status(
 ) -> Result<ValidatedAuthorityStatus, AuthorityStatusValidationError> {
     let status = serde_json::from_value::<StatusResult>(response.clone())
         .map_err(|_| AuthorityStatusValidationError::MalformedStatus)?;
-    if status.base.response_kind() != ResponseKind::Result
-        || status.base.effect_kind() != EffectKind::ReadOnly
+    if status.base.effect_kind() != EffectKind::ReadOnly
         || status.base.dry_run_intent().is_requested()
     {
         return Err(AuthorityStatusValidationError::IneligibleStatus);
     }
 
-    let state_version = status
-        .base
-        .state_version()
-        .ok_or(AuthorityStatusValidationError::MissingProjection)?;
+    let state_version = status.base.state_version();
     let receipt = status
         .authority_receipt
         .as_ref()

@@ -213,64 +213,108 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_base_schema_requires_guarantee_disclosure() {
-        let schema =
-            serde_json::to_value(schema_for!(ToolResultBase)).expect("schema should serialize");
-        let branches = schema["anyOf"]
-            .as_array()
-            .expect("ToolResultBase schema should expose exact effect branches");
-        assert_eq!(branches.len(), 4, "{schema}");
-        for branch in branches {
-            let required = branch["required"]
+    fn exact_result_metadata_schemas_require_guarantee_disclosure() {
+        for schema in [
+            serde_json::to_value(schema_for!(RequestedIntentReadOnlyResultBase)),
+            serde_json::to_value(schema_for!(NotRequestedReadOnlyResultBase)),
+            serde_json::to_value(schema_for!(CoreCommittedResultBase)),
+            serde_json::to_value(schema_for!(StagingCreatedResultBase)),
+            serde_json::to_value(schema_for!(NoEffectResultBase)),
+        ]
+        .map(|schema| schema.expect("schema should serialize"))
+        {
+            let required = schema["required"]
                 .as_array()
-                .expect("ToolResultBase branch should have required fields");
+                .expect("result metadata should have required fields");
             assert!(
                 required.iter().any(|field| field == "disclosure"),
-                "ToolResultBase branch should require disclosure: {branch}"
+                "result metadata should require disclosure: {schema}"
             );
             assert!(
-                branch["properties"]["disclosure"].is_object(),
-                "ToolResultBase branch should expose disclosure: {branch}"
+                schema["properties"]["disclosure"].is_object(),
+                "result metadata should expose disclosure: {schema}"
             );
-            assert_eq!(branch["additionalProperties"], false, "{branch}");
+            assert_eq!(schema["additionalProperties"], false, "{schema}");
         }
     }
 
     #[test]
     fn response_base_schemas_expose_exact_constants_and_closed_objects() {
-        let result = serde_json::to_value(schema_for!(ToolResultBase)).expect("result base schema");
-        let result_branches = result["anyOf"].as_array().expect("result base branches");
-        let mut effects = BTreeSet::new();
-        for branch in result_branches {
-            assert_eq!(branch["additionalProperties"], false, "{branch}");
+        let result_metadata = [
+            (
+                serde_json::to_value(schema_for!(RequestedIntentReadOnlyResultBase))
+                    .expect("requested-intent read-only schema"),
+                "read_only",
+                true,
+                None,
+            ),
+            (
+                serde_json::to_value(schema_for!(NotRequestedReadOnlyResultBase))
+                    .expect("not-requested read-only schema"),
+                "read_only",
+                false,
+                None,
+            ),
+            (
+                serde_json::to_value(schema_for!(CoreCommittedResultBase))
+                    .expect("Core-committed schema"),
+                "core_committed",
+                false,
+                Some(1),
+            ),
+            (
+                serde_json::to_value(schema_for!(StagingCreatedResultBase))
+                    .expect("staging-created schema"),
+                "staging_created",
+                false,
+                Some(0),
+            ),
+            (
+                serde_json::to_value(schema_for!(NoEffectResultBase)).expect("no-effect schema"),
+                "no_effect",
+                false,
+                Some(0),
+            ),
+        ];
+        for (schema, effect, variable_dry_run, event_cardinality) in result_metadata {
+            assert_eq!(schema["additionalProperties"], false, "{schema}");
             assert_eq!(
-                branch["properties"]["response_kind"]["enum"],
+                schema["properties"]["response_kind"]["enum"],
                 json!(["result"]),
-                "{branch}"
+                "{schema}"
             );
-            let effect = branch["properties"]["effect_kind"]["enum"][0]
-                .as_str()
-                .expect("result effect constant");
-            effects.insert(effect);
-            if effect == "read_only" {
-                assert_eq!(branch["properties"]["dry_run"]["type"], "boolean");
+            assert_eq!(
+                schema["properties"]["effect_kind"]["enum"],
+                json!([effect]),
+                "{schema}"
+            );
+            if variable_dry_run {
+                assert_eq!(schema["properties"]["dry_run"]["type"], "boolean");
             } else {
                 assert_eq!(
-                    branch["properties"]["dry_run"]["enum"],
+                    schema["properties"]["dry_run"]["enum"],
                     json!([false]),
-                    "{branch}"
+                    "{schema}"
                 );
             }
+            match event_cardinality {
+                Some(1) => {
+                    assert_eq!(
+                        definition(&schema, "NonEmptyEventRefs")["minItems"],
+                        1,
+                        "{schema}"
+                    )
+                }
+                Some(0) | None => {
+                    assert_eq!(
+                        definition(&schema, "EmptyEventRefs")["maxItems"],
+                        0,
+                        "{schema}"
+                    )
+                }
+                _ => unreachable!(),
+            }
         }
-        assert_eq!(
-            effects,
-            BTreeSet::from([
-                "read_only",
-                "core_committed",
-                "staging_created",
-                "no_effect",
-            ])
-        );
 
         let rejected =
             serde_json::to_value(schema_for!(ToolRejectedBase)).expect("rejected base schema");
@@ -557,11 +601,7 @@ mod tests {
     #[test]
     fn stage_artifact_result_serializes_documented_shape() {
         let result = StageArtifactResult {
-            base: ToolResultBase::staging_created(
-                Some(42),
-                GuaranteeDisclosure::authority_record(),
-                vec![],
-            ),
+            base: StageArtifactRequest::staging_created_result_base(42),
             evidence_state: EvidenceDisplayState::Prepared,
             staged_artifact_handle: StagedArtifactHandle {
                 handle_id: StagedArtifactHandleId::new("staged_trace_log_001"),
@@ -1421,50 +1461,66 @@ mod tests {
 
     #[test]
     fn method_result_fields_compose_every_affected_public_result_schema() {
-        assert_method_result_schema::<IntakeResultFields, IntakeResult>(
+        assert_method_result_schema::<IntakeRequest, IntakeResultFields, IntakeResult>(
             "volicord.intake",
             "IntakeResult",
         );
-        assert_method_result_schema::<UpdateScopeResultFields, UpdateScopeResult>(
+        assert_method_result_schema::<UpdateScopeRequest, UpdateScopeResultFields, UpdateScopeResult>(
             "volicord.update_scope",
             "UpdateScopeResult",
         );
-        assert_method_result_schema::<StatusResultFields, StatusResult>(
+        assert_method_result_schema::<StatusRequest, StatusResultFields, StatusResult>(
             "volicord.status",
             "StatusResult",
         );
-        assert_method_result_schema::<GetOperationResultResultFields, GetOperationResultResult>(
-            "volicord.get_operation_result",
-            "GetOperationResultResult",
-        );
         assert_method_result_schema::<
+            GetOperationResultRequest,
+            GetOperationResultResultFields,
+            GetOperationResultResult,
+        >("volicord.get_operation_result", "GetOperationResultResult");
+        assert_method_result_schema::<
+            CheckCloseRequest,
+            CloseAssessmentResultFields,
+            CheckCloseResult,
+        >("volicord.check_close", "CheckCloseResult");
+        assert_method_result_schema::<
+            PrepareEvidenceCaptureRequest,
             PrepareEvidenceCaptureResultFields,
             PrepareEvidenceCaptureResult,
         >(
             "volicord.prepare_evidence_capture",
             "PrepareEvidenceCaptureResult",
         );
-        assert_method_result_schema::<PrepareWriteResultFields, PrepareWriteResult>(
-            "volicord.prepare_write",
-            "PrepareWriteResult",
-        );
-        assert_method_result_schema::<RecordRunResultFields, RecordRunResult>(
+        assert_method_result_schema::<
+            PrepareWriteRequest,
+            PrepareWriteResultFields,
+            PrepareWriteResult,
+        >("volicord.prepare_write", "PrepareWriteResult");
+        assert_method_result_schema::<
+            StageArtifactRequest,
+            StageArtifactResultFields,
+            StageArtifactResult,
+        >("volicord.stage_artifact", "StageArtifactResult");
+        assert_method_result_schema::<RecordRunRequest, RecordRunResultFields, RecordRunResult>(
             "volicord.record_run",
             "RecordRunResult",
         );
-        assert_method_result_schema::<RequestUserActionResultFields, RequestUserActionResult>(
-            "volicord.request_user_action",
-            "RequestUserActionResult",
-        );
-        assert_method_result_schema::<ResolveUserActionResultFields, ResolveUserActionResult>(
-            "volicord.resolve_user_action",
-            "ResolveUserActionResult",
-        );
-        assert_method_result_schema::<ReconcileChangesResultFields, ReconcileChangesResult>(
-            "volicord.reconcile_changes",
-            "ReconcileChangesResult",
-        );
-        assert_method_result_schema::<CloseTaskResultFields, CloseTaskResult>(
+        assert_method_result_schema::<
+            RequestUserActionRequest,
+            RequestUserActionResultFields,
+            RequestUserActionResult,
+        >("volicord.request_user_action", "RequestUserActionResult");
+        assert_method_result_schema::<
+            ResolveUserActionRequest,
+            ResolveUserActionResultFields,
+            ResolveUserActionResult,
+        >("volicord.resolve_user_action", "ResolveUserActionResult");
+        assert_method_result_schema::<
+            ReconcileChangesRequest,
+            ReconcileChangesResultFields,
+            ReconcileChangesResult,
+        >("volicord.reconcile_changes", "ReconcileChangesResult");
+        assert_method_result_schema::<CloseTaskRequest, CloseAssessmentResultFields, CloseTaskResult>(
             "volicord.close_task",
             "CloseTaskResult",
         );
@@ -2892,9 +2948,10 @@ mod tests {
             })
     }
 
-    fn assert_method_result_schema<F, R>(method_name: &str, result_name: &str)
+    fn assert_method_result_schema<M, F, R>(method_name: &str, result_name: &str)
     where
-        F: MethodResultFields<Result = R> + JsonSchema,
+        M: MethodResponseContract<ResultFields = F, Result = R>,
+        F: MethodResultFields<M, Result = R> + JsonSchema,
         R: JsonSchema,
     {
         let fields = serde_json::to_value(schema_for!(F)).expect("fields schema should serialize");

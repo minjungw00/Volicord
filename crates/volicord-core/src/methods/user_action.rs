@@ -17,8 +17,9 @@ use super::{
     PlanError, SummaryBuild,
 };
 use crate::pipeline::{
-    tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
-    PipelineResponse, TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
+    TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
 };
 use serde_json::json;
 use volicord_store::core_pipeline::{
@@ -136,28 +137,26 @@ fn execute_request_user_action(
         }
     };
     if request.envelope.dry_run.is_requested() {
-        return service.execute_prepared_request::<RequestUserActionResultFields>(
+        return service.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::DryRunPreview {
-                dry_run_summary: dry_run_summary(
-                    "user_action_request",
-                    "create_pending",
-                    "Request would create one bounded pending user action.",
-                    plan.next_actions,
-                ),
-            },
+            dry_run_preview_branch::<RequestUserActionRequest>(dry_run_summary(
+                "user_action_request",
+                "create_pending",
+                "Request would create one bounded pending user action.",
+                plan.next_actions,
+            )),
         );
     }
     service.execute_prepared_request(
         prepared,
-        OwnerPipelineBranch::CommitMutation {
+        commit_mutation_branch::<RequestUserActionRequest>(CommitMutationBranch {
             result_fields: plan.result_fields,
             event_kind: "user_action_requested".to_owned(),
             event_payload: plan.event_payload,
             task_id: Some(plan.task_id),
             change_unit_id: plan.change_unit_id,
             storage_mutations: plan.storage_mutations,
-        },
+        }),
     )
 }
 
@@ -550,29 +549,27 @@ fn execute_resolve_user_action(
         }
     };
     if request.envelope.dry_run.is_requested() {
-        return service.execute_prepared_request::<ResolveUserActionResultFields>(
+        return service.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::DryRunPreview {
-                dry_run_summary: dry_run_summary(
-                    "user_action_resolution",
-                    "resolve_pending",
-                    "Request would immutably resolve one pending user action.",
-                    plan.method.next_actions,
-                ),
-            },
+            dry_run_preview_branch::<ResolveUserActionRequest>(dry_run_summary(
+                "user_action_resolution",
+                "resolve_pending",
+                "Request would immutably resolve one pending user action.",
+                plan.method.next_actions,
+            )),
         );
     }
     let session_id = prepared.context.verified_invocation.session_id.clone();
     let response = service.execute_prepared_request(
         prepared,
-        OwnerPipelineBranch::CommitMutation {
+        commit_mutation_branch::<ResolveUserActionRequest>(CommitMutationBranch {
             result_fields: plan.method.result_fields,
             event_kind: "user_action_resolved".to_owned(),
             event_payload: plan.method.event_payload,
             task_id: Some(plan.method.task_id),
             change_unit_id: plan.method.change_unit_id,
             storage_mutations: plan.method.storage_mutations,
-        },
+        }),
     )?;
     if response_committed_fresh_effect(&response) {
         record_core_workflow_metric_best_effort(

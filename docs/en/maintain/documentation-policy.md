@@ -245,13 +245,14 @@ method Reference pages are generated from semantic request and response
 descriptors selected by the resolved document bindings through
 `cargo run -p xtask -- docs-sync`. Stable generated-region markers bind each
 table to exact contract IDs and shapes. Multi-method pages generate every owned
-method binding in normalized binding order. The shared `ToolResultBase`,
-`ToolRejectedBase`, `ToolDryRunBase`, `ToolRejectedResponse`, and
-`ToolDryRunResponse` structures are generated once in API Schema Core; method
-pages generate links to those shared structures and keep their success-result
+method binding in normalized binding order. API Schema Core generates the
+effect-specific metadata structures plus the shared `ToolRejectedBase`,
+`ToolDryRunBase`, `ToolRejectedResponse`, and `ToolDryRunResponse` structures.
+Each method page generates its exact method-specific result base variants,
+including dry-run and event-cardinality facts, and keeps its success-result
 fields separate. A method response region binds `dry_run` and renders preview prose only when its
 semantic response descriptor exposes that branch; `docs-check` treats any
-other generated preview branch as drift. Authors edit the surrounding meaning,
+other generated preview branch or duplicate generated heading anchor as drift. Authors edit the surrounding meaning,
 policy, effects, cross-field invariants, and failure behavior, not the
 generated regions or a second exhaustive field inventory.
 

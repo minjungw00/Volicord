@@ -53,18 +53,20 @@ policy 평가, 그 밖의 효과 전에 `NO_ACTIVE_CHANGE_UNIT`과
 계획 코드는 닫힌 outcome, typed 메서드 필드 값, 정확한 commit input을 반환합니다.
 [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)의
 공개 메서드 선언 하나가 메서드 이름, 요청 및 결과 타입, 정확한 응답 계열, 계약 ID,
-스키마, 커밋 결과 replay 적격 여부를 함께 결합합니다. 공유 파이프라인은 분기를
-선택하는 동안 선언된 필드 타입을 유지하고, 메서드 응답 계열에 없는 분기를
-거부합니다. Store는 transaction 안에서 담당 문서의 최종 검증을 수행하고
+스키마, 커밋 결과 replay 적격 여부와 정확한 성공 결과 효과를 함께 결합합니다.
+공유 파이프라인은 분기를 선택하는 동안 선언된 필드 타입과 메서드별 base 타입을
+유지하고, 메서드 응답 계열에 없는 효과를 거부합니다. Store는 transaction 안에서
+담당 문서의 최종 검증을 수행하고
 immutable row 삽입, current pointer 갱신, 해당할 때 authority event와 replay 추가,
 `state_version` 정확히 한 번 증가를 수행합니다.
 
-메서드 결과 분기에서는 공통 사실이 확정된 뒤에만 파이프라인이 최종
-`ToolResultBase`를 결합합니다. 따라서 읽기 전용, 효과 없음, 커밋 결과는 같은 typed
-구성 경계를 사용합니다. 거절 응답과 dry-run 응답은 서로 다른
-`ToolRejectedBase`, `ToolDryRunBase` 메타데이터 타입을 사용합니다. 분기별 타입이
-고정된 discriminant와 effect fact를 담당하고, strict decoding은 untagged 계열이 다른
-분기를 선택하기 전에 알 수 없는 필드와 분기 사이에 섞인 필드를 거절합니다.
+메서드 결과 분기에서는 공통 사실이 확정된 뒤에만 파이프라인이 해당 메서드의
+정확한 결과 메타데이터를 구성합니다. Compile-time 분기 capability는 메서드가
+선언한 읽기 전용, 효과 없음, 스테이징, 커밋 생성자만 노출합니다. 효과별 타입은
+고정된 dry-run 값과 이벤트 개수 규칙을 담당합니다. 거절 응답과 dry-run 응답은
+서로 다른 `ToolRejectedBase`, `ToolDryRunBase` 메타데이터 타입을 사용합니다.
+Strict decoding은 untagged 계열이 다른 분기를 선택하기 전에 알 수 없는 필드,
+분기 사이에 섞인 필드, 해당 메서드에서 불가능한 효과를 거절합니다.
 
 CLI와 MCP adapter는 rendering이나 protocol projection 전에 반환된 공개 객체를 해당
 메서드의 정확한 응답 계열로 decode합니다. 따라서 adapter carrier는 Core와 메서드

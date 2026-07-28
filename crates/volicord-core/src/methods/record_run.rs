@@ -29,8 +29,9 @@ use super::{
     PersistedWriteTicketAttemptScope, PlanError, SummaryBuild,
 };
 use crate::pipeline::{
-    tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
-    PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
+    TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::evidence::{
     evidence_status_for_items, state_record_ref_identity_key, unique_artifact_refs,
@@ -182,30 +183,28 @@ impl CoreService {
         };
 
         if request.envelope.dry_run.is_requested() {
-            return self.execute_prepared_request::<RecordRunResultFields>(
+            return self.execute_prepared_request(
                 prepared,
-                OwnerPipelineBranch::DryRunPreview {
-                    dry_run_summary: dry_run_summary(
+                dry_run_preview_branch::<RecordRunRequest>(dry_run_summary(
                         "run",
                         "would_record",
                         "Record run would create one Run and any compatible evidence or artifact links.",
                         Vec::new(),
-                    ),
-                },
+                    )),
             );
         }
 
         let session_id = prepared.context.verified_invocation.session_id.clone();
         let response = self.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::CommitMutation {
+            commit_mutation_branch::<RecordRunRequest>(CommitMutationBranch {
                 result_fields: plan.result_fields,
                 event_kind: "run_recorded".to_owned(),
                 event_payload: plan.event_payload,
                 task_id: Some(plan.task_id),
                 change_unit_id: plan.change_unit_id,
                 storage_mutations: plan.storage_mutations,
-            },
+            }),
         )?;
         if response_committed_fresh_effect(&response) {
             if let Some(duration) = first_product_write_duration {

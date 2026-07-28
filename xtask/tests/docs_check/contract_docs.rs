@@ -1,8 +1,8 @@
 use super::*;
 
 const REQUEST_REGION_ID: &str = "contract-structures api.method.intake.request[params]";
-const RESPONSE_REGION_ID: &str = "contract-structures api.method.intake.response[response_variants] api.method.intake.response[result_body] api.method.intake.response[rejection] api.method.intake.response[dry_run]";
-const COMMON_REGION_ID: &str = "contract-structures api.schema.core[schema_object.ToolResultBase] api.schema.core[schema_object.ToolRejectedBase] api.schema.core[schema_object.ToolDryRunBase] api.schema.core[schema_object.ToolRejectedResponse] api.schema.core[schema_object.ToolDryRunResponse]";
+const RESPONSE_REGION_ID: &str = "contract-structures api.method.intake.response[response_variants] api.method.intake.response[result_body] api.method.intake.response[result_metadata] api.method.intake.response[rejection] api.method.intake.response[dry_run]";
+const COMMON_REGION_ID: &str = "contract-structures api.schema.core[schema_object.ToolError] api.schema.core[schema_object.RequestedIntentReadOnlyResultBase] api.schema.core[schema_object.NotRequestedReadOnlyResultBase] api.schema.core[schema_object.CoreCommittedResultBase] api.schema.core[schema_object.StagingCreatedResultBase] api.schema.core[schema_object.NoEffectResultBase] api.schema.core[schema_object.ToolRejectedBase] api.schema.core[schema_object.ToolDryRunBase] api.schema.core[schema_object.ToolRejectedResponse] api.schema.core[schema_object.ToolDryRunResponse]";
 
 fn marker(kind: &str, id: &str) -> String {
     format!("<!-- {kind} GENERATED: {id} -->")
@@ -85,8 +85,10 @@ fn production_contract_sync_is_bilingual_and_idempotent() {
     assert!(second.updated_paths().is_empty());
     assert!(english.contains("### `IntakeRequest` fields"));
     assert!(english.contains("### `IntakeResult` success fields"));
+    assert!(english.contains("### `Result Metadata: core_committed` fields"));
     assert!(korean.contains("### `IntakeRequest` 필드"));
     assert!(korean.contains("### `IntakeResult` 성공 필드"));
+    assert!(korean.contains("### `결과 Metadata: core_committed` 필드"));
     assert!(common.contains("### `ToolRejectedBase` rejection fields"));
     assert!(common.contains("### `ToolDryRunBase` preview fields"));
     assert!(common.contains("### `ToolRejectedResponse` rejection fields"));
@@ -146,7 +148,7 @@ fn docs_check_rejects_missing_or_wrong_response_bindings() {
 
     let wrong = generated.replace(
         RESPONSE_REGION_ID,
-        "contract-structures api.method.status.response[response_variants] api.method.status.response[result_body] api.method.status.response[rejection] api.method.status.response[dry_run]",
+        "contract-structures api.method.status.response[response_variants] api.method.status.response[result_body] api.method.status.response[result_metadata] api.method.status.response[rejection]",
     );
     write(fixture.path(), path, &wrong);
     let wrong_report = report(fixture.path());

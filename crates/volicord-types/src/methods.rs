@@ -9,21 +9,23 @@ use crate::ids::{
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary,
     ArtifactInput, ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ContinuityPageRequest, CurrentCloseBasis, DryRunIntent,
-    EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary,
-    EvidenceObservation, EvidenceObservationInput, EvidenceProducer, EvidenceSummary,
-    EvidenceTarget, GuaranteeDisplay, JsonObject, NextActionSummary, ObservedChanges,
-    PreviewableToolResponse, ProjectContinuityPage, ProjectContinuitySummary, RequiredNullable,
-    RiskAcceptanceCoverage, RunSummary, SourceRef, StagedArtifactHandle, StateRecordRef,
-    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolEnvelope, ToolResultBase,
-    ToolResultOrRejected, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
-    UserActionDraft, UserActionRequest, UserActionResolution, UserActionResolutionInput,
-    WriteDecisionReason, WriteTicket, WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
+    CloseReadinessBlocker, ContinuityPageRequest, CoreCommittedResultBase, CurrentCloseBasis,
+    DryRunIntent, EventRef, EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate,
+    EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput, EvidenceProducer,
+    EvidenceSummary, EvidenceTarget, GuaranteeDisclosure, GuaranteeDisplay, JsonObject,
+    NextActionSummary, NoEffectResultBase, NonEmptyEventRefs, NotRequestedReadOnlyResultBase,
+    ObservedChanges, PreviewableToolResponse, ProjectContinuityPage, ProjectContinuitySummary,
+    RequestedIntentReadOnlyResultBase, RequiredNullable, ResultMetadata, RiskAcceptanceCoverage,
+    RunSummary, SourceRef, StagedArtifactHandle, StagingCreatedResultBase, StateRecordRef,
+    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolEnvelope, ToolResultOrRejected,
+    UnrecordedChangeFinding, UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest,
+    UserActionResolution, UserActionResolutionInput, WriteDecisionReason, WriteTicket,
+    WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
 use crate::values::{
     AcceptancePolicy, ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState,
-    EvidenceDisplayState, MethodName, OperationCategory, PrepareWriteDecision, RedactionState,
-    RequestedControlLevel, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
+    EffectKind, EvidenceDisplayState, MethodName, OperationCategory, PrepareWriteDecision,
+    RedactionState, RequestedControlLevel, RequestedMode, ResumePolicy, RunKind, StatusCloseState,
     UnrecordedChangeResolutionBasis, UserActionRequiredFor, UtcTimestamp, WriteTicketEffect,
 };
 
@@ -37,19 +39,41 @@ pub trait MethodOperationCategory {
 }
 
 /// Method-specific fields that become a complete public result only when
-/// paired with the common result facts selected by the execution pipeline.
-pub trait MethodResultFields {
+/// paired with the exact result metadata selected by that method contract.
+pub trait MethodResultFields<M>
+where
+    M: MethodResponseContract,
+{
     /// Complete public result type produced from these method fields.
     type Result;
 
-    /// Attaches the final common result facts to these method fields.
-    fn with_base(self, base: ToolResultBase) -> Self::Result;
+    /// Attaches the method-specific result metadata to these method fields.
+    fn with_base(self, base: M::ResultBase) -> Self::Result;
+}
+
+/// Structural assembly of one fields value with one exact result-base type.
+pub trait AssembleMethodResult<B> {
+    type Result;
+
+    fn assemble(self, base: B) -> Self::Result;
+}
+
+impl<M, F> MethodResultFields<M> for F
+where
+    M: MethodResponseContract,
+    F: AssembleMethodResult<M::ResultBase, Result = M::Result>,
+{
+    type Result = M::Result;
+
+    fn with_base(self, base: M::ResultBase) -> Self::Result {
+        self.assemble(base)
+    }
 }
 
 macro_rules! declare_method_result {
     (
         $(#[$result_meta:meta])*
-        pub struct $result:ident from $fields:ident {
+        pub struct $result:ident from $fields:ident with $base:ident {
             $(
                 $(#[$field_meta:meta])*
                 pub $field:ident: $field_type:ty
@@ -70,23 +94,261 @@ macro_rules! declare_method_result {
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
         #[serde(deny_unknown_fields)]
         pub struct $result {
-            pub base: ToolResultBase,
+            pub base: $base,
             $(
                 $(#[$field_meta])*
                 pub $field: $field_type,
             )*
         }
 
-        impl MethodResultFields for $fields {
+        impl AssembleMethodResult<$base> for $fields {
             type Result = $result;
 
-            fn with_base(self, base: ToolResultBase) -> Self::Result {
-                let Self {
-                    $($field,)*
-                } = self;
+            fn assemble(self, base: $base) -> Self::Result {
+                let Self { $($field,)* } = self;
                 $result {
                     base,
                     $($field,)*
+                }
+            }
+        }
+    };
+}
+
+macro_rules! declare_shared_method_results {
+    (
+        $(#[$fields_meta:meta])*
+        pub struct $fields:ident {
+            $(
+                $(#[$field_meta:meta])*
+                pub $field:ident: $field_type:ty
+            ),* $(,)?
+        }
+        results {
+            $(
+                $(#[$result_meta:meta])*
+                pub struct $result:ident with $base:ident;
+            )+
+        }
+    ) => {
+        $(#[$fields_meta])*
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+        #[serde(deny_unknown_fields)]
+        pub struct $fields {
+            $(
+                $(#[$field_meta])*
+                pub $field: $field_type,
+            )*
+        }
+
+        $(
+            $(#[$result_meta])*
+            #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+            #[serde(deny_unknown_fields)]
+            pub struct $result {
+                pub base: $base,
+                #[serde(flatten)]
+                pub fields: $fields,
+            }
+
+            impl AssembleMethodResult<$base> for $fields {
+                type Result = $result;
+
+                fn assemble(self, base: $base) -> Self::Result {
+                    $result {
+                        base,
+                        fields: self,
+                    }
+                }
+            }
+        )+
+    };
+}
+
+/// One method-owned result effect permitted by the canonical public contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ResultEffectContract {
+    ReadOnly,
+    CoreCommitted,
+    StagingCreated,
+    NoEffect,
+}
+
+impl ResultEffectContract {
+    pub const ALL: [Self; 4] = [
+        Self::ReadOnly,
+        Self::CoreCommitted,
+        Self::StagingCreated,
+        Self::NoEffect,
+    ];
+
+    pub const fn effect_kind(self) -> EffectKind {
+        match self {
+            Self::ReadOnly => EffectKind::ReadOnly,
+            Self::CoreCommitted => EffectKind::CoreCommitted,
+            Self::StagingCreated => EffectKind::StagingCreated,
+            Self::NoEffect => EffectKind::NoEffect,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadOnly => "read_only",
+            Self::CoreCommitted => "core_committed",
+            Self::StagingCreated => "staging_created",
+            Self::NoEffect => "no_effect",
+        }
+    }
+
+    pub const fn event_contract(self) -> ResultEventContract {
+        match self {
+            Self::CoreCommitted => ResultEventContract::NonEmpty,
+            Self::ReadOnly | Self::StagingCreated | Self::NoEffect => ResultEventContract::Empty,
+        }
+    }
+}
+
+/// Event cardinality owned by one result effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultEventContract {
+    Empty,
+    NonEmpty,
+}
+
+/// Result-side dry-run fact owned by one method and effect combination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultDryRunContract {
+    PreserveRequestedIntent,
+    NotRequested,
+}
+
+/// Exact metadata facts decoded from one method-specific result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultMetadataFacts {
+    pub effect_kind: EffectKind,
+    pub dry_run: DryRunIntent,
+    pub state_version: u64,
+    pub event_count: usize,
+}
+
+/// Inspection surface shared by generated method-specific result-base enums.
+pub trait MethodResultBase: Serialize + DeserializeOwned + JsonSchema {
+    fn effect_kind(&self) -> EffectKind;
+    fn dry_run_intent(&self) -> DryRunIntent;
+    fn state_version(&self) -> u64;
+    fn disclosure(&self) -> &GuaranteeDisclosure;
+    fn events(&self) -> &[EventRef];
+}
+
+/// Inspection surface shared by generated method-specific result bodies.
+pub trait PublicMethodResult: Serialize + DeserializeOwned {
+    type Base: MethodResultBase;
+
+    fn base(&self) -> &Self::Base;
+}
+
+/// Construction error for method-specific result metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResultBaseConstructionError {
+    detail: &'static str,
+}
+
+impl ResultBaseConstructionError {
+    const fn new(detail: &'static str) -> Self {
+        Self { detail }
+    }
+
+    pub const fn detail(self) -> &'static str {
+        self.detail
+    }
+}
+
+/// Compile-time capability for a method that permits a read-only result.
+pub trait SupportsReadOnlyResult: MethodResponseContract {
+    fn read_only_result_base(
+        dry_run: DryRunIntent,
+        state_version: u64,
+    ) -> Result<Self::ResultBase, ResultBaseConstructionError>;
+}
+
+/// Compile-time capability for a method that permits a Core-committed result.
+pub trait SupportsCoreCommittedResult: MethodResponseContract {
+    fn core_committed_result_base(
+        state_version: u64,
+        events: Vec<EventRef>,
+    ) -> Result<Self::ResultBase, ResultBaseConstructionError>;
+}
+
+/// Compile-time capability for a method that permits a staging-created result.
+pub trait SupportsStagingCreatedResult: MethodResponseContract {
+    fn staging_created_result_base(state_version: u64) -> Self::ResultBase;
+}
+
+/// Compile-time capability for a method that permits a no-effect result.
+pub trait SupportsNoEffectResult: MethodResponseContract {
+    fn no_effect_result_base(state_version: u64) -> Self::ResultBase;
+}
+
+macro_rules! result_metadata_type {
+    (RegularResult, ReadOnly) => {
+        RequestedIntentReadOnlyResultBase
+    };
+    (Forbidden, ReadOnly) => {
+        NotRequestedReadOnlyResultBase
+    };
+    (Preview, ReadOnly) => {
+        NotRequestedReadOnlyResultBase
+    };
+    ($policy:ident, CoreCommitted) => {
+        CoreCommittedResultBase
+    };
+    ($policy:ident, StagingCreated) => {
+        StagingCreatedResultBase
+    };
+    ($policy:ident, NoEffect) => {
+        NoEffectResultBase
+    };
+}
+
+macro_rules! declare_result_base {
+    ($base:ident, $dry_run_policy:ident, [$($effect:ident),+ $(,)?]) => {
+        #[doc = concat!("Exact result metadata permitted by `", stringify!($base), "`.")]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+        #[serde(untagged)]
+        pub enum $base {
+            $(
+                $effect(result_metadata_type!($dry_run_policy, $effect)),
+            )+
+        }
+
+        impl MethodResultBase for $base {
+            fn effect_kind(&self) -> EffectKind {
+                match self {
+                    $(Self::$effect(base) => base.effect_kind(),)+
+                }
+            }
+
+            fn dry_run_intent(&self) -> DryRunIntent {
+                match self {
+                    $(Self::$effect(base) => base.dry_run_intent(),)+
+                }
+            }
+
+            fn state_version(&self) -> u64 {
+                match self {
+                    $(Self::$effect(base) => base.state_version(),)+
+                }
+            }
+
+            fn disclosure(&self) -> &GuaranteeDisclosure {
+                match self {
+                    $(Self::$effect(base) => base.disclosure(),)+
+                }
+            }
+
+            fn events(&self) -> &[EventRef] {
+                match self {
+                    $(Self::$effect(base) => base.events(),)+
                 }
             }
         }
@@ -142,12 +404,16 @@ impl DryRunRequestPolicy {
 }
 
 /// Typed relationship between one public request and its exact response family.
-pub trait MethodResponseContract {
+pub trait MethodResponseContract: Sized {
     type Response: DeserializeOwned + JsonSchema;
+    type ResultBase: MethodResultBase;
+    type ResultFields: MethodResultFields<Self, Result = Self::Result>;
+    type Result: PublicMethodResult<Base = Self::ResultBase> + JsonSchema;
 
     const METHOD: MethodName;
     const DRY_RUN_POLICY: DryRunRequestPolicy;
     const RESPONSE_BRANCHES: &'static [MethodResponseBranch];
+    const RESULT_EFFECTS: &'static [ResultEffectContract];
 }
 
 /// Canonical machine-readable declaration for one public method contract.
@@ -158,12 +424,15 @@ pub struct PublicMethodContract {
     response_contract_id: &'static str,
     dry_run_policy: DryRunRequestPolicy,
     response_branches: &'static [MethodResponseBranch],
+    result_effects: &'static [ResultEffectContract],
     committed_result_replay: bool,
     request_schema: fn() -> Value,
     response_schema: fn() -> Value,
     result_schema: fn() -> Value,
+    result_base_schema: fn() -> Value,
     accepts_response: fn(&Value) -> bool,
-    accepts_result_json: fn(&str, &Value) -> bool,
+    accepts_result_base: fn(&Value) -> bool,
+    decode_result_json: fn(&str, &Value) -> Option<ResultMetadataFacts>,
 }
 
 impl PublicMethodContract {
@@ -191,6 +460,26 @@ impl PublicMethodContract {
         self.response_branches.contains(&branch)
     }
 
+    pub const fn result_effects(self) -> &'static [ResultEffectContract] {
+        self.result_effects
+    }
+
+    pub fn supports_result_effect(self, effect: ResultEffectContract) -> bool {
+        self.result_effects.contains(&effect)
+    }
+
+    pub const fn result_dry_run_contract(
+        self,
+        effect: ResultEffectContract,
+    ) -> ResultDryRunContract {
+        match (self.dry_run_policy, effect) {
+            (DryRunRequestPolicy::RegularResult, ResultEffectContract::ReadOnly) => {
+                ResultDryRunContract::PreserveRequestedIntent
+            }
+            _ => ResultDryRunContract::NotRequested,
+        }
+    }
+
     pub const fn has_committed_result_replay(self) -> bool {
         self.committed_result_replay
     }
@@ -207,12 +496,20 @@ impl PublicMethodContract {
         (self.result_schema)()
     }
 
+    pub fn result_base_schema(self) -> Value {
+        (self.result_base_schema)()
+    }
+
     pub fn accepts_response(self, value: &Value) -> bool {
         (self.accepts_response)(value)
     }
 
-    pub fn accepts_result_json(self, json: &str, value: &Value) -> bool {
-        (self.accepts_result_json)(json, value)
+    pub fn accepts_result_base(self, value: &Value) -> bool {
+        (self.accepts_result_base)(value)
+    }
+
+    pub fn decode_result_json(self, json: &str, value: &Value) -> Option<ResultMetadataFacts> {
+        (self.decode_result_json)(json, value)
     }
 }
 
@@ -272,7 +569,7 @@ pub struct InitialScope {
 
 declare_method_result! {
     /// `volicord.intake` method result branch and its method-specific fields.
-    pub struct IntakeResult from IntakeResultFields {
+    pub struct IntakeResult from IntakeResultFields with IntakeResultBase {
         pub task_ref: StateRecordRef,
         pub change_unit_ref: Option<StateRecordRef>,
         pub state: StateSummary,
@@ -327,7 +624,7 @@ pub struct ChangeUnitUpdate {
 
 declare_method_result! {
     /// `volicord.update_scope` method result branch and its method-specific fields.
-    pub struct UpdateScopeResult from UpdateScopeResultFields {
+    pub struct UpdateScopeResult from UpdateScopeResultFields with UpdateScopeResultBase {
         pub task_ref: StateRecordRef,
         pub change_unit_ref: Option<StateRecordRef>,
         pub linked_scope_decision_refs: Vec<StateRecordRef>,
@@ -516,7 +813,7 @@ impl StatusStateSummary {
 
 declare_method_result! {
     /// `volicord.status` method result branch and its method-specific fields.
-    pub struct StatusResult from StatusResultFields {
+    pub struct StatusResult from StatusResultFields with StatusResultBase {
         pub summary_card: SummaryCard,
         pub active_task: Option<StatusStateSummary>,
         pub status_summary: String,
@@ -583,7 +880,7 @@ impl MethodOperationCategory for GetOperationResultRequest {
 
 declare_method_result! {
     /// One bounded page of an immutable historical mutation response.
-    pub struct GetOperationResultResult from GetOperationResultResultFields {
+    pub struct GetOperationResultResult from GetOperationResultResultFields with GetOperationResultResultBase {
         pub operation_result_ref: OperationResultRef,
         pub start_offset_bytes: u64,
         pub end_offset_bytes: u64,
@@ -619,7 +916,7 @@ impl MethodOperationCategory for PrepareEvidenceCaptureRequest {
 
 declare_method_result! {
     /// `volicord.prepare_evidence_capture` method result branch and its method-specific fields.
-    pub struct PrepareEvidenceCaptureResult from PrepareEvidenceCaptureResultFields {
+    pub struct PrepareEvidenceCaptureResult from PrepareEvidenceCaptureResultFields with PrepareEvidenceCaptureResultBase {
         pub capture_intent_ref: StateRecordRef,
         pub capture_intent: EvidenceCaptureIntent,
         pub expires_at: UtcTimestamp,
@@ -652,7 +949,7 @@ impl MethodOperationCategory for PrepareWriteRequest {
 
 declare_method_result! {
     /// `volicord.prepare_write` method result branch and its method-specific fields.
-    pub struct PrepareWriteResult from PrepareWriteResultFields {
+    pub struct PrepareWriteResult from PrepareWriteResultFields with PrepareWriteResultBase {
         pub decision: PrepareWriteDecision,
         pub state: Option<StateSummary>,
         pub write_ticket_id: Option<WriteTicketId>,
@@ -693,14 +990,13 @@ impl MethodOperationCategory for StageArtifactRequest {
     }
 }
 
-/// `volicord.stage_artifact` method result branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct StageArtifactResult {
-    pub base: ToolResultBase,
-    pub evidence_state: EvidenceDisplayState,
-    pub staged_artifact_handle: StagedArtifactHandle,
-    pub expires_at: UtcTimestamp,
+declare_method_result! {
+    /// `volicord.stage_artifact` method result branch and its method-specific fields.
+    pub struct StageArtifactResult from StageArtifactResultFields with StageArtifactResultBase {
+        pub evidence_state: EvidenceDisplayState,
+        pub staged_artifact_handle: StagedArtifactHandle,
+        pub expires_at: UtcTimestamp,
+    }
 }
 
 /// `volicord.record_run` request params.
@@ -736,7 +1032,7 @@ impl MethodOperationCategory for RecordRunRequest {
 
 declare_method_result! {
     /// `volicord.record_run` method result branch and its method-specific fields.
-    pub struct RecordRunResult from RecordRunResultFields {
+    pub struct RecordRunResult from RecordRunResultFields with RecordRunResultBase {
         pub run_summary: RunSummary,
         pub registered_artifacts: Vec<ArtifactRef>,
         pub evidence_summary: Option<EvidenceSummary>,
@@ -772,7 +1068,7 @@ impl MethodOperationCategory for RequestUserActionRequest {
 
 declare_method_result! {
     /// `volicord.request_user_action` method result branch and its method-specific fields.
-    pub struct RequestUserActionResult from RequestUserActionResultFields {
+    pub struct RequestUserActionResult from RequestUserActionResultFields with RequestUserActionResultBase {
         pub user_action_request_summary: AgentSafeUserActionRequestSummary,
         pub blocker_refs: Vec<StateRecordRef>,
         pub state: StateSummary,
@@ -805,7 +1101,7 @@ impl MethodOperationCategory for ResolveUserActionRequest {
 
 declare_method_result! {
     /// `volicord.resolve_user_action` method result branch and its method-specific fields.
-    pub struct ResolveUserActionResult from ResolveUserActionResultFields {
+    pub struct ResolveUserActionResult from ResolveUserActionResultFields with ResolveUserActionResultBase {
         pub user_action_request_ref: StateRecordRef,
         pub user_action_resolution_ref: StateRecordRef,
         pub user_action_request: UserActionRequest,
@@ -848,7 +1144,7 @@ pub struct UnrecordedChangeResolutionRequest {
 
 declare_method_result! {
     /// `volicord.reconcile_changes` method result branch and its method-specific fields.
-    pub struct ReconcileChangesResult from ReconcileChangesResultFields {
+    pub struct ReconcileChangesResult from ReconcileChangesResultFields with ReconcileChangesResultBase {
         pub summary_card: SummaryCard,
         pub task_ref: StateRecordRef,
         pub unresolved_changes: Vec<UnrecordedChangeFinding>,
@@ -911,9 +1207,9 @@ impl MethodOperationCategory for CloseTaskRequest {
     }
 }
 
-declare_method_result! {
-    /// `volicord.close_task` method result branch and its method-specific fields.
-    pub struct CloseTaskResult from CloseTaskResultFields {
+declare_shared_method_results! {
+    /// Method-specific close-assessment fields shared without sharing result metadata.
+    pub struct CloseAssessmentResultFields {
         pub summary_card: SummaryCard,
         pub close_state: CloseState,
         pub current_close_basis: Option<CurrentCloseBasis>,
@@ -926,6 +1222,12 @@ declare_method_result! {
         pub evidence_gate: EvidenceGateSummary,
         pub artifact_refs: Vec<ArtifactRef>,
         pub authority_receipt: AuthorityReceipt,
+    }
+    results {
+        /// Exact `volicord.check_close` result branch.
+        pub struct CheckCloseResult with CheckCloseResultBase;
+        /// Exact `volicord.close_task` result branch.
+        pub struct CloseTaskResult with CloseTaskResultBase;
     }
 }
 
@@ -957,14 +1259,88 @@ macro_rules! response_branches {
     };
 }
 
+macro_rules! impl_result_effect_support {
+    ($request:ty, $base:ident, RegularResult, ReadOnly) => {
+        impl SupportsReadOnlyResult for $request {
+            fn read_only_result_base(
+                dry_run: DryRunIntent,
+                state_version: u64,
+            ) -> Result<Self::ResultBase, ResultBaseConstructionError> {
+                Ok($base::ReadOnly(RequestedIntentReadOnlyResultBase::new(
+                    dry_run,
+                    state_version,
+                    GuaranteeDisclosure::authority_record(),
+                )))
+            }
+        }
+    };
+    ($request:ty, $base:ident, $policy:ident, ReadOnly) => {
+        impl SupportsReadOnlyResult for $request {
+            fn read_only_result_base(
+                dry_run: DryRunIntent,
+                state_version: u64,
+            ) -> Result<Self::ResultBase, ResultBaseConstructionError> {
+                if dry_run.is_requested() {
+                    return Err(ResultBaseConstructionError::new(
+                        "this method's read-only result requires dry_run=false",
+                    ));
+                }
+                Ok($base::ReadOnly(NotRequestedReadOnlyResultBase::new(
+                    state_version,
+                    GuaranteeDisclosure::authority_record(),
+                )))
+            }
+        }
+    };
+    ($request:ty, $base:ident, $policy:ident, CoreCommitted) => {
+        impl SupportsCoreCommittedResult for $request {
+            fn core_committed_result_base(
+                state_version: u64,
+                events: Vec<EventRef>,
+            ) -> Result<Self::ResultBase, ResultBaseConstructionError> {
+                let events = NonEmptyEventRefs::try_from_vec(events)
+                    .map_err(ResultBaseConstructionError::new)?;
+                Ok($base::CoreCommitted(CoreCommittedResultBase::new(
+                    state_version,
+                    GuaranteeDisclosure::authority_record(),
+                    events,
+                )))
+            }
+        }
+    };
+    ($request:ty, $base:ident, $policy:ident, StagingCreated) => {
+        impl SupportsStagingCreatedResult for $request {
+            fn staging_created_result_base(state_version: u64) -> Self::ResultBase {
+                $base::StagingCreated(StagingCreatedResultBase::new(
+                    state_version,
+                    GuaranteeDisclosure::authority_record(),
+                ))
+            }
+        }
+    };
+    ($request:ty, $base:ident, $policy:ident, NoEffect) => {
+        impl SupportsNoEffectResult for $request {
+            fn no_effect_result_base(state_version: u64) -> Self::ResultBase {
+                $base::NoEffect(NoEffectResultBase::new(
+                    state_version,
+                    GuaranteeDisclosure::authority_record(),
+                ))
+            }
+        }
+    };
+}
+
 macro_rules! declare_public_method_contracts {
     (
         $(
             $variant:ident {
                 request: $request:ty,
+                fields: $fields:ty,
+                base: $base:ident,
                 result: $result:ty,
                 response: $response:ident,
                 dry_run_policy: $dry_run_policy:ident,
+                result_effects: [$($result_effect:ident),+ $(,)?],
                 request_contract: $request_contract:literal,
                 response_contract: $response_contract:literal,
                 committed_result_replay: $committed_result_replay:literal
@@ -972,17 +1348,45 @@ macro_rules! declare_public_method_contracts {
         ),+ $(,)?
     ) => {
         $(
+            declare_result_base!(
+                $base,
+                $dry_run_policy,
+                [$($result_effect),+]
+            );
+
+            $(
+                impl_result_effect_support!(
+                    $request,
+                    $base,
+                    $dry_run_policy,
+                    $result_effect
+                );
+            )+
+
             #[doc = concat!("Exact public response family for `", $response_contract, "`.")]
             pub type $response = response_family!($dry_run_policy, $result);
 
             impl MethodResponseContract for $request {
                 type Response = $response;
+                type ResultBase = $base;
+                type ResultFields = $fields;
+                type Result = $result;
 
                 const METHOD: MethodName = MethodName::$variant;
                 const DRY_RUN_POLICY: DryRunRequestPolicy =
                     DryRunRequestPolicy::$dry_run_policy;
                 const RESPONSE_BRANCHES: &'static [MethodResponseBranch] =
                     response_branches!($dry_run_policy);
+                const RESULT_EFFECTS: &'static [ResultEffectContract] =
+                    &[$(ResultEffectContract::$result_effect),+];
+            }
+
+            impl PublicMethodResult for $result {
+                type Base = $base;
+
+                fn base(&self) -> &Self::Base {
+                    &self.base
+                }
             }
         )+
 
@@ -995,12 +1399,15 @@ macro_rules! declare_public_method_contracts {
                     response_contract_id: $response_contract,
                     dry_run_policy: DryRunRequestPolicy::$dry_run_policy,
                     response_branches: response_branches!($dry_run_policy),
+                    result_effects: &[$(ResultEffectContract::$result_effect),+],
                     committed_result_replay: $committed_result_replay,
                     request_schema: request_schema::<$request>,
                     response_schema: response_schema::<$response>,
                     result_schema: response_schema::<$result>,
+                    result_base_schema: response_schema::<$base>,
                     accepts_response: accepts_response::<$response>,
-                    accepts_result_json: accepts_result_json::<$result>,
+                    accepts_result_base: accepts_response::<$base>,
+                    decode_result_json: decode_result_json::<$result>,
                 },
             )+
         ];
@@ -1010,117 +1417,156 @@ macro_rules! declare_public_method_contracts {
 declare_public_method_contracts! {
     Intake {
         request: IntakeRequest,
+        fields: IntakeResultFields,
+        base: IntakeResultBase,
         result: IntakeResult,
         response: IntakeResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
         request_contract: "api.method.intake.request",
         response_contract: "api.method.intake.response",
         committed_result_replay: true
     },
     UpdateScope {
         request: UpdateScopeRequest,
+        fields: UpdateScopeResultFields,
+        base: UpdateScopeResultBase,
         result: UpdateScopeResult,
         response: UpdateScopeResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
         request_contract: "api.method.update_scope.request",
         response_contract: "api.method.update_scope.response",
         committed_result_replay: true
     },
     Status {
         request: StatusRequest,
+        fields: StatusResultFields,
+        base: StatusResultBase,
         result: StatusResult,
         response: StatusResponse,
         dry_run_policy: RegularResult,
+        result_effects: [ReadOnly],
         request_contract: "api.method.status.request",
         response_contract: "api.method.status.response",
         committed_result_replay: false
     },
     GetOperationResult {
         request: GetOperationResultRequest,
+        fields: GetOperationResultResultFields,
+        base: GetOperationResultResultBase,
         result: GetOperationResultResult,
         response: GetOperationResultResponse,
         dry_run_policy: Forbidden,
+        result_effects: [ReadOnly],
         request_contract: "api.method.get_operation_result.request",
         response_contract: "api.method.get_operation_result.response",
         committed_result_replay: false
     },
     CheckClose {
         request: CheckCloseRequest,
-        result: CloseTaskResult,
+        fields: CloseAssessmentResultFields,
+        base: CheckCloseResultBase,
+        result: CheckCloseResult,
         response: CheckCloseResponse,
         dry_run_policy: RegularResult,
+        result_effects: [ReadOnly],
         request_contract: "api.method.check_close.request",
         response_contract: "api.method.check_close.response",
         committed_result_replay: false
     },
     PrepareEvidenceCapture {
         request: PrepareEvidenceCaptureRequest,
+        fields: PrepareEvidenceCaptureResultFields,
+        base: PrepareEvidenceCaptureResultBase,
         result: PrepareEvidenceCaptureResult,
         response: PrepareEvidenceCaptureResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
         request_contract: "api.method.prepare_evidence_capture.request",
         response_contract: "api.method.prepare_evidence_capture.response",
         committed_result_replay: true
     },
     PrepareWrite {
         request: PrepareWriteRequest,
+        fields: PrepareWriteResultFields,
+        base: PrepareWriteResultBase,
         result: PrepareWriteResult,
         response: PrepareWriteResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
         request_contract: "api.method.prepare_write.request",
         response_contract: "api.method.prepare_write.response",
         committed_result_replay: true
     },
     StageArtifact {
         request: StageArtifactRequest,
+        fields: StageArtifactResultFields,
+        base: StageArtifactResultBase,
         result: StageArtifactResult,
         response: StageArtifactResponse,
         dry_run_policy: Preview,
+        result_effects: [StagingCreated],
         request_contract: "api.method.stage_artifact.request",
         response_contract: "api.method.stage_artifact.response",
         committed_result_replay: false
     },
     RecordRun {
         request: RecordRunRequest,
+        fields: RecordRunResultFields,
+        base: RecordRunResultBase,
         result: RecordRunResult,
         response: RecordRunResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
         request_contract: "api.method.record_run.request",
         response_contract: "api.method.record_run.response",
         committed_result_replay: true
     },
     RequestUserAction {
         request: RequestUserActionRequest,
+        fields: RequestUserActionResultFields,
+        base: RequestUserActionResultBase,
         result: RequestUserActionResult,
         response: RequestUserActionResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
         request_contract: "api.method.request_user_action.request",
         response_contract: "api.method.request_user_action.response",
         committed_result_replay: true
     },
     ResolveUserAction {
         request: ResolveUserActionRequest,
+        fields: ResolveUserActionResultFields,
+        base: ResolveUserActionResultBase,
         result: ResolveUserActionResult,
         response: ResolveUserActionResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted],
         request_contract: "api.method.resolve_user_action.request",
         response_contract: "api.method.resolve_user_action.response",
         committed_result_replay: true
     },
     ReconcileChanges {
         request: ReconcileChangesRequest,
+        fields: ReconcileChangesResultFields,
+        base: ReconcileChangesResultBase,
         result: ReconcileChangesResult,
         response: ReconcileChangesResponse,
         dry_run_policy: Preview,
+        result_effects: [ReadOnly, CoreCommitted],
         request_contract: "api.method.reconcile_changes.request",
         response_contract: "api.method.reconcile_changes.response",
         committed_result_replay: true
     },
     CloseTask {
         request: CloseTaskRequest,
+        fields: CloseAssessmentResultFields,
+        base: CloseTaskResultBase,
         result: CloseTaskResult,
         response: CloseTaskResponse,
         dry_run_policy: Preview,
+        result_effects: [CoreCommitted, NoEffect],
         request_contract: "api.method.close_task.request",
         response_contract: "api.method.close_task.response",
         committed_result_replay: true
@@ -1164,13 +1610,22 @@ fn accepts_response<T: DeserializeOwned>(value: &Value) -> bool {
     serde_json::from_value::<T>(value.clone()).is_ok()
 }
 
-fn accepts_result_json<T>(json: &str, value: &Value) -> bool
+fn decode_result_json<T>(json: &str, value: &Value) -> Option<ResultMetadataFacts>
 where
-    T: DeserializeOwned + Serialize,
+    T: PublicMethodResult,
 {
-    serde_json::from_str::<T>(json)
-        .and_then(serde_json::to_value)
-        .is_ok_and(|round_trip| round_trip == *value)
+    let result = serde_json::from_str::<T>(json).ok()?;
+    let round_trip = serde_json::to_value(&result).ok()?;
+    if round_trip != *value {
+        return None;
+    }
+    let base = result.base();
+    Some(ResultMetadataFacts {
+        effect_kind: base.effect_kind(),
+        dry_run: base.dry_run_intent(),
+        state_version: base.state_version(),
+        event_count: base.events().len(),
+    })
 }
 
 fn request_schema<T: JsonSchema>() -> Value {
@@ -1189,10 +1644,32 @@ fn response_schema<T: JsonSchema>() -> Value {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::{any::TypeId, collections::BTreeSet};
 
     use super::*;
-    use crate::schema::{DryRunSummary, GuaranteeDisclosure, ToolDryRunResponse};
+    use crate::{
+        ids::EventId,
+        schema::{DryRunSummary, GuaranteeDisclosure, ToolDryRunResponse, ToolRejectedResponse},
+    };
+
+    fn result_base_value(effect: ResultEffectContract, dry_run: bool, events: Vec<Value>) -> Value {
+        serde_json::json!({
+            "response_kind": "result",
+            "effect_kind": effect.as_str(),
+            "dry_run": dry_run,
+            "state_version": 7,
+            "disclosure": GuaranteeDisclosure::authority_record(),
+            "events": events,
+        })
+    }
+
+    fn event_value() -> Value {
+        serde_json::to_value(EventRef {
+            event_id: EventId::new("event_result_contract"),
+            event_kind: "result_contract_test".to_owned(),
+        })
+        .expect("event ref should serialize")
+    }
 
     fn dry_run_response_value() -> Value {
         serde_json::to_value(ToolDryRunResponse::new(
@@ -1225,6 +1702,94 @@ mod tests {
             .map(|contract| contract.method().as_str())
             .collect::<BTreeSet<_>>();
         assert_eq!(unique_methods.len(), MethodName::ALL.len());
+        assert!(PUBLIC_METHOD_CONTRACTS
+            .iter()
+            .all(|contract| !contract.result_effects().is_empty()));
+    }
+
+    #[test]
+    fn exact_result_base_decoders_follow_the_canonical_effect_matrix() {
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            for effect in ResultEffectContract::ALL {
+                let events = match effect.event_contract() {
+                    ResultEventContract::Empty => Vec::new(),
+                    ResultEventContract::NonEmpty => vec![event_value()],
+                };
+                for dry_run in [false, true] {
+                    let accepted = contract.supports_result_effect(effect)
+                        && (!dry_run
+                            || contract.result_dry_run_contract(effect)
+                                == ResultDryRunContract::PreserveRequestedIntent);
+                    assert_eq!(
+                        contract.accepts_result_base(&result_base_value(
+                            effect,
+                            dry_run,
+                            events.clone(),
+                        )),
+                        accepted,
+                        "{} effect={} dry_run={dry_run}",
+                        contract.method().as_str(),
+                        effect.as_str(),
+                    );
+                }
+
+                if contract.supports_result_effect(effect) {
+                    let invalid_events = match effect.event_contract() {
+                        ResultEventContract::Empty => vec![event_value()],
+                        ResultEventContract::NonEmpty => Vec::new(),
+                    };
+                    assert!(
+                        !contract.accepts_result_base(&result_base_value(
+                            effect,
+                            false,
+                            invalid_events,
+                        )),
+                        "{} effect={} accepted invalid event cardinality",
+                        contract.method().as_str(),
+                        effect.as_str(),
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn close_methods_share_fields_without_sharing_result_types() {
+        assert_ne!(
+            TypeId::of::<CheckCloseResultBase>(),
+            TypeId::of::<CloseTaskResultBase>()
+        );
+        assert_ne!(
+            TypeId::of::<CheckCloseResult>(),
+            TypeId::of::<CloseTaskResult>()
+        );
+        assert_eq!(
+            TypeId::of::<<CheckCloseRequest as MethodResponseContract>::ResultFields>(),
+            TypeId::of::<<CloseTaskRequest as MethodResponseContract>::ResultFields>(),
+        );
+    }
+
+    #[test]
+    fn rejection_and_preview_decoders_require_empty_events() {
+        let event = event_value();
+        let mut preview = dry_run_response_value();
+        preview["base"]["events"] = Value::Array(vec![event.clone()]);
+        assert!(serde_json::from_value::<ToolDryRunResponse>(preview).is_err());
+
+        let mut rejection = serde_json::json!({
+            "base": {
+                "response_kind": "rejected",
+                "effect_kind": "no_effect",
+                "dry_run": false,
+                "state_version": 7,
+                "disclosure": GuaranteeDisclosure::authority_record(),
+                "events": [event],
+            },
+            "errors": [],
+        });
+        assert!(serde_json::from_value::<ToolRejectedResponse>(rejection.clone()).is_err());
+        rejection["base"]["events"] = Value::Array(Vec::new());
+        assert!(serde_json::from_value::<ToolRejectedResponse>(rejection).is_ok());
     }
 
     #[test]

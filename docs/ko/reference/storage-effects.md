@@ -938,7 +938,7 @@ replay 응답 전체가 현재의 닫힌 agent-safe 결과 형태로 strict deco
 - 아티팩트나 증거를 바꾸지 않습니다.
 - `project_state.state_version`을 증가시키지 않습니다.
 
-`dry_run=true`도 `effect_kind=read_only`인 `CloseTaskResult`로 유지됩니다.
+`dry_run=true`도 `effect_kind=read_only`인 `CheckCloseResult`로 유지됩니다.
 
 효과가 없는 분기:
 

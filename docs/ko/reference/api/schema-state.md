@@ -1116,7 +1116,9 @@ GuaranteeDisclosure:
 
 ## 관련 담당 문서
 
-- [API 코어 스키마](schema-core.md): `ToolEnvelope`, `ToolResultBase`, `ToolRejectedBase`, `ToolDryRunBase`, `ToolRejectedResponse`, `ToolDryRunResponse`.
+- [API 코어 스키마](schema-core.md): `ToolEnvelope`, 효과별 결과 메타데이터,
+  메서드별 결과 base, `ToolRejectedBase`, `ToolDryRunBase`,
+  `ToolRejectedResponse`, `ToolDryRunResponse`.
 - [API 값 집합](schema-value-sets.md#state-and-blocker-values): 차단 사유 범주 값(`CloseReadinessBlocker.category`)과 인접 상태 값.
 - [API 메서드](methods.md)와 메서드 담당 문서: 이 스키마를 반환하는 메서드.
 - [API 아티팩트 스키마](schema-artifacts.md): `ArtifactRef`.

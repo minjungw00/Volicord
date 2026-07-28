@@ -13,14 +13,14 @@ use volicord_store::core_pipeline::{
 };
 use volicord_store::StoreError;
 use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId, TaskId, UserActionRequestId};
-use volicord_types::methods::{RequestUserActionResult, ResolveUserActionResult};
+use volicord_types::methods::{MethodResultBase, RequestUserActionResult, ResolveUserActionResult};
 use volicord_types::schema::{
     AgentSafeUserActionRequestSummary, RequiredNullable, StateRecordRef, ToolEnvelope,
     UserActionResolution,
 };
 use volicord_types::values::{
-    ActorSource, EffectKind, MethodName, OperationCategory, ResponseKind, StateRecordKind,
-    UserActionChannelKind, UserActionStatus,
+    ActorSource, EffectKind, MethodName, OperationCategory, StateRecordKind, UserActionChannelKind,
+    UserActionStatus,
 };
 use volicord_user_action_service::{
     pending_user_action_facts_from_records, user_action_from_record, user_action_resolution_facts,
@@ -99,10 +99,9 @@ fn user_action_resolution_replay_projection(
         && result.user_action_resolution_ref.record_id == resolution_ref.record_id
         && result.user_action_resolution_ref.project_id == resolution_ref.project_id
         && result.user_action_resolution_ref.task_id == resolution_ref.task_id
-        && result.base.response_kind() == ResponseKind::Result
         && result.base.effect_kind() == EffectKind::CoreCommitted
         && result.base.dry_run_intent().is_not_requested()
-        && result.base.state_version() == Some(replay.committed_state_version)
+        && result.base.state_version() == replay.committed_state_version
         && result
             .user_action_resolution_ref
             .produced_at_state_version
@@ -472,10 +471,9 @@ impl CoreService {
                     .requested_by_actor_source()
                     .to_canonical_string()
             && replay.committed_state_version > replay.basis_state_version
-            && result.base.response_kind() == ResponseKind::Result
             && result.base.effect_kind() == EffectKind::CoreCommitted
             && result.base.dry_run_intent().is_not_requested()
-            && result.base.state_version() == Some(replay.committed_state_version)
+            && result.base.state_version() == replay.committed_state_version
             && result.user_action_request_summary
                 == AgentSafeUserActionRequestSummary::pending(user_action_request_id.clone());
         if !exact_origin {

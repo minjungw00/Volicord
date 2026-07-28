@@ -221,12 +221,13 @@ API 메서드 참조의 요청 및 응답 필드, 필수 여부, Null 허용 여
 `cargo run -p xtask -- docs-sync`가 해석된 문서 결합이 선택한 의미 기반 요청 및
 응답 설명자에서 생성합니다. 안정적인 생성 영역 표식은 각 표를 정확한 계약 ID와
 형태에 결합합니다. 여러 메서드를 담당하는 문서는 정규화된 결합 순서에 따라 모든
-담당 메서드 결합을 생성합니다. 공유 `ToolResultBase`, `ToolRejectedBase`,
-`ToolDryRunBase`, `ToolRejectedResponse`, `ToolDryRunResponse` 구조는 API 코어
-스키마에서 한 번 생성하고, 메서드 문서는 그 공유 구조로 가는 링크를 생성하여 성공
-결과 필드와 구분합니다. 메서드 응답 영역은 의미 기반 응답 설명자가 해당 분기를
-제공할 때만 `dry_run`을 결합하고 미리보기 설명을 생성합니다. 그 밖의 생성 미리보기
-분기는 `docs-check`가 drift로 처리합니다. 작성자는 생성 영역이나 두 번째 완전한 필드
+담당 메서드 결합을 생성합니다. API 코어 스키마는 효과별 메타데이터 구조와 공유
+`ToolRejectedBase`, `ToolDryRunBase`, `ToolRejectedResponse`,
+`ToolDryRunResponse` 구조를 생성합니다. 각 메서드 문서는 dry-run과 이벤트 개수
+규칙을 포함한 정확한 메서드별 결과 base variant를 생성하고 성공 결과 필드와
+구분합니다. 메서드 응답 영역은 의미 기반 응답 설명자가 해당 분기를 제공할 때만
+`dry_run`을 결합하고 미리보기 설명을 생성합니다. 그 밖의 생성 미리보기 분기나
+중복된 생성 heading anchor는 `docs-check`가 drift로 처리합니다. 작성자는 생성 영역이나 두 번째 완전한 필드
 목록이 아니라 주변의 의미, 정책, 효과, 필드 간 불변 조건, 실패 동작을 편집합니다.
 
 같은 명령은 `workspace.metadata.architecture.packages`에서 영어·한국어 아키텍처

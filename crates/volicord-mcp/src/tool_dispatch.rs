@@ -1072,6 +1072,39 @@ mod mutation_projection_and_recovery_tests {
         EvidenceSourceKind, JudgmentKind, RedactionState, StateRecordKind, UtcTimestamp,
     };
 
+    fn pad_valid_intake_result(result: &mut Value, bytes: usize) {
+        let label = result
+            .pointer_mut("/next_actions/0/label")
+            .expect("committed intake result should expose a next-action label");
+        *label = Value::String("x".repeat(bytes));
+    }
+
+    #[test]
+    fn compact_projection_rejects_an_effect_not_owned_by_the_source_method(
+    ) -> Result<(), Box<dyn Error>> {
+        let fixture = CoreFixture::new("mcp-exact-result-effect")?;
+        let core = CoreService::for_mutation(&fixture.mutation_context()?);
+        let committed = core.intake(
+            &fixture.mutation_context()?,
+            fixture.intake_request(
+                "req_mcp_exact_result_effect",
+                "idem_mcp_exact_result_effect",
+                false,
+                Some(0),
+            ),
+            test_agent_invocation(&fixture, OperationCategory::AgentWorkflow),
+        )?;
+        let mut tampered = committed.response_value;
+        tampered["base"]["effect_kind"] = Value::String("staging_created".to_owned());
+        tampered["base"]["events"] = Value::Array(Vec::new());
+
+        assert!(matches!(
+            compact_mutation_method_result(AgentToolId::INTAKE.wire_name(), &tampered),
+            Err(McpAdapterError::Json(_))
+        ));
+        Ok(())
+    }
+
     #[test]
     fn operational_unavailability_projects_through_every_supported_profile() {
         for profile in ProtocolRegistry::production().oldest_to_newest() {
@@ -1792,8 +1825,10 @@ mod mutation_projection_and_recovery_tests {
             &committed.response_value,
         )?;
         let mut output = ToolCallOutput::from_pipeline_response(&committed)?;
-        output.structured_content["adapter_test_padding"] =
-            Value::String("x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES));
+        pad_valid_intake_result(
+            &mut output.structured_content,
+            MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+        );
         let output =
             output.with_post_effect_failure(McpPostEffectFailureCode::McpPostEffectAdapterFailed);
         let output = finalize_mutation_output_with_refresh(
@@ -2316,8 +2351,10 @@ mod mutation_projection_and_recovery_tests {
         assert_compact_budget(both)?;
 
         let mut oversized_exact_result = committed.response_value.clone();
-        oversized_exact_result["adapter_test_padding"] =
-            Value::String("x".repeat(MAX_MCP_COMPACT_MUTATION_RESULT_BYTES));
+        pad_valid_intake_result(
+            &mut oversized_exact_result,
+            MAX_MCP_COMPACT_MUTATION_RESULT_BYTES,
+        );
         let expected_compact = compact_mutation_method_result(
             AgentToolId::INTAKE.wire_name(),
             &oversized_exact_result,

@@ -13,8 +13,9 @@ use super::{
     SummaryBuild,
 };
 use crate::pipeline::{
-    CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
-    PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, CommitMutationBranch, CorePipelineError,
+    CoreResult, CoreService, InvocationContext, PipelineResponse, TaskRequirement,
+    VerifiedInvocationContext,
 };
 use crate::policy::evidence::unique_state_record_refs;
 use crate::policy::workflow::{
@@ -32,7 +33,7 @@ use volicord_store::core_pipeline::{
 };
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{BaselineRef, TaskId};
-use volicord_types::methods::{IntakeResultFields, MethodOperationCategory};
+use volicord_types::methods::{IntakeRequest, IntakeResultFields, MethodOperationCategory};
 use volicord_types::schema::{
     AcceptanceCriterion, AcceptanceCriterionInput, CarryForwardDisposition, JsonObject,
     NextActionSummary, SourceRef, StateRecordRef,
@@ -98,29 +99,27 @@ impl CoreService {
         };
 
         if request.envelope.dry_run.is_requested() {
-            return self.execute_prepared_request::<IntakeResultFields>(
+            return self.execute_prepared_request(
                 prepared,
-                OwnerPipelineBranch::DryRunPreview {
-                    dry_run_summary: dry_run_summary(
-                        "task",
-                        "commit",
-                        "Intake would select or create a Task.",
-                        plan.next_actions,
-                    ),
-                },
+                dry_run_preview_branch::<IntakeRequest>(dry_run_summary(
+                    "task",
+                    "commit",
+                    "Intake would select or create a Task.",
+                    plan.next_actions,
+                )),
             );
         }
 
         self.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::CommitMutation {
+            commit_mutation_branch::<IntakeRequest>(CommitMutationBranch {
                 result_fields: plan.result_fields,
                 event_kind: "task_intake".to_owned(),
                 event_payload: plan.event_payload,
                 task_id: Some(plan.task_id),
                 change_unit_id: None,
                 storage_mutations: plan.storage_mutations,
-            },
+            }),
         )
     }
 }

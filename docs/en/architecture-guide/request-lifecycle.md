@@ -57,19 +57,22 @@ inputs. One public-method declaration in
 [`crates/volicord-types/src/methods.rs`](../../../crates/volicord-types/src/methods.rs)
 binds the method name, request and result types, exact response family,
 contract IDs, schemas, and committed-result replay eligibility. The shared
-pipeline carries the declared fields type through branch selection and rejects
-a branch that the method's response family does not contain. Store
+declaration also owns the exact successful result effects. The shared pipeline
+carries the declared fields and method-specific base types through branch
+selection and rejects an effect that the method's response family does not
+contain. Store
 performs owner-defined final validation inside the transaction, inserts
 immutable rows, updates current pointers, appends authority events and replay
 when applicable, and advances `state_version` exactly once.
 
-For a method-result branch, the pipeline attaches the final `ToolResultBase`
-only after those common facts are available. Read-only, no-effect, and
-committed results therefore use the same typed composition boundary. Rejection
-and dry-run responses use their distinct `ToolRejectedBase` and
-`ToolDryRunBase` metadata types. The branch-specific types own their fixed
-discriminants and effect facts, and strict decoding rejects unknown or
-cross-branch fields before an untagged family can select another branch.
+For a method-result branch, the pipeline constructs that method's exact result
+metadata only after those common facts are available. Compile-time branch
+capabilities expose only the method's declared read-only, no-effect, staging,
+or committed constructors. Effect-specific types own fixed dry-run and event
+cardinality facts. Rejection and dry-run responses use their distinct
+`ToolRejectedBase` and `ToolDryRunBase` metadata types. Strict decoding rejects
+unknown, cross-branch, and method-impossible effect fields before an untagged
+family can select another branch.
 
 CLI and MCP adapters decode the returned public object as that method's exact
 response family before rendering or protocol projection. Adapter carriers

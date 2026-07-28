@@ -22,7 +22,7 @@ fn check_close_dry_run_stays_a_regular_read_result() -> Result<(), Box<dyn Error
         invocation(OperationCategory::Read),
     )?;
 
-    assert_typed_result_contract::<CloseTaskResult>(&response);
+    assert_typed_result_contract::<CheckCloseResult>(&response);
     assert_eq!(response.response_value["base"]["response_kind"], "result");
     assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
     assert_eq!(response.response_value["base"]["dry_run"], true);

@@ -104,8 +104,10 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
+          "CoreCommittedResultBase",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -123,6 +125,7 @@
           "GuaranteeDisplay",
           "GuaranteeLevel",
           "IntakeResult",
+          "IntakeResultBase",
           "McpAuthoritativeRefreshFailure_for_McpMutationEffectSummary",
           "McpMutationEffectSummary",
           "McpMutationFullResponse_for_PreviewableToolResponse_for_IntakeResult",
@@ -145,6 +148,7 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NonEmptyEventRefs",
           "NonGuarantee",
           "OperationCategory",
           "OperationResultRef",
@@ -173,7 +177,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -185,7 +188,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:63d8c7d71b71d4c0a399862290937da2fbcf685f5d6b1baac1cdec973dd33082"
+        "sha256": "sha256:7ff5bf255d7820608715fae7f0b68a1533a6a9214311ae3f5da7b29055aa2e1a"
       }
     },
     {
@@ -252,8 +255,10 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
+          "CoreCommittedResultBase",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -292,6 +297,7 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NonEmptyEventRefs",
           "NonGuarantee",
           "OperationCategory",
           "OperationResultRef",
@@ -320,8 +326,8 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UpdateScopeResult",
+          "UpdateScopeResultBase",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -333,7 +339,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:0d1b8e9c3885aed0a6a724541f3914d4defc99865e287a7e1dd963174e3d7b35"
+        "sha256": "sha256:f74b62eaabb0cf257fe45e702fa9a016467eaff78d5512159fc4bfe13a69121f"
       }
     },
     {
@@ -386,6 +392,7 @@
           "ContinuityCursor",
           "ContinuityPageInfo",
           "CurrentCloseBasis",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -423,6 +430,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
@@ -432,6 +440,7 @@
           "StateRecordRef",
           "StatusCloseState",
           "StatusResult",
+          "StatusResultBase",
           "StatusStateSummary",
           "SummaryCard",
           "TaskControlLevel",
@@ -445,7 +454,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "ToolResultOrRejected_for_StatusResult",
           "UtcTimestamp",
           "WorkPhase",
@@ -458,7 +466,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:d23588a2820b24061f138f437595d067b3d2204b5633c1303d90c71fe144d793"
+        "sha256": "sha256:c26bc475b199b372a47aaaa73fd82a0302ea2004461ab3d4e0cd415123f23fb5"
       }
     },
     {
@@ -487,10 +495,12 @@
       "name": "volicord.get_operation_result",
       "output_schema": {
         "definitions": [
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "FailureCategory",
           "GetOperationResultResult",
+          "GetOperationResultResultBase",
           "GuaranteeClass",
           "GuaranteeDisclosure",
           "McpOperationalErrorCode",
@@ -503,16 +513,16 @@
           "McpToolIssueCode",
           "MethodName",
           "NonGuarantee",
+          "NotRequestedReadOnlyResultBase",
           "OperationResultRef",
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "ToolResultOrRejected_for_GetOperationResultResult"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:e749f7a389d1426fc9bba6e2f05e346ffd54ed1c2579eb0c15995085b18195bd"
+        "sha256": "sha256:e33814a07cab0f19cecc273e4c9cf8a62d508589fb4402eec53ab184a1b4ad27"
       }
     },
     {
@@ -555,8 +565,10 @@
           "AuthorityReceipt",
           "CloseReadinessBlocker",
           "CloseReadinessBlockerCategory",
+          "CoreCommittedResultBase",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCaptureIntent",
@@ -590,6 +602,7 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NonEmptyEventRefs",
           "NonGuarantee",
           "OperationCategory",
           "OperationResultRef",
@@ -597,6 +610,7 @@
           "PlannedBlockerSourceKind",
           "PlannedEffect",
           "PrepareEvidenceCaptureResult",
+          "PrepareEvidenceCaptureResultBase",
           "PreviewableToolResponse_for_PrepareEvidenceCaptureResult",
           "StateRecordKind",
           "StateRecordRef",
@@ -606,12 +620,11 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:99b52980cec6371a306e1cd632b315a391cc87a93e8551761eac09bea6739a00"
+        "sha256": "sha256:23290147b4260d767c578008bf5a8afddf6a5373fa955f3862c43d2294ab697a"
       }
     },
     {
@@ -669,8 +682,10 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
+          "CoreCommittedResultBase",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -712,6 +727,7 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NonEmptyEventRefs",
           "NonGuarantee",
           "OperationCategory",
           "OperationResultRef",
@@ -720,6 +736,7 @@
           "PlannedEffect",
           "PrepareWriteDecision",
           "PrepareWriteResult",
+          "PrepareWriteResultBase",
           "PreviewableToolResponse_for_PrepareWriteResult",
           "ProjectWorkflowPolicySummary",
           "RedactionState",
@@ -743,7 +760,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UserActionContext",
           "UserActionDraft",
           "UserActionOptionInput",
@@ -765,7 +781,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b37d571eab09893e89ea1d270cb1dadc91feb1e8bf15068be5810ee3f34f3f3f"
+        "sha256": "sha256:3502166ef6d8f99b131dcf79ae8d77d04e3e2e6619a87a463b11621daf6a89b1"
       }
     },
     {
@@ -812,6 +828,7 @@
           "CloseReadinessBlockerCategory",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceDisplayState",
@@ -852,7 +869,9 @@
           "PreviewableToolResponse_for_StageArtifactResult",
           "RedactionState",
           "StageArtifactResult",
+          "StageArtifactResultBase",
           "StagedArtifactHandle",
+          "StagingCreatedResultBase",
           "StateRecordKind",
           "StateRecordRef",
           "StatusCloseState",
@@ -861,12 +880,11 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UtcTimestamp"
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:07777a51157efee7a5c6a5fae32214a38a2aa3f60c43a612b57943b8aac10932"
+        "sha256": "sha256:4fbfe0ddda66d1dc698627fd091a77d79c265aaf3ed38faa8f5b2579a5d58a81"
       }
     },
     {
@@ -962,9 +980,11 @@
           "CloseReason",
           "CloseState",
           "CommandSource",
+          "CoreCommittedResultBase",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceAssuranceLevel",
@@ -1016,6 +1036,7 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NonEmptyEventRefs",
           "NonGuarantee",
           "ObservedChanges",
           "OperationCategory",
@@ -1026,6 +1047,7 @@
           "PreviewableToolResponse_for_RecordRunResult",
           "ProjectWorkflowPolicySummary",
           "RecordRunResult",
+          "RecordRunResultBase",
           "RedactionState",
           "RepositoryFileSource",
           "RequestedControlLevel",
@@ -1053,7 +1075,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UserContextSource",
           "UtcTimestamp",
           "WorkPhase",
@@ -1066,7 +1087,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:7cf50bed64763e46ecb13d8b73955ba7af16e16c9ff8ac19f4969b1345464a18"
+        "sha256": "sha256:052cc09147cff80660d39502497cd8576dfda5a035f5f1449fff84d993b8b066"
       }
     },
     {
@@ -1132,8 +1153,10 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
+          "CoreCommittedResultBase",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -1178,6 +1201,7 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NonEmptyEventRefs",
           "NonGuarantee",
           "OperationCategory",
           "OperationResultRef",
@@ -1188,6 +1212,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestUserActionResult",
+          "RequestUserActionResultBase",
           "RequestedControlLevel",
           "ShapingGap",
           "ShapingReadiness",
@@ -1207,7 +1232,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UserActionChannelKind",
           "UserActionKind",
           "UserActionOptionAction",
@@ -1223,7 +1247,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:b70ab8fca2e9cdcfafcf49393afda7b9b89cc1b9177643a0216379b303bfdd03"
+        "sha256": "sha256:7a2dc3334839b3755745f6f40f85a5a07e902cb0fe21da243589006544b256f6"
       }
     },
     {
@@ -1274,8 +1298,10 @@
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
+          "CoreCommittedResultBase",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -1315,7 +1341,9 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NonEmptyEventRefs",
           "NonGuarantee",
+          "NotRequestedReadOnlyResultBase",
           "OperationCategory",
           "OperationResultRef",
           "PlannedBlocker",
@@ -1324,6 +1352,7 @@
           "PreviewableToolResponse_for_ReconcileChangesResult",
           "ProjectWorkflowPolicySummary",
           "ReconcileChangesResult",
+          "ReconcileChangesResultBase",
           "RedactionState",
           "RequestedControlLevel",
           "ShapingGap",
@@ -1345,7 +1374,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UnrecordedChangeConfidence",
           "UnrecordedChangeFinding",
           "UnrecordedChangeRejection",
@@ -1363,7 +1391,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:09bd0cef7b4a2c2c0e9ace70ae03bb1c80c5f0f0d02f88c1d079fd81a06d9aa4"
+        "sha256": "sha256:86fe411563b111f36009e3f2f35bf571eb55eb97d33e9cd56043b3d9d0769d36"
       }
     },
     {
@@ -1404,12 +1432,14 @@
           "CarryForwardKind",
           "ChangeUnitEffectContract",
           "ChangeUnitEffectKind",
+          "CheckCloseResult",
+          "CheckCloseResultBase",
           "CloseReadinessBlocker",
           "CloseReadinessBlockerCategory",
           "CloseReason",
           "CloseState",
-          "CloseTaskResult",
           "CurrentCloseBasis",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -1446,6 +1476,7 @@
           "ProjectWorkflowPolicySummary",
           "RedactionState",
           "RequestedControlLevel",
+          "RequestedIntentReadOnlyResultBase",
           "ResidualRisk",
           "RiskAcceptanceCoverage",
           "SensitiveActionRequirement",
@@ -1466,8 +1497,7 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
-          "ToolResultOrRejected_for_CloseTaskResult",
+          "ToolResultOrRejected_for_CheckCloseResult",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1479,7 +1509,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:5dd3046da3f3a630d1397431b85709c3c53c2f62d8ff38e5bdd1cd73a85ae7a0"
+        "sha256": "sha256:12bf1d1fff7848110c68d462c748c7b0ab99c176bb238acbf33764cbe7abbc82"
       }
     },
     {
@@ -1535,9 +1565,12 @@
           "CloseReason",
           "CloseState",
           "CloseTaskResult",
+          "CloseTaskResultBase",
+          "CoreCommittedResultBase",
           "CurrentCloseBasis",
           "DryRunSummary",
           "EffectKind",
+          "EmptyEventRefs",
           "ErrorCode",
           "EventRef",
           "EvidenceCoverageItem",
@@ -1576,6 +1609,8 @@
           "NextActionKind",
           "NextActionPresentationRole",
           "NextActionSummary",
+          "NoEffectResultBase",
+          "NonEmptyEventRefs",
           "NonGuarantee",
           "OperationCategory",
           "OperationResultRef",
@@ -1611,7 +1646,6 @@
           "ToolError",
           "ToolRejectedBase",
           "ToolRejectedResponse",
-          "ToolResultBase",
           "UtcTimestamp",
           "WorkPhase",
           "WorkspaceContext",
@@ -1623,7 +1657,7 @@
         ],
         "root_properties": [],
         "root_required": [],
-        "sha256": "sha256:265c29864569de8e8c092351509e25cff7b3c67b7a19714898b5704668ce7e55"
+        "sha256": "sha256:b2e0ca5b2d71b2d438f6719cf7a41f00c7d0375509b25e0c9d4a9e855e4fc7b5"
       }
     },
     {

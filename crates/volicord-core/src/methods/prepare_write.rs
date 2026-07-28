@@ -17,8 +17,9 @@ use super::{
     SummaryBuild,
 };
 use crate::pipeline::{
-    tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, MethodPolicy,
-    OwnerPipelineBranch, PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, MethodPolicy, PipelineResponse,
+    TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::effect_contract::{product_write_violations, EffectContractViolation};
 use crate::policy::workflow::{
@@ -129,11 +130,9 @@ impl CoreService {
         };
 
         if request.envelope.dry_run.is_requested() {
-            return self.execute_prepared_request::<PrepareWriteResultFields>(
+            return self.execute_prepared_request(
                 prepared,
-                OwnerPipelineBranch::DryRunPreview {
-                    dry_run_summary: plan.dry_run_summary,
-                },
+                dry_run_preview_branch::<PrepareWriteRequest>(plan.dry_run_summary),
             );
         }
 
@@ -153,14 +152,14 @@ impl CoreService {
         let session_id = prepared.context.verified_invocation.session_id.clone();
         let response = self.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::CommitMutation {
+            commit_mutation_branch::<PrepareWriteRequest>(CommitMutationBranch {
                 result_fields: plan.result_fields,
                 event_kind: plan.event_kind,
                 event_payload: plan.event_payload,
                 task_id: Some(plan.task_id),
                 change_unit_id: Some(plan.change_unit_id),
                 storage_mutations: plan.storage_mutations,
-            },
+            }),
         )?;
         if response_committed_fresh_effect(&response) {
             if let Some(metric_kind) = metric_kind {

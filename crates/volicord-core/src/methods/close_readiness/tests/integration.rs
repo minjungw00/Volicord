@@ -22,7 +22,7 @@ fn check_close_is_read_only() -> Result<(), Box<dyn Error>> {
         invocation(OperationCategory::Read),
     )?;
 
-    assert_typed_result_contract::<CloseTaskResult>(&response);
+    assert_typed_result_contract::<CheckCloseResult>(&response);
     assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
     assert_close_blocker(&response.response_value, "missing_final_acceptance");
     assert_eq!(harness.counts()?, before);

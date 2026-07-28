@@ -14,8 +14,9 @@ use super::{
     ProjectContinuityPlanContext, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
-    CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
-    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
+    commit_mutation_branch, dry_run_preview_branch, no_effect_result_branch, read_only_branch,
+    CommitMutationBranch, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
+    InvocationContext, MethodEffectPolicy, MethodPolicy, PipelineResponse, ReplayPolicy,
     TaskRequirement, VerifiedInvocationContext,
 };
 use serde_json::json;
@@ -28,7 +29,7 @@ use volicord_store::core_pipeline::{
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
 use volicord_types::ids::{ChangeUnitId, TaskId};
-use volicord_types::methods::{CheckCloseRequest, CloseTaskRequest, CloseTaskResultFields};
+use volicord_types::methods::{CheckCloseRequest, CloseAssessmentResultFields, CloseTaskRequest};
 use volicord_types::schema::{
     AuthorityReceipt, CloseReadinessBlocker, CurrentCloseBasis, DryRunSummary, EvidenceGateSummary,
     JsonObject, NextActionSummary, ProjectEnforcementProfile, RequiredNullable,
@@ -121,7 +122,7 @@ struct CloseTaskResponseProjection {
     storage_mutations: Vec<CoreStorageMutation>,
     event_kind: String,
     event_payload: JsonObject,
-    result_fields: CloseTaskResultFields,
+    result_fields: CloseAssessmentResultFields,
     current_close_basis: Option<CurrentCloseBasis>,
     blockers: Vec<CloseReadinessBlocker>,
 }
@@ -246,9 +247,7 @@ impl CoreService {
         };
         self.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::ReadOnly {
-                result_fields: plan.result_fields,
-            },
+            read_only_branch::<CheckCloseRequest>(plan.result_fields),
         )
     }
 
@@ -281,11 +280,11 @@ impl CoreService {
         let plan_now = prepared.operation_now.clone();
 
         if request.envelope.dry_run.is_requested() {
-            return self.execute_prepared_request::<CloseTaskResultFields>(
+            return self.execute_prepared_request(
                 prepared,
-                OwnerPipelineBranch::DryRunPreview {
-                    dry_run_summary: close_task_dry_run_summary(request.intent),
-                },
+                dry_run_preview_branch::<CloseTaskRequest>(close_task_dry_run_summary(
+                    request.intent,
+                )),
             );
         }
 
@@ -320,9 +319,7 @@ impl CoreService {
         if !plan.blockers.is_empty() {
             return self.execute_prepared_request(
                 prepared,
-                OwnerPipelineBranch::NoEffectResult {
-                    result_fields: plan.result_fields,
-                },
+                no_effect_result_branch::<CloseTaskRequest>(plan.result_fields),
             );
         }
 
@@ -370,14 +367,14 @@ impl CoreService {
         let session_id = prepared.context.verified_invocation.session_id.clone();
         let response = self.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::CommitMutation {
+            commit_mutation_branch::<CloseTaskRequest>(CommitMutationBranch {
                 result_fields: plan.result_fields,
                 event_kind: plan.event_kind,
                 event_payload: plan.event_payload,
                 task_id: Some(plan.task_id),
                 change_unit_id: plan.change_unit_id,
                 storage_mutations: plan.storage_mutations,
-            },
+            }),
         )?;
         if response_committed_fresh_effect(&response) {
             if let Some(duration) = task_duration {
@@ -819,7 +816,7 @@ fn project_close_task_response(
         next_actor,
         next_action,
     };
-    let result_fields = CloseTaskResultFields {
+    let result_fields = CloseAssessmentResultFields {
         summary_card,
         close_state,
         current_close_basis: current_close_basis.clone(),

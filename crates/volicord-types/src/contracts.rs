@@ -6,27 +6,30 @@ use schemars::{schema_for, JsonSchema};
 use serde_json::{json, Value};
 
 use crate::methods::{
-    DryRunRequestPolicy, MethodResponseBranch, OperationResultRef, PUBLIC_METHOD_CONTRACTS,
+    DryRunRequestPolicy, MethodResponseBranch, OperationResultRef, ResultEffectContract,
+    PUBLIC_METHOD_CONTRACTS,
 };
 use crate::schema::{
     AcceptanceCriterion, AcceptanceCriterionInput, AcceptanceCriterionReplacement,
     AcceptedRiskInput, AgentSafeUserActionRequestSummary, AgentSession, ArtifactInput, ArtifactRef,
     AuthorityReceipt, CarryForwardDisposition, ChangeUnitEffectContract, CloseAssessmentInput,
     CloseReadinessBlocker, ContinuityCursor, ContinuityPageInfo, ContinuityPageRequest,
-    CurrentCloseBasis, DryRunSummary, EventRef, EvidenceCaptureIntent, EvidenceCaptureReceipt,
-    EvidenceCaptureSpec, EvidenceCoverageItem, EvidenceCoverageUpdate, EvidenceGateSummary,
-    EvidenceObservation, EvidenceObservationInput, EvidenceProducer, EvidenceProducerAnchor,
-    EvidenceRelevanceAssessment, EvidenceSummary, EvidenceTarget, EvidenceUpdateProvenance,
-    GuaranteeDisclosure, GuaranteeDisplay, GuardEvent, GuardInstallation, MutationAssessment,
-    NextActionSummary, ObservedChanges, PathAssessment, PlannedBlocker, PlannedEffect,
-    PlatformDiagnosticDetail, ProjectContinuityPage, ProjectContinuityRecord,
-    ProjectContinuitySummary, ProjectEnforcementProfile, ProjectWorkflowPolicySummary,
-    PromptCapture, ResidualRisk, ResidualRiskInput, RiskAcceptanceCoverage, RunSummary,
-    SensitiveActionRequirement, SensitiveActionScope, ShapingGap, ShapingReadiness, SourceRef,
-    StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard, TaskFlowItem,
+    CoreCommittedResultBase, CurrentCloseBasis, DryRunSummary, EmptyEventRefs, EventRef,
+    EvidenceCaptureIntent, EvidenceCaptureReceipt, EvidenceCaptureSpec, EvidenceCoverageItem,
+    EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation, EvidenceObservationInput,
+    EvidenceProducer, EvidenceProducerAnchor, EvidenceRelevanceAssessment, EvidenceSummary,
+    EvidenceTarget, EvidenceUpdateProvenance, GuaranteeDisclosure, GuaranteeDisplay, GuardEvent,
+    GuardInstallation, MutationAssessment, NextActionSummary, NoEffectResultBase,
+    NonEmptyEventRefs, NotRequestedReadOnlyResultBase, ObservedChanges, PathAssessment,
+    PlannedBlocker, PlannedEffect, PlatformDiagnosticDetail, ProjectContinuityPage,
+    ProjectContinuityRecord, ProjectContinuitySummary, ProjectEnforcementProfile,
+    ProjectWorkflowPolicySummary, PromptCapture, RequestedIntentReadOnlyResultBase, ResidualRisk,
+    ResidualRiskInput, RiskAcceptanceCoverage, RunSummary, SensitiveActionRequirement,
+    SensitiveActionScope, ShapingGap, ShapingReadiness, SourceRef, StagedArtifactHandle,
+    StagingCreatedResultBase, StateRecordRef, StateSummary, SummaryCard, TaskFlowItem,
     TaskLifecycleState, TaskLineageInput, TaskLineageSummary, ToolDryRunBase, ToolDryRunResponse,
-    ToolEnvelope, ToolError, ToolRejectedBase, ToolRejectedResponse, ToolResultBase,
-    UnrecordedChange, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary, UserActionBasis,
+    ToolEnvelope, ToolError, ToolRejectedBase, ToolRejectedResponse, UnrecordedChange,
+    UnrecordedChangeFinding, UnrecordedChangeResolutionSummary, UserActionBasis,
     UserActionBasisCoordinates, UserActionChoiceBasis, UserActionChoiceDraft,
     UserActionChoiceRequestBody, UserActionContext, UserActionDraft, UserActionEvidenceObservation,
     UserActionEvidenceObservationBasis, UserActionEvidenceObservationDraft,
@@ -51,6 +54,8 @@ pub enum JsonExampleShape {
     MethodResponseVariants,
     /// The successful result body for one public method.
     MethodResultBody,
+    /// The exact result metadata variants for one public method.
+    MethodResultMetadata,
     /// The rejected response body accepted for one public method.
     MethodRejection,
     /// The dry-run response body accepted for one public method.
@@ -78,6 +83,7 @@ impl JsonExampleShape {
             Self::CompleteMethodResponse => "complete_response".to_owned(),
             Self::MethodResponseVariants => "response_variants".to_owned(),
             Self::MethodResultBody => "result_body".to_owned(),
+            Self::MethodResultMetadata => "result_metadata".to_owned(),
             Self::MethodRejection => "rejection".to_owned(),
             Self::MethodDryRun => "dry_run".to_owned(),
             Self::PublicSchemaObject(name) => format!("schema_object.{name}"),
@@ -130,6 +136,11 @@ pub struct JsonContractDescriptor {
     schema: Option<Value>,
     example_schemas: BTreeMap<String, Value>,
     method_dry_run_contract: Option<(MethodName, DryRunRequestPolicy)>,
+    method_result_contract: Option<(
+        MethodName,
+        DryRunRequestPolicy,
+        &'static [ResultEffectContract],
+    )>,
 }
 
 impl JsonContractDescriptor {
@@ -148,6 +159,7 @@ impl JsonContractDescriptor {
             schema: Some(schema),
             example_schemas,
             method_dry_run_contract: None,
+            method_result_contract: None,
         }
     }
 
@@ -172,6 +184,7 @@ impl JsonContractDescriptor {
             schema: Some(schema),
             example_schemas,
             method_dry_run_contract: None,
+            method_result_contract: None,
         }
     }
 
@@ -202,6 +215,7 @@ impl JsonContractDescriptor {
             schema: None,
             example_schemas,
             method_dry_run_contract: None,
+            method_result_contract: None,
         }
     }
 
@@ -217,6 +231,7 @@ impl JsonContractDescriptor {
             schema: None,
             example_schemas: BTreeMap::new(),
             method_dry_run_contract: None,
+            method_result_contract: None,
         }
     }
 
@@ -256,12 +271,36 @@ impl JsonContractDescriptor {
         self.method_dry_run_contract
     }
 
+    /// Returns the canonical method, dry-run policy, and exact successful
+    /// result effects when this is a public response contract descriptor.
+    pub const fn method_result_contract(
+        &self,
+    ) -> Option<(
+        MethodName,
+        DryRunRequestPolicy,
+        &'static [ResultEffectContract],
+    )> {
+        self.method_result_contract
+    }
+
     fn with_method_dry_run_contract(
         mut self,
         method: MethodName,
         policy: DryRunRequestPolicy,
     ) -> Self {
         self.method_dry_run_contract = Some((method, policy));
+        self
+    }
+
+    /// Attaches the canonical successful-result contract to a response
+    /// descriptor owned by another schema source.
+    pub fn with_method_result_contract(
+        mut self,
+        method: MethodName,
+        policy: DryRunRequestPolicy,
+        effects: &'static [ResultEffectContract],
+    ) -> Self {
+        self.method_result_contract = Some((method, policy, effects));
         self
     }
 
@@ -307,6 +346,7 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
         let request = contract.request_schema();
         let response = contract.response_schema();
         let result = contract.result_schema();
+        let result_metadata = contract.result_base_schema();
         let mut request_descriptor = JsonContractDescriptor::from_schema(
             request_id,
             request.clone(),
@@ -330,7 +370,12 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
             response.clone(),
             vec![request_id.to_owned()],
         )
-        .with_method_dry_run_contract(method, contract.dry_run_policy());
+        .with_method_dry_run_contract(method, contract.dry_run_policy())
+        .with_method_result_contract(
+            method,
+            contract.dry_run_policy(),
+            contract.result_effects(),
+        );
         response_descriptor.example_schemas.insert(
             JsonExampleShape::CompleteMethodResponse.id(),
             result.clone(),
@@ -341,6 +386,9 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
         response_descriptor
             .example_schemas
             .insert(JsonExampleShape::MethodResultBody.id(), result);
+        response_descriptor
+            .example_schemas
+            .insert(JsonExampleShape::MethodResultMetadata.id(), result_metadata);
         response_descriptor.example_schemas.insert(
             JsonExampleShape::MethodRejection.id(),
             schema::<ToolRejectedResponse>(),
@@ -396,7 +444,13 @@ fn schema_family_descriptors() -> Vec<JsonContractDescriptor> {
             "api.schema.core",
             [
                 schema::<ToolEnvelope>(),
-                schema::<ToolResultBase>(),
+                schema::<RequestedIntentReadOnlyResultBase>(),
+                schema::<NotRequestedReadOnlyResultBase>(),
+                schema::<CoreCommittedResultBase>(),
+                schema::<StagingCreatedResultBase>(),
+                schema::<NoEffectResultBase>(),
+                schema::<EmptyEventRefs>(),
+                schema::<NonEmptyEventRefs>(),
                 schema::<ToolRejectedBase>(),
                 schema::<ToolDryRunBase>(),
                 schema::<ToolError>(),

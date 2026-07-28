@@ -16,8 +16,9 @@ use super::{
     PlanError, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
-    CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
-    PipelineResponse, TaskRequirement, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, read_only_branch, CommitMutationBranch,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
+    TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::write_ticket::write_ticket_is_idle_expired;
 use chrono::{DateTime, Utc};
@@ -162,20 +163,16 @@ impl CoreService {
         };
 
         if request.envelope.dry_run.is_requested() {
-            return self.execute_prepared_request::<ReconcileChangesResultFields>(
+            return self.execute_prepared_request(
                 prepared,
-                OwnerPipelineBranch::DryRunPreview {
-                    dry_run_summary: plan.dry_run_summary,
-                },
+                dry_run_preview_branch::<ReconcileChangesRequest>(plan.dry_run_summary),
             );
         }
 
         if plan.storage_mutations.is_empty() {
             return self.execute_prepared_request(
                 prepared,
-                OwnerPipelineBranch::ReadOnly {
-                    result_fields: plan.result_fields,
-                },
+                read_only_branch::<ReconcileChangesRequest>(plan.result_fields),
             );
         }
 
@@ -183,14 +180,14 @@ impl CoreService {
         let session_id = prepared.context.verified_invocation.session_id.clone();
         let response = self.execute_prepared_request(
             prepared,
-            OwnerPipelineBranch::CommitMutation {
+            commit_mutation_branch::<ReconcileChangesRequest>(CommitMutationBranch {
                 result_fields: plan.result_fields,
                 event_kind: "unrecorded_changes_reconciled".to_owned(),
                 event_payload: plan.event_payload,
                 task_id: Some(plan.task_id),
                 change_unit_id: None,
                 storage_mutations: plan.storage_mutations,
-            },
+            }),
         )?;
         if response_committed_fresh_effect(&response) {
             for sample in confirmed_false_positive_samples {

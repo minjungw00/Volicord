@@ -1,9 +1,8 @@
 use super::{core_error_response, validation_rejected};
 use crate::pipeline::{
-    rejected_response, tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy,
-    InvocationContext, MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch,
-    PipelinePreflightOutcome, PipelinePreflightRequest, PipelineResponse, PreparedRequest,
-    ReplayPolicy, TaskRequirement,
+    read_only_branch, rejected_response, tool_error, CorePipelineError, CoreResult, CoreService,
+    FreshnessPolicy, InvocationContext, MethodEffectPolicy, MethodPolicy, PipelinePreflightOutcome,
+    PipelinePreflightRequest, PipelineResponse, PreparedRequest, ReplayPolicy, TaskRequirement,
 };
 use sha2::{Digest, Sha256};
 use volicord_types::canonical::is_canonical_sha256_hex;
@@ -226,7 +225,10 @@ impl CoreService {
             historical: true,
             current_authority_refresh_required: true,
         };
-        self.execute_prepared_request(prepared, OwnerPipelineBranch::ReadOnly { result_fields })
+        self.execute_prepared_request(
+            prepared,
+            read_only_branch::<GetOperationResultRequest>(result_fields),
+        )
     }
 }
 

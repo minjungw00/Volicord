@@ -118,7 +118,6 @@ pub(crate) use volicord_types::methods::{
 };
 pub(crate) use volicord_types::schema::{
     AuthorityReceipt, NextActionSummary, RequiredNullable, StateRecordRef, ToolEnvelope,
-    ToolResultBase,
 };
 pub(crate) use volicord_types::tool_names::{
     AgentToolCategory, AgentToolId, AgentToolOwner, ToolVerificationRole,

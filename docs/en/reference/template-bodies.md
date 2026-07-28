@@ -476,7 +476,8 @@ Otherwise, avoid those words.
 
 ### Input state
 
-- `CloseTaskResult` returned by `volicord.check_close` or `volicord.close_task`.
+- `CheckCloseResult` returned by `volicord.check_close` or `CloseTaskResult`
+  returned by `volicord.close_task`.
 - `CloseReadinessBlocker[]`, evidence summary, and pending
   `AgentSafeUserActionRequestSummary` entries.
 - Final-acceptance state, residual-risk state, and artifact availability.

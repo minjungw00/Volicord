@@ -10,7 +10,7 @@ fn content_type_for_serialized_stage_result_size(
 ) -> Result<String, Box<dyn Error>> {
     let content_type_prefix = "text/plain;";
     let result = StageArtifactResult {
-        base: staging_created_result_base(Some(2), Vec::new()),
+        base: StageArtifactRequest::staging_created_result_base(2),
         evidence_state: EvidenceDisplayState::Prepared,
         staged_artifact_handle: StagedArtifactHandle {
             handle_id: StagedArtifactHandleId::new(prefixed_durable_id(

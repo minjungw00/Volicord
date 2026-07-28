@@ -29,12 +29,13 @@ use volicord_types::ids::{
     ProjectId, RandomDurableIdGenerator, RequestHash, TaskId, DURABLE_ID_RETRY_LIMIT,
 };
 use volicord_types::methods::{
-    public_method_contract, DryRunRequestRoute, MethodResponseBranch, MethodResultFields,
-    OperationResultRef,
+    public_method_contract, AssembleMethodResult, DryRunRequestRoute, MethodResponseBranch,
+    MethodResponseContract, OperationResultRef, ResultBaseConstructionError, ResultEffectContract,
+    SupportsCoreCommittedResult, SupportsNoEffectResult, SupportsReadOnlyResult,
 };
 use volicord_types::schema::{
     DryRunIntent, DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, ToolDryRunResponse,
-    ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase,
+    ToolEnvelope, ToolError, ToolRejectedResponse,
 };
 use volicord_types::values::{
     ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, UserActionChannelKind,
@@ -507,34 +508,34 @@ impl MethodPolicy {
     }
 
     #[cfg(test)]
-    fn for_branch<F>(
+    fn for_branch<F, B>(
         operation_category: OperationCategory,
         task: TaskRequirement,
-        branch: &OwnerPipelineBranch<F>,
+        branch: &OwnerPipelineBranch<F, B>,
     ) -> Self {
-        match branch {
-            OwnerPipelineBranch::ReadOnly { .. } => Self::exact(
+        match &branch.kind {
+            OwnerPipelineBranchKind::ReadOnly { .. } => Self::exact(
                 operation_category,
                 task,
                 ReplayPolicy::None,
                 FreshnessPolicy::None,
                 MethodEffectPolicy::ReadOnly,
             ),
-            OwnerPipelineBranch::NoEffectResult { .. } => Self::exact(
+            OwnerPipelineBranchKind::NoEffectResult { .. } => Self::exact(
                 operation_category,
                 task,
                 ReplayPolicy::None,
                 FreshnessPolicy::IfPresent,
                 MethodEffectPolicy::NoEffect,
             ),
-            OwnerPipelineBranch::DryRunPreview { .. } => Self::exact(
+            OwnerPipelineBranchKind::DryRunPreview { .. } => Self::exact(
                 operation_category,
                 task,
                 ReplayPolicy::None,
                 FreshnessPolicy::IfPresent,
                 MethodEffectPolicy::DryRunPreview,
             ),
-            OwnerPipelineBranch::CommitMutation { .. } => Self::exact(
+            OwnerPipelineBranchKind::CommitMutation { .. } => Self::exact(
                 operation_category,
                 task,
                 ReplayPolicy::Committed,
@@ -546,13 +547,20 @@ impl MethodPolicy {
 }
 
 /// Owner-selected branch shape used by the shared pipeline.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum OwnerPipelineBranch<F> {
+#[derive(Debug, Clone)]
+pub(crate) struct OwnerPipelineBranch<F, B> {
+    kind: OwnerPipelineBranchKind<F, B>,
+}
+
+#[derive(Debug, Clone)]
+enum OwnerPipelineBranchKind<F, B> {
     ReadOnly {
         result_fields: F,
+        build_base: fn(DryRunIntent, u64) -> Result<B, ResultBaseConstructionError>,
     },
     NoEffectResult {
         result_fields: F,
+        build_base: fn(u64) -> B,
     },
     DryRunPreview {
         dry_run_summary: DryRunSummary,
@@ -564,20 +572,91 @@ pub(crate) enum OwnerPipelineBranch<F> {
         task_id: Option<TaskId>,
         change_unit_id: Option<ChangeUnitId>,
         storage_mutations: Vec<CoreStorageMutation>,
+        build_base: fn(u64, Vec<EventRef>) -> Result<B, ResultBaseConstructionError>,
     },
+}
+
+pub(crate) fn read_only_branch<M>(
+    result_fields: M::ResultFields,
+) -> OwnerPipelineBranch<M::ResultFields, M::ResultBase>
+where
+    M: SupportsReadOnlyResult,
+{
+    OwnerPipelineBranch {
+        kind: OwnerPipelineBranchKind::ReadOnly {
+            result_fields,
+            build_base: M::read_only_result_base,
+        },
+    }
+}
+
+pub(crate) fn no_effect_result_branch<M>(
+    result_fields: M::ResultFields,
+) -> OwnerPipelineBranch<M::ResultFields, M::ResultBase>
+where
+    M: SupportsNoEffectResult,
+{
+    OwnerPipelineBranch {
+        kind: OwnerPipelineBranchKind::NoEffectResult {
+            result_fields,
+            build_base: M::no_effect_result_base,
+        },
+    }
+}
+
+pub(crate) fn dry_run_preview_branch<M>(
+    dry_run_summary: DryRunSummary,
+) -> OwnerPipelineBranch<M::ResultFields, M::ResultBase>
+where
+    M: MethodResponseContract,
+{
+    OwnerPipelineBranch {
+        kind: OwnerPipelineBranchKind::DryRunPreview { dry_run_summary },
+    }
+}
+
+pub(crate) struct CommitMutationBranch<M>
+where
+    M: MethodResponseContract,
+{
+    pub result_fields: M::ResultFields,
+    pub event_kind: String,
+    pub event_payload: JsonObject,
+    pub task_id: Option<TaskId>,
+    pub change_unit_id: Option<ChangeUnitId>,
+    pub storage_mutations: Vec<CoreStorageMutation>,
+}
+
+pub(crate) fn commit_mutation_branch<M>(
+    branch: CommitMutationBranch<M>,
+) -> OwnerPipelineBranch<M::ResultFields, M::ResultBase>
+where
+    M: SupportsCoreCommittedResult,
+{
+    OwnerPipelineBranch {
+        kind: OwnerPipelineBranchKind::CommitMutation {
+            result_fields: branch.result_fields,
+            event_kind: branch.event_kind,
+            event_payload: branch.event_payload,
+            task_id: branch.task_id,
+            change_unit_id: branch.change_unit_id,
+            storage_mutations: branch.storage_mutations,
+            build_base: M::core_committed_result_base,
+        },
+    }
 }
 
 /// Input to the shared Core request pipeline.
 #[cfg(test)]
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PipelineRequest<F> {
+#[derive(Debug, Clone)]
+pub(crate) struct PipelineRequest<F, B> {
     pub method_name: MethodName,
     pub envelope: ToolEnvelope,
     pub request_json: Value,
     pub invocation: InvocationContext,
     pub operation_category: OperationCategory,
     pub task_requirement: TaskRequirement,
-    pub branch: OwnerPipelineBranch<F>,
+    pub branch: OwnerPipelineBranch<F, B>,
 }
 
 /// Input to the shared preflight boundary before method-specific planning.
@@ -845,13 +924,13 @@ impl CoreService {
 
     /// Runs the shared envelope, context, freshness, replay, and effect pipeline.
     #[cfg(test)]
-    pub(crate) fn execute_pipeline<F>(
+    pub(crate) fn execute_pipeline<F, B>(
         &self,
         context: Option<&RuntimeHomeMutationContext<'_>>,
-        request: PipelineRequest<F>,
+        request: PipelineRequest<F, B>,
     ) -> CoreResult<PipelineResponse>
     where
-        F: MethodResultFields,
+        F: AssembleMethodResult<B>,
         F::Result: Serialize,
     {
         validate_branch_shape(&request.branch, request.envelope.dry_run)?;
@@ -1070,13 +1149,13 @@ impl CoreService {
     }
 
     /// Routes a prepared request to the selected storage/effect branch.
-    pub(crate) fn execute_prepared_request<F>(
+    pub(crate) fn execute_prepared_request<F, B>(
         &self,
         mut prepared: PreparedRequest<'_>,
-        branch: OwnerPipelineBranch<F>,
+        branch: OwnerPipelineBranch<F, B>,
     ) -> CoreResult<PipelineResponse>
     where
-        F: MethodResultFields,
+        F: AssembleMethodResult<B>,
         F::Result: Serialize,
     {
         validate_branch_shape(&branch, prepared.envelope.dry_run)?;
@@ -1085,41 +1164,45 @@ impl CoreService {
         let verified_invocation = prepared.context.verified_invocation.clone();
         let resolved_task_id = prepared.context.resolved_task_id.clone();
 
-        match branch {
-            OwnerPipelineBranch::ReadOnly { result_fields } => {
-                let base = read_only_result_base(
-                    prepared.envelope.dry_run,
-                    Some(project_state.state_version),
-                    Vec::new(),
-                );
+        match branch.kind {
+            OwnerPipelineBranchKind::ReadOnly {
+                result_fields,
+                build_base,
+            } => {
+                let base = build_base(prepared.envelope.dry_run, project_state.state_version)
+                    .map_err(result_base_construction_error)?;
                 response_from_value(
-                    serde_json::to_value(result_fields.with_base(base))?,
+                    serde_json::to_value(result_fields.assemble(base))?,
                     Some(verified_invocation),
                     resolved_task_id,
                     false,
                 )
             }
-            OwnerPipelineBranch::NoEffectResult { result_fields } => {
-                let base = no_effect_result_base(Some(project_state.state_version), Vec::new());
+            OwnerPipelineBranchKind::NoEffectResult {
+                result_fields,
+                build_base,
+            } => {
+                let base = build_base(project_state.state_version);
                 response_from_value(
-                    serde_json::to_value(result_fields.with_base(base))?,
+                    serde_json::to_value(result_fields.assemble(base))?,
                     Some(verified_invocation),
                     resolved_task_id,
                     false,
                 )
             }
-            OwnerPipelineBranch::DryRunPreview { dry_run_summary } => response_from_dry_run(
+            OwnerPipelineBranchKind::DryRunPreview { dry_run_summary } => response_from_dry_run(
                 dry_run_response(Some(project_state.state_version), dry_run_summary),
                 Some(verified_invocation),
                 resolved_task_id,
             ),
-            OwnerPipelineBranch::CommitMutation {
+            OwnerPipelineBranchKind::CommitMutation {
                 result_fields,
                 event_kind,
                 event_payload,
                 task_id: branch_task_id,
                 change_unit_id,
                 storage_mutations,
+                build_base,
             } => {
                 let task_id = match branch_task_id.or(resolved_task_id) {
                     Some(task_id) => task_id,
@@ -1163,6 +1246,7 @@ impl CoreService {
                         request_hash: &prepared.request_hash,
                         event_id,
                         result_fields,
+                        build_base,
                         event_kind,
                         event_payload,
                         change_unit_id,
@@ -1256,48 +1340,10 @@ fn canonical_core_utc_timestamp(timestamp: DateTime<Utc>) -> DateTime<Utc> {
         .expect("millisecond precision is always a valid UTC nanosecond")
 }
 
-/// Builds read-only result metadata.
-pub fn read_only_result_base(
-    dry_run: DryRunIntent,
-    state_version: Option<u64>,
-    events: Vec<EventRef>,
-) -> ToolResultBase {
-    ToolResultBase::read_only(
-        dry_run,
-        state_version,
-        GuaranteeDisclosure::authority_record(),
-        events,
-    )
-}
-
-/// Builds committed result metadata.
-pub fn committed_result_base(state_version: Option<u64>, events: Vec<EventRef>) -> ToolResultBase {
-    ToolResultBase::core_committed(
-        state_version,
-        GuaranteeDisclosure::authority_record(),
-        events,
-    )
-}
-
-/// Builds staging-created result metadata.
-pub fn staging_created_result_base(
-    state_version: Option<u64>,
-    events: Vec<EventRef>,
-) -> ToolResultBase {
-    ToolResultBase::staging_created(
-        state_version,
-        GuaranteeDisclosure::authority_record(),
-        events,
-    )
-}
-
-/// Builds no-effect result metadata.
-pub fn no_effect_result_base(state_version: Option<u64>, events: Vec<EventRef>) -> ToolResultBase {
-    ToolResultBase::no_effect(
-        state_version,
-        GuaranteeDisclosure::authority_record(),
-        events,
-    )
+fn result_base_construction_error(error: ResultBaseConstructionError) -> CorePipelineError {
+    CorePipelineError::InvalidDispatch {
+        detail: error.detail().to_owned(),
+    }
 }
 
 /// Builds a rejected response and applies public error precedence.
@@ -1418,25 +1464,28 @@ fn validate_committed_effect_envelope(
     Vec::new()
 }
 
-fn validate_branch_shape<F>(
-    branch: &OwnerPipelineBranch<F>,
+fn validate_branch_shape<F, B>(
+    branch: &OwnerPipelineBranch<F, B>,
     dry_run: DryRunIntent,
 ) -> CoreResult<()> {
-    match (branch, dry_run) {
-        (OwnerPipelineBranch::ReadOnly { .. }, _) => Ok(()),
-        (OwnerPipelineBranch::NoEffectResult { .. }, DryRunIntent::NotRequested) => Ok(()),
-        (OwnerPipelineBranch::NoEffectResult { .. }, DryRunIntent::Requested) => {
+    match (&branch.kind, dry_run) {
+        (OwnerPipelineBranchKind::ReadOnly { .. }, _) => Ok(()),
+        (OwnerPipelineBranchKind::NoEffectResult { .. }, DryRunIntent::NotRequested) => Ok(()),
+        (OwnerPipelineBranchKind::NoEffectResult { .. }, DryRunIntent::Requested) => {
             Err(CorePipelineError::InvalidDispatch {
                 detail: "no-effect result branch requires ToolEnvelope.dry_run=false".to_owned(),
             })
         }
-        (OwnerPipelineBranch::DryRunPreview { .. }, DryRunIntent::Requested) => Ok(()),
-        (OwnerPipelineBranch::DryRunPreview { .. }, DryRunIntent::NotRequested) => {
+        (OwnerPipelineBranchKind::DryRunPreview { .. }, DryRunIntent::Requested) => Ok(()),
+        (OwnerPipelineBranchKind::DryRunPreview { .. }, DryRunIntent::NotRequested) => {
             Err(CorePipelineError::InvalidDispatch {
                 detail: "dry-run preview branch requires ToolEnvelope.dry_run=true".to_owned(),
             })
         }
-        (OwnerPipelineBranch::CommitMutation { event_kind, .. }, DryRunIntent::NotRequested) => {
+        (
+            OwnerPipelineBranchKind::CommitMutation { event_kind, .. },
+            DryRunIntent::NotRequested,
+        ) => {
             if event_kind.trim().is_empty() {
                 return Err(CorePipelineError::InvalidDispatch {
                     detail: "committed mutation event_kind must not be empty".to_owned(),
@@ -1444,7 +1493,7 @@ fn validate_branch_shape<F>(
             }
             Ok(())
         }
-        (OwnerPipelineBranch::CommitMutation { .. }, DryRunIntent::Requested) => {
+        (OwnerPipelineBranchKind::CommitMutation { .. }, DryRunIntent::Requested) => {
             Err(CorePipelineError::InvalidDispatch {
                 detail: "commit branch requires ToolEnvelope.dry_run=false".to_owned(),
             })
@@ -1452,16 +1501,25 @@ fn validate_branch_shape<F>(
     }
 }
 
-fn validate_method_response_branch<F>(
+fn validate_method_response_branch<F, B>(
     method_name: MethodName,
     dry_run: DryRunIntent,
-    branch: &OwnerPipelineBranch<F>,
+    branch: &OwnerPipelineBranch<F, B>,
 ) -> CoreResult<()> {
-    let response_branch = match branch {
-        OwnerPipelineBranch::ReadOnly { .. }
-        | OwnerPipelineBranch::NoEffectResult { .. }
-        | OwnerPipelineBranch::CommitMutation { .. } => MethodResponseBranch::Result,
-        OwnerPipelineBranch::DryRunPreview { .. } => MethodResponseBranch::DryRun,
+    let (response_branch, result_effect) = match &branch.kind {
+        OwnerPipelineBranchKind::ReadOnly { .. } => (
+            MethodResponseBranch::Result,
+            Some(ResultEffectContract::ReadOnly),
+        ),
+        OwnerPipelineBranchKind::NoEffectResult { .. } => (
+            MethodResponseBranch::Result,
+            Some(ResultEffectContract::NoEffect),
+        ),
+        OwnerPipelineBranchKind::CommitMutation { .. } => (
+            MethodResponseBranch::Result,
+            Some(ResultEffectContract::CoreCommitted),
+        ),
+        OwnerPipelineBranchKind::DryRunPreview { .. } => (MethodResponseBranch::DryRun, None),
     };
     let contract = public_method_contract(method_name);
     let policy_route = contract.dry_run_policy().route(dry_run);
@@ -1470,7 +1528,9 @@ fn validate_method_response_branch<F>(
         (DryRunRequestRoute::Result, MethodResponseBranch::Result)
             | (DryRunRequestRoute::Preview, MethodResponseBranch::DryRun)
     );
-    if contract.supports_response_branch(response_branch) && route_matches_branch {
+    let effect_matches = result_effect.is_none_or(|effect| contract.supports_result_effect(effect));
+    if contract.supports_response_branch(response_branch) && route_matches_branch && effect_matches
+    {
         return Ok(());
     }
     Err(CorePipelineError::InvalidDispatch {
@@ -1572,18 +1632,17 @@ pub(crate) fn stored_public_response_is_current(
     if !response_value.is_object() {
         return false;
     }
-    let Some(base_value) = response_value.get("base") else {
+    let Some(metadata) = contract.decode_result_json(response_json, &response_value) else {
         return false;
     };
-    let Ok(base) = serde_json::from_value::<ToolResultBase>(base_value.clone()) else {
-        return false;
-    };
-    if base.effect_kind() != EffectKind::CoreCommitted
-        || base.state_version() != Some(committed_state_version)
+    if metadata.effect_kind != EffectKind::CoreCommitted
+        || metadata.dry_run != DryRunIntent::NotRequested
+        || metadata.state_version != committed_state_version
+        || metadata.event_count == 0
     {
         return false;
     }
-    contract.accepts_result_json(response_json, &response_value)
+    true
 }
 
 fn raw_json_has_unique_object_members(response_json: &str) -> bool {
@@ -1803,12 +1862,13 @@ fn ensure_task_exists(
     }
 }
 
-struct CommitPipelineArgs<'a, F> {
+struct CommitPipelineArgs<'a, F, B> {
     envelope: &'a ToolEnvelope,
     method_name: MethodName,
     request_hash: &'a RequestHash,
     event_id: String,
     result_fields: F,
+    build_base: fn(u64, Vec<EventRef>) -> Result<B, ResultBaseConstructionError>,
     event_kind: String,
     event_payload: JsonObject,
     change_unit_id: Option<ChangeUnitId>,
@@ -1819,12 +1879,12 @@ struct CommitPipelineArgs<'a, F> {
     include_live_storage_time: bool,
 }
 
-fn commit_mutation<F>(
+fn commit_mutation<F, B>(
     store: &mut CoreProjectStore,
-    args: CommitPipelineArgs<'_, F>,
+    args: CommitPipelineArgs<'_, F, B>,
 ) -> CoreResult<PipelineResponse>
 where
-    F: MethodResultFields,
+    F: AssembleMethodResult<B>,
     F::Result: Serialize,
 {
     let CommitPipelineArgs {
@@ -1833,6 +1893,7 @@ where
         request_hash,
         event_id,
         result_fields,
+        build_base,
         event_kind,
         event_payload,
         change_unit_id,
@@ -1863,8 +1924,13 @@ where
     input.include_live_storage_time = include_live_storage_time;
 
     let outcome = store.commit_mutation(input, &storage_mutations, |facts| {
-        committed_response_json(result_fields, facts.committed_state_version, facts.events)
-            .map_err(store_invalid_input)
+        committed_response_json(
+            result_fields,
+            build_base,
+            facts.committed_state_version,
+            facts.events,
+        )
+        .map_err(store_invalid_input)
     })?;
 
     match outcome {
@@ -1998,13 +2064,14 @@ pub(crate) fn operation_result_ref(
     })
 }
 
-fn committed_response_json<F>(
+fn committed_response_json<F, B>(
     result_fields: F,
+    build_base: fn(u64, Vec<EventRef>) -> Result<B, ResultBaseConstructionError>,
     committed_state_version: u64,
     events: Vec<CommittedEventRef>,
 ) -> CoreResult<String>
 where
-    F: MethodResultFields,
+    F: AssembleMethodResult<B>,
     F::Result: Serialize,
 {
     let event_refs = events
@@ -2014,8 +2081,9 @@ where
             event_kind: event.event_kind,
         })
         .collect();
-    let base = committed_result_base(Some(committed_state_version), event_refs);
-    let response = serde_json::to_value(result_fields.with_base(base))?;
+    let base =
+        build_base(committed_state_version, event_refs).map_err(result_base_construction_error)?;
+    let response = serde_json::to_value(result_fields.assemble(base))?;
     serde_json::to_string(&response).map_err(CorePipelineError::from)
 }
 
@@ -2318,7 +2386,12 @@ mod tests {
         open_project_fixture_database, open_registry_fixture_database,
         with_test_runtime_home_setup, TempRuntimeHome, TestRuntimeHomeMutation,
     };
-    use volicord_types::ids::{IdempotencyKey, ProjectId, RequestId};
+    use volicord_types::ids::{EventId, IdempotencyKey, ProjectId, RequestId};
+    use volicord_types::methods::{
+        CloseTaskRequest, CloseTaskResultBase, IntakeRequest, IntakeResultBase,
+        ReconcileChangesResultBase, StageArtifactRequest, StatusRequest, StatusResultBase,
+        SupportsStagingCreatedResult,
+    };
     use volicord_types::schema::PlannedEffect;
     use volicord_types::values::{ActorSource, OperationCategory, UserActionChannelKind};
 
@@ -2334,15 +2407,15 @@ mod tests {
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    struct PipelineTestResult {
-        base: ToolResultBase,
+    struct PipelineTestResult<B> {
+        base: B,
         pipeline_marker: String,
     }
 
-    impl MethodResultFields for PipelineTestResultFields {
-        type Result = PipelineTestResult;
+    impl<B> AssembleMethodResult<B> for PipelineTestResultFields {
+        type Result = PipelineTestResult<B>;
 
-        fn with_base(self, base: ToolResultBase) -> Self::Result {
+        fn assemble(self, base: B) -> Self::Result {
             PipelineTestResult {
                 base,
                 pipeline_marker: self.pipeline_marker,
@@ -2354,9 +2427,7 @@ mod tests {
     fn pipeline_accepts_preview_only_for_declared_method_policies() {
         use volicord_types::methods::{DryRunRequestPolicy, PUBLIC_METHOD_CONTRACTS};
 
-        let preview_branch = OwnerPipelineBranch::<PipelineTestResultFields>::DryRunPreview {
-            dry_run_summary: dry_run_summary(),
-        };
+        let preview_branch = test_preview_branch();
         for contract in PUBLIC_METHOD_CONTRACTS {
             let preview_accepted = validate_method_response_branch(
                 contract.method(),
@@ -2372,30 +2443,50 @@ mod tests {
                 contract.method().as_str()
             );
 
-            let result_branch = OwnerPipelineBranch::ReadOnly {
-                result_fields: PipelineTestResultFields {
-                    pipeline_marker: contract.method().as_str().to_owned(),
-                },
-            };
-            assert!(
+            let read_only = test_read_only_branch(contract.method().as_str());
+            assert_eq!(
                 validate_method_response_branch(
                     contract.method(),
                     DryRunIntent::NotRequested,
-                    &result_branch,
+                    &read_only,
                 )
                 .is_ok(),
-                "{} must accept its result route without dry-run intent",
+                contract.supports_result_effect(ResultEffectContract::ReadOnly),
+                "{} read-only route disagrees with its result effects",
                 contract.method().as_str()
             );
             assert_eq!(
                 validate_method_response_branch(
                     contract.method(),
                     DryRunIntent::Requested,
-                    &result_branch,
+                    &read_only,
                 )
                 .is_ok(),
-                contract.dry_run_policy() == DryRunRequestPolicy::RegularResult,
+                contract.supports_result_effect(ResultEffectContract::ReadOnly)
+                    && contract.dry_run_policy() == DryRunRequestPolicy::RegularResult,
                 "{} requested dry-run result route disagrees with policy",
+                contract.method().as_str()
+            );
+            assert_eq!(
+                validate_method_response_branch(
+                    contract.method(),
+                    DryRunIntent::NotRequested,
+                    &commit_branch(contract.method().as_str()),
+                )
+                .is_ok(),
+                contract.supports_result_effect(ResultEffectContract::CoreCommitted),
+                "{} Core-committed route disagrees with its result effects",
+                contract.method().as_str()
+            );
+            assert_eq!(
+                validate_method_response_branch(
+                    contract.method(),
+                    DryRunIntent::NotRequested,
+                    &test_no_effect_branch(contract.method().as_str()),
+                )
+                .is_ok(),
+                contract.supports_result_effect(ResultEffectContract::NoEffect),
+                "{} no-effect route disagrees with its result effects",
                 contract.method().as_str()
             );
 
@@ -2418,37 +2509,54 @@ mod tests {
 
     #[test]
     fn semantic_response_constructors_set_every_fixed_branch_fact() {
+        let event = EventRef {
+            event_id: EventId::new("event_contract_test"),
+            event_kind: "contract_test".to_owned(),
+        };
         for (base, expected_effect, expected_dry_run) in [
             (
-                read_only_result_base(DryRunIntent::NotRequested, Some(7), Vec::new()),
+                serde_json::to_value(
+                    StatusRequest::read_only_result_base(DryRunIntent::NotRequested, 7)
+                        .expect("status read-only base"),
+                )
+                .expect("status base serializes"),
                 "read_only",
                 false,
             ),
             (
-                read_only_result_base(DryRunIntent::Requested, Some(7), Vec::new()),
+                serde_json::to_value(
+                    StatusRequest::read_only_result_base(DryRunIntent::Requested, 7)
+                        .expect("status requested-intent base"),
+                )
+                .expect("status base serializes"),
                 "read_only",
                 true,
             ),
             (
-                committed_result_base(Some(8), Vec::new()),
+                serde_json::to_value(
+                    IntakeRequest::core_committed_result_base(8, vec![event])
+                        .expect("nonempty commit events"),
+                )
+                .expect("committed base serializes"),
                 "core_committed",
                 false,
             ),
             (
-                staging_created_result_base(Some(7), Vec::new()),
+                serde_json::to_value(StageArtifactRequest::staging_created_result_base(7))
+                    .expect("staging base serializes"),
                 "staging_created",
                 false,
             ),
             (
-                no_effect_result_base(Some(7), Vec::new()),
+                serde_json::to_value(CloseTaskRequest::no_effect_result_base(7))
+                    .expect("no-effect base serializes"),
                 "no_effect",
                 false,
             ),
         ] {
-            let encoded = serde_json::to_value(base).expect("result base should serialize");
-            assert_eq!(encoded["response_kind"], "result");
-            assert_eq!(encoded["effect_kind"], expected_effect);
-            assert_eq!(encoded["dry_run"], expected_dry_run);
+            assert_eq!(base["response_kind"], "result");
+            assert_eq!(base["effect_kind"], expected_effect);
+            assert_eq!(base["dry_run"], expected_dry_run);
         }
 
         let rejected = serde_json::to_value(rejected_response(
@@ -2713,10 +2821,14 @@ mod tests {
             )
         }
 
-        fn execute(
+        fn execute<B>(
             &self,
-            request: PipelineRequest<PipelineTestResultFields>,
-        ) -> CoreResult<PipelineResponse> {
+            request: PipelineRequest<PipelineTestResultFields, B>,
+        ) -> CoreResult<PipelineResponse>
+        where
+            PipelineTestResultFields: AssembleMethodResult<B>,
+            <PipelineTestResultFields as AssembleMethodResult<B>>::Result: Serialize,
+        {
             let context = self.mutation.context().map_err(CorePipelineError::from)?;
             self.service.execute_pipeline(Some(&context), request)
         }
@@ -2788,9 +2900,7 @@ mod tests {
             invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
             operation_category: OperationCategory::AgentWorkflow,
             task_requirement: TaskRequirement::Required,
-            branch: OwnerPipelineBranch::DryRunPreview {
-                dry_run_summary: dry_run_summary(),
-            },
+            branch: test_preview_branch(),
         })?;
 
         assert_eq!(response.response_value["base"]["response_kind"], "dry_run");
@@ -2814,16 +2924,15 @@ mod tests {
             invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
             operation_category: OperationCategory::Read,
             task_requirement: TaskRequirement::Optional,
-            branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("read_only"),
-            },
+            branch: test_read_only_branch("read_only"),
         })?;
 
         assert_eq!(response.response_value["base"]["response_kind"], "result");
         assert_eq!(response.response_value["base"]["effect_kind"], "read_only");
         assert_eq!(response.response_value["base"]["state_version"], 0);
         assert_eq!(response.response_value["base"]["events"], json!([]));
-        let typed: PipelineTestResult = serde_json::from_str(&response.response_json)?;
+        let typed: PipelineTestResult<StatusResultBase> =
+            serde_json::from_str(&response.response_json)?;
         assert_eq!(typed.pipeline_marker, "read_only");
         assert_eq!(serde_json::to_value(typed)?, response.response_value);
         assert_eq!(harness.counts()?, before);
@@ -2844,22 +2953,21 @@ mod tests {
         );
 
         let response = harness.execute(PipelineRequest {
-            method_name: MethodName::PrepareWrite,
-            request_json: request_json(MethodName::PrepareWrite, &envelope, "no-effect"),
+            method_name: MethodName::CloseTask,
+            request_json: request_json(MethodName::CloseTask, &envelope, "no-effect"),
             envelope,
             invocation: invocation(OperationCategory::AgentWorkflow, Some(CONNECTION_ID)),
             operation_category: OperationCategory::AgentWorkflow,
             task_requirement: TaskRequirement::Required,
-            branch: OwnerPipelineBranch::NoEffectResult {
-                result_fields: result_fields("no_effect"),
-            },
+            branch: test_no_effect_branch("no_effect"),
         })?;
 
         assert_eq!(response.response_value["base"]["response_kind"], "result");
         assert_eq!(response.response_value["base"]["effect_kind"], "no_effect");
         assert_eq!(response.response_value["base"]["state_version"], 0);
         assert_eq!(response.response_value["base"]["events"], json!([]));
-        let typed: PipelineTestResult = serde_json::from_str(&response.response_json)?;
+        let typed: PipelineTestResult<CloseTaskResultBase> =
+            serde_json::from_str(&response.response_json)?;
         assert_eq!(typed.pipeline_marker, "no_effect");
         assert_eq!(serde_json::to_value(typed)?, response.response_value);
         assert_eq!(harness.counts()?, before);
@@ -2880,9 +2988,7 @@ mod tests {
                 invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
                 operation_category: OperationCategory::Read,
                 task_requirement: TaskRequirement::Optional,
-                branch: OwnerPipelineBranch::ReadOnly {
-                    result_fields: result_fields("invalid_project_path"),
-                },
+                branch: test_read_only_branch("invalid_project_path"),
             })
             .expect_err("invalid project registration must not produce a method response");
 
@@ -2907,9 +3013,7 @@ mod tests {
                 invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
                 operation_category: OperationCategory::Read,
                 task_requirement: TaskRequirement::Optional,
-                branch: OwnerPipelineBranch::ReadOnly {
-                    result_fields: result_fields("missing_db"),
-                },
+                branch: test_read_only_branch("missing_db"),
             })
             .expect_err("missing project Store must not produce a method response");
 
@@ -2936,9 +3040,7 @@ mod tests {
             invocation: invocation(OperationCategory::Read, Some(CONNECTION_ID)),
             operation_category: OperationCategory::Read,
             task_requirement: TaskRequirement::Optional,
-            branch: OwnerPipelineBranch::ReadOnly {
-                result_fields: result_fields("unexpected_schema_relation"),
-            },
+            branch: test_read_only_branch("unexpected_schema_relation"),
         })?;
 
         assert_store_rejection(&response, "PERSISTED_DATA_CORRUPT", "schema_invariant");
@@ -2987,7 +3089,8 @@ mod tests {
         assert_eq!(after.authority_events, before.authority_events + 1);
         assert_eq!(after.tool_invocations, before.tool_invocations + 1);
         assert_eq!(after.tasks, before.tasks);
-        let typed: PipelineTestResult = serde_json::from_str(&response.response_json)?;
+        let typed: PipelineTestResult<IntakeResultBase> =
+            serde_json::from_str(&response.response_json)?;
         assert_eq!(typed.pipeline_marker, "commit");
         assert_eq!(serde_json::to_value(typed)?, response.response_value);
         Ok(())
@@ -3554,49 +3657,88 @@ mod tests {
         fields
     }
 
-    fn commit_branch(marker: &str) -> OwnerPipelineBranch<PipelineTestResultFields> {
-        OwnerPipelineBranch::CommitMutation {
-            result_fields: result_fields(marker),
-            event_kind: "core.pipeline_test_commit".to_owned(),
-            event_payload: event_payload(marker),
-            task_id: None,
-            change_unit_id: None,
-            storage_mutations: Vec::new(),
+    fn test_preview_branch(
+    ) -> OwnerPipelineBranch<PipelineTestResultFields, ReconcileChangesResultBase> {
+        OwnerPipelineBranch {
+            kind: OwnerPipelineBranchKind::DryRunPreview {
+                dry_run_summary: dry_run_summary(),
+            },
+        }
+    }
+
+    fn test_read_only_branch(
+        marker: &str,
+    ) -> OwnerPipelineBranch<PipelineTestResultFields, StatusResultBase> {
+        OwnerPipelineBranch {
+            kind: OwnerPipelineBranchKind::ReadOnly {
+                result_fields: result_fields(marker),
+                build_base: StatusRequest::read_only_result_base,
+            },
+        }
+    }
+
+    fn test_no_effect_branch(
+        marker: &str,
+    ) -> OwnerPipelineBranch<PipelineTestResultFields, CloseTaskResultBase> {
+        OwnerPipelineBranch {
+            kind: OwnerPipelineBranchKind::NoEffectResult {
+                result_fields: result_fields(marker),
+                build_base: CloseTaskRequest::no_effect_result_base,
+            },
+        }
+    }
+
+    fn commit_branch(
+        marker: &str,
+    ) -> OwnerPipelineBranch<PipelineTestResultFields, IntakeResultBase> {
+        OwnerPipelineBranch {
+            kind: OwnerPipelineBranchKind::CommitMutation {
+                result_fields: result_fields(marker),
+                event_kind: "core.pipeline_test_commit".to_owned(),
+                event_payload: event_payload(marker),
+                task_id: None,
+                change_unit_id: None,
+                storage_mutations: Vec::new(),
+                build_base: IntakeRequest::core_committed_result_base,
+            },
         }
     }
 
     fn change_unit_commit_branch(
         change_unit_id: &str,
         marker: &str,
-    ) -> OwnerPipelineBranch<PipelineTestResultFields> {
-        OwnerPipelineBranch::CommitMutation {
-            result_fields: result_fields(marker),
-            event_kind: "core.pipeline_test_commit".to_owned(),
-            event_payload: event_payload(marker),
-            task_id: None,
-            change_unit_id: None,
-            storage_mutations: vec![CoreStorageMutation::ChangeUnit(
-                volicord_store::core_pipeline::ChangeUnitMutation::InsertCurrent(
-                    ChangeUnitInsert {
-                        change_unit_id: change_unit_id.to_owned(),
-                        task_id: TASK_ID.to_owned(),
-                        scope_summary: StoredChangeUnitScopeSummary {
-                            scope_summary: Some(marker.to_owned()),
-                            affected_areas: Vec::new(),
-                            constraints: Vec::new(),
+    ) -> OwnerPipelineBranch<PipelineTestResultFields, IntakeResultBase> {
+        OwnerPipelineBranch {
+            kind: OwnerPipelineBranchKind::CommitMutation {
+                result_fields: result_fields(marker),
+                event_kind: "core.pipeline_test_commit".to_owned(),
+                event_payload: event_payload(marker),
+                task_id: None,
+                change_unit_id: None,
+                storage_mutations: vec![CoreStorageMutation::ChangeUnit(
+                    volicord_store::core_pipeline::ChangeUnitMutation::InsertCurrent(
+                        ChangeUnitInsert {
+                            change_unit_id: change_unit_id.to_owned(),
+                            task_id: TASK_ID.to_owned(),
+                            scope_summary: StoredChangeUnitScopeSummary {
+                                scope_summary: Some(marker.to_owned()),
+                                affected_areas: Vec::new(),
+                                constraints: Vec::new(),
+                            },
+                            bounded_paths: Vec::new(),
+                            write_basis: StoredChangeUnitWriteBasis {
+                                baseline_ref: None,
+                                git_workspace_context: None,
+                            },
+                            effect_contract: None,
+                            lifecycle: StoredChangeUnitLifecycle {
+                                recovery_required: false,
+                            },
                         },
-                        bounded_paths: Vec::new(),
-                        write_basis: StoredChangeUnitWriteBasis {
-                            baseline_ref: None,
-                            git_workspace_context: None,
-                        },
-                        effect_contract: None,
-                        lifecycle: StoredChangeUnitLifecycle {
-                            recovery_required: false,
-                        },
-                    },
-                ),
-            )],
+                    ),
+                )],
+                build_base: IntakeRequest::core_committed_result_base,
+            },
         }
     }
 
