@@ -7,6 +7,7 @@ use std::fs;
 use std::ops::Range;
 use std::path::Path;
 use volicord_types::contracts::{public_json_contract_descriptors, JsonContractDescriptor};
+use volicord_types::methods::DryRunRequestPolicy;
 
 const CORE_SCHEMA_DOC_ID: &str = "reference.api.schema-core";
 const CORE_SCHEMA_CONTRACT_ID: &str = "api.schema.core";
@@ -311,8 +312,12 @@ fn render_response_region(
     let mut specific_shapes = Vec::new();
     let mut composition_kinds = BTreeSet::new();
     let mut previewable_responses = 0usize;
+    let mut method_dry_run_contracts = Vec::new();
 
     for descriptor in response_descriptors {
+        if let Some(method_contract) = descriptor.method_dry_run_contract() {
+            method_dry_run_contracts.push(method_contract);
+        }
         let success = exact_shape(descriptor, RESULT_SHAPE)?;
         let title = schema_title(success, descriptor.id(), RESULT_SHAPE)?;
         if let Some(previous) = rendered_success.insert(title.to_owned(), success.clone()) {
@@ -384,6 +389,58 @@ fn render_response_region(
             contract_id,
             shape,
         )?);
+    }
+
+    if !method_dry_run_contracts.is_empty() {
+        if !body.is_empty() {
+            body.push_str("\n\n");
+        }
+        match language {
+            Language::English => {
+                body.push_str("### `dry_run` request policy\n\n");
+                for (method, policy) in &method_dry_run_contracts {
+                    body.push_str("- `");
+                    body.push_str(method.as_str());
+                    body.push_str("`: ");
+                    match policy {
+                        DryRunRequestPolicy::Forbidden => body.push_str(
+                            "a decoded request with `dry_run=true` is rejected, and the rejection preserves `base.dry_run=true` without creating a preview branch.",
+                        ),
+                        DryRunRequestPolicy::RegularResult => body.push_str(
+                            "`dry_run=true` is accepted through the regular result branch with `base.dry_run=true`; it does not create a preview response.",
+                        ),
+                        DryRunRequestPolicy::Preview => body.push_str(
+                            "`dry_run=true` selects the `ToolDryRunResponse` preview branch, whose `base.dry_run` is `true`.",
+                        ),
+                    }
+                    body.push_str(
+                        " `dry_run=false` or an omitted `dry_run` does not select a preview branch.\n",
+                    );
+                }
+            }
+            Language::Korean => {
+                body.push_str("### `dry_run` 요청 정책\n\n");
+                for (method, policy) in &method_dry_run_contracts {
+                    body.push_str("- `");
+                    body.push_str(method.as_str());
+                    body.push_str("`: ");
+                    match policy {
+                        DryRunRequestPolicy::Forbidden => body.push_str(
+                            "디코딩된 `dry_run=true` 요청을 거부하며, 거부 응답은 미리보기 분기를 만들지 않고 `base.dry_run=true`를 보존합니다.",
+                        ),
+                        DryRunRequestPolicy::RegularResult => body.push_str(
+                            "`dry_run=true`를 일반 결과 분기로 처리하고 `base.dry_run=true`를 보존하며, 미리보기 응답은 만들지 않습니다.",
+                        ),
+                        DryRunRequestPolicy::Preview => body.push_str(
+                            "`dry_run=true`가 `ToolDryRunResponse` 미리보기 분기를 선택하며, 이 분기의 `base.dry_run`은 `true`입니다.",
+                        ),
+                    }
+                    body.push_str(
+                        " `dry_run=false`이거나 `dry_run`이 생략되면 미리보기 분기를 선택하지 않습니다.\n",
+                    );
+                }
+            }
+        }
     }
 
     if shared_rejection || shared_dry_run {
@@ -1458,6 +1515,79 @@ mod tests {
                     contract.method().as_str()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn generated_method_dry_run_prose_follows_the_canonical_policy() {
+        let descriptors = descriptor_catalog();
+        let common = common_response_schemas(&descriptors).expect("common response schemas");
+
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            for contract_id in [
+                contract.request_contract_id(),
+                contract.response_contract_id(),
+            ] {
+                assert_eq!(
+                    descriptors
+                        .get(contract_id)
+                        .expect("public method descriptor")
+                        .method_dry_run_contract(),
+                    Some((contract.method(), contract.dry_run_policy())),
+                    "{} descriptor must carry its canonical dry-run policy",
+                    contract_id
+                );
+            }
+
+            let response_binding = binding(
+                contract.response_contract_id(),
+                DocumentContractRole::MethodResponse,
+            );
+            let english = render_response_region(
+                std::slice::from_ref(&response_binding),
+                &descriptors,
+                &common,
+                Language::English,
+            )
+            .expect("English method response region");
+            let korean = render_response_region(
+                std::slice::from_ref(&response_binding),
+                &descriptors,
+                &common,
+                Language::Korean,
+            )
+            .expect("Korean method response region");
+
+            assert!(english
+                .contents
+                .contains(&format!("- `{}`:", contract.method().as_str())));
+            assert!(korean
+                .contents
+                .contains(&format!("- `{}`:", contract.method().as_str())));
+            let (english_policy, korean_policy) = match contract.dry_run_policy() {
+                DryRunRequestPolicy::Forbidden => (
+                    "decoded request with `dry_run=true` is rejected",
+                    "디코딩된 `dry_run=true` 요청을 거부",
+                ),
+                DryRunRequestPolicy::RegularResult => (
+                    "accepted through the regular result branch",
+                    "일반 결과 분기로 처리",
+                ),
+                DryRunRequestPolicy::Preview => (
+                    "selects the `ToolDryRunResponse` preview branch",
+                    "`ToolDryRunResponse` 미리보기 분기를 선택",
+                ),
+            };
+            assert!(
+                english.contents.contains(english_policy),
+                "{} English generated policy prose disagrees with the canonical declaration",
+                contract.method().as_str()
+            );
+            assert!(
+                korean.contents.contains(korean_policy),
+                "{} Korean generated policy prose disagrees with the canonical declaration",
+                contract.method().as_str()
+            );
         }
     }
 

@@ -55,6 +55,7 @@ impl CoreService {
     ) -> CoreResult<PipelineResponse> {
         let request_json = serde_json::to_value(&request)?;
         let policy = mutation_method_policy(
+            MethodName::Intake,
             request.operation_category(),
             TaskRequirement::None,
             request.envelope.dry_run,
@@ -96,7 +97,7 @@ impl CoreService {
             Err(error) => return plan_error_response(&request.envelope, project_state, error),
         };
 
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request::<IntakeResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
@@ -784,7 +785,7 @@ struct PlannedTaskLineage {
 }
 
 fn intake_validation_rejection<T>(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     field: &'static str,
     message: &'static str,

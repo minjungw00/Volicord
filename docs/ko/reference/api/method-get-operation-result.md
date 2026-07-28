@@ -96,6 +96,11 @@ projection은 안전한 선택 식별자와 파생 ref를 보고할 수 있지�
 | `operation_result_ref` | 예 | 아니요 | `OperationResultRef` |
 | `start_offset_bytes` | 예 | 아니요 | `integer` |
 
+### `dry_run` 요청 정책
+
+- `volicord.get_operation_result`: 디코딩된 `dry_run=true` 요청을 거부하며, 거부 응답은 미리보기 분기를 만들지 않고 `base.dry_run=true`를 보존합니다. `dry_run=false`이거나 `dry_run`이 생략되면 미리보기 분기를 선택하지 않습니다.
+
+
 ### 공유 응답 구조
 
 응답 설명자는 성공과 거절을 정확한 `anyOf` 분기 union으로 정의합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 필드는 위 성공 필드와 구분된 상태로 유지됩니다.

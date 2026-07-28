@@ -9,16 +9,16 @@ use crate::ids::{
 use crate::schema::{
     AcceptanceCriterionInput, AcceptanceCriterionReplacement, AgentSafeUserActionRequestSummary,
     ArtifactInput, ArtifactRef, AuthorityReceipt, ChangeUnitEffectContract, CloseAssessmentInput,
-    CloseReadinessBlocker, ContinuityPageRequest, CurrentCloseBasis, EvidenceCaptureIntent,
-    EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary, EvidenceObservation,
-    EvidenceObservationInput, EvidenceProducer, EvidenceSummary, EvidenceTarget, GuaranteeDisplay,
-    JsonObject, NextActionSummary, ObservedChanges, PreviewableToolResponse, ProjectContinuityPage,
-    ProjectContinuitySummary, RequiredNullable, RiskAcceptanceCoverage, RunSummary, SourceRef,
-    StagedArtifactHandle, StateRecordRef, StateSummary, SummaryCard, TaskFlowItem,
-    TaskLineageInput, ToolEnvelope, ToolResultBase, ToolResultOrRejected, UnrecordedChangeFinding,
-    UnrecordedChangeResolutionSummary, UserActionDraft, UserActionRequest, UserActionResolution,
-    UserActionResolutionInput, WriteDecisionReason, WriteTicket, WriteTicketStateSummary,
-    CHANNEL_SUBMISSION_ID_MAX_BYTES,
+    CloseReadinessBlocker, ContinuityPageRequest, CurrentCloseBasis, DryRunIntent,
+    EvidenceCaptureIntent, EvidenceCaptureSpec, EvidenceCoverageUpdate, EvidenceGateSummary,
+    EvidenceObservation, EvidenceObservationInput, EvidenceProducer, EvidenceSummary,
+    EvidenceTarget, GuaranteeDisplay, JsonObject, NextActionSummary, ObservedChanges,
+    PreviewableToolResponse, ProjectContinuityPage, ProjectContinuitySummary, RequiredNullable,
+    RiskAcceptanceCoverage, RunSummary, SourceRef, StagedArtifactHandle, StateRecordRef,
+    StateSummary, SummaryCard, TaskFlowItem, TaskLineageInput, ToolEnvelope, ToolResultBase,
+    ToolResultOrRejected, UnrecordedChangeFinding, UnrecordedChangeResolutionSummary,
+    UserActionDraft, UserActionRequest, UserActionResolution, UserActionResolutionInput,
+    WriteDecisionReason, WriteTicket, WriteTicketStateSummary, CHANNEL_SUBMISSION_ID_MAX_BYTES,
 };
 use crate::values::{
     AcceptancePolicy, ChangeUnitOperation, CloseMutationIntent, CloseReason, CloseState,
@@ -113,11 +113,40 @@ pub enum MethodResponseBranch {
     DryRun,
 }
 
+/// Canonical handling policy for a decoded public request's dry-run intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DryRunRequestPolicy {
+    Forbidden,
+    RegularResult,
+    Preview,
+}
+
+/// Response route selected by one method policy and normalized request intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DryRunRequestRoute {
+    Result,
+    Rejected,
+    Preview,
+}
+
+impl DryRunRequestPolicy {
+    /// Selects the current response route for a normalized request intent.
+    pub const fn route(self, intent: DryRunIntent) -> DryRunRequestRoute {
+        match (self, intent) {
+            (Self::Forbidden, DryRunIntent::Requested) => DryRunRequestRoute::Rejected,
+            (Self::Preview, DryRunIntent::Requested) => DryRunRequestRoute::Preview,
+            (Self::Forbidden | Self::RegularResult | Self::Preview, DryRunIntent::NotRequested)
+            | (Self::RegularResult, DryRunIntent::Requested) => DryRunRequestRoute::Result,
+        }
+    }
+}
+
 /// Typed relationship between one public request and its exact response family.
 pub trait MethodResponseContract {
     type Response: DeserializeOwned + JsonSchema;
 
     const METHOD: MethodName;
+    const DRY_RUN_POLICY: DryRunRequestPolicy;
     const RESPONSE_BRANCHES: &'static [MethodResponseBranch];
 }
 
@@ -127,6 +156,7 @@ pub struct PublicMethodContract {
     method: MethodName,
     request_contract_id: &'static str,
     response_contract_id: &'static str,
+    dry_run_policy: DryRunRequestPolicy,
     response_branches: &'static [MethodResponseBranch],
     committed_result_replay: bool,
     request_schema: fn() -> Value,
@@ -147,6 +177,10 @@ impl PublicMethodContract {
 
     pub const fn response_contract_id(self) -> &'static str {
         self.response_contract_id
+    }
+
+    pub const fn dry_run_policy(self) -> DryRunRequestPolicy {
+        self.dry_run_policy
     }
 
     pub const fn response_branches(self) -> &'static [MethodResponseBranch] {
@@ -896,19 +930,25 @@ declare_method_result! {
 }
 
 macro_rules! response_family {
-    (result_or_rejected, $result:ty) => {
+    (Forbidden, $result:ty) => {
         ToolResultOrRejected<$result>
     };
-    (previewable, $result:ty) => {
+    (RegularResult, $result:ty) => {
+        ToolResultOrRejected<$result>
+    };
+    (Preview, $result:ty) => {
         PreviewableToolResponse<$result>
     };
 }
 
 macro_rules! response_branches {
-    (result_or_rejected) => {
+    (Forbidden) => {
         &[MethodResponseBranch::Result, MethodResponseBranch::Rejected]
     };
-    (previewable) => {
+    (RegularResult) => {
+        &[MethodResponseBranch::Result, MethodResponseBranch::Rejected]
+    };
+    (Preview) => {
         &[
             MethodResponseBranch::Result,
             MethodResponseBranch::Rejected,
@@ -924,7 +964,7 @@ macro_rules! declare_public_method_contracts {
                 request: $request:ty,
                 result: $result:ty,
                 response: $response:ident,
-                family: $family:ident,
+                dry_run_policy: $dry_run_policy:ident,
                 request_contract: $request_contract:literal,
                 response_contract: $response_contract:literal,
                 committed_result_replay: $committed_result_replay:literal
@@ -933,14 +973,16 @@ macro_rules! declare_public_method_contracts {
     ) => {
         $(
             #[doc = concat!("Exact public response family for `", $response_contract, "`.")]
-            pub type $response = response_family!($family, $result);
+            pub type $response = response_family!($dry_run_policy, $result);
 
             impl MethodResponseContract for $request {
                 type Response = $response;
 
                 const METHOD: MethodName = MethodName::$variant;
+                const DRY_RUN_POLICY: DryRunRequestPolicy =
+                    DryRunRequestPolicy::$dry_run_policy;
                 const RESPONSE_BRANCHES: &'static [MethodResponseBranch] =
-                    response_branches!($family);
+                    response_branches!($dry_run_policy);
             }
         )+
 
@@ -951,7 +993,8 @@ macro_rules! declare_public_method_contracts {
                     method: MethodName::$variant,
                     request_contract_id: $request_contract,
                     response_contract_id: $response_contract,
-                    response_branches: response_branches!($family),
+                    dry_run_policy: DryRunRequestPolicy::$dry_run_policy,
+                    response_branches: response_branches!($dry_run_policy),
                     committed_result_replay: $committed_result_replay,
                     request_schema: request_schema::<$request>,
                     response_schema: response_schema::<$response>,
@@ -969,7 +1012,7 @@ declare_public_method_contracts! {
         request: IntakeRequest,
         result: IntakeResult,
         response: IntakeResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.intake.request",
         response_contract: "api.method.intake.response",
         committed_result_replay: true
@@ -978,7 +1021,7 @@ declare_public_method_contracts! {
         request: UpdateScopeRequest,
         result: UpdateScopeResult,
         response: UpdateScopeResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.update_scope.request",
         response_contract: "api.method.update_scope.response",
         committed_result_replay: true
@@ -987,7 +1030,7 @@ declare_public_method_contracts! {
         request: StatusRequest,
         result: StatusResult,
         response: StatusResponse,
-        family: result_or_rejected,
+        dry_run_policy: RegularResult,
         request_contract: "api.method.status.request",
         response_contract: "api.method.status.response",
         committed_result_replay: false
@@ -996,7 +1039,7 @@ declare_public_method_contracts! {
         request: GetOperationResultRequest,
         result: GetOperationResultResult,
         response: GetOperationResultResponse,
-        family: result_or_rejected,
+        dry_run_policy: Forbidden,
         request_contract: "api.method.get_operation_result.request",
         response_contract: "api.method.get_operation_result.response",
         committed_result_replay: false
@@ -1005,7 +1048,7 @@ declare_public_method_contracts! {
         request: CheckCloseRequest,
         result: CloseTaskResult,
         response: CheckCloseResponse,
-        family: result_or_rejected,
+        dry_run_policy: RegularResult,
         request_contract: "api.method.check_close.request",
         response_contract: "api.method.check_close.response",
         committed_result_replay: false
@@ -1014,7 +1057,7 @@ declare_public_method_contracts! {
         request: PrepareEvidenceCaptureRequest,
         result: PrepareEvidenceCaptureResult,
         response: PrepareEvidenceCaptureResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.prepare_evidence_capture.request",
         response_contract: "api.method.prepare_evidence_capture.response",
         committed_result_replay: true
@@ -1023,7 +1066,7 @@ declare_public_method_contracts! {
         request: PrepareWriteRequest,
         result: PrepareWriteResult,
         response: PrepareWriteResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.prepare_write.request",
         response_contract: "api.method.prepare_write.response",
         committed_result_replay: true
@@ -1032,7 +1075,7 @@ declare_public_method_contracts! {
         request: StageArtifactRequest,
         result: StageArtifactResult,
         response: StageArtifactResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.stage_artifact.request",
         response_contract: "api.method.stage_artifact.response",
         committed_result_replay: false
@@ -1041,7 +1084,7 @@ declare_public_method_contracts! {
         request: RecordRunRequest,
         result: RecordRunResult,
         response: RecordRunResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.record_run.request",
         response_contract: "api.method.record_run.response",
         committed_result_replay: true
@@ -1050,7 +1093,7 @@ declare_public_method_contracts! {
         request: RequestUserActionRequest,
         result: RequestUserActionResult,
         response: RequestUserActionResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.request_user_action.request",
         response_contract: "api.method.request_user_action.response",
         committed_result_replay: true
@@ -1059,7 +1102,7 @@ declare_public_method_contracts! {
         request: ResolveUserActionRequest,
         result: ResolveUserActionResult,
         response: ResolveUserActionResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.resolve_user_action.request",
         response_contract: "api.method.resolve_user_action.response",
         committed_result_replay: true
@@ -1068,7 +1111,7 @@ declare_public_method_contracts! {
         request: ReconcileChangesRequest,
         result: ReconcileChangesResult,
         response: ReconcileChangesResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.reconcile_changes.request",
         response_contract: "api.method.reconcile_changes.response",
         committed_result_replay: true
@@ -1077,7 +1120,7 @@ declare_public_method_contracts! {
         request: CloseTaskRequest,
         result: CloseTaskResult,
         response: CloseTaskResponse,
-        family: previewable,
+        dry_run_policy: Preview,
         request_contract: "api.method.close_task.request",
         response_contract: "api.method.close_task.response",
         committed_result_replay: true
@@ -1182,6 +1225,37 @@ mod tests {
             .map(|contract| contract.method().as_str())
             .collect::<BTreeSet<_>>();
         assert_eq!(unique_methods.len(), MethodName::ALL.len());
+    }
+
+    #[test]
+    fn canonical_registry_drives_every_dry_run_request_route() {
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            assert_eq!(
+                contract.dry_run_policy().route(DryRunIntent::NotRequested),
+                DryRunRequestRoute::Result,
+                "{} must use its result route when dry-run is not requested",
+                contract.method().as_str()
+            );
+
+            let requested_route = contract.dry_run_policy().route(DryRunIntent::Requested);
+            match contract.dry_run_policy() {
+                DryRunRequestPolicy::Forbidden => {
+                    assert_eq!(requested_route, DryRunRequestRoute::Rejected);
+                }
+                DryRunRequestPolicy::RegularResult => {
+                    assert_eq!(requested_route, DryRunRequestRoute::Result);
+                }
+                DryRunRequestPolicy::Preview => {
+                    assert_eq!(requested_route, DryRunRequestRoute::Preview);
+                }
+            }
+            assert_eq!(
+                contract.supports_response_branch(MethodResponseBranch::DryRun),
+                contract.dry_run_policy() == DryRunRequestPolicy::Preview,
+                "{} response family must follow its dry-run request policy",
+                contract.method().as_str()
+            );
+        }
     }
 
     #[test]

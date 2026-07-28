@@ -358,6 +358,11 @@ Capture-backed 관찰 규칙:
 | `run_summary` | 예 | 아니요 | `RunSummary` |
 | `state` | 예 | 아니요 | `StateSummary` |
 
+### `dry_run` 요청 정책
+
+- `volicord.record_run`: `dry_run=true`가 `ToolDryRunResponse` 미리보기 분기를 선택하며, 이 분기의 `base.dry_run`은 `true`입니다. `dry_run=false`이거나 `dry_run`이 생략되면 미리보기 분기를 선택하지 않습니다.
+
+
 ### 공유 응답 구조
 
 응답 설명자는 성공, 거절, 미리보기를 정확한 `anyOf` 분기 union으로 정의합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.

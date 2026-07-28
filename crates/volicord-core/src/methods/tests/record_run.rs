@@ -925,7 +925,7 @@ fn sensitive_pending_action_blocks_record_run_only_on_validated_matching_scope(
                 &write_ticket_id,
                 &format!("run_pending_sensitive_dry_{suffix}"),
             );
-            dry_run.envelope.dry_run = true;
+            dry_run.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
             dry_run.observed_changes.changed_paths =
                 run_paths.iter().map(|path| (*path).to_owned()).collect();
             dry_run.observed_changes.sensitive_categories = run_categories

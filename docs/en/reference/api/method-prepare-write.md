@@ -228,6 +228,11 @@ not allocate a durable ID.
 | `write_ticket_id` | no | yes | `string` |
 | `write_ticket_ref` | no | yes | `StateRecordRef` |
 
+### `dry_run` request policy
+
+- `volicord.prepare_write`: `dry_run=true` selects the `ToolDryRunResponse` preview branch, whose `base.dry_run` is `true`. `dry_run=false` or an omitted `dry_run` does not select a preview branch.
+
+
 ### Shared response structures
 
 The response descriptor defines success, rejection, and preview as an exact `anyOf` branch union. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. Shared rejection and preview fields remain distinct from the success fields above.

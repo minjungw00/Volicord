@@ -40,14 +40,14 @@ fn operation_result_dry_run_is_rejected_without_preview() -> Result<(), Box<dyn 
         },
         None,
     );
-    request.envelope.dry_run = true;
+    request.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
 
     let response = harness
         .service
         .get_operation_result(request, invocation(OperationCategory::Read))?;
 
     assert_rejected_without_chunk(&response, "VALIDATION_FAILED");
-    assert_eq!(response.response_value["base"]["dry_run"], false);
+    assert_eq!(response.response_value["base"]["dry_run"], true);
     Ok(())
 }
 

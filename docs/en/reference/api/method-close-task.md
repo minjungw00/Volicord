@@ -268,6 +268,12 @@ For successful `intent=complete`, both the returned `state.lifecycle.result` and
 | `state` | yes | no | `StateSummary` |
 | `summary_card` | yes | no | `SummaryCard` |
 
+### `dry_run` request policy
+
+- `volicord.check_close`: `dry_run=true` is accepted through the regular result branch with `base.dry_run=true`; it does not create a preview response. `dry_run=false` or an omitted `dry_run` does not select a preview branch.
+- `volicord.close_task`: `dry_run=true` selects the `ToolDryRunResponse` preview branch, whose `base.dry_run` is `true`. `dry_run=false` or an omitted `dry_run` does not select a preview branch.
+
+
 ### Shared response structures
 
 Each response descriptor defines its supported response branches as an exact `anyOf` branch union. Only a response descriptor that exposes preview includes that branch. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. Shared rejection and preview fields remain distinct from the success fields above.

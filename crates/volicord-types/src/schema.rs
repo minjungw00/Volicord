@@ -41,6 +41,81 @@ use crate::values::{
 /// JSON object used where an owner document defines a field as `object`.
 pub type JsonObject = Map<String, Value>;
 
+/// Normalized dry-run intent obtained from a decoded public request.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DryRunIntent {
+    Requested,
+    #[default]
+    NotRequested,
+}
+
+impl DryRunIntent {
+    /// Normalizes the decoded wire boolean into the semantic request intent.
+    pub const fn from_wire_bool(value: bool) -> Self {
+        if value {
+            Self::Requested
+        } else {
+            Self::NotRequested
+        }
+    }
+
+    /// Returns the current wire boolean represented by this semantic intent.
+    pub const fn as_wire_bool(self) -> bool {
+        matches!(self, Self::Requested)
+    }
+
+    /// Returns whether the decoded request asked for dry-run processing.
+    pub const fn is_requested(self) -> bool {
+        matches!(self, Self::Requested)
+    }
+
+    /// Returns whether the decoded request did not ask for dry-run processing.
+    pub const fn is_not_requested(self) -> bool {
+        matches!(self, Self::NotRequested)
+    }
+
+    /// Supplies the current intent default when request decoding did not
+    /// produce a typed dry-run value.
+    pub const fn for_request_decode_failure() -> Self {
+        Self::NotRequested
+    }
+}
+
+impl Serialize for DryRunIntent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_bool(self.as_wire_bool())
+    }
+}
+
+impl<'de> Deserialize<'de> for DryRunIntent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        bool::deserialize(deserializer).map(Self::from_wire_bool)
+    }
+}
+
+impl JsonSchema for DryRunIntent {
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn schema_name() -> String {
+        "DryRunIntent".to_owned()
+    }
+
+    fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+        Schema::Object(SchemaObject {
+            instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::Boolean))),
+            ..Default::default()
+        })
+    }
+}
+
 /// Owner-defined lifetime of one immutable evidence-capture intent.
 pub const EVIDENCE_CAPTURE_INTENT_TTL_MINUTES: i64 = 15;
 
@@ -213,8 +288,57 @@ pub struct ToolEnvelope {
     pub request_id: RequestId,
     pub idempotency_key: RequiredNullable<IdempotencyKey>,
     pub expected_state_version: RequiredNullable<u64>,
-    pub dry_run: bool,
+    #[serde(default)]
+    pub dry_run: DryRunIntent,
     pub locale: RequiredNullable<String>,
+}
+
+#[cfg(test)]
+mod dry_run_intent_tests {
+    use serde_json::json;
+
+    use super::{DryRunIntent, ToolEnvelope};
+
+    fn envelope_value() -> serde_json::Value {
+        json!({
+            "project_id": "project_dry_run",
+            "task_id": null,
+            "request_id": "request_dry_run",
+            "idempotency_key": null,
+            "expected_state_version": null,
+            "locale": null
+        })
+    }
+
+    #[test]
+    fn omitted_and_explicit_wire_values_normalize_to_typed_intent() {
+        let omitted: ToolEnvelope =
+            serde_json::from_value(envelope_value()).expect("omitted dry_run should decode");
+        assert_eq!(omitted.dry_run, DryRunIntent::NotRequested);
+
+        let mut explicit_false = envelope_value();
+        explicit_false["dry_run"] = json!(false);
+        let explicit_false: ToolEnvelope =
+            serde_json::from_value(explicit_false).expect("false dry_run should decode");
+        assert_eq!(explicit_false.dry_run, DryRunIntent::NotRequested);
+
+        let mut explicit_true = envelope_value();
+        explicit_true["dry_run"] = json!(true);
+        let explicit_true: ToolEnvelope =
+            serde_json::from_value(explicit_true).expect("true dry_run should decode");
+        assert_eq!(explicit_true.dry_run, DryRunIntent::Requested);
+    }
+
+    #[test]
+    fn request_decode_failure_uses_the_explicit_not_requested_default() {
+        let mut malformed = envelope_value();
+        malformed["dry_run"] = json!("true");
+        assert!(serde_json::from_value::<ToolEnvelope>(malformed).is_err());
+        assert_eq!(
+            DryRunIntent::for_request_decode_failure(),
+            DryRunIntent::NotRequested
+        );
+    }
 }
 
 macro_rules! fixed_string_wire_value {
@@ -330,7 +454,7 @@ pub enum ToolResultBase {
     ReadOnly {
         response_kind: ResultResponseKind,
         effect_kind: ReadOnlyEffectKind,
-        dry_run: bool,
+        dry_run: DryRunIntent,
         state_version: Option<u64>,
         disclosure: GuaranteeDisclosure,
         events: Vec<EventRef>,
@@ -363,7 +487,7 @@ pub enum ToolResultBase {
 
 impl ToolResultBase {
     pub fn read_only(
-        dry_run: bool,
+        dry_run: DryRunIntent,
         state_version: Option<u64>,
         disclosure: GuaranteeDisclosure,
         events: Vec<EventRef>,
@@ -436,11 +560,11 @@ impl ToolResultBase {
         }
     }
 
-    pub const fn dry_run(&self) -> bool {
+    pub const fn dry_run_intent(&self) -> DryRunIntent {
         match self {
             Self::ReadOnly { dry_run, .. } => *dry_run,
             Self::CoreCommitted { .. } | Self::StagingCreated { .. } | Self::NoEffect { .. } => {
-                false
+                DryRunIntent::NotRequested
             }
         }
     }
@@ -479,14 +603,18 @@ impl ToolResultBase {
 pub struct ToolRejectedBase {
     response_kind: RejectedResponseKind,
     effect_kind: NoEffectKind,
-    dry_run: bool,
+    dry_run: DryRunIntent,
     state_version: Option<u64>,
     disclosure: GuaranteeDisclosure,
     events: Vec<EventRef>,
 }
 
 impl ToolRejectedBase {
-    fn new(dry_run: bool, state_version: Option<u64>, disclosure: GuaranteeDisclosure) -> Self {
+    fn new(
+        dry_run: DryRunIntent,
+        state_version: Option<u64>,
+        disclosure: GuaranteeDisclosure,
+    ) -> Self {
         Self {
             response_kind: RejectedResponseKind,
             effect_kind: NoEffectKind,
@@ -505,7 +633,7 @@ impl ToolRejectedBase {
         EffectKind::NoEffect
     }
 
-    pub const fn dry_run(&self) -> bool {
+    pub const fn dry_run_intent(&self) -> DryRunIntent {
         self.dry_run
     }
 
@@ -554,8 +682,8 @@ impl ToolDryRunBase {
         EffectKind::NoEffect
     }
 
-    pub const fn dry_run(&self) -> bool {
-        true
+    pub const fn dry_run_intent(&self) -> DryRunIntent {
+        DryRunIntent::Requested
     }
 
     pub const fn state_version(&self) -> Option<u64> {
@@ -581,7 +709,7 @@ pub struct ToolRejectedResponse {
 
 impl ToolRejectedResponse {
     pub fn new(
-        dry_run: bool,
+        dry_run: DryRunIntent,
         state_version: Option<u64>,
         disclosure: GuaranteeDisclosure,
         errors: Vec<ToolError>,

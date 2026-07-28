@@ -61,7 +61,7 @@ fn reconcile_changes_resolves_not_product_change_and_updates_close_blocker(
         &task_id,
         Vec::new(),
     );
-    dry_run_request.envelope.dry_run = true;
+    dry_run_request.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
     dry_run_request.envelope.idempotency_key = RequiredNullable::null();
 
     let dry_run = harness.service.reconcile_changes(
@@ -302,7 +302,7 @@ fn reconcile_changes_dry_run_classifies_user_action_without_state_effect(
         &task_id,
         Vec::new(),
     );
-    dry_run_request.envelope.dry_run = true;
+    dry_run_request.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
     dry_run_request.envelope.idempotency_key = RequiredNullable::null();
     let dry_run = harness.service.reconcile_changes(
         dry_run_request,

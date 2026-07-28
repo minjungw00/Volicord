@@ -29,11 +29,12 @@ use volicord_types::ids::{
     ProjectId, RandomDurableIdGenerator, RequestHash, TaskId, DURABLE_ID_RETRY_LIMIT,
 };
 use volicord_types::methods::{
-    public_method_contract, MethodResponseBranch, MethodResultFields, OperationResultRef,
+    public_method_contract, DryRunRequestRoute, MethodResponseBranch, MethodResultFields,
+    OperationResultRef,
 };
 use volicord_types::schema::{
-    DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, ToolDryRunResponse, ToolEnvelope,
-    ToolError, ToolRejectedResponse, ToolResultBase,
+    DryRunIntent, DryRunSummary, EventRef, GuaranteeDisclosure, JsonObject, ToolDryRunResponse,
+    ToolEnvelope, ToolError, ToolRejectedResponse, ToolResultBase,
 };
 use volicord_types::values::{
     ActorSource, EffectKind, ErrorCode, MethodName, OperationCategory, UserActionChannelKind,
@@ -889,6 +890,12 @@ impl CoreService {
             );
         }
 
+        if let Some(response) =
+            dry_run_policy_rejection(request.method_name, request.envelope.dry_run, None)
+        {
+            return response_outcome_from_rejected(response, None, None);
+        }
+
         let committed_envelope_errors =
             validate_committed_effect_envelope(&request.envelope, &request.policy);
         if !committed_envelope_errors.is_empty() {
@@ -1024,7 +1031,7 @@ impl CoreService {
         let verified_actor = VerifiedActorContext::from_verified_invocation(&verified_invocation);
         let mut prepared_envelope = request.envelope;
         if request.policy.current_state_default
-            && !prepared_envelope.dry_run
+            && prepared_envelope.dry_run.is_not_requested()
             && prepared_envelope.expected_state_version.is_none()
         {
             prepared_envelope.expected_state_version = Some(project_state.state_version).into();
@@ -1073,7 +1080,7 @@ impl CoreService {
         F::Result: Serialize,
     {
         validate_branch_shape(&branch, prepared.envelope.dry_run)?;
-        validate_method_response_branch(prepared.method_name, &branch)?;
+        validate_method_response_branch(prepared.method_name, prepared.envelope.dry_run, &branch)?;
         let project_state = prepared.context.project_state.clone();
         let verified_invocation = prepared.context.verified_invocation.clone();
         let resolved_task_id = prepared.context.resolved_task_id.clone();
@@ -1119,7 +1126,7 @@ impl CoreService {
                     None => {
                         return response_from_rejected(
                             rejected_response(
-                                false,
+                                prepared.envelope.dry_run,
                                 Some(project_state.state_version),
                                 vec![no_active_task_error()],
                             ),
@@ -1138,7 +1145,7 @@ impl CoreService {
                     Err(CorePipelineError::Store(error)) => {
                         return response_from_rejected(
                             rejected_response(
-                                false,
+                                prepared.envelope.dry_run,
                                 Some(project_state.state_version),
                                 vec![store_failure_error(error)],
                             ),
@@ -1169,7 +1176,7 @@ impl CoreService {
                     Ok(response) => Ok(response),
                     Err(CorePipelineError::Store(error)) => response_from_rejected(
                         rejected_response(
-                            false,
+                            prepared.envelope.dry_run,
                             Some(project_state.state_version),
                             vec![store_failure_error(error)],
                         ),
@@ -1251,7 +1258,7 @@ fn canonical_core_utc_timestamp(timestamp: DateTime<Utc>) -> DateTime<Utc> {
 
 /// Builds read-only result metadata.
 pub fn read_only_result_base(
-    dry_run: bool,
+    dry_run: DryRunIntent,
     state_version: Option<u64>,
     events: Vec<EventRef>,
 ) -> ToolResultBase {
@@ -1295,7 +1302,7 @@ pub fn no_effect_result_base(state_version: Option<u64>, events: Vec<EventRef>) 
 
 /// Builds a rejected response and applies public error precedence.
 pub fn rejected_response(
-    dry_run: bool,
+    dry_run: DryRunIntent,
     state_version: Option<u64>,
     mut errors: Vec<ToolError>,
 ) -> ToolRejectedResponse {
@@ -1306,6 +1313,29 @@ pub fn rejected_response(
         GuaranteeDisclosure::authority_record(),
         errors,
     )
+}
+
+/// Builds the canonical rejection for a decoded dry-run request that the
+/// method contract forbids.
+pub(crate) fn dry_run_policy_rejection(
+    method_name: MethodName,
+    dry_run: DryRunIntent,
+    state_version: Option<u64>,
+) -> Option<ToolRejectedResponse> {
+    (public_method_contract(method_name)
+        .dry_run_policy()
+        .route(dry_run)
+        == DryRunRequestRoute::Rejected)
+        .then(|| {
+            rejected_response(
+                dry_run,
+                state_version,
+                vec![validation_error(
+                    "dry_run",
+                    "dry_run=true is forbidden for this method",
+                )],
+            )
+        })
 }
 
 /// Builds a dry-run preview response.
@@ -1376,7 +1406,7 @@ fn validate_committed_effect_envelope(
     envelope: &ToolEnvelope,
     policy: &MethodPolicy,
 ) -> Vec<ToolError> {
-    if envelope.dry_run || policy.effect != MethodEffectPolicy::CoreMutation {
+    if envelope.dry_run.is_requested() || policy.effect != MethodEffectPolicy::CoreMutation {
         return Vec::new();
     }
     if envelope.idempotency_key.is_none() {
@@ -1394,22 +1424,25 @@ fn validate_committed_effect_envelope(
     Vec::new()
 }
 
-fn validate_branch_shape<F>(branch: &OwnerPipelineBranch<F>, dry_run: bool) -> CoreResult<()> {
+fn validate_branch_shape<F>(
+    branch: &OwnerPipelineBranch<F>,
+    dry_run: DryRunIntent,
+) -> CoreResult<()> {
     match (branch, dry_run) {
         (OwnerPipelineBranch::ReadOnly { .. }, _) => Ok(()),
-        (OwnerPipelineBranch::NoEffectResult { .. }, false) => Ok(()),
-        (OwnerPipelineBranch::NoEffectResult { .. }, true) => {
+        (OwnerPipelineBranch::NoEffectResult { .. }, DryRunIntent::NotRequested) => Ok(()),
+        (OwnerPipelineBranch::NoEffectResult { .. }, DryRunIntent::Requested) => {
             Err(CorePipelineError::InvalidDispatch {
                 detail: "no-effect result branch requires ToolEnvelope.dry_run=false".to_owned(),
             })
         }
-        (OwnerPipelineBranch::DryRunPreview { .. }, true) => Ok(()),
-        (OwnerPipelineBranch::DryRunPreview { .. }, false) => {
+        (OwnerPipelineBranch::DryRunPreview { .. }, DryRunIntent::Requested) => Ok(()),
+        (OwnerPipelineBranch::DryRunPreview { .. }, DryRunIntent::NotRequested) => {
             Err(CorePipelineError::InvalidDispatch {
                 detail: "dry-run preview branch requires ToolEnvelope.dry_run=true".to_owned(),
             })
         }
-        (OwnerPipelineBranch::CommitMutation { event_kind, .. }, false) => {
+        (OwnerPipelineBranch::CommitMutation { event_kind, .. }, DryRunIntent::NotRequested) => {
             if event_kind.trim().is_empty() {
                 return Err(CorePipelineError::InvalidDispatch {
                     detail: "committed mutation event_kind must not be empty".to_owned(),
@@ -1417,7 +1450,7 @@ fn validate_branch_shape<F>(branch: &OwnerPipelineBranch<F>, dry_run: bool) -> C
             }
             Ok(())
         }
-        (OwnerPipelineBranch::CommitMutation { .. }, true) => {
+        (OwnerPipelineBranch::CommitMutation { .. }, DryRunIntent::Requested) => {
             Err(CorePipelineError::InvalidDispatch {
                 detail: "commit branch requires ToolEnvelope.dry_run=false".to_owned(),
             })
@@ -1427,6 +1460,7 @@ fn validate_branch_shape<F>(branch: &OwnerPipelineBranch<F>, dry_run: bool) -> C
 
 fn validate_method_response_branch<F>(
     method_name: MethodName,
+    dry_run: DryRunIntent,
     branch: &OwnerPipelineBranch<F>,
 ) -> CoreResult<()> {
     let response_branch = match branch {
@@ -1435,13 +1469,21 @@ fn validate_method_response_branch<F>(
         | OwnerPipelineBranch::CommitMutation { .. } => MethodResponseBranch::Result,
         OwnerPipelineBranch::DryRunPreview { .. } => MethodResponseBranch::DryRun,
     };
-    if public_method_contract(method_name).supports_response_branch(response_branch) {
+    let contract = public_method_contract(method_name);
+    let policy_route = contract.dry_run_policy().route(dry_run);
+    let route_matches_branch = matches!(
+        (policy_route, response_branch),
+        (DryRunRequestRoute::Result, MethodResponseBranch::Result)
+            | (DryRunRequestRoute::Preview, MethodResponseBranch::DryRun)
+    );
+    if contract.supports_response_branch(response_branch) && route_matches_branch {
         return Ok(());
     }
     Err(CorePipelineError::InvalidDispatch {
         detail: format!(
-            "{} cannot produce the {response_branch:?} response branch",
-            method_name.as_str()
+            "{} cannot produce the {response_branch:?} response branch for dry_run={}",
+            method_name.as_str(),
+            dry_run.as_wire_bool()
         ),
     })
 }
@@ -1453,7 +1495,7 @@ fn replay_preflight_response(
     project_state: &ProjectStateHeader,
     verified_invocation: &VerifiedInvocationContext,
 ) -> CoreResult<Option<PipelineResponse>> {
-    if request.policy.replay != ReplayPolicy::Committed || request.envelope.dry_run {
+    if request.policy.replay != ReplayPolicy::Committed || request.envelope.dry_run.is_requested() {
         return Ok(None);
     }
     let Some(idempotency_key) = request.envelope.idempotency_key.as_ref() else {
@@ -1478,6 +1520,7 @@ fn replay_preflight_response(
             record.committed_state_version,
         ) {
             return Ok(Some(stored_response_corrupt_response(
+                request.envelope.dry_run,
                 project_state.state_version,
                 Some(verified_invocation.clone()),
                 request.envelope.task_id.as_ref().cloned(),
@@ -1634,13 +1677,14 @@ impl<'de> Visitor<'de> for UniqueJsonDocumentVisitor {
 }
 
 pub(crate) fn stored_response_corrupt_response(
+    dry_run: DryRunIntent,
     state_version: u64,
     verified_invocation: Option<VerifiedInvocationContext>,
     resolved_task_id: Option<TaskId>,
 ) -> CoreResult<PipelineResponse> {
     response_from_rejected(
         rejected_response(
-            false,
+            dry_run,
             Some(state_version),
             vec![tool_error(
                 ErrorCode::PersistedDataCorrupt,
@@ -1842,6 +1886,7 @@ where
             ) {
                 let current_state_version = store.project_state()?.state_version;
                 return stored_response_corrupt_response(
+                    envelope.dry_run,
                     current_state_version,
                     Some(verified_invocation),
                     Some(task_id.clone()),
@@ -1867,7 +1912,7 @@ where
             current_state_version,
             ..
         } => response_from_rejected(
-            replay_context_mismatch_response(false, current_state_version),
+            replay_context_mismatch_response(envelope.dry_run, current_state_version),
             Some(verified_invocation),
             Some(task_id.clone()),
         ),
@@ -1878,7 +1923,7 @@ where
             attempted_request_hash,
         } => response_from_rejected(
             rejected_response(
-                false,
+                envelope.dry_run,
                 Some(current_state_version),
                 vec![idempotency_conflict_error(
                     current_state_version,
@@ -1897,7 +1942,7 @@ where
             expected_state_version,
         } => response_from_rejected(
             rejected_response(
-                false,
+                envelope.dry_run,
                 Some(current_state_version),
                 vec![stale_expected_state_error(
                     current_state_version,
@@ -2312,20 +2357,68 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_accepts_dry_run_only_for_declared_method_families() {
-        use volicord_types::methods::PUBLIC_METHOD_CONTRACTS;
+    fn pipeline_accepts_preview_only_for_declared_method_policies() {
+        use volicord_types::methods::{DryRunRequestPolicy, PUBLIC_METHOD_CONTRACTS};
 
-        let branch = OwnerPipelineBranch::<PipelineTestResultFields>::DryRunPreview {
+        let preview_branch = OwnerPipelineBranch::<PipelineTestResultFields>::DryRunPreview {
             dry_run_summary: dry_run_summary(),
         };
         for contract in PUBLIC_METHOD_CONTRACTS {
-            let accepted = validate_method_response_branch(contract.method(), &branch).is_ok();
+            let preview_accepted = validate_method_response_branch(
+                contract.method(),
+                DryRunIntent::Requested,
+                &preview_branch,
+            )
+            .is_ok();
             assert_eq!(
-                accepted,
-                contract.supports_response_branch(MethodResponseBranch::DryRun),
+                preview_accepted,
+                contract.dry_run_policy().route(DryRunIntent::Requested)
+                    == DryRunRequestRoute::Preview,
                 "{} pipeline branch disagrees with its response declaration",
                 contract.method().as_str()
             );
+
+            let result_branch = OwnerPipelineBranch::ReadOnly {
+                result_fields: PipelineTestResultFields {
+                    pipeline_marker: contract.method().as_str().to_owned(),
+                },
+            };
+            assert!(
+                validate_method_response_branch(
+                    contract.method(),
+                    DryRunIntent::NotRequested,
+                    &result_branch,
+                )
+                .is_ok(),
+                "{} must accept its result route without dry-run intent",
+                contract.method().as_str()
+            );
+            assert_eq!(
+                validate_method_response_branch(
+                    contract.method(),
+                    DryRunIntent::Requested,
+                    &result_branch,
+                )
+                .is_ok(),
+                contract.dry_run_policy() == DryRunRequestPolicy::RegularResult,
+                "{} requested dry-run result route disagrees with policy",
+                contract.method().as_str()
+            );
+
+            let rejection =
+                dry_run_policy_rejection(contract.method(), DryRunIntent::Requested, None);
+            assert_eq!(
+                rejection.is_some(),
+                contract.dry_run_policy() == DryRunRequestPolicy::Forbidden,
+                "{} policy rejection disagrees with declaration",
+                contract.method().as_str()
+            );
+            if let Some(rejection) = rejection {
+                let value =
+                    serde_json::to_value(rejection).expect("policy rejection should serialize");
+                assert_eq!(value["base"]["response_kind"], "rejected");
+                assert_eq!(value["base"]["dry_run"], true);
+            }
         }
     }
 
@@ -2333,12 +2426,12 @@ mod tests {
     fn semantic_response_constructors_set_every_fixed_branch_fact() {
         for (base, expected_effect, expected_dry_run) in [
             (
-                read_only_result_base(false, Some(7), Vec::new()),
+                read_only_result_base(DryRunIntent::NotRequested, Some(7), Vec::new()),
                 "read_only",
                 false,
             ),
             (
-                read_only_result_base(true, Some(7), Vec::new()),
+                read_only_result_base(DryRunIntent::Requested, Some(7), Vec::new()),
                 "read_only",
                 true,
             ),
@@ -2364,8 +2457,12 @@ mod tests {
             assert_eq!(encoded["dry_run"], expected_dry_run);
         }
 
-        let rejected = serde_json::to_value(rejected_response(true, Some(7), Vec::new()))
-            .expect("rejection should serialize");
+        let rejected = serde_json::to_value(rejected_response(
+            DryRunIntent::Requested,
+            Some(7),
+            Vec::new(),
+        ))
+        .expect("rejection should serialize");
         assert_eq!(rejected["base"]["response_kind"], "rejected");
         assert_eq!(rejected["base"]["effect_kind"], "no_effect");
         assert_eq!(rejected["base"]["dry_run"], true);
@@ -2420,7 +2517,7 @@ mod tests {
     #[test]
     fn operation_result_unavailable_uses_public_error_precedence() {
         let response = rejected_response(
-            false,
+            DryRunIntent::NotRequested,
             Some(7),
             vec![
                 tool_error(
@@ -2456,7 +2553,7 @@ mod tests {
     #[test]
     fn stored_response_gate_rejects_shared_non_result_branches_for_every_method() {
         let rejected = serde_json::to_string(&rejected_response(
-            false,
+            DryRunIntent::NotRequested,
             Some(7),
             vec![tool_error(
                 ErrorCode::ValidationFailed,
@@ -3383,7 +3480,7 @@ mod tests {
             request_id: RequestId::new(request_id),
             idempotency_key: idempotency_key.map(IdempotencyKey::new).into(),
             expected_state_version: expected_state_version.into(),
-            dry_run,
+            dry_run: DryRunIntent::from_wire_bool(dry_run),
             locale: None.into(),
         }
     }

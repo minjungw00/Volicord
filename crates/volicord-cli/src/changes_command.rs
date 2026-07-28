@@ -151,7 +151,7 @@ fn command_reconcile_admitted(
                     Some(IdempotencyKey::new(generated_id("idem_changes_reconcile"))).into()
                 },
                 expected_state_version: Some(state_version).into(),
-                dry_run: options.dry_run,
+                dry_run: volicord_types::schema::DryRunIntent::from_wire_bool(options.dry_run),
                 locale: None.into(),
             },
             task_id: TaskId::new(task_id),
@@ -336,6 +336,32 @@ mod tests {
             }
             other => panic!("expected failure output, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn reconcile_renderer_uses_response_kind_instead_of_dry_run_metadata() {
+        let response_value = json!({
+            "base": {
+                "response_kind": "result",
+                "effect_kind": "read_only",
+                "dry_run": true,
+                "state_version": 3,
+                "events": []
+            }
+        });
+        let response = PipelineResponse {
+            response_json: response_value.to_string(),
+            response_value,
+            operation_result_ref: None,
+            verified_invocation: None,
+            resolved_task_id: None,
+            replayed: false,
+        };
+
+        let output = render_reconcile_response(&response, OutputFormat::Text)
+            .expect("result branch should render as a result");
+        assert!(output.starts_with("Changes reconciliation\n"));
+        assert!(!output.contains("Changes reconciliation (dry run)"));
     }
 
     #[test]

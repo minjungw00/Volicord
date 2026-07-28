@@ -1137,7 +1137,7 @@ fn cancel_and_supersede_terminal_paths_commit_once() -> Result<(), Box<dyn Error
 #[test]
 fn public_error_precedence_keeps_validation_primary() {
     let response = rejected_response(
-        false,
+        volicord_types::schema::DryRunIntent::NotRequested,
         Some(12),
         vec![
             tool_error(ErrorCode::AcceptanceRequired, "acceptance", false, None),
@@ -1536,7 +1536,7 @@ fn prepare_write_issues_write_ticket_only_on_committed_allowed_effect() -> Resul
         Some(&task_id),
         Some(&change_unit_id),
     );
-    dry_run.envelope.dry_run = true;
+    dry_run.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
     let dry_response = service.prepare_write(
         dry_run,
         invocation(&fixture, OperationCategory::AgentWorkflow),

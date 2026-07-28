@@ -1005,7 +1005,6 @@ mod tests {
                 "request_id",
                 "idempotency_key",
                 "expected_state_version",
-                "dry_run",
                 "locale",
             ],
             "ToolEnvelope",
@@ -1115,6 +1114,35 @@ mod tests {
             ],
             "EvidenceObservationInput",
         );
+    }
+
+    #[test]
+    fn every_canonical_method_normalizes_false_and_omitted_dry_run_identically() {
+        for contract in PUBLIC_METHOD_CONTRACTS {
+            let method_name = contract.method().as_str();
+            let explicit_false = sample_for_method(method_name);
+            assert_eq!(
+                explicit_false.pointer("/envelope/dry_run"),
+                Some(&Value::Bool(false)),
+                "{method_name} sample must exercise explicit dry_run=false"
+            );
+
+            let mut omitted = explicit_false.clone();
+            omitted["envelope"]
+                .as_object_mut()
+                .expect("public request envelope")
+                .remove("dry_run");
+            assert_schema_and_serde(method_name, omitted.clone(), true);
+            assert_eq!(
+                typed_request_hash(method_name, explicit_false),
+                typed_request_hash(method_name, omitted),
+                "{method_name} must normalize omitted dry_run to the explicit false intent"
+            );
+            assert_eq!(
+                contract.dry_run_policy().route(DryRunIntent::NotRequested),
+                DryRunRequestRoute::Result
+            );
+        }
     }
 
     #[test]
@@ -2357,7 +2385,7 @@ mod tests {
 
     fn valid_rejection_response_json(dry_run: bool) -> Value {
         serde_json::to_value(ToolRejectedResponse::new(
-            dry_run,
+            DryRunIntent::from_wire_bool(dry_run),
             Some(7),
             GuaranteeDisclosure::authority_record(),
             vec![ToolError {

@@ -216,6 +216,11 @@ Truthful projection rules:
 | `task_flow` | no | yes | `TaskFlowItem[]` |
 | `write_ticket_summary` | no | yes | `WriteTicketStateSummary` |
 
+### `dry_run` request policy
+
+- `volicord.status`: `dry_run=true` is accepted through the regular result branch with `base.dry_run=true`; it does not create a preview response. `dry_run=false` or an omitted `dry_run` does not select a preview branch.
+
+
 ### Shared response structures
 
 The response descriptor defines success and rejection as an exact `anyOf` branch union. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. Shared rejection fields remain distinct from the success fields above.

@@ -8,8 +8,9 @@ use crate::pipeline::{
 use sha2::{Digest, Sha256};
 use volicord_types::canonical::is_canonical_sha256_hex;
 use volicord_types::methods::{
-    GetOperationResultRequest, GetOperationResultResultFields, MethodOperationCategory,
-    OperationResultRef, MAX_OPERATION_RESULT_PAGE_BYTES,
+    public_method_contract, DryRunRequestRoute, GetOperationResultRequest,
+    GetOperationResultResultFields, MethodOperationCategory, OperationResultRef,
+    MAX_OPERATION_RESULT_PAGE_BYTES,
 };
 use volicord_types::schema::RequiredNullable;
 use volicord_types::values::{ErrorCode, MethodName, OperationCategory};
@@ -23,17 +24,21 @@ impl CoreService {
         request: GetOperationResultRequest,
         invocation: InvocationContext,
     ) -> CoreResult<PipelineResponse> {
-        if request.envelope.dry_run {
+        if public_method_contract(MethodName::GetOperationResult)
+            .dry_run_policy()
+            .route(request.envelope.dry_run)
+            == DryRunRequestRoute::Rejected
+        {
             return validation_rejected(
-                false,
+                request.envelope.dry_run,
                 None,
                 "dry_run",
-                "operation-result retrieval requires dry_run=false",
+                "dry_run=true is forbidden for this method",
             );
         }
         if request.envelope.idempotency_key.is_some() {
             return validation_rejected(
-                false,
+                request.envelope.dry_run,
                 None,
                 "idempotency_key",
                 "operation-result retrieval requires idempotency_key=null",
@@ -41,7 +46,7 @@ impl CoreService {
         }
         if request.envelope.expected_state_version.is_some() {
             return validation_rejected(
-                false,
+                request.envelope.dry_run,
                 None,
                 "expected_state_version",
                 "operation-result retrieval requires expected_state_version=null",
@@ -49,7 +54,7 @@ impl CoreService {
         }
         if !valid_response_sha256(&request.operation_result_ref.response_sha256) {
             return validation_rejected(
-                false,
+                request.envelope.dry_run,
                 None,
                 "operation_result_ref.response_sha256",
                 "response_sha256 must use sha256: followed by 64 lowercase hexadecimal digits",
@@ -57,7 +62,7 @@ impl CoreService {
         }
         if request.operation_result_ref.response_size_bytes == 0 {
             return validation_rejected(
-                false,
+                request.envelope.dry_run,
                 None,
                 "operation_result_ref.response_size_bytes",
                 "response_size_bytes must be greater than zero",
@@ -68,7 +73,12 @@ impl CoreService {
             Some(cursor) => match parse_cursor(cursor) {
                 Ok(cursor) => Some(cursor),
                 Err(()) => {
-                    return validation_rejected(false, None, "cursor", "cursor is malformed")
+                    return validation_rejected(
+                        request.envelope.dry_run,
+                        None,
+                        "cursor",
+                        "cursor is malformed",
+                    )
                 }
             },
             None => None,
@@ -300,7 +310,7 @@ fn operation_result_rejected(
     message: &'static str,
 ) -> CoreResult<PipelineResponse> {
     let response = rejected_response(
-        false,
+        prepared.envelope.dry_run,
         Some(prepared.context.project_state.state_version),
         vec![tool_error(code, message, false, None)],
     );

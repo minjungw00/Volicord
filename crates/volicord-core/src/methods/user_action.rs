@@ -113,6 +113,7 @@ fn execute_request_user_action(
         request_json,
         invocation,
         mutation_method_policy(
+            MethodName::RequestUserAction,
             request.operation_category(),
             TaskRequirement::Exact(request.task_id.clone()),
             request.envelope.dry_run,
@@ -134,7 +135,7 @@ fn execute_request_user_action(
             return plan_error_response(&request.envelope, &prepared.context.project_state, error)
         }
     };
-    if request.envelope.dry_run {
+    if request.envelope.dry_run.is_requested() {
         return service.execute_prepared_request::<RequestUserActionResultFields>(
             prepared,
             OwnerPipelineBranch::DryRunPreview {
@@ -491,6 +492,7 @@ fn execute_resolve_user_action(
         serde_json::to_value(&request)?,
         invocation,
         mutation_method_policy(
+            MethodName::ResolveUserAction,
             request.operation_category(),
             TaskRequirement::None,
             request.envelope.dry_run,
@@ -547,7 +549,7 @@ fn execute_resolve_user_action(
             return plan_error_response(&request.envelope, &prepared.context.project_state, error)
         }
     };
-    if request.envelope.dry_run {
+    if request.envelope.dry_run.is_requested() {
         return service.execute_prepared_request::<ResolveUserActionResultFields>(
             prepared,
             OwnerPipelineBranch::DryRunPreview {

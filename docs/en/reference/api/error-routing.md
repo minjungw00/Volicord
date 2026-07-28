@@ -7,9 +7,11 @@ Use it to choose the Volicord API response branch after the [canonical error/blo
 Owned here:
 
 - The branch boundary between `ToolRejectedResponse.errors[]`, method-specific blocked results, and `ToolDryRunResponse` preview diagnostics.
-- Rejected-response routing for request, precondition, state, idempotency, and pre-preview failures.
+- Rejected-response routing for request, precondition, state, idempotency, and
+  post-decode dry-run failures.
 - Blocked-result branch routing, including the distinction between `PrepareWriteResult` blocked decisions and `CloseTaskResult(close_state=blocked)`.
-- `dry_run` branch routing for valid read-only calls, valid previews, preview blockers, and pre-commit failures.
+- `dry_run` branch routing for regular results, valid previews, preview blockers,
+  and rejections.
 
 Adjacent owners:
 
@@ -85,7 +87,7 @@ the public code or domain `details.reason` owned by
 | persisted owner data is corrupt | [Precondition failure](#rejected-precondition-failure) |
 | precondition fails before commit | [Precondition failure](#rejected-precondition-failure) |
 | state or idempotency conflict | [State or idempotency conflict](#rejected-state-or-idempotency-conflict) |
-| `dry_run=true` pre-preview failure | [`dry_run=true` pre-preview failure](#rejected-dry-run-pre-preview-failure) |
+| decoded `dry_run=true` rejection | [Decoded `dry_run=true` rejection](#rejected-dry-run-pre-preview-failure) |
 
 <a id="rejected-request-validation-failure"></a>
 ### Request validation failure
@@ -143,15 +145,18 @@ Routing boundary:
   writes do not invalidate the ticket.
 
 <a id="rejected-dry-run-pre-preview-failure"></a>
-### `dry_run=true` pre-preview failure
+### Decoded `dry_run=true` rejection
 
 Condition:
-- A `dry_run=true` request establishes a method-level rejection before a read
-  result or dry-run preview can be produced. Core operational unavailability
-  has no API response branch.
+- A request has been decoded with normalized requested dry-run intent and then
+  reaches a method-level rejection. This includes a method that prohibits
+  requested dry-run processing and a validation, state, approval, or policy
+  rejection before a result or preview can be produced. Core operational
+  unavailability has no API response branch.
 
 Route:
-- `ToolRejectedResponse` with `dry_run=true`.
+- `ToolRejectedResponse` with `base.response_kind=rejected` and
+  `base.dry_run=true`.
 
 State effect:
 - No committed operation or `dry_run` preview is produced.
@@ -233,21 +238,29 @@ Blocked result means the method may have returned an operation-specific blocked 
 
 ## `dry_run` behavior
 
+`base.dry_run` preserves normalized request intent. It is not a response-branch
+discriminator; `base.response_kind` or the typed response variant selects the
+actual branch.
+
 | `dry_run` case | Detail section |
 |---|---|
-| valid read-only call | [Valid read-only `dry_run=true`](#dry-run-valid-read-only) |
+| valid regular-result request | [Valid regular-result `dry_run=true`](#dry-run-valid-read-only) |
 | valid state-effecting or staging preview | [Valid `dry_run` preview](#dry-run-valid-preview) |
 | expected blockers in preview | [Expected blockers in `dry_run` preview](#dry-run-expected-blockers) |
-| pre-commit failure | [Pre-commit failure with `dry_run=true`](#dry-run-pre-commit-failure) |
+| post-decode rejection | [Post-decode rejection with `dry_run=true`](#dry-run-pre-commit-failure) |
+| failure before typed intent | [Failure before typed dry-run intent](#dry-run-predecode-failure) |
 
 <a id="dry-run-valid-read-only"></a>
-### Valid read-only `dry_run=true`
+### Valid regular-result `dry_run=true`
 
 Condition:
-- A valid read-only call sets `dry_run=true`.
+- A method contract accepts normalized requested dry-run intent through its
+  regular result branch.
 
 Response path:
-- Method-specific result with `base.dry_run=true` and `base.effect_kind=read_only`.
+- Method-specific result with `base.response_kind=result` and
+  `base.dry_run=true`. The current regular-result methods use
+  `base.effect_kind=read_only`.
 
 Branch boundary:
 - `dry_run=true` is not a synonym for `ToolDryRunResponse`.
@@ -256,10 +269,12 @@ Branch boundary:
 ### Valid `dry_run` preview
 
 Condition:
-- A valid state-effecting or storage-owned staging operation sets `dry_run=true`.
+- A method contract maps normalized requested dry-run intent to its preview
+  branch.
 
 Response path:
-- `ToolDryRunResponse` with `DryRunSummary`.
+- `ToolDryRunResponse` with `base.response_kind=dry_run`,
+  `base.dry_run=true`, and `DryRunSummary`.
 
 State effect:
 - The `dry_run` preview is not a committed write.
@@ -278,14 +293,29 @@ Preview boundary:
 - `PlannedBlocker.code` must not be `STATE_VERSION_CONFLICT`.
 
 <a id="dry-run-pre-commit-failure"></a>
-### Pre-commit failure with `dry_run=true`
+### Post-decode rejection with `dry_run=true`
 
 Condition:
-- A `dry_run=true` request has a pre-commit failure.
+- A request is successfully decoded with normalized requested dry-run intent,
+  then reaches any rejection path.
 
 Response path:
-- `ToolRejectedResponse`.
+- `ToolRejectedResponse` with `base.response_kind=rejected` and
+  `base.dry_run=true`.
 
 Preview boundary:
 - The failure is not represented as `dry_run` preview data.
 - Stale state is rejected before preview.
+
+<a id="dry-run-predecode-failure"></a>
+### Failure before typed dry-run intent
+
+Condition:
+- Request decoding fails before a typed dry-run intent can be obtained.
+
+Intent default:
+- The normalized intent default is not requested. If the failure is represented
+  by an API rejection, its `base.dry_run` is `false`.
+- The boundary does not inspect malformed raw JSON to infer another value.
+- A transport or adapter operational failure outside the API response branches
+  has no response base.

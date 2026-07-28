@@ -210,6 +210,11 @@ Cursor는 배타적이며 다음 페이지는 cursor의 전체 정렬 pair 뒤�
 | `task_flow` | 아니요 | 예 | `TaskFlowItem[]` |
 | `write_ticket_summary` | 아니요 | 예 | `WriteTicketStateSummary` |
 
+### `dry_run` 요청 정책
+
+- `volicord.status`: `dry_run=true`를 일반 결과 분기로 처리하고 `base.dry_run=true`를 보존하며, 미리보기 응답은 만들지 않습니다. `dry_run=false`이거나 `dry_run`이 생략되면 미리보기 분기를 선택하지 않습니다.
+
+
 ### 공유 응답 구조
 
 응답 설명자는 성공과 거절을 정확한 `anyOf` 분기 union으로 정의합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 필드는 위 성공 필드와 구분된 상태로 유지됩니다.

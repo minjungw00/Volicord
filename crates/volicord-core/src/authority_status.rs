@@ -128,7 +128,7 @@ pub fn validate_authority_status(
         .map_err(|_| AuthorityStatusValidationError::MalformedStatus)?;
     if status.base.response_kind() != ResponseKind::Result
         || status.base.effect_kind() != EffectKind::ReadOnly
-        || status.base.dry_run()
+        || status.base.dry_run_intent().is_requested()
     {
         return Err(AuthorityStatusValidationError::IneligibleStatus);
     }

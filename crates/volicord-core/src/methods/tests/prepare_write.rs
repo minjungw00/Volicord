@@ -1371,7 +1371,7 @@ fn prepare_write_dry_run_without_current_change_unit_has_no_effects() -> Result<
         Some(&task_id),
         None,
     );
-    request.envelope.dry_run = true;
+    request.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
 
     let response = harness.service.prepare_write(
         request.clone(),
@@ -1910,7 +1910,7 @@ fn prepare_write_dry_run_has_no_write_ticket_effect() -> Result<(), Box<dyn Erro
         Some(&task_id),
         Some(&change_unit_id),
     );
-    request.envelope.dry_run = true;
+    request.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
     let response = harness
         .service
         .prepare_write(request, invocation(OperationCategory::AgentWorkflow))?;
@@ -1946,7 +1946,7 @@ fn prepare_write_dry_run_has_no_write_ticket_effect() -> Result<(), Box<dyn Erro
         Some(&task_id),
         Some(&change_unit_id),
     );
-    blocked_preview.envelope.dry_run = true;
+    blocked_preview.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
     blocked_preview.intended_paths = vec!["src/other.rs".to_owned()];
     let blocked_preview = harness.service.prepare_write(
         blocked_preview,

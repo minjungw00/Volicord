@@ -827,7 +827,7 @@ impl McpAdapter {
                     request_id: RequestId::new("req_internal_user_action_resume"),
                     idempotency_key: RequiredNullable::null(),
                     expected_state_version: RequiredNullable::null(),
-                    dry_run: false,
+                    dry_run: volicord_types::schema::DryRunIntent::NotRequested,
                     locale: RequiredNullable::null(),
                 };
                 let invocation = self.derive_read_only_invocation_context(
@@ -1360,7 +1360,7 @@ impl McpAdapter {
             )),
             idempotency_key,
             expected_state_version: state_version.into(),
-            dry_run: false,
+            dry_run: volicord_types::schema::DryRunIntent::NotRequested,
             locale: Some(DEFAULT_LOCALE.to_owned()).into(),
         })
     }

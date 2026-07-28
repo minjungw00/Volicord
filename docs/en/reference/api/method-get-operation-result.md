@@ -99,6 +99,11 @@ expose private UserAction content.
 | `operation_result_ref` | yes | no | `OperationResultRef` |
 | `start_offset_bytes` | yes | no | `integer` |
 
+### `dry_run` request policy
+
+- `volicord.get_operation_result`: a decoded request with `dry_run=true` is rejected, and the rejection preserves `base.dry_run=true` without creating a preview branch. `dry_run=false` or an omitted `dry_run` does not select a preview branch.
+
+
 ### Shared response structures
 
 The response descriptor defines success and rejection as an exact `anyOf` branch union. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. Shared rejection fields remain distinct from the success fields above.

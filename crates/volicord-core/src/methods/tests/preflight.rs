@@ -99,7 +99,7 @@ fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn E
         Some(&task_id),
         Some(&change_unit_id),
     );
-    prepare_write.envelope.dry_run = true;
+    prepare_write.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
     let prepare_write = harness
         .service
         .prepare_write(prepare_write, invocation(OperationCategory::AgentWorkflow))?;
@@ -166,7 +166,7 @@ fn public_methods_use_same_verified_invocation_context() -> Result<(), Box<dyn E
         &pending_judgment_id,
         "accept",
     );
-    resolve_action.envelope.dry_run = true;
+    resolve_action.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
     let resolved_action = harness
         .service
         .resolve_user_action(resolve_action, invocation(OperationCategory::UserOnly))?;

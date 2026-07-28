@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use schemars::{schema_for, JsonSchema};
 use serde_json::{json, Value};
 
-use crate::methods::{MethodResponseBranch, OperationResultRef, PUBLIC_METHOD_CONTRACTS};
+use crate::methods::{
+    DryRunRequestPolicy, MethodResponseBranch, OperationResultRef, PUBLIC_METHOD_CONTRACTS,
+};
 use crate::schema::{
     AcceptanceCriterion, AcceptanceCriterionInput, AcceptanceCriterionReplacement,
     AcceptedRiskInput, AgentSafeUserActionRequestSummary, AgentSession, ArtifactInput, ArtifactRef,
@@ -34,7 +36,7 @@ use crate::schema::{
     ValidatorResult, WorkspaceContext, WriteDecisionReason, WriteTicket, WriteTicketAttemptScope,
     WriteTicketPathPatterns, WriteTicketScope, WriteTicketStateSummary, WriteTicketValidityBasis,
 };
-use crate::values::UserActionStatus;
+use crate::values::{MethodName, UserActionStatus};
 
 /// One exact JSON instance shape exposed by a semantic contract descriptor.
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -127,6 +129,7 @@ pub struct JsonContractDescriptor {
     related_contracts: Vec<String>,
     schema: Option<Value>,
     example_schemas: BTreeMap<String, Value>,
+    method_dry_run_contract: Option<(MethodName, DryRunRequestPolicy)>,
 }
 
 impl JsonContractDescriptor {
@@ -144,6 +147,7 @@ impl JsonContractDescriptor {
             related_contracts,
             schema: Some(schema),
             example_schemas,
+            method_dry_run_contract: None,
         }
     }
 
@@ -167,6 +171,7 @@ impl JsonContractDescriptor {
             related_contracts,
             schema: Some(schema),
             example_schemas,
+            method_dry_run_contract: None,
         }
     }
 
@@ -196,6 +201,7 @@ impl JsonContractDescriptor {
             related_contracts,
             schema: None,
             example_schemas,
+            method_dry_run_contract: None,
         }
     }
 
@@ -210,6 +216,7 @@ impl JsonContractDescriptor {
             related_contracts,
             schema: None,
             example_schemas: BTreeMap::new(),
+            method_dry_run_contract: None,
         }
     }
 
@@ -241,6 +248,21 @@ impl JsonContractDescriptor {
     /// Returns the exact JSON Schema for one supported example shape.
     pub fn example_schema(&self, shape: &str) -> Option<&Value> {
         self.example_schemas.get(shape)
+    }
+
+    /// Returns the canonical method and dry-run request policy when this is a
+    /// public method contract descriptor.
+    pub const fn method_dry_run_contract(&self) -> Option<(MethodName, DryRunRequestPolicy)> {
+        self.method_dry_run_contract
+    }
+
+    fn with_method_dry_run_contract(
+        mut self,
+        method: MethodName,
+        policy: DryRunRequestPolicy,
+    ) -> Self {
+        self.method_dry_run_contract = Some((method, policy));
+        self
     }
 
     /// Exposes one exact instance shape owned by another crate.
@@ -289,7 +311,8 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
             request_id,
             request.clone(),
             vec![response_id.to_owned()],
-        );
+        )
+        .with_method_dry_run_contract(method, contract.dry_run_policy());
         request_descriptor
             .example_schemas
             .insert(JsonExampleShape::MethodParams.id(), request.clone());
@@ -306,7 +329,8 @@ pub fn public_json_contract_descriptors() -> Vec<JsonContractDescriptor> {
             response_id,
             response.clone(),
             vec![request_id.to_owned()],
-        );
+        )
+        .with_method_dry_run_contract(method, contract.dry_run_policy());
         response_descriptor.example_schemas.insert(
             JsonExampleShape::CompleteMethodResponse.id(),
             result.clone(),

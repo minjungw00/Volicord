@@ -74,7 +74,7 @@ pub(super) fn request() -> CloseReadinessRequest {
             request_id: RequestId::new("request_close_readiness"),
             idempotency_key: None.into(),
             expected_state_version: None.into(),
-            dry_run: false,
+            dry_run: volicord_types::schema::DryRunIntent::NotRequested,
             locale: None.into(),
         },
         task_id,

@@ -24,7 +24,7 @@ pub(crate) fn replay_context_from_verified_invocation(
 }
 
 pub(crate) fn replay_context_mismatch_response(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     current_state_version: u64,
 ) -> ToolRejectedResponse {
     rejected_response(

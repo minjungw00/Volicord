@@ -762,7 +762,7 @@ fn envelope(
         request_id: RequestId::new(request_id),
         idempotency_key: idempotency_key.map(IdempotencyKey::new).into(),
         expected_state_version: None.into(),
-        dry_run: false,
+        dry_run: volicord_types::schema::DryRunIntent::NotRequested,
         locale: None.into(),
     }
 }

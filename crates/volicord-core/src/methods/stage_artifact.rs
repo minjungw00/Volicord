@@ -13,7 +13,10 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use volicord_store::artifacts::{ArtifactStagingInsert, StagedPayloadKind};
 use volicord_store::mutation::RuntimeHomeMutationContext;
-use volicord_types::methods::{MethodOperationCategory, StageArtifactRequest, StageArtifactResult};
+use volicord_types::methods::{
+    public_method_contract, DryRunRequestRoute, MethodOperationCategory, StageArtifactRequest,
+    StageArtifactResult,
+};
 use volicord_types::schema::{StagedArtifactHandle, ToolEnvelope};
 use volicord_types::values::{ErrorCode, EvidenceDisplayState, MethodName, RedactionState};
 
@@ -44,7 +47,11 @@ impl CoreService {
             TaskRequirement::Exact(request.task_id.clone()),
             ReplayPolicy::None,
             FreshnessPolicy::IfPresent,
-            if request.envelope.dry_run {
+            if public_method_contract(MethodName::StageArtifact)
+                .dry_run_policy()
+                .route(request.envelope.dry_run)
+                == DryRunRequestRoute::Preview
+            {
                 MethodEffectPolicy::DryRunPreview
             } else {
                 MethodEffectPolicy::Staging
@@ -75,7 +82,7 @@ impl CoreService {
                 );
             }
         };
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             let response = dry_run_response(
                 Some(project_state.state_version),
                 dry_run_summary(

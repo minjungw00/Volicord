@@ -1383,7 +1383,7 @@ fn status_continuity_empty_page_and_invalid_controls_fail_closed() -> Result<(),
 
     let ambiguous = harness.service.status(
         StatusRequest {
-            envelope: envelope("req_status_continuity_ambiguous", None, false, None, None),
+            envelope: envelope("req_status_continuity_ambiguous", None, true, None, None),
             include: StatusInclude {
                 task: false,
                 pending_user_actions: false,
@@ -1401,6 +1401,7 @@ fn status_continuity_empty_page_and_invalid_controls_fail_closed() -> Result<(),
         invocation(OperationCategory::Read),
     )?;
     assert_status_continuity_validation_rejection(&ambiguous, "continuity_page");
+    assert_eq!(ambiguous.response_value["base"]["dry_run"], true);
     assert_eq!(harness.counts()?, before);
     Ok(())
 }

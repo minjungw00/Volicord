@@ -11,8 +11,8 @@ use volicord_types::ids::{
     UserActionRequestId, UserActionResolutionId, WriteTicketId,
 };
 use volicord_types::methods::{
-    CloseTaskResultFields, PrepareWriteRequest, PrepareWriteResultFields, RecordRunRequest,
-    UpdateScopeRequest,
+    public_method_contract, CloseTaskResultFields, DryRunRequestRoute, PrepareWriteRequest,
+    PrepareWriteResultFields, RecordRunRequest, UpdateScopeRequest,
 };
 use volicord_types::product_path::path_is_within;
 use volicord_types::schema::{
@@ -1106,7 +1106,7 @@ where
 }
 
 pub(crate) fn validation_plan_error<T>(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     field: &'static str,
     message: &'static str,
@@ -1119,7 +1119,7 @@ pub(crate) fn validation_plan_error<T>(
 fn checked_derived_expiration(
     created_at: &UtcTimestamp,
     duration: Duration,
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     field: &'static str,
 ) -> Result<UtcTimestamp, PlanError> {
@@ -1135,11 +1135,16 @@ fn checked_derived_expiration(
 }
 
 fn mutation_method_policy(
+    method_name: MethodName,
     operation_category: volicord_types::values::OperationCategory,
     task: TaskRequirement,
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
 ) -> MethodPolicy {
-    if dry_run {
+    if public_method_contract(method_name)
+        .dry_run_policy()
+        .route(dry_run)
+        == DryRunRequestRoute::Preview
+    {
         MethodPolicy::exact(
             operation_category,
             task,
@@ -1297,7 +1302,7 @@ fn paths_match_current_change_unit(
 pub(crate) fn observe_request_product_paths(
     repository_root: &Path,
     raw_paths: &[String],
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     field: &'static str,
     invalid_message: &'static str,
@@ -2802,7 +2807,7 @@ fn object_from_value(value: Value) -> CoreResult<JsonObject> {
 }
 
 pub(crate) fn validation_rejected(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     field: &'static str,
     message: &'static str,
@@ -2822,7 +2827,7 @@ pub(crate) fn validation_rejected(
 }
 
 fn rejected_pipeline_response(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     errors: Vec<volicord_types::schema::ToolError>,
 ) -> CoreResult<PipelineResponse> {
@@ -2840,7 +2845,7 @@ fn rejected_pipeline_response(
 }
 
 fn infallible_rejected_pipeline_response(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     errors: Vec<volicord_types::schema::ToolError>,
 ) -> PipelineResponse {

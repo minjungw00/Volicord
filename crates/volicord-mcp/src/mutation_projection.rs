@@ -443,3 +443,37 @@ fn authority_receipt_compatibility_text(
         receipt.state_version,
     )))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::response_kind_from_structured_content;
+
+    #[test]
+    fn response_branch_projection_uses_response_kind_not_dry_run_metadata() {
+        let regular_result_with_requested_intent = json!({
+            "base": {
+                "response_kind": "result",
+                "dry_run": true
+            }
+        });
+        assert_eq!(
+            response_kind_from_structured_content(&regular_result_with_requested_intent),
+            Some("result")
+        );
+
+        let compound_result_with_requested_intent = json!({
+            "agent_workflow_result": {
+                "base": {
+                    "response_kind": "result",
+                    "dry_run": true
+                }
+            }
+        });
+        assert_eq!(
+            response_kind_from_structured_content(&compound_result_with_requested_intent),
+            Some("result")
+        );
+    }
+}

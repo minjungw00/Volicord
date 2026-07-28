@@ -101,6 +101,11 @@ changes to a bound basis do.
 | `capture_intent_ref` | yes | no | `StateRecordRef` |
 | `expires_at` | yes | no | `UtcTimestamp` |
 
+### `dry_run` request policy
+
+- `volicord.prepare_evidence_capture`: `dry_run=true` selects the `ToolDryRunResponse` preview branch, whose `base.dry_run` is `true`. `dry_run=false` or an omitted `dry_run` does not select a preview branch.
+
+
 ### Shared response structures
 
 The response descriptor defines success, rejection, and preview as an exact `anyOf` branch union. The rejection branch uses the generated [`ToolRejectedResponse`](schema-core.md#common-response) structure. When method behavior selects a preview branch, it uses the generated [`ToolDryRunResponse`](schema-core.md#common-response) structure. Shared rejection and preview fields remain distinct from the success fields above.

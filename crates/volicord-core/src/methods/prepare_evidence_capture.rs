@@ -64,6 +64,7 @@ impl CoreService {
             request_json,
             invocation,
             mutation_method_policy(
+                MethodName::PrepareEvidenceCapture,
                 request.operation_category(),
                 TaskRequirement::Exact(request.task_id.clone()),
                 request.envelope.dry_run,
@@ -90,7 +91,7 @@ impl CoreService {
             }
         };
 
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request::<PrepareEvidenceCaptureResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {

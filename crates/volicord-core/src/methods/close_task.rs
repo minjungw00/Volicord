@@ -280,7 +280,7 @@ impl CoreService {
         };
         let plan_now = prepared.operation_now.clone();
 
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request::<CloseTaskResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
@@ -420,6 +420,7 @@ fn check_close_policy(request: &CloseTaskPlanRequest) -> MethodPolicy {
 
 fn close_task_policy(request: &CloseTaskPlanRequest) -> MethodPolicy {
     mutation_method_policy(
+        MethodName::CloseTask,
         request.operation_category(),
         TaskRequirement::Exact(request.task_id.clone()),
         request.envelope.dry_run,

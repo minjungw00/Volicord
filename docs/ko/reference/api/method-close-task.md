@@ -272,6 +272,12 @@ API 경계 블록:
 | `state` | 예 | 아니요 | `StateSummary` |
 | `summary_card` | 예 | 아니요 | `SummaryCard` |
 
+### `dry_run` 요청 정책
+
+- `volicord.check_close`: `dry_run=true`를 일반 결과 분기로 처리하고 `base.dry_run=true`를 보존하며, 미리보기 응답은 만들지 않습니다. `dry_run=false`이거나 `dry_run`이 생략되면 미리보기 분기를 선택하지 않습니다.
+- `volicord.close_task`: `dry_run=true`가 `ToolDryRunResponse` 미리보기 분기를 선택하며, 이 분기의 `base.dry_run`은 `true`입니다. `dry_run=false`이거나 `dry_run`이 생략되면 미리보기 분기를 선택하지 않습니다.
+
+
 ### 공유 응답 구조
 
 각 응답 설명자는 지원하는 응답 분기를 정확한 `anyOf` 분기 union으로 정의합니다. 미리보기를 노출하는 응답 설명자만 해당 분기를 포함합니다. 거절 분기는 생성된 [`ToolRejectedResponse`](schema-core.md#common-response) 구조를 사용합니다. 메서드 동작이 미리보기 분기를 선택할 때는 생성된 [`ToolDryRunResponse`](schema-core.md#common-response) 구조를 사용합니다. 공유 거절 및 미리보기 필드는 위 성공 필드와 구분된 상태로 유지됩니다.

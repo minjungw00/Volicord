@@ -2668,8 +2668,8 @@ documents:
   - api.schema.user_action
   owner_area: core_api
   created_on: '2026-06-13'
-  last_updated_on: '2026-07-27'
-  last_verified_on: '2026-07-27'
+  last_updated_on: '2026-07-28'
+  last_verified_on: '2026-07-28'
   primary_audience:
   - API implementers
   - agent integrators

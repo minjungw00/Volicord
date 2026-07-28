@@ -72,6 +72,7 @@ impl CoreService {
             }
         }
         let policy = mutation_method_policy(
+            MethodName::UpdateScope,
             request.operation_category(),
             TaskRequirement::Exact(request.task_id.clone()),
             request.envelope.dry_run,
@@ -106,7 +107,7 @@ impl CoreService {
             }
         };
 
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request::<UpdateScopeResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
@@ -870,7 +871,7 @@ fn project_update_scope_response(
 }
 
 fn scope_validation_rejection<T>(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     field: &'static str,
     message: &'static str,

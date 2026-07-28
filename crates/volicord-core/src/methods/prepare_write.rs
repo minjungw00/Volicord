@@ -6,9 +6,9 @@ use super::{
     active_acceptance_criteria_for_task, allocate_write_ticket_id, baseline_matches,
     build_state_summary, change_unit_effect_contract, change_unit_ref, decode_required_json,
     guarantee_display_for_invocation, infallible_rejected_pipeline_response,
-    matching_sensitive_approval, object_from_value, observe_request_product_paths,
-    parse_owner_storage_value, paths_match_current_change_unit, plan_error_response,
-    prepare_or_response, project_state_projection, projected_close_basis,
+    matching_sensitive_approval, mutation_method_policy, object_from_value,
+    observe_request_product_paths, parse_owner_storage_value, paths_match_current_change_unit,
+    plan_error_response, prepare_or_response, project_state_projection, projected_close_basis,
     projected_evidence_summary, record_core_workflow_metric_best_effort,
     resolve_prepare_write_task, response_committed_fresh_effect, state_ref, state_ref_from_stored,
     store_error_plan, user_action_service_plan_error, validate_prepare_write_change_unit,
@@ -17,9 +17,8 @@ use super::{
     SummaryBuild,
 };
 use crate::pipeline::{
-    tool_error, CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
-    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
-    TaskRequirement, VerifiedInvocationContext,
+    tool_error, CorePipelineError, CoreResult, CoreService, InvocationContext, MethodPolicy,
+    OwnerPipelineBranch, PipelineResponse, TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::effect_contract::{product_write_violations, EffectContractViolation};
 use crate::policy::workflow::{
@@ -129,7 +128,7 @@ impl CoreService {
             }
         };
 
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request::<PrepareWriteResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
@@ -193,23 +192,12 @@ fn prepare_write_policy(request: &PrepareWriteRequest) -> MethodPolicy {
         .map(TaskRequirement::Exact)
         .unwrap_or(TaskRequirement::Required);
 
-    if request.envelope.dry_run {
-        MethodPolicy::exact(
-            request.operation_category(),
-            task,
-            ReplayPolicy::None,
-            FreshnessPolicy::IfPresent,
-            MethodEffectPolicy::DryRunPreview,
-        )
-    } else {
-        MethodPolicy::exact(
-            request.operation_category(),
-            task,
-            ReplayPolicy::Committed,
-            FreshnessPolicy::IfPresent,
-            MethodEffectPolicy::CoreMutation,
-        )
-    }
+    mutation_method_policy(
+        MethodName::PrepareWrite,
+        request.operation_category(),
+        task,
+        request.envelope.dry_run,
+    )
 }
 
 struct PrepareWriteRawRequest {
@@ -804,10 +792,13 @@ fn plan_prepare_write_mutations(
     let compatible_ticket = allowed
         .then_some(active_ticket_selection.compatible)
         .flatten();
-    let reuse_write_ticket = compatible_ticket.is_some() && !request.envelope.dry_run;
-    let issue_write_ticket = allowed && compatible_ticket.is_none() && !request.envelope.dry_run;
+    let reuse_write_ticket =
+        compatible_ticket.is_some() && request.envelope.dry_run.is_not_requested();
+    let issue_write_ticket =
+        allowed && compatible_ticket.is_none() && request.envelope.dry_run.is_not_requested();
     let write_ticket_id = if let Some(record) = compatible_ticket.as_ref() {
-        (!request.envelope.dry_run).then(|| WriteTicketId::new(record.write_ticket_id.clone()))
+        (request.envelope.dry_run.is_not_requested())
+            .then(|| WriteTicketId::new(record.write_ticket_id.clone()))
     } else if issue_write_ticket {
         Some(allocate_write_ticket_id(service, store).map_err(PlanError::Core)?)
     } else {
@@ -874,7 +865,7 @@ fn plan_prepare_write_mutations(
             .collect::<Vec<_>>()
     };
     let planned_write_ticket_record = if let Some(record) = compatible_ticket.as_ref() {
-        (!request.envelope.dry_run).then(|| record.clone())
+        (request.envelope.dry_run.is_not_requested()).then(|| record.clone())
     } else {
         write_ticket_id
             .as_ref()
@@ -908,7 +899,7 @@ fn plan_prepare_write_mutations(
         WriteTicketEffect::None
     };
     let mut storage_mutations = control_mutations;
-    if !request.envelope.dry_run {
+    if request.envelope.dry_run.is_not_requested() {
         for write_ticket_id in active_ticket_selection.stale_approval_ticket_ids {
             storage_mutations.push(CoreStorageMutation::WriteTicket(
                 WriteTicketMutation::InvalidateById(WriteTicketByIdInvalidation {
@@ -1196,7 +1187,7 @@ fn project_prepare_write_response(
 }
 
 fn prepare_write_validation_error<T>(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: u64,
     field: &'static str,
     message: &'static str,

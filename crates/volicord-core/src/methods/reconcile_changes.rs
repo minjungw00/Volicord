@@ -6,9 +6,9 @@ use super::{
     active_acceptance_criteria_for_task, allocate_user_action_request_id, build_state_summary,
     changes_summary_text, close_state_text, core_error_response, decode_required_json,
     evidence_gate_summary_text, evidence_summary_for_display, guarantee_display_for_invocation,
-    no_active_task_response, normalize_next_action_collection, object_from_value,
-    parse_owner_storage_value, parse_storage_value, prepare_or_response, primary_next_action,
-    profile_summary_text, project_state_projection, projected_close_basis,
+    mutation_method_policy, no_active_task_response, normalize_next_action_collection,
+    object_from_value, parse_owner_storage_value, parse_storage_value, prepare_or_response,
+    primary_next_action, profile_summary_text, project_state_projection, projected_close_basis,
     projected_evidence_summary, projected_write_ticket_summary,
     record_core_workflow_metric_best_effort, response_committed_fresh_effect, state_ref,
     state_ref_from_stored, storage_value, store_error_plan, summary_card_for_core,
@@ -16,9 +16,8 @@ use super::{
     PlanError, SummaryBuild, SummaryCardBuild,
 };
 use crate::pipeline::{
-    CorePipelineError, CoreResult, CoreService, FreshnessPolicy, InvocationContext,
-    MethodEffectPolicy, MethodPolicy, OwnerPipelineBranch, PipelineResponse, ReplayPolicy,
-    TaskRequirement, VerifiedInvocationContext,
+    CorePipelineError, CoreResult, CoreService, InvocationContext, OwnerPipelineBranch,
+    PipelineResponse, TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::write_ticket::write_ticket_is_idle_expired;
 use chrono::{DateTime, Utc};
@@ -135,12 +134,11 @@ impl CoreService {
             request.envelope.clone(),
             request_json,
             invocation,
-            MethodPolicy::exact(
+            mutation_method_policy(
+                MethodName::ReconcileChanges,
                 policy_operation_category,
                 TaskRequirement::Exact(request.task_id.clone()),
-                ReplayPolicy::Committed,
-                FreshnessPolicy::IfPresent,
-                MethodEffectPolicy::CoreMutation,
+                request.envelope.dry_run,
             ),
         )? {
             Ok(prepared) => prepared,
@@ -163,7 +161,7 @@ impl CoreService {
             }
         };
 
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request::<ReconcileChangesResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
@@ -347,7 +345,7 @@ fn plan_reconcile_changes(
                 record,
                 &unrecorded_ref,
                 now,
-                !request.envelope.dry_run,
+                request.envelope.dry_run.is_not_requested(),
             )?;
             planned_user_actions.push(user_action_plan);
         }
@@ -381,11 +379,12 @@ fn plan_reconcile_changes(
             .filter_map(|user_action| user_action.mutation.clone()),
     );
 
-    let planned_state_version = if storage_mutations.is_empty() || request.envelope.dry_run {
-        project_state.state_version
-    } else {
-        project_state.state_version + 1
-    };
+    let planned_state_version =
+        if storage_mutations.is_empty() || request.envelope.dry_run.is_requested() {
+            project_state.state_version
+        } else {
+            project_state.state_version + 1
+        };
     for finding in &mut unresolved_findings {
         normalize_next_action_collection(
             std::slice::from_mut(&mut finding.next_action),
@@ -1110,13 +1109,13 @@ fn resolution_summary(
 fn reconcile_next_actions(
     unresolved_findings: &[UnrecordedChangeFinding],
     planned_user_actions: &[PlannedUserAction],
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
 ) -> Vec<NextActionSummary> {
     if planned_user_actions.is_empty() && unresolved_findings.is_empty() {
         return Vec::new();
     }
     if !planned_user_actions.is_empty() {
-        if dry_run {
+        if dry_run.is_requested() {
             return vec![NextActionSummary {
                 presentation_role: NextActionPresentationRole::Primary,
                 action_kind: NextActionKind::ReconcileChanges,

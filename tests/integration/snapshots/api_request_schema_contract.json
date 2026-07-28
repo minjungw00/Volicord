@@ -40,7 +40,7 @@
         "envelope",
         "task_id"
       ],
-      "sha256": "sha256:88b354baf97f041c75202bfc8fdc5f61e0f112db6084fce1d12857ad21e540ed"
+      "sha256": "sha256:348144463704b6716aee23c953e4026ee24ad69bf1514f30d8bcd44f11b8538a"
     },
     "volicord.close_task": {
       "definitions": [
@@ -64,7 +64,7 @@
         "task_id",
         "user_note"
       ],
-      "sha256": "sha256:f74a10db3729a6f5d2f4b9954900e44391fa2fc2fb4ef101325378959efddf5f"
+      "sha256": "sha256:86152021876ab5fe92ec36c4ba4f53bd70ad4b5e1371ddbb682f7adda17a24f5"
     },
     "volicord.get_operation_result": {
       "definitions": [
@@ -82,7 +82,7 @@
         "envelope",
         "operation_result_ref"
       ],
-      "sha256": "sha256:0cd01a30a8aed68caf33b20c4bab0b229fc6b00242d62b20c8db3fd65f56b9f5"
+      "sha256": "sha256:732919d160755a008ab731dafaae4fbacc895937af0d5b625f9cdd5990c99202"
     },
     "volicord.intake": {
       "definitions": [
@@ -137,7 +137,7 @@
         "requested_mode",
         "resume_policy"
       ],
-      "sha256": "sha256:0ba45d2dc14aa477dc2018e44564bc6376e408b1ccbeb2c12b90d261331249b9"
+      "sha256": "sha256:b909fc7ca299f9838eaadff8e00ef52ea01e774e8dbe53cdcb7db2351b65c0c2"
     },
     "volicord.prepare_evidence_capture": {
       "definitions": [
@@ -161,7 +161,7 @@
         "target",
         "task_id"
       ],
-      "sha256": "sha256:7c18dd8a132d5d81687d87aa19a9b3fdb24ccc7ae8674a25d2e7e8a6b6566bc6"
+      "sha256": "sha256:e84b41bfb69fc407b7ac618ed265a1a9d3940dd0e41f9ec53ae146b11cdf0506"
     },
     "volicord.prepare_write": {
       "definitions": [
@@ -187,7 +187,7 @@
         "sensitive_categories",
         "task_id"
       ],
-      "sha256": "sha256:6a5fceba4028eaddffe2b4f480e541c992354b5366d58f4a703393a479573134"
+      "sha256": "sha256:7b745f74337352540e6b1cd5f0a6ebbe1e22bd368659820bc3820f718a70cf93"
     },
     "volicord.reconcile_changes": {
       "definitions": [
@@ -204,7 +204,7 @@
         "envelope",
         "task_id"
       ],
-      "sha256": "sha256:207db7571bf5999e9df4c83a8b17399ec9a7bea61d8d93a13033c3b2ac46033e"
+      "sha256": "sha256:0edd595dbcfa88b3343f8578b89657a572a25f1dbcf735ca4cd803821a0f1fac"
     },
     "volicord.record_run": {
       "definitions": [
@@ -271,7 +271,7 @@
         "task_id",
         "write_ticket_id"
       ],
-      "sha256": "sha256:37bc70a10f003ab323046c393d53506f4e67d397c65b5891098b1ea7bc650186"
+      "sha256": "sha256:bf5fa046c401d5e2540b02f4154a4bfbd2b048b17e78c0523028bc6c3d09887c"
     },
     "volicord.request_user_action": {
       "definitions": [
@@ -310,7 +310,7 @@
         "required_for",
         "task_id"
       ],
-      "sha256": "sha256:21ad393005e12c74c40c9d5ec4a635a93bb6a4814a1fb1ca4811515f45d65cc3"
+      "sha256": "sha256:562a204c4b4f7d08b6015be2f991af681755fd831aa4a9d53c94a44f2e3c069c"
     },
     "volicord.resolve_user_action": {
       "definitions": [
@@ -331,7 +331,7 @@
         "resolution",
         "user_action_request_id"
       ],
-      "sha256": "sha256:e558c1db2cb87d9789f13eb3b08464e4796461e347b230c4799a5ab73428c860"
+      "sha256": "sha256:3fff921c3aa805186dd49b281c644798534cccb7d7769b5d9db1bdbc23b863f6"
     },
     "volicord.stage_artifact": {
       "definitions": [
@@ -360,7 +360,7 @@
         "safe_bytes_or_notice",
         "task_id"
       ],
-      "sha256": "sha256:e5b133235936224e7184a4fa5f82bd7a47df28d2e0293145ff3d0a7341758290"
+      "sha256": "sha256:76be3bfbbb7e1f245fcc0da07efa68b7bad3ea168c5e5d1efe532de6987a6153"
     },
     "volicord.status": {
       "definitions": [
@@ -379,7 +379,7 @@
         "envelope",
         "include"
       ],
-      "sha256": "sha256:3d0ae4015b4669e7570478d034760d79c2cd2005601623169733c864e015d5c3"
+      "sha256": "sha256:92b4f3ce355d6f65a8ab84689a3a8bdc53a084bdd3ce853d119550677d31cb82"
     },
     "volicord.update_scope": {
       "definitions": [
@@ -420,7 +420,7 @@
         "scope_update",
         "task_id"
       ],
-      "sha256": "sha256:882cb1be979a92aa413f5240e33bc0267aa1a2c4511e7775dd9217ea5f03c606"
+      "sha256": "sha256:090a662723bc5bd33684fda8407a68cd2f9b59c5aa4608366509005ca1291bf5"
     }
   }
 }

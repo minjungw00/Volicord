@@ -7,9 +7,10 @@
 이 문서가 담당합니다.
 
 - `ToolRejectedResponse.errors[]`, 메서드별 차단 결과, `ToolDryRunResponse` 미리보기 진단 사이의 분기 경계.
-- 요청, 선행조건, 상태, 멱등성, 미리보기 전 실패에 대한 거부 응답 경로.
+- 요청, 선행조건, 상태, 멱등성, 디코딩 뒤 dry-run 실패에 대한 거부 응답 경로.
 - `PrepareWriteResult` 차단 판단과 `CloseTaskResult(close_state=blocked)`를 구분하는 차단 결과 분기 경로.
-- 유효한 읽기 전용 호출, 유효한 미리보기, 미리보기 차단 사유, 커밋 전 실패에 대한 `dry_run` 분기 경로.
+- 일반 결과, 유효한 미리보기, 미리보기 차단 사유, 거부 응답에 대한 `dry_run`
+  분기 경로.
 
 이웃 담당 문서:
 
@@ -84,7 +85,7 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 | 영속 담당 데이터 손상 | [선행조건 실패](#rejected-precondition-failure) |
 | 선행조건이 커밋 전에 실패 | [선행조건 실패](#rejected-precondition-failure) |
 | 상태 또는 멱등성 충돌 | [상태 또는 멱등성 충돌](#rejected-state-or-idempotency-conflict) |
-| `dry_run=true` 미리보기 전 실패 | [`dry_run=true` 미리보기 전 실패](#rejected-dry-run-pre-preview-failure) |
+| 디코딩된 `dry_run=true` 요청의 거부 | [디코딩된 `dry_run=true` 요청의 거부](#rejected-dry-run-pre-preview-failure) |
 
 <a id="rejected-request-validation-failure"></a>
 ### 요청 검증 실패
@@ -141,14 +142,17 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
   무효화하지 않습니다.
 
 <a id="rejected-dry-run-pre-preview-failure"></a>
-### `dry_run=true` 미리보기 전 실패
+### 디코딩된 `dry_run=true` 요청의 거부
 
 조건:
-- `dry_run=true` 요청이 읽기 결과나 `dry_run` 미리보기를 만들기 전에 메서드 수준
-  거부를 확정합니다. Core 운영 불가에는 API 응답 분기가 없습니다.
+- 요청이 정규화된 dry-run 요청 의도로 디코딩된 뒤 메서드 수준 거부에
+  도달합니다. 요청된 dry-run 처리를 금지하는 메서드와 결과 또는 미리보기를
+  만들기 전의 검증, 상태, 승인, 정책 거부가 여기에 포함됩니다. Core 운영
+  불가에는 API 응답 분기가 없습니다.
 
 응답 경로:
-- `dry_run=true`인 `ToolRejectedResponse`.
+- `base.response_kind=rejected`, `base.dry_run=true`인
+  `ToolRejectedResponse`.
 
 상태 영향:
 - 커밋되는 동작이나 `dry_run` 미리보기가 만들어지지 않습니다.
@@ -229,21 +233,27 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 
 ## `dry_run` 동작
 
+`base.dry_run`은 정규화된 요청 의도를 보존합니다. 응답 분기를 판별하는 값이
+아니며 실제 분기는 `base.response_kind`나 타입 지정 응답 variant가 선택합니다.
+
 | `dry_run` 경우 | 세부 항목 |
 |---|---|
-| 유효한 읽기 전용 호출 | [유효한 읽기 전용 `dry_run=true`](#dry-run-valid-read-only) |
+| 유효한 일반 결과 요청 | [유효한 일반 결과 `dry_run=true`](#dry-run-valid-read-only) |
 | 유효한 상태 영향 또는 스테이징 미리보기 | [유효한 `dry_run` 미리보기](#dry-run-valid-preview) |
 | 미리보기의 예상 차단 사유 | [`dry_run` 미리보기의 예상 차단 사유](#dry-run-expected-blockers) |
-| 커밋 전 실패 | [`dry_run=true`의 커밋 전 실패](#dry-run-pre-commit-failure) |
+| 디코딩 뒤 거부 | [디코딩 뒤 `dry_run=true` 거부](#dry-run-pre-commit-failure) |
+| 타입 지정 의도 전 실패 | [타입 지정 dry-run 의도 전 실패](#dry-run-predecode-failure) |
 
 <a id="dry-run-valid-read-only"></a>
-### 유효한 읽기 전용 `dry_run=true`
+### 유효한 일반 결과 `dry_run=true`
 
 조건:
-- 유효한 읽기 전용 호출이 `dry_run=true`를 설정합니다.
+- 메서드 계약이 정규화된 dry-run 요청 의도를 일반 결과 분기로 처리합니다.
 
 응답 경로:
-- `base.dry_run=true`와 `base.effect_kind=read_only`를 담은 메서드별 결과입니다.
+- `base.response_kind=result`, `base.dry_run=true`를 담은 메서드별
+  결과입니다. 현재 일반 결과 메서드는 `base.effect_kind=read_only`를
+  사용합니다.
 
 분기 경계:
 - `dry_run=true`를 `ToolDryRunResponse`의 동의어로 보지 않습니다.
@@ -252,10 +262,11 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 ### 유효한 `dry_run` 미리보기
 
 조건:
-- 유효한 상태 영향 동작이나 저장소 담당 스테이징 동작이 `dry_run=true`를 설정합니다.
+- 메서드 계약이 정규화된 dry-run 요청 의도를 미리보기 분기로 매핑합니다.
 
 응답 경로:
-- `DryRunSummary`를 담은 `ToolDryRunResponse`입니다.
+- `base.response_kind=dry_run`, `base.dry_run=true`, `DryRunSummary`를
+  담은 `ToolDryRunResponse`입니다.
 
 상태 영향:
 - `dry_run` 미리보기는 커밋된 쓰기가 아닙니다.
@@ -274,14 +285,28 @@ Core 실행 전에 일어나는 전송 및 어댑터 실패는 이 분기 밖에
 - `PlannedBlocker.code`는 `STATE_VERSION_CONFLICT`가 될 수 없습니다.
 
 <a id="dry-run-pre-commit-failure"></a>
-### `dry_run=true`의 커밋 전 실패
+### 디코딩 뒤 `dry_run=true` 거부
 
 조건:
-- `dry_run=true` 요청에 커밋 전 실패가 있습니다.
+- 요청이 정규화된 dry-run 요청 의도로 성공적으로 디코딩된 뒤 어떤 거부
+  경로에 도달합니다.
 
 응답 경로:
-- `ToolRejectedResponse`.
+- `base.response_kind=rejected`, `base.dry_run=true`인
+  `ToolRejectedResponse`.
 
 미리보기 경계:
 - 실패를 `dry_run` 미리보기 데이터로 표현하지 않습니다.
 - 오래된 상태는 미리보기 전에 거부됩니다.
+
+<a id="dry-run-predecode-failure"></a>
+### 타입 지정 dry-run 의도 전 실패
+
+조건:
+- 타입 지정 dry-run 의도를 얻기 전에 요청 디코딩이 실패합니다.
+
+의도 기본값:
+- 정규화된 의도의 기본값은 요청하지 않음입니다. 실패를 API 거부 응답으로
+  표현하면 `base.dry_run`은 `false`입니다.
+- 경계는 형식이 잘못된 원시 JSON을 검사해 다른 값을 추론하지 않습니다.
+- API 응답 분기 밖의 전송 또는 어댑터 운영 실패에는 응답 base가 없습니다.

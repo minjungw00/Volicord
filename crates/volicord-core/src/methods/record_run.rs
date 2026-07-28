@@ -133,6 +133,7 @@ impl CoreService {
             request_json,
             invocation,
             mutation_method_policy(
+                MethodName::RecordRun,
                 request.operation_category(),
                 TaskRequirement::Exact(request.task_id.clone()),
                 request.envelope.dry_run,
@@ -180,7 +181,7 @@ impl CoreService {
             }
         };
 
-        if request.envelope.dry_run {
+        if request.envelope.dry_run.is_requested() {
             return self.execute_prepared_request::<RecordRunResultFields>(
                 prepared,
                 OwnerPipelineBranch::DryRunPreview {
@@ -2574,7 +2575,7 @@ fn observation_input_from_evidence_update(
 }
 
 fn validate_evidence_source_assurance(
-    dry_run: bool,
+    dry_run: volicord_types::schema::DryRunIntent,
     state_version: Option<u64>,
     field: &'static str,
     source_kind: EvidenceSourceKind,
@@ -3029,7 +3030,7 @@ fn build_record_run_close_basis(
         &result_refs,
     )?;
 
-    if request.envelope.dry_run {
+    if request.envelope.dry_run.is_requested() {
         for risk in &assessment.residual_risks {
             validate_residual_risk_input(
                 CloseBasisRefResolutionContext {
