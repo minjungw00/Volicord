@@ -32,7 +32,7 @@ use crate::summary_text::{
     profile_summary_text, summary_card, write_ticket_summary_text, SummaryCardInput,
 };
 use crate::task_facts::active_blocker_refs;
-use crate::write_ticket::projected_write_ticket_summary;
+use crate::write_ticket::service::load_current_write_ticket_summary;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader, TaskRecord};
@@ -300,11 +300,11 @@ fn status_result_fields(
         }
         blocker_refs = active_blocker_refs(store, &task_id, state_version)?;
         let projected_write_ticket = if include.write_ticket {
-            projected_write_ticket_summary(
+            load_current_write_ticket_summary(
                 store,
                 &task_id,
                 state_version,
-                now,
+                &user_action_now,
                 guarantee_projection.clone(),
             )?
         } else {

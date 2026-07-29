@@ -41,6 +41,14 @@ Within `volicord-core`, reusable semantic-owner tests stay beside
 text, Change Unit planning, and Task policy modules, `continuity/`,
 `write_ticket/`, `close_readiness/`, and the focused `error_boundary/` module
 they protect. Pure projection tests use typed facts and no Store handle.
+Write Ticket read-model tests cover typed ticket, Task, workflow-policy,
+UserAction-resolution, and evidence acquisition plus Store-error propagation
+without asserting policy. Selection tests own candidate precedence and
+tie-breaking. Current-validity tests own effective status, expiration,
+workflow authority, approval, and typed invalidation outcomes. Summary tests
+map already evaluated planned or stored identities without a Store fixture or
+policy reevaluation. Focused service tests keep only representative persisted,
+invalidated, approval-dependent, dry-run, and failure paths.
 Mutation-planning tests assert typed plans and exact schema-owned field
 accessors. The other owner tests assert typed facts, policy decisions, retry
 behavior, or one precise boundary mapping. Public method orchestration,

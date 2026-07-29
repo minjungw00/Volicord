@@ -37,8 +37,16 @@ literal, 비공개 field 접근, destructuring을 시도하면 compile에 실패
 `identity.rs`, `artifact.rs`, 집중 fact, projection, guidance, summary text,
 Change Unit planning, Task policy 모듈, `continuity/`, `write_ticket/`,
 `close_readiness/`, 집중 `error_boundary/` 모듈 옆에 둡니다. 순수 projection
-테스트는 typed fact를 사용하며 Store handle을 받지 않습니다. Mutation planning
-테스트는 typed plan과 schema 담당 모듈의 정확한 field accessor를 검증합니다. 그
+테스트는 typed fact를 사용하며 Store handle을 받지 않습니다. Write Ticket
+read-model 테스트는 정책을 검증하지 않고 typed ticket, Task,
+workflow policy, UserAction resolution, 증거 취득과 Store 오류 전파를 다룹니다.
+선택 테스트는 candidate 우선순위와 동률 해소를 담당합니다. 현재 유효성 테스트는
+effective status, 만료, workflow authority, approval, typed invalidation 결과를
+담당합니다. Summary 테스트는 Store fixture나 정책 재평가 없이 이미 평가된
+planned 또는 stored identity를 변환합니다. 집중 service 테스트에는 영속,
+무효화, approval-dependent, dry-run, 실패 경로의 대표 사례만 둡니다.
+Mutation planning 테스트는 typed plan과 schema 담당 모듈의 정확한 field
+accessor를 검증합니다. 그
 밖의 담당자 테스트는 typed fact, policy 판단, retry 동작, 정확한 경계 매핑 하나를
 검증합니다. 공개 메서드 조율, 응답 계열, replay, 커밋 효과 matrix는
 `methods/tests/`에 둡니다. 메서드 통합 테스트가 재사용 담당자 로직의 유일한

@@ -651,6 +651,8 @@ mod status;
 mod update_scope;
 mod user_action;
 mod workflow_metrics;
+#[path = "../../write_ticket/tests/read_model_service.rs"]
+mod write_ticket_read_model_service;
 
 fn envelope(
     request_id: &str,

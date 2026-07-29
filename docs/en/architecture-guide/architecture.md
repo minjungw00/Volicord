@@ -192,10 +192,16 @@ typed-fact-to-view projections.
 
 Within the focused Write Ticket owner, `write_ticket/planning.rs` constructs
 and validates `PlannedWriteTicket` as the only prospective issuance value.
-Response projection and `WriteTicketInsert` derivation both consume that plan.
-`write_ticket/projection.rs` has explicit paths for planned issuance,
-Store-validated `StoredWriteTicket` state, and projected consumption; it never
-turns a plan into a persisted record. The Store remains independent of Core.
+`write_ticket/semantic.rs` provides the immutable semantic view shared by a
+plan and an opaque Store-validated record while keeping their planned and
+stored identities distinct. `write_ticket/read_model.rs` acquires typed ticket,
+Task, workflow-policy, current UserAction-resolution, and evidence facts.
+`write_ticket/selection.rs` and `write_ticket/current_validity.rs` apply pure
+selection and current-validity policy to those facts. `write_ticket/summary.rs`
+maps an already evaluated value to the adapter-neutral state summary without a
+Store handle or policy evaluation. `write_ticket/service.rs` narrowly
+coordinates these owners for methods that need the complete persisted-summary
+use case. The Store remains independent of Core.
 
 `ChangeUnitUpdate` schema accessors own exact method-field extraction, and
 `change_unit_planning.rs` owns Change Unit mutation planning. `task_policy.rs`

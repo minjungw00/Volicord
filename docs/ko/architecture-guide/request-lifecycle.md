@@ -103,10 +103,17 @@ mutation variant와 Store 적용 순서를 보존합니다. `recording/state.rs`
 `prepare_write`는 `crates/volicord-core/src/write_ticket/`를 통해 현재 Task,
 Change Unit, scope, baseline, policy, 민감 승인, 정규 path, 현재 write-authority
 fingerprint를 평가합니다. 발급 예정이면 `planning.rs`가 검증된
-`PlannedWriteTicket` 하나를 만듭니다. 메서드 projection과 Store 삽입 입력은 같은
-의미 값에서 파생합니다. Dry run은 ID가 없는 plan을 유지하고 미리보기 효과만
-반환하며, 재사용은 이미 decode된 `StoredWriteTicket`을 전달합니다. 기존 ticket은 담당 문서의 모든
-좌표가 계속 유효할 때만 재사용할 수 있습니다. `record_run`에서는
+`PlannedWriteTicket` 하나를 만듭니다. Dry run은 ID가 없는 plan을 유지하고
+미리보기 효과만 반환합니다. Planned ticket과 opaque stored ticket은 같은 불변
+의미 view를 노출하지만 evaluation identity는 서로 구분합니다.
+영속 상태 summary에서는 `read_model.rs`가 typed ticket, Task, workflow policy,
+현재 UserAction resolution, 선택된 Run의 증거 fact를 취득합니다.
+`selection.rs`가 평가된 candidate 중 하나를 선택하고,
+`current_validity.rs`가 typed fact로 effective status, invalidation, authority,
+approval을 계산합니다. `summary.rs`는 평가된 상태를 adapter-neutral summary로만
+변환합니다. 이 전체 읽기가 필요한 메서드는 좁은 `service.rs` coordinator를
+사용합니다. 기존 ticket은 담당 문서의 모든 좌표가 계속 유효할 때만 재사용할 수
+있습니다. `record_run`에서는
 `write_ticket/admission.rs`가 typed Task, Change Unit, invocation, observed-change,
 policy fingerprint, operation fact를 받습니다. 물리 row를 decode하거나 메서드
 응답을 구성하지 않고 같은 validity 및 attempt-scope 정책을 적용합니다. 기록

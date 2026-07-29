@@ -7,9 +7,10 @@ use crate::policy::close_readiness_evidence::{
 };
 use crate::policy::workflow::{project_workflow_policy, ProjectWorkflowPolicy};
 use crate::record_refs::state_ref_from_stored;
+use crate::write_ticket::current_validity::EvaluatedWriteTicket;
 use std::collections::{BTreeSet, HashMap};
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, StoredWriteTicket, TaskRecord,
+    ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, TaskRecord,
 };
 use volicord_store::guards::UnrecordedChangeRecord;
 use volicord_types::ids::{ProjectId, TaskId};
@@ -37,7 +38,7 @@ pub(crate) struct CloseReadinessFacts {
     pub(crate) projected_required_criterion_ids: Option<BTreeSet<String>>,
     pub(crate) projected_resolved_unrecorded_change_ids: BTreeSet<String>,
     pub(crate) unresolved_unrecorded_changes: Vec<UnrecordedChangeRecord>,
-    pub(crate) write_tickets: Option<Vec<StoredWriteTicket>>,
+    pub(crate) write_tickets: Option<Vec<EvaluatedWriteTicket>>,
     pub(crate) workflow_policy: Option<ProjectWorkflowPolicy>,
     pub(crate) pending_user_action_authorities: Option<Vec<UserActionAuthority>>,
     pub(crate) resolved_judgment_authorities: Option<Vec<UserActionAuthority>>,

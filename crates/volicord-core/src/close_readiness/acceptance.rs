@@ -10,6 +10,7 @@ use crate::policy::close_readiness::{
     final_acceptance_requirement,
 };
 use crate::record_refs::{change_unit_ref, state_ref, stored_refs_to_state_refs};
+use crate::write_ticket::service::load_evaluated_write_tickets;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::{BaselineRef, ChangeUnitId};
 use volicord_types::product_path::{path_is_within, paths_are_authorized};
@@ -604,9 +605,8 @@ fn light_completion_without_acceptance_allowed(
 
     if context.write_tickets.is_none() {
         context.write_tickets = Some(
-            store
-                .write_tickets_for_task(&request.task_id)
-                .map_err(CorePipelineError::from)?,
+            load_evaluated_write_tickets(store, &request.task_id, &context.now)
+                .map_err(CloseReadinessError::Core)?,
         );
     }
     let tickets = context
@@ -643,12 +643,16 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         }
         let Some(ticket) = tickets.iter().find(|ticket| {
-            ticket.status() == WriteTicketStatus::Consumed
-                && ticket.consumed_by_run_id() == Some(observed.run_id.as_str())
+            ticket.effective_status == WriteTicketStatus::Consumed
+                && ticket
+                    .consumed_by_run_id
+                    .as_ref()
+                    .map(|run_id| run_id.as_str())
+                    == Some(observed.run_id.as_str())
         }) else {
             return Ok(false);
         };
-        let validity_basis = ticket.validity_basis();
+        let validity_basis = &ticket.ticket.validity_basis;
         if validity_basis.task_id != request.task_id
             || validity_basis.change_unit_id != close_basis.change_unit_id
             || validity_basis.scope_revision != context.task.scope_revision
@@ -657,11 +661,12 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         }
         let allowed = ticket
-            .allowed_path_prefixes()
+            .ticket
+            .allowed_path_prefixes
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied = ticket.denied_path_prefixes();
+        let denied = &ticket.ticket.denied_path_prefixes;
         if !paths_are_authorized(&observed.observed_changes.changed_paths, &allowed)
             || observed.observed_changes.changed_paths.iter().any(|path| {
                 denied

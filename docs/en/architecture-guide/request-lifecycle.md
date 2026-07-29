@@ -114,9 +114,16 @@ transaction, replay, and response-envelope ownership.
 sensitive approval, normalized paths, and current write-authority fingerprint
 through `crates/volicord-core/src/write_ticket/`.
 For a prospective issuance, `planning.rs` creates one validated
-`PlannedWriteTicket`. The method projection and Store insertion input derive
-from that same semantic value. Dry run retains an ID-less plan and returns only
-preview effects; reuse carries the already decoded `StoredWriteTicket`.
+`PlannedWriteTicket`. Dry run retains an ID-less plan and returns only preview
+effects. Planned and opaque stored tickets expose the same immutable semantic
+view but retain distinct evaluation identities.
+For a persisted state summary, `read_model.rs` acquires typed ticket, Task,
+workflow-policy, current UserAction-resolution, and selected-run evidence
+facts. `selection.rs` chooses among evaluated candidates, and
+`current_validity.rs` derives effective status, invalidation, authority, and
+approval from typed facts. `summary.rs` only maps that evaluated state to the
+adapter-neutral summary. Methods that need this complete read use the narrow
+`service.rs` coordinator.
 An existing ticket is reusable only when every owner-defined coordinate remains
 valid. For `record_run`, `write_ticket/admission.rs` receives the typed Task,
 Change Unit, invocation, observed-change, policy-fingerprint, and operation

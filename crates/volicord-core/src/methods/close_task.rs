@@ -31,7 +31,7 @@ use crate::summary_text::{
 use crate::workflow_diagnostics::{
     elapsed_micros, record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
-use crate::write_ticket::projected_write_ticket_summary;
+use crate::write_ticket::service::load_current_write_ticket_summary;
 use serde_json::json;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
@@ -732,11 +732,11 @@ fn project_close_task_response(
         acceptance_criteria,
         pending_user_action_refs: context.pending_user_action_refs.clone(),
         blocker_refs: context.blocker_refs.clone(),
-        write_ticket_summary: projected_write_ticket_summary(
+        write_ticket_summary: load_current_write_ticket_summary(
             store,
             &request.task_id,
             response_state_version,
-            *now.as_datetime(),
+            now,
             guarantee_display.clone(),
         )?,
         evidence_summary: evidence_summary.clone(),

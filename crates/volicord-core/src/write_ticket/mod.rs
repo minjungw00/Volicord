@@ -1,8 +1,13 @@
 mod admission;
+pub(crate) mod current_validity;
 mod facts;
 mod planning;
 mod policy;
-mod projection;
+pub(crate) mod read_model;
+pub(crate) mod selection;
+pub(crate) mod semantic;
+pub(crate) mod service;
+pub(crate) mod summary;
 
 use crate::pipeline::CorePipelineError;
 use volicord_types::ids::TaskId;
@@ -48,9 +53,4 @@ pub(crate) use planning::{plan_prepare_write, PrepareWritePlannedMutations};
 pub(crate) use policy::{
     normalized_string_set, prepare_write_decision, run_write_ticket_mismatch,
     write_decision_reason, write_ticket_is_idle_expired, RunWriteTicketAttempt,
-};
-pub(crate) use projection::{
-    effective_write_ticket_status, projected_write_ticket_summary,
-    write_ticket_is_current_for_projection, write_ticket_summary_for_plan,
-    write_ticket_summary_for_projected_consumption, write_ticket_summary_for_record,
 };

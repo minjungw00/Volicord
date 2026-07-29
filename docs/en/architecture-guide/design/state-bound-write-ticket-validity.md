@@ -9,13 +9,21 @@ invalidates, and consumes Write Tickets against current Core and Store facts.
 
 `prepare_write` loads the current Task, Change Unit, scope, workspace,
 approval, workflow-policy, and normalized path facts. The focused
-`write_ticket/` owner acquires and normalizes current facts, evaluates policy,
-plans issue or reuse, and projects the typed outcome through its `facts.rs`,
-`policy.rs`, `planning.rs`, and `projection.rs` modules.
+`write_ticket/` owner keeps those responsibilities explicit.
+`read_model.rs` acquires typed ticket, Task, normalized workflow-policy,
+current UserAction-resolution, and evidence facts. `selection.rs` chooses
+among typed candidates, while `current_validity.rs` evaluates effective
+status, invalidation, authority, and approval without Store access.
+`summary.rs` maps an already evaluated ticket and supplied evidence to the
+adapter-neutral summary without selecting a candidate or reevaluating policy.
+`service.rs` narrowly coordinates that complete persisted-summary use case.
 `planning.rs` owns the distinct, unpersisted `PlannedWriteTicket`. For new
 issuance, the same validated plan supplies both the response projection and
 the fully typed Store insertion; a dry-run plan has no durable ticket ID and
 cannot supply an insertion.
+`semantic.rs` exposes the immutable ticket meaning shared by planned and
+stored forms, but `WriteTicketEvaluationIdentity` keeps prospective and
+persisted identity explicit.
 For a protected Record Run, `write_ticket/admission.rs` accepts the typed
 operation, Task, Change Unit, invocation, observed-change, and current policy
 facts and returns the admitted attempt scope or a semantic admission error.
@@ -44,19 +52,22 @@ the same Store commit as the Run and its associated effects.
 ## Responsibility boundaries
 
 Core methods own request-specific orchestration and response composition. The
-focused Write Ticket owner owns reusable fact acquisition, policy evaluation,
-issuance or reuse planning, Record Run admission, and projection over typed
-facts. The Record Run planner supplies semantic facts and does not interpret
-stored path JSON or construct ticket policy independently. Store keeps the
-physical ticket row private and strictly decodes status, validity basis,
-attempt scope, Product Repository path collections, timestamps, and redundant
-owner coordinates before returning a `StoredWriteTicket`. Relationships among
-physical fields are validated as closed Write Ticket aggregate invariants.
-Core validates semantic planning invariants while constructing a
-`PlannedWriteTicket`; those checks are separate from Store-owned persisted
-physical validation. Projection has explicit paths for a plan, a stored
-ticket, and projected post-consumption state instead of mutating a stored
-record.
+focused Write Ticket read boundary owns only typed fact acquisition.
+Selection and current validity are pure semantic policies. Summary projection
+accepts only evaluated typed state, state-version and display facts, and
+evidence facts; it cannot read Store or recompute workflow or UserAction
+policy. The narrow service coordinates those owners without exposing their
+internal operations as a facade. The Record Run planner supplies semantic
+facts and does not interpret stored path JSON or construct ticket policy
+independently. Store keeps the physical ticket row private and strictly
+decodes status, validity basis, attempt scope, Product Repository path
+collections, timestamps, and redundant owner coordinates before returning a
+`StoredWriteTicket`. Relationships among physical fields are validated as
+closed Write Ticket aggregate invariants. Core validates semantic planning
+invariants while constructing a `PlannedWriteTicket`; those checks are
+separate from Store-owned persisted physical validation. Planned issuance,
+stored state, and projected post-consumption state share a semantic view but
+retain their actual identities.
 Store also owns ticket queries, invalidation persistence, and consumption
 mutation. Workflow-policy persistence receives only a focused typed authority
 view produced from the validated record; it never queries or decodes a ticket
@@ -69,15 +80,20 @@ row. Guard supplies observations but does not widen the ticket basis.
 2. `prepare_write` loads the current work, policy, workspace, path, and
    approval facts.
 3. Core policy computes the normalized current write-authority basis.
-4. Store returns compatible ticket candidates and Core selects reuse or new
-   issuance.
-5. New issuance creates one `PlannedWriteTicket`; response projection and
+4. The Write Ticket read boundary loads typed candidates and the current facts
+   required by each active candidate.
+5. Pure current-validity policy evaluates each candidate, then pure selection
+   policy applies the current precedence and tie-breaking rules.
+6. State-summary projection receives the selected evaluated ticket and supplied
+   evidence facts and maps them without Store or policy access.
+7. `prepare_write` plans reuse or new issuance from its semantic facts.
+8. New issuance creates one `PlannedWriteTicket`; response projection and
    `WriteTicketInsert` derive from it. Dry-run keeps the plan ID-less and
    performs no Store insertion, while reuse reads a `StoredWriteTicket`.
-6. For Record Run, `write_ticket/admission.rs` repeats the current
+9. For Record Run, `write_ticket/admission.rs` repeats the current
    compatibility evaluation from typed operation facts and returns the admitted
    scope.
-7. Store commits ticket consumption with the protected mutation.
+10. Store commits ticket consumption with the protected mutation.
 
 ## Failure behavior
 
@@ -104,9 +120,11 @@ capability.
   request-specific issue/reuse and protected-consumption orchestration.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)
   and [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed fact acquisition, current-basis evaluation, `PlannedWriteTicket`
-  construction, protected Record Run admission, and explicit planned, stored,
-  or projected-consumption projection.
+  typed fact acquisition, pure candidate selection and current-validity
+  evaluation, `PlannedWriteTicket` construction, pure summary projection,
+  narrow persisted-summary coordination, and protected Record Run admission.
+- [`crates/volicord-core/src/write_ticket/tests/read_model_service.rs`](../../../../crates/volicord-core/src/write_ticket/tests/read_model_service.rs):
+  focused Store-backed fact acquisition and persisted-summary service coverage.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):
   focused Record Run ticket admission and no-effect rejection coverage.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):

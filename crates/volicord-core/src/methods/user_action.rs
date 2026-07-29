@@ -37,7 +37,7 @@ use crate::task_policy::{plan_user_action_lifecycle_transition, TaskLifecycleFac
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
-use crate::write_ticket::projected_write_ticket_summary;
+use crate::write_ticket::service::load_current_write_ticket_summary;
 use serde_json::json;
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, TaskRecord,
@@ -391,11 +391,11 @@ fn projected_user_action_state(
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
         .summary;
-    let write_ticket_summary = projected_write_ticket_summary(
+    let write_ticket_summary = load_current_write_ticket_summary(
         store,
         &task_id,
         planned_state_version,
-        *now.as_datetime(),
+        now,
         Some(guarantee_display.clone()),
     )?;
     let current_close_basis = current_close_basis(store, &task_id)?;

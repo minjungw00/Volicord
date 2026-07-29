@@ -1368,7 +1368,16 @@ mod tests {
     #[test]
     fn preview_plan_has_no_persisted_identity_or_store_input() {
         let plan = valid_plan(None).expect("valid preview plan");
-        let summary = crate::write_ticket::write_ticket_summary_for_plan(&plan, 7, None);
+        let evaluated = crate::write_ticket::current_validity::evaluate_planned_write_ticket(&plan);
+        let evidence = crate::write_ticket::read_model::WriteTicketEvidenceFacts::default();
+        let summary = crate::write_ticket::summary::project_write_ticket_summary(
+            crate::write_ticket::summary::WriteTicketSummaryInput {
+                evaluated: &evaluated,
+                state_version: 7,
+                evidence: &evidence,
+                guarantee_display: None,
+            },
+        );
 
         assert!(plan.write_ticket_id().is_none());
         assert_eq!(
@@ -1379,6 +1388,27 @@ mod tests {
         assert!(summary.write_ticket_ref.is_none());
         assert_eq!(summary.basis_state_version, Some(7));
         assert_eq!(summary.intended_paths, vec!["src".to_owned()]);
+    }
+
+    #[test]
+    fn planned_and_reused_tickets_share_policy_meaning_without_sharing_identity() {
+        let plan = valid_plan(Some(WriteTicketId::new("write_ticket_shared")))
+            .expect("valid planned ticket");
+        let planned = crate::write_ticket::current_validity::evaluate_planned_write_ticket(&plan);
+        let stored = crate::write_ticket::semantic::StoredWriteTicketFacts {
+            write_ticket_id: WriteTicketId::new("write_ticket_shared"),
+            ticket: crate::write_ticket::semantic::planned_write_ticket_semantic_facts(&plan),
+            status: WriteTicketStatus::Active,
+            invalidation_reason: None,
+            consumed_by_run_id: None,
+        };
+        let reused = crate::write_ticket::current_validity::evaluate_reused_write_ticket(stored);
+
+        assert_eq!(planned.ticket, reused.ticket);
+        assert_eq!(planned.effective_status, reused.effective_status);
+        assert_eq!(planned.authority, reused.authority);
+        assert_eq!(planned.approval, reused.approval);
+        assert_ne!(planned.identity, reused.identity);
     }
 
     #[test]

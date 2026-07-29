@@ -179,11 +179,16 @@ identity, artifact policy, continuity planning, Write Ticket planning, 닫기 �
 독립적으로 typed fact를 view로 투영합니다.
 
 집중된 Write Ticket 담당자 안에서 `write_ticket/planning.rs`는 발급 예정 값의
-유일한 표현인 `PlannedWriteTicket`을 구성하고 검증합니다. 응답 projection과
-`WriteTicketInsert` 파생은 모두 이 plan을 사용합니다.
-`write_ticket/projection.rs`는 planned 발급, Store가 검증한
-`StoredWriteTicket` 상태, 소비 예정 상태를 각각 명시적으로 처리하며 plan을 영속
-record로 바꾸지 않습니다. Store는 계속 Core에 의존하지 않습니다.
+유일한 표현인 `PlannedWriteTicket`을 구성하고 검증합니다.
+`write_ticket/semantic.rs`는 plan과 Store가 검증한 opaque record가 공유하는
+불변 의미 view를 제공하면서 planned identity와 stored identity를 구분합니다.
+`write_ticket/read_model.rs`는 typed ticket, Task, workflow policy, 현재
+UserAction resolution, 증거 fact를 취득합니다. `write_ticket/selection.rs`와
+`write_ticket/current_validity.rs`는 이 fact에 순수한 선택 및 현재 유효성 정책을
+적용합니다. `write_ticket/summary.rs`는 Store handle이나 정책 평가 없이 이미
+평가된 값을 adapter-neutral 상태 summary로 변환합니다.
+`write_ticket/service.rs`는 완전한 영속 summary use case가 필요한 메서드를 위해
+이 담당자들만 좁게 조율합니다. Store는 계속 Core에 의존하지 않습니다.
 
 `ChangeUnitUpdate` schema accessor는 정확한 메서드 field 추출을 담당하고,
 `change_unit_planning.rs`는 Change Unit mutation 계획을 담당합니다.

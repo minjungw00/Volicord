@@ -10,9 +10,9 @@ use crate::policy::evidence::state_record_ref_identity_key;
 use crate::policy::evidence_target::{
     close_basis_is_current, close_basis_run_refs, run_record_matches_close_basis_context,
 };
-use crate::record_refs::{change_unit_ref, state_ref, write_ticket_ref};
+use crate::record_refs::{change_unit_ref, state_ref};
 use crate::task_state::StoredScope;
-use crate::write_ticket::{effective_write_ticket_status, write_ticket_is_current_for_projection};
+use crate::write_ticket::service::load_evaluated_write_tickets;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::ids::BaselineRef;
@@ -222,9 +222,8 @@ fn unresolved_write_ticket_blockers(
     let mut blockers = Vec::new();
     let task_ref = task_ref_for_close(request, project_state.state_version);
     if context.write_tickets.is_none() {
-        let records = store
-            .write_tickets_for_task(&request.task_id)
-            .map_err(CorePipelineError::from)?;
+        let records = load_evaluated_write_tickets(store, &request.task_id, now)
+            .map_err(CloseReadinessError::Core)?;
         context.write_tickets = Some(records);
     }
     for record in context
@@ -232,21 +231,19 @@ fn unresolved_write_ticket_blockers(
         .as_ref()
         .expect("write-ticket facts are acquired before evaluation")
     {
-        let mut status = effective_write_ticket_status(
-            record,
-            project_state.state_version,
-            Some(*now.as_datetime()),
-        )
-        .map_err(CloseReadinessError::Core)?;
-        if status == WriteTicketStatus::Active
-            && !write_ticket_is_current_for_projection(store, record, *now.as_datetime())?
-        {
-            status = WriteTicketStatus::Invalidated;
-        }
-        match status {
+        match record.effective_status {
             WriteTicketStatus::Active => blockers.push(open_write_ticket_close_blocker(
                 task_ref.clone(),
-                write_ticket_ref(record, project_state.state_version),
+                state_ref(
+                    StateRecordKind::WriteTicket,
+                    record
+                        .stored_write_ticket_id()
+                        .expect("Store-acquired evaluated ticket has stored identity")
+                        .as_str(),
+                    &record.ticket.project_id,
+                    Some(&record.ticket.validity_basis.task_id),
+                    Some(project_state.state_version),
+                ),
             )),
             WriteTicketStatus::Invalidated
             | WriteTicketStatus::Revoked

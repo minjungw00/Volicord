@@ -34,7 +34,8 @@ use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::task_policy::{initial_work_phase, resolve_requested_mode};
 use crate::task_state::{normalize_display_text, StoredScope};
 use crate::write_ticket::normalized_string_set;
-use crate::write_ticket::{projected_write_ticket_summary, workspace_context_matches};
+use crate::write_ticket::service::load_current_write_ticket_summary;
+use crate::write_ticket::workspace_context_matches;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
@@ -675,7 +676,6 @@ fn project_intake_response(
         acceptance_criteria,
         storage_mutations,
     } = mutations;
-    let plan_now = *operation_now.as_datetime();
     let user_action_now = operation_now.clone();
     let task_ref = state_ref(
         StateRecordKind::Task,
@@ -767,11 +767,11 @@ fn project_intake_response(
     let write_ticket_summary = if create_new {
         None
     } else {
-        projected_write_ticket_summary(
+        load_current_write_ticket_summary(
             store,
             &task_id,
             planned_state_version,
-            plan_now,
+            operation_now,
             Some(guarantee_display.clone()),
         )?
     };

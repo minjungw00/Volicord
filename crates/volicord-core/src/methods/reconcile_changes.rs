@@ -37,14 +37,16 @@ use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
-use crate::write_ticket::{projected_write_ticket_summary, write_ticket_is_idle_expired};
+use crate::write_ticket::current_validity::EvaluatedWriteTicket;
+use crate::write_ticket::service::{
+    load_current_write_ticket_summary, load_evaluated_write_tickets,
+};
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, ContinuityMutation, CoreProjectStore, CoreStorageMutation,
-    ProjectStateHeader, RunObservedChangesRecord, StoredWriteTicket, TaskRecord,
-    UnrecordedChangeResolutionUpdate,
+    ProjectStateHeader, RunObservedChangesRecord, TaskRecord, UnrecordedChangeResolutionUpdate,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::guards::UnrecordedChangeRecord;
@@ -264,9 +266,8 @@ fn plan_reconcile_changes(
     let runs = store
         .run_observed_changes_for_task(&request.task_id)
         .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
-    let write_tickets = store
-        .write_tickets_for_task(&request.task_id)
-        .map_err(|error| store_error_plan(&request.envelope, project_state, error))?;
+    let write_tickets =
+        load_evaluated_write_tickets(store, &request.task_id, now).map_err(PlanError::Core)?;
     let mut planned_resolutions = Vec::new();
     let mut planned_user_actions = Vec::new();
     let mut unresolved_findings = Vec::new();
@@ -321,15 +322,15 @@ fn plan_reconcile_changes(
             }
         }
 
-        if let Some(candidate) = deterministic_resolution(
-            record,
-            &runs,
-            &write_tickets,
-            *now.as_datetime(),
-        )?
-        .or_else(|| {
-            accepted_resolution_candidate(&unrecorded_ref, &resolved_authorities, &request.task_id)
-        }) {
+        if let Some(candidate) =
+            deterministic_resolution(record, &runs, &write_tickets)?.or_else(|| {
+                accepted_resolution_candidate(
+                    &unrecorded_ref,
+                    &resolved_authorities,
+                    &request.task_id,
+                )
+            })
+        {
             planned_resolutions.push(PlannedResolution {
                 record: record.clone(),
                 basis: candidate.basis,
@@ -420,11 +421,11 @@ fn plan_reconcile_changes(
         verified_invocation,
         planned_state_version,
     );
-    let write_ticket_summary = projected_write_ticket_summary(
+    let write_ticket_summary = load_current_write_ticket_summary(
         store,
         &request.task_id,
         planned_state_version,
-        *now.as_datetime(),
+        now,
         Some(guarantee_display.clone()),
     )?;
     let current_close_basis = current_close_basis(store, &request.task_id)?;
@@ -655,8 +656,7 @@ fn validate_requested_resolution(
 fn deterministic_resolution(
     record: &UnrecordedChangeRecord,
     runs: &[RunObservedChangesRecord],
-    write_tickets: &[StoredWriteTicket],
-    now: DateTime<Utc>,
+    write_tickets: &[EvaluatedWriteTicket],
 ) -> CoreResult<Option<ResolutionCandidate>> {
     let observed_paths = observed_paths(record);
     if observed_paths.is_empty() {
@@ -677,13 +677,14 @@ fn deterministic_resolution(
     }
     let mut active_matches = Vec::new();
     for write_ticket in write_tickets {
-        let attempt_scope = write_ticket.attempt_scope();
+        let attempt_scope = &write_ticket.ticket.attempt_scope;
         let allowed_paths = write_ticket
-            .allowed_path_prefixes()
+            .ticket
+            .allowed_path_prefixes
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied_paths = write_ticket.denied_path_prefixes();
+        let denied_paths = &write_ticket.ticket.denied_path_prefixes;
         if attempt_scope.product_file_write_intended
             && paths_are_authorized(&observed_paths, &allowed_paths)
             && !observed_paths.iter().any(|path| {
@@ -692,18 +693,22 @@ fn deterministic_resolution(
                     .any(|denied| path_is_within(path, denied.as_str()))
             })
         {
-            if write_ticket.status() == WriteTicketStatus::Consumed
-                && write_ticket.consumed_by_run_id().is_some()
+            if write_ticket.effective_status == WriteTicketStatus::Consumed
+                && write_ticket.consumed_by_run_id.is_some()
             {
                 return Ok(Some(system_resolution(
                     UnrecordedChangeResolutionBasis::CoveredByWriteTicket,
                     "core_deterministic_write_ticket",
                 )));
             }
-            if write_ticket.status() == WriteTicketStatus::Active
-                && !write_ticket_is_idle_expired(write_ticket, now)?
-            {
-                active_matches.push(write_ticket.write_ticket_id().to_owned());
+            if write_ticket.effective_status == WriteTicketStatus::Active {
+                active_matches.push(
+                    write_ticket
+                        .stored_write_ticket_id()
+                        .expect("Store-acquired evaluated ticket has stored identity")
+                        .as_str()
+                        .to_owned(),
+                );
             }
         }
     }

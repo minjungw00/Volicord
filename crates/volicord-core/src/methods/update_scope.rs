@@ -43,7 +43,7 @@ use crate::state_summary::{project_state_header, state_summary, StateSummaryInpu
 use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::task_policy::{plan_user_action_lifecycle_transition, TaskLifecycleFacts};
 use crate::task_state::{normalize_display_text, StoredScope};
-use crate::write_ticket::projected_write_ticket_summary;
+use crate::write_ticket::service::load_current_write_ticket_summary;
 use serde_json::json;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
@@ -797,11 +797,11 @@ fn project_update_scope_response(
     let project_policy = project_workflow_policy(store)
         .map_err(CorePipelineError::from)?
         .summary;
-    let write_ticket_summary = projected_write_ticket_summary(
+    let write_ticket_summary = load_current_write_ticket_summary(
         store,
         &request.task_id,
         planned_state_version,
-        *plan_now.as_datetime(),
+        &plan_now,
         Some(guarantee_display.clone()),
     )?;
     let projected_current_close_basis = if scope_changed {
