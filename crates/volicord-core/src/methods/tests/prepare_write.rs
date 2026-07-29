@@ -1932,6 +1932,52 @@ fn prepare_write_dry_run_has_no_write_ticket_effect() -> Result<(), Box<dyn Erro
 }
 
 #[test]
+fn prepare_write_dry_run_projects_reuse_without_a_persisted_plan() -> Result<(), Box<dyn Error>> {
+    let mut harness = MethodHarness::new()?;
+    let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_dry_reuse")?;
+    let issued = harness.service.prepare_write(
+        prepare_write_request(
+            "req_prepare_dry_reuse_issued",
+            "idem_prepare_dry_reuse_issued",
+            Some(2),
+            Some(&task_id),
+            Some(&change_unit_id),
+        ),
+        invocation(OperationCategory::AgentWorkflow),
+    )?;
+    let ticket_id = response_record_id(&issued.response_value, "write_ticket_ref");
+    let id_generator = CountingDurableIdGenerator::new(Vec::<&str>::new());
+    harness.use_generator_and_clock(
+        id_generator.clone(),
+        ManualClock::at("2026-06-18T00:00:00Z"),
+    );
+    let before = harness.counts()?;
+
+    let mut preview = prepare_write_request(
+        "req_prepare_dry_reuse_preview",
+        "idem_prepare_dry_reuse_preview",
+        Some(before.state_version),
+        Some(&task_id),
+        Some(&change_unit_id),
+    );
+    preview.envelope.dry_run = volicord_types::schema::DryRunIntent::Requested;
+    let preview = harness
+        .service
+        .prepare_write(preview, invocation(OperationCategory::AgentWorkflow))?;
+
+    assert_eq!(preview.response_value["base"]["response_kind"], "dry_run");
+    assert_eq!(
+        preview.response_value["dry_run_summary"]["planned_effects"][0]["action"],
+        "would_reuse"
+    );
+    assert!(!preview.response_json.contains("write_ticket_id"));
+    assert_eq!(harness.counts()?, before);
+    assert_eq!(write_ticket_status(&harness, &ticket_id)?, "active");
+    assert_eq!(id_generator.count(DurableIdKind::WriteTicket), 0);
+    Ok(())
+}
+
+#[test]
 fn prepare_write_rejects_escaping_product_path_without_effect() -> Result<(), Box<dyn Error>> {
     let harness = MethodHarness::new()?;
     let (task_id, change_unit_id) = create_task_with_change_unit(&harness, "prepare_escape")?;

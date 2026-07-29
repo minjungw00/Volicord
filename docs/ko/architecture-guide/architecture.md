@@ -178,6 +178,13 @@ identity, artifact policy, continuity planning, Write Ticket planning, 닫기 �
 `state_summary.rs`, `evidence_projection.rs`, `guarantee_projection.rs`는 Store와
 독립적으로 typed fact를 view로 투영합니다.
 
+집중된 Write Ticket 담당자 안에서 `write_ticket/planning.rs`는 발급 예정 값의
+유일한 표현인 `PlannedWriteTicket`을 구성하고 검증합니다. 응답 projection과
+`WriteTicketInsert` 파생은 모두 이 plan을 사용합니다.
+`write_ticket/projection.rs`는 planned 발급, Store가 검증한
+`StoredWriteTicket` 상태, 소비 예정 상태를 각각 명시적으로 처리하며 plan을 영속
+record로 바꾸지 않습니다. Store는 계속 Core에 의존하지 않습니다.
+
 `ChangeUnitUpdate` schema accessor는 정확한 메서드 field 추출을 담당하고,
 `change_unit_planning.rs`는 Change Unit mutation 계획을 담당합니다.
 `task_policy.rs`는 Task lifecycle 해석과 lifecycle mutation 계획을 담당합니다.

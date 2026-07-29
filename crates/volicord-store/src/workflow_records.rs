@@ -1152,7 +1152,7 @@ mod tests {
     use serde_json::json;
     use volicord_test_support::core_fixtures::CoreFixture;
     use volicord_types::canonical::canonical_json_sha256;
-    use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId};
+    use volicord_types::ids::{ChangeUnitId, ProjectId, TaskId, WriteTicketId};
     use volicord_types::product_path::ProductRelativePath;
     use volicord_types::schema::{WriteTicketAttemptScope, WriteTicketValidityBasis};
     use volicord_types::values::{WriteTicketInvalidationReason, WriteTicketStatus};
@@ -1320,9 +1320,9 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()?;
         store.insert_write_ticket_fixture(
             &WriteTicketInsert {
-                write_ticket_id: input.write_ticket_id.to_owned(),
-                task_id: input.task_id.to_owned(),
-                change_unit_id: input.change_unit_id.to_owned(),
+                write_ticket_id: WriteTicketId::new(input.write_ticket_id),
+                task_id: TaskId::new(input.task_id),
+                change_unit_id: ChangeUnitId::new(input.change_unit_id),
                 validity_basis: WriteTicketValidityBasis {
                     task_id: TaskId::new(input.task_id),
                     change_unit_id: ChangeUnitId::new(input.change_unit_id),
@@ -1503,9 +1503,9 @@ mod tests {
         let invalidated_ticket = store
             .write_ticket_record("ticket_policy_before_raise")?
             .expect("invalidated Write Ticket remains readable");
-        assert_eq!(invalidated_ticket.status, WriteTicketStatus::Invalidated);
+        assert_eq!(invalidated_ticket.status(), WriteTicketStatus::Invalidated);
         assert_eq!(
-            invalidated_ticket.invalidation_reason,
+            invalidated_ticket.invalidation_reason(),
             Some(WriteTicketInvalidationReason::ExplicitRevoke)
         );
 
@@ -1749,13 +1749,13 @@ mod tests {
                 .write_ticket_record("ticket_policy_binding")?
                 .expect("invalidated Write Ticket remains readable");
             assert_eq!(
-                ticket.status,
+                ticket.status(),
                 WriteTicketStatus::Invalidated,
                 "{}",
                 case.name
             );
             assert_eq!(
-                ticket.invalidation_reason,
+                ticket.invalidation_reason(),
                 Some(WriteTicketInvalidationReason::ExplicitRevoke),
                 "{}",
                 case.name
@@ -1871,7 +1871,7 @@ mod tests {
         let ticket = store
             .write_ticket_record("ticket_policy_equivalent")?
             .expect("compatible Write Ticket remains readable");
-        assert_eq!(ticket.status, WriteTicketStatus::Active);
+        assert_eq!(ticket.status(), WriteTicketStatus::Active);
 
         let replay =
             store.apply_project_workflow_policy_authority(ProjectWorkflowPolicyAuthorityApply {

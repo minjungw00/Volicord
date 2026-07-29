@@ -153,6 +153,6 @@ pub use user_actions::{
     UserActionResolutionInsert,
 };
 pub use write_tickets::{
-    WriteTicketByIdInvalidation, WriteTicketConsumption, WriteTicketInsert,
-    WriteTicketInvalidation, WriteTicketMutation, WriteTicketRecord,
+    StoredWriteTicket, WriteTicketByIdInvalidation, WriteTicketConsumption, WriteTicketInsert,
+    WriteTicketInvalidation, WriteTicketMutation,
 };

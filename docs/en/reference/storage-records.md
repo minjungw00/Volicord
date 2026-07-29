@@ -590,7 +590,10 @@ value decoding, timestamp decoding, Product Repository path decoding, and
 persisted cross-field invariants. Normal reads and reads within an existing
 Store transaction use the same canonical row projection, decoder, and
 invariant validator. Filtering for active tickets occurs only after each
-selected row has become a validated typed Write Ticket.
+selected row has become a validated `StoredWriteTicket`. All
+`StoredWriteTicket` fields are private outside the aggregate; consumers use
+read-only semantic accessors and cannot construct, update, or destructure a
+persisted record. No public compatibility alias exists.
 
 Other Store modules receive a complete typed Write Ticket or a focused typed
 view produced from that record. In particular, workflow-policy persistence
@@ -598,6 +601,15 @@ uses a typed authority-binding view and does not query `write_tickets`, parse
 `validity_basis_json`, or construct ticket corruption. It compares the
 validated binding with current workflow-policy authority as a semantic policy
 decision.
+
+An unpersisted ticket proposal is a distinct Core-owned
+`PlannedWriteTicket`, not a synthetic `StoredWriteTicket`. Core validates its
+semantic identity, scope, path, authority, and timestamp relationships before
+projection. The same planned value supplies both the projected ticket facts
+and the fully typed `WriteTicketInsert`; only Store maps that insertion input
+to physical columns and JSON. A dry-run proposal has no persisted ticket
+identity and cannot produce a Store insertion input. Reuse instead reads an
+already validated `StoredWriteTicket`.
 
 Corruption local to one physical Write Ticket field identifies that exact
 field. A relationship among fields, including owner identity, scope revision,

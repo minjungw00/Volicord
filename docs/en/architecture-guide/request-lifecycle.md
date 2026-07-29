@@ -113,6 +113,10 @@ transaction, replay, and response-envelope ownership.
 `prepare_write` evaluates current Task, Change Unit, scope, baseline, policy,
 sensitive approval, normalized paths, and current write-authority fingerprint
 through `crates/volicord-core/src/write_ticket/`.
+For a prospective issuance, `planning.rs` creates one validated
+`PlannedWriteTicket`. The method projection and Store insertion input derive
+from that same semantic value. Dry run retains an ID-less plan and returns only
+preview effects; reuse carries the already decoded `StoredWriteTicket`.
 An existing ticket is reusable only when every owner-defined coordinate remains
 valid. For `record_run`, `write_ticket/admission.rs` receives the typed Task,
 Change Unit, invocation, observed-change, policy-fingerprint, and operation

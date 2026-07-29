@@ -554,7 +554,7 @@ pub(super) fn plan_record_run_mutations(
         "product_file_write_observed": normalized_observed_changes.product_file_write_observed,
         "write_ticket_id": write_ticket_scope
             .as_ref()
-            .map(|(record, _scope)| record.write_ticket_id.clone()),
+            .map(|(record, _scope)| record.write_ticket_id().to_owned()),
         "artifact_ids": registered_artifacts
             .iter()
             .map(|artifact| artifact.artifact_id.as_str().to_owned())
@@ -677,9 +677,9 @@ pub(super) fn assemble_record_run_mutation_plan(
     if let Some((record, _scope)) = write_ticket_scope {
         steps.push(RecordRunMutation::WriteTicket(
             WriteTicketMutation::Consume(WriteTicketConsumption {
-                write_ticket_id: record.write_ticket_id.clone(),
+                write_ticket_id: record.write_ticket_id().to_owned(),
                 run_id: run_id.as_str().to_owned(),
-                expected_basis_state_version: record.basis_state_version,
+                expected_basis_state_version: record.basis_state_version(),
                 expected_write_authority_fingerprint: workflow_policy
                     .write_authority_fingerprint
                     .clone(),

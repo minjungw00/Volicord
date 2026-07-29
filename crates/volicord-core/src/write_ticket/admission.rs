@@ -6,7 +6,7 @@ use crate::write_ticket::{
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
-    ChangeUnitRecord, CoreProjectStore, TaskRecord, WriteTicketRecord,
+    ChangeUnitRecord, CoreProjectStore, StoredWriteTicket, TaskRecord,
 };
 use volicord_types::ids::{BaselineRef, ChangeUnitId, ProjectId, TaskId};
 use volicord_types::product_path::path_is_within;
@@ -64,7 +64,7 @@ pub(crate) struct RecordRunWriteAdmission<'a> {
 }
 
 pub(crate) fn admit_record_run(
-    record: &WriteTicketRecord,
+    record: &StoredWriteTicket,
     context: RecordRunWriteAdmission<'_>,
 ) -> Result<WriteTicketAttemptScope, WriteTicketAdmissionError> {
     let RecordRunWriteAdmission {
@@ -81,11 +81,11 @@ pub(crate) fn admit_record_run(
         write_authority_fingerprint,
         now,
     } = context;
-    if record.status != WriteTicketStatus::Active {
-        let reason = match record.status {
+    if record.status() != WriteTicketStatus::Active {
+        let reason = match record.status() {
             WriteTicketStatus::Consumed => "consumed",
             WriteTicketStatus::Invalidated => record
-                .invalidation_reason
+                .invalidation_reason()
                 .map(WriteTicketInvalidationReason::as_str)
                 .ok_or_else(|| CorePipelineError::Invariant {
                     detail: "typed invalidated write ticket lacks an invalidation reason"
@@ -108,7 +108,7 @@ pub(crate) fn admit_record_run(
             "current Git workspace context differs from the write ticket Change Unit basis",
         );
     }
-    let validity_basis = &record.validity_basis;
+    let validity_basis = record.validity_basis();
     if validity_basis.write_authority_fingerprint != write_authority_fingerprint {
         return write_ticket_mismatch(
             "policy_authority_mismatch",
@@ -150,14 +150,13 @@ pub(crate) fn admit_record_run(
             "write ticket workspace context is no longer current",
         );
     }
-    let scope = &record.attempt_scope;
+    let scope = record.attempt_scope();
     let scope_paths = record
-        .allowed_path_prefixes
+        .allowed_path_prefixes()
         .iter()
         .map(|path| path.as_str().to_owned())
         .collect::<Vec<_>>();
     if let Some(mismatch) = run_write_ticket_mismatch(
-        record,
         scope,
         RunWriteTicketAttempt {
             task_id,
@@ -174,7 +173,7 @@ pub(crate) fn admit_record_run(
     }
     if observed_changes.changed_paths.iter().any(|path| {
         record
-            .denied_path_prefixes
+            .denied_path_prefixes()
             .iter()
             .any(|denied| path_is_within(path, denied.as_str()))
     }) {

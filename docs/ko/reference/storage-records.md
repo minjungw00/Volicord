@@ -518,13 +518,23 @@ projection, JSON 및 폐쇄형 값 decoding, timestamp decoding, Product Reposit
 경로 decoding, 영속 필드 간 불변 조건을 담당합니다. 일반 읽기와 기존 Store
 transaction 안의 읽기는 정규 row projection, decoder, invariant validator 하나를
 공유합니다. 활성 ticket filtering은 선택한 각 row가 검증된 typed Write Ticket이 된
-뒤에만 수행합니다.
+뒤에만 수행합니다. `StoredWriteTicket`의 모든 field는 aggregate 밖에서
+비공개입니다. Consumer는 읽기 전용 의미 accessor만 사용하며 영속 record를 구성,
+갱신, destructure할 수 없습니다. 공개 호환 alias도 없습니다.
 
 다른 Store 모듈은 완전한 typed Write Ticket 또는 그 record에서 만든 집중된 typed
 view를 받습니다. 특히 workflow policy 영속화는 typed authority-binding view를
 사용하며 `write_tickets`를 query하거나 `validity_basis_json`을 parse하거나 ticket
 corruption을 구성하지 않습니다. 검증된 binding과 현재 workflow policy authority의
 비교는 의미 policy 판단입니다.
+
+영속화 전 ticket 제안은 합성 `StoredWriteTicket`이 아니라 Core가 소유하는 별도
+`PlannedWriteTicket`입니다. Core는 projection 전에 identity, scope, path,
+authority, timestamp 관계를 의미 수준에서 검증합니다. 같은 planned 값이 projection
+대상 ticket fact와 완전히 typed인 `WriteTicketInsert`를 모두 제공하며, Store만 해당
+삽입 입력을 물리 column과 JSON으로 매핑합니다. Dry-run 제안에는 영속 ticket
+identity가 없고 Store 삽입 입력을 만들 수 없습니다. 재사용은 이미 검증된
+`StoredWriteTicket`을 읽습니다.
 
 한 물리 Write Ticket field에 국한된 corruption은 그 정확한 field를 식별합니다.
 Owner identity, scope revision, baseline, timestamp 순서, path set, path coverage,

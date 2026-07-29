@@ -2781,9 +2781,9 @@ fn insert_active_write_ticket_with_scope(
         .collect::<Result<Vec<_>, _>>()?;
     store.insert_write_ticket_fixture(
         &volicord_store::core_pipeline::WriteTicketInsert {
-            write_ticket_id: input.write_ticket_id.to_owned(),
-            task_id: input.task_id.to_owned(),
-            change_unit_id: input.change_unit_id.to_owned(),
+            write_ticket_id: WriteTicketId::new(input.write_ticket_id),
+            task_id: TaskId::new(input.task_id),
+            change_unit_id: ChangeUnitId::new(input.change_unit_id),
             validity_basis: WriteTicketValidityBasis {
                 task_id: TaskId::new(input.task_id),
                 change_unit_id: ChangeUnitId::new(input.change_unit_id),
@@ -2838,8 +2838,8 @@ fn mutate_write_ticket_authority_json(
     let record = store
         .write_ticket_record(write_ticket_id)?
         .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?;
-    let mut validity_basis = serde_json::to_value(record.validity_basis)?;
-    let mut attempt_scope = serde_json::to_value(record.attempt_scope)?;
+    let mut validity_basis = serde_json::to_value(record.validity_basis())?;
+    let mut attempt_scope = serde_json::to_value(record.attempt_scope())?;
     mutate(&mut validity_basis, &mut attempt_scope);
     store.set_write_ticket_authority_fixture(
         write_ticket_id,
@@ -2918,7 +2918,7 @@ fn write_ticket_basis(
         .store()?
         .write_ticket_record(write_ticket_id)?
         .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?
-        .basis_state_version)
+        .basis_state_version())
 }
 
 fn write_ticket_timestamps(
@@ -2930,10 +2930,8 @@ fn write_ticket_timestamps(
         .write_ticket_record(write_ticket_id)?
         .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?;
     Ok((
-        record.created_at.to_string(),
-        record
-            .idle_expires_at
-            .map(|timestamp| timestamp.to_string()),
+        record.created_at().to_string(),
+        record.idle_expires_at().map(ToString::to_string),
     ))
 }
 
@@ -3668,7 +3666,7 @@ fn write_ticket_status(
         .store()?
         .write_ticket_record(write_ticket_id)?
         .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?
-        .status;
+        .status();
     Ok(match status {
         WriteTicketStatus::Active => "active",
         WriteTicketStatus::Consumed => "consumed",
@@ -3686,7 +3684,7 @@ fn write_ticket_invalidation_reason(
         .store()?
         .write_ticket_record(write_ticket_id)?
         .ok_or_else(|| format!("missing Write Ticket fixture {write_ticket_id}"))?
-        .invalidation_reason
+        .invalidation_reason()
         .map(|reason| reason.as_str().to_owned()))
 }
 

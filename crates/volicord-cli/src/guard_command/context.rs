@@ -139,25 +139,25 @@ pub(super) fn guard_state_summary(
         let current_sensitive_approvals =
             current_sensitive_approvals(&store, &task_id, &now_timestamp)?;
         for record in store.write_tickets_for_task(&task_id)? {
-            let validity_basis = &record.validity_basis;
+            let validity_basis = record.validity_basis();
             let policy_binding_is_current =
                 validity_basis.write_authority_fingerprint == current_write_authority_fingerprint;
             if !policy_binding_is_current {
-                stale_write_ticket_ids.push(record.write_ticket_id.clone());
-                if record.status != WriteTicketStatus::Consumed {
+                stale_write_ticket_ids.push(record.write_ticket_id().to_owned());
+                if record.status() != WriteTicketStatus::Consumed {
                     let intended_paths = record
-                        .allowed_path_prefixes
+                        .allowed_path_prefixes()
                         .iter()
                         .map(|path| path.as_str().to_owned())
                         .collect::<Vec<_>>();
                     let denied_paths = record
-                        .denied_path_prefixes
+                        .denied_path_prefixes()
                         .iter()
                         .map(|path| path.as_str().to_owned())
                         .collect::<Vec<_>>();
                     if !intended_paths.is_empty() {
                         policy_stale_write_tickets.push(PolicyStaleWriteTicketSummary {
-                            write_ticket_id: record.write_ticket_id,
+                            write_ticket_id: record.write_ticket_id().to_owned(),
                             intended_paths,
                             denied_paths,
                         });
@@ -165,14 +165,13 @@ pub(super) fn guard_state_summary(
                 }
                 continue;
             }
-            if record.status != WriteTicketStatus::Active {
-                stale_write_ticket_ids.push(record.write_ticket_id);
+            if record.status() != WriteTicketStatus::Active {
+                stale_write_ticket_ids.push(record.write_ticket_id().to_owned());
                 continue;
             }
-            let attempt_scope = &record.attempt_scope;
+            let attempt_scope = record.attempt_scope();
             let not_idle_expired = record
-                .idle_expires_at
-                .as_ref()
+                .idle_expires_at()
                 .is_none_or(|expires_at| now_timestamp < *expires_at);
             let approval_basis_current = write_ticket_approval_basis_is_current(
                 validity_basis,
@@ -184,8 +183,8 @@ pub(super) fn guard_state_summary(
                 WriteTicketOwnerBasisStatus::Stale,
                 |current| {
                     write_ticket_owner_basis_status(
-                        &record.task_id,
-                        Some(record.change_unit_id.as_str()),
+                        record.task_id(),
+                        Some(record.change_unit_id()),
                         validity_basis,
                         attempt_scope,
                         current,
@@ -197,7 +196,7 @@ pub(super) fn guard_state_summary(
                 && approval_basis_current
                 && owner_basis_status != WriteTicketOwnerBasisStatus::Stale
             {
-                let write_ticket_id = record.write_ticket_id.clone();
+                let write_ticket_id = record.write_ticket_id().to_owned();
                 current_write_ticket_ids.push(write_ticket_id.clone());
                 let workspace_validity_uncertain =
                     owner_basis_status == WriteTicketOwnerBasisStatus::WorkspaceUncertain;
@@ -205,27 +204,27 @@ pub(super) fn guard_state_summary(
                     uncertain_write_ticket_ids.push(write_ticket_id.clone());
                 }
                 let intended_paths = record
-                    .allowed_path_prefixes
+                    .allowed_path_prefixes()
                     .iter()
                     .map(|path| path.as_str().to_owned())
                     .collect::<Vec<_>>();
                 let denied_paths = record
-                    .denied_path_prefixes
+                    .denied_path_prefixes()
                     .iter()
                     .map(|path| path.as_str().to_owned())
                     .collect::<Vec<_>>();
                 if !intended_paths.is_empty() {
                     active_write_tickets.push(ActiveWriteTicketSummary {
                         write_ticket_id,
-                        change_unit_id: record.change_unit_id.clone(),
+                        change_unit_id: record.change_unit_id().to_owned(),
                         intended_paths,
                         denied_paths,
-                        idle_expires_at: record.idle_expires_at.map(|value| value.to_string()),
+                        idle_expires_at: record.idle_expires_at().map(ToString::to_string),
                         workspace_validity_uncertain,
                     });
                 }
             } else {
-                stale_write_ticket_ids.push(record.write_ticket_id);
+                stale_write_ticket_ids.push(record.write_ticket_id().to_owned());
             }
         }
         pending_user_action_count = store

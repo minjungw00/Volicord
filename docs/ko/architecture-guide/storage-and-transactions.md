@@ -59,7 +59,7 @@ Facade는 두 번째 Store 추상화를 추가하지 않고 inherent `CoreProjec
 | `facade.rs`, `open.rs` | 프로젝트 데이터베이스 handle, 유지되는 Runtime Home 및 프로젝트 identity, 읽기 snapshot, 읽기 전용 또는 변경 가능 열기. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | 프로젝트 header와 enforcement profile 읽기, 엄격한 저장 값 decoding, 프로젝트 UTC floor. |
 | `tasks.rs` | Task 및 수락 mutation 입력과 SQL, Task row, 수락 기준, 증거 주장, Task revision. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, Run mutation 입력과 SQL, 비공개 물리 row, 폐쇄형 값·JSON·timestamp·Product Repository 경로를 엄격하게 decode한 typed 읽기와 Run observed-change projection. `write_tickets.rs`만 물리 Write Ticket을 담당하며 일반 읽기와 transaction 범위 읽기에서 정규 row projection, decoder, 영속 불변 조건 validator 하나를 공유합니다. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, Run mutation 입력과 SQL, 비공개 물리 row, 폐쇄형 값·JSON·timestamp·Product Repository 경로를 엄격하게 decode한 typed 읽기와 Run observed-change projection. `write_tickets.rs`만 물리 Write Ticket을 담당하며 일반 읽기와 transaction 범위 읽기에서 정규 row projection, decoder, 영속 불변 조건 validator 하나를 공유합니다. 이 decoder가 비공개 필드를 의미 accessor로 제공하는 opaque `StoredWriteTicket`을 만듭니다. |
 | `evidence.rs`, `artifacts.rs` | 증거 및 artifact mutation 입력과 SQL, 증거 요약과 관찰 읽기, artifact staging record, 영속 artifact record, artifact link, 읽기 시 artifact 본문 검증. |
 | `user_actions.rs`, `continuity.rs` | User Action 및 continuity mutation 입력과 SQL, 물리 JSON 및 저장 scalar를 typed 요청·해결 레코드로 엄격하게 decoding하는 읽기, 유효 상태 읽기, 프로젝트 continuity row와 한도 있는 page. |
 | `replay.rs` | 비공개 tool invocation row, typed identity와 replay context의 엄격한 decoding, 변경 불가능한 operation-result projection, Core 소유 의미 replay를 위해 유지하는 정확한 메서드 응답 byte. |
@@ -219,7 +219,7 @@ typed 메서드 필드 담당 타입을 유지합니다. 커밋 분기는 이벤
 | 계획 또는 커밋 전 거부 | `CoreProjectStore::commit_mutation`을 호출하지 않고 반환합니다. Core 변이를 위한 Store 트랜잭션은 시작하지 않고 더 늦은 시계 하한도 영속화하지 않습니다. |
 | 읽기 전용 결과 | Store 읽기를 사용하고 Core 변이 커밋 없이 반환합니다. 현재 프로젝트 시각 샘플은 읽었다는 이유만으로 영속화하지 않습니다. |
 | 효과 없음 결과 | 정상 Core 변이 커밋 경로를 호출하거나 영속 하한을 전진시키지 않고 유효한 메서드 결과를 반환합니다. |
-| `dry-run` 미리보기 | 생성된 영속 참조, 권한 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, 상태 버전 변경, 더 늦은 시계 하한을 저장하지 않고 미리보기 데이터를 만듭니다. |
+| `dry-run` 미리보기 | 의미 plan을 영속 record로 취급하지 않으며 생성된 영속 참조, 권한 이벤트, 재실행 행, 스테이징 핸들, 아티팩트, 상태 버전 변경, 더 늦은 시계 하한을 저장하지 않고 미리보기 데이터를 만듭니다. |
 | 정상 커밋된 Core 변이 | `CoreProjectStore::commit_mutation`을 실행하며, 이 함수는 메서드가 제공한 `CoreStorageMutation` 값과 대기 이벤트를 정규 커밋 timestamp 하나로 한 transaction 안에서 적용합니다. |
 | 일시적 아티팩트 스테이징 | 정상 Core 변이 커밋 경로 대신 아티팩트 스테이징 도우미를 사용합니다. 자체 transaction에서 `state_version` 변경 없이 프로젝트 시각 하한을 staging `created_at` 이상으로 전진시킵니다. |
 | 등록된 evidence-capture fulfillment | Receipt, 일시적 staging, source claim을 함께 만들고 하한을 receipt `created_at` 이상으로 전진시킵니다. Core event, replay 행, state-version 증가는 없습니다. |
@@ -233,6 +233,12 @@ typed 메서드 필드 담당 타입을 유지합니다. 커밋 분기는 이벤
 각 group은 입력, 저장 표현 검증, SQL 적용, commit 조율에 필요한 typed 결과
 사실을 정의하는 aggregate 담당 모듈의 정적 enum입니다. `mutations.rs`는 활성
 transaction 안에서 순서 있는 목록을 각 담당 모듈에 위임합니다.
+
+새 Write Ticket을 발급할 때 Core는 `PlannedWriteTicket` 하나를 검증하고 그
+plan에서 응답 projection과 완전한 typed `WriteTicketInsert`를 함께
+파생합니다. Store는 insertion을 직렬화하고 영속 읽기에서 opaque
+`StoredWriteTicket`을 만듭니다. 메서드 dispatcher와 projection 코드는 영속
+ticket을 구성하지 않습니다.
 
 이 구조는 구현을 명확히 나눕니다.
 

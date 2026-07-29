@@ -1431,7 +1431,7 @@ pub mod core_fixtures {
                     entity: "write_ticket",
                     id: write_ticket_id.to_owned(),
                 })?;
-            Ok(match record.status {
+            Ok(match record.status() {
                 WriteTicketStatus::Active => "active",
                 WriteTicketStatus::Consumed => "consumed",
                 WriteTicketStatus::Invalidated => "invalidated",
@@ -1449,7 +1449,7 @@ pub mod core_fixtures {
                     entity: "write_ticket",
                     id: write_ticket_id.to_owned(),
                 })?
-                .basis_state_version)
+                .basis_state_version())
         }
 
         /// Reads the effective non-expiry status of a user-action request fixture.
@@ -2012,10 +2012,8 @@ pub mod core_fixtures {
                     id: write_ticket_id.to_owned(),
                 })?;
             Ok((
-                record.created_at.to_string(),
-                record
-                    .idle_expires_at
-                    .map(|timestamp| timestamp.to_string()),
+                record.created_at().to_string(),
+                record.idle_expires_at().map(ToString::to_string),
             ))
         }
 

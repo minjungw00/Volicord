@@ -51,5 +51,6 @@ pub(crate) use policy::{
 };
 pub(crate) use projection::{
     effective_write_ticket_status, projected_write_ticket_summary,
-    write_ticket_is_current_for_projection, write_ticket_summary_for_record,
+    write_ticket_is_current_for_projection, write_ticket_summary_for_plan,
+    write_ticket_summary_for_projected_consumption, write_ticket_summary_for_record,
 };

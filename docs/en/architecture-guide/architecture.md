@@ -190,6 +190,13 @@ evidence reads live in `acceptance_facts.rs`, `task_facts.rs`,
 `evidence_projection.rs`, and `guarantee_projection.rs` are Store-independent
 typed-fact-to-view projections.
 
+Within the focused Write Ticket owner, `write_ticket/planning.rs` constructs
+and validates `PlannedWriteTicket` as the only prospective issuance value.
+Response projection and `WriteTicketInsert` derivation both consume that plan.
+`write_ticket/projection.rs` has explicit paths for planned issuance,
+Store-validated `StoredWriteTicket` state, and projected consumption; it never
+turns a plan into a persisted record. The Store remains independent of Core.
+
 `ChangeUnitUpdate` schema accessors own exact method-field extraction, and
 `change_unit_planning.rs` owns Change Unit mutation planning. `task_policy.rs`
 owns Task lifecycle interpretation and lifecycle mutation planning.

@@ -1198,16 +1198,15 @@ fn committed_run_for_correlation(
             continue;
         };
         let (Some(run_id), Some(consumed_at)) = (
-            ticket.consumed_by_run_id.as_deref(),
+            ticket.consumed_by_run_id(),
             ticket
-                .consumed_at
-                .as_ref()
+                .consumed_at()
                 .map(|timestamp| *timestamp.as_datetime()),
         ) else {
             continue;
         };
-        let created_at = *ticket.created_at.as_datetime();
-        if ticket.status != WriteTicketStatus::Consumed
+        let created_at = *ticket.created_at().as_datetime();
+        if ticket.status() != WriteTicketStatus::Consumed
             || created_at > correlated_at
             || consumed_at < correlated_at
         {
@@ -1227,13 +1226,13 @@ fn committed_run_for_correlation(
         else {
             continue;
         };
-        let validity_basis = &ticket.validity_basis;
+        let validity_basis = ticket.validity_basis();
         if run.status != RunStatus::Recorded
-            || run.task_id != ticket.task_id
-            || run.change_unit_id.as_deref() != Some(ticket.change_unit_id.as_str())
-            || run_ticket_effect.write_ticket_id != ticket.write_ticket_id
-            || validity_basis.task_id.as_str() != ticket.task_id
-            || validity_basis.change_unit_id.as_str() != ticket.change_unit_id
+            || run.task_id != ticket.task_id()
+            || run.change_unit_id.as_deref() != Some(ticket.change_unit_id())
+            || run_ticket_effect.write_ticket_id != ticket.write_ticket_id()
+            || validity_basis.task_id.as_str() != ticket.task_id()
+            || validity_basis.change_unit_id.as_str() != ticket.change_unit_id()
             || validity_basis
                 .baseline_ref
                 .as_ref()
@@ -1243,18 +1242,18 @@ fn committed_run_for_correlation(
         {
             continue;
         }
-        if !run_observations.contains_key(&ticket.task_id) {
+        if !run_observations.contains_key(ticket.task_id()) {
             run_observations.insert(
-                ticket.task_id.clone(),
+                ticket.task_id().to_owned(),
                 store
-                    .run_observed_changes_for_task(&TaskId::new(&ticket.task_id))
+                    .run_observed_changes_for_task(&TaskId::new(ticket.task_id()))
                     .map_err(|_| {
                         SuppressionFailure::new(SuppressionUnavailableReason::RunLookupFailed)
                     })?,
             );
         }
         let observations = run_observations
-            .get(&ticket.task_id)
+            .get(ticket.task_id())
             .expect("task observations were inserted above");
         let Some(observed) = observations
             .iter()

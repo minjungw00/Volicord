@@ -11,12 +11,18 @@
 normalized path fact를 읽습니다. 집중된 `write_ticket/` 담당자는 `facts.rs`,
 `policy.rs`, `planning.rs`, `projection.rs`에서 현재 fact를 취득하고 정규화하며,
 policy를 평가하고 issue 또는 reuse를 계획한 뒤 typed 결과를 projection합니다.
+`planning.rs`는 별도의 비영속 `PlannedWriteTicket`을 담당합니다. 새 발급에서는
+검증된 같은 plan이 응답 projection과 완전한 typed Store insertion을 함께
+제공합니다. `dry-run` plan에는 영속 ticket ID가 없으며 insertion을 제공할 수
+없습니다.
 보호 대상 Record Run에서는 `write_ticket/admission.rs`가 typed operation, Task,
 Change Unit, invocation, observed-change, 현재 policy fact를 받아 승인된 attempt
 scope 또는 의미 승인 오류를 반환합니다.
 `core_pipeline/write_tickets.rs`만 물리 ticket 테이블, column, row projection,
 정규 decoder, 영속 불변 조건, 엄격한 일반 및 transaction 범위 읽기, 집중된 typed
-authority view, grouped mutation 적용을 담당합니다.
+authority view, grouped mutation 적용을 담당합니다. Decoder는 opaque
+`StoredWriteTicket`을 반환합니다. Core와 adapter는 의미 accessor를 볼 수 있지만
+비공개 field를 구성하거나 변경하거나 destructuring할 수 없습니다.
 
 Ticket lookup은 structural precondition 뒤에만 실행합니다. Reuse는 관련 없는 global
 state counter에 의존하지 않고 stored basis와 current typed fact를 비교합니다. 보호된
@@ -40,9 +46,13 @@ Record Run 승인, projection을 담당합니다. Record Run planner는 의미 f
 제공하며 저장된 path JSON을 해석하거나 ticket 정책을 독립적으로 구성하지
 않습니다. Store는 물리 ticket row를 비공개로 유지하고 status,
 validity basis, attempt scope, Product Repository 경로 모음, timestamp, 중복 owner
-coordinate를 엄격하게 decode한 뒤 typed record를 반환합니다. Store는 ticket query,
-물리 field 사이 관계를 폐쇄형 Write Ticket aggregate invariant로 검증하고,
-invalidation persistence와 consumption mutation도 담당합니다. Workflow policy
+coordinate를 엄격하게 decode한 뒤 `StoredWriteTicket`을 반환합니다. 물리 field
+사이 관계는 폐쇄형 Write Ticket aggregate invariant로 검증합니다. Core는
+`PlannedWriteTicket`을 구성할 때 의미 planning invariant를 검증하며, 이 검증은
+Store가 담당하는 영속 물리 검증과 구분됩니다. Projection에는 plan, stored
+ticket, projected post-consumption 상태를 위한 명시적 경로가 있으며 stored
+record를 변경하지 않습니다. Store는 ticket query, invalidation persistence,
+consumption mutation도 담당합니다. Workflow policy
 영속화는 검증된 record에서 만든 집중된 typed authority view만 받으며 ticket row를
 query하거나 decode하지 않습니다. Guard는 observation을 제공하지만 ticket basis를
 넓히지 않습니다.
@@ -54,9 +64,13 @@ query하거나 decode하지 않습니다. Guard는 observation을 제공하지�
 3. Core policy가 normalized current write-authority basis를 계산합니다.
 4. Store가 compatible ticket candidate를 반환하고 Core가 reuse 또는 new issuance를
    선택합니다.
-5. Record Run에서는 `write_ticket/admission.rs`가 typed operation fact로 current
+5. 새 발급은 `PlannedWriteTicket` 하나를 만들며 응답 projection과
+   `WriteTicketInsert`를 여기서 파생합니다. `dry-run`에서는 ID 없는 plan을
+   유지하고 Store insertion을 수행하지 않으며 reuse는 `StoredWriteTicket`을
+   읽습니다.
+6. Record Run에서는 `write_ticket/admission.rs`가 typed operation fact로 current
    compatibility evaluation을 반복하고 승인된 scope를 반환합니다.
-6. Store가 보호 대상 mutation과 함께 ticket consumption을 commit합니다.
+7. Store가 보호 대상 mutation과 함께 ticket consumption을 commit합니다.
 
 ## 실패 동작
 
@@ -81,13 +95,15 @@ actor identity나 transferable capability가 아닙니다.
   요청별 issue/reuse와 protected consumption 조율.
 - [`crates/volicord-core/src/write_ticket/`](../../../../crates/volicord-core/src/write_ticket/)와
   [`workflow.rs`](../../../../crates/volicord-core/src/policy/workflow.rs):
-  typed fact 취득, current-basis 평가, 계획, 보호 대상 Record Run 승인, projection.
+  typed fact 취득, current-basis 평가, `PlannedWriteTicket` 구성, 보호 대상 Record
+  Run 승인, 명시적인 planned·stored·projected-consumption projection.
 - [`crates/volicord-core/src/write_ticket/tests/record_run_admission.rs`](../../../../crates/volicord-core/src/write_ticket/tests/record_run_admission.rs):
   집중된 Record Run ticket 승인 및 무효과 거절 coverage.
 - [`crates/volicord-types/src/product_path.rs`](../../../../crates/volicord-types/src/product_path.rs):
   공유 typed 제품 경로 정규화와 포함 관계.
 - [`crates/volicord-store/src/core_pipeline/write_tickets.rs`](../../../../crates/volicord-store/src/core_pipeline/write_tickets.rs):
-  물리 소유권, 정규 decoding, typed authority view, query, grouped mutation 적용.
+  물리 소유권, opaque `StoredWriteTicket`으로의 정규 decoding, typed insertion
+  직렬화, authority view, query, grouped mutation 적용.
 - [`crates/volicord-store/src/workflow_records.rs`](../../../../crates/volicord-store/src/workflow_records.rs):
   workflow policy 영속화와 typed Write Ticket authority view를 이용한 의미 평가.
 

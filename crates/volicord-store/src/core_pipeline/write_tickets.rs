@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use volicord_types::{
-    ids::{TaskId, WriteTicketId},
+    ids::{ChangeUnitId, TaskId, UserActionResolutionId, WriteTicketId},
     product_path::{path_is_within, ProductRelativePath},
     schema::{JsonObject, WriteTicketAttemptScope, WriteTicketValidityBasis},
     values::{ActorSource, UtcTimestamp, WriteTicketInvalidationReason, WriteTicketStatus},
@@ -36,15 +36,15 @@ pub enum WriteTicketMutation {
 /// Storage input for inserting one open write ticket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteTicketInsert {
-    pub write_ticket_id: String,
-    pub task_id: String,
-    pub change_unit_id: String,
+    pub write_ticket_id: WriteTicketId,
+    pub task_id: TaskId,
+    pub change_unit_id: ChangeUnitId,
     pub validity_basis: WriteTicketValidityBasis,
     pub allowed_path_prefixes: Vec<ProductRelativePath>,
     pub denied_path_prefixes: Vec<ProductRelativePath>,
     pub attempt_scope: WriteTicketAttemptScope,
     pub created_by_actor_source: ActorSource,
-    pub created_by_user_action_resolution_id: Option<String>,
+    pub created_by_user_action_resolution_id: Option<UserActionResolutionId>,
     pub idle_expires_at: Option<UtcTimestamp>,
     pub created_at: UtcTimestamp,
     pub metadata: JsonObject,
@@ -94,28 +94,144 @@ impl WriteTicketMutation {
     }
 }
 
-/// Stored write ticket facts needed by status and stale-marking responses.
+/// Store-validated persisted Write Ticket.
+///
+/// The fields are private so external crates cannot construct a value that
+/// bypasses Store-owned physical decoding and persisted-record validation.
+///
+/// ```
+/// use volicord_store::core_pipeline::StoredWriteTicket;
+///
+/// fn inspect(ticket: &StoredWriteTicket) {
+///     let _ = ticket.write_ticket_id();
+///     let _ = ticket.validity_basis();
+///     let _ = ticket.status();
+/// }
+/// ```
+///
+/// ```compile_fail,E0451
+/// use volicord_store::core_pipeline::StoredWriteTicket;
+///
+/// let _ = StoredWriteTicket {
+///     project_id: String::new(),
+///     ..todo!()
+/// };
+/// ```
+///
+/// ```compile_fail,E0616
+/// use volicord_store::core_pipeline::StoredWriteTicket;
+///
+/// fn inspect(ticket: &StoredWriteTicket) {
+///     let _ = &ticket.validity_basis;
+/// }
+/// ```
+///
+/// ```compile_fail,E0451
+/// use volicord_store::core_pipeline::StoredWriteTicket;
+///
+/// fn inspect(ticket: StoredWriteTicket) {
+///     let StoredWriteTicket { status, .. } = ticket;
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WriteTicketRecord {
-    pub project_id: String,
-    pub write_ticket_id: String,
-    pub task_id: String,
-    pub change_unit_id: String,
-    pub basis_state_version: u64,
-    pub status: WriteTicketStatus,
-    pub validity_basis: WriteTicketValidityBasis,
-    pub allowed_path_prefixes: Vec<ProductRelativePath>,
-    pub denied_path_prefixes: Vec<ProductRelativePath>,
-    pub attempt_scope: WriteTicketAttemptScope,
-    pub created_by_actor_source: ActorSource,
-    pub created_by_user_action_resolution_id: Option<String>,
-    pub idle_expires_at: Option<UtcTimestamp>,
-    pub invalidation_reason: Option<WriteTicketInvalidationReason>,
-    pub consumed_by_run_id: Option<String>,
-    pub consumed_at: Option<UtcTimestamp>,
-    pub revoked_at: Option<UtcTimestamp>,
-    pub created_at: UtcTimestamp,
-    pub metadata: JsonObject,
+pub struct StoredWriteTicket {
+    project_id: String,
+    write_ticket_id: String,
+    task_id: String,
+    change_unit_id: String,
+    basis_state_version: u64,
+    status: WriteTicketStatus,
+    validity_basis: WriteTicketValidityBasis,
+    allowed_path_prefixes: Vec<ProductRelativePath>,
+    denied_path_prefixes: Vec<ProductRelativePath>,
+    attempt_scope: WriteTicketAttemptScope,
+    created_by_actor_source: ActorSource,
+    created_by_user_action_resolution_id: Option<String>,
+    idle_expires_at: Option<UtcTimestamp>,
+    invalidation_reason: Option<WriteTicketInvalidationReason>,
+    consumed_by_run_id: Option<String>,
+    consumed_at: Option<UtcTimestamp>,
+    revoked_at: Option<UtcTimestamp>,
+    created_at: UtcTimestamp,
+    metadata: JsonObject,
+}
+
+impl StoredWriteTicket {
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    pub fn write_ticket_id(&self) -> &str {
+        &self.write_ticket_id
+    }
+
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    pub fn change_unit_id(&self) -> &str {
+        &self.change_unit_id
+    }
+
+    pub fn basis_state_version(&self) -> u64 {
+        self.basis_state_version
+    }
+
+    pub fn status(&self) -> WriteTicketStatus {
+        self.status
+    }
+
+    pub fn validity_basis(&self) -> &WriteTicketValidityBasis {
+        &self.validity_basis
+    }
+
+    pub fn allowed_path_prefixes(&self) -> &[ProductRelativePath] {
+        &self.allowed_path_prefixes
+    }
+
+    pub fn denied_path_prefixes(&self) -> &[ProductRelativePath] {
+        &self.denied_path_prefixes
+    }
+
+    pub fn attempt_scope(&self) -> &WriteTicketAttemptScope {
+        &self.attempt_scope
+    }
+
+    pub fn created_by_actor_source(&self) -> &ActorSource {
+        &self.created_by_actor_source
+    }
+
+    pub fn created_by_user_action_resolution_id(&self) -> Option<&str> {
+        self.created_by_user_action_resolution_id.as_deref()
+    }
+
+    pub fn idle_expires_at(&self) -> Option<&UtcTimestamp> {
+        self.idle_expires_at.as_ref()
+    }
+
+    pub fn invalidation_reason(&self) -> Option<WriteTicketInvalidationReason> {
+        self.invalidation_reason
+    }
+
+    pub fn consumed_by_run_id(&self) -> Option<&str> {
+        self.consumed_by_run_id.as_deref()
+    }
+
+    pub fn consumed_at(&self) -> Option<&UtcTimestamp> {
+        self.consumed_at.as_ref()
+    }
+
+    pub fn revoked_at(&self) -> Option<&UtcTimestamp> {
+        self.revoked_at.as_ref()
+    }
+
+    pub fn created_at(&self) -> &UtcTimestamp {
+        &self.created_at
+    }
+
+    pub fn metadata(&self) -> &JsonObject {
+        &self.metadata
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,12 +282,12 @@ enum WriteTicketFieldKind {
 
 impl CoreProjectStore<'_> {
     /// Lists active Write Tickets for a Task.
-    pub fn active_write_tickets(&self, task_id: &TaskId) -> StoreResult<Vec<WriteTicketRecord>> {
+    pub fn active_write_tickets(&self, task_id: &TaskId) -> StoreResult<Vec<StoredWriteTicket>> {
         active_write_tickets(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
     /// Lists Write Tickets for a Task without mutating effective status.
-    pub fn write_tickets_for_task(&self, task_id: &TaskId) -> StoreResult<Vec<WriteTicketRecord>> {
+    pub fn write_tickets_for_task(&self, task_id: &TaskId) -> StoreResult<Vec<StoredWriteTicket>> {
         write_tickets_for_task(&self.conn, &self.project.project_id, task_id.as_str())
     }
 
@@ -179,7 +295,7 @@ impl CoreProjectStore<'_> {
     pub fn write_ticket_record(
         &self,
         write_ticket_id: &str,
-    ) -> StoreResult<Option<WriteTicketRecord>> {
+    ) -> StoreResult<Option<StoredWriteTicket>> {
         write_ticket_record(&self.conn, &self.project.project_id, write_ticket_id)
     }
 
@@ -190,11 +306,14 @@ impl CoreProjectStore<'_> {
         input: &WriteTicketInsert,
         basis_state_version: u64,
     ) -> StoreResult<()> {
-        validate_identifier("write_ticket_id", &input.write_ticket_id)?;
-        validate_identifier("task_id", &input.task_id)?;
-        validate_identifier("change_unit_id", &input.change_unit_id)?;
+        validate_identifier("write_ticket_id", input.write_ticket_id.as_str())?;
+        validate_identifier("task_id", input.task_id.as_str())?;
+        validate_identifier("change_unit_id", input.change_unit_id.as_str())?;
         if let Some(resolution_id) = &input.created_by_user_action_resolution_id {
-            validate_identifier("created_by_user_action_resolution_id", resolution_id)?;
+            validate_identifier(
+                "created_by_user_action_resolution_id",
+                resolution_id.as_str(),
+            )?;
         }
         let record =
             active_write_ticket_record(&self.project.project_id, input, basis_state_version);
@@ -280,7 +399,7 @@ fn active_write_tickets(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-) -> StoreResult<Vec<WriteTicketRecord>> {
+) -> StoreResult<Vec<StoredWriteTicket>> {
     let sql = format!(
         "SELECT {WRITE_TICKET_RECORD_COLUMNS}
            FROM write_tickets
@@ -307,7 +426,7 @@ fn write_tickets_for_task(
     conn: &Connection,
     project_id: &str,
     task_id: &str,
-) -> StoreResult<Vec<WriteTicketRecord>> {
+) -> StoreResult<Vec<StoredWriteTicket>> {
     let sql = format!(
         "SELECT {WRITE_TICKET_RECORD_COLUMNS}
            FROM write_tickets
@@ -331,7 +450,7 @@ fn write_ticket_record(
     conn: &Connection,
     project_id: &str,
     write_ticket_id: &str,
-) -> StoreResult<Option<WriteTicketRecord>> {
+) -> StoreResult<Option<StoredWriteTicket>> {
     let sql = format!(
         "SELECT {WRITE_TICKET_RECORD_COLUMNS}
            FROM write_tickets
@@ -353,7 +472,7 @@ fn write_ticket_record_in_tx(
     tx: &Transaction<'_>,
     project_id: &str,
     write_ticket_id: &str,
-) -> StoreResult<Option<WriteTicketRecord>> {
+) -> StoreResult<Option<StoredWriteTicket>> {
     write_ticket_record(tx, project_id, write_ticket_id)
 }
 
@@ -449,7 +568,7 @@ fn write_ticket_record_raw_from_row(
     })
 }
 
-fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<WriteTicketRecord> {
+fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<StoredWriteTicket> {
     let record_ref = raw.write_ticket_id.clone();
     let corrupt_value =
         |column| StoreError::corrupt_owner_state_value("write_tickets", record_ref.clone(), column);
@@ -547,7 +666,7 @@ fn decode_write_ticket_record(raw: WriteTicketRecordRaw) -> StoreResult<WriteTic
         "metadata_json",
         &raw.metadata_json,
     )?;
-    let record = WriteTicketRecord {
+    let record = StoredWriteTicket {
         project_id,
         write_ticket_id,
         task_id,
@@ -589,7 +708,7 @@ fn nonempty_stored_identifier(value: &str) -> Option<&str> {
 }
 
 fn validate_write_ticket_record(
-    record: &WriteTicketRecord,
+    record: &StoredWriteTicket,
 ) -> Result<(), WriteTicketValidationFailure> {
     let invalid_json = |logical_column| WriteTicketValidationFailure::Field {
         logical_column,
@@ -778,12 +897,12 @@ fn active_write_ticket_record(
     project_id: &str,
     input: &WriteTicketInsert,
     basis_state_version: u64,
-) -> WriteTicketRecord {
-    WriteTicketRecord {
+) -> StoredWriteTicket {
+    StoredWriteTicket {
         project_id: project_id.to_owned(),
-        write_ticket_id: input.write_ticket_id.clone(),
-        task_id: input.task_id.clone(),
-        change_unit_id: input.change_unit_id.clone(),
+        write_ticket_id: input.write_ticket_id.as_str().to_owned(),
+        task_id: input.task_id.as_str().to_owned(),
+        change_unit_id: input.change_unit_id.as_str().to_owned(),
         basis_state_version,
         status: WriteTicketStatus::Active,
         validity_basis: input.validity_basis.clone(),
@@ -791,7 +910,10 @@ fn active_write_ticket_record(
         denied_path_prefixes: input.denied_path_prefixes.clone(),
         attempt_scope: input.attempt_scope.clone(),
         created_by_actor_source: input.created_by_actor_source.clone(),
-        created_by_user_action_resolution_id: input.created_by_user_action_resolution_id.clone(),
+        created_by_user_action_resolution_id: input
+            .created_by_user_action_resolution_id
+            .as_ref()
+            .map(|resolution_id| resolution_id.as_str().to_owned()),
         idle_expires_at: input.idle_expires_at.clone(),
         invalidation_reason: None,
         consumed_by_run_id: None,
@@ -802,7 +924,7 @@ fn active_write_ticket_record(
     }
 }
 
-fn insert_write_ticket_record(conn: &Connection, record: &WriteTicketRecord) -> StoreResult<()> {
+fn insert_write_ticket_record(conn: &Connection, record: &StoredWriteTicket) -> StoreResult<()> {
     let validity_basis_json = volicord_types::canonical::canonical_json_string(
         &record.validity_basis,
     )
@@ -944,11 +1066,14 @@ impl MutationContext<'_> {
         input: &WriteTicketInsert,
         committed_state_version: u64,
     ) -> StoreResult<()> {
-        validate_identifier("write_ticket_id", &input.write_ticket_id)?;
-        validate_identifier("task_id", &input.task_id)?;
-        validate_identifier("change_unit_id", &input.change_unit_id)?;
+        validate_identifier("write_ticket_id", input.write_ticket_id.as_str())?;
+        validate_identifier("task_id", input.task_id.as_str())?;
+        validate_identifier("change_unit_id", input.change_unit_id.as_str())?;
         if let Some(resolution_id) = &input.created_by_user_action_resolution_id {
-            validate_identifier("created_by_user_action_resolution_id", resolution_id)?;
+            validate_identifier(
+                "created_by_user_action_resolution_id",
+                resolution_id.as_str(),
+            )?;
         }
         let record = active_write_ticket_record(self.project_id, input, committed_state_version);
         validate_write_ticket_record(&record).map_err(|failure| StoreError::InvalidInput {

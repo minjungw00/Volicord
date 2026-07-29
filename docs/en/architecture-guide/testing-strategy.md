@@ -31,7 +31,10 @@ Store-constructed typed records and cover semantic policy and invariant
 failures; they do not repeat physical decoders or construct Store corruption.
 This split applies to workflow policy, Write Ticket, replay identity,
 reconciliation observations, UserAction, and the other Core-facing record
-families.
+families. Write Ticket boundary tests compile successfully when using
+`StoredWriteTicket` accessors and fail to compile when external code attempts
+a struct literal, private-field access, or destructuring. They assert the
+compile outcome rather than compiler-message text.
 
 Within `volicord-core`, reusable semantic-owner tests stay beside
 `identity.rs`, `artifact.rs`, the focused fact, projection, guidance, summary
@@ -43,7 +46,11 @@ accessors. The other owner tests assert typed facts, policy decisions, retry
 behavior, or one precise boundary mapping. Public method orchestration,
 response-family, replay, and committed-effect matrices remain under
 `methods/tests/`. A method integration test does not become the sole coverage
-for reusable owner logic.
+for reusable owner logic. Write Ticket planning tests cover
+`PlannedWriteTicket` semantic construction errors, an ID-less dry-run plan,
+and derivation of response projection and a fully typed `WriteTicketInsert`
+from the same plan. Prepare Write method tests retain representative dry-run
+issue and reuse outcomes without persisted ticket construction or allocation.
 
 Record Run follows this split by source responsibility. Request and fact
 acquisition, capture authority, evidence observation and reuse, artifact

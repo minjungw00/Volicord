@@ -3,7 +3,7 @@ use volicord_types::ids::{ProjectId, RecordId, TaskId};
 use volicord_types::schema::StateRecordRef;
 use volicord_types::values::StateRecordKind;
 
-use volicord_store::core_pipeline::{ChangeUnitRecord, StoredRecordRef, WriteTicketRecord};
+use volicord_store::core_pipeline::{ChangeUnitRecord, StoredRecordRef, StoredWriteTicket};
 
 use crate::policy::evidence::state_record_ref_identity_key;
 
@@ -58,12 +58,12 @@ pub(crate) fn state_ref(
     }
 }
 
-pub(crate) fn write_ticket_ref(record: &WriteTicketRecord, state_version: u64) -> StateRecordRef {
+pub(crate) fn write_ticket_ref(record: &StoredWriteTicket, state_version: u64) -> StateRecordRef {
     state_ref(
         StateRecordKind::WriteTicket,
-        &record.write_ticket_id,
-        &ProjectId::new(record.project_id.clone()),
-        Some(&TaskId::new(record.task_id.clone())),
+        record.write_ticket_id(),
+        &ProjectId::new(record.project_id()),
+        Some(&TaskId::new(record.task_id())),
         Some(state_version),
     )
 }

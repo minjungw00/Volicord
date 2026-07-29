@@ -28,7 +28,10 @@ Store 소유 영속 데이터 손상을 확인합니다. Core와 서비스 테�
 유효한 typed record를 사용해 의미 policy와 invariant failure를 검증합니다. 물리
 decoder를 반복하거나 Store 손상을 구성하지 않습니다. 이 구분은 workflow policy,
 Write Ticket, replay identity, reconciliation observation, UserAction과 그 밖의
-Core 지향 record family 모두에 적용됩니다.
+Core 지향 record family 모두에 적용됩니다. Write Ticket 경계 테스트는
+`StoredWriteTicket` accessor를 사용하면 compile에 성공하고 외부 코드가 struct
+literal, 비공개 field 접근, destructuring을 시도하면 compile에 실패하는지
+확인합니다. Compiler message text가 아니라 compile 결과를 검증합니다.
 
 `volicord-core`에서는 재사용 가능한 의미 담당자 테스트를 그 테스트가 보호하는
 `identity.rs`, `artifact.rs`, 집중 fact, projection, guidance, summary text,
@@ -39,7 +42,11 @@ Change Unit planning, Task policy 모듈, `continuity/`, `write_ticket/`,
 밖의 담당자 테스트는 typed fact, policy 판단, retry 동작, 정확한 경계 매핑 하나를
 검증합니다. 공개 메서드 조율, 응답 계열, replay, 커밋 효과 matrix는
 `methods/tests/`에 둡니다. 메서드 통합 테스트가 재사용 담당자 로직의 유일한
-coverage가 되면 안 됩니다.
+coverage가 되면 안 됩니다. Write Ticket planning 테스트는
+`PlannedWriteTicket` 의미 구성 오류, ID 없는 `dry-run` plan, 같은 plan에서 응답
+projection과 완전한 typed `WriteTicketInsert`를 파생하는 경로를 검증합니다.
+Prepare Write 메서드 테스트는 영속 ticket 구성이나 할당 없이 대표 `dry-run`
+issue 및 reuse 결과를 유지합니다.
 
 Record Run도 소스 책임에 따라 이 구분을 적용합니다. 요청 및 fact 취득, 캡처 권한,
 증거 관찰과 재사용, artifact 검증과 승격, typed mutation 계획, 의미 오류

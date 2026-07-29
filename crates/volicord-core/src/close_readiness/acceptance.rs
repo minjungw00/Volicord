@@ -643,12 +643,12 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         }
         let Some(ticket) = tickets.iter().find(|ticket| {
-            ticket.status == WriteTicketStatus::Consumed
-                && ticket.consumed_by_run_id.as_deref() == Some(observed.run_id.as_str())
+            ticket.status() == WriteTicketStatus::Consumed
+                && ticket.consumed_by_run_id() == Some(observed.run_id.as_str())
         }) else {
             return Ok(false);
         };
-        let validity_basis = &ticket.validity_basis;
+        let validity_basis = ticket.validity_basis();
         if validity_basis.task_id != request.task_id
             || validity_basis.change_unit_id != close_basis.change_unit_id
             || validity_basis.scope_revision != context.task.scope_revision
@@ -657,11 +657,11 @@ fn light_completion_without_acceptance_allowed(
             return Ok(false);
         }
         let allowed = ticket
-            .allowed_path_prefixes
+            .allowed_path_prefixes()
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied = &ticket.denied_path_prefixes;
+        let denied = ticket.denied_path_prefixes();
         if !paths_are_authorized(&observed.observed_changes.changed_paths, &allowed)
             || observed.observed_changes.changed_paths.iter().any(|path| {
                 denied

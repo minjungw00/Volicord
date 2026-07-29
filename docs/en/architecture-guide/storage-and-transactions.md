@@ -55,7 +55,7 @@ without adding a second Store abstraction:
 | `facade.rs`, `open.rs` | Project-database handle, retained Runtime Home and project identity, read snapshots, and read-only or mutation-capable opening. |
 | `project_state.rs`, `enforcement_profile.rs`, `clock.rs` | Project header and enforcement-profile reads, strict stored-value decoding, and the project UTC floor. |
 | `tasks.rs` | Task and acceptance mutation inputs and SQL; Task rows, acceptance criteria, evidence claims, and Task revisions. |
-| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, and Run mutation inputs and SQL; private physical rows; strict closed-value, JSON, timestamp, and Product Repository path decoding into typed reads and Run observed-change projections. `write_tickets.rs` is the sole physical Write Ticket owner and shares one canonical row projection, decoder, and persisted-invariant validator across normal and transaction-scoped reads. |
+| `change_units.rs`, `write_tickets.rs`, `runs.rs` | Typed Change Unit, Write Ticket, and Run mutation inputs and SQL; private physical rows; strict closed-value, JSON, timestamp, and Product Repository path decoding into typed reads and Run observed-change projections. `write_tickets.rs` is the sole physical Write Ticket owner and shares one canonical row projection, decoder, and persisted-invariant validator across normal and transaction-scoped reads. Its decoder creates the opaque `StoredWriteTicket`, whose private fields are available through semantic accessors. |
 | `evidence.rs`, `artifacts.rs` | Evidence and artifact mutation inputs and SQL; evidence summary and observation reads, artifact staging records, durable artifact records, artifact links, and artifact-body verification on reads. |
 | `user_actions.rs`, `continuity.rs` | User-action and continuity mutation inputs and SQL; strict decoding of physical JSON and stored scalar values into typed request/resolution records, effective-status reads, project-continuity rows, and bounded pages. |
 | `replay.rs` | Private tool-invocation rows, strict typed identity and replay-context decoding, immutable operation-result projection, and exact method-response bytes retained for Core-owned semantic replay. |
@@ -228,7 +228,7 @@ and [Storage Effects](../reference/storage-effects.md).
 | Rejected before planning or commit | Returns without calling `CoreProjectStore::commit_mutation`; no Store transaction for a Core mutation starts and no later clock floor is persisted. |
 | Read-only result | Uses Store reads and returns without a Core mutation commit. A current project-time sample is not persisted merely because it was read. |
 | No-effect result | Returns a valid method result without calling the normal Core mutation commit path or advancing the persisted floor. |
-| Dry-run preview | Builds preview data without persisting generated refs, authority events, replay rows, staged handles, artifacts, state-version changes, or a later clock floor. |
+| Dry-run preview | Builds semantic plans and preview data without treating those plans as persisted records or persisting generated refs, authority events, replay rows, staged handles, artifacts, state-version changes, or a later clock floor. |
 | Normal committed Core mutation | Runs `CoreProjectStore::commit_mutation`, which applies method-provided `CoreStorageMutation` values and pending events with one canonical commit timestamp inside one transaction. |
 | Transient artifact staging | Uses artifact staging helpers instead of the normal Core mutation commit path. Its transaction advances the project-time floor to at least staging `created_at` without changing `state_version`. |
 | Registered evidence-capture fulfillment | Creates the receipt, transient staging, and source claims together, and advances the floor to at least receipt `created_at`; no Core event, replay row, or state-version increment. |
@@ -244,6 +244,12 @@ aggregate module that defines its inputs, storage-representation validation,
 SQL application, and any typed result facts required by commit coordination.
 `mutations.rs` delegates the ordered list to those owners inside the active
 transaction.
+
+For new Write Ticket issuance, Core validates one `PlannedWriteTicket` and
+derives both the response projection and the fully typed `WriteTicketInsert`
+from that plan. Store serializes the insertion and creates the opaque
+`StoredWriteTicket` on persisted reads. The method dispatcher and projection
+code do not construct a persisted ticket.
 
 This structure gives the implementation a clear split:
 

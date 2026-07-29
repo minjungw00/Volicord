@@ -28,10 +28,10 @@ use crate::task_facts::{active_blocker_refs, current_close_basis};
 use crate::workflow_diagnostics::{
     record_core_workflow_metric_best_effort, response_committed_fresh_effect,
 };
-use crate::write_ticket::write_ticket_summary_for_record;
 use crate::write_ticket::{
     plan_prepare_write as plan_write_ticket, PrepareWritePlannedMutations, WriteTicketPlanningError,
 };
+use crate::write_ticket::{write_ticket_summary_for_plan, write_ticket_summary_for_record};
 use serde_json::{json, Map, Value};
 use volicord_store::core_pipeline::{CoreProjectStore, CoreStorageMutation, ProjectStateHeader};
 use volicord_store::diagnostics::WorkflowMetricKind;
@@ -343,13 +343,14 @@ fn project_prepare_write_response(
         guarantee_display,
         write_ticket_id,
         write_ticket_ref,
-        planned_write_ticket_record,
-        idle_expires_at,
+        planned_write_ticket,
+        reused_write_ticket,
         write_ticket_effect,
         allowed_path_patterns,
         denied_path_patterns,
         storage_mutations,
     } = planned;
+    let would_reuse_write_ticket = reused_write_ticket.is_some();
     let change_unit_id = ChangeUnitId::new(change_unit.change_unit_id.clone());
     let blocker_refs = active_blocker_refs(store, &task_id, planned_state_version)?;
     let evidence_facts = load_current_evidence_summary_facts(
@@ -413,11 +414,11 @@ fn project_prepare_write_response(
     let write_ticket = match (
         write_ticket_id.as_ref(),
         write_ticket_ref.as_ref(),
-        planned_write_ticket_record.as_ref(),
+        planned_write_ticket.as_ref(),
+        reused_write_ticket.as_ref(),
     ) {
-        (Some(write_ticket_id), Some(write_ticket_ref), Some(record)) => {
-            let selected_scope = &record.attempt_scope;
-            let selected_validity_basis = record.validity_basis.clone();
+        (Some(write_ticket_id), Some(write_ticket_ref), Some(plan), None) => {
+            let selected_scope = plan.attempt_scope();
             Some(WriteTicket {
                 write_ticket_id: write_ticket_id.clone(),
                 write_ticket_ref: write_ticket_ref.clone(),
@@ -435,10 +436,36 @@ fn project_prepare_write_response(
                     denied: denied_path_patterns.clone(),
                 },
                 observed_paths: Vec::new(),
-                basis_state_version: record.basis_state_version,
-                validity_basis: selected_validity_basis,
+                basis_state_version: plan.basis_state_version(),
+                validity_basis: plan.validity_basis().clone(),
                 invalidation_reason: None,
-                idle_expires_at: idle_expires_at.clone(),
+                idle_expires_at: plan.idle_expires_at().cloned(),
+                guarantee_display: guarantee_display.clone(),
+            })
+        }
+        (Some(write_ticket_id), Some(write_ticket_ref), None, Some(record)) => {
+            let selected_scope = record.attempt_scope();
+            Some(WriteTicket {
+                write_ticket_id: write_ticket_id.clone(),
+                write_ticket_ref: write_ticket_ref.clone(),
+                state: WriteTicketState::Open,
+                scope: WriteTicketScope {
+                    task_id: task_id.clone(),
+                    change_unit_id: change_unit_id.clone(),
+                    intended_operation: selected_scope.intended_operation.clone(),
+                    product_file_write_intended: selected_scope.product_file_write_intended,
+                    sensitive_categories: selected_scope.sensitive_categories.clone(),
+                    baseline_ref: selected_scope.baseline_ref.clone(),
+                },
+                path_patterns: WriteTicketPathPatterns {
+                    allowed: allowed_path_patterns.clone(),
+                    denied: denied_path_patterns.clone(),
+                },
+                observed_paths: Vec::new(),
+                basis_state_version: record.basis_state_version(),
+                validity_basis: record.validity_basis().clone(),
+                invalidation_reason: None,
+                idle_expires_at: record.idle_expires_at().cloned(),
                 guarantee_display: guarantee_display.clone(),
             })
         }
@@ -456,19 +483,27 @@ fn project_prepare_write_response(
         acceptance_criteria: active_acceptance_criteria(store, &task_id)?,
         pending_user_action_refs,
         blocker_refs,
-        write_ticket_summary: planned_write_ticket_record
-            .as_ref()
-            .map(|record| {
-                write_ticket_summary_for_record(
-                    None,
-                    record,
-                    planned_state_version,
-                    None,
-                    None,
-                    guarantee_display.clone(),
-                )
-            })
-            .transpose()?,
+        write_ticket_summary: if let Some(plan) = planned_write_ticket.as_ref() {
+            Some(write_ticket_summary_for_plan(
+                plan,
+                planned_state_version,
+                guarantee_display.clone(),
+            ))
+        } else {
+            reused_write_ticket
+                .as_ref()
+                .map(|record| {
+                    write_ticket_summary_for_record(
+                        None,
+                        record,
+                        planned_state_version,
+                        None,
+                        None,
+                        guarantee_display.clone(),
+                    )
+                })
+                .transpose()?
+        },
         evidence_summary,
         evidence_gate: Some(close_plan.evidence_gate),
         close_state: Some(close_state),
@@ -520,17 +555,31 @@ fn project_prepare_write_response(
         event_kind,
         event_payload,
         result_fields,
-        dry_run_summary: prepare_write_dry_run_summary(allowed, &reasons),
+        dry_run_summary: prepare_write_dry_run_summary(allowed, would_reuse_write_ticket, &reasons),
     })
 }
 
-fn prepare_write_dry_run_summary(allowed: bool, reasons: &[WriteDecisionReason]) -> DryRunSummary {
+fn prepare_write_dry_run_summary(
+    allowed: bool,
+    would_reuse_write_ticket: bool,
+    reasons: &[WriteDecisionReason],
+) -> DryRunSummary {
     DryRunSummary {
         planned_effects: if allowed {
             vec![PlannedEffect {
                 target_kind: "write_ticket".to_owned(),
-                action: "would_issue".to_owned(),
-                description: "Prepare write would issue one open write ticket.".to_owned(),
+                action: if would_reuse_write_ticket {
+                    "would_reuse"
+                } else {
+                    "would_issue"
+                }
+                .to_owned(),
+                description: if would_reuse_write_ticket {
+                    "Prepare write would reuse the compatible open write ticket."
+                } else {
+                    "Prepare write would issue one open write ticket."
+                }
+                .to_owned(),
             }]
         } else {
             Vec::new()

@@ -9,7 +9,7 @@ use crate::task_state::{normalize_display_string_list, normalize_display_text};
 use crate::write_ticket::normalized_string_set;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
-    ChangeUnitStatus, CoreProjectStore, RunRecord, TaskRecord, WriteTicketRecord,
+    ChangeUnitStatus, CoreProjectStore, RunRecord, StoredWriteTicket, TaskRecord,
 };
 use volicord_types::schema::{
     ArtifactRef, CurrentCloseBasis, ResidualRisk, SensitiveActionRequirement, StateRecordRef,
@@ -54,7 +54,7 @@ pub(crate) struct RecordRunCloseBasisContext<'a> {
     pub(crate) request: &'a RecordRunInput,
     pub(crate) task: &'a TaskRecord,
     pub(crate) run_ref: &'a StateRecordRef,
-    pub(crate) write_ticket_scope: Option<&'a (WriteTicketRecord, WriteTicketAttemptScope)>,
+    pub(crate) write_ticket_scope: Option<&'a (StoredWriteTicket, WriteTicketAttemptScope)>,
     pub(crate) evidence_summary_ref: Option<StateRecordRef>,
     pub(crate) registered_artifacts: &'a [ArtifactRef],
     pub(crate) close_basis_revision: u64,
@@ -205,7 +205,7 @@ pub(super) fn current_sensitive_action_requirements(
     request: &RecordRunInput,
     task: &TaskRecord,
     run_ref: &StateRecordRef,
-    write_ticket_scope: Option<&(WriteTicketRecord, WriteTicketAttemptScope)>,
+    write_ticket_scope: Option<&(StoredWriteTicket, WriteTicketAttemptScope)>,
 ) -> Result<Vec<SensitiveActionRequirement>, RecordRunCloseBasisError> {
     let mut requirements = previous_current_sensitive_action_requirements(store, request, task)?;
     if let Some((record, scope)) = write_ticket_scope {
@@ -243,11 +243,11 @@ pub(super) fn previous_current_sensitive_action_requirements(
 
 pub(super) fn sensitive_action_requirement_from_write_ticket(
     run_ref: &StateRecordRef,
-    record: &WriteTicketRecord,
+    record: &StoredWriteTicket,
     scope: &WriteTicketAttemptScope,
 ) -> Result<Option<SensitiveActionRequirement>, RecordRunCloseBasisError> {
     let sensitive_categories = normalized_string_set(&scope.sensitive_categories);
-    let validity_basis = &record.validity_basis;
+    let validity_basis = record.validity_basis();
     if sensitive_categories.is_empty() && validity_basis.approval_basis_refs.is_empty() {
         return Ok(None);
     }
@@ -257,7 +257,7 @@ pub(super) fn sensitive_action_requirement_from_write_ticket(
             CorePipelineError::Invariant {
                 detail: format!(
                     "write ticket `{}` has an empty intended operation after Store decoding",
-                    record.write_ticket_id
+                    record.write_ticket_id()
                 ),
             },
         ));
@@ -280,7 +280,7 @@ pub(super) fn sensitive_action_requirement_from_write_ticket(
                 .produced_at_state_version
                 .as_ref()
                 .copied()
-                .unwrap_or(record.basis_state_version),
+                .unwrap_or(record.basis_state_version()),
         ),
     }))
 }

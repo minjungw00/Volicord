@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
-use volicord_store::{core_pipeline::WriteTicketRecord, StoreError};
+use volicord_store::{core_pipeline::StoredWriteTicket, StoreError};
 use volicord_types::ids::{BaselineRef, ChangeUnitId, TaskId};
 use volicord_types::product_path::paths_are_authorized;
 use volicord_types::schema::{
@@ -10,10 +10,10 @@ use volicord_types::schema::{
 use volicord_types::values::{PrepareWriteDecision, UtcTimestamp, WriteDecisionCategory};
 
 pub(crate) fn write_ticket_is_idle_expired(
-    record: &WriteTicketRecord,
+    record: &StoredWriteTicket,
     now: DateTime<Utc>,
 ) -> Result<bool, StoreError> {
-    let Some(timestamp) = record.idle_expires_at.as_ref() else {
+    let Some(timestamp) = record.idle_expires_at() else {
         return Ok(false);
     };
     Ok(UtcTimestamp::from_datetime(now) >= *timestamp)
@@ -54,19 +54,16 @@ pub(crate) struct RunWriteTicketAttempt<'a> {
 }
 
 pub(crate) fn run_write_ticket_mismatch(
-    record: &WriteTicketRecord,
     scope: &WriteTicketAttemptScope,
     attempt: RunWriteTicketAttempt<'_>,
 ) -> Option<RunWriteTicketMismatch> {
-    if record.task_id != attempt.task_id.as_str() || scope.task_id != *attempt.task_id {
+    if scope.task_id != *attempt.task_id {
         return Some(run_mismatch(
             "task_mismatch",
             "write ticket task is not compatible with the recorded run",
         ));
     }
-    if record.change_unit_id != attempt.change_unit_id.as_str()
-        || scope.change_unit_id != *attempt.change_unit_id
-    {
+    if scope.change_unit_id != *attempt.change_unit_id {
         return Some(run_mismatch(
             "change_unit_mismatch",
             "write ticket Change Unit is not compatible with the recorded run",
@@ -156,8 +153,7 @@ fn normalize_sensitive_text(value: &str) -> String {
 mod tests {
     use super::*;
     use volicord_types::product_path::ProductRelativePath;
-    use volicord_types::schema::{RequiredNullable, WriteTicketValidityBasis};
-    use volicord_types::values::WriteTicketStatus;
+    use volicord_types::schema::RequiredNullable;
 
     fn reason(code: &'static str) -> WriteDecisionReason {
         write_decision_reason(
@@ -218,11 +214,8 @@ mod tests {
             sensitive_categories: vec!["network".to_owned()],
             baseline_ref: Some(baseline_ref.clone()),
         };
-        let record = ticket_record(&scope);
-
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_current",
                 "change_current",
@@ -238,7 +231,6 @@ mod tests {
         );
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_other",
                 "change_current",
@@ -254,7 +246,6 @@ mod tests {
         );
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_current",
                 "change_other",
@@ -270,7 +261,6 @@ mod tests {
         );
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_current",
                 "change_current",
@@ -286,7 +276,6 @@ mod tests {
         );
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_current",
                 "change_current",
@@ -302,7 +291,6 @@ mod tests {
         );
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_current",
                 "change_current",
@@ -318,7 +306,6 @@ mod tests {
         );
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_current",
                 "change_current",
@@ -334,7 +321,6 @@ mod tests {
         );
         assert_eq!(
             mismatch_reason(
-                &record,
                 &scope,
                 "task_current",
                 "change_current",
@@ -350,42 +336,8 @@ mod tests {
         );
     }
 
-    fn ticket_record(scope: &WriteTicketAttemptScope) -> WriteTicketRecord {
-        let created_at = UtcTimestamp::parse("2026-07-29T00:00:00Z").expect("valid timestamp");
-        WriteTicketRecord {
-            project_id: "project_current".to_owned(),
-            write_ticket_id: "write_ticket_current".to_owned(),
-            task_id: scope.task_id.as_str().to_owned(),
-            change_unit_id: scope.change_unit_id.as_str().to_owned(),
-            basis_state_version: 7,
-            status: WriteTicketStatus::Active,
-            validity_basis: WriteTicketValidityBasis {
-                task_id: scope.task_id.clone(),
-                change_unit_id: scope.change_unit_id.clone(),
-                scope_revision: 3,
-                baseline_ref: scope.baseline_ref.clone(),
-                workspace_context_sha256: None,
-                write_authority_fingerprint: "authority_current".to_owned(),
-                approval_basis_refs: Vec::new(),
-            },
-            allowed_path_prefixes: scope.intended_paths.clone(),
-            denied_path_prefixes: Vec::new(),
-            attempt_scope: scope.clone(),
-            created_by_actor_source: volicord_types::values::ActorSource::System,
-            created_by_user_action_resolution_id: None,
-            idle_expires_at: None,
-            invalidation_reason: None,
-            consumed_by_run_id: None,
-            consumed_at: None,
-            revoked_at: None,
-            created_at,
-            metadata: serde_json::Map::new(),
-        }
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn mismatch_reason(
-        record: &WriteTicketRecord,
         scope: &WriteTicketAttemptScope,
         task_id: &str,
         change_unit_id: &str,
@@ -418,7 +370,6 @@ mod tests {
             .collect::<Vec<_>>();
 
         run_write_ticket_mismatch(
-            record,
             scope,
             RunWriteTicketAttempt {
                 task_id: &task_id,

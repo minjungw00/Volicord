@@ -231,6 +231,12 @@ Valid dry-run previews may include `DryRunSummary.would_blockers: PlannedBlocker
 - `CloseReadinessBlocker` storage
 - `project_state.state_version` increment
 
+For prospective Write Ticket issuance, the preview consumes the same validated
+semantic plan used by committed response projection, but the plan has no
+durable ticket ID and cannot be converted into a Store insertion. A compatible
+existing ticket may be read to project `would_reuse`; that read does not change
+the persisted ticket.
+
 ## Read-only effects
 
 Read-only results have no Core authority-state storage effect, are not replay
@@ -612,6 +618,11 @@ Issue inserts one row. Reuse inserts no ticket and preserves its identifier;
 the event/replay/state-version effects still occur exactly once. Neither this
 increment nor an unrelated Core mutation invalidates the ticket. A non-allow
 decision does not revoke unrelated active tickets.
+
+For issuance, Core derives both projected ticket facts and the fully typed
+Store mutation input from one validated planned-ticket value. Store accepts
+that typed input and alone serializes it into the physical row. Core does not
+construct a persisted ticket record before commit.
 
 Issue stores the current normalized project write-authority fingerprint in
 `validity_basis_json`. Reuse requires an exact non-null match to that current

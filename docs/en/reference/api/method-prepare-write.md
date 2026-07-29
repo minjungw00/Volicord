@@ -203,6 +203,11 @@ the issuance mutation commits. A reuse result returns the existing ID and ref.
 Blocked, approval-required, decision-required, rejected, and `dry_run` paths do
 not allocate a durable ID.
 
+Core represents a prospective issuance as a validated `PlannedWriteTicket`.
+That semantic plan is the single source for response projection and the typed
+Store insertion input. It is not a persisted ticket record. Reuse instead
+projects the Store-validated `StoredWriteTicket` that already exists.
+
 ## Method result fields
 
 `PrepareWriteResult` is the method-specific result branch for committed write-preparation decisions. It carries `base: PrepareWriteResultBase`, whose only result effect is `core_committed`, and these method-owned top-level fields:
@@ -380,6 +385,8 @@ For `dry_run=true`, a valid preview:
 - may describe a planned `write_ticket` effect such as `would_issue` in the `dry_run` summary when the preview would otherwise be allowed
 - may describe `would_reuse` as a planned effect when a compatible active
   ticket exists; this is preview text, not a committed `WriteTicketEffect`
+- keeps a prospective issuance as an ID-less semantic plan rather than a
+  persisted ticket record or Store insertion
 - persists no write-decision state
 
 A request without a current Change Unit is not a valid preview. It returns the

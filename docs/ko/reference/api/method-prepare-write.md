@@ -190,6 +190,11 @@ Change Unit이 없는 경우는 정책 결정이 아니며 이 경로로 들어�
 `write_ticket_id`를 받습니다. 재사용 결과는 기존 ID와 참조를 반환합니다. 차단,
 승인 필요, 판단 필요, 거절, `dry_run` 경로는 영속 ID를 할당하지 않습니다.
 
+Core는 발급 예정 값을 검증된 `PlannedWriteTicket`으로 표현합니다. 이 의미 계획
+하나가 응답 projection과 typed Store 삽입 입력의 단일 원본이며 영속 ticket
+record가 아닙니다. 재사용은 이미 존재하는 Store 검증 `StoredWriteTicket`을
+projection합니다.
+
 ## 메서드 결과 필드
 
 `PrepareWriteResult`는 커밋된 쓰기 준비 결정에 대한 메서드별 결과 분기입니다. 이 결과는 결과 효과로 `core_committed`만 허용하는 `base: PrepareWriteResultBase`와 아래 메서드 소유 최상위 필드를 담습니다.
@@ -363,6 +368,8 @@ advisor 모드 거절은 쓰기 결정, 쓰기 티켓, 이벤트, 재실행 행,
 - 미리보기가 허용될 경우 `dry_run` 요약에 `would_issue` 같은 계획된 `write_ticket` 효과를 설명할 수 있습니다.
 - 호환되는 활성 티켓이 있으면 계획된 효과를 `would_reuse`로 설명할 수 있습니다.
   이는 미리보기 문구이지 커밋된 `WriteTicketEffect`가 아닙니다.
+- 발급 예정 값은 영속 ticket record나 Store 삽입이 아니라 ID가 없는 의미 계획으로
+  유지합니다.
 - 쓰기 결정 상태를 지속하지 않습니다.
 
 현재 적용 Change Unit이 없는 요청은 유효한 미리보기가 아닙니다. 위에서 설명한

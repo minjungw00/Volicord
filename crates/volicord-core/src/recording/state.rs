@@ -9,10 +9,11 @@ use crate::pipeline::VerifiedInvocationContext;
 use crate::policy::workflow::project_workflow_policy;
 use crate::recording::RecordingError;
 use crate::state_summary::{project_state_header, state_summary, StateSummaryInput};
-use crate::write_ticket::{projected_write_ticket_summary, write_ticket_summary_for_record};
+use crate::write_ticket::{
+    projected_write_ticket_summary, write_ticket_summary_for_projected_consumption,
+};
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
 use volicord_types::schema::StateSummary;
-use volicord_types::values::WriteTicketStatus;
 
 use super::model::RecordRunPlannedMutations;
 
@@ -35,18 +36,13 @@ pub(super) fn acquire_record_run_state(
         .map_err(crate::pipeline::CorePipelineError::from)?
         .summary;
     let write_ticket_summary = if let Some((record, _scope)) = &planned.write_ticket_scope {
-        let mut consumed_record = record.clone();
-        consumed_record.status = WriteTicketStatus::Consumed;
-        consumed_record.consumed_by_run_id = Some(planned.run_id.as_str().to_owned());
-        consumed_record.consumed_at = Some(planned.plan_now.clone());
-        Some(write_ticket_summary_for_record(
-            None,
-            &consumed_record,
+        Some(write_ticket_summary_for_projected_consumption(
+            record,
+            &planned.run_id,
             planned.planned_state_version,
-            Some(*planned.plan_now.as_datetime()),
-            Some(planned.observation_refs.clone()),
+            planned.observation_refs.clone(),
             Some(guarantee_display.clone()),
-        )?)
+        ))
     } else {
         projected_write_ticket_summary(
             store,

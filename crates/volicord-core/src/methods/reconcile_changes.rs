@@ -43,8 +43,8 @@ use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
     ChangeUnitRecord, ContinuityMutation, CoreProjectStore, CoreStorageMutation,
-    ProjectStateHeader, RunObservedChangesRecord, TaskRecord, UnrecordedChangeResolutionUpdate,
-    WriteTicketRecord,
+    ProjectStateHeader, RunObservedChangesRecord, StoredWriteTicket, TaskRecord,
+    UnrecordedChangeResolutionUpdate,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::guards::UnrecordedChangeRecord;
@@ -655,7 +655,7 @@ fn validate_requested_resolution(
 fn deterministic_resolution(
     record: &UnrecordedChangeRecord,
     runs: &[RunObservedChangesRecord],
-    write_tickets: &[WriteTicketRecord],
+    write_tickets: &[StoredWriteTicket],
     now: DateTime<Utc>,
 ) -> CoreResult<Option<ResolutionCandidate>> {
     let observed_paths = observed_paths(record);
@@ -677,13 +677,13 @@ fn deterministic_resolution(
     }
     let mut active_matches = Vec::new();
     for write_ticket in write_tickets {
-        let attempt_scope = &write_ticket.attempt_scope;
+        let attempt_scope = write_ticket.attempt_scope();
         let allowed_paths = write_ticket
-            .allowed_path_prefixes
+            .allowed_path_prefixes()
             .iter()
             .map(|path| path.as_str().to_owned())
             .collect::<Vec<_>>();
-        let denied_paths = &write_ticket.denied_path_prefixes;
+        let denied_paths = write_ticket.denied_path_prefixes();
         if attempt_scope.product_file_write_intended
             && paths_are_authorized(&observed_paths, &allowed_paths)
             && !observed_paths.iter().any(|path| {
@@ -692,18 +692,18 @@ fn deterministic_resolution(
                     .any(|denied| path_is_within(path, denied.as_str()))
             })
         {
-            if write_ticket.status == WriteTicketStatus::Consumed
-                && write_ticket.consumed_by_run_id.is_some()
+            if write_ticket.status() == WriteTicketStatus::Consumed
+                && write_ticket.consumed_by_run_id().is_some()
             {
                 return Ok(Some(system_resolution(
                     UnrecordedChangeResolutionBasis::CoveredByWriteTicket,
                     "core_deterministic_write_ticket",
                 )));
             }
-            if write_ticket.status == WriteTicketStatus::Active
+            if write_ticket.status() == WriteTicketStatus::Active
                 && !write_ticket_is_idle_expired(write_ticket, now)?
             {
-                active_matches.push(write_ticket.write_ticket_id.clone());
+                active_matches.push(write_ticket.write_ticket_id().to_owned());
             }
         }
     }

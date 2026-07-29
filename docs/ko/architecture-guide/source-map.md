@@ -88,7 +88,7 @@
 | `crates/volicord-store/src/core_pipeline/clock.rs` | Store handle clock sample, 프로젝트 UTC floor 읽기, transaction floor 전진. |
 | `crates/volicord-store/src/core_pipeline/tasks.rs` | Task와 수락 mutation 입력, 저장 검증과 SQL 적용, Task·수락 기준·증거 주장·Task revision projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/change_units.rs` | Change Unit mutation 입력, 저장 검증과 SQL 적용, projection, 엄격한 row 및 JSON decoding, facade 읽기, 집중 테스트. |
-| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | 물리 Write Ticket 테이블과 column의 유일한 담당 모듈, typed mutation과 SQL, 비공개 row projection 하나, 일반/transaction 정규 decoder, 폐쇄형 값과 구조화 field 검증, typed 필드 간 invariant corruption, 집중된 authority view, facade 읽기, aggregate 테스트. |
+| `crates/volicord-store/src/core_pipeline/write_tickets.rs` | 물리 Write Ticket 테이블과 column의 유일한 담당 모듈, 완전한 typed insertion 직렬화, 비공개 row projection 하나와 물리 표현에서 opaque `StoredWriteTicket`으로 이어지는 일반/transaction 정규 decoder, 의미 accessor로 제공하는 비공개 field, 폐쇄형 값·구조화 field·typed 필드 간 영속 invariant 검증, 집중된 authority view, facade 읽기, aggregate 테스트. |
 | `crates/volicord-store/src/core_pipeline/runs.rs` | Run mutation 입력, 저장 검증과 SQL 적용, Run 및 observed-change projection, 엄격한 decoding, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/evidence.rs` | 증거 mutation 입력, 저장 검증과 SQL 적용, 증거 요약 및 관찰 projection, 엄격한 row decoding, record reference projection, facade 읽기, 집중 테스트. |
 | `crates/volicord-store/src/core_pipeline/artifacts.rs` | Artifact mutation 입력, 저장 검증과 SQL 적용, staging 및 영속 artifact projection, 엄격한 decoding, link 읽기, 영속 본문 검증, facade 읽기, 집중 테스트. |
@@ -151,7 +151,7 @@
 | `crates/volicord-core/src/summary_text.rs` | CLI 문법, transport framing, Markdown, terminal rendering이 없는 adapter-neutral 공개 `SummaryCard` text projection을 담당합니다. |
 | `crates/volicord-core/src/record_refs.rs`, `task_state.rs` | 집중된 state-record 참조 변환과 typed Task 상태 해석을 담당합니다. |
 | `crates/volicord-core/src/task_policy.rs` | Typed lifecycle 해석과 lifecycle mutation 계획을 포함하는 재사용 가능한 Task policy를 담당합니다. |
-| `crates/volicord-core/src/write_ticket/` | Write Ticket fact, validity와 attempt-scope policy, prepare-write 의미 계획, Record Run 승인, adapter-neutral ticket projection의 정규 담당 모듈입니다. `admission.rs`는 typed 연산 fact를 받아 typed attempt scope 또는 의미 승인 오류를 반환하며 공개 응답 구성은 호출 메서드에 남습니다. |
+| `crates/volicord-core/src/write_ticket/` | Write Ticket fact, validity와 attempt-scope policy, prepare-write 의미 계획, Record Run 승인, adapter-neutral ticket projection의 정규 담당 모듈입니다. `planning.rs`는 새 발급 projection과 typed Store insertion을 함께 파생하는 검증된 비영속 `PlannedWriteTicket`을 담당합니다. `projection.rs`는 planned·stored·post-consumption ticket fact를 명시적으로 projection합니다. `admission.rs`는 typed 연산 fact를 받아 typed attempt scope 또는 의미 승인 오류를 반환하며 공개 응답 구성은 호출 메서드에 남습니다. |
 | `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하고, `methods/mod.rs`는 모듈 wiring만 제공하며 메서드별 plan wrapper는 해당 메서드 모듈에 둡니다. |
 | `crates/volicord-core/src/recording/mod.rs`, `context.rs`, `model.rs` | 좁은 의미 `RecordRunInput` 및 `RecordRunOperationPlan` 경계, 입력 정규화, Store 기반 typed fact 취득, 기록 패키지 내부에서만 공유하는 폐쇄형 fact, 권한, 관찰, artifact, mutation plan 모델. |
 | `crates/volicord-core/src/recording/authority.rs` | 공개 응답을 구성하지 않으면서 증거 fact, artifact, 관련성, UserAction 담당 모듈을 재사용해 Store의 캡처 intent와 receipt를 typed 캡처 권한으로 해석합니다. |
