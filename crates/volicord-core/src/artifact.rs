@@ -1,7 +1,7 @@
 use std::path::{Component, Path};
 use volicord_types::canonical::canonical_git_object_id;
 use volicord_types::ids::{ArtifactId, ProjectId, StorageRef, TaskId};
-use volicord_types::schema::{ArtifactRef, SourceRef, ToolEnvelope};
+use volicord_types::schema::{ArtifactRef, SourceRef};
 use volicord_types::values::{ArtifactAvailability, ArtifactIntegrityStatus, StateRecordKind};
 
 use volicord_store::{
@@ -160,7 +160,7 @@ pub(crate) fn artifact_sha256_is_lowercase_hex(value: &str) -> bool {
 pub(crate) fn normalize_source_refs(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
+    project_id: &ProjectId,
     task_id: &TaskId,
     field: &'static str,
     refs: &[SourceRef],
@@ -168,7 +168,7 @@ pub(crate) fn normalize_source_refs(
     normalize_source_refs_with_carried_artifact_task(
         store,
         project_state,
-        envelope,
+        project_id,
         task_id,
         field,
         refs,
@@ -179,7 +179,7 @@ pub(crate) fn normalize_source_refs(
 pub(crate) fn normalize_source_refs_with_carried_artifact_task(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
+    project_id: &ProjectId,
     task_id: &TaskId,
     field: &'static str,
     refs: &[SourceRef],
@@ -191,7 +191,7 @@ pub(crate) fn normalize_source_refs_with_carried_artifact_task(
             normalize_source_ref(
                 store,
                 project_state,
-                envelope,
+                project_id,
                 task_id,
                 field,
                 source_ref,
@@ -204,7 +204,7 @@ pub(crate) fn normalize_source_refs_with_carried_artifact_task(
 pub(crate) fn normalize_source_ref(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
+    project_id: &ProjectId,
     task_id: &TaskId,
     field: &'static str,
     source_ref: SourceRef,
@@ -217,8 +217,6 @@ pub(crate) fn normalize_source_ref(
                 Some(path) => path,
                 None => {
                     return source_ref_error(
-                        envelope,
-                        project_state,
                         field,
                         "repository_path must be a normalized Product Repository relative path",
                     )
@@ -229,8 +227,6 @@ pub(crate) fn normalize_source_ref(
                 Ok(value) => value,
                 Err(_) => {
                     return source_ref_error(
-                        envelope,
-                        project_state,
                         field,
                         "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
                     )
@@ -238,8 +234,6 @@ pub(crate) fn normalize_source_ref(
             };
             if !artifact_sha256_is_lowercase_hex(&source.content_sha256) {
                 return source_ref_error(
-                    envelope,
-                    project_state,
                     field,
                     "content_sha256 must be a lowercase 64-character SHA-256 hex string",
                 );
@@ -250,8 +244,6 @@ pub(crate) fn normalize_source_ref(
                 .is_some_and(|range| range.start_line == 0 || range.end_line < range.start_line)
             {
                 return source_ref_error(
-                    envelope,
-                    project_state,
                     field,
                     "line_range must be one-based, inclusive, and ordered",
                 );
@@ -263,8 +255,6 @@ pub(crate) fn normalize_source_ref(
                 Ok(value) => value,
                 Err(_) => {
                     return source_ref_error(
-                        envelope,
-                        project_state,
                         field,
                         "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
                     )
@@ -277,8 +267,6 @@ pub(crate) fn normalize_source_ref(
                 Ok(value) => value,
                 Err(_) => {
                     return source_ref_error(
-                        envelope,
-                        project_state,
                         field,
                         "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
                     )
@@ -288,8 +276,6 @@ pub(crate) fn normalize_source_ref(
                 Ok(value) => value,
                 Err(_) => {
                     return source_ref_error(
-                        envelope,
-                        project_state,
                         field,
                         "Git object ids must be exactly 40 or 64 ASCII hexadecimal characters",
                     )
@@ -299,7 +285,7 @@ pub(crate) fn normalize_source_ref(
                 source.diff_artifact_ref = Some(canonical_source_artifact_ref(
                     store,
                     project_state,
-                    envelope,
+                    project_id,
                     task_id,
                     field,
                     artifact_ref,
@@ -312,8 +298,6 @@ pub(crate) fn normalize_source_ref(
         SourceRef::Command(mut source) => {
             if source.invocation_id.trim().is_empty() || source.command_summary.trim().is_empty() {
                 return source_ref_error(
-                    envelope,
-                    project_state,
                     field,
                     "command source identifiers and summaries must not be empty",
                 );
@@ -327,7 +311,7 @@ pub(crate) fn normalize_source_ref(
                 source.output_artifact_ref = Some(canonical_source_artifact_ref(
                     store,
                     project_state,
-                    envelope,
+                    project_id,
                     task_id,
                     field,
                     artifact_ref,
@@ -340,16 +324,12 @@ pub(crate) fn normalize_source_ref(
         SourceRef::ExternalUri(source) => {
             if !external_source_uri_is_valid(&source.uri) {
                 return source_ref_error(
-                    envelope,
-                    project_state,
                     field,
                     "external_uri must be an absolute http or https URI without user information",
                 );
             }
             if !artifact_sha256_is_lowercase_hex(&source.content_sha256) {
                 return source_ref_error(
-                    envelope,
-                    project_state,
                     field,
                     "content_sha256 must be a lowercase 64-character SHA-256 hex string",
                 );
@@ -358,12 +338,7 @@ pub(crate) fn normalize_source_ref(
         }
         SourceRef::UserContext(source) => {
             if source.context_id.trim().is_empty() {
-                return source_ref_error(
-                    envelope,
-                    project_state,
-                    field,
-                    "user context ids must not be empty",
-                );
+                return source_ref_error(field, "user context ids must not be empty");
             }
             Ok(SourceRef::UserContext(source))
         }
@@ -371,8 +346,6 @@ pub(crate) fn normalize_source_ref(
 }
 
 pub(crate) fn source_ref_error<T>(
-    _envelope: &ToolEnvelope,
-    _project_state: &ProjectStateHeader,
     field: &'static str,
     message: &'static str,
 ) -> Result<T, ArtifactPolicyError> {
@@ -426,7 +399,7 @@ pub(crate) fn external_source_uri_is_valid(value: &str) -> bool {
 pub(crate) fn canonical_source_artifact_ref(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
+    project_id: &ProjectId,
     task_id: &TaskId,
     field: &'static str,
     submitted: &ArtifactRef,
@@ -438,16 +411,12 @@ pub(crate) fn canonical_source_artifact_ref(
         carried_artifact_task_id.expect("matched carried artifact Task")
     } else {
         return source_ref_error(
-            envelope,
-            project_state,
             field,
             "source artifact refs must belong to the request Task or the explicitly carried predecessor Task",
         );
     };
-    if submitted.project_id != envelope.project_id {
+    if submitted.project_id != *project_id {
         return source_ref_error(
-            envelope,
-            project_state,
             field,
             "source artifact refs must belong to the request project",
         );
@@ -457,8 +426,6 @@ pub(crate) fn canonical_source_artifact_ref(
         .map_err(CorePipelineError::from)?;
     let Some(record) = record else {
         return source_ref_error(
-            envelope,
-            project_state,
             field,
             "source artifact refs must identify an existing artifact",
         );
@@ -466,13 +433,11 @@ pub(crate) fn canonical_source_artifact_ref(
     let owner_link = store
         .artifact_has_task_owner_link(submitted.artifact_id.as_str(), artifact_task_id.as_str())
         .map_err(CorePipelineError::from)?;
-    if record.project_id != envelope.project_id.as_str()
+    if record.project_id != project_id.as_str()
         || record.task_id != artifact_task_id.as_str()
         || !owner_link
     {
         return source_ref_error(
-            envelope,
-            project_state,
             field,
             "source artifact refs must identify an artifact owned by the request project and Task",
         );
@@ -486,7 +451,7 @@ pub(crate) fn canonical_source_artifact_ref(
     };
     Ok(ArtifactRef {
         artifact_id: ArtifactId::new(record.artifact_id.clone()),
-        project_id: envelope.project_id.clone(),
+        project_id: project_id.clone(),
         task_id: artifact_task_id.clone(),
         display_name: record
             .producer
@@ -502,7 +467,7 @@ pub(crate) fn canonical_source_artifact_ref(
         created_by_run_ref: Some(state_ref(
             StateRecordKind::Run,
             record.provenance.producer_run_id.as_str(),
-            &envelope.project_id,
+            project_id,
             Some(artifact_task_id),
             Some(project_state.state_version),
         ))

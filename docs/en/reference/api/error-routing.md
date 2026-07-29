@@ -36,6 +36,9 @@ translate Store or semantic-owner typed failures. Semantic owners such as
 [`continuity/`](../../../../crates/volicord-core/src/continuity/), and
 [`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/)
 return typed facts or errors and do not construct public response branches.
+The Recording service likewise returns closed `RecordingError` variants;
+`methods/record_run.rs` alone combines those semantic errors with the current
+envelope, dry-run intent, and state version to select the public branch.
 Method modules retain method-specific blocked results and final response
 composition. These source routes implement, but do not redefine, the public
 routing rules owned by this document.

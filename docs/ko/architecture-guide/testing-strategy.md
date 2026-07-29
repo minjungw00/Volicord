@@ -39,15 +39,18 @@ Core 지향 record family 모두에 적용됩니다.
 coverage가 되면 안 됩니다.
 
 Record Run도 소스 책임에 따라 이 구분을 적용합니다. 요청 및 fact 취득, 캡처 권한,
-증거 관찰과 재사용, artifact 검증과 승격, 결과 projection 행렬은
+증거 관찰과 재사용, artifact 검증과 승격, typed mutation 계획, 의미 오류
+variant, `RecordRunResultFacts` projection은
 `crates/volicord-core/src/recording/tests/`에 둡니다. 닫기 근거 및 잔여 위험
 coverage는 `close_readiness/tests/recording.rs`에, ticket 호환성, 승인, 소비,
 무효과 거절 coverage는 `write_ticket/tests/record_run_admission.rs`에 둡니다.
 집중된 typed mutation plan은 이 담당 시나리오와 Store commit 경계에서
 검증합니다. 작은 `methods/tests/record_run.rs` suite에는 대표 요청 조율,
-commit 및 무효과 대안, 증거 및 artifact 경로, ticket 및 stale-state 거절,
-rollback 전파, replay 일관성을 남깁니다. 완전한 도메인 정책 행렬은 공개 메서드
-suite에 두지 않습니다.
+중립 실행 carrier와 공개 결과 field로의 변환, dry-run 및 state-version
+metadata를 보존하는 의미 오류 routing, commit 및 무효과 대안, 증거 및 artifact
+경로, ticket 및 stale-state 거절, rollback 전파, replay 일관성을 남깁니다. 중립
+`OperationPlan` 테스트는 메서드 독립 실행 입력을 검증합니다. 완전한 도메인 정책
+행렬은 공개 메서드 suite에 두지 않습니다.
 
 `volicord-user-action-service`에서는 의미 검증, 정규 body와 identity 구성,
 authority, lifecycle, materialization, 영속화 매핑, resolution, continuity,

@@ -370,7 +370,7 @@ fn project_prepare_write_response(
     let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        &request.envelope,
+        &request.envelope.project_id,
         &task_id,
         facts_from_projection(
             task.clone(),

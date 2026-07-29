@@ -87,11 +87,13 @@ borrow effects from a nearby success branch.
 
 ## Record Run Flow
 
-After common preflight, the public `record_run` entry point delegates to the
-recording package. `recording/context.rs` normalizes the request and acquires
-the current typed operation facts. Capture-intent and receipt resolution,
-evidence observation and producer planning, and artifact verification or
-promotion planning then run through `recording/authority.rs`,
+After common preflight, the public `record_run` entry point converts the public
+request to `RecordRunInput` and delegates to the recording package. Envelope
+identity, idempotency, expected-state, locale, replay, and response metadata
+remain in method orchestration. `recording/context.rs` normalizes the semantic
+input and acquires the current typed operation facts. Capture-intent and receipt
+resolution, evidence observation and producer planning, and artifact
+verification or promotion planning then run through `recording/authority.rs`,
 `recording/evidence.rs`, and `recording/artifact.rs`, which reuse the focused
 evidence and artifact owners.
 
@@ -100,9 +102,11 @@ facts. The close-readiness recording owner resolves close-basis references and
 residual-risk inputs. `recording/plan.rs` combines these results into one typed
 mutation plan, preserving distinct domain mutation variants and Store
 application order. `recording/state.rs` acquires the post-operation state facts,
-and Store-free `recording/projection.rs` constructs the method fields. Only the
-public method module maps semantic errors into response branches; the shared
-pipeline retains transaction, replay, and response-envelope ownership.
+then Recording returns `RecordRunOperationPlan` with typed effect and result
+facts. The public method converts those facts to the neutral `OperationPlan`
+and method-owned `RecordRunResultFields`. Only the public method module maps
+semantic errors into response branches; the shared pipeline retains
+transaction, replay, and response-envelope ownership.
 
 ## Write Ticket Flow
 

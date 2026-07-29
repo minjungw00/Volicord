@@ -135,6 +135,7 @@
 | 경로 | 책임 |
 |---|---|
 | `crates/volicord-core/src/pipeline.rs` | 분리된 읽기 전용 경로 및 승인 context 기반 `CoreService` 구성, typed Core/Store Runtime Home 권한 검사, 공통 사전 점검, replay, plan 선택, 응답, commit 조율, Store 오류 세부사항 projection, 플랫폼 소유 Product Repository 관찰 실패의 중립 typed 운영 projection. |
+| `crates/volicord-core/src/operation_plan.rs` | Task와 선택적 Change Unit 식별자, 순서가 정해진 Store mutation, event payload로 구성된 메서드 중립 commit 연산 입력. 공개 메서드 결과 또는 응답 타입을 포함하지 않습니다. |
 | `crates/volicord-core/src/method_execution.rs` | 메서드 공통 요청 준비, mutation policy 선택, replay decoding, 저장 scalar 변환, generic method-plan 오류 carrier를 담당합니다. Aggregate policy나 source별 오류 매핑은 담당하지 않습니다. |
 | `crates/volicord-core/src/method_rejection.rs` | 공유 validation 및 rejection 응답 구성과 메서드 중립 dry-run summary를 담당합니다. |
 | `crates/volicord-core/src/error_boundary/` | Store, UserAction, 닫기 준비 상태, artifact policy, Product Repository path의 source 오류 모델을 공개 메서드 계획 오류로 바꾸는 집중 경계 매핑. |
@@ -146,13 +147,13 @@
 | `crates/volicord-core/src/projection.rs` | Adapter-neutral 상태 summary, 의미 기반 next-action 정규화와 선택, 증거 표시 projection, 공유 state-record projection을 담당합니다. |
 | `crates/volicord-core/src/record_refs.rs`, `task_state.rs`, `task_policy.rs` | 집중된 state-record 참조 변환, typed Task 상태 해석, 재사용 가능한 Task policy를 각각 담당합니다. |
 | `crates/volicord-core/src/write_ticket/` | Write Ticket fact, validity와 attempt-scope policy, prepare-write 의미 계획, Record Run 승인, adapter-neutral ticket projection의 정규 담당 모듈입니다. `admission.rs`는 typed 연산 fact를 받아 typed attempt scope 또는 의미 승인 오류를 반환하며 공개 응답 구성은 호출 메서드에 남습니다. |
-| `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하며, `methods/mod.rs`는 모듈 wiring과 작은 메서드 공통 plan carrier만 제공합니다. |
-| `crates/volicord-core/src/recording/context.rs`, `model.rs` | Record Run 요청 정규화, Store 기반 typed fact 취득, 기록 패키지 내부에서만 공유하는 폐쇄형 fact, 권한, 관찰, artifact, mutation plan, 계획 결과 모델. |
+| `crates/volicord-core/src/methods/` | 공개 메서드 진입점과 요청별 조율을 담당합니다. 프로덕션 모듈은 공유 책임의 명시적 담당 모듈을 import하고, `methods/mod.rs`는 모듈 wiring만 제공하며 메서드별 plan wrapper는 해당 메서드 모듈에 둡니다. |
+| `crates/volicord-core/src/recording/mod.rs`, `context.rs`, `model.rs` | 좁은 의미 `RecordRunInput` 및 `RecordRunOperationPlan` 경계, 입력 정규화, Store 기반 typed fact 취득, 기록 패키지 내부에서만 공유하는 폐쇄형 fact, 권한, 관찰, artifact, mutation plan 모델. |
 | `crates/volicord-core/src/recording/authority.rs` | 공개 응답을 구성하지 않으면서 증거 fact, artifact, 관련성, UserAction 담당 모듈을 재사용해 Store의 캡처 intent와 receipt를 typed 캡처 권한으로 해석합니다. |
 | `crates/volicord-core/src/recording/evidence.rs`, `artifact.rs` | 공유 증거 및 artifact 정책 출력을 typed 관찰, producer, artifact 승격, link plan으로 바꾸는 Record Run별 조율. |
-| `crates/volicord-core/src/recording/plan.rs` | Record Run 정책 서비스 조율과 typed `RecordRunMutationPlan` 조립. 최종 Store plan 변환 전까지 도메인 mutation을 구분합니다. |
-| `crates/volicord-core/src/recording/state.rs`, `projection.rs` | Store 기반 연산 후 상태 fact 취득과 이어지는 Store 및 정책 독립 `RecordRunResultFields` projection. |
-| `crates/volicord-core/src/recording/tests/` | 책임별 Record Run context, 캡처 권한, 증거, artifact, projection coverage. |
+| `crates/volicord-core/src/recording/plan.rs` | Record Run 정책 서비스 조율, typed `RecordRunMutationPlan` 조립, 최종 `RecordRunEffect`와 `RecordRunResultFacts` projection. 최종 Store plan 변환 전까지 도메인 mutation을 구분합니다. |
+| `crates/volicord-core/src/recording/state.rs` | 투영된 연산 후 `StateSummary` 의미 fact의 Store 기반 취득. |
+| `crates/volicord-core/src/recording/tests/` | 책임별 Record Run context, 캡처 권한, 증거, artifact, typed mutation plan, 의미 오류, 결과 fact coverage. |
 | `crates/volicord-core/src/close_readiness/mod.rs` | 메서드 plan이 사용하는 닫기 준비 상태 서비스, projection, 차단 사유 helper의 좁은 패키지 표면. |
 | `crates/volicord-core/src/close_readiness/facts.rs` | 하나의 수락 기준 snapshot, 하나의 workflow policy snapshot, 현재 handle 기반 미조정 변경 읽기를 포함한 typed 현재 사실 취득 및 투영 사실 조립. 준비 상태 판단은 담당하지 않습니다. |
 | `crates/volicord-core/src/close_readiness/change_control.rs` | Task, Change Unit, 닫기 근거, baseline, 복구, 미조정 변경, Write Ticket 조건 평가. |
@@ -166,7 +167,7 @@
 | `crates/volicord-core/src/close_readiness/recording.rs` | 공유 닫기 준비 상태 및 증거 정책을 통한 Record Run 닫기 근거 참조 해석, 현재 민감 행동 근거 구성, 잔여 위험 검증, typed `CurrentCloseBasis` 계획. |
 | `crates/volicord-core/src/close_readiness/tests/` | 책임별 사실, 변경 제어, 증거, 수락, 정책, 차단 사유, guidance 테스트와 닫기 준비 상태 서비스 통합 coverage. |
 | `crates/volicord-core/src/methods/prepare_evidence_capture.rs` | 증거 캡처 요청 검증과 계획. 수락 기준 및 보충 주장 일치에는 대상 정책을 사용합니다. |
-| `crates/volicord-core/src/methods/record_run.rs` | 공개 Record Run 진입점 조율, 의미 오류의 응답 매핑, Core plan 제출, 메서드별 metric 기록. 상세 기록 정책과 계획은 책임 담당 모듈에 둡니다. |
+| `crates/volicord-core/src/methods/record_run.rs` | 공개 Record Run 요청을 의미 입력으로 변환하고, 의미 오류를 응답으로 매핑하며, `RecordRunOperationPlan`을 중립 실행 입력과 공개 결과 field로 변환하고, Core plan 제출 및 메서드별 metric 기록을 담당합니다. |
 | `crates/volicord-core/src/methods/tests/record_run.rs` | 대표 공개 Record Run 조율, commit, 거절, artifact 및 증거, rollback, replay 통합 coverage. 도메인 정책 행렬은 각 담당 경로에 둡니다. |
 | `crates/volicord-core/src/methods/close_task.rs` | 요청별 닫기 조율. 요청 검증, 닫기 준비 상태 서비스 호출, 종료 변경 계획, typed 결과 구성을 담당합니다. |
 | `crates/volicord-core/src/methods/update_scope.rs` | 닫기 준비 상태 증거 정책 담당 모듈을 통한 범위 갱신 계획과 투영 증거 요약 완성. |

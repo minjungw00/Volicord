@@ -23,8 +23,9 @@ This document does not own:
 
 The public entry point at
 [`crates/volicord-core/src/methods/record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs)
-owns request-specific pipeline orchestration and maps typed recording failures
-and result fields into the public method response.
+owns request-specific pipeline orchestration, converts the public request to
+semantic Recording input, maps typed recording failures, and converts semantic
+result facts into the public method response.
 
 Current Record Run implementation responsibilities route as follows:
 
@@ -43,11 +44,12 @@ Current Record Run implementation responsibilities route as follows:
   constructs the typed current close basis and residual-risk facts used by the
   shared close-readiness service.
 - [`crates/volicord-core/src/recording/plan.rs`](../../../../crates/volicord-core/src/recording/plan.rs)
-  coordinates those owners and assembles the typed mutation plan;
+  coordinates those owners, assembles the typed mutation plan, and returns the
+  closed `RecordRunOperationPlan` with effect and result facts;
   [`state.rs`](../../../../crates/volicord-core/src/recording/state.rs) acquires
-  the Store-aware post-operation state facts; and
-  [`projection.rs`](../../../../crates/volicord-core/src/recording/projection.rs)
-  performs the Store-free `RecordRunResultFields` projection.
+  the Store-aware post-operation state facts. The public entry point converts
+  the returned facts to the neutral Core operation carrier and
+  `RecordRunResultFields`.
 
 The exact dependency and transaction boundaries are described in the
 [Core architecture](../../architecture-guide/architecture.md),

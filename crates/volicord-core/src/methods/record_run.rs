@@ -9,19 +9,22 @@ use crate::method_rejection::{
     infallible_rejected_pipeline_response, no_active_change_unit_response, no_active_task_response,
     rejected_pipeline_response, validation_rejected, workspace_stale_response,
 };
+use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
-    commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch, CoreResult,
-    CoreService, InvocationContext, PipelineResponse, TaskRequirement,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, CoreResult, CoreService,
+    InvocationContext, PipelineResponse, TaskRequirement,
 };
-use crate::recording::{plan_record_run, RecordingError, RecordingRejection};
+use crate::recording::{
+    plan_record_run, RecordRunInput, RecordRunResultFacts, RecordingError, RecordingRejection,
+};
 use crate::workflow_diagnostics::{
     first_product_write_duration_micros, record_core_workflow_metric_best_effort,
     response_committed_fresh_effect,
 };
 use volicord_store::diagnostics::WorkflowMetricKind;
 use volicord_store::mutation::RuntimeHomeMutationContext;
-use volicord_types::methods::{MethodOperationCategory, RecordRunRequest};
-use volicord_types::schema::ToolEnvelope;
+use volicord_types::methods::{MethodOperationCategory, RecordRunRequest, RecordRunResultFields};
+use volicord_types::schema::{RunSummary, ToolEnvelope};
 use volicord_types::values::{ErrorCode, MethodName};
 
 fn record_run_error_response(
@@ -190,6 +193,45 @@ fn write_ticket_invalid_or_required_response(
     )
 }
 
+fn record_run_result_fields(facts: &RecordRunResultFacts) -> RecordRunResultFields {
+    RecordRunResultFields {
+        run_summary: RunSummary {
+            run_ref: facts.run_ref().clone(),
+            kind: facts.kind(),
+            summary: facts.summary().to_owned(),
+            observed_changes: facts.observed_changes().clone(),
+            artifact_refs: facts.registered_artifacts().to_vec(),
+        },
+        registered_artifacts: facts.registered_artifacts().to_vec(),
+        evidence_summary: facts.evidence_summary().cloned(),
+        evidence_observations: facts.evidence_observations().to_vec(),
+        evidence_producers: facts.evidence_producers().to_vec(),
+        current_close_basis: facts.current_close_basis().cloned(),
+        blocker_refs: facts.blocker_refs().to_vec(),
+        state: facts.state().clone(),
+    }
+}
+
+fn recording_input(request: &RecordRunRequest) -> RecordRunInput {
+    RecordRunInput::new(
+        request.envelope.project_id.clone(),
+        request.envelope.dry_run,
+        request.task_id.clone(),
+        request.change_unit_id.clone(),
+        request.kind,
+        request.run_id.as_ref().cloned(),
+        request.baseline_ref.clone(),
+        request.write_ticket_id.as_ref().cloned(),
+        request.performed_operation.as_ref().cloned(),
+        request.summary.clone(),
+        request.observed_changes.clone(),
+        request.artifact_inputs.clone(),
+        request.evidence_updates.clone(),
+        request.evidence_observations.clone(),
+        request.close_assessment.as_ref().cloned(),
+    )
+}
+
 impl CoreService {
     /// Executes `volicord.record_run` through the shared Core mutation pipeline.
     pub fn record_run(
@@ -251,7 +293,7 @@ impl CoreService {
             self,
             &prepared.store,
             &prepared.context.project_state,
-            request.clone(),
+            recording_input(&request),
             &prepared.context.verified_invocation,
             &prepared.operation_now,
         ) {
@@ -274,16 +316,24 @@ impl CoreService {
         }
 
         let session_id = prepared.context.verified_invocation.session_id.clone();
+        let (effect, result_facts) = plan.into_parts();
+        let task_id = effect.task_id().clone();
+        let change_unit_id = effect.change_unit_id().clone();
+        let event_payload = effect.event_payload().clone();
+        let operation = OperationPlan::new(
+            task_id,
+            Some(change_unit_id),
+            effect.into_storage_mutations(),
+            event_payload,
+        );
         let response = self.execute_prepared_request(
             prepared,
-            commit_mutation_branch::<RecordRunRequest>(CommitMutationBranch {
-                result_fields: plan.result_fields,
-                event_kind: "run_recorded".to_owned(),
-                event_payload: plan.event_payload,
-                task_id: Some(plan.task_id),
-                change_unit_id: plan.change_unit_id,
-                storage_mutations: plan.storage_mutations,
-            }),
+            commit_mutation_branch::<RecordRunRequest>(
+                operation.into_commit_branch::<RecordRunRequest>(
+                    record_run_result_fields(&result_facts),
+                    "run_recorded",
+                ),
+            ),
         )?;
         if response_committed_fresh_effect(&response) {
             if let Some(duration) = first_product_write_duration {

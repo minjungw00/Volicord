@@ -2,15 +2,14 @@ use crate::artifact::{artifact_ref_from_verified_record, persistent_artifact_is_
 use crate::identity::allocate_artifact_id;
 use crate::json_object::object_from_value;
 use crate::pipeline::{CorePipelineError, CoreResult, CoreService, VerifiedInvocationContext};
-use crate::recording::{recording_store_error, RecordingError, RecordingRejection};
+use crate::recording::{recording_store_error, RecordRunInput, RecordingError, RecordingRejection};
 use serde_json::json;
 use std::collections::BTreeSet;
 use volicord_store::core_pipeline::{
     ArtifactLinkInsert, ArtifactMutation, ArtifactPromotion, ArtifactStagingStatus,
-    ProjectStateHeader, StoredArtifactStagingRecord,
+    StoredArtifactStagingRecord,
 };
 use volicord_types::ids::StorageRef;
-use volicord_types::methods::RecordRunRequest;
 use volicord_types::schema::{
     ArtifactInput, ArtifactRef, JsonObject, PersistedArtifactProducer,
     PersistedArtifactProvenanceMetadata, StagedArtifactHandle,
@@ -23,13 +22,10 @@ use volicord_types::values::{
 use super::model::{RecordRunArtifactContext, RecordRunArtifactPlan};
 
 pub(super) fn artifact_input_validation_plan_error<T>(
-    request: &RecordRunRequest,
-    project_state: &ProjectStateHeader,
     input: &ArtifactInput,
     reason: &'static str,
     message: &'static str,
 ) -> Result<T, RecordingError> {
-    let _ = (request, project_state);
     Err(RecordingError::Rejected(
         RecordingRejection::ArtifactInput {
             artifact_input_id: input.artifact_input_id.as_str().to_owned(),
@@ -60,15 +56,12 @@ pub(super) fn plan_record_run_artifacts(
     context: RecordRunArtifactContext<'_>,
 ) -> Result<Vec<RecordRunArtifactPlan>, RecordingError> {
     let request = context.request;
-    let project_state = context.project_state;
     let mut input_ids = BTreeSet::new();
     let mut staged_handles = BTreeSet::new();
     let mut plans = Vec::new();
     for input in &request.artifact_inputs {
         if input.artifact_input_id.as_str().trim().is_empty() {
             return artifact_input_validation_plan_error(
-                request,
-                project_state,
                 input,
                 "staged_handle_not_found",
                 "artifact_input_id must not be empty",
@@ -76,8 +69,6 @@ pub(super) fn plan_record_run_artifacts(
         }
         if !input_ids.insert(input.artifact_input_id.as_str()) {
             return artifact_input_validation_plan_error(
-                request,
-                project_state,
                 input,
                 "staged_handle_not_found",
                 "artifact_input_id values must be unique within one request",
@@ -87,8 +78,6 @@ pub(super) fn plan_record_run_artifacts(
             ArtifactInputSourceKind::StagedArtifact => {
                 if input.staged_artifact_handle.is_none() || input.existing_artifact_ref.is_some() {
                     return artifact_input_validation_plan_error(
-                        request,
-                        project_state,
                         input,
                         "staged_handle_not_found",
                         "staged_artifact inputs must populate only staged_artifact_handle",
@@ -100,8 +89,6 @@ pub(super) fn plan_record_run_artifacts(
                     .expect("checked staged_artifact_handle above");
                 if !staged_handles.insert(handle.handle_id.as_str()) {
                     return artifact_input_validation_plan_error(
-                        request,
-                        project_state,
                         input,
                         "staged_handle_consumed",
                         "a staged artifact handle can be consumed at most once",
@@ -114,8 +101,6 @@ pub(super) fn plan_record_run_artifacts(
             ArtifactInputSourceKind::ExistingArtifact => {
                 if input.existing_artifact_ref.is_none() || input.staged_artifact_handle.is_some() {
                     return artifact_input_validation_plan_error(
-                        request,
-                        project_state,
                         input,
                         "staged_handle_not_found",
                         "existing_artifact inputs must populate only existing_artifact_ref",
@@ -142,15 +127,12 @@ pub(super) fn plan_staged_artifact_input(
     handle: &StagedArtifactHandle,
 ) -> Result<RecordRunArtifactPlan, RecordingError> {
     let store = context.store;
-    let project_state = context.project_state;
     let request = context.request;
     let verified_invocation = context.verified_invocation;
     let run_id = context.run_id;
     let run_ref = context.run_ref;
-    if handle.project_id != request.envelope.project_id {
+    if handle.project_id != request.project_id {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_project_mismatch",
             "staged artifact handle belongs to a different project",
@@ -158,8 +140,6 @@ pub(super) fn plan_staged_artifact_input(
     }
     if handle.task_id != request.task_id {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_task_mismatch",
             "staged artifact handle belongs to a different Task",
@@ -167,8 +147,6 @@ pub(super) fn plan_staged_artifact_input(
     }
     if handle.consumed {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_consumed",
             "staged artifact handle is already consumed",
@@ -177,7 +155,7 @@ pub(super) fn plan_staged_artifact_input(
 
     let record = store
         .artifact_staging_record(handle.handle_id.as_str())
-        .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+        .map_err(recording_store_error)?
         .ok_or_else(|| {
             artifact_input_error(
                 input,
@@ -186,7 +164,6 @@ pub(super) fn plan_staged_artifact_input(
             )
         })?;
     validate_staged_artifact_record(
-        project_state,
         request,
         verified_invocation,
         input,
@@ -199,7 +176,7 @@ pub(super) fn plan_staged_artifact_input(
         .map_err(RecordingError::Core)?;
     let uri = format!(
         "volicord-artifact://{}/{}",
-        request.envelope.project_id.as_str(),
+        request.project_id.as_str(),
         artifact_id.as_str()
     );
     let display_name = staged_artifact_display_name(&record)?;
@@ -217,7 +194,7 @@ pub(super) fn plan_staged_artifact_input(
     let redaction_state = record.redaction_state;
     let artifact_ref = ArtifactRef {
         artifact_id: artifact_id.clone(),
-        project_id: request.envelope.project_id.clone(),
+        project_id: request.project_id.clone(),
         task_id: request.task_id.clone(),
         display_name: display_name.clone(),
         content_type: Some(content_type.clone()).into(),
@@ -273,18 +250,15 @@ pub(super) fn plan_staged_artifact_input(
 }
 
 pub(super) fn validate_staged_artifact_record(
-    project_state: &ProjectStateHeader,
-    request: &RecordRunRequest,
+    request: &RecordRunInput,
     verified_invocation: &VerifiedInvocationContext,
     input: &ArtifactInput,
     handle: &StagedArtifactHandle,
     record: &StoredArtifactStagingRecord,
     now: &UtcTimestamp,
 ) -> Result<(), RecordingError> {
-    if record.project_id != request.envelope.project_id.as_str() {
+    if record.project_id != request.project_id.as_str() {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_project_mismatch",
             "stored staged artifact belongs to a different project",
@@ -292,8 +266,6 @@ pub(super) fn validate_staged_artifact_record(
     }
     if record.task_id != request.task_id.as_str() {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_task_mismatch",
             "stored staged artifact belongs to a different Task",
@@ -303,8 +275,6 @@ pub(super) fn validate_staged_artifact_record(
         || handle.created_by_actor_source != record.created_by_actor_source
     {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_actor_source_mismatch",
             "staged artifact provenance does not match the verified actor source",
@@ -312,8 +282,6 @@ pub(super) fn validate_staged_artifact_record(
     }
     if record.status == ArtifactStagingStatus::Consumed {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_consumed",
             "staged artifact handle is already consumed",
@@ -339,8 +307,6 @@ pub(super) fn validate_staged_artifact_record(
     }
     if record.status == ArtifactStagingStatus::Expired || now >= stored_expires_at {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_expired",
             "staged artifact handle is expired",
@@ -348,8 +314,6 @@ pub(super) fn validate_staged_artifact_record(
     }
     if stored_expires_at != &handle.expires_at {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "staged artifact expiration does not match the submitted handle",
@@ -357,8 +321,6 @@ pub(super) fn validate_staged_artifact_record(
     }
     if record.status != ArtifactStagingStatus::Staged {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_not_found",
             "staged artifact handle is not consumable",
@@ -372,8 +334,6 @@ pub(super) fn validate_staged_artifact_record(
         || record.sha256.is_none()
     {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "staged artifact checksum does not match the submitted handle or expectation",
@@ -386,8 +346,6 @@ pub(super) fn validate_staged_artifact_record(
         || record.size_bytes.is_none()
     {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_size_mismatch",
             "staged artifact size does not match the submitted handle or expectation",
@@ -398,8 +356,6 @@ pub(super) fn validate_staged_artifact_record(
         || record.redaction_state != expected_redaction
     {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "staged artifact redaction_state does not match the submitted handle or expectation",
@@ -407,8 +363,6 @@ pub(super) fn validate_staged_artifact_record(
     }
     if record.content_type.as_deref() != Some(handle.content_type.as_str()) {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "staged artifact content_type does not match the submitted handle",
@@ -423,15 +377,10 @@ pub(super) fn plan_existing_artifact_input(
     existing_ref: &ArtifactRef,
 ) -> Result<RecordRunArtifactPlan, RecordingError> {
     let store = context.store;
-    let project_state = context.project_state;
     let request = context.request;
     let run_id = context.run_id;
-    if existing_ref.project_id != request.envelope.project_id
-        || existing_ref.task_id != request.task_id
-    {
+    if existing_ref.project_id != request.project_id || existing_ref.task_id != request.task_id {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_project_mismatch",
             "existing artifact ref must belong to the request project and Task",
@@ -439,18 +388,18 @@ pub(super) fn plan_existing_artifact_input(
     }
     let record = store
         .artifact_record(existing_ref.artifact_id.as_str())
-        .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+        .map_err(recording_store_error)?
         .ok_or_else(|| artifact_missing_error("existing artifact cannot be found"))?;
     let artifact_available = persistent_artifact_is_verified_current(store, &record)?;
     if record.task_id != request.task_id.as_str()
-        || record.project_id != request.envelope.project_id.as_str()
+        || record.project_id != request.project_id.as_str()
         || !artifact_available
         || !store
             .artifact_has_task_owner_link(
                 existing_ref.artifact_id.as_str(),
                 request.task_id.as_str(),
             )
-            .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+            .map_err(recording_store_error)?
     {
         return Err(artifact_missing_error(
             "existing artifact is not available for this Task",
@@ -463,8 +412,6 @@ pub(super) fn plan_existing_artifact_input(
     }
     let Some(existing_sha256) = existing_ref.sha256.as_ref() else {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "verified existing artifact refs must include sha256",
@@ -472,8 +419,6 @@ pub(super) fn plan_existing_artifact_input(
     };
     let Some(existing_size_bytes) = existing_ref.size_bytes.as_ref().copied() else {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_size_mismatch",
             "verified existing artifact refs must include size_bytes",
@@ -481,8 +426,6 @@ pub(super) fn plan_existing_artifact_input(
     };
     let Some(existing_content_type) = existing_ref.content_type.as_ref() else {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "verified existing artifact refs must include content_type",
@@ -495,8 +438,6 @@ pub(super) fn plan_existing_artifact_input(
             .is_some_and(|expected| record.sha256.as_deref() != Some(expected))
     {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "existing artifact checksum does not match the stored artifact",
@@ -508,8 +449,6 @@ pub(super) fn plan_existing_artifact_input(
             .is_some_and(|expected| record.size_bytes != Some(expected))
     {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_size_mismatch",
             "existing artifact size does not match the stored artifact",
@@ -517,8 +456,6 @@ pub(super) fn plan_existing_artifact_input(
     }
     if record.content_type.as_deref() != Some(existing_content_type.as_str()) {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "existing artifact content_type does not match the stored artifact",
@@ -532,8 +469,6 @@ pub(super) fn plan_existing_artifact_input(
         || stored_redaction_state != expected_redaction
     {
         return artifact_input_validation_plan_error(
-            request,
-            project_state,
             input,
             "staged_handle_checksum_mismatch",
             "existing artifact redaction_state does not match the stored artifact",

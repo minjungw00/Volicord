@@ -47,20 +47,13 @@ pub(super) fn normalize_record_run_request(
         .is_some_and(String::is_empty)
     {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "performed_operation",
             "performed_operation must be null, omitted, or a non-empty operation",
         );
     }
-    request.performed_operation = normalized_performed_operation.into();
+    request.performed_operation = normalized_performed_operation;
     if request.summary.trim().is_empty() {
-        return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "summary",
-            "summary must not be empty",
-        );
+        return recording_validation_error("summary", "summary must not be empty");
     }
     if request
         .run_id
@@ -68,8 +61,6 @@ pub(super) fn normalize_record_run_request(
         .is_some_and(|id| id.as_str().trim().is_empty())
     {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "run_id",
             "run_id must be null or a non-empty identifier",
         );
@@ -83,8 +74,6 @@ pub(super) fn normalize_record_run_request(
             Ok(paths) => paths,
             Err(ProductPathValidationError::Lexical(_)) => {
                 return recording_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
                     "observed_changes.changed_paths",
                     "changed_paths must be normalized relative Product Repository paths",
                 )
@@ -105,8 +94,6 @@ pub(super) fn normalize_record_run_request(
     );
     if request.observed_changes.product_file_write_observed && normalized_changed_paths.is_empty() {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "observed_changes",
             "product_file_write_observed requires at least one changed_path",
         );
@@ -114,8 +101,6 @@ pub(super) fn normalize_record_run_request(
     if !request.observed_changes.product_file_write_observed && !normalized_changed_paths.is_empty()
     {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "observed_changes",
             "changed_paths require product_file_write_observed=true",
         );
@@ -127,8 +112,6 @@ pub(super) fn normalize_record_run_request(
         .is_some_and(|baseline_ref| baseline_ref != &request.baseline_ref)
     {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "observed_changes.baseline_ref",
             "observed_changes.baseline_ref must match request baseline_ref when present",
         );
@@ -153,7 +136,6 @@ pub(super) fn normalize_record_run_request(
 
 pub(super) fn acquire_record_run_facts(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
     normalized: RecordRunNormalizedRequest,
     verified_invocation: &VerifiedInvocationContext,
 ) -> Result<RecordRunFacts, RecordingError> {
@@ -163,7 +145,7 @@ pub(super) fn acquire_record_run_facts(
         &normalized.normalized_observed_changes.sensitive_categories;
     let task = store
         .task_record(&request.task_id)
-        .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+        .map_err(recording_store_error)?
         .ok_or(RecordingError::Rejected(RecordingRejection::NoActiveTask))?;
     let task_mode = task.mode;
     let workflow_policy = project_workflow_policy(store).map_err(CorePipelineError::from)?;
@@ -172,8 +154,6 @@ pub(super) fn acquire_record_run_facts(
     let work_phase = task.work_phase;
     if !task_mode_allows_run_kind(task_mode, work_phase, request.kind) {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "kind",
             "kind is not compatible with the current Task mode and work phase",
         );
@@ -184,23 +164,19 @@ pub(super) fn acquire_record_run_facts(
             || !normalized_sensitive_categories.is_empty())
     {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "observed_changes",
             "advisor Task runs cannot report Product Repository file changes or sensitive effects",
         );
     }
     if task_mode == TaskMode::Advisor && request.write_ticket_id.is_some() {
         return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "write_ticket_id",
             "advisor Task runs cannot consume a write ticket",
         );
     }
     let change_unit = store
         .change_unit_record(&request.task_id, request.change_unit_id.as_str())
-        .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+        .map_err(recording_store_error)?
         .ok_or(RecordingError::Rejected(
             RecordingRejection::NoActiveChangeUnit {
                 message: "change_unit_id does not identify a Change Unit for the Task",

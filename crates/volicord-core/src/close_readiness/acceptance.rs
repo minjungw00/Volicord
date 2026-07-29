@@ -80,7 +80,7 @@ pub(super) fn completion_authority_blockers(
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
         change_unit_ref(
-            &request.envelope.project_id,
+            &request.project_id,
             &request.task_id,
             record,
             project_state.state_version,
@@ -268,7 +268,7 @@ fn pending_user_action_refs_for_close_operation(
             refs.push(state_ref(
                 StateRecordKind::UserActionRequest,
                 &authority.user_action_request_id,
-                &request.envelope.project_id,
+                &request.project_id,
                 Some(&request.task_id),
                 Some(project_state.state_version),
             ));
@@ -366,7 +366,7 @@ fn close_operation_refs(
     let mut refs = vec![task_ref_for_close(request, project_state.state_version)];
     if let Some(change_unit) = context.current_change_unit.as_ref() {
         refs.push(change_unit_ref(
-            &request.envelope.project_id,
+            &request.project_id,
             &request.task_id,
             change_unit,
             project_state.state_version,
@@ -422,7 +422,7 @@ fn cancellation_authority_blocker(
         let user_action_request_ref = state_ref(
             StateRecordKind::UserActionRequest,
             &authority.user_action_request_id,
-            &request.envelope.project_id,
+            &request.project_id,
             Some(&request.task_id),
             Some(project_state.state_version),
         );
@@ -761,7 +761,7 @@ pub(super) fn risk_acceptance_coverage(
         JudgmentKind::ResidualRiskAcceptance,
     )?;
     let mut coverage = current_residual_risk_acceptance_coverage(
-        &request.envelope.project_id,
+        &request.project_id,
         &request.task_id,
         project_state.state_version,
         &basis,

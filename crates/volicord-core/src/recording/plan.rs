@@ -19,8 +19,7 @@ use volicord_store::core_pipeline::{
     StoredRunWriteTicketEffectKind, TaskCloseBasisUpdate, TaskControlLevelUpdate, TaskMutation,
     UserActionInvalidation, UserActionMutation, WriteTicketConsumption, WriteTicketMutation,
 };
-use volicord_types::methods::{RecordRunRequest, RecordRunResultFields};
-use volicord_types::schema::{PersistedEvidenceMetadata, StateRecordRef};
+use volicord_types::schema::{PersistedEvidenceMetadata, StateRecordRef, StateSummary};
 use volicord_types::values::{
     AcceptancePolicy, StateRecordKind, TaskControlLevel, UserActionKind, UserActionRequiredFor,
     UtcTimestamp,
@@ -31,9 +30,9 @@ use volicord_user_action_service::{
     UserActionOperationContext,
 };
 
-use crate::methods::MethodPlan;
 use crate::recording::{
-    recording_store_error, recording_user_action_error, recording_validation_error, RecordingError,
+    recording_store_error, recording_user_action_error, recording_validation_error,
+    RecordRunEffect, RecordRunInput, RecordRunOperationPlan, RecordRunResultFacts, RecordingError,
     RecordingRejection,
 };
 
@@ -51,7 +50,6 @@ use super::{
         RecordRunMutationAssembly, RecordRunMutationPlan, RecordRunNormalizedRequest,
         RecordRunPlannedMutations, RecordRunPolicyDecision, RecordRunRawRequest,
     },
-    projection::project_record_run_result,
     state::acquire_record_run_state,
 };
 
@@ -59,15 +57,15 @@ pub(crate) fn plan_record_run(
     service: &CoreService,
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    request: RecordRunRequest,
+    request: RecordRunInput,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan<RecordRunResultFields>, RecordingError> {
+) -> Result<RecordRunOperationPlan, RecordingError> {
     let raw = RecordRunRawRequest::new(request, operation_now);
     let normalized = normalize_record_run_request(store, project_state, raw)?;
-    let facts = acquire_record_run_facts(store, project_state, normalized, verified_invocation)?;
+    let facts = acquire_record_run_facts(store, normalized, verified_invocation)?;
     let evidence_target_plan =
-        plan_record_run_evidence_targets(store, project_state, &facts.normalized.raw.request)?;
+        plan_record_run_evidence_targets(store, &facts.normalized.raw.request)?;
     let policy =
         decide_record_run_policy(service, store, project_state, verified_invocation, facts)?;
     let mutations = plan_record_run_mutations(
@@ -79,7 +77,48 @@ pub(crate) fn plan_record_run(
         evidence_target_plan,
     )?;
     let state = acquire_record_run_state(store, project_state, verified_invocation, &mutations)?;
-    Ok(project_record_run_result(mutations, state).into_plan())
+    Ok(record_run_operation_plan(mutations, state))
+}
+
+fn record_run_operation_plan(
+    planned: RecordRunPlannedMutations,
+    state: StateSummary,
+) -> RecordRunOperationPlan {
+    let RecordRunPlannedMutations {
+        request,
+        run_ref,
+        normalized_observed_changes,
+        registered_artifacts,
+        evidence_observations,
+        evidence_producers,
+        recorded_evidence_summary,
+        current_close_basis,
+        blocker_refs,
+        mutation_plan,
+        event_payload,
+        ..
+    } = planned;
+    RecordRunOperationPlan {
+        effect: RecordRunEffect {
+            task_id: request.task_id,
+            change_unit_id: request.change_unit_id,
+            mutation_plan,
+            event_payload,
+        },
+        result_facts: RecordRunResultFacts {
+            run_ref,
+            kind: request.kind,
+            summary: request.summary,
+            observed_changes: normalized_observed_changes,
+            registered_artifacts,
+            evidence_summary: recorded_evidence_summary,
+            evidence_observations,
+            evidence_producers,
+            current_close_basis,
+            blocker_refs,
+            state,
+        },
+    }
 }
 
 pub(super) fn decide_record_run_policy(
@@ -118,7 +157,7 @@ pub(super) fn decide_record_run_policy(
         }
         let record = store
             .write_ticket_record(write_ticket_id.as_str())
-            .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+            .map_err(recording_store_error)?
             .ok_or_else(|| {
                 write_ticket_invalid(
                     "missing",
@@ -129,7 +168,7 @@ pub(super) fn decide_record_run_policy(
             &record,
             RecordRunWriteAdmission {
                 store,
-                project_id: &request.envelope.project_id,
+                project_id: &request.project_id,
                 task_id: &request.task_id,
                 change_unit_id: &request.change_unit_id,
                 baseline_ref: &request.baseline_ref,
@@ -158,12 +197,12 @@ pub(super) fn decide_record_run_policy(
         state_ref(
             StateRecordKind::Task,
             request.task_id.as_str(),
-            &request.envelope.project_id,
+            &request.project_id,
             Some(&request.task_id),
             Some(project_state.state_version),
         ),
         change_unit_ref(
-            &request.envelope.project_id,
+            &request.project_id,
             &request.task_id,
             &change_unit,
             project_state.state_version,
@@ -197,12 +236,12 @@ pub(super) fn decide_record_run_policy(
     };
     if !pending_user_action_refs_for_operation(
         store,
-        &request.envelope.project_id,
+        &request.project_id,
         project_state.state_version,
         plan_now,
         &operation_context,
     )
-    .map_err(|error| recording_user_action_error(&request.envelope, project_state, error))?
+    .map_err(recording_user_action_error)?
     .is_empty()
     {
         return Err(RecordingError::Rejected(
@@ -213,7 +252,7 @@ pub(super) fn decide_record_run_policy(
         ));
     }
 
-    let run_id = match request.run_id.clone().into_option() {
+    let run_id = match request.run_id.clone() {
         Some(run_id) => run_id,
         None => {
             allocate_run_id(service.durable_id_generator(), store).map_err(RecordingError::Core)?
@@ -222,19 +261,14 @@ pub(super) fn decide_record_run_policy(
     if request.run_id.is_some()
         && store
             .run_id_exists(run_id.as_str())
-            .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+            .map_err(recording_store_error)?
     {
-        return recording_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
-            "run_id",
-            "run_id already identifies an existing Run",
-        );
+        return recording_validation_error("run_id", "run_id already identifies an existing Run");
     }
     let run_ref = state_ref(
         StateRecordKind::Run,
         run_id.as_str(),
-        &request.envelope.project_id,
+        &request.project_id,
         Some(&request.task_id),
         Some(planned_state_version),
     );
@@ -381,7 +415,7 @@ pub(super) fn plan_record_run_mutations(
         state_ref(
             StateRecordKind::EvidenceSummary,
             id,
-            &request.envelope.project_id,
+            &request.project_id,
             Some(&request.task_id),
             Some(planned_state_version),
         )
@@ -390,7 +424,6 @@ pub(super) fn plan_record_run_mutations(
     let close_basis_context = RecordRunCloseBasisContext {
         service,
         store,
-        project_state,
         request,
         task: &task,
         run_ref: &run_ref,
@@ -413,7 +446,7 @@ pub(super) fn plan_record_run_mutations(
         Some(_) => projected_close_evidence_summary.clone(),
         None => projected_evidence_summary_for_criteria(
             store,
-            &request.envelope.project_id,
+            &request.project_id,
             planned_state_version,
             &task,
             &acceptance_criteria,
@@ -423,19 +456,18 @@ pub(super) fn plan_record_run_mutations(
     let close_basis = current_close_basis.clone();
     let blocker_refs = store
         .active_blocker_refs(&request.task_id, planned_state_version)
-        .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+        .map_err(recording_store_error)?
         .into_iter()
         .map(state_ref_from_stored)
         .collect::<Vec<_>>();
     let pending_user_action_refs = pending_refs_after_record_run_invalidation(
         store,
-        project_state,
         request,
         planned_state_version,
         plan_now,
     )?;
     let pending_authorities = pending_user_action_authorities(store, &request.task_id, plan_now)
-        .map_err(|error| recording_user_action_error(&request.envelope, project_state, error))?
+        .map_err(recording_user_action_error)?
         .into_iter()
         .filter(|authority| {
             !matches!(
@@ -745,8 +777,7 @@ pub(super) fn assemble_record_run_mutation_plan(
 
 pub(super) fn pending_refs_after_record_run_invalidation(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &RecordRunRequest,
+    request: &RecordRunInput,
     planned_state_version: u64,
     now: &UtcTimestamp,
 ) -> Result<Vec<StateRecordRef>, RecordingError> {
@@ -757,11 +788,11 @@ pub(super) fn pending_refs_after_record_run_invalidation(
     let mut refs = Vec::new();
     for record_ref in store
         .pending_user_action_refs(&request.task_id, planned_state_version, now)
-        .map_err(|error| recording_store_error(&request.envelope, project_state, error))?
+        .map_err(recording_store_error)?
     {
         let record = store
             .user_action_record(&record_ref.record_id, now)
-            .map_err(|error| recording_store_error(&request.envelope, project_state, error))?;
+            .map_err(recording_store_error)?;
         if record
             .as_ref()
             .is_some_and(|record| invalidated_kinds.contains(&record.request().action_kind()))

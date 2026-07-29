@@ -12,10 +12,10 @@ use volicord_store::core_pipeline::{
     ChangeUnitRecord, CoreProjectStore, ProjectStateHeader, TaskRecord, WriteTicketRecord,
 };
 use volicord_store::guards::UnrecordedChangeRecord;
-use volicord_types::ids::TaskId;
+use volicord_types::ids::{ProjectId, TaskId};
 use volicord_types::schema::{
     AcceptanceCriterion, ArtifactRef, CurrentCloseBasis, EvidenceObservation, EvidenceSummary,
-    StateRecordRef, ToolEnvelope,
+    StateRecordRef,
 };
 use volicord_types::values::{JudgmentKind, UtcTimestamp};
 use volicord_user_action_service::UserActionAuthority;
@@ -134,7 +134,7 @@ pub(crate) fn facts_with_resolved_unrecorded_changes(
 pub(super) fn acquire_close_readiness_facts(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
+    project_id: &ProjectId,
     task_id: &TaskId,
     now: &UtcTimestamp,
 ) -> Result<CloseReadinessFacts, CloseReadinessError> {
@@ -178,7 +178,7 @@ pub(super) fn acquire_close_readiness_facts(
         store,
         evidence_record.as_ref(),
         &task,
-        &envelope.project_id,
+        project_id,
         task_id,
         project_state.state_version,
     )?;

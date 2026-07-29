@@ -8,10 +8,9 @@ use crate::policy::evidence_relevance::capture_outcome_relevance;
 use crate::record_refs::state_ref;
 use crate::recording::{RecordingError, RecordingRejection};
 use std::collections::{BTreeMap, BTreeSet};
-use volicord_store::core_pipeline::{ArtifactStagingStatus, ProjectStateHeader};
+use volicord_store::core_pipeline::ArtifactStagingStatus;
 use volicord_store::evidence_capture::EvidenceCaptureIntentRecord;
 use volicord_types::ids::{ArtifactInputId, StagedArtifactHandleId};
-use volicord_types::methods::RecordRunRequest;
 use volicord_types::schema::{
     ArtifactInput, EvidenceCaptureIntent, EvidenceCaptureSpec, StagedArtifactHandle,
 };
@@ -46,16 +45,12 @@ pub(super) fn plan_record_run_capture_authorities(
             .collect::<Vec<_>>();
         if matching.len() > 1 {
             return capture_authority_error(
-                artifact_context.request,
-                artifact_context.project_state,
                 "one evidence observation may cite at most one evidence-capture intent",
             );
         }
         if let Some(record_ref) = matching.first() {
             if !intent_ids.insert(record_ref.record_id.as_str().to_owned()) {
                 return capture_authority_error(
-                    artifact_context.request,
-                    artifact_context.project_state,
                     "one evidence-capture intent cannot be consumed by multiple observations",
                 );
             }
@@ -92,26 +87,18 @@ pub(super) fn plan_record_run_capture_authority(
         .is_some()
     {
         return capture_authority_error(
-            request,
-            project_state,
             "evidence-capture intent is already finalized and must be reused through its observation",
         );
     }
     let intent_record = store
         .evidence_capture_intent_record(intent_id)
         .map_err(CorePipelineError::from)?
-        .ok_or_else(|| {
-            capture_authority_rejection(
-                request,
-                project_state,
-                "evidence-capture intent was not found",
-            )
-        })?;
+        .ok_or_else(|| capture_authority_rejection("evidence-capture intent was not found"))?;
     let intent = capture_intent_from_record(&intent_record)?;
     let intent_ref = state_ref(
         StateRecordKind::EvidenceCaptureIntent,
         intent_id,
-        &request.envelope.project_id,
+        &request.project_id,
         Some(&request.task_id),
         Some(project_state.state_version),
     );
@@ -126,11 +113,7 @@ pub(super) fn plan_record_run_capture_authority(
         .evidence_capture_receipt_for_intent(intent_id)
         .map_err(CorePipelineError::from)?
         .ok_or_else(|| {
-            capture_authority_rejection(
-                request,
-                project_state,
-                "evidence-capture source receipt is not available",
-            )
+            capture_authority_rejection("evidence-capture source receipt is not available")
         })?;
     let body = validate_capture_receipt_record(&intent, &receipt)?;
     store
@@ -148,8 +131,6 @@ pub(super) fn plan_record_run_capture_authority(
         || artifact_context.now >= &intent.expires_at
     {
         return capture_authority_error(
-            request,
-            project_state,
             "evidence-capture intent or receipt is outside its current time window",
         );
     }
@@ -158,8 +139,6 @@ pub(super) fn plan_record_run_capture_authority(
         || artifact_context.verified_invocation.actor_source != intent.requested_by_actor_source
     {
         return capture_authority_error(
-            request,
-            project_state,
             "evidence-capture source connection does not match the immutable intent",
         );
     }
@@ -168,11 +147,7 @@ pub(super) fn plan_record_run_capture_authority(
         .artifact_staging_record(&receipt.staging_handle_id)
         .map_err(CorePipelineError::from)?
         .ok_or_else(|| {
-            capture_authority_rejection(
-                request,
-                project_state,
-                "evidence-capture receipt staging handle was not found",
-            )
+            capture_authority_rejection("evidence-capture receipt staging handle was not found")
         })?;
     if staging.sha256.as_deref() != Some(receipt.safe_receipt_sha256.as_str())
         || staging.size_bytes != Some(receipt.safe_receipt_size_bytes)
@@ -181,14 +156,12 @@ pub(super) fn plan_record_run_capture_authority(
         || staging.expires_at != intent.expires_at
     {
         return capture_authority_error(
-            request,
-            project_state,
             "evidence-capture receipt staging facts do not match the immutable receipt",
         );
     }
     let staged_handle = StagedArtifactHandle {
         handle_id: StagedArtifactHandleId::new(receipt.staging_handle_id.clone()),
-        project_id: request.envelope.project_id.clone(),
+        project_id: request.project_id.clone(),
         task_id: request.task_id.clone(),
         created_by_actor_source: body.observed_by_actor_source.clone(),
         content_type: "application/json".to_owned(),
@@ -253,15 +226,13 @@ pub(super) fn plan_record_run_capture_authority(
     let relevance_status = capture_outcome_relevance(outcome_matches_expected);
     let source_refs = receipt.source_refs.clone();
     for source_ref in &source_refs {
-        if source_ref.project_id != request.envelope.project_id
+        if source_ref.project_id != request.project_id
             || source_ref
                 .task_id
                 .as_ref()
                 .is_some_and(|task_id| task_id != &request.task_id)
         {
             return capture_authority_error(
-                request,
-                project_state,
                 "evidence-capture receipt source refs cross the request scope",
             );
         }
@@ -306,7 +277,7 @@ pub(super) fn validate_capture_intent_current(
         })
         .transpose()?
         .unwrap_or_default();
-    if intent.project_id != request.envelope.project_id
+    if intent.project_id != request.project_id
         || intent.task_id != request.task_id
         || intent.change_unit_id != request.change_unit_id
         || intent.scope_revision != current_scope_revision
@@ -315,26 +286,16 @@ pub(super) fn validate_capture_intent_current(
         || current_workspace != record.workspace_context
     {
         return capture_authority_error(
-            request,
-            context.project_state,
             "evidence-capture intent is stale or belongs to another current basis",
         );
     }
     Ok(())
 }
 
-pub(super) fn capture_authority_rejection(
-    _request: &RecordRunRequest,
-    _project_state: &ProjectStateHeader,
-    message: &'static str,
-) -> RecordingError {
+pub(super) fn capture_authority_rejection(message: &'static str) -> RecordingError {
     RecordingError::Rejected(RecordingRejection::EvidenceInsufficient { message })
 }
 
-pub(super) fn capture_authority_error<T>(
-    request: &RecordRunRequest,
-    project_state: &ProjectStateHeader,
-    message: &'static str,
-) -> Result<T, RecordingError> {
-    Err(capture_authority_rejection(request, project_state, message))
+pub(super) fn capture_authority_error<T>(message: &'static str) -> Result<T, RecordingError> {
+    Err(capture_authority_rejection(message))
 }

@@ -7,7 +7,6 @@ use volicord_store::core_pipeline::{
 };
 use volicord_store::evidence_capture::EvidenceCaptureReceiptRecord;
 use volicord_types::ids::{AgentConnectionId, RunId};
-use volicord_types::methods::RecordRunRequest;
 use volicord_types::schema::{
     AcceptanceCriterion, ArtifactRef, CurrentCloseBasis, EvidenceCaptureIntent,
     EvidenceObservation, EvidenceProducer, EvidenceSummary, EvidenceTarget, JsonObject,
@@ -19,13 +18,15 @@ use volicord_types::values::{
 };
 use volicord_user_action_service::UserActionAuthority;
 
+use super::RecordRunInput;
+
 pub(super) struct RecordRunRawRequest {
-    pub(super) request: RecordRunRequest,
+    pub(super) request: RecordRunInput,
     pub(super) plan_now: UtcTimestamp,
 }
 
 impl RecordRunRawRequest {
-    pub(super) fn new(request: RecordRunRequest, operation_now: &UtcTimestamp) -> Self {
+    pub(super) fn new(request: RecordRunInput, operation_now: &UtcTimestamp) -> Self {
         Self {
             request,
             plan_now: operation_now.clone(),
@@ -56,7 +57,7 @@ pub(super) struct RecordRunPolicyDecision {
 }
 
 pub(super) struct RecordRunPlannedMutations {
-    pub(super) request: RecordRunRequest,
+    pub(super) request: RecordRunInput,
     pub(super) plan_now: UtcTimestamp,
     pub(super) planned_state_version: u64,
     pub(super) change_unit: ChangeUnitRecord,
@@ -82,7 +83,7 @@ pub(super) struct RecordRunPlannedMutations {
 }
 
 pub(super) struct RecordRunMutationAssembly<'a> {
-    pub(super) request: &'a RecordRunRequest,
+    pub(super) request: &'a RecordRunInput,
     pub(super) task: &'a TaskRecord,
     pub(super) workflow_policy: &'a ProjectWorkflowPolicy,
     pub(super) write_ticket_scope: Option<&'a (WriteTicketRecord, WriteTicketAttemptScope)>,
@@ -183,7 +184,7 @@ pub(super) enum RecordRunObservationOrigin {
 pub(super) struct RecordRunArtifactContext<'a> {
     pub(super) store: &'a CoreProjectStore<'a>,
     pub(super) project_state: &'a ProjectStateHeader,
-    pub(super) request: &'a RecordRunRequest,
+    pub(super) request: &'a RecordRunInput,
     pub(super) verified_invocation: &'a VerifiedInvocationContext,
     pub(super) run_id: &'a RunId,
     pub(super) run_ref: &'a StateRecordRef,

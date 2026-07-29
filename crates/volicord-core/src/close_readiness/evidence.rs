@@ -42,7 +42,7 @@ pub(super) fn completion_blockers(
 ) -> Result<Vec<CloseReadinessBlocker>, CloseReadinessError> {
     let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
         change_unit_ref(
-            &request.envelope.project_id,
+            &request.project_id,
             &request.task_id,
             record,
             project_state.state_version,
@@ -208,7 +208,7 @@ fn close_evidence_issue_for_item(
         .and_then(|record_ref| record_ref.produced_at_state_version.as_ref().copied());
     for observation_ref in &item.observation_refs {
         if observation_ref.record_kind != StateRecordKind::EvidenceObservation
-            || observation_ref.project_id != request.envelope.project_id
+            || observation_ref.project_id != request.project_id
             || observation_ref.task_id.as_ref() != Some(&request.task_id)
         {
             dispositions.push(CloseEvidenceObservationDisposition::Weak);
@@ -228,7 +228,7 @@ fn close_evidence_issue_for_item(
                     observation.observation_id.as_str() == observation_ref.record_id.as_str()
                 })
         {
-            if observation.project_id != request.envelope.project_id
+            if observation.project_id != request.project_id
                 || observation.task_id != request.task_id
                 || !projected_observation_matches_close_basis(observation, basis, &item.target)
             {
@@ -246,7 +246,7 @@ fn close_evidence_issue_for_item(
                 store,
                 observation,
                 &EvidenceObservationBasis {
-                    project_id: &request.envelope.project_id,
+                    project_id: &request.project_id,
                     task_id: &request.task_id,
                     change_unit_id: basis.change_unit_id.as_str(),
                     scope_revision: basis.scope_revision,
@@ -274,7 +274,7 @@ fn close_evidence_issue_for_item(
             dispositions.push(CloseEvidenceObservationDisposition::Weak);
             continue;
         };
-        if record.project_id != request.envelope.project_id.as_str()
+        if record.project_id != request.project_id.as_str()
             || record.task_id != request.task_id.as_str()
             || !stored_observation_matches_close_basis(&record, basis, &item.target)
         {
@@ -291,7 +291,7 @@ fn close_evidence_issue_for_item(
             store,
             &record,
             &EvidenceObservationBasis {
-                project_id: &request.envelope.project_id,
+                project_id: &request.project_id,
                 task_id: &request.task_id,
                 change_unit_id: basis.change_unit_id.as_str(),
                 scope_revision: basis.scope_revision,
@@ -338,7 +338,7 @@ fn unavailable_close_artifact_refs(
             let state_ref = state_ref(
                 StateRecordKind::Artifact,
                 artifact_ref.artifact_id.as_str(),
-                &request.envelope.project_id,
+                &request.project_id,
                 Some(&request.task_id),
                 Some(project_state.state_version),
             );
@@ -372,7 +372,7 @@ fn unavailable_close_artifact_refs(
             let stored_redaction_state = stored.redaction_state;
             let artifact_sha256 = artifact_ref.sha256.as_ref();
             let artifact_size_bytes = artifact_ref.size_bytes.as_ref().copied();
-            if stored.project_id != request.envelope.project_id.as_str()
+            if stored.project_id != request.project_id.as_str()
                 || stored.task_id != request.task_id.as_str()
                 || !stored_available
                 || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified
@@ -426,9 +426,9 @@ fn close_basis_artifact_ref_unavailable(
         .iter()
         .find(|artifact_ref| artifact_ref.artifact_id.as_str() == record_ref.record_id.as_str())
     {
-        return Ok(record_ref.project_id != request.envelope.project_id
+        return Ok(record_ref.project_id != request.project_id
             || record_ref.task_id.as_ref() != Some(&request.task_id)
-            || artifact_ref.project_id != request.envelope.project_id
+            || artifact_ref.project_id != request.project_id
             || artifact_ref.task_id != request.task_id
             || artifact_ref.availability != ArtifactAvailability::Available
             || artifact_ref.integrity_status != ArtifactIntegrityStatus::Verified);
@@ -443,7 +443,7 @@ fn close_basis_artifact_ref_unavailable(
         .as_ref()
         .map(|record| {
             let available = persistent_artifact_is_verified_current(store, record)?;
-            let unavailable = record.project_id != request.envelope.project_id.as_str()
+            let unavailable = record.project_id != request.project_id.as_str()
                 || record.task_id != request.task_id.as_str()
                 || !available
                 || !owner_link_exists;

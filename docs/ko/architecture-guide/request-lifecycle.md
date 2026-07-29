@@ -80,20 +80,23 @@ Rejected, dry-run, unavailable, corrupt, unsupported-contract, conflict 분기�
 
 ## Record Run 흐름
 
-공통 preflight 뒤 공개 `record_run` 진입점은 기록 패키지에 위임합니다.
-`recording/context.rs`는 요청을 정규화하고 현재 typed 연산 fact를 취득합니다.
-그다음 `recording/authority.rs`, `recording/evidence.rs`,
-`recording/artifact.rs`가 집중된 증거 및 artifact 담당 모듈을 재사용해 캡처 intent
-및 receipt 해석, 증거 관찰과 producer 계획, artifact 검증 또는 승격 계획을
-수행합니다.
+공통 preflight 뒤 공개 `record_run` 진입점은 공개 요청을 `RecordRunInput`으로
+변환해 기록 패키지에 위임합니다. Envelope 식별자, idempotency, 예상 상태,
+locale, replay, 응답 metadata는 메서드 조율에 남습니다. `recording/context.rs`는
+의미 입력을 정규화하고 현재 typed 연산 fact를 취득합니다. 그다음
+`recording/authority.rs`, `recording/evidence.rs`, `recording/artifact.rs`가 집중된
+증거 및 artifact 담당 모듈을 재사용해 캡처 intent 및 receipt 해석, 증거 관찰과
+producer 계획, artifact 검증 또는 승격 계획을 수행합니다.
 
 Write Ticket 담당 모듈은 의미 연산 fact로 필요한 ticket을 승인합니다. 닫기 준비
 상태의 recording 담당 모듈은 닫기 근거 참조와 잔여 위험 입력을 해석합니다.
 `recording/plan.rs`는 이 결과를 하나의 typed mutation plan으로 결합하며 도메인별
 mutation variant와 Store 적용 순서를 보존합니다. `recording/state.rs`는 연산 후
-상태 fact를 취득하고 Store와 독립적인 `recording/projection.rs`가 메서드 field를
-구성합니다. 공개 메서드 모듈만 의미 오류를 응답 분기로 매핑하며 공유 pipeline이
-transaction, replay, 응답 envelope 담당을 유지합니다.
+상태 fact를 취득하며, Recording은 typed effect와 결과 fact를 담은
+`RecordRunOperationPlan`을 반환합니다. 공개 메서드는 이 fact를 중립
+`OperationPlan`과 메서드 소유 `RecordRunResultFields`로 변환합니다. 공개 메서드
+모듈만 의미 오류를 응답 분기로 매핑하며 공유 pipeline이 transaction, replay,
+응답 envelope 담당을 유지합니다.
 
 ## 쓰기 티켓 흐름
 

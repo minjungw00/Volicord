@@ -19,6 +19,7 @@ mod json_object;
 mod method_execution;
 mod method_rejection;
 mod methods;
+mod operation_plan;
 pub mod pipeline;
 mod policy;
 mod product_path;

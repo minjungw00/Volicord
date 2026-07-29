@@ -53,7 +53,7 @@ pub(super) fn terminal_blockers(
             state_ref(
                 StateRecordKind::Task,
                 task_id.as_str(),
-                &request.envelope.project_id,
+                &request.project_id,
                 Some(task_id),
                 Some(project_state.state_version),
             )
@@ -150,7 +150,7 @@ pub(super) fn completion_basis_blockers(
     let task_ref = task_ref_for_close(request, project_state.state_version);
     let change_unit_ref = context.current_change_unit.as_ref().map(|record| {
         change_unit_ref(
-            &request.envelope.project_id,
+            &request.project_id,
             &request.task_id,
             record,
             project_state.state_version,
@@ -331,7 +331,7 @@ fn incompatible_close_basis_run_refs_blocker(
         if !seen.insert(state_record_ref_identity_key(record_ref)) {
             continue;
         }
-        if record_ref.project_id != request.envelope.project_id
+        if record_ref.project_id != request.project_id
             || record_ref.task_id.as_ref() != Some(&request.task_id)
         {
             incompatible_refs.push(record_ref.clone());
@@ -349,7 +349,7 @@ fn incompatible_close_basis_run_refs_blocker(
         if record.as_ref().is_none_or(|record| {
             !run_record_matches_close_basis_context(
                 record,
-                &request.envelope.project_id,
+                &request.project_id,
                 &request.task_id,
                 current_change_unit_id,
                 context.task.scope_revision,
@@ -384,7 +384,7 @@ pub(super) fn task_ref_for_close(
     state_ref(
         StateRecordKind::Task,
         request.task_id.as_str(),
-        &request.envelope.project_id,
+        &request.project_id,
         Some(&request.task_id),
         Some(state_version),
     )

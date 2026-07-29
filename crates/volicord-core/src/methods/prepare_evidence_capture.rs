@@ -1,4 +1,3 @@
-use super::MethodPlan;
 use crate::artifact::artifact_sha256_is_lowercase_hex;
 use crate::error_boundary::store::plan_error_response;
 use crate::identity::allocate_evidence_capture_intent_id;
@@ -9,10 +8,10 @@ use crate::method_rejection::{
     no_active_change_unit_response, no_active_task_response, rejected_pipeline_response,
     validation_plan_error, validation_rejected, workspace_stale_response,
 };
+use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
-    commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
-    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
-    TaskRequirement, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, CorePipelineError, CoreResult,
+    CoreService, InvocationContext, PipelineResponse, TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::evidence_target::{
     acceptance_criterion_target_is_current, supplemental_claim_target_matches,
@@ -112,14 +111,13 @@ impl CoreService {
 
         self.execute_prepared_request(
             prepared,
-            commit_mutation_branch::<PrepareEvidenceCaptureRequest>(CommitMutationBranch {
-                result_fields: plan.result_fields,
-                event_kind: "evidence_capture_prepared".to_owned(),
-                event_payload: plan.event_payload,
-                task_id: Some(plan.task_id),
-                change_unit_id: plan.change_unit_id,
-                storage_mutations: plan.storage_mutations,
-            }),
+            commit_mutation_branch::<PrepareEvidenceCaptureRequest>(
+                plan.operation
+                    .into_commit_branch::<PrepareEvidenceCaptureRequest>(
+                        plan.result_fields,
+                        "evidence_capture_prepared",
+                    ),
+            ),
         )
     }
 }
@@ -131,7 +129,7 @@ fn plan_prepare_evidence_capture(
     mut request: PrepareEvidenceCaptureRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan<PrepareEvidenceCaptureResultFields>, PlanError> {
+) -> Result<PrepareEvidenceCapturePlan, PlanError> {
     let connection_id = verified_invocation
         .actor_source
         .agent_connection_id()
@@ -326,14 +324,20 @@ fn plan_prepare_evidence_capture(
         "expires_at": expires_at
     }))?;
 
-    Ok(MethodPlan {
-        task_id: capture_intent.task_id,
-        change_unit_id: Some(capture_intent.change_unit_id),
-        storage_mutations,
-        event_payload,
+    Ok(PrepareEvidenceCapturePlan {
+        operation: OperationPlan::new(
+            capture_intent.task_id,
+            Some(capture_intent.change_unit_id),
+            storage_mutations,
+            event_payload,
+        ),
         result_fields,
-        next_actions: Vec::new(),
     })
+}
+
+struct PrepareEvidenceCapturePlan {
+    operation: OperationPlan,
+    result_fields: PrepareEvidenceCaptureResultFields,
 }
 
 struct NormalizedCaptureSpec {

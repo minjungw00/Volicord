@@ -62,7 +62,7 @@ pub(super) fn acquire_record_run_state(
     let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        &planned.request.envelope,
+        &planned.request.project_id,
         &planned.request.task_id,
         facts_with_pending_authorities(
             facts_with_projected_acceptance_criteria(
@@ -88,7 +88,7 @@ pub(super) fn acquire_record_run_state(
     .map_err(RecordingError::CloseReadiness)?;
     Ok(build_state_summary(SummaryBuild {
         store,
-        project_id: &planned.request.envelope.project_id,
+        project_id: &planned.request.project_id,
         state_version: planned.planned_state_version,
         task: &planned.projected_task,
         current_change_unit: Some(&planned.change_unit),

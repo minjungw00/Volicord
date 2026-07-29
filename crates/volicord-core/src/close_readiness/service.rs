@@ -8,24 +8,22 @@ use super::policy::{self, CloseReadinessEvaluations};
 use super::summary::{CloseReadinessAssessment, CloseReadinessSummary};
 use super::CloseReadinessError;
 use volicord_store::core_pipeline::{CoreProjectStore, ProjectStateHeader};
-use volicord_types::ids::TaskId;
-use volicord_types::schema::ToolEnvelope;
+use volicord_types::ids::{ProjectId, TaskId};
 use volicord_types::values::{CloseIntent, UtcTimestamp};
 
 /// Semantic close-readiness request independent of a public method body.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CloseReadinessRequest {
-    pub(crate) envelope: ToolEnvelope,
+    pub(crate) project_id: ProjectId,
     pub(crate) task_id: TaskId,
     pub(crate) intent: CloseIntent,
     pub(crate) superseding_task_id: Option<TaskId>,
 }
 
 impl CloseReadinessRequest {
-    pub(crate) fn check(mut envelope: ToolEnvelope, task_id: TaskId) -> Self {
-        envelope.task_id = Some(task_id.clone()).into();
+    pub(crate) fn check(project_id: ProjectId, task_id: TaskId) -> Self {
         Self {
-            envelope,
+            project_id,
             task_id,
             intent: CloseIntent::Check,
             superseding_task_id: None,
@@ -33,13 +31,13 @@ impl CloseReadinessRequest {
     }
 
     pub(crate) fn terminal(
-        envelope: ToolEnvelope,
+        project_id: ProjectId,
         task_id: TaskId,
         intent: CloseIntent,
         superseding_task_id: Option<TaskId>,
     ) -> Self {
         Self {
-            envelope,
+            project_id,
             task_id,
             intent,
             superseding_task_id,
@@ -52,7 +50,7 @@ impl CloseReadinessRequest {
 pub(crate) fn plan_projected_close_readiness(
     store: &CoreProjectStore,
     project_state: &ProjectStateHeader,
-    envelope: &ToolEnvelope,
+    project_id: &ProjectId,
     task_id: &TaskId,
     mut facts: CloseReadinessFacts,
 ) -> Result<CloseReadinessSummary, CloseReadinessError> {
@@ -61,7 +59,7 @@ pub(crate) fn plan_projected_close_readiness(
     plan_close_readiness_with_facts(
         store,
         project_state,
-        CloseReadinessRequest::check(envelope.clone(), task_id.clone()),
+        CloseReadinessRequest::check(project_id.clone(), task_id.clone()),
         &now,
         facts,
     )
@@ -77,7 +75,7 @@ pub(crate) fn plan_close_readiness(
     let facts = acquire_close_readiness_facts(
         store,
         project_state,
-        &request.envelope,
+        &request.project_id,
         &request.task_id,
         now,
     )?;
@@ -173,7 +171,7 @@ pub(crate) fn assess_close_readiness(
     let facts = acquire_close_readiness_facts(
         store,
         project_state,
-        &request.envelope,
+        &request.project_id,
         &request.task_id,
         now,
     )?;

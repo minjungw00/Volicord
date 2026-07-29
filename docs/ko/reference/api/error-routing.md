@@ -33,6 +33,9 @@
 [`continuity/`](../../../../crates/volicord-core/src/continuity/),
 [`close_readiness/`](../../../../crates/volicord-core/src/close_readiness/) 같은 의미
 담당자는 typed fact 또는 오류를 반환하며 공개 응답 분기를 구성하지 않습니다.
+Recording 서비스도 폐쇄형 `RecordingError` variant를 반환하며,
+`methods/record_run.rs`만 이 의미 오류를 현재 envelope, dry-run intent,
+state version과 결합해 공개 분기를 선택합니다.
 메서드 모듈은 메서드별 차단 결과와 최종 응답 구성을 유지합니다. 이 소스 경로는 이
 문서가 담당하는 공개 경로 규칙을 구현하지만 다시 정의하지 않습니다.
 

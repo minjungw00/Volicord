@@ -4,8 +4,8 @@ use volicord_store::core_pipeline::{
     ProjectStateHeader, TaskAutonomyBoundary, TaskRecord, TaskShapingFacts,
 };
 use volicord_store::guards::UnrecordedChangeRecord;
-use volicord_types::ids::{ProjectId, RequestId, TaskId};
-use volicord_types::schema::{JsonObject, ToolEnvelope};
+use volicord_types::ids::{ProjectId, TaskId};
+use volicord_types::schema::JsonObject;
 use volicord_types::values::{
     AcceptancePolicy, PersistedCloseSummary, RequestedControlLevel, TaskControlLevel,
     TaskLifecyclePhase, TaskMode, UnrecordedChangeConfidence, UnrecordedChangeStatus, UtcTimestamp,
@@ -68,18 +68,7 @@ pub(super) fn task() -> TaskRecord {
 
 pub(super) fn request() -> CloseReadinessRequest {
     let task_id = TaskId::new("task_close_readiness");
-    CloseReadinessRequest::check(
-        ToolEnvelope {
-            project_id: ProjectId::new("project_close_readiness"),
-            task_id: Some(task_id.clone()).into(),
-            request_id: RequestId::new("request_close_readiness"),
-            idempotency_key: None.into(),
-            expected_state_version: None.into(),
-            dry_run: volicord_types::schema::DryRunIntent::NotRequested,
-            locale: None.into(),
-        },
-        task_id,
-    )
+    CloseReadinessRequest::check(ProjectId::new("project_close_readiness"), task_id)
 }
 
 pub(super) fn project_state() -> ProjectStateHeader {

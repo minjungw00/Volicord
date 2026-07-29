@@ -998,7 +998,7 @@ fn plan_projected_close_readiness_with_resolutions(
     plan_projected_close_readiness(
         store,
         &projected_project_state,
-        &request.envelope,
+        &request.envelope.project_id,
         &request.task_id,
         context,
     )

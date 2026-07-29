@@ -109,10 +109,10 @@ impl CloseTaskPlanRequest {
 
     fn readiness_request(&self) -> CloseReadinessRequest {
         if self.intent == CloseIntent::Check {
-            CloseReadinessRequest::check(self.envelope.clone(), self.task_id.clone())
+            CloseReadinessRequest::check(self.envelope.project_id.clone(), self.task_id.clone())
         } else {
             CloseReadinessRequest::terminal(
-                self.envelope.clone(),
+                self.envelope.project_id.clone(),
                 self.task_id.clone(),
                 self.intent,
                 self.superseding_task_id.as_ref().cloned(),

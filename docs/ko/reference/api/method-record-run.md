@@ -23,8 +23,8 @@
 
 공개 진입점
 [`crates/volicord-core/src/methods/record_run.rs`](../../../../crates/volicord-core/src/methods/record_run.rs)는
-요청별 pipeline 조율을 담당하고 typed 기록 오류와 결과 field를 공개 메서드
-응답으로 매핑합니다.
+요청별 pipeline 조율을 담당하고, 공개 요청을 의미 Recording 입력으로 변환하며,
+typed 기록 오류를 매핑하고 의미 결과 fact를 공개 메서드 응답으로 변환합니다.
 
 현재 Record Run 구현 책임은 다음 경로로 나뉩니다.
 
@@ -41,11 +41,11 @@
   공유 닫기 준비 상태 서비스가 사용할 typed 현재 닫기 근거와 잔여 위험 fact를
   구성합니다.
 - [`crates/volicord-core/src/recording/plan.rs`](../../../../crates/volicord-core/src/recording/plan.rs)는
-  이 담당 모듈을 조율하고 typed mutation plan을 조립합니다.
+  이 담당 모듈을 조율하고 typed mutation plan을 조립하며 effect와 결과 fact를
+  담은 폐쇄형 `RecordRunOperationPlan`을 반환합니다.
   [`state.rs`](../../../../crates/volicord-core/src/recording/state.rs)는 Store를
-  사용하는 연산 후 상태 fact를 취득하고,
-  [`projection.rs`](../../../../crates/volicord-core/src/recording/projection.rs)는
-  Store 조회 없이 `RecordRunResultFields`를 투영합니다.
+  사용하는 연산 후 상태 fact를 취득합니다. 공개 진입점은 반환된 fact를 중립
+  Core 연산 carrier와 `RecordRunResultFields`로 변환합니다.
 
 정확한 의존성과 트랜잭션 경계는
 [Core 아키텍처](../../architecture-guide/architecture.md),

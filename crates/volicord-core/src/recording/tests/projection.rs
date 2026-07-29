@@ -1,4 +1,131 @@
 use super::*;
+use crate::pipeline::VerifiedInvocationContext;
+
+fn recording_verified_invocation() -> VerifiedInvocationContext {
+    VerifiedInvocationContext {
+        project_id: ProjectId::new(PROJECT_ID),
+        actor_source: ActorSource::agent_connection(CONNECTION_ID),
+        operation_category: OperationCategory::AgentWorkflow,
+        verification_basis: VERIFICATION_BASIS_TEST_FIXTURE_BINDING.to_owned(),
+        assurance_level: "test_fixture".to_owned(),
+        session_id: None,
+        git_workspace_context: None,
+    }
+}
+
+fn recording_input(
+    task_id: &str,
+    change_unit_id: &str,
+    dry_run: volicord_types::schema::DryRunIntent,
+    summary: &str,
+) -> crate::recording::RecordRunInput {
+    crate::recording::RecordRunInput::new(
+        ProjectId::new(PROJECT_ID),
+        dry_run,
+        TaskId::new(task_id),
+        ChangeUnitId::new(change_unit_id),
+        RunKind::Implementation,
+        None,
+        BaselineRef::new("baseline_test"),
+        None,
+        Some("local_sensitive_step".to_owned()),
+        summary.to_owned(),
+        ObservedChanges {
+            changed_paths: Vec::new(),
+            product_file_write_observed: false,
+            sensitive_categories: Vec::new(),
+            baseline_ref: Some(BaselineRef::new("baseline_test")).into(),
+        },
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        None,
+    )
+}
+
+#[test]
+fn recording_plan_returns_semantic_operation_and_result_facts() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "semantic_recording_plan")?;
+    let input = recording_input(
+        &task_id,
+        &change_unit_id,
+        volicord_types::schema::DryRunIntent::NotRequested,
+        "Recorded implementation run.",
+    );
+    let store = harness.store()?;
+    let project_state = store.project_state()?;
+    let operation_now = UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?;
+
+    let plan = crate::recording::plan_record_run(
+        &harness.service.inner,
+        &store,
+        &project_state,
+        input,
+        &recording_verified_invocation(),
+        &operation_now,
+    )
+    .unwrap_or_else(|error| panic!("semantic Recording plan failed: {error:?}"));
+    let (effect, result_facts) = plan.into_parts();
+
+    assert_eq!(effect.task_id().as_str(), task_id);
+    assert_eq!(effect.change_unit_id().as_str(), change_unit_id);
+    assert_eq!(effect.event_payload()["task_id"], task_id);
+    assert!(!effect.into_storage_mutations().is_empty());
+    assert_eq!(result_facts.kind(), RunKind::Implementation);
+    assert_eq!(result_facts.summary(), "Recorded implementation run.");
+    assert_eq!(
+        result_facts.run_ref().task_id.as_ref(),
+        Some(&TaskId::new(task_id))
+    );
+    assert!(result_facts.registered_artifacts().is_empty());
+    assert!(result_facts.evidence_observations().is_empty());
+    assert!(result_facts.evidence_producers().is_empty());
+    assert_eq!(result_facts.state().state_version, 3);
+    Ok(())
+}
+
+#[test]
+fn recording_plan_returns_typed_semantic_validation_error() -> Result<(), Box<dyn Error>> {
+    let harness = MethodHarness::new()?;
+    enable_record_run_capabilities(&harness)?;
+    let (task_id, change_unit_id) =
+        create_task_with_change_unit(&harness, "semantic_recording_error")?;
+    let input = recording_input(
+        &task_id,
+        &change_unit_id,
+        volicord_types::schema::DryRunIntent::Requested,
+        " ",
+    );
+    let store = harness.store()?;
+    let project_state = store.project_state()?;
+    let operation_now = UtcTimestamp::parse(DEFAULT_METHOD_TEST_CLOCK)?;
+
+    let error = match crate::recording::plan_record_run(
+        &harness.service.inner,
+        &store,
+        &project_state,
+        input,
+        &recording_verified_invocation(),
+        &operation_now,
+    ) {
+        Ok(_) => panic!("blank summary must fail semantic validation"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        crate::recording::RecordingError::Rejected(
+            crate::recording::RecordingRejection::Validation {
+                field: "summary",
+                message: "summary must not be empty"
+            }
+        )
+    ));
+    Ok(())
+}
 
 #[test]
 fn record_run_post_commit_close_projection_matches_immediate_status() -> Result<(), Box<dyn Error>>

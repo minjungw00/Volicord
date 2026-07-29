@@ -1,4 +1,3 @@
-use super::MethodPlan;
 use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities, facts_with_resolved_authorities,
     plan_projected_close_readiness,
@@ -15,10 +14,11 @@ use crate::method_rejection::{
     decision_rejected_response, dry_run_summary, no_active_task_response,
     rejected_pipeline_response, validation_plan_error, validation_rejected,
 };
+use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
-    commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
-    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
-    TaskRequirement, VerifiedActorContext, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, CorePipelineError, CoreResult,
+    CoreService, InvocationContext, PipelineResponse, TaskRequirement, VerifiedActorContext,
+    VerifiedInvocationContext,
 };
 use crate::projection::{
     active_acceptance_criteria_for_task, build_state_summary, evidence_summary_for_display,
@@ -159,14 +159,13 @@ fn execute_request_user_action(
     }
     service.execute_prepared_request(
         prepared,
-        commit_mutation_branch::<RequestUserActionRequest>(CommitMutationBranch {
-            result_fields: plan.result_fields,
-            event_kind: "user_action_requested".to_owned(),
-            event_payload: plan.event_payload,
-            task_id: Some(plan.task_id),
-            change_unit_id: plan.change_unit_id,
-            storage_mutations: plan.storage_mutations,
-        }),
+        commit_mutation_branch::<RequestUserActionRequest>(
+            plan.operation
+                .into_commit_branch::<RequestUserActionRequest>(
+                    plan.result_fields,
+                    "user_action_requested",
+                ),
+        ),
     )
 }
 
@@ -177,7 +176,7 @@ fn plan_request_user_action(
     request: RequestUserActionRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan<RequestUserActionResultFields>, PlanError> {
+) -> Result<RequestUserActionPlan, PlanError> {
     let now = operation_now.clone();
     let task = store
         .task_record(&request.task_id)
@@ -296,18 +295,26 @@ fn plan_request_user_action(
     if let Some(lifecycle_phase) = lifecycle_phase {
         storage_mutations.push(task_lifecycle_mutation(&request.task_id, lifecycle_phase));
     }
-    Ok(MethodPlan {
-        task_id: request.task_id,
-        change_unit_id: coordinate_change_unit_id,
-        storage_mutations,
-        event_payload: object_from_value(json!({
-            "user_action_request_id": request_id,
-            "action_kind": action_kind,
-            "required_for": request.required_for,
-        }))?,
+    Ok(RequestUserActionPlan {
+        operation: OperationPlan::new(
+            request.task_id,
+            coordinate_change_unit_id,
+            storage_mutations,
+            object_from_value(json!({
+                "user_action_request_id": request_id,
+                "action_kind": action_kind,
+                "required_for": request.required_for,
+            }))?,
+        ),
         result_fields,
         next_actions,
     })
+}
+
+struct RequestUserActionPlan {
+    operation: OperationPlan,
+    result_fields: RequestUserActionResultFields,
+    next_actions: Vec<NextActionSummary>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -427,7 +434,7 @@ fn projected_user_action_state(
     let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        envelope,
+        &envelope.project_id,
         &task_id,
         close_context,
     )
@@ -580,14 +587,14 @@ fn execute_resolve_user_action(
     let session_id = prepared.context.verified_invocation.session_id.clone();
     let response = service.execute_prepared_request(
         prepared,
-        commit_mutation_branch::<ResolveUserActionRequest>(CommitMutationBranch {
-            result_fields: plan.method.result_fields,
-            event_kind: "user_action_resolved".to_owned(),
-            event_payload: plan.method.event_payload,
-            task_id: Some(plan.method.task_id),
-            change_unit_id: plan.method.change_unit_id,
-            storage_mutations: plan.method.storage_mutations,
-        }),
+        commit_mutation_branch::<ResolveUserActionRequest>(
+            plan.method
+                .operation
+                .into_commit_branch::<ResolveUserActionRequest>(
+                    plan.method.result_fields,
+                    "user_action_resolved",
+                ),
+        ),
     )?;
     if response_committed_fresh_effect(&response) {
         record_core_workflow_metric_best_effort(
@@ -601,7 +608,13 @@ fn execute_resolve_user_action(
 }
 
 struct ResolveUserActionPlan {
-    method: MethodPlan<ResolveUserActionResultFields>,
+    method: ResolveUserActionMethodPlan,
+}
+
+struct ResolveUserActionMethodPlan {
+    operation: OperationPlan,
+    result_fields: ResolveUserActionResultFields,
+    next_actions: Vec<NextActionSummary>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -837,19 +850,21 @@ fn plan_resolve_user_action(
         storage_mutations.push(task_lifecycle_mutation(&task_id, lifecycle_phase));
     }
     Ok(ResolveUserActionPlan {
-        method: MethodPlan {
-            task_id,
-            change_unit_id: current_change_unit
-                .as_ref()
-                .map(|record| ChangeUnitId::new(record.change_unit_id.clone())),
-            storage_mutations,
-            event_payload: object_from_value(json!({
-                "user_action_request_id": request.user_action_request_id,
-                "user_action_resolution_id": resolution_id,
-                "action_kind": effective.request().action_kind(),
-                "channel_kind": channel_kind,
-                "channel_submission_id": request.channel_submission_id,
-            }))?,
+        method: ResolveUserActionMethodPlan {
+            operation: OperationPlan::new(
+                task_id,
+                current_change_unit
+                    .as_ref()
+                    .map(|record| ChangeUnitId::new(record.change_unit_id.clone())),
+                storage_mutations,
+                object_from_value(json!({
+                    "user_action_request_id": request.user_action_request_id,
+                    "user_action_resolution_id": resolution_id,
+                    "action_kind": effective.request().action_kind(),
+                    "channel_kind": channel_kind,
+                    "channel_submission_id": request.channel_submission_id,
+                }))?,
+            ),
             result_fields,
             next_actions,
         },

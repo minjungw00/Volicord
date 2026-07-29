@@ -309,7 +309,7 @@ fn status_result_fields(
         let close_plan = plan_close_readiness(
             store,
             project_state,
-            CloseReadinessRequest::check(envelope.clone(), task_id.clone()),
+            CloseReadinessRequest::check(envelope.project_id.clone(), task_id.clone()),
             &user_action_now,
         )
         .map_err(|error| {

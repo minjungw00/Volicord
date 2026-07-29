@@ -1,4 +1,3 @@
-use super::MethodPlan;
 use crate::artifact::{normalize_source_refs, normalize_source_refs_with_carried_artifact_task};
 use crate::close_readiness::{
     facts_from_projection, facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
@@ -11,10 +10,10 @@ use crate::identity::{allocate_acceptance_criterion_id, allocate_task_id};
 use crate::json_object::object_from_value;
 use crate::method_execution::{mutation_method_policy, prepare_or_response, PlanError};
 use crate::method_rejection::{decision_rejected_response, dry_run_summary, validation_rejected};
+use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
-    commit_mutation_branch, dry_run_preview_branch, CommitMutationBranch, CorePipelineError,
-    CoreResult, CoreService, InvocationContext, PipelineResponse, TaskRequirement,
-    VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, CorePipelineError, CoreResult, CoreService,
+    InvocationContext, PipelineResponse, TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::evidence::unique_state_record_refs;
 use crate::policy::workflow::{
@@ -120,14 +119,10 @@ impl CoreService {
 
         self.execute_prepared_request(
             prepared,
-            commit_mutation_branch::<IntakeRequest>(CommitMutationBranch {
-                result_fields: plan.result_fields,
-                event_kind: "task_intake".to_owned(),
-                event_payload: plan.event_payload,
-                task_id: Some(plan.task_id),
-                change_unit_id: None,
-                storage_mutations: plan.storage_mutations,
-            }),
+            commit_mutation_branch::<IntakeRequest>(
+                plan.operation
+                    .into_commit_branch::<IntakeRequest>(plan.result_fields, "task_intake"),
+            ),
         )
     }
 }
@@ -365,7 +360,7 @@ fn plan_intake_mutations(
         normalize_source_refs(
             store,
             project_state,
-            &request.envelope,
+            &request.envelope.project_id,
             &task_id,
             "initial_source_refs",
             &request.initial_source_refs,
@@ -385,7 +380,7 @@ fn plan_intake_mutations(
         let carried_source_refs = normalize_source_refs_with_carried_artifact_task(
             store,
             project_state,
-            &request.envelope,
+            &request.envelope.project_id,
             &task_id,
             "lineage.carry_forward.source_refs",
             &lineage.carried_source_refs,
@@ -611,13 +606,21 @@ struct IntakeResponseProjection {
     next_actions: Vec<NextActionSummary>,
 }
 
+struct IntakePlan {
+    operation: OperationPlan,
+    result_fields: IntakeResultFields,
+    next_actions: Vec<NextActionSummary>,
+}
+
 impl IntakeResponseProjection {
-    fn into_method_plan(self) -> MethodPlan<IntakeResultFields> {
-        MethodPlan {
-            task_id: self.task_id,
-            change_unit_id: None,
-            storage_mutations: self.storage_mutations,
-            event_payload: self.event_payload,
+    fn into_plan(self) -> IntakePlan {
+        IntakePlan {
+            operation: OperationPlan::new(
+                self.task_id,
+                None,
+                self.storage_mutations,
+                self.event_payload,
+            ),
             result_fields: self.result_fields,
             next_actions: self.next_actions,
         }
@@ -631,7 +634,7 @@ fn plan_intake(
     request: volicord_types::methods::IntakeRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan<IntakeResultFields>, PlanError> {
+) -> Result<IntakePlan, PlanError> {
     let normalized = normalize_intake_request(request);
     let resolved = resolve_intake_context(store, project_state, verified_invocation, normalized)?;
     let policy = decide_intake_policy(resolved)?;
@@ -644,7 +647,7 @@ fn plan_intake(
         operation_now,
         mutations,
     )?;
-    Ok(projection.into_method_plan())
+    Ok(projection.into_plan())
 }
 
 fn project_intake_response(
@@ -719,7 +722,7 @@ fn project_intake_response(
     let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        &request.envelope,
+        &request.envelope.project_id,
         &task_id,
         facts_with_projected_acceptance_criteria(
             facts_from_projection(

@@ -31,7 +31,6 @@ use volicord_store::core_pipeline::{
 };
 use volicord_store::evidence_capture::{EvidenceProducerInsert, StoredEvidenceProducerMetadata};
 use volicord_types::ids::{EvidenceCaptureReceiptId, EvidenceProducerId, RunId};
-use volicord_types::methods::RecordRunRequest;
 use volicord_types::schema::{
     ArtifactRef, EvidenceCoverageItem, EvidenceCoverageUpdate, EvidenceObservation,
     EvidenceObservationInput, EvidenceProducer, EvidenceProducerAnchor,
@@ -51,10 +50,11 @@ use super::{
         RecordRunArtifactPlan, RecordRunCaptureAuthority, RecordRunEvidenceTargetPlan,
         RecordRunObservationOrigin, RecordRunObservationPlan,
     },
+    RecordRunInput,
 };
 use crate::task_state::{normalize_display_string_list, normalize_display_text};
 
-pub(super) fn normalize_record_run_evidence_targets(request: &mut RecordRunRequest) {
+pub(super) fn normalize_record_run_evidence_targets(request: &mut RecordRunInput) {
     for update in &mut request.evidence_updates {
         normalize_evidence_target(&mut update.target);
     }
@@ -76,8 +76,7 @@ pub(super) fn normalize_evidence_target(target: &mut EvidenceTarget) {
 
 pub(super) fn plan_record_run_evidence_targets(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &RecordRunRequest,
+    request: &RecordRunInput,
 ) -> Result<RecordRunEvidenceTargetPlan, RecordingError> {
     let mut supplemental = BTreeMap::<String, String>::new();
     let mut validate_target = |target: &EvidenceTarget, field: &'static str| {
@@ -87,8 +86,6 @@ pub(super) fn plan_record_run_evidence_targets(
             } => {
                 if acceptance_criterion_id.as_str().trim().is_empty() {
                     return recording_validation_error(
-                        request.envelope.dry_run,
-                        Some(project_state.state_version),
                         field,
                         "acceptance criterion evidence target ID must not be empty",
                     );
@@ -98,16 +95,12 @@ pub(super) fn plan_record_run_evidence_targets(
                     .map_err(CorePipelineError::from)?;
                 let Some(record) = record else {
                     return recording_validation_error(
-                        request.envelope.dry_run,
-                        Some(project_state.state_version),
                         field,
                         "acceptance criterion evidence target is unknown",
                     );
                 };
                 if !acceptance_criterion_target_is_current(Some(&record), &request.task_id) {
                     return recording_validation_error(
-                        request.envelope.dry_run,
-                        Some(project_state.state_version),
                         field,
                         "acceptance criterion evidence target must be current for this Task",
                     );
@@ -119,8 +112,6 @@ pub(super) fn plan_record_run_evidence_targets(
             } => {
                 if evidence_claim_id.as_str().trim().is_empty() || statement.is_empty() {
                     return recording_validation_error(
-                        request.envelope.dry_run,
-                        Some(project_state.state_version),
                         field,
                         "supplemental evidence targets require a non-empty ID and statement",
                     );
@@ -130,8 +121,6 @@ pub(super) fn plan_record_run_evidence_targets(
                 {
                     if existing != *statement {
                         return recording_validation_error(
-                            request.envelope.dry_run,
-                            Some(project_state.state_version),
                             field,
                             "one supplemental evidence claim ID cannot use multiple statements",
                         );
@@ -156,8 +145,6 @@ pub(super) fn plan_record_run_evidence_targets(
                 let requirement = record.evidence_requirement;
                 if requirement == EvidenceRequirement::Required {
                     return recording_validation_error(
-                        request.envelope.dry_run,
-                        Some(project_state.state_version),
                         "evidence_updates[].coverage_state",
                         "required acceptance criteria cannot be marked not_applicable",
                     );
@@ -183,8 +170,6 @@ pub(super) fn plan_record_run_evidence_targets(
             Some(record) if supplemental_claim_target_matches(Some(&record), &statement) => {}
             Some(_) => {
                 return recording_validation_error(
-                    request.envelope.dry_run,
-                    Some(project_state.state_version),
                     "evidence_target.statement",
                     "supplemental evidence claim statements are immutable within a Task",
                 );
@@ -214,12 +199,10 @@ pub(super) fn capture_authority_for_input<'a>(
         return Ok(None);
     };
     if refs.len() != 1
-        || intent_ref.project_id != context.request.envelope.project_id
+        || intent_ref.project_id != context.request.project_id
         || intent_ref.task_id.as_ref() != Some(&context.request.task_id)
     {
         return capture_authority_error(
-            context.request,
-            context.project_state,
             "evidence-capture intent ref does not match the request project and Task",
         );
     }
@@ -228,8 +211,6 @@ pub(super) fn capture_authority_for_input<'a>(
         .get(intent_ref.record_id.as_str())
         .ok_or_else(|| {
             capture_authority_rejection(
-                context.request,
-                context.project_state,
                 "evidence-capture intent authority was not prepared for this observation",
             )
         })?;
@@ -245,15 +226,11 @@ pub(super) fn capture_authority_for_input<'a>(
     };
     if input.target != capture.intent.target {
         return capture_authority_error(
-            context.request,
-            context.project_state,
             "evidence-capture observation target does not match the immutable intent",
         );
     }
     if !claimed_pair_matches {
         return capture_authority_error(
-            context.request,
-            context.project_state,
             "evidence-capture observation source and assurance do not match the producer kind",
         );
     }
@@ -271,21 +248,17 @@ pub(super) fn capture_authority_for_input<'a>(
         None
     };
     if let Some(populated) = populated {
-        return capture_authority_error(
-            context.request,
-            context.project_state,
-            match populated {
-                "observed_by_actor_source" => {
-                    "evidence-capture observation must leave observed_by_actor_source null"
-                }
-                "tool_name" => "evidence-capture observation must leave tool_name null",
-                "tool_invocation_id" => {
-                    "evidence-capture observation must leave tool_invocation_id null"
-                }
-                "tool_metadata" => "evidence-capture observation must leave tool_metadata empty",
-                _ => "evidence-capture observation must leave limitations empty",
-            },
-        );
+        return capture_authority_error(match populated {
+            "observed_by_actor_source" => {
+                "evidence-capture observation must leave observed_by_actor_source null"
+            }
+            "tool_name" => "evidence-capture observation must leave tool_name null",
+            "tool_invocation_id" => {
+                "evidence-capture observation must leave tool_invocation_id null"
+            }
+            "tool_metadata" => "evidence-capture observation must leave tool_metadata empty",
+            _ => "evidence-capture observation must leave limitations empty",
+        });
     }
     Ok(Some(capture))
 }
@@ -294,7 +267,7 @@ pub(super) struct RecordRunObservationContext<'a> {
     pub(super) service: &'a CoreService,
     pub(super) store: &'a CoreProjectStore<'a>,
     pub(super) project_state: &'a ProjectStateHeader,
-    pub(super) request: &'a RecordRunRequest,
+    pub(super) request: &'a RecordRunInput,
     pub(super) verified_invocation: &'a VerifiedInvocationContext,
     pub(super) run_id: &'a RunId,
     pub(super) run_ref: &'a StateRecordRef,
@@ -352,8 +325,6 @@ pub(super) fn plan_record_run_observation(
     origin: RecordRunObservationOrigin,
 ) -> Result<RecordRunObservationPlan, RecordingError> {
     validate_evidence_source_assurance(
-        context.request.envelope.dry_run,
-        Some(context.project_state.state_version),
         "evidence_observations[]",
         input.source_kind,
         input.assurance_level,
@@ -367,8 +338,6 @@ pub(super) fn plan_record_run_observation(
     let source_refs = if capture_authority.is_some() {
         if !input.source_refs.is_empty() || !input.output_artifact_refs.is_empty() {
             return capture_authority_error(
-                context.request,
-                context.project_state,
                 "caller source or output refs cannot replace an evidence-capture receipt",
             );
         }
@@ -377,7 +346,7 @@ pub(super) fn plan_record_run_observation(
         normalize_source_refs(
             context.store,
             context.project_state,
-            &context.request.envelope,
+            &context.request.project_id,
             &context.request.task_id,
             "evidence_observations[].source_refs",
             &input.source_refs,
@@ -427,8 +396,6 @@ pub(super) fn plan_record_run_observation(
         .is_some_and(|value| value.trim().is_empty())
     {
         return recording_validation_error(
-            context.request.envelope.dry_run,
-            Some(context.project_state.state_version),
             "evidence_observations[].tool_name",
             "tool_name must be null or a non-empty string",
         );
@@ -439,8 +406,6 @@ pub(super) fn plan_record_run_observation(
         .is_some_and(|value| value.trim().is_empty())
     {
         return recording_validation_error(
-            context.request.envelope.dry_run,
-            Some(context.project_state.state_version),
             "evidence_observations[].tool_invocation_id",
             "tool_invocation_id must be null or a non-empty string",
         );
@@ -452,7 +417,7 @@ pub(super) fn plan_record_run_observation(
     let observation_ref = state_ref(
         StateRecordKind::EvidenceObservation,
         observation_id.as_str(),
-        &context.request.envelope.project_id,
+        &context.request.project_id,
         Some(&context.request.task_id),
         Some(context.planned_state_version),
     );
@@ -472,7 +437,7 @@ pub(super) fn plan_record_run_observation(
     let limitations = normalize_display_string_list(&input.limitations);
     let observation = EvidenceObservation {
         observation_id,
-        project_id: context.request.envelope.project_id.clone(),
+        project_id: context.request.project_id.clone(),
         task_id: context.request.task_id.clone(),
         change_unit_id: Some(context.request.change_unit_id.clone()).into(),
         run_ref: Some(context.run_ref.clone()).into(),
@@ -545,7 +510,7 @@ pub(super) fn plan_record_run_observation(
             capture_intent_id: capture.intent.capture_intent_id.clone(),
             capture_intent_ref: capture.intent_ref.clone(),
             producer_kind: capture.producer_kind,
-            project_id: context.request.envelope.project_id.clone(),
+            project_id: context.request.project_id.clone(),
             task_id: context.request.task_id.clone(),
             change_unit_id: context.request.change_unit_id.clone(),
             scope_revision: context.current_scope_revision,
@@ -655,7 +620,7 @@ fn derive_record_run_observation_authority(
         let producer_ref = state_ref(
             StateRecordKind::EvidenceProducer,
             producer_id.as_str(),
-            &context.request.envelope.project_id,
+            &context.request.project_id,
             Some(&context.request.task_id),
             Some(context.planned_state_version),
         );
@@ -728,7 +693,7 @@ fn derive_user_observation_authority(
 ) -> CoreResult<Option<DerivedObservationAuthority>> {
     for input_ref in &input.input_refs {
         if input_ref.record_kind != StateRecordKind::UserActionResolution
-            || input_ref.project_id != context.request.envelope.project_id
+            || input_ref.project_id != context.request.project_id
             || input_ref.task_id.as_ref() != Some(&context.request.task_id)
         {
             continue;
@@ -750,7 +715,7 @@ fn derive_user_observation_authority(
         let Some(resolution_authority) = user_action_observation_resolution_authority(
             &action_record,
             &resolution_record,
-            &context.request.envelope.project_id,
+            &context.request.project_id,
             &context.request.task_id,
             context.request.change_unit_id.as_str(),
             context.current_scope_revision,
@@ -764,7 +729,7 @@ fn derive_user_observation_authority(
         let producer_ref = state_ref(
             StateRecordKind::UserActionResolution,
             resolution_record.user_action_resolution_id(),
-            &context.request.envelope.project_id,
+            &context.request.project_id,
             Some(&context.request.task_id),
             Some(context.project_state.state_version),
         );
@@ -818,8 +783,6 @@ pub(super) fn validate_record_run_evidence_update(
     validate_evidence_gap_refs(context, &update.gap_refs)?;
     if let Some(provenance) = update.provenance.as_ref() {
         validate_evidence_source_assurance(
-            context.request.envelope.dry_run,
-            Some(context.project_state.state_version),
             "evidence_updates[].provenance",
             provenance.source_kind,
             provenance.assurance_level,
@@ -830,8 +793,6 @@ pub(super) fn validate_record_run_evidence_update(
             .is_some_and(|value| value.trim().is_empty())
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].provenance.tool_name",
                 "tool_name must be null or a non-empty string",
             );
@@ -839,7 +800,7 @@ pub(super) fn validate_record_run_evidence_update(
         normalize_source_refs(
             context.store,
             context.project_state,
-            &context.request.envelope,
+            &context.request.project_id,
             &context.request.task_id,
             "evidence_updates[].provenance.source_refs",
             &provenance.source_refs,
@@ -851,8 +812,6 @@ pub(super) fn validate_record_run_evidence_update(
             .is_some_and(|value| value.trim().is_empty())
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].provenance.tool_invocation_id",
                 "tool_invocation_id must be null or a non-empty string",
             );
@@ -864,8 +823,6 @@ pub(super) fn validate_record_run_evidence_update(
         && update.observation_refs.is_empty()
     {
         return recording_validation_error(
-            context.request.envelope.dry_run,
-            Some(context.project_state.state_version),
             "evidence_updates[].provenance",
             "supported evidence updates require provenance or a target-matching evidence observation",
         );
@@ -898,8 +855,6 @@ pub(super) fn observation_input_from_evidence_update(
 }
 
 pub(super) fn validate_evidence_source_assurance(
-    dry_run: volicord_types::schema::DryRunIntent,
-    state_version: Option<u64>,
     field: &'static str,
     source_kind: EvidenceSourceKind,
     assurance_level: EvidenceAssuranceLevel,
@@ -908,8 +863,6 @@ pub(super) fn validate_evidence_source_assurance(
         Ok(())
     } else {
         recording_validation_error(
-            dry_run,
-            state_version,
             field,
             "evidence source_kind and assurance_level must describe the same provenance class",
         )
@@ -924,8 +877,6 @@ pub(super) fn validate_evidence_observation_state_refs(
     for record_ref in refs {
         if record_ref.record_id.as_str().trim().is_empty() {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 field,
                 "evidence observation refs must use non-empty record_id values",
             );
@@ -934,16 +885,12 @@ pub(super) fn validate_evidence_observation_state_refs(
             && record_ref.record_kind != StateRecordKind::EvidenceObservation
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 field,
                 "evidence update observation_refs must identify evidence_observation records",
             );
         }
-        if record_ref.project_id != context.request.envelope.project_id {
+        if record_ref.project_id != context.request.project_id {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 field,
                 "evidence observation refs must belong to the request project",
             );
@@ -954,8 +901,6 @@ pub(super) fn validate_evidence_observation_state_refs(
             .is_some_and(|task_id| task_id != &context.request.task_id)
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 field,
                 "evidence observation refs must not belong to another Task",
             );
@@ -972,13 +917,11 @@ pub(super) fn validate_evidence_update_observation_refs(
 ) -> Result<(), RecordingError> {
     for record_ref in refs {
         if record_ref.record_kind != StateRecordKind::EvidenceObservation
-            || record_ref.project_id != context.request.envelope.project_id
+            || record_ref.project_id != context.request.project_id
             || record_ref.task_id.as_ref() != Some(&context.request.task_id)
             || record_ref.record_id.as_str().trim().is_empty()
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must identify same-Task evidence observations",
             );
@@ -989,8 +932,6 @@ pub(super) fn validate_evidence_update_observation_refs(
             .map_err(CorePipelineError::from)?;
         let Some(record) = record else {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must identify existing observations",
             );
@@ -1000,8 +941,6 @@ pub(super) fn validate_evidence_update_observation_refs(
             || !stored_observation_target_matches(&record, target)
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must match the current Task, Change Unit, and evidence target",
             );
@@ -1016,7 +955,7 @@ pub(super) fn validate_evidence_update_observation_refs(
         if source_run.as_ref().is_none_or(|run| {
             !run_record_matches_close_basis_context(
                 run,
-                &context.request.envelope.project_id,
+                &context.request.project_id,
                 &context.request.task_id,
                 context.request.change_unit_id.as_str(),
                 context.current_scope_revision,
@@ -1024,8 +963,6 @@ pub(super) fn validate_evidence_update_observation_refs(
             )
         }) {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "evidence update observation refs must have current same-scope Run provenance",
             );
@@ -1035,7 +972,7 @@ pub(super) fn validate_evidence_update_observation_refs(
                 context.store,
                 &record,
                 &EvidenceObservationBasis {
-                    project_id: &context.request.envelope.project_id,
+                    project_id: &context.request.project_id,
                     task_id: &context.request.task_id,
                     change_unit_id: context.request.change_unit_id.as_str(),
                     scope_revision: context.current_scope_revision,
@@ -1047,8 +984,6 @@ pub(super) fn validate_evidence_update_observation_refs(
                 || !relevance_supports_claim(&stored_evidence_observation_relevance(&record)?))
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].observation_refs",
                 "supported evidence may only reuse target-matching observations with sufficient provenance and supported relevance",
             );
@@ -1079,7 +1014,7 @@ pub(super) fn reused_observation_inputs_for_update(
             input_refs: vec![state_ref(
                 StateRecordKind::EvidenceObservation,
                 &record.evidence_observation_id,
-                &context.request.envelope.project_id,
+                &context.request.project_id,
                 Some(&context.request.task_id),
                 Some(context.project_state.state_version),
             )],
@@ -1109,19 +1044,17 @@ pub(super) fn validate_supporting_run_refs(
                 .map_err(CorePipelineError::from)?
         };
         if record_ref.record_kind != StateRecordKind::Run
-            || record_ref.project_id != context.request.envelope.project_id
+            || record_ref.project_id != context.request.project_id
             || record_ref.task_id.as_ref() != Some(&context.request.task_id)
             || record_ref.record_id.as_str().trim().is_empty()
             || (!is_current_run
                 && stored_run.as_ref().is_none_or(|run| {
                     run.task_id != context.request.task_id.as_str()
-                        || run.project_id != context.request.envelope.project_id.as_str()
+                        || run.project_id != context.request.project_id.as_str()
                         || run.status != RunStatus::Recorded
                 }))
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].supporting_run_refs",
                 "supporting_run_refs must identify existing Runs for the request Task",
             );
@@ -1143,15 +1076,13 @@ pub(super) fn validate_evidence_gap_refs(
         .map_err(CorePipelineError::from)?;
     for record_ref in refs {
         if record_ref.record_kind != StateRecordKind::Blocker
-            || record_ref.project_id != context.request.envelope.project_id
+            || record_ref.project_id != context.request.project_id
             || record_ref.task_id.as_ref() != Some(&context.request.task_id)
             || !active
                 .iter()
                 .any(|stored| stored.record_id == record_ref.record_id.as_str())
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 "evidence_updates[].gap_refs",
                 "gap_refs must identify active blockers for the request Task",
             );
@@ -1171,12 +1102,10 @@ pub(super) fn canonical_evidence_artifact_refs(
             .registered_artifacts
             .iter()
             .find(|registered| registered.artifact_id == artifact_ref.artifact_id);
-        if artifact_ref.project_id != context.request.envelope.project_id
+        if artifact_ref.project_id != context.request.project_id
             || artifact_ref.task_id != context.request.task_id
         {
             return recording_validation_error(
-                context.request.envelope.dry_run,
-                Some(context.project_state.state_version),
                 field,
                 "evidence artifact refs must identify existing artifacts owned by the request project and Task",
             );
@@ -1197,19 +1126,15 @@ pub(super) fn canonical_evidence_artifact_refs(
                 .map_err(CorePipelineError::from)?;
             let Some(stored) = stored else {
                 return recording_validation_error(
-                    context.request.envelope.dry_run,
-                    Some(context.project_state.state_version),
                     field,
                     "evidence artifact refs must identify existing artifacts owned by the request project and Task",
                 );
             };
-            if stored.project_id != context.request.envelope.project_id.as_str()
+            if stored.project_id != context.request.project_id.as_str()
                 || stored.task_id != context.request.task_id.as_str()
                 || !owner_link
             {
                 return recording_validation_error(
-                    context.request.envelope.dry_run,
-                    Some(context.project_state.state_version),
                     field,
                     "evidence artifact refs must identify existing artifacts owned by the request project and Task",
                 );
@@ -1273,7 +1198,7 @@ pub(super) fn observation_refs_by_target(
 
 pub(super) fn build_record_run_evidence_summary(
     context: &RecordRunObservationContext<'_>,
-    request: &RecordRunRequest,
+    request: &RecordRunInput,
     run_ref: &StateRecordRef,
     registered_artifacts: &[ArtifactRef],
     artifact_plans: &[RecordRunArtifactPlan],

@@ -1,4 +1,3 @@
-use super::MethodPlan;
 use crate::close_readiness::{
     facts_from_projection, facts_with_pending_authorities,
     facts_with_projected_acceptance_criteria, plan_projected_close_readiness,
@@ -15,10 +14,10 @@ use crate::method_rejection::{
     decision_rejected_response, dry_run_summary, no_active_task_response,
     rejected_pipeline_response, validation_rejected,
 };
+use crate::operation_plan::OperationPlan;
 use crate::pipeline::{
-    commit_mutation_branch, dry_run_preview_branch, tool_error, CommitMutationBranch,
-    CorePipelineError, CoreResult, CoreService, InvocationContext, PipelineResponse,
-    TaskRequirement, VerifiedInvocationContext,
+    commit_mutation_branch, dry_run_preview_branch, tool_error, CorePipelineError, CoreResult,
+    CoreService, InvocationContext, PipelineResponse, TaskRequirement, VerifiedInvocationContext,
 };
 use crate::policy::close_readiness::{
     accepted_current_scope_decision_authority, ScopeDecisionAuthorityRequirement,
@@ -132,14 +131,10 @@ impl CoreService {
 
         self.execute_prepared_request(
             prepared,
-            commit_mutation_branch::<UpdateScopeRequest>(CommitMutationBranch {
-                result_fields: plan.result_fields,
-                event_kind: "scope_updated".to_owned(),
-                event_payload: plan.event_payload,
-                task_id: Some(plan.task_id),
-                change_unit_id: plan.change_unit_id,
-                storage_mutations: plan.storage_mutations,
-            }),
+            commit_mutation_branch::<UpdateScopeRequest>(
+                plan.operation
+                    .into_commit_branch::<UpdateScopeRequest>(plan.result_fields, "scope_updated"),
+            ),
         )
     }
 }
@@ -689,13 +684,21 @@ struct UpdateScopeResponseProjection {
     next_actions: Vec<NextActionSummary>,
 }
 
+struct UpdateScopePlan {
+    operation: OperationPlan,
+    result_fields: UpdateScopeResultFields,
+    next_actions: Vec<NextActionSummary>,
+}
+
 impl UpdateScopeResponseProjection {
-    fn into_method_plan(self) -> MethodPlan<UpdateScopeResultFields> {
-        MethodPlan {
-            task_id: self.task_id,
-            change_unit_id: self.change_unit_id,
-            storage_mutations: self.storage_mutations,
-            event_payload: self.event_payload,
+    fn into_plan(self) -> UpdateScopePlan {
+        UpdateScopePlan {
+            operation: OperationPlan::new(
+                self.task_id,
+                self.change_unit_id,
+                self.storage_mutations,
+                self.event_payload,
+            ),
             result_fields: self.result_fields,
             next_actions: self.next_actions,
         }
@@ -709,7 +712,7 @@ fn plan_update_scope(
     request: UpdateScopeRequest,
     verified_invocation: &VerifiedInvocationContext,
     operation_now: &UtcTimestamp,
-) -> Result<MethodPlan<UpdateScopeResultFields>, PlanError> {
+) -> Result<UpdateScopePlan, PlanError> {
     let policy = decide_update_scope_policy(
         store,
         project_state,
@@ -724,7 +727,7 @@ fn plan_update_scope(
         plan_update_scope_mutations(service, store, project_state, verified_invocation, policy)?;
     let projection =
         project_update_scope_response(store, project_state, verified_invocation, mutations)?;
-    Ok(projection.into_method_plan())
+    Ok(projection.into_plan())
 }
 
 fn project_update_scope_response(
@@ -833,7 +836,7 @@ fn project_update_scope_response(
     let close_plan = plan_projected_close_readiness(
         store,
         &projected_project_state,
-        &request.envelope,
+        &request.envelope.project_id,
         &request.task_id,
         close_context,
     )

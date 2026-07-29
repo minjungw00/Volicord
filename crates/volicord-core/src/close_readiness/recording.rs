@@ -4,14 +4,13 @@ use crate::pipeline::{CorePipelineError, CoreService};
 use crate::policy::evidence::state_record_ref_identity_key;
 use crate::policy::evidence_target::run_record_matches_close_basis_context;
 use crate::record_refs::{state_ref, write_ticket_ref};
+use crate::recording::RecordRunInput;
 use crate::task_state::{normalize_display_string_list, normalize_display_text};
 use crate::write_ticket::normalized_string_set;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_store::core_pipeline::{
-    ChangeUnitStatus, CoreProjectStore, ProjectStateHeader, RunRecord, TaskRecord,
-    WriteTicketRecord,
+    ChangeUnitStatus, CoreProjectStore, RunRecord, TaskRecord, WriteTicketRecord,
 };
-use volicord_types::methods::RecordRunRequest;
 use volicord_types::schema::{
     ArtifactRef, CurrentCloseBasis, ResidualRisk, SensitiveActionRequirement, StateRecordRef,
     WriteTicketAttemptScope,
@@ -39,27 +38,20 @@ impl From<serde_json::Error> for RecordRunCloseBasisError {
 }
 
 fn close_basis_validation_error<T>(
-    _dry_run: volicord_types::schema::DryRunIntent,
-    _state_version: Option<u64>,
     field: &'static str,
     message: &'static str,
 ) -> Result<T, RecordRunCloseBasisError> {
     Err(RecordRunCloseBasisError::Validation { field, message })
 }
 
-fn close_basis_store_error(
-    _envelope: &volicord_types::schema::ToolEnvelope,
-    _project_state: &ProjectStateHeader,
-    error: volicord_store::error::StoreError,
-) -> RecordRunCloseBasisError {
+fn close_basis_store_error(error: volicord_store::error::StoreError) -> RecordRunCloseBasisError {
     RecordRunCloseBasisError::Core(CorePipelineError::from(error))
 }
 
 pub(crate) struct RecordRunCloseBasisContext<'a> {
     pub(crate) service: &'a CoreService,
     pub(crate) store: &'a CoreProjectStore<'a>,
-    pub(crate) project_state: &'a ProjectStateHeader,
-    pub(crate) request: &'a RecordRunRequest,
+    pub(crate) request: &'a RecordRunInput,
     pub(crate) task: &'a TaskRecord,
     pub(crate) run_ref: &'a StateRecordRef,
     pub(crate) write_ticket_scope: Option<&'a (WriteTicketRecord, WriteTicketAttemptScope)>,
@@ -72,8 +64,7 @@ pub(crate) struct RecordRunCloseBasisContext<'a> {
 
 pub(super) struct CloseBasisRefResolutionContext<'a> {
     pub(super) store: &'a CoreProjectStore<'a>,
-    pub(super) project_state: &'a ProjectStateHeader,
-    pub(super) request: &'a RecordRunRequest,
+    pub(super) request: &'a RecordRunInput,
     pub(super) current_scope_revision: u64,
     pub(super) field: &'static str,
     pub(super) run_ref: &'a StateRecordRef,
@@ -88,7 +79,6 @@ pub(crate) fn build_record_run_close_basis(
     let RecordRunCloseBasisContext {
         service,
         store,
-        project_state,
         request,
         task,
         run_ref,
@@ -99,13 +89,11 @@ pub(crate) fn build_record_run_close_basis(
         snapshot_state_version,
         now,
     } = context;
-    let Some(assessment) = request.close_assessment.as_ref() else {
+    let Some(assessment) = request.close_assessment() else {
         return Ok(None);
     };
     if assessment.result_summary.trim().is_empty() {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "close_assessment.result_summary",
             "close_assessment.result_summary must not be empty",
         );
@@ -116,7 +104,7 @@ pub(crate) fn build_record_run_close_basis(
     result_refs.push(canonical_close_basis_ref(
         request,
         StateRecordKind::ChangeUnit,
-        request.change_unit_id.as_str(),
+        request.change_unit_id().as_str(),
         snapshot_state_version,
     ));
     if let Some(ref evidence_summary_ref) = evidence_summary_ref {
@@ -125,7 +113,6 @@ pub(crate) fn build_record_run_close_basis(
     let result_refs = canonicalize_close_basis_refs(
         CloseBasisRefResolutionContext {
             store,
-            project_state,
             request,
             current_scope_revision: task.scope_revision,
             field: "close_assessment.result_refs",
@@ -137,12 +124,11 @@ pub(crate) fn build_record_run_close_basis(
         &result_refs,
     )?;
 
-    if request.envelope.dry_run.is_requested() {
+    if request.dry_run().is_requested() {
         for risk in &assessment.residual_risks {
             validate_residual_risk_input(
                 CloseBasisRefResolutionContext {
                     store,
-                    project_state,
                     request,
                     current_scope_revision: task.scope_revision,
                     field: "close_assessment.residual_risks[].source_refs",
@@ -163,7 +149,6 @@ pub(crate) fn build_record_run_close_basis(
         let source_refs = validate_residual_risk_input(
             CloseBasisRefResolutionContext {
                 store,
-                project_state,
                 request,
                 current_scope_revision: task.scope_revision,
                 field: "close_assessment.residual_risks[].source_refs",
@@ -185,21 +170,13 @@ pub(crate) fn build_record_run_close_basis(
             source_refs,
         });
     }
-    let sensitive_action_requirements = current_sensitive_action_requirements(
-        store,
-        project_state,
-        request,
-        task,
-        run_ref,
-        write_ticket_scope,
-    )?;
+    let sensitive_action_requirements =
+        current_sensitive_action_requirements(store, request, task, run_ref, write_ticket_scope)?;
     let derived_sensitive_categories = sensitive_category_summary(&sensitive_action_requirements);
     let caller_sensitive_categories =
         normalize_display_string_list(&assessment.sensitive_categories);
     if caller_sensitive_categories != derived_sensitive_categories {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "close_assessment.sensitive_categories",
             "close_assessment.sensitive_categories must match Core-derived sensitive requirements",
         );
@@ -208,9 +185,9 @@ pub(crate) fn build_record_run_close_basis(
     Ok(Some(CurrentCloseBasis {
         close_basis_revision,
         scope_revision: task.scope_revision,
-        task_id: request.task_id.clone(),
-        change_unit_id: request.change_unit_id.clone(),
-        baseline_ref: Some(request.baseline_ref.clone()).into(),
+        task_id: request.task_id().clone(),
+        change_unit_id: request.change_unit_id().clone(),
+        baseline_ref: Some(request.baseline_ref().clone()).into(),
         result_summary: normalize_display_text(&assessment.result_summary),
         result_refs,
         evidence_summary_ref: evidence_summary_ref.into(),
@@ -225,14 +202,12 @@ pub(crate) fn build_record_run_close_basis(
 
 pub(super) fn current_sensitive_action_requirements(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &RecordRunRequest,
+    request: &RecordRunInput,
     task: &TaskRecord,
     run_ref: &StateRecordRef,
     write_ticket_scope: Option<&(WriteTicketRecord, WriteTicketAttemptScope)>,
 ) -> Result<Vec<SensitiveActionRequirement>, RecordRunCloseBasisError> {
-    let mut requirements =
-        previous_current_sensitive_action_requirements(store, project_state, request, task)?;
+    let mut requirements = previous_current_sensitive_action_requirements(store, request, task)?;
     if let Some((record, scope)) = write_ticket_scope {
         if let Some(requirement) =
             sensitive_action_requirement_from_write_ticket(run_ref, record, scope)?
@@ -245,21 +220,20 @@ pub(super) fn current_sensitive_action_requirements(
 
 pub(super) fn previous_current_sensitive_action_requirements(
     store: &CoreProjectStore,
-    project_state: &ProjectStateHeader,
-    request: &RecordRunRequest,
+    request: &RecordRunInput,
     task: &TaskRecord,
 ) -> Result<Vec<SensitiveActionRequirement>, RecordRunCloseBasisError> {
     let task_revision = store
-        .task_revision_record(&request.task_id)
-        .map_err(|error| close_basis_store_error(&request.envelope, project_state, error))?;
+        .task_revision_record(request.task_id())
+        .map_err(close_basis_store_error)?;
     let Some(previous_basis) = task_revision.and_then(|record| record.current_close_basis) else {
         return Ok(Vec::new());
     };
-    if previous_basis.task_id == request.task_id
-        && previous_basis.change_unit_id == request.change_unit_id
+    if previous_basis.task_id == *request.task_id()
+        && previous_basis.change_unit_id == *request.change_unit_id()
         && previous_basis.scope_revision == task.scope_revision
         && previous_basis.close_basis_revision == task.close_basis_revision
-        && previous_basis.baseline_ref.as_ref() == Some(&request.baseline_ref)
+        && previous_basis.baseline_ref.as_ref() == Some(request.baseline_ref())
     {
         Ok(previous_basis.sensitive_action_requirements)
     } else {
@@ -353,20 +327,14 @@ pub(super) fn validate_residual_risk_input(
     context: CloseBasisRefResolutionContext<'_>,
     risk: &volicord_types::schema::ResidualRiskInput,
 ) -> Result<Vec<StateRecordRef>, RecordRunCloseBasisError> {
-    let request = context.request;
-    let project_state = context.project_state;
     if risk.summary.trim().is_empty() {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "close_assessment.residual_risks.summary",
             "residual risk summary must not be empty",
         );
     }
     if risk.consequence.trim().is_empty() {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             "close_assessment.residual_risks.consequence",
             "residual risk consequence must not be empty",
         );
@@ -392,11 +360,8 @@ pub(super) fn resolve_close_basis_ref(
     record_ref: &StateRecordRef,
 ) -> Result<StateRecordRef, RecordRunCloseBasisError> {
     let request = context.request;
-    let project_state = context.project_state;
     if record_ref.record_id.as_str().trim().is_empty() {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             context.field,
             "close assessment refs must use non-empty record_id values",
         );
@@ -409,24 +374,18 @@ pub(super) fn resolve_close_basis_ref(
             | StateRecordKind::ChangeUnit
     ) {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             context.field,
             "close assessment refs may only use run, artifact, evidence_summary, or change_unit record_kind",
         );
     }
-    if record_ref.project_id != request.envelope.project_id {
+    if record_ref.project_id != *request.project_id() {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             context.field,
             "close assessment refs must belong to the request project",
         );
     }
-    if record_ref.task_id.as_ref() != Some(&request.task_id) {
+    if record_ref.task_id.as_ref() != Some(request.task_id()) {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(project_state.state_version),
             context.field,
             "close assessment refs must belong to the request Task",
         );
@@ -454,17 +413,13 @@ pub(super) fn resolve_close_basis_run_ref(
     let record = context
         .store
         .run_record(record_ref.record_id.as_str())
-        .map_err(|error| {
-            close_basis_store_error(&request.envelope, context.project_state, error)
-        })?;
+        .map_err(close_basis_store_error)?;
     let compatible = match record.as_ref() {
         Some(record) => run_record_is_close_basis_compatible(context, record)?,
         None => false,
     };
     if !compatible {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(context.project_state.state_version),
             context.field,
             "Run refs in close_assessment must exist for the request Task, current Change Unit, current scope revision, and current baseline",
         );
@@ -487,20 +442,18 @@ pub(super) fn run_record_is_close_basis_compatible(
     };
     if !run_record_matches_close_basis_context(
         record,
-        &context.request.envelope.project_id,
-        &context.request.task_id,
-        context.request.change_unit_id.as_str(),
+        context.request.project_id(),
+        context.request.task_id(),
+        context.request.change_unit_id().as_str(),
         context.current_scope_revision,
-        Some(context.request.baseline_ref.as_str()),
+        Some(context.request.baseline_ref().as_str()),
     ) {
         return Ok(false);
     }
     Ok(context
         .store
-        .current_change_unit(&context.request.task_id)
-        .map_err(|error| {
-            close_basis_store_error(&context.request.envelope, context.project_state, error)
-        })?
+        .current_change_unit(context.request.task_id())
+        .map_err(close_basis_store_error)?
         .as_ref()
         .is_some_and(|record| {
             record.change_unit_id == change_unit_id
@@ -516,20 +469,16 @@ pub(super) fn resolve_close_basis_change_unit_ref(
     let request = context.request;
     let record = context
         .store
-        .change_unit_record(&request.task_id, record_ref.record_id.as_str())
-        .map_err(|error| {
-            close_basis_store_error(&request.envelope, context.project_state, error)
-        })?;
+        .change_unit_record(request.task_id(), record_ref.record_id.as_str())
+        .map_err(close_basis_store_error)?;
     if record.as_ref().is_none_or(|record| {
-        record.project_id != request.envelope.project_id.as_str()
-            || record.task_id != request.task_id.as_str()
-            || record.change_unit_id != request.change_unit_id.as_str()
+        record.project_id != request.project_id().as_str()
+            || record.task_id != request.task_id().as_str()
+            || record.change_unit_id != request.change_unit_id().as_str()
             || record.status != ChangeUnitStatus::Active
             || !record.is_current
     }) {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(context.project_state.state_version),
             context.field,
             "Change Unit refs in close_assessment must identify the current Change Unit",
         );
@@ -560,25 +509,19 @@ pub(super) fn resolve_close_basis_evidence_summary_ref(
     let record = context
         .store
         .evidence_summary_record(record_ref.record_id.as_str())
-        .map_err(|error| {
-            close_basis_store_error(&request.envelope, context.project_state, error)
-        })?;
+        .map_err(close_basis_store_error)?;
     let latest = context
         .store
-        .latest_evidence_summary(&request.task_id)
-        .map_err(|error| {
-            close_basis_store_error(&request.envelope, context.project_state, error)
-        })?;
+        .latest_evidence_summary(request.task_id())
+        .map_err(close_basis_store_error)?;
     if record.as_ref().is_none_or(|record| {
-        record.project_id != request.envelope.project_id.as_str()
-            || record.task_id != request.task_id.as_str()
+        record.project_id != request.project_id().as_str()
+            || record.task_id != request.task_id().as_str()
             || latest
                 .as_ref()
                 .is_none_or(|latest| latest.evidence_summary_id != record.evidence_summary_id)
     }) {
         return close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(context.project_state.state_version),
             context.field,
             "Evidence Summary refs in close_assessment must identify the current Task evidence summary",
         );
@@ -612,22 +555,18 @@ pub(super) fn resolve_close_basis_artifact_ref(
     let record = context
         .store
         .artifact_record(record_ref.record_id.as_str())
-        .map_err(|error| {
-            close_basis_store_error(&request.envelope, context.project_state, error)
-        })?;
+        .map_err(close_basis_store_error)?;
     let owner_link_exists = context
         .store
-        .artifact_has_task_owner_link(record_ref.record_id.as_str(), request.task_id.as_str())
-        .map_err(|error| {
-            close_basis_store_error(&request.envelope, context.project_state, error)
-        })?;
+        .artifact_has_task_owner_link(record_ref.record_id.as_str(), request.task_id().as_str())
+        .map_err(close_basis_store_error)?;
     if record
         .as_ref()
         .map(|record| {
             let available = persistent_artifact_is_verified_current(context.store, record)?;
             Ok::<_, CorePipelineError>(
-                record.project_id == request.envelope.project_id.as_str()
-                    && record.task_id == request.task_id.as_str()
+                record.project_id == request.project_id().as_str()
+                    && record.task_id == request.task_id().as_str()
                     && available
                     && owner_link_exists,
             )
@@ -644,8 +583,6 @@ pub(super) fn resolve_close_basis_artifact_ref(
         ))
     } else {
         close_basis_validation_error(
-            request.envelope.dry_run,
-            Some(context.project_state.state_version),
             context.field,
             "Artifact refs in close_assessment must identify verified available artifacts owned by the request Task",
         )
@@ -653,7 +590,7 @@ pub(super) fn resolve_close_basis_artifact_ref(
 }
 
 pub(super) fn canonical_close_basis_ref(
-    request: &RecordRunRequest,
+    request: &RecordRunInput,
     record_kind: StateRecordKind,
     record_id: &str,
     snapshot_state_version: u64,
@@ -661,8 +598,8 @@ pub(super) fn canonical_close_basis_ref(
     state_ref(
         record_kind,
         record_id,
-        &request.envelope.project_id,
-        Some(&request.task_id),
+        request.project_id(),
+        Some(request.task_id()),
         Some(snapshot_state_version),
     )
 }

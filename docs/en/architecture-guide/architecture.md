@@ -177,8 +177,11 @@ points and the permit-bound context lifetime.
 ## Core method ownership
 
 `crates/volicord-core/src/methods/` owns public-method entry points and
-request-specific orchestration. `methods/mod.rs` contains module wiring and the
-small generic plan carrier; it is not a helper prelude or a service locator.
+request-specific orchestration. `methods/mod.rs` contains only module wiring; it
+is not a helper prelude or a service locator. `operation_plan.rs` owns the
+method-neutral execution carrier for Task and Change Unit identity, Store
+mutations, and event payloads. Method-specific result fields and response
+composition remain in each public method module.
 Method modules import durable identity, artifact policy, continuity planning,
 evidence facts, Write Ticket planning, close readiness, state projection, and
 record-reference conversion from their focused Core owners.
@@ -195,11 +198,13 @@ response composition.
 
 The `volicord.record_run` entry point remains in
 `crates/volicord-core/src/methods/record_run.rs`. It verifies the method
-envelope through the common Core pipeline, delegates semantic planning to
+envelope through the common Core pipeline, converts the public request to the
+semantic `RecordRunInput`, delegates planning to
 `crates/volicord-core/src/recording/`, maps the closed `RecordingError` model
-to the public response branch, submits the resulting `MethodPlan`, and records
-method-specific workflow metrics. It does not own evidence, artifact,
-close-basis, residual-risk, or Write Ticket policy.
+to the public response branch, converts the returned operation and result facts
+to `OperationPlan` and `RecordRunResultFields`, and records method-specific
+workflow metrics. It does not own evidence, artifact, close-basis,
+residual-risk, or Write Ticket policy.
 
 The recording package keeps the operation flow typed:
 
@@ -220,15 +225,19 @@ The recording package keeps the operation flow typed:
    evidence, and artifact mutations distinct until the final Store-plan
    conversion.
 5. `recording/state.rs` performs the Store-aware acquisition needed for the
-   projected post-operation `StateSummary`.
-   `recording/projection.rs` consumes that summary and the typed planned facts
-   without Store access or policy reevaluation, then produces
-   `RecordRunResultFields`.
+   projected post-operation `StateSummary`. `recording/plan.rs` returns the
+   closed `RecordRunOperationPlan`, whose `RecordRunEffect` and
+   `RecordRunResultFacts` contain only semantic execution and result facts.
 
 Store-aware recording services return typed facts, plans, or semantic errors;
-they do not construct `PipelineResponse`. Reusable pure policy modules accept
-typed inputs and have no Store handle. The public method layer alone maps
-semantic recording errors and method fields into response envelopes.
+they do not import public method request or response types and do not construct
+`PipelineResponse`. Request identity, idempotency, expected-state, locale, and
+response metadata remain in method orchestration. A semantic field crosses the
+Recording boundary only when Recording evaluates it; project identity and
+dry-run intent are examples used by current Record Run policy. Reusable pure
+policy modules accept typed inputs and have no Store handle. The public method
+layer alone maps semantic recording errors and result facts into response
+envelopes.
 
 ## UserAction ownership
 
